@@ -44,8 +44,8 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
-#include <stdlib.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "rt_trap.h"
@@ -128,10 +128,7 @@ static size_t grow_stack_capacity(size_t cap, size_t elem_size) {
 
 /// @brief Push a node onto the explicit DFS walk stack, growing it if full
 ///        (NULL node ignored). Traps on OOM.
-static void push_walk_frame(trie_walk_frame **stack,
-                            size_t *len,
-                            size_t *cap,
-                            rt_trie_node *node) {
+static void push_walk_frame(trie_walk_frame **stack, size_t *len, size_t *cap, rt_trie_node *node) {
     if (!node)
         return;
     if (*len == *cap) {
@@ -147,11 +144,8 @@ static void push_walk_frame(trie_walk_frame **stack,
 
 /// @brief Push a node (with key depth) onto the key-collection stack,
 ///        growing it if full. Traps on OOM.
-static void push_collect_frame(trie_collect_frame **stack,
-                               size_t *len,
-                               size_t *cap,
-                               rt_trie_node *node,
-                               size_t depth) {
+static void push_collect_frame(
+    trie_collect_frame **stack, size_t *len, size_t *cap, rt_trie_node *node, size_t depth) {
     if (!node)
         return;
     if (*len == *cap) {
@@ -168,11 +162,8 @@ static void push_collect_frame(trie_collect_frame **stack,
 
 /// @brief Push a (src,dst) node pair onto the deep-clone stack, growing it
 ///        if full (ignored unless both nodes are non-NULL). Traps on OOM.
-static void push_clone_pair(trie_clone_pair **stack,
-                            size_t *len,
-                            size_t *cap,
-                            rt_trie_node *src,
-                            rt_trie_node *dst) {
+static void push_clone_pair(
+    trie_clone_pair **stack, size_t *len, size_t *cap, rt_trie_node *src, rt_trie_node *dst) {
     if (!src || !dst)
         return;
     if (*len == *cap) {
@@ -335,7 +326,8 @@ static void rt_trie_finalize(void *obj) {
 /// @brief Construct an empty trie. Each node has a 256-way child array (one slot per byte
 /// value), so memory cost is high per node but lookups are O(key length).
 void *rt_trie_new(void) {
-    rt_trie_impl *trie = (rt_trie_impl *)rt_obj_new_i64(RT_TRIE_CLASS_ID, (int64_t)sizeof(rt_trie_impl));
+    rt_trie_impl *trie =
+        (rt_trie_impl *)rt_obj_new_i64(RT_TRIE_CLASS_ID, (int64_t)sizeof(rt_trie_impl));
     if (!trie)
         rt_trap("rt_trie: memory allocation failed");
     trie->vptr = NULL;

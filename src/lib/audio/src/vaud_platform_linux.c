@@ -194,8 +194,7 @@ int vaud_platform_init(vaud_context_t ctx) {
         return 0;
     }
 
-    plat->mix_buffer =
-        (int16_t *)malloc(VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t));
+    plat->mix_buffer = (int16_t *)malloc(VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t));
     if (!plat->mix_buffer) {
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);

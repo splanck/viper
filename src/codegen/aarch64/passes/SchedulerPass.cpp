@@ -161,8 +161,8 @@ enum class MemBaseKind : uint8_t {
 /// @brief Symbolic representation of a trackable base-plus-offset address.
 struct AddressValue {
     MemBaseKind baseKind{MemBaseKind::BaseRegister};
-    long long baseTag{0};   ///< Distinguishes different tracked base registers (unused for FP/SP).
-    long long offset{0};    ///< Byte offset from the base.
+    long long baseTag{0}; ///< Distinguishes different tracked base registers (unused for FP/SP).
+    long long offset{0};  ///< Byte offset from the base.
 };
 
 /// @brief Resolved memory access region used for alias analysis.
@@ -175,10 +175,10 @@ struct MemoryAccessClass {
 
 /// @brief One entry in the per-block memory history used for dependency building.
 struct MemoryHistoryEntry {
-    std::size_t instrIdx{0};                    ///< Index into the body instruction array.
-    bool isLoad{false};                         ///< True if this entry is a load.
-    bool isStore{false};                        ///< True if this entry is a store.
-    bool isBarrier{false};                      ///< True if this entry is a call (full barrier).
+    std::size_t instrIdx{0};                      ///< Index into the body instruction array.
+    bool isLoad{false};                           ///< True if this entry is a load.
+    bool isStore{false};                          ///< True if this entry is a store.
+    bool isBarrier{false};                        ///< True if this entry is a call (full barrier).
     std::optional<MemoryAccessClass> accessClass; ///< Resolved address region, if known.
 };
 
@@ -199,15 +199,15 @@ static std::size_t regIdx(uint32_t reg) noexcept {
 }
 
 /// @brief Construct a MemoryAccessClass by combining @p base with an instruction-level offset.
-static std::optional<MemoryAccessClass>
-makeResolvedAccessClass(const AddressValue &base, long long accessOffset, unsigned size) noexcept {
+static std::optional<MemoryAccessClass> makeResolvedAccessClass(const AddressValue &base,
+                                                                long long accessOffset,
+                                                                unsigned size) noexcept {
     return MemoryAccessClass{base.baseKind, base.baseTag, base.offset + accessOffset, size};
 }
 
 /// @brief Look up the tracked address value for physical register @p reg, or nullopt.
-static std::optional<AddressValue>
-getTrackedAddressValue(const std::array<std::optional<AddressValue>, kNumPhysRegs> &tracked,
-                       uint32_t reg) noexcept {
+static std::optional<AddressValue> getTrackedAddressValue(
+    const std::array<std::optional<AddressValue>, kNumPhysRegs> &tracked, uint32_t reg) noexcept {
     const std::size_t idx = regIdx(reg);
     if (idx >= kNumPhysRegs)
         return std::nullopt;
@@ -216,10 +216,9 @@ getTrackedAddressValue(const std::array<std::optional<AddressValue>, kNumPhysReg
 
 /// @brief Classify the memory address of a load/store instruction.
 /// @return A resolved MemoryAccessClass if the base is FP/SP/tracked-GPR; nullopt otherwise.
-static std::optional<MemoryAccessClass>
-classifyMemoryAccess(const MInstr &mi,
-                     const std::array<std::optional<AddressValue>, kNumPhysRegs> &trackedAddrs)
-    noexcept {
+static std::optional<MemoryAccessClass> classifyMemoryAccess(
+    const MInstr &mi,
+    const std::array<std::optional<AddressValue>, kNumPhysRegs> &trackedAddrs) noexcept {
     switch (mi.opc) {
         case MOpcode::LdrRegFpImm:
         case MOpcode::StrRegFpImm:
@@ -279,13 +278,11 @@ classifyMemoryAccess(const MInstr &mi,
         case MOpcode::Str32RegBaseImm:
             if (mi.ops.size() >= 3 && mi.ops[1].kind == MOperand::Kind::Reg &&
                 mi.ops[1].reg.isPhys && mi.ops[2].kind == MOperand::Kind::Imm) {
-                const unsigned size = (mi.opc == MOpcode::Ldr8RegBaseImm ||
-                                       mi.opc == MOpcode::Str8RegBaseImm)
-                                          ? 1
-                                      : (mi.opc == MOpcode::Ldr16RegBaseImm ||
-                                         mi.opc == MOpcode::Str16RegBaseImm)
-                                          ? 2
-                                          : 4;
+                const unsigned size =
+                    (mi.opc == MOpcode::Ldr8RegBaseImm || mi.opc == MOpcode::Str8RegBaseImm) ? 1
+                    : (mi.opc == MOpcode::Ldr16RegBaseImm || mi.opc == MOpcode::Str16RegBaseImm)
+                        ? 2
+                        : 4;
                 if (const auto tracked =
                         getTrackedAddressValue(trackedAddrs, mi.ops[1].reg.idOrPhys)) {
                     return makeResolvedAccessClass(*tracked, mi.ops[2].imm, size);
@@ -318,10 +315,9 @@ static bool mayAliasMemory(const std::optional<MemoryAccessClass> &lhs,
 /// @brief Derive a symbolic AddressValue for the destination of @p mi if trackable.
 /// @details Handles MovRR (copy), AddRI/SubRI (offset arithmetic), and AddFpImm.
 ///          Returns nullopt for instructions whose result cannot be statically analysed.
-static std::optional<AddressValue>
-deriveTrackedAddressValue(const MInstr &mi,
-                          const std::array<std::optional<AddressValue>, kNumPhysRegs> &trackedAddrs)
-    noexcept {
+static std::optional<AddressValue> deriveTrackedAddressValue(
+    const MInstr &mi,
+    const std::array<std::optional<AddressValue>, kNumPhysRegs> &trackedAddrs) noexcept {
     auto regTracked = [&](std::size_t opIdx) -> std::optional<AddressValue> {
         if (opIdx >= mi.ops.size() || mi.ops[opIdx].kind != MOperand::Kind::Reg ||
             !mi.ops[opIdx].reg.isPhys) {
@@ -545,8 +541,7 @@ static std::vector<DepNode> buildDependencyGraph(const std::vector<MInstr> &body
         if (!memLoad && !memStore)
             return;
         const auto memClass = classifyMemoryAccess(mi, trackedAddrs);
-        const auto &dependencyHistory = (memLoad && !memStore) ? memoryStoreHistory
-                                                               : memoryHistory;
+        const auto &dependencyHistory = (memLoad && !memStore) ? memoryStoreHistory : memoryHistory;
         for (const auto &prev : dependencyHistory) {
             if (prev.isBarrier) {
                 addDep(i, prev.instrIdx, 1);

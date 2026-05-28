@@ -34,19 +34,19 @@ namespace viper::codegen {
 /// @details Native backends use these to determine which runtime archives
 ///          to link based on symbols referenced in generated assembly.
 enum class RtComponent {
-    Base,        ///< Core runtime (always linked)
-    Arrays,      ///< Array operations (rt_arr_*)
-    Oop,         ///< Object-oriented features (rt_obj_*, rt_type_*, etc.)
-    Collections, ///< Collections and containers (rt_list_*, rt_map_*, etc.)
-    Game,        ///< Game dev utilities (rt_grid2d_*, rt_timer_*, rt_achievement_*, etc.)
-    Text,        ///< Text processing (rt_codec_*, rt_csv_*, etc.)
-    IoFs,        ///< File I/O (rt_file_*, rt_dir_*, etc.)
-    Exec,        ///< Process execution (rt_exec_*, rt_process_*, rt_machine_*)
-    Threads,     ///< Threading (rt_monitor_*, rt_thread_*, etc.)
-    Graphics,    ///< Graphics (rt_canvas_*, rt_color_*, etc.)
-    Audio,       ///< Audio (rt_audio_*, rt_playlist_*)
-    Network,     ///< Network (rt_network_*, rt_restclient_*, etc.)
-    Localization,///< Localization (rt_locale_*, locale manager, LocaleInfo)
+    Base,         ///< Core runtime (always linked)
+    Arrays,       ///< Array operations (rt_arr_*)
+    Oop,          ///< Object-oriented features (rt_obj_*, rt_type_*, etc.)
+    Collections,  ///< Collections and containers (rt_list_*, rt_map_*, etc.)
+    Game,         ///< Game dev utilities (rt_grid2d_*, rt_timer_*, rt_achievement_*, etc.)
+    Text,         ///< Text processing (rt_codec_*, rt_csv_*, etc.)
+    IoFs,         ///< File I/O (rt_file_*, rt_dir_*, etc.)
+    Exec,         ///< Process execution (rt_exec_*, rt_process_*, rt_machine_*)
+    Threads,      ///< Threading (rt_monitor_*, rt_thread_*, etc.)
+    Graphics,     ///< Graphics (rt_canvas_*, rt_color_*, etc.)
+    Audio,        ///< Audio (rt_audio_*, rt_playlist_*)
+    Network,      ///< Network (rt_network_*, rt_restclient_*, etc.)
+    Localization, ///< Localization (rt_locale_*, locale manager, LocaleInfo)
     Count,
 };
 
@@ -64,10 +64,10 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::Arrays;
 
     // OOP component
-    if (starts("rt_obj_") || starts("rt_type_") || starts("rt_register_") ||
-        starts("rt_cast_") || starts("rt_ns_") || starts("rt_box_") || starts("rt_exc_") ||
-        starts("rt_result_") || starts("rt_option_") || starts("rt_lazy") ||
-        starts("rt_oop_") || sym == "rt_bind_interface")
+    if (starts("rt_obj_") || starts("rt_type_") || starts("rt_register_") || starts("rt_cast_") ||
+        starts("rt_ns_") || starts("rt_box_") || starts("rt_exc_") || starts("rt_result_") ||
+        starts("rt_option_") || starts("rt_lazy") || starts("rt_oop_") ||
+        sym == "rt_bind_interface")
         return RtComponent::Oop;
 
     // Collections component
@@ -92,8 +92,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_gameui_") || starts("rt_uilabel_") || starts("rt_uibar_") ||
         starts("rt_uipanel_") || starts("rt_uinineslice_") || starts("rt_uimenulist_") ||
         starts("rt_pathfinder_") || starts("rt_dialogue_") || starts("rt_lighting2d_") ||
-        starts("rt_platformer_ctrl_") || starts("rt_achievement_") ||
-        starts("rt_typewriter_") || starts("rt_game_scene_"))
+        starts("rt_platformer_ctrl_") || starts("rt_achievement_") || starts("rt_typewriter_") ||
+        starts("rt_game_scene_"))
         return RtComponent::Game;
 
     // Text component
@@ -159,9 +159,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
 
     // Localization component
     if (starts("rt_locale_") || starts("rt_numformat_") || starts("rt_dateformat_") ||
-        starts("rt_reltimefmt_") || starts("rt_message_bundle_") ||
-        starts("rt_list_format_") || starts("rt_text_direction_") ||
-        starts("rt_collator_") || starts("rt_plural_rules_"))
+        starts("rt_reltimefmt_") || starts("rt_message_bundle_") || starts("rt_list_format_") ||
+        starts("rt_text_direction_") || starts("rt_collator_") || starts("rt_plural_rules_"))
         return RtComponent::Localization;
 
     // Base component (time, math, formatting, etc.)
@@ -172,11 +171,11 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_numeric_") || starts("rt_bigint_") || starts("rt_debug_") || starts("rt_fmt_") ||
         starts("rt_format_") || starts("rt_int_format_") || starts("rt_printf_") ||
         starts("rt_term_") || starts("rt_time_") || starts("rt_datetime_") ||
-        starts("rt_debug_protocol_") ||
-        starts("rt_dateonly_") || starts("rt_daterange_") || starts("rt_duration_") ||
-        starts("rt_reltime_") || starts("rt_stopwatch_") || starts("rt_countdown_") ||
-        starts("rt_easing_") || starts("rt_modvar_") || starts("rt_args_") || starts("rt_log_") ||
-        starts("rt_msgbus_") || starts("rt_heap_") || starts("rt_output_"))
+        starts("rt_debug_protocol_") || starts("rt_dateonly_") || starts("rt_daterange_") ||
+        starts("rt_duration_") || starts("rt_reltime_") || starts("rt_stopwatch_") ||
+        starts("rt_countdown_") || starts("rt_easing_") || starts("rt_modvar_") ||
+        starts("rt_args_") || starts("rt_log_") || starts("rt_msgbus_") || starts("rt_heap_") ||
+        starts("rt_output_"))
         return RtComponent::Base;
 
     // -------------------------------------------------------------------------
@@ -202,7 +201,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
     if (starts("Viper.Canvas.") || starts("Viper.Input.") || starts("Viper.GUI.") ||
         starts("Viper.Graphics.") || starts("Viper.Color."))
         return RtComponent::Graphics;
-    if (starts("Viper.Audio.") || starts("Viper.Sound.") || starts("Viper.Music."))
+    if (starts("Viper.Sound.") || starts("Viper.Music."))
         return RtComponent::Audio;
     if (starts("Viper.Thread.") || starts("Viper.Channel.") || starts("Viper.Future."))
         return RtComponent::Threads;

@@ -70,8 +70,8 @@ static PhysReg toPhys(const OpReg &reg) {
         throw std::runtime_error("x86-64 binary encoder: physical register id out of range");
     }
     const PhysReg phys = static_cast<PhysReg>(reg.idOrPhys);
-    const bool classMatches = (reg.cls == RegClass::GPR && isGPR(phys)) ||
-                              (reg.cls == RegClass::XMM && isXMM(phys));
+    const bool classMatches =
+        (reg.cls == RegClass::GPR && isGPR(phys)) || (reg.cls == RegClass::XMM && isXMM(phys));
     if (!classMatches) {
         throw std::runtime_error("x86-64 binary encoder: register class does not match "
                                  "physical register");
@@ -163,8 +163,7 @@ static int64_t checkedOffsetDelta(size_t target, size_t base, const char *contex
         return static_cast<int64_t>(diff);
     }
     const size_t diff = base - target;
-    const uint64_t maxMagnitude =
-        static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
+    const uint64_t maxMagnitude = static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
     if (static_cast<uint64_t>(diff) > maxMagnitude)
         throw std::runtime_error(std::string(context) + " displacement exceeds int64 range");
     if (static_cast<uint64_t>(diff) == maxMagnitude)
@@ -374,9 +373,8 @@ static void recordWin64Unwind(const MFunction &fn,
 
     auto checkedU8 = [&](size_t value, const char *field) -> uint8_t {
         if (value > std::numeric_limits<uint8_t>::max()) {
-            throw std::runtime_error("x86-64 binary encoder: Win64 unwind " +
-                                     std::string(field) + " for function '" + fn.name +
-                                     "' exceeds 255 bytes");
+            throw std::runtime_error("x86-64 binary encoder: Win64 unwind " + std::string(field) +
+                                     " for function '" + fn.name + "' exceeds 255 bytes");
         }
         return static_cast<uint8_t>(value);
     };
@@ -391,11 +389,9 @@ static void recordWin64Unwind(const MFunction &fn,
     unwind.symbolIndex = funcSymIdx;
     unwind.functionLength = static_cast<uint32_t>(functionLength);
 
-    unwind.prologueSize =
-        checkedU8(emittedOps.back().endOffset - funcStartOffset, "prologue size");
+    unwind.prologueSize = checkedU8(emittedOps.back().endOffset - funcStartOffset, "prologue size");
     for (const auto &emitted : emittedOps) {
-        const uint8_t codeOffset =
-            checkedU8(emitted.endOffset - funcStartOffset, "code offset");
+        const uint8_t codeOffset = checkedU8(emitted.endOffset - funcStartOffset, "code offset");
         switch (emitted.op.kind) {
             case Win64UnwindOpKind::PushNonVol:
                 unwind.codes.push_back({objfile::Win64UnwindCode::Kind::PushNonVol,
@@ -483,9 +479,8 @@ X64BinaryEncoder::LabelLayout X64BinaryEncoder::computeFunctionLabelLayout(const
                 if (name.empty())
                     return;
                 if (estimated.find(name) != estimated.end()) {
-                    throw std::runtime_error(
-                        "x86-64 binary encoder: duplicate label '" + name +
-                        "' in function '" + fn.name + "'");
+                    throw std::runtime_error("x86-64 binary encoder: duplicate label '" + name +
+                                             "' in function '" + fn.name + "'");
                 }
                 estimated[name] = labelOffset;
             };
@@ -520,9 +515,8 @@ X64BinaryEncoder::LabelLayout X64BinaryEncoder::computeFunctionLabelLayout(const
             if (name.empty())
                 return;
             if (next.find(name) != next.end()) {
-                throw std::runtime_error(
-                    "x86-64 binary encoder: duplicate label '" + name +
-                    "' in function '" + fn.name + "'");
+                throw std::runtime_error("x86-64 binary encoder: duplicate label '" + name +
+                                         "' in function '" + fn.name + "'");
             }
             auto prevIt = estimated.find(name);
             if (prevIt == estimated.end() || prevIt->second != offset)
@@ -562,7 +556,8 @@ X64BinaryEncoder::LabelLayout X64BinaryEncoder::computeFunctionLabelLayout(const
 ///          rel32 patch sites point at the wrong location and the function
 ///          would silently produce broken machine code. This routine throws
 ///          a descriptive error so the mismatch surfaces immediately.
-void X64BinaryEncoder::verifyPredictedLabelOffset(const std::string &label, size_t actualOffset) const {
+void X64BinaryEncoder::verifyPredictedLabelOffset(const std::string &label,
+                                                  size_t actualOffset) const {
     auto it = labelOffsets_.find(label);
     if (it == labelOffsets_.end())
         return;
@@ -662,9 +657,8 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
     if (emitWin64Unwind && frame) {
         if (frame->prologueEmitted && win64UnwindCursor != frame->win64UnwindOps.size()) {
             throw std::runtime_error("x86-64 binary encoder: Win64 unwind plan for function '" +
-                                     fn.name + "' matched " +
-                                     std::to_string(win64UnwindCursor) + " of " +
-                                     std::to_string(frame->win64UnwindOps.size()) +
+                                     fn.name + "' matched " + std::to_string(win64UnwindCursor) +
+                                     " of " + std::to_string(frame->win64UnwindOps.size()) +
                                      " prologue operation(s)");
         }
         recordWin64Unwind(fn, *frame, funcSymIdx, funcStartOffset, emittedWin64UnwindOps, text);
@@ -702,10 +696,10 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
     // Guard helper: abort early with a clear message on operand count mismatch.
     auto requireOps = [&](std::size_t n) {
         if (nOps != n) {
-            throw std::runtime_error(
-                "x86-64 binary encoder: opcode " + std::to_string(static_cast<int>(op)) +
-                " requires exactly " + std::to_string(n) + " operand(s) but has " +
-                std::to_string(nOps));
+            throw std::runtime_error("x86-64 binary encoder: opcode " +
+                                     std::to_string(static_cast<int>(op)) + " requires exactly " +
+                                     std::to_string(n) + " operand(s) but has " +
+                                     std::to_string(nOps));
         }
     };
 
@@ -742,7 +736,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         // --- Pseudo: skip ---
         case MOpcode::PX_COPY:
-            throw std::runtime_error("x86-64 binary encoder: parallel-copy pseudo survived lowering");
+            throw std::runtime_error(
+                "x86-64 binary encoder: parallel-copy pseudo survived lowering");
 
         // --- Label definition ---
         case MOpcode::LABEL: {
@@ -829,7 +824,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             PhysReg dst = gprFromOperand(ops[0], "shift destination");
             PhysReg countReg = gprFromOperand(ops[1], "shift count");
             if (countReg != PhysReg::RCX)
-                throw std::runtime_error("x86-64 binary encoder: register-count shift requires RCX/CL");
+                throw std::runtime_error(
+                    "x86-64 binary encoder: register-count shift requires RCX/CL");
             encodeShiftCL(op, dst, text);
             return;
         }
@@ -970,8 +966,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             if (std::holds_alternative<OpRipLabel>(ops[0])) {
                 encodeBranchRip(op, ripFromOperand(ops[0]), text, rodata, isDarwin);
             } else {
-                encodeBranchOperand(op, ops[0], /*cc=*/0, text,
-                                    "JMP requires a label, register, or memory target");
+                encodeBranchOperand(
+                    op, ops[0], /*cc=*/0, text, "JMP requires a label, register, or memory target");
             }
             return;
         }
@@ -999,8 +995,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             } else if (std::holds_alternative<OpRipLabel>(ops[0])) {
                 encodeBranchRip(op, ripFromOperand(ops[0]), text, rodata, isDarwin);
             } else {
-                encodeBranchOperand(op, ops[0], /*cc=*/0, text,
-                                    "CALL has unsupported operand shape");
+                encodeBranchOperand(
+                    op, ops[0], /*cc=*/0, text, "CALL has unsupported operand shape");
             }
             return;
         }
@@ -1479,8 +1475,7 @@ void X64BinaryEncoder::encodeMOVZX(PhysReg dst, PhysReg src, objfile::CodeSectio
     // for SPL/BPL/SIL/DIL as the 8-bit source; without it, encodings 4-7 name
     // AH/CH/DH/BH.
     const bool needsRexForByteSrc = (hwSrc.bits3 >= 4 && hwSrc.rexBit == 0);
-    if (needsRex(true, hwDst.rexBit != 0, false, hwSrc.rexBit != 0) ||
-        needsRexForByteSrc) {
+    if (needsRex(true, hwDst.rexBit != 0, false, hwSrc.rexBit != 0) || needsRexForByteSrc) {
         cs.emit8(computeRex(true, hwDst.rexBit != 0, false, hwSrc.rexBit != 0));
     }
 

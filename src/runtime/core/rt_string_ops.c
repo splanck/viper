@@ -39,8 +39,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_int_format.h"
 #include "rt_gc.h"
+#include "rt_int_format.h"
 #include "rt_internal.h"
 #include "rt_platform.h"
 #include "rt_seq.h"
@@ -205,7 +205,8 @@ static int rt_string_registry_insert_locked_(rt_string s) {
     }
 }
 
-/// @brief Replace `s`'s slot with a tombstone — preserves probe sequences without needing to rehash.
+/// @brief Replace `s`'s slot with a tombstone — preserves probe sequences without needing to
+/// rehash.
 static void rt_string_registry_remove_locked_(rt_string s) {
     if (!s || !g_string_registry_.slots || g_string_registry_.capacity == 0)
         return;
@@ -1017,13 +1018,14 @@ int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle) {
     return rt_find(hay, pos, needle);
 }
 
-/// @brief Find the first occurrence of `needle` in `hay` starting at `start` (0-based UTF-16 index).
-/// Returns -1 if not found, or 0/+ for the matched index.
+/// @brief Find the first occurrence of `needle` in `hay` starting at `start` (0-based UTF-16
+/// index). Returns -1 if not found, or 0/+ for the matched index.
 int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle) {
     return rt_str_instr3(start, hay, needle);
 }
 
-/// @brief Whitespace predicate for `rt_str_trim*` — matches space, tab, CR, LF, vertical tab, form feed.
+/// @brief Whitespace predicate for `rt_str_trim*` — matches space, tab, CR, LF, vertical tab, form
+/// feed.
 static int is_trim_ws(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
 }

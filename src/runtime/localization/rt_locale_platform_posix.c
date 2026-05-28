@@ -46,8 +46,8 @@
 static int is_c_or_posix(const char *s) {
     if (!s || !*s)
         return 1;
-    return (strcmp(s, "C") == 0) || (strcmp(s, "POSIX") == 0) ||
-           (strcmp(s, "c") == 0) || (strcmp(s, "posix") == 0);
+    return (strcmp(s, "C") == 0) || (strcmp(s, "POSIX") == 0) || (strcmp(s, "c") == 0) ||
+           (strcmp(s, "posix") == 0);
 }
 
 /// @brief Copy @p src into @p out, stripping trailing @c .suffix and @c \@modifier
@@ -94,7 +94,7 @@ int rt_locale_platform_detect_system(char *out, size_t cap) {
     // which override LANG. We poll LC_ALL and LC_MESSAGES specifically because
     // message / display locale is what users generally mean by "the system
     // locale"; LC_NUMERIC or LC_COLLATE could legitimately differ.
-    static const char *const kVars[] = { "LC_ALL", "LANG", "LC_MESSAGES", NULL };
+    static const char *const kVars[] = {"LC_ALL", "LANG", "LC_MESSAGES", NULL};
     for (size_t i = 0; kVars[i]; ++i) {
         const char *val = getenv(kVars[i]);
         if (is_c_or_posix(val))

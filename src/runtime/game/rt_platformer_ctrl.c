@@ -111,8 +111,8 @@ void rt_platformer_ctrl_destroy(rt_platformer_ctrl ctrl) {
 // disable the corresponding behavior (e.g., jump_buffer_ms=0 → no buffering).
 // =============================================================================
 
-/// @brief Set the jump-buffer window: pressing jump up to this many ms BEFORE landing still triggers
-/// a jump on touchdown. Default 100ms; set 0 to disable buffering.
+/// @brief Set the jump-buffer window: pressing jump up to this many ms BEFORE landing still
+/// triggers a jump on touchdown. Default 100ms; set 0 to disable buffering.
 void rt_platformer_ctrl_set_jump_buffer(rt_platformer_ctrl ctrl, int64_t ms) {
     if (ctrl)
         ctrl->jump_buffer_ms = ms;
@@ -179,11 +179,13 @@ void rt_platformer_ctrl_set_apex_bonus(rt_platformer_ctrl ctrl,
     ctrl->apex_gravity_pct = gravity_mult_pct;
 }
 
-/// @brief Per-frame controller tick. Consumes input flags + ground state, updates internal velocity.
-/// Stages, in order:
-///   1. **Coyote refresh:** while on_ground, hold timer at full; on the falling-from-ledge transition
+/// @brief Per-frame controller tick. Consumes input flags + ground state, updates internal
+/// velocity. Stages, in order:
+///   1. **Coyote refresh:** while on_ground, hold timer at full; on the falling-from-ledge
+///   transition
 ///      (was_on_ground && vy>=0 && !on_ground) start the countdown.
-///   2. **Jump-buffer arming:** any `jump_pressed` edge resets the buffer; both timers tick down by `dt`.
+///   2. **Jump-buffer arming:** any `jump_pressed` edge resets the buffer; both timers tick down by
+///   `dt`.
 ///   3. **Jump resolution:** if the buffer is active AND (grounded OR coyote active), set
 ///      `should_jump=1` and consume both timers (caller reads via `should_jump()`).
 ///   4. **Variable jump cut:** on the falling edge of `jump_held`, if `vy < jump_force_cut`, snap
@@ -293,7 +295,8 @@ void rt_platformer_ctrl_update(rt_platformer_ctrl ctrl,
 // jump_force if needed → integrate position externally.
 // =============================================================================
 
-/// @brief Read horizontal velocity (centipixels per 16ms baseline frame). Divide by 100 for px/frame.
+/// @brief Read horizontal velocity (centipixels per 16ms baseline frame). Divide by 100 for
+/// px/frame.
 int64_t rt_platformer_ctrl_get_vx(rt_platformer_ctrl ctrl) {
     return ctrl ? ctrl->vx : 0;
 }

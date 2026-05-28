@@ -51,8 +51,8 @@ struct CodegenOptions {
     int optimizeLevel{1};    ///< Optimization level: 0 = none, 1 = O1 (default), 2 = O2.
     TargetABI targetABI{TargetABI::Host}; ///< Target ABI used for lowering/allocation.
     TargetPlatform targetPlatform{TargetPlatform::Host}; ///< Object/link/platform policy.
-    std::string debugSourcePath{};        ///< Source path used for DWARF line table file entries.
-    bool emitDebugLines{false};           ///< Emit DWARF .debug_line entries when true.
+    std::string debugSourcePath{}; ///< Source path used for DWARF line table file entries.
+    bool emitDebugLines{false};    ///< Emit DWARF .debug_line entries when true.
 };
 
 /// \brief Aggregated result of a backend emission request.
@@ -125,7 +125,6 @@ struct BinaryEmitResult {
                                                const CodegenOptions &options);
 
 /// \brief Lower an IL module to binary machine code via X64BinaryEncoder.
-[[nodiscard]] BinaryEmitResult emitModuleToBinary(const ILModule &mod,
-                                                  const CodegenOptions &opt);
+[[nodiscard]] BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &opt);
 
 } // namespace viper::codegen::x64

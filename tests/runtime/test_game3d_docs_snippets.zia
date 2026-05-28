@@ -1,0 +1,106 @@
+module test_game3d_docs_snippets;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Math as Math;
+bind Viper.Sound as Sound;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func probeFrameHelperSnippet() -> Boolean {
+    var world = Game3D.World3D.New("Docs runFramesOnly Snippet", 48, 32);
+    Game3D.World3D.runFramesOnly(world, 2, 0.025);
+    var ok = Game3D.World3D.get_frame(world) == 2 &&
+             near(Game3D.World3D.get_elapsed(world), 0.050, 0.0001);
+    Game3D.World3D.destroy(world);
+    if (ok == false) {
+        fail("runFramesOnly docs snippet failed");
+    }
+    return ok;
+}
+
+func start() {
+    if (probeFrameHelperSnippet() == false) {
+        return;
+    }
+
+    var world = Game3D.World3D.New("Game3D Docs Snippets", 96, 64);
+    var canvas = Game3D.World3D.get_canvas(world);
+    Canvas3D.SetDTMax(canvas, 50);
+
+    Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
+    Game3D.Lighting.Studio(world);
+    Game3D.PostFX.Crisp(world);
+    var env = Game3D.Environment.Outdoor(world);
+    Game3D.EnvHandle.withFog(env, 12.0, 48.0);
+
+    var ground = Game3D.Prefab.Ground(18.0, Game3D.Materials.Rubber(0.28, 0.38, 0.24));
+    Game3D.Entity3D.attachBody(ground, Game3D.BodyDef.StaticPlane(18.0));
+    Game3D.World3D.spawn(world, ground);
+
+    var ball = Game3D.Prefab.Sphere(0.35, 18, Game3D.Materials.Plastic(0.90, 0.20, 0.16));
+    Game3D.Entity3D.setName(ball, "DocsBall");
+    Game3D.Entity3D.setPosition(ball, 0.0, 1.2, 0.0);
+    var body = Game3D.BodyDef.Sphere(0.35, 1.0);
+    Game3D.BodyDef.set_restitution(body, 0.25);
+    Game3D.BodyDef.withMask(body, Game3D.LayerMask.Of(Game3D.Layers.get_World()));
+    Game3D.Entity3D.attachBody(ball, body);
+    Game3D.World3D.spawn(world, ball);
+
+    var imported = Game3D.Assets3D.LoadModelAsset("examples/3d/game3d_starter/assets/models/triangle.gltf");
+    if (imported == null) {
+        fail("Assets3D docs snippet failed");
+        return;
+    }
+    Game3D.Entity3D.setName(imported, "DocsAsset");
+    Game3D.Entity3D.setPosition(imported, 1.1, 0.08, -1.2);
+    Game3D.World3D.spawn(world, imported);
+
+    var audio = Game3D.World3D.get_audio(world);
+    Game3D.Sound3D.setAttenuation(audio, 1.0, 10.0);
+    var tone = Sound.Synth.Tone(330, 60, 0);
+    if (tone != null) {
+        Game3D.Sound3D.playAt(audio, tone, Math.Vec3.New(0.0, 0.8, 0.0));
+        Game3D.Sound3D.playAttached(audio, tone, ball);
+        Game3D.Sound3D.play2D(audio, tone);
+    }
+
+    Game3D.Entity3D.applyImpulse(ball, 0.0, -0.2, 0.0);
+    Game3D.World3D.runFramesOnly(world, 12, 1.0 / 60.0);
+    if (Game3D.World3D.collisionEventCount(world, Game3D.CollisionPhase.get_Enter()) > 0) {
+        var evt = Game3D.World3D.collisionEvent(world, Game3D.CollisionPhase.get_Enter(), 0);
+        Game3D.Effects3D.Dust(world, Game3D.Collision3DEvent.point(evt));
+        Game3D.Effects3D.ImpactDecal(world, Game3D.Collision3DEvent.point(evt),
+                                     Game3D.Collision3DEvent.normal(evt));
+    } else {
+        Game3D.Effects3D.Smoke(world, Math.Vec3.New(0.0, 0.5, 0.0));
+    }
+
+    Game3D.World3D.beginFrame(world);
+    Game3D.World3D.drawScene(world);
+    Game3D.World3D.drawEffects(world);
+    Game3D.World3D.endScene(world);
+    Canvas3D.BeginOverlay(canvas);
+    Canvas3D.DrawRect2D(canvas, 8, 8, 72, 3, 0x00E8FF);
+    Canvas3D.DrawText2D(canvas, 14, 22, "DOCS", 0xFFFFFF);
+    Canvas3D.EndOverlay(canvas);
+
+    var snap = Game3D.World3D.captureFinalFrame(world);
+    if (snap == null || Pixels.get_Width(snap) != 96 || Pixels.get_Height(snap) != 64) {
+        fail("manual frame docs snippet failed");
+        return;
+    }
+
+    Game3D.World3D.destroy(world);
+    Terminal.Say("PASS");
+}

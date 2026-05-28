@@ -309,8 +309,7 @@ TypeRef Sema::resolveStaticField(FieldExpr *expr, const std::string &ownerName) 
 
     bool isInsideType = currentSelfType_ && currentSelfType_->name == ownerName;
     auto visIt = memberVisibility_.find(fieldKey);
-    if (visIt != memberVisibility_.end() && visIt->second == Visibility::Private &&
-        !isInsideType) {
+    if (visIt != memberVisibility_.end() && visIt->second == Visibility::Private && !isInsideType) {
         error(expr->loc,
               "Cannot access private member '" + expr->field + "' of type '" + ownerName + "'");
         return types::unknown();
@@ -409,8 +408,8 @@ TypeRef Sema::resolveClassStructFieldAccess(FieldExpr *expr, TypeRef baseType) {
     if (visIt != memberVisibility_.end()) {
         if (visIt->second == Visibility::Private && !isInsideType) {
             error(expr->loc,
-                  "Cannot access private member '" + expr->field + "' of type '" +
-                      baseType->name + "'");
+                  "Cannot access private member '" + expr->field + "' of type '" + baseType->name +
+                      "'");
         }
     }
 
@@ -427,8 +426,8 @@ TypeRef Sema::resolveClassStructFieldAccess(FieldExpr *expr, TypeRef baseType) {
         MethodDecl *method = overloads.front();
         if (method->visibility == Visibility::Private && !isInsideType) {
             error(expr->loc,
-                  "Cannot access private member '" + expr->field + "' of type '" +
-                      baseType->name + "'");
+                  "Cannot access private member '" + expr->field + "' of type '" + baseType->name +
+                      "'");
             return types::unknown();
         }
         TypeRef methodType = getMethodType(baseType->name, method);
@@ -448,14 +447,13 @@ TypeRef Sema::resolveClassStructFieldAccess(FieldExpr *expr, TypeRef baseType) {
             propertyDeclForLowering(baseType->name, expr->field, &declaringOwner)) {
         if (prop->visibility == Visibility::Private && !isInsideType) {
             error(expr->loc,
-                  "Cannot access private member '" + expr->field + "' of type '" +
-                      declaringOwner + "'");
+                  "Cannot access private member '" + expr->field + "' of type '" + declaringOwner +
+                      "'");
             return types::unknown();
         }
         if (!prop->getterBody) {
             error(expr->loc,
-                  "Property '" + expr->field + "' of type '" + declaringOwner +
-                      "' is write-only");
+                  "Property '" + expr->field + "' of type '" + declaringOwner + "' is write-only");
             return types::unknown();
         }
 
@@ -661,11 +659,10 @@ TypeRef Sema::analyzeTry(TryExpr *expr) {
         return operandType;
     }
 
-    TypeRef innerType = operandType->kind == TypeKindSem::Optional
-                            ? (operandType->innerType() ? operandType->innerType()
-                                                         : types::unknown())
-                            : (!operandType->typeArgs.empty() ? operandType->typeArgs[0]
-                                                               : types::unknown());
+    TypeRef innerType =
+        operandType->kind == TypeKindSem::Optional
+            ? (operandType->innerType() ? operandType->innerType() : types::unknown())
+            : (!operandType->typeArgs.empty() ? operandType->typeArgs[0] : types::unknown());
 
     if (!expectedReturnType_) {
         error(expr->loc, "Try expression '?' can only be used inside a function");
@@ -674,8 +671,9 @@ TypeRef Sema::analyzeTry(TryExpr *expr) {
 
     if (operandType->kind == TypeKindSem::Result) {
         if (expectedReturnType_->kind != TypeKindSem::Result) {
-            error(expr->loc,
-                  "Try expression '?' can only propagate a Result from a function returning Result");
+            error(
+                expr->loc,
+                "Try expression '?' can only propagate a Result from a function returning Result");
         }
         return innerType;
     }
@@ -704,9 +702,9 @@ TypeRef Sema::analyzeTry(TryExpr *expr) {
 TypeRef Sema::analyzeIs(IsExpr *expr) {
     analyzeExpr(expr->value.get());
     TypeRef targetType = resolveTypeNode(expr->type.get());
-    if (targetType && (targetType->kind == TypeKindSem::Void ||
-                       targetType->kind == TypeKindSem::Never ||
-                       targetType->kind == TypeKindSem::Module)) {
+    if (targetType &&
+        (targetType->kind == TypeKindSem::Void || targetType->kind == TypeKindSem::Never ||
+         targetType->kind == TypeKindSem::Module)) {
         error(expr->loc, "Cannot use '" + targetType->toDisplayString() + "' in an `is` check");
     }
     return types::boolean();
@@ -739,7 +737,8 @@ TypeRef Sema::analyzeAs(AsExpr *expr) {
 
     // Allow casts between object and interface references for runtime checking.
     if (effectiveSource &&
-        (effectiveSource->kind == TypeKindSem::Class || effectiveSource->kind == TypeKindSem::Interface) &&
+        (effectiveSource->kind == TypeKindSem::Class ||
+         effectiveSource->kind == TypeKindSem::Interface) &&
         (targetType->kind == TypeKindSem::Class || targetType->kind == TypeKindSem::Interface)) {
         return targetType;
     }
@@ -1051,9 +1050,8 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
             hasResultType = true;
         } else if (!incompatibleResultType) {
             TypeRef combined = commonType(resultType, bodyType);
-            const bool knownPrior =
-                resultType && resultType->kind != TypeKindSem::Unknown &&
-                resultType->kind != TypeKindSem::Error;
+            const bool knownPrior = resultType && resultType->kind != TypeKindSem::Unknown &&
+                                    resultType->kind != TypeKindSem::Error;
             const bool knownBody = bodyType && bodyType->kind != TypeKindSem::Unknown &&
                                    bodyType->kind != TypeKindSem::Error;
             if (knownPrior && knownBody &&

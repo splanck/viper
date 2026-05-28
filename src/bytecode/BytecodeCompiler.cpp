@@ -84,8 +84,7 @@ uint32_t bytecodeGlobalAlign(il::core::Type::Kind kind) {
 /// @brief Serialize @p value into @p dst as its raw little-endian-on-host
 ///        byte image (sizes @p dst to sizeof(T) first). Used to bake a
 ///        scalar global's compile-time initializer into the module.
-template <typename T>
-void storeGlobalInitializer(std::vector<uint8_t> &dst, T value) {
+template <typename T> void storeGlobalInitializer(std::vector<uint8_t> &dst, T value) {
     dst.resize(sizeof(T));
     std::memcpy(dst.data(), &value, sizeof(T));
 }
@@ -268,10 +267,9 @@ void BytecodeCompiler::registerGlobals(const il::core::Module &module) {
                         break;
                     }
                     case il::core::Type::Kind::Ptr: {
-                        uintptr_t value =
-                            global.init == "null"
-                                ? 0
-                                : static_cast<uintptr_t>(parseI64Initializer(global));
+                        uintptr_t value = global.init == "null"
+                                              ? 0
+                                              : static_cast<uintptr_t>(parseI64Initializer(global));
                         storeGlobalInitializer(info.initData, value);
                         break;
                     }
@@ -502,7 +500,8 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block) {
     // Record block offset
     blockOffsets_[block.label] = static_cast<uint32_t>(currentFunc_->code.size());
     currentBlockLabel_ = block.label;
-    currentLoc_ = block.instructions.empty() ? il::support::SourceLoc{} : block.instructions.front().loc;
+    currentLoc_ =
+        block.instructions.empty() ? il::support::SourceLoc{} : block.instructions.front().loc;
 
     // Handle block parameters - they receive values from branch arguments
     // The calling block will have already pushed the arguments
@@ -819,9 +818,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
 /// @details Prefixes the message with the current function name and packages
 ///          @p code / @p loc into an error Diag; never returns. Caught at the
 ///          compileChecked boundary and surfaced as the Expected error.
-void BytecodeCompiler::fail(il::support::SourceLoc loc,
-                            std::string code,
-                            std::string message) {
+void BytecodeCompiler::fail(il::support::SourceLoc loc, std::string code, std::string message) {
     if (!currentFunctionName_.empty())
         message = "bytecode compile failed in @" + currentFunctionName_ + ": " + message;
     throw BytecodeCompileFailure(
@@ -1006,8 +1003,7 @@ void BytecodeCompiler::emitI16(BCOpcode op, int16_t arg) {
 void BytecodeCompiler::emitPoolLoad(BCOpcode op, uint32_t index, std::string_view poolName) {
     if (index > 0xFFFFu) {
         failCurrent("V-BC-POOL-OVERFLOW",
-                    "bytecode " + std::string(poolName) +
-                        " constant pool exceeds 65535 entries");
+                    "bytecode " + std::string(poolName) + " constant pool exceeds 65535 entries");
     }
     emit16(op, static_cast<uint16_t>(index));
 }
@@ -1636,9 +1632,7 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
         // Emit CALL_INDIRECT with argument count (not including callee)
         const size_t indirectArgCount = instr.operands.size() - 1;
         if (indirectArgCount > 0xFFu) {
-            fail(instr.loc,
-                 "V-BC-CALL-ARGS",
-                 "CALL_INDIRECT supports at most 255 arguments");
+            fail(instr.loc, "V-BC-CALL-ARGS", "CALL_INDIRECT supports at most 255 arguments");
         }
         uint8_t argCount = static_cast<uint8_t>(indirectArgCount);
         emit8(BCOpcode::CALL_INDIRECT, argCount);

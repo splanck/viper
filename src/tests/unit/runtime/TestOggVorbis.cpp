@@ -20,35 +20,21 @@
 #include "tests/TestHarness.hpp"
 #include "tests/common/PosixCompat.h"
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 
 extern "C" {
+#include "rt_object.h"
+#include "rt_pixels.h"
 #include "rt_string.h"
 #include "runtime/audio/rt_ogg.h"
 #include "runtime/audio/rt_vorbis.h"
-#include "runtime/graphics/rt_theora.h"
-void *rt_videoplayer_open(rt_string path);
-void rt_videoplayer_play(void *vp);
-void rt_videoplayer_pause(void *vp);
-void rt_videoplayer_stop(void *vp);
-void rt_videoplayer_seek(void *vp, double seconds);
-void rt_videoplayer_update(void *vp, double dt);
-int64_t rt_videoplayer_get_width(void *vp);
-int64_t rt_videoplayer_get_height(void *vp);
-double rt_videoplayer_get_duration(void *vp);
-double rt_videoplayer_get_position(void *vp);
-int64_t rt_videoplayer_get_is_playing(void *vp);
-void *rt_videoplayer_get_frame(void *vp);
-rt_string rt_const_cstr(const char *s);
-int64_t rt_pixels_width(void *pixels);
-int64_t rt_pixels_height(void *pixels);
-int64_t rt_obj_release_check0(void *obj);
-void rt_obj_free(void *obj);
+#include "runtime/graphics/media/rt_theora.h"
+#include "runtime/graphics/media/rt_videoplayer.h"
 }
 
 struct BitWriter {
@@ -546,6 +532,7 @@ TEST(VideoPlayerTest, OpenSyntheticOgvAndAdvanceFrames) {
 
     void *player = rt_videoplayer_open(rts_path);
     ASSERT_TRUE(player != nullptr);
+    EXPECT_EQ(rt_obj_class_id(player), RT_VIDEOPLAYER_CLASS_ID);
     EXPECT_EQ(rt_videoplayer_get_width(player), 16);
     EXPECT_EQ(rt_videoplayer_get_height(player), 16);
     EXPECT_TRUE(rt_videoplayer_get_duration(player) > 0.08);
@@ -571,9 +558,35 @@ TEST(VideoPlayerTest, OpenSyntheticOgvAndAdvanceFrames) {
     EXPECT_TRUE(rt_videoplayer_get_position(player) <= 0.0001);
     EXPECT_TRUE(rt_videoplayer_get_frame(player) != nullptr);
 
+    rt_videoplayer_seek(player, std::nan(""));
+    EXPECT_TRUE(std::isfinite(rt_videoplayer_get_position(player)));
+    EXPECT_TRUE(rt_videoplayer_get_position(player) <= 0.0001);
+
     rt_videoplayer_stop(player);
     if (rt_obj_release_check0(player))
         rt_obj_free(player);
+    remove(path.c_str());
+}
+
+TEST(VideoPlayerTest, RejectsWrongHandlesAndMalformedAvi) {
+    void *pixels = rt_pixels_new(1, 1);
+    ASSERT_TRUE(pixels != nullptr);
+    rt_videoplayer_play(pixels);
+    rt_videoplayer_seek(pixels, 1.0);
+    rt_videoplayer_update(pixels, 1.0 / 60.0);
+    EXPECT_EQ(rt_videoplayer_get_width(pixels), 0);
+    EXPECT_EQ(rt_videoplayer_get_height(pixels), 0);
+    EXPECT_EQ(rt_videoplayer_get_is_playing(pixels), 0);
+    EXPECT_EQ(rt_videoplayer_get_frame(pixels), nullptr);
+    if (rt_obj_release_check0(pixels))
+        rt_obj_free(pixels);
+
+    std::vector<uint8_t> avi = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'A', 'V', 'I', ' ', 0, 1, 2, 3};
+    std::string path = write_temp_file(".avi", avi);
+    ASSERT_FALSE(path.empty());
+    rt_string rts_path = rt_const_cstr(path.c_str());
+    ASSERT_TRUE(rts_path != nullptr);
+    EXPECT_EQ(rt_videoplayer_open(rts_path), nullptr);
     remove(path.c_str());
 }
 

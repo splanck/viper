@@ -708,9 +708,8 @@ void ttf_get_h_metrics(vg_font_t *font,
     } else {
         // Use last advance width for glyphs beyond num_h_metrics
         size_t last_metric_offset = (size_t)(font->hhea.num_h_metrics - 1u) * 4u;
-        size_t lsb_offset =
-            (size_t)font->hhea.num_h_metrics * 4u +
-            (size_t)(glyph_id - font->hhea.num_h_metrics) * 2u;
+        size_t lsb_offset = (size_t)font->hhea.num_h_metrics * 4u +
+                            (size_t)(glyph_id - font->hhea.num_h_metrics) * 2u;
         if (last_metric_offset > font->hmtx_len || font->hmtx_len - last_metric_offset < 2u ||
             lsb_offset > font->hmtx_len || font->hmtx_len - lsb_offset < 2u) {
             *advance_width = font->head.units_per_em;
@@ -1132,7 +1131,8 @@ bool ttf_get_glyph_outline(vg_font_t *font,
                                           out_num_contours);
 }
 
-/// @brief Decodes a simple (non-composite) glyph's raw 'glyf' table data into allocated point arrays and contour end-point indices.
+/// @brief Decodes a simple (non-composite) glyph's raw 'glyf' table data into allocated point
+/// arrays and contour end-point indices.
 static bool ttf_get_simple_glyph_outline(vg_font_t *font,
                                          const uint8_t *glyph_data,
                                          const uint8_t *glyph_end,
@@ -1191,8 +1191,7 @@ static bool ttf_get_simple_glyph_outline(vg_font_t *font,
     }
     p += instruction_length;
 
-    if (total_points <= 0 ||
-        ttf_mul_size_overflows((size_t)total_points, sizeof(float)) ||
+    if (total_points <= 0 || ttf_mul_size_overflows((size_t)total_points, sizeof(float)) ||
         ttf_mul_size_overflows((size_t)total_points, sizeof(uint8_t))) {
         free(contour_ends);
         return false;

@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_bytes.h"
 #include "rt_aes.h"
+#include "rt_bytes.h"
 #include "rt_cipher.h"
 #include "rt_crypto.h"
 #include "rt_crypto_module.h"
@@ -41,8 +41,7 @@ static void test_result(const char *name, bool passed) {
     assert(passed);
 }
 
-template <typename Fn>
-static bool expect_trap(Fn fn, const char *message_substr) {
+template <typename Fn> static bool expect_trap(Fn fn, const char *message_substr) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
@@ -52,8 +51,7 @@ static bool expect_trap(Fn fn, const char *message_substr) {
     }
 
     const char *message = rt_trap_get_error();
-    bool matched = !message_substr ||
-                   (message && strstr(message, message_substr) != nullptr);
+    bool matched = !message_substr || (message && strstr(message, message_substr) != nullptr);
     rt_trap_clear_recovery();
     return matched;
 }
@@ -270,18 +268,17 @@ static void test_hmac_sha384_sha512() {
     const char data[] = "Hi There";
     uint8_t mac384[48];
     uint8_t mac512[64];
-    static const uint8_t exp384[48] = {
-        0xaf, 0xd0, 0x39, 0x44, 0xd8, 0x48, 0x95, 0x62, 0x6b, 0x08, 0x25, 0xf4,
-        0xab, 0x46, 0x90, 0x7f, 0x15, 0xf9, 0xda, 0xdb, 0xe4, 0x10, 0x1e, 0xc6,
-        0x82, 0xaa, 0x03, 0x4c, 0x7c, 0xeb, 0xc5, 0x9c, 0xfa, 0xea, 0x9e, 0xa9,
-        0x07, 0x6e, 0xde, 0x7f, 0x4a, 0xf1, 0x52, 0xe8, 0xb2, 0xfa, 0x9c, 0xb6};
+    static const uint8_t exp384[48] = {0xaf, 0xd0, 0x39, 0x44, 0xd8, 0x48, 0x95, 0x62, 0x6b, 0x08,
+                                       0x25, 0xf4, 0xab, 0x46, 0x90, 0x7f, 0x15, 0xf9, 0xda, 0xdb,
+                                       0xe4, 0x10, 0x1e, 0xc6, 0x82, 0xaa, 0x03, 0x4c, 0x7c, 0xeb,
+                                       0xc5, 0x9c, 0xfa, 0xea, 0x9e, 0xa9, 0x07, 0x6e, 0xde, 0x7f,
+                                       0x4a, 0xf1, 0x52, 0xe8, 0xb2, 0xfa, 0x9c, 0xb6};
     static const uint8_t exp512[64] = {
-        0x87, 0xaa, 0x7c, 0xde, 0xa5, 0xef, 0x61, 0x9d, 0x4f, 0xf0, 0xb4,
-        0x24, 0x1a, 0x1d, 0x6c, 0xb0, 0x23, 0x79, 0xf4, 0xe2, 0xce, 0x4e,
-        0xc2, 0x78, 0x7a, 0xd0, 0xb3, 0x05, 0x45, 0xe1, 0x7c, 0xde, 0xda,
-        0xa8, 0x33, 0xb7, 0xd6, 0xb8, 0xa7, 0x02, 0x03, 0x8b, 0x27, 0x4e,
-        0xae, 0xa3, 0xf4, 0xe4, 0xbe, 0x9d, 0x91, 0x4e, 0xeb, 0x61, 0xf1,
-        0x70, 0x2e, 0x69, 0x6c, 0x20, 0x3a, 0x12, 0x68, 0x54};
+        0x87, 0xaa, 0x7c, 0xde, 0xa5, 0xef, 0x61, 0x9d, 0x4f, 0xf0, 0xb4, 0x24, 0x1a,
+        0x1d, 0x6c, 0xb0, 0x23, 0x79, 0xf4, 0xe2, 0xce, 0x4e, 0xc2, 0x78, 0x7a, 0xd0,
+        0xb3, 0x05, 0x45, 0xe1, 0x7c, 0xde, 0xda, 0xa8, 0x33, 0xb7, 0xd6, 0xb8, 0xa7,
+        0x02, 0x03, 0x8b, 0x27, 0x4e, 0xae, 0xa3, 0xf4, 0xe4, 0xbe, 0x9d, 0x91, 0x4e,
+        0xeb, 0x61, 0xf1, 0x70, 0x2e, 0x69, 0x6c, 0x20, 0x3a, 0x12, 0x68, 0x54};
 
     rt_hmac_sha384(key, sizeof(key), data, strlen(data), mac384);
     rt_hmac_sha512(key, sizeof(key), data, strlen(data), mac512);
@@ -321,18 +318,15 @@ static void test_sha_hmac_null_zero_inputs() {
 
     rt_sha256("", 0, sha_empty);
     rt_sha256(NULL, 0, sha_null);
-    test_result("SHA-256 accepts NULL with zero length",
-                memcmp(sha_empty, sha_null, 32) == 0);
+    test_result("SHA-256 accepts NULL with zero length", memcmp(sha_empty, sha_null, 32) == 0);
 
     rt_sha384("", 0, sha_empty);
     rt_sha384(NULL, 0, sha_null);
-    test_result("SHA-384 accepts NULL with zero length",
-                memcmp(sha_empty, sha_null, 48) == 0);
+    test_result("SHA-384 accepts NULL with zero length", memcmp(sha_empty, sha_null, 48) == 0);
 
     rt_sha512("", 0, sha_empty);
     rt_sha512(NULL, 0, sha_null);
-    test_result("SHA-512 accepts NULL with zero length",
-                memcmp(sha_empty, sha_null, 64) == 0);
+    test_result("SHA-512 accepts NULL with zero length", memcmp(sha_empty, sha_null, 64) == 0);
 
     rt_hmac_sha256((const uint8_t *)"", 0, (const uint8_t *)"", 0, mac_empty);
     rt_hmac_sha256(NULL, 0, NULL, 0, mac_null);
@@ -357,13 +351,17 @@ static void test_string_inputs_preserve_embedded_nul() {
     void *key_bytes = make_bytes(key_data, sizeof(key_data));
 
     test_result("MD5 string matches Bytes",
-                strcmp(rt_string_cstr(rt_hash_md5(msg)), rt_string_cstr(rt_hash_md5_bytes(msg_bytes))) == 0);
+                strcmp(rt_string_cstr(rt_hash_md5(msg)),
+                       rt_string_cstr(rt_hash_md5_bytes(msg_bytes))) == 0);
     test_result("SHA1 string matches Bytes",
-                strcmp(rt_string_cstr(rt_hash_sha1(msg)), rt_string_cstr(rt_hash_sha1_bytes(msg_bytes))) == 0);
+                strcmp(rt_string_cstr(rt_hash_sha1(msg)),
+                       rt_string_cstr(rt_hash_sha1_bytes(msg_bytes))) == 0);
     test_result("SHA256 string matches Bytes",
-                strcmp(rt_string_cstr(rt_hash_sha256(msg)), rt_string_cstr(rt_hash_sha256_bytes(msg_bytes))) == 0);
+                strcmp(rt_string_cstr(rt_hash_sha256(msg)),
+                       rt_string_cstr(rt_hash_sha256_bytes(msg_bytes))) == 0);
     test_result("CRC32 string matches Bytes", rt_hash_crc32(msg) == rt_hash_crc32_bytes(msg_bytes));
-    test_result("Fast hash string matches Bytes", rt_hash_fast(msg) == rt_hash_fast_bytes(msg_bytes));
+    test_result("Fast hash string matches Bytes",
+                rt_hash_fast(msg) == rt_hash_fast_bytes(msg_bytes));
 
     test_result("HMAC-MD5 string matches Bytes",
                 strcmp(rt_string_cstr(rt_hash_hmac_md5(key, msg)),
@@ -429,10 +427,8 @@ static void test_pbkdf2_sha256() {
         rt_string password_prefix = rt_const_cstr("pass");
         void *salt = make_bytes_str("salt");
 
-        rt_string full =
-            rt_keyderive_pbkdf2_sha256_str(password_full, salt, 100000, 16);
-        rt_string prefix =
-            rt_keyderive_pbkdf2_sha256_str(password_prefix, salt, 100000, 16);
+        rt_string full = rt_keyderive_pbkdf2_sha256_str(password_full, salt, 100000, 16);
+        rt_string prefix = rt_keyderive_pbkdf2_sha256_str(password_prefix, salt, 100000, 16);
         test_result("PBKDF2 treats embedded NUL as password data",
                     strcmp(rt_string_cstr(full), rt_string_cstr(prefix)) != 0);
     }
@@ -465,19 +461,19 @@ static void test_crypto_input_validation() {
                        "27ae41e4649b934ca495991b7852b855") == 0);
     test_result("PBKDF2 accepts real empty password strings",
                 rt_keyderive_pbkdf2_sha256_str(empty, salt, 100000, 16) != nullptr);
-    test_result("Hash rejects NULL string input",
-                expect_trap([]() { (void)rt_hash_sha256(nullptr); }, "Hash: string must not be null"));
-    test_result("KeyDerive rejects NULL password",
-                expect_trap([&]() {
-                    (void)rt_keyderive_pbkdf2_sha256_str(nullptr, salt, 100000, 16);
-                },
-                            "KeyDerive: password must not be null"));
+    test_result(
+        "Hash rejects NULL string input",
+        expect_trap([]() { (void)rt_hash_sha256(nullptr); }, "Hash: string must not be null"));
+    test_result(
+        "KeyDerive rejects NULL password",
+        expect_trap([&]() { (void)rt_keyderive_pbkdf2_sha256_str(nullptr, salt, 100000, 16); },
+                    "KeyDerive: password must not be null"));
 
     rt_crypto_random_bytes(nullptr, 0);
     test_result("Crypto random allows NULL zero-length output", true);
-    test_result("Crypto random rejects NULL positive-length output",
-                expect_trap([]() { rt_crypto_random_bytes(nullptr, 1); },
-                            "random output buffer is null"));
+    test_result(
+        "Crypto random rejects NULL positive-length output",
+        expect_trap([]() { rt_crypto_random_bytes(nullptr, 1); }, "random output buffer is null"));
 
     printf("\n");
 }
@@ -517,8 +513,7 @@ static void test_constant_time_equals_and_passwords() {
     rt_string pbkdf2 = rt_password_hash_with_iterations(rt_const_cstr("secret"), 100000);
     test_result("Password.Verify accepts legacy PBKDF2",
                 rt_password_verify(rt_const_cstr("secret"), pbkdf2) == 1);
-    test_result("Password.NeedsRehash flags PBKDF2",
-                rt_password_needs_rehash(pbkdf2) == 1);
+    test_result("Password.NeedsRehash flags PBKDF2", rt_password_needs_rehash(pbkdf2) == 1);
 
     printf("\n");
 }
@@ -585,8 +580,7 @@ static void test_high_level_aead_wrappers() {
     void *empty_plain = make_bytes(nullptr, 0);
     void *cbc_cipher = rt_aes_encrypt(empty_plain, cbc_key, cbc_iv);
     void *cbc_opened = rt_aes_decrypt(cbc_cipher, cbc_key, cbc_iv);
-    test_result("Aes.CBC round-trips empty plaintext",
-                cbc_opened && rt_bytes_len(cbc_opened) == 0);
+    test_result("Aes.CBC round-trips empty plaintext", cbc_opened && rt_bytes_len(cbc_opened) == 0);
 
     printf("\n");
 }
@@ -763,10 +757,10 @@ static void test_aead_tamper_detection() {
         uint8_t plaintext[16] = {0};
         uint8_t ciphertext[32];
         uint8_t opened[16];
-        static const uint8_t expected[32] = {
-            0xce, 0xa7, 0x40, 0x3d, 0x4d, 0x60, 0x6b, 0x6e, 0x07, 0x4e, 0xc5,
-            0xd3, 0xba, 0xf3, 0x9d, 0x18, 0xd0, 0xd1, 0xc8, 0xa7, 0x99, 0x99,
-            0x6b, 0xf0, 0x26, 0x5b, 0x98, 0xb5, 0xd4, 0x8a, 0xb9, 0x19};
+        static const uint8_t expected[32] = {0xce, 0xa7, 0x40, 0x3d, 0x4d, 0x60, 0x6b, 0x6e,
+                                             0x07, 0x4e, 0xc5, 0xd3, 0xba, 0xf3, 0x9d, 0x18,
+                                             0xd0, 0xd1, 0xc8, 0xa7, 0x99, 0x99, 0x6b, 0xf0,
+                                             0x26, 0x5b, 0x98, 0xb5, 0xd4, 0x8a, 0xb9, 0x19};
         test_result("AES-256-GCM vector encrypt",
                     rt_aes256_gcm_encrypt(
                         key, nonce, nullptr, 0, plaintext, sizeof(plaintext), ciphertext) ==
@@ -828,11 +822,10 @@ static void test_p256_ecdh_shared_secret_agreement() {
     test_result("P-256 ECDH rejects invalid peer point",
                 ecdsa_p256_ecdh(alice_priv, bob_x, bad_y, shared1) == 0);
 
-    static const uint8_t p256_p_bytes[32] = {
-        0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    static const uint8_t p256_p_bytes[32] = {0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01,
+                                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                             0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+                                             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     uint8_t digest[32] = {0};
     uint8_t sig_r[32] = {0};
     uint8_t sig_s[32] = {0};

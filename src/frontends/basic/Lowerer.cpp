@@ -170,8 +170,7 @@ std::string Lowerer::findMethodReturnClassName(std::string_view className,
                 if (arity && sig.arity() != *arity)
                     continue;
                 if (sig.returnType == il::runtime::ILScalarType::Object) {
-                    if (std::string concrete =
-                            il::runtime::concreteRuntimeReturnClassQName(sig);
+                    if (std::string concrete = il::runtime::concreteRuntimeReturnClassQName(sig);
                         !concrete.empty()) {
                         return concrete;
                     }

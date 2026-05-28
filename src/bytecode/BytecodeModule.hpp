@@ -98,7 +98,7 @@ struct SwitchTable {
 /// @details Contains the bytecode instruction stream, local/stack sizing info,
 ///          exception handler ranges, switch tables, and optional debug metadata.
 struct BytecodeFunction {
-    std::string name;    ///< Fully qualified function name.
+    std::string name;        ///< Fully qualified function name.
     uint32_t numParams = 0;  ///< Number of parameters (mapped to first N locals).
     uint32_t numLocals = 0;  ///< Total local slots (parameters + temporaries).
     uint32_t maxStack = 0;   ///< Maximum operand stack depth required during execution.
@@ -116,8 +116,8 @@ struct BytecodeFunction {
 
     // Debug info (optional)
     std::vector<LocalVarInfo> localVars; ///< Local variable debug information.
-    uint32_t sourceFileIdx = 0;      ///< Default index into the module's source file list.
-    std::vector<uint32_t> lineTable; ///< PC-to-source-line mapping (indexed by PC).
+    uint32_t sourceFileIdx = 0;          ///< Default index into the module's source file list.
+    std::vector<uint32_t> lineTable;     ///< PC-to-source-line mapping (indexed by PC).
     std::vector<uint32_t>
         sourceFileTable; ///< PC-to-source-file mapping (1-based index, 0 when unknown).
     std::vector<std::string> blockLabelTable; ///< PC-to-basic-block label mapping.
@@ -127,11 +127,12 @@ struct BytecodeFunction {
 /// @details Stores the name and signature information needed to locate and
 ///          invoke a native function through the RuntimeBridge or registered handlers.
 struct NativeFuncRef {
-    std::string name;    ///< Function name (e.g., "Viper.Terminal.Say").
+    std::string name;        ///< Function name (e.g., "Viper.Terminal.Say").
     uint32_t paramCount = 0; ///< Number of parameters the function expects.
     bool hasReturn = false;  ///< True if the function returns a value.
-    const il::runtime::RuntimeDescriptor *runtimeDescriptor = nullptr; ///< Cached runtime descriptor.
-    const il::runtime::RuntimeSignature *runtimeSignature = nullptr;   ///< Cached runtime signature.
+    const il::runtime::RuntimeDescriptor *runtimeDescriptor =
+        nullptr;                                                     ///< Cached runtime descriptor.
+    const il::runtime::RuntimeSignature *runtimeSignature = nullptr; ///< Cached runtime signature.
     bool consumesClonedStringArgs = false; ///< True when bridge needs retained string aliases.
     bool consumesOwnedStringArgs = false;  ///< True when runtime consumes original string args.
     bool returnsString = false;            ///< True when runtime result is a managed string.
@@ -141,9 +142,9 @@ struct NativeFuncRef {
 /// @details Globals are laid out as contiguous BCSlot entries. Each GlobalInfo
 ///          describes the name, size, alignment, and optional initial data.
 struct GlobalInfo {
-    std::string name;              ///< Fully qualified global variable name.
-    uint32_t size;                 ///< Size of the global in bytes.
-    uint32_t align;                ///< Alignment requirement in bytes.
+    std::string name; ///< Fully qualified global variable name.
+    uint32_t size;    ///< Size of the global in bytes.
+    uint32_t align;   ///< Alignment requirement in bytes.
     il::core::Type type = il::core::Type(il::core::Type::Kind::I64); ///< IL storage type.
     std::vector<uint8_t> initData; ///< Initial data bytes (empty means zero-initialized).
     std::string initString;        ///< Initial string payload for Str globals.
@@ -265,15 +266,13 @@ struct BytecodeModule {
         ref.paramCount = paramCount;
         ref.hasReturn = hasReturn;
         ref.runtimeDescriptor = il::runtime::findRuntimeDescriptor(name);
-        ref.runtimeSignature =
-            ref.runtimeDescriptor ? &ref.runtimeDescriptor->signature
-                                  : il::runtime::findRuntimeSignature(name);
-        ref.consumesClonedStringArgs = name == "rt_str_concat" ||
-                                       name == "Viper.String.Concat" ||
+        ref.runtimeSignature = ref.runtimeDescriptor ? &ref.runtimeDescriptor->signature
+                                                     : il::runtime::findRuntimeSignature(name);
+        ref.consumesClonedStringArgs = name == "rt_str_concat" || name == "Viper.String.Concat" ||
                                        name == "Viper.String.ConcatSelf";
         ref.consumesOwnedStringArgs = name == "rt_str_release_maybe";
-        ref.returnsString = ref.runtimeSignature &&
-                            ref.runtimeSignature->retType.kind == il::core::Type::Kind::Str;
+        ref.returnsString =
+            ref.runtimeSignature && ref.runtimeSignature->retType.kind == il::core::Type::Kind::Str;
         nativeFuncs.push_back(std::move(ref));
         return idx;
     }

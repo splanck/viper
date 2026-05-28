@@ -80,8 +80,8 @@ static rt_string numfmt_fixed(double value, int decimals) {
 }
 
 static rt_string numfmt_percent_fixed(double value, int decimals) {
-    int needed = decimals == 0 ? snprintf(NULL, 0, "%.0f%%", value)
-                               : snprintf(NULL, 0, "%.1f%%", value);
+    int needed =
+        decimals == 0 ? snprintf(NULL, 0, "%.0f%%", value) : snprintf(NULL, 0, "%.1f%%", value);
     char *buf = numfmt_alloc_buffer(needed);
     int written = decimals == 0 ? snprintf(buf, (size_t)needed + 1, "%.0f%%", value)
                                 : snprintf(buf, (size_t)needed + 1, "%.1f%%", value);
@@ -165,8 +165,10 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
 // rt_numfmt_internal.h for the full contract).
 // ---------------------------------------------------------------------------
 void rt_numfmt_group_digits(rt_string_builder *sb,
-                            const char *digits, int dlen,
-                            const char *sep, size_t sep_len,
+                            const char *digits,
+                            int dlen,
+                            const char *sep,
+                            size_t sep_len,
                             int group_size) {
     if (dlen <= 0)
         return;
@@ -175,9 +177,8 @@ void rt_numfmt_group_digits(rt_string_builder *sb,
     // that would swallow the entire input (<=0, or >=dlen). Emit the digits
     // verbatim and skip the grouping machinery.
     if (!sep || sep_len == 0 || group_size <= 0 || group_size >= dlen) {
-        numfmt_check_sb(
-            rt_sb_append_bytes(sb, digits, (size_t)dlen),
-            "NumberFormat.Thousands: formatting failed");
+        numfmt_check_sb(rt_sb_append_bytes(sb, digits, (size_t)dlen),
+                        "NumberFormat.Thousands: formatting failed");
         return;
     }
 
@@ -185,18 +186,15 @@ void rt_numfmt_group_digits(rt_string_builder *sb,
     if (first_group == 0)
         first_group = group_size;
 
-    numfmt_check_sb(
-        rt_sb_append_bytes(sb, digits, (size_t)first_group),
-        "NumberFormat.Thousands: formatting failed");
+    numfmt_check_sb(rt_sb_append_bytes(sb, digits, (size_t)first_group),
+                    "NumberFormat.Thousands: formatting failed");
     int pos = first_group;
 
     while (pos < dlen) {
-        numfmt_check_sb(
-            rt_sb_append_bytes(sb, sep, sep_len),
-            "NumberFormat.Thousands: formatting failed");
-        numfmt_check_sb(
-            rt_sb_append_bytes(sb, digits + pos, (size_t)group_size),
-            "NumberFormat.Thousands: formatting failed");
+        numfmt_check_sb(rt_sb_append_bytes(sb, sep, sep_len),
+                        "NumberFormat.Thousands: formatting failed");
+        numfmt_check_sb(rt_sb_append_bytes(sb, digits + pos, (size_t)group_size),
+                        "NumberFormat.Thousands: formatting failed");
         pos += group_size;
     }
 }
@@ -240,32 +238,29 @@ rt_string rt_numfmt_currency(double n, rt_string symbol) {
 
     if (negative)
         numfmt_check_sb(rt_sb_append_cstr(&sb, "-"), "NumberFormat.Currency: formatting failed");
-    numfmt_check_sb(
-        rt_sb_append_bytes(&sb, sym, sym_len), "NumberFormat.Currency: formatting failed");
+    numfmt_check_sb(rt_sb_append_bytes(&sb, sym, sym_len),
+                    "NumberFormat.Currency: formatting failed");
 
     // Add thousands separators to integer part
     int first_group = int_len % 3;
     if (first_group == 0)
         first_group = 3;
 
-    numfmt_check_sb(
-        rt_sb_append_bytes(&sb, amount, (size_t)first_group),
-        "NumberFormat.Currency: formatting failed");
+    numfmt_check_sb(rt_sb_append_bytes(&sb, amount, (size_t)first_group),
+                    "NumberFormat.Currency: formatting failed");
     int pos = first_group;
 
     while (pos < int_len) {
         numfmt_check_sb(rt_sb_append_cstr(&sb, ","), "NumberFormat.Currency: formatting failed");
-        numfmt_check_sb(
-            rt_sb_append_bytes(&sb, amount + pos, 3),
-            "NumberFormat.Currency: formatting failed");
+        numfmt_check_sb(rt_sb_append_bytes(&sb, amount + pos, 3),
+                        "NumberFormat.Currency: formatting failed");
         pos += 3;
     }
 
     // Add decimal part
     if (dot) {
-        numfmt_check_sb(
-            rt_sb_append_bytes(&sb, dot, (size_t)(alen - int_len)),
-            "NumberFormat.Currency: formatting failed");
+        numfmt_check_sb(rt_sb_append_bytes(&sb, dot, (size_t)(alen - int_len)),
+                        "NumberFormat.Currency: formatting failed");
     }
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
@@ -299,9 +294,8 @@ rt_string rt_numfmt_percent(double n) {
     if (len >= 3 && text[len - 3] == '.' && text[len - 2] == '0' && text[len - 1] == '%') {
         rt_string_builder sb;
         rt_sb_init(&sb);
-        numfmt_check_sb(
-            rt_sb_append_bytes(&sb, text, (size_t)(len - 3)),
-            "NumberFormat.Percent: formatting failed");
+        numfmt_check_sb(rt_sb_append_bytes(&sb, text, (size_t)(len - 3)),
+                        "NumberFormat.Percent: formatting failed");
         numfmt_check_sb(rt_sb_append_cstr(&sb, "%"), "NumberFormat.Percent: formatting failed");
         rt_string trimmed = rt_string_from_bytes(sb.data, sb.len);
         rt_sb_free(&sb);
@@ -377,24 +371,23 @@ static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev) {
         numfmt_check_sb(rt_sb_append_cstr(sb, " "), "NumberFormat.ToWords: formatting failed");
 
     if (n >= 100) {
-        numfmt_check_sb(
-            rt_sb_append_cstr(sb, ones[n / 100]), "NumberFormat.ToWords: formatting failed");
-        numfmt_check_sb(
-            rt_sb_append_cstr(sb, " hundred"), "NumberFormat.ToWords: formatting failed");
+        numfmt_check_sb(rt_sb_append_cstr(sb, ones[n / 100]),
+                        "NumberFormat.ToWords: formatting failed");
+        numfmt_check_sb(rt_sb_append_cstr(sb, " hundred"),
+                        "NumberFormat.ToWords: formatting failed");
         n %= 100;
         if (n > 0)
             numfmt_check_sb(rt_sb_append_cstr(sb, " "), "NumberFormat.ToWords: formatting failed");
     }
 
     if (n >= 20) {
-        numfmt_check_sb(
-            rt_sb_append_cstr(sb, tens[n / 10]), "NumberFormat.ToWords: formatting failed");
+        numfmt_check_sb(rt_sb_append_cstr(sb, tens[n / 10]),
+                        "NumberFormat.ToWords: formatting failed");
         n %= 10;
         if (n > 0) {
-            numfmt_check_sb(
-                rt_sb_append_cstr(sb, "-"), "NumberFormat.ToWords: formatting failed");
-            numfmt_check_sb(
-                rt_sb_append_cstr(sb, ones[n]), "NumberFormat.ToWords: formatting failed");
+            numfmt_check_sb(rt_sb_append_cstr(sb, "-"), "NumberFormat.ToWords: formatting failed");
+            numfmt_check_sb(rt_sb_append_cstr(sb, ones[n]),
+                            "NumberFormat.ToWords: formatting failed");
         }
     } else if (n > 0) {
         numfmt_check_sb(rt_sb_append_cstr(sb, ones[n]), "NumberFormat.ToWords: formatting failed");
@@ -419,8 +412,8 @@ rt_string rt_numfmt_to_words(int64_t n) {
         abs_n = (uint64_t)(negative ? -n : n);
 
     if (negative)
-        numfmt_check_sb(
-            rt_sb_append_cstr(&sb, "negative "), "NumberFormat.ToWords: formatting failed");
+        numfmt_check_sb(rt_sb_append_cstr(&sb, "negative "),
+                        "NumberFormat.ToWords: formatting failed");
 
     // Break into groups of three
     static const char *const scale[] = {"",
@@ -446,10 +439,9 @@ rt_string rt_numfmt_to_words(int64_t n) {
             continue;
         append_chunk(&sb, groups[i], &has_prev);
         if (i > 0 && scale[i][0] != '\0') {
-            numfmt_check_sb(
-                rt_sb_append_cstr(&sb, " "), "NumberFormat.ToWords: formatting failed");
-            numfmt_check_sb(
-                rt_sb_append_cstr(&sb, scale[i]), "NumberFormat.ToWords: formatting failed");
+            numfmt_check_sb(rt_sb_append_cstr(&sb, " "), "NumberFormat.ToWords: formatting failed");
+            numfmt_check_sb(rt_sb_append_cstr(&sb, scale[i]),
+                            "NumberFormat.ToWords: formatting failed");
         }
     }
 
@@ -484,12 +476,8 @@ rt_string rt_numfmt_bytes(int64_t bytes) {
     int len;
 
     if (unit_idx == 0) {
-        len = snprintf(buf,
-                       sizeof(buf),
-                       "%s%" PRIu64 " %s",
-                       bytes < 0 ? "-" : "",
-                       magnitude,
-                       units[0]);
+        len = snprintf(
+            buf, sizeof(buf), "%s%" PRIu64 " %s", bytes < 0 ? "-" : "", magnitude, units[0]);
     } else {
         if (bytes < 0)
             val = -val;

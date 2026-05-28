@@ -596,8 +596,7 @@ int main() {
     {
         std::vector<uint8_t> code(4, 0);
         code[3] = 0x14; // B
-        auto obj =
-            makeObj("unaligned_branch.o", ObjFileFormat::ELF, code, "odd", 282, 0, 0);
+        auto obj = makeObj("unaligned_branch.o", ObjFileFormat::ELF, code, "odd", 282, 0, 0);
         std::vector<ObjFile> objs = {obj};
         auto layout = makeLayout(objs, 0x100000);
 
@@ -645,8 +644,7 @@ int main() {
     // --- Abs32 rejects overflow instead of truncating ---
     {
         std::vector<uint8_t> code(4, 0);
-        auto obj =
-            makeObj("abs32_overflow.o", ObjFileFormat::ELF, code, "too_far", 10, 0, 0);
+        auto obj = makeObj("abs32_overflow.o", ObjFileFormat::ELF, code, "too_far", 10, 0, 0);
         std::vector<ObjFile> objs = {obj};
         auto layout = makeLayout(objs, 0x100000);
 
@@ -774,8 +772,7 @@ int main() {
         if (!err.str().empty())
             std::cerr << "  Mach-O GOT pointer err: " << err.str() << "\n";
 
-        const int32_t delta =
-            static_cast<int32_t>(readLE32(layout.sections[0].data.data() + 4));
+        const int32_t delta = static_cast<int32_t>(readLE32(layout.sections[0].data.data() + 4));
         CHECK(delta == static_cast<int32_t>(0x102040 - 0x100004));
     }
 
@@ -817,13 +814,8 @@ int main() {
     // --- Live alloc sections with relocations must be present in the output layout ---
     {
         std::vector<uint8_t> code(4, 0);
-        auto obj = makeObj("dropped_live_section.o",
-                           ObjFileFormat::ELF,
-                           code,
-                           "target",
-                           elf_x64::kAbs32,
-                           0,
-                           0);
+        auto obj = makeObj(
+            "dropped_live_section.o", ObjFileFormat::ELF, code, "target", elf_x64::kAbs32, 0, 0);
         std::vector<ObjFile> objs = {obj};
         LinkLayout layout;
 

@@ -40,9 +40,9 @@
 #include <unistd.h>
 extern char **environ;
 #else
-#include <windows.h>
 #include <direct.h>
 #include <wchar.h>
+#include <windows.h>
 #endif
 
 namespace {
@@ -103,11 +103,15 @@ std::string quote_windows_argument(const std::string &arg) {
 
 std::string format_windows_error(DWORD error) {
     LPSTR buffer = nullptr;
-    const DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                        FORMAT_MESSAGE_IGNORE_INSERTS;
-    const DWORD size =
-        FormatMessageA(flags, nullptr, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                       reinterpret_cast<LPSTR>(&buffer), 0, nullptr);
+    const DWORD flags =
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
+    const DWORD size = FormatMessageA(flags,
+                                      nullptr,
+                                      error,
+                                      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                                      reinterpret_cast<LPSTR>(&buffer),
+                                      0,
+                                      nullptr);
     if (size == 0 || buffer == nullptr) {
         return "Windows error " + std::to_string(static_cast<unsigned long>(error));
     }
@@ -438,9 +442,16 @@ RunResult run_process(const std::vector<std::string> &argv,
         scoped_env.emplace_back(entry.first, entry.second);
     }
 
-    const BOOL created =
-        CreateProcessA(nullptr, mutable_cmdline.data(), nullptr, nullptr, TRUE, 0, nullptr,
-                       cwd ? cwd->c_str() : nullptr, &startup, &process);
+    const BOOL created = CreateProcessA(nullptr,
+                                        mutable_cmdline.data(),
+                                        nullptr,
+                                        nullptr,
+                                        TRUE,
+                                        0,
+                                        nullptr,
+                                        cwd ? cwd->c_str() : nullptr,
+                                        &startup,
+                                        &process);
 
     CloseHandle(stdout_write);
     CloseHandle(stderr_write);
@@ -455,8 +466,10 @@ RunResult run_process(const std::vector<std::string> &argv,
 
     CaptureThreadContext stdout_ctx{stdout_read, &rr.out};
     CaptureThreadContext stderr_ctx{stderr_read, &rr.err};
-    HANDLE stdout_thread = CreateThread(nullptr, 0, capture_handle_thread_proc, &stdout_ctx, 0, nullptr);
-    HANDLE stderr_thread = CreateThread(nullptr, 0, capture_handle_thread_proc, &stderr_ctx, 0, nullptr);
+    HANDLE stdout_thread =
+        CreateThread(nullptr, 0, capture_handle_thread_proc, &stdout_ctx, 0, nullptr);
+    HANDLE stderr_thread =
+        CreateThread(nullptr, 0, capture_handle_thread_proc, &stderr_ctx, 0, nullptr);
 
     WaitForSingleObject(process.hProcess, INFINITE);
     if (stdout_thread != nullptr) {
@@ -510,12 +523,13 @@ RunResult run_process(const std::vector<std::string> &argv,
         ::close(stderr_pipe[0]);
 
         if (cwd.has_value() && ::chdir(cwd->c_str()) != 0) {
-            append_child_error_and_exit(
-                stderr_pipe[1],
-                "failed to change working directory to '" + *cwd + "': " + std::strerror(errno));
+            append_child_error_and_exit(stderr_pipe[1],
+                                        "failed to change working directory to '" + *cwd +
+                                            "': " + std::strerror(errno));
         }
 
-        if (::dup2(stdout_pipe[1], STDOUT_FILENO) < 0 || ::dup2(stderr_pipe[1], STDERR_FILENO) < 0) {
+        if (::dup2(stdout_pipe[1], STDOUT_FILENO) < 0 ||
+            ::dup2(stderr_pipe[1], STDERR_FILENO) < 0) {
             append_child_error_and_exit(stderr_pipe[1],
                                         "failed to redirect child stdio: " +
                                             std::string(std::strerror(errno)));
@@ -534,8 +548,8 @@ RunResult run_process(const std::vector<std::string> &argv,
 
         execvp(exec_argv[0], exec_argv.data());
         append_child_error_and_exit(STDERR_FILENO,
-                                    "failed to exec '" + argv[0] + "': " +
-                                        std::string(std::strerror(errno)));
+                                    "failed to exec '" + argv[0] +
+                                        "': " + std::string(std::strerror(errno)));
     }
 
     ::close(stdout_pipe[1]);

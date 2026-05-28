@@ -68,7 +68,8 @@ std::string normalizePath(std::string path) {
 ///          against previously seen entries.  Identifiers start at one so that
 ///          zero can unambiguously signal "unknown".  When the identifier space
 ///          would overflow, the helper returns zero so callers can surface a fatal
-///          configuration error in their own diagnostic context.  Stored strings live inside the manager's
+///          configuration error in their own diagnostic context.  Stored strings live inside the
+///          manager's
 ///          @ref files_ container for the remainder of the manager's lifetime,
 ///          making it safe to hand out @ref std::string_view references.
 ///

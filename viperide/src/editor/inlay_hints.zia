@@ -1,0 +1,384 @@
+module inlay_hints;
+
+bind "editor_engine";
+
+bind Str = Viper.String;
+bind Obj = Viper.Core.Object;
+bind Seq = Viper.Collections.Seq;
+
+final HINT_COLOR = 9482461; // 0x90A0AD
+final HINT_DEBOUNCE_MS = 300;
+final MAX_INLAY_SCAN_LINES = 1000;
+final MAX_INLAY_HINTS = 160;
+final MAX_INLAY_FUNCTIONS = 256;
+
+class InlayHintController {
+    expose Boolean enabled;
+    expose Integer lastRevision;
+    expose Integer lastHintCount;
+    expose Integer pendingRevision;
+    expose Integer pendingSinceMs;
+
+    expose func init() {
+        enabled = true;
+        lastRevision = -1;
+        lastHintCount = 0;
+        pendingRevision = -1;
+        pendingSinceMs = 0;
+    }
+
+    expose func SetEnabled(value: Boolean) {
+        enabled = value;
+    }
+
+    expose func update(engine: editor_engine.EditorEngine) {
+        if engine == null or engine.editor == null { return; }
+        if enabled == false {
+            if lastHintCount > 0 {
+                engine.editor.ClearInlayHints();
+                lastHintCount = 0;
+            }
+            lastRevision = engine.GetRevision();
+            pendingRevision = -1;
+            return;
+        }
+
+        var revision = engine.GetRevision();
+        if revision == lastRevision and pendingRevision == -1 { return; }
+        if revision != pendingRevision {
+            pendingRevision = revision;
+            pendingSinceMs = Viper.Time.GetTickCount();
+            return;
+        }
+        if Viper.Time.GetTickCount() - pendingSinceMs < HINT_DEBOUNCE_MS { return; }
+        Refresh(engine);
+        lastRevision = revision;
+        pendingRevision = -1;
+    }
+
+    expose func Refresh(engine: editor_engine.EditorEngine) {
+        if engine == null or engine.editor == null { return; }
+        engine.editor.ClearInlayHints();
+        if enabled == false {
+            lastHintCount = 0;
+            return;
+        }
+
+        var lineCount = engine.GetLineCount();
+        if lineCount > MAX_INLAY_SCAN_LINES {
+            lastHintCount = 0;
+            return;
+        }
+
+        var funcs = CollectFunctionsFromEditor(engine, lineCount);
+        var count = 0;
+        var i = 0;
+        while i < lineCount and count < MAX_INLAY_HINTS {
+            var line = engine.editor.GetLine(i);
+            var trimmed = Str.Trim(line);
+            if trimmed != "" and Str.StartsWith(trimmed, "//") == false {
+                var inferred = InferredVarHint(line, funcs);
+                if inferred != "" {
+                    engine.editor.AddInlayHint(i, Str.Length(line), "  " + inferred, HINT_COLOR);
+                    count = count + 1;
+                }
+
+                if count < MAX_INLAY_HINTS {
+                    var params = ParameterHintText(line, funcs);
+                    if params != "" {
+                        engine.editor.AddInlayHint(i, Str.Length(line), "  " + params, HINT_COLOR);
+                        count = count + 1;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        lastHintCount = count;
+    }
+}
+
+func CollectFunctionsFromEditor(engine: editor_engine.EditorEngine, lineCount: Integer) -> List {
+    var funcs = new List();
+    var i = 0;
+    while i < lineCount and funcs.count() < MAX_INLAY_FUNCTIONS {
+        var info = ParseFunctionLine(engine.editor.GetLine(i));
+        if info != "" {
+            funcs.Push(info);
+        }
+        i = i + 1;
+    }
+    return funcs;
+}
+
+func CollectFunctions(source: String) -> List {
+    var funcs = new List();
+    var lines = Str.Split(source, "\n");
+    var i = 0;
+    while i < Seq.get_Length(lines) {
+        var info = ParseFunctionLine(Obj.ToString(Seq.Get(lines, i)));
+        if info != "" {
+            funcs.Push(info);
+        }
+        i = i + 1;
+    }
+    return funcs;
+}
+
+func ParseFunctionLine(line: String) -> String {
+    var trimmed = Str.Trim(line);
+    if trimmed == "" or Str.StartsWith(trimmed, "//") { return ""; }
+    var funcPos = Str.IndexOf(trimmed, "func ");
+    if funcPos == 0 { return ""; }
+    var before = Str.Trim(Str.Left(trimmed, funcPos - 1));
+    if before != "" and before != "expose" and before != "hide" { return ""; }
+
+    var nameStart = funcPos + Str.Length("func ");
+    var openParen = Str.IndexOfFrom(trimmed, nameStart, "(");
+    if openParen == 0 { return ""; }
+    var name = Str.Trim(Str.MidLen(trimmed, nameStart, openParen - nameStart));
+    if name == "" { return ""; }
+    var closeParen = FindClosingParen(trimmed, openParen);
+    if closeParen == 0 { return ""; }
+
+    var paramsText = Str.MidLen(trimmed, openParen + 1, closeParen - openParen - 1);
+    return name + "\t" + ParameterNames(paramsText) + "\t" + ReturnTypeAfter(trimmed, closeParen);
+}
+
+func InferredVarHint(line: String, funcs: List) -> String {
+    var trimmed = Str.Trim(line);
+    if Str.StartsWith(trimmed, "var ") == false { return ""; }
+    var eq = Str.IndexOf(trimmed, "=");
+    if eq == 0 { return ""; }
+    var decl = Str.Trim(Str.MidLen(trimmed, Str.Length("var ") + 1, eq - Str.Length("var ") - 1));
+    if decl == "" or Str.IndexOf(decl, ":") != 0 { return ""; }
+    var expr = Str.Trim(Str.Mid(trimmed, eq + 1));
+    if Str.EndsWith(expr, ";") { expr = Str.Left(expr, Str.Length(expr) - 1); }
+    var inferred = InferExpressionType(expr, funcs);
+    if inferred == "" { return ""; }
+    return ": " + inferred;
+}
+
+func ParameterHintText(line: String, funcs: List) -> String {
+    var trimmed = Str.Trim(line);
+    if Str.StartsWith(trimmed, "func ") or Str.IndexOf(trimmed, " func ") != 0 {
+        return "";
+    }
+
+    var pos = 1;
+    while pos <= Str.Length(line) {
+        var openParen = Str.IndexOfFrom(line, pos, "(");
+        if openParen == 0 { return ""; }
+        var nameEnd = openParen - 1;
+        while nameEnd > 0 and IsSpace(Str.MidLen(line, nameEnd, 1)) {
+            nameEnd = nameEnd - 1;
+        }
+        var nameStart = nameEnd;
+        while nameStart > 0 and IsIdentPart(Str.MidLen(line, nameStart, 1)) {
+            nameStart = nameStart - 1;
+        }
+        nameStart = nameStart + 1;
+        if nameStart <= nameEnd {
+            var name = Str.MidLen(line, nameStart, nameEnd - nameStart + 1);
+            if IsKeywordLikeCall(name) == false {
+                var params = ParamsForFunction(funcs, name);
+                if params != "" {
+                    var closeParen = FindClosingParen(line, openParen);
+                    var args = "";
+                    if closeParen > openParen {
+                        args = Str.MidLen(line, openParen + 1, closeParen - openParen - 1);
+                    }
+                    if ArgumentCount(args) > 0 {
+                        return name + "(" + ParamHintList(params, ArgumentCount(args)) + ")";
+                    }
+                }
+            }
+        }
+        pos = openParen + 1;
+    }
+    return "";
+}
+
+func InferExpressionType(expr: String, funcs: List) -> String {
+    var text = Str.Trim(expr);
+    if text == "" { return ""; }
+    if Str.StartsWith(text, "\"") { return "String"; }
+    if text == "true" or text == "false" { return "Boolean"; }
+    if IsNumericLiteral(text) {
+        if Str.IndexOf(text, ".") != 0 { return "Float"; }
+        return "Integer";
+    }
+    if Str.IndexOf(text, "\"") != 0 { return "String"; }
+    var openParen = Str.IndexOf(text, "(");
+    if openParen > 1 {
+        var callName = Str.Trim(Str.Left(text, openParen - 1));
+        if IsIdentifier(callName) {
+            var ret = ReturnTypeForFunction(funcs, callName);
+            if ret != "" and ret != "Void" { return ret; }
+        }
+    }
+    if Str.IndexOf(text, "+") != 0 or Str.IndexOf(text, "-") != 0
+       or Str.IndexOf(text, "*") != 0 or Str.IndexOf(text, "/") != 0 {
+        return "Integer";
+    }
+    return "";
+}
+
+func ParameterNames(paramsText: String) -> String {
+    var parts = Str.Split(paramsText, ",");
+    var out = "";
+    var i = 0;
+    while i < Seq.get_Length(parts) {
+        var param = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+        var colon = Str.IndexOf(param, ":");
+        if colon > 1 {
+            var name = Str.Trim(Str.Left(param, colon - 1));
+            if name != "" {
+                if out != "" { out = out + ","; }
+                out = out + name;
+            }
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+func ReturnTypeAfter(line: String, closeParen: Integer) -> String {
+    var arrow = Str.IndexOfFrom(line, closeParen + 1, "->");
+    if arrow == 0 { return "Void"; }
+    var rest = Str.Trim(Str.Mid(line, arrow + 2));
+    var brace = Str.IndexOf(rest, "{");
+    if brace > 0 { rest = Str.Trim(Str.Left(rest, brace - 1)); }
+    if Str.EndsWith(rest, ";") { rest = Str.Left(rest, Str.Length(rest) - 1); }
+    return Str.Trim(rest);
+}
+
+func ParamsForFunction(funcs: List, name: String) -> String {
+    var i = 0;
+    while i < funcs.count() {
+        var fields = Str.Split(Obj.ToString(funcs.get(i)), "\t");
+        if Seq.get_Length(fields) >= 2 and Obj.ToString(Seq.Get(fields, 0)) == name {
+            return Obj.ToString(Seq.Get(fields, 1));
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+func ReturnTypeForFunction(funcs: List, name: String) -> String {
+    var i = 0;
+    while i < funcs.count() {
+        var fields = Str.Split(Obj.ToString(funcs.get(i)), "\t");
+        if Seq.get_Length(fields) >= 3 and Obj.ToString(Seq.Get(fields, 0)) == name {
+            return Obj.ToString(Seq.Get(fields, 2));
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+func ParamHintList(params: String, argCount: Integer) -> String {
+    var names = Str.Split(params, ",");
+    var out = "";
+    var i = 0;
+    while i < Seq.get_Length(names) and i < argCount {
+        var name = Str.Trim(Obj.ToString(Seq.Get(names, i)));
+        if name != "" {
+            if out != "" { out = out + ", "; }
+            out = out + name + ":";
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+func ArgumentCount(args: String) -> Integer {
+    var text = Str.Trim(args);
+    if text == "" { return 0; }
+    var count = 1;
+    var depth = 0;
+    var inString = false;
+    var i = 1;
+    while i <= Str.Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch == "\"" {
+            inString = inString == false;
+        } else if inString == false {
+            if ch == "(" { depth = depth + 1; }
+            if ch == ")" and depth > 0 { depth = depth - 1; }
+            if ch == "," and depth == 0 { count = count + 1; }
+        }
+        i = i + 1;
+    }
+    return count;
+}
+
+func FindClosingParen(text: String, openParen: Integer) -> Integer {
+    var depth = 0;
+    var inString = false;
+    var i = openParen;
+    while i <= Str.Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch == "\"" {
+            inString = inString == false;
+        } else if inString == false {
+            if ch == "(" { depth = depth + 1; }
+            if ch == ")" {
+                depth = depth - 1;
+                if depth == 0 { return i; }
+            }
+        }
+        i = i + 1;
+    }
+    return 0;
+}
+
+func IsNumericLiteral(text: String) -> Boolean {
+    if text == "" { return false; }
+    var seenDigit = false;
+    var seenDot = false;
+    var i = 1;
+    while i <= Str.Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch >= "0" and ch <= "9" {
+            seenDigit = true;
+        } else if ch == "." and seenDot == false {
+            seenDot = true;
+        } else {
+            return false;
+        }
+        i = i + 1;
+    }
+    return seenDigit;
+}
+
+func IsIdentifier(text: String) -> Boolean {
+    if text == "" { return false; }
+    var i = 1;
+    while i <= Str.Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if i == 1 {
+            if IsIdentStart(ch) == false { return false; }
+        } else if IsIdentPart(ch) == false {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+func IsIdentStart(ch: String) -> Boolean {
+    return (ch >= "A" and ch <= "Z") or (ch >= "a" and ch <= "z") or ch == "_";
+}
+
+func IsIdentPart(ch: String) -> Boolean {
+    return IsIdentStart(ch) or (ch >= "0" and ch <= "9");
+}
+
+func IsSpace(ch: String) -> Boolean {
+    return ch == " " or ch == "\t";
+}
+
+func IsKeywordLikeCall(name: String) -> Boolean {
+    return name == "if" or name == "while" or name == "for" or name == "return"
+        or name == "new" or name == "match";
+}

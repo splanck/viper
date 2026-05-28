@@ -161,9 +161,10 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
         TypeRef initType =
             stmt->initializer ? sema_.typeOf(stmt->initializer.get()) : types::unknown();
         if (!stmt->initializer || !initType || initType->kind != TypeKindSem::Tuple) {
-            reportLoweringInvariant(stmt->loc,
-                                    "V-ZIA-LOWER-TUPLE-DESTRUCTURE",
-                                    "tuple destructuring reached lowering without tuple initializer");
+            reportLoweringInvariant(
+                stmt->loc,
+                "V-ZIA-LOWER-TUPLE-DESTRUCTURE",
+                "tuple destructuring reached lowering without tuple initializer");
             return;
         }
 
@@ -459,7 +460,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
     localTypes_ = std::move(localTypesBackup);
 }
 
-void Lowerer::lowerForInRange(ForInStmt *stmt, RangeExpr *rangeExpr,
+void Lowerer::lowerForInRange(ForInStmt *stmt,
+                              RangeExpr *rangeExpr,
                               const RangeModifierInfo &rangeInfo) {
     size_t condIdx = createBlock("forin_cond");
     size_t bodyIdx = createBlock("forin_body");
@@ -536,9 +538,10 @@ void Lowerer::lowerForInRange(ForInStmt *stmt, RangeExpr *rangeExpr,
     Value currentVal = loadFromSlot(cursorVar, Type(Type::Kind::I64));
     Value currentBound = loadFromSlot(endVar, Type(Type::Kind::I64));
     Value currentStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
-    Value terminal = rangeExpr->inclusive
-                         ? emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), currentVal, currentBound)
-                         : Value::constBool(false);
+    Value terminal =
+        rangeExpr->inclusive
+            ? emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), currentVal, currentBound)
+            : Value::constBool(false);
     Value overflowRisk;
     if (rangeInfo.reversed) {
         Value minPlusStep = emitBinary(Opcode::IAddOvf,
@@ -793,8 +796,11 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
     removeSlot(mapVar);
 }
 
-void Lowerer::lowerForInSeq(LowerResult seqValue, ForInStmt *stmt, TypeRef elemType,
-                            bool rawStringElements, const std::string &labelPrefix) {
+void Lowerer::lowerForInSeq(LowerResult seqValue,
+                            ForInStmt *stmt,
+                            TypeRef elemType,
+                            bool rawStringElements,
+                            const std::string &labelPrefix) {
     if (stmt->variableType)
         elemType = sema_.resolveType(stmt->variableType.get());
 
@@ -846,15 +852,13 @@ void Lowerer::lowerForInSeq(LowerResult seqValue, ForInStmt *stmt, TypeRef elemT
 
     if (rawStringElements && elemIlType.kind == Type::Kind::Str) {
         Value elem = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {seqLoaded, idxInBody});
-        storeToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
-                    elem,
-                    Type(Type::Kind::Str));
+        storeToSlot(
+            hasTupleBinding ? stmt->secondVariable : stmt->variable, elem, Type(Type::Kind::Str));
     } else {
         Value boxed = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {seqLoaded, idxInBody});
         auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
-        storeToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
-                    elemValue.value,
-                    elemIlType);
+        storeToSlot(
+            hasTupleBinding ? stmt->secondVariable : stmt->variable, elemValue.value, elemIlType);
     }
 
     lowerStmt(stmt->body.get());

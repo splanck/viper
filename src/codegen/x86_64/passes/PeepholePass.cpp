@@ -58,14 +58,14 @@ struct MirStats {
 /// @brief Predicate: does @p opcode read memory into a register?
 /// @details Used only by the optional stats counter — does not change codegen.
 [[nodiscard]] bool isLoadOpcode(MOpcode opcode) noexcept {
-    return opcode == MOpcode::MOVmr || opcode == MOpcode::MOVSDmr ||
-           opcode == MOpcode::MOVUPSmr || opcode == MOpcode::POP;
+    return opcode == MOpcode::MOVmr || opcode == MOpcode::MOVSDmr || opcode == MOpcode::MOVUPSmr ||
+           opcode == MOpcode::POP;
 }
 
 /// @brief Predicate: does @p opcode write a register to memory?
 [[nodiscard]] bool isStoreOpcode(MOpcode opcode) noexcept {
-    return opcode == MOpcode::MOVrm || opcode == MOpcode::MOVSDrm ||
-           opcode == MOpcode::MOVUPSrm || opcode == MOpcode::PUSH;
+    return opcode == MOpcode::MOVrm || opcode == MOpcode::MOVSDrm || opcode == MOpcode::MOVUPSrm ||
+           opcode == MOpcode::PUSH;
 }
 
 /// @brief Fold per-function MIR statistics into @p stats.
@@ -118,10 +118,9 @@ bool PeepholePass::run(Module &module, Diagnostics &diags) {
     std::atomic_size_t total{0};
     MirStats stats{};
     std::mutex statsMutex;
-    const std::size_t workerCount =
-        std::min(module.mir.size(),
-                 std::max<std::size_t>(
-                     1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    const std::size_t workerCount = std::min(
+        module.mir.size(),
+        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
     if (workerCount <= 1) {
         for (auto &fn : module.mir) {
             const std::size_t transformed = runPeepholes(fn, *module.target);
@@ -139,12 +138,10 @@ bool PeepholePass::run(Module &module, Diagnostics &diags) {
                 MirStats localStats{};
                 std::size_t localTotal = 0;
                 for (;;) {
-                    const std::size_t index =
-                        nextIndex.fetch_add(1, std::memory_order_relaxed);
+                    const std::size_t index = nextIndex.fetch_add(1, std::memory_order_relaxed);
                     if (index >= module.mir.size())
                         break;
-                    const std::size_t transformed =
-                        runPeepholes(module.mir[index], *module.target);
+                    const std::size_t transformed = runPeepholes(module.mir[index], *module.target);
                     if (collectStats) {
                         localTotal += transformed;
                         accumulateStats(module.mir[index], localStats);
@@ -168,13 +165,12 @@ bool PeepholePass::run(Module &module, Diagnostics &diags) {
     }
 
     if (collectStats)
-        diags.warning("x86-64 peephole: " + std::to_string(total.load()) + " transformations; mir " +
-                      std::to_string(stats.functions) + " funcs, " +
-                      std::to_string(stats.blocks) + " blocks, " +
-                      std::to_string(stats.instructions) + " inst, calls=" +
-                      std::to_string(stats.calls) + ", branches=" +
-                      std::to_string(stats.branches) + ", loads=" +
-                      std::to_string(stats.loads) + ", stores=" + std::to_string(stats.stores));
+        diags.warning(
+            "x86-64 peephole: " + std::to_string(total.load()) + " transformations; mir " +
+            std::to_string(stats.functions) + " funcs, " + std::to_string(stats.blocks) +
+            " blocks, " + std::to_string(stats.instructions) + " inst, calls=" +
+            std::to_string(stats.calls) + ", branches=" + std::to_string(stats.branches) +
+            ", loads=" + std::to_string(stats.loads) + ", stores=" + std::to_string(stats.stores));
 
     return true;
 }

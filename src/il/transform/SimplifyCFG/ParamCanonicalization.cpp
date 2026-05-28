@@ -271,8 +271,8 @@ bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx,
 
     for (size_t paramIdx = 0; paramIdx < block.params.size();) {
         const unsigned paramId = block.params[paramIdx].id;
-        const bool used = allUsedIds.count(paramId) > 0 ||
-                          isTempUsedInFunction(ctx.function, paramId);
+        const bool used =
+            allUsedIds.count(paramId) > 0 || isTempUsedInFunction(ctx.function, paramId);
 
         if (used) {
             ++paramIdx;

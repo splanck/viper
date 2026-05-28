@@ -338,8 +338,7 @@ bool legaliseBitwise(MBasicBlock &block, std::size_t index, uint32_t &nextVreg) 
         return false;
     };
 
-    if (convertForm(MOpcode::ANDrr, MOpcode::ANDri) ||
-        convertForm(MOpcode::ORrr, MOpcode::ORri) ||
+    if (convertForm(MOpcode::ANDrr, MOpcode::ANDri) || convertForm(MOpcode::ORrr, MOpcode::ORri) ||
         convertForm(MOpcode::XORrr, MOpcode::XORri)) {
         return true;
     }
@@ -413,9 +412,8 @@ bool lowerGprSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
     }
 
     std::vector<MInstr> replacement{};
-    replacement.push_back(MInstr::make(MOpcode::TESTrr,
-                                       std::vector<Operand>{cloneOperand(condVal),
-                                                            cloneOperand(condVal)}));
+    replacement.push_back(MInstr::make(
+        MOpcode::TESTrr, std::vector<Operand>{cloneOperand(condVal), cloneOperand(condVal)}));
 
     if (!appendGprMove(replacement, selectInstr.operands[0], falseVal)) {
         return false;
@@ -484,9 +482,8 @@ bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
     const std::string endLabel = func.makeLocalLabel(".Lend");
 
     std::vector<MInstr> replacement{};
-    replacement.push_back(MInstr::make(MOpcode::TESTrr,
-                                       std::vector<Operand>{cloneOperand(condVal),
-                                                            cloneOperand(condVal)}));
+    replacement.push_back(MInstr::make(
+        MOpcode::TESTrr, std::vector<Operand>{cloneOperand(condVal), cloneOperand(condVal)}));
     replacement.push_back(MInstr::make(
         MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), makeLabelOperand(falseLabel)}));
     replacement.push_back(MInstr::make(
@@ -861,8 +858,7 @@ bool foldCompareBranch(const MFunction &func, MBasicBlock &block, std::size_t in
         return false;
     }
 
-    if (registerUsedOutsideFoldPattern(
-            func, block, index + 2, testIndex, setccInstr.operands[1])) {
+    if (registerUsedOutsideFoldPattern(func, block, index + 2, testIndex, setccInstr.operands[1])) {
         return false;
     }
 
@@ -1138,7 +1134,6 @@ void ISel::foldSibAddressing(MFunction &func) const {
                     }
                 }
             }
-
         }
 
         // Second pass: find memory operands using ADD results and transform
@@ -1187,9 +1182,10 @@ void ISel::foldSibAddressing(MFunction &func) const {
                     virtualRegisterUsedOutsideBlock(func, block, baseId)) {
                     continue;
                 }
-                if (countVirtualRegisterUsesInRange(
-                        block, addInfo.shiftedVreg, shlInfo.defIdx + 1,
-                        block.instructions.size()) != 1 ||
+                if (countVirtualRegisterUsesInRange(block,
+                                                    addInfo.shiftedVreg,
+                                                    shlInfo.defIdx + 1,
+                                                    block.instructions.size()) != 1 ||
                     virtualRegisterUsedOutsideBlock(func, block, addInfo.shiftedVreg)) {
                     continue;
                 }
@@ -1199,14 +1195,13 @@ void ISel::foldSibAddressing(MFunction &func) const {
                 auto movIt = movDefs.find(shlInfo.srcVreg);
                 if (movIt != movDefs.end() && !movIt->second.srcIsPhys &&
                     movIt->second.defIdx < shlInfo.defIdx &&
-                    !virtualRegisterRedefinedInRange(block, shlInfo.srcVreg,
-                                                     movIt->second.defIdx + 1,
-                                                     shlInfo.defIdx) &&
-                    !virtualRegisterRedefinedInRange(block, movIt->second.srcVreg,
-                                                     movIt->second.defIdx + 1, idx) &&
-                    countVirtualRegisterUsesInRange(block, shlInfo.srcVreg,
-                                                    movIt->second.defIdx + 1,
-                                                    shlInfo.defIdx + 1) == 1 &&
+                    !virtualRegisterRedefinedInRange(
+                        block, shlInfo.srcVreg, movIt->second.defIdx + 1, shlInfo.defIdx) &&
+                    !virtualRegisterRedefinedInRange(
+                        block, movIt->second.srcVreg, movIt->second.defIdx + 1, idx) &&
+                    countVirtualRegisterUsesInRange(
+                        block, shlInfo.srcVreg, movIt->second.defIdx + 1, shlInfo.defIdx + 1) ==
+                        1 &&
                     !virtualRegisterUsedOutsideBlock(func, block, shlInfo.srcVreg)) {
                     indexVreg = movIt->second.srcVreg;
                     toErase.push_back(movIt->second.defIdx); // Mark MOV for removal
@@ -1216,16 +1211,16 @@ void ISel::foldSibAddressing(MFunction &func) const {
                 uint16_t realBaseVreg = addInfo.baseVreg;
                 auto baseMovIt = movDefs.find(addInfo.baseVreg);
                 if (baseMovIt != movDefs.end() && baseMovIt->second.defIdx < addInfo.defIdx &&
-                    !virtualRegisterRedefinedInRange(block, addInfo.baseVreg,
-                                                     baseMovIt->second.defIdx + 1,
-                                                     addInfo.defIdx) &&
-                    countVirtualRegisterUsesInRange(block, addInfo.baseVreg,
+                    !virtualRegisterRedefinedInRange(
+                        block, addInfo.baseVreg, baseMovIt->second.defIdx + 1, addInfo.defIdx) &&
+                    countVirtualRegisterUsesInRange(block,
+                                                    addInfo.baseVreg,
                                                     baseMovIt->second.defIdx + 1,
                                                     addInfo.defIdx + 1) == 1 &&
                     !virtualRegisterUsedOutsideBlock(func, block, addInfo.baseVreg)) {
                     if (!baseMovIt->second.srcIsPhys &&
-                        !virtualRegisterRedefinedInRange(block, baseMovIt->second.srcVreg,
-                                                         baseMovIt->second.defIdx + 1, idx)) {
+                        !virtualRegisterRedefinedInRange(
+                            block, baseMovIt->second.srcVreg, baseMovIt->second.defIdx + 1, idx)) {
                         realBaseVreg = baseMovIt->second.srcVreg;
                         toErase.push_back(baseMovIt->second.defIdx);
                     }
@@ -1314,7 +1309,6 @@ void ISel::lowerMulToLea(MFunction &func) const {
                     }
                 }
             }
-
         }
 
         // Second pass: find eligible IMULrr and rewrite.
@@ -1440,8 +1434,8 @@ void ISel::foldLeaIntoMem(MFunction &func) const {
                         const auto &defInstr = block.instructions[defIndex];
                         if (defInstr.opcode == MOpcode::LEA && defInstr.operands.size() >= 2) {
                             if (const auto *srcMem = std::get_if<OpMem>(&defInstr.operands[1])) {
-                                if (addressInputsRedefinedInRange(*srcMem, block, defIndex + 1,
-                                                                  idx)) {
+                                if (addressInputsRedefinedInRange(
+                                        *srcMem, block, defIndex + 1, idx)) {
                                     continue;
                                 }
                                 if (auto combined = combineLeaMemUse(*srcMem, *mem)) {

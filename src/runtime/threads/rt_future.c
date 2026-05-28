@@ -302,8 +302,7 @@ static future_deadline_t future_deadline_abs_from_now(int64_t ms, int8_t use_mon
     int64_t add_sec = ms / 1000;
     long add_nsec = (long)((ms % 1000) * 1000000L);
     int64_t sec_room = (int64_t)LONG_MAX - (int64_t)d.deadline.tv_sec;
-    if (add_sec > sec_room ||
-        (add_sec == sec_room && d.deadline.tv_nsec > 999999999L - add_nsec)) {
+    if (add_sec > sec_room || (add_sec == sec_room && d.deadline.tv_nsec > 999999999L - add_nsec)) {
         d.deadline.tv_sec = (time_t)LONG_MAX;
         d.deadline.tv_nsec = 999999999L;
         return d;
@@ -525,8 +524,7 @@ void *rt_promise_get_future(void *obj) {
             return NULL;
         }
 
-        candidate =
-            (future_impl *)rt_obj_new_i64(RT_FUTURE_CLASS_ID, (int64_t)sizeof(future_impl));
+        candidate = (future_impl *)rt_obj_new_i64(RT_FUTURE_CLASS_ID, (int64_t)sizeof(future_impl));
         if (!candidate)
             rt_trap("Future: memory allocation failed");
         candidate->promise = p;

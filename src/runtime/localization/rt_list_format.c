@@ -47,7 +47,7 @@
 //===----------------------------------------------------------------------===//
 
 typedef struct rt_list_format_inst {
-    void                   *locale;
+    void *locale;
     const rt_locale_data_t *data;
 } rt_list_format_inst_t;
 
@@ -81,8 +81,8 @@ static void lf_finalizer(void *obj) {
 /// @details Retains the locale handle + its data. Traps on allocation failure;
 ///          installs @ref lf_finalizer.
 static void *lf_alloc(void *locale) {
-    rt_list_format_inst_t *f = (rt_list_format_inst_t *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_list_format_inst_t));
+    rt_list_format_inst_t *f =
+        (rt_list_format_inst_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_list_format_inst_t));
     if (!f) {
         rt_trap("Viper.Localization.ListFormat: allocation failed");
         return NULL;
@@ -162,7 +162,8 @@ static rt_string join_with_style(void *items, const rt_locdata_list_style_t *sty
         return rt_string_from_bytes("", 0);
     if (n == 1) {
         rt_string a = (rt_string)rt_list_get(items, 0);
-        if (!a) return rt_string_from_bytes("", 0);
+        if (!a)
+            return rt_string_from_bytes("", 0);
         rt_string_ref(a);
         return a;
     }
@@ -194,17 +195,20 @@ static rt_string join_with_style(void *items, const rt_locdata_list_style_t *sty
 //===----------------------------------------------------------------------===//
 
 rt_string rt_list_format_and(void *self, void *items) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return join_with_style(items, &as_fmt(self)->data->list_format.and_p);
 }
 
 rt_string rt_list_format_or(void *self, void *items) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return join_with_style(items, &as_fmt(self)->data->list_format.or_p);
 }
 
 rt_string rt_list_format_unit(void *self, void *items) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return join_with_style(items, &as_fmt(self)->data->list_format.unit_p);
 }
 

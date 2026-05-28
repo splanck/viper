@@ -212,8 +212,8 @@ int main() {
 
     // --- Invalid input alignment is diagnosed instead of rounded silently ---
     {
-        auto obj =
-            makeObj("bad-align.o", ObjFileFormat::ELF, {makeSection(".text", 4, true, false, false, 3)});
+        auto obj = makeObj(
+            "bad-align.o", ObjFileFormat::ELF, {makeSection(".text", 4, true, false, false, 3)});
 
         std::vector<ObjFile> objs = {obj};
         LinkLayout layout;
@@ -525,8 +525,7 @@ int main() {
 
     // --- ObjC metadata sections merge despite harmless reader/synthetic flag differences ---
     {
-        ObjSection inputSelrefs =
-            makeSection("__DATA,__objc_selrefs", 8, false, false, false, 8);
+        ObjSection inputSelrefs = makeSection("__DATA,__objc_selrefs", 8, false, false, false, 8);
         inputSelrefs.dataSegment = true;
         ObjSection generatedSelrefs =
             makeSection("__DATA,__objc_selrefs", 8, false, true, false, 8);
@@ -568,11 +567,8 @@ int main() {
 
     // --- Read-only data names containing ".text" are not executable text ---
     {
-        CHECK(classifySection(".rodata.textual_metadata",
-                              false,
-                              false,
-                              false,
-                              false) == SectionClass::Rodata);
+        CHECK(classifySection(".rodata.textual_metadata", false, false, false, false) ==
+              SectionClass::Rodata);
         CHECK(classifySection(".text.hot", false, false, false, false) == SectionClass::Text);
     }
 

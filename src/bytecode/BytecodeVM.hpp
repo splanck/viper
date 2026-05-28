@@ -345,11 +345,11 @@ class BytecodeVM {
     const BytecodeModule *module_;
 
     // Execution state
-    VMState state_;            ///< Current VM execution state.
-    TrapKind trapKind_;        ///< Kind of the most recent trap.
-    int32_t currentErrorCode_; ///< Error code for the current exception handler.
+    VMState state_;                     ///< Current VM execution state.
+    TrapKind trapKind_;                 ///< Kind of the most recent trap.
+    int32_t currentErrorCode_;          ///< Error code for the current exception handler.
     bool pendingTrapErrorCode_ = false; ///< True after dispatchTrap sets a code for trap().
-    std::string trapMessage_;  ///< Human-readable message for the most recent trap.
+    std::string trapMessage_;           ///< Human-readable message for the most recent trap.
 
     /// @brief Snapshot of the most recent resumable trap state.
     struct TrapRecord {
@@ -369,6 +369,7 @@ class BytecodeVM {
         std::vector<BCExceptionHandler> ehStack;
         std::vector<uint8_t> allocaBytes;
     };
+
     TrapRecord trapRecord_;
 
     /// @brief Value stack holding locals and operand stack entries for all frames.

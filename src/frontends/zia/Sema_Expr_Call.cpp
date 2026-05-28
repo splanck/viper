@@ -655,8 +655,7 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
 
         if (!fallback || fallback->kind == TypeKindSem::Unknown ||
             (refined && refined->kind != TypeKindSem::Unknown &&
-             (isTypedSeq(refined) ||
-              (isConcreteRuntimeClass(refined) && isOpaquePtr(fallback)) ||
+             (isTypedSeq(refined) || (isConcreteRuntimeClass(refined) && isOpaquePtr(fallback)) ||
               (!isOpaquePtr(refined) && isOpaquePtr(fallback))))) {
             fallback = refined;
         }
@@ -686,8 +685,7 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
                 receiverArg = receiverArg->innerType();
         }
     }
-    TypeRef elementReceiver =
-        receiverArg && receiverArg->elementType() ? receiverArg : firstArg;
+    TypeRef elementReceiver = receiverArg && receiverArg->elementType() ? receiverArg : firstArg;
     TypeRef mapReceiver = receiverArg && receiverArg->valueType() ? receiverArg : firstArg;
     TypeRef setReceiver =
         receiverArg && receiverArg->kind == TypeKindSem::Set ? receiverArg : firstArg;
@@ -695,12 +693,9 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
         return elemType ? normalizeRuntimeSurfaceType(types::seqOf(elemType)) : fallback;
     };
 
-    if (calleeName == "Viper.Collections.Seq.Get" ||
-        calleeName == "Viper.Collections.Seq.First" ||
-        calleeName == "Viper.Collections.Seq.Last" ||
-        calleeName == "Viper.Collections.Seq.Peek" ||
-        calleeName == "Viper.Collections.Seq.Pop" ||
-        calleeName == "Viper.Collections.Seq.Remove" ||
+    if (calleeName == "Viper.Collections.Seq.Get" || calleeName == "Viper.Collections.Seq.First" ||
+        calleeName == "Viper.Collections.Seq.Last" || calleeName == "Viper.Collections.Seq.Peek" ||
+        calleeName == "Viper.Collections.Seq.Pop" || calleeName == "Viper.Collections.Seq.Remove" ||
         calleeName == "Viper.Collections.Seq.FindWhere") {
         return elementReceiver && elementReceiver->elementType()
                    ? normalizeRuntimeSurfaceType(elementReceiver->elementType())
@@ -709,18 +704,15 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
 
     if (calleeName == "Viper.Collections.List.Get" ||
         calleeName == "Viper.Collections.List.First" ||
-        calleeName == "Viper.Collections.List.Last" ||
-        calleeName == "Viper.Collections.List.Pop" ||
+        calleeName == "Viper.Collections.List.Last" || calleeName == "Viper.Collections.List.Pop" ||
         calleeName == "Viper.Collections.Queue.Peek" ||
         calleeName == "Viper.Collections.Queue.Pop" ||
         calleeName == "Viper.Collections.Queue.TryPop" ||
         calleeName == "Viper.Collections.Stack.Peek" ||
         calleeName == "Viper.Collections.Stack.Pop" ||
         calleeName == "Viper.Collections.Stack.TryPop" ||
-        calleeName == "Viper.Collections.Ring.Get" ||
-        calleeName == "Viper.Collections.Ring.Peek" ||
-        calleeName == "Viper.Collections.Ring.Pop" ||
-        calleeName == "Viper.Collections.Heap.Peek" ||
+        calleeName == "Viper.Collections.Ring.Get" || calleeName == "Viper.Collections.Ring.Peek" ||
+        calleeName == "Viper.Collections.Ring.Pop" || calleeName == "Viper.Collections.Heap.Peek" ||
         calleeName == "Viper.Collections.Heap.Pop" ||
         calleeName == "Viper.Collections.Heap.TryPeek" ||
         calleeName == "Viper.Collections.Heap.TryPop" ||
@@ -736,8 +728,7 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
                    : fallback;
     }
 
-    if (calleeName == "Viper.Collections.Map.Get" ||
-        calleeName == "Viper.Collections.Map.GetOr" ||
+    if (calleeName == "Viper.Collections.Map.Get" || calleeName == "Viper.Collections.Map.GetOr" ||
         calleeName == "Viper.Collections.OrderedMap.Get" ||
         calleeName == "Viper.Collections.TreeMap.Get" ||
         calleeName == "Viper.Collections.Trie.Get" ||
@@ -771,13 +762,11 @@ TypeRef Sema::refineRuntimeCallReturnType(const CallExpr *expr,
         calleeName == "Viper.Collections.TreeMap.Values" ||
         calleeName == "Viper.Collections.FrozenMap.Values" ||
         calleeName == "Viper.Collections.LruCache.Values") {
-        return mapReceiver && mapReceiver->valueType() ? asSeq(mapReceiver->valueType())
-                                                       : fallback;
+        return mapReceiver && mapReceiver->valueType() ? asSeq(mapReceiver->valueType()) : fallback;
     }
 
     if (calleeName == "Viper.Collections.Set.Items") {
-        return setReceiver && setReceiver->kind == TypeKindSem::Set &&
-                       setReceiver->elementType()
+        return setReceiver && setReceiver->kind == TypeKindSem::Set && setReceiver->elementType()
                    ? asSeq(setReceiver->elementType())
                    : fallback;
     }
@@ -1686,7 +1675,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     runtimeCallees_[expr] = fullMethodName;
                 }
                 if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    return refineRuntimeCallReturnType(expr, fullMethodName, sym->type->returnType());
+                    return refineRuntimeCallReturnType(
+                        expr, fullMethodName, sym->type->returnType());
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
@@ -1728,7 +1718,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                     runtimeCallees_[expr] = fullMethodName;
 
                 if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    return refineRuntimeCallReturnType(expr, fullMethodName, sym->type->returnType());
+                    return refineRuntimeCallReturnType(
+                        expr, fullMethodName, sym->type->returnType());
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
@@ -1822,7 +1813,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 // This is critical for chained method calls (e.g., bytes.Slice(x,y).ToStr())
                 // where the caller needs the return type to resolve the next method.
                 if (sym->type && sym->type->kind == TypeKindSem::Function) {
-                    return refineRuntimeCallReturnType(expr, fullMethodName, sym->type->returnType());
+                    return refineRuntimeCallReturnType(
+                        expr, fullMethodName, sym->type->returnType());
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }

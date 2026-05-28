@@ -515,7 +515,8 @@ static void menubar_paint(vg_widget_t *widget, void *canvas) {
 }
 
 // Paint overlay - called after all widgets are painted to draw popups on top
-/// @brief vtable paint_overlay — draws the open drop-down panel and its items on top of other widgets.
+/// @brief vtable paint_overlay — draws the open drop-down panel and its items on top of other
+/// widgets.
 static void menubar_paint_overlay(vg_widget_t *widget, void *canvas) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
     if (menubar->native_main_menu)
@@ -828,11 +829,10 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 float dropdown_height = 0.0f;
                 menubar_get_open_dropdown_bounds(
                     menubar, &dropdown_x, &dropdown_y, &dropdown_width, &dropdown_height, NULL);
-                bool inside_dropdown =
-                    event->mouse.screen_x >= dropdown_x &&
-                    event->mouse.screen_x < dropdown_x + dropdown_width &&
-                    event->mouse.screen_y >= dropdown_y &&
-                    event->mouse.screen_y < dropdown_y + dropdown_height;
+                bool inside_dropdown = event->mouse.screen_x >= dropdown_x &&
+                                       event->mouse.screen_x < dropdown_x + dropdown_width &&
+                                       event->mouse.screen_y >= dropdown_y &&
+                                       event->mouse.screen_y < dropdown_y + dropdown_height;
                 if (inside_dropdown) {
                     // Execute highlighted item
                     vg_menu_item_t *item = menubar->highlighted;

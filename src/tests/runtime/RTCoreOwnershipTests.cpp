@@ -11,14 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_object.h"
-#include "rt_heap.h"
-#include "rt_option.h"
-#include "rt_result.h"
-#include "rt_string.h"
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeOwnership.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "rt_heap.h"
+#include "rt_object.h"
+#include "rt_option.h"
+#include "rt_result.h"
+#include "rt_string.h"
 
 #include <assert.h>
 #include <stdint.h>

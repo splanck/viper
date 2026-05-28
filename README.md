@@ -27,8 +27,7 @@
 
 **In development:** v0.2.6 (unreleased) — See the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_6.md) for the full changelog.
 
-> **Working with the latest code:** The `master` branch is a live snapshot of current
-> development and is ahead of v0.2.5. To work with the most recent code:
+> **Working with the latest code:** `master` is a live snapshot ahead of v0.2.5.
 >
 > ```bash
 > git clone https://github.com/splanck/viper.git
@@ -86,10 +85,10 @@ zia> Say(Fmt.Int(2 + 3))
 | **[Viper IL](docs/il-guide.md)** | Typed, SSA-based intermediate representation |
 | **[Optimizer](docs/il-passes.md)** | 24-pass pipeline: GVN, LICM, SCCP, loop opts, inlining, devirtualization, ownership-pair removal, runtime fast paths |
 | **[VM](docs/vm.md)** | Bytecode interpreter with switch, table, and threaded dispatch |
-| **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators |
-| **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF/Mach-O/PE toolchain — zero external dependencies |
-| **[Runtime](docs/viperlib/README.md)** | 393 classes across 21 modules (graphics, 3D, GUI, game engine, networking, localization, and more) |
-| **[Language Servers](docs/zia-server.md)** | Dual-protocol (LSP + MCP) servers for Zia and BASIC |
+| **[AArch64](docs/codegen/aarch64.md) · [x86-64](docs/codegen/x86_64.md)** | Native code generators — Apple Silicon, Windows ARM64, and x86-64 (Windows / Linux); register coalescing, post-RA scheduling, NaN-safe FP |
+| **[Assembler](docs/codegen/native-assembler.md) · [Linker](docs/codegen/native-linker.md)** | Built-in ELF / Mach-O / PE toolchain with DWARF v5 and dynamic linking — zero external dependencies |
+| **[Runtime](docs/viperlib/README.md)** | Standard library spanning graphics, 3D, Game3D, GUI, game engine, networking, localization, and more |
+| **[Language Servers](docs/zia-server.md)** | Dual-protocol (LSP + MCP) servers for Zia and BASIC, powering ViperIDE (in development) and editor integrations |
 | **[Tools](docs/tools.md)** | Compiler drivers, verifier, disassembler, [REPL](docs/repl.md), packager |
 
 ### Why Viper?
@@ -98,32 +97,7 @@ zia> Say(Fmt.Int(2 + 3))
 - **IL-centric** — A readable, typed IR makes semantics explicit and frontends interchangeable
 - **Self-contained** — Built-in [assembler](docs/codegen/native-assembler.md) and [linker](docs/codegen/native-linker.md) with ELF/Mach-O/PE support and dynamic linking — zero external tool dependencies for native compilation
 - **Memory-safe surface** — [Zia](docs/zia-reference.md) and [BASIC](docs/basic-reference.md) expose no raw pointer types or pointer-signature runtime APIs; the typed, lifetime-validated surface is the only surface
-- **Full runtime** — 393 classes covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), [localization](docs/viperlib/localization/README.md), and more
-
----
-
-## Project Status
-
-Viper is in **active development**. All components are functional but evolving:
-
-| Component | Notes |
-|-----------|-------|
-| [Zia Frontend](docs/zia-reference.md) | Classes, structs, generics with constraints, enums, lambdas, pattern matching, default interface methods, `Result`/`Unit`, structured try/catch/finally + defer, declaration-order independence, modules |
-| [BASIC Frontend](docs/basic-reference.md) | Core language with OOP, enums, select-case, namespaces |
-| [Viper IL](docs/il-guide.md) | Stable core; module linker for cross-language interop |
-| [Optimizer](docs/il-passes.md) | 24-pass pipeline covering SSA, loop, inlining, devirtualization, ownership, and peephole opts |
-| [VM](docs/vm.md) | Switch / table / threaded dispatch with trap handling and worker VMs |
-| [AArch64 Backend](docs/codegen/aarch64.md) | Apple Silicon and Windows ARM64 with register coalescing and post-RA scheduling |
-| [x86-64 Backend](docs/codegen/x86_64.md) | Windows and Linux, IEEE-754 NaN-safe, 300+ stress tests |
-| [Native Toolchain](docs/codegen/native-assembler.md) | In-tree assembler and linker for ELF / Mach-O / PE with DWARF v5 and dynamic linking |
-| [Runtime](docs/viperlib/README.md) | 393 classes across 21 modules |
-| [3D Graphics](docs/graphics3d-guide.md) | 46 classes covering meshes, materials, lighting, skeletal animation, terrain, water, physics, asset import (glTF / FBX), and post-processing across Metal / D3D11 / OpenGL / software backends |
-| [Game Engine](docs/viperlib/game/README.md) | Collision, pathfinding, physics, tweening, particles, state machines, AI behaviors, level loading, asset embedding |
-| [GUI](docs/viperlib/gui/README.md) | 47 widgets for cross-platform desktop apps |
-| [IDE / Language Servers](docs/zia-server.md) | ViperIDE with diagnostics, hover, go-to-definition, IntelliSense, symbol search; LSP + MCP servers |
-| [Packaging](docs/tools.md) | `viper package` for apps, `viper install-package` for the toolchain |
-
-Expect breaking changes. The IL specification, APIs, and tool interfaces are not stable.
+- **Full runtime** — a broad standard library covering [graphics](docs/viperlib/graphics/README.md), [3D](docs/graphics3d-guide.md), [Game3D](docs/viperlib/graphics/game3d.md), [networking](docs/viperlib/network.md), [GUI](docs/viperlib/gui/README.md), [threading](docs/viperlib/threads.md), [localization](docs/viperlib/localization/README.md), and more
 
 ---
 
@@ -137,6 +111,7 @@ Expect breaking changes. The IL specification, APIs, and tool interfaces are not
 | [Crackman](examples/games/crackman/) | Maze chase game with ghost AI |
 | [XENOSCAPE](examples/games/xenoscape/) | Metroid-style sidescroller with bosses, abilities, and saves |
 | [3D Bowling](examples/games/3dbowling/) | Physics-driven 3D bowling with multi-mode camera |
+| [Game3D Showcase](examples/games/game3d-showcase/) | Open-world 3D runtime demo: terrain, water, skybox, PBR materials, post-FX |
 
 > **[See all demos →](examples/README.md)** — 6 applications, 17 games, API coverage audits, IL examples, and C++ embedding demos.
 
@@ -232,7 +207,7 @@ entry_0:
 
 ## Runtime Library
 
-All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 393 classes across 21 modules:
+All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 436 classes across 22 modules:
 
 | Module | Classes | Description |
 |--------|:-------:|-------------|
@@ -240,12 +215,13 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 393 cla
 | [Core](docs/viperlib/core.md) | 7 | Base types and string operations |
 | [Crypto](docs/viperlib/crypto.md) | 8 | Symmetric and asymmetric ciphers, hashing, key derivation, secure RNG |
 | [Data](docs/viperlib/README.md) | 3 | Structured data serialization |
-| [Game](docs/viperlib/game/README.md) | 25 | High-level 2D game systems, AI behaviors, level and scene management |
+| [Game](docs/viperlib/game/README.md) | 26 | High-level 2D game systems, AI behaviors, level and scene management |
 | [Game.Physics2D](docs/viperlib/game/physics.md) | 8 | 2D rigid-body dynamics and joints |
 | [Game.UI](docs/viperlib/game/ui.md) | 12 | In-game HUD widgets |
+| [Game3D](docs/viperlib/graphics/game3d.md) | 34 | Code-first 3D game layer: World3D loop, entities, character/camera controllers, prefabs, material/lighting/post-FX presets, input, audio, effects |
 | [Graphics](docs/viperlib/graphics/README.md) | 57 | 2D rendering, sprites, tilemaps, fonts, and the production 2D class set (render targets, textures, shaders, nine-slice, paths, debug draw) |
 | [Graphics3D](docs/graphics3d-guide.md) | 46 | Full 3D pipeline: meshes, materials, lighting, skeletal and node animation, physics, terrain, water, asset import |
-| [GUI](docs/viperlib/gui/README.md) | 47 | Cross-platform desktop widgets |
+| [GUI](docs/viperlib/gui/README.md) | 53 | Cross-platform desktop widgets |
 | [I/O](docs/viperlib/io) | 16 | Files, archives, compression, streaming |
 | [Input](docs/viperlib/input.md) | 6 | Keyboard, mouse, gamepad, and action mapping |
 | [Localization](docs/viperlib/localization/README.md) | 10 | BCP-47 locales, locale-aware number and date formatting, message bundles, CLDR-subset plural rules, list formatting, text direction |
@@ -253,7 +229,7 @@ All frontends share the **[Viper Runtime](docs/viperlib/README.md)** — 393 cla
 | [Memory](docs/memory-management.md) | 3 | Validated retain/release wrappers and GC controls |
 | [Network](docs/viperlib/network.md) | 27 | HTTP/1.1 and HTTP/2 client and server, WebSocket, TLS (in-tree X.509, RSA, ECDSA), UDP, SSE, connection pooling |
 | [Sound](docs/viperlib/audio.md) | 8 | Playback, synthesis, playlists, sound banks |
-| [Text](docs/viperlib/text) | 20 | Structured-text parsing, templates, regex |
+| [Text](docs/viperlib/text) | 22 | Structured-text parsing, templates, regex |
 | [Threads](docs/viperlib/threads.md) | 18 | Async primitives, channels, futures, pools |
 | [Time](docs/viperlib/time.md) | 8 | Clocks, dates, durations, timers |
 | [Utilities](docs/viperlib/README.md) | 23 | Formatting, logging, option / result helpers |

@@ -500,8 +500,7 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
     float bmp_width_f = ceilf(max_x - min_x) + (float)(padding * 2);
     float bmp_height_f = ceilf(max_y - min_y) + (float)(padding * 2);
     if (!isfinite(bmp_width_f) || !isfinite(bmp_height_f) ||
-        bmp_width_f > (float)MAX_GLYPH_BITMAP_DIM ||
-        bmp_height_f > (float)MAX_GLYPH_BITMAP_DIM) {
+        bmp_width_f > (float)MAX_GLYPH_BITMAP_DIM || bmp_height_f > (float)MAX_GLYPH_BITMAP_DIM) {
         free(glyph);
         free(points_x);
         free(points_y);
@@ -527,14 +526,13 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
     glyph->height = bmp_height;
     float bearing_x_f = floorf(min_x);
     float bearing_y_f = ceilf(max_y);
-    glyph->bearing_x =
-        (bearing_x_f > (float)INT_MAX) ? INT_MAX
-        : (bearing_x_f < (float)INT_MIN) ? INT_MIN
-                                         : (int)bearing_x_f;
-    glyph->bearing_y =
-        (bearing_y_f > (float)INT_MAX) ? INT_MAX
-        : (bearing_y_f < (float)INT_MIN) ? INT_MIN
-                                         : (int)bearing_y_f; // Top of glyph relative to baseline
+    glyph->bearing_x = (bearing_x_f > (float)INT_MAX)   ? INT_MAX
+                       : (bearing_x_f < (float)INT_MIN) ? INT_MIN
+                                                        : (int)bearing_x_f;
+    glyph->bearing_y = (bearing_y_f > (float)INT_MAX) ? INT_MAX
+                       : (bearing_y_f < (float)INT_MIN)
+                           ? INT_MIN
+                           : (int)bearing_y_f; // Top of glyph relative to baseline
 
     // Convert outline to polygon
     raster_point_t *polygon = malloc(MAX_POINTS * sizeof(raster_point_t));

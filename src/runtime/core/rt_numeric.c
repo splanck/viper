@@ -64,8 +64,7 @@ static int rt_is_digit_char(char ch) {
 /// @brief Determine whether a byte is ASCII whitespace.
 /// @details Keeps numeric parsing independent of the active process locale.
 static int rt_is_ascii_space(unsigned char ch) {
-    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
-           ch == '\v';
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v';
 }
 
 /// @brief Convert an ASCII letter to lowercase without invoking locale APIs.

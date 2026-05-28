@@ -31,11 +31,11 @@ namespace il::frontends::zia {
 /// @param warningSuppressions Optional per-file warning-suppression scanner (may be null).
 /// @param sourceProvider Optional callback returning in-memory source for a path (e.g. unsaved
 ///        editor buffers); when it returns a value the on-disk file is not read.
-ImportResolver::ImportResolver(il::support::DiagnosticEngine &diag,
-                               il::support::SourceManager &sm,
-                               WarningSuppressions *warningSuppressions,
-                               std::function<std::optional<std::string>(std::string_view)>
-                                   sourceProvider)
+ImportResolver::ImportResolver(
+    il::support::DiagnosticEngine &diag,
+    il::support::SourceManager &sm,
+    WarningSuppressions *warningSuppressions,
+    std::function<std::optional<std::string>(std::string_view)> sourceProvider)
     : diag_(diag), sm_(sm), warningSuppressions_(warningSuppressions),
       sourceProvider_(std::move(sourceProvider)) {}
 
@@ -100,6 +100,7 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
         std::uintmax_t size{0};
         std::string source;
     };
+
     static std::unordered_map<std::string, CachedSource> sourceCache;
     static std::mutex sourceCacheMutex;
 

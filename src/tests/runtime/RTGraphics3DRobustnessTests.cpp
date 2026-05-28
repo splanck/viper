@@ -18,8 +18,8 @@
 extern "C" {
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
-#include "rt_decal3d.h"
 #include "rt_collider3d.h"
+#include "rt_decal3d.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_instbatch3d.h"
 #include "rt_joints3d.h"
@@ -27,12 +27,13 @@ extern "C" {
 #include "rt_morphtarget3d.h"
 #include "rt_navmesh3d.h"
 #include "rt_object.h"
-#include "rt_path3d.h"
 #include "rt_particles3d.h"
+#include "rt_path3d.h"
 #include "rt_perlin.h"
-#include "rt_pixels.h"
 #include "rt_physics3d.h"
+#include "rt_pixels.h"
 #include "rt_quat.h"
+#include "rt_raycast3d.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_sprite3d.h"
@@ -43,6 +44,7 @@ extern "C" {
 #include "rt_vec3.h"
 #include "rt_vegetation3d.h"
 #include "rt_water3d.h"
+#include "vgfx3d_backend_utils.h"
 }
 
 #include <cassert>
@@ -368,11 +370,22 @@ static void test_camera_sanitizes_extreme_projection_and_basis_inputs() {
     double flen = std::sqrt(rt_vec3_x(forward) * rt_vec3_x(forward) +
                             rt_vec3_y(forward) * rt_vec3_y(forward) +
                             rt_vec3_z(forward) * rt_vec3_z(forward));
-    double rlen = std::sqrt(rt_vec3_x(right) * rt_vec3_x(right) +
-                            rt_vec3_y(right) * rt_vec3_y(right) +
-                            rt_vec3_z(right) * rt_vec3_z(right));
+    double rlen =
+        std::sqrt(rt_vec3_x(right) * rt_vec3_x(right) + rt_vec3_y(right) * rt_vec3_y(right) +
+                  rt_vec3_z(right) * rt_vec3_z(right));
     assert(std::isfinite(flen) && std::fabs(flen - 1.0) < 1e-6);
     assert(std::isfinite(rlen) && std::fabs(rlen - 1.0) < 1e-6);
+}
+
+static void test_camera_smooth_look_at_syncs_fps_angles() {
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *target = rt_vec3_new(10.0, 0.0, 0.0);
+
+    rt_camera3d_smooth_look_at(camera, target, 100.0, 1.0);
+
+    double yaw = rt_camera3d_get_yaw(camera);
+    assert(std::isfinite(yaw));
+    assert(yaw > 80.0 && yaw < 100.0);
 }
 
 static void test_generated_sphere_has_no_degenerate_triangles() {
@@ -380,8 +393,8 @@ static void test_generated_sphere_has_no_degenerate_triangles() {
     assert(mesh != nullptr);
     assert(rt_mesh3d_get_triangle_count(mesh) > 0);
     for (uint32_t i = 0; i + 2 < mesh->index_count; i += 3) {
-        assert(triangle_area_sq(mesh, mesh->indices[i], mesh->indices[i + 1], mesh->indices[i + 2]) >
-               1e-12);
+        assert(triangle_area_sq(
+                   mesh, mesh->indices[i], mesh->indices[i + 1], mesh->indices[i + 2]) > 1e-12);
     }
 }
 
@@ -522,17 +535,8 @@ static void test_material_import_texture_transform_clamps_float_uniforms() {
     auto *mat = static_cast<MaterialView *>(rt_material3d_new());
     assert(mat != nullptr);
 
-    rt_material3d_set_import_texture_slot(mat,
-                                          0,
-                                          0,
-                                          1.0e300,
-                                          -1.0e300,
-                                          1.0e300,
-                                          -1.0e300,
-                                          1.0e300,
-                                          0,
-                                          0,
-                                          0);
+    rt_material3d_set_import_texture_slot(
+        mat, 0, 0, 1.0e300, -1.0e300, 1.0e300, -1.0e300, 1.0e300, 0, 0, 0);
 
     for (int i = 0; i < 6; i++) {
         double value = mat->texture_slot_uv_transform[0][i];
@@ -573,9 +577,9 @@ static void test_terrain_heightmap_and_scale_sanitize_inputs() {
 
     assert(std::isfinite(rt_terrain3d_get_height_at(terrain, 1.0e300, -1.0e300)));
     void *normal = rt_terrain3d_get_normal_at(terrain, 1.0e300, -1.0e300);
-    double nlen = std::sqrt(rt_vec3_x(normal) * rt_vec3_x(normal) +
-                            rt_vec3_y(normal) * rt_vec3_y(normal) +
-                            rt_vec3_z(normal) * rt_vec3_z(normal));
+    double nlen =
+        std::sqrt(rt_vec3_x(normal) * rt_vec3_x(normal) + rt_vec3_y(normal) * rt_vec3_y(normal) +
+                  rt_vec3_z(normal) * rt_vec3_z(normal));
     assert(std::isfinite(nlen) && nlen > 0.9 && nlen < 1.1);
 }
 
@@ -760,8 +764,7 @@ static void test_morphtarget_sanitizes_nonfinite_weights_and_deltas() {
     rt_morphtarget3d_set_weight(mt, shape, std::numeric_limits<double>::quiet_NaN());
     assert(rt_morphtarget3d_get_weight(mt, shape) == 0.0);
 
-    rt_morphtarget3d_set_delta(
-        mt, shape, 0, std::numeric_limits<double>::infinity(), 2.0, -3.0);
+    rt_morphtarget3d_set_delta(mt, shape, 0, std::numeric_limits<double>::infinity(), 2.0, -3.0);
     const float *packed = rt_morphtarget3d_get_packed_deltas(mt);
     assert(packed != nullptr);
     assert(packed[0] == 0.0f);
@@ -829,16 +832,8 @@ static void test_mesh_bone_weights_are_validated_and_dirty_geometry() {
     rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
     uint32_t before = mesh->geometry_revision;
 
-    rt_mesh3d_set_bone_weights(mesh,
-                               0,
-                               1,
-                               2.0,
-                               999,
-                               3.0,
-                               3,
-                               -1.0,
-                               4,
-                               std::numeric_limits<double>::quiet_NaN());
+    rt_mesh3d_set_bone_weights(
+        mesh, 0, 1, 2.0, 999, 3.0, 3, -1.0, 4, std::numeric_limits<double>::quiet_NaN());
 
     assert(mesh->vertices[0].bone_indices[0] == 1);
     assert(mesh->vertices[0].bone_indices[1] == 0);
@@ -869,7 +864,7 @@ static void test_transform_and_instance_batch_sanitize_extreme_matrices() {
     void *scale = rt_transform3d_get_scale(xf);
     assert(std::isfinite(rt_vec3_x(pos)) && std::fabs(rt_vec3_x(pos)) <= 1000000000000.0);
     assert(std::isfinite(rt_vec3_y(pos)) && std::fabs(rt_vec3_y(pos)) <= 1000000000000.0);
-    assert(std::isfinite(rt_vec3_x(scale)) && std::fabs(rt_vec3_x(scale)) >= 1.0);
+    assert(rt_vec3_x(scale) == 0.0);
     assert(std::isfinite(rt_vec3_z(scale)) && std::fabs(rt_vec3_z(scale)) <= 1000000000000.0);
 
     void *matrix = rt_transform3d_get_matrix(xf);
@@ -908,6 +903,13 @@ static void test_transform_and_instance_batch_sanitize_extreme_matrices() {
     assert(batch->transforms[5] == 1.0f);
     assert(batch->transforms[10] == 1.0f);
     assert(batch->transforms[15] == 1.0f);
+
+    void *node = rt_scene_node3d_new();
+    rt_scene_node3d_set_scale(node, 0.0, -0.0, 2.0);
+    void *node_scale = rt_scene_node3d_get_scale(node);
+    assert(rt_vec3_x(node_scale) == 0.0);
+    assert(rt_vec3_y(node_scale) == 0.0);
+    assert(rt_vec3_z(node_scale) == 2.0);
 }
 
 static void test_camera_and_transform_reduce_extreme_motion_inputs() {
@@ -915,27 +917,15 @@ static void test_camera_and_transform_reduce_extreme_motion_inputs() {
     rt_camera3d_set_position(
         camera, rt_vec3_new(1.0e300, -1.0e300, std::numeric_limits<double>::infinity()));
     void *cam_pos = rt_camera3d_get_position(camera);
-    assert(std::isfinite(rt_vec3_x(cam_pos)) &&
-           std::fabs(rt_vec3_x(cam_pos)) <= 1000000000000.0);
-    assert(std::isfinite(rt_vec3_y(cam_pos)) &&
-           std::fabs(rt_vec3_y(cam_pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_x(cam_pos)) && std::fabs(rt_vec3_x(cam_pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_y(cam_pos)) && std::fabs(rt_vec3_y(cam_pos)) <= 1000000000000.0);
     assert(rt_vec3_z(cam_pos) == 0.0);
 
-    rt_camera3d_fps_update(camera,
-                           1.0e300,
-                           1.0e300,
-                           1.0e300,
-                           -1.0e300,
-                           1.0e300,
-                           1.0e300,
-                           1.0e300);
+    rt_camera3d_fps_update(camera, 1.0e300, 1.0e300, 1.0e300, -1.0e300, 1.0e300, 1.0e300, 1.0e300);
     cam_pos = rt_camera3d_get_position(camera);
-    assert(std::isfinite(rt_vec3_x(cam_pos)) &&
-           std::fabs(rt_vec3_x(cam_pos)) <= 1000000000000.0);
-    assert(std::isfinite(rt_vec3_y(cam_pos)) &&
-           std::fabs(rt_vec3_y(cam_pos)) <= 1000000000000.0);
-    assert(std::isfinite(rt_vec3_z(cam_pos)) &&
-           std::fabs(rt_vec3_z(cam_pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_x(cam_pos)) && std::fabs(rt_vec3_x(cam_pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_y(cam_pos)) && std::fabs(rt_vec3_y(cam_pos)) <= 1000000000000.0);
+    assert(std::isfinite(rt_vec3_z(cam_pos)) && std::fabs(rt_vec3_z(cam_pos)) <= 1000000000000.0);
 
     void *xf = rt_transform3d_new();
     rt_transform3d_set_euler(xf, 1.0e300, -1.0e300, 1.0e300);
@@ -1060,6 +1050,141 @@ static void test_physics_joints_deduplicate_and_raycast_is_true_ray() {
     assert(std::fabs(rt_physics_hit3d_get_distance(hit) - 4.5) < 1e-6);
 }
 
+static void test_raycast_math_and_backend_guards_are_strict() {
+    void *mn = rt_vec3_new(0.0, 0.0, 0.0);
+    void *mx = rt_vec3_new(1.0, 1.0, 1.0);
+    void *tangent_center = rt_vec3_new(2.0, 0.5, 0.5);
+    assert(rt_aabb3d_sphere_overlaps(mn, mx, tangent_center, 1.0) == 1);
+
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0, 0.0, 0.0);
+    void *far_min = rt_vec3_new(1.0e35, -1.0, -1.0);
+    void *far_max = rt_vec3_new(1.0e35 + 1.0e31, 1.0, 1.0);
+    double far_hit = rt_ray3d_intersect_aabb(origin, dir, far_min, far_max);
+    assert(std::isfinite(far_hit));
+    assert(far_hit > 1.0e34);
+
+    void *fake = rt_obj_new_i64(0, 8);
+    assert(rt_sphere3d_overlaps(fake, 1.0, tangent_center, 1.0) == 0);
+    void *closest = rt_segment3d_closest_point(fake, mn, mx);
+    assert(rt_vec3_x(closest) == 0.0 && rt_vec3_y(closest) == 0.0 && rt_vec3_z(closest) == 0.0);
+
+    uint8_t dst_rgba[4] = {7, 7, 7, 7};
+    uint16_t src16[4] = {0, 0, 0, 0};
+    float dst32[4] = {7.0f, 7.0f, 7.0f, 7.0f};
+    float src32[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    int32_t huge = std::numeric_limits<int32_t>::max();
+    int32_t huge_w = huge / 2 + 1;
+    vgfx3d_copy_linear_rgba16f_to_rgba8(dst_rgba, huge, huge_w, 1, src16, huge);
+    vgfx3d_copy_linear_rgba16f_to_rgba32f(dst32, huge, huge_w, 1, src16, huge);
+    vgfx3d_copy_linear_rgba32f_to_rgba8(dst_rgba, huge, huge_w, 1, src32, huge);
+    assert(dst_rgba[0] == 7);
+    assert(dst32[0] == 7.0f);
+
+    float matrix[16] = {1.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        1.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        1.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        0.0f,
+                        1.0f};
+    float inverse[16];
+    matrix[0] = std::numeric_limits<float>::quiet_NaN();
+    assert(vgfx3d_invert_matrix4(matrix, inverse) == -1);
+}
+
+static void test_physics_oriented_boxes_do_not_collide_as_aabbs() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *a = rt_body3d_new_aabb(1.0, 0.5, 0.1, 0.0);
+    void *b = rt_body3d_new_aabb(1.0, 0.5, 0.1, 1.0);
+    const double angle = 0.78539816339744830962;
+    void *q = rt_quat_new(0.0, std::sin(angle * 0.5), 0.0, std::cos(angle * 0.5));
+    const double sep = 0.25;
+
+    rt_body3d_set_orientation(a, q);
+    rt_body3d_set_orientation(b, q);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, std::sin(angle) * sep, 0.0, std::cos(angle) * sep);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_step(world, 0.016);
+
+    assert(rt_world3d_get_collision_count(world) == 0);
+}
+
+static void test_physics_raycast_uses_mesh_triangles_not_mesh_aabb() {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 5.0, 0.0, 0.0, -1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 10.0, 0.0, 5.0, 0.0, 0.0, -1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 10.0, 5.0, 0.0, 0.0, -1.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+
+    void *collider = rt_collider3d_new_mesh(mesh);
+    void *body = rt_body3d_new(0.0);
+    rt_body3d_set_collider(body, collider);
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    rt_world3d_add(world, body);
+
+    void *dir = rt_vec3_new(0.0, 0.0, 1.0);
+    assert(rt_world3d_raycast(world, rt_vec3_new(9.0, 9.0, 0.0), dir, 10.0, 0) == nullptr);
+
+    void *hit = rt_world3d_raycast(world, rt_vec3_new(1.0, 1.0, 0.0), dir, 10.0, 0);
+    assert(hit != nullptr);
+    assert(rt_physics_hit3d_get_body(hit) == body);
+    assert(std::fabs(rt_physics_hit3d_get_distance(hit) - 5.0) < 1e-6);
+}
+
+static void test_physics_mesh_box_collision_uses_triangles_not_mesh_aabb() {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 10.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 10.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+
+    void *mesh_body = rt_body3d_new(0.0);
+    rt_body3d_set_collider(mesh_body, rt_collider3d_new_mesh(mesh));
+    void *box = rt_body3d_new_aabb(0.1, 0.1, 0.1, 1.0);
+    rt_body3d_set_position(box, 9.0, 9.0, 0.0);
+
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    rt_world3d_add(world, mesh_body);
+    rt_world3d_add(world, box);
+    rt_world3d_step(world, 0.016);
+
+    assert(rt_world3d_get_collision_count(world) == 0);
+}
+
+static void test_physics_sweeps_handle_thin_geometry_and_long_capsules() {
+    void *sphere_world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *thin_wall = rt_body3d_new_aabb(0.002, 1.0, 1.0, 0.0);
+    rt_body3d_set_position(thin_wall, 1.007, 0.0, 0.0);
+    rt_world3d_add(sphere_world, thin_wall);
+    void *sphere_hit = rt_world3d_sweep_sphere(
+        sphere_world, rt_vec3_new(0.0, 0.0, 0.0), 0.002, rt_vec3_new(2.0, 0.0, 0.0), 0);
+    assert(sphere_hit != nullptr);
+
+    void *capsule_world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *small_obstacle = rt_body3d_new_sphere(0.05, 0.0);
+    rt_body3d_set_position(small_obstacle, 1.0, 0.83, 0.0);
+    rt_world3d_add(capsule_world, small_obstacle);
+    void *capsule_hit = rt_world3d_sweep_capsule(capsule_world,
+                                                 rt_vec3_new(0.0, 0.0, 0.0),
+                                                 rt_vec3_new(0.0, 10.0, 0.0),
+                                                 0.05,
+                                                 rt_vec3_new(2.0, 0.0, 0.0),
+                                                 0);
+    assert(capsule_hit != nullptr);
+}
+
 static void test_terrain_water_and_vegetation_zero_dt_paths() {
     void *terrain = rt_terrain3d_new(4, 4);
     void *perlin = rt_perlin_new(123);
@@ -1141,6 +1266,7 @@ int main() {
     test_mesh_apis_reject_wrong_class_handles();
     test_camera_center_ray_and_projection_layout();
     test_camera_sanitizes_extreme_projection_and_basis_inputs();
+    test_camera_smooth_look_at_syncs_fps_angles();
     test_generated_sphere_has_no_degenerate_triangles();
     test_generated_plane_faces_positive_y();
     test_obj_loader_handles_long_lines();
@@ -1170,6 +1296,11 @@ int main() {
     test_skeleton_bind_pose_and_animation_duration_sanitize();
     test_light_and_material_boolean_state_is_initialized();
     test_physics_joints_deduplicate_and_raycast_is_true_ray();
+    test_raycast_math_and_backend_guards_are_strict();
+    test_physics_oriented_boxes_do_not_collide_as_aabbs();
+    test_physics_raycast_uses_mesh_triangles_not_mesh_aabb();
+    test_physics_mesh_box_collision_uses_triangles_not_mesh_aabb();
+    test_physics_sweeps_handle_thin_geometry_and_long_capsules();
     test_terrain_water_and_vegetation_zero_dt_paths();
     test_particles_and_water_numeric_knobs_are_bounded();
     std::printf("RTGraphics3DRobustnessTests passed.\n");

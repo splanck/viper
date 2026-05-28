@@ -41,9 +41,9 @@
 #include "rt_object.h"
 #include "rt_trap.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
 
 /// Internal state machine implementation.
 struct rt_statemachine_impl {

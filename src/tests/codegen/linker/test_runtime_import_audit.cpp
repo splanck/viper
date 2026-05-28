@@ -127,11 +127,8 @@ TEST(LinkerRuntimeImportAudit, HostRuntimeArchivesUseKnownDynamicImports) {
                                     obj,
                                     objErr));
             ASSERT_TRUE(objErr.str().empty());
-            addObjectSymbols(obj,
-                             archive.path + "(" + member.name + ")",
-                             defined,
-                             undefined,
-                             undefinedOrigins);
+            addObjectSymbols(
+                obj, archive.path + "(" + member.name + ")", defined, undefined, undefinedOrigins);
         }
     }
 

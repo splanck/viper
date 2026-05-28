@@ -67,7 +67,10 @@ void appendOctalField(std::vector<uint8_t> &out,
     char field[16];
     if (width >= sizeof(field))
         throw std::runtime_error("cpio octal field width is too large");
-    std::snprintf(field, sizeof(field), "%0*llo", static_cast<int>(width),
+    std::snprintf(field,
+                  sizeof(field),
+                  "%0*llo",
+                  static_cast<int>(width),
                   static_cast<unsigned long long>(value));
     if (std::strlen(field) != width)
         throw std::runtime_error("cpio field value out of range for entry: " + path);

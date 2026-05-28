@@ -208,8 +208,19 @@ final EASE_OUT_BOUNCE = 18;
 // GAMEPLAY CONSTANTS
 // =============================================================================
 
-// DeltaTime
-final DT_MAX = 50;
+// Fixed simulation cadence. Gameplay code is intentionally tile/frame based:
+// movement speeds divide TILE_SIZE cleanly and timers are authored as 60 Hz
+// frame counts. The game loop accumulates real elapsed time and runs this
+// many 60 Hz simulation ticks per rendered frame as needed.
+final SIM_STEP_MS = 16;
+final MAX_SIM_STEPS = 5;
+final DT_MAX = SIM_STEP_MS * MAX_SIM_STEPS;
+
+// Rendering
+final LOW_SPEC_RENDERING = true;
+
+// Ghosts should never sit motionless outside of deliberate house waits.
+final GHOST_STUCK_TICKS = 48;
 
 // Gamepad
 final PAD_IDX = 0;

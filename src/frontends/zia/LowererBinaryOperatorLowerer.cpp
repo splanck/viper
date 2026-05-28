@@ -87,7 +87,8 @@ LowerResult BinaryOperatorLowerer::lowerBinary(BinaryExpr *expr) {
                     rightStr =
                         lowerer_.emitCallRet(Type(Type::Kind::Str), kStringFromNum, {right.value});
                 else if (rightType && rightType->kind == TypeKindSem::Boolean)
-                    rightStr = lowerer_.emitCallRet(Type(Type::Kind::Str), kTextFmtBool, {right.value});
+                    rightStr =
+                        lowerer_.emitCallRet(Type(Type::Kind::Str), kTextFmtBool, {right.value});
 
                 Value result = lowerer_.emitCallRet(
                     Type(Type::Kind::Str), kStringConcat, {left.value, rightStr});
@@ -104,7 +105,8 @@ LowerResult BinaryOperatorLowerer::lowerBinary(BinaryExpr *expr) {
                     leftStr =
                         lowerer_.emitCallRet(Type(Type::Kind::Str), kStringFromNum, {left.value});
                 else if (leftType && leftType->kind == TypeKindSem::Boolean)
-                    leftStr = lowerer_.emitCallRet(Type(Type::Kind::Str), kTextFmtBool, {left.value});
+                    leftStr =
+                        lowerer_.emitCallRet(Type(Type::Kind::Str), kTextFmtBool, {left.value});
 
                 Value result = lowerer_.emitCallRet(
                     Type(Type::Kind::Str), kStringConcat, {leftStr, right.value});
@@ -219,31 +221,30 @@ LowerResult BinaryOperatorLowerer::lowerBinary(BinaryExpr *expr) {
             break;
 
         case BinaryOp::And: {
-            Value lhsExt = (left.type.kind == Type::Kind::I1)
-                               ? lowerer_.emitUnary(Opcode::Zext1, Type(Type::Kind::I64),
-                                                    left.value)
-                               : left.value;
-            Value rhsExt = (right.type.kind == Type::Kind::I1)
-                               ? lowerer_.emitUnary(Opcode::Zext1, Type(Type::Kind::I64),
-                                                    right.value)
-                               : right.value;
-            Value andResult = lowerer_.emitBinary(Opcode::And, Type(Type::Kind::I64), lhsExt,
-                                                  rhsExt);
+            Value lhsExt =
+                (left.type.kind == Type::Kind::I1)
+                    ? lowerer_.emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value)
+                    : left.value;
+            Value rhsExt =
+                (right.type.kind == Type::Kind::I1)
+                    ? lowerer_.emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value)
+                    : right.value;
+            Value andResult =
+                lowerer_.emitBinary(Opcode::And, Type(Type::Kind::I64), lhsExt, rhsExt);
             Value truncResult = lowerer_.emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), andResult);
             return {truncResult, Type(Type::Kind::I1)};
         }
 
         case BinaryOp::Or: {
-            Value lhsExt = (left.type.kind == Type::Kind::I1)
-                               ? lowerer_.emitUnary(Opcode::Zext1, Type(Type::Kind::I64),
-                                                    left.value)
-                               : left.value;
-            Value rhsExt = (right.type.kind == Type::Kind::I1)
-                               ? lowerer_.emitUnary(Opcode::Zext1, Type(Type::Kind::I64),
-                                                    right.value)
-                               : right.value;
-            Value orResult =
-                lowerer_.emitBinary(Opcode::Or, Type(Type::Kind::I64), lhsExt, rhsExt);
+            Value lhsExt =
+                (left.type.kind == Type::Kind::I1)
+                    ? lowerer_.emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value)
+                    : left.value;
+            Value rhsExt =
+                (right.type.kind == Type::Kind::I1)
+                    ? lowerer_.emitUnary(Opcode::Zext1, Type(Type::Kind::I64), right.value)
+                    : right.value;
+            Value orResult = lowerer_.emitBinary(Opcode::Or, Type(Type::Kind::I64), lhsExt, rhsExt);
             Value truncResult = lowerer_.emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), orResult);
             return {truncResult, Type(Type::Kind::I1)};
         }

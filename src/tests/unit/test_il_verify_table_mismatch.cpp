@@ -282,8 +282,7 @@ int main() {
         module.functions.push_back(fn);
 
         const std::string message = verifyAndCaptureMessage(module);
-        assert(message.find("integer binary result must be i16, i32, or i64") !=
-               std::string::npos);
+        assert(message.find("integer binary result must be i16, i32, or i64") != std::string::npos);
     }
 
     {

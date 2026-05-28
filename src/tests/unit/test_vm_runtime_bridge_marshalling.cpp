@@ -32,8 +32,8 @@
 #include "vm/VMContext.hpp"
 #include <array>
 #include <cassert>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
 #include <initializer_list>
 #include <limits>
 #include <string>

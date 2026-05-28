@@ -148,8 +148,8 @@ std::size_t pruneAfterNoReturnCalls(MFunction &fn) {
 
             if (seenTerminator) {
                 std::ostringstream msg;
-                msg << "aarch64 peephole: non-terminator after terminator in function '"
-                    << fn.name << "', block '" << block.name << "'";
+                msg << "aarch64 peephole: non-terminator after terminator in function '" << fn.name
+                    << "', block '" << block.name << "'";
                 diags.error(msg.str());
                 return false;
             }
@@ -201,9 +201,8 @@ bool PeepholePass::run(AArch64Module &module, Diagnostics &diags) {
     int total = 0;
     MirStats stats{};
     for (auto &fn : module.mir) {
-        auto peepholeStats =
-            mode_ == Mode::Full ? runPeephole(fn, module.ti)
-                                : runPostSchedulePeephole(fn, module.ti);
+        auto peepholeStats = mode_ == Mode::Full ? runPeephole(fn, module.ti)
+                                                 : runPostSchedulePeephole(fn, module.ti);
         total += peepholeStats.total();
         total += static_cast<int>(pruneAfterNoReturnCalls(fn));
         pruneUnusedCalleeSaved(fn);
@@ -214,12 +213,11 @@ bool PeepholePass::run(AArch64Module &module, Diagnostics &diags) {
 
     if (codegenStatsEnabled())
         diags.warning("aarch64 peephole: " + std::to_string(total) + " transformations; mir " +
-                      std::to_string(stats.functions) + " funcs, " +
-                      std::to_string(stats.blocks) + " blocks, " +
-                      std::to_string(stats.instructions) + " inst, calls=" +
-                      std::to_string(stats.calls) + ", branches=" +
-                      std::to_string(stats.branches) + ", loads=" +
-                      std::to_string(stats.loads) + ", stores=" + std::to_string(stats.stores));
+                      std::to_string(stats.functions) + " funcs, " + std::to_string(stats.blocks) +
+                      " blocks, " + std::to_string(stats.instructions) + " inst, calls=" +
+                      std::to_string(stats.calls) + ", branches=" + std::to_string(stats.branches) +
+                      ", loads=" + std::to_string(stats.loads) +
+                      ", stores=" + std::to_string(stats.stores));
 
     return true;
 }

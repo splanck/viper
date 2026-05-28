@@ -198,8 +198,8 @@ static size_t ui_utf8_cp_len(const char *s, size_t len, size_t pos) {
         unsigned char c2 = pos + 2 < len ? (unsigned char)s[pos + 2] : 0;
         unsigned char c3 = pos + 3 < len ? (unsigned char)s[pos + 3] : 0;
         if (c >= 0xF0u && c <= 0xF4u && pos + 3 < len && ui_is_continuation(c1) &&
-            ui_is_continuation(c2) && ui_is_continuation(c3) &&
-            !(c == 0xF0u && c1 < 0x90u) && !(c == 0xF4u && c1 > 0x8Fu))
+            ui_is_continuation(c2) && ui_is_continuation(c3) && !(c == 0xF0u && c1 < 0x90u) &&
+            !(c == 0xF4u && c1 > 0x8Fu))
             return 4;
         return 1;
     }
@@ -423,8 +423,7 @@ void rt_uilabel_set_scale(void *ptr, int64_t scale) {
 
 /// @brief Show or hide the label; hidden labels are skipped during draw.
 void rt_uilabel_set_visible(void *ptr, int8_t visible) {
-    rt_uilabel_impl *label =
-        checked_label(ptr, "UILabel.SetVisible: expected Viper.Game.UI.Label");
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetVisible: expected Viper.Game.UI.Label");
     if (label)
         label->visible = visible ? 1 : 0;
 }
@@ -736,7 +735,8 @@ void rt_uipanel_set_color(void *ptr, int64_t bg_color, int64_t alpha) {
     panel->alpha = alpha < 0 ? 0 : (alpha > 255 ? 255 : alpha);
 }
 
-/// @brief Set the panel's border color and thickness. Color 0 or thickness <= 0 disables the border.
+/// @brief Set the panel's border color and thickness. Color 0 or thickness <= 0 disables the
+/// border.
 void rt_uipanel_set_border(void *ptr, int64_t color, int64_t thickness) {
     rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetBorder: expected Viper.Game.UI.Panel");
     if (!panel)
@@ -760,8 +760,7 @@ void rt_uipanel_set_corner_radius(void *ptr, int64_t radius) {
 
 /// @brief Show or hide the panel; hidden panels are skipped during draw.
 void rt_uipanel_set_visible(void *ptr, int8_t visible) {
-    rt_uipanel_impl *panel =
-        checked_panel(ptr, "UIPanel.SetVisible: expected Viper.Game.UI.Panel");
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetVisible: expected Viper.Game.UI.Panel");
     if (panel)
         panel->visible = visible ? 1 : 0;
 }
@@ -823,20 +822,10 @@ void rt_uipanel_draw(void *ptr, void *canvas) {
             if (radius > max_radius)
                 radius = max_radius;
             if (radius > 0)
-                rt_canvas_round_frame(canvas,
-                                      panel->x + t,
-                                      panel->y + t,
-                                      iw,
-                                      ih,
-                                      radius,
-                                      panel->border_color);
+                rt_canvas_round_frame(
+                    canvas, panel->x + t, panel->y + t, iw, ih, radius, panel->border_color);
             else
-                rt_canvas_frame(canvas,
-                                panel->x + t,
-                                panel->y + t,
-                                iw,
-                                ih,
-                                panel->border_color);
+                rt_canvas_frame(canvas, panel->x + t, panel->y + t, iw, ih, panel->border_color);
         }
     }
 }
@@ -1660,8 +1649,13 @@ static int64_t ui_text_prefix_width(const char *text, int64_t bytes, void *font,
 
 /// @brief Draw a text run at (x, y) using an optional bitmap font and scale,
 ///        falling back to the canvas default font when none is set.
-static void ui_draw_text_basic(
-    void *canvas, int64_t x, int64_t y, const char *text, void *font, int64_t scale, int64_t color) {
+static void ui_draw_text_basic(void *canvas,
+                               int64_t x,
+                               int64_t y,
+                               const char *text,
+                               void *font,
+                               int64_t scale,
+                               int64_t color) {
     if (!canvas || !text || text[0] == '\0')
         return;
     rt_string s = rt_const_cstr(text);
@@ -1680,12 +1674,7 @@ static void ui_draw_text_basic(
 
 /// @brief True if point lies within the axis-aligned widget rect (used for
 ///        hit-testing clicks/hovers).
-static int8_t ui_point_inside(int64_t x,
-                              int64_t y,
-                              int64_t w,
-                              int64_t h,
-                              int64_t px,
-                              int64_t py) {
+static int8_t ui_point_inside(int64_t x, int64_t y, int64_t w, int64_t h, int64_t px, int64_t py) {
     return ui_coord_inside(x, w, px) && ui_coord_inside(y, h, py);
 }
 
@@ -1822,8 +1811,7 @@ static int8_t textinput_insert_bytes(rt_uitextinput_impl *ti, const char *src, s
         return 0;
     int8_t changed = textinput_delete_selection(ti);
     int64_t current_cps = ui_codepoint_count_bytes(ti->text, ti->text_bytes);
-    int64_t remaining_cps =
-        ti->max_codepoints > 0 ? (ti->max_codepoints - current_cps) : INT64_MAX;
+    int64_t remaining_cps = ti->max_codepoints > 0 ? (ti->max_codepoints - current_cps) : INT64_MAX;
     if (remaining_cps <= 0)
         return changed;
     size_t accepted = 0;
@@ -2004,18 +1992,16 @@ int64_t rt_uitextinput_handle_key(void *ptr, int64_t key_code, int8_t shift_held
             return 1;
         if (ti->cursor_byte <= 0)
             return 0;
-        return textinput_delete_range(ti,
-                                      ui_prev_codepoint_byte(ti->text, ti->text_bytes, ti->cursor_byte),
-                                      ti->cursor_byte);
+        return textinput_delete_range(
+            ti, ui_prev_codepoint_byte(ti->text, ti->text_bytes, ti->cursor_byte), ti->cursor_byte);
     }
     if (key_code == UI_KEY_DELETE) {
         if (textinput_delete_selection(ti))
             return 1;
         if (ti->cursor_byte >= ti->text_bytes)
             return 0;
-        return textinput_delete_range(ti,
-                                      ti->cursor_byte,
-                                      ui_next_codepoint_byte(ti->text, ti->text_bytes, ti->cursor_byte));
+        return textinput_delete_range(
+            ti, ti->cursor_byte, ui_next_codepoint_byte(ti->text, ti->text_bytes, ti->cursor_byte));
     }
     if (key_code == UI_KEY_LEFT) {
         if (!shift_held && rt_uitextinput_has_selection(ptr)) {
@@ -2068,8 +2054,8 @@ int64_t rt_uitextinput_handle_text(void *ptr, rt_string typed_text) {
 }
 
 void rt_uitextinput_handle_mouse_click(void *ptr, int64_t mx, int64_t my, int8_t shift_held) {
-    rt_uitextinput_impl *ti = checked_textinput(
-        ptr, "UITextInput.HandleMouseClick: expected Viper.Game.UI.TextInput");
+    rt_uitextinput_impl *ti =
+        checked_textinput(ptr, "UITextInput.HandleMouseClick: expected Viper.Game.UI.TextInput");
     if (!ti || !ti->enabled || !ti->visible)
         return;
     ti->focused = ui_point_inside(ti->x, ti->y, ti->w, ti->h, mx, my);
@@ -2107,8 +2093,12 @@ void rt_uitextinput_draw(void *ptr, void *canvas) {
     if (!ti->visible)
         return;
     rt_canvas_box(canvas, ti->x, ti->y, ti->w, ti->h, ti->bg_color);
-    rt_canvas_frame(
-        canvas, ti->x, ti->y, ti->w, ti->h, ti->focused ? ti->border_color_focused : ti->border_color);
+    rt_canvas_frame(canvas,
+                    ti->x,
+                    ti->y,
+                    ti->w,
+                    ti->h,
+                    ti->focused ? ti->border_color_focused : ti->border_color);
 
     const char *draw_text = ti->text;
     char password[RT_UITEXTINPUT_MAX_BYTES];
@@ -2130,7 +2120,12 @@ void rt_uitextinput_draw(void *ptr, void *canvas) {
         int64_t sel_w = ui_text_prefix_width(ti->text + start, end - start, ti->font, 1);
         rt_canvas_box_alpha(canvas, x0, ti->y + 2, sel_w, ti->h - 4, ti->selection_color, 160);
     }
-    ui_draw_text_basic(canvas, ti->x + 4, ti->y + (ti->h - 8) / 2, draw_text, ti->font, 1,
+    ui_draw_text_basic(canvas,
+                       ti->x + 4,
+                       ti->y + (ti->h - 8) / 2,
+                       draw_text,
+                       ti->font,
+                       1,
                        ti->text_bytes == 0 && !ti->focused ? 0x909090 : ti->text_color);
     if (ti->focused && ti->enabled && ti->cursor_blink_ms > 0 &&
         ((ti->cursor_blink_elapsed / ti->cursor_blink_ms) % 2) == 0) {
@@ -2405,8 +2400,7 @@ void *rt_uitable_new(int64_t x, int64_t y, int64_t w, int64_t h) {
 }
 
 int64_t rt_uitable_add_column(void *ptr, rt_string title, int64_t width, int64_t align) {
-    rt_uitable_impl *table =
-        checked_table(ptr, "UITable.AddColumn: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.AddColumn: expected Viper.Game.UI.Table");
     if (!table)
         return -1;
     if (table->column_count >= RT_UITABLE_MAX_COLUMNS) {
@@ -2468,8 +2462,7 @@ rt_string rt_uitable_get_cell(void *ptr, int64_t row, int64_t col) {
 }
 
 void rt_uitable_remove_row(void *ptr, int64_t row) {
-    rt_uitable_impl *table =
-        checked_table(ptr, "UITable.RemoveRow: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.RemoveRow: expected Viper.Game.UI.Table");
     if (!table || row < 0 || row >= table->row_count)
         return;
     for (int64_t i = row; i < table->row_count - 1; i++)
@@ -2480,8 +2473,7 @@ void rt_uitable_remove_row(void *ptr, int64_t row) {
 }
 
 void rt_uitable_clear_rows(void *ptr) {
-    rt_uitable_impl *table =
-        checked_table(ptr, "UITable.ClearRows: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.ClearRows: expected Viper.Game.UI.Table");
     if (!table)
         return;
     memset(table->rows, 0, sizeof(table->rows));
@@ -2498,7 +2490,9 @@ int64_t rt_uitable_row_count(void *ptr) {
 /// @brief Comparator for sorting two rows by the table's active sort column
 ///        (numeric or lexicographic per the column's flag).
 /// @return <0, 0, >0 like strcmp (caller applies the descending flip).
-static int table_compare_rows(rt_uitable_impl *table, const rt_uitable_row_t *a, const rt_uitable_row_t *b) {
+static int table_compare_rows(rt_uitable_impl *table,
+                              const rt_uitable_row_t *a,
+                              const rt_uitable_row_t *b) {
     int64_t col = table->sort_column;
     if (col < 0 || col >= table->column_count)
         return 0;
@@ -2535,8 +2529,7 @@ void rt_uitable_sort_by(void *ptr, int64_t col, int8_t descending) {
 }
 
 int64_t rt_uitable_get_sort_column(void *ptr) {
-    rt_uitable_impl *table =
-        checked_table(ptr, "UITable.SortColumn: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.SortColumn: expected Viper.Game.UI.Table");
     return table ? table->sort_column : -1;
 }
 
@@ -2576,7 +2569,8 @@ int64_t rt_uitable_get_selected_row(void *ptr) {
 int64_t rt_uitable_handle_click(void *ptr, int64_t mx, int64_t my) {
     rt_uitable_impl *table =
         checked_table(ptr, "UITable.HandleClick: expected Viper.Game.UI.Table");
-    if (!table || !table->visible || !ui_point_inside(table->x, table->y, table->w, table->h, mx, my))
+    if (!table || !table->visible ||
+        !ui_point_inside(table->x, table->y, table->w, table->h, mx, my))
         return -1;
     table->last_header_click = -1;
     int64_t local_y = my - table->y;
@@ -2587,8 +2581,8 @@ int64_t rt_uitable_handle_click(void *ptr, int64_t mx, int64_t my) {
             if (ui_coord_inside(cx, cw, mx)) {
                 table->last_header_click = c;
                 if (table->columns[c].sortable)
-                    rt_uitable_sort_by(ptr, c,
-                                       table->sort_column == c ? !table->sort_descending : 0);
+                    rt_uitable_sort_by(
+                        ptr, c, table->sort_column == c ? !table->sort_descending : 0);
                 return -2;
             }
             cx = table_column_next_x(cx, cw);
@@ -2619,8 +2613,7 @@ void rt_uitable_handle_scroll(void *ptr, int64_t delta) {
 }
 
 void rt_uitable_handle_key(void *ptr, int64_t key_code) {
-    rt_uitable_impl *table =
-        checked_table(ptr, "UITable.HandleKey: expected Viper.Game.UI.Table");
+    rt_uitable_impl *table = checked_table(ptr, "UITable.HandleKey: expected Viper.Game.UI.Table");
     if (!table || table->row_count <= 0)
         return;
     if (table->selected_row < 0)
@@ -2662,7 +2655,12 @@ void rt_uitable_draw(void *ptr, void *canvas) {
         rt_canvas_box(canvas, table->x, y, table->w, table->header_height, table->header_bg_color);
         int64_t x = table->x;
         for (int64_t c = 0; c < table->column_count; c++) {
-            ui_draw_text_basic(canvas, x + 4, y + 4, table->columns[c].title, table->font, 1,
+            ui_draw_text_basic(canvas,
+                               x + 4,
+                               y + 4,
+                               table->columns[c].title,
+                               table->font,
+                               1,
                                table->header_text_color);
             x += table->columns[c].width;
         }
@@ -2674,13 +2672,19 @@ void rt_uitable_draw(void *ptr, void *canvas) {
         if (row >= table->row_count)
             break;
         int64_t ry = y + vr * table->row_height;
-        int64_t bg = row == table->selected_row
-                         ? table->selected_bg_color
-                         : (table->striped && (row & 1) ? table->row_alt_bg_color : table->row_bg_color);
+        int64_t bg =
+            row == table->selected_row
+                ? table->selected_bg_color
+                : (table->striped && (row & 1) ? table->row_alt_bg_color : table->row_bg_color);
         rt_canvas_box(canvas, table->x, ry, table->w, table->row_height, bg);
         int64_t x = table->x;
         for (int64_t c = 0; c < table->column_count; c++) {
-            ui_draw_text_basic(canvas, x + 4, ry + 4, table->rows[row].cells[c], table->font, 1,
+            ui_draw_text_basic(canvas,
+                               x + 4,
+                               ry + 4,
+                               table->rows[row].cells[c],
+                               table->font,
+                               1,
                                table->text_color);
             x += table->columns[c].width;
         }
@@ -2729,8 +2733,7 @@ static int64_t slider_clamp_value(rt_uislider_impl *s, int64_t value) {
         long double offset = (long double)value - (long double)s->min_value;
         if (offset < 0.0L)
             offset = 0.0L;
-        long double steps =
-            floorl((offset + (long double)s->step / 2.0L) / (long double)s->step);
+        long double steps = floorl((offset + (long double)s->step / 2.0L) / (long double)s->step);
         value = ui_ld_to_i64_sat((long double)s->min_value + steps * (long double)s->step);
         if (value > s->max_value)
             value = s->max_value;
@@ -3051,7 +3054,8 @@ int8_t rt_uidropdown_handle_key(void *ptr, int64_t key_code) {
 }
 
 void rt_uidropdown_draw(void *ptr, void *canvas) {
-    rt_uidropdown_impl *dd = checked_dropdown(ptr, "UIDropdown.Draw: expected Viper.Game.UI.Dropdown");
+    rt_uidropdown_impl *dd =
+        checked_dropdown(ptr, "UIDropdown.Draw: expected Viper.Game.UI.Dropdown");
     if (!dd || !canvas || !ui_validate_canvas(canvas, "UIDropdown.Draw: expected Canvas"))
         return;
     if (!dd->visible)
@@ -3059,20 +3063,32 @@ void rt_uidropdown_draw(void *ptr, void *canvas) {
     rt_canvas_box(canvas, dd->x, dd->y, dd->w, dd->h, dd->bg_color);
     rt_canvas_frame(canvas, dd->x, dd->y, dd->w, dd->h, dd->border_color);
     if (dd->selected >= 0 && dd->selected < dd->option_count)
-        ui_draw_text_basic(canvas, dd->x + 4, dd->y + 4, dd->options[dd->selected], dd->font, 1,
-                           dd->text_color);
-    rt_canvas_line(canvas, dd->x + dd->w - 14, dd->y + dd->h / 2 - 2, dd->x + dd->w - 8,
-                   dd->y + dd->h / 2 + 4, dd->caret_color);
-    rt_canvas_line(canvas, dd->x + dd->w - 8, dd->y + dd->h / 2 + 4, dd->x + dd->w - 2,
-                   dd->y + dd->h / 2 - 2, dd->caret_color);
+        ui_draw_text_basic(
+            canvas, dd->x + 4, dd->y + 4, dd->options[dd->selected], dd->font, 1, dd->text_color);
+    rt_canvas_line(canvas,
+                   dd->x + dd->w - 14,
+                   dd->y + dd->h / 2 - 2,
+                   dd->x + dd->w - 8,
+                   dd->y + dd->h / 2 + 4,
+                   dd->caret_color);
+    rt_canvas_line(canvas,
+                   dd->x + dd->w - 8,
+                   dd->y + dd->h / 2 + 4,
+                   dd->x + dd->w - 2,
+                   dd->y + dd->h / 2 - 2,
+                   dd->caret_color);
     if (dd->open) {
         for (int64_t i = 0; i < dd->option_count; i++) {
             int64_t y = ui_add_sat_i64(dd->y, dd->h * (i + 1));
-            rt_canvas_box(canvas, dd->x, y, dd->w, dd->h,
+            rt_canvas_box(canvas,
+                          dd->x,
+                          y,
+                          dd->w,
+                          dd->h,
                           i == dd->selected ? dd->selected_bg_color : dd->bg_color);
             rt_canvas_frame(canvas, dd->x, y, dd->w, dd->h, dd->border_color);
-            ui_draw_text_basic(canvas, dd->x + 4, y + 4, dd->options[i], dd->font, 1,
-                               dd->text_color);
+            ui_draw_text_basic(
+                canvas, dd->x + 4, y + 4, dd->options[i], dd->font, 1, dd->text_color);
         }
     }
 }
@@ -3144,9 +3160,9 @@ void rt_uitooltip_set_hover_delay_ms(void *ptr, int64_t ms) {
         t->hover_delay_ms = ms < 0 ? 0 : ms;
 }
 
-void rt_uitooltip_update(void *ptr, int64_t mx, int64_t my, int8_t hovered_target, int64_t delta_ms) {
-    rt_uitooltip_impl *t =
-        checked_tooltip(ptr, "UITooltip.Update: expected Viper.Game.UI.Tooltip");
+void rt_uitooltip_update(
+    void *ptr, int64_t mx, int64_t my, int8_t hovered_target, int64_t delta_ms) {
+    rt_uitooltip_impl *t = checked_tooltip(ptr, "UITooltip.Update: expected Viper.Game.UI.Tooltip");
     if (!t)
         return;
     t->target_x = mx;
@@ -3171,7 +3187,8 @@ void rt_uitooltip_draw(void *ptr, void *canvas) {
         return;
     if (!t->visible || t->text[0] == '\0')
         return;
-    int64_t w = ui_text_prefix_width(t->text, (int64_t)strlen(t->text), t->font, 1) + t->padding * 2;
+    int64_t w =
+        ui_text_prefix_width(t->text, (int64_t)strlen(t->text), t->font, 1) + t->padding * 2;
     int64_t h = 8 + t->padding * 2;
     int64_t cw = rt_canvas_width(canvas);
     int64_t ch = rt_canvas_height(canvas);
@@ -3390,7 +3407,8 @@ int64_t rt_uimodal_handle_key(void *ptr, int64_t key_code, int8_t shift_held) {
         if (m->selected_button < 0)
             m->selected_button = 0;
         else if (shift_held)
-            m->selected_button = m->selected_button <= 0 ? m->button_count - 1 : m->selected_button - 1;
+            m->selected_button =
+                m->selected_button <= 0 ? m->button_count - 1 : m->selected_button - 1;
         else
             m->selected_button = (m->selected_button + 1) % m->button_count;
         return -1;
@@ -3427,7 +3445,8 @@ int64_t rt_uimodal_handle_click(void *ptr, int64_t mx, int64_t my) {
     int64_t button_w = 88;
     int64_t button_h = 24;
     int64_t gap = 8;
-    int64_t total_w = m->button_count * button_w + (m->button_count > 0 ? (m->button_count - 1) * gap : 0);
+    int64_t total_w =
+        m->button_count * button_w + (m->button_count > 0 ? (m->button_count - 1) * gap : 0);
     int64_t bx = m->x + m->w - total_w - 12;
     int64_t by = m->y + m->h - button_h - 12;
     for (int64_t i = 0; i < m->button_count; i++) {
@@ -3448,14 +3467,19 @@ void rt_uimodal_draw(void *ptr, void *canvas) {
         return;
     if (!m->open || !m->visible)
         return;
-    rt_canvas_box_alpha(canvas, 0, 0, rt_canvas_width(canvas), rt_canvas_height(canvas), m->overlay_color,
+    rt_canvas_box_alpha(canvas,
+                        0,
+                        0,
+                        rt_canvas_width(canvas),
+                        rt_canvas_height(canvas),
+                        m->overlay_color,
                         m->overlay_alpha);
     rt_canvas_box(canvas, m->x, m->y, m->w, m->h, m->bg_color);
     rt_canvas_frame(canvas, m->x, m->y, m->w, m->h, 0x707070);
     rt_canvas_box(canvas, m->x, m->y, m->w, 28, m->title_bar_color);
     ui_draw_text_basic(canvas, m->x + 8, m->y + 8, m->title, m->font, 1, m->title_text_color);
-    ui_draw_text_basic(canvas, m->x + 12, m->y + 40, m->content_text, m->font, 1,
-                       m->content_text_color);
+    ui_draw_text_basic(
+        canvas, m->x + 12, m->y + 40, m->content_text, m->font, 1, m->content_text_color);
     for (int64_t i = 0; i < m->child_count; i++) {
         void *child = m->children[i];
         if (!child)
@@ -3475,13 +3499,14 @@ void rt_uimodal_draw(void *ptr, void *canvas) {
     int64_t button_w = 88;
     int64_t button_h = 24;
     int64_t gap = 8;
-    int64_t total_w = m->button_count * button_w + (m->button_count > 0 ? (m->button_count - 1) * gap : 0);
+    int64_t total_w =
+        m->button_count * button_w + (m->button_count > 0 ? (m->button_count - 1) * gap : 0);
     int64_t bx = m->x + m->w - total_w - 12;
     int64_t by = m->y + m->h - button_h - 12;
     for (int64_t i = 0; i < m->button_count; i++) {
         int64_t x = bx + i * (button_w + gap);
-        rt_canvas_box(canvas, x, by, button_w, button_h,
-                      i == m->selected_button ? 0x405A86 : 0x303030);
+        rt_canvas_box(
+            canvas, x, by, button_w, button_h, i == m->selected_button ? 0x405A86 : 0x303030);
         rt_canvas_frame(canvas, x, by, button_w, button_h, 0x808080);
         ui_draw_text_basic(canvas, x + 8, by + 8, m->buttons[i].text, m->font, 1, 0xFFFFFF);
     }

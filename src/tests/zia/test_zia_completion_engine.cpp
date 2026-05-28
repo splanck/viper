@@ -36,8 +36,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
-#include <utility>
 #include <string>
+#include <utility>
 
 using namespace il::frontends::zia;
 
@@ -68,6 +68,14 @@ static int indexOfLabel(const std::vector<CompletionItem> &items, const std::str
         if (items[i].label == label)
             return static_cast<int>(i);
     return -1;
+}
+
+static const CompletionItem *findItem(const std::vector<CompletionItem> &items,
+                                      const std::string &label) {
+    for (const auto &item : items)
+        if (item.label == label)
+            return &item;
+    return nullptr;
 }
 
 static void writeFile(const fs::path &path, const std::string &contents) {
@@ -129,6 +137,25 @@ TEST(CompletionEngine, PrefixFiltering_NarrowsResults) {
     EXPECT_TRUE(hasLabel(items, "func"));
     EXPECT_FALSE(hasLabel(items, "var"));
     EXPECT_FALSE(hasLabel(items, "if"));
+}
+
+TEST(CompletionEngine, CtrlSpace_ReturnsDeclarationDocumentation) {
+    const std::string source = R"(module Test;
+
+/// Greets users.
+/// Supports labels.
+func greetDocs() -> Integer { return 1; }
+
+func main() {
+    gre
+}
+)";
+    CompletionEngine engine;
+    auto [line, col] = lineColAfter(source, "    gre");
+    auto items = engine.complete(source, line, col, "<test>", 0);
+    const CompletionItem *item = findItem(items, "greetDocs");
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->documentation, "Greets users.\nSupports labels.");
 }
 
 // ---------------------------------------------------------------------------
@@ -313,11 +340,33 @@ func compute() -> Number {    var r = Math.Sq
     EXPECT_FALSE(items.empty());
 }
 
+TEST(CompletionEngine, RuntimeMemberCompletionCarriesDocumentation) {
+    const std::string source = R"(
+module Test;
+
+bind Viper.Terminal as Terminal;
+
+func main() {
+    Terminal.Sa
+}
+)";
+    CompletionEngine engine;
+    auto [line, col] = lineColAfter(source, "Terminal.Sa");
+    auto items = engine.complete(source, line, col, "<test>", 0);
+    const CompletionItem *say = findItem(items, "Say");
+    ASSERT_NE(say, nullptr);
+    EXPECT_TRUE(say->documentation.find("Writes text followed by a newline") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Runtime method Viper.Terminal.Say.") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Signature: Say(s: String) -> Void") != std::string::npos);
+    EXPECT_TRUE(say->documentation.find("Target: Viper.Terminal.Say") != std::string::npos);
+}
+
 TEST(CompletionEngine, BoundFileModuleNameAndExports) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_completion_bound_file_modules";
     fs::remove_all(tempRoot);
 
     writeFile(tempRoot / "dep.zia", R"(module Dep;
+/// Exported helper docs.
 expose func exportedThing() -> Integer { return 1; }
 func hiddenThing() -> Integer { return 0; }
 )");
@@ -332,13 +381,18 @@ func main() {
 
     CompletionEngine engine;
     auto [moduleLine, moduleCol] = lineColAfter(source, "var value = De");
-    auto modules = engine.complete(source, moduleLine, moduleCol, (tempRoot / "main.zia").string(), 0);
+    auto modules =
+        engine.complete(source, moduleLine, moduleCol, (tempRoot / "main.zia").string(), 0);
     EXPECT_TRUE(hasKind(modules, "Dep", CompletionKind::Module));
 
     auto [memberLine, memberCol] = lineColAfter(source, "Dep.exp");
-    auto members = engine.complete(source, memberLine, memberCol, (tempRoot / "main.zia").string(), 0);
+    auto members =
+        engine.complete(source, memberLine, memberCol, (tempRoot / "main.zia").string(), 0);
     EXPECT_TRUE(hasKind(members, "exportedThing", CompletionKind::Function));
     EXPECT_FALSE(hasLabel(members, "hiddenThing"));
+    const CompletionItem *exported = findItem(members, "exportedThing");
+    ASSERT_NE(exported, nullptr);
+    EXPECT_EQ(exported->documentation, "Exported helper docs.");
 }
 
 TEST(CompletionEngine, CtrlSpace_RanksVisibleLocalsAndParametersBeforeGlobals) {
@@ -387,11 +441,31 @@ func main() {
     EXPECT_TRUE(help.find("parameter 1 of 2") != std::string::npos);
 }
 
+TEST(CompletionEngine, SignatureHelp_CurrentSourceOverloadsIncludesAll) {
+    const std::string source = R"(
+module Test;
+
+func mix(value: Integer) -> Integer { return value; }
+func mix(text: String) -> String { return text; }
+
+func main() {
+    mix(1);
+}
+)";
+    auto [line, col] = lineColAfter(source, "mix(");
+    CompletionEngine engine;
+    std::string help = engine.signatureHelp(source, line, col, "<test>");
+
+    EXPECT_TRUE(help.find("mix(value: Integer) -> Integer") != std::string::npos);
+    EXPECT_TRUE(help.find("mix(text: String) -> String") != std::string::npos);
+}
+
 TEST(CompletionEngine, SignatureHelp_BoundFileModuleExportUsesParameterNames) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_signature_bound_file_modules";
     fs::remove_all(tempRoot);
 
     writeFile(tempRoot / "dep.zia", R"(module Dep;
+/// Exported helper docs.
 expose func exportedThing(count: Integer, label: String) -> Integer { return count; }
 )");
 
@@ -409,6 +483,7 @@ func main() {
 
     EXPECT_TRUE(help.find("exportedThing(count: Integer, label: String) -> Integer") !=
                 std::string::npos);
+    EXPECT_TRUE(help.find("Exported helper docs.") != std::string::npos);
 }
 
 TEST(CompletionEngine, SignatureHelp_RuntimeAliasMethod) {
@@ -425,7 +500,9 @@ func main() {
     CompletionEngine engine;
     std::string help = engine.signatureHelp(source, line, col, "<test>");
 
-    EXPECT_TRUE(help.find("Say(arg1: String) -> Void") != std::string::npos);
+    EXPECT_TRUE(help.find("Say(s: String) -> Void") != std::string::npos);
+    EXPECT_TRUE(help.find("Writes text followed by a newline") != std::string::npos);
+    EXPECT_TRUE(help.find("Runtime method Viper.Terminal.Say.") != std::string::npos);
 }
 
 } // anonymous namespace

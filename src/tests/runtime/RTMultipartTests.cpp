@@ -63,15 +63,13 @@ static void test_parser_handles_quoted_and_escaped_params() {
         "--abc123--\r\n";
 
     void *body = rt_bytes_from_str(rt_const_cstr(raw_body));
-    void *mp =
-        rt_multipart_parse(rt_const_cstr("multipart/form-data; charset=utf-8; BOUNDARY=\"abc123\""),
-                           body);
+    void *mp = rt_multipart_parse(
+        rt_const_cstr("multipart/form-data; charset=utf-8; BOUNDARY=\"abc123\""), body);
 
     test_result("Multipart count matches", rt_multipart_count(mp) == 2);
 
     rt_string field = rt_multipart_get_field(mp, rt_const_cstr("field\"name"));
-    test_result("Escaped quoted field name parsed",
-                strcmp(rt_string_cstr(field), "value") == 0);
+    test_result("Escaped quoted field name parsed", strcmp(rt_string_cstr(field), "value") == 0);
     rt_string_unref(field);
 
     void *file = rt_multipart_get_file(mp, rt_const_cstr("file\"field"));
@@ -84,12 +82,11 @@ static void test_parser_handles_quoted_and_escaped_params() {
 static void test_parser_handles_bare_token_params() {
     printf("\nTesting Multipart parser bare token parameters:\n");
 
-    const char *raw_body =
-        "--plain\r\n"
-        "Content-Disposition: form-data; name=plain\r\n"
-        "\r\n"
-        "ok\r\n"
-        "--plain--\r\n";
+    const char *raw_body = "--plain\r\n"
+                           "Content-Disposition: form-data; name=plain\r\n"
+                           "\r\n"
+                           "ok\r\n"
+                           "--plain--\r\n";
 
     void *body = rt_bytes_from_str(rt_const_cstr(raw_body));
     void *mp = rt_multipart_parse(rt_const_cstr("multipart/form-data; boundary=plain"), body);

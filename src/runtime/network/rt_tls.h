@@ -40,15 +40,15 @@ extern "C" {
 
 /// @brief TLS status / error codes returned by low-level entry points.
 typedef enum {
-    RT_TLS_OK = 0,                  ///< Operation completed successfully.
-    RT_TLS_ERROR = -1,              ///< Generic / unclassified TLS error.
-    RT_TLS_ERROR_SOCKET = -2,       ///< Underlying socket read/write or close failed.
-    RT_TLS_ERROR_HANDSHAKE = -3,    ///< TLS 1.3 handshake violated the protocol.
-    RT_TLS_ERROR_CERTIFICATE = -4,  ///< Peer certificate failed chain or name verification.
-    RT_TLS_ERROR_CLOSED = -5,       ///< Peer issued a clean close_notify.
-    RT_TLS_ERROR_TIMEOUT = -6,      ///< Configured handshake / I/O deadline expired.
-    RT_TLS_ERROR_MEMORY = -7,       ///< Allocation failed inside the TLS state machine.
-    RT_TLS_ERROR_INVALID_ARG = -8,  ///< Caller supplied NULL or out-of-range arguments.
+    RT_TLS_OK = 0,                 ///< Operation completed successfully.
+    RT_TLS_ERROR = -1,             ///< Generic / unclassified TLS error.
+    RT_TLS_ERROR_SOCKET = -2,      ///< Underlying socket read/write or close failed.
+    RT_TLS_ERROR_HANDSHAKE = -3,   ///< TLS 1.3 handshake violated the protocol.
+    RT_TLS_ERROR_CERTIFICATE = -4, ///< Peer certificate failed chain or name verification.
+    RT_TLS_ERROR_CLOSED = -5,      ///< Peer issued a clean close_notify.
+    RT_TLS_ERROR_TIMEOUT = -6,     ///< Configured handshake / I/O deadline expired.
+    RT_TLS_ERROR_MEMORY = -7,      ///< Allocation failed inside the TLS state machine.
+    RT_TLS_ERROR_INVALID_ARG = -8, ///< Caller supplied NULL or out-of-range arguments.
 } rt_tls_status_t;
 
 /// @brief Opaque TLS session handle.
@@ -56,11 +56,12 @@ typedef struct rt_tls_session rt_tls_session_t;
 
 /// @brief TLS configuration.
 typedef struct rt_tls_config {
-    const char *hostname;       ///< Server hostname for cert verification and DNS-name SNI.
-    const char *alpn_protocol;  ///< Optional comma-separated ALPN preference list (e.g. "h2,http/1.1").
-    const char *ca_file;        ///< Optional PEM bundle override for trust anchors.
-    int verify_cert;            ///< 1 = verify certificate (default), 0 = skip verification.
-    int timeout_ms;             ///< Connection timeout in ms (0 = default 30 s).
+    const char *hostname; ///< Server hostname for cert verification and DNS-name SNI.
+    const char
+        *alpn_protocol;  ///< Optional comma-separated ALPN preference list (e.g. "h2,http/1.1").
+    const char *ca_file; ///< Optional PEM bundle override for trust anchors.
+    int verify_cert;     ///< 1 = verify certificate (default), 0 = skip verification.
+    int timeout_ms;      ///< Connection timeout in ms (0 = default 30 s).
 } rt_tls_config_t;
 
 /// @brief Initialize default TLS configuration.

@@ -344,8 +344,7 @@ int main() {
         std::ostringstream coalesceErr;
         CoffWriter coalesceWriter(ObjArch::X86_64);
         const std::string coalescePath = "build/test-out/coff_single_external_coalesce.obj";
-        ASSERT(coalesceWriter.write(
-            coalescePath, coalesceText, coalesceRodata, coalesceErr));
+        ASSERT(coalesceWriter.write(coalescePath, coalesceText, coalesceRodata, coalesceErr));
 
         ObjFile coalesceObj;
         ASSERT(readObjFile(coalescePath, coalesceObj, coalesceErr));
@@ -391,10 +390,8 @@ int main() {
 
         std::ostringstream ambigErr;
         CoffWriter ambigWriter(ObjArch::X86_64);
-        CHECK(!ambigWriter.write("build/test-out/coff_ambiguous_cross.obj",
-                                 ambigText,
-                                 ambigRodata,
-                                 ambigErr));
+        CHECK(!ambigWriter.write(
+            "build/test-out/coff_ambiguous_cross.obj", ambigText, ambigRodata, ambigErr));
         CHECK(ambigErr.str().find("ambiguous cross-section target") != std::string::npos);
     }
 
@@ -409,8 +406,7 @@ int main() {
         std::ostringstream armAddendErr;
         CoffWriter armAddendWriter(ObjArch::AArch64);
         const std::string armAddendPath = "build/test-out/coff_arm64_branch_addend.obj";
-        ASSERT(armAddendWriter.write(
-            armAddendPath, armAddendText, armAddendRodata, armAddendErr));
+        ASSERT(armAddendWriter.write(armAddendPath, armAddendText, armAddendRodata, armAddendErr));
 
         ObjFile armAddendObj;
         ASSERT(readObjFile(armAddendPath, armAddendObj, armAddendErr));
@@ -492,8 +488,7 @@ int main() {
         std::ostringstream collisionErr;
         CoffWriter collisionWriter(ObjArch::X86_64);
         const std::string collisionPath = "build/test-out/coff_external_local_collision.obj";
-        ASSERT(collisionWriter.write(
-            collisionPath, collisionText, collisionRodata, collisionErr));
+        ASSERT(collisionWriter.write(collisionPath, collisionText, collisionRodata, collisionErr));
 
         ObjFile collisionObj;
         ASSERT(readObjFile(collisionPath, collisionObj, collisionErr));
@@ -516,16 +511,13 @@ int main() {
         badRel32Text.addRelocationAt(dispOff,
                                      RelocKind::Branch32,
                                      target,
-                                     static_cast<int64_t>(
-                                         std::numeric_limits<int32_t>::max()) +
+                                     static_cast<int64_t>(std::numeric_limits<int32_t>::max()) +
                                          16);
 
         std::ostringstream badRel32Err;
         CoffWriter badRel32Writer(ObjArch::X86_64);
-        CHECK(!badRel32Writer.write("build/test-out/coff_bad_rel32_addend.obj",
-                                    badRel32Text,
-                                    badRel32Rodata,
-                                    badRel32Err));
+        CHECK(!badRel32Writer.write(
+            "build/test-out/coff_bad_rel32_addend.obj", badRel32Text, badRel32Rodata, badRel32Err));
         CHECK(badRel32Err.str().find("outside signed 32-bit range") != std::string::npos);
     }
 
@@ -550,8 +542,8 @@ int main() {
     {
         CodeSection badUnwindText;
         CodeSection badUnwindRodata;
-        const uint32_t fn = badUnwindText.defineSymbol(
-            "bad_unwind", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t fn =
+            badUnwindText.defineSymbol("bad_unwind", SymbolBinding::Global, SymbolSection::Text);
         badUnwindText.emit8(0xC3);
 
         Win64UnwindEntry badUnwind{};
@@ -563,10 +555,8 @@ int main() {
 
         std::ostringstream unwindErr;
         CoffWriter unwindWriter(ObjArch::X86_64);
-        CHECK(!unwindWriter.write("build/test-out/coff_bad_unwind.obj",
-                                  badUnwindText,
-                                  badUnwindRodata,
-                                  unwindErr));
+        CHECK(!unwindWriter.write(
+            "build/test-out/coff_bad_unwind.obj", badUnwindText, badUnwindRodata, unwindErr));
         CHECK(unwindErr.str().find("8-byte aligned") != std::string::npos);
     }
 
@@ -584,10 +574,8 @@ int main() {
 
         std::ostringstream unwindErr;
         CoffWriter unwindWriter(ObjArch::X86_64);
-        CHECK(!unwindWriter.write("build/test-out/coff_bad_unwind_index.obj",
-                                  badUnwindText,
-                                  badUnwindRodata,
-                                  unwindErr));
+        CHECK(!unwindWriter.write(
+            "build/test-out/coff_bad_unwind_index.obj", badUnwindText, badUnwindRodata, unwindErr));
         CHECK(unwindErr.str().find("unknown symbol index") != std::string::npos);
     }
 
@@ -687,9 +675,9 @@ int main() {
 
     {
         std::vector<uint8_t> commonObj(20 + 18 + 4, 0);
-        writeLE16(commonObj, 0, 0x8664);      // IMAGE_FILE_MACHINE_AMD64
-        writeLE32(commonObj, 8, 20);          // symbol table immediately after header
-        writeLE32(commonObj, 12, 1);          // one symbol
+        writeLE16(commonObj, 0, 0x8664); // IMAGE_FILE_MACHINE_AMD64
+        writeLE32(commonObj, 8, 20);     // symbol table immediately after header
+        writeLE32(commonObj, 12, 1);     // one symbol
         const size_t symOff = 20;
         const char name[] = "common";
         for (size_t i = 0; i < sizeof(name) - 1; ++i)
@@ -729,7 +717,7 @@ int main() {
         writeLE16(badLongName, 2, 1);      // one section
         const size_t secOff = 20;
         badLongName[secOff + 0] = '/';
-        badLongName[secOff + 1] = '4'; // References a missing COFF string table.
+        badLongName[secOff + 1] = '4';                   // References a missing COFF string table.
         writeLE32(badLongName, secOff + 36, 0x40000040); // initialized readable data
 
         ObjFile badLongObj;

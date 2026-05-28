@@ -264,33 +264,34 @@ class BowlingMenu {
     expose func drawTitle(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
         var pulse = 180 + (titlePulse % 60);
         var titleColor = (pulse << 16) + (220 << 8) + 140;
+        var panelW = 354;
+        var panelH = 300;
+        var panelX = screenW - panelW - 48;
+        var panelY = 58;
+        if (panelX < 34) { panelX = 34; }
+        if (panelY + panelH > screenH - 32) { panelY = screenH - panelH - 32; }
+        if (panelY < 24) { panelY = 24; }
 
-        Canvas3D.DrawRect2D(canvas, 34, 34, screenW - 68, 132, config.HUD_COLOR_MENU_CARD);
-        Canvas3D.DrawRect2D(canvas, 58, 58, screenW - 116, 4, config.HUD_COLOR_MENU_ACCENT);
-        Canvas3D.DrawRect2D(canvas, screenW - 334, 198, 254, 202, config.HUD_COLOR_MENU_BG);
-        Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, screenH - 86, 376, 52, config.HUD_COLOR_MENU_BG);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 88, 76, "3D BOWLING", titleColor);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 132, 104,
-            "Built entirely on Viper's native 3D runtime", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 88, 132,
+        Canvas3D.DrawRect2D(canvas, panelX, panelY, panelW, panelH, config.HUD_COLOR_MENU_BG);
+        Canvas3D.DrawRect2D(canvas, panelX, panelY, panelW, 38, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawRect2D(canvas, panelX + 16, panelY + 36, panelW - 32, 2, config.HUD_COLOR_MENU_ACCENT);
+        Canvas3D.DrawText2D(canvas, panelX + 28, panelY + 12, "3D BOWLING", titleColor);
+        Canvas3D.DrawText2D(canvas, panelX + 28, panelY + 56,
             "Oil: " + getOilPatternName() + "   Quality: " + getQualityName(), config.HUD_COLOR_CYAN);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 87, 156,
+        Canvas3D.DrawText2D(canvas, panelX + 28, panelY + 80,
             "Best: " + toString(bestScore) + "   Games: " + toString(gamesPlayed), config.HUD_COLOR_GOLD);
 
-        drawMenuList(canvas, titleItems, titleMenu.get_Selected(), screenW - 300, 222, 220, 42);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 150, screenH - 58,
-            "Arrows / gamepad D-pad = navigate, Enter / A = confirm", config.HUD_COLOR_GRAY);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 130, screenH - 34,
-            "During play: hold Space / A to charge, A-D to aim, Q-E to shape", config.HUD_COLOR_GRAY);
+        drawMenuList(canvas, titleItems, titleMenu.get_Selected(), panelX + 28, panelY + 118, panelW - 56, 42);
     }
 
     /// @brief Render the pause modal (resume / restart / main menu).
     expose func drawPause(canvas: Canvas3D, screenW: Integer, screenH: Integer) {
-        Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, 108, 376, 232, config.HUD_COLOR_MENU_BG);
-        Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, 108, 376, 34, config.HUD_COLOR_MENU_CARD);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 28, 118, "PAUSED", config.HUD_COLOR_GOLD);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - 118, 152, "Match suspended. The lane stays live behind the menu.", config.HUD_COLOR_GRAY);
-        drawMenuList(canvas, pauseItems, pauseMenu.get_Selected(), screenW / 2 - 110, 196, 220, 40);
+        var top = screenH / 2 - 116;
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, top, 376, 232, config.HUD_COLOR_MENU_BG);
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 188, top, 376, 34, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 28, top + 10, "PAUSED", config.HUD_COLOR_GOLD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - 118, top + 44, "Match suspended. The lane stays live behind the menu.", config.HUD_COLOR_GRAY);
+        drawMenuList(canvas, pauseItems, pauseMenu.get_Selected(), screenW / 2 - 110, top + 88, 220, 40);
     }
 
     /// @brief Render the options modal with current oil/quality values.
@@ -313,12 +314,13 @@ class BowlingMenu {
     /// @brief Render the end-of-game results card (headline / subtitle / detail).
     expose func drawResults(canvas: Canvas3D, screenW: Integer, screenH: Integer,
                             headline: String, subtitle: String, detail: String) {
-        Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, 92, 440, 278, config.HUD_COLOR_MENU_BG);
-        Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, 92, 440, 34, config.HUD_COLOR_MENU_CARD);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - headline.Length * 4, 102, headline, config.HUD_COLOR_GOLD);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - subtitle.Length * 4, 150, subtitle, config.HUD_COLOR_WHITE);
-        Canvas3D.DrawText2D(canvas, screenW / 2 - detail.Length * 4, 182, detail, config.HUD_COLOR_CYAN);
-        drawMenuList(canvas, resultsItems, resultsMenu.get_Selected(), screenW / 2 - 110, 246, 220, 40);
+        var top = screenH / 2 - 139;
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, top, 440, 278, config.HUD_COLOR_MENU_BG);
+        Canvas3D.DrawRect2D(canvas, screenW / 2 - 220, top, 440, 34, config.HUD_COLOR_MENU_CARD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - headline.Length * 4, top + 10, headline, config.HUD_COLOR_GOLD);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - subtitle.Length * 4, top + 58, subtitle, config.HUD_COLOR_WHITE);
+        Canvas3D.DrawText2D(canvas, screenW / 2 - detail.Length * 4, top + 90, detail, config.HUD_COLOR_CYAN);
+        drawMenuList(canvas, resultsItems, resultsMenu.get_Selected(), screenW / 2 - 110, top + 154, 220, 40);
     }
 
     /// @brief Generic menu-row painter used by all four modal screens.

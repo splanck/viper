@@ -307,7 +307,8 @@ static ECDSA_P256_MAYBE_UNUSED uint64_t u256_shifted_limb_le(const uint64_t mod_
     return limb;
 }
 
-/// @brief Compare a 512-bit little-endian value against a 256-bit modulus shifted left by shift bits.
+/// @brief Compare a 512-bit little-endian value against a 256-bit modulus shifted left by shift
+/// bits.
 /// @return -1 / 0 / 1 (value < shifted_mod / equal / greater).
 static ECDSA_P256_MAYBE_UNUSED int u512_cmp_shifted_u256_le(const uint64_t value_le[8],
                                                             const uint64_t mod_le[4],
@@ -775,7 +776,7 @@ static void jpoint_double(jpoint *R, const jpoint *P) {
 
     fp_sqr(numerator, x1);
     fp_add(tmp, numerator, numerator);
-    fp_add(numerator, tmp, numerator); // 3*x^2
+    fp_add(numerator, tmp, numerator);   // 3*x^2
     fp_sub(numerator, numerator, THREE); // 3*x^2 - 3
 
     fp_add(denominator, y1, y1); // 2*y
@@ -795,7 +796,8 @@ static void jpoint_double(jpoint *R, const jpoint *P) {
 }
 
 /// @brief Add two Jacobian curve points: Res = P + Q (affine formula with one field inversion).
-///        Handles point-at-infinity identity cases and the equal-point case by delegating to jpoint_double.
+///        Handles point-at-infinity identity cases and the equal-point case by delegating to
+///        jpoint_double.
 static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q) {
     if (jpoint_is_infinity(P)) {
         memcpy(Res, Q, sizeof(jpoint));
@@ -1164,8 +1166,10 @@ int ecdsa_p256_sign(const uint8_t privkey[32],
             goto attempt_done;
 
         // Canonicalize to low-S form for broader interoperability.
-        u256 half_n = {
-            0x7FFFFFFF80000000ULL, 0x7FFFFFFFFFFFFFFFULL, 0xDE737D56D38BCF42ULL, 0x79DCE5617E3192A8ULL};
+        u256 half_n = {0x7FFFFFFF80000000ULL,
+                       0x7FFFFFFFFFFFFFFFULL,
+                       0xDE737D56D38BCF42ULL,
+                       0x79DCE5617E3192A8ULL};
         if (u256_cmp(s, half_n) > 0)
             u256_sub(s, P256_N, s);
 
@@ -1173,7 +1177,7 @@ int ecdsa_p256_sign(const uint8_t privkey[32],
         u256_to_bytes(sig_s, s);
         produced = 1;
 
-attempt_done:
+    attempt_done:
         ecdsa_secure_zero(nonce_bytes, sizeof(nonce_bytes));
         ecdsa_secure_zero(k, sizeof(k));
         ecdsa_secure_zero(r, sizeof(r));

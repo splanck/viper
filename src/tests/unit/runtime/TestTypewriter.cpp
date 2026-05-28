@@ -61,8 +61,7 @@ TEST(Typewriter, EmptyTextCompletesImmediately) {
 
 TEST(Typewriter, RevealsUtf8CodepointsAtomically) {
     const char text[] = {'A', static_cast<char>(0xC3), static_cast<char>(0xA9), 'B', '\0'};
-    const char expected_second[] = {
-        'A', static_cast<char>(0xC3), static_cast<char>(0xA9), '\0'};
+    const char expected_second[] = {'A', static_cast<char>(0xC3), static_cast<char>(0xA9), '\0'};
 
     rt_typewriter tw = rt_typewriter_new();
     rt_typewriter_say(tw, text, 10);

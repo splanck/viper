@@ -188,12 +188,13 @@ int main() {
         il::vm::Slot httpsTagArg{};
         httpsTagArg.str = rt_const_cstr("handler");
         il::vm::ActiveVMGuard guard(&vm);
-        (void)il::vm::RuntimeBridge::call(ctx,
-                                          "Viper.Network.HttpsServer.BindHandler",
-                                          std::vector<il::vm::Slot>{httpsServerArg, httpsTagArg, entryArg},
-                                          {},
-                                          "bind_https_handler",
-                                          "entry");
+        (void)il::vm::RuntimeBridge::call(
+            ctx,
+            "Viper.Network.HttpsServer.BindHandler",
+            std::vector<il::vm::Slot>{httpsServerArg, httpsTagArg, entryArg},
+            {},
+            "bind_https_handler",
+            "entry");
         rt_string_unref(httpsTagArg.str);
     }
 

@@ -77,11 +77,8 @@ static int tests_run = 0;
     do {                                                                                           \
         tests_run++;                                                                               \
         if (std::fabs((double)(a) - (double)(b)) > (eps)) {                                        \
-            std::fprintf(stderr,                                                                   \
-                         "FAIL: %s (got %f, expected %f)\n",                                       \
-                         msg,                                                                      \
-                         (double)(a),                                                              \
-                         (double)(b));                                                             \
+            std::fprintf(                                                                          \
+                stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));        \
         } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
@@ -193,7 +190,9 @@ static void test_body_from_node_uses_world_space() {
     EXPECT_NEAR(rt_vec3_x(body_pos), 0.0, 0.01, "BodyFromNode pushes rotated child world X");
     EXPECT_NEAR(rt_vec3_y(body_pos), 0.0, 0.01, "BodyFromNode pushes child world Y");
     EXPECT_NEAR(rt_vec3_z(body_pos), -1.0, 0.01, "BodyFromNode pushes rotated child world Z");
-    EXPECT_NEAR(std::fabs(rt_quat_y(body_rot)), std::fabs(rt_quat_y(rt_scene_node3d_get_rotation(parent))), 0.001,
+    EXPECT_NEAR(std::fabs(rt_quat_y(body_rot)),
+                std::fabs(rt_quat_y(rt_scene_node3d_get_rotation(parent))),
+                0.001,
                 "BodyFromNode composes parent rotation into body orientation");
 }
 
@@ -211,13 +210,15 @@ static void test_two_way_kinematic_switches_direction() {
     rt_scene_node3d_set_position(node, 2.5, 0.0, 0.0);
     rt_scene3d_sync_bindings(scene, 0.016);
     body_pos = rt_body3d_get_position(body);
-    EXPECT_NEAR(rt_vec3_x(body_pos), 2.5, 0.001, "TwoWayKinematic pushes node pose into kinematic body");
+    EXPECT_NEAR(
+        rt_vec3_x(body_pos), 2.5, 0.001, "TwoWayKinematic pushes node pose into kinematic body");
 
     rt_body3d_set_kinematic(body, 0);
     rt_body3d_set_position(body, -4.0, 0.0, 0.0);
     rt_scene3d_sync_bindings(scene, 0.016);
     node_pos = rt_scene_node3d_get_position(node);
-    EXPECT_NEAR(rt_vec3_x(node_pos), -4.0, 0.001, "TwoWayKinematic pulls dynamic body pose back into node");
+    EXPECT_NEAR(
+        rt_vec3_x(node_pos), -4.0, 0.001, "TwoWayKinematic pulls dynamic body pose back into node");
 }
 
 static void test_node_from_body_compensates_for_scaled_parent() {
@@ -244,13 +245,19 @@ static void test_node_from_body_compensates_for_scaled_parent() {
     local_scale = rt_scene_node3d_get_scale(child);
     local_rot = rt_scene_node3d_get_rotation(child);
 
-    EXPECT_NEAR(rt_vec3_x(local_pos), 2.0, 0.001, "Scaled parent sync divides world X by parent scale");
-    EXPECT_NEAR(rt_vec3_y(local_pos), 3.0, 0.001, "Scaled parent sync divides world Y by parent scale");
-    EXPECT_NEAR(rt_vec3_z(local_pos), 4.0, 0.001, "Scaled parent sync divides world Z by parent scale");
+    EXPECT_NEAR(
+        rt_vec3_x(local_pos), 2.0, 0.001, "Scaled parent sync divides world X by parent scale");
+    EXPECT_NEAR(
+        rt_vec3_y(local_pos), 3.0, 0.001, "Scaled parent sync divides world Y by parent scale");
+    EXPECT_NEAR(
+        rt_vec3_z(local_pos), 4.0, 0.001, "Scaled parent sync divides world Z by parent scale");
     EXPECT_NEAR(rt_vec3_x(local_scale), 0.5, 0.001, "Scaled parent sync compensates X scale");
     EXPECT_NEAR(rt_vec3_y(local_scale), 1.0 / 3.0, 0.001, "Scaled parent sync compensates Y scale");
     EXPECT_NEAR(rt_vec3_z(local_scale), 0.25, 0.001, "Scaled parent sync compensates Z scale");
-    EXPECT_NEAR(rt_quat_w(local_rot), 1.0, 0.001, "Scaled parent sync keeps identity orientation normalized");
+    EXPECT_NEAR(rt_quat_w(local_rot),
+                1.0,
+                0.001,
+                "Scaled parent sync keeps identity orientation normalized");
 }
 
 static void test_animator_root_motion_mode_consumes_delta_once() {
@@ -311,14 +318,16 @@ static void test_animator_root_motion_applies_rotation_delta() {
 
     rot = rt_scene_node3d_get_rotation(node);
     EXPECT_TRUE(std::fabs(rt_quat_y(rot)) > 0.5, "Animator root motion rotates the bound node");
-    EXPECT_TRUE(std::fabs(rt_quat_w(rot)) < 0.9, "Animator root motion changes the node quaternion");
+    EXPECT_TRUE(std::fabs(rt_quat_w(rot)) < 0.9,
+                "Animator root motion changes the node quaternion");
     first_y = rt_quat_y(rot);
     first_w = rt_quat_w(rot);
 
     rt_scene3d_sync_bindings(scene, 0.016);
     rot = rt_scene_node3d_get_rotation(node);
     EXPECT_NEAR(rt_quat_y(rot), first_y, 0.001, "Animator root-motion rotation is consumed once");
-    EXPECT_NEAR(rt_quat_w(rot), first_w, 0.001, "Animator root-motion W stays stable after consumption");
+    EXPECT_NEAR(
+        rt_quat_w(rot), first_w, 0.001, "Animator root-motion W stays stable after consumption");
 }
 
 static void test_scene_draw_uses_bound_animator_palette() {

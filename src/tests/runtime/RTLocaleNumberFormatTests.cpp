@@ -53,16 +53,16 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                         \
-    do {                                                                          \
-        g_expect_trap = 1;                                                         \
-        if (setjmp(g_trap_env) == 0) {                                            \
-            (void)(expr);                                                          \
-            g_expect_trap = 0;                                                     \
-            assert(!"expected runtime trap");                                     \
-        } else {                                                                   \
-            g_expect_trap = 0;                                                     \
-        }                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                      \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
     } while (0)
 
 static void test_result(const char *name, bool passed) {
@@ -93,8 +93,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_numfmt_%ld_%s",
-             base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/viper_numfmt_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }
@@ -188,16 +187,12 @@ static void test_format_decimal() {
     printf("Testing NumberFormat.Decimal (en-US):\n");
     void *fmt = en_fmt();
 
-    test_result("Decimal(1234.5) = \"1,234.5\"",
-                eq(rt_numformat_decimal(fmt, 1234.5), "1,234.5"));
+    test_result("Decimal(1234.5) = \"1,234.5\"", eq(rt_numformat_decimal(fmt, 1234.5), "1,234.5"));
     test_result("Decimal(1234567.89) = \"1,234,567.89\"",
                 eq(rt_numformat_decimal(fmt, 1234567.89), "1,234,567.89"));
-    test_result("Decimal(0) = \"0\"",
-                eq(rt_numformat_decimal(fmt, 0.0), "0"));
-    test_result("Decimal(-42.5) = \"-42.5\"",
-                eq(rt_numformat_decimal(fmt, -42.5), "-42.5"));
-    test_result("Decimal(0.125) = \"0.125\"",
-                eq(rt_numformat_decimal(fmt, 0.125), "0.125"));
+    test_result("Decimal(0) = \"0\"", eq(rt_numformat_decimal(fmt, 0.0), "0"));
+    test_result("Decimal(-42.5) = \"-42.5\"", eq(rt_numformat_decimal(fmt, -42.5), "-42.5"));
+    test_result("Decimal(0.125) = \"0.125\"", eq(rt_numformat_decimal(fmt, 0.125), "0.125"));
 }
 
 static void test_format_decimal_n() {
@@ -206,8 +201,7 @@ static void test_format_decimal_n() {
 
     test_result("DecimalN(1234.5678, 2) = \"1,234.57\"",
                 eq(rt_numformat_decimal_n(fmt, 1234.5678, 2), "1,234.57"));
-    test_result("DecimalN(1.0, 3) = \"1.000\"",
-                eq(rt_numformat_decimal_n(fmt, 1.0, 3), "1.000"));
+    test_result("DecimalN(1.0, 3) = \"1.000\"", eq(rt_numformat_decimal_n(fmt, 1.0, 3), "1.000"));
     test_result("DecimalN(1234.0, 0) = \"1,234\"",
                 eq(rt_numformat_decimal_n(fmt, 1234.0, 0), "1,234"));
 }
@@ -216,12 +210,10 @@ static void test_format_integer() {
     printf("Testing NumberFormat.Integer (en-US):\n");
     void *fmt = en_fmt();
 
-    test_result("Integer(1234) = \"1,234\"",
-                eq(rt_numformat_integer(fmt, 1234), "1,234"));
+    test_result("Integer(1234) = \"1,234\"", eq(rt_numformat_integer(fmt, 1234), "1,234"));
     test_result("Integer(-1234567) = \"-1,234,567\"",
                 eq(rt_numformat_integer(fmt, -1234567), "-1,234,567"));
-    test_result("Integer(0) = \"0\"",
-                eq(rt_numformat_integer(fmt, 0), "0"));
+    test_result("Integer(0) = \"0\"", eq(rt_numformat_integer(fmt, 0), "0"));
     test_result("Integer(INT64_MAX) exact",
                 eq(rt_numformat_integer(fmt, std::numeric_limits<int64_t>::max()),
                    "9,223,372,036,854,775,807"));
@@ -234,12 +226,9 @@ static void test_format_percent() {
     printf("Testing NumberFormat.Percent (en-US):\n");
     void *fmt = en_fmt();
 
-    test_result("Percent(0.1234) = \"12.34%\"",
-                eq(rt_numformat_percent(fmt, 0.1234), "12.34%"));
-    test_result("Percent(0.5) = \"50%\"",
-                eq(rt_numformat_percent(fmt, 0.5), "50%"));
-    test_result("Percent(-0.25) = \"-25%\"",
-                eq(rt_numformat_percent(fmt, -0.25), "-25%"));
+    test_result("Percent(0.1234) = \"12.34%\"", eq(rt_numformat_percent(fmt, 0.1234), "12.34%"));
+    test_result("Percent(0.5) = \"50%\"", eq(rt_numformat_percent(fmt, 0.5), "50%"));
+    test_result("Percent(-0.25) = \"-25%\"", eq(rt_numformat_percent(fmt, -0.25), "-25%"));
 }
 
 //=============================================================================
@@ -252,10 +241,8 @@ static void test_format_currency() {
 
     test_result("Currency(1234.56) = \"$1,234.56\"",
                 eq(rt_numformat_currency(fmt, 1234.56), "$1,234.56"));
-    test_result("Currency(5.0) = \"$5.00\"",
-                eq(rt_numformat_currency(fmt, 5.0), "$5.00"));
-    test_result("Currency(-12.5) = \"-$12.50\"",
-                eq(rt_numformat_currency(fmt, -12.5), "-$12.50"));
+    test_result("Currency(5.0) = \"$5.00\"", eq(rt_numformat_currency(fmt, 5.0), "$5.00"));
+    test_result("Currency(-12.5) = \"-$12.50\"", eq(rt_numformat_currency(fmt, -12.5), "-$12.50"));
 
     rt_string code = S("EUR");
     test_result("CurrencyOf(100, EUR) starts with EUR",
@@ -316,8 +303,7 @@ static void test_fraction_digits_clamp() {
 
     rt_numformat_set_min_frac(fmt, 2);
     rt_numformat_set_max_frac(fmt, 4);
-    test_result("Decimal(1.5) with min=2 -> \"1.50\"",
-                eq(rt_numformat_decimal(fmt, 1.5), "1.50"));
+    test_result("Decimal(1.5) with min=2 -> \"1.50\"", eq(rt_numformat_decimal(fmt, 1.5), "1.50"));
     test_result("Decimal(1.23456) with max=4 -> \"1.2346\"",
                 eq(rt_numformat_decimal(fmt, 1.23456), "1.2346"));
 }
@@ -331,20 +317,17 @@ static void test_rounding_modes() {
     rt_string up_mode = S("halfUp");
     rt_numformat_set_rounding(fmt, up_mode);
     rt_string_unref(up_mode);
-    test_result("halfUp 2.5 -> \"3\"",
-                eq(rt_numformat_decimal(fmt, 2.5), "3"));
+    test_result("halfUp 2.5 -> \"3\"", eq(rt_numformat_decimal(fmt, 2.5), "3"));
 
     rt_string floor_mode = S("floor");
     rt_numformat_set_rounding(fmt, floor_mode);
     rt_string_unref(floor_mode);
-    test_result("floor 2.9 -> \"2\"",
-                eq(rt_numformat_decimal(fmt, 2.9), "2"));
+    test_result("floor 2.9 -> \"2\"", eq(rt_numformat_decimal(fmt, 2.9), "2"));
 
     rt_string ceil_mode = S("ceiling");
     rt_numformat_set_rounding(fmt, ceil_mode);
     rt_string_unref(ceil_mode);
-    test_result("ceiling 2.1 -> \"3\"",
-                eq(rt_numformat_decimal(fmt, 2.1), "3"));
+    test_result("ceiling 2.1 -> \"3\"", eq(rt_numformat_decimal(fmt, 2.1), "3"));
 }
 
 //=============================================================================
@@ -379,7 +362,7 @@ static void test_parse_decimal() {
 static void test_parse_decimal_roundtrip() {
     printf("Testing Decimal format/parse round-trip:\n");
     void *fmt = en_fmt();
-    double values[] = { 0.0, 1.0, -1.0, 1234.5, -99999.99, 0.125 };
+    double values[] = {0.0, 1.0, -1.0, 1234.5, -99999.99, 0.125};
     for (double v : values) {
         rt_string s = rt_numformat_decimal(fmt, v);
         double parsed = rt_numformat_parse_decimal(fmt, s);
@@ -437,14 +420,12 @@ static void test_parse_integer() {
     rt_string max_s = S("9,223,372,036,854,775,807");
     int64_t max_v = rt_numformat_parse_integer(fmt, max_s);
     rt_string_unref(max_s);
-    test_result("ParseInteger(INT64_MAX) exact",
-                max_v == std::numeric_limits<int64_t>::max());
+    test_result("ParseInteger(INT64_MAX) exact", max_v == std::numeric_limits<int64_t>::max());
 
     rt_string min_s = S("-9,223,372,036,854,775,808");
     int64_t min_v = rt_numformat_parse_integer(fmt, min_s);
     rt_string_unref(min_s);
-    test_result("ParseInteger(INT64_MIN) exact",
-                min_v == std::numeric_limits<int64_t>::min());
+    test_result("ParseInteger(INT64_MIN) exact", min_v == std::numeric_limits<int64_t>::min());
 
     rt_string overflow = S("9223372036854775808");
     EXPECT_TRAP(rt_numformat_parse_integer(fmt, overflow));
@@ -464,14 +445,12 @@ static void test_parse_currency() {
     rt_string s1 = S("$1,234.56");
     double v1 = rt_numformat_parse_currency(fmt, s1);
     rt_string_unref(s1);
-    test_result("ParseCurrency(\"$1,234.56\") == 1234.56",
-                std::fabs(v1 - 1234.56) < 1e-9);
+    test_result("ParseCurrency(\"$1,234.56\") == 1234.56", std::fabs(v1 - 1234.56) < 1e-9);
 
     rt_string s2 = S("1,000.00");
     double v2 = rt_numformat_parse_currency(fmt, s2);
     rt_string_unref(s2);
-    test_result("ParseCurrency(symbol-less) == 1000",
-                std::fabs(v2 - 1000.0) < 1e-9);
+    test_result("ParseCurrency(symbol-less) == 1000", std::fabs(v2 - 1000.0) < 1e-9);
 
     load_locale_json("en-XA", ACCOUNTING_JSON);
     void *acct = fmt_for_tag("en-XA");
@@ -481,8 +460,7 @@ static void test_parse_currency() {
     rt_string s3 = S("($1,234.56)");
     double v3 = rt_numformat_parse_currency(acct, s3);
     rt_string_unref(s3);
-    test_result("ParseCurrency accounting negative == -1234.56",
-                std::fabs(v3 + 1234.56) < 1e-9);
+    test_result("ParseCurrency accounting negative == -1234.56", std::fabs(v3 + 1234.56) < 1e-9);
 }
 
 static void test_localized_digits() {
@@ -490,8 +468,7 @@ static void test_localized_digits() {
     load_locale_json("ar-XB", ARABIC_DIGIT_JSON);
     void *fmt = fmt_for_tag("ar-XB");
 
-    const char *expected =
-        "\xD9\xA1\xD9\xA2\xD9\xA3,\xD9\xA4\xD9\xA5\xD9\xA6";
+    const char *expected = "\xD9\xA1\xD9\xA2\xD9\xA3,\xD9\xA4\xD9\xA5\xD9\xA6";
     test_result("Integer formats Arabic-Indic digits",
                 eq(rt_numformat_integer(fmt, 123456), expected));
 
@@ -518,8 +495,7 @@ static void test_secondary_grouping() {
     rt_string western = S("1,234,567");
     void *bad = rt_numformat_try_parse_integer(fmt, western);
     rt_string_unref(western);
-    test_result("Strict parse rejects wrong secondary grouping",
-                rt_option_is_none(bad) == 1);
+    test_result("Strict parse rejects wrong secondary grouping", rt_option_is_none(bad) == 1);
 }
 
 static void test_huge_decimal_buffer() {
@@ -547,16 +523,14 @@ static void test_strict_mode_rejects_ambiguous() {
     rt_string bad = S("1,00");
     void *r = rt_numformat_try_parse_decimal(fmt, bad);
     rt_string_unref(bad);
-    test_result("Strict TryParseDecimal(\"1,00\") = None",
-                rt_option_is_none(r) == 1);
+    test_result("Strict TryParseDecimal(\"1,00\") = None", rt_option_is_none(r) == 1);
 
     // Lenient mode accepts.
     rt_numformat_set_strict(fmt, 0);
     rt_string bad2 = S("1,00");
     void *r2 = rt_numformat_try_parse_decimal(fmt, bad2);
     rt_string_unref(bad2);
-    test_result("Lenient TryParseDecimal(\"1,00\") = Some",
-                rt_option_is_some(r2) == 1);
+    test_result("Lenient TryParseDecimal(\"1,00\") = Some", rt_option_is_some(r2) == 1);
 }
 
 //=============================================================================

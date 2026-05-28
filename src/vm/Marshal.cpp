@@ -245,13 +245,12 @@ int64_t toI64(const il::core::Value &value) {
         case Kind::NullPtr:
             return 0;
         default:
-            RuntimeBridge::trap(
-                TrapKind::InvalidOperation,
-                std::string("toI64 called with non-constant value kind: ") +
-                    valueKindToString(value.kind),
-                {},
-                "",
-                "");
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                std::string("toI64 called with non-constant value kind: ") +
+                                    valueKindToString(value.kind),
+                                {},
+                                "",
+                                "");
             return 0;
     }
 }
@@ -273,13 +272,12 @@ double toF64(const il::core::Value &value) {
         case Kind::NullPtr:
             return 0.0;
         default:
-            RuntimeBridge::trap(
-                TrapKind::InvalidOperation,
-                std::string("toF64 called with non-constant value kind: ") +
-                    valueKindToString(value.kind),
-                {},
-                "",
-                "");
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                std::string("toF64 called with non-constant value kind: ") +
+                                    valueKindToString(value.kind),
+                                {},
+                                "",
+                                "");
             return 0.0;
     }
 }

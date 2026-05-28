@@ -18,9 +18,9 @@
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
 
-using viper::codegen::aarch64::RodataPool;
 using viper::codegen::aarch64::darwinTarget;
 using viper::codegen::aarch64::linuxTarget;
+using viper::codegen::aarch64::RodataPool;
 using viper::codegen::aarch64::windowsTarget;
 
 TEST(AArch64Rodata, DedupAndEmit) {
@@ -48,8 +48,10 @@ TEST(AArch64Rodata, DedupAndEmit) {
 
 TEST(AArch64Rodata, TargetSpecificSectionsAndFixedWidthOctalEscapes) {
     il::core::Module m;
-    m.globals.push_back(
-        {"@.L0", il::core::Type(il::core::Type::Kind::Str), std::string("A\x01" "B\x7f")});
+    m.globals.push_back({"@.L0",
+                         il::core::Type(il::core::Type::Kind::Str),
+                         std::string("A\x01"
+                                     "B\x7f")});
 
     RodataPool pool;
     pool.buildFromModule(m);

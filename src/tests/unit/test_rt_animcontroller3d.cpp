@@ -101,18 +101,19 @@ static void test_controller_state_flow() {
 
     EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr("idle")) == 1,
                 "Play idle succeeds");
-    EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_get_current_state(controller)), "idle") ==
-                    0,
-                "CurrentState = idle");
+    EXPECT_TRUE(
+        strcmp(rt_string_cstr(rt_anim_controller3d_get_current_state(controller)), "idle") == 0,
+        "CurrentState = idle");
 
     EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr("walk")) == 1,
                 "Play walk succeeds");
     EXPECT_TRUE(rt_anim_controller3d_get_is_transitioning(controller) == 1,
                 "Play walk uses default transition");
-    EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_get_previous_state(controller)), "idle") ==
-                    0,
-                "PreviousState = idle");
+    EXPECT_TRUE(
+        strcmp(rt_string_cstr(rt_anim_controller3d_get_previous_state(controller)), "idle") == 0,
+        "PreviousState = idle");
 
+    rt_anim_controller3d_set_root_motion_bone(controller, 0);
     rt_anim_controller3d_update(controller, 0.5);
     root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
     EXPECT_TRUE(root_mat != nullptr, "GetBoneMatrix(root) returns matrix");
@@ -129,6 +130,61 @@ static void test_controller_state_flow() {
     EXPECT_TRUE(event_name && strcmp(event_name, "step") == 0, "PollEvent returns queued step");
     EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_poll_event(controller)), "") == 0,
                 "PollEvent returns empty string when queue drained");
+}
+
+static void test_controller_root_motion_disabled_and_loop_wrap() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *walk = make_anim("walk", 0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("walk"), walk);
+
+    rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
+    rt_anim_controller3d_update(controller, 0.5);
+    void *delta = rt_anim_controller3d_consume_root_motion(controller);
+    EXPECT_NEAR(rt_vec3_x(delta), 0.0, 0.01, "Root motion is disabled by default");
+
+    rt_anim_controller3d_set_root_motion_bone(controller, 0);
+    rt_anim_controller3d_update(controller, 0.4);
+    delta = rt_anim_controller3d_consume_root_motion(controller);
+    EXPECT_NEAR(rt_vec3_x(delta), 4.0, 0.1, "Root motion accumulates after enabling a bone");
+
+    rt_anim_controller3d_update(controller, 0.2);
+    delta = rt_anim_controller3d_consume_root_motion(controller);
+    EXPECT_NEAR(rt_vec3_x(delta), 2.0, 0.1, "Looping root motion preserves forward wrap delta");
+
+    rt_anim_controller3d_set_root_motion_bone(controller, -1);
+    rt_anim_controller3d_update(controller, 0.25);
+    delta = rt_anim_controller3d_consume_root_motion(controller);
+    EXPECT_NEAR(rt_vec3_x(delta), 0.0, 0.01, "SetRootMotionBone(-1) disables root motion");
+}
+
+static void test_controller_crossfade_preserves_source_speed() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *run = make_anim("run", 0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+    void *idle = make_anim("idle", 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("run"), run);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("idle"), idle);
+    rt_anim_controller3d_set_state_speed(controller, rt_const_cstr("run"), 2.0);
+    rt_anim_controller3d_set_state_speed(controller, rt_const_cstr("idle"), 0.0);
+    rt_anim_controller3d_set_state_looping(controller, rt_const_cstr("run"), 0);
+
+    rt_anim_controller3d_play(controller, rt_const_cstr("run"));
+    rt_anim_controller3d_update(controller, 0.25);
+    rt_anim_controller3d_crossfade(controller, rt_const_cstr("idle"), 1.0);
+    rt_anim_controller3d_update(controller, 0.25);
+
+    void *root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3),
+                7.5,
+                0.2,
+                "Crossfade source clip continues with source state speed");
 }
 
 static void test_controller_masked_layer() {
@@ -162,6 +218,10 @@ static void test_controller_masked_layer() {
 
     EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3), 5.0, 0.1, "Masked layer preserves base root x");
     EXPECT_NEAR(rt_mat4_get(root_mat, 1, 3), 0.0, 0.01, "Masked layer does not affect root y");
+    EXPECT_NEAR(rt_mat4_get(arm_mat, 0, 3),
+                5.0,
+                0.1,
+                "Masked layer keeps base parent motion on child world matrix");
     EXPECT_NEAR(rt_mat4_get(arm_mat, 1, 3), 1.0, 0.1, "Masked layer drives arm y");
 
     rt_anim_controller3d_set_layer_weight(controller, 1, NAN);
@@ -204,8 +264,9 @@ static void test_controller_events_cover_full_loops_and_reverse() {
     rt_anim_controller3d_set_state_speed(controller, rt_const_cstr("walk"), NAN);
     rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
     rt_anim_controller3d_update(controller, 0.5);
-    EXPECT_TRUE(std::isfinite(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, 0), 0, 3)),
-                "AnimController3D sanitizes non-finite state speeds");
+    EXPECT_TRUE(
+        std::isfinite(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, 0), 0, 3)),
+        "AnimController3D sanitizes non-finite state speeds");
 }
 
 static void test_controller_rejects_wrong_animation_handles() {
@@ -227,6 +288,8 @@ static void test_controller_rejects_wrong_animation_handles() {
 
 int main() {
     test_controller_state_flow();
+    test_controller_root_motion_disabled_and_loop_wrap();
+    test_controller_crossfade_preserves_source_speed();
     test_controller_masked_layer();
     test_controller_events_cover_full_loops_and_reverse();
     test_controller_rejects_wrong_animation_handles();

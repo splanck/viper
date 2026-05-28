@@ -82,8 +82,10 @@ static std::string sliceBeforeCall(const std::string &asmText,
 }
 
 static bool preparesX0(const std::string &asmSlice) {
-    return asmSlice.find("mov x0") != std::string::npos || asmSlice.find("mov w0") != std::string::npos ||
-           asmSlice.find("ldr x0") != std::string::npos || asmSlice.find("ldr w0") != std::string::npos;
+    return asmSlice.find("mov x0") != std::string::npos ||
+           asmSlice.find("mov w0") != std::string::npos ||
+           asmSlice.find("ldr x0") != std::string::npos ||
+           asmSlice.find("ldr w0") != std::string::npos;
 }
 
 TEST(Arm64CLI, TrapSimple) {
@@ -136,8 +138,7 @@ TEST(Arm64Lowering, TrapPayloadPreparesX0) {
     bool sawTrapCall = false;
     for (const auto &mi : mir.blocks[0].instrs) {
         if (mi.opc == MOpcode::MovRI && mi.ops.size() == 2 &&
-            mi.ops[0].kind == MOperand::Kind::Reg &&
-            mi.ops[1].kind == MOperand::Kind::Imm) {
+            mi.ops[0].kind == MOperand::Kind::Reg && mi.ops[1].kind == MOperand::Kind::Imm) {
             if (mi.ops[1].imm == 42) {
                 if (mi.ops[0].reg.isPhys &&
                     static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::X0) {
@@ -146,8 +147,8 @@ TEST(Arm64Lowering, TrapPayloadPreparesX0) {
                     payloadRegs.push_back(mi.ops[0].reg.idOrPhys);
                 }
             }
-            if (mi.ops[0].reg.isPhys && static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::X0 &&
-                mi.ops[1].imm == 0) {
+            if (mi.ops[0].reg.isPhys &&
+                static_cast<PhysReg>(mi.ops[0].reg.idOrPhys) == PhysReg::X0 && mi.ops[1].imm == 0) {
                 sawNullMove = true;
             }
         }

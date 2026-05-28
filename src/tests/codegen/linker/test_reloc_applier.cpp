@@ -498,8 +498,7 @@ int main() {
 
         std::vector<ObjFile> objs = {weakObj, strongObj};
         auto layout = makeLayout(objs, 0x401000);
-        layout.globalSyms["override_me"] =
-            {"override_me", GlobalSymEntry::Global, 1, 1, 0, 0};
+        layout.globalSyms["override_me"] = {"override_me", GlobalSymEntry::Global, 1, 1, 0, 0};
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
@@ -550,7 +549,8 @@ int main() {
         std::ostringstream branchErr;
         CHECK(!applyRelocations(
             branchObjs, branchLayout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, branchErr));
-        CHECK(branchErr.str().find("weak undefined symbol 'maybe_missing' cannot resolve to address zero") !=
+        CHECK(branchErr.str().find(
+                  "weak undefined symbol 'maybe_missing' cannot resolve to address zero") !=
               std::string::npos);
     }
 
@@ -595,8 +595,8 @@ int main() {
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
-        CHECK(!applyRelocations(
-            objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
+        CHECK(
+            !applyRelocations(objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
         CHECK(err.str().find("could not be converted to TLS-relative") != std::string::npos);
     }
 
@@ -649,8 +649,7 @@ int main() {
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
-        CHECK(applyRelocations(
-            objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::macOS, LinkArch::AArch64, err));
         CHECK(readLE64(layout.sections[0].data.data()) == 0x100003000);
         CHECK(layout.rebaseEntries.size() == 1);
     }
@@ -953,8 +952,8 @@ int main() {
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
-        CHECK(applyRelocations(
-            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err));
+        CHECK(
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err));
         CHECK(layout.sections[0].data[2] == 1);
         CHECK(layout.sections[0].data[3] == 0);
     }
@@ -1003,8 +1002,7 @@ int main() {
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
-        CHECK(!applyRelocations(
-            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(!applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
     }
 
     // --- Dynamic symbol set creates runtime bind entries even without a synthetic GOT symbol ---
@@ -1020,8 +1018,8 @@ int main() {
 
         std::vector<ObjFile> objs = {obj};
         auto layout = makeLayout(objs, 0x401000);
-        layout.globalSyms["imported_data"] =
-            {"imported_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x500000};
+        layout.globalSyms["imported_data"] = {
+            "imported_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x500000};
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms = {"imported_data"};
@@ -1269,8 +1267,7 @@ int main() {
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
-        CHECK(!applyRelocations(
-            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(!applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
         CHECK(err.str().find("requires MOV r*, disp32(%rip)") != std::string::npos);
     }
 
@@ -1328,8 +1325,7 @@ int main() {
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
-        CHECK(!applyRelocations(
-            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(!applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
         CHECK(err.str().find("requires a REX-prefixed MOV") != std::string::npos);
     }
 
@@ -1449,10 +1445,9 @@ int main() {
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
-        CHECK(!applyRelocations(
-            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
-        CHECK(err.str().find("requires an adjacent matching ADRP relocation") !=
-              std::string::npos);
+        CHECK(
+            !applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
+        CHECK(err.str().find("requires an adjacent matching ADRP relocation") != std::string::npos);
     }
 
     // --- Mach-O AArch64 TLVP page-offset relaxation accepts its PAGE21 pair ---
@@ -1578,8 +1573,8 @@ int main() {
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
-        CHECK(!applyRelocations(
-            objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
+        CHECK(
+            !applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err));
         CHECK(err.str().find("requires LDR base to match preceding ADRP") != std::string::npos);
     }
 
@@ -1651,8 +1646,7 @@ int main() {
 
         std::vector<ObjFile> objs = {caller};
         auto layout = makeLayout(objs, 0x140001000ULL);
-        layout.globalSyms["target"] =
-            {"target", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140001004ULL};
+        layout.globalSyms["target"] = {"target", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140001004ULL};
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
@@ -1675,8 +1669,7 @@ int main() {
 
         std::vector<ObjFile> objs = {caller};
         auto layout = makeLayout(objs, 0x140001000ULL);
-        layout.globalSyms["target"] =
-            {"target", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002000ULL};
+        layout.globalSyms["target"] = {"target", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002000ULL};
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
@@ -1807,8 +1800,8 @@ int main() {
 
         std::vector<ObjFile> objs = {caller};
         auto layout = makeLayout(objs, 0x140001000ULL);
-        layout.globalSyms["target_data"] =
-            {"target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
+        layout.globalSyms["target_data"] = {
+            "target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
@@ -1831,8 +1824,8 @@ int main() {
 
         std::vector<ObjFile> objs = {caller};
         auto layout = makeLayout(objs, 0x140001000ULL);
-        layout.globalSyms["target_data"] =
-            {"target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
+        layout.globalSyms["target_data"] = {
+            "target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
@@ -1877,8 +1870,7 @@ int main() {
 
         std::vector<ObjFile> objs = {caller, target};
         auto layout = makeLayout(objs, 0x140001000ULL);
-        layout.globalSyms["target_data"] =
-            {"target_data", GlobalSymEntry::Global, 1, 1, 0, 0};
+        layout.globalSyms["target_data"] = {"target_data", GlobalSymEntry::Global, 1, 1, 0, 0};
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
@@ -1918,8 +1910,7 @@ int main() {
 
         std::vector<ObjFile> objs = {caller, target};
         auto layout = makeLayout(objs, 0x140001000ULL);
-        layout.globalSyms["target_data"] =
-            {"target_data", GlobalSymEntry::Global, 1, 1, 0, 0};
+        layout.globalSyms["target_data"] = {"target_data", GlobalSymEntry::Global, 1, 1, 0, 0};
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
@@ -1942,8 +1933,8 @@ int main() {
 
         std::vector<ObjFile> objs = {caller};
         auto layout = makeLayout(objs, 0x140001000ULL);
-        layout.globalSyms["target_data"] =
-            {"target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
+        layout.globalSyms["target_data"] = {
+            "target_data", GlobalSymEntry::Dynamic, 0, 0, 0, 0x140002008ULL};
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
@@ -1965,8 +1956,8 @@ int main() {
 
         std::ostringstream err;
         std::unordered_set<std::string> dynSyms;
-        CHECK(!applyRelocations(
-            objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err));
+        CHECK(
+            !applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err));
         CHECK(err.str().find("not a multiple of unwind record size") != std::string::npos);
     }
 

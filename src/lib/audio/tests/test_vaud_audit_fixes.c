@@ -21,13 +21,13 @@ void vaud_set_error(vaud_error_t code, const char *msg) {
     last_error_msg = msg;
 }
 
-#define EXPECT_TRUE(expr)                                                                            \
-    do {                                                                                             \
-        if (!(expr)) {                                                                               \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #expr);                                   \
-            tests_failed++;                                                                          \
-            return;                                                                                  \
-        }                                                                                            \
+#define EXPECT_TRUE(expr)                                                                          \
+    do {                                                                                           \
+        if (!(expr)) {                                                                             \
+            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #expr);                                 \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
     } while (0)
 
 static void test_resample_overflow_returns_sentinel(void) {

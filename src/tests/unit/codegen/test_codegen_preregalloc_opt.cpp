@@ -64,7 +64,8 @@ TEST(CodegenPreRegAllocOpt, X86DoesNotForwardAcrossSourceClobber) {
     auto v3 = x64::makeVRegOperand(x64::RegClass::GPR, 3);
 
     block.instructions.push_back(x64::MInstr::make(x64::MOpcode::MOVrr, {v2, v1}));
-    block.instructions.push_back(x64::MInstr::make(x64::MOpcode::MOVri, {v1, x64::makeImmOperand(9)}));
+    block.instructions.push_back(
+        x64::MInstr::make(x64::MOpcode::MOVri, {v1, x64::makeImmOperand(9)}));
     block.instructions.push_back(x64::MInstr::make(x64::MOpcode::ADDrr, {v3, v2}));
     fn.blocks.push_back(std::move(block));
 
@@ -80,7 +81,8 @@ TEST(CodegenPreRegAllocOpt, X86DoesNotEraseCopyNeededAfterCall) {
     x64::MBasicBlock block;
     block.label = ".Lentry";
 
-    auto physRax = x64::makePhysRegOperand(x64::RegClass::GPR, static_cast<uint16_t>(x64::PhysReg::RAX));
+    auto physRax =
+        x64::makePhysRegOperand(x64::RegClass::GPR, static_cast<uint16_t>(x64::PhysReg::RAX));
     auto physRbp = x64::makePhysReg(x64::RegClass::GPR, static_cast<uint16_t>(x64::PhysReg::RBP));
     auto v2 = x64::makeVRegOperand(x64::RegClass::GPR, 2);
     auto v3 = x64::makeVRegOperand(x64::RegClass::GPR, 3);
@@ -106,14 +108,16 @@ TEST(CodegenPreRegAllocOpt, X86DoesNotForwardPhysicalSourceBeforeRegAlloc) {
     x64::MBasicBlock block;
     block.label = ".Lentry";
 
-    auto physRax = x64::makePhysRegOperand(x64::RegClass::GPR, static_cast<uint16_t>(x64::PhysReg::RAX));
+    auto physRax =
+        x64::makePhysRegOperand(x64::RegClass::GPR, static_cast<uint16_t>(x64::PhysReg::RAX));
     auto physRbp = x64::makePhysReg(x64::RegClass::GPR, static_cast<uint16_t>(x64::PhysReg::RBP));
     auto v2 = x64::makeVRegOperand(x64::RegClass::GPR, 2);
     auto v3 = x64::makeVRegOperand(x64::RegClass::GPR, 3);
     auto stackSlot = x64::makeMemOperand(physRbp, -8);
 
     block.instructions.push_back(x64::MInstr::make(x64::MOpcode::MOVrr, {v2, physRax}));
-    block.instructions.push_back(x64::MInstr::make(x64::MOpcode::MOVri, {v3, x64::makeImmOperand(9)}));
+    block.instructions.push_back(
+        x64::MInstr::make(x64::MOpcode::MOVri, {v3, x64::makeImmOperand(9)}));
     block.instructions.push_back(x64::MInstr::make(x64::MOpcode::MOVrm, {stackSlot, v2}));
     fn.blocks.push_back(std::move(block));
 
@@ -186,7 +190,8 @@ TEST(CodegenPreRegAllocOpt, AArch64DoesNotEraseCopyNeededAfterCall) {
     block.instrs.push_back(a64::MInstr{a64::MOpcode::MovRR, {v2, x0}});
     block.instrs.push_back(a64::MInstr{a64::MOpcode::StrRegFpImm, {v2, a64::MOperand::immOp(-8)}});
     block.instrs.push_back(a64::MInstr{a64::MOpcode::Bl, {a64::MOperand::labelOp("may_clobber")}});
-    block.instrs.push_back(a64::MInstr{a64::MOpcode::StrRegBaseImm, {x1, v2, a64::MOperand::immOp(0)}});
+    block.instrs.push_back(
+        a64::MInstr{a64::MOpcode::StrRegBaseImm, {x1, v2, a64::MOperand::immOp(0)}});
     block.instrs.push_back(a64::MInstr{a64::MOpcode::AddRRR, {v3, v2, x1}});
     fn.blocks.push_back(std::move(block));
 

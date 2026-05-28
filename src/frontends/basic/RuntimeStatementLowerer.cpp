@@ -46,6 +46,10 @@ using AstType = ::il::frontends::basic::Type;
 
 namespace il::frontends::basic {
 
+/// @brief Determine the runtime class a callee name constructs, if it is a constructor.
+/// @param calleeName Callee name as written (qualified or simple).
+/// @return The qualified class name when @p calleeName matches a catalog ctor or a `Class.New`
+///         that returns an object, otherwise nullopt.
 static std::optional<std::string> runtimeCtorClassQNameFromName(std::string_view calleeName) {
     if (calleeName.empty())
         return std::nullopt;
@@ -84,6 +88,7 @@ static std::optional<std::string> runtimeCtorClassQNameFromName(std::string_view
     return std::nullopt;
 }
 
+/// @brief Runtime-ctor class name for a call expression (delegates to the by-name resolver).
 static std::optional<std::string> runtimeCtorClassQNameFrom(const CallExpr &expr) {
     std::string calleeName;
     if (!expr.calleeQualified.empty())
@@ -94,6 +99,7 @@ static std::optional<std::string> runtimeCtorClassQNameFrom(const CallExpr &expr
     return runtimeCtorClassQNameFromName(calleeName);
 }
 
+/// @brief Runtime-ctor class name for a method-call expression (`base.Method`), if any.
 static std::optional<std::string> runtimeCtorClassQNameFrom(const MethodCallExpr &expr) {
     if (!expr.base)
         return std::nullopt;
@@ -105,6 +111,7 @@ static std::optional<std::string> runtimeCtorClassQNameFrom(const MethodCallExpr
     return runtimeCtorClassQNameFromName(calleeName);
 }
 
+/// @brief Bind a runtime-statement lowerer to its parent Lowerer (non-owning).
 RuntimeStatementLowerer::RuntimeStatementLowerer(Lowerer &lowerer) : lowerer_(lowerer) {}
 
 /// @brief Lower a BASIC @c LET statement.
@@ -130,7 +137,16 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
         lowerLetToMember(stmt, *member, std::move(value));
 }
 
-void RuntimeStatementLowerer::lowerLetToVar(const LetStmt &stmt, const VarExpr &varRef,
+/// @brief Lower `LET var = value` to a scalar/array slot assignment.
+/// @param stmt The LET statement.
+/// @param varRef The target variable.
+/// @param value The already-lowered right-hand value.
+/// @details Refreshes the variable's slot type, refines its object class from authoritative
+///          sources (NEW/constructors override; inferred classes only fill generic OBJECT),
+///          stores into the slot (array vs scalar), and balances the creation reference of a
+///          user-class NEW temporary so its refcount settles with the variable as sole owner.
+void RuntimeStatementLowerer::lowerLetToVar(const LetStmt &stmt,
+                                            const VarExpr &varRef,
                                             Lowerer::RVal value) {
     const VarExpr *var = &varRef;
     {
@@ -216,7 +232,16 @@ void RuntimeStatementLowerer::lowerLetToVar(const LetStmt &stmt, const VarExpr &
     }
 }
 
-void RuntimeStatementLowerer::lowerLetToMethodCall(const LetStmt &stmt, const MethodCallExpr &mcRef,
+/// @brief Lower `LET obj.arrayField(idx...) = value` (method-call-shaped array element store).
+/// @param stmt The LET statement.
+/// @param mcRef The method-call-shaped assignment target.
+/// @param value The already-lowered right-hand value.
+/// @details Resolves the receiver's object field as an array (BUG-056), computes a row-major
+///          flattened index for multi-dimensional arrays (BUG-094), emits a bounds check, and
+///          stores via the element-kind-appropriate `rt_arr_*_put`/`set` helper. Unsupported
+///          lvalue forms are no-ops (the analyzer reports them).
+void RuntimeStatementLowerer::lowerLetToMethodCall(const LetStmt &stmt,
+                                                   const MethodCallExpr &mcRef,
                                                    Lowerer::RVal value) {
     const MethodCallExpr *mc = &mcRef;
     {
@@ -401,7 +426,15 @@ void RuntimeStatementLowerer::lowerLetToMethodCall(const LetStmt &stmt, const Me
     }
 }
 
-void RuntimeStatementLowerer::lowerLetToCall(const LetStmt &stmt, const CallExpr &callRef,
+/// @brief Lower `LET field(idx) = value` where the call shape is an implicit field-array access.
+/// @param stmt The LET statement.
+/// @param callRef The call-shaped assignment target.
+/// @param value The already-lowered right-hand value.
+/// @details Handles implicit field arrays inside a method (BUG-089): loads the array handle from
+///          the `ME` object field, lowers the index, bounds-checks, and stores via the
+///          element-kind-appropriate runtime put/set helper.
+void RuntimeStatementLowerer::lowerLetToCall(const LetStmt &stmt,
+                                             const CallExpr &callRef,
                                              Lowerer::RVal value) {
     const CallExpr *call = &callRef;
     {
@@ -532,11 +565,26 @@ void RuntimeStatementLowerer::lowerLetToCall(const LetStmt &stmt, const CallExpr
     }
 }
 
-void RuntimeStatementLowerer::lowerLetToArray(const LetStmt &stmt, const ArrayExpr &arr,
+/// @brief Lower `LET arr(idx) = value` for an ordinary (non-field) array variable.
+/// @param stmt The LET statement.
+/// @param arr The array-element assignment target.
+/// @param value The already-lowered right-hand value.
+/// @details Resolves the array's storage and element kind, lowers/coerces the index, and stores
+///          the value with the appropriate bounds-checked runtime array setter.
+void RuntimeStatementLowerer::lowerLetToArray(const LetStmt &stmt,
+                                              const ArrayExpr &arr,
                                               Lowerer::RVal value) {
     assignArrayElement(arr, std::move(value), stmt.loc);
 }
 
+/// @brief Lower `LET base.member = value` to a property setter or static-field store.
+/// @param stmt The LET statement.
+/// @param member The member-access assignment target.
+/// @param value The already-lowered right-hand value.
+/// @details Tries, in order: a runtime-class property setter (erroring on read-only/missing),
+///          an instance property setter (`set_member`, overload-resolved and coerced), a static
+///          property setter on a class name, and finally a static-field global store. Each path
+///          coerces @p value to the expected type.
 void RuntimeStatementLowerer::lowerLetToMember(const LetStmt &stmt,
                                                const MemberAccessExpr &memberRef,
                                                Lowerer::RVal value) {

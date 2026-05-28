@@ -113,9 +113,10 @@ int main() {
     rt_game_scene_set_layer_visible(scene, fg, 0);
     assert(rt_game_scene_layer_visible(scene, fg) == 0);
 
-    int64_t obj = rt_game_scene_add_object(
-        scene, rt_const_cstr("Player"), rt_const_cstr("player"), 10, 20);
-    rt_game_scene_set_object_property(scene, obj, rt_const_cstr("sprite"), rt_const_cstr("hero.png"));
+    int64_t obj =
+        rt_game_scene_add_object(scene, rt_const_cstr("Player"), rt_const_cstr("player"), 10, 20);
+    rt_game_scene_set_object_property(
+        scene, obj, rt_const_cstr("sprite"), rt_const_cstr("hero.png"));
     assert(to_std(rt_game_scene_get_object_property(scene, obj, rt_const_cstr("sprite"))) ==
            "hero.png");
     rt_game_scene_set_property(scene, rt_const_cstr("tileset"), rt_const_cstr("tiles/base.png"));
@@ -194,9 +195,9 @@ int main() {
     rt_game_scene_clear_diagnostics(scene);
     assert(rt_game_scene_has_errors(scene) == 0);
 
-    rt_string legacy_short = rt_const_cstr(
-        "{\"width\":2,\"height\":2,\"tileWidth\":16,\"tileHeight\":16,"
-        "\"layers\":[{\"name\":\"base\",\"visible\":1,\"data\":[5]}]}");
+    rt_string legacy_short =
+        rt_const_cstr("{\"width\":2,\"height\":2,\"tileWidth\":16,\"tileHeight\":16,"
+                      "\"layers\":[{\"name\":\"base\",\"visible\":1,\"data\":[5]}]}");
     void *legacy = rt_game_scene_load_json(legacy_short);
     rt_string_unref(legacy_short);
     assert(rt_game_scene_has_errors(legacy) == 0);
@@ -329,7 +330,8 @@ int main() {
     assert(rt_game_scene_has_errors(invalid_count) == 1);
 #endif
 
-    std::filesystem::path path = std::filesystem::temp_directory_path() / "viper_scene_editor_test.json";
+    std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "viper_scene_editor_test.json";
     std::string path_text = path.string();
     rt_string path_s = rt_string_from_bytes(path_text.data(), path_text.size());
     assert(rt_game_scene_save_file(scene, path_s) == 1);

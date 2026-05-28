@@ -74,9 +74,9 @@ struct qt_item {
 
 /// Quadtree node.
 struct qt_node {
-    int64_t x, y;                         ///< Bounds top-left.
-    int64_t width, height;                ///< Bounds dimensions.
-    int64_t *items;                       ///< Item indices in this node.
+    int64_t x, y;          ///< Bounds top-left.
+    int64_t width, height; ///< Bounds dimensions.
+    int64_t *items;        ///< Item indices in this node.
     int64_t item_count;
     int64_t item_capacity;
     int64_t depth;
@@ -236,8 +236,14 @@ static int8_t intersects(struct qt_node *node, int64_t x, int64_t y, int64_t w, 
     return !(x >= node_right || right <= node->x || y >= node_bottom || bottom <= node->y);
 }
 
-static int8_t rects_intersect(
-    int64_t ax, int64_t ay, int64_t aw, int64_t ah, int64_t bx, int64_t by, int64_t bw, int64_t bh) {
+static int8_t rects_intersect(int64_t ax,
+                              int64_t ay,
+                              int64_t aw,
+                              int64_t ah,
+                              int64_t bx,
+                              int64_t by,
+                              int64_t bw,
+                              int64_t bh) {
     int64_t ar = qt_saturating_add(ax, aw);
     int64_t ab = qt_saturating_add(ay, ah);
     int64_t br = qt_saturating_add(bx, bw);

@@ -20,8 +20,8 @@
 //        lib/gui/src/font/vg_raster.c
 //
 //===----------------------------------------------------------------------===//
-#include "../../include/vg_font.h"
 #include "../../../graphics/src/vgfx_internal.h"
+#include "../../include/vg_font.h"
 #include "vgfx.h"
 #include <stddef.h>
 #include <stdint.h>

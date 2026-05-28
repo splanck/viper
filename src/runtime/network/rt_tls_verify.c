@@ -45,8 +45,8 @@
 #ifndef _WINDOWS_
 #error "windows.h must be included before wincrypt.h"
 #endif
-#include <wincrypt.h>
 #include <bcrypt.h>
+#include <wincrypt.h>
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "bcrypt.lib")
 #endif
@@ -59,7 +59,8 @@
 
 #define TLS_MAX_INTERMEDIATE_CERTS 16
 
-/// @brief Forward declaration: check whether a certificate's Extended Key Usage allows TLS Web Server Authentication.
+/// @brief Forward declaration: check whether a certificate's Extended Key Usage allows TLS Web
+/// Server Authentication.
 /// @details Real implementation later in the file. Marked MAYBE_UNUSED so
 ///          builds that strip platform-specific verification paths still
 ///          link. Used by chain validation to reject leaf certs that don't
@@ -140,23 +141,13 @@ static int tls_add_pem_or_der_certs_to_store_win(HCERTSTORE store, const char *p
         end += strlen(end_marker);
         pem_len = (size_t)(end - begin);
 
-        if (CryptStringToBinaryA(begin,
-                                 (DWORD)pem_len,
-                                 CRYPT_STRING_BASE64HEADER,
-                                 NULL,
-                                 &der_len,
-                                 NULL,
-                                 NULL) &&
+        if (CryptStringToBinaryA(
+                begin, (DWORD)pem_len, CRYPT_STRING_BASE64HEADER, NULL, &der_len, NULL, NULL) &&
             der_len > 0) {
             der = (uint8_t *)malloc(der_len);
             if (der &&
-                CryptStringToBinaryA(begin,
-                                     (DWORD)pem_len,
-                                     CRYPT_STRING_BASE64HEADER,
-                                     der,
-                                     &der_len,
-                                     NULL,
-                                     NULL) &&
+                CryptStringToBinaryA(
+                    begin, (DWORD)pem_len, CRYPT_STRING_BASE64HEADER, der, &der_len, NULL, NULL) &&
                 CertAddEncodedCertificateToStore(store,
                                                  X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
                                                  der,
@@ -360,8 +351,8 @@ static int der_read_tlv(
         *hdr_len = 2;
     } else {
         size_t num_len_bytes = l0 & 0x7F;
-        if (num_len_bytes == 0 || num_len_bytes > sizeof(size_t) ||
-            2 + num_len_bytes > buf_len || buf[2] == 0x00)
+        if (num_len_bytes == 0 || num_len_bytes > sizeof(size_t) || 2 + num_len_bytes > buf_len ||
+            buf[2] == 0x00)
             return -1;
 
         size_t v = 0;
@@ -400,11 +391,11 @@ static int oid_matches(const uint8_t *buf,
 }
 
 // Known OID encoded values (value bytes only, after the OID tag+length)
-static const uint8_t OID_COMMON_NAME[] = {0x55, 0x04, 0x03};      // 2.5.4.3
-static const uint8_t OID_SUBJECT_ALT_NAME[] = {0x55, 0x1d, 0x11}; // 2.5.29.17
-static const uint8_t OID_X509_KEY_USAGE[] = {0x55, 0x1d, 0x0f};        // 2.5.29.15
+static const uint8_t OID_COMMON_NAME[] = {0x55, 0x04, 0x03};            // 2.5.4.3
+static const uint8_t OID_SUBJECT_ALT_NAME[] = {0x55, 0x1d, 0x11};       // 2.5.29.17
+static const uint8_t OID_X509_KEY_USAGE[] = {0x55, 0x1d, 0x0f};         // 2.5.29.15
 static const uint8_t OID_X509_BASIC_CONSTRAINTS[] = {0x55, 0x1d, 0x13}; // 2.5.29.19
-static const uint8_t OID_X509_EXT_KEY_USAGE[] = {0x55, 0x1d, 0x25};    // 2.5.29.37
+static const uint8_t OID_X509_EXT_KEY_USAGE[] = {0x55, 0x1d, 0x25};     // 2.5.29.37
 
 /// @brief Return a pointer into cert_der at the DER-encoded Subject field, and write its total
 ///        TLV length (header + value) into *subject_len.
@@ -468,8 +459,8 @@ static int tls_dns_name_bytes_valid(const uint8_t *name, size_t len, int allow_w
         if (c == '*') {
             if (!allow_wildcard || i != 0 || len < 3 || name[1] != '.')
                 return 0;
-        } else if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-                     (c >= '0' && c <= '9') || c == '-')) {
+        } else if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                     c == '-')) {
             return 0;
         }
         label_len++;
@@ -484,8 +475,7 @@ static int tls_dns_name_bytes_valid(const uint8_t *name, size_t len, int allow_w
 ///          byte-buffer validator. Used by call sites that already have a
 ///          C-string-shaped hostname.
 static int tls_dns_name_valid(const char *name, int allow_wildcard) {
-    return name &&
-           tls_dns_name_bytes_valid((const uint8_t *)name, strlen(name), allow_wildcard);
+    return name && tls_dns_name_bytes_valid((const uint8_t *)name, strlen(name), allow_wildcard);
 }
 
 /// @brief Check that a wildcard certificate's matching suffix is "long enough" to be safe.
@@ -499,13 +489,10 @@ static int tls_dns_name_valid(const char *name, int allow_wildcard) {
 /// @return 1 if the suffix is acceptably specific, 0 if too broad.
 static int tls_wildcard_suffix_allowed(const char *suffix) {
     static const char *const blocked_suffixes[] = {
-        "com",     "net",    "org",    "edu",    "gov",    "mil",    "int",
-        "uk",      "co.uk",  "org.uk", "ac.uk",  "gov.uk",
-        "au",      "com.au", "net.au", "org.au", "edu.au", "gov.au",
-        "jp",      "co.jp",  "ne.jp",  "or.jp",
-        "de",      "fr",     "it",     "es",     "nl",     "br",     "ca",
-        "io",      "dev",    "app"
-    };
+        "com",    "net",    "org",   "edu",    "gov",   "mil",    "int",    "uk",
+        "co.uk",  "org.uk", "ac.uk", "gov.uk", "au",    "com.au", "net.au", "org.au",
+        "edu.au", "gov.au", "jp",    "co.jp",  "ne.jp", "or.jp",  "de",     "fr",
+        "it",     "es",     "nl",    "br",     "ca",    "io",     "dev",    "app"};
 
     if (!suffix || !tls_dns_name_valid(suffix, 0))
         return 0;
@@ -528,11 +515,13 @@ static int tls_wildcard_suffix_allowed(const char *suffix) {
 static int cert_critical_extension_supported(const uint8_t *oid, size_t oid_len) {
     return oid_matches(oid, oid_len, OID_SUBJECT_ALT_NAME, sizeof(OID_SUBJECT_ALT_NAME)) ||
            oid_matches(oid, oid_len, OID_X509_KEY_USAGE, sizeof(OID_X509_KEY_USAGE)) ||
-           oid_matches(oid, oid_len, OID_X509_BASIC_CONSTRAINTS, sizeof(OID_X509_BASIC_CONSTRAINTS)) ||
+           oid_matches(
+               oid, oid_len, OID_X509_BASIC_CONSTRAINTS, sizeof(OID_X509_BASIC_CONSTRAINTS)) ||
            oid_matches(oid, oid_len, OID_X509_EXT_KEY_USAGE, sizeof(OID_X509_EXT_KEY_USAGE));
 }
 
-/// @brief Walk the TBSCertificate.extensions sequence and reject if any critical extension is unrecognized.
+/// @brief Walk the TBSCertificate.extensions sequence and reject if any critical extension is
+/// unrecognized.
 /// @details Implements the "MUST reject" rule from RFC 5280 §4.2: parses
 ///          the certificate's extensions list, and for each entry marked
 ///          critical that isn't in cert_critical_extension_supported, the
@@ -572,8 +561,7 @@ static int cert_has_unsupported_critical_extension(const uint8_t *cert_der, size
         if (tag == 0xA3) {
             uint8_t seq_tag;
             size_t seq_len, seq_hl;
-            if (der_read_tlv(tbs + hl, vl, &seq_tag, &seq_len, &seq_hl) != 0 ||
-                seq_tag != 0x30)
+            if (der_read_tlv(tbs + hl, vl, &seq_tag, &seq_len, &seq_hl) != 0 || seq_tag != 0x30)
                 return 1;
             const uint8_t *exts = tbs + hl + seq_hl;
             size_t exts_rem = seq_len;
@@ -587,8 +575,7 @@ static int cert_has_unsupported_critical_extension(const uint8_t *cert_der, size
                 size_t ext_rem = ext_len;
                 uint8_t oid_tag;
                 size_t oid_len, oid_hl;
-                if (der_read_tlv(ext, ext_rem, &oid_tag, &oid_len, &oid_hl) != 0 ||
-                    oid_tag != 0x06)
+                if (der_read_tlv(ext, ext_rem, &oid_tag, &oid_len, &oid_hl) != 0 || oid_tag != 0x06)
                     return 1;
                 const uint8_t *oid = ext + oid_hl;
                 ext += oid_hl + oid_len;
@@ -785,9 +772,8 @@ static int tls_cert_has_matching_ip_san(const uint8_t *der,
                     uint8_t t4;
                     size_t vl4, hl4;
                     if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06 &&
-                        oid_matches(ext + hl4, vl4,
-                                    OID_SUBJECT_ALT_NAME,
-                                    sizeof(OID_SUBJECT_ALT_NAME))) {
+                        oid_matches(
+                            ext + hl4, vl4, OID_SUBJECT_ALT_NAME, sizeof(OID_SUBJECT_ALT_NAME))) {
                         size_t after_oid = hl4 + vl4;
                         if (after_oid < vl3) {
                             uint8_t nt;
@@ -888,7 +874,8 @@ int tls_extract_san_names(const uint8_t *der, size_t der_len, char san_out[][256
 
                     // OID
                     if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06) {
-                        if (oid_matches(ext + hl4, vl4,
+                        if (oid_matches(ext + hl4,
+                                        vl4,
                                         OID_SUBJECT_ALT_NAME,
                                         sizeof(OID_SUBJECT_ALT_NAME))) {
                             // Skip optional BOOLEAN (critical flag)
@@ -967,7 +954,8 @@ int tls_cert_has_san_extension(const uint8_t *der, size_t der_len) {
                     uint8_t t4;
                     size_t vl4, hl4;
                     if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06 &&
-                        oid_matches(ext + hl4, vl4, OID_SUBJECT_ALT_NAME, sizeof(OID_SUBJECT_ALT_NAME))) {
+                        oid_matches(
+                            ext + hl4, vl4, OID_SUBJECT_ALT_NAME, sizeof(OID_SUBJECT_ALT_NAME))) {
                         return 1;
                     }
                 }
@@ -985,8 +973,7 @@ int tls_cert_has_san_extension(const uint8_t *der, size_t der_len) {
 static int tls_extract_cn_from_name(const uint8_t *name_der, size_t name_len, char cn_out[256]) {
     uint8_t t;
     size_t vl, hl;
-    if (!name_der || !cn_out || der_read_tlv(name_der, name_len, &t, &vl, &hl) != 0 ||
-        t != 0x30) {
+    if (!name_der || !cn_out || der_read_tlv(name_der, name_len, &t, &vl, &hl) != 0 || t != 0x30) {
         return 0;
     }
 
@@ -1200,20 +1187,22 @@ static int tls_cert_has_matching_dns_san(const uint8_t *der,
                     uint8_t t4;
                     size_t vl4, hl4;
                     if (der_read_tlv(ext, vl3, &t4, &vl4, &hl4) == 0 && t4 == 0x06 &&
-                        oid_matches(ext + hl4, vl4,
-                                    OID_SUBJECT_ALT_NAME,
-                                    sizeof(OID_SUBJECT_ALT_NAME))) {
+                        oid_matches(
+                            ext + hl4, vl4, OID_SUBJECT_ALT_NAME, sizeof(OID_SUBJECT_ALT_NAME))) {
                         size_t after_oid = hl4 + vl4;
                         if (after_oid < vl3) {
                             uint8_t nt;
                             size_t nvl, nhl;
-                            if (der_read_tlv(ext + after_oid, vl3 - after_oid, &nt, &nvl, &nhl) == 0) {
+                            if (der_read_tlv(ext + after_oid, vl3 - after_oid, &nt, &nvl, &nhl) ==
+                                0) {
                                 if (nt == 0x01)
                                     after_oid += nhl + nvl;
                                 if (after_oid < vl3) {
                                     int saw_this_ext = 0;
-                                    if (san_ext_has_dns_match(
-                                            ext + after_oid, vl3 - after_oid, hostname, &saw_this_ext))
+                                    if (san_ext_has_dns_match(ext + after_oid,
+                                                              vl3 - after_oid,
+                                                              hostname,
+                                                              &saw_this_ext))
                                         return 1;
                                     if (saw_this_ext)
                                         saw_any = 1;
@@ -1327,7 +1316,8 @@ int tls_verify_hostname(rt_tls_session_t *session) {
 ///        Inspects KeyUsage (digitalSignature) and ExtendedKeyUsage
 ///        (id-kp-serverAuth or anyExtendedKeyUsage) extensions via DER parsing.
 /// @return 1 if both checks pass, 0 if any extension explicitly forbids server auth.
-static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_der, size_t cert_len) {
+static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_der,
+                                                           size_t cert_len) {
     static const uint8_t OID_KEY_USAGE[] = {0x55, 0x1d, 0x0f};
     static const uint8_t OID_EXTENDED_KEY_USAGE[] = {0x55, 0x1d, 0x25};
     static const uint8_t OID_SERVER_AUTH[] = {0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01};
@@ -1390,12 +1380,13 @@ static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_d
                 if (der_read_tlv(ext, ext_rem, &tag, &vl, &hl) != 0 || tag != 0x06)
                     return 0;
                 {
-                    int is_key_usage = (vl == sizeof(OID_KEY_USAGE) &&
-                                        memcmp(ext + hl, OID_KEY_USAGE, sizeof(OID_KEY_USAGE)) == 0);
-                    int is_eku = (vl == sizeof(OID_EXTENDED_KEY_USAGE) &&
-                                  memcmp(ext + hl,
-                                         OID_EXTENDED_KEY_USAGE,
-                                         sizeof(OID_EXTENDED_KEY_USAGE)) == 0);
+                    int is_key_usage =
+                        (vl == sizeof(OID_KEY_USAGE) &&
+                         memcmp(ext + hl, OID_KEY_USAGE, sizeof(OID_KEY_USAGE)) == 0);
+                    int is_eku =
+                        (vl == sizeof(OID_EXTENDED_KEY_USAGE) &&
+                         memcmp(ext + hl, OID_EXTENDED_KEY_USAGE, sizeof(OID_EXTENDED_KEY_USAGE)) ==
+                             0);
                     ext += hl + vl;
                     ext_rem -= hl + vl;
                     if (der_read_tlv(ext, ext_rem, &tag, &vl, &hl) == 0 && tag == 0x01) {
@@ -1426,7 +1417,8 @@ static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_d
                                 if (der_read_tlv(eku, eku_len, &tag, &vl, &hl) != 0 || tag != 0x06)
                                     break;
                                 if ((vl == sizeof(OID_SERVER_AUTH) &&
-                                     memcmp(eku + hl, OID_SERVER_AUTH, sizeof(OID_SERVER_AUTH)) == 0) ||
+                                     memcmp(eku + hl, OID_SERVER_AUTH, sizeof(OID_SERVER_AUTH)) ==
+                                         0) ||
                                     (vl == sizeof(OID_ANY_EXTENDED_KEY_USAGE) &&
                                      memcmp(eku + hl,
                                             OID_ANY_EXTENDED_KEY_USAGE,
@@ -1496,8 +1488,7 @@ int tls_verify_chain(rt_tls_session_t *session) {
     }
 
     if (session->ca_file[0]) {
-        root_store =
-            CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0, CERT_STORE_CREATE_NEW_FLAG, NULL);
+        root_store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, 0, CERT_STORE_CREATE_NEW_FLAG, NULL);
         if (!root_store) {
             CertCloseStore(extra_store, 0);
             CertFreeCertificateContext(cert_ctx);
@@ -1801,10 +1792,8 @@ static time_t parse_der_time(const uint8_t *data, size_t len, uint8_t tag) {
         return (time_t)-1;
     }
 
-    if (!der_decimal_2(data + pos, &month) ||
-        !der_decimal_2(data + pos + 2, &day) ||
-        !der_decimal_2(data + pos + 4, &hour) ||
-        !der_decimal_2(data + pos + 6, &minute) ||
+    if (!der_decimal_2(data + pos, &month) || !der_decimal_2(data + pos + 2, &day) ||
+        !der_decimal_2(data + pos + 4, &hour) || !der_decimal_2(data + pos + 6, &minute) ||
         !der_decimal_2(data + pos + 8, &second)) {
         return (time_t)-1;
     }
@@ -1910,7 +1899,8 @@ static RT_TLS_MAYBE_UNUSED int cert_is_self_signed(const uint8_t *cert_der, size
 /// @brief Check whether a certificate permits TLS server authentication (native macOS/Linux).
 ///        Same logic as the Windows variant but implemented with the in-tree DER parser.
 /// @return 1 if both KeyUsage and ExtendedKeyUsage checks pass, 0 otherwise.
-static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_der, size_t cert_len) {
+static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_der,
+                                                           size_t cert_len) {
     static const uint8_t OID_KEY_USAGE[] = {0x55, 0x1d, 0x0f};
     static const uint8_t OID_EXTENDED_KEY_USAGE[] = {0x55, 0x1d, 0x25};
     static const uint8_t OID_SERVER_AUTH[] = {0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x01};
@@ -1965,19 +1955,21 @@ static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_d
                 size_t ext_seq_len = 0;
                 const uint8_t *extn_value = NULL;
                 size_t extn_value_len = 0;
-                if (der_read_tlv(ext, exts_rem, &tag, &ext_seq_len, &ext_hdr_len) != 0 || tag != 0x30)
+                if (der_read_tlv(ext, exts_rem, &tag, &ext_seq_len, &ext_hdr_len) != 0 ||
+                    tag != 0x30)
                     return 0;
                 ext += ext_hdr_len;
                 ext_rem = ext_seq_len;
                 if (der_read_tlv(ext, ext_rem, &tag, &vl, &hl) != 0 || tag != 0x06)
                     return 0;
                 {
-                    int is_key_usage = (vl == sizeof(OID_KEY_USAGE) &&
-                                        memcmp(ext + hl, OID_KEY_USAGE, sizeof(OID_KEY_USAGE)) == 0);
-                    int is_eku = (vl == sizeof(OID_EXTENDED_KEY_USAGE) &&
-                                  memcmp(ext + hl,
-                                         OID_EXTENDED_KEY_USAGE,
-                                         sizeof(OID_EXTENDED_KEY_USAGE)) == 0);
+                    int is_key_usage =
+                        (vl == sizeof(OID_KEY_USAGE) &&
+                         memcmp(ext + hl, OID_KEY_USAGE, sizeof(OID_KEY_USAGE)) == 0);
+                    int is_eku =
+                        (vl == sizeof(OID_EXTENDED_KEY_USAGE) &&
+                         memcmp(ext + hl, OID_EXTENDED_KEY_USAGE, sizeof(OID_EXTENDED_KEY_USAGE)) ==
+                             0);
                     ext += hl + vl;
                     ext_rem -= hl + vl;
                     if (der_read_tlv(ext, ext_rem, &tag, &vl, &hl) == 0 && tag == 0x01) {
@@ -2008,7 +2000,8 @@ static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_d
                                 if (der_read_tlv(eku, eku_len, &tag, &vl, &hl) != 0 || tag != 0x06)
                                     break;
                                 if ((vl == sizeof(OID_SERVER_AUTH) &&
-                                     memcmp(eku + hl, OID_SERVER_AUTH, sizeof(OID_SERVER_AUTH)) == 0) ||
+                                     memcmp(eku + hl, OID_SERVER_AUTH, sizeof(OID_SERVER_AUTH)) ==
+                                         0) ||
                                     (vl == sizeof(OID_ANY_EXTENDED_KEY_USAGE) &&
                                      memcmp(eku + hl,
                                             OID_ANY_EXTENDED_KEY_USAGE,
@@ -2090,17 +2083,21 @@ static RT_TLS_MAYBE_UNUSED int cert_is_ca(const uint8_t *cert_der, size_t cert_l
                 size_t ext_seq_len = 0;
                 const uint8_t *extn_value = NULL;
                 size_t extn_value_len = 0;
-                if (der_read_tlv(ext, exts_rem, &tag, &ext_seq_len, &ext_hdr_len) != 0 || tag != 0x30)
+                if (der_read_tlv(ext, exts_rem, &tag, &ext_seq_len, &ext_hdr_len) != 0 ||
+                    tag != 0x30)
                     return 0;
                 ext += ext_hdr_len;
                 ext_rem = ext_seq_len;
                 if (der_read_tlv(ext, ext_rem, &tag, &vl, &hl) != 0 || tag != 0x06)
                     return 0;
                 {
-                    int is_basic = (vl == sizeof(OID_BASIC_CONSTRAINTS) &&
-                                    memcmp(ext + hl, OID_BASIC_CONSTRAINTS, sizeof(OID_BASIC_CONSTRAINTS)) == 0);
-                    int is_key_usage = (vl == sizeof(OID_KEY_USAGE) &&
-                                        memcmp(ext + hl, OID_KEY_USAGE, sizeof(OID_KEY_USAGE)) == 0);
+                    int is_basic =
+                        (vl == sizeof(OID_BASIC_CONSTRAINTS) &&
+                         memcmp(ext + hl, OID_BASIC_CONSTRAINTS, sizeof(OID_BASIC_CONSTRAINTS)) ==
+                             0);
+                    int is_key_usage =
+                        (vl == sizeof(OID_KEY_USAGE) &&
+                         memcmp(ext + hl, OID_KEY_USAGE, sizeof(OID_KEY_USAGE)) == 0);
                     ext += hl + vl;
                     ext_rem -= hl + vl;
                     if (der_read_tlv(ext, ext_rem, &tag, &vl, &hl) == 0 && tag == 0x01) {
@@ -2228,10 +2225,8 @@ static RT_TLS_MAYBE_UNUSED int cert_get_ec_pubkey(const uint8_t *cert_der,
                                                   size_t cert_len,
                                                   uint8_t x_out[32],
                                                   uint8_t y_out[32]) {
-    static const uint8_t OID_EC_PUBLIC_KEY[] = {
-        0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
-    static const uint8_t OID_PRIME256V1[] = {
-        0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
+    static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
+    static const uint8_t OID_PRIME256V1[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
     uint8_t tag;
     size_t vl, hl;
     const uint8_t *p = cert_der;
@@ -2332,8 +2327,7 @@ static RT_TLS_MAYBE_UNUSED int parse_ecdsa_sig_der(const uint8_t *sig,
     size_t r_len = 0;
     size_t s_len = 0;
 
-    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30 ||
-        hl + vl != sig_len)
+    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30 || hl + vl != sig_len)
         return -1;
     inner = sig + hl;
     inner_rem = vl;
@@ -2428,8 +2422,9 @@ static RT_TLS_MAYBE_UNUSED int cert_extract_signature_parts(const uint8_t *cert_
 
 /// @brief Map a DER OID value to one of SHA-256, SHA-384, or SHA-512.
 /// @return 1 and sets *hash_id if the OID is recognised, 0 otherwise.
-static RT_TLS_MAYBE_UNUSED int cert_parse_hash_oid(
-    const uint8_t *oid, size_t oid_len, rt_rsa_hash_t *hash_id) {
+static RT_TLS_MAYBE_UNUSED int cert_parse_hash_oid(const uint8_t *oid,
+                                                   size_t oid_len,
+                                                   rt_rsa_hash_t *hash_id) {
     static const uint8_t OID_SHA256[] = {0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01};
     static const uint8_t OID_SHA384[] = {0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02};
     static const uint8_t OID_SHA512[] = {0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03};
@@ -2512,8 +2507,8 @@ static RT_TLS_MAYBE_UNUSED int cert_parse_pss_params(const uint8_t *params_der,
                 return 0;
             q += hl;
             q_rem = vl;
-            if (der_read_tlv(q, q_rem, &tag, &vl, &hl) != 0 || tag != 0x06 || vl != sizeof(OID_MGF1) ||
-                memcmp(q + hl, OID_MGF1, sizeof(OID_MGF1)) != 0) {
+            if (der_read_tlv(q, q_rem, &tag, &vl, &hl) != 0 || tag != 0x06 ||
+                vl != sizeof(OID_MGF1) || memcmp(q + hl, OID_MGF1, sizeof(OID_MGF1)) != 0) {
                 return 0;
             }
             q += hl + vl;
@@ -2574,14 +2569,10 @@ static RT_TLS_MAYBE_UNUSED int cert_parse_pss_params(const uint8_t *params_der,
 static RT_TLS_MAYBE_UNUSED int cert_parse_signature_algorithm(const uint8_t *alg_der,
                                                               size_t alg_len,
                                                               tls_cert_sig_alg_t *alg) {
-    static const uint8_t OID_SHA256_RSA[] = {
-        0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B};
-    static const uint8_t OID_SHA384_RSA[] = {
-        0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0C};
-    static const uint8_t OID_SHA512_RSA[] = {
-        0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0D};
-    static const uint8_t OID_RSA_PSS[] = {
-        0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0A};
+    static const uint8_t OID_SHA256_RSA[] = {0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0B};
+    static const uint8_t OID_SHA384_RSA[] = {0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0C};
+    static const uint8_t OID_SHA512_RSA[] = {0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0D};
+    static const uint8_t OID_RSA_PSS[] = {0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x0A};
     static const uint8_t OID_ECDSA_SHA256[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x02};
     static const uint8_t OID_ECDSA_SHA384[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x03};
     static const uint8_t OID_ECDSA_SHA512[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x04};
@@ -2605,21 +2596,24 @@ static RT_TLS_MAYBE_UNUSED int cert_parse_signature_algorithm(const uint8_t *alg
     size_t oid_len = vl;
     p += hl + vl;
     rem -= hl + vl;
-    if (oid_len == sizeof(OID_SHA256_RSA) && memcmp(oid, OID_SHA256_RSA, sizeof(OID_SHA256_RSA)) == 0) {
+    if (oid_len == sizeof(OID_SHA256_RSA) &&
+        memcmp(oid, OID_SHA256_RSA, sizeof(OID_SHA256_RSA)) == 0) {
         if (!der_params_absent_or_null(p, rem))
             return 0;
         alg->kind = TLS_CERT_SIG_RSA_PKCS1;
         alg->hash_id = RT_RSA_HASH_SHA256;
         return 1;
     }
-    if (oid_len == sizeof(OID_SHA384_RSA) && memcmp(oid, OID_SHA384_RSA, sizeof(OID_SHA384_RSA)) == 0) {
+    if (oid_len == sizeof(OID_SHA384_RSA) &&
+        memcmp(oid, OID_SHA384_RSA, sizeof(OID_SHA384_RSA)) == 0) {
         if (!der_params_absent_or_null(p, rem))
             return 0;
         alg->kind = TLS_CERT_SIG_RSA_PKCS1;
         alg->hash_id = RT_RSA_HASH_SHA384;
         return 1;
     }
-    if (oid_len == sizeof(OID_SHA512_RSA) && memcmp(oid, OID_SHA512_RSA, sizeof(OID_SHA512_RSA)) == 0) {
+    if (oid_len == sizeof(OID_SHA512_RSA) &&
+        memcmp(oid, OID_SHA512_RSA, sizeof(OID_SHA512_RSA)) == 0) {
         if (!der_params_absent_or_null(p, rem))
             return 0;
         alg->kind = TLS_CERT_SIG_RSA_PKCS1;
@@ -2662,16 +2656,19 @@ static RT_TLS_MAYBE_UNUSED int cert_parse_signature_algorithm(const uint8_t *alg
 /// @brief Return the digest output length in bytes for a given hash identifier.
 /// @return 32, 48, or 64; 0 for unknown IDs.
 static RT_TLS_MAYBE_UNUSED size_t hash_len_from_id(rt_rsa_hash_t hash_id) {
-    return hash_id == RT_RSA_HASH_SHA256 ? 32
-         : hash_id == RT_RSA_HASH_SHA384 ? 48
-         : hash_id == RT_RSA_HASH_SHA512 ? 64
-                                         : 0;
+    return hash_id == RT_RSA_HASH_SHA256   ? 32
+           : hash_id == RT_RSA_HASH_SHA384 ? 48
+           : hash_id == RT_RSA_HASH_SHA512 ? 64
+                                           : 0;
 }
 
-/// @brief Hash data with the algorithm specified by hash_id and write the digest to out (max 64 bytes).
+/// @brief Hash data with the algorithm specified by hash_id and write the digest to out (max 64
+/// bytes).
 /// @return 1 on success, 0 for unknown hash_id.
-static RT_TLS_MAYBE_UNUSED int hash_bytes_for_id(
-    rt_rsa_hash_t hash_id, const uint8_t *data, size_t len, uint8_t out[64]) {
+static RT_TLS_MAYBE_UNUSED int hash_bytes_for_id(rt_rsa_hash_t hash_id,
+                                                 const uint8_t *data,
+                                                 size_t len,
+                                                 uint8_t out[64]) {
     switch (hash_id) {
         case RT_RSA_HASH_SHA256:
             rt_sha256(data, len, out);
@@ -2719,10 +2716,18 @@ static RT_TLS_MAYBE_UNUSED int verify_cert_signature(const uint8_t *cert_der,
         if (!cert_get_rsa_pubkey(issuer_der, issuer_len, &issuer_key))
             return 0;
         ok = (alg.kind == TLS_CERT_SIG_RSA_PKCS1)
-                 ? rt_rsa_pkcs1_v15_verify(
-                       &issuer_key, alg.hash_id, digest, hash_len_from_id(alg.hash_id), sig_bytes, sig_len)
-                 : rt_rsa_pss_verify(
-                       &issuer_key, alg.hash_id, digest, hash_len_from_id(alg.hash_id), sig_bytes, sig_len);
+                 ? rt_rsa_pkcs1_v15_verify(&issuer_key,
+                                           alg.hash_id,
+                                           digest,
+                                           hash_len_from_id(alg.hash_id),
+                                           sig_bytes,
+                                           sig_len)
+                 : rt_rsa_pss_verify(&issuer_key,
+                                     alg.hash_id,
+                                     digest,
+                                     hash_len_from_id(alg.hash_id),
+                                     sig_bytes,
+                                     sig_len);
         rt_rsa_key_free(&issuer_key);
         return ok;
     }
@@ -2784,11 +2789,8 @@ fail:
 ///        On each call, advances *pos past the next "-----BEGIN CERTIFICATE-----" ... "-----END
 ///        CERTIFICATE-----" block and sets *body_out/*body_len_out to the Base64 body.
 /// @return 1 if a certificate block was found, 0 at end-of-bundle or on parse error.
-static RT_TLS_MAYBE_UNUSED int pem_next_certificate(const char *pem,
-                                                    size_t pem_len,
-                                                    size_t *pos,
-                                                    const char **body_out,
-                                                    size_t *body_len_out) {
+static RT_TLS_MAYBE_UNUSED int pem_next_certificate(
+    const char *pem, size_t pem_len, size_t *pos, const char **body_out, size_t *body_len_out) {
     const char *begin_marker = "-----BEGIN CERTIFICATE-----";
     const char *end_marker = "-----END CERTIFICATE-----";
     const char *cursor = pem + *pos;
@@ -2861,7 +2863,8 @@ static RT_TLS_MAYBE_UNUSED int bundle_has_trusted_issuer(const char *pem,
             return 0;
         decoded_len = pem_decode_cert(body, body_len, decoded, body_len);
         subject = cert_get_subject(decoded, decoded_len, &subject_len);
-        if (decoded_len > 0 && subject && der_names_equal(subject, subject_len, child_issuer, child_issuer_len)) {
+        if (decoded_len > 0 && subject &&
+            der_names_equal(subject, subject_len, child_issuer, child_issuer_len)) {
             if (cert_check_expiry(decoded, decoded_len) == 0 && cert_is_ca(decoded, decoded_len) &&
                 verify_cert_signature(child_der, child_len, decoded, decoded_len)) {
                 ok = 1;
@@ -2884,6 +2887,7 @@ int tls_verify_chain(rt_tls_session_t *session) {
         size_t len;
         int used;
     } intermediates[TLS_MAX_INTERMEDIATE_CERTS];
+
     size_t intermediate_count = 0;
     size_t list_pos = 0;
     const uint8_t *current_der = NULL;
@@ -2900,7 +2904,8 @@ int tls_verify_chain(rt_tls_session_t *session) {
         session->error = "TLS: certificate is not valid for TLS server authentication";
         return RT_TLS_ERROR_HANDSHAKE;
     }
-    if (cert_has_unsupported_critical_extension(session->server_cert_der, session->server_cert_der_len)) {
+    if (cert_has_unsupported_critical_extension(session->server_cert_der,
+                                                session->server_cert_der_len)) {
         session->error = "TLS: leaf certificate has an unsupported critical extension";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -2966,13 +2971,16 @@ int tls_verify_chain(rt_tls_session_t *session) {
                 const uint8_t *subject = NULL;
                 if (intermediates[i].used)
                     continue;
-                subject = cert_get_subject(intermediates[i].der, intermediates[i].len, &subject_len);
+                subject =
+                    cert_get_subject(intermediates[i].der, intermediates[i].len, &subject_len);
                 if (!subject || !der_names_equal(subject, subject_len, issuer, issuer_len))
                     continue;
-                if (cert_has_unsupported_critical_extension(intermediates[i].der, intermediates[i].len) ||
+                if (cert_has_unsupported_critical_extension(intermediates[i].der,
+                                                            intermediates[i].len) ||
                     cert_check_expiry(intermediates[i].der, intermediates[i].len) != 0 ||
                     !cert_is_ca(intermediates[i].der, intermediates[i].len) ||
-                    !verify_cert_signature(current_der, current_len, intermediates[i].der, intermediates[i].len)) {
+                    !verify_cert_signature(
+                        current_der, current_len, intermediates[i].der, intermediates[i].len)) {
                     continue;
                 }
                 intermediates[i].used = 1;
@@ -3044,8 +3052,7 @@ static int parse_ecdsa_sig_der(const uint8_t *sig,
     size_t r_len = 0;
     size_t s_len = 0;
 
-    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30 ||
-        hl + vl != sig_len)
+    if (der_read_tlv(sig, sig_len, &tag, &vl, &hl) != 0 || tag != 0x30 || hl + vl != sig_len)
         return -1;
     inner = sig + hl;
     inner_rem = vl;
@@ -3156,7 +3163,8 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     uint8_t content_hash[64];
     size_t hash_len = 0;
     memset(content_hash, 0, sizeof(content_hash));
-    if (!build_cert_verify_hash_for_scheme_win(sig_scheme, session->cert_transcript_hash, content_hash, &hash_len)) {
+    if (!build_cert_verify_hash_for_scheme_win(
+            sig_scheme, session->cert_transcript_hash, content_hash, &hash_len)) {
         session->error = "TLS: CertificateVerify: unsupported scheme (Windows)";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -3192,13 +3200,8 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
             return RT_TLS_ERROR_HANDSHAKE;
         }
 
-        status = BCryptVerifySignature(key,
-                                       NULL,
-                                       content_hash,
-                                       (ULONG)hash_len,
-                                       raw_sig,
-                                       (ULONG)sizeof(raw_sig),
-                                       0);
+        status = BCryptVerifySignature(
+            key, NULL, content_hash, (ULONG)hash_len, raw_sig, (ULONG)sizeof(raw_sig), 0);
         BCryptDestroyKey(key);
         CertFreeCertificateContext(cert_ctx);
 
@@ -3213,8 +3216,8 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     if (sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806) {
         BCRYPT_KEY_HANDLE key = NULL;
         LPCWSTR hash_alg = (sig_scheme == 0x0804)   ? BCRYPT_SHA256_ALGORITHM
-                          : (sig_scheme == 0x0805) ? BCRYPT_SHA384_ALGORITHM
-                                                   : BCRYPT_SHA512_ALGORITHM;
+                           : (sig_scheme == 0x0805) ? BCRYPT_SHA384_ALGORITHM
+                                                    : BCRYPT_SHA512_ALGORITHM;
         BCRYPT_PSS_PADDING_INFO padding_info;
         NTSTATUS status;
 
@@ -3402,8 +3405,10 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         uint8_t sig_r[32];
         uint8_t sig_s[32];
 
-        if (cert_get_ec_pubkey(session->server_cert_der, session->server_cert_der_len, pub_x, pub_y) != 0) {
-            session->error = "TLS: CertificateVerify: certificate does not contain a P-256 public key";
+        if (cert_get_ec_pubkey(
+                session->server_cert_der, session->server_cert_der_len, pub_x, pub_y) != 0) {
+            session->error =
+                "TLS: CertificateVerify: certificate does not contain a P-256 public key";
             return RT_TLS_ERROR_HANDSHAKE;
         }
         if (parse_ecdsa_sig_der(sig_bytes, sig_len, sig_r, sig_s) != 0 ||
@@ -3418,8 +3423,10 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         rt_rsa_key_t rsa_key;
         int verified = 0;
         rt_rsa_key_init(&rsa_key);
-        if (!cert_get_rsa_pubkey(session->server_cert_der, session->server_cert_der_len, &rsa_key)) {
-            session->error = "TLS: CertificateVerify: certificate does not contain an RSA public key";
+        if (!cert_get_rsa_pubkey(
+                session->server_cert_der, session->server_cert_der_len, &rsa_key)) {
+            session->error =
+                "TLS: CertificateVerify: certificate does not contain an RSA public key";
             rt_rsa_key_free(&rsa_key);
             return RT_TLS_ERROR_HANDSHAKE;
         }

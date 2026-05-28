@@ -183,8 +183,8 @@ bool assignSectionVirtualAddresses(LinkLayout &layout, LinkPlatform platform, st
             }
             currentAddr = alignUp(currentAddr, sec.alignment);
         } catch (const std::exception &ex) {
-            err << "error: virtual address alignment failed for '" << sec.name
-                << "': " << ex.what() << "\n";
+            err << "error: virtual address alignment failed for '" << sec.name << "': " << ex.what()
+                << "\n";
             return false;
         }
         sec.virtualAddr = currentAddr;
@@ -339,8 +339,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         try {
             padded = alignUp(logicalSize, align);
         } catch (const std::exception &ex) {
-            err << "error: section merge alignment failed for '" << out.name
-                << "': " << ex.what() << "\n";
+            err << "error: section merge alignment failed for '" << out.name << "': " << ex.what()
+                << "\n";
             return false;
         }
         if (padded < logicalSize) {
@@ -484,8 +484,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         // TLS template data → .tdata on ELF/PE and .tdata_template on Mach-O
         // (mapped to __thread_data in MachOExeWriter).
         if (hasTlvTemplateData) {
-            const char *tmplName =
-                platform == LinkPlatform::macOS ? ".tdata_template" : ".tdata";
+            const char *tmplName = platform == LinkPlatform::macOS ? ".tdata_template" : ".tdata";
             auto &tmpl =
                 addOutputSection(SectionClass::TlsData, tmplName, false, true, true, false);
             for (const auto &pc : pending) {
@@ -520,8 +519,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     {
         std::map<std::string, std::vector<size_t>> preservedGroups;
         for (size_t pi = 0; pi < pending.size(); ++pi) {
-            if (pending[pi].cls != SectionClass::ObjC &&
-                pending[pi].cls != SectionClass::Preserved)
+            if (pending[pi].cls != SectionClass::ObjC && pending[pi].cls != SectionClass::Preserved)
                 continue;
             const auto &sec = objects[pending[pi].objIdx].sections[pending[pi].secIdx];
             preservedGroups[sec.name].push_back(pi);

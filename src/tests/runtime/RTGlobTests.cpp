@@ -142,7 +142,8 @@ static void test_glob_match() {
     {
         rt_string pattern = rt_const_cstr("dir/*.txt");
         rt_string path = rt_const_cstr("dir\\hello.txt");
-        test_result("Windows slash pattern matches backslash path", rt_glob_match(path, pattern) == 1);
+        test_result("Windows slash pattern matches backslash path",
+                    rt_glob_match(path, pattern) == 1);
     }
     {
         rt_string pattern = rt_const_cstr("*.txt");
@@ -168,7 +169,8 @@ static void test_glob_match() {
         rt_string path = rt_string_from_bytes(path_bytes, sizeof(path_bytes));
         rt_string pattern = rt_string_from_bytes(pattern_bytes, sizeof(pattern_bytes));
         test_result("embedded NUL path rejected", rt_glob_match(path, rt_const_cstr("safe*")) == 0);
-        test_result("embedded NUL pattern rejected", rt_glob_match(rt_const_cstr("safe.txt"), pattern) == 0);
+        test_result("embedded NUL pattern rejected",
+                    rt_glob_match(rt_const_cstr("safe.txt"), pattern) == 0);
         rt_string_unref(path);
         rt_string_unref(pattern);
     }
@@ -180,7 +182,8 @@ static void test_glob_null_safety() {
     printf("Testing Glob null safety:\n");
 
     test_result("null path returns false", rt_glob_match(nullptr, rt_const_cstr("*.txt")) == 0);
-    test_result("null pattern returns false", rt_glob_match(rt_const_cstr("hello.txt"), nullptr) == 0);
+    test_result("null pattern returns false",
+                rt_glob_match(rt_const_cstr("hello.txt"), nullptr) == 0);
 
     void *files = rt_glob_files(rt_const_cstr("."), nullptr);
     test_result("Files null pattern returns empty", rt_seq_len(files) == 0);

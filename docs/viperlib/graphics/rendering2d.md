@@ -61,7 +61,7 @@ renderer.FlushToTarget(target)
 canvas.BlitAlpha(0, 0, target.Pixels)
 ```
 
-`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list. `FlushToTarget(target)` draws to an offscreen target without ending the batch; `End(canvas)` draws to a Canvas with the queued blend modes, clears queued commands, and makes repeated `End` calls a no-op until the next `Begin`. `DrawTextureScaled(texture, x, y, width, height)` uses the texture's nearest or linear filter. `DrawTextureRegion(texture, x, y, sx, sy, width, height)` samples out-of-bounds source texels through the texture's clamp or repeat wrap mode. `DrawTextureRotated(texture, x, y, angleDegrees)` rotates around the texture center; `DrawTextureRotatedAt(texture, x, y, pivotX, pivotY, angleDegrees)` rotates around a source-local pivot. Additive `End(canvas)` clips correctly when a queued source is partially off-screen.
+`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list. `FlushToTarget(target)` draws to an offscreen target without ending the batch; `End(canvas)` draws to a Canvas with the queued blend modes, clears queued commands, and makes repeated `End` calls a no-op until the next `Begin`. `DrawTextureScaled(texture, x, y, width, height)` uses the texture's nearest or linear filter. `DrawTextureRegion(texture, x, y, sx, sy, width, height)` samples out-of-bounds source texels through the texture's clamp or repeat wrap mode. `DrawTextureRotated(texture, x, y, angleDegrees)` rotates around the texture center; `DrawTextureRotatedAt(texture, x, y, pivotX, pivotY, angleDegrees)` rotates around a source-local pivot. Rotation angles must be finite; valid angles are normalized before trigonometry. Additive `End(canvas)` clips correctly when a queued source is partially off-screen.
 
 `SpriteRenderer2D` snapshots `Sampler2D` state when queuing a texture draw. It does not mutate the `Texture2D`; call `Sampler2D.ApplyToTexture(texture)` only when you explicitly want to change the texture's stored filter and wrap properties. Material and blend overrides are scoped to that draw call, so later direct `Renderer2D` draws keep the renderer state you set.
 
@@ -137,7 +137,7 @@ video.Update(deltaSeconds)
 canvas.Blit(0, 0, video.Frame)
 ```
 
-`VideoPlayer.Frame` returns the same `Pixels` object each frame until the video ends; copy if you need to retain a specific frame. Calling `Update` more than once per logical frame skips decoding for the excess calls.
+`VideoPlayer` methods validate that their receiver is a `VideoPlayer` handle; unrelated objects are ignored or return zero/null defaults. `Seek` clamps non-finite or out-of-range times before frame selection. `Frame` returns the same `Pixels` object each frame until the video ends; copy if you need to retain a specific frame. Calling `Update` more than once per logical frame skips decoding for the excess calls.
 
 ---
 

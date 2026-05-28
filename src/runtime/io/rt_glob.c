@@ -287,14 +287,8 @@ static int glob_match_impl(const char *pattern, const char *text, int allow_slas
             const char *after = pattern + pi;
             int match = glob_match_class(&after, text[ti], slash_ok);
             if (match > 0) {
-                glob_push_state(stack,
-                                &sp,
-                                visited,
-                                plane,
-                                cols,
-                                (size_t)(after - pattern),
-                                ti + 1,
-                                slash_ok);
+                glob_push_state(
+                    stack, &sp, visited, plane, cols, (size_t)(after - pattern), ti + 1, slash_ok);
             } else if (match < 0 && glob_char_eq(pattern[pi], text[ti])) {
                 glob_push_state(stack, &sp, visited, plane, cols, pi + 1, ti + 1, slash_ok);
             }
@@ -415,11 +409,8 @@ void *rt_glob_files(rt_string dir, rt_string pattern) {
 /// result Seq; if it's a real directory, recurses. Symlinked
 /// directories are skipped via `glob_is_real_directory` to prevent
 /// cycles.
-static void glob_recursive_helper(rt_string base_dir,
-                                  rt_string rel_path,
-                                  const char *pattern,
-                                  void *result,
-                                  size_t depth) {
+static void glob_recursive_helper(
+    rt_string base_dir, rt_string rel_path, const char *pattern, void *result, size_t depth) {
     if (depth > 4096)
         rt_trap("Glob.FilesRecursive: recursion depth exceeded");
     // List all entries in current directory

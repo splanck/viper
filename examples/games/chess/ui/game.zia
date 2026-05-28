@@ -1,10 +1,17 @@
 module game;
 
 bind Viper.Graphics;
-bind Viper.Input;
-bind Viper.Time;
-bind Viper.Text.Fmt;
 bind Viper.Terminal;
+bind Action = Viper.Input.Action;
+bind Keyboard = Viper.Input.Keyboard;
+bind Mouse = Viper.Input.Mouse;
+bind Pad = Viper.Input.Pad;
+bind StateMachine = Viper.Game.StateMachine;
+bind ButtonGroup = Viper.Game.ButtonGroup;
+bind Timer = Viper.Game.Timer;
+bind Tween = Viper.Game.Tween;
+bind Clock = Viper.Time.Clock;
+bind Seq = Viper.Collections.Seq;
 bind Thread = Viper.Threads.Thread;
 bind Monitor = Viper.Threads.Monitor;
 bind "../core/config";
@@ -26,10 +33,10 @@ bind "../engine/ai";
 //          its `run()` method is the program's main loop.
 //
 // KEY-DESIGN-CHOICES:
-//   * STATE MACHINE. `gameState` is one of STATE_MENU / PLAYING / PROMO
-//     / AI_THINK / CHECKMATE / STALEMATE / DRAW. Input handling and
-//     rendering branch on it. Transitions happen in startNewGame /
-//     applyMove / checkGameOver / handleHudClick.
+//   * STATE MACHINE. `flow` is the Viper.Game.StateMachine source of
+//     truth for STATE_MENU / PLAYING / PROMO / AI_THINK / CHECKMATE /
+//     STALEMATE / DRAW. Input handling and rendering branch through
+//     isState / isGameOverState helpers.
 //   * AI ON A WORKER THREAD. The search would freeze the UI if run on
 //     the render thread. We start a background thread, copy the board
 //     to it, and poll for completion in pollAITurn. Module-level locks
@@ -50,9 +57,9 @@ bind "../engine/ai";
 //   * LEGAL MOVES CACHE. `cachedLegalMoves_` + `legalMovesValid_`
 //     avoid recomputing on every input event. Invalidated whenever
 //     the board changes (applyMove / unmake).
-//   * MOVE ANIMATION + LIFT. Pieces animate over `animDurationMs`
-//     (180 ms). The renderer's drawAnimatedPiece adds a triangular
-//     vertical lift so the piece appears to be carried, not slid.
+//   * MOVE ANIMATION + LIFT. Viper.Game.Tween drives a 0..1000 progress
+//     value over ~180 ms. The renderer's drawAnimatedPiece adds a
+//     triangular vertical lift so the piece appears to be carried.
 //   * THREEFOLD-REPETITION DETECTION. positionHashes records the
 //     Zobrist hash before each move; checkGameOver counts repeats and
 //     flags STATE_DRAW after the third occurrence.
@@ -144,12 +151,15 @@ class ChessGame {
     hide Board         board;
     hide MoveGen       moveGen;
     hide BoardRenderer renderer;
+    hide StateMachine  flow;
 
     // --- Game configuration ---
-    hide Integer gameState;
     hide Integer gameMode;
     hide Integer aiDepth;
     hide Boolean playerIsWhite;   // which color the human plays in PvC
+    hide ButtonGroup modeButtons;
+    hide ButtonGroup sideButtons;
+    hide ButtonGroup difficultyButtons;
 
     // --- Input state ---
     hide Integer selectedSq;          // square clicked/selected (-1 = none)
@@ -169,8 +179,8 @@ class ChessGame {
     hide Integer animToSq;
     hide Integer animPieceType;
     hide Boolean animPieceWhite;
-    hide Integer animStartMs;
     hide Integer animDurationMs;
+    hide Tween   animTween;
 
     // --- Move history & captures ---
     hide List[String]  sanHistory;
@@ -181,7 +191,7 @@ class ChessGame {
     // --- Clock state (count-up from 0, seconds per side) ---
     hide Integer whiteTimeSec;
     hide Integer blackTimeSec;
-    hide Integer lastTickMs;
+    hide Timer   clockTimer;
 
     // --- Promotion ---
     hide Integer promoFrom;
@@ -204,9 +214,6 @@ class ChessGame {
     hide List[Integer]  undoPrevToStack;         // lastTo before the move
     hide List[Integer]  undoCaptureColorStack;   // 1=white captured, -1=black, 0=none
 
-    // --- Key debounce flag (Ctrl+Z needs manual debounce — modifier combo) ---
-    hide Boolean ctrlZWasDown;
-
     // --- Legal moves cache (invalidated after each board change) ---
     hide List[Move] cachedLegalMoves_;
     hide Boolean    legalMovesValid_;
@@ -224,10 +231,11 @@ class ChessGame {
         // Pre-render piece sprites for high-quality rendering
         pieces.initSprites();
 
-        gameState     = STATE_MENU;
         gameMode      = MODE_PVC;
         aiDepth       = DIFF_HARD;
         playerIsWhite = true;
+        setupStateMachine();
+        setupMenuGroups();
 
         selectedSq       = -1;
         dragFrom         = -1;
@@ -245,8 +253,8 @@ class ChessGame {
         animToSq      = -1;
         animPieceType = 0;
         animPieceWhite = true;
-        animStartMs   = 0;
         animDurationMs = 180;
+        animTween = Tween.New();
 
         sanHistory    = [];
         whiteCaptured = [];
@@ -256,7 +264,8 @@ class ChessGame {
         // Clocks count up from 0
         whiteTimeSec = 0;
         blackTimeSec = 0;
-        lastTickMs   = 0;
+        clockTimer = Timer.New();
+        clockTimer.StartRepeatingMs(1000);
 
         promoFrom = -1;
         promoTo   = -1;
@@ -274,8 +283,6 @@ class ChessGame {
         undoPrevToStack       = [];
         undoCaptureColorStack = [];
 
-        ctrlZWasDown      = false;
-
         setupActions();
         cleanupAIWorker();
 
@@ -283,96 +290,192 @@ class ChessGame {
         legalMovesValid_  = false;
     }
 
-    /// @brief Define keyboard / gamepad action bindings (N = new, ESC = back).
+    /// @brief Define keyboard / gamepad action bindings.
     hide func setupActions() {
+        Action.Clear();
+
         Action.Define(ACT_NEW_GAME);
-        Action.BindKey(ACT_NEW_GAME, KEY_N);
+        Action.BindKey(ACT_NEW_GAME, Keyboard.get_KEY_N());
 
         Action.Define(ACT_BACK);
-        Action.BindKey(ACT_BACK, KEY_ESCAPE);
+        Action.BindKey(ACT_BACK, Keyboard.get_KEY_ESCAPE());
 
-        // Gamepad bindings
-        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_B);
-        Action.BindPadButton(ACT_BACK, PAD_IDX, PAD_BTN_START);
+        Action.Define(ACT_CONFIRM);
+        Action.BindKey(ACT_CONFIRM, Keyboard.get_KEY_ENTER());
+        Action.BindKey(ACT_CONFIRM, Keyboard.get_KEY_SPACE());
+
+        Action.Define(ACT_UNDO);
+        bindUndoChord(Keyboard.get_KEY_CTRL());
+        bindUndoChord(Keyboard.get_KEY_RCTRL());
+
+        Action.BindPadButton(ACT_CONFIRM, -1, Pad.get_PAD_A());
+        Action.BindPadButton(ACT_BACK, -1, Pad.get_PAD_B());
+        Action.BindPadButton(ACT_BACK, -1, Pad.get_PAD_START());
+    }
+
+    /// @brief Bind Ctrl+Z variants through Viper.Input.Action chord support.
+    hide func bindUndoChord(ctrlKey: Integer) {
+        var undoChord = Seq.New();
+        Seq.Push(undoChord, ctrlKey);
+        Seq.Push(undoChord, Keyboard.get_KEY_Z());
+        Action.BindChord(ACT_UNDO, undoChord);
+    }
+
+    /// @brief Register all chess UI states with Viper.Game.StateMachine.
+    hide func setupStateMachine() {
+        flow = StateMachine.New();
+        flow.AddState(STATE_MENU);
+        flow.AddState(STATE_PLAYING);
+        flow.AddState(STATE_PROMO);
+        flow.AddState(STATE_AI_THINK);
+        flow.AddState(STATE_CHECKMATE);
+        flow.AddState(STATE_STALEMATE);
+        flow.AddState(STATE_DRAW);
+        flow.SetInitial(STATE_MENU);
+    }
+
+    /// @brief Transition through Viper.Game.StateMachine.
+    hide func setGameState(nextState: Integer) {
+        if !flow.IsState(nextState) {
+            flow.Transition(nextState);
+        }
+    }
+
+    hide func isState(state: Integer) -> Boolean {
+        return flow.IsState(state);
+    }
+
+    hide func isGameOverState() -> Boolean {
+        return isState(STATE_CHECKMATE) ||
+               isState(STATE_STALEMATE) ||
+               isState(STATE_DRAW);
+    }
+
+    /// @brief Back menu radio-button state with Viper.Game.ButtonGroup.
+    hide func setupMenuGroups() {
+        modeButtons = ButtonGroup.New();
+        modeButtons.Add(MODE_PVP);
+        modeButtons.Add(MODE_PVC);
+        modeButtons.Add(MODE_CVC);
+        modeButtons.Select(gameMode);
+
+        sideButtons = ButtonGroup.New();
+        sideButtons.Add(0); // white
+        sideButtons.Add(1); // black
+        sideButtons.Select(sideSelectionId());
+
+        difficultyButtons = ButtonGroup.New();
+        difficultyButtons.Add(DIFF_EASY);
+        difficultyButtons.Add(DIFF_MEDIUM);
+        difficultyButtons.Add(DIFF_HARD);
+        difficultyButtons.Add(DIFF_EXPERT);
+        difficultyButtons.Select(aiDepth);
+    }
+
+    hide func sideSelectionId() -> Integer {
+        if playerIsWhite { return 0; }
+        return 1;
+    }
+
+    hide func syncMenuSelections() {
+        gameMode = modeButtons.Selected;
+        playerIsWhite = sideButtons.Selected == 0;
+        aiDepth = difficultyButtons.Selected;
+    }
+
+    hide func selectMode(id: Integer) {
+        if modeButtons.Select(id) {
+            syncMenuSelections();
+        }
+    }
+
+    hide func selectSide(id: Integer) {
+        if sideButtons.Select(id) {
+            syncMenuSelections();
+        }
+    }
+
+    hide func selectDifficulty(id: Integer) {
+        if difficultyButtons.Select(id) {
+            syncMenuSelections();
+        }
     }
 
     // =========================================================================
     // Main game loop
     // =========================================================================
 
-    /// @brief Main loop. ~120 FPS cap (sleep 8ms). Handles input, ticks
-    ///        clocks, polls the AI worker, and renders every frame
-    ///        until the window closes.
+    /// @brief Main loop. Canvas.BeginFrame handles polling/close checks;
+    ///        Canvas.SetFps caps presentation at 120 FPS.
     expose func run() {
-        lastTickMs = Viper.Time.GetTickCount();
+        canvas.SetFps(120);
+        canvas.SetDTMax(50);
 
-        while !canvas.get_ShouldClose() {
-            canvas.Poll();
+        while canvas.BeginFrame() != 0 {
+            flow.Update();
+            flow.ClearFlags();
 
             handleInput();
             updateClocks();
 
-            if gameState == STATE_AI_THINK {
+            if isState(STATE_AI_THINK) {
                 pollAITurn();
             }
 
             render();
-            Viper.Time.SleepMs(8);   // ~120 FPS cap
         }
 
         cleanupAIWorker();
+        Action.Clear();
     }
 
     // =========================================================================
     // Input handling
     // =========================================================================
 
-    /// @brief Top-level input dispatcher. Routes by gameState to the
+    /// @brief Top-level input dispatcher. Routes by StateMachine state to the
     ///        appropriate handler; also handles the global Ctrl+Z undo
     ///        and ESC-to-menu shortcuts.
     hide func handleInput() {
-        var mx = Viper.Input.Mouse.X();
-        var my = Viper.Input.Mouse.Y();
+        var mx = Mouse.X();
+        var my = Mouse.Y();
 
-        if gameState == STATE_MENU {
+        if isState(STATE_MENU) {
             handleMenuInput(mx, my);
             return;
         }
 
         if Action.Pressed(ACT_BACK) {
             cleanupAIWorker();
-            gameState = STATE_MENU;
+            setGameState(STATE_MENU);
             return;
         }
 
-        // Ctrl+Z — undo (SDL_SCANCODE_LCTRL=224, SDL_SCANCODE_Z=29)
-        // Works from any non-menu game state including game-over screens.
-        var ctrlZ = canvas.KeyHeld(224) != 0 && canvas.KeyHeld(29) != 0;
-        if !ctrlZ { ctrlZWasDown = false; }
-        if ctrlZ && !ctrlZWasDown {
-            ctrlZWasDown = true;
+        // Ctrl+Z through Viper.Input.Action chord binding. Works from any
+        // non-menu state including game-over screens.
+        if Action.Pressed(ACT_UNDO) {
             handleUndo();
         }
 
-        if gameState == STATE_CHECKMATE || gameState == STATE_STALEMATE || gameState == STATE_DRAW {
+        if isGameOverState() {
             handleGameOverInput(mx, my);
             return;
         }
 
-        if gameState == STATE_PROMO {
+        if isState(STATE_PROMO) {
             handlePromoInput(mx, my);
             return;
         }
 
-        if gameState == STATE_PLAYING || gameState == STATE_AI_THINK {
+        if isState(STATE_PLAYING) || isState(STATE_AI_THINK) {
             if handleHudClick(mx, my) { return; }
         }
 
-        if animationProgressPermille() >= 0 {
+        if animActive {
             return;
         }
 
-        if gameState != STATE_PLAYING { return; }
+        if !isState(STATE_PLAYING) { return; }
 
         // 'N' — new game (Action-based, edge-detected)
         if Action.Pressed(ACT_NEW_GAME) {
@@ -381,12 +484,12 @@ class ChessGame {
         }
 
         // Mouse press — pick up a piece
-        if Viper.Input.Mouse.WasPressed(0) {
+        if Mouse.WasPressed(Mouse.get_BUTTON_LEFT()) {
             handleMousePress(mx, my);
         }
 
         // Mouse hold — update drag position
-        if Viper.Input.Mouse.Left() {
+        if Mouse.Left() {
             if dragFrom >= 0 {
                 dragX = mx;
                 dragY = my;
@@ -394,7 +497,7 @@ class ChessGame {
         }
 
         // Mouse release — drop piece
-        if Viper.Input.Mouse.WasReleased(0) {
+        if Mouse.WasReleased(Mouse.get_BUTTON_LEFT()) {
             handleMouseRelease(mx, my);
         }
     }
@@ -478,24 +581,24 @@ class ChessGame {
     /// @brief Main-menu click + ENTER handling. Selects mode/side/diff
     ///        or starts the game on START / ENTER.
     hide func handleMenuInput(mx: Integer, my: Integer) {
-        if Keyboard.WasPressed(KEY_ENTER) {
+        if Action.Pressed(ACT_CONFIRM) {
             startNewGame();
             return;
         }
 
-        if !Viper.Input.Mouse.WasClicked(0) { return; }
+        if !Mouse.WasClicked(Mouse.get_BUTTON_LEFT()) { return; }
 
-        if layout.contains(layout.modeButtonRect(0), mx, my) { gameMode = MODE_PVP; }
-        if layout.contains(layout.modeButtonRect(1), mx, my) { gameMode = MODE_PVC; }
-        if layout.contains(layout.modeButtonRect(2), mx, my) { gameMode = MODE_CVC; }
+        if layout.contains(layout.modeButtonRect(0), mx, my) { selectMode(MODE_PVP); }
+        if layout.contains(layout.modeButtonRect(1), mx, my) { selectMode(MODE_PVC); }
+        if layout.contains(layout.modeButtonRect(2), mx, my) { selectMode(MODE_CVC); }
 
-        if layout.contains(layout.sideButtonRect(0), mx, my) { playerIsWhite = true; }
-        if layout.contains(layout.sideButtonRect(1), mx, my) { playerIsWhite = false; }
+        if layout.contains(layout.sideButtonRect(0), mx, my) { selectSide(0); }
+        if layout.contains(layout.sideButtonRect(1), mx, my) { selectSide(1); }
 
-        if layout.contains(layout.difficultyButtonRect(0), mx, my) { aiDepth = DIFF_EASY; }
-        if layout.contains(layout.difficultyButtonRect(1), mx, my) { aiDepth = DIFF_MEDIUM; }
-        if layout.contains(layout.difficultyButtonRect(2), mx, my) { aiDepth = DIFF_HARD; }
-        if layout.contains(layout.difficultyButtonRect(3), mx, my) { aiDepth = DIFF_EXPERT; }
+        if layout.contains(layout.difficultyButtonRect(0), mx, my) { selectDifficulty(DIFF_EASY); }
+        if layout.contains(layout.difficultyButtonRect(1), mx, my) { selectDifficulty(DIFF_MEDIUM); }
+        if layout.contains(layout.difficultyButtonRect(2), mx, my) { selectDifficulty(DIFF_HARD); }
+        if layout.contains(layout.difficultyButtonRect(3), mx, my) { selectDifficulty(DIFF_EXPERT); }
 
         if layout.contains(layout.startButtonRect(), mx, my) {
             startNewGame();
@@ -504,7 +607,7 @@ class ChessGame {
 
     /// @brief Game-over overlay click handler (NEW GAME / MAIN MENU).
     hide func handleGameOverInput(mx: Integer, my: Integer) {
-        if !Viper.Input.Mouse.WasClicked(0) { return; }
+        if !Mouse.WasClicked(Mouse.get_BUTTON_LEFT()) { return; }
 
         if layout.contains(layout.gameOverNewRect(), mx, my) {
             startNewGame();
@@ -512,13 +615,13 @@ class ChessGame {
 
         if layout.contains(layout.gameOverMenuRect(), mx, my) {
             cleanupAIWorker();
-            gameState = STATE_MENU;
+            setGameState(STATE_MENU);
         }
     }
 
     /// @brief Promotion-dialog click handler (Q / R / B / N choice).
     hide func handlePromoInput(mx: Integer, my: Integer) {
-        if !Viper.Input.Mouse.WasClicked(0) { return; }
+        if !Mouse.WasClicked(Mouse.get_BUTTON_LEFT()) { return; }
 
         var pieces = [QUEEN, ROOK, BISHOP, KNIGHT];
         for i in 0..4 {
@@ -532,7 +635,7 @@ class ChessGame {
     /// @brief Top/footer chrome click handler (NEW / MENU / DRAW / RESIGN).
     /// @return true if a chrome button was clicked (caller stops further handling).
     hide func handleHudClick(mx: Integer, my: Integer) -> Boolean {
-        if !Viper.Input.Mouse.WasClicked(0) { return false; }
+        if !Mouse.WasClicked(Mouse.get_BUTTON_LEFT()) { return false; }
 
         if layout.contains(layout.newButtonRect(), mx, my) {
             startNewGame();
@@ -541,13 +644,13 @@ class ChessGame {
 
         if layout.contains(layout.menuButtonRect(), mx, my) {
             cleanupAIWorker();
-            gameState = STATE_MENU;
+            setGameState(STATE_MENU);
             return true;
         }
 
         if layout.contains(layout.drawButtonRect(), mx, my) {
             cleanupAIWorker();
-            gameState = STATE_DRAW;
+            setGameState(STATE_DRAW);
             gameOverReason = "Draw agreed";
             gameOverWinner = "Draw";
             return true;
@@ -555,7 +658,7 @@ class ChessGame {
 
         if layout.contains(layout.resignButtonRect(), mx, my) {
             cleanupAIWorker();
-            gameState = STATE_CHECKMATE;
+            setGameState(STATE_CHECKMATE);
             gameOverReason = "Resignation";
             if board.whiteToMove {
                 gameOverWinner = "Black wins!";
@@ -575,7 +678,7 @@ class ChessGame {
     /// @brief Ctrl+Z undo. PvC undoes TWO plies so the human gets to
     ///        replay their own move rather than the AI's reply.
     hide func handleUndo() {
-        if gameState == STATE_AI_THINK { return; }   // unsafe while AI is mid-search
+        if isState(STATE_AI_THINK) { return; }   // unsafe while AI is mid-search
         if undoMoveStack.length() == 0 { return; }
 
         // Undo the last move
@@ -636,7 +739,7 @@ class ChessGame {
         dragFrom         = -1;
         stopAnimation();
 
-        gameState = STATE_PLAYING;
+        setGameState(STATE_PLAYING);
     }
 
     // =========================================================================
@@ -659,7 +762,7 @@ class ChessGame {
             if m.promotion {
                 promoFrom = fromSq;
                 promoTo   = toSq;
-                gameState = STATE_PROMO;
+                setGameState(STATE_PROMO);
                 return true;
             }
 
@@ -675,7 +778,7 @@ class ChessGame {
     /// @brief Apply the queued promotion move with the chosen piece type.
     hide func executePromo(pieceType: Integer) {
         if !isValidSquare(promoFrom) || !isValidSquare(promoTo) {
-            gameState = STATE_PLAYING;
+            setGameState(STATE_PLAYING);
             return;
         }
 
@@ -690,10 +793,10 @@ class ChessGame {
             applyMoveFields(m.from, m.to, m.captured, m.enPassant,
                             m.castleKing, m.castleQueen, m.promotion,
                             m.promotePiece);
-            gameState = STATE_PLAYING;
+            setGameState(STATE_PLAYING);
             return;
         }
-        gameState = STATE_PLAYING;
+        setGameState(STATE_PLAYING);
     }
 
     /// @brief Commit a move: push undo state, track captures, update
@@ -763,7 +866,7 @@ class ChessGame {
         checkGameOver();
 
         // Schedule AI move if it is now the AI's turn
-        if gameState == STATE_PLAYING {
+        if isState(STATE_PLAYING) {
             if isAITurn() {
                 startAITurn();
             }
@@ -794,8 +897,8 @@ class ChessGame {
         Monitor.Exit(aiWorkerLock);
 
         aiWorkerThread = Thread.StartSafe(&aiSearchWorker, 0);
-        gameState      = STATE_AI_THINK;
-        aiThinkStartMs = Viper.Time.GetTickCount();
+        setGameState(STATE_AI_THINK);
+        aiThinkStartMs = Clock.Ticks();
     }
 
     /// @brief Per-frame check on the AI worker. If the worker finished,
@@ -811,7 +914,7 @@ class ChessGame {
         aiWorkerThread = null;
         aiWorkerBoard  = null;
 
-        gameState = STATE_PLAYING;
+        setGameState(STATE_PLAYING);
 
         if thread.HasError {
             Say("Chess AI worker error: " + thread.Error);
@@ -859,9 +962,9 @@ class ChessGame {
 
         // For CvC: enforce a minimum delay between AI moves so the game is watchable
         if gameMode == MODE_CVC {
-            var elapsed = Viper.Time.GetTickCount() - aiThinkStartMs;
+            var elapsed = Clock.Ticks() - aiThinkStartMs;
             if elapsed < CVC_DELAY_MS {
-                Viper.Time.SleepMs(CVC_DELAY_MS - elapsed);
+                Clock.Sleep(CVC_DELAY_MS - elapsed);
             }
         }
 
@@ -909,29 +1012,33 @@ class ChessGame {
         animToSq = toSq;
         animPieceType = pieceType;
         animPieceWhite = white;
-        animStartMs = Viper.Time.GetTickCount();
+        animTween.StartI64(0, 1000, animDurationFrames(), EASE_OUT_QUAD);
     }
 
     /// @brief Cancel any in-flight animation.
     hide func stopAnimation() {
+        animTween.Stop();
         animActive = false;
         animFromSq = -1;
         animToSq = -1;
         animPieceType = 0;
-        animStartMs = 0;
     }
 
-    /// @brief Return current animation progress in 0..1000 per-mille,
+    hide func animDurationFrames() -> Integer {
+        var frames = animDurationMs * 120 / 1000;
+        if frames < 1 { return 1; }
+        return frames;
+    }
+
+    /// @brief Advance the Viper.Game.Tween and return 0..1000 progress,
     ///        or -1 if no animation. Auto-stops when complete.
     hide func animationProgressPermille() -> Integer {
         if !animActive { return -1; }
-        var elapsed = Viper.Time.GetTickCount() - animStartMs;
-        if elapsed >= animDurationMs {
+        if animTween.Update() {
             stopAnimation();
             return -1;
         }
-        if elapsed <= 0 { return 0; }
-        return elapsed * 1000 / animDurationMs;
+        return animTween.ValueI64;
     }
 
     // =========================================================================
@@ -939,7 +1046,7 @@ class ChessGame {
     // =========================================================================
 
     /// @brief Check for terminal conditions: checkmate, stalemate, 50-move
-    ///        rule, threefold repetition. Updates `gameState` accordingly.
+    ///        rule, threefold repetition. Updates StateMachine state.
     hide func checkGameOver() {
         var legal   = getLegalMoves();
         var inCheck = moveGen.isInCheck(board, board.whiteToMove);
@@ -950,7 +1057,7 @@ class ChessGame {
         if legal.length() == 0 {
             if inCheck {
                 // Checkmate
-                gameState = STATE_CHECKMATE;
+                setGameState(STATE_CHECKMATE);
                 gameOverReason = "Checkmate";
                 if board.whiteToMove {
                     gameOverWinner = "Black wins!";
@@ -959,7 +1066,7 @@ class ChessGame {
                 }
             } else {
                 // Stalemate
-                gameState = STATE_STALEMATE;
+                setGameState(STATE_STALEMATE);
                 gameOverReason = "Stalemate";
                 gameOverWinner = "Draw";
             }
@@ -968,7 +1075,7 @@ class ChessGame {
 
         // 50-move rule
         if board.halfMoveClock >= 100 {
-            gameState = STATE_DRAW;
+            setGameState(STATE_DRAW);
             gameOverReason = "50-move rule";
             gameOverWinner = "Draw";
             return;
@@ -981,7 +1088,7 @@ class ChessGame {
             if positionHashes.get(i) == currentHash { count = count + 1; }
         }
         if count >= 2 {
-            gameState = STATE_DRAW;
+            setGameState(STATE_DRAW);
             gameOverReason = "Threefold repetition";
             gameOverWinner = "Draw";
             return;
@@ -996,6 +1103,7 @@ class ChessGame {
     ///        empty undo / clock / capture / animation state.
     hide func startNewGame() {
         cleanupAIWorker();
+        syncMenuSelections();
 
         // new Board() automatically calls init() → setupStartPosition()
         board = new Board();
@@ -1017,7 +1125,8 @@ class ChessGame {
         // Clocks count up from 0
         whiteTimeSec = 0;
         blackTimeSec = 0;
-        lastTickMs   = Viper.Time.GetTickCount();
+        clockTimer.Stop();
+        clockTimer.StartRepeatingMs(1000);
 
         undoMoveStack         = [];
         undoInfoStack         = [];
@@ -1025,7 +1134,7 @@ class ChessGame {
         undoPrevToStack       = [];
         undoCaptureColorStack = [];
 
-        gameState = STATE_PLAYING;
+        setGameState(STATE_PLAYING);
 
         // In PvC with AI as white, trigger AI immediately
         if isAITurn() {
@@ -1039,13 +1148,13 @@ class ChessGame {
 
     /// @brief Tick the active player's count-up clock once per second.
     hide func updateClocks() {
-        if gameState != STATE_PLAYING { return; }
+        if !isState(STATE_PLAYING) { return; }
 
-        var now     = Viper.Time.GetTickCount();
-        var elapsed = (now - lastTickMs) / 1000;  // ms → seconds
+        var dt = canvas.DeltaTime;
+        if dt <= 0 { return; }
+        if dt > 50 { dt = 50; }
 
-        if elapsed >= 1 {
-            lastTickMs = now;
+        if clockTimer.UpdateMs(dt) {
             if board.whiteToMove {
                 whiteTimeSec = whiteTimeSec + 1;
             } else {
@@ -1062,16 +1171,16 @@ class ChessGame {
     ///        pieces -> drag/animation overlay -> top bar -> footer ->
     ///        side panel -> promo / thinking / game-over overlays.
     hide func render() {
-        var mx = Viper.Input.Mouse.X();
-        var my = Viper.Input.Mouse.Y();
-        var mouseDown = Viper.Input.Mouse.Left();
+        var mx = Mouse.X();
+        var my = Mouse.Y();
+        var mouseDown = Mouse.Left();
         var animProgress = animationProgressPermille();
         var hoverSq = renderer.squareAt(mx, my);
         if dragFrom >= 0 || animProgress >= 0 {
             hoverSq = -1;
         }
 
-        if gameState == STATE_MENU {
+        if isState(STATE_MENU) {
             renderer.drawMainMenu(gameMode, aiDepth, playerIsWhite, mx, my, mouseDown);
             canvas.Flip();
             return;
@@ -1102,7 +1211,7 @@ class ChessGame {
         // Top and bottom bars
         var turnStr = "White to move";
         if !board.whiteToMove   { turnStr = "Black to move"; }
-        if gameState == STATE_AI_THINK { turnStr = "AI thinking..."; }
+        if isState(STATE_AI_THINK) { turnStr = "AI thinking..."; }
         renderer.drawTopBar(turnStr, gameMode, mx, my, mouseDown);
 
         var statusStr = "Move " + Int(board.fullMoveNumber) + "  Halfmove " + Int(board.halfMoveClock);
@@ -1114,18 +1223,18 @@ class ChessGame {
                           sanHistory,
                           whiteCaptured, blackCaptured,
                           gameMode, aiDepth, playerIsWhite,
-                          gameState == STATE_AI_THINK, checkedKingSq);
+                          isState(STATE_AI_THINK), checkedKingSq);
 
         // Overlays (in order of priority)
-        if gameState == STATE_PROMO {
+        if isState(STATE_PROMO) {
             renderer.drawPromoDialog(board.whiteToMove, mx, my, mouseDown);
         }
 
-        if gameState == STATE_AI_THINK {
+        if isState(STATE_AI_THINK) {
             renderer.drawThinkingIndicator();
         }
 
-        if gameState == STATE_CHECKMATE || gameState == STATE_STALEMATE || gameState == STATE_DRAW {
+        if isGameOverState() {
             renderer.drawGameOverOverlay(gameOverReason, gameOverWinner, mx, my, mouseDown);
         }
 

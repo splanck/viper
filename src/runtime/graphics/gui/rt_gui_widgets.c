@@ -1,0 +1,1801 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/rt_gui_widgets.c
+// Purpose: Runtime bindings for the ViperGUI base widget API and fundamental
+//   widgets: font loading/destroy, widget visibility/enabled/size/flex/margin,
+//   Container, Label, Button (with icon support), TextInput (with undo/redo),
+//   Checkbox, RadioButton, Slider, ProgressBar, Image, ListBox, ComboBox,
+//   and the tab-order focus system. This file is the foundational widget layer
+//   on which all other GUI runtime files depend.
+//
+// Key invariants:
+//   - All widget functions guard against NULL widget pointer before delegating
+//     to vg_widget_* or the specific widget's vg_* API.
+//   - Tab order is built lazily by vg_build_tab_order; explicit tab_index values
+//     sort before default (-1) entries in DFS order.
+//   - TextInput undo stack uses a "push after edit" model: the initial empty
+//     string is pushed at creation; each insert/delete pushes the new state.
+//   - Button icon is stored as an owned char* (icon_text) in the vg_button_t;
+//     icon_pos 0 = left, 1 = right; drawn 4 px gap from the label.
+//   - ListBox and ComboBox item indices are zero-based; out-of-range indices
+//     return -1 / NULL from get_selected calls.
+//
+// Ownership/Lifetime:
+//   - All widget objects are vg_widget_t* (or subtype) owned by the vg widget
+//     tree; vg_widget_destroy() on any ancestor frees the full subtree.
+//   - Font objects (vg_font_t*) are manually managed: load with rt_font_load,
+//     free with rt_font_destroy; widget references do not extend font lifetime.
+//
+// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
+//        src/lib/gui/include/vg.h (ViperGUI C API),
+//        src/runtime/graphics/rt_gui_app.c (default font, s_current_app)
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_gui_internal.h"
+#include "rt_platform.h"
+
+#ifdef VIPER_ENABLE_GRAPHICS
+
+/// @brief Resolve a parent-container handle to its widget.
+/// @details Three-state contract: a NULL handle returns NULL (legitimate top-level
+///          placement); a valid handle returns its container widget; a non-NULL
+///          handle that fails to resolve also returns NULL — an error the caller
+///          must treat as "invalid parent", not "no parent".
+static vg_widget_t *rt_widget_parent_or_null_if_invalid(void *parent) {
+    vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    return parent_widget;
+}
+
+/// @brief External shim for modules that need parent-container validation
+///        without including rt_gui_internal.h inline helpers.
+void *rt_gui_widget_parent_container_checked(void *handle) {
+    return rt_gui_widget_parent_container_from_handle(handle);
+}
+
+//=============================================================================
+// Runtime Subobject Handles
+//=============================================================================
+
+typedef enum {
+    RT_GUI_HANDLE_TREE_NODE = 1,
+    RT_GUI_HANDLE_TAB = 2,
+    RT_GUI_HANDLE_LISTBOX_ITEM = 3,
+    RT_GUI_HANDLE_MENU = 4,
+    RT_GUI_HANDLE_MENU_ITEM = 5,
+    RT_GUI_HANDLE_CONTEXTMENU = 6,
+    RT_GUI_HANDLE_STATUSBAR_ITEM = 7,
+    RT_GUI_HANDLE_TOOLBAR_ITEM = 8,
+} rt_gui_subhandle_kind_t;
+
+#define RT_GUI_SUBHANDLE_MAGIC UINT64_C(0x52544755484E444C)
+
+typedef struct rt_gui_subhandle {
+    uint64_t magic;
+    uint32_t kind;
+    void *ptr;
+    vg_widget_t *owner_widget;
+    struct rt_gui_subhandle *next;
+    struct rt_gui_subhandle *prev;
+} rt_gui_subhandle_t;
+
+static rt_gui_subhandle_t *s_gui_subhandles = NULL;
+
+/// @brief Detach a subhandle from the global intrusive list, fixing up neighbour
+///        links and the list head. Leaves the node's own next/prev nulled.
+static void rt_gui_subhandle_unlink(rt_gui_subhandle_t *handle) {
+    if (!handle)
+        return;
+    if (handle->prev)
+        handle->prev->next = handle->next;
+    else if (s_gui_subhandles == handle)
+        s_gui_subhandles = handle->next;
+    if (handle->next)
+        handle->next->prev = handle->prev;
+    handle->next = NULL;
+    handle->prev = NULL;
+}
+
+/// @brief GC finalizer for a subhandle: unlink it from the list and clear its
+///        magic/ptr/owner so any lingering reference is recognized as dead.
+static void rt_gui_subhandle_finalize(void *obj) {
+    rt_gui_subhandle_t *handle = (rt_gui_subhandle_t *)obj;
+    if (!handle)
+        return;
+    rt_gui_subhandle_unlink(handle);
+    handle->magic = 0;
+    handle->ptr = NULL;
+    handle->owner_widget = NULL;
+}
+
+/// @brief Safe-cast an opaque handle to a subhandle of the expected @p kind.
+/// @return The subhandle if it has the right object size, magic tag and kind; NULL otherwise.
+static rt_gui_subhandle_t *rt_gui_subhandle_checked(void *handle, rt_gui_subhandle_kind_t kind) {
+    if (!rt_obj_is_instance(handle, 0, sizeof(rt_gui_subhandle_t)))
+        return NULL;
+    rt_gui_subhandle_t *sub = (rt_gui_subhandle_t *)handle;
+    if (sub->magic != RT_GUI_SUBHANDLE_MAGIC || sub->kind != (uint32_t)kind)
+        return NULL;
+    return sub;
+}
+
+/// @brief Mark a subhandle's target as gone by nulling its ptr/owner, while keeping
+///        the handle object itself alive so stale script references fail gracefully.
+static void rt_gui_subhandle_invalidate(rt_gui_subhandle_t *handle) {
+    if (!handle || handle->magic != RT_GUI_SUBHANDLE_MAGIC)
+        return;
+    handle->ptr = NULL;
+    handle->owner_widget = NULL;
+}
+
+/// @brief True if the subhandle's owner widget is still alive (or it has no owner).
+/// @details A dead owner triggers invalidation (ptr/owner nulled) and a false return,
+///          so callers never dereference a sub-object whose widget has been destroyed.
+static bool rt_gui_subhandle_owner_is_live(rt_gui_subhandle_t *handle) {
+    if (!handle)
+        return false;
+    if (!handle->owner_widget)
+        return true;
+    if (vg_widget_is_live(handle->owner_widget))
+        return true;
+    rt_gui_subhandle_invalidate(handle);
+    return false;
+}
+
+/// @brief Find the top-level widget that owns a menu item — its context menu, or
+///        the menubar reached through its parent menu. NULL if free-floating.
+static vg_widget_t *rt_gui_owner_widget_for_menu_item(vg_menu_item_t *item) {
+    if (!item)
+        return NULL;
+    if (item->owner_contextmenu)
+        return &item->owner_contextmenu->base;
+    if (item->parent_menu && item->parent_menu->owner_menubar)
+        return &item->parent_menu->owner_menubar->base;
+    return NULL;
+}
+
+/// @brief The menubar widget that owns a menu, or NULL if the menu isn't in a menubar.
+static vg_widget_t *rt_gui_owner_widget_for_menu(vg_menu_t *menu) {
+    return menu && menu->owner_menubar ? &menu->owner_menubar->base : NULL;
+}
+
+/// @brief Linear-search the global list for an existing subhandle wrapping (@p kind, @p ptr).
+static rt_gui_subhandle_t *rt_gui_find_subhandle(rt_gui_subhandle_kind_t kind, void *ptr) {
+    if (!ptr)
+        return NULL;
+    for (rt_gui_subhandle_t *handle = s_gui_subhandles; handle; handle = handle->next) {
+        if (handle->magic == RT_GUI_SUBHANDLE_MAGIC && handle->kind == (uint32_t)kind &&
+            handle->ptr == ptr)
+            return handle;
+    }
+    return NULL;
+}
+
+/// @brief Get-or-create the GC subhandle that wraps a widget sub-object.
+/// @details The entry point of the subhandle system: returns the existing handle for
+///          (@p kind, @p ptr) — refreshing its owner — or allocates a new one and links
+///          it into the global list. Reuse guarantees a stable identity per sub-object
+///          across calls. Returns NULL on NULL ptr or allocation failure.
+static void *rt_gui_wrap_subhandle(rt_gui_subhandle_kind_t kind,
+                                   void *ptr,
+                                   vg_widget_t *owner_widget) {
+    if (!ptr)
+        return NULL;
+    rt_gui_subhandle_t *existing = rt_gui_find_subhandle(kind, ptr);
+    if (existing) {
+        existing->owner_widget = owner_widget;
+        return existing;
+    }
+    rt_gui_subhandle_t *handle =
+        (rt_gui_subhandle_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gui_subhandle_t));
+    if (!handle)
+        return NULL;
+    handle->magic = RT_GUI_SUBHANDLE_MAGIC;
+    handle->kind = (uint32_t)kind;
+    handle->ptr = ptr;
+    handle->owner_widget = owner_widget;
+    handle->prev = NULL;
+    handle->next = s_gui_subhandles;
+    if (s_gui_subhandles)
+        s_gui_subhandles->prev = handle;
+    s_gui_subhandles = handle;
+    rt_obj_set_finalizer(handle, rt_gui_subhandle_finalize);
+    return handle;
+}
+
+void *rt_gui_wrap_tree_node(vg_tree_node_t *node) {
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_TREE_NODE, node, node && node->owner ? &node->owner->base : NULL);
+}
+
+void *rt_gui_wrap_tab(vg_tab_t *tab) {
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_TAB, tab, tab && tab->owner ? &tab->owner->base : NULL);
+}
+
+void *rt_gui_wrap_listbox_item(vg_listbox_item_t *item) {
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_LISTBOX_ITEM, item, item && item->owner ? &item->owner->base : NULL);
+}
+
+void *rt_gui_wrap_menu(vg_menu_t *menu) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_MENU, menu, rt_gui_owner_widget_for_menu(menu));
+}
+
+void *rt_gui_wrap_menu_item(vg_menu_item_t *item) {
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_MENU_ITEM, item, rt_gui_owner_widget_for_menu_item(item));
+}
+
+void *rt_gui_wrap_contextmenu(vg_contextmenu_t *menu) {
+    return rt_gui_wrap_subhandle(RT_GUI_HANDLE_CONTEXTMENU, menu, menu ? &menu->base : NULL);
+}
+
+void *rt_gui_wrap_statusbar_item(vg_statusbar_item_t *item) {
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_STATUSBAR_ITEM, item, item && item->owner ? &item->owner->base : NULL);
+}
+
+void *rt_gui_wrap_toolbar_item(vg_toolbar_item_t *item) {
+    return rt_gui_wrap_subhandle(
+        RT_GUI_HANDLE_TOOLBAR_ITEM, item, item && item->owner ? &item->owner->base : NULL);
+}
+
+vg_tree_node_t *rt_gui_tree_node_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_TREE_NODE);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_tree_node_t *node = (vg_tree_node_t *)sub->ptr;
+    if (!vg_tree_node_is_live(node)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return node;
+}
+
+vg_tab_t *rt_gui_tab_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_TAB);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_tab_t *tab = (vg_tab_t *)sub->ptr;
+    if (!vg_tab_is_live(tab)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return tab;
+}
+
+vg_listbox_item_t *rt_gui_listbox_item_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_LISTBOX_ITEM);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_listbox_item_t *item = (vg_listbox_item_t *)sub->ptr;
+    if (!vg_listbox_item_is_live(item)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return item;
+}
+
+vg_menu_t *rt_gui_menu_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_MENU);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_menu_t *menu = (vg_menu_t *)sub->ptr;
+    if (!vg_menu_is_live(menu)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return menu;
+}
+
+vg_menu_item_t *rt_gui_menu_item_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_MENU_ITEM);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_menu_item_t *item = (vg_menu_item_t *)sub->ptr;
+    if (!vg_menu_item_is_live(item)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return item;
+}
+
+vg_contextmenu_t *rt_gui_contextmenu_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_CONTEXTMENU);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_contextmenu_t *menu = (vg_contextmenu_t *)sub->ptr;
+    if (!vg_contextmenu_is_live(menu) || menu->base.type != VG_WIDGET_MENU) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return menu;
+}
+
+vg_statusbar_item_t *rt_gui_statusbar_item_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_STATUSBAR_ITEM);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_statusbar_item_t *item = (vg_statusbar_item_t *)sub->ptr;
+    if (!vg_statusbar_item_is_live(item)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return item;
+}
+
+vg_toolbar_item_t *rt_gui_toolbar_item_from_handle(void *handle) {
+    rt_gui_subhandle_t *sub = rt_gui_subhandle_checked(handle, RT_GUI_HANDLE_TOOLBAR_ITEM);
+    if (!sub || !sub->ptr)
+        return NULL;
+    if (!rt_gui_subhandle_owner_is_live(sub))
+        return NULL;
+    vg_toolbar_item_t *item = (vg_toolbar_item_t *)sub->ptr;
+    if (!vg_toolbar_item_is_live(item)) {
+        rt_gui_subhandle_invalidate(sub);
+        return NULL;
+    }
+    return item;
+}
+
+void rt_gui_invalidate_widget_subhandles(vg_widget_t *subtree) {
+    if (!subtree)
+        return;
+    for (rt_gui_subhandle_t *handle = s_gui_subhandles; handle; handle = handle->next) {
+        if (handle->magic != RT_GUI_SUBHANDLE_MAGIC || !handle->owner_widget)
+            continue;
+        if (rt_gui_widget_tree_contains(subtree, handle->owner_widget))
+            rt_gui_subhandle_invalidate(handle);
+    }
+}
+
+void rt_gui_invalidate_contextmenu_contents(vg_contextmenu_t *menu) {
+    if (!menu)
+        return;
+
+    for (rt_gui_subhandle_t *handle = s_gui_subhandles; handle; handle = handle->next) {
+        if (handle->magic != RT_GUI_SUBHANDLE_MAGIC || handle->owner_widget != &menu->base)
+            continue;
+        if (handle->kind == RT_GUI_HANDLE_MENU_ITEM)
+            rt_gui_subhandle_invalidate(handle);
+    }
+
+    for (size_t i = 0; i < menu->item_count; i++) {
+        vg_menu_item_t *item = menu->items[i];
+        if (item && item->submenu)
+            rt_gui_invalidate_contextmenu_tree((vg_contextmenu_t *)item->submenu);
+    }
+}
+
+void rt_gui_invalidate_contextmenu_tree(vg_contextmenu_t *menu) {
+    if (!menu)
+        return;
+    rt_gui_invalidate_contextmenu_contents(menu);
+    for (rt_gui_subhandle_t *handle = s_gui_subhandles; handle; handle = handle->next) {
+        if (handle->magic != RT_GUI_SUBHANDLE_MAGIC || handle->kind != RT_GUI_HANDLE_CONTEXTMENU)
+            continue;
+        if (handle->ptr == menu)
+            rt_gui_subhandle_invalidate(handle);
+    }
+}
+
+//=============================================================================
+// Font Functions
+//=============================================================================
+
+/// @brief Load a font from a file path and return an opaque handle.
+/// @details Converts the runtime string path to a C string, loads the font
+///          via vg_font_load_file, and returns the raw vg_font_t pointer as
+///          an opaque handle. The caller owns the font and must free it with
+///          rt_font_destroy when no longer needed. The loaded font is not
+///          automatically applied to any widget — use the widget's SetFont
+///          method to apply it.
+/// @param path File path to a .ttf or .ttc font file (runtime string).
+/// @return Opaque font handle, or NULL if the file could not be loaded.
+void *rt_font_load(rt_string path) {
+    RT_ASSERT_MAIN_THREAD();
+    char *cpath = rt_string_to_cstr(path);
+    if (!cpath)
+        return NULL;
+
+    vg_font_t *font = vg_font_load_file(cpath);
+    free(cpath);
+    return font;
+}
+
+/// @brief Free a previously loaded font and release its resources.
+/// @details Destroys the vg_font_t, freeing rasterized glyph caches and the
+///          font data buffer. If a live app or widget tree still references the
+///          font, destruction is deferred until the owning app is torn down.
+/// @param font Opaque font handle from rt_font_load (safe to pass NULL).
+void rt_font_destroy(void *font) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!font)
+        return;
+    if (rt_gui_retire_font_if_in_use((vg_font_t *)font))
+        return;
+    if (vg_font_is_live((vg_font_t *)font))
+        vg_font_destroy((vg_font_t *)font);
+}
+
+//=============================================================================
+// Widget Functions
+//=============================================================================
+
+/// @brief Return non-zero if `candidate` is `root` or any descendant in the widget tree.
+/// @details Used by rt_widget_forget_runtime_refs to check whether a cached app-level
+///          pointer (last_clicked, drag_source, etc.) falls inside the subtree that is
+///          about to be destroyed, so it can be nulled out before the widget is freed.
+int rt_gui_widget_tree_contains(vg_widget_t *root, const vg_widget_t *candidate) {
+    if (!root || !candidate)
+        return 0;
+    for (vg_widget_t *node = root; node;) {
+        if (node == candidate)
+            return 1;
+        if (node->first_child) {
+            node = node->first_child;
+            continue;
+        }
+        while (node && node != root && !node->next_sibling)
+            node = node->parent;
+        if (!node || node == root)
+            break;
+        node = node->next_sibling;
+    }
+    return 0;
+}
+
+/// @brief Return non-zero if @p root contains the owner statusbar for @p item.
+static int rt_widget_tree_contains_statusbar_item(vg_widget_t *root, vg_statusbar_item_t *item) {
+    if (!root || !item)
+        return 0;
+    if (root->type == VG_WIDGET_STATUSBAR) {
+        vg_statusbar_t *bar = (vg_statusbar_t *)root;
+        for (size_t i = 0; i < bar->left_count; i++) {
+            if (bar->left_items[i] == item)
+                return 1;
+        }
+        for (size_t i = 0; i < bar->center_count; i++) {
+            if (bar->center_items[i] == item)
+                return 1;
+        }
+        for (size_t i = 0; i < bar->right_count; i++) {
+            if (bar->right_items[i] == item)
+                return 1;
+        }
+    }
+    for (vg_widget_t *child = root->first_child; child; child = child->next_sibling) {
+        if (rt_widget_tree_contains_statusbar_item(child, item))
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Return non-zero if @p root contains the owner toolbar for @p item.
+static int rt_widget_tree_contains_toolbar_item(vg_widget_t *root, vg_toolbar_item_t *item) {
+    if (!root || !item)
+        return 0;
+    if (root->type == VG_WIDGET_TOOLBAR) {
+        vg_toolbar_t *bar = (vg_toolbar_t *)root;
+        for (size_t i = 0; i < bar->item_count; i++) {
+            if (bar->items[i] == item)
+                return 1;
+        }
+    }
+    for (vg_widget_t *child = root->first_child; child; child = child->next_sibling) {
+        if (rt_widget_tree_contains_toolbar_item(child, item))
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Clear any rt_gui_app_t back-pointers that reference `widget` or its subtree.
+/// @details Called immediately before vg_widget_destroy to prevent the app's cached
+///          raw pointers (last_clicked, drag_source, drag_over_widget,
+///          last_statusbar_clicked, last_toolbar_clicked) from becoming dangling after
+///          the widget tree is freed.
+void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget) {
+    if (!widget)
+        return;
+    if (app) {
+        if (rt_gui_widget_tree_contains(widget, app->last_clicked))
+            app->last_clicked = NULL;
+        if (rt_gui_widget_tree_contains(widget, app->drag_candidate))
+            app->drag_candidate = NULL;
+        if (rt_gui_widget_tree_contains(widget, app->drag_source)) {
+            if (app->drag_source)
+                app->drag_source->_is_being_dragged = false;
+            app->drag_source = NULL;
+        }
+        if (rt_gui_widget_tree_contains(widget, app->drag_over_widget)) {
+            if (app->drag_over_widget)
+                app->drag_over_widget->_is_drag_over = false;
+            app->drag_over_widget = NULL;
+        }
+        if (rt_widget_tree_contains_statusbar_item(widget, app->last_statusbar_clicked))
+            app->last_statusbar_clicked = NULL;
+        if (rt_widget_tree_contains_toolbar_item(widget, app->last_toolbar_clicked))
+            app->last_toolbar_clicked = NULL;
+    }
+    rt_findbar_forget_editor_subtree(widget);
+    rt_minimap_forget_editor_subtree(widget);
+    rt_gui_invalidate_widget_subhandles(widget);
+}
+
+/// @brief Destroy a widget and its entire subtree, freeing all resources.
+/// @details Delegates to vg_widget_destroy, which recursively frees all child
+///          widgets. After this call, all pointers to the widget or its
+///          descendants are invalid. Safe to call with NULL.
+/// @param widget Widget to destroy (opaque handle).
+void rt_widget_destroy(void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
+        return;
+
+    rt_gui_app_t *app = rt_gui_app_from_widget(w);
+    if (app && app->root == w)
+        return;
+
+    rt_widget_forget_runtime_refs(app, w);
+    vg_widget_destroy(w);
+}
+
+/// @brief Show or hide a widget.
+/// @details Hidden widgets are skipped during layout, painting, and event
+///          dispatch. Child widgets inherit the parent's visibility — hiding
+///          a container hides its entire subtree.
+/// @param widget  Widget to modify.
+/// @param visible Non-zero to show, zero to hide.
+void rt_widget_set_visible(void *widget, int64_t visible) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (w)
+        vg_widget_set_visible(w, visible != 0);
+}
+
+/// @brief Enable or disable user interaction with a widget.
+/// @details Disabled widgets are painted with reduced opacity and do not
+///          receive mouse/keyboard events. Unlike visibility, disabled widgets
+///          still participate in layout and occupy space.
+/// @param widget  Widget to modify.
+/// @param enabled Non-zero to enable, zero to disable.
+void rt_widget_set_enabled(void *widget, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (w)
+        vg_widget_set_enabled(w, enabled != 0);
+}
+
+/// @brief Set a fixed width and height on the widget.
+/// @details Overrides the layout engine's automatic sizing. When a fixed size
+///          is set, the widget ignores flex-grow and measures at exactly these
+///          dimensions. Pass 0 for either dimension to revert to auto-sizing.
+///          Do NOT set a fixed size on the root widget — it is resized
+///          dynamically from the window dimensions each frame.
+/// @param widget Widget to modify.
+/// @param width  Fixed width in logical pixels.
+/// @param height Fixed height in logical pixels.
+void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (w) {
+        rt_gui_app_t *app = rt_gui_app_from_widget(w);
+        if (app && app->root == w)
+            return;
+        vg_widget_set_fixed_size(
+            w,
+            rt_gui_sanitize_nonnegative_float((double)width, RT_GUI_MAX_LAYOUT_VALUE),
+            rt_gui_sanitize_nonnegative_float((double)height, RT_GUI_MAX_LAYOUT_VALUE));
+    }
+}
+
+/// @brief Set the preferred (natural) size hint for the layout engine.
+/// @details Unlike a fixed size, a preferred size is a soft request — the layout
+///          engine will try to honor it but may shrink or grow the widget to satisfy
+///          flex constraints or container limits. Use when you want a "default" size
+///          without preventing the widget from stretching.
+/// @param widget Widget to modify.
+/// @param width  Preferred width in logical pixels (>= 0).
+/// @param height Preferred height in logical pixels (>= 0).
+void rt_widget_set_preferred_size(void *widget, double width, double height) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (w) {
+        rt_gui_app_t *app = rt_gui_app_from_widget(w);
+        if (app && app->root == w)
+            return;
+        vg_widget_set_preferred_size(
+            w,
+            rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
+            rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
+    }
+}
+
+/// @brief Set the maximum size the widget may grow to during layout.
+/// @details Caps the upper bound on the widget's computed dimensions. A flex-grow
+///          widget will not exceed these values even if there is extra space.
+///          Passing 0 for either dimension removes the maximum constraint for that axis.
+/// @param widget Widget to modify.
+/// @param width  Maximum width in logical pixels (0 = unconstrained).
+/// @param height Maximum height in logical pixels (0 = unconstrained).
+void rt_widget_set_max_size(void *widget, double width, double height) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (w) {
+        rt_gui_app_t *app = rt_gui_app_from_widget(w);
+        if (app && app->root == w)
+            return;
+        vg_widget_set_max_size(w,
+                               rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
+                               rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
+    }
+}
+
+/// @brief Set the flex-grow factor for a widget within a VBox/HBox container.
+/// @details The flex value determines how much of the remaining space (after
+///          fixed-size and auto-sized widgets) this widget claims. A flex of 1.0
+///          means equal share; 2.0 means double share relative to flex-1 siblings.
+///          A flex of 0.0 means the widget only takes its natural/fixed size.
+/// @param widget Widget to modify.
+/// @param flex   Flex-grow factor (>= 0.0).
+void rt_widget_set_flex(void *widget, double flex) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (w) {
+        vg_widget_set_flex(w, rt_gui_sanitize_nonnegative_float(flex, RT_GUI_MAX_LAYOUT_VALUE));
+    }
+}
+
+/// @brief Add a child widget to a parent container.
+/// @details The parent handle can be either an app handle (uses app->root) or
+///          a widget pointer. The child is appended to the parent's child list
+///          and will participate in layout and painting during the next frame.
+///          The child's lifetime is now tied to the parent — destroying the
+///          parent destroys all children recursively.
+/// @param parent Parent container or app handle.
+/// @param child  Widget to add as a child.
+void rt_widget_add_child(void *parent, void *child) {
+    RT_ASSERT_MAIN_THREAD();
+    if (parent && child) {
+        vg_widget_t *parent_widget = rt_gui_widget_parent_container_from_handle(parent);
+        vg_widget_t *child_widget = rt_gui_widget_handle_checked(child);
+        if (parent_widget && child_widget) {
+            rt_gui_app_t *old_app = rt_gui_app_from_widget(child_widget);
+            rt_gui_app_t *new_app = rt_gui_app_from_widget(parent_widget);
+            if (old_app && old_app != new_app)
+                rt_widget_forget_runtime_refs(old_app, child_widget);
+            vg_widget_add_child(parent_widget, child_widget);
+            if (new_app && old_app != new_app)
+                rt_gui_apply_default_font(child_widget);
+        }
+    }
+}
+
+/// @brief Set uniform margin (external spacing) around a widget.
+/// @details Margin is the space between this widget's outer edge and its
+///          siblings or parent boundary. Applied equally on all four sides.
+/// @param widget Widget to modify.
+/// @param margin Margin in logical pixels.
+void rt_widget_set_margin(void *widget, int64_t margin) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (w)
+        vg_widget_set_margin(
+            w, rt_gui_sanitize_nonnegative_float((double)margin, RT_GUI_MAX_LAYOUT_VALUE));
+}
+
+/// @brief Set the tab-order index for keyboard navigation.
+/// @details Widgets with explicit tab indices (>= 0) are visited in ascending
+///          order during Tab/Shift+Tab navigation. Widgets with index -1
+///          (default) are visited in document order (depth-first traversal).
+/// @param widget Widget to modify.
+/// @param idx    Tab index (>= 0 for explicit ordering, -1 for default DFS).
+void rt_widget_set_tab_index(void *widget, int64_t idx) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (w)
+        vg_widget_set_tab_index(w, rt_gui_clamp_i64_to_i32(idx, -1, INT32_MAX));
+}
+
+/// @brief Check whether the widget is currently visible.
+/// @param widget Widget to query.
+/// @return 1 if visible, 0 if hidden or NULL.
+int64_t rt_widget_is_visible(void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
+        return 0;
+    return w->visible ? 1 : 0;
+}
+
+/// @brief Check whether the widget is currently enabled for interaction.
+/// @param widget Widget to query.
+/// @return 1 if enabled, 0 if disabled or NULL.
+int64_t rt_widget_is_enabled(void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
+        return 0;
+    return w->enabled ? 1 : 0;
+}
+
+/// @brief Get the current laid-out width of the widget in physical pixels.
+/// @param widget Widget to query.
+/// @return Width in pixels, or 0 if NULL.
+int64_t rt_widget_get_width(void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
+        return 0;
+    return (int64_t)w->width;
+}
+
+/// @brief Get the current laid-out height of the widget in physical pixels.
+/// @param widget Widget to query.
+/// @return Height in pixels, or 0 if NULL.
+int64_t rt_widget_get_height(void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
+        return 0;
+    return (int64_t)w->height;
+}
+
+/// @brief Get the widget's X position relative to its parent.
+/// @param widget Widget to query.
+/// @return X offset in pixels, or 0 if NULL.
+int64_t rt_widget_get_x(void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
+        return 0;
+    return (int64_t)w->x;
+}
+
+/// @brief Get the widget's Y position relative to its parent.
+/// @param widget Widget to query.
+/// @return Y offset in pixels, or 0 if NULL.
+int64_t rt_widget_get_y(void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
+        return 0;
+    return (int64_t)w->y;
+}
+
+/// @brief Get the widget's flex-grow factor.
+/// @param widget Widget to query.
+/// @return Flex value, or 0.0 if NULL.
+double rt_widget_get_flex(void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *w = rt_gui_widget_handle_checked(widget);
+    if (!w)
+        return 0.0;
+    return (double)w->layout.flex;
+}
+
+//=============================================================================
+// Label Widget
+//=============================================================================
+
+/// @brief Create a new text label widget.
+/// @details Creates a vg_label_t as a child of the given parent, sets its
+///          initial text, and applies the app's default font. Labels are
+///          read-only display widgets — they show static text and do not
+///          accept user input or focus.
+/// @param parent Parent container or app handle.
+/// @param text   Initial display text (runtime string).
+/// @return Opaque label widget handle, or NULL on failure.
+void *rt_label_new(void *parent, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_label_t *label = vg_label_create(parent_widget, ctext ? ctext : "");
+    free(ctext);
+    rt_gui_apply_default_font((vg_widget_t *)label);
+    return label;
+}
+
+/// @brief Update the display text of a label widget.
+/// @details The vg layer copies the text internally, so the temporary C string
+///          is freed immediately after the call.
+/// @param label Label widget handle.
+/// @param text  New text content (runtime string).
+void rt_label_set_text(void *label, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
+    if (!lbl)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_label_set_text(lbl, ctext);
+    free(ctext);
+}
+
+/// @brief Override the font and size used by a label widget.
+/// @details Replaces the label's font with a user-provided font. The font
+///          pointer is borrowed. Font.Destroy defers freeing while a live app
+///          tree references the font; detached widgets still need an owner to
+///          keep the font alive.
+/// @param label Label widget handle.
+/// @param font  Font handle from rt_font_load.
+/// @param size  Font size in points.
+void rt_label_set_font(void *label, void *font, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
+    if (!lbl)
+        return;
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_label_set_font(lbl, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+}
+
+/// @brief Set the text color of a label as a packed ARGB integer.
+void rt_label_set_color(void *label, int64_t color) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
+    if (lbl)
+        vg_label_set_color(lbl, (uint32_t)color);
+}
+
+//=============================================================================
+// Button Widget
+//=============================================================================
+
+/// @brief Create a new push button widget.
+/// @details Creates a vg_button_t with the given label text, adds it as a child
+///          of the parent container, and applies the app's default font. Buttons
+///          support click detection (via rt_widget_was_clicked), optional icons,
+///          and visual styles (primary, secondary, danger, etc.).
+/// @param parent Parent container or app handle.
+/// @param text   Button label text (runtime string).
+/// @return Opaque button widget handle, or NULL on failure.
+void *rt_button_new(void *parent, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_button_t *button = vg_button_create(parent_widget, ctext);
+    free(ctext);
+    rt_gui_apply_default_font((vg_widget_t *)button);
+    return button;
+}
+
+/// @brief Update the label text displayed on a button.
+void rt_button_set_text(void *button, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (!btn)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_button_set_text(btn, ctext);
+    free(ctext);
+}
+
+/// @brief Override the font and size used by a button widget.
+/// @param button Button widget handle.
+/// @param font   Font handle from rt_font_load (borrowed, not owned).
+/// @param size   Font size in points.
+void rt_button_set_font(void *button, void *font, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (!btn)
+        return;
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_button_set_font(btn, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+}
+
+/// @brief Set the visual style preset for a button (primary, secondary, danger, etc.).
+/// @details Button styles control the background/border/text color scheme. The
+///          style enum maps to vg_button_style_t values.
+/// @param button Button widget handle.
+/// @param style  Style enum value (0 = default, 1 = primary, 2 = danger, etc.).
+void rt_button_set_style(void *button, int64_t style) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (btn) {
+        if (style < (int64_t)VG_BUTTON_STYLE_DEFAULT || style > (int64_t)VG_BUTTON_STYLE_ICON)
+            style = (int64_t)VG_BUTTON_STYLE_DEFAULT;
+        vg_button_set_style(btn, (vg_button_style_t)style);
+    }
+}
+
+/// @brief Set a text/glyph icon to display alongside the button label.
+/// @details The icon string is typically a single Unicode glyph (e.g., from an
+///          icon font). The vg layer copies the string, so the temporary C
+///          string is freed immediately. Use rt_button_set_icon_pos to control
+///          whether the icon appears left or right of the label.
+/// @param button Button widget handle.
+/// @param icon   Icon glyph or text (runtime string).
+void rt_button_set_icon(void *button, rt_string icon) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (!btn)
+        return;
+    char *cicon = rt_string_to_gui_cstr(icon);
+    vg_button_set_icon(btn, cicon);
+    free(cicon);
+}
+
+/// @brief Set the icon position relative to the button label.
+/// @details 0 = icon on the left (default), 1 = icon on the right. The icon
+///          is drawn with a 4 px gap from the label text.
+void rt_button_set_icon_pos(void *button, int64_t pos) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (btn)
+        vg_button_set_icon_position(btn, pos == 1 ? 1 : 0);
+}
+
+//=============================================================================
+// TextInput Widget
+//=============================================================================
+
+/// @brief Create a new single-line text input widget.
+/// @details Creates a vg_textinput_t with an integrated undo/redo stack. The
+///          initial empty string is pushed onto the undo stack at creation.
+///          Each subsequent edit (insert/delete) pushes the new state. The
+///          widget supports keyboard focus, cursor movement, text selection,
+///          clipboard operations (Ctrl+C/V/X), and Tab-based focus traversal.
+/// @param parent Parent container or app handle.
+/// @return Opaque text input widget handle, or NULL on failure.
+void *rt_textinput_new(void *parent) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    vg_textinput_t *input = vg_textinput_create(parent_widget);
+    rt_gui_apply_default_font((vg_widget_t *)input);
+    return input;
+}
+
+/// @brief Programmatically set the text content of a text input.
+/// @details Replaces the entire content. Does not push to the undo stack
+///          (programmatic changes are not undoable by the user).
+/// @param input Text input widget handle.
+/// @param text  New text content (runtime string).
+void rt_textinput_set_text(void *input, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_textinput_t *ti =
+        (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
+    if (!ti)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_textinput_set_text(ti, ctext);
+    free(ctext);
+}
+
+/// @brief Retrieve the current text content of a text input.
+/// @details Returns a runtime string copy of the widget's internal buffer.
+///          The returned string is GC-managed and safe to use from Zia code.
+/// @param input Text input widget handle.
+/// @return Current text as a runtime string, or empty string if NULL.
+rt_string rt_textinput_get_text(void *input) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_textinput_t *ti =
+        (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
+    if (!ti)
+        return rt_str_empty();
+    const char *text = vg_textinput_get_text(ti);
+    if (!text)
+        return rt_str_empty();
+    return rt_string_from_bytes(text, ti->text_len);
+}
+
+/// @brief Set the placeholder text shown when the input is empty.
+/// @details The placeholder appears in a dimmed style and disappears when the
+///          user starts typing. Useful for hinting at expected input format.
+void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_textinput_t *ti =
+        (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
+    if (!ti)
+        return;
+    char *ctext = rt_string_to_gui_cstr(placeholder);
+    vg_textinput_set_placeholder(ti, ctext);
+    free(ctext);
+}
+
+/// @brief Set the font of the textinput.
+void rt_textinput_set_font(void *input, void *font, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_textinput_t *ti =
+        (vg_textinput_t *)rt_gui_widget_handle_checked_type(input, VG_WIDGET_TEXTINPUT);
+    if (!ti)
+        return;
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_textinput_set_font(ti, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+}
+
+//=============================================================================
+// Checkbox Widget
+//=============================================================================
+
+/// @brief Create a new checkbox widget with a label.
+/// @details Creates a vg_checkbox_t with the given label text. Checkboxes
+///          toggle between checked and unchecked states when clicked. Use
+///          rt_checkbox_is_checked to poll the current state each frame.
+/// @param parent Parent container or app handle.
+/// @param text   Label text displayed next to the checkbox (runtime string).
+/// @return Opaque checkbox widget handle, or NULL on failure.
+void *rt_checkbox_new(void *parent, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_checkbox_t *checkbox = vg_checkbox_create(parent_widget, ctext);
+    free(ctext);
+    rt_gui_apply_default_font((vg_widget_t *)checkbox);
+    return checkbox;
+}
+
+/// @brief Programmatically set the checked state of a checkbox.
+/// @param checkbox Checkbox widget handle.
+/// @param checked  Non-zero to check, zero to uncheck.
+void rt_checkbox_set_checked(void *checkbox, int64_t checked) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (cb)
+        vg_checkbox_set_checked(cb, checked != 0);
+}
+
+/// @brief Query whether a checkbox is currently checked.
+/// @param checkbox Checkbox widget handle.
+/// @return 1 if checked, 0 if unchecked or NULL.
+int64_t rt_checkbox_is_checked(void *checkbox) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (!cb)
+        return 0;
+    return vg_checkbox_is_checked(cb) ? 1 : 0;
+}
+
+/// @brief Update the label text displayed next to a checkbox.
+/// @param checkbox Checkbox widget handle.
+/// @param text     New label text (runtime string).
+void rt_checkbox_set_text(void *checkbox, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (!cb)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_checkbox_set_text(cb, ctext);
+    free(ctext);
+}
+
+/// @brief Set the indeterminate (mixed) state of a checkbox.
+/// @details Indeterminate is a tri-state used when a checkbox represents a group
+///          of items whose states are mixed (some checked, some not). Visually
+///          the checkbox shows a dash or filled square rather than a tick mark.
+///          Setting this clears the checked state so the control has one
+///          unambiguous logical value.
+/// @param checkbox      Checkbox widget handle.
+/// @param indeterminate Non-zero to show mixed state, zero to clear it.
+void rt_checkbox_set_indeterminate(void *checkbox, int64_t indeterminate) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (cb)
+        vg_checkbox_set_indeterminate(cb, indeterminate != 0);
+}
+
+/// @brief Query whether the checkbox is in the indeterminate (mixed) state.
+/// @param checkbox Checkbox widget handle.
+/// @return 1 if indeterminate, 0 if determined (checked or unchecked) or NULL.
+int64_t rt_checkbox_is_indeterminate(void *checkbox) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_checkbox_t *cb =
+        (vg_checkbox_t *)rt_gui_widget_handle_checked_type(checkbox, VG_WIDGET_CHECKBOX);
+    if (!cb)
+        return 0;
+    return vg_checkbox_is_indeterminate(cb) ? 1 : 0;
+}
+
+//=============================================================================
+// ScrollView Widget
+//=============================================================================
+
+/// @brief Create a new scrollable container widget.
+/// @details Creates a vg_scrollview_t that clips its content to its viewport
+///          bounds and provides scrollbars when the content exceeds the
+///          viewport. Children are added to the scroll view's internal
+///          content container, not directly to the scroll view itself.
+/// @param parent Parent container or app handle.
+/// @return Opaque scroll view widget handle, or NULL on failure.
+void *rt_scrollview_new(void *parent) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    return vg_scrollview_create(parent_widget);
+}
+
+/// @brief Programmatically set the scroll position of a scroll view.
+/// @details Scrolls the content to the specified (x, y) offset. Values are
+///          clamped to [0, content_size - viewport_size] by the vg layout engine.
+/// @param scroll Scroll view widget handle.
+/// @param x      Horizontal scroll offset in pixels.
+/// @param y      Vertical scroll offset in pixels.
+void rt_scrollview_set_scroll(void *scroll, double x, double y) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_scrollview_t *sv =
+        (vg_scrollview_t *)rt_gui_widget_handle_checked_type(scroll, VG_WIDGET_SCROLLVIEW);
+    if (!sv)
+        return;
+    vg_scrollview_set_scroll(sv,
+                             rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
+                             rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
+}
+
+/// @brief Set the total content size of a scroll view (determines scroll range).
+/// @details The content size defines the virtual area that can be scrolled. If
+///          the content is larger than the viewport, scrollbars appear. Set
+///          this to match the actual size of the content you're displaying.
+/// @param scroll Scroll view widget handle.
+/// @param width  Total content width in pixels.
+/// @param height Total content height in pixels.
+void rt_scrollview_set_content_size(void *scroll, double width, double height) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_scrollview_t *sv =
+        (vg_scrollview_t *)rt_gui_widget_handle_checked_type(scroll, VG_WIDGET_SCROLLVIEW);
+    if (!sv)
+        return;
+    vg_scrollview_set_content_size(
+        sv,
+        rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
+        rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
+}
+
+/// @brief Get the current horizontal scroll offset.
+double rt_scrollview_get_scroll_x(void *scroll) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_scrollview_t *sv =
+        (vg_scrollview_t *)rt_gui_widget_handle_checked_type(scroll, VG_WIDGET_SCROLLVIEW);
+    if (!sv)
+        return 0.0;
+    float x = 0.0f, y = 0.0f;
+    vg_scrollview_get_scroll(sv, &x, &y);
+    return (double)x;
+}
+
+/// @brief Get the current vertical scroll offset.
+double rt_scrollview_get_scroll_y(void *scroll) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_scrollview_t *sv =
+        (vg_scrollview_t *)rt_gui_widget_handle_checked_type(scroll, VG_WIDGET_SCROLLVIEW);
+    if (!sv)
+        return 0.0;
+    float x = 0.0f, y = 0.0f;
+    vg_scrollview_get_scroll(sv, &x, &y);
+    return (double)y;
+}
+
+//=============================================================================
+// TreeView Widget
+//=============================================================================
+
+/// @brief Create a new hierarchical tree view widget.
+/// @details Creates a vg_treeview_t for displaying expandable/collapsible
+///          tree structures (e.g., file browsers, scene graphs). Nodes can
+///          be expanded, collapsed, selected, and carry user-data strings.
+///          Selection changes are edge-triggered via rt_treeview_was_selection_changed.
+/// @param parent Parent container or app handle.
+/// @return Opaque tree view widget handle, or NULL on failure.
+void *rt_treeview_new(void *parent) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
+    if (parent && !parent_widget)
+        return NULL;
+    vg_treeview_t *tv = vg_treeview_create(parent_widget);
+    if (tv)
+        rt_gui_apply_default_font((vg_widget_t *)tv);
+    return tv;
+}
+
+/// @brief Add a child node to the tree view (or to a parent node).
+/// @details If parent_node is NULL, the node is added at the root level.
+///          The text is copied by the vg layer. Returns the new node handle,
+///          which can be used to add further children or set user data.
+/// @param tree        Tree view widget handle.
+/// @param parent_node Parent node handle, or NULL for root-level.
+/// @param text        Node label text (runtime string).
+/// @return New node handle, or NULL on failure.
+void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return NULL;
+    vg_tree_node_t *parent = parent_node ? rt_gui_tree_node_from_handle(parent_node) : NULL;
+    if (parent_node && (!parent || parent->owner != tv))
+        return NULL;
+    char *ctext = rt_string_to_gui_cstr(text);
+    vg_tree_node_t *node = vg_treeview_add_node(tv, parent, ctext);
+    free(ctext);
+    return rt_gui_wrap_tree_node(node);
+}
+
+/// @brief Remove a node and its subtree from the tree view.
+void rt_treeview_remove_node(void *tree, void *node) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    vg_tree_node_t *n = node ? rt_gui_tree_node_from_handle(node) : NULL;
+    if (tv && n && n->owner == tv)
+        vg_treeview_remove_node(tv, n);
+}
+
+/// @brief Remove all nodes from the tree view, leaving it empty.
+void rt_treeview_clear(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (tv)
+        vg_treeview_clear(tv);
+}
+
+/// @brief Free retired node tombstones once callers have discarded stale handles.
+void rt_treeview_prune_retired_nodes(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (tv)
+        vg_treeview_prune_retired_nodes(tv);
+}
+
+/// @brief Expand a tree node to show its children.
+void rt_treeview_expand(void *tree, void *node) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    vg_tree_node_t *n = node ? rt_gui_tree_node_from_handle(node) : NULL;
+    if (tv && n && n->owner == tv)
+        vg_treeview_expand(tv, n);
+}
+
+/// @brief Collapse a tree node to hide its children.
+void rt_treeview_collapse(void *tree, void *node) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    vg_tree_node_t *n = node ? rt_gui_tree_node_from_handle(node) : NULL;
+    if (tv && n && n->owner == tv)
+        vg_treeview_collapse(tv, n);
+}
+
+/// @brief Programmatically select a tree node (NULL to clear selection).
+void rt_treeview_select(void *tree, void *node) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return;
+    vg_tree_node_t *n = node ? rt_gui_tree_node_from_handle(node) : NULL;
+    if (node && (!n || n->owner != tv))
+        return;
+    vg_treeview_select(tv, n);
+}
+
+/// @brief Set the font of the treeview.
+void rt_treeview_set_font(void *tree, void *font, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return;
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!checked_font)
+        return;
+    vg_treeview_set_font(tv, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+}
+
+/// @brief Currently-selected tree node handle (NULL if none / null tree).
+void *rt_treeview_get_selected(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return NULL;
+    return rt_gui_wrap_tree_node(tv->selected);
+}
+
+/// @brief Tree node under a window-space point (NULL if outside rows).
+void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return NULL;
+    return rt_gui_wrap_tree_node(vg_treeview_node_at(tv, (float)x, (float)y));
+}
+
+/// @brief Check if the tree view selection changed since the last call (edge-triggered).
+int64_t rt_treeview_was_selection_changed(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv)
+        return 0;
+
+    if (tv->selection_revision != tv->reported_selection_revision) {
+        tv->reported_selection_revision = tv->selection_revision;
+        tv->prev_selected = tv->selected;
+        return 1;
+    }
+    return 0;
+}
+
+/// @brief Get the display text of a tree node.
+rt_string rt_treeview_node_get_text(void *node) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!node)
+        return rt_str_empty();
+    vg_tree_node_t *n = rt_gui_tree_node_from_handle(node);
+    if (!n)
+        return rt_str_empty();
+    if (!n->text)
+        return rt_str_empty();
+    return rt_string_from_bytes(n->text, n->text_len);
+}
+
+/// @brief Attach arbitrary string data to a tree node (replaces any previous data).
+void rt_treeview_node_set_data(void *node, rt_string data) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!node)
+        return;
+    vg_tree_node_t *n = rt_gui_tree_node_from_handle(node);
+    if (!n)
+        return;
+    rt_gui_string_data_t *new_data = data ? rt_gui_string_data_new(data) : NULL;
+    if (data && !new_data)
+        return;
+    // Free old data if it exists and is owned by the runtime string wrapper.
+    if (n->owns_user_data && n->user_data)
+        free(n->user_data);
+    // Store length-tagged data so embedded NUL bytes round-trip correctly.
+    n->user_data = new_data;
+    n->owns_user_data = new_data != NULL;
+}
+
+/// @brief Retrieve the string data previously attached to a tree node.
+rt_string rt_treeview_node_get_data(void *node) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!node)
+        return rt_str_empty();
+    vg_tree_node_t *n = rt_gui_tree_node_from_handle(node);
+    if (!n)
+        return rt_str_empty();
+    if (!n->user_data || !n->owns_user_data)
+        return rt_str_empty();
+    return rt_gui_string_data_to_rt_string(n->user_data);
+}
+
+/// @brief Check whether a tree node is currently in the expanded state.
+int64_t rt_treeview_node_is_expanded(void *node) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!node)
+        return 0;
+    vg_tree_node_t *n = rt_gui_tree_node_from_handle(node);
+    if (!n)
+        return 0;
+    return n->expanded ? 1 : 0;
+}
+
+#else /* !VIPER_ENABLE_GRAPHICS */
+
+// ===========================================================================
+// Headless stubs — same prototypes as the real implementations above so
+// non-graphical builds (server / CLI / ViperDOS) link without pulling in
+// the GUI subsystem. Each stub no-ops or returns a sentinel; doc comments
+// inherit from the real impls above by virtue of identical names.
+// ===========================================================================
+
+/// @brief Stub: graphics disabled — returns NULL; no font data is loaded.
+void *rt_font_load(rt_string path) {
+    (void)path;
+    return NULL;
+}
+
+/// @brief Release resources and destroy the font.
+void rt_font_destroy(void *font) {
+    (void)font;
+}
+
+/// @brief Release resources and destroy the widget.
+void rt_widget_destroy(void *widget) {
+    (void)widget;
+}
+
+/// @brief Show or hide a widget.
+void rt_widget_set_visible(void *widget, int64_t visible) {
+    (void)widget;
+    (void)visible;
+}
+
+/// @brief Enable or disable user interaction with a widget.
+void rt_widget_set_enabled(void *widget, int64_t enabled) {
+    (void)widget;
+    (void)enabled;
+}
+
+/// @brief Set a fixed width and height on the widget.
+void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
+    (void)widget;
+    (void)width;
+    (void)height;
+}
+
+/// @brief Set the flex-grow factor for a widget.
+void rt_widget_set_flex(void *widget, double flex) {
+    (void)widget;
+    (void)flex;
+}
+
+/// @brief Add a child widget to a parent container.
+void rt_widget_add_child(void *parent, void *child) {
+    (void)parent;
+    (void)child;
+}
+
+/// @brief Set the margin of the widget.
+void rt_widget_set_margin(void *widget, int64_t margin) {
+    (void)widget;
+    (void)margin;
+}
+
+/// @brief Set the tab index of the widget.
+void rt_widget_set_tab_index(void *widget, int64_t idx) {
+    (void)widget;
+    (void)idx;
+}
+
+/// @brief Check whether the widget is currently visible.
+int64_t rt_widget_is_visible(void *widget) {
+    (void)widget;
+    return 0;
+}
+
+/// @brief Check whether the widget is currently enabled.
+int64_t rt_widget_is_enabled(void *widget) {
+    (void)widget;
+    return 0;
+}
+
+/// @brief Get the width of the widget.
+int64_t rt_widget_get_width(void *widget) {
+    (void)widget;
+    return 0;
+}
+
+/// @brief Get the height of the widget.
+int64_t rt_widget_get_height(void *widget) {
+    (void)widget;
+    return 0;
+}
+
+/// @brief Get the x of the widget.
+int64_t rt_widget_get_x(void *widget) {
+    (void)widget;
+    return 0;
+}
+
+/// @brief Get the y of the widget.
+int64_t rt_widget_get_y(void *widget) {
+    (void)widget;
+    return 0;
+}
+
+/// @brief Get the flex of the widget.
+double rt_widget_get_flex(void *widget) {
+    (void)widget;
+    return 0.0;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no label widget is created.
+void *rt_label_new(void *parent, rt_string text) {
+    (void)parent;
+    (void)text;
+    return NULL;
+}
+
+/// @brief Set the text of the label.
+void rt_label_set_text(void *label, rt_string text) {
+    (void)label;
+    (void)text;
+}
+
+/// @brief Set the font of the label.
+void rt_label_set_font(void *label, void *font, double size) {
+    (void)label;
+    (void)font;
+    (void)size;
+}
+
+/// @brief Set the color of the label.
+void rt_label_set_color(void *label, int64_t color) {
+    (void)label;
+    (void)color;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no button widget is created.
+void *rt_button_new(void *parent, rt_string text) {
+    (void)parent;
+    (void)text;
+    return NULL;
+}
+
+/// @brief Set the text of the button.
+void rt_button_set_text(void *button, rt_string text) {
+    (void)button;
+    (void)text;
+}
+
+/// @brief Set the font of the button.
+void rt_button_set_font(void *button, void *font, double size) {
+    (void)button;
+    (void)font;
+    (void)size;
+}
+
+/// @brief Set the style of the button.
+void rt_button_set_style(void *button, int64_t style) {
+    (void)button;
+    (void)style;
+}
+
+/// @brief Set the icon of the button.
+void rt_button_set_icon(void *button, rt_string icon) {
+    (void)button;
+    (void)icon;
+}
+
+/// @brief Set the icon pos of the button.
+void rt_button_set_icon_pos(void *button, int64_t pos) {
+    (void)button;
+    (void)pos;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no text input widget is created.
+void *rt_textinput_new(void *parent) {
+    (void)parent;
+    return NULL;
+}
+
+/// @brief Set the text of the textinput.
+void rt_textinput_set_text(void *input, rt_string text) {
+    (void)input;
+    (void)text;
+}
+
+/// @brief Get the text of the textinput.
+rt_string rt_textinput_get_text(void *input) {
+    (void)input;
+    return rt_str_empty();
+}
+
+/// @brief Set the placeholder of the textinput.
+void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
+    (void)input;
+    (void)placeholder;
+}
+
+/// @brief Set the font of the textinput.
+void rt_textinput_set_font(void *input, void *font, double size) {
+    (void)input;
+    (void)font;
+    (void)size;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no checkbox widget is created.
+void *rt_checkbox_new(void *parent, rt_string text) {
+    (void)parent;
+    (void)text;
+    return NULL;
+}
+
+/// @brief Programmatically set the checked state of a checkbox.
+/// @param checkbox
+/// @param checked
+void rt_checkbox_set_checked(void *checkbox, int64_t checked) {
+    (void)checkbox;
+    (void)checked;
+}
+
+/// @brief Query whether a checkbox is currently checked.
+/// @param checkbox
+/// @return Result value.
+int64_t rt_checkbox_is_checked(void *checkbox) {
+    (void)checkbox;
+    return 0;
+}
+
+/// @brief Update the label text displayed next to a checkbox.
+/// @param checkbox
+/// @param text
+void rt_checkbox_set_text(void *checkbox, rt_string text) {
+    (void)checkbox;
+    (void)text;
+}
+
+/// @brief Programmatically set the indeterminate state of a checkbox.
+/// @param checkbox
+/// @param indeterminate
+void rt_checkbox_set_indeterminate(void *checkbox, int64_t indeterminate) {
+    (void)checkbox;
+    (void)indeterminate;
+}
+
+/// @brief Query whether a checkbox is currently indeterminate.
+/// @param checkbox
+/// @return Result value.
+int64_t rt_checkbox_is_indeterminate(void *checkbox) {
+    (void)checkbox;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no scroll view widget is created.
+void *rt_scrollview_new(void *parent) {
+    (void)parent;
+    return NULL;
+}
+
+/// @brief Set the scroll of the scrollview.
+void rt_scrollview_set_scroll(void *scroll, double x, double y) {
+    (void)scroll;
+    (void)x;
+    (void)y;
+}
+
+/// @brief Set the content size of a scroll view.
+void rt_scrollview_set_content_size(void *scroll, double width, double height) {
+    (void)scroll;
+    (void)width;
+    (void)height;
+}
+
+/// @brief Get the scroll x of the scrollview.
+double rt_scrollview_get_scroll_x(void *scroll) {
+    (void)scroll;
+    return 0.0;
+}
+
+/// @brief Get the current vertical scroll offset.
+double rt_scrollview_get_scroll_y(void *scroll) {
+    (void)scroll;
+    return 0.0;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no tree view widget is created.
+void *rt_treeview_new(void *parent) {
+    (void)parent;
+    return NULL;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no tree node is created or added.
+void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
+    (void)tree;
+    (void)parent_node;
+    (void)text;
+    return NULL;
+}
+
+/// @brief Remove a node and its subtree from the tree view.
+void rt_treeview_remove_node(void *tree, void *node) {
+    (void)tree;
+    (void)node;
+}
+
+/// @brief Remove all nodes from the tree view, leaving it empty.
+void rt_treeview_clear(void *tree) {
+    (void)tree;
+}
+
+/// @brief Stub: retired node pruning is a no-op without graphics.
+void rt_treeview_prune_retired_nodes(void *tree) {
+    (void)tree;
+}
+
+/// @brief Expand a tree node to show its children.
+void rt_treeview_expand(void *tree, void *node) {
+    (void)tree;
+    (void)node;
+}
+
+/// @brief Collapse a tree node to hide its children.
+void rt_treeview_collapse(void *tree, void *node) {
+    (void)tree;
+    (void)node;
+}
+
+/// @brief Programmatically select a tree node (NULL to clear selection).
+void rt_treeview_select(void *tree, void *node) {
+    (void)tree;
+    (void)node;
+}
+
+/// @brief Set the font of the treeview.
+void rt_treeview_set_font(void *tree, void *font, double size) {
+    (void)tree;
+    (void)font;
+    (void)size;
+}
+
+/// @brief Stub: graphics disabled — returns NULL; no selection exists without a tree view.
+void *rt_treeview_get_selected(void *tree) {
+    (void)tree;
+    return NULL;
+}
+
+/// @brief Stub: graphics disabled — no hit-tested nodes exist.
+void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y) {
+    (void)tree;
+    (void)x;
+    (void)y;
+    return NULL;
+}
+
+/// @brief Check if the tree view selection changed since the last call (edge-triggered).
+int64_t rt_treeview_was_selection_changed(void *tree) {
+    (void)tree;
+    return 0;
+}
+
+/// @brief Get the display text of a tree node.
+rt_string rt_treeview_node_get_text(void *node) {
+    (void)node;
+    return rt_str_empty();
+}
+
+/// @brief Attach arbitrary string data to a tree node (replaces any previous data).
+void rt_treeview_node_set_data(void *node, rt_string data) {
+    (void)node;
+    (void)data;
+}
+
+/// @brief Retrieve the string data previously attached to a tree node.
+rt_string rt_treeview_node_get_data(void *node) {
+    (void)node;
+    return rt_str_empty();
+}
+
+/// @brief Check whether a tree node is currently in the expanded state.
+int64_t rt_treeview_node_is_expanded(void *node) {
+    (void)node;
+    return 0;
+}
+
+#endif /* VIPER_ENABLE_GRAPHICS */

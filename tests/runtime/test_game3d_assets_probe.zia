@@ -1,0 +1,57 @@
+module test_game3d_assets_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func start() {
+    var path = "tests/runtime/assets/gltf/load_asset_triangle.gltf";
+    Game3D.Assets3D.ClearCache();
+
+    var entity = Game3D.Assets3D.LoadModel(path);
+    if (entity == null || Game3D.Entity3D.isGroup(entity) == false ||
+        G3D.SceneNode3D.get_ChildCount(Game3D.Entity3D.get_node(entity)) != 1) {
+        fail("LoadModel did not return an imported group entity");
+        return;
+    }
+
+    var assetEntity = Game3D.Assets3D.LoadModelAsset(path);
+    if (assetEntity == null ||
+        G3D.SceneNode3D.get_ChildCount(Game3D.Entity3D.get_node(assetEntity)) != 1) {
+        fail("LoadModelAsset did not instantiate through asset resolver");
+        return;
+    }
+
+    var tpl1 = Game3D.Assets3D.LoadModelTemplate(path);
+    var tpl2 = Game3D.Assets3D.LoadModelTemplate(path);
+    if (tpl1 == null || tpl2 == null) {
+        fail("LoadModelTemplate did not return cached templates");
+        return;
+    }
+    if (G3D.Model3D.get_MeshCount(Game3D.ModelTemplate.get_model(tpl1)) != 1 ||
+        G3D.Model3D.get_MeshCount(Game3D.ModelTemplate.get_model(tpl2)) != 1) {
+        fail("ModelTemplate lost mesh data");
+        return;
+    }
+
+    var inst = Game3D.ModelTemplate.instantiate(tpl1);
+    if (inst == null || Game3D.Entity3D.isGroup(inst) == false ||
+        G3D.SceneNode3D.get_ChildCount(Game3D.Entity3D.get_node(inst)) != 1) {
+        fail("ModelTemplate.instantiate did not clone the model subtree");
+        return;
+    }
+
+    var assetTpl = Game3D.Assets3D.LoadModelTemplateAsset(path);
+    if (assetTpl == null || Game3D.ModelTemplate.get_isAsset(assetTpl) == false) {
+        fail("LoadModelTemplateAsset did not record asset path");
+        return;
+    }
+
+    Game3D.Assets3D.Preload(path);
+    Game3D.Assets3D.ClearCache();
+    Terminal.Say("PASS");
+}

@@ -10,7 +10,10 @@
       {
         "name": "base",
         "visible": 1,
-        "data": [3, 4]
+        "data": [
+          3,
+          4
+        ]
       }
     ]
   },

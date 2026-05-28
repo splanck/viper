@@ -189,8 +189,8 @@ typedef struct {
     int32_t audio_format; /* 1=PCM, 3=IEEE float */
     int32_t byte_rate;
     int32_t block_align;
-    int64_t data_offset;  /* Byte offset to PCM data */
-    int64_t data_size;    /* Size of PCM data in bytes */
+    int64_t data_offset; /* Byte offset to PCM data */
+    int64_t data_size;   /* Size of PCM data in bytes */
 } vaud_wav_info;
 
 static int wav_bytes_per_frame(const vaud_wav_info *info, int32_t *out_bytes) {
@@ -830,8 +830,8 @@ void vaud_resample(const int16_t *input,
                    int64_t out_frames,
                    int32_t out_rate,
                    int32_t channels) {
-    if (!input || !output || in_frames <= 0 || out_frames <= 0 || in_rate <= 0 ||
-        out_rate <= 0 || channels <= 0)
+    if (!input || !output || in_frames <= 0 || out_frames <= 0 || in_rate <= 0 || out_rate <= 0 ||
+        channels <= 0)
         return;
 
     /* Simple linear interpolation resampler */

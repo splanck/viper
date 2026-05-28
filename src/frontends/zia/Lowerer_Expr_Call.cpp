@@ -157,11 +157,15 @@ const char *resultOkCalleeFor(TypeRef type) {
     if (!type)
         return "Viper.Result.Ok";
     switch (type->kind) {
-        case TypeKindSem::String:  return "Viper.Result.OkStr";
+        case TypeKindSem::String:
+            return "Viper.Result.OkStr";
         case TypeKindSem::Integer:
-        case TypeKindSem::Enum:    return "Viper.Result.OkI64";
-        case TypeKindSem::Number:  return "Viper.Result.OkF64";
-        default:                   return "Viper.Result.Ok";
+        case TypeKindSem::Enum:
+            return "Viper.Result.OkI64";
+        case TypeKindSem::Number:
+            return "Viper.Result.OkF64";
+        default:
+            return "Viper.Result.Ok";
     }
 }
 
@@ -170,11 +174,15 @@ const char *resultUnwrapCalleeFor(TypeRef type) {
     if (!type)
         return "Viper.Result.Unwrap";
     switch (type->kind) {
-        case TypeKindSem::String:  return "Viper.Result.UnwrapStr";
+        case TypeKindSem::String:
+            return "Viper.Result.UnwrapStr";
         case TypeKindSem::Integer:
-        case TypeKindSem::Enum:    return "Viper.Result.UnwrapI64";
-        case TypeKindSem::Number:  return "Viper.Result.UnwrapF64";
-        default:                   return "Viper.Result.Unwrap";
+        case TypeKindSem::Enum:
+            return "Viper.Result.UnwrapI64";
+        case TypeKindSem::Number:
+            return "Viper.Result.UnwrapF64";
+        default:
+            return "Viper.Result.Unwrap";
     }
 }
 
@@ -183,11 +191,15 @@ const char *resultUnwrapOrCalleeFor(TypeRef type) {
     if (!type)
         return "Viper.Result.UnwrapOr";
     switch (type->kind) {
-        case TypeKindSem::String:  return "Viper.Result.UnwrapOrStr";
+        case TypeKindSem::String:
+            return "Viper.Result.UnwrapOrStr";
         case TypeKindSem::Integer:
-        case TypeKindSem::Enum:    return "Viper.Result.UnwrapOrI64";
-        case TypeKindSem::Number:  return "Viper.Result.UnwrapOrF64";
-        default:                   return "Viper.Result.UnwrapOr";
+        case TypeKindSem::Enum:
+            return "Viper.Result.UnwrapOrI64";
+        case TypeKindSem::Number:
+            return "Viper.Result.UnwrapOrF64";
+        default:
+            return "Viper.Result.UnwrapOr";
     }
 }
 

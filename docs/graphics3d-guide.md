@@ -6,12 +6,19 @@ Viper.Graphics3D is a 3D rendering module for the Viper runtime. It provides a s
 
 **Namespace:** `Viper.Graphics3D`
 
+For code-first game projects that want a world/entity/input layer over these
+primitives, use the runtime-backed `Viper.Game3D` API documented in
+[`docs/viperlib/graphics/game3d.md`](viperlib/graphics/game3d.md). Game3D is C
+runtime code like the rest of the Viper runtime, not a separate Zia helper
+library.
+
 ---
 
 ### Table of Contents
 
 **Getting Started**
 - [Quick Start](#quick-start)
+- [Game3D](viperlib/graphics/game3d.md) — World/entity/input helpers for 3D games
 
 **Core Classes**
 - [Canvas3D](#canvas3d) — Window, frame loop, drawing, lighting
@@ -162,11 +169,16 @@ The rendering surface. Creates a window and manages the render loop.
 | `Width` | Integer | read | Active output width in pixels (window, or current RenderTarget3D when bound) |
 | `Height` | Integer | read | Active output height in pixels (window, or current RenderTarget3D when bound) |
 | `Fps` | Integer | read | Frames per second |
-| `DeltaTime` | Integer | read | Milliseconds since last Flip (first frame = 0, capped to 100ms by default) |
+| `DeltaTime` | Integer | read | Milliseconds since last Flip, or fixed synthetic dt when synthetic clock is selected (first live frame = 0, capped to 100ms by default) |
 | `DeltaTimeMs` | Integer | read | Explicit millisecond alias for `DeltaTime` |
-| `DeltaTimeSec` | Number | read | Seconds since last Flip, using the same clamp as `DeltaTime` |
+| `DeltaTimeSec` | Number | read | Seconds since last Flip or synthetic frame, using the same clamp as `DeltaTime` |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
 | `BackendCapabilities` | Integer | read | Bitmask of `Canvas3D` backend capabilities |
+| `QualityRequested` | Integer | read | Last requested quality profile (`0` performance, `1` balanced, `2` cinematic) |
+| `QualityActive` | Integer | read | Active quality profile after backend fallback |
+| `QualityFallback` | Boolean | read | True when quality setup degraded to stay backend-safe |
+| `QualityFallbackReason` | String | read | Human-readable fallback reason, or empty string |
+| `FrameFinalized` | Boolean | read | True after `FinalizeFrame()` or `ScreenshotFinal()` has applied post-FX/final overlays for the current frame |
 | `Wireframe` | Boolean | write | Toggle wireframe rendering (default: off) |
 
 ### Constructors
@@ -180,12 +192,18 @@ The rendering surface. Creates a window and manages the render loop.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Clear(r, g, b)` | `void(f64, f64, f64)` | Clear framebuffer and depth buffer (0.0-1.0 per channel) |
+| `Resize(w, h)` | `void(i64, i64)` | Resize the canvas and active backend output targets |
 | `Begin(camera)` | `void(obj)` | Start 3D frame — must be called before DrawMesh |
 | `Begin2D()` | `void()` | Start 2D overlay mode for the active output (closed by `End()`) |
-| `End()` | `void()` | End frame — must be called after all draw calls |
-| `Flip()` | `void()` | Present frame to screen, compute DeltaTime |
-| `Poll()` | `i64()` | Process window events (call once per frame) |
-| `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, or `gpu_postfx` |
+| `BeginOverlay()` | `void()` | Start recording a final overlay pass composited after post-FX |
+| `EndOverlay()` | `void()` | Finish final overlay recording |
+| `ClearOverlay()` | `void()` | Discard recorded final overlay commands for the current frame |
+| `End()` | `void()` | End the current 3D or 2D draw pass; this does not run post-FX or present |
+| `FinalizeFrame()` | `void()` | Apply post-FX and replay the final overlay once, without presenting |
+| `ScreenshotFinal()` | `obj()` | Finalize if needed, then capture the final frame as `Pixels` |
+| `Flip()` | `void()` | Finalize if needed, present frame to screen, compute DeltaTime |
+| `Poll()` | `i64()` | Process window events and update `Keyboard`/`Mouse`/actions; returns the last raw window event code |
+| `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, or `gpu-postfx-overlay` |
 
 ### Drawing Methods
 
@@ -207,6 +225,9 @@ The rendering surface. Creates a window and manages the render loop.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetLight(index, light)` | `void(i64, obj)` | Bind or clear a retained Light3D slot (0-15) |
+| `ClearLights()` | `void()` | Clear every retained canvas light slot |
+| `SetDefaultLighting()` | `void()` | Install a conservative directional key/fill plus readable ambient |
+| `LightCount` | `i64` property | Count active enabled canvas-slot lights |
 | `SetAmbient(r, g, b)` | `void(f64, f64, f64)` | Set ambient light color; values are clamped to `0..1` |
 | `SetSkybox(cubemap)` | `void(obj)` | Set CubeMap3D skybox |
 | `ClearSkybox()` | `void()` | Remove skybox |
@@ -222,11 +243,55 @@ The rendering surface. Creates a window and manages the render loop.
 |--------|-----------|-------------|
 | `SetBackfaceCull(enabled)` | `void(i1)` | Toggle backface culling (default: on) |
 | `SetDTMax(ms)` | `void(i64)` | Cap DeltaTime to prevent spiral-of-death (`ms <= 0` disables the cap; default cap is 100ms) |
+| `SetQuality(profile)` | `void(i64)` | Apply a backend-safe post-FX profile: `0` performance, `1` balanced, `2` cinematic |
+| `SetInputSource(mode)` | `void(i64)` | Select input source: `0` live, `1` synthetic, `2` live plus synthetic |
+| `PushSyntheticKey(key, down)` | `void(i64, i1)` | Queue a synthetic keyboard transition for the next synthetic frame |
+| `PushSyntheticMouse(dx, dy, buttons, wheel)` | `void(f64, f64, i64, f64)` | Queue synthetic mouse delta, button bitmask, and vertical wheel delta |
+| `ClearSyntheticInput()` | `void()` | Clear queued synthetic input and release synthetic-held keys/buttons |
+| `SetClockSource(mode)` | `void(i64)` | Select clock source: `0` live wall clock, `1` fixed synthetic dt |
+| `SetSyntheticDeltaTimeSec(dt)` | `void(f64)` | Set fixed synthetic delta time in seconds |
+| `AdvanceSyntheticFrame()` | `void()` | Advance one deterministic input/timing frame without pumping platform events |
 | `SetRenderTarget(target)` | `void(obj)` | Redirect rendering to offscreen RenderTarget3D |
 | `ResetRenderTarget()` | `void()` | Return to window rendering |
-| `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain applied in `Flip()` to the window or active render target; SSAO/DOF/motion blur require GPU window postfx |
+| `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain applied during frame finalization to the window or active render target; SSAO/DOF/motion blur require GPU window postfx |
 | `SetFrustumCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
 | `SetOcclusionCulling(enabled)` | `void(i1)` | Compatibility alias for `SetFrustumCulling`; this is not hardware occlusion-query culling |
+
+`Poll()` is the live-loop input boundary. It updates `Viper.Input.Keyboard`,
+`Viper.Input.Mouse`, gamepad state, and action mappings; most gameplay code
+should read those APIs instead of branching on the raw event code returned by
+`Poll()`. The raw return is useful for diagnostics or low-level integrations.
+
+For deterministic tests, select synthetic input and clock before the scripted
+frames:
+
+```rust
+Canvas3D.SetInputSource(canvas, 1)
+Canvas3D.SetClockSource(canvas, 1)
+Canvas3D.SetSyntheticDeltaTimeSec(canvas, 1.0 / 60.0)
+Canvas3D.PushSyntheticKey(canvas, Keyboard.get_KEY_W(), true)
+Canvas3D.PushSyntheticMouse(canvas, 8.0, -2.0, 1, 0.0)
+Canvas3D.AdvanceSyntheticFrame(canvas)
+```
+
+Synthetic keys and mouse samples flow through the normal `Keyboard` and `Mouse`
+state paths, so `WasPressed`, `IsDown`, `Mouse.DeltaX`, button edges, and action
+bindings observe the same state shape as live input. `ClearSyntheticInput()`
+also releases keys/buttons held by the synthetic source so tests do not leak
+state into the next run.
+
+First-frame live timing can be zero because `DeltaTime` is measured after the
+first `Flip()`. Code-first loops should seed or clamp their first `dt` before
+moving gameplay. The synthetic clock reports the configured fixed dt after
+`AdvanceSyntheticFrame()`, `Poll()` in synthetic mode, or `Flip()`.
+
+`SetQuality()` currently configures the canvas post-FX chain. Performance and
+Balanced use CPU/software-safe effects only. Cinematic adds SSAO, depth of field,
+and motion blur only when the active canvas can present GPU post-FX to the
+window; otherwise it uses a CPU-safe cinematic chain and sets
+`QualityFallback`/`QualityFallbackReason` for debug overlays. Re-apply quality
+after changing output mode if a game switches between a GPU window and a
+render target.
 
 Render targets must be bound or reset outside a `Begin`/`End` frame. Changing the active output
 mid-frame is rejected so queued draws, overlays, post-processing, and readback state all target one
@@ -242,7 +307,8 @@ consistent surface.
 | `DrawSphereWire(center, radius, color)` | `void(obj, f64, i64)` | Draw wireframe sphere |
 | `DrawDebugRay(origin, dir, length, color)` | `void(obj, obj, f64, i64)` | Draw debug ray |
 | `DrawAxis(transform, size)` | `void(obj, f64)` | Draw XYZ axes at a Mat4 position |
-| `Screenshot()` | `obj()` | Capture the active output as Pixels (window or current RenderTarget3D) |
+| `Screenshot()` | `obj()` | Capture the active output as `Pixels` without forcing finalization |
+| `ScreenshotFinal()` | `obj()` | Finalize first, then capture post-FX plus final-overlay pixels as `Pixels` |
 
 ### HUD Overlay (2D)
 
@@ -251,6 +317,12 @@ consistent surface.
 | `DrawRect2D(x, y, w, h, color)` | `void(i64, i64, i64, i64, i64)` | Draw 2D rectangle on screen |
 | `DrawText2D(x, y, text, color)` | `void(i64, i64, str, i64)` | Draw 2D text on screen |
 | `DrawCrosshair(color, size)` | `void(i64, i64)` | Draw centered crosshair |
+
+`DrawRect2D`, `DrawText2D`, and `DrawCrosshair` remain convenient immediate HUD helpers.
+When called between `End()` and `Flip()`, they use the legacy overlay path and are part of
+the frame before final post-processing. Use `BeginOverlay()` and `EndOverlay()` for HUD,
+debug text, reticles, and capture overlays that must stay crisp after bloom, tonemapping,
+or color grading.
 
 ### Zia Example
 
@@ -289,9 +361,11 @@ func start() {
         Canvas3D.DrawMesh(canvas, box, Mat4.RotateY(angle), mat);
         Canvas3D.End(canvas);
 
-        // HUD overlay (between End and Flip)
+        // Final HUD overlay, composited after post-FX.
+        Canvas3D.BeginOverlay(canvas);
         Canvas3D.DrawText2D(canvas, 10, 10, "Hello 3D!", 0xFFFFFF);
         Canvas3D.DrawCrosshair(canvas, 0xFFFFFF, 12);
+        Canvas3D.EndOverlay(canvas);
 
         Canvas3D.Flip(canvas);
         angle = angle + 0.02;
@@ -299,9 +373,20 @@ func start() {
 }
 ```
 
-**Frame lifecycle:** `Poll → Clear → Begin → DrawMesh (repeated) → End → [HUD overlay] → Flip`
+**Frame lifecycle:** `Poll → Clear → Begin → DrawMesh (repeated) → End → [BeginOverlay → HUD/debug draws → EndOverlay] → Flip`
 
-**Important:** `Begin`/`End` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) go between `End` and `Flip`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission.
+`End()` only flushes queued geometry for the current 3D or 2D pass. `FinalizeFrame()`
+is the idempotent boundary that applies post-FX and replays the final overlay. `Flip()`
+calls `FinalizeFrame()` if needed, then presents. `ScreenshotFinal()` also calls
+`FinalizeFrame()` if needed and captures the finalized pixels without presenting, so
+the usual capture path is `EndOverlay → ScreenshotFinal → Flip`.
+
+For a compact, executable example of this path, see
+`examples/3d/walk_min.zia`. Its companion `walk_min_probe.zia` renders one
+software-backend frame, captures with `ScreenshotFinal()`, checks the crisp final
+overlay, and compares to the committed baseline in `examples/3d/baselines/`.
+
+**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. `DrawMesh` and instanced draws require finite transform matrices; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats. Deferred static heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; skinned and morphed mesh draws still retain their live mesh object because animation data must remain available for backend submission.
 
 ## Mesh3D
 
@@ -389,7 +474,7 @@ All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** windi
 
 **OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, and arbitrary n-gons through fan triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened but do not create per-material submeshes.
 
-**STL loader:** Auto-detects binary vs ASCII format, computes normals.
+**STL loader:** Auto-detects binary vs ASCII format, streams exact binary STL payloads without buffering the full file, and computes normals for valid triangles.
 
 ## Camera3D
 
@@ -420,7 +505,8 @@ Perspective or orthographic camera with view and projection matrices.
 |--------|-----------|-------------|
 | `LookAt(eye, target, up)` | `void(obj, obj, obj)` | Point camera from eye toward target (Vec3 args) |
 | `Orbit(target, distance, yaw, pitch)` | `void(obj, f64, f64, f64)` | Orbit around target (angles in degrees) |
-| `ScreenToRay(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Return a normalized world-space pick direction (Vec3). For perspective cameras, combine it with `GetPosition()`. Orthographic cameras return their forward direction. During active `Shake`, the ray matches the shaken render pose. |
+| `ScreenToRay(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Return a normalized world-space pick direction (Vec3). Perspective rays should pair it with `ScreenToRayOrigin()` or `GetPosition()`. Orthographic cameras return their forward direction. During active `Shake`, the ray matches the shaken render pose. |
+| `ScreenToRayOrigin(sx, sy, sw, sh)` | `obj(i64, i64, i64, i64)` | Return the matching world-space pick origin (Vec3). Perspective cameras return the shaken render eye; orthographic cameras return the unprojected near-plane point for that screen pixel. |
 | `Shake(intensity, duration, decay)` | `void(f64, f64, f64)` | Apply camera shake effect |
 | `SmoothFollow(target, speed, height, distance, dt)` | `void(obj, f64, f64, f64, f64)` | Smoothly follow a Vec3 target position |
 | `SmoothLookAt(target, speed, dt)` | `void(obj, f64, f64)` | Smoothly rotate toward a Vec3 target |
@@ -429,7 +515,7 @@ Perspective or orthographic camera with view and projection matrices.
 
 `Yaw`, `Pitch`, `Orbit`, and `Light3D.NewSpot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
 `Canvas3D.Begin(canvas, camera)` uses the active output's aspect ratio (window or bound `RenderTarget3D`) when building that frame's projection, so perspective remains correct across resizes and RTT passes without mutating the camera object's stored projection/aspect.
-Camera constructors and control methods sanitize invalid numeric inputs at the API boundary: non-finite FOV/aspect/clip planes, degenerate `LookAt` vectors, invalid FPS deltas, and invalid shake/follow parameters fall back to finite defaults so view matrices, projection matrices, and `ScreenToRay()` results remain usable.
+Camera constructors and control methods sanitize invalid numeric inputs at the API boundary: non-finite FOV/aspect/clip planes, degenerate `LookAt` vectors, invalid FPS deltas, and invalid shake/follow parameters fall back to finite defaults so view matrices, projection matrices, `ScreenToRay()`, and `ScreenToRayOrigin()` results remain usable.
 
 ### Zia Example
 
@@ -494,6 +580,9 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 | `AlphaMode` | Integer | read/write | `0=Opaque`, `1=Mask`, `2=Blend` |
 | `DoubleSided` | Bool | read/write | Disable backface culling when true |
 | `Reflectivity` | Float | read/write | Environment reflection strength [0.0-1.0] |
+| `Color` | Vec3 | read | Current diffuse/base color |
+| `Unlit` | Bool | read | Whether lighting is ignored |
+| `ShadingModel` | Integer | read | Current shading model index |
 
 ### Methods
 
@@ -523,14 +612,14 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 
 ### Workflow Notes
 
-- `NewPBR` selects the metallic/roughness workflow directly.
+- `NewPBR` and `SetShadingModel(2)` select the metallic/roughness workflow directly.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
-- Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults.
+- Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults. The draw path repeats finite/clamp validation before backend command submission.
 - Texture map setters accept `Pixels` handles only, and `SetEnvMap` accepts `CubeMap3D` handles only. Invalid handle types are ignored instead of being retained into material state.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
-  - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage.
+  - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage. Masked materials also cast alpha-tested shadows on the software, Metal, OpenGL, and D3D11 backends.
   - `2`: blended. Texture/material alpha participates in transparency and transparent sorting.
 - Explicit `SetAlphaMode` calls take precedence over alpha auto-promotion. For example, a material
   explicitly set to `Blend` remains blended even if `Alpha` is later set back to `1.0`.
@@ -539,7 +628,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 **Shading models:** `SetShadingModel` selects how the surface is shaded on the legacy path and can post-process the PBR result:
 - **0 (BlinnPhong)**: Default. Diffuse + specular highlight.
 - **1 (Toon)**: Quantized diffuse bands. `custom[0]` = number of bands (default 4).
-- **2 (Reserved)**: Accepted for forward compatibility. Current backends fall back to the default Blinn-Phong path.
+- **2 (PBR)**: Selects the metallic/roughness workflow. Use the dedicated PBR setters for material data.
 - **3 (Unlit)**: Same visual result as `SetUnlit(true)`.
 - **4 (Fresnel)**: Angle-dependent alpha — edges glow brighter. `custom[0]` = power (default 3), `custom[1]` = bias.
 - **5 (Emissive)**: Boosted emissive glow. `custom[0]` = strength multiplier (default 2).
@@ -592,6 +681,18 @@ Light sources for the scene. Up to 16 lights simultaneously.
 |--------|-----------|-------------|
 | `SetIntensity(value)` | `void(f64)` | Brightness multiplier (default 1.0) |
 | `SetColor(r, g, b)` | `void(f64, f64, f64)` | Change light color |
+| `SetEnabled(enabled)` | `void(i1)` | Toggle whether the light contributes without clearing its slot |
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Type` | Integer | read | `0=directional`, `1=point`, `2=ambient`, `3=spot` |
+| `Color` | Vec3 | read | Current normalized RGB color |
+| `Intensity` | Float | read | Current brightness multiplier |
+| `Enabled` | Bool | read/write | Disabled lights are skipped by `Canvas3D` light submission |
+| `Direction` | Vec3 | read | Normalized direction for directional and spot lights |
+| `Position` | Vec3 | read | Position for point and spot lights |
 
 Light colors are clamped to `[0, 1]`, intensities and attenuations are clamped to non-negative values, and non-finite positions/directions fall back to finite defaults. Spot cone angles are clamped to `0..89` degrees and reordered when needed so `inner_cos >= outer_cos`.
 
@@ -807,6 +908,8 @@ Individual node in a Scene3D tree with transform, mesh, material, and child hier
 | `Rotation` | Quat | read/write | Local rotation |
 | `Scale` | Vec3 | read | Local scale |
 | `WorldMatrix` | Mat4 | read | Computed world transform (lazy) |
+| `WorldPosition` | Vec3 | read | World-space position without manual matrix decomposition |
+| `WorldScale` | Vec3 | read | World-space scale magnitudes without manual matrix decomposition |
 | `ChildCount` | Integer | read | Number of child nodes |
 | `Parent` | SceneNode3D | read | Parent node (null if root) |
 | `Visible` | Boolean | read/write | Visibility (hides node + all descendants) |
@@ -888,7 +991,7 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy, and `Scene3D.Load` reconstructs those shared payloads on load.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
 
 ### Binding Sync
 
@@ -913,7 +1016,7 @@ Current scope:
 
 - `SceneNode3D` bindings currently cover `Physics3DBody` and `AnimController3D`.
 - `NavAgent3D` now provides its own `BindNode` / `BindCharacter` workflow for navigation-driven motion.
-- `AudioListener3D` and `AudioSource3D` now use `Audio3D.SyncBindings(dt)`, and `Scene3D.SyncBindings(dt)` forwards into that audio-binding pass after node/body/anim synchronization.
+- `SoundListener3D` and `SoundSource3D` now use `Sound3D.SyncBindings(dt)`, and `Scene3D.SyncBindings(dt)` forwards into that audio-binding pass after node/body/anim synchronization.
 
 ## Model3D
 
@@ -934,6 +1037,7 @@ Current scope:
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Load(path)` | `obj(str)` | Load `.vscn`, `.fbx`, `.gltf`, `.glb`, or `.obj` into a `Model3D` |
+| `LoadAsset(path)` | `obj(str)` | Load through `Viper.IO.Assets`; `.gltf` external buffers/images resolve relative to the model asset |
 | `GetMesh(index)` | `obj(i64)` | Get a shared `Mesh3D` by index |
 | `GetMaterial(index)` | `obj(i64)` | Get a shared `Material3D` by index |
 | `GetSkeleton(index)` | `obj(i64)` | Get a shared `Skeleton3D` by index |
@@ -972,7 +1076,7 @@ func start() {
 }
 ```
 
-For game-facing asset loading, prefer `Model3D.Load`. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
+For game-facing asset loading, prefer `Model3D.Load` for loose filesystem files during early development and `Model3D.LoadAsset` for code that should also work from embedded or mounted `.vpa` packages. `LoadAsset` accepts both plain asset paths such as `"assets/tree.glb"` and explicit URIs such as `"asset://tree.glb"`; mounted assets are checked before the development filesystem fallback. Use the lower-level `FBX` and `GLTF` helpers when you explicitly want extractor-style access to importer-native arrays.
 
 Format note:
 - `.vscn`, FBX, and glTF imports can populate shared skeletons and animation clips when the source format contains supported skin/animation data.
@@ -985,8 +1089,8 @@ Format note:
 - glTF node hierarchies are rejected if they contain invalid child references, duplicate parents, or cycles; valid meshes/materials still remain available to the asset container.
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import.
 - Materialless glTF primitives receive a shared default white PBR material so valid assets render through `Scene3D` / `Model3D` without manual material assignment.
-- VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, and node-attached lights, while still loading older `vgfx3d_vertex_le_v1` scenes.
-- `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are resolved relative to the asset path and reject absolute paths, URI schemes, and `.` / `..` traversal segments.
+- VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, node-attached lights, and high-precision node transforms, while still loading older `vgfx3d_vertex_le_v1` scenes. The loader rejects malformed JSON/base64, invalid mesh index buffers, broken node references, and partial child subtrees; finite transform/material/light values are sanitized during load.
+- `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are resolved relative to the asset path and reject absolute paths, URI schemes, and `.` / `..` traversal segments. In `LoadAsset`, those external dependencies are loaded through `Viper.IO.Assets` first and missing-dependency diagnostics name both the parent model and dependency path.
 - glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, and `KHR_lights_punctual` are accepted; unsupported required extensions such as Draco, Meshopt, Basis/KTX2, DDS, and exact advanced material extensions fail load rather than rendering incomplete fallback data.
 
 ## Skeleton3D
@@ -1015,6 +1119,9 @@ Bone hierarchy for skeletal animation.
 | `GetBoneName(index)` | `str(i64)` | Get bone name by index |
 
 Bones must be added in topological order (parent before child). Max 256 bones per skeleton.
+Add all bones before binding the skeleton to a mesh or creating an `AnimPlayer3D`, `AnimBlend3D`,
+or `AnimController3D`; those runtime objects allocate fixed-size pose buffers and freeze the
+skeleton topology.
 
 ---
 
@@ -1043,8 +1150,9 @@ Keyframe animation clip with per-bone position, rotation, and scale tracks.
 | `AddKeyframe(boneIdx, time, pos, rot, scale)` | `void(i64, f64, obj, obj, obj)` | Add keyframe: bone index, time, position Vec3, rotation Quat, scale Vec3 |
 
 Keyframes are kept sorted by time within each bone channel. Rotation keyframes use normalized
-quaternions and SLERP; position/scale use linear interpolation. Non-finite keyframe times are
-ignored, and non-finite TRS components fall back to identity-safe values.
+quaternions and SLERP; position/scale use linear interpolation. `pos`, `rot`, or `scale` may be
+`null`; omitted or non-finite/out-of-float-range components fall back to the bone bind pose instead
+of erasing that component to zero/identity.
 
 ---
 
@@ -1072,9 +1180,9 @@ Playback controller for skeletal animation.
 |--------|-----------|-------------|
 | `Play(animation)` | `void(obj)` | Start playing an Animation3D |
 | `Crossfade(animation, duration)` | `void(obj, f64)` | Blend to new animation over duration (SLERP for rotation) |
-| `Stop()` | `void()` | Stop playback |
+| `Stop()` | `void()` | Stop playback and output the bind pose |
 | `Update(dt)` | `void(f64)` | Advance animation by dt seconds |
-| `GetBoneMatrix(boneIdx)` | `obj(i64)` | Get current Mat4 for a bone |
+| `GetBoneMatrix(boneIdx)` | `obj(i64)` | Get the current global/world Mat4 for a bone |
 
 Negative playback speeds play clips in reverse. Looping clips wrap in both directions; non-looping
 clips clamp at the start/end and stop when they hit the boundary. Player and animation handles are
@@ -1139,8 +1247,8 @@ func start() {
 }
 ```
 
-- `DrawMeshSkinned` applies CPU skinning via weighted bone palette
-- `Crossfade` blends using TRS decomposition: position/scale linearly interpolated, rotation via quaternion SLERP
+- `DrawMeshSkinned` applies CPU or GPU skinning via the internal skinning palette. Skinning weights are normalized consistently across CPU and GPU paths; missing palettes copy vertices through unchanged, and unused backend bone-palette slots behave as identity transforms.
+- `Crossfade` blends every bone using TRS decomposition: position/scale linearly interpolated, rotation via quaternion SLERP. Channels present in only one clip blend against bind pose, and the fading-out clip keeps its own speed/looping settings during the transition.
 
 ## MorphTarget3D
 
@@ -1165,7 +1273,7 @@ Blend shapes for facial animation, muscle flex, and shape-based deformation.
 | `AddShape(name)` | `i64(str)` | Register a blend shape (returns shape index) |
 | `SetDelta(shapeIdx, vertexIdx, dx, dy, dz)` | `void(i64, i64, f64, f64, f64)` | Set position delta for a vertex in a shape |
 | `SetNormalDelta(shapeIdx, vertexIdx, dx, dy, dz)` | `void(i64, i64, f64, f64, f64)` | Set normal delta for a vertex in a shape |
-| `SetWeight(shapeIdx, weight)` | `void(i64, f64)` | Set blend weight for a shape |
+| `SetWeight(shapeIdx, weight)` | `void(i64, f64)` | Set blend weight for a shape, clamped to `[-1, 1]` |
 | `GetWeight(shapeIdx)` | `f64(i64)` | Get current blend weight |
 | `SetWeightByName(name, weight)` | `void(str, f64)` | Set blend weight by shape name |
 
@@ -1211,7 +1319,7 @@ func start() {
 - Weights can be negative (reverse deformation)
 - `New(vertexCount)` bounds allocation size, deltas sanitize non-finite values to `0`, and non-finite weights become `0` before clamping to the supported range.
 - `Canvas3D.DrawMeshMorphed` requires a `Mat4` transform, a `Mesh3D`, and a matching `MorphTarget3D`; mismatched vertex counts or invalid handles skip the draw without dereferencing the wrong object type.
-- GPU-applied on Metal and on OpenGL/D3D11 while the active shape count fits backend shader limits; otherwise CPU-applied as `finalPos = basePos + sum(weight * delta)` per vertex
+- GPU-applied on Metal and on OpenGL/D3D11 while the active shape count fits backend shader limits; otherwise CPU-applied as `finalPos = basePos + sum(weight * delta)` per vertex. GPU backends clamp active shape counts to shader-indexable limits and disable the morph path on upload failure rather than reusing stale buffers.
 
 ## FBX Loader
 
@@ -1292,6 +1400,7 @@ Low-level extractor API for meshes and materials from glTF 2.0 files. `Model3D.L
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `GLTF.Load(path)` | `obj(str)` | Parse glTF file |
+| `GLTF.LoadAsset(path)` | `obj(str)` | Parse glTF/GLB through `Viper.IO.Assets`, including package-relative external dependencies |
 | `GLTF.get_MeshCount(asset)` | `i64(obj)` | Number of meshes |
 | `GLTF.GetMesh(asset, index)` | `obj(obj, i64)` | Get Mesh3D by index |
 | `GLTF.get_MaterialCount(asset)` | `i64(obj)` | Number of materials |
@@ -1339,6 +1448,9 @@ Supported glTF material fidelity:
 Emitter-based 3D particle effects with physics, lifetime, and billboard rendering.
 Particle setters sanitize non-finite values: ranges are kept non-negative and ordered, alpha and
 direction spread are clamped, invalid directions fall back to +Y, and invalid update deltas are ignored.
+Rendering is batched per emitter. Additive particles skip sorting, while alpha particles sort a
+temporary key array back-to-front and submit one billboard mesh without reordering the live particle
+array.
 
 ### Constructor
 
@@ -1442,6 +1554,7 @@ Full-screen post-processing effect chain applied automatically in `Canvas3D.Flip
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
+| `NewQuality(canvas, profile)` | `obj(obj, i64)` | Create a backend-safe quality chain for a canvas (`0` performance, `1` balanced, `2` cinematic) |
 | `AddBloom(threshold, intensity, passes)` | `void(f64, f64, i64)` | Bloom glow effect |
 | `AddTonemap(mode, exposure)` | `void(i64, f64)` | Tone mapping (0=off, 1=Reinhard, 2=ACES) |
 | `AddFXAA()` | `void()` | Fast approximate anti-aliasing |
@@ -1505,6 +1618,8 @@ Effects are applied in chain order (first added = first applied). Chain storage 
 | `Ray3D.IntersectAABB(o, d, min, max)` | `f64(obj, obj, obj, obj)` | Slab method; returns distance or -1 |
 | `Ray3D.IntersectSphere(o, d, center, radius)` | `f64(obj, obj, obj, f64)` | Quadratic formula; returns distance or -1 |
 
+Ray directions are normalized internally for all `Ray3D` intersection helpers. A zero-length or non-finite direction is a miss, and returned distances are Euclidean world distances even when the input direction was not normalized. Sphere hits from inside the sphere return distance `0`.
+
 ### RayHit3D — Hit result
 
 | Property | Type | Access | Description |
@@ -1544,8 +1659,9 @@ Effects are applied in chain order (first added = first applied). Chain storage 
 | `Capsule3D.AABBOverlaps(capA, capB, capR, min, max)` | `i1(obj, obj, f64, obj, obj)` | Capsule vs AABB overlap |
 
 Ray/AABB/capsule helpers validate `Vec3`, `Mat4`, mesh, and hit handles. Non-finite rays or
-dimensions return a miss or safe zero result. AABB helpers canonicalize inverted min/max bounds, and
-capsule-vs-AABB uses exact segment-to-box distance rather than only testing against the box center.
+dimensions return a miss or safe zero result. AABB helpers canonicalize inverted min/max bounds,
+penetration vectors push the first shape out of the second, and capsule-vs-AABB uses exact
+segment-to-box distance rather than only testing against the box center.
 
 ### Zia Example
 
@@ -1626,23 +1742,23 @@ func start() {
 - `Yaw`/`Pitch` properties allow reading/writing the current angles and rebuild the view immediately
 - Use `Mouse.Capture()` to hide cursor and enable warp-to-center mouse tracking
 
-## Audio3D
+## Sound3D
 
 Spatial audio now has two layers:
 
-- `AudioListener3D` and `AudioSource3D` are the preferred gameplay-facing APIs.
-- `Audio3D` remains as the low-level compatibility layer for direct listener/voice control.
+- `SoundListener3D` and `SoundSource3D` are the preferred gameplay-facing APIs.
+- `Sound3D` remains as the low-level compatibility layer for direct listener/voice control.
 
-### AudioListener3D
+### SoundListener3D
 
-An `AudioListener3D` owns the active listener transform used for attenuation and stereo pan. The first listener you create becomes active automatically if no other active listener exists; you can switch the active listener by setting `IsActive = true` on another instance.
+An `SoundListener3D` owns the active listener transform used for attenuation and stereo pan. The first listener you create becomes active automatically if no other active listener exists; you can switch the active listener by setting `IsActive = true` on another instance.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `Position` | `Vec3` | read/write | Listener world position |
 | `Forward` | `Vec3` | read/write | Listener facing direction |
 | `Velocity` | `Vec3` | read/write | Listener velocity |
-| `IsActive` | `Boolean` | read/write | Whether this listener is driving `Audio3D` |
+| `IsActive` | `Boolean` | read/write | Whether this listener is driving `Sound3D` |
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -1655,14 +1771,16 @@ An `AudioListener3D` owns the active listener transform used for attenuation and
 | `BindCamera(camera)` | `void(obj)` | Follow a `Camera3D` position and forward vector |
 | `ClearCameraBinding()` | `void()` | Stop following a camera |
 
-### AudioSource3D
+### SoundSource3D
 
-An `AudioSource3D` owns one spatial sound instance. It caches world-space position and can follow a bound `SceneNode3D`.
+An `SoundSource3D` owns one spatial sound instance. It caches world-space position and can follow a bound `SceneNode3D`.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `Position` | `Vec3` | read/write | Source world position |
 | `Velocity` | `Vec3` | read/write | Source velocity |
+| `DopplerFactor` | `Float` | read | Latest computed Doppler pitch multiplier |
+| `RefDistance` | `Float` | read/write | Full-volume radius before attenuation begins |
 | `MaxDistance` | `Float` | read/write | Distance at which the sound attenuates to silence |
 | `Volume` | `Integer` | read/write | Base volume before attenuation `[0,100]` |
 | `Looping` | `Boolean` | read/write | Whether `Play()` uses looped voice playback |
@@ -1683,33 +1801,34 @@ An `AudioSource3D` owns one spatial sound instance. It caches world-space positi
 
 Bound audio objects are explicit, just like physics/animation bindings:
 
-- `Audio3D.SyncBindings(dt)` updates all bound listeners and sources, recomputes velocities, and refreshes any live source voices.
-- `Scene3D.SyncBindings(dt)` calls `Audio3D.SyncBindings(dt)` after scene/body/anim synchronization, so most scene-driven games only need the scene call.
+- `Sound3D.SyncBindings(dt)` updates all bound listeners and sources, recomputes velocities, and refreshes any live source voices.
+- `Scene3D.SyncBindings(dt)` calls `Sound3D.SyncBindings(dt)` after scene/body/anim synchronization, so most scene-driven games only need the scene call.
 - Property setters such as `source.Position = ...` update the cached spatial state immediately even when no scene binding is involved.
 - `BindNode` accepts only `SceneNode3D`, `BindCamera` accepts only `Camera3D`, and non-Vec3 position/velocity/forward values are ignored. Null vectors still collapse to origin for compatibility.
-- `AudioSource3D.MaxDistance` is finite and non-negative; invalid values become `0.0`.
+- `SoundSource3D.MaxDistance` is finite and non-negative; invalid values become `0.0`.
+- `SoundSource3D.RefDistance` defaults to `1.0`; `MaxDistance` is raised when needed so it is never smaller than `RefDistance`.
 
 Recommended frame order for scene-driven audio:
 
 1. Move cameras and scene nodes.
 2. Call `Scene3D.SyncBindings(dt)`.
-3. Trigger `AudioSource3D.Play()` or `Audio3D.PlayAt(...)` calls for the frame.
+3. Trigger `SoundSource3D.Play()` or `Sound3D.PlayAt(...)` calls for the frame.
 
-### Audio3D Compatibility Layer
+### Sound3D Compatibility Layer
 
-`Audio3D` is still available when you want direct listener/voice control without allocating objects.
+`Sound3D` is still available when you want direct listener/voice control without allocating objects.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Audio3D.SetListener(position, forward)` | `void(obj, obj)` | Set the fallback listener position and forward vector |
-| `Audio3D.PlayAt(sound, position, maxDist, volume)` | `i64(obj, obj, f64, i64)` | Play a `Sound` at a world position |
-| `Audio3D.UpdateVoice(voice, position, maxDist)` | `void(i64, obj, f64)` | Recompute attenuation and pan for a moving voice |
-| `Audio3D.SyncBindings(dt)` | `void(f64)` | Update all bound `AudioListener3D` / `AudioSource3D` objects |
+| `Sound3D.SetListener(position, forward)` | `void(obj, obj)` | Set the fallback listener position and forward vector |
+| `Sound3D.PlayAt(sound, position, maxDist, volume)` | `i64(obj, obj, f64, i64)` | Play a `Sound` at a world position |
+| `Sound3D.UpdateVoice(voice, position, maxDist)` | `void(i64, obj, f64)` | Recompute attenuation and pan for a moving voice |
+| `Sound3D.SyncBindings(dt)` | `void(f64)` | Update all bound `SoundListener3D` / `SoundSource3D` objects |
 
 ### Zia Example
 
 ```zia
-module Audio3DObjectsDemo;
+module Sound3DObjectsDemo;
 
 bind Viper.Graphics3D;
 bind Viper.Math;
@@ -1723,16 +1842,17 @@ func start() {
     var node = SceneNode3D.New();
     SceneNode3D.SetPosition(node, 3.0, 0.5, -1.0);
 
-    var listener = AudioListener3D.New();
+    var listener = SoundListener3D.New();
     listener.BindCamera(cam);
     listener.IsActive = true;
 
-    var source = AudioSource3D.New(Synth.Tone(523, 220, 0));
+    var source = SoundSource3D.New(Synth.Tone(523, 220, 0));
     source.BindNode(node);
+    source.RefDistance = 2.0;
     source.MaxDistance = 20.0;
     source.Volume = 75;
 
-    Audio3D.SyncBindings(0.016);
+    Sound3D.SyncBindings(0.016);
 
     if (Audio.IsAvailable() && Audio.Init() != 0) {
         var voice = source.Play();
@@ -1741,10 +1861,10 @@ func start() {
 }
 ```
 
-- Linear distance attenuation: `volume * max(0, 1 - dist/maxDist)`
+- Linear distance attenuation stays at full volume through `refDist`, then falls to zero at `maxDist`
 - Pan is derived from the listener's right vector and the source direction in world space
-- `Audio3D.PlayAt` still records per-voice `max_distance`, and `UpdateVoice(..., 0.0)` reuses that stored value
-- `AudioSource3D` currently exposes volume, max-distance, looping, and binding control; doppler, pitch, cones, and occlusion remain future work
+- `Sound3D.PlayAt` still records per-voice `max_distance`, and `UpdateVoice(..., 0.0)` reuses that stored value
+- `SoundSource3D.DopplerFactor` exposes the latest factor computed from listener/source velocity; the current mixer applies volume and pan, with playback-rate application reserved for rate-capable backends
 
 ## Mouse Capture
 
@@ -1761,16 +1881,20 @@ When captured, `Mouse.DeltaX()`/`Mouse.DeltaY()` report movement from center. Th
 
 ## Physics3D
 
-Impulse-based 3D rigid body simulation with AABB, sphere, and capsule collision shapes.
+Impulse-based 3D rigid body simulation with box, sphere, and capsule collision shapes.
 Bodies now track quaternion orientation and angular velocity in addition to linear motion.
 Shape-specific narrow-phase collision: sphere-sphere uses radial distance (not AABB),
-AABB-sphere uses closest-point projection. Collision detection uses a sweep-and-prune broadphase
-before narrow-phase tests. Coulomb friction and Baumgarte positional correction are applied to
-non-trigger contacts.
+box-sphere uses closest-point projection in the box's oriented local space. Collision detection uses a sweep-and-prune broadphase
+before narrow-phase tests. Non-trigger contacts apply impulses at the contact point, so off-center
+hits update angular velocity as well as linear velocity. Coulomb friction and Baumgarte positional
+correction are applied to non-trigger contacts.
 
 Capsule primitive collision honors body orientation for capsule-vs-capsule, capsule-vs-sphere,
-capsule-vs-AABB, mesh, and heightfield tests. AABB primitives remain axis-aligned boxes; use
-compound colliders or mesh/convex-hull colliders when you need rotated box geometry.
+capsule-vs-box, mesh, and heightfield tests. Box primitives honor body and compound-child
+orientation; the `NewAABB` name is kept as a compatibility factory for box bodies.
+`Raycast` tests actual collider geometry for boxes, spheres, capsules, compound leaves, mesh/convex
+triangles, and heightfields. Sphere and capsule sweeps use adaptive sampling so small-radius sweeps
+and long capsules can hit thin geometry.
 
 ### Physics3DWorld
 
@@ -1916,7 +2040,7 @@ Notes:
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
 | `New(mass)` | `obj(f64)` | Create an empty body and assign a collider later |
-| `NewAABB(sx, sy, sz, mass)` | `obj(f64, f64, f64, f64)` | AABB box body (mass=0 for static) |
+| `NewAABB(sx, sy, sz, mass)` | `obj(f64, f64, f64, f64)` | Box body (mass=0 for static); name retained for compatibility |
 | `NewSphere(radius, mass)` | `obj(f64, f64)` | Sphere body |
 | `NewCapsule(radius, height, mass)` | `obj(f64, f64, f64)` | Capsule body; `height` is total height including caps |
 
@@ -2434,7 +2558,7 @@ func start() {
 1. **Zia-only:** Use `PerlinNoise.Octave2D()` to fill a `Pixels` buffer, then call `SetHeightmap()`. The heightmap uses 16-bit precision via R (high byte) + G (low byte) channels in `0xRRGGBBAA` pixel format.
 2. **Native fast path:** Call `GeneratePerlin(noise, scale, octaves, persistence)` with a `PerlinNoise` object. This writes directly to the internal float heightmap, bypassing the Pixels intermediate for better performance on large terrains. The `noise` parameter is a `PerlinNoise` object, `scale` controls coordinate frequency, `octaves` sets detail layers (typically 4-8), and `persistence` controls amplitude decay (typically 0.4-0.6). Non-finite scale/persistence values are sanitized, octaves are clamped to `1..16`, and generated heights are clamped to `0..1`.
 
-**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling. A `1x1` splat map is valid and acts as uniform coverage for the whole terrain. Any baked fallback texture is stored in the standard `Pixels` format, `0xRRGGBBAA`.
+**Texture splatting:** When a splat map is set, the terrain blends 4 layer textures per-pixel during rasterization, weighted by the splat map RGBA channels. Each layer can have its own UV tiling scale for detail repetition. The software, Metal, OpenGL, and D3D11 backends all perform per-pixel splat sampling. Backend splatting is enabled only when the control map and all four layer textures are present; incomplete splat sets render with the base material/fallback texture instead of sampling missing layers. A `1x1` splat map is valid and acts as uniform coverage for the whole terrain. Any baked fallback texture is stored in the standard `Pixels` format, `0xRRGGBBAA`.
 
 **LOD (Level of Detail):** Terrain chunks use 3 resolution levels based on distance from the camera:
 - LOD 0 (full): 16x16 quads per chunk (nearest chunks)
@@ -2454,6 +2578,9 @@ See `examples/apiaudit/graphics3d/procedural_terrain_demo.zia` and `terrain_lod_
 Draw many copies of one mesh with different transforms in a single draw call.
 Transforms passed to `Add` and `Set` are copied into finite float matrices; any non-finite element is
 replaced with the corresponding identity-matrix value before culling or backend submission.
+GPU instanced draws synthesize previous-instance matrices when the caller does not provide them, so
+motion-vector consumers get stable no-streak first frames. Raw instanced submissions separate motion
+history by batch buffer identity; reuse the same matrix buffer across frames for continuous history.
 
 ### Constructor
 
@@ -2477,6 +2604,9 @@ replaced with the corresponding identity-matrix value before culling or backend 
 | `Clear()` | `void()` | Remove all instances |
 
 Draw via `Canvas3D.DrawInstanced(batch)`.
+
+Instanced motion-history keys use stable mesh/material/count/index identity rather than the
+transient transform-buffer address, so reallocating an instance buffer does not reset motion vectors.
 
 ### Zia Example
 
@@ -2516,7 +2646,8 @@ func start() {
 
 ## NavMesh3D
 
-Navigation mesh with A* pathfinding for AI characters.
+Navigation mesh with A* pathfinding for AI characters. `Build` requires manifold shared edges:
+more than two triangles on one undirected edge is rejected because adjacency would be ambiguous.
 
 ### Constructor
 
@@ -2733,9 +2864,10 @@ Weight-based animation blending for smooth transitions between clips.
 | `Update(dt)` | `void(f64)` | Advance all active animations |
 
 Weights are clamped to `[0.0, 1.0]`, NaN weights become zero, and negative per-state speeds play the
-state in reverse using the same loop/clamp behavior as `AnimPlayer3D`. Blending decomposes sampled
-bone matrices into TRS and uses quaternion slerp for rotation, which avoids skewed matrices when
-rotations are mixed.
+state in reverse using the same loop/clamp behavior as `AnimPlayer3D`. `Update(0.0)` still
+recomputes the blended pose, and newly added states inherit the source animation's looping flag.
+Blending decomposes sampled bone matrices into TRS and uses quaternion slerp for rotation, which
+avoids skewed matrices when rotations are mixed.
 
 Draw blended mesh via `Canvas3D.DrawMeshBlended(canvas, mesh, transform, material, blender)`. The `AnimBlend3D` already owns its `Skeleton3D`, so no extra skeleton argument is required.
 
@@ -2807,19 +2939,21 @@ Stateful skeletal animation controller for gameplay code. `AnimController3D` bui
 | `SetStateLooping(name, loop)` | `void(str,i1)` | Override looping behavior for a named state |
 | `AddEvent(stateName, timeSeconds, eventName)` | `void(str,f64,str)` | Queue an event when playback crosses the specified state-local time |
 | `PollEvent()` | `str()` | Dequeue the next event name, or `""` when none are pending |
-| `SetRootMotionBone(boneIdx)` | `void(i64)` | Choose which bone contributes root motion |
+| `SetRootMotionBone(boneIdx)` | `void(i64)` | Choose which bone contributes root motion; `-1` disables it |
 | `ConsumeRootMotion()` | `obj()` | Return the accumulated `Vec3` delta and clear it |
 | `SetLayerWeight(layer, weight)` | `void(i64,f64)` | Set overlay weight for layers `1..3` |
 | `SetLayerMask(layer, rootBone)` | `void(i64,i64)` | Restrict an overlay layer to the subtree rooted at `rootBone` |
 | `PlayLayer(layer, stateName)` | `i1(i64,str)` | Start a named state on an overlay layer |
 | `CrossfadeLayer(layer, stateName, blendSeconds)` | `i1(i64,str,f64)` | Crossfade an overlay layer to a new state |
 | `StopLayer(layer)` | `void(i64)` | Stop one overlay layer |
-| `GetBoneMatrix(boneIdx)` | `obj(i64)` | Read the controller's final blended matrix for a bone |
+| `GetBoneMatrix(boneIdx)` | `obj(i64)` | Read the controller's final global/world matrix for a bone |
 
 Event times are clamped into the owning clip's duration and are fired when playback crosses them in
 forward, reverse, exact-loop, or multi-loop updates. State speeds may be negative for reverse
 playback; non-finite speeds fall back to `1.0`. Overlay weights are finite and clamped, and overlay
-composition uses TRS/quaternion blending so masked layers do not introduce matrix skew.
+composition uses TRS/quaternion blending so masked layers do not introduce matrix skew. Root motion
+is disabled by default, preserves forward/reverse loop-wrap deltas, and can be reset with
+`SetRootMotionBone(-1)`. `Stop()` returns the output pose to bind pose.
 
 ### When To Use Which API
 
@@ -3078,6 +3212,8 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 **OpenGL 3.3** (Linux) — Full feature parity (OGL-01 through OGL-20): all texture types, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot lights, fog, wireframe, render-to-texture, up to two directional shadow maps, post-processing, instancing, skinning, morph targets, terrain splatting, cubemap skybox, environment reflections, and advanced post-FX (SSAO, depth of field, motion blur).
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
+
+Backend correctness rules are shared where possible: skinning weights are normalized before application, oversized GPU bone palettes are clamped to backend shader limits, unused bone palette slots are identity transforms, terrain splatting requires a complete control-map-plus-four-layer texture set, masked materials alpha-test shadow casters, shadow slots are advertised only after the indexed pass completes, and invalid draw/readback/texture/shadow inputs are rejected or treated conservatively instead of being dereferenced.
 
 ## Performance Tips
 

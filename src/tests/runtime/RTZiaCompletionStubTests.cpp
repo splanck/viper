@@ -21,10 +21,15 @@
 
 extern "C" {
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
-rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_complete_for_file(rt_string source,
+                                   rt_string file_path,
+                                   int64_t line,
+                                   int64_t col);
 rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col);
-rt_string rt_zia_signature_help_for_file(
-    rt_string source, rt_string file_path, int64_t line, int64_t col);
+rt_string rt_zia_signature_help_for_file(rt_string source,
+                                         rt_string file_path,
+                                         int64_t line,
+                                         int64_t col);
 rt_string rt_zia_check(rt_string source);
 rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
 void *rt_zia_toolchain_check(rt_string source);
@@ -101,8 +106,8 @@ int main() {
     rt_string path = rt_string_from_bytes("app.zia", 7);
 
     expect_contains(rt_zia_complete(source, 1, 0), "Zia completion unavailable\t\t8\t");
-    expect_contains(
-        rt_zia_complete_for_file(source, path, 1, 0), "Zia completion unavailable\t\t8\t");
+    expect_contains(rt_zia_complete_for_file(source, path, 1, 0),
+                    "Zia completion unavailable\t\t8\t");
     expect_contains(rt_zia_signature_help(source, 1, 0), "link fe_zia");
     expect_contains(rt_zia_signature_help_for_file(source, path, 1, 0), "link fe_zia");
     expect_empty(rt_zia_check(source));

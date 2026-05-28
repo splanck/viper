@@ -16,8 +16,8 @@
 #include "tools/common/packaging/WindowsPackageBuilder.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -93,7 +93,8 @@ void installPackageUsage() {
         << "  --verify-only <path>  Verify an existing artifact and exit\n"
         << "  --macos-pkg-version <v> Dotted numeric package version override\n"
         << "  --macos-sign-identity <id> Developer ID Installer identity for macOS .pkg signing\n"
-        << "  --macos-notary-profile <profile> notarytool keychain profile for macOS .pkg notarization\n"
+        << "  --macos-notary-profile <profile> notarytool keychain profile for macOS .pkg "
+           "notarization\n"
         << "  --macos-staple       Staple the notarization ticket after successful submission\n"
         << "  --windows-sign        Authenticode-sign generated Windows installer\n"
         << "  --windows-sign-pfx <path> PFX certificate for Windows signing\n"
@@ -108,7 +109,8 @@ void installPackageUsage() {
         << "  --windows-shortcuts on|off Create Start Menu developer shortcuts (default: on)\n"
         << "  --allow-debug-toolchain Allow Windows packages that reference MSVC debug CRTs\n"
         << "  --stage-only          Validate/gather the staged install tree and stop\n"
-        << "  --skip-build          With --build-dir, run cmake --install without rebuilding first\n"
+        << "  --skip-build          With --build-dir, run cmake --install without rebuilding "
+           "first\n"
         << "  --keep-stage-dir      Preserve auto-generated stage directories\n"
         << "  -o <path>             Output file or directory\n"
         << "  --no-verify           Skip post-build verification\n"
@@ -147,13 +149,11 @@ std::string getenvOrEmpty(const char *name) {
 }
 
 bool windowsSigningRequested(const InstallPackageArgs &args) {
-    return args.windowsSign || !args.windowsSignPfx.empty() ||
-           !args.windowsSignThumbprint.empty();
+    return args.windowsSign || !args.windowsSignPfx.empty() || !args.windowsSignThumbprint.empty();
 }
 
 bool macOSPackageSigningRequested(const InstallPackageArgs &args) {
-    return !args.macosSignIdentity.empty() || !args.macosNotaryProfile.empty() ||
-           args.macosStaple;
+    return !args.macosSignIdentity.empty() || !args.macosNotaryProfile.empty() || args.macosStaple;
 }
 
 bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
@@ -162,15 +162,14 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
     if (!windowsSigningRequested(args))
         return true;
 
-    std::string pfxPath = args.windowsSignPfx.empty() ? getenvOrEmpty("VIPER_WINDOWS_SIGN_PFX")
-                                                      : args.windowsSignPfx;
+    std::string pfxPath =
+        args.windowsSignPfx.empty() ? getenvOrEmpty("VIPER_WINDOWS_SIGN_PFX") : args.windowsSignPfx;
     std::string thumbprint = args.windowsSignThumbprint.empty()
                                  ? getenvOrEmpty("VIPER_WINDOWS_SIGN_THUMBPRINT")
                                  : args.windowsSignThumbprint;
     try {
-        thumbprint =
-            viper::pkg::normalizeWindowsCertificateThumbprint(thumbprint,
-                                                              "Windows signing thumbprint");
+        thumbprint = viper::pkg::normalizeWindowsCertificateThumbprint(
+            thumbprint, "Windows signing thumbprint");
     } catch (const std::exception &ex) {
         err << "error: " << ex.what() << "\n";
         return false;
@@ -229,8 +228,7 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
         const RunResult verifyResult =
             run_process({signtool, "verify", "/pa", "/all", artifactPath.string()});
         if (verifyResult.exit_code != 0) {
-            err << "error: signtool verify failed with exit code " << verifyResult.exit_code
-                << "\n"
+            err << "error: signtool verify failed with exit code " << verifyResult.exit_code << "\n"
                 << verifyResult.out << verifyResult.err;
             return false;
         }
@@ -276,8 +274,8 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
     const fs::path signedPath = artifactPath.string() + ".signed.tmp";
     std::error_code ec;
     fs::remove(signedPath, ec);
-    const RunResult signResult =
-        run_process({"productsign", "--sign", identity, artifactPath.string(), signedPath.string()});
+    const RunResult signResult = run_process(
+        {"productsign", "--sign", identity, artifactPath.string(), signedPath.string()});
     if (signResult.exit_code != 0) {
         err << "error: productsign failed with exit code " << signResult.exit_code << "\n"
             << signResult.out << signResult.err;
@@ -286,8 +284,8 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
     }
     fs::rename(signedPath, artifactPath, ec);
     if (ec) {
-        err << "error: cannot replace unsigned macOS package with signed artifact: "
-            << ec.message() << "\n";
+        err << "error: cannot replace unsigned macOS package with signed artifact: " << ec.message()
+            << "\n";
         fs::remove(signedPath, ec);
         return false;
     }
@@ -343,8 +341,7 @@ uint32_t readLE32(const std::vector<uint8_t> &data, size_t off) {
 }
 
 uint32_t readBE32(const std::vector<uint8_t> &data, size_t off) {
-    return (static_cast<uint32_t>(data[off]) << 24) |
-           (static_cast<uint32_t>(data[off + 1]) << 16) |
+    return (static_cast<uint32_t>(data[off]) << 24) | (static_cast<uint32_t>(data[off + 1]) << 16) |
            (static_cast<uint32_t>(data[off + 2]) << 8) | static_cast<uint32_t>(data[off + 3]);
 }
 
@@ -530,8 +527,8 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         } else if (arg == "--macos-pkg-version" && i + 1 < argc) {
             args.macosPackageVersion = argv[++i];
             try {
-                viper::pkg::validateDottedNumericVersion(
-                    args.macosPackageVersion, "macOS package version override");
+                viper::pkg::validateDottedNumericVersion(args.macosPackageVersion,
+                                                         "macOS package version override");
             } catch (const std::exception &ex) {
                 std::cerr << "error: " << ex.what() << "\n";
                 return false;
@@ -609,16 +606,13 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         args.buildConfig = "Release";
     try {
         viper::pkg::validatePackageUrl(args.windowsTimestampUrl, "Windows timestamp URL");
-        viper::pkg::validateSingleLineField(args.windowsSigntoolPath,
-                                            "Windows signtool path");
-        viper::pkg::validateWindowsFileName(args.windowsInstallDir,
-                                            "Windows install directory");
-        viper::pkg::validateWindowsCertificateThumbprint(
-            args.windowsSignThumbprint, "Windows signing thumbprint");
+        viper::pkg::validateSingleLineField(args.windowsSigntoolPath, "Windows signtool path");
+        viper::pkg::validateWindowsFileName(args.windowsInstallDir, "Windows install directory");
+        viper::pkg::validateWindowsCertificateThumbprint(args.windowsSignThumbprint,
+                                                         "Windows signing thumbprint");
         viper::pkg::validateSingleLineField(args.macosSignIdentity,
                                             "macOS package signing identity");
-        viper::pkg::validateSingleLineField(args.macosNotaryProfile,
-                                            "macOS notary profile");
+        viper::pkg::validateSingleLineField(args.macosNotaryProfile, "macOS notary profile");
     } catch (const std::exception &ex) {
         std::cerr << "error: " << ex.what() << "\n";
         return false;
@@ -649,8 +643,7 @@ std::string targetFileName(InstallPackageTarget target,
 }
 
 std::vector<std::string> requiredPayloadPaths(
-    InstallPackageTarget target,
-    const viper::pkg::ToolchainInstallManifest &manifest) {
+    InstallPackageTarget target, const viper::pkg::ToolchainInstallManifest &manifest) {
     std::vector<std::string> paths;
     paths.reserve(manifest.files.size() + 1);
     auto appendLinuxAssociationMetadata = [&](const std::string &prefix, bool portable) {
@@ -678,8 +671,8 @@ std::vector<std::string> requiredPayloadPaths(
     switch (target) {
         case InstallPackageTarget::Windows:
             for (const auto &file : manifest.files) {
-                paths.push_back(viper::pkg::sanitizePackageRelativePath(
-                    file.stagedRelativePath, "windows toolchain path"));
+                paths.push_back(viper::pkg::sanitizePackageRelativePath(file.stagedRelativePath,
+                                                                        "windows toolchain path"));
             }
             paths.push_back("bin/viper-dev.cmd");
             paths.push_back("bin/viper-install-vscode-extension.cmd");
@@ -701,12 +694,10 @@ std::vector<std::string> requiredPayloadPaths(
         case InstallPackageTarget::Tarball: {
             const std::string version = manifest.version.empty() ? "0.0.0" : manifest.version;
             const std::string packageName = "viper";
-            const std::string topDir =
-                viper::pkg::sanitizePackageRelativePath(packageName + "-" +
-                                                            portableArchiveVersionComponent(version) +
-                                                            "-" + manifest.platform + "-" +
-                                                            manifest.arch,
-                                                        "toolchain tarball top-level directory");
+            const std::string topDir = viper::pkg::sanitizePackageRelativePath(
+                packageName + "-" + portableArchiveVersionComponent(version) + "-" +
+                    manifest.platform + "-" + manifest.arch,
+                "toolchain tarball top-level directory");
             for (const auto &file : manifest.files) {
                 paths.push_back(topDir + "/" +
                                 viper::pkg::mapInstallPath(
@@ -725,18 +716,15 @@ std::vector<std::string> requiredPayloadPaths(
             for (const auto &file : manifest.files) {
                 const std::string rel = viper::pkg::sanitizePackageRelativePath(
                     file.stagedRelativePath, "macOS toolchain path");
-                paths.push_back("usr/local/viper/" +
-                                rel);
+                paths.push_back("usr/local/viper/" + rel);
                 if (file.kind == viper::pkg::ToolchainFileKind::Binary ||
                     rel.rfind("bin/", 0) == 0) {
-                    paths.push_back("usr/local/bin/" +
-                                    fs::path(rel).filename().generic_string());
+                    paths.push_back("usr/local/bin/" + fs::path(rel).filename().generic_string());
                 } else if (file.kind == viper::pkg::ToolchainFileKind::ManPage ||
                            rel.rfind("share/man/", 0) == 0) {
                     static constexpr std::string_view kManPrefix = "share/man/";
                     if (rel.rfind(kManPrefix, 0) == 0) {
-                        paths.push_back("usr/local/share/man/" +
-                                        rel.substr(kManPrefix.size()));
+                        paths.push_back("usr/local/share/man/" + rel.substr(kManPrefix.size()));
                     }
                 }
             }
@@ -747,7 +735,8 @@ std::vector<std::string> requiredPayloadPaths(
             if (!manifest.fileAssociations.empty()) {
                 paths.push_back("Applications/Viper Toolchain.app/Contents/Info.plist");
                 paths.push_back("Applications/Viper Toolchain.app/Contents/PkgInfo");
-                paths.push_back("Applications/Viper Toolchain.app/Contents/MacOS/viper-file-handler");
+                paths.push_back(
+                    "Applications/Viper Toolchain.app/Contents/MacOS/viper-file-handler");
             }
             break;
         case InstallPackageTarget::All:
@@ -867,8 +856,7 @@ bool readRpmStringArray(const std::vector<uint8_t> &data,
     static constexpr uint32_t kRpmString = 6;
     static constexpr uint32_t kRpmStringArray = 8;
     static constexpr uint32_t kRpmI18NString = 9;
-    if (entry.type != kRpmString && entry.type != kRpmStringArray &&
-        entry.type != kRpmI18NString) {
+    if (entry.type != kRpmString && entry.type != kRpmStringArray && entry.type != kRpmI18NString) {
         err << "rpm: header tag " << entry.tag << " is not a string array\n";
         return false;
     }
@@ -1064,10 +1052,8 @@ bool verifyArtifact(const fs::path &artifact,
                 std::set<std::string> payloadPaths;
                 if (!readRpmPayloadPaths(data, &payloadPaths, err))
                     return false;
-                return requireListedPayloadPaths(payloadPaths,
-                                                 requiredPayloadPaths(target, *manifest),
-                                                 "rpm",
-                                                 err);
+                return requireListedPayloadPaths(
+                    payloadPaths, requiredPayloadPaths(target, *manifest), "rpm", err);
             }
             return readRpmPayloadPaths(data, nullptr, err);
         }
@@ -1098,12 +1084,14 @@ bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &targe
 class AutoStageCleanup {
   public:
     AutoStageCleanup(fs::path path, bool enabled) : path_(std::move(path)), enabled_(enabled) {}
+
     ~AutoStageCleanup() {
         if (enabled_ && !path_.empty()) {
             std::error_code ec;
             fs::remove_all(path_, ec);
         }
     }
+
     void dismiss() {
         enabled_ = false;
     }
@@ -1123,8 +1111,8 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
 #else
         static_cast<unsigned long>(::getpid());
 #endif
-    const auto tick =
-        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto tick = static_cast<unsigned long long>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
     fs::path stageDir;
     for (unsigned attempt = 0; attempt < 100; ++attempt) {
         stageDir = args.buildDir / ("install-toolchain-stage-" + std::to_string(pid) + "-" +
@@ -1218,186 +1206,187 @@ int cmdInstallPackage(int argc, char **argv) {
         return 1;
 
     try {
-    if (!args.verifyOnlyPath.empty()) {
-        std::ostringstream err;
-        InstallPackageTarget target = args.target;
-        if (target == InstallPackageTarget::All &&
-            !inferVerifyTargetFromPath(args.verifyOnlyPath, target)) {
-            std::cerr << "error: cannot infer install-package artifact type from extension: "
-                      << args.verifyOnlyPath.string()
-                      << " (use --target for supported artifact formats)\n";
-            return 1;
-        }
-        if (!verifyArtifact(args.verifyOnlyPath, target, err)) {
-            std::cerr << err.str();
-            return 1;
-        }
-        return 0;
-    }
-
-    fs::path stageDir = ensureStageDir(args);
-    AutoStageCleanup stageCleanup(stageDir, args.stageDir.empty() && !args.keepStageDir);
-    std::optional<fs::path> installManifestPath;
-    if (!args.buildDir.empty())
-        installManifestPath = args.buildDir / "install_manifest.txt";
-    viper::pkg::ToolchainInstallManifest manifest =
-        viper::pkg::gatherToolchainInstallManifest(stageDir, installManifestPath);
-    const auto detectedInfo = detectManifestToolchainExecutableInfo(manifest);
-    if (detectedInfo) {
-        manifest.platform = detectedInfo->platform;
-    }
-    if (!args.archOverride.empty()) {
-        if (detectedInfo && detectedInfo->arch != "universal" &&
-            detectedInfo->arch != args.archOverride) {
-            std::cerr << "error: --arch " << args.archOverride
-                      << " does not match staged viper binary architecture " << detectedInfo->arch
-                      << "\n";
-            return 1;
-        }
-        manifest.arch = args.archOverride;
-    } else if (detectedInfo && detectedInfo->arch == "universal") {
-        manifest.arch = "universal";
-    } else if (detectedInfo) {
-        manifest.arch = detectedInfo->arch;
-    }
-    viper::pkg::validateToolchainInstallManifest(manifest);
-
-    if (args.verbose) {
-        std::cout << "Stage: " << stageDir.string() << "\n";
-        std::cout << "Version: " << manifest.version << "\n";
-        std::cout << "Platform: " << manifest.platform << "\n";
-        std::cout << "Arch: " << manifest.arch << "\n";
-        std::cout << "Files: " << manifest.files.size() << "\n";
-    }
-
-    if (args.stageOnly)
-        return 0;
-
-    fs::path outBase = args.outputPath;
-    if (outBase.empty())
-        outBase = stageDir.parent_path() / "installers";
-    const auto targets = selectedTargets(args.target, manifest.platform);
-    std::error_code outEc;
-    const bool outPathExistsAsDirectory = !outBase.empty() && fs::is_directory(outBase, outEc);
-    const bool outIsDirectoryLike =
-        args.outputPath.empty() || outPathExistsAsDirectory ||
-        (!outBase.has_extension() && targets.size() > 1);
-    if (outIsDirectoryLike)
-        fs::create_directories(outBase);
-
-    const bool buildsWindows =
-        std::find(targets.begin(), targets.end(), InstallPackageTarget::Windows) != targets.end();
-    if (buildsWindows && manifest.platform == "windows" && !args.allowDebugToolchain) {
-        if (const auto debugRuntime = firstWindowsDebugRuntimeReference(manifest)) {
-            std::cerr << "error: refusing to build a Windows installer from a Debug CRT payload: "
-                      << *debugRuntime << "\n"
-                      << "       rebuild with --config Release or RelWithDebInfo, or pass "
-                         "--allow-debug-toolchain for local-only diagnostics\n";
-            return 1;
-        }
-    }
-
-    for (InstallPackageTarget target : targets) {
-        if (!targetMatchesStagedPlatform(target, manifest.platform)) {
-            std::cerr << "error: target does not match staged viper binary platform "
-                      << manifest.platform << "\n";
-            return 1;
-        }
-        if (target == InstallPackageTarget::LinuxRpm && !rpmbuildAvailable()) {
-            if (args.target == InstallPackageTarget::All) {
-                std::cerr << "error: --target all for a Linux toolchain includes linux-rpm "
-                             "and requires rpmbuild; install rpm-build or choose "
-                             "--target linux-deb/tarball explicitly\n";
-            } else {
-                std::cerr << "error: --target linux-rpm requires rpmbuild; install rpm-build "
-                             "or use --target linux-deb/tarball\n";
-            }
-            return 1;
-        }
-        fs::path artifactPath =
-            outIsDirectoryLike ? (outBase / targetFileName(target, manifest)) : outBase;
-        if (!outIsDirectoryLike && !artifactPath.parent_path().empty())
-            fs::create_directories(artifactPath.parent_path());
-
-        switch (target) {
-            case InstallPackageTarget::Windows: {
-                viper::pkg::WindowsToolchainBuildParams params;
-                params.manifest = manifest;
-                params.outputPath = artifactPath.string();
-                params.archStr = manifest.arch;
-                params.installScope = args.windowsInstallScope;
-                params.installDirName = args.windowsInstallDir;
-                params.addToPath = args.windowsAddToPath;
-                params.registerFileAssociations = args.windowsFileAssociations;
-                params.createStartMenuShortcuts = args.windowsShortcuts;
-                viper::pkg::buildWindowsToolchainInstaller(params);
-                break;
-            }
-            case InstallPackageTarget::MacOS: {
-                viper::pkg::MacOSToolchainBuildParams params;
-                params.manifest = manifest;
-                params.outputPath = artifactPath.string();
-                params.packageVersion = args.macosPackageVersion;
-                viper::pkg::buildMacOSToolchainPackage(params);
-                break;
-            }
-            case InstallPackageTarget::LinuxDeb: {
-                viper::pkg::LinuxToolchainBuildParams params;
-                params.manifest = manifest;
-                params.outputPath = artifactPath.string();
-                viper::pkg::buildToolchainDebPackage(params);
-                break;
-            }
-            case InstallPackageTarget::LinuxRpm: {
-                viper::pkg::LinuxToolchainBuildParams params;
-                params.manifest = manifest;
-                params.outputPath = artifactPath.string();
-                viper::pkg::buildToolchainRpmPackage(params);
-                break;
-            }
-            case InstallPackageTarget::Tarball: {
-                viper::pkg::LinuxToolchainBuildParams params;
-                params.manifest = manifest;
-                params.outputPath = artifactPath.string();
-                viper::pkg::buildToolchainTarball(params);
-                break;
-            }
-            case InstallPackageTarget::All:
-                break;
-        }
-
-        if (target == InstallPackageTarget::Windows &&
-            !signWindowsInstallerArtifact(args, artifactPath, std::cerr)) {
-            std::error_code removeEc;
-            fs::remove(artifactPath, removeEc);
-            return 1;
-        }
-        if (target == InstallPackageTarget::MacOS &&
-            !signMacOSPackageArtifact(args, artifactPath, std::cerr)) {
-            std::error_code removeEc;
-            fs::remove(artifactPath, removeEc);
-            return 1;
-        }
-
-        if (!args.noVerify) {
+        if (!args.verifyOnlyPath.empty()) {
             std::ostringstream err;
-            if (!verifyArtifact(artifactPath, target, err, &manifest)) {
-                std::cerr << "error: verification failed for " << artifactPath.string() << "\n"
-                          << err.str();
-                std::error_code removeEc;
-                fs::remove(artifactPath, removeEc);
+            InstallPackageTarget target = args.target;
+            if (target == InstallPackageTarget::All &&
+                !inferVerifyTargetFromPath(args.verifyOnlyPath, target)) {
+                std::cerr << "error: cannot infer install-package artifact type from extension: "
+                          << args.verifyOnlyPath.string()
+                          << " (use --target for supported artifact formats)\n";
+                return 1;
+            }
+            if (!verifyArtifact(args.verifyOnlyPath, target, err)) {
+                std::cerr << err.str();
+                return 1;
+            }
+            return 0;
+        }
+
+        fs::path stageDir = ensureStageDir(args);
+        AutoStageCleanup stageCleanup(stageDir, args.stageDir.empty() && !args.keepStageDir);
+        std::optional<fs::path> installManifestPath;
+        if (!args.buildDir.empty())
+            installManifestPath = args.buildDir / "install_manifest.txt";
+        viper::pkg::ToolchainInstallManifest manifest =
+            viper::pkg::gatherToolchainInstallManifest(stageDir, installManifestPath);
+        const auto detectedInfo = detectManifestToolchainExecutableInfo(manifest);
+        if (detectedInfo) {
+            manifest.platform = detectedInfo->platform;
+        }
+        if (!args.archOverride.empty()) {
+            if (detectedInfo && detectedInfo->arch != "universal" &&
+                detectedInfo->arch != args.archOverride) {
+                std::cerr << "error: --arch " << args.archOverride
+                          << " does not match staged viper binary architecture "
+                          << detectedInfo->arch << "\n";
+                return 1;
+            }
+            manifest.arch = args.archOverride;
+        } else if (detectedInfo && detectedInfo->arch == "universal") {
+            manifest.arch = "universal";
+        } else if (detectedInfo) {
+            manifest.arch = detectedInfo->arch;
+        }
+        viper::pkg::validateToolchainInstallManifest(manifest);
+
+        if (args.verbose) {
+            std::cout << "Stage: " << stageDir.string() << "\n";
+            std::cout << "Version: " << manifest.version << "\n";
+            std::cout << "Platform: " << manifest.platform << "\n";
+            std::cout << "Arch: " << manifest.arch << "\n";
+            std::cout << "Files: " << manifest.files.size() << "\n";
+        }
+
+        if (args.stageOnly)
+            return 0;
+
+        fs::path outBase = args.outputPath;
+        if (outBase.empty())
+            outBase = stageDir.parent_path() / "installers";
+        const auto targets = selectedTargets(args.target, manifest.platform);
+        std::error_code outEc;
+        const bool outPathExistsAsDirectory = !outBase.empty() && fs::is_directory(outBase, outEc);
+        const bool outIsDirectoryLike = args.outputPath.empty() || outPathExistsAsDirectory ||
+                                        (!outBase.has_extension() && targets.size() > 1);
+        if (outIsDirectoryLike)
+            fs::create_directories(outBase);
+
+        const bool buildsWindows =
+            std::find(targets.begin(), targets.end(), InstallPackageTarget::Windows) !=
+            targets.end();
+        if (buildsWindows && manifest.platform == "windows" && !args.allowDebugToolchain) {
+            if (const auto debugRuntime = firstWindowsDebugRuntimeReference(manifest)) {
+                std::cerr
+                    << "error: refusing to build a Windows installer from a Debug CRT payload: "
+                    << *debugRuntime << "\n"
+                    << "       rebuild with --config Release or RelWithDebInfo, or pass "
+                       "--allow-debug-toolchain for local-only diagnostics\n";
                 return 1;
             }
         }
 
-        std::cout << artifactPath.string() << "\n";
-    }
+        for (InstallPackageTarget target : targets) {
+            if (!targetMatchesStagedPlatform(target, manifest.platform)) {
+                std::cerr << "error: target does not match staged viper binary platform "
+                          << manifest.platform << "\n";
+                return 1;
+            }
+            if (target == InstallPackageTarget::LinuxRpm && !rpmbuildAvailable()) {
+                if (args.target == InstallPackageTarget::All) {
+                    std::cerr << "error: --target all for a Linux toolchain includes linux-rpm "
+                                 "and requires rpmbuild; install rpm-build or choose "
+                                 "--target linux-deb/tarball explicitly\n";
+                } else {
+                    std::cerr << "error: --target linux-rpm requires rpmbuild; install rpm-build "
+                                 "or use --target linux-deb/tarball\n";
+                }
+                return 1;
+            }
+            fs::path artifactPath =
+                outIsDirectoryLike ? (outBase / targetFileName(target, manifest)) : outBase;
+            if (!outIsDirectoryLike && !artifactPath.parent_path().empty())
+                fs::create_directories(artifactPath.parent_path());
 
-    if (!args.keepStageDir && args.stageDir.empty())
-        fs::remove_all(stageDir);
-    stageCleanup.dismiss();
+            switch (target) {
+                case InstallPackageTarget::Windows: {
+                    viper::pkg::WindowsToolchainBuildParams params;
+                    params.manifest = manifest;
+                    params.outputPath = artifactPath.string();
+                    params.archStr = manifest.arch;
+                    params.installScope = args.windowsInstallScope;
+                    params.installDirName = args.windowsInstallDir;
+                    params.addToPath = args.windowsAddToPath;
+                    params.registerFileAssociations = args.windowsFileAssociations;
+                    params.createStartMenuShortcuts = args.windowsShortcuts;
+                    viper::pkg::buildWindowsToolchainInstaller(params);
+                    break;
+                }
+                case InstallPackageTarget::MacOS: {
+                    viper::pkg::MacOSToolchainBuildParams params;
+                    params.manifest = manifest;
+                    params.outputPath = artifactPath.string();
+                    params.packageVersion = args.macosPackageVersion;
+                    viper::pkg::buildMacOSToolchainPackage(params);
+                    break;
+                }
+                case InstallPackageTarget::LinuxDeb: {
+                    viper::pkg::LinuxToolchainBuildParams params;
+                    params.manifest = manifest;
+                    params.outputPath = artifactPath.string();
+                    viper::pkg::buildToolchainDebPackage(params);
+                    break;
+                }
+                case InstallPackageTarget::LinuxRpm: {
+                    viper::pkg::LinuxToolchainBuildParams params;
+                    params.manifest = manifest;
+                    params.outputPath = artifactPath.string();
+                    viper::pkg::buildToolchainRpmPackage(params);
+                    break;
+                }
+                case InstallPackageTarget::Tarball: {
+                    viper::pkg::LinuxToolchainBuildParams params;
+                    params.manifest = manifest;
+                    params.outputPath = artifactPath.string();
+                    viper::pkg::buildToolchainTarball(params);
+                    break;
+                }
+                case InstallPackageTarget::All:
+                    break;
+            }
 
-    return 0;
+            if (target == InstallPackageTarget::Windows &&
+                !signWindowsInstallerArtifact(args, artifactPath, std::cerr)) {
+                std::error_code removeEc;
+                fs::remove(artifactPath, removeEc);
+                return 1;
+            }
+            if (target == InstallPackageTarget::MacOS &&
+                !signMacOSPackageArtifact(args, artifactPath, std::cerr)) {
+                std::error_code removeEc;
+                fs::remove(artifactPath, removeEc);
+                return 1;
+            }
+
+            if (!args.noVerify) {
+                std::ostringstream err;
+                if (!verifyArtifact(artifactPath, target, err, &manifest)) {
+                    std::cerr << "error: verification failed for " << artifactPath.string() << "\n"
+                              << err.str();
+                    std::error_code removeEc;
+                    fs::remove(artifactPath, removeEc);
+                    return 1;
+                }
+            }
+
+            std::cout << artifactPath.string() << "\n";
+        }
+
+        if (!args.keepStageDir && args.stageDir.empty())
+            fs::remove_all(stageDir);
+        stageCleanup.dismiss();
+
+        return 0;
     } catch (const std::exception &ex) {
         std::cerr << "error: " << ex.what() << "\n";
         return 1;

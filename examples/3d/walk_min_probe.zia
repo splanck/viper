@@ -1,0 +1,199 @@
+module walk_min_probe;
+
+bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind "./walk_min";
+
+func absInt(value: Integer) -> Integer {
+    if (value < 0) { return 0 - value; }
+    return value;
+}
+
+func red(px: Integer) -> Integer {
+    return Bits.And(px >> 24, 0xFF);
+}
+
+func green(px: Integer) -> Integer {
+    return Bits.And(px >> 16, 0xFF);
+}
+
+func blue(px: Integer) -> Integer {
+    return Bits.And(px >> 8, 0xFF);
+}
+
+func luminance(px: Integer) -> Integer {
+    return (red(px) * 30 + green(px) * 59 + blue(px) * 11) / 100;
+}
+
+func colorDiff(a: Integer, b: Integer) -> Integer {
+    return absInt(red(a) - red(b)) + absInt(green(a) - green(b)) + absInt(blue(a) - blue(b));
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func assertFinalOverlayCrisp(img: Pixels, width: Integer, height: Integer) -> Boolean {
+    var inside = Pixels.Get(img, width - 35, height - 35);
+    var outside = Pixels.Get(img, width - 60, height - 35);
+
+    if (red(inside) > 24) { return false; }
+    if (green(inside) < 200) { return false; }
+    if (blue(inside) < 220) { return false; }
+
+    if (red(outside) < 36 && green(outside) > 190 && blue(outside) > 190) {
+        return false;
+    }
+
+    return true;
+}
+
+func assertSceneHasDirectionalShape(img: Pixels, width: Integer, height: Integer) -> Boolean {
+    var minL = 9999;
+    var maxL = -1;
+    var visible = 0;
+    var total = 0;
+
+    var y = height / 3;
+    while (y < height - 62) {
+        var x = width / 5;
+        while (x < width - (width / 5)) {
+            var lum = luminance(Pixels.Get(img, x, y));
+            if (lum < minL) { minL = lum; }
+            if (lum > maxL) { maxL = lum; }
+            if (lum > 30) { visible = visible + 1; }
+            total = total + 1;
+            x = x + 11;
+        }
+        y = y + 9;
+    }
+
+    return total > 0 && visible * 3 > total && maxL - minL > 34;
+}
+
+func assertNearBaseline(img: Pixels, baseline: Pixels, width: Integer, height: Integer) -> Boolean {
+    var maxDiff = 0;
+    var totalDiff = 0;
+    var count = 0;
+
+    var y = 4;
+    while (y < height) {
+        var x = 4;
+        while (x < width) {
+            var diff = colorDiff(Pixels.Get(img, x, y), Pixels.Get(baseline, x, y));
+            if (diff > maxDiff) { maxDiff = diff; }
+            totalDiff = totalDiff + diff;
+            count = count + 1;
+            x = x + 13;
+        }
+        y = y + 11;
+    }
+
+    if (count <= 0) { return false; }
+    var avgDiff = totalDiff / count;
+    return maxDiff <= 72 && avgDiff <= 8;
+}
+
+func assertWalksGrounded(game: WalkMinGame, canvas: Canvas3D) -> Boolean {
+    var player = game.getPlayer();
+    var character = game.getCharacter();
+
+    Canvas3D.ClearSyntheticInput(canvas);
+    Canvas3D.SetInputSource(canvas, 1);
+    var before = Entity3D.position(player);
+
+    Canvas3D.PushSyntheticKey(canvas, Keys.get_W(), true);
+    World3D.tick(game.getWorld());
+    game.step(0.100);
+    Canvas3D.ClearSyntheticInput(canvas);
+
+    var after = Entity3D.position(player);
+    var dx = Vec3.get_X(after) - Vec3.get_X(before);
+    var dz = Vec3.get_Z(after) - Vec3.get_Z(before);
+    if (dx * dx + dz * dz < 0.0025) {
+        Terminal.Say("RESULT: fail player did not walk");
+        return false;
+    }
+    if (CharacterController3D.grounded(character) == false) {
+        Terminal.Say("RESULT: fail player not grounded");
+        return false;
+    }
+    if (Vec3.get_Y(after) < 0.70 || Vec3.get_Y(after) > 1.50) {
+        Terminal.Say("RESULT: fail player y drift");
+        return false;
+    }
+
+    return true;
+}
+
+func main() {
+    var game = new WalkMinGame();
+    game.setup("Walk Min Visual Probe", 320, 180);
+    game.step(0.016);
+    game.renderFrame();
+
+    var canvas = game.getCanvas();
+    var snap = World3D.captureFinalFrame(game.getWorld());
+    if (snap == null) {
+        Terminal.Say("RESULT: fail screenshot-final null");
+        return;
+    }
+
+    if (Canvas3D.get_FrameFinalized(canvas) == false) {
+        Terminal.Say("RESULT: fail frame not finalized");
+        return;
+    }
+
+    if (Pixels.SavePng(snap, "/tmp/walk_min_software_current.png") != 1) {
+        Terminal.Say("RESULT: fail save current");
+        return;
+    }
+
+    var width = Pixels.get_Width(snap);
+    var height = Pixels.get_Height(snap);
+    if (width != 320 || height != 180) {
+        Terminal.Say("RESULT: fail dimensions");
+        return;
+    }
+
+    if (assertFinalOverlayCrisp(snap, width, height) == false) {
+        Terminal.Say("RESULT: fail final overlay");
+        return;
+    }
+
+    if (assertSceneHasDirectionalShape(snap, width, height) == false) {
+        Terminal.Say("RESULT: fail directional shading");
+        return;
+    }
+
+    var baseline = Pixels.LoadPng("examples/3d/baselines/walk_min_software.png");
+    if (baseline == null) {
+        Terminal.Say("RESULT: fail missing baseline");
+        return;
+    }
+    if (Pixels.get_Width(baseline) != width || Pixels.get_Height(baseline) != height) {
+        Terminal.Say("RESULT: fail baseline dimensions");
+        return;
+    }
+    if (assertNearBaseline(snap, baseline, width, height) == false) {
+        Terminal.Say("RESULT: fail baseline diff");
+        return;
+    }
+
+    World3D.present(game.getWorld());
+    game.destroy();
+
+    var movementGame = new WalkMinGame();
+    movementGame.setup("Walk Min Movement Probe", 64, 48);
+    if (assertWalksGrounded(movementGame, movementGame.getCanvas()) == false) {
+        return;
+    }
+    movementGame.destroy();
+
+    Terminal.Say("RESULT: ok");
+}

@@ -2,10 +2,11 @@
 # File: scripts/test_strings.sh
 # Purpose: Run BASIC string intrinsic tests and compare outputs with golden files.
 # Key invariants: For each tests/basic/strings/*.bas file there is a matching .golden.
-# Usage: scripts/test_strings.sh
+# Usage: scripts/test_strings.sh [build-dir]
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ILC="$ROOT/build/src/tools/viper/viper"
+BUILD_DIR="${1:-${VIPER_BUILD_DIR:-$ROOT/build}}"
+ILC="$BUILD_DIR/src/tools/viper/viper"
 FAIL=0
 for BAS in "$ROOT"/src/tests/basic/strings/*.bas; do
   NAME="$(basename "$BAS" .bas)"

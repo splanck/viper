@@ -212,8 +212,8 @@ bool Parser::looksLikeBlockExpression() {
         if (nestedParen == 0 && nestedBracket == 0 && nestedBrace == 0) {
             if (kind == TokenKind::Semicolon)
                 return true;
-            if (kind == TokenKind::RBrace || kind == TokenKind::Comma ||
-                kind == TokenKind::Colon || kind == TokenKind::FatArrow) {
+            if (kind == TokenKind::RBrace || kind == TokenKind::Comma || kind == TokenKind::Colon ||
+                kind == TokenKind::FatArrow) {
                 return false;
             }
         }

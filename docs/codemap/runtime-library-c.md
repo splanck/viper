@@ -381,8 +381,8 @@ Last updated: 2026-04-05
 | `rt_cubemap3d.c` | CubeMap3D environment/skybox |
 | `rt_rendertarget3d.c` | RenderTarget3D offscreen rendering |
 | `rt_texatlas3d.c` / `.h` | TextureAtlas3D texture arrays |
-| `rt_audio3d.c` / `.h` | Audio3D spatial helpers and low-level compatibility layer |
-| `rt_audio3d_objects.c`, `rt_audiolistener3d.h`, `rt_audiosource3d.h` | AudioListener3D / AudioSource3D object-backed spatial audio |
+| `rt_sound3d.c` / `.h` | Sound3D spatial helpers and low-level compatibility layer |
+| `rt_sound3d_objects.c`, `rt_soundlistener3d.h`, `rt_soundsource3d.h` | SoundListener3D / SoundSource3D object-backed spatial audio |
 | `rt_navmesh3d.c` / `.h` | NavMesh3D A* pathfinding |
 | `rt_navagent3d.c` / `.h` | NavAgent3D steering, path following, and Character3D / SceneNode3D bindings |
 | `rt_path3d.c` / `.h` | Path3D spline following |

@@ -1,9 +1,12 @@
 module console_search_probe;
 
 bind "ui/app_shell";
+bind "ui/ide_overlays";
 bind "commands/search_commands";
 bind "core/document_manager";
 bind "core/project_manager";
+bind "core/settings";
+bind "editor/diagnostics";
 bind "services/locations";
 
 bind GUI = Viper.GUI;
@@ -11,6 +14,7 @@ bind Terminal = Viper.Terminal;
 bind File = Viper.IO.File;
 bind Path = Viper.IO.Path;
 bind TempFile = Viper.IO.TempFile;
+bind Str = Viper.String;
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
@@ -21,45 +25,86 @@ func main() {
     var shell = new app_shell.AppShell();
     shell.Build("ViperIDE Console Search Probe", 800, 520);
 
+    if shell.miOpenFolder.GetShortcut() != "Ctrl+Alt+O"
+       or shell.miQuickOpen.GetShortcut() != "Ctrl+P"
+       or shell.miSaveAs.GetShortcut() != "Ctrl+Shift+S"
+       or shell.miSaveAll.GetShortcut() != "Ctrl+Alt+Shift+S"
+       or shell.miSearchProject.GetShortcut() != "Ctrl+Shift+F"
+       or shell.miGoToDefinition.GetShortcut() != "F12"
+       or shell.miWorkspaceSymbols.GetShortcut() != "Ctrl+T"
+       or shell.miSymbolOutline.GetShortcut() != "Ctrl+Shift+O"
+       or shell.ctxRename.GetShortcut() != "Ctrl+Alt+R"
+       or shell.ctxRefresh.GetShortcut() != "Ctrl+Alt+Shift+R" {
+        fail(shell, "menu shortcut discoverability");
+        return;
+    }
+
+    if shell.lastProjectStatus != "No project"
+       or shell.lastLanguageStatus != "Lang: text"
+       or shell.jobItem.GetText() != "Job: idle" {
+        fail(shell, "initial status chrome");
+        return;
+    }
+    shell.SetWorkspaceStatus("Demo", "zia");
+    if shell.lastProjectStatus != "Project: Demo"
+       or shell.lastLanguageStatus != "Lang: Zia"
+       or shell.projectItem.GetText() != "Project: Demo"
+       or shell.languageItem.GetText() != "Lang: Zia" {
+        fail(shell, "workspace status chrome");
+        return;
+    }
+    shell.SetWorkspaceStatus("", "basic");
+    if shell.lastProjectStatus != "No project"
+       or shell.lastLanguageStatus != "Lang: BASIC" {
+        fail(shell, "workspace status fallback");
+        return;
+    }
+
     shell.SetBuildOutput("line one\n");
-    if shell.outputListBox.Count != 1 {
-        fail(shell, "initial output rows");
+    if shell.outputPane.LineCount <= 0 or shell.outputListBox.Count != 0 {
+        fail(shell, "initial raw output pane");
         return;
     }
 
     shell.SetBuildOutput("line one\nline two\n");
-    if shell.outputListBox.Count != 2 {
-        fail(shell, "append output rows");
+    if shell.outputPane.LineCount < 2 or shell.outputListBox.Count != 0 {
+        fail(shell, "append raw output pane");
         return;
     }
 
     shell.SetBuildOutput("line one\nline two\n");
-    if shell.outputListBox.Count != 2 {
-        fail(shell, "stable output rows");
+    if shell.outputPane.LineCount < 2 or shell.outputListBox.Count != 0 {
+        fail(shell, "stable raw output pane");
         return;
     }
 
     shell.SetBuildOutput("partial");
     shell.SetBuildOutput("partial more");
-    if shell.outputListBox.Count != 1 {
-        fail(shell, "partial output rebuild");
+    if shell.outputPane.LineCount <= 0 or shell.outputListBox.Count != 0 {
+        fail(shell, "partial raw output rebuild");
         return;
     }
 
     shell.SetBuildOutput("");
     shell.AppendBuildOutput("one");
-    if shell.outputListBox.Count != 1 {
-        fail(shell, "append partial row");
+    if shell.outputPane.LineCount <= 0 or shell.outputListBox.Count != 0 {
+        fail(shell, "append partial raw output");
         return;
     }
     shell.AppendBuildOutput(" two\nthree\n");
-    if shell.outputListBox.Count != 2 {
-        fail(shell, "append completed rows");
+    if shell.outputPane.LineCount < 2 or shell.outputListBox.Count != 0 {
+        fail(shell, "append completed raw output");
+        return;
+    }
+    shell.outputPane.SelectAll();
+    if shell.CopySelectedToolRow() == false or Str.IndexOf(GUI.Clipboard.GetText(), "one two") == 0 {
+        fail(shell, "copy raw output selection");
         return;
     }
 
     shell.SetBuildOutput("");
-    if shell.outputListBox.Count != 0 or shell.outputListBox.IsVisible() != 0 {
+    if shell.outputPane.LineCount != 0 or shell.outputListBox.Count != 0
+       or shell.outputPane.IsVisible() != 0 or shell.outputListBox.IsVisible() != 0 {
         fail(shell, "clear output");
         return;
     }
@@ -71,7 +116,7 @@ func main() {
         return;
     }
     shell.SetOutputFilter("");
-    if shell.outputListBox.Count != 3 {
+    if shell.outputPane.LineCount < 3 or shell.outputListBox.Count != 0 {
         fail(shell, "output filter clear");
         return;
     }
@@ -86,9 +131,169 @@ func main() {
         fail(shell, "copy output row");
         return;
     }
+    shell.outputListBox.Clear();
+    var rangeA = shell.outputListBox.AddItem("range one");
+    var rangeB = shell.outputListBox.AddItem("range two");
+    shell.outputListBox.Select(rangeA);
+    shell.outputListBox.Select(rangeB);
+    if shell.CopySelectedToolRow() == false or GUI.Clipboard.GetText() != "range one\nrange two" {
+        fail(shell, "copy output selected range");
+        return;
+    }
+    if shell.CopyOutputText() == false or Str.IndexOf(GUI.Clipboard.GetText(), "abcdefghijklmnopqrstuvwxyz") == 0 {
+        fail(shell, "copy full output text");
+        return;
+    }
+    shell.SetOutputAutoScroll(false);
+    if shell.ToggleOutputAutoScroll() == false {
+        fail(shell, "output auto-scroll enable");
+        return;
+    }
+    if shell.ToggleOutputAutoScroll() {
+        fail(shell, "output auto-scroll lock");
+        return;
+    }
+    shell.SetOutputAutoScroll(true);
+    shell.SetBuildOutput("scroll one\nscroll two\n");
+    if shell.outputListBox.SelectedIndex != -1 {
+        fail(shell, "output auto-scroll does not force selection");
+        return;
+    }
+    shell.SetOutputAutoScroll(false);
+    shell.outputListBox.SelectIndex(0);
+    shell.AppendBuildOutput("scroll three\n");
+    if shell.outputListBox.SelectedIndex != 0 {
+        fail(shell, "output auto-scroll lock preserves selection");
+        return;
+    }
     shell.ClearOutputPanel();
-    if shell.outputListBox.Count != 0 {
+    if shell.outputPane.LineCount != 0 or shell.outputListBox.Count != 0 {
         fail(shell, "clear output helper");
+        return;
+    }
+    if shell.tbStop.IsEnabled() != 0 or shell.tbBuild.IsEnabled() == 0 {
+        fail(shell, "initial build toolbar state");
+        return;
+    }
+    shell.SetBuildJobActive(true, "Build");
+    if shell.tbBuild.IsEnabled() != 0 or shell.tbRun.IsEnabled() != 0
+       or shell.tbStop.IsEnabled() == 0 or shell.miBuild.IsEnabled() != 0
+       or shell.miStop.IsEnabled() == 0 or shell.lastBuildJobStatus != "Job: Build"
+       or shell.jobItem.GetText() != "Job: Build" {
+        fail(shell, "active build toolbar state");
+        return;
+    }
+    shell.SetBuildJobActive(false, "");
+    if shell.tbBuild.IsEnabled() == 0 or shell.tbRun.IsEnabled() == 0
+       or shell.tbStop.IsEnabled() != 0 or shell.miBuild.IsEnabled() == 0
+       or shell.miStop.IsEnabled() != 0 or shell.lastBuildJobStatus != "Job: idle"
+       or shell.jobItem.GetText() != "Job: idle" {
+        fail(shell, "idle build toolbar state");
+        return;
+    }
+
+    shell.BeginProblems();
+    var prob = shell.AddProblem("error", "zia", "src/main.zia", 12, 4,
+                                "V-ZIA", "expected token", "");
+    GUI.ListBox.ItemSetData(prob, "loc|src/main.zia|12|4|12|5|diagnostic|expected token");
+    shell.FinishProblems(1);
+    if shell.diagListBox.Count != 2 or shell.diagListBox.IsVisible() == 0 {
+        fail(shell, "problems structured rows");
+        return;
+    }
+    shell.diagListBox.SelectIndex(1);
+    var problemText = GUI.ListBox.ItemGetText(shell.diagListBox.Selected);
+    if Str.IndexOf(problemText, "ERROR") == 0
+       or Str.IndexOf(problemText, "V-ZIA") == 0
+       or Str.IndexOf(problemText, "No quick fix") == 0 {
+        fail(shell, "problems code action placeholder");
+        return;
+    }
+    if diagnostics.ProblemActionForDiagnostic(1, "W000") != "Suppress Warning" {
+        fail(shell, "problems suppress warning action");
+        return;
+    }
+    if diagnostics.ProblemActionForDiagnostic(0, "E000") != "No quick fix" {
+        fail(shell, "problems no quick fix action");
+        return;
+    }
+    shell.SetDiagnosticsSummary(1, 2, 0);
+    if shell.lastDiagnosticsStatus != "Diagnostics: 1 error, 2 warnings"
+       or shell.lastDiagnosticsColor != shell.DiagnosticsSummaryColor(1, 2, 0) {
+        fail(shell, "diagnostics status summary");
+        return;
+    }
+    shell.SetDiagnosticsSummary(0, 0, 0);
+    if shell.lastDiagnosticsStatus != "Diagnostics: clean"
+       or shell.lastDiagnosticsColor != shell.DiagnosticsSummaryColor(0, 0, 0) {
+        fail(shell, "diagnostics clean status summary");
+        return;
+    }
+    shell.ClearProblemsPanel();
+    if shell.diagListBox.Count != 0 {
+        fail(shell, "clear problems helper");
+        return;
+    }
+
+    var overlays = new ide_overlays.IdeOverlays();
+    overlays.Setup(shell);
+    var prefs = new settings.SettingsManager();
+    prefs.fontSize = 24;
+    prefs.theme = "light";
+    prefs.minimapVisible = true;
+    prefs.wordWrap = true;
+    prefs.insertSpaces = false;
+    prefs.diagnosticsDelayMs = 1200;
+    prefs.completionDelayMs = 700;
+    prefs.restoreSession = false;
+    overlays.OpenSettings(shell, prefs);
+    overlays.ResetAppearanceDefaults();
+    if overlays.ReadFontSize() != settings.DEFAULT_FONT_SIZE
+       or overlays.ReadTheme() != "dark"
+       or overlays.ReadMinimapVisible() {
+        fail(shell, "preferences appearance defaults");
+        return;
+    }
+    overlays.ResetEditingDefaults();
+    if overlays.ReadTabWidth() != 4
+       or overlays.ReadWordWrap()
+       or overlays.ReadInsertSpaces() == false
+       or overlays.ReadAutoSave() {
+        fail(shell, "preferences editing defaults");
+        return;
+    }
+    overlays.ResetIntelliSenseDefaults();
+    if overlays.ReadDiagnosticsDelayMs() != 500 or overlays.ReadCompletionDelayMs() != 180 {
+        fail(shell, "preferences intellisense defaults");
+        return;
+    }
+    overlays.ResetStartupDefaults();
+    if overlays.ReadRestoreSession() == false
+       or overlays.ReadRestoreLastProject() == false
+       or overlays.ReadConfirmClose() == false {
+        fail(shell, "preferences startup defaults");
+        return;
+    }
+    shell.app.SetWindowSize(620, 460);
+    overlays.OpenSettings(shell, prefs);
+    overlays.Pump(shell);
+    if overlays.settingsPanel.IsVisible() == 0
+       or overlays.settingsDockWidth < 300
+       or overlays.settingsDockWidth > 360 {
+        fail(shell, "preferences compact side panel");
+        return;
+    }
+    shell.app.SetWindowSize(1000, 720);
+    overlays.OpenSettings(shell, prefs);
+    overlays.Pump(shell);
+    if overlays.settingsPanel.IsVisible() == 0
+       or overlays.settingsDockWidth != 420 {
+        fail(shell, "preferences wide side panel");
+        return;
+    }
+    overlays.CloseSettings();
+    if overlays.settingsPanel.IsVisible() != 0 {
+        fail(shell, "preferences side panel close");
         return;
     }
 
@@ -98,6 +303,23 @@ func main() {
     }
     if search_commands.LineMatches("alphabet", "alpha", false, true) {
         fail(shell, "whole-word search");
+        return;
+    }
+    if search_commands.LineMatchesWithMode("var needle = 42;", "needle = [0-9]+", false, false, true) == false {
+        fail(shell, "regex search match");
+        return;
+    }
+    if search_commands.LineMatchesWithMode("var needle = x;", "needle = [0-9]+", false, false, true) {
+        fail(shell, "regex search reject");
+        return;
+    }
+    if search_commands.MatchColumnWithMode("abc needle42", "needle[0-9]+", false, true) != 5
+       or search_commands.MatchLengthWithMode("abc needle42", "needle[0-9]+", false, true) != 8 {
+        fail(shell, "regex search range");
+        return;
+    }
+    if search_commands.LineMatchesWithMode("func main()", "^func [a-z]+\\(\\)$", false, false, true) == false {
+        fail(shell, "regex anchors and escapes");
         return;
     }
     if search_commands.QuickOpenScore("src/main.zia", "main.zia") != 1 {
@@ -112,6 +334,19 @@ func main() {
         fail(shell, "quick open path prefix");
         return;
     }
+    var quickOpenPath = "/tmp/project/src/main.zia";
+    var quickOpenId = search_commands.QuickOpenCommandId(quickOpenPath);
+    if search_commands.QuickOpenPathFromCommandId(quickOpenId) != quickOpenPath
+       or search_commands.QuickOpenPathFromCommandId("build") != "" {
+        fail(shell, "quick open palette command id");
+        return;
+    }
+    if search_commands.SearchGlobMatches("src/main.zia", "src/*.zia") == false
+       or search_commands.SearchGlobMatches("src/main.zia", "main.*") == false
+       or search_commands.SearchGlobMatches("src/main.zia", "test*.zia") {
+        fail(shell, "search glob matching");
+        return;
+    }
 
     var root = TempFile.CreateDirWithPrefix("viperide_search_probe_");
     var i = 0;
@@ -120,6 +355,9 @@ func main() {
                           "module File" + i + ";\nfunc main() {\n    var needle = " + i + ";\n}\n");
         i = i + 1;
     }
+    var symbolPath = Path.Join(root, "symbols.zia");
+    File.WriteAllText(symbolPath,
+                      "module Symbols;\nfunc alphaSymbol() -> Integer { return 1; }\n");
 
     var docMgr = new document_manager.DocumentManager();
     var locStore = new locations.LocationStore();
@@ -148,10 +386,67 @@ func main() {
         fail(shell, "search panel rows");
         return;
     }
+    shell.searchListBox.SelectIndex(1);
+    var searchRowText = GUI.ListBox.ItemGetText(shell.searchListBox.Selected);
+    if Str.IndexOf(searchRowText, "match") == 0
+       or Str.IndexOf(searchRowText, "text") == 0
+       or Str.IndexOf(searchRowText, "needle") == 0 {
+        fail(shell, "search structured row");
+        return;
+    }
+    if search_commands.SearchPathAllowed(root, Path.Join(root, "file11.zia"), "file1*.zia", "file10.zia") == false
+       or search_commands.SearchPathAllowed(root, Path.Join(root, "file10.zia"), "file1*.zia", "file10.zia") {
+        fail(shell, "search include exclude path filters");
+        return;
+    }
+    var filteredSearcher = new search_commands.SearchController();
+    if filteredSearcher.StartDirectWithOptions(shell, root, "needle", ".zia", false, false,
+                                               "file1*.zia", "file10.zia") == false {
+        fail(shell, "start filtered direct search");
+        return;
+    }
+    while filteredSearcher.active {
+        filteredSearcher.Pump(shell, docMgr, locStore);
+    }
+    if filteredSearcher.resultCount != 10 {
+        fail(shell, "filtered direct search count");
+        return;
+    }
+    var regexSearcher = new search_commands.SearchController();
+    if regexSearcher.StartDirectWithSearchMode(shell, root, "needle = [1-3][0-9]", ".zia",
+                                               false, false, true, "", "") == false {
+        fail(shell, "start regex direct search");
+        return;
+    }
+    while regexSearcher.active {
+        regexSearcher.Pump(shell, docMgr, locStore);
+    }
+    if regexSearcher.resultCount != 30 {
+        fail(shell, "regex direct search count");
+        return;
+    }
 
     var projMgr = new project_manager.ProjectManager();
     projMgr.Setup(shell.sidebarTree);
     projMgr.OpenFolder(root);
+    docMgr.OpenFile(symbolPath);
+    docMgr.GetActive()!.content = "module Symbols;\nfunc betaSymbol() -> Integer { return 2; }\n";
+    var symbolCount = search_commands.CollectWorkspaceSymbols(shell, projMgr, docMgr, locStore, "beta");
+    if symbolCount != 1 or shell.searchListBox.Count != 2 {
+        fail(shell, "workspace symbols use dirty open content");
+        return;
+    }
+    shell.searchListBox.SelectIndex(1);
+    if GUI.ListBox.ItemGetData(shell.searchListBox.Selected) == "" {
+        fail(shell, "workspace symbols location data");
+        return;
+    }
+    var symbolRowText = GUI.ListBox.ItemGetText(shell.searchListBox.Selected);
+    if Str.IndexOf(symbolRowText, "symbol") == 0
+       or Str.IndexOf(symbolRowText, "betaSymbol") == 0 {
+        fail(shell, "workspace symbols structured row");
+        return;
+    }
     var cachedSearcher = new search_commands.SearchController();
     if cachedSearcher.StartCachedDirect(shell, projMgr, root, "needle", ".zia", false, false) == false {
         fail(shell, "start cached search");
@@ -162,6 +457,32 @@ func main() {
     }
     if cachedSearcher.resultCount != 40 {
         fail(shell, "cached search final count");
+        return;
+    }
+    var filteredCachedSearcher = new search_commands.SearchController();
+    if filteredCachedSearcher.StartCachedDirectWithOptions(shell, projMgr, root, "needle", ".zia", false, false,
+                                                           "file1*.zia", "file10.zia") == false {
+        fail(shell, "start filtered cached search");
+        return;
+    }
+    while filteredCachedSearcher.active {
+        filteredCachedSearcher.Pump(shell, docMgr, locStore);
+    }
+    if filteredCachedSearcher.resultCount != 10 {
+        fail(shell, "filtered cached search count");
+        return;
+    }
+    var regexCachedSearcher = new search_commands.SearchController();
+    if regexCachedSearcher.StartCachedDirectWithSearchMode(shell, projMgr, root, "needle = [12][0-9]", ".zia",
+                                                           false, false, true, "", "") == false {
+        fail(shell, "start regex cached search");
+        return;
+    }
+    while regexCachedSearcher.active {
+        regexCachedSearcher.Pump(shell, docMgr, locStore);
+    }
+    if regexCachedSearcher.resultCount != 20 {
+        fail(shell, "regex cached search count");
         return;
     }
     shell.SetDebugOutput("debug one\ndebug two\n");

@@ -29,26 +29,25 @@ using namespace il::frontends::basic;
 using namespace il::support;
 
 int main() {
-    const std::string src =
-        "10 CONST BASE = 7\n"
-        "20 DIM COLOR(2)\n"
-        "30 DIM COS AS STRING\n"
-        "40 REDIM COLOR(3)\n"
-        "50 LET FLOOR = LBOUND(COLOR)\n"
-        "60 INPUT COS\n"
-        "70 INPUT #1, RANDOM\n"
-        "80 LINE INPUT \"Name? \", APPEND\n"
-        "90 SUB TOUCH(POW AS LONG, NEXT() AS LONG)\n"
-        "100 STATIC RANDOM AS LONG\n"
-        "110 SHARED COLOR, BASE\n"
-        "120 FOR EACH APPEND IN COLOR\n"
-        "130 PRINT APPEND\n"
-        "140 NEXT APPEND\n"
-        "150 FOR BASE = 0 TO 1\n"
-        "160 LET COLOR(BASE) = BASE\n"
-        "170 NEXT BASE\n"
-        "180 END SUB\n"
-        "190 END\n";
+    const std::string src = "10 CONST BASE = 7\n"
+                            "20 DIM COLOR(2)\n"
+                            "30 DIM COS AS STRING\n"
+                            "40 REDIM COLOR(3)\n"
+                            "50 LET FLOOR = LBOUND(COLOR)\n"
+                            "60 INPUT COS\n"
+                            "70 INPUT #1, RANDOM\n"
+                            "80 LINE INPUT \"Name? \", APPEND\n"
+                            "90 SUB TOUCH(POW AS LONG, NEXT() AS LONG)\n"
+                            "100 STATIC RANDOM AS LONG\n"
+                            "110 SHARED COLOR, BASE\n"
+                            "120 FOR EACH APPEND IN COLOR\n"
+                            "130 PRINT APPEND\n"
+                            "140 NEXT APPEND\n"
+                            "150 FOR BASE = 0 TO 1\n"
+                            "160 LET COLOR(BASE) = BASE\n"
+                            "170 NEXT BASE\n"
+                            "180 END SUB\n"
+                            "190 END\n";
 
     SourceManager sm;
     const uint32_t fid = sm.addFile("soft_identifiers.bas");

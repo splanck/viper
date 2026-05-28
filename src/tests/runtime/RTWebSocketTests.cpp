@@ -674,7 +674,8 @@ static void test_ws_connect_protocol_negotiates_subprotocol() {
     }
 
     server.join();
-    test_result("Client sent requested subprotocol header", ws_last_subprotocol_header == "chat.v1");
+    test_result("Client sent requested subprotocol header",
+                ws_last_subprotocol_header == "chat.v1");
 }
 
 static void test_ws_fragmented_text_reassembly() {

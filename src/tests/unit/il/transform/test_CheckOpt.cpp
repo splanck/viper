@@ -460,7 +460,8 @@ void test_loop_invariant_not_hoisted_from_conditional_preheader() {
     assert(entryBlock);
     assert(loopBlock);
     for (const auto &instr : entryBlock->instructions)
-        assert(instr.op != Opcode::IdxChk && "idx.chk must not be hoisted before conditional entry");
+        assert(instr.op != Opcode::IdxChk &&
+               "idx.chk must not be hoisted before conditional entry");
 
     bool checkStillInLoop = false;
     for (const auto &instr : loopBlock->instructions)

@@ -101,9 +101,9 @@ static uint16_t materializeF64Constant(double value, LoweringContext &ctx, MBasi
     out.instrs.push_back(MInstr{MOpcode::MovRI,
                                 {MOperand::vregOp(RegClass::GPR, bitsGpr),
                                  MOperand::immOp(static_cast<long long>(f64Bits(value)))}});
-    out.instrs.push_back(MInstr{MOpcode::FMovGR,
-                                {MOperand::vregOp(RegClass::FPR, dst),
-                                 MOperand::vregOp(RegClass::GPR, bitsGpr)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::FMovGR,
+               {MOperand::vregOp(RegClass::FPR, dst), MOperand::vregOp(RegClass::GPR, bitsGpr)}});
     return dst;
 }
 
@@ -313,9 +313,9 @@ static bool lowerCastOpcodes(const il::core::Instr &ins,
                 ".Ltrap_fpcast_ovf_" + std::to_string(ctx.trapLabelCounter++);
 
             // NaN becomes unordered; trap before any range comparisons.
-            bbOut().instrs.push_back(MInstr{
-                MOpcode::FCmpRR,
-                {MOperand::vregOp(RegClass::FPR, rounded), MOperand::vregOp(RegClass::FPR, rounded)}});
+            bbOut().instrs.push_back(MInstr{MOpcode::FCmpRR,
+                                            {MOperand::vregOp(RegClass::FPR, rounded),
+                                             MOperand::vregOp(RegClass::FPR, rounded)}});
             bbOut().instrs.push_back(
                 MInstr{MOpcode::BCond, {MOperand::condOp("vs"), MOperand::labelOp(trapLabel)}});
 
@@ -325,34 +325,30 @@ static bool lowerCastOpcodes(const il::core::Instr &ins,
                     materializeF64Constant(signedLowerBoundForBits(resultBits), ctx, bbOut());
                 const uint16_t upperBound =
                     materializeF64Constant(signedUpperExclusiveForBits(resultBits), ctx, bbOut());
+                bbOut().instrs.push_back(MInstr{MOpcode::FCmpRR,
+                                                {MOperand::vregOp(RegClass::FPR, rounded),
+                                                 MOperand::vregOp(RegClass::FPR, lowerBound)}});
                 bbOut().instrs.push_back(MInstr{
-                    MOpcode::FCmpRR,
-                    {MOperand::vregOp(RegClass::FPR, rounded),
-                     MOperand::vregOp(RegClass::FPR, lowerBound)}});
-                bbOut().instrs.push_back(
-                    MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(overflowLabel)}});
+                    MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(overflowLabel)}});
+                bbOut().instrs.push_back(MInstr{MOpcode::FCmpRR,
+                                                {MOperand::vregOp(RegClass::FPR, rounded),
+                                                 MOperand::vregOp(RegClass::FPR, upperBound)}});
                 bbOut().instrs.push_back(MInstr{
-                    MOpcode::FCmpRR,
-                    {MOperand::vregOp(RegClass::FPR, rounded),
-                     MOperand::vregOp(RegClass::FPR, upperBound)}});
-                bbOut().instrs.push_back(
-                    MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(overflowLabel)}});
+                    MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(overflowLabel)}});
             } else {
                 const uint16_t zero = materializeF64Constant(0.0, ctx, bbOut());
                 const uint16_t upperBound =
                     materializeF64Constant(unsignedUpperExclusiveForBits(resultBits), ctx, bbOut());
-                bbOut().instrs.push_back(MInstr{
-                    MOpcode::FCmpRR,
-                    {MOperand::vregOp(RegClass::FPR, rounded),
-                     MOperand::vregOp(RegClass::FPR, zero)}});
+                bbOut().instrs.push_back(MInstr{MOpcode::FCmpRR,
+                                                {MOperand::vregOp(RegClass::FPR, rounded),
+                                                 MOperand::vregOp(RegClass::FPR, zero)}});
                 bbOut().instrs.push_back(
                     MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(trapLabel)}});
+                bbOut().instrs.push_back(MInstr{MOpcode::FCmpRR,
+                                                {MOperand::vregOp(RegClass::FPR, rounded),
+                                                 MOperand::vregOp(RegClass::FPR, upperBound)}});
                 bbOut().instrs.push_back(MInstr{
-                    MOpcode::FCmpRR,
-                    {MOperand::vregOp(RegClass::FPR, rounded),
-                     MOperand::vregOp(RegClass::FPR, upperBound)}});
-                bbOut().instrs.push_back(
-                    MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(overflowLabel)}});
+                    MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(overflowLabel)}});
             }
 
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
@@ -524,8 +520,8 @@ bool lowerInstruction(const il::core::Instr &ins,
             if (ins.operands[0].kind != il::core::Value::Kind::GlobalAddr)
                 return false;
             const std::string &sym = ins.operands[0].str;
-            const uint16_t dst =
-                emitConstStrGlobalToVReg(sym, ctx.stringLiteralByteLengths, bbOut(), ctx.nextVRegId);
+            const uint16_t dst = emitConstStrGlobalToVReg(
+                sym, ctx.stringLiteralByteLengths, bbOut(), ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
             return true;
@@ -539,9 +535,9 @@ bool lowerInstruction(const il::core::Instr &ins,
                 const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
                 ctx.tempVReg[*ins.result] = dst;
                 ctx.tempRegClass[*ins.result] = RegClass::GPR;
-                bbOut().instrs.push_back(MInstr{
-                    MOpcode::AdrPage,
-                    {MOperand::vregOp(RegClass::GPR, dst), MOperand::labelOp(sym)}});
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::AdrPage,
+                           {MOperand::vregOp(RegClass::GPR, dst), MOperand::labelOp(sym)}});
                 bbOut().instrs.push_back(MInstr{MOpcode::AddPageOff,
                                                 {MOperand::vregOp(RegClass::GPR, dst),
                                                  MOperand::vregOp(RegClass::GPR, dst),
@@ -555,9 +551,9 @@ bool lowerInstruction(const il::core::Instr &ins,
                     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
                     ctx.tempVReg[*ins.result] = dst;
                     ctx.tempRegClass[*ins.result] = RegClass::GPR;
-                    bbOut().instrs.push_back(MInstr{
-                        MOpcode::AddFpImm,
-                        {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(offset)}});
+                    bbOut().instrs.push_back(
+                        MInstr{MOpcode::AddFpImm,
+                               {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(offset)}});
                     return true;
                 }
             }

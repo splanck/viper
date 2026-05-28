@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/audio/rt_playlist.c
-// Purpose: Implements a music playlist for the Viper.Audio.Playlist class.
+// Purpose: Implements a music playlist for the Viper.Sound.Playlist class.
 //          Supports sequential and shuffle playback, repeat modes (none/all/one),
 //          volume control, and track navigation (Next, Prev, Seek). Delegates
 //          actual audio decoding and playback to rt_audio.

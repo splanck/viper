@@ -41,12 +41,15 @@ ogg_reader_t *ogg_reader_open_file(const char *path) {
     (void)path;
     return NULL;
 }
+
 void ogg_reader_free(ogg_reader_t *r) {
     (void)r;
 }
+
 void ogg_reader_rewind(ogg_reader_t *r) {
     (void)r;
 }
+
 int ogg_reader_next_packet_ex(ogg_reader_t *r,
                               const uint8_t **out_data,
                               size_t *out_len,
@@ -57,12 +60,15 @@ int ogg_reader_next_packet_ex(ogg_reader_t *r,
     (void)out_info;
     return 0;
 }
+
 vorbis_decoder_t *vorbis_decoder_new(void) {
     return NULL;
 }
+
 void vorbis_decoder_free(vorbis_decoder_t *dec) {
     (void)dec;
 }
+
 int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *data, size_t len, int num) {
     (void)dec;
     (void)data;
@@ -70,6 +76,7 @@ int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *data, size_t len,
     (void)num;
     return -1;
 }
+
 int vorbis_decode_packet(
     vorbis_decoder_t *dec, const uint8_t *data, size_t len, int16_t **out_pcm, int *out_samples) {
     (void)dec;
@@ -79,14 +86,17 @@ int vorbis_decode_packet(
     (void)out_samples;
     return -1;
 }
+
 int vorbis_get_sample_rate(const vorbis_decoder_t *dec) {
     (void)dec;
     return 0;
 }
+
 int vorbis_get_channels(const vorbis_decoder_t *dec) {
     (void)dec;
     return 0;
 }
+
 mp3_stream_t *mp3_stream_open(const char *filepath) {
     if (filepath && strcmp(filepath, "zero-total.mp3") == 0) {
         g_fake_zero_total_mp3.sample_rate = VAUD_SAMPLE_RATE;
@@ -98,6 +108,7 @@ mp3_stream_t *mp3_stream_open(const char *filepath) {
     }
     return NULL;
 }
+
 int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm) {
     if (out_pcm)
         *out_pcm = NULL;
@@ -111,20 +122,25 @@ int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm) {
         *out_pcm = g_fake_mp3_pcm;
     return 1;
 }
+
 void mp3_stream_rewind(mp3_stream_t *stream) {
     if (stream)
         stream->decoded_frames = 0;
 }
+
 void mp3_stream_free(mp3_stream_t *stream) {
     if (stream)
         stream->freed = 1;
 }
+
 int mp3_stream_sample_rate(const mp3_stream_t *stream) {
     return stream ? stream->sample_rate : 0;
 }
+
 int mp3_stream_channels(const mp3_stream_t *stream) {
     return stream ? stream->channels : 0;
 }
+
 int mp3_stream_total_samples(const mp3_stream_t *stream) {
     return stream ? stream->total_samples : 0;
 }
@@ -133,28 +149,32 @@ int vaud_platform_init(vaud_context_t ctx) {
     (void)ctx;
     return 1;
 }
+
 void vaud_platform_shutdown(vaud_context_t ctx) {
     (void)ctx;
 }
+
 void vaud_platform_pause(vaud_context_t ctx) {
     (void)ctx;
 }
+
 void vaud_platform_resume(vaud_context_t ctx) {
     (void)ctx;
 }
+
 int64_t vaud_platform_now_ms(void) {
     return 0;
 }
 
 static int tests_failed = 0;
 
-#define EXPECT_TRUE(expr)                                                                           \
-    do {                                                                                            \
-        if (!(expr)) {                                                                              \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #expr);                                  \
-            tests_failed++;                                                                         \
-            return;                                                                                 \
-        }                                                                                           \
+#define EXPECT_TRUE(expr)                                                                          \
+    do {                                                                                           \
+        if (!(expr)) {                                                                             \
+            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #expr);                                 \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
     } while (0)
 
 static void write_u16_le(FILE *f, uint16_t v) {
@@ -472,8 +492,7 @@ static void test_buffered_stream_read_rejects_partial_frame(void) {
 
     uint8_t scratch[4];
     int16_t out[2] = {123, 456};
-    int32_t frames =
-        vaud_wav_read_frames_buffered(f, out, 1, 2, 16, 1, scratch, sizeof(scratch));
+    int32_t frames = vaud_wav_read_frames_buffered(f, out, 1, 2, 16, 1, scratch, sizeof(scratch));
     EXPECT_TRUE(frames == 0);
     EXPECT_TRUE(out[0] == 123 && out[1] == 456);
     fclose(f);

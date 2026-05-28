@@ -157,12 +157,14 @@ static void test_scanner_reading() {
         void *s = rt_scanner_new(src);
 
         rt_string rest = rt_scanner_read_until_any(s, NULL);
-        test_result("ReadUntilAny NULL delimiter reads rest", strcmp(rt_string_cstr(rest), "abc") == 0);
+        test_result("ReadUntilAny NULL delimiter reads rest",
+                    strcmp(rt_string_cstr(rest), "abc") == 0);
         test_result("ReadUntilAny NULL delimiter advances to end", rt_scanner_is_end(s) == 1);
 
         s = rt_scanner_new(src);
         rest = rt_scanner_read_until_any(s, rt_const_cstr(""));
-        test_result("ReadUntilAny empty delimiter reads rest", strcmp(rt_string_cstr(rest), "abc") == 0);
+        test_result("ReadUntilAny empty delimiter reads rest",
+                    strcmp(rt_string_cstr(rest), "abc") == 0);
     }
 
     printf("\n");

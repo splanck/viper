@@ -24,8 +24,8 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -411,7 +411,8 @@ rt_string rt_multipart_content_type(void *obj) {
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
-/// @brief Serialize all parts to a single Bytes object suitable as an HTTP body. Layout per RFC 2046:
+/// @brief Serialize all parts to a single Bytes object suitable as an HTTP body. Layout per RFC
+/// 2046:
 /// `--boundary\r\n` headers `\r\n\r\n` body `\r\n` ... `--boundary--\r\n` (terminator). Total size
 /// is calculated up-front and a single buffer is allocated; no incremental growth. Caller pairs
 /// the result with `_content_type` for the matching Content-Type header.
@@ -430,22 +431,23 @@ void *rt_multipart_build(void *obj) {
         if (!multipart_size_add(&total, 2 + blen + 2))
             return rt_bytes_new(0); // --boundary\r\n
         if (part->is_file) {
-            if (!multipart_size_add(&total,
-                                    strlen("Content-Disposition: form-data; name=\"\"; filename=\"\"\r\n"
-                                           "Content-Type: application/octet-stream\r\n\r\n")) ||
+            if (!multipart_size_add(
+                    &total,
+                    strlen("Content-Disposition: form-data; name=\"\"; filename=\"\"\r\n"
+                           "Content-Type: application/octet-stream\r\n\r\n")) ||
                 !multipart_size_add(&total, escaped_name_len) ||
                 !multipart_size_add(&total, escaped_filename_len))
                 return rt_bytes_new(0);
         } else {
-            if (!multipart_size_add(&total, strlen("Content-Disposition: form-data; name=\"\"\r\n\r\n")) ||
+            if (!multipart_size_add(&total,
+                                    strlen("Content-Disposition: form-data; name=\"\"\r\n\r\n")) ||
                 !multipart_size_add(&total, escaped_name_len))
                 return rt_bytes_new(0);
         }
         if (!multipart_size_add(&total, part->data_len) || !multipart_size_add(&total, 2))
             return rt_bytes_new(0); // \r\n
     }
-    if (!multipart_size_add(&total, 2 + blen + 4) || total > (size_t)INT64_MAX ||
-        total == SIZE_MAX)
+    if (!multipart_size_add(&total, 2 + blen + 4) || total > (size_t)INT64_MAX || total == SIZE_MAX)
         return rt_bytes_new(0); // --boundary--\r\n
 
     uint8_t *buf = (uint8_t *)malloc(total + 1);
@@ -456,7 +458,8 @@ void *rt_multipart_build(void *obj) {
     for (int i = 0; i < mp->part_count; i++) {
         multipart_part_t *part = &mp->parts[i];
         char *escaped_name = multipart_escape_quoted_value(part->name);
-        char *escaped_filename = part->is_file ? multipart_escape_quoted_value(part->filename) : NULL;
+        char *escaped_filename =
+            part->is_file ? multipart_escape_quoted_value(part->filename) : NULL;
         if (!escaped_name || (part->is_file && !escaped_filename)) {
             free(escaped_filename);
             free(escaped_name);

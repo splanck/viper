@@ -98,8 +98,8 @@ void BytecodeVM::runThreaded() {
         }                                                                                          \
         ++pc;                                                                                      \
         ++instrCount_;                                                                             \
-        /* Every slot is default-filled to &&L_DEFAULT (see runThreaded), so no */                \
-        /* per-dispatch null-guard is needed — the jump target is always valid. */                \
+        /* Every slot is default-filled to &&L_DEFAULT (see runThreaded), so no */                 \
+        /* per-dispatch null-guard is needed — the jump target is always valid. */                 \
         goto *dispatchTable[instr & 0xFF];                                                         \
     } while (0)
 
@@ -259,8 +259,7 @@ L_STORE_LOCAL: {
     DISPATCH();
 }
 
-L_LOAD_LOCAL_W:
-    {
+L_LOAD_LOCAL_W: {
     uint16_t slot = decodeArg16(instr);
     SYNC_STATE();
     sp_ = sp;
@@ -279,7 +278,7 @@ L_LOAD_LOCAL_W:
     }
     sp++;
     DISPATCH();
-    }
+}
 
 L_STORE_LOCAL_W:
     --sp;
@@ -317,8 +316,7 @@ L_STORE_LOCAL_W:
     }
     DISPATCH();
 
-L_INC_LOCAL:
-    {
+L_INC_LOCAL: {
     uint8_t slot = decodeArg8_0(instr);
     SYNC_STATE();
     sp_ = sp;
@@ -326,10 +324,9 @@ L_INC_LOCAL:
         RETURN_OR_DISPATCH_TRAP();
     locals[slot].i64 = wrappingAdd(locals[slot].i64, 1);
     DISPATCH();
-    }
+}
 
-L_DEC_LOCAL:
-    {
+L_DEC_LOCAL: {
     uint8_t slot = decodeArg8_0(instr);
     SYNC_STATE();
     sp_ = sp;
@@ -337,7 +334,7 @@ L_DEC_LOCAL:
         RETURN_OR_DISPATCH_TRAP();
     locals[slot].i64 = wrappingSub(locals[slot].i64, 1);
     DISPATCH();
-    }
+}
 
     // Constant Loading
 L_LOAD_I8:
@@ -496,102 +493,97 @@ L_MUL_I64:
     sp--;
     DISPATCH();
 
-L_SDIV_I64:
-    {
-        int64_t result = 0;
-        TrapKind fault = TrapKind::None;
-        if (!safeSignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
-            SYNC_STATE();
-            sp_ = sp;
-            if (!dispatchTrap(fault)) {
-                trap(fault,
-                     fault == TrapKind::DivideByZero ? "division by zero"
-                                                      : "Overflow: integer division overflow");
-                return;
-            }
-            RELOAD_STATE();
-            DISPATCH();
+L_SDIV_I64: {
+    int64_t result = 0;
+    TrapKind fault = TrapKind::None;
+    if (!safeSignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
+        SYNC_STATE();
+        sp_ = sp;
+        if (!dispatchTrap(fault)) {
+            trap(fault,
+                 fault == TrapKind::DivideByZero ? "division by zero"
+                                                 : "Overflow: integer division overflow");
+            return;
         }
-        sp[-2].i64 = result;
+        RELOAD_STATE();
+        DISPATCH();
     }
+    sp[-2].i64 = result;
+}
     sp--;
     DISPATCH();
 
-L_UDIV_I64:
-    {
-        int64_t result = 0;
-        TrapKind fault = TrapKind::None;
-        if (!safeUnsignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
-            SYNC_STATE();
-            sp_ = sp;
-            if (!dispatchTrap(fault)) {
-                trap(fault, "division by zero");
-                return;
-            }
-            RELOAD_STATE();
-            DISPATCH();
+L_UDIV_I64: {
+    int64_t result = 0;
+    TrapKind fault = TrapKind::None;
+    if (!safeUnsignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
+        SYNC_STATE();
+        sp_ = sp;
+        if (!dispatchTrap(fault)) {
+            trap(fault, "division by zero");
+            return;
         }
-        sp[-2].i64 = result;
+        RELOAD_STATE();
+        DISPATCH();
     }
+    sp[-2].i64 = result;
+}
     sp--;
     DISPATCH();
 
-L_SREM_I64:
-    {
-        int64_t result = 0;
-        TrapKind fault = TrapKind::None;
-        if (!safeSignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
-            SYNC_STATE();
-            sp_ = sp;
-            if (!dispatchTrap(fault)) {
-                trap(fault,
-                     fault == TrapKind::DivideByZero ? "division by zero"
-                                                      : "Overflow: integer remainder overflow");
-                return;
-            }
-            RELOAD_STATE();
-            DISPATCH();
+L_SREM_I64: {
+    int64_t result = 0;
+    TrapKind fault = TrapKind::None;
+    if (!safeSignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
+        SYNC_STATE();
+        sp_ = sp;
+        if (!dispatchTrap(fault)) {
+            trap(fault,
+                 fault == TrapKind::DivideByZero ? "division by zero"
+                                                 : "Overflow: integer remainder overflow");
+            return;
         }
-        sp[-2].i64 = result;
+        RELOAD_STATE();
+        DISPATCH();
     }
+    sp[-2].i64 = result;
+}
     sp--;
     DISPATCH();
 
-L_UREM_I64:
-    {
-        int64_t result = 0;
-        TrapKind fault = TrapKind::None;
-        if (!safeUnsignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
-            SYNC_STATE();
-            sp_ = sp;
-            if (!dispatchTrap(fault)) {
-                trap(fault, "division by zero");
-                return;
-            }
-            RELOAD_STATE();
-            DISPATCH();
+L_UREM_I64: {
+    int64_t result = 0;
+    TrapKind fault = TrapKind::None;
+    if (!safeUnsignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
+        SYNC_STATE();
+        sp_ = sp;
+        if (!dispatchTrap(fault)) {
+            trap(fault, "division by zero");
+            return;
         }
-        sp[-2].i64 = result;
+        RELOAD_STATE();
+        DISPATCH();
     }
+    sp[-2].i64 = result;
+}
     sp--;
     DISPATCH();
 
-L_NEG_I64:
-    {
-        int64_t result = 0;
-        TrapKind fault = TrapKind::None;
-        if (!safeNegate(sp[-1].i64, result, fault)) {
-            SYNC_STATE();
-            sp_ = sp;
-            if (!dispatchTrap(fault)) {
-                trap(fault, "Overflow: integer negation overflow");
-                return;
-            }
-            RELOAD_STATE();
-            DISPATCH();
+L_NEG_I64: {
+    int64_t result = 0;
+    TrapKind fault = TrapKind::None;
+    if (!safeNegate(sp[-1].i64, result, fault)) {
+        SYNC_STATE();
+        sp_ = sp;
+        if (!dispatchTrap(fault)) {
+            trap(fault, "Overflow: integer negation overflow");
+            return;
         }
-        sp[-1].i64 = result;
+        RELOAD_STATE();
+        DISPATCH();
     }
+    sp[-1].i64 = result;
+}
     DISPATCH();
 
 L_ADD_I64_OVF: {
@@ -669,83 +661,79 @@ L_MUL_I64_OVF: {
     DISPATCH();
 }
 
-L_SDIV_I64_CHK:
-    {
-        int64_t result = 0;
-        TrapKind fault = TrapKind::None;
-        if (!safeSignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
-            SYNC_STATE();
-            sp_ = sp;
-            if (!dispatchTrap(fault)) {
-                trap(fault,
-                     fault == TrapKind::DivideByZero ? "division by zero"
-                                                      : "Overflow: integer division overflow");
-                return;
-            }
-            RELOAD_STATE();
-            DISPATCH();
+L_SDIV_I64_CHK: {
+    int64_t result = 0;
+    TrapKind fault = TrapKind::None;
+    if (!safeSignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
+        SYNC_STATE();
+        sp_ = sp;
+        if (!dispatchTrap(fault)) {
+            trap(fault,
+                 fault == TrapKind::DivideByZero ? "division by zero"
+                                                 : "Overflow: integer division overflow");
+            return;
         }
-        sp[-2].i64 = result;
+        RELOAD_STATE();
+        DISPATCH();
     }
+    sp[-2].i64 = result;
+}
     sp--;
     DISPATCH();
 
-L_UDIV_I64_CHK:
-    {
-        int64_t result = 0;
-        TrapKind fault = TrapKind::None;
-        if (!safeUnsignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
-            SYNC_STATE();
-            sp_ = sp;
-            if (!dispatchTrap(fault)) {
-                trap(fault, "division by zero");
-                return;
-            }
-            RELOAD_STATE();
-            DISPATCH();
+L_UDIV_I64_CHK: {
+    int64_t result = 0;
+    TrapKind fault = TrapKind::None;
+    if (!safeUnsignedDiv(sp[-2].i64, sp[-1].i64, result, fault)) {
+        SYNC_STATE();
+        sp_ = sp;
+        if (!dispatchTrap(fault)) {
+            trap(fault, "division by zero");
+            return;
         }
-        sp[-2].i64 = result;
+        RELOAD_STATE();
+        DISPATCH();
     }
+    sp[-2].i64 = result;
+}
     sp--;
     DISPATCH();
 
-L_SREM_I64_CHK:
-    {
-        int64_t result = 0;
-        TrapKind fault = TrapKind::None;
-        if (!safeSignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
-            SYNC_STATE();
-            sp_ = sp;
-            if (!dispatchTrap(fault)) {
-                trap(fault,
-                     fault == TrapKind::DivideByZero ? "division by zero"
-                                                      : "Overflow: integer remainder overflow");
-                return;
-            }
-            RELOAD_STATE();
-            DISPATCH();
+L_SREM_I64_CHK: {
+    int64_t result = 0;
+    TrapKind fault = TrapKind::None;
+    if (!safeSignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
+        SYNC_STATE();
+        sp_ = sp;
+        if (!dispatchTrap(fault)) {
+            trap(fault,
+                 fault == TrapKind::DivideByZero ? "division by zero"
+                                                 : "Overflow: integer remainder overflow");
+            return;
         }
-        sp[-2].i64 = result;
+        RELOAD_STATE();
+        DISPATCH();
     }
+    sp[-2].i64 = result;
+}
     sp--;
     DISPATCH();
 
-L_UREM_I64_CHK:
-    {
-        int64_t result = 0;
-        TrapKind fault = TrapKind::None;
-        if (!safeUnsignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
-            SYNC_STATE();
-            sp_ = sp;
-            if (!dispatchTrap(fault)) {
-                trap(fault, "division by zero");
-                return;
-            }
-            RELOAD_STATE();
-            DISPATCH();
+L_UREM_I64_CHK: {
+    int64_t result = 0;
+    TrapKind fault = TrapKind::None;
+    if (!safeUnsignedRem(sp[-2].i64, sp[-1].i64, result, fault)) {
+        SYNC_STATE();
+        sp_ = sp;
+        if (!dispatchTrap(fault)) {
+            trap(fault, "division by zero");
+            return;
         }
-        sp[-2].i64 = result;
+        RELOAD_STATE();
+        DISPATCH();
     }
+    sp[-2].i64 = result;
+}
     sp--;
     DISPATCH();
 
@@ -976,7 +964,8 @@ L_U64_NARROW_CHK: {
             break;
     }
     if (!inRange) {
-        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow, "Overflow: unsigned narrow conversion overflow");
+        THREAD_TRAP_OR_DISPATCH(TrapKind::Overflow,
+                                "Overflow: unsigned narrow conversion overflow");
     }
     // Value stays the same (already narrowed semantically)
     DISPATCH();

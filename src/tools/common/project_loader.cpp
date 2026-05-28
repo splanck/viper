@@ -55,6 +55,7 @@ std::vector<std::string> collectFiles(const fs::path &dir,
         fs::file_time_type stamp{};
         std::vector<std::string> files;
     };
+
     static std::unordered_map<std::string, CacheEntry> cache;
     static std::mutex cacheMutex;
 
@@ -385,11 +386,11 @@ il::support::Expected<std::string> optimizeForBuildProfile(const std::string &pr
                                "'; expected debug, balanced, or release");
 }
 
-il::support::Expected<std::vector<std::string>>
-tokenizeManifestValue(const std::string &value,
-                      const std::string &manifestPath,
-                      int line,
-                      const std::string &directive) {
+il::support::Expected<std::vector<std::string>> tokenizeManifestValue(
+    const std::string &value,
+    const std::string &manifestPath,
+    int line,
+    const std::string &directive) {
     std::vector<std::string> tokens;
     std::string cur;
     bool inQuote = false;
@@ -451,9 +452,8 @@ il::support::Expected<std::string> readManifestScriptHook(const fs::path &manife
     if (!tokens)
         return il::support::Expected<std::string>(tokens.error());
     if (tokens.value().size() != 1)
-        return makeManifestErr(manifestPath,
-                               line,
-                               directive + " requires exactly one project-relative script path");
+        return makeManifestErr(
+            manifestPath, line, directive + " requires exactly one project-relative script path");
 
     fs::path scriptPath;
     try {
@@ -473,11 +473,12 @@ il::support::Expected<std::string> readManifestScriptHook(const fs::path &manife
     std::ostringstream contents;
     contents << in.rdbuf();
     if (!in.good() && !in.eof())
-        return makeManifestErr(
-            manifestPath, line, "failed while reading " + directive + " script: " + scriptPath.string());
+        return makeManifestErr(manifestPath,
+                               line,
+                               "failed while reading " + directive +
+                                   " script: " + scriptPath.string());
     return contents.str();
 }
-
 
 // Free-function forms of the per-call package-scalar duplicate/parse helpers,
 // shared by parsePackageDirective(). @p seen tracks scalar directive names
@@ -520,268 +521,285 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
                                                   const std::string &directive,
                                                   const std::string &value,
                                                   int lineNum) {
-        if (directive == "package-name") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.displayName = scalar.value();
-        } else if (directive == "package-author") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.author = scalar.value();
-        } else if (directive == "package-description") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.description = scalar.value();
-        } else if (directive == "package-homepage") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.homepage = scalar.value();
-        } else if (directive == "package-license") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.license = scalar.value();
-        } else if (directive == "package-identifier") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.identifier = scalar.value();
-        } else if (directive == "package-icon") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.iconPath = scalar.value();
-        } else if (directive == "macos-sign-mode") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.macosSignMode = scalar.value();
-        } else if (directive == "macos-sign-identity") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.macosSignIdentity = scalar.value();
-        } else if (directive == "macos-entitlements") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.macosEntitlements = scalar.value();
-        } else if (directive == "macos-notary-profile") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.macosNotaryProfile = scalar.value();
-        } else if (directive == "macos-hardened-runtime") {
-            auto ok = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
-            if (!ok)
-                return il::support::Expected<bool>(ok.error());
-            auto b = parseBool(value, manifestPath, lineNum, directive);
-            if (!b)
-                return il::support::Expected<bool>(b.error());
-            config.packageConfig.macosHardenedRuntime = b.value();
-        } else if (directive == "macos-staple") {
-            auto ok = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
-            if (!ok)
-                return il::support::Expected<bool>(ok.error());
-            auto b = parseBool(value, manifestPath, lineNum, directive);
-            if (!b)
-                return il::support::Expected<bool>(b.error());
-            config.packageConfig.macosStaple = b.value();
-        } else if (directive == "windows-install-scope") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            if (scalar.value() != "machine" && scalar.value() != "user") {
-                return makeManifestErr(manifestPath,
-                                       lineNum,
-                                       "invalid windows-install-scope '" + scalar.value() +
-                                           "'; expected 'machine' or 'user'");
-            }
-            config.packageConfig.windowsInstallScope = scalar.value();
-        } else if (directive == "windows-install-dir") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.windowsInstallDir = scalar.value();
-        } else if (directive == "windows-sign") {
-            auto ok = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
-            if (!ok)
-                return il::support::Expected<bool>(ok.error());
-            auto b = parseBool(value, manifestPath, lineNum, directive);
-            if (!b)
-                return il::support::Expected<bool>(b.error());
-            config.packageConfig.windowsSign = b.value();
-            config.packageConfig.windowsSignSet = true;
-        } else if (directive == "windows-sign-pfx") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.windowsSignPfx = scalar.value();
-        } else if (directive == "windows-sign-thumbprint") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.windowsSignThumbprint = scalar.value();
-        } else if (directive == "windows-timestamp-url") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.windowsTimestampUrl = scalar.value();
-        } else if (directive == "windows-signtool") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.windowsSigntoolPath = scalar.value();
-        } else if (directive == "windows-sign-no-verify") {
-            auto ok = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
-            if (!ok)
-                return il::support::Expected<bool>(ok.error());
-            auto b = parseBool(value, manifestPath, lineNum, directive);
-            if (!b)
-                return il::support::Expected<bool>(b.error());
-            config.packageConfig.windowsSignNoVerify = b.value();
-        } else if (directive == "asset") {
-            // Format: asset <source-path> <target-relative-dir>
-            auto tokens = tokenizeManifestValue(value, manifestPath, lineNum, directive);
-            if (!tokens)
-                return il::support::Expected<bool>(tokens.error());
-            if (tokens.value().size() != 2)
-                return makeManifestErr(
-                    manifestPath, lineNum, "asset requires <source> <target>; got '" + value + "'");
-            config.packageConfig.assets.push_back({tokens.value()[0], tokens.value()[1]});
-        } else if (directive == "embed") {
-            // Format: embed <source-path>
-            if (value.empty())
-                return makeManifestErr(
-                    manifestPath, lineNum, "embed requires <source-path>; got empty value");
-            config.embedAssets.push_back({value});
-
-        } else if (directive == "pack" || directive == "pack-compressed") {
-            // Format: pack <name> <source-path>
-            auto sp = value.find_first_of(" \t");
-            if (sp == std::string::npos)
-                return makeManifestErr(manifestPath,
-                                       lineNum,
-                                       std::string(directive) +
-                                           " requires <name> <source-path>; got '" + value + "'");
-            std::string packName = value.substr(0, sp);
-            std::string packSrc = value.substr(value.find_first_not_of(" \t", sp));
-            bool compressed = (directive == "pack-compressed");
-
-            // Find existing group with same name, or create new one.
-            auto it =
-                std::find_if(config.packGroups.begin(),
-                             config.packGroups.end(),
-                             [&](const ProjectConfig::PackGroup &g) { return g.name == packName; });
-            if (it == config.packGroups.end()) {
-                config.packGroups.push_back({packName, {packSrc}, compressed});
-            } else {
-                it->sources.push_back(packSrc);
-                if (compressed)
-                    it->compressed = true;
-            }
-
-        } else if (directive == "file-assoc") {
-            // Format: file-assoc <extension> <description> <mime-type> [windows-open-args]
-            auto tokens = tokenizeManifestValue(value, manifestPath, lineNum, directive);
-            if (!tokens)
-                return il::support::Expected<bool>(tokens.error());
-            if (tokens.value().size() != 3 && tokens.value().size() != 4)
-                return makeManifestErr(manifestPath,
-                                       lineNum,
-                                       "file-assoc requires <ext> <description> <mime> "
-                                       "[windows-open-args]; got '" +
-                                           value + "'");
-            config.packageConfig.fileAssociations.push_back({tokens.value()[0],
-                                                             tokens.value()[1],
-                                                             tokens.value()[2],
-                                                             tokens.value().size() == 4
-                                                                 ? tokens.value()[3]
-                                                                 : std::string{}});
-        } else if (directive == "shortcut-desktop") {
-            auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
-            if (!seen)
-                return il::support::Expected<bool>(seen.error());
-            auto b = parseBool(value, manifestPath, lineNum, "shortcut-desktop");
-            if (!b)
-                return il::support::Expected<bool>(b.error());
-            config.packageConfig.shortcutDesktop = b.value();
-        } else if (directive == "shortcut-menu") {
-            auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
-            if (!seen)
-                return il::support::Expected<bool>(seen.error());
-            auto b = parseBool(value, manifestPath, lineNum, "shortcut-menu");
-            if (!b)
-                return il::support::Expected<bool>(b.error());
-            config.packageConfig.shortcutMenu = b.value();
-        } else if (directive == "min-os-windows") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.minOsWindows = scalar.value();
-        } else if (directive == "min-os-macos") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.minOsMacos = scalar.value();
-        } else if (directive == "target-arch") {
-            if (value != "x64" && value != "arm64")
-                return makeManifestErr(manifestPath,
-                                       lineNum,
-                                       "invalid target-arch '" + value +
-                                           "'; expected 'x64' or 'arm64'");
-            config.packageConfig.targetArchitectures.push_back(value);
-        } else if (directive == "package-category") {
-            auto scalar = parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
-            if (!scalar)
-                return il::support::Expected<bool>(scalar.error());
-            config.packageConfig.category = scalar.value();
-        } else if (directive == "package-depends") {
-            // Comma-separated list: "libc6, libx11-6, libssl3"
-            std::string depToken;
-            for (char c : value) {
-                if (c == ',') {
-                    // Trim whitespace
-                    size_t ds = depToken.find_first_not_of(" \t");
-                    size_t de = depToken.find_last_not_of(" \t");
-                    if (ds != std::string::npos)
-                        config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
-                    depToken.clear();
-                } else {
-                    depToken.push_back(c);
-                }
-            }
-            // Last element
-            size_t ds = depToken.find_first_not_of(" \t");
-            size_t de = depToken.find_last_not_of(" \t");
-            if (ds != std::string::npos)
-                config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
-        } else if (directive == "post-install") {
-            auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
-            if (!seen)
-                return il::support::Expected<bool>(seen.error());
-            auto script = readManifestScriptHook(
-                manifestDir, value, manifestPath, lineNum, directive);
-            if (!script)
-                return il::support::Expected<bool>(script.error());
-            config.packageConfig.postInstallScript = script.value();
-        } else if (directive == "pre-uninstall") {
-            auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
-            if (!seen)
-                return il::support::Expected<bool>(seen.error());
-            auto script = readManifestScriptHook(
-                manifestDir, value, manifestPath, lineNum, directive);
-            if (!script)
-                return il::support::Expected<bool>(script.error());
-            config.packageConfig.preUninstallScript = script.value();
-        } else {
-            return false;
+    if (directive == "package-name") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.displayName = scalar.value();
+    } else if (directive == "package-author") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.author = scalar.value();
+    } else if (directive == "package-description") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.description = scalar.value();
+    } else if (directive == "package-homepage") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.homepage = scalar.value();
+    } else if (directive == "package-license") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.license = scalar.value();
+    } else if (directive == "package-identifier") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.identifier = scalar.value();
+    } else if (directive == "package-icon") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.iconPath = scalar.value();
+    } else if (directive == "macos-sign-mode") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.macosSignMode = scalar.value();
+    } else if (directive == "macos-sign-identity") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.macosSignIdentity = scalar.value();
+    } else if (directive == "macos-entitlements") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.macosEntitlements = scalar.value();
+    } else if (directive == "macos-notary-profile") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.macosNotaryProfile = scalar.value();
+    } else if (directive == "macos-hardened-runtime") {
+        auto ok = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!ok)
+            return il::support::Expected<bool>(ok.error());
+        auto b = parseBool(value, manifestPath, lineNum, directive);
+        if (!b)
+            return il::support::Expected<bool>(b.error());
+        config.packageConfig.macosHardenedRuntime = b.value();
+    } else if (directive == "macos-staple") {
+        auto ok = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!ok)
+            return il::support::Expected<bool>(ok.error());
+        auto b = parseBool(value, manifestPath, lineNum, directive);
+        if (!b)
+            return il::support::Expected<bool>(b.error());
+        config.packageConfig.macosStaple = b.value();
+    } else if (directive == "windows-install-scope") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        if (scalar.value() != "machine" && scalar.value() != "user") {
+            return makeManifestErr(manifestPath,
+                                   lineNum,
+                                   "invalid windows-install-scope '" + scalar.value() +
+                                       "'; expected 'machine' or 'user'");
         }
-        return true;
+        config.packageConfig.windowsInstallScope = scalar.value();
+    } else if (directive == "windows-install-dir") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.windowsInstallDir = scalar.value();
+    } else if (directive == "windows-sign") {
+        auto ok = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!ok)
+            return il::support::Expected<bool>(ok.error());
+        auto b = parseBool(value, manifestPath, lineNum, directive);
+        if (!b)
+            return il::support::Expected<bool>(b.error());
+        config.packageConfig.windowsSign = b.value();
+        config.packageConfig.windowsSignSet = true;
+    } else if (directive == "windows-sign-pfx") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.windowsSignPfx = scalar.value();
+    } else if (directive == "windows-sign-thumbprint") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.windowsSignThumbprint = scalar.value();
+    } else if (directive == "windows-timestamp-url") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.windowsTimestampUrl = scalar.value();
+    } else if (directive == "windows-signtool") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.windowsSigntoolPath = scalar.value();
+    } else if (directive == "windows-sign-no-verify") {
+        auto ok = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!ok)
+            return il::support::Expected<bool>(ok.error());
+        auto b = parseBool(value, manifestPath, lineNum, directive);
+        if (!b)
+            return il::support::Expected<bool>(b.error());
+        config.packageConfig.windowsSignNoVerify = b.value();
+    } else if (directive == "asset") {
+        // Format: asset <source-path> <target-relative-dir>
+        auto tokens = tokenizeManifestValue(value, manifestPath, lineNum, directive);
+        if (!tokens)
+            return il::support::Expected<bool>(tokens.error());
+        if (tokens.value().size() != 2)
+            return makeManifestErr(
+                manifestPath, lineNum, "asset requires <source> <target>; got '" + value + "'");
+        config.packageConfig.assets.push_back({tokens.value()[0], tokens.value()[1]});
+    } else if (directive == "embed") {
+        // Format: embed <source-path>
+        if (value.empty())
+            return makeManifestErr(
+                manifestPath, lineNum, "embed requires <source-path>; got empty value");
+        config.embedAssets.push_back({value});
+
+    } else if (directive == "pack" || directive == "pack-compressed") {
+        // Format: pack <name> <source-path>
+        auto sp = value.find_first_of(" \t");
+        if (sp == std::string::npos)
+            return makeManifestErr(manifestPath,
+                                   lineNum,
+                                   std::string(directive) +
+                                       " requires <name> <source-path>; got '" + value + "'");
+        std::string packName = value.substr(0, sp);
+        std::string packSrc = value.substr(value.find_first_not_of(" \t", sp));
+        bool compressed = (directive == "pack-compressed");
+
+        // Find existing group with same name, or create new one.
+        auto it =
+            std::find_if(config.packGroups.begin(),
+                         config.packGroups.end(),
+                         [&](const ProjectConfig::PackGroup &g) { return g.name == packName; });
+        if (it == config.packGroups.end()) {
+            config.packGroups.push_back({packName, {packSrc}, compressed});
+        } else {
+            it->sources.push_back(packSrc);
+            if (compressed)
+                it->compressed = true;
+        }
+
+    } else if (directive == "file-assoc") {
+        // Format: file-assoc <extension> <description> <mime-type> [windows-open-args]
+        auto tokens = tokenizeManifestValue(value, manifestPath, lineNum, directive);
+        if (!tokens)
+            return il::support::Expected<bool>(tokens.error());
+        if (tokens.value().size() != 3 && tokens.value().size() != 4)
+            return makeManifestErr(manifestPath,
+                                   lineNum,
+                                   "file-assoc requires <ext> <description> <mime> "
+                                   "[windows-open-args]; got '" +
+                                       value + "'");
+        config.packageConfig.fileAssociations.push_back(
+            {tokens.value()[0],
+             tokens.value()[1],
+             tokens.value()[2],
+             tokens.value().size() == 4 ? tokens.value()[3] : std::string{}});
+    } else if (directive == "shortcut-desktop") {
+        auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!seen)
+            return il::support::Expected<bool>(seen.error());
+        auto b = parseBool(value, manifestPath, lineNum, "shortcut-desktop");
+        if (!b)
+            return il::support::Expected<bool>(b.error());
+        config.packageConfig.shortcutDesktop = b.value();
+    } else if (directive == "shortcut-menu") {
+        auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!seen)
+            return il::support::Expected<bool>(seen.error());
+        auto b = parseBool(value, manifestPath, lineNum, "shortcut-menu");
+        if (!b)
+            return il::support::Expected<bool>(b.error());
+        config.packageConfig.shortcutMenu = b.value();
+    } else if (directive == "min-os-windows") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.minOsWindows = scalar.value();
+    } else if (directive == "min-os-macos") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.minOsMacos = scalar.value();
+    } else if (directive == "target-arch") {
+        if (value != "x64" && value != "arm64")
+            return makeManifestErr(manifestPath,
+                                   lineNum,
+                                   "invalid target-arch '" + value +
+                                       "'; expected 'x64' or 'arm64'");
+        config.packageConfig.targetArchitectures.push_back(value);
+    } else if (directive == "package-category") {
+        auto scalar =
+            parsePackageScalar(packageScalarDirectives, directive, value, manifestPath, lineNum);
+        if (!scalar)
+            return il::support::Expected<bool>(scalar.error());
+        config.packageConfig.category = scalar.value();
+    } else if (directive == "package-depends") {
+        // Comma-separated list: "libc6, libx11-6, libssl3"
+        std::string depToken;
+        for (char c : value) {
+            if (c == ',') {
+                // Trim whitespace
+                size_t ds = depToken.find_first_not_of(" \t");
+                size_t de = depToken.find_last_not_of(" \t");
+                if (ds != std::string::npos)
+                    config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
+                depToken.clear();
+            } else {
+                depToken.push_back(c);
+            }
+        }
+        // Last element
+        size_t ds = depToken.find_first_not_of(" \t");
+        size_t de = depToken.find_last_not_of(" \t");
+        if (ds != std::string::npos)
+            config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
+    } else if (directive == "post-install") {
+        auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!seen)
+            return il::support::Expected<bool>(seen.error());
+        auto script = readManifestScriptHook(manifestDir, value, manifestPath, lineNum, directive);
+        if (!script)
+            return il::support::Expected<bool>(script.error());
+        config.packageConfig.postInstallScript = script.value();
+    } else if (directive == "pre-uninstall") {
+        auto seen = markPackageScalar(packageScalarDirectives, directive, manifestPath, lineNum);
+        if (!seen)
+            return il::support::Expected<bool>(seen.error());
+        auto script = readManifestScriptHook(manifestDir, value, manifestPath, lineNum, directive);
+        if (!script)
+            return il::support::Expected<bool>(script.error());
+        config.packageConfig.preUninstallScript = script.value();
+    } else {
+        return false;
+    }
+    return true;
 }
 
 } // anonymous namespace
@@ -930,15 +948,19 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.nullChecks = b.value();
-        }
-        else {
-            auto handled = parsePackageDirective(config, packageScalarDirectives, manifestDir,
-                                                 manifestPath, directive, value, lineNum);
+        } else {
+            auto handled = parsePackageDirective(config,
+                                                 packageScalarDirectives,
+                                                 manifestDir,
+                                                 manifestPath,
+                                                 directive,
+                                                 value,
+                                                 lineNum);
             if (!handled)
                 return il::support::Expected<ProjectConfig>(handled.error());
             if (!handled.value())
-                return makeManifestErr(manifestPath, lineNum,
-                                       "unknown directive '" + directive + "'");
+                return makeManifestErr(
+                    manifestPath, lineNum, "unknown directive '" + directive + "'");
         }
     }
 

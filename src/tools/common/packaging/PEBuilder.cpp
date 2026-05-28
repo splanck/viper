@@ -327,8 +327,7 @@ void appendVersionString(std::vector<uint8_t> &buf,
     const size_t valueUnits = utf16CodeUnitCountFromUtf8(value) + 1;
     if (valueUnits > std::numeric_limits<uint16_t>::max())
         throw std::runtime_error("PEBuilder: VERSIONINFO string is too large");
-    const size_t start =
-        appendVersionHeader(buf, static_cast<uint16_t>(valueUnits), 1, key);
+    const size_t start = appendVersionHeader(buf, static_cast<uint16_t>(valueUnits), 1, key);
     appendUtf16Value(buf, value);
     padTo(buf, 4);
     patchVersionLength(buf, start);
@@ -393,6 +392,7 @@ void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &
         uint32_t offset;
         uint16_t id;
     };
+
     std::vector<IconImage> images;
     images.reserve(count);
     for (uint16_t i = 0; i < count; i++) {
@@ -523,10 +523,9 @@ ResourceResult buildResourceSection(const std::string &manifest,
     // Calculate total data size
     uint32_t dataSize = 0;
     for (const auto &item : items)
-        dataSize = checkedAddU32(
-            dataSize,
-            alignUp(checkedU32Size(item.data.size(), "resource data item"), 4),
-            "resource data size");
+        dataSize = checkedAddU32(dataSize,
+                                 alignUp(checkedU32Size(item.data.size(), "resource data item"), 4),
+                                 "resource data size");
 
     uint32_t totalSize = dirTreeSize + dataSize;
     auto &buf = result.data;
@@ -617,7 +616,9 @@ ResourceResult buildResourceSection(const std::string &manifest,
                     size_t ii = types[t].itemIndices[n];
                     uint32_t deOff = dataEntryBaseOff + i * 16;
                     putLE32(buf, deOff + 0, rsrcRVA + curBlobOff); // RVA
-                    putLE32(buf, deOff + 4, checkedU32Size(items[ii].data.size(), "resource data item"));
+                    putLE32(buf,
+                            deOff + 4,
+                            checkedU32Size(items[ii].data.size(), "resource data item"));
                     // Copy data
                     std::memcpy(
                         buf.data() + curBlobOff, items[ii].data.data(), items[ii].data.size());
@@ -657,7 +658,8 @@ std::vector<uint8_t> buildRelocSection() {
 } // namespace
 
 /// @brief Assemble a complete PE32+ binary from `params`.
-/// Sections: `.text` (always), `.rdata` (if imports or rdataSection), `.rsrc` (if manifest or icon),
+/// Sections: `.text` (always), `.rdata` (if imports or rdataSection), `.rsrc` (if manifest or
+/// icon),
 /// `.reloc` (enabled by default).
 /// RVAs and file offsets are computed in a single layout pass, then headers are filled in.
 /// An optional raw overlay (e.g. a ZIP payload) is appended after all sections.
@@ -671,8 +673,8 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     // Count sections: .text is required; .rdata if imports; .rsrc if manifest
     uint32_t numSections = 1; // .text
     bool hasRdata = !params.imports.empty() || !params.rdataSection.empty();
-    bool hasRsrc = !params.manifest.empty() || !params.iconData.empty() ||
-                   params.versionInfo.enabled;
+    bool hasRsrc =
+        !params.manifest.empty() || !params.iconData.empty() || params.versionInfo.enabled;
     bool hasReloc = params.emitRelocations;
     if (hasRdata)
         numSections++;
@@ -932,7 +934,8 @@ void writePEToFile(const std::vector<uint8_t> &pe, const std::string &path) {
 namespace {
 
 /// @brief Parse a `major.minor[.build[.revision]]` version string into a numeric vector.
-/// Throws if the component count is not in [2, 4], as required by the Windows compatibility manifest.
+/// Throws if the component count is not in [2, 4], as required by the Windows compatibility
+/// manifest.
 std::vector<unsigned> parseDottedVersion(const std::string &version) {
     const auto parsed =
         parseDottedNumericVersionParts(version, "Windows compatibility manifest version");
@@ -989,8 +992,9 @@ std::string windowsCompatibilityXml(const std::string &minOsWindows) {
            "  </compatibility>\n";
 }
 
-/// @brief Generate a complete Windows application manifest XML with the given `requestedExecutionLevel`.
-/// `level` maps directly to the UAC attribute value (`"requireAdministrator"` or `"asInvoker"`).
+/// @brief Generate a complete Windows application manifest XML with the given
+/// `requestedExecutionLevel`. `level` maps directly to the UAC attribute value
+/// (`"requireAdministrator"` or `"asInvoker"`).
 std::string generateManifestWithExecutionLevel(const std::string &level,
                                                const std::string &minOsWindows) {
     return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
@@ -1002,9 +1006,8 @@ std::string generateManifestWithExecutionLevel(const std::string &level,
            level +
            "\" uiAccess=\"false\"/>\n"
            "    </requestedPrivileges></security>\n"
-           "  </trustInfo>\n"
-           + windowsCompatibilityXml(minOsWindows) +
-           "</assembly>\n";
+           "  </trustInfo>\n" +
+           windowsCompatibilityXml(minOsWindows) + "</assembly>\n";
 }
 
 } // namespace

@@ -65,8 +65,8 @@ void VM::applyDebugAction(DebugAction action, size_t currentDepth) {
 }
 
 std::optional<Slot> VM::pauseOrAdvanceDebugScript(ExecState &st, std::string_view reason) {
-    std::cerr << "[BREAK] fn=@" << st.fr.func->name << " blk=" << st.bb->label << " reason="
-              << reason << "\n";
+    std::cerr << "[BREAK] fn=@" << st.fr.func->name << " blk=" << st.bb->label
+              << " reason=" << reason << "\n";
     if (!script || script->empty()) {
         Slot s{};
         s.i64 = kDebugBreakpointSentinel;

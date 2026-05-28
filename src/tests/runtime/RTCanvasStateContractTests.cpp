@@ -240,23 +240,41 @@ extern "C" rt_string rt_string_from_bytes(const char *bytes, size_t len) {
 }
 
 extern "C" void rt_keyboard_clear_canvas_if_matches(void *) {}
+
 extern "C" void rt_mouse_clear_canvas_if_matches(void *) {}
+
 extern "C" void rt_keyboard_set_canvas(void *) {}
+
 extern "C" void rt_mouse_set_canvas(void *) {}
+
 extern "C" void rt_pad_init(void) {}
+
 extern "C" void rt_keyboard_begin_frame(void) {}
+
 extern "C" void rt_mouse_begin_frame(void) {}
+
 extern "C" void rt_pad_begin_frame(void) {}
+
 extern "C" void rt_pad_poll(void) {}
+
 extern "C" void rt_keyboard_on_key_down(int64_t) {}
+
 extern "C" void rt_keyboard_on_key_up(int64_t) {}
+
 extern "C" void rt_keyboard_on_vgfx_key_down(int64_t) {}
+
 extern "C" void rt_keyboard_on_vgfx_key_up(int64_t) {}
+
 extern "C" void rt_keyboard_text_input(int32_t) {}
+
 extern "C" void rt_mouse_update_pos(int64_t, int64_t) {}
+
 extern "C" void rt_mouse_button_down(int64_t) {}
+
 extern "C" void rt_mouse_button_up(int64_t) {}
+
 extern "C" void rt_mouse_update_wheel(double, double) {}
+
 extern "C" void rt_action_update(void) {}
 
 extern "C" int64_t rt_clock_ticks_us(void) {
@@ -377,27 +395,35 @@ extern "C" int32_t vgfx_close_requested(vgfx_window_t window) {
 }
 
 extern "C" void vgfx_cls(vgfx_window_t, vgfx_color_t) {}
+
 extern "C" void vgfx_focus(vgfx_window_t) {}
+
 extern "C" void vgfx_set_window_size(vgfx_window_t window, int32_t w, int32_t h) {
     auto *fake = window_from(window);
     assert(fake != nullptr);
     fake->physical_width = (int32_t)rtg_scale_up_i64(w, fake->scale_factor);
     fake->physical_height = (int32_t)rtg_scale_up_i64(h, fake->scale_factor);
 }
+
 extern "C" void vgfx_set_fullscreen(vgfx_window_t, int32_t) {}
+
 extern "C" void vgfx_set_title(vgfx_window_t, const char *) {}
+
 extern "C" void vgfx_set_fps(vgfx_window_t window, int32_t fps) {
     auto *fake = window_from(window);
     assert(fake != nullptr);
     fake->fps = fps;
 }
+
 extern "C" int32_t vgfx_get_fps(vgfx_window_t window) {
     auto *fake = window_from(window);
     return fake ? fake->fps : -1;
 }
+
 extern "C" int32_t vgfx_key_down(vgfx_window_t, vgfx_key_t) {
     return 0;
 }
+
 extern "C" void vgfx_get_position(vgfx_window_t window, int32_t *x, int32_t *y) {
     auto *fake = window_from(window);
     if (x)
@@ -405,12 +431,14 @@ extern "C" void vgfx_get_position(vgfx_window_t window, int32_t *x, int32_t *y) 
     if (y)
         *y = fake ? fake->pos_y : 0;
 }
+
 extern "C" void vgfx_set_position(vgfx_window_t window, int32_t x, int32_t y) {
     auto *fake = window_from(window);
     assert(fake != nullptr);
     fake->pos_x = x;
     fake->pos_y = y;
 }
+
 extern "C" void vgfx_get_monitor_size(vgfx_window_t window, int32_t *w, int32_t *h) {
     auto *fake = window_from(window);
     if (w)
@@ -418,18 +446,25 @@ extern "C" void vgfx_get_monitor_size(vgfx_window_t window, int32_t *w, int32_t 
     if (h)
         *h = fake ? fake->monitor_h : 0;
 }
+
 extern "C" int32_t vgfx_is_focused(vgfx_window_t) {
     return 1;
 }
+
 extern "C" int32_t vgfx_is_minimized(vgfx_window_t) {
     return 0;
 }
+
 extern "C" int32_t vgfx_is_maximized(vgfx_window_t) {
     return 0;
 }
+
 extern "C" void vgfx_minimize(vgfx_window_t) {}
+
 extern "C" void vgfx_maximize(vgfx_window_t) {}
+
 extern "C" void vgfx_restore(vgfx_window_t) {}
+
 extern "C" void vgfx_set_prevent_close(vgfx_window_t, int32_t) {}
 
 int main() {

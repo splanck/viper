@@ -29,13 +29,13 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                                         \
-    do {                                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
         g_expect_trap = 1;                                                                         \
-        if (setjmp(g_trap_env) == 0) {                                                            \
+        if (setjmp(g_trap_env) == 0) {                                                             \
             (void)(expr);                                                                          \
             g_expect_trap = 0;                                                                     \
-            assert(!"expected runtime trap");                                                     \
+            assert(!"expected runtime trap");                                                      \
         } else {                                                                                   \
             g_expect_trap = 0;                                                                     \
         }                                                                                          \
@@ -135,8 +135,7 @@ static void test_start_stop() {
 
     int64_t elapsed = rt_stopwatch_elapsed_ms(sw);
     test_result("Elapsed >= 40ms after 50ms sleep", elapsed >= 40);
-    test_result("Elapsed stays within loaded-system tolerance",
-                elapsed <= kShortSleepUpperBoundMs);
+    test_result("Elapsed stays within loaded-system tolerance", elapsed <= kShortSleepUpperBoundMs);
 
     // Verify time doesn't accumulate when stopped
     sleep_ms(50);

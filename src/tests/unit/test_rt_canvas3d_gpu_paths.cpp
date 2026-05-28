@@ -5,6 +5,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_heap.h"
+#include "rt_input.h"
 #include "rt_instbatch3d.h"
 #include "rt_morphtarget3d.h"
 #include "rt_postfx3d.h"
@@ -12,8 +13,8 @@
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
 
-#include <cmath>
 #include <climits>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -94,9 +95,23 @@ static int8_t set_gpu_postfx_enabled_values[4];
 static int set_gpu_postfx_snapshot_calls = 0;
 static int8_t set_gpu_postfx_snapshot_present[4];
 static vgfx3d_postfx_chain_t set_gpu_postfx_chains[4];
+static int final_submit_draw_calls = 0;
+static int final_end_frame_calls = 0;
+static int final_readback_calls = 0;
+static int final_readback_saw_finalized = 0;
+static int final_readback_saw_submit_count = 0;
+static int final_present_postfx_calls = 0;
+static int final_present_postfx_saw_submit_count = 0;
+static vgfx3d_draw_cmd_t final_last_draw_cmd;
 
 static void noop_end_frame(void *) {}
+
 static void noop_present_postfx(void *, const vgfx3d_postfx_chain_t *) {}
+
+static void record_present_postfx(void *, const vgfx3d_postfx_chain_t *) {
+    final_present_postfx_calls++;
+    final_present_postfx_saw_submit_count = final_submit_draw_calls;
+}
 
 static void noop_draw(void *,
                       vgfx_window_t,
@@ -106,6 +121,23 @@ static void noop_draw(void *,
                       const float *,
                       int8_t,
                       int8_t) {}
+
+static void record_final_draw(void *,
+                              vgfx_window_t,
+                              const vgfx3d_draw_cmd_t *cmd,
+                              const vgfx3d_light_params_t *,
+                              int32_t,
+                              const float *,
+                              int8_t,
+                              int8_t) {
+    final_submit_draw_calls++;
+    if (cmd)
+        final_last_draw_cmd = *cmd;
+}
+
+static void record_final_end_frame(void *) {
+    final_end_frame_calls++;
+}
 
 static void record_draw_skybox(void *, const void *) {
     skybox_draw_calls++;
@@ -123,7 +155,8 @@ static void reset_shadow_counts(void) {
     draw_submit_calls = 0;
 }
 
-static void record_shadow_begin(void *, int32_t slot, float *, int32_t, int32_t, const float *light_vp) {
+static void record_shadow_begin(
+    void *, int32_t slot, float *, int32_t, int32_t, const float *light_vp) {
     if (shadow_begin_calls < VGFX3D_MAX_SHADOW_LIGHTS)
         shadow_begin_slots[shadow_begin_calls] = slot;
     if (light_vp && slot >= 0 && slot < VGFX3D_MAX_SHADOW_LIGHTS)
@@ -216,6 +249,42 @@ static int record_readback_rgba(void *, uint8_t *dst_rgba, int32_t w, int32_t h,
     return 1;
 }
 
+static int record_hidpi_readback_rgba(
+    void *, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
+    static const uint8_t colors[4][4] = {
+        {0x10, 0x20, 0x30, 0xFF},
+        {0x40, 0x50, 0x60, 0xFF},
+        {0x70, 0x80, 0x90, 0xFF},
+        {0xA0, 0xB0, 0xC0, 0xFF},
+    };
+
+    last_readback_w = w;
+    last_readback_h = h;
+    last_readback_stride = stride;
+    if (!dst_rgba || w <= 0 || h <= 0 || stride < w * 4)
+        return 0;
+    for (int32_t y = 0; y < h; y++) {
+        for (int32_t x = 0; x < w; x++) {
+            int quadrant = (y >= h / 2 ? 2 : 0) + (x >= w / 2 ? 1 : 0);
+            uint8_t *p = dst_rgba + (size_t)y * (size_t)stride + (size_t)x * 4u;
+            p[0] = colors[quadrant][0];
+            p[1] = colors[quadrant][1];
+            p[2] = colors[quadrant][2];
+            p[3] = colors[quadrant][3];
+        }
+    }
+    return 1;
+}
+
+static int record_final_readback_rgba(
+    void *ctx, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
+    rt_canvas3d *canvas = (rt_canvas3d *)ctx;
+    final_readback_calls++;
+    final_readback_saw_finalized = canvas && canvas->frame_finalized ? 1 : 0;
+    final_readback_saw_submit_count = final_submit_draw_calls;
+    return record_readback_rgba(ctx, dst_rgba, w, h, stride);
+}
+
 static void reset_postfx_records(void) {
     begin_frame_calls = 0;
     std::memset(begin_frame_params, 0, sizeof(begin_frame_params));
@@ -228,8 +297,23 @@ static void reset_postfx_records(void) {
     std::memset(set_gpu_postfx_chains, 0, sizeof(set_gpu_postfx_chains));
 }
 
+static void reset_final_frame_records(void) {
+    final_submit_draw_calls = 0;
+    final_end_frame_calls = 0;
+    final_readback_calls = 0;
+    final_readback_saw_finalized = 0;
+    final_readback_saw_submit_count = 0;
+    final_present_postfx_calls = 0;
+    final_present_postfx_saw_submit_count = 0;
+    std::memset(&final_last_draw_cmd, 0, sizeof(final_last_draw_cmd));
+    last_readback_w = 0;
+    last_readback_h = 0;
+    last_readback_stride = 0;
+}
+
 static void record_begin_frame(void *, const vgfx3d_camera_params_t *cam) {
-    if (begin_frame_calls < (int)(sizeof(begin_frame_params) / sizeof(begin_frame_params[0])) && cam)
+    if (begin_frame_calls < (int)(sizeof(begin_frame_params) / sizeof(begin_frame_params[0])) &&
+        cam)
         begin_frame_params[begin_frame_calls] = *cam;
     begin_frame_calls++;
 }
@@ -243,12 +327,12 @@ static void record_set_gpu_postfx_enabled(void *, int8_t enabled) {
 }
 
 static void record_set_gpu_postfx_snapshot(void *, const vgfx3d_postfx_chain_t *snapshot) {
-    if (set_gpu_postfx_snapshot_calls <
-        (int)(sizeof(set_gpu_postfx_snapshot_present) /
-              sizeof(set_gpu_postfx_snapshot_present[0]))) {
+    if (set_gpu_postfx_snapshot_calls < (int)(sizeof(set_gpu_postfx_snapshot_present) /
+                                              sizeof(set_gpu_postfx_snapshot_present[0]))) {
         set_gpu_postfx_snapshot_present[set_gpu_postfx_snapshot_calls] = snapshot ? 1 : 0;
         if (snapshot)
-            vgfx3d_postfx_chain_copy(&set_gpu_postfx_chains[set_gpu_postfx_snapshot_calls], snapshot);
+            vgfx3d_postfx_chain_copy(&set_gpu_postfx_chains[set_gpu_postfx_snapshot_calls],
+                                     snapshot);
     }
     set_gpu_postfx_snapshot_calls++;
 }
@@ -288,6 +372,10 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     }
     std::free(canvas->temp_buffers);
     std::free(canvas->temp_objects);
+    for (int32_t i = 0; i < canvas->final_overlay_temp_buf_count; i++)
+        std::free(canvas->final_overlay_temp_buffers[i]);
+    std::free(canvas->final_overlay_cmds);
+    std::free(canvas->final_overlay_temp_buffers);
     std::free(canvas->draw_cmds);
     std::free(canvas->motion_history);
     if (canvas->postfx && rt_obj_release_check0(canvas->postfx))
@@ -295,11 +383,15 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     vgfx3d_postfx_chain_free(&canvas->frame_postfx_chain);
     canvas->temp_buffers = nullptr;
     canvas->temp_objects = nullptr;
+    canvas->final_overlay_cmds = nullptr;
+    canvas->final_overlay_temp_buffers = nullptr;
     canvas->draw_cmds = nullptr;
     canvas->motion_history = nullptr;
     canvas->postfx = nullptr;
     canvas->temp_buf_count = canvas->temp_buf_capacity = 0;
     canvas->temp_obj_count = canvas->temp_obj_capacity = 0;
+    canvas->final_overlay_count = canvas->final_overlay_capacity = 0;
+    canvas->final_overlay_temp_buf_count = canvas->final_overlay_temp_buf_capacity = 0;
     canvas->draw_count = canvas->draw_capacity = 0;
     canvas->motion_history_count = canvas->motion_history_capacity = 0;
     reset_recorded_instancing();
@@ -310,6 +402,25 @@ static void reset_canvas_frame(rt_canvas3d *canvas, int64_t frame_serial) {
     canvas->frame_serial = frame_serial;
     canvas->in_frame = 1;
     canvas->frame_is_2d = 0;
+}
+
+static void enable_latched_motion_blur(rt_canvas3d *canvas) {
+    if (!canvas)
+        return;
+    canvas->frame_gpu_postfx_enabled = 1;
+    canvas->frame_postfx_state_latched = 1;
+    vgfx3d_postfx_chain_free(&canvas->frame_postfx_chain);
+    std::memset(&canvas->frame_postfx_chain, 0, sizeof(canvas->frame_postfx_chain));
+    canvas->frame_postfx_chain.effects =
+        (vgfx3d_postfx_effect_desc_t *)std::calloc(1, sizeof(vgfx3d_postfx_effect_desc_t));
+    if (!canvas->frame_postfx_chain.effects)
+        return;
+    canvas->frame_postfx_chain.enabled = 1;
+    canvas->frame_postfx_chain.effect_count = 1;
+    canvas->frame_postfx_chain.effect_capacity = 1;
+    canvas->frame_postfx_chain.effects[0].type = VGFX3D_POSTFX_EFFECT_MOTION_BLUR;
+    canvas->frame_postfx_chain.effects[0].snapshot.enabled = 1;
+    canvas->frame_postfx_chain.effects[0].snapshot.motion_blur_enabled = 1;
 }
 
 static void *make_test_mesh(void) {
@@ -663,8 +774,9 @@ static void test_gpu_morph_normal_payload_for_d3d11(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "D3D11 morphed-normal draw enqueues one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "D3D11 morphed-normal draw avoids transient packed payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 3,
-                "D3D11 morphed-normal draw retains mesh, material, and morph state until frame end");
+    EXPECT_TRUE(
+        canvas.temp_obj_count == 3,
+        "D3D11 morphed-normal draw retains mesh, material, and morph state until frame end");
     EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 2,
                 "D3D11 morphed-normal draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
@@ -698,8 +810,9 @@ static void test_gpu_morph_normal_payload_for_opengl(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "OpenGL morphed-normal draw enqueues one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "OpenGL morphed-normal draw avoids transient packed payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 3,
-                "OpenGL morphed-normal draw retains mesh, material, and morph state until frame end");
+    EXPECT_TRUE(
+        canvas.temp_obj_count == 3,
+        "OpenGL morphed-normal draw retains mesh, material, and morph state until frame end");
     EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 2,
                 "OpenGL morphed-normal draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
@@ -733,8 +846,9 @@ static void test_gpu_morph_normal_payload_for_metal(void) {
     EXPECT_TRUE(canvas.draw_count == 1, "Metal morphed-normal draw enqueues one draw");
     EXPECT_TRUE(canvas.temp_buf_count == 0,
                 "Metal morphed-normal draw avoids transient packed payload buffers");
-    EXPECT_TRUE(canvas.temp_obj_count == 3,
-                "Metal morphed-normal draw retains mesh, material, and morph state until frame end");
+    EXPECT_TRUE(
+        canvas.temp_obj_count == 3,
+        "Metal morphed-normal draw retains mesh, material, and morph state until frame end");
     EXPECT_TRUE(rt_heap_hdr(morph)->refcnt == 2,
                 "Metal morphed-normal draw retains the morph object until frame end");
     EXPECT_TRUE(draws[0].cmd.morph_normal_deltas != nullptr,
@@ -857,8 +971,7 @@ static void test_large_morph_payload_stays_on_gpu_for_metal(void) {
 
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "Metal large morph draw still enqueues one draw");
-    EXPECT_TRUE(canvas.temp_buf_count == 0,
-                "Metal keeps large morph payloads on the GPU path");
+    EXPECT_TRUE(canvas.temp_buf_count == 0, "Metal keeps large morph payloads on the GPU path");
     EXPECT_TRUE(draws[0].cmd.morph_shape_count == 33,
                 "Metal forwards morph shape counts beyond the old 32-shape ceiling");
     EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr,
@@ -993,9 +1106,14 @@ static void test_static_mesh_geometry_identity_forwarded(void) {
     EXPECT_TRUE(draws[0].cmd.geometry_revision == mesh_view->geometry_revision,
                 "Static mesh draw forwards the current geometry revision");
     EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
-                "Static mesh draw snapshots vertex data for deferred submission");
+                "Static heap mesh draw snapshots vertex data for deferred submission");
     EXPECT_TRUE(draws[0].cmd.indices != mesh_view->indices,
-                "Static mesh draw snapshots index data for deferred submission");
+                "Static heap mesh draw snapshots index data for deferred submission");
+    EXPECT_TRUE(draws[0].cmd.vertices[1].pos[0] == mesh_view->vertices[1].pos[0] &&
+                    draws[0].cmd.indices[2] == mesh_view->indices[2],
+                "Static heap mesh geometry snapshot preserves submitted contents");
+    EXPECT_TRUE(canvas.temp_buf_count == 2,
+                "Static heap mesh geometry snapshot is owned by frame temp buffers");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1008,8 +1126,7 @@ static void test_deferred_draw_retains_mesh_and_material_until_end(void) {
     void *material = rt_material3d_new();
     void *transform = rt_mat4_identity();
 
-    EXPECT_TRUE(rt_heap_hdr(mesh)->refcnt == 1,
-                "Fresh mesh starts with a single owned reference");
+    EXPECT_TRUE(rt_heap_hdr(mesh)->refcnt == 1, "Fresh mesh starts with a single owned reference");
     EXPECT_TRUE(rt_heap_hdr(material)->refcnt == 1,
                 "Fresh material starts with a single owned reference");
 
@@ -1047,7 +1164,8 @@ static void test_mesh_draw_submits_immediately_when_deferred_queue_cannot_grow(v
     rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
 
     EXPECT_TRUE(draw_submit_calls == 1,
-                "Mesh draws submit immediately instead of disappearing when the deferred queue cannot grow");
+                "Mesh draws submit immediately instead of disappearing when the deferred queue "
+                "cannot grow");
     EXPECT_TRUE(canvas.draw_cmds == nullptr,
                 "Immediate fallback does not allocate a partial deferred queue");
 
@@ -1158,6 +1276,7 @@ static void test_instanced_transform_history_forwarded(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1174,8 +1293,18 @@ static void test_instanced_transform_history_forwarded(void) {
     rt_canvas3d_draw_instanced(&canvas, batch);
     rt_canvas3d_end(&canvas);
     EXPECT_TRUE(last_instance_count == 2, "Instanced draw submits both instances");
-    EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 0,
-                "First instanced draw has no previous transform history");
+    EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 1,
+                "First instanced draw synthesizes previous transform history");
+    EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices != nullptr,
+                "First instanced draw exposes a previous instance matrix payload");
+    if (last_instanced_cmd.prev_instance_matrices) {
+        EXPECT_TRUE(
+            last_instanced_cmd.prev_instance_matrices[3] == -0.75f,
+            "First instanced draw seeds the first previous transform from the current pose");
+        EXPECT_TRUE(
+            last_instanced_cmd.prev_instance_matrices[19] == -0.25f,
+            "First instanced draw seeds the second previous transform from the current pose");
+    }
 
     ((mat4_impl *)t0)->m[3] = 0.0;
     rt_instbatch3d_set(batch, 0, t0);
@@ -1201,6 +1330,7 @@ static void test_instanced_transform_history_survives_count_changes(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1249,6 +1379,7 @@ static void test_deferred_instanced_draw_snapshots_instance_buffers(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1282,6 +1413,36 @@ static void test_deferred_instanced_draw_snapshots_instance_buffers(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_instanced_transform_history_skips_payload_without_motion_blur(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw_instanced = record_draw_instanced;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    reset_recorded_instancing();
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *batch = rt_instbatch3d_new(mesh, material);
+    void *t0 = rt_mat4_identity();
+    rt_instbatch3d_add(batch, t0);
+
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_instanced(&canvas, batch);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(last_instance_count == 1,
+                "Instanced draw still submits instances when motion blur is disabled");
+    EXPECT_TRUE(last_instanced_cmd.has_prev_instance_matrices == 0,
+                "Instanced draw skips previous-transform payloads without motion blur");
+    EXPECT_TRUE(last_instanced_cmd.prev_instance_matrices == nullptr,
+                "Instanced draw avoids allocating previous-transform buffers without motion blur");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_instanced_material_payload_forwarded(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
@@ -1290,6 +1451,7 @@ static void test_instanced_material_payload_forwarded(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1370,17 +1532,21 @@ static void test_pbr_material_payload_forwarded(void) {
     rt_material3d_set_alpha(material, 0.6);
     rt_material3d_set_alpha_mode(material, RT_MATERIAL3D_ALPHA_MODE_BLEND);
     rt_material3d_set_double_sided(material, 1);
-    ((rt_material3d *)material)->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] = 1;
-    ((rt_material3d *)material)->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
+    ((rt_material3d *)material)
+        ->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] = 1;
+    ((rt_material3d *)material)
+        ->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
         RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE;
-    ((rt_material3d *)material)->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
+    ((rt_material3d *)material)
+        ->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
         RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT;
-    ((rt_material3d *)material)->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
+    ((rt_material3d *)material)
+        ->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
         RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
-    ((rt_material3d *)material)->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][0] =
-        1.5;
-    ((rt_material3d *)material)->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][5] =
-        0.25;
+    ((rt_material3d *)material)
+        ->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][0] = 1.5;
+    ((rt_material3d *)material)
+        ->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][5] = 0.25;
 
     rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
 
@@ -1404,26 +1570,31 @@ static void test_pbr_material_payload_forwarded(void) {
                 "PBR material draw forwards metallic, roughness, and AO scalars");
     EXPECT_TRUE(draws[0].cmd.emissive_intensity == 1.8f,
                 "PBR material draw forwards emissive intensity");
-    EXPECT_TRUE(draws[0].cmd.normal_scale == 0.55f,
-                "PBR material draw forwards normal scale");
+    EXPECT_TRUE(draws[0].cmd.normal_scale == 0.55f, "PBR material draw forwards normal scale");
     EXPECT_TRUE(draws[0].cmd.alpha == 0.6f,
                 "PBR material draw forwards material opacity separately from alpha mode");
-    EXPECT_TRUE(draws[0].cmd.texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] == 1,
+    EXPECT_TRUE(draws[0].cmd.texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                    1,
                 "PBR material draw forwards imported texture slot UV set");
-    EXPECT_TRUE(draws[0].cmd.texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
-                    RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
-                    draws[0].cmd.texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
-                        RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
-                    draws[0].cmd.texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
-                        RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
-                "PBR material draw forwards imported texture slot sampler state");
-    EXPECT_TRUE(std::fabs(draws[0].cmd.texture_slot_uv_transform
-                              [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][0] -
-                          1.5f) < 0.001f &&
-                    std::fabs(draws[0].cmd.texture_slot_uv_transform
-                                  [RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][5] -
-                              0.25f) < 0.001f,
-                "PBR material draw forwards imported texture slot UV transform");
+    EXPECT_TRUE(
+        draws[0].cmd.texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
+            draws[0].cmd.texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
+            draws[0].cmd.texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+        "PBR material draw forwards imported texture slot sampler state");
+    EXPECT_TRUE(
+        std::fabs(
+            draws[0]
+                .cmd.texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][0] -
+            1.5f) < 0.001f &&
+            std::fabs(
+                draws[0]
+                    .cmd
+                    .texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][5] -
+                0.25f) < 0.001f,
+        "PBR material draw forwards imported texture slot UV transform");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1436,6 +1607,7 @@ static void test_instanced_runtime_culls_outside_frustum(void) {
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
+    enable_latched_motion_blur(&canvas);
     reset_recorded_instancing();
 
     void *mesh = make_test_mesh();
@@ -1504,6 +1676,7 @@ static void test_instanced_shadow_pass_includes_instances(void) {
     light.color[1] = 1.0;
     light.color[2] = 1.0;
     light.intensity = 1.0;
+    light.enabled = 1;
     canvas.lights[0] = &light;
 
     void *mesh = make_test_mesh();
@@ -1579,7 +1752,8 @@ static void test_instanced_batch_sort_key_uses_aggregate_bounds_center(void) {
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "Opaque instanced batch enqueues one deferred draw");
     EXPECT_TRUE(std::fabs(draws[0].sort_key - 0.5f) < 0.01f,
-                "Opaque instanced batch sorting uses the aggregate bounds center instead of the nearest instance");
+                "Opaque instanced batch sorting uses the aggregate bounds center instead of the "
+                "nearest instance");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1620,17 +1794,20 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
     dim_light.direction[1] = -1.0;
     dim_light.color[0] = dim_light.color[1] = dim_light.color[2] = 1.0;
     dim_light.intensity = 0.25;
+    dim_light.enabled = 1;
 
     mid_light.type = 0;
     mid_light.direction[2] = -1.0;
     mid_light.color[0] = mid_light.color[1] = mid_light.color[2] = 1.0;
     mid_light.intensity = 1.5;
+    mid_light.enabled = 1;
 
     bright_light.type = 0;
     bright_light.direction[0] = 1.0 / 1.41421356237;
     bright_light.direction[1] = -1.0 / 1.41421356237;
     bright_light.color[0] = bright_light.color[1] = bright_light.color[2] = 1.0;
     bright_light.intensity = 3.0;
+    bright_light.enabled = 1;
 
     void *mesh = make_test_mesh();
     void *material = rt_material3d_new();
@@ -1663,9 +1840,10 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
     EXPECT_TRUE(matrices_nearly_equal(first_shadow_vp0, shadow_vps[0], 0.0001f) &&
                     matrices_nearly_equal(first_shadow_vp1, shadow_vps[1], 0.0001f),
                 "Shadow-map selection follows directional light strength instead of slot order");
-    EXPECT_TRUE(last_draw_light_count == 3 && last_draw_lights[0].shadow_index == 0 &&
-                    last_draw_lights[2].shadow_index == 1 && last_draw_lights[1].shadow_index == -1,
-                "Main-pass light payload tags only the two strongest directional lights with shadow slots");
+    EXPECT_TRUE(
+        last_draw_light_count == 3 && last_draw_lights[0].shadow_index == 0 &&
+            last_draw_lights[2].shadow_index == 1 && last_draw_lights[1].shadow_index == -1,
+        "Main-pass light payload tags only the two strongest directional lights with shadow slots");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1696,6 +1874,7 @@ static void test_shadow_selection_uses_queued_scene_light_snapshots(void) {
     imported_light.direction[1] = -1.0;
     imported_light.color[0] = imported_light.color[1] = imported_light.color[2] = 1.0;
     imported_light.intensity = 2.0;
+    imported_light.enabled = 1;
 
     void *mesh = make_test_mesh();
     void *material = rt_material3d_new();
@@ -1741,8 +1920,9 @@ static void test_occlusion_mode_rejects_off_frustum_draws_before_submission(void
     rt_canvas3d_draw_mesh(&canvas, mesh, outside_tx, material);
     rt_canvas3d_end(&canvas);
 
-    EXPECT_TRUE(draw_submit_calls == 1,
-                "Occlusion-culling mode performs coarse frustum rejection before main-pass submission");
+    EXPECT_TRUE(
+        draw_submit_calls == 1,
+        "Occlusion-culling mode performs coarse frustum rejection before main-pass submission");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1761,6 +1941,7 @@ static void test_draw_mesh_preserves_full_light_capacity(void) {
         lights[i].color[1] = 0.2 + 0.01 * (double)i;
         lights[i].color[2] = 0.3 + 0.01 * (double)i;
         lights[i].intensity = 1.0 + 0.25 * (double)i;
+        lights[i].enabled = 1;
         canvas.lights[i] = &lights[i];
     }
 
@@ -1774,11 +1955,43 @@ static void test_draw_mesh_preserves_full_light_capacity(void) {
     EXPECT_TRUE(draws[0].light_count == VGFX3D_MAX_LIGHTS,
                 "Deferred draw preserves every configured light slot");
     EXPECT_TRUE(std::fabs(draws[0].lights[VGFX3D_MAX_LIGHTS - 1].position[0] -
-                              (float)(VGFX3D_MAX_LIGHTS - 1)) < 0.001f,
+                          (float)(VGFX3D_MAX_LIGHTS - 1)) < 0.001f,
                 "Deferred draw includes the last light slot position");
     EXPECT_TRUE(std::fabs(draws[0].lights[VGFX3D_MAX_LIGHTS - 1].intensity -
-                              (float)(1.0 + 0.25 * (double)(VGFX3D_MAX_LIGHTS - 1))) < 0.001f,
+                          (float)(1.0 + 0.25 * (double)(VGFX3D_MAX_LIGHTS - 1))) < 0.001f,
                 "Deferred draw includes the last light slot intensity");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_disabled_lights_are_not_submitted(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+    reset_canvas_frame(&canvas, 1);
+
+    rt_light3d enabled = {};
+    rt_light3d disabled = {};
+    enabled.type = 0;
+    enabled.direction[1] = -1.0;
+    enabled.color[0] = enabled.color[1] = enabled.color[2] = 1.0;
+    enabled.intensity = 1.0;
+    enabled.enabled = 1;
+    disabled = enabled;
+    disabled.enabled = 0;
+    disabled.intensity = 5.0;
+    canvas.lights[0] = &disabled;
+    canvas.lights[1] = &enabled;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Disabled-light test enqueues one draw");
+    EXPECT_TRUE(draws[0].light_count == 1, "Disabled lights are skipped before backend submission");
+    EXPECT_TRUE(std::fabs(draws[0].lights[0].intensity - 1.0f) < 0.001f,
+                "Enabled light remains in the submitted light payload");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1812,6 +2025,201 @@ static void test_screenshot_prefers_backend_readback(void) {
         EXPECT_TRUE(view->data[0] == 0x12345678u,
                     "Canvas3D.Screenshot stores backend RGBA bytes in Pixels order");
     }
+}
+
+static void test_screenshot_reads_physical_framebuffer_to_logical_pixels(void) {
+    typedef struct {
+        int64_t w;
+        int64_t h;
+        uint32_t *data;
+    } pixels_view_t;
+
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.readback_rgba = record_hidpi_readback_rgba;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    canvas.width = 2;
+    canvas.height = 2;
+    canvas.framebuffer_width = 4;
+    canvas.framebuffer_height = 4;
+    last_readback_w = 0;
+    last_readback_h = 0;
+    last_readback_stride = 0;
+
+    void *shot = rt_canvas3d_screenshot(&canvas);
+    pixels_view_t *view = (pixels_view_t *)shot;
+    EXPECT_TRUE(shot != nullptr, "HiDPI Canvas3D.Screenshot produces a Pixels object");
+    EXPECT_TRUE(last_readback_w == 4 && last_readback_h == 4,
+                "HiDPI Canvas3D.Screenshot reads the physical framebuffer");
+    EXPECT_TRUE(last_readback_stride == 16,
+                "HiDPI Canvas3D.Screenshot uses the physical RGBA row stride");
+    if (view && view->data) {
+        EXPECT_TRUE(view->w == 2 && view->h == 2,
+                    "HiDPI Canvas3D.Screenshot returns logical canvas dimensions");
+        EXPECT_TRUE(view->data[0] == 0x102030FFu && view->data[1] == 0x405060FFu &&
+                        view->data[2] == 0x708090FFu && view->data[3] == 0xA0B0C0FFu,
+                    "HiDPI Canvas3D.Screenshot downsamples physical pixels into logical pixels");
+    }
+
+    if (shot && rt_obj_release_check0(shot))
+        rt_obj_free(shot);
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_final_overlay_replays_after_finalize(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "testgpu";
+    backend.begin_frame = record_begin_frame;
+    backend.submit_draw = record_final_draw;
+    backend.end_frame = record_final_end_frame;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    canvas.in_frame = 0;
+    canvas.width = 64;
+    canvas.height = 48;
+    reset_postfx_records();
+    reset_final_frame_records();
+
+    rt_canvas3d_begin_overlay(&canvas);
+    EXPECT_TRUE(canvas.final_overlay_recording == 1,
+                "Canvas3D.BeginOverlay enters final-overlay recording mode");
+    EXPECT_TRUE(canvas.in_frame == 1, "Canvas3D.BeginOverlay opens a 2D recording frame");
+    EXPECT_TRUE(begin_frame_calls == 0,
+                "Canvas3D.BeginOverlay records commands without touching the backend");
+
+    rt_canvas3d_draw_rect2d(&canvas, 4, 5, 12, 8, 0xFF00FFFF);
+    EXPECT_TRUE(canvas.final_overlay_count == 1,
+                "Final overlay screen draws are stored in the final overlay queue");
+    EXPECT_TRUE(canvas.draw_count == 0,
+                "Final overlay draws do not enter the normal scene draw queue");
+    EXPECT_TRUE(canvas.temp_buf_count == 0,
+                "Final overlay geometry does not use the normal end-of-frame temp list");
+    EXPECT_TRUE(canvas.final_overlay_temp_buf_count == 1,
+                "Final overlay geometry survives normal End cleanup");
+
+    rt_canvas3d_end_overlay(&canvas);
+    EXPECT_TRUE(canvas.final_overlay_recording == 0,
+                "Canvas3D.EndOverlay exits final-overlay recording mode");
+    EXPECT_TRUE(canvas.in_frame == 0, "Canvas3D.EndOverlay closes the recording frame");
+
+    rt_canvas3d_clear_overlay(&canvas);
+    EXPECT_TRUE(canvas.final_overlay_count == 0,
+                "Canvas3D.ClearOverlay discards recorded final overlay draws");
+    EXPECT_TRUE(canvas.final_overlay_temp_buf_count == 0,
+                "Canvas3D.ClearOverlay frees recorded final overlay geometry");
+
+    rt_canvas3d_begin_overlay(&canvas);
+    rt_canvas3d_draw_rect2d(&canvas, 4, 5, 12, 8, 0xFF00FFFF);
+    rt_canvas3d_end_overlay(&canvas);
+
+    rt_canvas3d_finalize_frame(&canvas);
+    EXPECT_TRUE(rt_canvas3d_get_frame_finalized(&canvas) == 1,
+                "Canvas3D.FinalizeFrame marks the frame as finalized");
+    EXPECT_TRUE(begin_frame_calls == 1,
+                "Canvas3D.FinalizeFrame starts one backend pass for final overlay replay");
+    EXPECT_TRUE(begin_frame_params[0].load_existing_color == 1,
+                "Final overlay replay preserves post-FX scene color");
+    EXPECT_TRUE(final_submit_draw_calls == 1,
+                "Canvas3D.FinalizeFrame submits the recorded final overlay draw");
+    EXPECT_TRUE(final_last_draw_cmd.disable_depth_test == 1,
+                "Canvas3D.FinalizeFrame submits final overlays with depth disabled");
+    EXPECT_TRUE(final_end_frame_calls == 1,
+                "Canvas3D.FinalizeFrame closes the final overlay backend pass");
+
+    rt_canvas3d_finalize_frame(&canvas);
+    EXPECT_TRUE(begin_frame_calls == 1 && final_submit_draw_calls == 1 &&
+                    final_end_frame_calls == 1,
+                "Canvas3D.FinalizeFrame is idempotent within one frame");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_gpu_postfx_final_overlay_presents_composited_frame(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "testgpu";
+    backend.begin_frame = record_begin_frame;
+    backend.submit_draw = record_final_draw;
+    backend.end_frame = record_final_end_frame;
+    backend.present_postfx = record_present_postfx;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    canvas.in_frame = 0;
+    canvas.width = 64;
+    canvas.height = 48;
+    canvas.frame_gpu_postfx_enabled = 1;
+    canvas.frame_postfx_state_latched = 1;
+    reset_postfx_records();
+    reset_final_frame_records();
+
+    rt_canvas3d_begin_overlay(&canvas);
+    rt_canvas3d_draw_rect2d(&canvas, 4, 5, 12, 8, 0xFF00FFFF);
+    rt_canvas3d_end_overlay(&canvas);
+    rt_canvas3d_finalize_frame(&canvas);
+
+    EXPECT_TRUE(final_submit_draw_calls == 1,
+                "GPU postfx finalize replays final overlay during finalization");
+    EXPECT_TRUE(final_present_postfx_calls == 1,
+                "GPU postfx final overlays still present through backend post-FX");
+    EXPECT_TRUE(final_present_postfx_saw_submit_count == 1,
+                "Backend post-FX presentation runs after final overlay replay");
+    EXPECT_TRUE(canvas.frame_presented_by_finalize == 1,
+                "Final-overlay GPU postfx frames are presented by finalization");
+    EXPECT_TRUE(rt_canvas3d_get_frame_finalized(&canvas) == 1,
+                "GPU postfx finalize marks the frame finalized");
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_screenshot_final_finalizes_before_readback(void) {
+    typedef struct {
+        int64_t w;
+        int64_t h;
+        uint32_t *data;
+    } pixels_view_t;
+
+    vgfx3d_backend_t backend = {};
+    backend.name = "testgpu";
+    backend.begin_frame = record_begin_frame;
+    backend.submit_draw = record_final_draw;
+    backend.end_frame = record_final_end_frame;
+    backend.readback_rgba = record_final_readback_rgba;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    canvas.backend_ctx = &canvas;
+    canvas.in_frame = 0;
+    canvas.width = 2;
+    canvas.height = 2;
+    reset_postfx_records();
+    reset_final_frame_records();
+
+    rt_canvas3d_begin_overlay(&canvas);
+    rt_canvas3d_draw_rect2d(&canvas, 0, 0, 2, 2, 0xFFFFFFFF);
+    rt_canvas3d_end_overlay(&canvas);
+
+    void *shot = rt_canvas3d_screenshot_final(&canvas);
+    pixels_view_t *view = (pixels_view_t *)shot;
+
+    EXPECT_TRUE(shot != nullptr, "Canvas3D.ScreenshotFinal produces a Pixels object");
+    EXPECT_TRUE(final_readback_calls == 1,
+                "Canvas3D.ScreenshotFinal requests backend readback exactly once");
+    EXPECT_TRUE(final_readback_saw_finalized == 1,
+                "Canvas3D.ScreenshotFinal finalizes the frame before readback");
+    EXPECT_TRUE(final_readback_saw_submit_count == 1,
+                "Canvas3D.ScreenshotFinal replays final overlay before readback");
+    EXPECT_TRUE(last_readback_w == 2 && last_readback_h == 2,
+                "Canvas3D.ScreenshotFinal reads finalized pixels at canvas dimensions");
+    if (view && view->data) {
+        EXPECT_TRUE(view->data[0] == 0x12345678u,
+                    "Canvas3D.ScreenshotFinal stores backend RGBA bytes in Pixels order");
+    }
+
+    if (shot && rt_obj_release_check0(shot))
+        rt_obj_free(shot);
+    cleanup_fake_canvas(&canvas);
 }
 
 static void test_gpu_postfx_state_latches_across_overlay_pass(void) {
@@ -1861,7 +2269,8 @@ static void test_gpu_postfx_state_latches_across_overlay_pass(void) {
                 "Canvas3D forwards the latched postfx snapshot to both backend passes");
     EXPECT_TRUE(set_gpu_postfx_snapshot_present[0] == 1 && set_gpu_postfx_snapshot_present[1] == 1,
                 "Canvas3D keeps the postfx snapshot alive across the overlay pass");
-    EXPECT_TRUE(set_gpu_postfx_chains[0].effect_count == 1 && set_gpu_postfx_chains[1].effect_count == 1,
+    EXPECT_TRUE(set_gpu_postfx_chains[0].effect_count == 1 &&
+                    set_gpu_postfx_chains[1].effect_count == 1,
                 "Canvas3D forwards the same one-effect postfx chain to both backend passes");
     EXPECT_TRUE(set_gpu_postfx_chains[0].effects[0].snapshot.bloom_enabled == 1 &&
                     set_gpu_postfx_chains[1].effects[0].snapshot.bloom_threshold == 0.8f &&
@@ -1919,6 +2328,125 @@ static void test_begin_frame_forwards_camera_forward_and_ortho_flag(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_synthetic_input_and_clock_advance_through_public_canvas_api(void) {
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+
+    init_fake_canvas(&canvas, &backend);
+    canvas.gfx_win = nullptr;
+    rt_keyboard_init();
+    rt_mouse_init();
+
+    rt_canvas3d_set_dt_max(&canvas, 0);
+    rt_canvas3d_set_input_source(&canvas, 1);
+    rt_canvas3d_set_clock_source(&canvas, 1);
+    rt_canvas3d_set_synthetic_delta_time_sec(&canvas, 1.0 / 30.0);
+    rt_canvas3d_push_synthetic_key(&canvas, VIPER_KEY_W, 1);
+    rt_canvas3d_push_synthetic_mouse(&canvas, 7.0, -3.0, 1LL << VIPER_MOUSE_BUTTON_LEFT, 1.5);
+
+    int64_t event_type = rt_canvas3d_poll(&canvas);
+
+    EXPECT_TRUE(event_type == 0, "Synthetic-only Canvas3D.Poll does not require platform events");
+    EXPECT_TRUE(rt_keyboard_was_pressed(VIPER_KEY_W) == 1,
+                "Canvas3D synthetic key down records a pressed edge");
+    EXPECT_TRUE(rt_keyboard_is_down(VIPER_KEY_W) == 1,
+                "Canvas3D synthetic key down holds through normal keyboard state");
+    EXPECT_TRUE(rt_mouse_delta_x() == 7 && rt_mouse_delta_y() == -3,
+                "Canvas3D synthetic mouse movement flows through Mouse.Delta");
+    EXPECT_TRUE(rt_mouse_was_pressed(VIPER_MOUSE_BUTTON_LEFT) == 1 && rt_mouse_left() == 1,
+                "Canvas3D synthetic mouse buttons use normal button state");
+    EXPECT_TRUE(std::fabs(rt_mouse_wheel_yf() - 1.5) < 0.0001,
+                "Canvas3D synthetic mouse wheel keeps fractional precision");
+    EXPECT_TRUE(std::fabs(rt_canvas3d_get_delta_time_sec(&canvas) - (1.0 / 30.0)) < 0.000001,
+                "Canvas3D synthetic clock reports the fixed frame delta");
+
+    rt_canvas3d_push_synthetic_key(&canvas, VIPER_KEY_W, 0);
+    rt_canvas3d_push_synthetic_mouse(&canvas, 0.0, 0.0, 0, 0.0);
+    rt_canvas3d_advance_synthetic_frame(&canvas);
+
+    EXPECT_TRUE(rt_keyboard_was_released(VIPER_KEY_W) == 1 && rt_keyboard_is_up(VIPER_KEY_W) == 1,
+                "Canvas3D synthetic key up records a released edge");
+    EXPECT_TRUE(rt_mouse_was_released(VIPER_MOUSE_BUTTON_LEFT) == 1 && rt_mouse_left() == 0,
+                "Canvas3D synthetic mouse button release uses normal button state");
+    EXPECT_TRUE(rt_mouse_delta_x() == 0 && rt_mouse_delta_y() == 0 &&
+                    std::fabs(rt_mouse_wheel_yf()) < 0.0001,
+                "Canvas3D synthetic input queues are consumed once per frame");
+
+    rt_canvas3d_clear_synthetic_input(&canvas);
+    cleanup_fake_canvas(&canvas);
+}
+
+static int chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t effect_type) {
+    if (!chain || !chain->enabled || !chain->effects)
+        return 0;
+    for (int32_t i = 0; i < chain->effect_count; i++) {
+        if (chain->effects[i].type == effect_type)
+            return 1;
+    }
+    return 0;
+}
+
+static void test_quality_profile_degrades_cinematic_without_gpu_postfx(void) {
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    vgfx3d_postfx_chain_t chain = {};
+
+    backend.name = "software";
+    init_fake_canvas(&canvas, &backend);
+
+    rt_canvas3d_set_quality(&canvas, RT_GRAPHICS3D_QUALITY_CINEMATIC);
+    rt_string reason = rt_canvas3d_get_quality_fallback_reason(&canvas);
+    const char *reason_cs = reason ? rt_string_cstr(reason) : "";
+
+    EXPECT_TRUE(canvas.postfx != nullptr, "Canvas3D.SetQuality attaches a PostFX profile");
+    EXPECT_TRUE(rt_canvas3d_get_quality_requested(&canvas) == RT_GRAPHICS3D_QUALITY_CINEMATIC,
+                "Canvas3D records the requested cinematic quality profile");
+    EXPECT_TRUE(rt_canvas3d_get_quality_active(&canvas) == RT_GRAPHICS3D_QUALITY_CINEMATIC,
+                "Canvas3D keeps cinematic as the active CPU-safe profile");
+    EXPECT_TRUE(rt_canvas3d_get_quality_fallback(&canvas) == 1,
+                "Canvas3D records cinematic quality fallback without GPU postfx");
+    EXPECT_TRUE(std::strstr(reason_cs, "gpu-postfx") != nullptr,
+                "Canvas3D records a readable quality fallback reason");
+    EXPECT_TRUE(vgfx3d_postfx_requires_gpu_scene_buffers(canvas.postfx) == 0,
+                "CPU-safe cinematic fallback does not require GPU scene buffers");
+    EXPECT_TRUE(vgfx3d_postfx_get_chain(canvas.postfx, &chain) == 1,
+                "CPU-safe cinematic fallback exports a PostFX chain");
+    EXPECT_TRUE(!chain_has_effect(&chain, VGFX3D_POSTFX_EFFECT_SSAO) &&
+                    !chain_has_effect(&chain, VGFX3D_POSTFX_EFFECT_DOF) &&
+                    !chain_has_effect(&chain, VGFX3D_POSTFX_EFFECT_MOTION_BLUR),
+                "CPU-safe cinematic fallback excludes GPU-only effects");
+
+    vgfx3d_postfx_chain_free(&chain);
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_quality_profile_enables_gpu_effects_when_backend_supports_postfx(void) {
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    vgfx3d_postfx_chain_t chain = {};
+
+    backend.name = "metal";
+    backend.present_postfx = noop_present_postfx;
+    init_fake_canvas(&canvas, &backend);
+
+    rt_canvas3d_set_quality(&canvas, RT_GRAPHICS3D_QUALITY_CINEMATIC);
+
+    EXPECT_TRUE(canvas.postfx != nullptr, "GPU cinematic quality attaches a PostFX profile");
+    EXPECT_TRUE(rt_canvas3d_get_quality_fallback(&canvas) == 0,
+                "GPU cinematic quality does not record a fallback when GPU postfx is available");
+    EXPECT_TRUE(vgfx3d_postfx_requires_gpu_scene_buffers(canvas.postfx) == 1,
+                "GPU cinematic quality includes scene-buffer effects");
+    EXPECT_TRUE(vgfx3d_postfx_get_chain(canvas.postfx, &chain) == 1,
+                "GPU cinematic quality exports a PostFX chain");
+    EXPECT_TRUE(chain_has_effect(&chain, VGFX3D_POSTFX_EFFECT_SSAO) &&
+                    chain_has_effect(&chain, VGFX3D_POSTFX_EFFECT_DOF) &&
+                    chain_has_effect(&chain, VGFX3D_POSTFX_EFFECT_MOTION_BLUR),
+                "GPU cinematic quality includes GPU-only postfx when supported");
+
+    vgfx3d_postfx_chain_free(&chain);
+    cleanup_fake_canvas(&canvas);
+}
+
 int main() {
     test_gpu_skinning_bypass_for_opengl();
     test_gpu_skinning_bypass_for_d3d11();
@@ -1951,6 +2479,7 @@ int main() {
     test_instanced_transform_history_forwarded();
     test_instanced_transform_history_survives_count_changes();
     test_deferred_instanced_draw_snapshots_instance_buffers();
+    test_instanced_transform_history_skips_payload_without_motion_blur();
     test_instanced_material_payload_forwarded();
     test_pbr_material_payload_forwarded();
     test_instanced_runtime_culls_outside_frustum();
@@ -1961,9 +2490,17 @@ int main() {
     test_shadow_selection_uses_queued_scene_light_snapshots();
     test_occlusion_mode_rejects_off_frustum_draws_before_submission();
     test_draw_mesh_preserves_full_light_capacity();
+    test_disabled_lights_are_not_submitted();
     test_screenshot_prefers_backend_readback();
+    test_screenshot_reads_physical_framebuffer_to_logical_pixels();
+    test_final_overlay_replays_after_finalize();
+    test_gpu_postfx_final_overlay_presents_composited_frame();
+    test_screenshot_final_finalizes_before_readback();
     test_gpu_postfx_state_latches_across_overlay_pass();
     test_begin_frame_forwards_camera_forward_and_ortho_flag();
+    test_synthetic_input_and_clock_advance_through_public_canvas_api();
+    test_quality_profile_degrades_cinematic_without_gpu_postfx();
+    test_quality_profile_enables_gpu_effects_when_backend_supports_postfx();
 
     std::printf("Canvas3D GPU path tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

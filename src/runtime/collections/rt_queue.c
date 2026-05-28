@@ -31,9 +31,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_internal.h"
 #include "rt_collection_ids.h"
 #include "rt_gc.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 
 #include <stdlib.h>

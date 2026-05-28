@@ -33,6 +33,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_audio.h"
+#include "rt_asset.h"
 #include "rt_error.h"
 #include "rt_mixgroup.h"
 #include "rt_mp3.h"
@@ -41,11 +42,12 @@
 #include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_time.h"
+#include "rt_trap.h"
 #include "rt_vorbis.h"
 
-#include <stddef.h>
 #include <float.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1174,9 +1176,9 @@ static int detect_audio_format(const char *filepath) {
 static int build_wav_from_pcm(const int16_t *pcm,
                               size_t frames,
                               int channels,
-    int sample_rate,
-    uint8_t **out_data,
-    size_t *out_len) {
+                              int sample_rate,
+                              uint8_t **out_data,
+                              size_t *out_len) {
     if (out_data)
         *out_data = NULL;
     if (out_len)
@@ -1557,6 +1559,28 @@ void *rt_sound_load(rt_string path) {
     }
 
     return wrapper;
+}
+
+/// @brief Load a sound effect through the runtime asset manager.
+void *rt_sound_load_asset(rt_string name) {
+    if (!name)
+        return NULL;
+
+    size_t data_size = 0;
+    uint8_t *data = rt_asset_load_raw(name, &data_size);
+    if (!data || data_size == 0) {
+        free(data);
+        rt_trap("Sound.LoadAsset: asset not found");
+        return NULL;
+    }
+    if (data_size > (size_t)INT64_MAX) {
+        free(data);
+        return NULL;
+    }
+
+    void *sound = rt_sound_load_mem(data, (int64_t)data_size);
+    free(data);
+    return sound;
 }
 
 /// @brief Load a sound effect from an in-memory buffer (WAV/OGG/MP3 supported).
@@ -2170,8 +2194,7 @@ void rt_music_stop_related(void *music) {
         rt_music_crossfade_state *xf = &g_crossfades[xf_idx];
         int stop_fade_out = (xf->fade_out == mus);
         int stop_fade_in = (xf->fade_in == mus);
-        rt_audio_crossfade_cancel_entry_locked(
-            xf, stop_fade_out, stop_fade_in, 1, &releases);
+        rt_audio_crossfade_cancel_entry_locked(xf, stop_fade_out, stop_fade_in, 1, &releases);
     } else {
         mus->paused = 0;
         vaud_music_stop(mus->music);
@@ -2293,8 +2316,7 @@ int64_t rt_audio_get_group_volume_named(rt_string group_name) {
 
 rt_string rt_audio_group_name(int64_t group_id) {
     audio_state_lock();
-    const char *name =
-        audio_group_id_valid_unlocked(group_id) ? g_group_names[group_id] : "";
+    const char *name = audio_group_id_valid_unlocked(group_id) ? g_group_names[group_id] : "";
     rt_string result = rt_const_cstr(name);
     audio_state_unlock();
     return result;
@@ -2606,6 +2628,14 @@ void *rt_sound_load(rt_string path) {
         return NULL;
     (void)path;
     rt_audio_unavailable_("Sound.Load: audio support not compiled in");
+    return NULL;
+}
+
+void *rt_sound_load_asset(rt_string name) {
+    if (!name)
+        return NULL;
+    (void)name;
+    rt_audio_unavailable_("Sound.LoadAsset: audio support not compiled in");
     return NULL;
 }
 

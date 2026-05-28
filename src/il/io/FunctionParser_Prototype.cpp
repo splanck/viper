@@ -180,12 +180,12 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
         std::size_t comment = std::string::npos;
         for (std::size_t candidate : {hashComment, slashComment, semicolonComment}) {
             if (candidate != std::string::npos &&
-                (candidate == 0 || std::isspace(static_cast<unsigned char>(suffix[candidate - 1])))) {
+                (candidate == 0 ||
+                 std::isspace(static_cast<unsigned char>(suffix[candidate - 1])))) {
                 comment = std::min(comment, candidate);
             }
         }
-        const std::size_t contentEnd =
-            comment == std::string::npos ? suffix.size() : comment;
+        const std::size_t contentEnd = comment == std::string::npos ? suffix.size() : comment;
         const std::size_t attrStart = suffix.substr(0, contentEnd).find('[');
         const std::size_t retEnd = attrStart == std::string::npos ? contentEnd : attrStart;
         std::string retRaw(trimView(suffix.substr(0, retEnd)));
@@ -256,11 +256,13 @@ Expected<Attrs> parseAttributes(Cursor &cur, bool requireBrace) {
         const size_t attrsBegin = cur.offset();
         const size_t close = cur.view().find(']', attrsBegin);
         if (close == std::string_view::npos)
-            return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "malformed function attributes", {})};
+            return Expected<Attrs>{
+                makeSyntaxError(cursorPos(cur), "malformed function attributes", {})};
 
         std::string body = trim(std::string(cur.view().substr(attrsBegin, close - attrsBegin)));
         if (body.empty())
-            return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "empty function attribute list", {})};
+            return Expected<Attrs>{
+                makeSyntaxError(cursorPos(cur), "empty function attribute list", {})};
 
         for (char &ch : body)
             if (ch == ',')

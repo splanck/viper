@@ -1,5 +1,7 @@
 module perf_monitor;
 
+bind "../editor/project_index";
+
 bind Viper.GUI as GUI;
 bind Env = Viper.System.Environment;
 bind Clock = Viper.Time.Clock;
@@ -18,11 +20,14 @@ class PerfMonitor {
     expose Integer diagnosticsUs;
     expose Integer hoverUs;
     expose Integer signatureUs;
+    expose Integer inlayUs;
     expose Integer symbolsUs;
     expose Integer indexUs;
     expose Integer searchUs;
     expose Integer buildUs;
     expose Integer renderUs;
+    expose Integer projectIndexUpdates;
+    expose Integer projectIndexBytes;
 
     expose func init() {
         enabled = Env.HasVariable("VIPERIDE_PERF") or Env.HasVariable("VIPERIDE_PERF_LOG");
@@ -40,11 +45,14 @@ class PerfMonitor {
         diagnosticsUs = 0;
         hoverUs = 0;
         signatureUs = 0;
+        inlayUs = 0;
         symbolsUs = 0;
         indexUs = 0;
         searchUs = 0;
         buildUs = 0;
         renderUs = 0;
+        projectIndexUpdates = 0;
+        projectIndexBytes = 0;
     }
 
     expose func BeginFrame() {
@@ -73,6 +81,10 @@ class PerfMonitor {
         if enabled and startUs > 0 { signatureUs = signatureUs + (Clock.TicksUs() - startUs); }
     }
 
+    expose func AddInlay(startUs: Integer) {
+        if enabled and startUs > 0 { inlayUs = inlayUs + (Clock.TicksUs() - startUs); }
+    }
+
     expose func AddSymbols(startUs: Integer) {
         if enabled and startUs > 0 { symbolsUs = symbolsUs + (Clock.TicksUs() - startUs); }
     }
@@ -93,7 +105,8 @@ class PerfMonitor {
         if enabled and startUs > 0 { renderUs = renderUs + (Clock.TicksUs() - startUs); }
     }
 
-    expose func EndFrame(editor: GUI.CodeEditor) {
+    expose func EndFrame(editor: GUI.CodeEditor,
+                         indexer: project_index.ProjectIndexer) {
         if enabled == false { return; }
         var frameUs = Clock.TicksUs() - frameStartUs;
         totalFrameUs = totalFrameUs + frameUs;
@@ -124,6 +137,10 @@ class PerfMonitor {
             spanChecks = editor.GetHighlightSpanCheckCount();
             lineCount = editor.LineCount;
         }
+        if indexer != null {
+            projectIndexUpdates = projectIndexUpdates + indexer.updateCount;
+            projectIndexBytes = projectIndexBytes + indexer.updateBytes;
+        }
 
         var msg = "ViperIDE perf"
             + " frames=" + frameCount
@@ -134,10 +151,13 @@ class PerfMonitor {
             + " diagnosticsUs=" + diagnosticsUs
             + " hoverUs=" + hoverUs
             + " signatureUs=" + signatureUs
+            + " inlayUs=" + inlayUs
             + " symbolsUs=" + symbolsUs
             + " indexUs=" + indexUs
             + " searchUs=" + searchUs
             + " buildUs=" + buildUs
+            + " projectIndexUpdates=" + projectIndexUpdates
+            + " projectIndexBytes=" + projectIndexBytes
             + " lines=" + lineCount
             + " fullTextCopies=" + copyCount
             + " fullTextBytes=" + copyBytes
@@ -154,6 +174,9 @@ class PerfMonitor {
 
         if editor != null {
             editor.ResetPerfStats();
+        }
+        if indexer != null {
+            indexer.ResetPerfStats();
         }
         lastFlushMs = nowMs;
         ResetWindow();

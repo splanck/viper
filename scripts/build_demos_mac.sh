@@ -78,6 +78,7 @@ BASIC_DEMOS=(
 ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
     "3dbowling:${GAMES_DIR}/3dbowling"
+    "game3d-showcase:${GAMES_DIR}/game3d-showcase"
     "crackman:${GAMES_DIR}/crackman"
     "vipersql:${APPS_DIR}/vipersql"
     "chess-zia:${GAMES_DIR}/chess"
@@ -115,7 +116,7 @@ run_demo() {
     fi
 
     case "$name" in
-        3dbowling|vipersql|xenoscape)
+        3dbowling|game3d-showcase|vipersql|xenoscape)
             timeout_secs=10
             ;;
     esac
@@ -224,7 +225,6 @@ build_demo() {
 }
 
 echo -e "${CYAN}Building Viper demos with native assembler + linker (arm64)${NC}"
-echo -e "${CYAN}Zero external tools — no cc, no ld, no codesign${NC}"
 if [[ $SKIP_RUN -eq 0 ]]; then
     echo -e "${CYAN}Run validation: launch from ./examples/bin with timeout=${RUN_TIMEOUT_DEFAULT}s${NC}"
 fi

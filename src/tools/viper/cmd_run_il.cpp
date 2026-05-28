@@ -348,9 +348,8 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     const uint32_t fileId = sm.addFile(config.ilFile);
     if (fileId == 0) {
         ilc::printDiagnostic(
-            il::support::makeErrorWithCode({},
-                                           "V-SRC-FILE-ID",
-                                           std::string{il::support::kSourceManagerFileIdOverflowMessage}),
+            il::support::makeErrorWithCode(
+                {}, "V-SRC-FILE-ID", std::string{il::support::kSourceManagerFileIdOverflowMessage}),
             std::cerr,
             &sm,
             config.sharedOpts.diagnosticFormat);

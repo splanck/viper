@@ -32,10 +32,10 @@
 #include <cctype>
 #include <cerrno>
 #include <clocale>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -79,8 +79,7 @@ struct ThreadsRuntimeInitializer {
 void ensureRuntimeDescriptorsValid() {
     static const bool descriptorsValid = il::runtime::selfCheckRuntimeDescriptors();
     if (!descriptorsValid)
-        throw std::runtime_error(
-            "VM initialization failed: runtime descriptor self-check failed");
+        throw std::runtime_error("VM initialization failed: runtime descriptor self-check failed");
 }
 
 /// @brief Static initializer that registers the VM trap handler for invariant violations.
@@ -176,22 +175,26 @@ void initializeGlobalStorage(const Global &global, void *storage) {
 
     switch (global.type.kind) {
         case Type::Kind::I1: {
-            const uint8_t value = static_cast<uint8_t>(std::strtoll(global.init.c_str(), nullptr, 10) & 1);
+            const uint8_t value =
+                static_cast<uint8_t>(std::strtoll(global.init.c_str(), nullptr, 10) & 1);
             std::memcpy(storage, &value, sizeof(value));
             break;
         }
         case Type::Kind::I16: {
-            const int16_t value = static_cast<int16_t>(std::strtoll(global.init.c_str(), nullptr, 10));
+            const int16_t value =
+                static_cast<int16_t>(std::strtoll(global.init.c_str(), nullptr, 10));
             std::memcpy(storage, &value, sizeof(value));
             break;
         }
         case Type::Kind::I32: {
-            const int32_t value = static_cast<int32_t>(std::strtoll(global.init.c_str(), nullptr, 10));
+            const int32_t value =
+                static_cast<int32_t>(std::strtoll(global.init.c_str(), nullptr, 10));
             std::memcpy(storage, &value, sizeof(value));
             break;
         }
         case Type::Kind::I64: {
-            const int64_t value = static_cast<int64_t>(std::strtoll(global.init.c_str(), nullptr, 10));
+            const int64_t value =
+                static_cast<int64_t>(std::strtoll(global.init.c_str(), nullptr, 10));
             std::memcpy(storage, &value, sizeof(value));
             break;
         }

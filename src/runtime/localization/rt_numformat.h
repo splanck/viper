@@ -61,23 +61,23 @@ void *rt_numformat_get_locale(void *self);
 /// @brief Get the minimum number of fraction digits emitted.
 int64_t rt_numformat_get_min_frac(void *self);
 /// @brief Set the minimum number of fraction digits emitted.
-void    rt_numformat_set_min_frac(void *self, int64_t value);
+void rt_numformat_set_min_frac(void *self, int64_t value);
 /// @brief Get the maximum number of fraction digits emitted (rounded to fit).
 int64_t rt_numformat_get_max_frac(void *self);
 /// @brief Set the maximum number of fraction digits emitted (rounded to fit).
-void    rt_numformat_set_max_frac(void *self, int64_t value);
+void rt_numformat_set_max_frac(void *self, int64_t value);
 /// @brief Get whether digit grouping (thousands separators) is enabled (0/1).
-int8_t  rt_numformat_get_grouping(void *self);
+int8_t rt_numformat_get_grouping(void *self);
 /// @brief Set whether digit grouping (thousands separators) is enabled.
-void    rt_numformat_set_grouping(void *self, int8_t value);
+void rt_numformat_set_grouping(void *self, int8_t value);
 /// @brief Get strict-parsing mode (0/1); strict rejects loose/partial input.
-int8_t  rt_numformat_get_strict(void *self);
+int8_t rt_numformat_get_strict(void *self);
 /// @brief Set strict-parsing mode.
-void    rt_numformat_set_strict(void *self, int8_t value);
+void rt_numformat_set_strict(void *self, int8_t value);
 /// @brief Get the rounding mode name (e.g. "halfEven", "halfUp", "floor").
 rt_string rt_numformat_get_rounding(void *self);
 /// @brief Set the rounding mode by name; unknown names fall back to halfEven.
-void      rt_numformat_set_rounding(void *self, rt_string mode);
+void rt_numformat_set_rounding(void *self, rt_string mode);
 
 //===----------------------------------------------------------------------===//
 // Format methods
@@ -114,13 +114,13 @@ void *rt_numformat_try_parse_decimal(void *self, rt_string input);
 /// @brief Integer parse; rejects fractional content.
 int64_t rt_numformat_parse_integer(void *self, rt_string input);
 /// @brief Try-parse integer variant: returns Option<i64> (Some/None).
-void   *rt_numformat_try_parse_integer(void *self, rt_string input);
+void *rt_numformat_try_parse_integer(void *self, rt_string input);
 
 /// @brief Currency parse; accepts an optional leading / trailing currency
 ///        symbol (either the locale default or an arbitrary symbol).
 double rt_numformat_parse_currency(void *self, rt_string input);
 /// @brief Try-parse currency variant: returns Option<f64> (Some/None).
-void  *rt_numformat_try_parse_currency(void *self, rt_string input);
+void *rt_numformat_try_parse_currency(void *self, rt_string input);
 
 #ifdef __cplusplus
 }

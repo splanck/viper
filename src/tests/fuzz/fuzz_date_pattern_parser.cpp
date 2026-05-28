@@ -18,11 +18,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_datetime.h"
+#include "rt.hpp"
 #include "rt_dateformat.h"
+#include "rt_datetime.h"
 #include "rt_locale.h"
 #include "rt_string.h"
-#include "rt.hpp"
 
 #include <csetjmp>
 #include <cstddef>
@@ -42,8 +42,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     void *fmt = rt_dateformat_for_locale(loc);
     int64_t ts = rt_datetime_create(2027, 3, 15, 14, 30, 5);
 
-    rt_string pattern = rt_string_from_bytes(
-        reinterpret_cast<const char *>(data), size);
+    rt_string pattern = rt_string_from_bytes(reinterpret_cast<const char *>(data), size);
 
     g_recovering = 1;
     rt_trap_set_recovery(&g_fuzz_env);

@@ -11,8 +11,8 @@
 //                 higher resolution than Ticks.
 // Links: docs/viperlib.md
 
-#include "viper/runtime/rt.h"
 #include "tests/common/PlatformSkip.h"
+#include "viper/runtime/rt.h"
 
 #include <cassert>
 #include <cstdio>

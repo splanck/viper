@@ -7,8 +7,8 @@
 #include "rt_pixels.h"
 #include <cassert>
 #include <cstdint>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 
 static int tests_passed = 0;
 static int tests_failed = 0;

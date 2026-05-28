@@ -76,8 +76,8 @@ bool sameSignature(const Signature &lhs, const Signature &rhs) {
            lhs.readonly == rhs.readonly && lhs.pure == rhs.pure &&
            lhs.consumedArgMask == rhs.consumedArgMask &&
            lhs.retainedArgMask == rhs.retainedArgMask &&
-           lhs.ownedOutArgMask == rhs.ownedOutArgMask &&
-           lhs.returnsOwned == rhs.returnsOwned && lhs.mayAllocate == rhs.mayAllocate;
+           lhs.ownedOutArgMask == rhs.ownedOutArgMask && lhs.returnsOwned == rhs.returnsOwned &&
+           lhs.mayAllocate == rhs.mayAllocate;
 }
 } // namespace
 

@@ -89,7 +89,8 @@ void *rt_config_load(void *path) {
     if (!root)
         return NULL;
 
-    config_impl *cfg = (config_impl *)rt_obj_new_i64(RT_CONFIG_CLASS_ID, (int64_t)sizeof(config_impl));
+    config_impl *cfg =
+        (config_impl *)rt_obj_new_i64(RT_CONFIG_CLASS_ID, (int64_t)sizeof(config_impl));
     if (!cfg) {
         config_release_obj(root);
         return NULL;
@@ -108,7 +109,8 @@ void *rt_config_from_string(void *json_str) {
     if (!root)
         return NULL;
 
-    config_impl *cfg = (config_impl *)rt_obj_new_i64(RT_CONFIG_CLASS_ID, (int64_t)sizeof(config_impl));
+    config_impl *cfg =
+        (config_impl *)rt_obj_new_i64(RT_CONFIG_CLASS_ID, (int64_t)sizeof(config_impl));
     if (!cfg) {
         config_release_obj(root);
         return NULL;

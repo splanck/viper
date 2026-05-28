@@ -33,6 +33,7 @@
 #include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 #include <algorithm>
+#include <sstream>
 #include <unordered_set>
 
 namespace il::frontends::zia {
@@ -58,6 +59,125 @@ int compareToolLoc(const SourceLoc &a, const SourceLoc &b) {
     if (a.column != b.column)
         return a.column < b.column ? -1 : 1;
     return 0;
+}
+
+std::string displayType(const TypeRef &type) {
+    return type ? type->toDisplayString() : "Unknown";
+}
+
+std::string runtimeCallableSignature(const std::string &name,
+                                     const TypeRef &type,
+                                     const std::vector<std::string> &paramNames) {
+    if (!type || type->kind != TypeKindSem::Function)
+        return name;
+
+    std::ostringstream out;
+    out << name << "(";
+    auto params = type->paramTypes();
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (i > 0)
+            out << ", ";
+        if (i < paramNames.size() && !paramNames[i].empty())
+            out << paramNames[i];
+        else
+            out << "arg" << (i + 1);
+        out << ": " << displayType(params[i]);
+    }
+    out << ") -> " << displayType(type->returnType());
+    return out.str();
+}
+
+std::vector<std::string> memberParamNamesFromExtern(const Symbol *externSym, size_t memberArity) {
+    if (!externSym || externSym->paramNames.empty())
+        return {};
+    if (externSym->paramNames.size() == memberArity)
+        return externSym->paramNames;
+    if (externSym->paramNames.size() == memberArity + 1)
+        return {externSym->paramNames.begin() + 1, externSym->paramNames.end()};
+    return {};
+}
+
+const char *authoredRuntimeMemberDocumentation(const std::string &className,
+                                               const std::string &memberName) {
+    struct Doc {
+        const char *className;
+        const char *memberName;
+        const char *text;
+    };
+
+    static constexpr Doc docs[] = {
+        {"Viper.Terminal",
+         "Say",
+         "Writes text followed by a newline to the terminal output stream."},
+        {"Viper.Terminal",
+         "Print",
+         "Writes text to the terminal output stream without appending a newline."},
+        {"Viper.Terminal",
+         "Ask",
+         "Prompts the user and returns the entered text when input is available."},
+        {"Viper.IO.File", "ReadAllText", "Reads an entire text file into a String."},
+        {"Viper.IO.File",
+         "WriteAllText",
+         "Writes a String to a file, replacing the previous contents."},
+        {"Viper.IO.File", "Exists", "Returns whether a file exists at the supplied path."},
+        {"Viper.IO.Path", "Join", "Combines path fragments using the platform path separator."},
+        {"Viper.GUI.App", "Poll", "Processes pending window and input events for the app."},
+        {"Viper.GUI.App",
+         "Render",
+         "Lays out and paints the current GUI frame when the app needs repainting."},
+        {"Viper.GUI.CodeEditor",
+         "SetText",
+         "Replaces the editor buffer text and refreshes editor state."},
+        {"Viper.GUI.CodeEditor", "GetText", "Returns the current editor buffer text."},
+        {"Viper.GUI.CodeEditor",
+         "Text",
+         "Read-only property containing the current editor buffer text."},
+        {"Viper.GUI.CodeEditor",
+         "Revision",
+         "Read-only counter that changes when the editor buffer changes."},
+        {"Viper.GUI.App",
+         "Root",
+         "Root widget for the app window; add top-level layout containers here."},
+    };
+
+    for (const auto &doc : docs) {
+        if (className == doc.className && memberName == doc.memberName)
+            return doc.text;
+    }
+    return nullptr;
+}
+
+std::string runtimeMethodDocumentation(const std::string &className,
+                                       const std::string &methodName,
+                                       const char *target,
+                                       const TypeRef &type,
+                                       const std::vector<std::string> &paramNames) {
+    std::ostringstream out;
+    if (const char *authored = authoredRuntimeMemberDocumentation(className, methodName))
+        out << authored << "\n";
+    out << "Runtime method " << className << "." << methodName << ".\n";
+    out << "Signature: " << runtimeCallableSignature(methodName, type, paramNames);
+    if (target && *target)
+        out << "\nTarget: " << target;
+    return out.str();
+}
+
+std::string runtimePropertyDocumentation(const std::string &className,
+                                         const il::runtime::RuntimeProperty &prop,
+                                         const TypeRef &type) {
+    std::ostringstream out;
+    if (const char *authored =
+            authoredRuntimeMemberDocumentation(className, prop.name ? prop.name : ""))
+        out << authored << "\n";
+    out << "Runtime property " << className << "." << (prop.name ? prop.name : "");
+    if (prop.readonly)
+        out << " (read-only)";
+    out << ".\nType: " << displayType(type);
+    if (prop.getter && *prop.getter)
+        out << "\nGetter: " << prop.getter;
+    if (prop.setter && *prop.setter)
+        out << "\nSetter: " << prop.setter;
+    return out.str();
 }
 
 } // namespace
@@ -134,12 +254,12 @@ std::vector<Symbol> Sema::getVisibleSymbolsAtPosition(uint32_t fileId,
         candidates.push_back({ss.symbol, ss.loc, depth});
     }
 
-    std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate &a,
-                                                              const Candidate &b) {
-        if (a.depth != b.depth)
-            return a.depth > b.depth;
-        return compareToolLoc(a.loc, b.loc) > 0;
-    });
+    std::stable_sort(
+        candidates.begin(), candidates.end(), [](const Candidate &a, const Candidate &b) {
+            if (a.depth != b.depth)
+                return a.depth > b.depth;
+            return compareToolLoc(a.loc, b.loc) > 0;
+        });
 
     std::vector<Symbol> result;
     std::unordered_set<std::string> seen;
@@ -147,6 +267,24 @@ std::vector<Symbol> Sema::getVisibleSymbolsAtPosition(uint32_t fileId,
     for (const auto &candidate : candidates) {
         if (seen.insert(candidate.symbol.name).second)
             result.push_back(candidate.symbol);
+    }
+    return result;
+}
+
+std::vector<Symbol> Sema::getFunctionOverloadSymbols(const std::string &name) const {
+    std::vector<Symbol> result;
+    for (auto *decl : getFunctionOverloads(name)) {
+        if (!decl)
+            continue;
+        Symbol sym;
+        sym.kind = Symbol::Kind::Function;
+        sym.name = decl->name;
+        sym.type = functionTypeForDecl(*decl);
+        sym.decl = decl;
+        sym.loc = decl->loc;
+        sym.isExported = decl->isExported;
+        sym.paramNames = paramNamesFor(decl->params);
+        result.push_back(std::move(sym));
     }
     return result;
 }
@@ -273,6 +411,18 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const 
         sym.name = method.name;
         sym.type = types::function(std::move(paramTypes), retType);
         sym.isExtern = true;
+        if (const Symbol *externSym = [&]() -> const Symbol * {
+                if (!method.target || scopes_.empty())
+                    return nullptr;
+                const auto &symbols = scopes_[0]->getSymbols();
+                auto it = symbols.find(method.target);
+                return it == symbols.end() ? nullptr : &it->second;
+            }()) {
+            sym.paramNames =
+                memberParamNamesFromExtern(externSym, sym.type ? sym.type->paramTypes().size() : 0);
+        }
+        sym.documentation = runtimeMethodDocumentation(
+            className, method.name, method.target, sym.type, sym.paramNames);
         result.push_back(sym);
     }
 
@@ -290,6 +440,7 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const 
         sym.type = propType;
         sym.isFinal = prop.readonly;
         sym.isExtern = true;
+        sym.documentation = runtimePropertyDocumentation(className, prop, sym.type);
         result.push_back(sym);
     }
 

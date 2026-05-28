@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "il/analysis/BasicAA.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
@@ -13,7 +14,6 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
-#include "il/analysis/BasicAA.hpp"
 #include "il/internal/io/ParserUtil.hpp"
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
@@ -929,8 +929,7 @@ entry:
 
     long long minValue = 0;
     EXPECT_TRUE(il::io::parseIntegerLiteral(
-        "-0b1000000000000000000000000000000000000000000000000000000000000000",
-        minValue));
+        "-0b1000000000000000000000000000000000000000000000000000000000000000", minValue));
     EXPECT_EQ(minValue, std::numeric_limits<long long>::min());
 }
 

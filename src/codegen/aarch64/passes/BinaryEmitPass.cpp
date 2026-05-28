@@ -64,9 +64,7 @@ void seedDebugFiles(DebugLineTable &table,
 
 /// @brief Register the source file for every file_id referenced in a single function.
 /// @param debugSourcePath Path to the original source; "<source>" if empty.
-void seedDebugFiles(DebugLineTable &table,
-                    const MFunction &fn,
-                    std::string_view debugSourcePath) {
+void seedDebugFiles(DebugLineTable &table, const MFunction &fn, std::string_view debugSourcePath) {
     uint32_t maxFileId = 1;
     for (const auto &bb : fn.blocks) {
         for (const auto &mi : bb.instrs) {

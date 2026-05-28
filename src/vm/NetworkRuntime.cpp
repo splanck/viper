@@ -20,11 +20,11 @@
 #include "rt_string.h"
 #include "support/small_vector.hpp"
 
-#include <exception>
-#include <string>
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/VM.hpp"
 #include "vm/VMContext.hpp"
+#include <exception>
+#include <string>
 
 namespace il::vm {
 namespace {
@@ -65,8 +65,7 @@ extern "C" void vm_http_handler_dispatch(void *raw, void *req, void *res) {
         detail::VMAccess::callFunction(vm, *payload->entry, args);
     } catch (const RuntimeTrapSignal &signal) {
         const std::string message =
-            signal.message.empty() ? "HttpServer.BindHandler: trapped VM handler"
-                                   : signal.message;
+            signal.message.empty() ? "HttpServer.BindHandler: trapped VM handler" : signal.message;
         rt_abort(message.c_str());
     } catch (const std::exception &ex) {
         const std::string message =
@@ -138,12 +137,11 @@ static void network_server_bind_handler_handler(void **args,
     auto *payload =
         new VmHttpHandlerPayload{&module, std::move(program), parentVm->externRegistry(), entryFn};
     retainExternRegistry(payload->externRegistry);
-    dispatch_bind(
-        server,
-        tag,
-        reinterpret_cast<void *>(&vm_http_handler_dispatch),
-        payload,
-        reinterpret_cast<void *>(&vm_http_handler_payload_destroy));
+    dispatch_bind(server,
+                  tag,
+                  reinterpret_cast<void *>(&vm_http_handler_dispatch),
+                  payload,
+                  reinterpret_cast<void *>(&vm_http_handler_payload_destroy));
 }
 
 static void network_http_server_bind_handler_handler(void **args, void *result) {

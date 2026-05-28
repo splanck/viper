@@ -17,6 +17,17 @@ func fail(shell: app_shell.AppShell, reason: String) {
     Terminal.Say("RESULT: fail " + reason);
 }
 
+func RecentContains(docMgr: document_manager.DocumentManager, path: String) -> Boolean {
+    var i = 0;
+    while i < docMgr.RecentlyClosedCount() {
+        if docMgr.RecentlyClosedAt(i) == path {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
 func main() {
     var shell = new app_shell.AppShell();
     shell.Build("ViperIDE File Tree Probe", 960, 640);
@@ -84,6 +95,20 @@ func main() {
     }
 
     var docMgr = new document_manager.DocumentManager();
+    var recentPath = Path.Join(subdir, "recent.zia");
+    File.WriteAllText(recentPath, "module Recent;\n");
+    docMgr.OpenFile(recentPath);
+    docMgr.CloseDocument(docMgr.FindByPath(recentPath));
+    var renamedRecent = projMgr.RenamePath(recentPath, "recent_renamed.zia", docMgr);
+    if renamedRecent != Path.Join(subdir, "recent_renamed.zia") {
+        fail(shell, "recent file rename path");
+        return;
+    }
+    if docMgr.RecentlyClosedAt(0) != renamedRecent {
+        fail(shell, "recent file follows rename");
+        return;
+    }
+
     var openImporter = Path.Join(subdir, "open_importer.zia");
     var closedImporter = Path.Join(subdir, "closed_importer.zia");
     File.WriteAllText(openImporter, "module OpenImporter;\nbind \"./main\";\n");
@@ -133,8 +158,37 @@ func main() {
         fail(shell, "folder rename bind rewrite count");
         return;
     }
-    if Str.IndexOf(File.ReadAllText(folderImporter), "bind \"./renamed lib/helper\";") == 0 {
+    var recentHelper = Path.Join(renamedLib, "recent_helper.zia");
+    File.WriteAllText(recentHelper, "module RecentHelper;\n");
+    docMgr.OpenFile(recentHelper);
+    docMgr.CloseDocument(docMgr.FindByPath(recentHelper));
+    var renamedLibAgain = projMgr.RenamePath(renamedLib, "renamed lib again", docMgr);
+    if renamedLibAgain != Path.Join(subdir, "renamed lib again") {
+        fail(shell, "recent folder rename path");
+        return;
+    }
+    if docMgr.RecentlyClosedAt(0) != Path.Join(renamedLibAgain, "recent_helper.zia") {
+        fail(shell, "recent folder child follows rename");
+        return;
+    }
+    if Str.IndexOf(File.ReadAllText(folderImporter), "bind \"./renamed lib again/helper\";") == 0 {
         fail(shell, "folder importer bind rewritten");
+        return;
+    }
+    var deleteRecent = Path.Join(subdir, "delete_recent.zia");
+    File.WriteAllText(deleteRecent, "module DeleteRecent;\n");
+    docMgr.OpenFile(deleteRecent);
+    docMgr.CloseDocument(docMgr.FindByPath(deleteRecent));
+    if RecentContains(docMgr, deleteRecent) == false {
+        fail(shell, "delete recent recorded");
+        return;
+    }
+    if projMgr.DeletePath(deleteRecent, docMgr) == false {
+        fail(shell, "delete recent path");
+        return;
+    }
+    if RecentContains(docMgr, deleteRecent) {
+        fail(shell, "deleted recent path removed");
         return;
     }
 

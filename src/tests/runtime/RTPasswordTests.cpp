@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_password.h"
 #include "rt_crypto_module.h"
+#include "rt_password.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -51,7 +51,8 @@ static void test_password_hash_format() {
                 count++;
         }
         test_result("Hash has 5 delimiters", count == 5);
-        test_result("Default scrypt hash does not need rehash", rt_password_needs_rehash(hash) == 0);
+        test_result("Default scrypt hash does not need rehash",
+                    rt_password_needs_rehash(hash) == 0);
     }
 
     // Test 2: Legacy PBKDF2 hash with custom iterations
@@ -165,8 +166,7 @@ static void test_password_verify() {
         rt_string full_password = make_string_raw(full_raw, sizeof(full_raw));
         rt_string prefix_password = rt_const_cstr("pass");
         rt_string hash = rt_password_hash_with_iterations(full_password, 100000);
-        test_result("Embedded NUL password verifies",
-                    rt_password_verify(full_password, hash) == 1);
+        test_result("Embedded NUL password verifies", rt_password_verify(full_password, hash) == 1);
         test_result("Embedded NUL password differs from prefix",
                     rt_password_verify(prefix_password, hash) == 0);
     }

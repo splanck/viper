@@ -34,7 +34,8 @@ bool hasMethod(const il::runtime::RuntimeClass &cls,
                std::string_view name,
                std::string_view signature) {
     for (const auto &method : cls.methods) {
-        if (std::string_view(method.name) == name && std::string_view(method.signature) == signature)
+        if (std::string_view(method.name) == name &&
+            std::string_view(method.signature) == signature)
             return true;
     }
     return false;
@@ -84,8 +85,7 @@ int main() {
     assert(valueTypeCls != nullptr && "Viper.Core.ValueType not found in catalog");
     assert(hasMethod(*valueTypeCls, "AddField", "void(i64,i64,i1)"));
 
-    const il::runtime::RuntimeClass *systemClipboardCls =
-        findClass("Viper.System.Clipboard");
+    const il::runtime::RuntimeClass *systemClipboardCls = findClass("Viper.System.Clipboard");
     assert(systemClipboardCls != nullptr && "Viper.System.Clipboard not found in catalog");
     assert(hasMethod(*systemClipboardCls, "Get", "str()"));
     assert(hasMethod(*systemClipboardCls, "Set", "void(str)"));
@@ -142,32 +142,50 @@ int main() {
     assert(hasMethod(*guiToolbarCls, "NewVertical", "obj(obj)"));
 
     constexpr std::array<std::string_view, 44> graphics2DClasses = {
-        "Viper.Graphics.RenderTarget2D", "Viper.Graphics.Surface2D",
-        "Viper.Graphics.Texture2D",      "Viper.Graphics.GpuTexture2D",
-        "Viper.Graphics.Renderer2D",     "Viper.Graphics.Material2D",
-        "Viper.Graphics.Shader2D",       "Viper.Graphics.PostProcess2D",
-        "Viper.Graphics.Viewport2D",     "Viper.Graphics.ScreenScaler",
-        "Viper.Graphics.TileSet2D",      "Viper.Graphics.TileLayer2D",
-        "Viper.Graphics.ObjectLayer2D",  "Viper.Graphics.AutoTile2D",
-        "Viper.Graphics.Path2D",         "Viper.Graphics.ShapeRenderer2D",
-        "Viper.Graphics.TextRenderer2D", "Viper.Graphics.BitmapFont",
+        "Viper.Graphics.RenderTarget2D",
+        "Viper.Graphics.Surface2D",
+        "Viper.Graphics.Texture2D",
+        "Viper.Graphics.GpuTexture2D",
+        "Viper.Graphics.Renderer2D",
+        "Viper.Graphics.Material2D",
+        "Viper.Graphics.Shader2D",
+        "Viper.Graphics.PostProcess2D",
+        "Viper.Graphics.Viewport2D",
+        "Viper.Graphics.ScreenScaler",
+        "Viper.Graphics.TileSet2D",
+        "Viper.Graphics.TileLayer2D",
+        "Viper.Graphics.ObjectLayer2D",
+        "Viper.Graphics.AutoTile2D",
+        "Viper.Graphics.Path2D",
+        "Viper.Graphics.ShapeRenderer2D",
+        "Viper.Graphics.TextRenderer2D",
+        "Viper.Graphics.BitmapFont",
         "Viper.Graphics.SdfFont",
-        "Viper.Graphics.NineSlice2D",    "Viper.Graphics.ParticleSystem2D",
-        "Viper.Graphics.Emitter2D",      "Viper.Graphics.DebugDraw2D",
-        "Viper.Graphics.Transform2D",    "Viper.Graphics.Sampler2D",
-        "Viper.Graphics.BlendState2D",   "Viper.Graphics.SpriteRenderer2D",
+        "Viper.Graphics.NineSlice2D",
+        "Viper.Graphics.ParticleSystem2D",
+        "Viper.Graphics.Emitter2D",
+        "Viper.Graphics.DebugDraw2D",
+        "Viper.Graphics.Transform2D",
+        "Viper.Graphics.Sampler2D",
+        "Viper.Graphics.BlendState2D",
+        "Viper.Graphics.SpriteRenderer2D",
         "Viper.Graphics.TilemapRenderer2D",
         "Viper.Graphics.TileChunkCache2D",
         "Viper.Graphics.AnimationClip2D",
         "Viper.Graphics.AnimatedSprite2D",
-        "Viper.Graphics.TextLayout2D",   "Viper.Graphics.SpriteFont",
-        "Viper.Graphics.RenderPass2D",   "Viper.Graphics.RenderGraph2D",
+        "Viper.Graphics.TextLayout2D",
+        "Viper.Graphics.SpriteFont",
+        "Viper.Graphics.RenderPass2D",
+        "Viper.Graphics.RenderGraph2D",
         "Viper.Graphics.CollisionMask2D",
-        "Viper.Graphics.Hitbox2D",       "Viper.Graphics.Palette2D",
-        "Viper.Graphics.Gradient2D",     "Viper.Graphics.CameraRig2D",
+        "Viper.Graphics.Hitbox2D",
+        "Viper.Graphics.Palette2D",
+        "Viper.Graphics.Gradient2D",
+        "Viper.Graphics.CameraRig2D",
         "Viper.Graphics.TexturePackerAtlas",
         "Viper.Graphics.AsepriteImporter",
-        "Viper.Graphics.TiledMapLoader", "Viper.Graphics.Lighting2D",
+        "Viper.Graphics.TiledMapLoader",
+        "Viper.Graphics.Lighting2D",
     };
 
     for (std::string_view qname : graphics2DClasses) {

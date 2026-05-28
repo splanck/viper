@@ -128,11 +128,8 @@ static int tag_boundary(char c) {
     return c == '>' || c == '/' || c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
-static int tag_name_matches_at(const char *lt,
-                               const char *end,
-                               const char *tag,
-                               size_t tag_len,
-                               int closing) {
+static int tag_name_matches_at(
+    const char *lt, const char *end, const char *tag, size_t tag_len, int closing) {
     if (lt >= end || *lt != '<')
         return 0;
     const char *p = lt + 1;
@@ -320,9 +317,8 @@ void *rt_html_parse(rt_string str) {
                 if (!close_end)
                     break;
 
-                while (close_start < close_end &&
-                       (*close_start == ' ' || *close_start == '\t' || *close_start == '\n' ||
-                        *close_start == '\r'))
+                while (close_start < close_end && (*close_start == ' ' || *close_start == '\t' ||
+                                                   *close_start == '\n' || *close_start == '\r'))
                     close_start++;
                 const char *close_name_end = close_start;
                 while (close_name_end < close_end && !tag_boundary(*close_name_end))
@@ -764,8 +760,9 @@ void *rt_html_extract_links(rt_string str) {
 
                 if (name_len == 4 && bytes_eq_ci(name_start, name_len, "href", 4)) {
                     rt_string url =
-                        has_value ? rt_string_from_bytes(value_start, (size_t)(value_end - value_start))
-                                  : rt_string_from_bytes("", 0);
+                        has_value
+                            ? rt_string_from_bytes(value_start, (size_t)(value_end - value_start))
+                            : rt_string_from_bytes("", 0);
                     rt_seq_push(seq, (void *)url);
                     rt_string_unref(url);
                     break;

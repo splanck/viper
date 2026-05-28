@@ -1,0 +1,661 @@
+// game.zia - Game3D open-world showcase game.
+module game;
+
+bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Core.Convert as Convert;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind "./config";
+
+class Game3DShowcase {
+    hide World3D world;
+    hide Canvas3D canvas;
+    hide Camera3D camera;
+    hide Input3D input;
+    hide Terrain3D terrain;
+    hide Water3D water;
+    hide CubeMap3D skybox;
+
+    hide Mesh3D cubeMesh;
+    hide Mesh3D beaconMesh;
+    hide Mesh3D playerBodyMesh;
+    hide Mesh3D playerCoreMesh;
+
+    hide Material3D terrainMat;
+    hide Material3D stoneMat;
+    hide Material3D pedestalMat;
+    hide Material3D playerMat;
+    hide Material3D beaconOffMat;
+    hide Material3D beaconOnMat;
+    hide Material3D archiveMat;
+    hide Material3D waterMarkerMat;
+
+    hide Float playerX;
+    hide Float playerY;
+    hide Float playerZ;
+    hide Float cameraYaw;
+    hide Float cameraPitch;
+    hide Float cameraDistance;
+    hide Float worldTime;
+    hide Integer beaconsLit;
+    hide Boolean quitRequested;
+
+    hide List[Float] beaconXs;
+    hide List[Float] beaconYs;
+    hide List[Float] beaconZs;
+    hide List[Integer] beaconState;
+
+    hide func packPixel(r: Integer, g: Integer, b: Integer, a: Integer) -> Integer {
+        return (((r * 256) + g) * 256 + b) * 256 + a;
+    }
+
+    expose func setup(title: String, width: Integer, height: Integer) {
+        world = World3D.NewWithCamera(title, width, height, config.CAMERA_FOV, config.CAMERA_NEAR, config.CAMERA_FAR);
+        canvas = World3D.get_canvas(world);
+        camera = World3D.get_camera(world);
+        input = World3D.get_input(world);
+        Input3D.set_lookSensitivity(input, config.CAMERA_MOUSE_SENS);
+        Canvas3D.SetDTMax(canvas, config.DT_MAX_MS);
+
+        Quality.Apply(world, QualityLevel.get_Cinematic());
+        Lighting.Outdoor(world, new Vec3(-0.36, -1.0, -0.22));
+        installOutdoorFillLight();
+        PostFX.Cinematic(world);
+        Canvas3D.SetShadowBias(canvas, config.SHADOW_BIAS);
+        World3D.setAmbient(world, config.AMBIENT_R, config.AMBIENT_G, config.AMBIENT_B);
+        World3D.setFog(
+            world, config.FOG_R, config.FOG_G, config.FOG_B, config.FOG_NEAR, config.FOG_FAR);
+
+        cubeMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
+        beaconMesh = Mesh3D.NewSphere(0.54, 22);
+        playerBodyMesh = Mesh3D.NewCylinder(config.PLAYER_RADIUS, config.PLAYER_BODY_HEIGHT, 20);
+        playerCoreMesh = Mesh3D.NewSphere(0.36, 18);
+
+        terrainMat = Materials.Rubber(0.58, 0.74, 0.36);
+        Material3D.SetEmissiveColor(terrainMat, 0.015, 0.026, 0.008);
+        stoneMat = Materials.Metal(0.54, 0.57, 0.60);
+        Material3D.set_Roughness(stoneMat, 0.72);
+        Material3D.SetEmissiveColor(stoneMat, 0.010, 0.012, 0.016);
+        pedestalMat = Materials.Plastic(0.46, 0.43, 0.34);
+        Material3D.SetEmissiveColor(pedestalMat, 0.018, 0.016, 0.012);
+        playerMat = Materials.Plastic(0.22, 0.76, 0.48);
+        Material3D.SetEmissiveColor(playerMat, 0.012, 0.045, 0.026);
+        beaconOffMat = Materials.Plastic(0.38, 0.52, 0.70);
+        Material3D.SetEmissiveColor(beaconOffMat, 0.025, 0.045, 0.065);
+        beaconOnMat = Materials.Emissive(0.98, 0.80, 0.22, 1.45);
+        archiveMat = Materials.Metal(0.78, 0.72, 0.58);
+        waterMarkerMat = Materials.Emissive(0.20, 0.72, 1.0, 1.20);
+
+        terrain = buildTerrain();
+        skybox = createOutdoorSkybox();
+        World3D.setSkybox(world, skybox);
+
+        water = Water3D.New(terrainWorldMaxX(), terrainWorldMaxZ());
+        Water3D.SetHeight(water, config.WATER_HEIGHT);
+        Water3D.SetColor(water, config.WATER_R, config.WATER_G, config.WATER_B, config.WATER_A);
+        Water3D.SetResolution(water, 96);
+        Water3D.SetEnvMap(water, skybox);
+        Water3D.SetReflectivity(water, config.WATER_REFLECTIVITY);
+        Water3D.AddWave(water, 1.0, 0.30, 2.1, 0.22, 18.0);
+        Water3D.AddWave(water, -0.35, 0.82, 1.7, 0.12, 11.0);
+
+        resetWorld();
+        spawnLandmarks();
+        updateCamera();
+        Terminal.Say("Backend: " + Canvas3D.get_Backend(canvas));
+    }
+
+    expose func getWorld() -> World3D {
+        return world;
+    }
+
+    expose func getCanvas() -> Canvas3D {
+        return canvas;
+    }
+
+    expose func step(dt: Float) {
+        var stepDt = dt;
+        if (stepDt <= 0.0) { stepDt = 0.016; }
+        if (stepDt > config.DT_MAX_SEC) { stepDt = config.DT_MAX_SEC; }
+        worldTime = worldTime + stepDt;
+
+        if (Input3D.pressed(input, Keys.get_Escape())) {
+            quitRequested = true;
+            return;
+        }
+
+        var look = Input3D.lookAxis(input);
+        cameraYaw = cameraYaw + Vec2.get_X(look);
+        cameraPitch = cameraPitch - Vec2.get_Y(look);
+        if (cameraPitch < config.CAMERA_PITCH_MIN) { cameraPitch = config.CAMERA_PITCH_MIN; }
+        if (cameraPitch > config.CAMERA_PITCH_MAX) { cameraPitch = config.CAMERA_PITCH_MAX; }
+
+        cameraDistance = cameraDistance - Input3D.wheelY(input) * config.CAMERA_WHEEL_SPEED;
+        if (cameraDistance < config.CAMERA_DISTANCE_MIN) { cameraDistance = config.CAMERA_DISTANCE_MIN; }
+        if (cameraDistance > config.CAMERA_DISTANCE_MAX) { cameraDistance = config.CAMERA_DISTANCE_MAX; }
+
+        var move = Input3D.moveAxis(input);
+        var fwd = Vec3.get_Z(move);
+        var right = Vec3.get_X(move);
+        var moveX = Sin(cameraYaw) * fwd + Cos(cameraYaw) * right;
+        var moveZ = (0.0 - Cos(cameraYaw)) * fwd + Sin(cameraYaw) * right;
+        var moveLen = Sqrt(moveX * moveX + moveZ * moveZ);
+
+        if (moveLen > 0.001) {
+            moveX = moveX / moveLen;
+            moveZ = moveZ / moveLen;
+
+            var speed = config.PLAYER_MOVE_SPEED;
+            if (Input3D.isDown(input, Keys.get_Shift())) {
+                speed = speed * config.PLAYER_SPRINT_MULT;
+            }
+
+            playerX = playerX + moveX * speed * stepDt;
+            playerZ = playerZ + moveZ * speed * stepDt;
+        }
+
+        clampPlayerToTerrain();
+        playerY = sampleGround(playerX, playerZ);
+        updateBeacons();
+        updateCamera();
+        Water3D.Update(water, stepDt);
+        World3D.stepSimulation(world, stepDt);
+    }
+
+    expose func renderFrame() {
+        World3D.beginFrame(world);
+        Canvas3D.DrawTerrain(canvas, terrain);
+        Canvas3D.DrawWater(canvas, water, camera);
+        World3D.drawScene(world);
+        drawBeacons();
+        drawPlayer();
+        World3D.drawEffects(world);
+        World3D.endScene(world);
+
+        Canvas3D.BeginOverlay(canvas);
+        drawHud();
+        Canvas3D.EndOverlay(canvas);
+    }
+
+    expose func run() {
+        Input3D.captureMouse(input);
+
+        while (quitRequested == false && World3D.tick(world)) {
+            step(World3D.get_dt(world));
+            renderFrame();
+            World3D.present(world);
+        }
+
+        Input3D.releaseMouse(input);
+    }
+
+    expose func destroy() {
+        World3D.destroy(world);
+    }
+
+    hide func buildTerrain() -> Terrain3D {
+        var built = Terrain3D.New(config.TERRAIN_SIZE, config.TERRAIN_SIZE);
+        var noise = PerlinNoise.New(42);
+
+        Terrain3D.GeneratePerlin(
+            built,
+            noise,
+            config.TERRAIN_NOISE_SCALE,
+            config.TERRAIN_NOISE_OCTAVES,
+            config.TERRAIN_NOISE_PERSIST);
+        Terrain3D.SetScale(
+            built, config.TERRAIN_SCALE_X, config.TERRAIN_SCALE_Y, config.TERRAIN_SCALE_Z);
+        Terrain3D.SetMaterial(built, terrainMat);
+
+        Terrain3D.SetLayerTexture(built, 0, createGrassTexture(config.TERRAIN_TEXTURE_SIZE));
+        Terrain3D.SetLayerTexture(built, 1, createRockTexture(config.TERRAIN_TEXTURE_SIZE));
+        Terrain3D.SetLayerTexture(built, 2, createDirtTexture(config.TERRAIN_TEXTURE_SIZE));
+        Terrain3D.SetLayerScale(built, 0, 11.0);
+        Terrain3D.SetLayerScale(built, 1, 7.0);
+        Terrain3D.SetLayerScale(built, 2, 8.0);
+        Terrain3D.SetSplatMap(built, createTerrainSplatMap(built, config.SPLAT_SIZE, config.SPLAT_SIZE));
+        Terrain3D.SetLODDistances(built, config.TERRAIN_LOD_NEAR, config.TERRAIN_LOD_FAR);
+        Terrain3D.SetSkirtDepth(built, config.TERRAIN_SKIRT_DEPTH);
+
+        return built;
+    }
+
+    hide func createOutdoorSkybox() -> CubeMap3D {
+        var right = createSkyFace(0);
+        var left = createSkyFace(1);
+        var top = createSkyFace(2);
+        var bottom = createSkyFace(3);
+        var front = createSkyFace(4);
+        var back = createSkyFace(5);
+        return CubeMap3D.New(right, left, top, bottom, front, back);
+    }
+
+    hide func createSkyFace(faceId: Integer) -> Pixels {
+        var size = config.SKYBOX_FACE_SIZE;
+        var face = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var u = (((px + 0.5) / (size + 0.0)) * 2.0) - 1.0;
+                var v = (((py + 0.5) / (size + 0.0)) * 2.0) - 1.0;
+                face.Set(px, py, sampleSkyPixelForFace(faceId, u, v));
+            }
+        }
+
+        return face;
+    }
+
+    hide func sampleSkyPixelForFace(faceId: Integer, u: Float, v: Float) -> Integer {
+        var dx = 0.0;
+        var dy = 0.0;
+        var dz = 0.0;
+
+        if (faceId == 0) {
+            dx = 1.0;
+            dy = 0.0 - v;
+            dz = 0.0 - u;
+        } else {
+            if (faceId == 1) {
+                dx = -1.0;
+                dy = 0.0 - v;
+                dz = u;
+            } else {
+                if (faceId == 2) {
+                    dx = u;
+                    dy = 1.0;
+                    dz = v;
+                } else {
+                    if (faceId == 3) {
+                        dx = u;
+                        dy = -1.0;
+                        dz = 0.0 - v;
+                    } else {
+                        if (faceId == 4) {
+                            dx = u;
+                            dy = 0.0 - v;
+                            dz = 1.0;
+                        } else {
+                            dx = 0.0 - u;
+                            dy = 0.0 - v;
+                            dz = -1.0;
+                        }
+                    }
+                }
+            }
+        }
+
+        var len = Sqrt(dx * dx + dy * dy + dz * dz);
+        if (len <= 0.0001) {
+            return packPixel(132, 174, 220, 255);
+        }
+
+        return sampleSkyPixel(dx / len, dy / len, dz / len);
+    }
+
+    hide func sampleSkyPixel(dx: Float, dy: Float, dz: Float) -> Integer {
+        var up = clampFloat((dy + 0.10) / 1.10, 0.0, 1.0);
+        var haze = clampFloat(1.0 - absFloat(dy) * 2.6, 0.0, 1.0);
+        var sun = clampFloat((dx * 0.55 - dz * 0.35 + 1.0) / 2.0, 0.0, 1.0);
+        var r = lerpFloat(168.0, 88.0, up) + haze * (11.0 + sun * 6.0);
+        var g = lerpFloat(207.0, 144.0, up) + haze * (8.0 + sun * 4.0);
+        var b = lerpFloat(238.0, 218.0, up) + haze * 5.0;
+
+        if (dy < -0.18) {
+            var ground = clampFloat((0.0 - dy - 0.18) / 0.82, 0.0, 1.0);
+            r = lerpFloat(r, 77.0, ground);
+            g = lerpFloat(g, 94.0, ground);
+            b = lerpFloat(b, 82.0, ground);
+        }
+
+        return packPixel(
+            clampByte(Convert.NumToInt(r)),
+            clampByte(Convert.NumToInt(g)),
+            clampByte(Convert.NumToInt(b)),
+            255);
+    }
+
+    hide func createGrassTexture(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var noise = ((px * 7 + py * 11 + px * py) % 28) - 14;
+                var r = clampByte(104 + noise / 2);
+                var g = clampByte(168 + noise);
+                var b = clampByte(70 + noise / 3);
+                tex.Set(px, py, packPixel(r, g, b, 255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createRockTexture(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var noise = ((px * 13 + py * 9 + px * py * 3) % 26) - 13;
+                var gray = clampByte(142 + noise);
+                var blue = clampByte(150 + noise / 2);
+                tex.Set(px, py, packPixel(gray, gray, blue, 255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createDirtTexture(size: Integer) -> Pixels {
+        var tex = Pixels.New(size, size);
+
+        for (var py: Integer = 0; py < size; py = py + 1) {
+            for (var px: Integer = 0; px < size; px = px + 1) {
+                var noise = ((px * 9 + py * 5 + px * py) % 22) - 11;
+                var r = clampByte(142 + noise);
+                var g = clampByte(108 + noise / 2);
+                var b = clampByte(66 + noise / 3);
+                tex.Set(px, py, packPixel(r, g, b, 255));
+            }
+        }
+
+        return tex;
+    }
+
+    hide func createTerrainSplatMap(srcTerrain: Terrain3D, width: Integer, depth: Integer) -> Pixels {
+        var splat = Pixels.New(width, depth);
+        var maxX = terrainWorldMaxX();
+        var maxZ = terrainWorldMaxZ();
+        var lastX = width - 1;
+        var lastZ = depth - 1;
+
+        for (var py: Integer = 0; py < depth; py = py + 1) {
+            for (var px: Integer = 0; px < width; px = px + 1) {
+                var wx = (px + 0.0) * maxX / (lastX + 0.0);
+                var wz = (py + 0.0) * maxZ / (lastZ + 0.0);
+                var normal = Terrain3D.GetNormalAt(srcTerrain, wx, wz);
+                var ny = Vec3.get_Y(normal);
+                var grass = 0;
+                var rock = 0;
+                var dirt = 0;
+
+                if (ny > 0.88) {
+                    grass = 255;
+                } else {
+                    if (ny > 0.70) {
+                        if (((px / 7) + (py / 5)) % 4 <= 1) {
+                            dirt = 255;
+                        } else {
+                            grass = 255;
+                        }
+                    } else {
+                        rock = 255;
+                    }
+                }
+
+                splat.Set(px, py, packPixel(grass, rock, dirt, 255));
+            }
+        }
+
+        return splat;
+    }
+
+    hide func resetWorld() {
+        playerX = terrainWorldMaxX() * 0.50;
+        playerZ = terrainWorldMaxZ() * 0.50;
+        playerY = sampleGround(playerX, playerZ);
+        cameraYaw = 0.0;
+        cameraPitch = config.CAMERA_PITCH_START;
+        cameraDistance = config.CAMERA_DISTANCE;
+        worldTime = 0.0;
+        beaconsLit = 0;
+        quitRequested = false;
+
+        beaconXs = [];
+        beaconYs = [];
+        beaconZs = [];
+        beaconState = [];
+        addBeaconPct(0.18, 0.25);
+        addBeaconPct(0.80, 0.23);
+        addBeaconPct(0.73, 0.72);
+        addBeaconPct(0.31, 0.80);
+        addBeaconPct(0.52, 0.55);
+    }
+
+    hide func spawnLandmarks() {
+        spawnMonolithPct("West Archive", 0.16, 0.18, 5.4, 1.35, 1.10, stoneMat);
+        spawnMonolithPct("North Archive", 0.84, 0.22, 4.2, 1.00, 1.00, archiveMat);
+        spawnMonolithPct("South Gate", 0.78, 0.62, 6.4, 1.55, 1.30, stoneMat);
+        spawnMonolithPct("Ridge Tower", 0.38, 0.72, 4.8, 1.10, 1.00, archiveMat);
+        spawnMonolithPct("Relay Stack", 0.52, 0.30, 3.6, 0.90, 0.90, waterMarkerMat);
+    }
+
+    hide func installOutdoorFillLight() {
+        var fill = Light3D.NewDirectional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
+        Light3D.SetIntensity(fill, 0.30);
+        World3D.addLight(world, 1, fill);
+
+        var skyFill = Light3D.NewAmbient(0.54, 0.62, 0.72);
+        Light3D.SetIntensity(skyFill, 0.28);
+        World3D.addLight(world, 2, skyFill);
+    }
+
+    hide func spawnMonolithPct(
+        name: String, xPct: Float, zPct: Float, height: Float, sx: Float, sz: Float, mat: Material3D) {
+        spawnMonolith(name, terrainWorldMaxX() * xPct, terrainWorldMaxZ() * zPct, height, sx, sz, mat);
+    }
+
+    hide func spawnMonolith(
+        name: String, x: Float, z: Float, height: Float, sx: Float, sz: Float, mat: Material3D) {
+        var entity = Prefab.BoxXYZ(sx, height, sz, mat);
+        Entity3D.setName(entity, name);
+        Entity3D.setLayer(entity, Layers.get_World());
+        Entity3D.setPosition(entity, x, sampleGround(x, z) + height * 0.5, z);
+        World3D.spawn(world, entity);
+    }
+
+    hide func addBeaconPct(xPct: Float, zPct: Float) {
+        addBeacon(terrainWorldMaxX() * xPct, terrainWorldMaxZ() * zPct);
+    }
+
+    hide func addBeacon(x: Float, z: Float) {
+        beaconXs.add(x);
+        beaconYs.add(sampleGround(x, z));
+        beaconZs.add(z);
+        beaconState.add(0);
+    }
+
+    hide func updateBeacons() {
+        var radiusSq = config.BEACON_TRIGGER_RADIUS * config.BEACON_TRIGGER_RADIUS;
+
+        for i in 0..beaconXs.count() {
+            if (beaconState.get(i) != 0) { continue; }
+
+            var dx = playerX - beaconXs.get(i);
+            var dz = playerZ - beaconZs.get(i);
+            if (dx * dx + dz * dz <= radiusSq) {
+                beaconState.set(i, 1);
+                beaconsLit = beaconsLit + 1;
+                var point = new Vec3(beaconXs.get(i), beaconYs.get(i) + 2.0, beaconZs.get(i));
+                Effects3D.Sparks(world, point, new Vec3(0.0, 1.0, 0.0));
+                if (beaconsLit >= beaconXs.count()) {
+                    Effects3D.Smoke(world, new Vec3(playerX, playerY + 1.0, playerZ));
+                }
+            }
+        }
+    }
+
+    hide func clampPlayerToTerrain() {
+        var minX = config.TERRAIN_MARGIN;
+        var minZ = config.TERRAIN_MARGIN;
+        var maxX = terrainWorldMaxX() - config.TERRAIN_MARGIN;
+        var maxZ = terrainWorldMaxZ() - config.TERRAIN_MARGIN;
+
+        if (playerX < minX) { playerX = minX; }
+        if (playerX > maxX) { playerX = maxX; }
+        if (playerZ < minZ) { playerZ = minZ; }
+        if (playerZ > maxZ) { playerZ = maxZ; }
+    }
+
+    hide func updateCamera() {
+        var pivotX = playerX;
+        var pivotY = playerY + config.CAMERA_TARGET_HEIGHT;
+        var pivotZ = playerZ;
+
+        var flatX = Sin(cameraYaw);
+        var flatZ = 0.0 - Cos(cameraYaw);
+        var horizDist = cameraDistance * Cos(cameraPitch);
+        var eyeX = pivotX - flatX * horizDist;
+        var eyeZ = pivotZ - flatZ * horizDist;
+
+        if (eyeX < config.TERRAIN_MARGIN) { eyeX = config.TERRAIN_MARGIN; }
+        if (eyeX > terrainWorldMaxX() - config.TERRAIN_MARGIN) {
+            eyeX = terrainWorldMaxX() - config.TERRAIN_MARGIN;
+        }
+        if (eyeZ < config.TERRAIN_MARGIN) { eyeZ = config.TERRAIN_MARGIN; }
+        if (eyeZ > terrainWorldMaxZ() - config.TERRAIN_MARGIN) {
+            eyeZ = terrainWorldMaxZ() - config.TERRAIN_MARGIN;
+        }
+
+        var eyeGround = sampleGround(eyeX, eyeZ);
+        var eyeY = pivotY + Sin(cameraPitch) * cameraDistance;
+        if (eyeY < eyeGround + config.CAMERA_MIN_CLEARANCE) {
+            eyeY = eyeGround + config.CAMERA_MIN_CLEARANCE;
+        }
+
+        var eye = new Vec3(eyeX, eyeY, eyeZ);
+        var target =
+            new Vec3(
+                pivotX + flatX * config.CAMERA_LOOK_AHEAD,
+                pivotY + Sin(cameraPitch) * config.CAMERA_LOOK_AHEAD,
+                pivotZ + flatZ * config.CAMERA_LOOK_AHEAD);
+        Camera3D.LookAt(camera, eye, target, new Vec3(0.0, 1.0, 0.0));
+    }
+
+    hide func drawBeacons() {
+        for i in 0..beaconXs.count() {
+            var bx = beaconXs.get(i);
+            var by = beaconYs.get(i);
+            var bz = beaconZs.get(i);
+            drawBlock(bx, by + 0.38, bz, 2.4, 0.76, 2.4, pedestalMat);
+            drawBlock(bx, by + 1.18, bz, 0.58, 1.06, 0.58, pedestalMat);
+
+            var bob = Sin(worldTime * 2.4 + i * 0.8) * 0.14;
+            var mat = beaconOffMat;
+            if (beaconState.get(i) != 0) { mat = beaconOnMat; }
+            Canvas3D.DrawMesh(canvas, beaconMesh, Mat4.Translate(bx, by + 2.25 + bob, bz), mat);
+        }
+    }
+
+    hide func drawPlayer() {
+        var bob = Sin(worldTime * 5.0) * 0.035;
+        var body =
+            Mat4.Mul(
+                Mat4.Translate(playerX, playerY + config.PLAYER_GROUND_OFFSET + bob, playerZ),
+                Mat4.Scale(1.0, 1.0, 1.0));
+        Canvas3D.DrawMesh(canvas, playerBodyMesh, body, playerMat);
+
+        var core =
+            Mat4.Mul(
+                Mat4.Translate(playerX, playerY + 1.20 + bob, playerZ),
+                Mat4.Scale(1.0, 1.0, 1.0));
+        Canvas3D.DrawMesh(canvas, playerCoreMesh, core, waterMarkerMat);
+    }
+
+    hide func drawBlock(
+        x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, mat: Material3D) {
+        var xform = Mat4.Mul(Mat4.Translate(x, y, z), Mat4.Scale(sx, sy, sz));
+        Canvas3D.DrawMesh(canvas, cubeMesh, xform, mat);
+    }
+
+    hide func drawHud() {
+        var w = Canvas3D.get_Width(canvas);
+        var h = Canvas3D.get_Height(canvas);
+        var total = beaconXs.count();
+        var statusColor = config.HUD_WARN;
+        var statusText = "Seek the ridge beacons.";
+
+        if (beaconsLit >= total) {
+            statusColor = config.HUD_GOOD;
+            statusText = "All beacons linked.";
+        }
+
+        Canvas3D.DrawRect2D(
+            canvas,
+            config.HUD_PANEL_X,
+            config.HUD_PANEL_Y,
+            config.HUD_PANEL_W,
+            config.HUD_PANEL_H,
+            config.HUD_PANEL);
+        Canvas3D.DrawRect2D(
+            canvas, config.HUD_PANEL_X, config.HUD_PANEL_Y, config.HUD_PANEL_W, 3, config.HUD_ACCENT);
+        Canvas3D.DrawText2D(canvas, 24, 28, "GAME3D OPEN WORLD", config.HUD_TEXT);
+        Canvas3D.DrawText2D(canvas, 24, 52, "WASD/arrows move | Mouse look", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 72, "Wheel zoom | Shift sprint | Esc", config.HUD_MUTED);
+        Canvas3D.DrawText2D(canvas, 24, 104, "Ridge beacons: " + toString(beaconsLit) + " / " + toString(total), statusColor);
+        Canvas3D.DrawText2D(canvas, 24, 126, statusText, config.HUD_TEXT);
+
+        drawMiniMap(w - 172, h - 172, 144, 144);
+        Canvas3D.DrawText2D(canvas, 24, h - 26, "FPS " + toString(Canvas3D.get_Fps(canvas)), config.HUD_MUTED);
+    }
+
+    hide func drawMiniMap(x: Integer, y: Integer, width: Integer, height: Integer) {
+        Canvas3D.DrawRect2D(canvas, x, y, width, height, config.HUD_PANEL);
+        Canvas3D.DrawRect2D(canvas, x, y, width, 3, config.HUD_ACCENT);
+        Canvas3D.DrawText2D(canvas, x + 10, y + 14, "REGION", config.HUD_MUTED);
+
+        for i in 0..beaconXs.count() {
+            var mx = x + 10 + Convert.NumToInt((beaconXs.get(i) / terrainWorldMaxX()) * (width - 22));
+            var my = y + 30 + Convert.NumToInt((beaconZs.get(i) / terrainWorldMaxZ()) * (height - 42));
+            var color = config.HUD_DANGER;
+            if (beaconState.get(i) != 0) { color = config.HUD_GOOD; }
+            Canvas3D.DrawRect2D(canvas, mx - 3, my - 3, 6, 6, color);
+        }
+
+        var px = x + 10 + Convert.NumToInt((playerX / terrainWorldMaxX()) * (width - 22));
+        var py = y + 30 + Convert.NumToInt((playerZ / terrainWorldMaxZ()) * (height - 42));
+        Canvas3D.DrawRect2D(canvas, px - 4, py - 4, 8, 8, config.HUD_ACCENT);
+    }
+
+    hide func terrainWorldMaxX() -> Float {
+        return (config.TERRAIN_SIZE - 1 + 0.0) * config.TERRAIN_SCALE_X;
+    }
+
+    hide func terrainWorldMaxZ() -> Float {
+        return (config.TERRAIN_SIZE - 1 + 0.0) * config.TERRAIN_SCALE_Z;
+    }
+
+    hide func sampleGround(x: Float, z: Float) -> Float {
+        var sx = x;
+        var sz = z;
+
+        if (sx < 0.0) { sx = 0.0; }
+        if (sz < 0.0) { sz = 0.0; }
+        if (sx > terrainWorldMaxX()) { sx = terrainWorldMaxX(); }
+        if (sz > terrainWorldMaxZ()) { sz = terrainWorldMaxZ(); }
+
+        return Terrain3D.GetHeightAt(terrain, sx, sz);
+    }
+
+    hide func clampByte(value: Integer) -> Integer {
+        if (value < 0) { return 0; }
+        if (value > 255) { return 255; }
+        return value;
+    }
+
+    hide func clampFloat(value: Float, lo: Float, hi: Float) -> Float {
+        if (value < lo) { return lo; }
+        if (value > hi) { return hi; }
+        return value;
+    }
+
+    hide func absFloat(value: Float) -> Float {
+        if (value < 0.0) { return 0.0 - value; }
+        return value;
+    }
+
+    hide func lerpFloat(a: Float, b: Float, t: Float) -> Float {
+        return a + (b - a) * t;
+    }
+}

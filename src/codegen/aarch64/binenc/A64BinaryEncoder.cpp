@@ -118,8 +118,7 @@ static int64_t checkedOffsetDelta(size_t target, size_t base, const char *contex
         return static_cast<int64_t>(diff);
     }
     const size_t diff = base - target;
-    const uint64_t maxMagnitude =
-        static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
+    const uint64_t maxMagnitude = static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
     if (static_cast<uint64_t>(diff) > maxMagnitude)
         throw std::runtime_error(std::string(context) + " displacement exceeds int64 range");
     if (static_cast<uint64_t>(diff) == maxMagnitude)
@@ -569,7 +568,8 @@ static uint32_t chooseGprScratch(uint32_t base, std::optional<uint32_t> avoid = 
             continue;
         return candidate;
     }
-    throw std::runtime_error("AArch64 binary encoder: no scratch register for large offset load/store");
+    throw std::runtime_error(
+        "AArch64 binary encoder: no scratch register for large offset load/store");
 }
 
 /// @brief Convert a byte offset to a signed 7-bit scaled immediate for STP/LDP pair encoding.
@@ -621,7 +621,8 @@ static int32_t checkedBranchDispWords(int64_t deltaBytes,
     return static_cast<int32_t>(deltaWords);
 }
 
-/// @brief Non-throwing predicate: return true if @p deltaBytes fits in an immBits-wide branch field.
+/// @brief Non-throwing predicate: return true if @p deltaBytes fits in an immBits-wide branch
+/// field.
 /// @details Used during the label-offset fixup pass to choose between the short (4-byte)
 ///          and long (8-byte trampoline) conditional branch forms before final emission.
 static bool fitsBranchDispWords(int64_t deltaBytes, int immBits) {
@@ -722,7 +723,8 @@ size_t A64BinaryEncoder::measureInstructionSize(
 
     auto conditionalBranchSize = [&](const std::string &target) {
         if (target.empty())
-            throw std::runtime_error("AArch64 binary encoder: conditional branch label must not be empty");
+            throw std::runtime_error(
+                "AArch64 binary encoder: conditional branch label must not be empty");
         if (assumedLongConditionalBranches.count(instructionOrdinal) != 0) {
             if (discoveredLongConditionalBranches)
                 discoveredLongConditionalBranches->insert(instructionOrdinal);
@@ -747,6 +749,7 @@ size_t A64BinaryEncoder::measureInstructionSize(
         size_t offsetOpIndex;
         unsigned bytes;
     };
+
     auto classifyLdSt = [](MOpcode opc) -> std::optional<LdStInfo> {
         switch (opc) {
             // FP-relative, single-width-8.
@@ -790,9 +793,8 @@ size_t A64BinaryEncoder::measureInstructionSize(
 
     if (const auto info = classifyLdSt(mi.opc)) {
         const long long offset = getImm(mi.ops[info->offsetOpIndex]);
-        return scalarLdStSizeForOffset(offset, info->bytes) != 0
-                   ? size_t{4}
-                   : largeOffsetLdStSize(offset);
+        return scalarLdStSizeForOffset(offset, info->bytes) != 0 ? size_t{4}
+                                                                 : largeOffsetLdStSize(offset);
     }
 
     switch (mi.opc) {
@@ -821,8 +823,7 @@ size_t A64BinaryEncoder::measureInstructionSize(
                         ? 4
                         : largeOffsetLdStSize(getImm(mi.ops[2]))) +
                    (scalarLdStSizeForOffset(
-                        checkedAddI64(getImm(mi.ops[2]), 8, "AArch64 pair fallback offset"),
-                        8) != 0
+                        checkedAddI64(getImm(mi.ops[2]), 8, "AArch64 pair fallback offset"), 8) != 0
                         ? 4
                         : largeOffsetLdStSize(
                               checkedAddI64(getImm(mi.ops[2]), 8, "AArch64 pair fallback offset")));
@@ -870,7 +871,8 @@ size_t A64BinaryEncoder::measureInstructionSize(
     }
 }
 
-A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(const MFunction &fn) {
+A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(
+    const MFunction &fn) {
     LabelOffsetMap estimated;
     std::unordered_set<size_t> longConditionalBranches;
 
@@ -888,7 +890,8 @@ A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(c
             const std::string sanitized = sanitizeLabel(name);
             if (sanitized.empty())
                 throw std::runtime_error("AArch64 binary encoder: label '" + name +
-                                         "' sanitizes to an empty name in function '" + fn.name + "'");
+                                         "' sanitizes to an empty name in function '" + fn.name +
+                                         "'");
             if (next.find(sanitized) != next.end()) {
                 throw std::runtime_error("AArch64 binary encoder: duplicate/sanitized label '" +
                                          sanitized + "' in function '" + fn.name + "'");
@@ -906,15 +909,14 @@ A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(c
             if (!bb.name.empty())
                 assignLabel(bb.name, offset);
             for (const auto &mi : bb.instrs) {
-                offset = checkedAddSize(
-                    offset,
-                    measureInstructionSize(mi,
-                                           offset,
-                                           known,
-                                           ordinal,
-                                           longConditionalBranches,
-                                           &nextLongConditionalBranches),
-                    "estimated function size");
+                offset = checkedAddSize(offset,
+                                        measureInstructionSize(mi,
+                                                               offset,
+                                                               known,
+                                                               ordinal,
+                                                               longConditionalBranches,
+                                                               &nextLongConditionalBranches),
+                                        "estimated function size");
                 ++ordinal;
             }
         }
@@ -950,14 +952,11 @@ A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(c
             conservative[sanitized] = offset;
         }
         for (const auto &mi : bb.instrs) {
-            offset = checkedAddSize(offset,
-                                    measureInstructionSize(mi,
-                                                           offset,
-                                                           known,
-                                                           ordinal,
-                                                           allLongConditionalBranches,
-                                                           nullptr),
-                                    "estimated function size");
+            offset =
+                checkedAddSize(offset,
+                               measureInstructionSize(
+                                   mi, offset, known, ordinal, allLongConditionalBranches, nullptr),
+                               "estimated function size");
             ++ordinal;
         }
     }
@@ -972,21 +971,19 @@ size_t A64BinaryEncoder::estimateFunctionSize(const MFunction &fn,
     size_t ordinal = 0;
     for (const auto &bb : fn.blocks) {
         for (const auto &mi : bb.instrs) {
-            size = checkedAddSize(size,
-                                  measureInstructionSize(mi,
-                                                         size,
-                                                         knownLabelOffsets,
-                                                         ordinal,
-                                                         longConditionalBranchOrdinals_,
-                                                         nullptr),
-                                  "estimated function size");
+            size = checkedAddSize(
+                size,
+                measureInstructionSize(
+                    mi, size, knownLabelOffsets, ordinal, longConditionalBranchOrdinals_, nullptr),
+                "estimated function size");
             ++ordinal;
         }
     }
     return size;
 }
 
-void A64BinaryEncoder::verifyPredictedLabelOffset(const std::string &label, size_t actualOffset) const {
+void A64BinaryEncoder::verifyPredictedLabelOffset(const std::string &label,
+                                                  size_t actualOffset) const {
     auto it = labelOffsets_.find(label);
     if (it == labelOffsets_.end())
         return;
@@ -1018,16 +1015,16 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
         validateFunctionMetadata(fn);
 
         // Leaf function optimization: skip frame when no calls, no callee-saved, no locals.
-        skipFrame_ = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
-                     fn.localFrameSize == 0;
+        skipFrame_ =
+            fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() && fn.localFrameSize == 0;
         usePlan_ = !fn.savedGPRs.empty() || !fn.savedFPRs.empty() || fn.localFrameSize > 0;
 
         // Define function symbol at current offset.
         const size_t funcStartOffset = text.currentOffset();
         const auto relativeLabelOffsets = computeFunctionLabelOffsets(fn);
-        const size_t estimatedSize =
-            lastEstimatedFunctionSize_ != 0 ? lastEstimatedFunctionSize_
-                                            : estimateFunctionSize(fn, relativeLabelOffsets);
+        const size_t estimatedSize = lastEstimatedFunctionSize_ != 0
+                                         ? lastEstimatedFunctionSize_
+                                         : estimateFunctionSize(fn, relativeLabelOffsets);
         text.reserveAdditionalBytes(estimatedSize);
         labelOffsets_.clear();
         labelOffsets_.reserve(relativeLabelOffsets.size());
@@ -1061,7 +1058,8 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             if (!bb.name.empty()) {
                 const std::string label = sanitizeLabel(bb.name);
                 if (label.empty())
-                    throw std::runtime_error("AArch64 binary encoder: block label sanitizes to empty");
+                    throw std::runtime_error(
+                        "AArch64 binary encoder: block label sanitizes to empty");
                 verifyPredictedLabelOffset(label, text.currentOffset());
                 auto existing = labelOffsets_.find(label);
                 if (existing != labelOffsets_.end() && existing->second != text.currentOffset()) {
@@ -1189,34 +1187,51 @@ void A64BinaryEncoder::encodePrologue(const MFunction &fn, objfile::CodeSection 
         uint32_t sp;
         uint32_t fp;
         uint32_t lr;
-        void paciasp() const { self.emit32(kPaciasp, cs); }
+
+        void paciasp() const {
+            self.emit32(kPaciasp, cs);
+        }
+
         void stpFpLrPre() const {
             self.emit32(encodePair(kStpGprPre, fp, lr, sp, static_cast<int32_t>(-16 / 8)), cs);
         }
-        void movFpSp() const { self.emit32(encodeAddSubImm(kAddRI, fp, sp, 0), cs); }
-        void subSp(int32_t n) const { self.encodeSubSp(n, cs); }
+
+        void movFpSp() const {
+            self.emit32(encodeAddSubImm(kAddRI, fp, sp, 0), cs);
+        }
+
+        void subSp(int32_t n) const {
+            self.encodeSubSp(n, cs);
+        }
+
         void stpGprPair(PhysReg r0, PhysReg r1) const {
-            self.emit32(encodePair(kStpGprPre, hwGPR(r0), hwGPR(r1), sp,
-                                   static_cast<int32_t>(-16 / 8)),
-                        cs);
+            self.emit32(
+                encodePair(kStpGprPre, hwGPR(r0), hwGPR(r1), sp, static_cast<int32_t>(-16 / 8)),
+                cs);
         }
+
         void strGprSingle(PhysReg r0) const {
-            self.emit32(kStrGprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) |
-                            (sp << 5) | hwGPR(r0),
+            self.emit32(kStrGprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) | (sp << 5) |
+                            hwGPR(r0),
                         cs);
         }
+
         void stpFprPair(PhysReg r0, PhysReg r1) const {
-            self.emit32(encodePair(kStpFprPre, hwFPR(r0), hwFPR(r1), sp,
-                                   static_cast<int32_t>(-16 / 8)),
-                        cs);
+            self.emit32(
+                encodePair(kStpFprPre, hwFPR(r0), hwFPR(r1), sp, static_cast<int32_t>(-16 / 8)),
+                cs);
         }
+
         void strFprSingle(PhysReg r0) const {
-            self.emit32(kStrFprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) |
-                            (sp << 5) | hwFPR(r0),
+            self.emit32(kStrFprPre | ((static_cast<uint32_t>(-16) & 0x1FF) << 12) | (sp << 5) |
+                            hwFPR(r0),
                         cs);
         }
     };
-    iteratePrologue(fn.savedGPRs, fn.savedFPRs, fn.localFrameSize,
+
+    iteratePrologue(fn.savedGPRs,
+                    fn.savedFPRs,
+                    fn.localFrameSize,
                     currentAbi_ == ABIFormat::Darwin,
                     Steps{*this, cs, sp, fp, lr});
 }
@@ -1232,30 +1247,47 @@ void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection 
         uint32_t sp;
         uint32_t fp;
         uint32_t lr;
+
         void ldpFprPair(PhysReg r0, PhysReg r1) const {
-            self.emit32(encodePair(kLdpFprPost, hwFPR(r0), hwFPR(r1), sp,
-                                   static_cast<int32_t>(16 / 8)),
-                        cs);
+            self.emit32(
+                encodePair(kLdpFprPost, hwFPR(r0), hwFPR(r1), sp, static_cast<int32_t>(16 / 8)),
+                cs);
         }
+
         void ldrFprSingle(PhysReg r0) const {
             self.emit32(kLdrFprPost | ((16u & 0x1FF) << 12) | (sp << 5) | hwFPR(r0), cs);
         }
+
         void ldpGprPair(PhysReg r0, PhysReg r1) const {
-            self.emit32(encodePair(kLdpGprPost, hwGPR(r0), hwGPR(r1), sp,
-                                   static_cast<int32_t>(16 / 8)),
-                        cs);
+            self.emit32(
+                encodePair(kLdpGprPost, hwGPR(r0), hwGPR(r1), sp, static_cast<int32_t>(16 / 8)),
+                cs);
         }
+
         void ldrGprSingle(PhysReg r0) const {
             self.emit32(kLdrGprPost | ((16u & 0x1FF) << 12) | (sp << 5) | hwGPR(r0), cs);
         }
-        void addSp(int32_t n) const { self.encodeAddSp(n, cs); }
+
+        void addSp(int32_t n) const {
+            self.encodeAddSp(n, cs);
+        }
+
         void ldpFpLrPost() const {
             self.emit32(encodePair(kLdpGprPost, fp, lr, sp, static_cast<int32_t>(16 / 8)), cs);
         }
-        void autiasp() const { self.emit32(kAutiasp, cs); }
-        void ret() const { self.emit32(kRet, cs); }
+
+        void autiasp() const {
+            self.emit32(kAutiasp, cs);
+        }
+
+        void ret() const {
+            self.emit32(kRet, cs);
+        }
     };
-    iterateEpilogue(fn.savedGPRs, fn.savedFPRs, fn.localFrameSize,
+
+    iterateEpilogue(fn.savedGPRs,
+                    fn.savedFPRs,
+                    fn.localFrameSize,
                     currentAbi_ == ABIFormat::Darwin,
                     Steps{*this, cs, sp, fp, lr});
 }
@@ -1274,9 +1306,8 @@ void A64BinaryEncoder::recordWindowsArm64UnwindEntry(const MFunction &fn,
     };
 
     const auto appendAllocOp = [&](uint32_t bytes) {
-        forwardOps.push_back(oneOp([&](std::vector<uint8_t> &op) {
-            appendWindowsArm64AllocCode(op, bytes);
-        }));
+        forwardOps.push_back(
+            oneOp([&](std::vector<uint8_t> &op) { appendWindowsArm64AllocCode(op, bytes); }));
     };
 
     const auto appendAllocOpsForAddSubSmart = [&](uint32_t bytes) {
@@ -1312,23 +1343,23 @@ void A64BinaryEncoder::recordWindowsArm64UnwindEntry(const MFunction &fn,
     forEachSaveReg(
         fn.savedGPRs,
         [&](PhysReg r0, PhysReg) {
-            forwardOps.push_back(oneOp(
-                [&](std::vector<uint8_t> &op) { appendWindowsArm64SaveGprPairX(op, r0); }));
+            forwardOps.push_back(
+                oneOp([&](std::vector<uint8_t> &op) { appendWindowsArm64SaveGprPairX(op, r0); }));
         },
         [&](PhysReg r0) {
-            forwardOps.push_back(oneOp(
-                [&](std::vector<uint8_t> &op) { appendWindowsArm64SaveGprX(op, r0); }));
+            forwardOps.push_back(
+                oneOp([&](std::vector<uint8_t> &op) { appendWindowsArm64SaveGprX(op, r0); }));
         });
 
     forEachSaveReg(
         fn.savedFPRs,
         [&](PhysReg r0, PhysReg) {
-            forwardOps.push_back(oneOp(
-                [&](std::vector<uint8_t> &op) { appendWindowsArm64SaveFprPairX(op, r0); }));
+            forwardOps.push_back(
+                oneOp([&](std::vector<uint8_t> &op) { appendWindowsArm64SaveFprPairX(op, r0); }));
         },
         [&](PhysReg r0) {
-            forwardOps.push_back(oneOp(
-                [&](std::vector<uint8_t> &op) { appendWindowsArm64SaveFprX(op, r0); }));
+            forwardOps.push_back(
+                oneOp([&](std::vector<uint8_t> &op) { appendWindowsArm64SaveFprX(op, r0); }));
         });
 
     size_t unwindCodeSize = 1; // trailing end opcode
@@ -1345,8 +1376,8 @@ void A64BinaryEncoder::recordWindowsArm64UnwindEntry(const MFunction &fn,
     entry.functionLength = functionLength;
     const size_t prologueBytes = prologueSize(fn);
     if (prologueBytes > std::numeric_limits<uint8_t>::max()) {
-        throw std::runtime_error("AArch64 binary encoder: Windows ARM64 prologue for '" +
-                                 fn.name + "' exceeds 255 bytes");
+        throw std::runtime_error("AArch64 binary encoder: Windows ARM64 prologue for '" + fn.name +
+                                 "' exceeds 255 bytes");
     }
     entry.prologueSize = static_cast<uint8_t>(prologueBytes);
     entry.unwindCodes = std::move(unwindCodes);
@@ -1435,20 +1466,19 @@ void A64BinaryEncoder::encodeAddSp(int64_t bytes, objfile::CodeSection &cs) {
     emitAddSubImmSmart(kAddRI, sp, sp, static_cast<uint32_t>(bytes), cs);
 }
 
-void A64BinaryEncoder::encodeLargeOffsetLdSt(
-    uint32_t rt,
-    uint32_t base,
-    int64_t offset,
-    bool isLoad,
-    bool isFPR,
-    unsigned accessBytes,
-    objfile::CodeSection &cs) {
+void A64BinaryEncoder::encodeLargeOffsetLdSt(uint32_t rt,
+                                             uint32_t base,
+                                             int64_t offset,
+                                             bool isLoad,
+                                             bool isFPR,
+                                             unsigned accessBytes,
+                                             objfile::CodeSection &cs) {
     if (base == hwGPR(PhysReg::SP)) {
-        throw std::runtime_error(
-            "AArch64 binary encoder: large-offset load/store cannot materialize SP base with ADD (register)");
+        throw std::runtime_error("AArch64 binary encoder: large-offset load/store cannot "
+                                 "materialize SP base with ADD (register)");
     }
-    const uint32_t scratch = chooseGprScratch(base, (!isLoad && !isFPR) ? std::optional<uint32_t>(rt)
-                                                                        : std::nullopt);
+    const uint32_t scratch =
+        chooseGprScratch(base, (!isLoad && !isFPR) ? std::optional<uint32_t>(rt) : std::nullopt);
     encodeMovImm64(scratch, static_cast<uint64_t>(offset), cs);
     // add scratch, base, scratch
     emit32(encode3Reg(kAddRRR, scratch, base, scratch), cs);
@@ -1502,7 +1532,8 @@ void A64BinaryEncoder::encodeSpOffsetStore(uint32_t rt,
         return;
     }
 
-    const uint32_t scratch = chooseGprScratch(sp, (!isFPR) ? std::optional<uint32_t>(rt) : std::nullopt);
+    const uint32_t scratch =
+        chooseGprScratch(sp, (!isFPR) ? std::optional<uint32_t>(rt) : std::nullopt);
     emit32(encodeAddSubImm(kAddRI, scratch, sp, 0), cs);
     if (offset > 0)
         emitAddSubImmSmart(
@@ -1527,14 +1558,22 @@ struct Reg3GprEntry {
     MOpcode op;
     uint32_t tmpl;
 };
+
 constexpr Reg3GprEntry kReg3GprTable[] = {
-    {MOpcode::AddRRR, kAddRRR},     {MOpcode::SubRRR, kSubRRR},
-    {MOpcode::AndRRR, kAndRRR},     {MOpcode::OrrRRR, kOrrRRR},
-    {MOpcode::EorRRR, kEorRRR},     {MOpcode::AddsRRR, kAddsRRR},
-    {MOpcode::SubsRRR, kSubsRRR},   {MOpcode::LslvRRR, kLslvRRR},
-    {MOpcode::LsrvRRR, kLsrvRRR},   {MOpcode::AsrvRRR, kAsrvRRR},
-    {MOpcode::MulRRR, kMulRRR},     {MOpcode::SmulhRRR, kSmulhRRR},
-    {MOpcode::UmulhRRR, kUmulhRRR}, {MOpcode::SDivRRR, kSDivRRR},
+    {MOpcode::AddRRR, kAddRRR},
+    {MOpcode::SubRRR, kSubRRR},
+    {MOpcode::AndRRR, kAndRRR},
+    {MOpcode::OrrRRR, kOrrRRR},
+    {MOpcode::EorRRR, kEorRRR},
+    {MOpcode::AddsRRR, kAddsRRR},
+    {MOpcode::SubsRRR, kSubsRRR},
+    {MOpcode::LslvRRR, kLslvRRR},
+    {MOpcode::LsrvRRR, kLsrvRRR},
+    {MOpcode::AsrvRRR, kAsrvRRR},
+    {MOpcode::MulRRR, kMulRRR},
+    {MOpcode::SmulhRRR, kSmulhRRR},
+    {MOpcode::UmulhRRR, kUmulhRRR},
+    {MOpcode::SDivRRR, kSDivRRR},
     {MOpcode::UDivRRR, kUDivRRR},
 };
 
@@ -1542,6 +1581,7 @@ struct Reg4GprEntry {
     MOpcode op;
     uint32_t tmpl;
 };
+
 constexpr Reg4GprEntry kReg4GprTable[] = {
     {MOpcode::MSubRRRR, kMSubRRRR},
     {MOpcode::MAddRRRR, kMAddRRRR},
@@ -1551,6 +1591,7 @@ struct Reg3FprEntry {
     MOpcode op;
     uint32_t tmpl;
 };
+
 constexpr Reg3FprEntry kReg3FprTable[] = {
     {MOpcode::FAddRRR, kFAddRRR},
     {MOpcode::FSubRRR, kFSubRRR},
@@ -1561,15 +1602,16 @@ constexpr Reg3FprEntry kReg3FprTable[] = {
 struct Conv2RegEntry {
     MOpcode op;
     uint32_t tmpl;
-    bool dstIsGpr;  ///< true: dst uses hwGPR, false: hwFPR
-    bool srcIsGpr;  ///< true: src uses hwGPR, false: hwFPR
+    bool dstIsGpr; ///< true: dst uses hwGPR, false: hwFPR
+    bool srcIsGpr; ///< true: src uses hwGPR, false: hwFPR
 };
+
 constexpr Conv2RegEntry kConv2RegTable[] = {
-    {MOpcode::SCvtF, kSCvtF, false, true},     ///< FPR <- GPR
-    {MOpcode::FCvtZS, kFCvtZS, true, false},   ///< GPR <- FPR
-    {MOpcode::UCvtF, kUCvtF, false, true},     ///< FPR <- GPR
-    {MOpcode::FCvtZU, kFCvtZU, true, false},   ///< GPR <- FPR
-    {MOpcode::FMovGR, kFMovGR, false, true},   ///< FPR <- GPR (bit transfer)
+    {MOpcode::SCvtF, kSCvtF, false, true},   ///< FPR <- GPR
+    {MOpcode::FCvtZS, kFCvtZS, true, false}, ///< GPR <- FPR
+    {MOpcode::UCvtF, kUCvtF, false, true},   ///< FPR <- GPR
+    {MOpcode::FCvtZU, kFCvtZU, true, false}, ///< GPR <- FPR
+    {MOpcode::FMovGR, kFMovGR, false, true}, ///< FPR <- GPR (bit transfer)
 };
 
 } // namespace
@@ -1612,10 +1654,8 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
     }
     for (const auto &e : kConv2RegTable) {
         if (mi.opc == e.op) {
-            const uint32_t dst = e.dstIsGpr ? hwGPR(getReg(mi.ops[0]))
-                                            : hwFPR(getReg(mi.ops[0]));
-            const uint32_t src = e.srcIsGpr ? hwGPR(getReg(mi.ops[1]))
-                                            : hwFPR(getReg(mi.ops[1]));
+            const uint32_t dst = e.dstIsGpr ? hwGPR(getReg(mi.ops[0])) : hwFPR(getReg(mi.ops[0]));
+            const uint32_t src = e.srcIsGpr ? hwGPR(getReg(mi.ops[1])) : hwFPR(getReg(mi.ops[1]));
             emit32(encode2Reg(e.tmpl, dst, src), cs);
             return;
         }
@@ -1758,17 +1798,25 @@ void A64BinaryEncoder::encodeAddSubImmInstr(const MInstr &mi, objfile::CodeSecti
     const uint64_t imm = absImmUnsigned(immValue);
     const auto enc = classifyAddSubImmEncoding(imm);
     if (!enc.has_value()) {
-        throw std::runtime_error(
-            "AArch64 binary encoder: " + std::string(opcodeName(mi.opc)) +
-            " immediate reached encoder without legalization");
+        throw std::runtime_error("AArch64 binary encoder: " + std::string(opcodeName(mi.opc)) +
+                                 " immediate reached encoder without legalization");
     }
     uint32_t tmpl = kAddRI;
     switch (mi.opc) {
-        case MOpcode::AddRI:  tmpl = immValue < 0 ? kSubRI  : kAddRI;  break;
-        case MOpcode::SubRI:  tmpl = immValue < 0 ? kAddRI  : kSubRI;  break;
-        case MOpcode::AddsRI: tmpl = immValue < 0 ? kSubsRI : kAddsRI; break;
-        case MOpcode::SubsRI: tmpl = immValue < 0 ? kAddsRI : kSubsRI; break;
-        default: break;
+        case MOpcode::AddRI:
+            tmpl = immValue < 0 ? kSubRI : kAddRI;
+            break;
+        case MOpcode::SubRI:
+            tmpl = immValue < 0 ? kAddRI : kSubRI;
+            break;
+        case MOpcode::AddsRI:
+            tmpl = immValue < 0 ? kSubsRI : kAddsRI;
+            break;
+        case MOpcode::SubsRI:
+            tmpl = immValue < 0 ? kAddsRI : kSubsRI;
+            break;
+        default:
+            break;
     }
     emit32(enc->shift12 ? encodeAddSubImmShift(tmpl, rd, rn, enc->imm12)
                         : encodeAddSubImm(tmpl, rd, rn, enc->imm12),
@@ -1800,8 +1848,9 @@ void A64BinaryEncoder::encodeShiftImmInstr(const MInstr &mi, objfile::CodeSectio
     const uint32_t rd = hwGPR(getReg(mi.ops[0]));
     const uint32_t rn = hwGPR(getReg(mi.ops[1]));
     const uint32_t sh = checkedShiftAmount(getImm(mi.ops[2]),
-                                           mi.opc == MOpcode::LslRI ? "lsl"
-                                           : mi.opc == MOpcode::LsrRI ? "lsr" : "asr");
+                                           mi.opc == MOpcode::LslRI   ? "lsl"
+                                           : mi.opc == MOpcode::LsrRI ? "lsr"
+                                                                      : "asr");
     switch (mi.opc) {
         case MOpcode::LslRI: {
             // lsl is ubfm Xd, Xn, #(64-n)&63, #(63-n)
@@ -1818,7 +1867,8 @@ void A64BinaryEncoder::encodeShiftImmInstr(const MInstr &mi, objfile::CodeSectio
             // asr is sbfm Xd, Xn, #n, #63
             emit32(kSbfm | (sh << 16) | (63 << 10) | (rn << 5) | rd, cs);
             return;
-        default: break;
+        default:
+            break;
     }
 }
 
@@ -1826,14 +1876,12 @@ void A64BinaryEncoder::encodeCompareInstr(const MInstr &mi, objfile::CodeSection
     switch (mi.opc) {
         case MOpcode::CmpRR:
             // subs XZR, Xn, Xm
-            emit32(encode3Reg(kSubsRRR, 31, hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1]))),
+            emit32(encode3Reg(kSubsRRR, 31, hwGPR(getReg(mi.ops[0])), hwGPR(getReg(mi.ops[1]))),
                    cs);
             return;
         case MOpcode::TstRR:
             // ands XZR, Xn, Xm
-            emit32(encode3Reg(kAndsRRR, 31, hwGPR(getReg(mi.ops[0])),
-                              hwGPR(getReg(mi.ops[1]))),
+            emit32(encode3Reg(kAndsRRR, 31, hwGPR(getReg(mi.ops[0])), hwGPR(getReg(mi.ops[1]))),
                    cs);
             return;
         case MOpcode::CmpRI: {
@@ -1852,7 +1900,8 @@ void A64BinaryEncoder::encodeCompareInstr(const MInstr &mi, objfile::CodeSection
             }
             return;
         }
-        default: break;
+        default:
+            break;
     }
 }
 
@@ -1890,13 +1939,12 @@ void A64BinaryEncoder::encodeFpRelLdStInstr(const MInstr &mi, objfile::CodeSecti
         const uint32_t rt = hwGPR(getReg(mi.ops[0]));
         const long long offset = getImm(mi.ops[1]);
         const uint32_t fp = hwGPR(PhysReg::X29);
-        const bool isLoad = (mi.opc == MOpcode::Ldr8RegFpImm ||
-                             mi.opc == MOpcode::Ldr16RegFpImm ||
+        const bool isLoad = (mi.opc == MOpcode::Ldr8RegFpImm || mi.opc == MOpcode::Ldr16RegFpImm ||
                              mi.opc == MOpcode::Ldr32RegFpImm);
         const unsigned bytes =
-            (mi.opc == MOpcode::Ldr8RegFpImm || mi.opc == MOpcode::Str8RegFpImm)   ? 1
+            (mi.opc == MOpcode::Ldr8RegFpImm || mi.opc == MOpcode::Str8RegFpImm)     ? 1
             : (mi.opc == MOpcode::Ldr16RegFpImm || mi.opc == MOpcode::Str16RegFpImm) ? 2
-                                                                                      : 4;
+                                                                                     : 4;
         encodeScalarLdSt(rt, fp, offset, isLoad, false, bytes, cs);
         return;
     }
@@ -1922,15 +1970,13 @@ void A64BinaryEncoder::encodeBaseRelLdStInstr(const MInstr &mi, objfile::CodeSec
     const uint32_t rt = hwGPR(getReg(mi.ops[0]));
     const uint32_t base = hwGPR(getReg(mi.ops[1]));
     const long long offset = getImm(mi.ops[2]);
-    const bool isLoad = (mi.opc == MOpcode::LdrRegBaseImm ||
-                         mi.opc == MOpcode::Ldr8RegBaseImm ||
-                         mi.opc == MOpcode::Ldr16RegBaseImm ||
-                         mi.opc == MOpcode::Ldr32RegBaseImm);
+    const bool isLoad = (mi.opc == MOpcode::LdrRegBaseImm || mi.opc == MOpcode::Ldr8RegBaseImm ||
+                         mi.opc == MOpcode::Ldr16RegBaseImm || mi.opc == MOpcode::Ldr32RegBaseImm);
     const unsigned bytes =
-        (mi.opc == MOpcode::Ldr8RegBaseImm || mi.opc == MOpcode::Str8RegBaseImm)   ? 1
+        (mi.opc == MOpcode::Ldr8RegBaseImm || mi.opc == MOpcode::Str8RegBaseImm)     ? 1
         : (mi.opc == MOpcode::Ldr16RegBaseImm || mi.opc == MOpcode::Str16RegBaseImm) ? 2
         : (mi.opc == MOpcode::Ldr32RegBaseImm || mi.opc == MOpcode::Str32RegBaseImm) ? 4
-                                                                                      : 8;
+                                                                                     : 8;
     encodeScalarLdSt(rt, base, offset, isLoad, false, bytes, cs);
 }
 
@@ -1938,13 +1984,12 @@ void A64BinaryEncoder::encodeLdStPairInstr(const MInstr &mi, objfile::CodeSectio
     // Common shape: two transfer regs + base (always FP) + offset; the only
     // axes are GPR-vs-FPR and load-vs-store.
     const bool isLoad = (mi.opc == MOpcode::LdpRegFpImm || mi.opc == MOpcode::LdpFprFpImm);
-    const bool isFpr  = (mi.opc == MOpcode::LdpFprFpImm || mi.opc == MOpcode::StpFprFpImm);
-    const uint32_t rt  = isFpr ? hwFPR(getReg(mi.ops[0])) : hwGPR(getReg(mi.ops[0]));
+    const bool isFpr = (mi.opc == MOpcode::LdpFprFpImm || mi.opc == MOpcode::StpFprFpImm);
+    const uint32_t rt = isFpr ? hwFPR(getReg(mi.ops[0])) : hwGPR(getReg(mi.ops[0]));
     const uint32_t rt2 = isFpr ? hwFPR(getReg(mi.ops[1])) : hwGPR(getReg(mi.ops[1]));
     const auto rawOffset = getImm(mi.ops[2]);
     const uint32_t fp = hwGPR(PhysReg::X29);
-    const uint32_t tmpl = isLoad ? (isFpr ? kLdpFpr : kLdpGpr)
-                                 : (isFpr ? kStpFpr : kStpGpr);
+    const uint32_t tmpl = isLoad ? (isFpr ? kLdpFpr : kLdpGpr) : (isFpr ? kStpFpr : kStpGpr);
     const char *ctx = isLoad ? "ldp" : "stp";
 
     if (!isPairImm7Offset(rawOffset)) {
@@ -1954,7 +1999,10 @@ void A64BinaryEncoder::encodeLdStPairInstr(const MInstr &mi, objfile::CodeSectio
         encodeScalarLdSt(rt2,
                          fp,
                          checkedAddI64(rawOffset, 8, "AArch64 ldp/stp fallback offset"),
-                         isLoad, isFpr, 8, cs);
+                         isLoad,
+                         isFpr,
+                         8,
+                         cs);
         return;
     }
     const auto offset = checkedPairImm7(rawOffset, ctx);
@@ -1981,7 +2029,8 @@ void A64BinaryEncoder::encodeSpOpInstr(const MInstr &mi, objfile::CodeSection &c
             encodeSpOffsetStore(rt, offset, true, cs);
             return;
         }
-        default: break;
+        default:
+            break;
     }
 }
 
@@ -2009,10 +2058,20 @@ void A64BinaryEncoder::encodeLogicalImmInstr(const MInstr &mi, objfile::CodeSect
     // the value in a scratch register and emit the register-register form.
     uint32_t immTpl = 0, regTpl = 0;
     switch (mi.opc) {
-        case MOpcode::AndRI: immTpl = kAndImm; regTpl = kAndRRR; break;
-        case MOpcode::OrrRI: immTpl = kOrrImm; regTpl = kOrrRRR; break;
-        case MOpcode::EorRI: immTpl = kEorImm; regTpl = kEorRRR; break;
-        default: break;
+        case MOpcode::AndRI:
+            immTpl = kAndImm;
+            regTpl = kAndRRR;
+            break;
+        case MOpcode::OrrRI:
+            immTpl = kOrrImm;
+            regTpl = kOrrRRR;
+            break;
+        case MOpcode::EorRI:
+            immTpl = kEorImm;
+            regTpl = kEorRRR;
+            break;
+        default:
+            break;
     }
     const uint32_t rd = hwGPR(getReg(mi.ops[0]));
     const uint32_t rn = hwGPR(getReg(mi.ops[1]));
@@ -2034,23 +2093,20 @@ void A64BinaryEncoder::encodeFpSpecialInstr(const MInstr &mi, objfile::CodeSecti
     switch (mi.opc) {
         case MOpcode::FCmpRR:
             // fcmp Dn, Dm (Rd field = 0)
-            emit32(kFCmpRR | (hwFPR(getReg(mi.ops[1])) << 16) |
-                       (hwFPR(getReg(mi.ops[0])) << 5),
+            emit32(kFCmpRR | (hwFPR(getReg(mi.ops[1])) << 16) | (hwFPR(getReg(mi.ops[0])) << 5),
                    cs);
             return;
         case MOpcode::FMovRR: {
             const PhysReg src = getReg(mi.ops[1]);
             if (isGPR(src)) {
-                throw std::runtime_error(
-                    "AArch64 binary encoder: FMovRR requires an FPR source; "
-                    "use FMovGR for GPR-to-FPR bit transfers");
+                throw std::runtime_error("AArch64 binary encoder: FMovRR requires an FPR source; "
+                                         "use FMovGR for GPR-to-FPR bit transfers");
             }
             emit32(encode2Reg(kFMovRR, hwFPR(getReg(mi.ops[0])), hwFPR(src)), cs);
             return;
         }
         case MOpcode::FRintN:
-            emit32(encode2Reg(kFRintN, hwFPR(getReg(mi.ops[0])), hwFPR(getReg(mi.ops[1]))),
-                   cs);
+            emit32(encode2Reg(kFRintN, hwFPR(getReg(mi.ops[0])), hwFPR(getReg(mi.ops[1]))), cs);
             return;
         case MOpcode::FMovRI: {
             const uint32_t rd = hwFPR(getReg(mi.ops[0]));
@@ -2070,7 +2126,8 @@ void A64BinaryEncoder::encodeFpSpecialInstr(const MInstr &mi, objfile::CodeSecti
             emit32(encode2Reg(kFMovGR, rd, scratch), cs);
             return;
         }
-        default: break;
+        default:
+            break;
     }
 }
 
@@ -2079,16 +2136,15 @@ void A64BinaryEncoder::encodeAddressInstr(const MInstr &mi, objfile::CodeSection
     // takes 2 operands (rd, label); AddPageOff takes 3 (rd, rn, label).
     const bool isAdrp = (mi.opc == MOpcode::AdrPage);
     const uint32_t rd = hwGPR(getReg(mi.ops[0]));
-    const std::string sym =
-        mapRuntimeSymbol(getLabel(mi.ops[isAdrp ? 1 : 2]));
+    const std::string sym = mapRuntimeSymbol(getLabel(mi.ops[isAdrp ? 1 : 2]));
     const uint32_t rodataSymIdx =
         currentRodata_ != nullptr ? currentRodata_->symbols().find(sym) : 0;
     const auto relocKind =
         isAdrp ? objfile::RelocKind::A64AdrpPage21 : objfile::RelocKind::A64AddPageOff12;
     if (rodataSymIdx != 0) {
         const auto &rodataSym = currentRodata_->symbols().at(rodataSymIdx);
-        cs.addSectionOffsetRelocation(relocKind, *currentRodata_,
-                                      objfile::SymbolSection::Rodata, rodataSym.offset);
+        cs.addSectionOffsetRelocation(
+            relocKind, *currentRodata_, objfile::SymbolSection::Rodata, rodataSym.offset);
     } else {
         const uint32_t symIdx = cs.findOrDeclareSymbol(sym);
         cs.addRelocation(relocKind, symIdx, 0);

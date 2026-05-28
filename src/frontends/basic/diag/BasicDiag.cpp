@@ -119,27 +119,37 @@ constexpr std::array<BasicDiagInfo, 22> kDiagTable = {
       "User code may not declare symbols under the reserved root 'Viper'."}}};
 }
 
+/// @brief Look up the catalog record for a diagnostic enumerator (positional index into
+/// kDiagTable).
 const BasicDiagInfo &getInfo(BasicDiag diag) {
     const auto index = static_cast<std::size_t>(diag);
     return kDiagTable.at(index);
 }
 
+/// @brief Get a diagnostic's stable string id (e.g. `BASIC_UNKNOWN_VARIABLE`).
 std::string_view getId(BasicDiag diag) {
     return getInfo(diag).id;
 }
 
+/// @brief Get a diagnostic's stable code (e.g. `B1001`).
 std::string_view getCode(BasicDiag diag) {
     return getInfo(diag).code;
 }
 
+/// @brief Get a diagnostic's severity.
 il::support::Severity getSeverity(BasicDiag diag) {
     return getInfo(diag).severity;
 }
 
+/// @brief Get a diagnostic's raw message format string (with `{placeholder}` tokens).
 std::string_view getFormat(BasicDiag diag) {
     return getInfo(diag).format;
 }
 
+/// @brief Render a diagnostic message by substituting `{key}` placeholders with replacements.
+/// @param diag The diagnostic whose format string is expanded.
+/// @param replacements Key/value substitutions; every occurrence of `{key}` is replaced.
+/// @return The fully expanded message string.
 std::string formatMessage(BasicDiag diag, std::initializer_list<Replacement> replacements) {
     std::string message(getFormat(diag));
     for (const auto &repl : replacements) {

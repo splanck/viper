@@ -55,11 +55,11 @@ static void applyFilterPattern(NSSavePanel *panel, const char *filter_pattern) {
     NSString *pattern = [NSString stringWithUTF8String:filter_pattern];
     NSMutableArray *extensions = [NSMutableArray array];
 
-    NSArray *parts = [pattern componentsSeparatedByString:@";"];
+    NSArray *parts = [pattern componentsSeparatedByString:@ ";"];
     for (NSString *part in parts) {
         NSString *trimmed =
             [part stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-        if ([trimmed hasPrefix:@"*."]) {
+        if ([trimmed hasPrefix:@ "*."]) {
             [extensions addObject:[trimmed substringFromIndex:2]];
         }
     }

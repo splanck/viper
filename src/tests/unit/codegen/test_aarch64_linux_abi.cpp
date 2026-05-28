@@ -36,9 +36,9 @@
 #include <utility>
 #include <vector>
 
-#include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/CodegenPipeline.hpp"
+#include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"

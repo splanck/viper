@@ -50,9 +50,8 @@ int runCLI(
     il::core::Module m;
     if (sm.addFile(argv[1]) == 0) {
         il::support::printDiag(
-            il::support::makeErrorWithCode({},
-                                           "V-SRC-FILE-ID",
-                                           std::string{il::support::kSourceManagerFileIdOverflowMessage}),
+            il::support::makeErrorWithCode(
+                {}, "V-SRC-FILE-ID", std::string{il::support::kSourceManagerFileIdOverflowMessage}),
             err,
             &sm);
         return 1;

@@ -1,0 +1,12 @@
+// main.zia - Entry point for the Game3D open-world showcase.
+module main;
+
+bind "./config";
+bind "./game";
+
+func start() {
+    var game = new Game3DShowcase();
+    game.setup(config.WINDOW_TITLE, config.WINDOW_WIDTH, config.WINDOW_HEIGHT);
+    game.run();
+    game.destroy();
+}

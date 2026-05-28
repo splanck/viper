@@ -67,10 +67,10 @@ class InstallerStubGen {
 
     // ─── Basic Instructions ───────────────────────────────────────────
 
-    void push(X64Reg r);   ///< push r  (64-bit register push)
-    void pop(X64Reg r);    ///< pop r   (64-bit register pop)
-    void ret();            ///< near ret (return from procedure)
-    void nop();            ///< 1-byte NOP (0x90)
+    void push(X64Reg r); ///< push r  (64-bit register push)
+    void pop(X64Reg r);  ///< pop r   (64-bit register pop)
+    void ret();          ///< near ret (return from procedure)
+    void nop();          ///< 1-byte NOP (0x90)
 
     // ─── MOV ──────────────────────────────────────────────────────────
 
@@ -98,11 +98,7 @@ class InstallerStubGen {
 
     /// @brief movzx dst, word [base + index * scale + disp32].
     /// @param scaleLog2 Scale encoded as log2(bytes): 0, 1, 2, or 3.
-    void movzxRegMemIndex16(X64Reg dst,
-                            X64Reg base,
-                            X64Reg index,
-                            uint8_t scaleLog2,
-                            int32_t disp);
+    void movzxRegMemIndex16(X64Reg dst, X64Reg base, X64Reg index, uint8_t scaleLog2, int32_t disp);
 
     // ─── LEA ──────────────────────────────────────────────────────────
 
@@ -110,11 +106,7 @@ class InstallerStubGen {
     void leaRegMem(X64Reg dst, X64Reg base, int32_t disp);
 
     /// @brief lea dst, [base + index * scale + disp32]
-    void leaRegMemIndex(X64Reg dst,
-                        X64Reg base,
-                        X64Reg index,
-                        uint8_t scaleLog2,
-                        int32_t disp);
+    void leaRegMemIndex(X64Reg dst, X64Reg base, X64Reg index, uint8_t scaleLog2, int32_t disp);
 
     // ─── Arithmetic ───────────────────────────────────────────────────
 

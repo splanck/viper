@@ -32,13 +32,13 @@ extern "C" {
 
 /// @brief Tab structure
 typedef struct vg_tab {
-    uint64_t magic;      ///< Live-tab sentinel for stale handle detection
+    uint64_t magic;          ///< Live-tab sentinel for stale handle detection
     struct vg_tabbar *owner; ///< Owning tab bar for invalidation/reorder
-    const char *title;   ///< Tab title (owned)
-    const char *tooltip; ///< Tab tooltip (owned)
-    void *user_data;     ///< User data
-    bool closable;       ///< Can tab be closed
-    bool modified;       ///< Show modified indicator
+    const char *title;       ///< Tab title (owned)
+    const char *tooltip;     ///< Tab tooltip (owned)
+    void *user_data;         ///< User data
+    bool closable;           ///< Can tab be closed
+    bool modified;           ///< Show modified indicator
     struct vg_tab *next;
     struct vg_tab *prev;
     struct vg_tab *retired_next; ///< Retired-tab list link
@@ -56,11 +56,11 @@ typedef void (*vg_tab_reorder_callback_t)(vg_widget_t *tabbar,
 typedef struct vg_tabbar {
     vg_widget_t base;
 
-    vg_tab_t *first_tab;  ///< First tab
-    vg_tab_t *last_tab;   ///< Last tab
-    vg_tab_t *active_tab; ///< Currently active tab
+    vg_tab_t *first_tab;    ///< First tab
+    vg_tab_t *last_tab;     ///< Last tab
+    vg_tab_t *active_tab;   ///< Currently active tab
     vg_tab_t *retired_tabs; ///< Removed tabs kept until tabbar destroy for stale handle checks
-    int tab_count;        ///< Number of tabs
+    int tab_count;          ///< Number of tabs
 
     vg_font_t *font; ///< Font for rendering
     float font_size; ///< Font size
@@ -88,26 +88,26 @@ typedef struct vg_tabbar {
     void *on_reorder_data;
 
     // State
-    vg_tab_t *hovered_tab;     ///< Currently hovered tab
-    bool close_button_hovered; ///< Is close button hovered
-    bool dragging;             ///< Is dragging a tab
-    bool drag_pending;         ///< Pointer is captured and may become a drag after threshold
-    vg_tab_t *drag_tab;        ///< Tab being dragged
-    float drag_origin_x;       ///< Mouse-down X position for drag-threshold checks
-    float drag_x;              ///< Drag position
-    vg_tab_t *pressed_tab;     ///< Tab pressed on mouse-down, committed on mouse-up
+    vg_tab_t *hovered_tab;       ///< Currently hovered tab
+    bool close_button_hovered;   ///< Is close button hovered
+    bool dragging;               ///< Is dragging a tab
+    bool drag_pending;           ///< Pointer is captured and may become a drag after threshold
+    vg_tab_t *drag_tab;          ///< Tab being dragged
+    float drag_origin_x;         ///< Mouse-down X position for drag-threshold checks
+    float drag_x;                ///< Drag position
+    vg_tab_t *pressed_tab;       ///< Tab pressed on mouse-down, committed on mouse-up
     vg_tab_t *pressed_close_tab; ///< Close button pressed on mouse-down, committed on mouse-up
 
     // Per-frame tracking for Zia runtime
-    vg_tab_t *prev_active_tab; ///< Previous active tab (for change detection)
-    int close_clicked_index;   ///< Last close-click index (cleared on index read, -1 = none)
-    uint64_t close_click_version;          ///< Monotonic counter for close-click events
-    uint64_t reported_close_click_version; ///< Last close-click version observed by runtime
-    bool auto_close;           ///< Auto-remove tab on close click (default true)
+    vg_tab_t *prev_active_tab;    ///< Previous active tab (for change detection)
+    int close_clicked_index;      ///< Last close-click index (cleared on index read, -1 = none)
+    uint64_t close_click_version; ///< Monotonic counter for close-click events
+    uint64_t reported_close_click_version;   ///< Last close-click version observed by runtime
+    bool auto_close;                         ///< Auto-remove tab on close click (default true)
     uint64_t active_change_version;          ///< Monotonic counter for active-tab changes
     uint64_t reported_active_change_version; ///< Last active-change version observed by runtime
-    char *saved_tooltip_text;                ///< Preserved widget tooltip while a tab tooltip is active
-    bool hover_tooltip_active;               ///< True while widget tooltip is overridden by hovered tab
+    char *saved_tooltip_text;  ///< Preserved widget tooltip while a tab tooltip is active
+    bool hover_tooltip_active; ///< True while widget tooltip is overridden by hovered tab
 } vg_tabbar_t;
 
 /// @brief Create a new tab bar widget.
@@ -432,10 +432,10 @@ typedef struct vg_breadcrumb_dropdown {
 
 /// @brief Breadcrumb item
 typedef struct vg_breadcrumb_item {
-    char *label;     ///< Item label
-    char *tooltip;   ///< Tooltip text
-    vg_icon_t icon;  ///< Optional icon
-    void *user_data; ///< User data
+    char *label;         ///< Item label
+    char *tooltip;       ///< Tooltip text
+    vg_icon_t icon;      ///< Optional icon
+    void *user_data;     ///< User data
     bool owns_user_data; ///< Free user_data when the item is destroyed
 
     // Dropdown items

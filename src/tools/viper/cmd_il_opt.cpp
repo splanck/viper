@@ -161,7 +161,8 @@ int cmdILOpt(int argc, char **argv) {
         pm.setVerifyBetweenPasses(true);
 
     transform::PassManager::Pipeline selectedPipeline;
-    auto resolvePipeline = [&](const std::string &name) -> const transform::PassManager::Pipeline * {
+    auto resolvePipeline =
+        [&](const std::string &name) -> const transform::PassManager::Pipeline * {
         return pm.getPipeline(name);
     };
 

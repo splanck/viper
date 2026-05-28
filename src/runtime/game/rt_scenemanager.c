@@ -81,9 +81,8 @@ static int find_scene(scenemanager_impl *sm, const char *name) {
 /// @details Manages a flat list of named scenes (e.g., "menu", "gameplay", "pause").
 ///          Supports instant switching and timed transitions with progress tracking.
 void *rt_scenemanager_new(void) {
-    scenemanager_impl *sm =
-        (scenemanager_impl *)rt_obj_new_i64(RT_SCENEMANAGER_CLASS_ID,
-                                            (int64_t)sizeof(scenemanager_impl));
+    scenemanager_impl *sm = (scenemanager_impl *)rt_obj_new_i64(RT_SCENEMANAGER_CLASS_ID,
+                                                                (int64_t)sizeof(scenemanager_impl));
     if (!sm)
         return NULL;
     memset(sm, 0, sizeof(scenemanager_impl));
@@ -142,8 +141,8 @@ void rt_scenemanager_switch(void *mgr, void *name) {
 
 /// @brief Begin a timed transition to a new scene (completes after duration_ms).
 void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_ms) {
-    scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.SwitchTransition: expected Viper.Game.SceneManager");
+    scenemanager_impl *sm = checked_scenemanager(
+        mgr, "SceneManager.SwitchTransition: expected Viper.Game.SceneManager");
     if (!sm || !name)
         return;
     char cname[SM_SCENE_NAME_MAX];
@@ -244,8 +243,8 @@ int8_t rt_scenemanager_is_transitioning(void *mgr) {
 
 /// @brief Get the transition progress as a ratio (0.0 = start, 1.0 = complete).
 double rt_scenemanager_transition_progress(void *mgr) {
-    scenemanager_impl *sm =
-        checked_scenemanager(mgr, "SceneManager.TransitionProgress: expected Viper.Game.SceneManager");
+    scenemanager_impl *sm = checked_scenemanager(
+        mgr, "SceneManager.TransitionProgress: expected Viper.Game.SceneManager");
     if (!sm)
         return 0.0;
     if (sm->transition_completed)

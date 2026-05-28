@@ -553,7 +553,7 @@ PRINT dist
 )"));
 }
 
-TEST(BasicRuntimeCalls, Audio3DObjectSurface) {
+TEST(BasicRuntimeCalls, Sound3DObjectSurface) {
     ASSERT_TRUE(compileOk(R"(
 DIM ok AS BOOLEAN
 DIM sound AS OBJECT
@@ -575,16 +575,16 @@ node = Viper.Graphics3D.SceneNode3D.New()
 Viper.Graphics3D.SceneNode3D.SetPosition(parent, 1.0, 0.0, 2.0)
 Viper.Graphics3D.SceneNode3D.AddChild(parent, node)
 Viper.Graphics3D.Scene3D.Add(scene, parent)
-listener = Viper.Graphics3D.AudioListener3D.New()
+listener = Viper.Graphics3D.SoundListener3D.New()
 listener.BindCamera(cam)
 listener.IsActive = 1
-source = Viper.Graphics3D.AudioSource3D.New(Viper.Sound.Synth.Tone(440, 120, 0))
+source = Viper.Graphics3D.SoundSource3D.New(Viper.Sound.Synth.Tone(440, 120, 0))
 source.BindNode(node)
 source.MaxDistance = 18.0
 source.Volume = 70
 source.Looping = 0
 Viper.Graphics3D.Scene3D.SyncBindings(scene, 0.016)
-Viper.Graphics3D.Audio3D.SyncBindings(0.016)
+Viper.Graphics3D.Sound3D.SyncBindings(0.016)
 pos = listener.Position
 pos = source.Position
 vel = listener.Velocity

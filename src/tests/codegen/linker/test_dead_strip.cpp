@@ -515,12 +515,8 @@ int main() {
             addReloc(coff, pdataIdx, textSymIdx);
             addReloc(coff, pdataIdx, xdataSymIdx);
 
-            globalSyms[name] = {name,
-                                GlobalSymEntry::Global,
-                                1,
-                                static_cast<uint32_t>(textIdx),
-                                0,
-                                0};
+            globalSyms[name] = {
+                name, GlobalSymEntry::Global, 1, static_cast<uint32_t>(textIdx), 0, 0};
             textSections.push_back(textIdx);
             pdataSections.push_back(pdataIdx);
             xdataSections.push_back(xdataIdx);
@@ -550,18 +546,11 @@ int main() {
         const size_t deadXdataIdx = coff.sections.size();
         coff.sections.push_back(deadXdata);
         const uint32_t deadXdataSymIdx = static_cast<uint32_t>(coff.symbols.size());
-        addSymbol(coff,
-                  "$unwind_dead",
-                  static_cast<uint32_t>(deadXdataIdx),
-                  ObjSymbol::Local);
+        addSymbol(coff, "$unwind_dead", static_cast<uint32_t>(deadXdataIdx), ObjSymbol::Local);
         addReloc(coff, deadPdataIdx, deadTextSymIdx);
         addReloc(coff, deadPdataIdx, deadXdataSymIdx);
-        globalSyms["dead_func"] = {"dead_func",
-                                   GlobalSymEntry::Global,
-                                   1,
-                                   static_cast<uint32_t>(deadTextIdx),
-                                   0,
-                                   0};
+        globalSyms["dead_func"] = {
+            "dead_func", GlobalSymEntry::Global, 1, static_cast<uint32_t>(deadTextIdx), 0, 0};
 
         std::vector<ObjFile> objs = {user, coff};
         std::ostringstream err;

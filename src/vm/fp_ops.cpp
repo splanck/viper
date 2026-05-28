@@ -69,11 +69,8 @@ namespace {
 /// @param fr Active frame containing the function and destination slot.
 /// @param bb Basic block label used in diagnostic output; may be null.
 /// @return Rounded unsigned integer when conversion succeeds without trapping.
-[[nodiscard]] uint64_t castFpToUiRoundedOrTrap(double operand,
-                                               const Instr &in,
-                                               Frame &fr,
-                                               const BasicBlock *bb,
-                                               int resultBits) {
+[[nodiscard]] uint64_t castFpToUiRoundedOrTrap(
+    double operand, const Instr &in, Frame &fr, const BasicBlock *bb, int resultBits) {
     constexpr const char *kInvalidOperandMessage = "invalid fp operand in cast.fp_to_ui.rte.chk";
     constexpr const char *kOverflowMessage = "fp overflow in cast.fp_to_ui.rte.chk";
 

@@ -115,7 +115,8 @@ vg_splitpane_t *vg_splitpane_create(vg_widget_t *parent, vg_split_direction_t di
     return split;
 }
 
-/// @brief VTable destroy: releases input capture if this widget currently holds it; child cleanup is handled by the base widget.
+/// @brief VTable destroy: releases input capture if this widget currently holds it; child cleanup
+/// is handled by the base widget.
 static void splitpane_destroy(vg_widget_t *widget) {
     if (vg_widget_get_input_capture() == widget)
         vg_widget_release_input_capture();
@@ -123,7 +124,8 @@ static void splitpane_destroy(vg_widget_t *widget) {
     (void)widget;
 }
 
-/// @brief VTable measure: claims all available space and distributes it to both child panels according to split_position and minimum sizes.
+/// @brief VTable measure: claims all available space and distributes it to both child panels
+/// according to split_position and minimum sizes.
 static void splitpane_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
 
@@ -185,7 +187,8 @@ static void splitpane_measure(vg_widget_t *widget, float available_width, float 
     }
 }
 
-/// @brief Resolves the first panel's pixel size from @p requested_first, clamping to both minimums; distributes proportionally when space is too small to satisfy both.
+/// @brief Resolves the first panel's pixel size from @p requested_first, clamping to both minimums;
+/// distributes proportionally when space is too small to satisfy both.
 static float resolve_first_size(float available,
                                 float requested_first,
                                 float min_first,
@@ -210,7 +213,8 @@ static float resolve_first_size(float available,
     return first;
 }
 
-/// @brief VTable arrange: positions the widget and arranges both child panels side-by-side (or stacked), separated by the splitter bar.
+/// @brief VTable arrange: positions the widget and arranges both child panels side-by-side (or
+/// stacked), separated by the splitter bar.
 static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
 
@@ -270,13 +274,15 @@ static bool splitpane_can_focus(vg_widget_t *widget) {
     return widget && widget->enabled && widget->visible;
 }
 
-/// @brief Nudges the split position by @p delta_pixels, recomputing the normalised fraction; returns true if the position changed.
+/// @brief Nudges the split position by @p delta_pixels, recomputing the normalised fraction;
+/// returns true if the position changed.
 static bool splitpane_adjust_position_by_pixels(vg_splitpane_t *split, float delta_pixels) {
     if (!split)
         return false;
 
-    float available = (split->direction == VG_SPLIT_HORIZONTAL ? split->base.width : split->base.height) -
-                      split->splitter_size;
+    float available =
+        (split->direction == VG_SPLIT_HORIZONTAL ? split->base.width : split->base.height) -
+        split->splitter_size;
     if (available <= 0.0f)
         return false;
 
@@ -297,7 +303,8 @@ static bool splitpane_adjust_position_by_pixels(vg_splitpane_t *split, float del
     return true;
 }
 
-/// @brief VTable paint: draws the splitter bar background, centre line, and three grip dots in the hover/drag or default colour.
+/// @brief VTable paint: draws the splitter bar background, centre line, and three grip dots in the
+/// hover/drag or default colour.
 static void splitpane_paint(vg_widget_t *widget, void *canvas) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -359,7 +366,8 @@ static void splitpane_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief VTable handle_event: tracks splitter hover, initiates and tracks drag, releases on mouse-up, and handles arrow/Home/End keyboard nudges.
+/// @brief VTable handle_event: tracks splitter hover, initiates and tracks drag, releases on
+/// mouse-up, and handles arrow/Home/End keyboard nudges.
 static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
 
@@ -513,6 +521,8 @@ void vg_splitpane_set_position(vg_splitpane_t *split, float position) {
         position = 0;
     if (position > 1)
         position = 1;
+    if (split->split_position == position)
+        return;
 
     split->split_position = position;
     split->base.needs_layout = true;
@@ -539,8 +549,12 @@ void vg_splitpane_set_min_sizes(vg_splitpane_t *split, float min_first, float mi
     if (!split)
         return;
 
-    split->min_first_size = min_first > 0 ? min_first : 0;
-    split->min_second_size = min_second > 0 ? min_second : 0;
+    min_first = min_first > 0 ? min_first : 0;
+    min_second = min_second > 0 ? min_second : 0;
+    if (split->min_first_size == min_first && split->min_second_size == min_second)
+        return;
+    split->min_first_size = min_first;
+    split->min_second_size = min_second;
     split->base.needs_layout = true;
 }
 

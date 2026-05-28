@@ -385,8 +385,7 @@ static Value readFromPreds(Function &F,
     Value paramVal = Value::temp(B->params[pIdx].id);
     for (const auto &edge : preds) {
         Value arg = renameUses(F, edge.pred, varId, vars, blocks, nextId, ctx, ok);
-        if (!ok ||
-            !addIncoming(B, varId, edge.pred, arg, vars, blocks, nextId, edge.edgeIndex)) {
+        if (!ok || !addIncoming(B, varId, edge.pred, arg, vars, blocks, nextId, edge.edgeIndex)) {
             ok = false;
             return paramVal;
         }
@@ -604,8 +603,7 @@ static void promoteVariables(Function &F,
             traceIds.push_back(entry.first);
         std::sort(traceIds.begin(), traceIds.end());
         for (unsigned id : traceIds)
-            std::cerr << "[mem2reg]   var %" << id << " type=" << vars[id].type.toString()
-                      << "\n";
+            std::cerr << "[mem2reg]   var %" << id << " type=" << vars[id].type.toString() << "\n";
     }
 
     BlockMap blocks;

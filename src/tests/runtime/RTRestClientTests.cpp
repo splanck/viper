@@ -9,11 +9,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_restclient.h"
 #include "rt_http_server.h"
 #include "rt_netutils.h"
 #include "rt_network.h"
 #include "rt_object.h"
+#include "rt_restclient.h"
 #include "rt_string.h"
 
 #include <atomic>
@@ -100,9 +100,8 @@ static void send_text(void *client, const char *text) {
 static void rest_redirect_source_handler(void *req_obj, void *res_obj) {
     (void)req_obj;
     rt_server_res_status(res_obj, 302);
-    rt_server_res_header(res_obj,
-                         rt_const_cstr("Location"),
-                         rt_const_cstr(rest_redirect_location.c_str()));
+    rt_server_res_header(
+        res_obj, rt_const_cstr("Location"), rt_const_cstr(rest_redirect_location.c_str()));
     rt_server_res_send(res_obj, rt_const_cstr(""));
 }
 
@@ -447,17 +446,14 @@ static void test_restclient_keepalive_reuse() {
                 "rest_keepalive: keepalive should default on");
 
     void *res1 = rt_restclient_get(client, rt_const_cstr("items"));
-    test_result(rt_http_res_status(res1) == 200,
-                "rest_keepalive: first request should succeed");
+    test_result(rt_http_res_status(res1) == 200, "rest_keepalive: first request should succeed");
 
     void *res2 = rt_restclient_get(client, rt_const_cstr("items"));
-    test_result(rt_http_res_status(res2) == 200,
-                "rest_keepalive: second request should succeed");
+    test_result(rt_http_res_status(res2) == 200, "rest_keepalive: second request should succeed");
 
     server.join();
 
-    test_result(rest_keepalive_reused.load(),
-                "rest_keepalive: requests should reuse one socket");
+    test_result(rest_keepalive_reused.load(), "rest_keepalive: requests should reuse one socket");
     test_result(rest_keepalive_accept_count.load() == 1,
                 "rest_keepalive: second accept should not be needed");
     test_result(rest_keepalive_connection_headers[0].find("keep-alive") != std::string::npos,
@@ -488,8 +484,7 @@ static void test_restclient_cross_origin_redirect_strips_sensitive_headers() {
 
     if (!(rt_http_server_is_running(target_server) == 1 &&
           rt_http_server_is_running(redirect_server) == 1 &&
-          rt_http_server_port(target_server) > 0 &&
-          rt_http_server_port(redirect_server) > 0)) {
+          rt_http_server_port(target_server) > 0 && rt_http_server_port(redirect_server) > 0)) {
         rt_http_server_stop(redirect_server);
         rt_http_server_stop(target_server);
         printf("SKIP: restclient_cross_origin_redirect (local bind unavailable)\n");
@@ -512,11 +507,9 @@ static void test_restclient_cross_origin_redirect_strips_sensitive_headers() {
              (long long)rt_http_server_port(redirect_server));
 
     void *client = rt_restclient_new(rt_const_cstr(base_url));
-    rt_restclient_set_header(client,
-                             rt_const_cstr("Authorization"),
-                             rt_const_cstr("Bearer rest-secret"));
     rt_restclient_set_header(
-        client, rt_const_cstr("X-API-Key"), rt_const_cstr("rest-api-key"));
+        client, rt_const_cstr("Authorization"), rt_const_cstr("Bearer rest-secret"));
+    rt_restclient_set_header(client, rt_const_cstr("X-API-Key"), rt_const_cstr("rest-api-key"));
 
     void *res = rt_restclient_get(client, rt_const_cstr("redirect"));
     test_result(rt_http_res_status(res) == 200,

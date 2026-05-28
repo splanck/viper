@@ -41,7 +41,9 @@ using namespace viper::codegen::objfile;
 namespace viper::codegen::aarch64::binenc {
 
 struct A64BinaryEncoderTestAccess {
-    static size_t measureWithKnownTarget(const MInstr &mi, size_t currentOffset, size_t targetOffset) {
+    static size_t measureWithKnownTarget(const MInstr &mi,
+                                         size_t currentOffset,
+                                         size_t targetOffset) {
         A64BinaryEncoder enc;
         MFunction fn;
         fn.name = "test_func";
@@ -529,12 +531,12 @@ static void testFarForwardConditionalBranchesPatchLongForm() {
     A64BinaryEncoder enc;
     enc.encodeFunction(fn, text, rodata, ABIFormat::Darwin);
 
-    CHECK(readWord(text.bytes(), 4) == 0x54000041);     // b.ne +8
-    CHECK(readWord(text.bytes(), 8) == 0x14040004);     // b target
-    CHECK(readWord(text.bytes(), 12) == 0xB5000040);    // cbnz x0, +8
-    CHECK(readWord(text.bytes(), 16) == 0x14040002);    // b target
-    CHECK(readWord(text.bytes(), 20) == 0xB4000040);    // cbz x0, +8
-    CHECK(readWord(text.bytes(), 24) == 0x14040000);    // b target
+    CHECK(readWord(text.bytes(), 4) == 0x54000041);  // b.ne +8
+    CHECK(readWord(text.bytes(), 8) == 0x14040004);  // b target
+    CHECK(readWord(text.bytes(), 12) == 0xB5000040); // cbnz x0, +8
+    CHECK(readWord(text.bytes(), 16) == 0x14040002); // b target
+    CHECK(readWord(text.bytes(), 20) == 0xB4000040); // cbz x0, +8
+    CHECK(readWord(text.bytes(), 24) == 0x14040000); // b target
 }
 
 static void testExternalCall() {
@@ -843,8 +845,7 @@ static void testPairOffsetFallback() {
 }
 
 static void testNarrowIntegerMemoryEncoding() {
-    MInstr ldr8{MOpcode::Ldr8RegBaseImm,
-                {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(3)}};
+    MInstr ldr8{MOpcode::Ldr8RegBaseImm, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(3)}};
     CHECK(encodeSingleInstr({ldr8}) == (kLdur8Gpr | (3u << 12) | (1u << 5) | 0u));
 
     MInstr str16{MOpcode::Str16RegFpImm, {gpr(PhysReg::X2), imm(-4)}};
@@ -856,15 +857,14 @@ static void testNarrowIntegerMemoryEncoding() {
 }
 
 static void testLargeStoreAvoidsSourceAndBaseScratch() {
-    MInstr mi{
-        MOpcode::StrRegBaseImm, {gpr(PhysReg::X9), gpr(PhysReg::X16), imm(32768)}};
+    MInstr mi{MOpcode::StrRegBaseImm, {gpr(PhysReg::X9), gpr(PhysReg::X16), imm(32768)}};
     auto bytes = encodeInstrBytes({mi});
 
     // BTI + mov scratch + add scratch,base,scratch + str source,[scratch] + ret.
     CHECK(bytes.size() >= 20);
     uint32_t store = readWord(bytes, bytes.size() - 8);
-    CHECK((store & 31u) == 9u);              // Rt = original store source X9.
-    CHECK(((store >> 5) & 31u) == 17u);      // Rn = scratch X17, not X9 or X16.
+    CHECK((store & 31u) == 9u);         // Rt = original store source X9.
+    CHECK(((store >> 5) & 31u) == 17u); // Rn = scratch X17, not X9 or X16.
 }
 
 static void testVariableShift() {
@@ -1022,9 +1022,8 @@ static void testLargeImmediateScratchAvoidsSources() {
     }
 
     {
-        const std::vector<uint8_t> bytes =
-            encodeInstrBytes({MInstr{MOpcode::AndRI,
-                                     {gpr(PhysReg::X0), gpr(PhysReg::X9), imm(5)}}});
+        const std::vector<uint8_t> bytes = encodeInstrBytes(
+            {MInstr{MOpcode::AndRI, {gpr(PhysReg::X0), gpr(PhysReg::X9), imm(5)}}});
         const uint32_t mov = readWord(bytes, 4);
         CHECK((mov & 31u) == hwGPR(PhysReg::X16));
         const uint32_t andWord = readWord(bytes, 8);
@@ -1127,8 +1126,8 @@ static void testStrRegSpImm_largeOffsetAvoidsX16Source() {
         encodeInstrBytes({MInstr{MOpcode::StrRegSpImm, {gpr(PhysReg::X16), imm(40000)}}});
     CHECK((bytes.size() / 4) > 4);
     const uint32_t store = readWord(bytes, bytes.size() - 8);
-    CHECK((store & 31u) == 16u);          // Rt remains the source register X16.
-    CHECK(((store >> 5) & 31u) != 16u);   // Rn uses a non-conflicting scratch.
+    CHECK((store & 31u) == 16u);        // Rt remains the source register X16.
+    CHECK(((store >> 5) & 31u) != 16u); // Rn uses a non-conflicting scratch.
 }
 
 static void testAddSubRI_acceptsNegativeImmediateByFlippingOpcode() {
@@ -1140,12 +1139,12 @@ static void testAddSubRI_acceptsNegativeImmediateByFlippingOpcode() {
         {MInstr{MOpcode::SubRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-4096)}}});
     CHECK(word == encodeAddSubImmShift(kAddRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X1), 1));
 
-    word = encodeSingleInstr(
-        {MInstr{MOpcode::AddsRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-7)}}});
+    word =
+        encodeSingleInstr({MInstr{MOpcode::AddsRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-7)}}});
     CHECK(word == encodeAddSubImm(kSubsRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X1), 7));
 
-    word = encodeSingleInstr(
-        {MInstr{MOpcode::SubsRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-7)}}});
+    word =
+        encodeSingleInstr({MInstr{MOpcode::SubsRI, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(-7)}}});
     CHECK(word == encodeAddSubImm(kAddsRI, hwGPR(PhysReg::X0), hwGPR(PhysReg::X1), 7));
 }
 
@@ -1251,7 +1250,8 @@ static void testAssemblerCorrectnessValidation() {
     underscoreBlock.name = "join_block";
     underscoreBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
     duplicateSanitizedLabels.blocks.push_back(std::move(underscoreBlock));
-    CHECK(encodeThrowsContaining(duplicateSanitizedLabels, "duplicate/sanitized label 'join_block'"));
+    CHECK(
+        encodeThrowsContaining(duplicateSanitizedLabels, "duplicate/sanitized label 'join_block'"));
 
     MFunction spBaseLargeOffset;
     spBaseLargeOffset.name = "sp_base_large_offset";
@@ -1261,16 +1261,16 @@ static void testAssemblerCorrectnessValidation() {
         MInstr{MOpcode::LdrRegBaseImm, {gpr(PhysReg::X0), gpr(PhysReg::SP), imm(40000)}});
     spBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
     spBaseLargeOffset.blocks.push_back(std::move(spBlock));
-    CHECK(encodeThrowsContaining(spBaseLargeOffset, "large-offset load/store cannot materialize SP base"));
+    CHECK(encodeThrowsContaining(spBaseLargeOffset,
+                                 "large-offset load/store cannot materialize SP base"));
 
     MFunction pairOverflow;
     pairOverflow.name = "pair_overflow";
     MBasicBlock pairBlock;
     pairBlock.name = "entry";
-    pairBlock.instrs.push_back(MInstr{MOpcode::LdpRegFpImm,
-                                      {gpr(PhysReg::X0),
-                                       gpr(PhysReg::X1),
-                                       imm(std::numeric_limits<long long>::max())}});
+    pairBlock.instrs.push_back(
+        MInstr{MOpcode::LdpRegFpImm,
+               {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(std::numeric_limits<long long>::max())}});
     pairBlock.instrs.push_back(MInstr{MOpcode::Ret, {}});
     pairOverflow.blocks.push_back(std::move(pairBlock));
     CHECK(encodeThrowsContaining(pairOverflow, "pair fallback offset"));
@@ -1639,8 +1639,8 @@ int main() {
     {
         MInstr ret{MOpcode::Ret, {}};
         constexpr size_t kLargeOffset = size_t{1} << 30;
-        CHECK(A64BinaryEncoderTestAccess::measureWithKnownTarget(
-                  ret, kLargeOffset, kLargeOffset) == 4);
+        CHECK(A64BinaryEncoderTestAccess::measureWithKnownTarget(ret, kLargeOffset, kLargeOffset) ==
+              4);
     }
 
     if (gFail == 0)

@@ -256,11 +256,7 @@ bool checkedU32(uint64_t value, const char *what, std::ostream &err, uint32_t &o
     return true;
 }
 
-bool checkedAddU64(uint64_t lhs,
-                   uint64_t rhs,
-                   const char *what,
-                   std::ostream &err,
-                   uint64_t &out) {
+bool checkedAddU64(uint64_t lhs, uint64_t rhs, const char *what, std::ostream &err, uint64_t &out) {
     if (lhs > std::numeric_limits<uint64_t>::max() - rhs) {
         err << "error: ELF " << what << " overflows 64-bit address range\n";
         return false;
@@ -269,11 +265,7 @@ bool checkedAddU64(uint64_t lhs,
     return true;
 }
 
-bool checkedAddSize(size_t lhs,
-                    size_t rhs,
-                    const char *what,
-                    std::ostream &err,
-                    size_t &out) {
+bool checkedAddSize(size_t lhs, size_t rhs, const char *what, std::ostream &err, size_t &out) {
     if (lhs > std::numeric_limits<size_t>::max() - rhs) {
         err << "error: ELF " << what << " overflows addressable size\n";
         return false;
@@ -282,11 +274,8 @@ bool checkedAddSize(size_t lhs,
     return true;
 }
 
-bool checkedAlignUpSize(size_t value,
-                        size_t alignment,
-                        const char *what,
-                        std::ostream &err,
-                        size_t &out) {
+bool checkedAlignUpSize(
+    size_t value, size_t alignment, const char *what, std::ostream &err, size_t &out) {
     try {
         out = alignUp(value, alignment);
     } catch (const std::exception &ex) {
@@ -408,10 +397,11 @@ std::vector<uint8_t> buildLinuxAArch64StartupStub(uint64_t stubVa,
     }
 
     std::vector<uint8_t> stub;
-    encoding::writeLE32(stub, 0x94000000U | (static_cast<uint32_t>(imm26) & 0x03FFFFFFU)); // bl entry
-    encoding::writeLE32(stub, 0xD2800BA8U); // movz x8, #93
-    encoding::writeLE32(stub, 0xD4000001U); // svc #0
-    encoding::writeLE32(stub, 0xD4200000U); // brk #0
+    encoding::writeLE32(stub,
+                        0x94000000U | (static_cast<uint32_t>(imm26) & 0x03FFFFFFU)); // bl entry
+    encoding::writeLE32(stub, 0xD2800BA8U);                                          // movz x8, #93
+    encoding::writeLE32(stub, 0xD4000001U);                                          // svc #0
+    encoding::writeLE32(stub, 0xD4200000U);                                          // brk #0
     return stub;
 }
 
@@ -525,8 +515,8 @@ bool buildDynamicInfo(const LinkLayout &layout,
 
     for (const auto &bind : bindEntries) {
         if (bind.sectionIndex >= layout.sections.size()) {
-            err << "error: dynamic bind entry references invalid section index " << bind.sectionIndex
-                << "\n";
+            err << "error: dynamic bind entry references invalid section index "
+                << bind.sectionIndex << "\n";
             return false;
         }
         auto it = info.dynSymIndex.find(bind.symbolName);
@@ -538,7 +528,8 @@ bool buildDynamicInfo(const LinkLayout &layout,
         if (!sec.writable)
             info.hasTextRel = true;
         uint64_t relocAddr = 0;
-        if (!checkedAddU64(sec.virtualAddr, bind.offset, "dynamic relocation address", err, relocAddr))
+        if (!checkedAddU64(
+                sec.virtualAddr, bind.offset, "dynamic relocation address", err, relocAddr))
             return false;
         emitRela(relocAddr, it->second, arch == LinkArch::AArch64 ? R_AARCH64_ABS64 : R_X86_64_64);
     }
@@ -665,15 +656,21 @@ bool writeElfExe(const std::string &path,
         if (dynInfo.enabled) {
             if (!dynInfo.roBlob.empty()) {
                 uint64_t roEnd = 0;
-                if (!checkedAddU64(
-                        dynInfo.roVaddr, dynInfo.roBlob.size(), "dynamic read-only range", err, roEnd))
+                if (!checkedAddU64(dynInfo.roVaddr,
+                                   dynInfo.roBlob.size(),
+                                   "dynamic read-only range",
+                                   err,
+                                   roEnd))
                     return false;
                 maxEnd = std::max(maxEnd, roEnd);
             }
             if (!dynInfo.dynamic.empty()) {
                 uint64_t rwEnd = 0;
-                if (!checkedAddU64(
-                        dynInfo.rwVaddr, dynInfo.dynamic.size(), "dynamic writable range", err, rwEnd))
+                if (!checkedAddU64(dynInfo.rwVaddr,
+                                   dynInfo.dynamic.size(),
+                                   "dynamic writable range",
+                                   err,
+                                   rwEnd))
                     return false;
                 maxEnd = std::max(maxEnd, rwEnd);
             }
@@ -683,7 +680,8 @@ bool writeElfExe(const std::string &path,
             return false;
         }
         size_t stubVaddr = 0;
-        if (!checkedAlignUpSize(static_cast<size_t>(maxEnd), pageSize, "startup stub placement", err, stubVaddr))
+        if (!checkedAlignUpSize(
+                static_cast<size_t>(maxEnd), pageSize, "startup stub placement", err, stubVaddr))
             return false;
         startupStub.vaddr = stubVaddr;
 
@@ -781,28 +779,32 @@ bool writeElfExe(const std::string &path,
         if (!checkedAlignUpSize(filePos, pageSize, "dynamic read-only file offset", err, filePos))
             return false;
         dynInfo.roFileOff = filePos;
-        if (!checkedAddSize(filePos, dynInfo.roBlob.size(), "dynamic read-only file range", err, filePos))
+        if (!checkedAddSize(
+                filePos, dynInfo.roBlob.size(), "dynamic read-only file range", err, filePos))
             return false;
     }
     if (hasDynRw) {
         if (!checkedAlignUpSize(filePos, pageSize, "dynamic writable file offset", err, filePos))
             return false;
         dynInfo.rwFileOff = filePos;
-        if (!checkedAddSize(filePos, dynInfo.dynamic.size(), "dynamic writable file range", err, filePos))
+        if (!checkedAddSize(
+                filePos, dynInfo.dynamic.size(), "dynamic writable file range", err, filePos))
             return false;
     }
     if (startupStub.enabled) {
         if (!checkedAlignUpSize(filePos, pageSize, "startup stub file offset", err, filePos))
             return false;
         startupStub.fileOffset = filePos;
-        if (!checkedAddSize(filePos, startupStub.bytes.size(), "startup stub file range", err, filePos))
+        if (!checkedAddSize(
+                filePos, startupStub.bytes.size(), "startup stub file range", err, filePos))
             return false;
     }
 
     std::vector<NonAllocInfo> nonAllocInfo;
     for (size_t idx : nonAllocIndices) {
         const auto &sec = layout.sections[idx];
-        if (!checkedAlignUpSize(filePos, sec.alignment, "non-alloc section file offset", err, filePos))
+        if (!checkedAlignUpSize(
+                filePos, sec.alignment, "non-alloc section file offset", err, filePos))
             return false;
         nonAllocInfo.push_back({idx, filePos});
         if (!checkedAddSize(filePos, sec.data.size(), "non-alloc section file range", err, filePos))
@@ -834,7 +836,8 @@ bool writeElfExe(const std::string &path,
 
     std::vector<uint32_t> syntheticNameOffsets;
     if (dynInfo.enabled) {
-        for (const char *name : {".interp", ".dynstr", ".dynsym", ".hash", ".rela.dyn", ".dynamic"}) {
+        for (const char *name :
+             {".interp", ".dynstr", ".dynsym", ".hash", ".rela.dyn", ".dynamic"}) {
             uint32_t off = 0;
             if (!checkedU32(shstrtab.size(), "section-name string-table offset", err, off))
                 return false;
@@ -859,7 +862,8 @@ bool writeElfExe(const std::string &path,
     if (!checkedAlignUpSize(filePos, 8, "section-name string-table offset", err, shstrtabOff))
         return false;
     size_t shstrtabEnd = 0;
-    if (!checkedAddSize(shstrtabOff, shstrtab.size(), "section-name string-table range", err, shstrtabEnd))
+    if (!checkedAddSize(
+            shstrtabOff, shstrtab.size(), "section-name string-table range", err, shstrtabEnd))
         return false;
     size_t shdrsOff = 0;
     if (!checkedAlignUpSize(shstrtabEnd, 8, "section-header table offset", err, shdrsOff))
@@ -989,10 +993,16 @@ bool writeElfExe(const std::string &path,
             }
             size_t filesz = 0;
             size_t memsz = 0;
-            if (!checkedAddSize(
-                    headerSlack, static_cast<size_t>(phdr.p_filesz), "header-mapped PT_LOAD file size", err, filesz) ||
-                !checkedAddSize(
-                    headerSlack, static_cast<size_t>(phdr.p_memsz), "header-mapped PT_LOAD memory size", err, memsz))
+            if (!checkedAddSize(headerSlack,
+                                static_cast<size_t>(phdr.p_filesz),
+                                "header-mapped PT_LOAD file size",
+                                err,
+                                filesz) ||
+                !checkedAddSize(headerSlack,
+                                static_cast<size_t>(phdr.p_memsz),
+                                "header-mapped PT_LOAD memory size",
+                                err,
+                                memsz))
                 return false;
 
             phdr.p_offset = 0;
@@ -1084,8 +1094,7 @@ bool writeElfExe(const std::string &path,
         };
     }
 
-    if (static_cast<size_t>(numShdrs) >
-        std::numeric_limits<size_t>::max() / sizeof(Elf64_Shdr)) {
+    if (static_cast<size_t>(numShdrs) > std::numeric_limits<size_t>::max() / sizeof(Elf64_Shdr)) {
         err << "error: ELF section header table size overflows address space\n";
         return false;
     }
@@ -1120,9 +1129,11 @@ bool writeElfExe(const std::string &path,
         std::memcpy(fileData.data() + seg.fileOffset, sec.data.data(), seg.fileSize);
     }
     if (hasDynRo)
-        std::memcpy(fileData.data() + dynInfo.roFileOff, dynInfo.roBlob.data(), dynInfo.roBlob.size());
+        std::memcpy(
+            fileData.data() + dynInfo.roFileOff, dynInfo.roBlob.data(), dynInfo.roBlob.size());
     if (hasDynRw)
-        std::memcpy(fileData.data() + dynInfo.rwFileOff, dynInfo.dynamic.data(), dynInfo.dynamic.size());
+        std::memcpy(
+            fileData.data() + dynInfo.rwFileOff, dynInfo.dynamic.data(), dynInfo.dynamic.size());
     if (startupStub.enabled)
         std::memcpy(fileData.data() + startupStub.fileOffset,
                     startupStub.bytes.data(),
@@ -1130,8 +1141,7 @@ bool writeElfExe(const std::string &path,
 
     for (size_t i = 0; i < nonAllocInfo.size(); ++i) {
         const auto &sec = layout.sections[nonAllocInfo[i].layoutIdx];
-        std::memcpy(
-            fileData.data() + nonAllocInfo[i].fileOffset, sec.data.data(), sec.data.size());
+        std::memcpy(fileData.data() + nonAllocInfo[i].fileOffset, sec.data.data(), sec.data.size());
     }
 
     std::memcpy(fileData.data() + shstrtabOff, shstrtab.data(), shstrtab.size());

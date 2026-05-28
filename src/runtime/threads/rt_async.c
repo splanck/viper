@@ -39,8 +39,8 @@
 #include "rt_string.h"
 #include "rt_threads.h"
 
-#include <stdint.h>
 #include <setjmp.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -205,7 +205,8 @@ static void async_delay_ctx_finalize(void *obj) {
     async_release_ref(&ctx->promise);
 }
 
-/// @brief GC finalizer for `Async.RunCancellable` worker context: release owned arg, token, promise.
+/// @brief GC finalizer for `Async.RunCancellable` worker context: release owned arg, token,
+/// promise.
 static void async_cancel_ctx_finalize(void *obj) {
     async_cancel_ctx *ctx = (async_cancel_ctx *)obj;
     if (!ctx)
@@ -485,7 +486,8 @@ static void async_map_complete(void *future, void *ctx) {
             else
                 rt_promise_set(state->promise, mapped);
         } else {
-            async_promise_set_callback_result(state->promise, mapped, &state->arg, &state->owns_arg);
+            async_promise_set_callback_result(
+                state->promise, mapped, &state->arg, &state->owns_arg);
         }
     } else {
         async_promise_error_from_trap(state->promise, "Async.Map: mapper trapped");
@@ -780,7 +782,8 @@ static void async_all_listener_cancel(void *ctx) {
 }
 
 /// @brief Cancel listeners on every source except the one at `skip_index` (typically the source
-/// that just resolved). Zeros the listener slot on successful cancel so finalize doesn't double-free.
+/// that just resolved). Zeros the listener slot on successful cancel so finalize doesn't
+/// double-free.
 static void async_all_cancel_remaining(async_all_state *state, int64_t skip_index) {
     if (!state || !state->sources || !state->listeners)
         return;

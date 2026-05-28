@@ -6,6 +6,7 @@ bind "../services/file_utils";
 bind Obj = Viper.Core.Object;
 bind IO = Viper.IO;
 bind Path = Viper.IO.Path;
+bind Str = Viper.String;
 
 // ============================================================================
 // MODULE: document_manager
@@ -191,16 +192,48 @@ class DocumentManager {
 
     expose func UpdatePath(oldPath: String, newPath: String) -> Boolean {
         var idx = FindByPath(oldPath);
-        if idx < 0 { return false; }
-        var doc = documents.get(idx);
-        doc.filePath = newPath;
-        doc.fileName = Path.Name(newPath);
-        doc.language = file_utils.DetectLanguage(newPath);
-        doc.kind = file_utils.DetectKind(newPath);
-        if IO.File.Exists(newPath) {
-            doc.lastModifiedOnDisk = IO.File.Modified(newPath);
+        if idx >= 0 {
+            RetargetDocument(documents.get(idx), newPath);
         }
-        return true;
+        var recentChanged = UpdateRecentlyClosedPath(oldPath, newPath);
+        return idx >= 0 or recentChanged;
+    }
+
+    expose func UpdatePathPrefix(oldPrefix: String, newPrefix: String) -> Integer {
+        if oldPrefix == "" or newPrefix == "" { return 0; }
+        var changed = 0;
+        var prefix = oldPrefix + Path.Sep();
+        var i = 0;
+        while i < documents.count() {
+            var doc = documents.get(i);
+            if doc.filePath == oldPrefix {
+                RetargetDocument(doc, newPrefix);
+                changed = changed + 1;
+            } else if Str.StartsWith(doc.filePath, prefix) {
+                var suffix = Str.Mid(doc.filePath, Str.Length(prefix) + 1);
+                RetargetDocument(doc, Path.Join(newPrefix, suffix));
+                changed = changed + 1;
+            }
+            i = i + 1;
+        }
+        return changed + UpdateRecentlyClosedPrefix(oldPrefix, newPrefix);
+    }
+
+    expose func ForgetPathsUnder(path: String) -> Integer {
+        if path == "" { return 0; }
+        var removed = 0;
+        var prefix = path + Path.Sep();
+        var i = 0;
+        while i < recentlyClosedPaths.count() {
+            var recent = Obj.ToString(recentlyClosedPaths.get(i));
+            if recent == path or Str.StartsWith(recent, prefix) {
+                recentlyClosedPaths.removeAt(i);
+                removed = removed + 1;
+            } else {
+                i = i + 1;
+            }
+        }
+        return removed;
     }
 
     /// @brief Close the document at the given index.
@@ -295,5 +328,51 @@ class DocumentManager {
         while recentlyClosedPaths.count() > 20 {
             recentlyClosedPaths.removeAt(recentlyClosedPaths.count() - 1);
         }
+    }
+
+    hide func RetargetDocument(doc: document.Document, newPath: String) {
+        doc.filePath = newPath;
+        doc.fileName = Path.Name(newPath);
+        doc.language = file_utils.DetectLanguage(newPath);
+        doc.kind = file_utils.DetectKind(newPath);
+        if IO.File.Exists(newPath) {
+            doc.lastModifiedOnDisk = IO.File.Modified(newPath);
+        }
+    }
+
+    hide func UpdateRecentlyClosedPath(oldPath: String, newPath: String) -> Boolean {
+        if oldPath == "" or newPath == "" { return false; }
+        var changed = false;
+        var i = 0;
+        while i < recentlyClosedPaths.count() {
+            if Obj.ToString(recentlyClosedPaths.get(i)) == oldPath {
+                recentlyClosedPaths.removeAt(i);
+                recentlyClosedPaths.insert(i, newPath);
+                changed = true;
+            }
+            i = i + 1;
+        }
+        return changed;
+    }
+
+    hide func UpdateRecentlyClosedPrefix(oldPrefix: String, newPrefix: String) -> Integer {
+        var changed = 0;
+        var prefix = oldPrefix + Path.Sep();
+        var i = 0;
+        while i < recentlyClosedPaths.count() {
+            var recent = Obj.ToString(recentlyClosedPaths.get(i));
+            if recent == oldPrefix {
+                recentlyClosedPaths.removeAt(i);
+                recentlyClosedPaths.insert(i, newPrefix);
+                changed = changed + 1;
+            } else if Str.StartsWith(recent, prefix) {
+                var suffix = Str.Mid(recent, Str.Length(prefix) + 1);
+                recentlyClosedPaths.removeAt(i);
+                recentlyClosedPaths.insert(i, Path.Join(newPrefix, suffix));
+                changed = changed + 1;
+            }
+            i = i + 1;
+        }
+        return changed;
     }
 }

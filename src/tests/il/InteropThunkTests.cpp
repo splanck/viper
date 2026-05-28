@@ -166,8 +166,8 @@ TEST(InteropThunks, NoThunkForNonImportFunctions) {
 
 TEST(InteropThunks, NoThunkWhenArityDiffers) {
     Module exportMod;
-    exportMod.functions.push_back(makeExportFunc(
-        "isReady", Type(Type::Kind::I1), {Param{"flag", Type(Type::Kind::I1), 0}}));
+    exportMod.functions.push_back(
+        makeExportFunc("isReady", Type(Type::Kind::I1), {Param{"flag", Type(Type::Kind::I1), 0}}));
 
     Module importMod;
     importMod.functions.push_back(makeImportFunc("isReady", Type(Type::Kind::I64)));

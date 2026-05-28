@@ -43,7 +43,7 @@ static bool eq(rt_string s, const char *expected) {
 //   Hebrew "שלום" = U+05E9 U+05DC U+05D5 U+05DD
 //   Arabic "مرحبا" = U+0645 U+0631 U+062D U+0628 U+0627
 static const char *HEBREW_SHALOM = "\xD7\xA9\xD7\x9C\xD7\x95\xD7\x9D";
-static const char *ARABIC_HELLO  = "\xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7";
+static const char *ARABIC_HELLO = "\xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7";
 
 //=============================================================================
 // Detect
@@ -52,37 +52,31 @@ static const char *ARABIC_HELLO  = "\xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7";
 static void test_detect_ltr() {
     printf("Testing Detect — LTR inputs:\n");
     rt_string a = S("Hello world");
-    test_result("Detect(Hello world) = ltr",
-                eq(rt_text_direction_detect(a), "ltr"));
+    test_result("Detect(Hello world) = ltr", eq(rt_text_direction_detect(a), "ltr"));
     rt_string_unref(a);
 
     rt_string b = S("");
-    test_result("Detect(empty) = empty",
-                eq(rt_text_direction_detect(b), ""));
+    test_result("Detect(empty) = empty", eq(rt_text_direction_detect(b), ""));
     rt_string_unref(b);
 
     rt_string c = S("12345");
-    test_result("Detect(all digits) = ltr",
-                eq(rt_text_direction_detect(c), "ltr"));
+    test_result("Detect(all digits) = ltr", eq(rt_text_direction_detect(c), "ltr"));
     rt_string_unref(c);
 }
 
 static void test_detect_rtl() {
     printf("Testing Detect — RTL inputs:\n");
     rt_string heb = S(HEBREW_SHALOM);
-    test_result("Detect(Hebrew) = rtl",
-                eq(rt_text_direction_detect(heb), "rtl"));
+    test_result("Detect(Hebrew) = rtl", eq(rt_text_direction_detect(heb), "rtl"));
     rt_string_unref(heb);
 
     rt_string ar = S(ARABIC_HELLO);
-    test_result("Detect(Arabic) = rtl",
-                eq(rt_text_direction_detect(ar), "rtl"));
+    test_result("Detect(Arabic) = rtl", eq(rt_text_direction_detect(ar), "rtl"));
     rt_string_unref(ar);
 
     // Arabic Extended-A codepoint U+08A0 should also classify RTL.
     rt_string ext = S("\xE0\xA2\xA0");
-    test_result("Detect(Arabic Extended-A) = rtl",
-                eq(rt_text_direction_detect(ext), "rtl"));
+    test_result("Detect(Arabic Extended-A) = rtl", eq(rt_text_direction_detect(ext), "rtl"));
     rt_string_unref(ext);
 }
 
@@ -91,8 +85,7 @@ static void test_detect_mixed() {
     char buf[64];
     snprintf(buf, sizeof(buf), "hello %s world", HEBREW_SHALOM);
     rt_string m = S(buf);
-    test_result("Detect(english + hebrew) = mixed",
-                eq(rt_text_direction_detect(m), "mixed"));
+    test_result("Detect(english + hebrew) = mixed", eq(rt_text_direction_detect(m), "mixed"));
     rt_string_unref(m);
 }
 
@@ -113,8 +106,7 @@ static void test_is_rtl_is_ltr() {
     rt_string_unref(heb);
 
     rt_string empty = S("");
-    test_result("IsLTR(empty) = true (default)",
-                rt_text_direction_is_ltr(empty) == 1);
+    test_result("IsLTR(empty) = true (default)", rt_text_direction_is_ltr(empty) == 1);
     rt_string_unref(empty);
 }
 
@@ -151,8 +143,7 @@ static void test_bidi() {
     // Pure-LTR pass through unchanged.
     rt_string pure_ltr = S("Hello");
     rt_string wrapped = rt_text_direction_bidi(pure_ltr);
-    test_result("Bidi(pure LTR) unchanged",
-                eq(wrapped, "Hello"));
+    test_result("Bidi(pure LTR) unchanged", eq(wrapped, "Hello"));
     rt_string_unref(pure_ltr);
 
     // Mixed gets RLI...PDI isolates around the RTL run.
@@ -175,8 +166,7 @@ static void test_bidi() {
 static void test_malformed_utf8() {
     printf("Testing malformed UTF-8 detection stability:\n");
     rt_string bad = S("\xC0\xAF");
-    test_result("Detect(malformed UTF-8) defaults ltr",
-                eq(rt_text_direction_detect(bad), "ltr"));
+    test_result("Detect(malformed UTF-8) defaults ltr", eq(rt_text_direction_detect(bad), "ltr"));
     rt_string_unref(bad);
 }
 
@@ -189,8 +179,7 @@ static void test_of_locale() {
     rt_string en_tag = S("en-US");
     void *en = rt_locale_parse(en_tag);
     rt_string_unref(en_tag);
-    test_result("OfLocale(en-US) = ltr",
-                eq(rt_text_direction_of_locale(en), "ltr"));
+    test_result("OfLocale(en-US) = ltr", eq(rt_text_direction_of_locale(en), "ltr"));
 }
 
 //=============================================================================

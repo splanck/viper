@@ -33,13 +33,11 @@ namespace {
 /// @param token Raw runtime type token from a catalog signature.
 /// @return The trimmed, optional-stripped view (aliases @p token's storage).
 std::string_view normalizeRuntimeToken(std::string_view token) noexcept {
-    while (!token.empty() &&
-           (token.front() == ' ' || token.front() == '\t' || token.front() == '\n' ||
-            token.front() == '\r'))
+    while (!token.empty() && (token.front() == ' ' || token.front() == '\t' ||
+                              token.front() == '\n' || token.front() == '\r'))
         token.remove_prefix(1);
-    while (!token.empty() &&
-           (token.back() == ' ' || token.back() == '\t' || token.back() == '\n' ||
-            token.back() == '\r'))
+    while (!token.empty() && (token.back() == ' ' || token.back() == '\t' || token.back() == '\n' ||
+                              token.back() == '\r'))
         token.remove_suffix(1);
     if (!token.empty() && token.back() == '?')
         token.remove_suffix(1);

@@ -64,6 +64,7 @@ BASIC_DEMOS=(
 ZIA_DEMOS=(
     "paint:${APPS_DIR}/paint"
     "3dbowling:${GAMES_DIR}/3dbowling"
+    "game3d-showcase:${GAMES_DIR}/game3d-showcase"
     "crackman:${GAMES_DIR}/crackman"
     "vipersql:${APPS_DIR}/vipersql"
     "chess-zia:${GAMES_DIR}/chess"
@@ -108,7 +109,6 @@ build_demo() {
 }
 
 echo -e "${CYAN}Building Viper demos with native assembler + linker (arm64) at -O2${NC}"
-echo -e "${CYAN}Zero external tools — no cc, no ld, no codesign${NC}"
 echo "=============================================="
 echo ""
 

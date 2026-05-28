@@ -1,0 +1,100 @@
+module test_game3d_presets_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics as Gfx;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D Presets Probe", 96, 72);
+    var canvas = Game3D.World3D.get_canvas(world);
+    var scene = Game3D.World3D.get_scene(world);
+    var physics = Game3D.World3D.get_physics(world);
+
+    var metal = Game3D.Materials.Metal(0.72, 0.74, 0.78);
+    var glass = Game3D.Materials.Glass(0.18, 0.45, 0.75, 0.42);
+    var unlit = Game3D.Materials.Unlit(0.12, 0.80, 0.42);
+    var pixels = Gfx.Pixels.New(2, 2);
+    var textured = Game3D.Materials.FromAlbedoMap(pixels);
+
+    if (G3D.Material3D.get_Metallic(metal) < 0.99 ||
+        G3D.Material3D.get_AlphaMode(glass) != Game3D.AlphaMode.get_Blend() ||
+        G3D.Material3D.get_Unlit(unlit) == false ||
+        textured == null) {
+        fail("material presets did not configure expected material state");
+        return;
+    }
+
+    var box = Game3D.Prefab.Box(1.0, metal);
+    Game3D.Entity3D.setPosition(box, -1.5, 0.7, 0.0);
+    Game3D.World3D.spawn(world, box);
+
+    var sphere = Game3D.Prefab.Sphere(0.5, 16, glass);
+    Game3D.Entity3D.setPosition(sphere, 1.5, 0.7, 0.0);
+    Game3D.World3D.spawn(world, sphere);
+
+    var ground = Game3D.Prefab.Ground(24.0, Game3D.Materials.Rubber(0.30, 0.42, 0.22));
+    Game3D.World3D.spawn(world, ground);
+
+    if (G3D.Mesh3D.get_TriangleCount(Game3D.Entity3D.get_mesh(box)) != 12 ||
+        G3D.Mesh3D.get_TriangleCount(Game3D.Entity3D.get_mesh(sphere)) <= 0 ||
+        Game3D.Entity3D.get_layer(ground) != Game3D.Layers.get_World()) {
+        fail("prefab factories did not produce spawnable entities");
+        return;
+    }
+
+    Game3D.Lighting.Studio(world);
+    if (G3D.Canvas3D.get_LightCount(canvas) != 2) {
+        fail("Lighting.Studio did not install a readable light setup");
+        return;
+    }
+
+    Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Cinematic());
+    if (G3D.Canvas3D.get_QualityRequested(canvas) != Game3D.QualityLevel.get_Cinematic() ||
+        G3D.Canvas3D.get_QualityActive(canvas) < Game3D.QualityLevel.get_Performance()) {
+        fail("Quality.Apply did not record a safe quality profile");
+        return;
+    }
+
+    Game3D.PostFX.Crisp(world);
+    var effects = Game3D.World3D.get_effects(world);
+    if (G3D.PostFX3D.get_EffectCount(Game3D.EffectRegistry3D.get_postfx(effects)) < 2) {
+        fail("PostFX.Crisp did not install a visible effect chain");
+        return;
+    }
+
+    var beforeNodes = G3D.Scene3D.get_NodeCount(scene);
+    var env = Game3D.Environment.Outdoor(world);
+    Game3D.EnvHandle.withTerrain(env, 32.0, -0.05);
+    Game3D.EnvHandle.withWater(env, 0.02);
+    Game3D.EnvHandle.withFog(env, 5.0, 60.0);
+    if (G3D.Scene3D.get_NodeCount(scene) <= beforeNodes + 1 ||
+        G3D.Physics3DWorld.get_BodyCount(physics) < 1) {
+        fail("Environment helpers did not add terrain, water, and physics");
+        return;
+    }
+
+    Game3D.Debug3D.ShowOverlay(world, true);
+    Game3D.Debug3D.DrawAxes(world, new Math.Vec3(0.0, 0.0, 0.0), 1.25);
+    Game3D.Debug3D.DrawPhysics(world, true);
+    Game3D.Debug3D.DrawCameraInfo(world, true);
+    Game3D.Debug3D.DrawCapabilities(world, true);
+
+    Game3D.World3D.beginFrame(world);
+    Game3D.World3D.drawScene(world);
+    Game3D.World3D.drawEffects(world);
+    Game3D.World3D.endScene(world);
+    var finalFrame = Game3D.World3D.captureFinalFrame(world);
+    if (Gfx.Pixels.get_Width(finalFrame) != 96 || Gfx.Pixels.get_Height(finalFrame) != 72) {
+        fail("debug overlay did not render through the final frame path");
+        return;
+    }
+
+    Game3D.World3D.destroy(world);
+    Terminal.Say("PASS");
+}

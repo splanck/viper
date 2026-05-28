@@ -26,9 +26,8 @@ static void test_tls_wrapper_rejects_invalid_args_without_network() {
 
     rt_string host = rt_const_cstr("example.com");
     test_result("ConnectFor rejects overflowing timeout",
-                rt_viper_tls_connect_for(host,
-                                         443,
-                                         std::numeric_limits<int64_t>::max()) == nullptr);
+                rt_viper_tls_connect_for(host, 443, std::numeric_limits<int64_t>::max()) ==
+                    nullptr);
 
     const char raw_host[] = {'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm', 0, 'x'};
     rt_string nul_host = rt_string_from_bytes(raw_host, sizeof(raw_host));

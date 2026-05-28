@@ -422,8 +422,7 @@ static bool tryRewriteUnsignedPowerOfTwoDivRem(Instr &in) {
 
     long long divisor = 0;
     unsigned shift = 0;
-    if (!isConstInt(in.operands[1], divisor) || !isPositivePowerOfTwo(divisor, shift) ||
-        shift == 0)
+    if (!isConstInt(in.operands[1], divisor) || !isPositivePowerOfTwo(divisor, shift) || shift == 0)
         return false;
 
     if (isDiv) {
@@ -465,8 +464,7 @@ static bool tryExpandSignedPowerOfTwoDivRem(Function &function,
 
     long long divisor = 0;
     unsigned shift = 0;
-    if (!isConstInt(in.operands[1], divisor) || !isPositivePowerOfTwo(divisor, shift) ||
-        shift == 0)
+    if (!isConstInt(in.operands[1], divisor) || !isPositivePowerOfTwo(divisor, shift) || shift == 0)
         return false;
 
     const Value dividend = in.operands[0];
@@ -628,7 +626,8 @@ bool tryFoldLiteralConcat(Module &module,
     if (!lhsGlobal || !rhsGlobal)
         return false;
 
-    const std::string foldedName = findOrCreateStringGlobal(module, lhsGlobal->init + rhsGlobal->init);
+    const std::string foldedName =
+        findOrCreateStringGlobal(module, lhsGlobal->init + rhsGlobal->init);
 
     Instr replacement;
     replacement.op = Opcode::ConstStr;
@@ -641,7 +640,8 @@ bool tryFoldLiteralConcat(Module &module,
 
     size_t adjustedIdx = idx;
     for (size_t eraseIdx : eraseIndices) {
-        block.instructions.erase(block.instructions.begin() + static_cast<std::ptrdiff_t>(eraseIdx));
+        block.instructions.erase(block.instructions.begin() +
+                                 static_cast<std::ptrdiff_t>(eraseIdx));
         if (eraseIdx < adjustedIdx)
             --adjustedIdx;
     }
@@ -817,8 +817,8 @@ static void runPeephole(Module &m) {
 
                 if (tryRewriteUnsignedPowerOfTwoDivRem(in)) {
                     if (trace)
-                        std::cerr << "[peephole] unsigned power-of-two div/rem in %"
-                                  << *in.result << " (func " << f.name << ")\n";
+                        std::cerr << "[peephole] unsigned power-of-two div/rem in %" << *in.result
+                                  << " (func " << f.name << ")\n";
                     refreshUseCounts();
                     continue;
                 }

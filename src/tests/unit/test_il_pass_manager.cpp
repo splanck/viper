@@ -249,11 +249,11 @@ int main() {
 
     {
         transform::PassManager noVerifyPm;
-        noVerifyPm.registerFunctionPass(
-            "drop-terminator", [](core::Function &fn, transform::AnalysisManager &) {
-                fn.blocks.front().instructions.clear();
-                return transform::PreservedAnalyses::none();
-            });
+        noVerifyPm.registerFunctionPass("drop-terminator",
+                                        [](core::Function &fn, transform::AnalysisManager &) {
+                                            fn.blocks.front().instructions.clear();
+                                            return transform::PreservedAnalyses::none();
+                                        });
         noVerifyPm.registerPipeline("drop", {"drop-terminator"});
         core::Module broken = parseModule();
         assert(noVerifyPm.runPipeline(broken, "drop"));
@@ -265,11 +265,11 @@ int main() {
         verifyPm.setInstrumentationStream(verifyStats);
         verifyPm.setReportPassStatistics(true);
         verifyPm.setVerifyBetweenPasses(true);
-        verifyPm.registerFunctionPass(
-            "drop-terminator", [](core::Function &fn, transform::AnalysisManager &) {
-                fn.blocks.front().instructions.clear();
-                return transform::PreservedAnalyses::none();
-            });
+        verifyPm.registerFunctionPass("drop-terminator",
+                                      [](core::Function &fn, transform::AnalysisManager &) {
+                                          fn.blocks.front().instructions.clear();
+                                          return transform::PreservedAnalyses::none();
+                                      });
         verifyPm.registerPipeline("drop", {"drop-terminator"});
         core::Module broken = parseModule();
         assert(!verifyPm.runPipeline(broken, "drop"));
@@ -377,12 +377,10 @@ int main() {
         int sccpNoopCount = 0;
         transform::PassManager sccpNoopPm;
         sccpNoopPm.registerFunctionAnalysis<int>(
-            "sccp-noop-count", [&sccpNoopCount](core::Module &, core::Function &) {
-                return ++sccpNoopCount;
-            });
+            "sccp-noop-count",
+            [&sccpNoopCount](core::Module &, core::Function &) { return ++sccpNoopCount; });
         sccpNoopPm.registerFunctionPass(
-            "seed-sccp-noop",
-            [](core::Function &fn, transform::AnalysisManager &analysis) {
+            "seed-sccp-noop", [](core::Function &fn, transform::AnalysisManager &analysis) {
                 int &value = analysis.getFunctionResult<int>("sccp-noop-count", fn);
                 assert(value == 1);
                 transform::PreservedAnalyses preserved;
@@ -390,8 +388,7 @@ int main() {
                 return preserved;
             });
         sccpNoopPm.registerFunctionPass(
-            "check-sccp-noop",
-            [](core::Function &fn, transform::AnalysisManager &analysis) {
+            "check-sccp-noop", [](core::Function &fn, transform::AnalysisManager &analysis) {
                 int &value = analysis.getFunctionResult<int>("sccp-noop-count", fn);
                 assert(value == 1);
                 return transform::PreservedAnalyses::all();
@@ -410,8 +407,7 @@ int main() {
         int barCount = 0;
         transform::PassManager sccpSelectivePm;
         sccpSelectivePm.registerFunctionAnalysis<int>(
-            "sccp-selective-count",
-            [&fooCount, &barCount](core::Module &, core::Function &fn) {
+            "sccp-selective-count", [&fooCount, &barCount](core::Module &, core::Function &fn) {
                 if (fn.name == "foo")
                     return ++fooCount;
                 if (fn.name == "bar")
@@ -419,8 +415,7 @@ int main() {
                 return 0;
             });
         sccpSelectivePm.registerFunctionPass(
-            "seed-sccp-selective",
-            [](core::Function &fn, transform::AnalysisManager &analysis) {
+            "seed-sccp-selective", [](core::Function &fn, transform::AnalysisManager &analysis) {
                 int &value = analysis.getFunctionResult<int>("sccp-selective-count", fn);
                 (void)value;
                 transform::PreservedAnalyses preserved;
@@ -441,8 +436,8 @@ int main() {
                                          {"seed-sccp-selective", "sccp", "check-sccp-selective"});
 
         core::Module sccpSelectiveModule = buildSCCPSelectiveModule();
-        bool ranSccpSelective = sccpSelectivePm.runPipeline(sccpSelectiveModule,
-                                                            "sccp-selective-preservation");
+        bool ranSccpSelective =
+            sccpSelectivePm.runPipeline(sccpSelectiveModule, "sccp-selective-preservation");
         assert(ranSccpSelective);
         assert(fooCount == 2);
         assert(barCount == 1);

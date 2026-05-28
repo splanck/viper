@@ -27,6 +27,7 @@
 #include "rt.hpp"
 #include "rt_canvas3d.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_sprite3d.h"
 #include "rt_string.h"
 #include "rt_terrain3d.h"
@@ -99,8 +100,7 @@ static int tests_total = 0;
         }                                                                                          \
     } while (0)
 
-template <typename Fn>
-static bool expect_trap_contains(Fn &&fn, const char *needle) {
+template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *needle) {
     g_last_trap = nullptr;
     g_expect_trap = true;
     if (setjmp(g_trap_jmp) == 0) {
@@ -221,9 +221,9 @@ static void test_mesh_reject_invalid_triangle_indices() {
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
     rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
     rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
-    EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 1, 1); },
-                                     "degenerate triangle"),
-                "degenerate triangle indices trap");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 1, 1); }, "degenerate triangle"),
+        "degenerate triangle indices trap");
     rt_mesh3d_clear(m);
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
     rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
@@ -311,7 +311,8 @@ static void test_mesh_sphere() {
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 224);
     rt_mesh3d *mesh = (rt_mesh3d *)m;
     for (uint32_t tri = 0; tri < mesh->index_count / 3u; ++tri) {
-        EXPECT_TRUE(mesh_triangle_area_sq(mesh, tri) > 1e-12, "Sphere triangles are non-degenerate");
+        EXPECT_TRUE(mesh_triangle_area_sq(mesh, tri) > 1e-12,
+                    "Sphere triangles are non-degenerate");
         EXPECT_TRUE(mesh_triangle_normal_dot_centroid(mesh, tri) > 0.0,
                     "Sphere triangles are wound outward");
     }
@@ -344,15 +345,13 @@ static void test_mesh_cylinder() {
 
 static void test_mesh_generators_reject_invalid_dimensions() {
     TEST("Mesh3D generators reject invalid dimensions");
-    EXPECT_TRUE(expect_trap_contains([] { rt_mesh3d_new_box(1.0, 0.0, 1.0); },
-                                     "greater than zero"),
+    EXPECT_TRUE(expect_trap_contains([] { rt_mesh3d_new_box(1.0, 0.0, 1.0); }, "greater than zero"),
                 "NewBox rejects zero-sized dimensions");
-    EXPECT_TRUE(expect_trap_contains([] { rt_mesh3d_new_sphere(NAN, 8); },
-                                     "greater than zero"),
+    EXPECT_TRUE(expect_trap_contains([] { rt_mesh3d_new_sphere(NAN, 8); }, "greater than zero"),
                 "NewSphere rejects non-finite radii");
-    EXPECT_TRUE(expect_trap_contains([] { rt_mesh3d_new_cylinder(1.0, -2.0, 8); },
-                                     "greater than zero"),
-                "NewCylinder rejects negative heights");
+    EXPECT_TRUE(
+        expect_trap_contains([] { rt_mesh3d_new_cylinder(1.0, -2.0, 8); }, "greater than zero"),
+        "NewCylinder rejects negative heights");
     PASS();
 }
 
@@ -396,12 +395,16 @@ static void test_mesh_transform_flips_tangent_handedness_for_mirrors() {
     rt_mesh3d_add_triangle(m, 0, 1, 2);
     rt_mesh3d_calc_tangents(m);
     EXPECT_TRUE(m->vertices[0].tangent[3] > 0.0f, "Baseline tangent handedness starts positive");
+    uint32_t before_i1 = m->indices[1];
+    uint32_t before_i2 = m->indices[2];
 
     void *mirror = rt_mat4_scale(-1.0, 1.0, 1.0);
     rt_mesh3d_transform(m, mirror);
 
     EXPECT_TRUE(m->vertices[0].tangent[3] < 0.0f,
                 "Mirrored transforms flip tangent handedness for normal mapping");
+    EXPECT_EQ(m->indices[1], before_i2);
+    EXPECT_EQ(m->indices[2], before_i1);
     PASS();
 }
 
@@ -615,19 +618,18 @@ static void test_backend_select_software_override() {
     assert(setenv("VIPER_3D_BACKEND", "software", 1) == 0);
     const vgfx3d_backend_t *b = vgfx3d_select_backend();
     if (!b || strcmp(b->name, "software") != 0) {
-        printf("FAIL: expected backend software, got %s\n",
-               (b && b->name) ? b->name : "(null)");
+        printf("FAIL: expected backend software, got %s\n", (b && b->name) ? b->name : "(null)");
         return;
     }
     PASS();
 }
 
 static void test_backend_select_platform_override() {
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     const char *expected = "metal";
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
     const char *expected = "d3d11";
-#elif defined(__linux__)
+#elif RT_PLATFORM_LINUX
     const char *expected = "opengl";
 #else
     const char *expected = "software";
@@ -638,9 +640,8 @@ static void test_backend_select_platform_override() {
     assert(setenv("VIPER_3D_BACKEND", expected, 1) == 0);
     const vgfx3d_backend_t *b = vgfx3d_select_backend();
     if (!b || strcmp(b->name, expected) != 0) {
-        printf("FAIL: expected backend %s, got %s\n",
-               expected,
-               (b && b->name) ? b->name : "(null)");
+        printf(
+            "FAIL: expected backend %s, got %s\n", expected, (b && b->name) ? b->name : "(null)");
         return;
     }
     PASS();
@@ -773,6 +774,24 @@ static void test_material_new_textured() {
     PASS();
 }
 
+static void test_material_inspection_getters() {
+    TEST("Material3D inspection getters");
+    void *m = rt_material3d_new_color(0.25, 0.5, 0.75);
+    assert(m);
+    void *color = rt_material3d_get_color(m);
+    EXPECT_NEAR(rt_vec3_x(color), 0.25, 0.001);
+    EXPECT_NEAR(rt_vec3_y(color), 0.5, 0.001);
+    EXPECT_NEAR(rt_vec3_z(color), 0.75, 0.001);
+    EXPECT_EQ(rt_material3d_get_unlit(m), 0);
+    rt_material3d_set_unlit(m, 1);
+    EXPECT_EQ(rt_material3d_get_unlit(m), 1);
+    rt_material3d_set_shading_model(m, 4);
+    EXPECT_EQ(rt_material3d_get_shading_model(m), 4);
+    rt_material3d_set_shading_model(m, 99);
+    EXPECT_EQ(rt_material3d_get_shading_model(m), 0);
+    PASS();
+}
+
 //=============================================================================
 // Light3D tests
 //=============================================================================
@@ -812,6 +831,32 @@ static void test_light_set_color() {
     TEST("Light3D.SetColor — no crash");
     void *l = rt_light3d_new_ambient(0.1, 0.1, 0.1);
     rt_light3d_set_color(l, 0.5, 0.5, 0.5);
+    PASS();
+}
+
+static void test_light_inspection_getters_and_enabled() {
+    TEST("Light3D inspection getters and Enabled");
+    void *dir = rt_vec3_new(0.0, -2.0, 0.0);
+    void *pos = rt_vec3_new(1.0, 2.0, 3.0);
+    void *sun = rt_light3d_new_directional(dir, 1.0, 0.8, 0.6);
+    void *point = rt_light3d_new_point(pos, 0.25, 0.5, 0.75, 0.2);
+    assert(sun && point);
+    void *sun_dir = rt_light3d_get_direction(sun);
+    void *point_pos = rt_light3d_get_position(point);
+    void *point_color = rt_light3d_get_color(point);
+    EXPECT_EQ(rt_light3d_get_type(sun), 0);
+    EXPECT_EQ(rt_light3d_get_type(point), 1);
+    EXPECT_EQ(rt_light3d_get_enabled(point), 1);
+    EXPECT_NEAR(rt_light3d_get_intensity(point), 1.0, 0.001);
+    EXPECT_NEAR(rt_vec3_y(sun_dir), -1.0, 0.001);
+    EXPECT_NEAR(rt_vec3_x(point_pos), 1.0, 0.001);
+    EXPECT_NEAR(rt_vec3_y(point_pos), 2.0, 0.001);
+    EXPECT_NEAR(rt_vec3_z(point_pos), 3.0, 0.001);
+    EXPECT_NEAR(rt_vec3_x(point_color), 0.25, 0.001);
+    EXPECT_NEAR(rt_vec3_y(point_color), 0.5, 0.001);
+    EXPECT_NEAR(rt_vec3_z(point_color), 0.75, 0.001);
+    rt_light3d_set_enabled(point, 0);
+    EXPECT_EQ(rt_light3d_get_enabled(point), 0);
     PASS();
 }
 
@@ -974,8 +1019,7 @@ static void test_camera_screen_to_ray_uses_viewport_aspect() {
 
     void *wide_right = rt_camera3d_screen_to_ray(cam, 800, 200, 800, 400);
     assert(wide_right);
-    EXPECT_TRUE(rt_vec3_x(wide_right) > 0.7,
-                "Wide viewport rays use the active 2:1 output aspect");
+    EXPECT_TRUE(rt_vec3_x(wide_right) > 0.7, "Wide viewport rays use the active 2:1 output aspect");
     PASS();
 }
 
@@ -992,6 +1036,26 @@ static void test_camera_ortho_screen_to_ray_parallel() {
     EXPECT_NEAR(rt_vec3_x(center), rt_vec3_x(corner), 0.0001);
     EXPECT_NEAR(rt_vec3_y(center), rt_vec3_y(corner), 0.0001);
     EXPECT_NEAR(rt_vec3_z(center), rt_vec3_z(corner), 0.0001);
+    PASS();
+}
+
+static void test_camera_screen_to_ray_origin_handles_ortho_pixels() {
+    TEST("Camera3D.ScreenToRayOrigin gives orthographic pixels distinct origins");
+    void *cam = rt_camera3d_new_ortho(5.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    rt_camera3d_look_at(cam, eye, target, up);
+
+    void *center = rt_camera3d_screen_to_ray_origin(cam, 320, 240, 640, 480);
+    void *corner = rt_camera3d_screen_to_ray_origin(cam, 0, 0, 640, 480);
+    EXPECT_TRUE(center != nullptr && corner != nullptr, "ScreenToRayOrigin returns Vec3 objects");
+    EXPECT_NEAR(rt_vec3_x(center), 0.0, 0.01);
+    EXPECT_NEAR(rt_vec3_y(center), 0.0, 0.01);
+    EXPECT_TRUE(std::fabs(rt_vec3_x(corner) - rt_vec3_x(center)) > 1.0,
+                "orthographic corner ray starts at a different X");
+    EXPECT_TRUE(std::fabs(rt_vec3_y(corner) - rt_vec3_y(center)) > 1.0,
+                "orthographic corner ray starts at a different Y");
     PASS();
 }
 
@@ -1057,7 +1121,8 @@ static void test_camera_look_at_coincident_eye_preserves_translation() {
     rt_camera3d_look_at(cam, eye, eye, up);
 
     rt_camera3d *impl = (rt_camera3d *)cam;
-    EXPECT_TRUE(std::fabs(impl->view[3]) + std::fabs(impl->view[7]) + std::fabs(impl->view[11]) > 0.1,
+    EXPECT_TRUE(std::fabs(impl->view[3]) + std::fabs(impl->view[7]) + std::fabs(impl->view[11]) >
+                    0.1,
                 "Coincident LookAt preserves a translated view matrix");
     PASS();
 }
@@ -1129,7 +1194,8 @@ static void test_camera_sanitizes_nonfinite_inputs() {
     EXPECT_NEAR(cam->aspect, 1.0, 0.001);
     EXPECT_NEAR(cam->near_plane, 0.1, 0.001);
     EXPECT_NEAR(cam->far_plane, 1000.1, 0.001);
-    EXPECT_TRUE(finite_camera_state(cam), "Perspective camera starts finite after invalid construction");
+    EXPECT_TRUE(finite_camera_state(cam),
+                "Perspective camera starts finite after invalid construction");
 
     rt_camera3d_set_fov(cam, NAN);
     EXPECT_NEAR(cam->fov, 60.0, 0.001);
@@ -1164,7 +1230,8 @@ static void test_camera_sanitizes_nonfinite_inputs() {
     EXPECT_NEAR(ortho->aspect, 1.0, 0.001);
     EXPECT_NEAR(ortho->near_plane, 0.1, 0.001);
     EXPECT_NEAR(ortho->far_plane, 1000.1, 0.001);
-    EXPECT_TRUE(finite_camera_state(ortho), "Orthographic camera starts finite after invalid construction");
+    EXPECT_TRUE(finite_camera_state(ortho),
+                "Orthographic camera starts finite after invalid construction");
     EXPECT_TRUE(finite_vec3(rt_camera3d_screen_to_ray(ortho, 0, 0, 640, 480)),
                 "Orthographic ScreenToRay returns a finite ray");
     PASS();
@@ -1259,20 +1326,12 @@ static void test_light_spot_intensity() {
 
 static void test_light_validation_and_clamping() {
     TEST("Light3D normalizes directions and clamps invalid inputs");
-    rt_light3d *dir = (rt_light3d *)rt_light3d_new_directional(rt_vec3_new(0.0, -10.0, 0.0),
-                                                               1.0,
-                                                               1.0,
-                                                               1.0);
+    rt_light3d *dir =
+        (rt_light3d *)rt_light3d_new_directional(rt_vec3_new(0.0, -10.0, 0.0), 1.0, 1.0, 1.0);
     rt_light3d *point =
         (rt_light3d *)rt_light3d_new_point(rt_vec3_new(0.0, 1.0, 0.0), 1.0, 1.0, 1.0, -4.0);
-    rt_light3d *spot = (rt_light3d *)rt_light3d_new_spot(rt_vec3_new(0.0, 5.0, 0.0),
-                                                         rt_vec3_new(0.0, -2.0, 0.0),
-                                                         1.0,
-                                                         1.0,
-                                                         1.0,
-                                                         -2.0,
-                                                         45.0,
-                                                         10.0);
+    rt_light3d *spot = (rt_light3d *)rt_light3d_new_spot(
+        rt_vec3_new(0.0, 5.0, 0.0), rt_vec3_new(0.0, -2.0, 0.0), 1.0, 1.0, 1.0, -2.0, 45.0, 10.0);
     assert(dir != NULL && point != NULL && spot != NULL);
     EXPECT_NEAR(dir->direction[0], 0.0, 0.001);
     EXPECT_NEAR(dir->direction[1], -1.0, 0.001);
@@ -1280,14 +1339,8 @@ static void test_light_validation_and_clamping() {
     EXPECT_NEAR(point->attenuation, 0.0, 0.001);
     EXPECT_TRUE(spot->inner_cos > spot->outer_cos,
                 "Spot lights reorder inner/outer cones into a valid range");
-    rt_light3d *equal_spot = (rt_light3d *)rt_light3d_new_spot(rt_vec3_new(0.0, 5.0, 0.0),
-                                                               rt_vec3_new(0.0, -1.0, 0.0),
-                                                               1.0,
-                                                               1.0,
-                                                               1.0,
-                                                               0.0,
-                                                               45.0,
-                                                               45.0);
+    rt_light3d *equal_spot = (rt_light3d *)rt_light3d_new_spot(
+        rt_vec3_new(0.0, 5.0, 0.0), rt_vec3_new(0.0, -1.0, 0.0), 1.0, 1.0, 1.0, 0.0, 45.0, 45.0);
     EXPECT_TRUE(equal_spot->inner_cos > equal_spot->outer_cos,
                 "Spot lights keep equal cones separated for shader falloff");
     rt_light3d_set_intensity(spot, -5.0);
@@ -1301,14 +1354,8 @@ static void test_light_sanitizes_nonfinite_inputs() {
     rt_light3d *dir = (rt_light3d *)rt_light3d_new_directional(bad_vec, -1.0, NAN, 2.0);
     rt_light3d *point = (rt_light3d *)rt_light3d_new_point(bad_vec, INFINITY, 0.5, -1.0, INFINITY);
     rt_light3d *ambient = (rt_light3d *)rt_light3d_new_ambient(NAN, 2.0, -1.0);
-    rt_light3d *spot = (rt_light3d *)rt_light3d_new_spot(bad_vec,
-                                                         bad_vec,
-                                                         NAN,
-                                                         2.0,
-                                                         0.25,
-                                                         NAN,
-                                                         NAN,
-                                                         INFINITY);
+    rt_light3d *spot =
+        (rt_light3d *)rt_light3d_new_spot(bad_vec, bad_vec, NAN, 2.0, 0.25, NAN, NAN, INFINITY);
     assert(dir != NULL && point != NULL && ambient != NULL && spot != NULL);
     EXPECT_TRUE(finite_light_state(dir), "Directional light state stays finite");
     EXPECT_TRUE(finite_light_state(point), "Point light state stays finite");
@@ -1503,7 +1550,8 @@ static void test_canvas_ortho_skybox_fills_render_target_uniformly() {
     canvas.height = 2;
     canvas.skybox = (rt_cubemap3d *)cm;
     camera.view[0] = camera.view[5] = camera.view[10] = camera.view[15] = 1.0;
-    camera.projection[0] = camera.projection[5] = camera.projection[10] = camera.projection[15] = 1.0;
+    camera.projection[0] = camera.projection[5] = camera.projection[10] = camera.projection[15] =
+        1.0;
     camera.eye[2] = 5.0;
     camera.is_ortho = 1;
 
@@ -1546,7 +1594,8 @@ static void test_canvas_cpu_skybox_fallback_reuses_cache_until_inputs_change() {
     canvas.height = 2;
     canvas.skybox = (rt_cubemap3d *)cm;
     camera.view[0] = camera.view[5] = camera.view[10] = camera.view[15] = 1.0;
-    camera.projection[0] = camera.projection[5] = camera.projection[10] = camera.projection[15] = 1.0;
+    camera.projection[0] = camera.projection[5] = camera.projection[10] = camera.projection[15] =
+        1.0;
     camera.eye[2] = 5.0;
     camera.is_ortho = 1;
 
@@ -1733,10 +1782,8 @@ static void test_rendertarget_hdr_property() {
     TEST("RenderTarget3D.IsHdr — matches constructor");
     void *ldr = rt_rendertarget3d_new(64, 64);
     void *hdr = rt_rendertarget3d_new_hdr(64, 64);
-    EXPECT_TRUE(rt_rendertarget3d_get_is_hdr(ldr) == 0,
-                "LDR RenderTarget3D reports IsHdr false");
-    EXPECT_TRUE(rt_rendertarget3d_get_is_hdr(hdr) == 1,
-                "HDR RenderTarget3D reports IsHdr true");
+    EXPECT_TRUE(rt_rendertarget3d_get_is_hdr(ldr) == 0, "LDR RenderTarget3D reports IsHdr false");
+    EXPECT_TRUE(rt_rendertarget3d_get_is_hdr(hdr) == 1, "HDR RenderTarget3D reports IsHdr true");
     PASS();
 }
 
@@ -1772,7 +1819,10 @@ static int g_canvas_end_frame_calls = 0;
 static int g_canvas_submit_draw_calls = 0;
 static int g_canvas_submit_draw_instanced_calls = 0;
 static int g_last_instanced_count = 0;
+static int g_last_instanced_has_prev = 0;
+static float g_last_instanced_prev_x = 0.0f;
 static vgfx3d_camera_params_t g_canvas_begin_frame_params = {};
+static vgfx3d_draw_cmd_t g_last_draw_cmd = {};
 } // namespace
 
 typedef struct {
@@ -1825,18 +1875,20 @@ static void tracked_end_frame(void *) {
 
 static void tracked_submit_draw(void *,
                                 vgfx_window_t,
-                                const vgfx3d_draw_cmd_t *,
+                                const vgfx3d_draw_cmd_t *cmd,
                                 const vgfx3d_light_params_t *,
                                 int32_t,
                                 const float *,
                                 int8_t,
                                 int8_t) {
     g_canvas_submit_draw_calls++;
+    if (cmd)
+        g_last_draw_cmd = *cmd;
 }
 
 static void tracked_submit_draw_instanced(void *,
                                           vgfx_window_t,
-                                          const vgfx3d_draw_cmd_t *,
+                                          const vgfx3d_draw_cmd_t *cmd,
                                           const float *,
                                           int32_t instance_count,
                                           const vgfx3d_light_params_t *,
@@ -1846,6 +1898,30 @@ static void tracked_submit_draw_instanced(void *,
                                           int8_t) {
     g_canvas_submit_draw_instanced_calls++;
     g_last_instanced_count = instance_count;
+    if (cmd) {
+        g_last_instanced_has_prev = cmd->has_prev_instance_matrices;
+        g_last_instanced_prev_x =
+            cmd->prev_instance_matrices ? cmd->prev_instance_matrices[3] : 0.0f;
+    }
+}
+
+static void enable_latched_motion_blur(rt_canvas3d *canvas) {
+    if (!canvas)
+        return;
+    canvas->frame_gpu_postfx_enabled = 1;
+    canvas->frame_postfx_state_latched = 1;
+    vgfx3d_postfx_chain_free(&canvas->frame_postfx_chain);
+    memset(&canvas->frame_postfx_chain, 0, sizeof(canvas->frame_postfx_chain));
+    canvas->frame_postfx_chain.effects =
+        (vgfx3d_postfx_effect_desc_t *)calloc(1, sizeof(vgfx3d_postfx_effect_desc_t));
+    if (!canvas->frame_postfx_chain.effects)
+        return;
+    canvas->frame_postfx_chain.enabled = 1;
+    canvas->frame_postfx_chain.effect_count = 1;
+    canvas->frame_postfx_chain.effect_capacity = 1;
+    canvas->frame_postfx_chain.effects[0].type = VGFX3D_POSTFX_EFFECT_MOTION_BLUR;
+    canvas->frame_postfx_chain.effects[0].snapshot.enabled = 1;
+    canvas->frame_postfx_chain.effects[0].snapshot.motion_blur_enabled = 1;
 }
 
 static void test_canvas_postfx_retains_owned_reference() {
@@ -1913,18 +1989,18 @@ static void test_canvas_render_target_rejects_mid_frame_changes() {
     assert(rt != NULL);
 
     canvas.in_frame = 1;
-    EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_set_render_target(&canvas, rt); },
-                                     "during a frame"),
-                "SetRenderTarget traps during an active frame");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_canvas3d_set_render_target(&canvas, rt); }, "during a frame"),
+        "SetRenderTarget traps during an active frame");
     EXPECT_TRUE(canvas.render_target_owner == NULL && canvas.render_target == NULL,
                 "SetRenderTarget leaves canvas target unchanged when rejected");
 
     canvas.in_frame = 0;
     rt_canvas3d_set_render_target(&canvas, rt);
     canvas.in_frame = 1;
-    EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_reset_render_target(&canvas); },
-                                     "during a frame"),
-                "ResetRenderTarget traps during an active frame");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_canvas3d_reset_render_target(&canvas); }, "during a frame"),
+        "ResetRenderTarget traps during an active frame");
     EXPECT_TRUE(canvas.render_target_owner == rt,
                 "ResetRenderTarget leaves current target bound when rejected");
     canvas.in_frame = 0;
@@ -1981,6 +2057,34 @@ static void test_canvas_light_supports_last_slot() {
         FAIL("Canvas3D did not release a Light3D cleared from the last slot");
         return;
     }
+    PASS();
+}
+
+static void test_canvas_default_lighting_and_clear_lights() {
+    TEST("Canvas3D.SetDefaultLighting and ClearLights");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    g_light_release_count = 0;
+
+    rt_canvas3d_set_default_lighting(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_light_count(&canvas), 2);
+    EXPECT_TRUE(canvas.lights[0] != nullptr && canvas.lights[1] != nullptr,
+                "Default lighting installs key/fill lights");
+    EXPECT_EQ(rt_light3d_get_type(canvas.lights[0]), 0);
+    EXPECT_NEAR(canvas.ambient[0], 0.18, 0.001);
+    EXPECT_NEAR(canvas.ambient[1], 0.18, 0.001);
+    EXPECT_NEAR(canvas.ambient[2], 0.20, 0.001);
+    rt_obj_set_finalizer(canvas.lights[0], tracked_light_finalizer);
+    rt_obj_set_finalizer(canvas.lights[1], tracked_light_finalizer);
+
+    rt_light3d_set_enabled(canvas.lights[1], 0);
+    EXPECT_EQ(rt_canvas3d_get_light_count(&canvas), 1);
+
+    rt_canvas3d_clear_lights(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_light_count(&canvas), 0);
+    EXPECT_TRUE(canvas.lights[0] == nullptr && canvas.lights[1] == nullptr,
+                "ClearLights clears retained slots");
+    EXPECT_EQ(g_light_release_count, 2);
     PASS();
 }
 
@@ -2263,8 +2367,9 @@ static void test_canvas_overlay_draws_replay_after_3d_frame() {
     g_canvas_submit_draw_calls = 0;
 
     rt_canvas3d_begin(&canvas, cam);
-    EXPECT_TRUE(canvas3d_queue_screen_rect(&canvas, 4.0f, 4.0f, 10.0f, 10.0f, 1.0f, 0.0f, 0.0f, 1.0f) != 0,
-                "Overlay geometry queues successfully during a 3D frame");
+    EXPECT_TRUE(
+        canvas3d_queue_screen_rect(&canvas, 4.0f, 4.0f, 10.0f, 10.0f, 1.0f, 0.0f, 0.0f, 1.0f) != 0,
+        "Overlay geometry queues successfully during a 3D frame");
     rt_canvas3d_end(&canvas);
 
     EXPECT_EQ(g_canvas_begin_frame_calls, 2);
@@ -2385,6 +2490,32 @@ static void test_canvas_delta_time_cap_and_disable() {
     PASS();
 }
 
+static void test_canvas_delta_time_sec_clamps_huge_dtmax_without_overflow() {
+    TEST("Canvas3D.GetDeltaTimeSec handles huge SetDTMax values");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    rt_canvas3d_set_dt_max(&canvas, INT64_MAX);
+    canvas.delta_time_us = 500000;
+    EXPECT_NEAR(rt_canvas3d_get_delta_time_sec(&canvas), 0.5, 0.0001);
+    EXPECT_TRUE(canvas.dt_max_ms <= INT64_MAX / 1000, "SetDTMax clamps to checked multiply range");
+    PASS();
+}
+
+static void test_canvas_synthetic_mouse_accumulation_clamps() {
+    TEST("Canvas3D synthetic mouse accumulation clamps instead of overflowing");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    rt_canvas3d_push_synthetic_mouse(&canvas, 900000.0, -900000.0, 0, 900000.0);
+    rt_canvas3d_push_synthetic_mouse(&canvas, 900000.0, -900000.0, 0, 900000.0);
+    EXPECT_NEAR(canvas.synthetic_mouse_dx, 1000000.0, 0.001);
+    EXPECT_NEAR(canvas.synthetic_mouse_dy, -1000000.0, 0.001);
+    EXPECT_NEAR(canvas.synthetic_mouse_wheel_y, 1000000.0, 0.001);
+    rt_canvas3d_push_synthetic_mouse(&canvas, INFINITY, NAN, 0, -INFINITY);
+    EXPECT_NEAR(canvas.synthetic_mouse_dx, 1000000.0, 0.001);
+    EXPECT_NEAR(canvas.synthetic_mouse_dy, -1000000.0, 0.001);
+    PASS();
+}
+
 static void test_canvas_fps_uses_microsecond_delta() {
     TEST("Canvas3D.GetFPS uses microsecond frame timing");
     rt_canvas3d canvas;
@@ -2409,6 +2540,58 @@ static void test_canvas_boolean_setters_normalize() {
     rt_canvas3d_set_backface_cull(&canvas, 0);
     EXPECT_EQ(canvas.wireframe, 0);
     EXPECT_EQ(canvas.backface_cull, 0);
+    PASS();
+}
+
+static void test_canvas_material_shading_model_mapping() {
+    TEST("Canvas3D maps material shading models to backend draw commands");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_plane(1.0, 1.0);
+    void *mat = rt_material3d_new();
+    void *xf = rt_mat4_identity();
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    rt_material3d_set_shading_model(mat, 5);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_draw_cmd.shading_model, 5);
+    EXPECT_EQ(g_last_draw_cmd.unlit, 0);
+
+    rt_material3d_set_shading_model(mat, 4);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_draw_cmd.shading_model, 4);
+
+    rt_material3d_set_shading_model(mat, 2);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_draw_cmd.workflow, RT_MATERIAL3D_WORKFLOW_PBR);
+
+    rt_material3d_set_unlit(mat, 0);
+    rt_material3d_set_shading_model(mat, 3);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_draw_cmd.unlit, 1);
+    EXPECT_EQ(g_last_draw_cmd.shading_model, 0);
     PASS();
 }
 
@@ -2634,9 +2817,8 @@ static void test_canvas_draw_auto_generates_missing_normal_map_tangents() {
 
     EXPECT_NEAR(mesh->vertices[0].tangent[0], 0.0, 0.001);
     rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
-    EXPECT_TRUE(std::fabs(mesh->vertices[0].tangent[0]) +
-                    std::fabs(mesh->vertices[0].tangent[1]) +
-                    std::fabs(mesh->vertices[0].tangent[2]) >
+    EXPECT_TRUE(std::fabs(mesh->vertices[0].tangent[0]) + std::fabs(mesh->vertices[0].tangent[1]) +
+                        std::fabs(mesh->vertices[0].tangent[2]) >
                     0.5,
                 "Normal-mapped draws have a usable tangent basis");
     PASS();
@@ -2867,7 +3049,8 @@ static void test_instbatch_remove_preserves_unrelated_motion_history() {
 
     EXPECT_EQ(view->motion_snapshot_count, 1);
     EXPECT_EQ(view->prev_count, 1);
-    EXPECT_TRUE(view->has_prev_snapshot == 1, "Removing a later instance keeps earlier motion history");
+    EXPECT_TRUE(view->has_prev_snapshot == 1,
+                "Removing a later instance keeps earlier motion history");
     PASS();
 }
 
@@ -2906,6 +3089,90 @@ static void test_canvas_opaque_alpha_mode_keeps_instanced_path() {
     EXPECT_EQ(g_canvas_submit_draw_instanced_calls, 1);
     EXPECT_EQ(g_last_instanced_count, 2);
     EXPECT_EQ(g_canvas_submit_draw_calls, 0);
+    PASS();
+}
+
+static void test_canvas_instanced_gpu_synthesizes_previous_matrices() {
+    TEST("Canvas3D synthesizes previous matrices for GPU instancing");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    float instances[16] = {0.0f};
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.submit_draw_instanced = tracked_submit_draw_instanced;
+    backend.end_frame = tracked_end_frame;
+
+    instances[0] = instances[5] = instances[10] = instances[15] = 1.0f;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    rt_material3d_set_alpha(mat, 1.0);
+    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+
+    g_last_instanced_has_prev = 0;
+    g_last_instanced_prev_x = -99.0f;
+    rt_canvas3d_begin(&canvas, cam);
+    enable_latched_motion_blur(&canvas);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 1, NULL, 0);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_instanced_has_prev, 1);
+    EXPECT_NEAR(g_last_instanced_prev_x, 0.0, 0.0001);
+
+    instances[3] = 2.0f;
+    rt_canvas3d_begin(&canvas, cam);
+    enable_latched_motion_blur(&canvas);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 1, NULL, 0);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_last_instanced_has_prev, 1);
+    EXPECT_NEAR(g_last_instanced_prev_x, 0.0, 0.0001);
+    vgfx3d_postfx_chain_free(&canvas.frame_postfx_chain);
+    PASS();
+}
+
+static void test_canvas_instanced_motion_history_separates_batches() {
+    TEST("Canvas3D separates motion history for same mesh instanced batches");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    float batch_a[16] = {0.0f};
+    float batch_b[16] = {0.0f};
+
+    backend.name = "software";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    batch_a[0] = batch_a[5] = batch_a[10] = batch_a[15] = 1.0f;
+    batch_b[0] = batch_b[5] = batch_b[10] = batch_b[15] = 1.0f;
+    batch_b[3] = 10.0f;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    rt_material3d_set_alpha(mat, 0.5);
+    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_a, 1, NULL, 0);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_b, 1, NULL, 0);
+    rt_canvas3d_end(&canvas);
+
+    batch_a[3] = 1.0f;
+    batch_b[3] = 11.0f;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_a, 1, NULL, 0);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, batch_b, 1, NULL, 0);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_last_draw_cmd.has_prev_model_matrix, 1);
+    EXPECT_NEAR(g_last_draw_cmd.prev_model_matrix[3], 10.0, 0.0001);
     PASS();
 }
 
@@ -2986,12 +3253,11 @@ static void test_canvas_instanced_previous_matrices_require_pointer() {
     canvas.in_frame = 1;
     instance[0] = instance[5] = instance[10] = instance[15] = 1.0f;
 
-    EXPECT_TRUE(expect_trap_contains(
-                    [&]() {
-                        rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instance, 1, NULL, 1);
-                    },
-                    "previous instance matrices pointer is required"),
-                "Previous-instance flag without data traps instead of silently disabling motion history");
+    EXPECT_TRUE(
+        expect_trap_contains(
+            [&]() { rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instance, 1, NULL, 1); },
+            "previous instance matrices pointer is required"),
+        "Previous-instance flag without data traps instead of silently disabling motion history");
     PASS();
 }
 
@@ -3138,6 +3404,7 @@ int main() {
     test_camera_shake_overshoot_clears_immediately();
     test_camera_ortho_set_fov_preserves_projection();
     test_camera_ortho_screen_to_ray_parallel();
+    test_camera_screen_to_ray_origin_handles_ortho_pixels();
     test_camera_screen_to_ray_tracks_shaken_view();
     test_camera_shake_does_not_drift_eye_in_smooth_follow();
     test_camera_sanitizes_nonfinite_inputs();
@@ -3146,6 +3413,7 @@ int main() {
     test_material_new();
     test_material_new_color();
     test_material_new_textured();
+    test_material_inspection_getters();
     test_material_set_color();
     test_material_sanitizes_numeric_inputs();
     test_material_set_shininess();
@@ -3158,6 +3426,7 @@ int main() {
     test_light_ambient();
     test_light_set_intensity();
     test_light_set_color();
+    test_light_inspection_getters_and_enabled();
     test_light_null_safety();
     test_light_spot();
     test_light_spot_intensity();
@@ -3220,10 +3489,14 @@ int main() {
     test_canvas_render_target_rejects_mid_frame_changes();
     test_canvas_light_retains_owned_reference();
     test_canvas_light_supports_last_slot();
+    test_canvas_default_lighting_and_clear_lights();
     test_canvas_delta_time_preserves_first_zero();
     test_canvas_delta_time_cap_and_disable();
+    test_canvas_delta_time_sec_clamps_huge_dtmax_without_overflow();
+    test_canvas_synthetic_mouse_accumulation_clamps();
     test_canvas_fps_uses_microsecond_delta();
     test_canvas_boolean_setters_normalize();
+    test_canvas_material_shading_model_mapping();
     test_canvas_draw_mesh_clears_pending_splat_on_failed_draw();
     test_canvas_draw_terrain_rejects_2d_frame();
 
@@ -3260,6 +3533,8 @@ int main() {
     test_metal_instbatch_create();
     test_instbatch_remove_preserves_unrelated_motion_history();
     test_canvas_opaque_alpha_mode_keeps_instanced_path();
+    test_canvas_instanced_gpu_synthesizes_previous_matrices();
+    test_canvas_instanced_motion_history_separates_batches();
     test_canvas_legacy_translucent_batch_falls_back_from_instancing();
     test_canvas_instanced_fallback_caps_instance_count();
     test_canvas_instanced_previous_matrices_require_pointer();

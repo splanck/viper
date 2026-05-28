@@ -79,8 +79,7 @@ class ImportResolver {
     ImportResolver(il::support::DiagnosticEngine &diag,
                    il::support::SourceManager &sm,
                    WarningSuppressions *warningSuppressions = nullptr,
-                   std::function<std::optional<std::string>(std::string_view)> sourceProvider =
-                       {});
+                   std::function<std::optional<std::string>(std::string_view)> sourceProvider = {});
 
     /// @brief Resolve all imports for @p module.
     /// @details Scans the module's declaration list for import statements, resolves

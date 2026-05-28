@@ -216,8 +216,7 @@ static std::string formatFunctionSignature(const std::string &name,
         std::string paramName = "arg" + std::to_string(i + 1);
         if (paramNames && i < paramNames->size() && !(*paramNames)[i].empty())
             paramName = (*paramNames)[i];
-        out << paramName << ": "
-            << (params[i] ? params[i]->toDisplayString() : "Unknown");
+        out << paramName << ": " << (params[i] ? params[i]->toDisplayString() : "Unknown");
     }
     out << ")";
     if (ret)
@@ -261,6 +260,48 @@ static std::string trimCopy(std::string_view text) {
     while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])))
         --end;
     return std::string(text.substr(start, end - start));
+}
+
+static bool startsWith(std::string_view text, std::string_view prefix) {
+    return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
+}
+
+static std::string docCommentBefore(const il::support::SourceManager &sm,
+                                    il::support::SourceLoc loc) {
+    if (!loc.isValid() || loc.line <= 1)
+        return {};
+
+    std::vector<std::string> lines;
+    uint32_t line = loc.line - 1;
+    while (line > 0) {
+        std::string text = trimCopy(sm.getLine(loc.file_id, line));
+        if (startsWith(text, "///")) {
+            std::string doc = trimCopy(std::string_view(text).substr(3));
+            lines.push_back(std::move(doc));
+        } else {
+            break;
+        }
+        --line;
+    }
+
+    std::string doc;
+    for (auto it = lines.rbegin(); it != lines.rend(); ++it) {
+        if (!doc.empty())
+            doc += "\n";
+        doc += *it;
+    }
+    return doc;
+}
+
+static std::string documentationForSymbol(const il::support::SourceManager *sm, const Symbol &sym) {
+    if (!sym.documentation.empty())
+        return sym.documentation;
+    if (!sm)
+        return {};
+    il::support::SourceLoc loc = sym.loc.isValid() ? sym.loc : il::support::SourceLoc{};
+    if (!loc.isValid() && sym.decl)
+        loc = sym.decl->loc;
+    return docCommentBefore(*sm, loc);
 }
 
 static bool hasKeywordBoundary(std::string_view source, size_t start, size_t len) {
@@ -587,11 +628,28 @@ CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
             return sv.size() >= n && sv.substr(sv.size() - n) == suffix;
         };
 
-        if (endsWith(before, "new "))
+        auto trimRight = [](std::string_view sv) -> std::string_view {
+            while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.back())))
+                sv.remove_suffix(1);
+            return sv;
+        };
+
+        auto endsWithWord = [](std::string_view sv, const char *word) -> bool {
+            size_t n = std::strlen(word);
+            if (sv.size() < n || sv.substr(sv.size() - n) != word)
+                return false;
+            if (sv.size() == n)
+                return true;
+            return !isIdentChar(sv[sv.size() - n - 1]);
+        };
+
+        std::string_view beforeTrimmed = trimRight(before);
+
+        if (endsWith(before, "new ") || endsWithWord(beforeTrimmed, "new"))
             ctx.trigger = TriggerKind::AfterNew;
         else if (endsWith(before, "return "))
             ctx.trigger = TriggerKind::AfterReturn;
-        else if (triggerPos >= 0 && lineUpToCursor[triggerPos] == ':')
+        else if (!beforeTrimmed.empty() && beforeTrimmed.back() == ':')
             ctx.trigger = TriggerKind::AfterColon;
         else
             ctx.trigger = TriggerKind::CtrlSpace;
@@ -738,11 +796,8 @@ std::vector<CompletionItem> CompletionEngine::provideSnippets(const std::string 
     return items;
 }
 
-std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &sema,
-                                                                  const std::string &prefix,
-                                                                  uint32_t fileId,
-                                                                  int line,
-                                                                  int col) const {
+std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(
+    const Sema &sema, const std::string &prefix, uint32_t fileId, int line, int col) const {
     std::vector<CompletionItem> items;
     auto symbols = sema.getVisibleSymbolsAtPosition(
         fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(std::max(1, col + 1)));
@@ -754,6 +809,7 @@ std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &se
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = sym.isExtern ? "runtime" : "scope";
         if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
@@ -770,6 +826,7 @@ std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &se
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = sym.isExtern ? "runtime" : "scope";
         if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
@@ -865,6 +922,7 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = sym.isExtern ? "runtime" : "member";
         if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
@@ -902,6 +960,7 @@ std::vector<CompletionItem> CompletionEngine::provideModuleMembers(
         item.insertText = sym.name;
         item.kind = kindFromSymbol(sym);
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = "module";
         if (item.kind == CompletionKind::Function || item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
@@ -944,6 +1003,7 @@ std::vector<CompletionItem> CompletionEngine::provideRuntimeMembers(
         else
             item.kind = CompletionKind::Property;
         item.detail = typeDetail(sym.type);
+        item.documentation = documentationForSymbol(sm_.get(), sym);
         item.source = "runtime";
         if (item.kind == CompletionKind::Method)
             item.commitCharacters = "(";
@@ -963,6 +1023,7 @@ std::vector<CompletionItem> CompletionEngine::provideNamespaceMembers(
         item.label = name;
         item.insertText = name;
         item.kind = CompletionKind::RuntimeClass;
+        item.documentation = "Runtime class " + nsPrefix + "." + name + ".";
         item.source = "runtime";
         item.sortPriority = 5;
         items.push_back(std::move(item));
@@ -1137,8 +1198,8 @@ std::vector<CompletionItem> CompletionEngine::complete(
             // Scope symbols and type names require sema.
             if (hasSema) {
                 const Sema &sema = *analysis->sema;
-                auto scope = provideScopeSymbols(
-                    sema, ctx.prefix, analysis->fileId, ctx.line, ctx.col);
+                auto scope =
+                    provideScopeSymbols(sema, ctx.prefix, analysis->fileId, ctx.line, ctx.col);
                 items.insert(items.end(), scope.begin(), scope.end());
                 auto modules = provideBoundFileModules(sema, ctx.prefix);
                 items.insert(items.end(), modules.begin(), modules.end());
@@ -1195,6 +1256,11 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
     auto addFunctionSymbol = [&](const Symbol &sym) {
         std::string formatted =
             formatFunctionSignature(call.name, sym.type, call.activeParameter, &sym.paramNames);
+        if (!formatted.empty()) {
+            std::string doc = documentationForSymbol(sm_.get(), sym);
+            if (!doc.empty())
+                formatted += "\n" + doc;
+        }
         if (!formatted.empty() && seen.insert(formatted).second)
             signatures.push_back(std::move(formatted));
     };
@@ -1204,6 +1270,11 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
             if (equalsIgnoreCase(sym.name, call.name))
                 addFunctionSymbol(sym);
         }
+    };
+
+    auto addFunctionDeclOverloads = [&]() {
+        for (const auto &sym : sema.getFunctionOverloadSymbols(call.name))
+            addFunctionSymbol(sym);
     };
 
     auto runtimeClassNameFromReceiver = [&](const std::string &receiver) -> std::string {
@@ -1227,11 +1298,13 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
     };
 
     if (call.receiverExpr.empty()) {
-        if (const ScopedSymbol *scoped = sema.findSymbolAtPosition(
-                call.name,
-                analysis->fileId,
-                static_cast<uint32_t>(line),
-                static_cast<uint32_t>(col + 1))) {
+        addFunctionDeclOverloads();
+
+        if (const ScopedSymbol *scoped =
+                sema.findSymbolAtPosition(call.name,
+                                          analysis->fileId,
+                                          static_cast<uint32_t>(line),
+                                          static_cast<uint32_t>(col + 1))) {
             addFunctionSymbol(scoped->symbol);
         }
 
@@ -1252,11 +1325,7 @@ std::string CompletionEngine::signatureHelp(std::string_view source,
 
         if (signatures.empty()) {
             TypeRef receiverType =
-                resolveExprType(sema,
-                                call.receiverExpr,
-                                analysis->fileId,
-                                line,
-                                col + 1);
+                resolveExprType(sema, call.receiverExpr, analysis->fileId, line, col + 1);
             if (receiverType)
                 addMatchingMembers(sema.getMembersOf(receiverType));
         }

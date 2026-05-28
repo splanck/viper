@@ -253,15 +253,7 @@ class ProjectManager {
         } else if Dir.Exists(oldPath) {
             Dir.Move(oldPath, newPath);
             if docMgr != null {
-                var i = 0;
-                while i < docMgr.GetCount() {
-                    var doc = docMgr.documents.get(i);
-                    if Str.StartsWith(doc.filePath, oldPath + Path.Sep()) {
-                        var suffix = Str.Mid(doc.filePath, Str.Length(oldPath + Path.Sep()) + 1);
-                        docMgr.UpdatePath(doc.filePath, Path.Join(newPath, suffix));
-                    }
-                    i = i + 1;
-                }
+                docMgr.UpdatePathPrefix(oldPath, newPath);
             }
         } else {
             return "";
@@ -288,6 +280,11 @@ class ProjectManager {
 
     expose func DeleteSelected(docMgr: document_manager.DocumentManager) -> Boolean {
         var path = SelectedPath();
+        return DeletePath(path, docMgr);
+    }
+
+    expose func DeletePath(path: String,
+                           docMgr: document_manager.DocumentManager) -> Boolean {
         if path == "" { return false; }
         if IO.File.Exists(path) {
             IO.File.Delete(path);
@@ -297,6 +294,9 @@ class ProjectManager {
             CloseOpenDocumentsUnder(path, docMgr);
         } else {
             return false;
+        }
+        if docMgr != null {
+            docMgr.ForgetPathsUnder(path);
         }
         RefreshTree();
         return true;

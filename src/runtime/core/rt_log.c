@@ -159,32 +159,32 @@ static void log_append_escaped_message(char *dst, size_t *pos, rt_string message
     for (size_t i = 0; i < len; ++i) {
         unsigned char ch = data[i];
         switch (ch) {
-        case '\0':
-            dst[(*pos)++] = '\\';
-            dst[(*pos)++] = '0';
-            break;
-        case '\n':
-            dst[(*pos)++] = '\\';
-            dst[(*pos)++] = 'n';
-            break;
-        case '\r':
-            dst[(*pos)++] = '\\';
-            dst[(*pos)++] = 'r';
-            break;
-        case '\t':
-            dst[(*pos)++] = '\\';
-            dst[(*pos)++] = 't';
-            break;
-        default:
-            if (ch < 0x20 || ch == 0x7f) {
+            case '\0':
                 dst[(*pos)++] = '\\';
-                dst[(*pos)++] = 'x';
-                dst[(*pos)++] = hex[ch >> 4];
-                dst[(*pos)++] = hex[ch & 0x0f];
-            } else {
-                dst[(*pos)++] = (char)ch;
-            }
-            break;
+                dst[(*pos)++] = '0';
+                break;
+            case '\n':
+                dst[(*pos)++] = '\\';
+                dst[(*pos)++] = 'n';
+                break;
+            case '\r':
+                dst[(*pos)++] = '\\';
+                dst[(*pos)++] = 'r';
+                break;
+            case '\t':
+                dst[(*pos)++] = '\\';
+                dst[(*pos)++] = 't';
+                break;
+            default:
+                if (ch < 0x20 || ch == 0x7f) {
+                    dst[(*pos)++] = '\\';
+                    dst[(*pos)++] = 'x';
+                    dst[(*pos)++] = hex[ch >> 4];
+                    dst[(*pos)++] = hex[ch & 0x0f];
+                } else {
+                    dst[(*pos)++] = (char)ch;
+                }
+                break;
         }
     }
 }
@@ -206,38 +206,38 @@ static void log_write_escaped_message(FILE *stream, rt_string message) {
         char escaped[4];
         size_t escaped_len = 0;
         switch (ch) {
-        case '\0':
-            escaped[0] = '\\';
-            escaped[1] = '0';
-            escaped_len = 2;
-            break;
-        case '\n':
-            escaped[0] = '\\';
-            escaped[1] = 'n';
-            escaped_len = 2;
-            break;
-        case '\r':
-            escaped[0] = '\\';
-            escaped[1] = 'r';
-            escaped_len = 2;
-            break;
-        case '\t':
-            escaped[0] = '\\';
-            escaped[1] = 't';
-            escaped_len = 2;
-            break;
-        default:
-            if (ch < 0x20 || ch == 0x7f) {
+            case '\0':
                 escaped[0] = '\\';
-                escaped[1] = 'x';
-                escaped[2] = hex[ch >> 4];
-                escaped[3] = hex[ch & 0x0f];
-                escaped_len = 4;
-            } else {
-                escaped[0] = (char)ch;
-                escaped_len = 1;
-            }
-            break;
+                escaped[1] = '0';
+                escaped_len = 2;
+                break;
+            case '\n':
+                escaped[0] = '\\';
+                escaped[1] = 'n';
+                escaped_len = 2;
+                break;
+            case '\r':
+                escaped[0] = '\\';
+                escaped[1] = 'r';
+                escaped_len = 2;
+                break;
+            case '\t':
+                escaped[0] = '\\';
+                escaped[1] = 't';
+                escaped_len = 2;
+                break;
+            default:
+                if (ch < 0x20 || ch == 0x7f) {
+                    escaped[0] = '\\';
+                    escaped[1] = 'x';
+                    escaped[2] = hex[ch >> 4];
+                    escaped[3] = hex[ch & 0x0f];
+                    escaped_len = 4;
+                } else {
+                    escaped[0] = (char)ch;
+                    escaped_len = 1;
+                }
+                break;
         }
         (void)fwrite(escaped, 1, escaped_len, stream);
     }

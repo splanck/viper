@@ -22,8 +22,7 @@ using namespace viper::codegen::linker;
 
 namespace {
 
-template <typename T>
-bool contains(const std::vector<T> &items, const T &value) {
+template <typename T> bool contains(const std::vector<T> &items, const T &value) {
     return std::find(items.begin(), items.end(), value) != items.end();
 }
 
@@ -52,20 +51,24 @@ uint32_t dylibOrdinalForPath(const MacImportPlan &plan, const std::string &path)
 TEST(PlatformImportPlanners, LinuxPlannerClassifiesNeededLibraries) {
     LinuxImportPlan plan;
     std::ostringstream err;
-    ASSERT_TRUE(planLinuxImports({"cbrtf", "cos", "dlopen", "pthread_create", "XOpenDisplay", "snd_pcm_open"},
-                                 plan, err));
-    EXPECT_EQ(std::vector<std::string>(
-                  {"libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "libX11.so.6",
-                   "libasound.so.2"}),
+    ASSERT_TRUE(planLinuxImports(
+        {"cbrtf", "cos", "dlopen", "pthread_create", "XOpenDisplay", "snd_pcm_open"}, plan, err));
+    EXPECT_EQ(std::vector<std::string>({"libc.so.6",
+                                        "libm.so.6",
+                                        "libdl.so.2",
+                                        "libpthread.so.0",
+                                        "libX11.so.6",
+                                        "libasound.so.2"}),
               plan.neededLibs);
 }
 
 TEST(PlatformImportPlanners, MacPlannerMapsFrameworkAndFlatLookupSymbols) {
     MacImportPlan plan;
     std::ostringstream err;
-    ASSERT_TRUE(planMacImports({"CFStringCreateWithCString", "_OBJC_CLASS_$_NSApplication",
-                                "dispatch_async", "fsync"},
-                               plan, err));
+    ASSERT_TRUE(planMacImports(
+        {"CFStringCreateWithCString", "_OBJC_CLASS_$_NSApplication", "dispatch_async", "fsync"},
+        plan,
+        err));
 
     EXPECT_TRUE(std::any_of(plan.dylibs.begin(), plan.dylibs.end(), [](const DylibImport &import) {
         return import.path == "/usr/lib/libSystem.B.dylib";
@@ -126,9 +129,10 @@ TEST(PlatformImportPlanners, MacPlannerMapsCbrtfToLibSystem) {
 TEST(PlatformImportPlanners, MacPlannerMapsLibcxxRuntimeSymbolsToLibcxxDylib) {
     MacImportPlan plan;
     std::ostringstream err;
-    ASSERT_TRUE(planMacImports({"__ZNSt3__118condition_variable10notify_allEv", "__cxa_throw",
-                                "_Unwind_Resume"},
-                               plan, err));
+    ASSERT_TRUE(planMacImports(
+        {"__ZNSt3__118condition_variable10notify_allEv", "__cxa_throw", "_Unwind_Resume"},
+        plan,
+        err));
 
     const uint32_t libcxxOrdinal = dylibOrdinalForPath(plan, "/usr/lib/libc++.1.dylib");
     ASSERT_NE(0u, libcxxOrdinal);
@@ -143,9 +147,8 @@ TEST(PlatformImportPlanners, MacPlannerMapsLibcxxRuntimeSymbolsToLibcxxDylib) {
 TEST(PlatformImportPlanners, MacPlannerMapsCxaAtexitSymbolsToLibSystem) {
     MacImportPlan plan;
     std::ostringstream err;
-    ASSERT_TRUE(planMacImports({"___cxa_atexit", "___cxa_finalize", "___cxa_thread_atexit"},
-                               plan,
-                               err));
+    ASSERT_TRUE(
+        planMacImports({"___cxa_atexit", "___cxa_finalize", "___cxa_thread_atexit"}, plan, err));
 
     EXPECT_EQ(1u, plan.symOrdinals["___cxa_atexit"]);
     EXPECT_EQ(1u, plan.symOrdinals["___cxa_finalize"]);
@@ -157,8 +160,8 @@ TEST(PlatformImportPlanners, MacPlannerMapsSecurityConstantsToSecurityFramework)
     std::ostringstream err;
     ASSERT_TRUE(planMacImports({"kSecKeyAlgorithmECDSASignatureDigestX962SHA256"}, plan, err));
 
-    const uint32_t securityOrdinal =
-        dylibOrdinalForPath(plan, "/System/Library/Frameworks/Security.framework/Versions/A/Security");
+    const uint32_t securityOrdinal = dylibOrdinalForPath(
+        plan, "/System/Library/Frameworks/Security.framework/Versions/A/Security");
     ASSERT_NE(0u, securityOrdinal);
     ASSERT_TRUE(plan.symOrdinals.count("kSecKeyAlgorithmECDSASignatureDigestX962SHA256") != 0);
     EXPECT_EQ(securityOrdinal, plan.symOrdinals["kSecKeyAlgorithmECDSASignatureDigestX962SHA256"]);
@@ -167,14 +170,13 @@ TEST(PlatformImportPlanners, MacPlannerMapsSecurityConstantsToSecurityFramework)
 TEST(PlatformImportPlanners, MacPlannerMapsImageIOSymbolsBeforeCoreGraphics) {
     MacImportPlan plan;
     std::ostringstream err;
-    ASSERT_TRUE(planMacImports({"_CGImageSourceCreateImageAtIndex", "CGContextDrawImage"},
-                               plan,
-                               err));
+    ASSERT_TRUE(
+        planMacImports({"_CGImageSourceCreateImageAtIndex", "CGContextDrawImage"}, plan, err));
 
-    const uint32_t imageIOOrdinal =
-        dylibOrdinalForPath(plan, "/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO");
-    const uint32_t coreGraphicsOrdinal =
-        dylibOrdinalForPath(plan, "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics");
+    const uint32_t imageIOOrdinal = dylibOrdinalForPath(
+        plan, "/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO");
+    const uint32_t coreGraphicsOrdinal = dylibOrdinalForPath(
+        plan, "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics");
     ASSERT_NE(0u, imageIOOrdinal);
     ASSERT_NE(0u, coreGraphicsOrdinal);
     ASSERT_TRUE(plan.symOrdinals.count("_CGImageSourceCreateImageAtIndex") != 0);
@@ -196,13 +198,24 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     WindowsImportPlan plan;
     std::ostringstream err;
     ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64,
-                                       {"ExitProcess", "CreateWindowExW", "CreateWaitableTimerExW",
-                                        "SetWaitableTimer", "D3D11CreateDevice", "cbrtf", "cos",
-                                        "__RTDynamicCast", "_Init_thread_header",
-                                        "_Smtx_lock_exclusive", "__std_find_trivial_1",
-                                        "fsetpos", "_beginthreadex", "terminate",
+                                       {"ExitProcess",
+                                        "CreateWindowExW",
+                                        "CreateWaitableTimerExW",
+                                        "SetWaitableTimer",
+                                        "D3D11CreateDevice",
+                                        "cbrtf",
+                                        "cos",
+                                        "__RTDynamicCast",
+                                        "_Init_thread_header",
+                                        "_Smtx_lock_exclusive",
+                                        "__std_find_trivial_1",
+                                        "fsetpos",
+                                        "_beginthreadex",
+                                        "terminate",
                                         "__imp_ExitProcess"},
-                                       false, plan, err));
+                                       false,
+                                       plan,
+                                       err));
 
     EXPECT_TRUE(importPlanHasDll(plan, "kernel32.dll"));
     EXPECT_TRUE(importPlanHasDll(plan, "user32.dll"));

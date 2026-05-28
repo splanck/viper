@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_datetime.h"
 #include "rt_dateformat.h"
+#include "rt_datetime.h"
 #include "rt_locale.h"
 #include "rt_locale_manager.h"
 #include "rt_string.h"
@@ -50,16 +50,16 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                         \
-    do {                                                                          \
-        g_expect_trap = 1;                                                         \
-        if (setjmp(g_trap_env) == 0) {                                            \
-            (void)(expr);                                                          \
-            g_expect_trap = 0;                                                     \
-            assert(!"expected runtime trap");                                     \
-        } else {                                                                   \
-            g_expect_trap = 0;                                                     \
-        }                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                      \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
     } while (0)
 
 static void test_result(const char *name, bool passed) {
@@ -83,8 +83,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_datefmt_%ld_%s",
-             base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/viper_datefmt_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }
@@ -165,20 +164,15 @@ static void test_canonical_styles() {
     void *fmt = en_fmt();
     int64_t ts = ref_ts();
 
-    test_result("Short = 3/15/27",
-                eq(rt_dateformat_short(fmt, ts), "3/15/27"));
-    test_result("Medium = Mar 15, 2027",
-                eq(rt_dateformat_medium(fmt, ts), "Mar 15, 2027"));
-    test_result("Long = March 15, 2027",
-                eq(rt_dateformat_long(fmt, ts), "March 15, 2027"));
+    test_result("Short = 3/15/27", eq(rt_dateformat_short(fmt, ts), "3/15/27"));
+    test_result("Medium = Mar 15, 2027", eq(rt_dateformat_medium(fmt, ts), "Mar 15, 2027"));
+    test_result("Long = March 15, 2027", eq(rt_dateformat_long(fmt, ts), "March 15, 2027"));
 
     // Full includes the weekday name; 2027-03-15 is a Monday.
     rt_string full_str = rt_dateformat_full(fmt, ts);
     const char *full_cs = rt_string_cstr(full_str);
-    test_result("Full contains Monday",
-                full_cs && strstr(full_cs, "Monday") != nullptr);
-    test_result("Full contains March",
-                full_cs && strstr(full_cs, "March") != nullptr);
+    test_result("Full contains Monday", full_cs && strstr(full_cs, "Monday") != nullptr);
+    test_result("Full contains March", full_cs && strstr(full_cs, "March") != nullptr);
     rt_string_unref(full_str);
 }
 
@@ -191,18 +185,14 @@ static void test_time_styles() {
     void *fmt = en_fmt();
     int64_t ts = ref_ts();
 
-    test_result("TimeShort = 2:30 PM",
-                eq(rt_dateformat_time_short(fmt, ts), "2:30 PM"));
-    test_result("TimeMedium = 2:30:05 PM",
-                eq(rt_dateformat_time_medium(fmt, ts), "2:30:05 PM"));
+    test_result("TimeShort = 2:30 PM", eq(rt_dateformat_time_short(fmt, ts), "2:30 PM"));
+    test_result("TimeMedium = 2:30:05 PM", eq(rt_dateformat_time_medium(fmt, ts), "2:30:05 PM"));
 
     // DateTime composites.
     rt_string dts = rt_dateformat_datetime_short(fmt, ts);
     const char *dts_cs = rt_string_cstr(dts);
-    test_result("DateTimeShort starts with date",
-                dts_cs && strstr(dts_cs, "3/15/27") != nullptr);
-    test_result("DateTimeShort contains time",
-                dts_cs && strstr(dts_cs, "2:30 PM") != nullptr);
+    test_result("DateTimeShort starts with date", dts_cs && strstr(dts_cs, "3/15/27") != nullptr);
+    test_result("DateTimeShort contains time", dts_cs && strstr(dts_cs, "2:30 PM") != nullptr);
     rt_string_unref(dts);
 }
 
@@ -212,18 +202,16 @@ static void test_loaded_datetime_and_digits() {
     void *fmt = fmt_for_tag("ar-XD");
     int64_t ts = ref_ts();
 
-    const char *expected_dt =
-        "\xD9\xA2:\xD9\xA3\xD9\xA0 PM on "
-        "\xD9\xA3/\xD9\xA1\xD9\xA5/\xD9\xA2\xD9\xA7";
+    const char *expected_dt = "\xD9\xA2:\xD9\xA3\xD9\xA0 PM on "
+                              "\xD9\xA3/\xD9\xA1\xD9\xA5/\xD9\xA2\xD9\xA7";
     test_result("DateTimeShort uses locale composition pattern and digits",
                 eq(rt_dateformat_datetime_short(fmt, ts), expected_dt));
 
     rt_string pattern = S("yyyy-MM-dd HH:mm");
-    const char *expected_custom =
-        "\xD9\xA2\xD9\xA0\xD9\xA2\xD9\xA7-"
-        "\xD9\xA0\xD9\xA3-"
-        "\xD9\xA1\xD9\xA5 "
-        "\xD9\xA1\xD9\xA4:\xD9\xA3\xD9\xA0";
+    const char *expected_custom = "\xD9\xA2\xD9\xA0\xD9\xA2\xD9\xA7-"
+                                  "\xD9\xA0\xD9\xA3-"
+                                  "\xD9\xA1\xD9\xA5 "
+                                  "\xD9\xA1\xD9\xA4:\xD9\xA3\xD9\xA0";
     test_result("Custom pattern uses locale digits",
                 eq(rt_dateformat_custom(fmt, ts, pattern), expected_custom));
     rt_string_unref(pattern);
@@ -253,8 +241,7 @@ static void test_year_patterns() {
     std::string long_year(200, 'y');
     rt_string pat_long = S(long_year.c_str());
     rt_string rendered = rt_dateformat_custom(fmt, ts, pat_long);
-    test_result("200 y-pattern run does not truncate/OOB",
-                rt_str_len(rendered) == 200);
+    test_result("200 y-pattern run does not truncate/OOB", rt_str_len(rendered) == 200);
     rt_string_unref(rendered);
     rt_string_unref(pat_long);
 }
@@ -361,13 +348,11 @@ static void test_quoted_literals() {
     rt_string_unref(pat1);
 
     rt_string pat2 = S("'it''s' yyyy");
-    test_result("'it''s' yyyy -> it's 2027",
-                eq(rt_dateformat_custom(fmt, ts, pat2), "it's 2027"));
+    test_result("'it''s' yyyy -> it's 2027", eq(rt_dateformat_custom(fmt, ts, pat2), "it's 2027"));
     rt_string_unref(pat2);
 
     rt_string pat3 = S("yyyy-MM-dd");
-    test_result("yyyy-MM-dd -> 2027-03-15",
-                eq(rt_dateformat_custom(fmt, ts, pat3), "2027-03-15"));
+    test_result("yyyy-MM-dd -> 2027-03-15", eq(rt_dateformat_custom(fmt, ts, pat3), "2027-03-15"));
     rt_string_unref(pat3);
 }
 
@@ -379,14 +364,11 @@ static void test_month_name_queries() {
     printf("Testing MonthName queries:\n");
     void *fmt = en_fmt();
 
-    test_result("MonthName(1,wide) = January",
-                eq(rt_dateformat_month_name(fmt, 1, 0), "January"));
-    test_result("MonthName(1,abbr) = Jan",
-                eq(rt_dateformat_month_name(fmt, 1, 1), "Jan"));
+    test_result("MonthName(1,wide) = January", eq(rt_dateformat_month_name(fmt, 1, 0), "January"));
+    test_result("MonthName(1,abbr) = Jan", eq(rt_dateformat_month_name(fmt, 1, 1), "Jan"));
     test_result("MonthName(12,wide) = December",
                 eq(rt_dateformat_month_name(fmt, 12, 0), "December"));
-    test_result("MonthName(6,abbr) = Jun",
-                eq(rt_dateformat_month_name(fmt, 6, 1), "Jun"));
+    test_result("MonthName(6,abbr) = Jun", eq(rt_dateformat_month_name(fmt, 6, 1), "Jun"));
 
     EXPECT_TRAP(rt_dateformat_month_name(fmt, 0, 0));
     test_result("MonthName(0) traps", true);
@@ -398,12 +380,9 @@ static void test_day_name_queries() {
     printf("Testing DayName queries:\n");
     void *fmt = en_fmt();
 
-    test_result("DayName(0,wide) = Sunday",
-                eq(rt_dateformat_day_name(fmt, 0, 0), "Sunday"));
-    test_result("DayName(1,abbr) = Mon",
-                eq(rt_dateformat_day_name(fmt, 1, 1), "Mon"));
-    test_result("DayName(6,wide) = Saturday",
-                eq(rt_dateformat_day_name(fmt, 6, 0), "Saturday"));
+    test_result("DayName(0,wide) = Sunday", eq(rt_dateformat_day_name(fmt, 0, 0), "Sunday"));
+    test_result("DayName(1,abbr) = Mon", eq(rt_dateformat_day_name(fmt, 1, 1), "Mon"));
+    test_result("DayName(6,wide) = Saturday", eq(rt_dateformat_day_name(fmt, 6, 0), "Saturday"));
 
     EXPECT_TRAP(rt_dateformat_day_name(fmt, 7, 0));
     test_result("DayName(7) traps", true);

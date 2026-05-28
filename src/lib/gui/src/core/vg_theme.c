@@ -234,7 +234,8 @@ vg_theme_t *vg_theme_light(void) {
     return &g_light_theme;
 }
 
-/// @brief Heap-allocates a new theme copied from @p base (or the dark theme if NULL), with @p name strdup'd as its name.
+/// @brief Heap-allocates a new theme copied from @p base (or the dark theme if NULL), with @p name
+/// strdup'd as its name.
 vg_theme_t *vg_theme_create(const char *name, const vg_theme_t *base) {
     vg_theme_t *theme = malloc(sizeof(vg_theme_t));
     if (!theme)
@@ -255,7 +256,8 @@ vg_theme_t *vg_theme_create(const char *name, const vg_theme_t *base) {
     return theme;
 }
 
-/// @brief Frees a custom theme's name string and the theme struct; no-ops on NULL or built-in themes.
+/// @brief Frees a custom theme's name string and the theme struct; no-ops on NULL or built-in
+/// themes.
 void vg_theme_destroy(vg_theme_t *theme) {
     if (!theme)
         return;
@@ -275,7 +277,8 @@ void vg_theme_destroy(vg_theme_t *theme) {
 // Color Helpers
 //=============================================================================
 
-/// @brief Linearly interpolates between colors @p c1 and @p c2 by factor @p t in [0,1], blending all four channels.
+/// @brief Linearly interpolates between colors @p c1 and @p c2 by factor @p t in [0,1], blending
+/// all four channels.
 uint32_t vg_color_blend(uint32_t c1, uint32_t c2, float t) {
     if (t <= 0.0f)
         return c1;

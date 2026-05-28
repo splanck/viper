@@ -22,8 +22,8 @@
 #include "rt_deque.h"
 #include "rt_frozenmap.h"
 #include "rt_frozenset.h"
-#include "rt_intmap.h"
 #include "rt_internal.h"
+#include "rt_intmap.h"
 #include "rt_iter.h"
 #include "rt_list.h"
 #include "rt_lrucache.h"
@@ -142,36 +142,16 @@ static void test_collection_class_ids_are_specific() {
 
 static void test_runtime_class_ids_are_unique() {
     const int64_t ids[] = {
-        RT_SEQ_CLASS_ID,
-        RT_LIST_CLASS_ID,
-        RT_SET_CLASS_ID,
-        RT_STACK_CLASS_ID,
-        RT_QUEUE_CLASS_ID,
-        RT_RING_CLASS_ID,
-        RT_DEQUE_CLASS_ID,
-        RT_BAG_CLASS_ID,
-        RT_ORDEREDMAP_CLASS_ID,
-        RT_TREEMAP_CLASS_ID,
-        RT_FROZENMAP_CLASS_ID,
-        RT_FROZENSET_CLASS_ID,
-        RT_SPARSEARRAY_CLASS_ID,
-        RT_INTMAP_CLASS_ID,
-        RT_DEFAULTMAP_CLASS_ID,
-        RT_MULTIMAP_CLASS_ID,
-        RT_LRUCACHE_CLASS_ID,
-        RT_TRIE_CLASS_ID,
-        RT_BIMAP_CLASS_ID,
-        RT_BITSET_CLASS_ID,
-        RT_BLOOMFILTER_CLASS_ID,
-        RT_COUNTMAP_CLASS_ID,
-        RT_PQUEUE_CLASS_ID,
-        RT_ITERATOR_CLASS_ID,
-        RT_SORTEDSET_CLASS_ID,
-        RT_UNIONFIND_CLASS_ID,
-        RT_WEAKMAP_CLASS_ID,
-        RT_MAP_CLASS_ID,
-        RT_MSGBUS_CLASS_ID,
-        RT_MSGBUS_CALLBACK_CLASS_ID,
+        RT_SEQ_CLASS_ID,         RT_LIST_CLASS_ID,      RT_SET_CLASS_ID,
+        RT_STACK_CLASS_ID,       RT_QUEUE_CLASS_ID,     RT_RING_CLASS_ID,
+        RT_DEQUE_CLASS_ID,       RT_BAG_CLASS_ID,       RT_ORDEREDMAP_CLASS_ID,
+        RT_TREEMAP_CLASS_ID,     RT_FROZENMAP_CLASS_ID, RT_FROZENSET_CLASS_ID,
+        RT_SPARSEARRAY_CLASS_ID, RT_INTMAP_CLASS_ID,    RT_DEFAULTMAP_CLASS_ID,
+        RT_MULTIMAP_CLASS_ID,    RT_LRUCACHE_CLASS_ID,  RT_TRIE_CLASS_ID,
+        RT_BIMAP_CLASS_ID,       RT_BITSET_CLASS_ID,    RT_BLOOMFILTER_CLASS_ID,
+        RT_COUNTMAP_CLASS_ID,    RT_PQUEUE_CLASS_ID,    RT_ITERATOR_CLASS_ID,
+        RT_SORTEDSET_CLASS_ID,   RT_UNIONFIND_CLASS_ID, RT_WEAKMAP_CLASS_ID,
+        RT_MAP_CLASS_ID,         RT_MSGBUS_CLASS_ID,    RT_MSGBUS_CALLBACK_CLASS_ID,
     };
     for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); i++) {
         for (size_t j = i + 1; j < sizeof(ids) / sizeof(ids[0]); j++)

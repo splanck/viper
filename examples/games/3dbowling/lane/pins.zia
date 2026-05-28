@@ -9,11 +9,9 @@
 //          driven by game.zia at end of frame.
 //
 // KEY-DESIGN-CHOICES:
-//   * SPHERE PHYSICS, CYLINDER VISUALS. The pin body is a SPHERE in the
-//     physics world (cheaper than a capsule, stable enough at this
-//     size) but renders as a cylinder + neck cylinder. The visual
-//     offset PIN_DRAW_Y_OFFSET reconciles the sphere's centre with
-//     the cylinder's base.
+//   * CAPSULE PHYSICS, PIN-SHAPED VISUALS. The pin body is a vertical
+//     capsule that matches the visible pin height closely enough for
+//     ball/pin contacts to feel honest.
 //   * HYBRID KNOCKDOWN. A pin is "knocked" when EITHER its
 //     displacement from home exceeds PIN_KNOCKDOWN_DISPLACEMENT, OR
 //     its speed exceeds PIN_KNOCKDOWN_SPEED with a smaller
@@ -38,7 +36,7 @@
 //     visible "rack reset" effect.
 // ============================================================================
 
-// pins.zia — Pin manager: capsule collisions, hybrid knockdown model, sweep/reset visuals
+// pins.zia — Pin manager: capsule collisions, impact knockdown model, sweep/reset visuals
 module pins;
 
 bind Viper.Graphics3D;
@@ -54,6 +52,7 @@ class PinManager {
     hide List[Float] homeZ;
     hide List[Boolean] knocked;
     hide List[Boolean] previousKnocked;
+    hide List[Boolean] impacted;
     hide List[Float] savedX;
     hide List[Float] savedY;
     hide List[Float] savedZ;
@@ -70,7 +69,12 @@ class PinManager {
     hide Float resetTimer;
 
     hide Mesh3D pinBodyMesh;
+    hide Mesh3D pinBellyMesh;
+    hide Mesh3D pinBaseMesh;
+    hide Mesh3D pinShoulderMesh;
+    hide Mesh3D pinHeadMesh;
     hide Mesh3D pinNeckMesh;
+    hide Mesh3D pinBandMesh;
     hide Material3D pinMat;
     hide Material3D pinNeckMat;
 
@@ -83,6 +87,7 @@ class PinManager {
         homeZ = [];
         knocked = [];
         previousKnocked = [];
+        impacted = [];
         savedX = [];
         savedY = [];
         savedZ = [];
@@ -95,8 +100,13 @@ class PinManager {
         resetting = false;
         resetTimer = 0.0;
 
-        pinBodyMesh = Mesh3D.NewCylinder(config.PIN_RADIUS, config.PIN_HEIGHT, 18);
-        pinNeckMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 1.18, 0.035, 18);
+        pinBodyMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 0.72, config.PIN_HEIGHT * 0.78, 24);
+        pinBellyMesh = Mesh3D.NewSphere(config.PIN_RADIUS * 1.18, 16);
+        pinBaseMesh = Mesh3D.NewSphere(config.PIN_RADIUS * 1.10, 14);
+        pinShoulderMesh = Mesh3D.NewSphere(config.PIN_RADIUS * 0.86, 14);
+        pinHeadMesh = Mesh3D.NewSphere(config.PIN_RADIUS * 0.78, 14);
+        pinNeckMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 0.58, config.PIN_HEIGHT * 0.34, 18);
+        pinBandMesh = Mesh3D.NewCylinder(config.PIN_RADIUS * 0.78, 0.018, 18);
         pinMat = Material3D.NewColor(config.PIN_COLOR_R, config.PIN_COLOR_G, config.PIN_COLOR_B);
         Material3D.SetShininess(pinMat, config.PIN_SHININESS);
         Material3D.SetEmissiveColor(pinMat,
@@ -112,6 +122,7 @@ class PinManager {
             homeZ.add(pz);
             knocked.add(false);
             previousKnocked.add(false);
+            impacted.add(false);
             savedX.add(px);
             savedY.add(config.PIN_BODY_CENTER_Y);
             savedZ.add(pz);
@@ -119,13 +130,18 @@ class PinManager {
             tiltAxisX.add(0.0);
             tiltAxisZ.add(1.0);
 
-            var body = Physics3DBody.NewSphere(config.PIN_BODY_RADIUS, config.PIN_MASS);
+            var body = Physics3DBody.NewCapsule(config.PIN_BODY_RADIUS, config.PIN_CAPSULE_HEIGHT, config.PIN_MASS);
             Physics3DBody.SetPosition(body, px, config.PIN_BODY_CENTER_Y, pz);
             Physics3DBody.set_Restitution(body, config.PIN_RESTITUTION);
             Physics3DBody.set_Friction(body, config.PIN_FRICTION);
+            Physics3DBody.set_LinearDamping(body, 0.26);
+            Physics3DBody.set_AngularDamping(body, 0.72);
+            Physics3DBody.set_CanSleep(body, true);
+            Physics3DBody.set_UseCCD(body, true);
             Physics3DBody.set_CollisionLayer(body, config.LAYER_PINS);
             Physics3DBody.set_CollisionMask(body, config.MASK_PINS);
             Physics3DWorld.Add(world, body);
+            Physics3DBody.Sleep(body);
             bodies.add(body);
         }
     }
@@ -166,35 +182,48 @@ class PinManager {
             var body = bodies.get(i);
             var pos = Physics3DBody.get_Position(body);
             var vel = Physics3DBody.get_Velocity(body);
+            var ang = Physics3DBody.get_AngularVelocity(body);
 
             var px = Vec3.get_X(pos);
-            var py = Vec3.get_Y(pos);
             var pz = Vec3.get_Z(pos);
             var vx = Vec3.get_X(vel);
             var vy = Vec3.get_Y(vel);
             var vz = Vec3.get_Z(vel);
+            var ax = Vec3.get_X(ang);
+            var ay = Vec3.get_Y(ang);
+            var az = Vec3.get_Z(ang);
             var speed = Sqrt(vx * vx + vy * vy + vz * vz);
+            var angularSpeed = Sqrt(ax * ax + ay * ay + az * az);
             var dx = px - homeX.get(i);
             var dz = pz - homeZ.get(i);
             var disp = Sqrt(dx * dx + dz * dz);
 
-            if (knocked.get(i) == false) {
+            if (knocked.get(i) == false && impacted.get(i) == false &&
+                disp > config.PIN_KNOCKDOWN_DISPLACEMENT * 1.15) {
+                markKnocked(i, dx, dz, vx, vz, ax, az);
+            } else if (knocked.get(i) == false && impacted.get(i)) {
                 if (disp > config.PIN_KNOCKDOWN_DISPLACEMENT ||
                     (speed > config.PIN_KNOCKDOWN_SPEED &&
-                     disp > config.PIN_KNOCKDOWN_SPEED_DISPLACEMENT)) {
-                    knocked.set(i, true);
-                    if (disp > 0.02) {
-                        tiltAxisX.set(i, dz / (disp + 0.0001));
-                        tiltAxisZ.set(i, -dx / (disp + 0.0001));
-                    } else if (speed > 0.02) {
-                        tiltAxisX.set(i, vz / (speed + 0.0001));
-                        tiltAxisZ.set(i, -vx / (speed + 0.0001));
-                    }
-                } else if (speed < config.PIN_SETTLE_SNAP_SPEED) {
+                     disp > config.PIN_KNOCKDOWN_SPEED_DISPLACEMENT) ||
+                    angularSpeed > config.PIN_KNOCKDOWN_ANGULAR_SPEED) {
+                    markKnocked(i, dx, dz, vx, vz, ax, az);
+                } else if (speed < config.PIN_SETTLE_SNAP_SPEED && angularSpeed < config.PIN_KNOCKDOWN_ANGULAR_SPEED * 0.35) {
                     Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
+                    Physics3DBody.SetAngularVelocity(body, 0.0, 0.0, 0.0);
                     if (disp < config.PIN_REST_SNAP_DISPLACEMENT) {
                         Physics3DBody.SetPosition(body, homeX.get(i), config.PIN_BODY_CENTER_Y, homeZ.get(i));
+                        Physics3DBody.SetOrientation(body, Quat.Identity());
+                        Physics3DBody.Sleep(body);
                     }
+                }
+            } else if (knocked.get(i) == false && speed < config.PIN_SETTLE_SNAP_SPEED &&
+                       angularSpeed < config.PIN_KNOCKDOWN_ANGULAR_SPEED * 0.35) {
+                Physics3DBody.SetVelocity(body, 0.0, 0.0, 0.0);
+                Physics3DBody.SetAngularVelocity(body, 0.0, 0.0, 0.0);
+                if (disp < config.PIN_REST_SNAP_DISPLACEMENT) {
+                    Physics3DBody.SetPosition(body, homeX.get(i), config.PIN_BODY_CENTER_Y, homeZ.get(i));
+                    Physics3DBody.SetOrientation(body, Quat.Identity());
+                    Physics3DBody.Sleep(body);
                 }
             }
 
@@ -207,6 +236,53 @@ class PinManager {
                 }
             }
         }
+    }
+
+    hide func markKnocked(index: Integer, dx: Float, dz: Float,
+                          vx: Float, vz: Float, ax: Float, az: Float) {
+        if (knocked.get(index)) { return; }
+        knocked.set(index, true);
+
+        var disp = Sqrt(dx * dx + dz * dz);
+        var speed = Sqrt(vx * vx + vz * vz);
+        var angular = Sqrt(ax * ax + az * az);
+        if (disp > 0.018) {
+            tiltAxisX.set(index, dz / (disp + 0.0001));
+            tiltAxisZ.set(index, -dx / (disp + 0.0001));
+        } else if (speed > 0.018) {
+            tiltAxisX.set(index, vz / (speed + 0.0001));
+            tiltAxisZ.set(index, -vx / (speed + 0.0001));
+        } else if (angular > 0.018) {
+            tiltAxisX.set(index, az / (angular + 0.0001));
+            tiltAxisZ.set(index, -ax / (angular + 0.0001));
+        }
+    }
+
+    expose func registerImpact(body: Any, point: Vec3,
+                               impulse: Float, relativeSpeed: Float) -> Boolean {
+        for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            if (bodies.get(i) == body) {
+                if (impulse > 0.04 || relativeSpeed > 0.20) {
+                    impacted.set(i, true);
+                }
+                if (knocked.get(i) == false &&
+                    (impulse > config.PIN_IMPACT_KNOCKDOWN_IMPULSE ||
+                     relativeSpeed > config.PIN_IMPACT_KNOCKDOWN_SPEED)) {
+                    var pos = Physics3DBody.get_Position(body);
+                    var px = Vec3.get_X(pos);
+                    var pz = Vec3.get_Z(pos);
+                    var ix = Vec3.get_X(point) - px;
+                    var iz = Vec3.get_Z(point) - pz;
+                    var vel = Physics3DBody.get_Velocity(body);
+                    var ang = Physics3DBody.get_AngularVelocity(body);
+                    markKnocked(i, ix, iz,
+                        Vec3.get_X(vel), Vec3.get_Z(vel),
+                        Vec3.get_X(ang), Vec3.get_Z(ang));
+                }
+                return true;
+            }
+        }
+        return false;
     }
 
     /// @brief Pins knocked since the last savePinState call (= this roll's pin count).
@@ -229,11 +305,39 @@ class PinManager {
         return count;
     }
 
+    expose func maxStandingDisplacement() -> Float {
+        var maxDisp = 0.0;
+        for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            if (knocked.get(i) == false) {
+                var pos = Physics3DBody.get_Position(bodies.get(i));
+                var dx = Vec3.get_X(pos) - homeX.get(i);
+                var dz = Vec3.get_Z(pos) - homeZ.get(i);
+                var disp = Sqrt(dx * dx + dz * dz);
+                if (disp > maxDisp) { maxDisp = disp; }
+            }
+        }
+        return maxDisp;
+    }
+
+    expose func maxBodySpeed() -> Float {
+        var maxSpeed = 0.0;
+        for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
+            var vel = Physics3DBody.get_Velocity(bodies.get(i));
+            var vx = Vec3.get_X(vel);
+            var vy = Vec3.get_Y(vel);
+            var vz = Vec3.get_Z(vel);
+            var speed = Sqrt(vx * vx + vy * vy + vz * vz);
+            if (speed > maxSpeed) { maxSpeed = speed; }
+        }
+        return maxSpeed;
+    }
+
     /// @brief Snapshot the standing pins (positions) and which were knocked.
     /// @note Called after a settled roll so the next roll can restore.
     expose func savePinState() {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             previousKnocked.set(i, knocked.get(i));
+            impacted.set(i, false);
             if (knocked.get(i)) {
                 savedX.set(i, 0.0);
                 savedY.set(i, -10.0);
@@ -252,9 +356,13 @@ class PinManager {
     expose func restoreSavedPinState() {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             knocked.set(i, previousKnocked.get(i));
+            impacted.set(i, false);
             tiltAngle.set(i, 0.0);
             Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
             Physics3DBody.SetPosition(bodies.get(i), savedX.get(i), savedY.get(i), savedZ.get(i));
+            Physics3DBody.Sleep(bodies.get(i));
         }
     }
 
@@ -296,6 +404,8 @@ class PinManager {
                 if (knocked.get(i)) {
                     Physics3DBody.SetPosition(bodies.get(i), 0.0, -10.0, 0.0);
                     Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                    Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                    Physics3DBody.Sleep(bodies.get(i));
                 }
             }
             return true;
@@ -320,11 +430,14 @@ class PinManager {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             knocked.set(i, false);
             previousKnocked.set(i, false);
+            impacted.set(i, false);
             savedX.set(i, homeX.get(i));
             savedY.set(i, config.PIN_BODY_CENTER_Y);
             savedZ.set(i, homeZ.get(i));
             tiltAngle.set(i, 0.0);
             Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
             Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), config.RESET_DROP_HEIGHT, homeZ.get(i));
         }
     }
@@ -337,11 +450,17 @@ class PinManager {
             if (knocked.get(i)) {
                 Physics3DBody.SetPosition(bodies.get(i), 0.0, -10.0, 0.0);
                 Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                Physics3DBody.Sleep(bodies.get(i));
             } else {
+                impacted.set(i, false);
                 var pos = Physics3DBody.get_Position(bodies.get(i));
                 Physics3DBody.SetPosition(bodies.get(i),
                     Vec3.get_X(pos), config.PIN_BODY_CENTER_Y, Vec3.get_Z(pos));
                 Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+                Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
+                Physics3DBody.Sleep(bodies.get(i));
             }
         }
         savePinState();
@@ -363,6 +482,8 @@ class PinManager {
         for (var i: Integer = 0; i < config.PIN_COUNT; i = i + 1) {
             Physics3DBody.SetPosition(bodies.get(i), homeX.get(i), currentY, homeZ.get(i));
             Physics3DBody.SetVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetAngularVelocity(bodies.get(i), 0.0, 0.0, 0.0);
+            Physics3DBody.SetOrientation(bodies.get(i), Quat.Identity());
         }
 
         if (resetTimer <= 0.0) {
@@ -370,6 +491,9 @@ class PinManager {
             for (var i2: Integer = 0; i2 < config.PIN_COUNT; i2 = i2 + 1) {
                 Physics3DBody.SetPosition(bodies.get(i2), homeX.get(i2), config.PIN_BODY_CENTER_Y, homeZ.get(i2));
                 Physics3DBody.SetVelocity(bodies.get(i2), 0.0, 0.0, 0.0);
+                Physics3DBody.SetAngularVelocity(bodies.get(i2), 0.0, 0.0, 0.0);
+                Physics3DBody.SetOrientation(bodies.get(i2), Quat.Identity());
+                Physics3DBody.Sleep(bodies.get(i2));
             }
             savePinState();
             return true;
@@ -400,18 +524,38 @@ class PinManager {
             var pz = Vec3.get_Z(pos);
             if (py < -5.0) { continue; }
 
+            var base = makePinTransform(i, px, py, pz);
+            drawPinPart(canvas, base, pinBodyMesh, 0.0, -0.010, 0.0, 1.0, 1.0, 1.0, pinMat);
+            drawPinPart(canvas, base, pinBellyMesh, 0.0, -0.070, 0.0, 1.0, 1.28, 1.0, pinMat);
+            drawPinPart(canvas, base, pinBaseMesh, 0.0, -0.172, 0.0, 1.0, 0.34, 1.0, pinMat);
+            drawPinPart(canvas, base, pinShoulderMesh, 0.0, 0.052, 0.0, 1.0, 0.62, 1.0, pinMat);
+            drawPinPart(canvas, base, pinNeckMesh, 0.0, 0.116, 0.0, 1.0, 1.0, 1.0, pinMat);
+            drawPinPart(canvas, base, pinHeadMesh, 0.0, 0.190, 0.0, 1.0, 0.92, 1.0, pinMat);
             if (knocked.get(i)) {
-                var translate = Mat4.Translate(px, py + config.PIN_DRAW_Y_OFFSET, pz);
-                var tiltAxis = new Vec3(tiltAxisX.get(i), 0.0, tiltAxisZ.get(i));
-                var rotate = Mat4.RotateAxis(tiltAxis, tiltAngle.get(i));
-                Canvas3D.DrawMesh(canvas, pinBodyMesh, Mat4.Mul(translate, rotate), pinMat);
+                drawPinPart(canvas, base, pinBandMesh, 0.0, 0.082, 0.0, 1.0, 1.0, 1.0, pinNeckMat);
             } else {
-                Canvas3D.DrawMesh(canvas, pinBodyMesh,
-                    Mat4.Translate(px, py + config.PIN_DRAW_Y_OFFSET, pz), pinMat);
-                Canvas3D.DrawMesh(canvas, pinNeckMesh,
-                    Mat4.Translate(px, py + config.PIN_DRAW_Y_OFFSET + config.PIN_HEIGHT * 0.29, pz), pinNeckMat);
+                drawPinPart(canvas, base, pinBandMesh, 0.0, 0.078, 0.0, 1.0, 1.0, 1.0, pinNeckMat);
+                drawPinPart(canvas, base, pinBandMesh, 0.0, 0.108, 0.0, 1.0, 1.0, 1.0, pinNeckMat);
             }
         }
+    }
+
+    hide func makePinTransform(index: Integer, px: Float, py: Float, pz: Float) -> Mat4 {
+        var translate = Mat4.Translate(px, py + config.PIN_DRAW_Y_OFFSET, pz);
+        if (knocked.get(index)) {
+            var tiltAxis = new Vec3(tiltAxisX.get(index), 0.0, tiltAxisZ.get(index));
+            var rotate = Mat4.RotateAxis(tiltAxis, tiltAngle.get(index));
+            return Mat4.Mul(translate, rotate);
+        }
+        return translate;
+    }
+
+    hide func drawPinPart(canvas: Canvas3D, base: Mat4, mesh: Mesh3D,
+                          ox: Float, oy: Float, oz: Float,
+                          sx: Float, sy: Float, sz: Float,
+                          mat: Material3D) {
+        var local = Mat4.Mul(Mat4.Translate(ox, oy, oz), Mat4.Scale(sx, sy, sz));
+        Canvas3D.DrawMesh(canvas, mesh, Mat4.Mul(base, local), mat);
     }
 
     /// @brief World position of a specific pin (for trigger callbacks etc.).

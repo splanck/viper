@@ -35,8 +35,8 @@
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widget.h"
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -173,13 +173,8 @@ static int dialog_corner_radius(void) {
 }
 
 /// @brief Fill a rounded rectangle using four corner circles and three fill rects.
-static void dialog_fill_round_rect(vgfx_window_t win,
-                                   int32_t x,
-                                   int32_t y,
-                                   int32_t w,
-                                   int32_t h,
-                                   int32_t radius,
-                                   uint32_t color) {
+static void dialog_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (!win || w <= 0 || h <= 0) {
         return;
     }
@@ -208,13 +203,8 @@ static void dialog_fill_round_rect(vgfx_window_t win,
 }
 
 /// @brief Stroke a rounded rectangle outline using four edge lines and four corner circles.
-static void dialog_stroke_round_rect(vgfx_window_t win,
-                                     int32_t x,
-                                     int32_t y,
-                                     int32_t w,
-                                     int32_t h,
-                                     int32_t radius,
-                                     uint32_t color) {
+static void dialog_stroke_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (!win || w <= 1 || h <= 1) {
         return;
     }
@@ -264,11 +254,8 @@ static void dialog_free_wrapped_lines(char **lines, int line_count) {
 }
 
 /// @brief Word-wrap text to fit max_width, optionally filling out_lines with heap strings.
-static int dialog_wrap_text(vg_dialog_t *dlg,
-                            const char *text,
-                            float max_width,
-                            char ***out_lines,
-                            float *out_max_width) {
+static int dialog_wrap_text(
+    vg_dialog_t *dlg, const char *text, float max_width, char ***out_lines, float *out_max_width) {
     if (out_lines)
         *out_lines = NULL;
     if (out_max_width)
@@ -659,10 +646,12 @@ vg_dialog_t *vg_dialog_create(const char *title) {
 
     // Colors
     dlg->bg_color = vg_color_blend(theme->colors.bg_primary, theme->colors.bg_secondary, 0.18f);
-    dlg->title_bg_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_tertiary, 0.42f);
+    dlg->title_bg_color =
+        vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_tertiary, 0.42f);
     dlg->title_text_color = theme->colors.fg_primary;
     dlg->text_color = theme->colors.fg_primary;
-    dlg->button_bg_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.32f);
+    dlg->button_bg_color =
+        vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.32f);
     dlg->button_hover_color = theme->colors.bg_hover;
     dlg->overlay_color = vg_color_darken(theme->colors.bg_primary, 0.75f);
 
@@ -689,7 +678,8 @@ vg_dialog_t *vg_dialog_create(const char *title) {
     return dlg;
 }
 
-/// @brief VTable destroy: releases input capture and modal root if held, then frees title, message, custom icon, and custom button labels.
+/// @brief VTable destroy: releases input capture and modal root if held, then frees title, message,
+/// custom icon, and custom button labels.
 static void dialog_destroy(vg_widget_t *widget) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
@@ -710,7 +700,8 @@ static void dialog_destroy(vg_widget_t *widget) {
     }
 }
 
-/// @brief VTable measure: computes total dialog size from title bar, button bar, message block, optional icon, and embedded content widget, clamped to available limits.
+/// @brief VTable measure: computes total dialog size from title bar, button bar, message block,
+/// optional icon, and embedded content widget, clamped to available limits.
 static void dialog_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
     float title_h = dialog_title_height();
@@ -731,7 +722,8 @@ static void dialog_measure(vg_widget_t *widget, float available_width, float ava
 
     float message_width = 0.0f;
     float message_height = 0.0f;
-    dialog_measure_message_block(dlg, body_width_limit, &message_width, &message_height, NULL, NULL);
+    dialog_measure_message_block(
+        dlg, body_width_limit, &message_width, &message_height, NULL, NULL);
 
     float content_width = 0.0f;
     float content_height = 0.0f;
@@ -785,7 +777,8 @@ static void dialog_measure(vg_widget_t *widget, float available_width, float ava
     widget->measured_height = total_height;
 }
 
-/// @brief VTable arrange: positions the dialog, then lays out its icon, message, embedded content, and button bar within the padded body region.
+/// @brief VTable arrange: positions the dialog, then lays out its icon, message, embedded content,
+/// and button bar within the padded body region.
 static void dialog_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
     float title_h = dialog_title_height();
@@ -824,7 +817,8 @@ static void dialog_arrange(vg_widget_t *widget, float x, float y, float width, f
         float remaining_h = body_y + body_h - content_y;
         if (remaining_h < 0.0f)
             remaining_h = 0.0f;
-        float desired_h = dlg->content->measured_height > 0.0f ? dlg->content->measured_height : remaining_h;
+        float desired_h =
+            dlg->content->measured_height > 0.0f ? dlg->content->measured_height : remaining_h;
         if (desired_h > remaining_h)
             desired_h = remaining_h;
 
@@ -832,7 +826,8 @@ static void dialog_arrange(vg_widget_t *widget, float x, float y, float width, f
     }
 }
 
-/// @brief VTable paint: draws the modal backdrop, dialog chrome (title bar, close button, icon, message, buttons), and calls vg_widget_paint on the embedded content.
+/// @brief VTable paint: draws the modal backdrop, dialog chrome (title bar, close button, icon,
+/// message, buttons), and calls vg_widget_paint on the embedded content.
 static void dialog_paint(vg_widget_t *widget, void *canvas) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
@@ -865,8 +860,9 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
     int32_t h = (int32_t)widget->height;
 
     uint32_t panel_bg = dlg->bg_color ? dlg->bg_color : theme->colors.bg_primary;
-    uint32_t header_bg = dlg->title_bg_color ? dlg->title_bg_color
-                                             : vg_color_blend(panel_bg, theme->colors.bg_secondary, 0.65f);
+    uint32_t header_bg = dlg->title_bg_color
+                             ? dlg->title_bg_color
+                             : vg_color_blend(panel_bg, theme->colors.bg_secondary, 0.65f);
     uint32_t border_color = theme->colors.border_primary;
     uint32_t shadow_color = vg_color_darken(panel_bg, 0.65f);
     uint32_t highlight = vg_color_lighten(panel_bg, 0.06f);
@@ -883,7 +879,8 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
         vg_font_metrics_t title_metrics = {0};
         vg_font_get_metrics(dlg->font, dlg->title_font_size, &title_metrics);
         float title_x = (float)x + padding;
-        float title_y = (float)y + (title_h - (float)(title_metrics.ascent - title_metrics.descent)) * 0.5f +
+        float title_y = (float)y +
+                        (title_h - (float)(title_metrics.ascent - title_metrics.descent)) * 0.5f +
                         (float)title_metrics.ascent;
         int32_t title_clip_w = (int32_t)((float)w - padding * 2.0f - close_size - gap);
         if (title_clip_w < 0)
@@ -920,7 +917,8 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
         vg_font_get_metrics(dlg->font, dlg->font_size, &close_metrics);
         float close_cx = (float)close_x + close_size * 0.5f;
         float close_cy =
-            (float)close_y + (close_size - (float)(close_metrics.ascent - close_metrics.descent)) * 0.5f +
+            (float)close_y +
+            (close_size - (float)(close_metrics.ascent - close_metrics.descent)) * 0.5f +
             (float)close_metrics.ascent;
         vg_font_draw_text(canvas,
                           dlg->font,
@@ -970,14 +968,15 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
             vg_font_metrics_t icon_metrics = {0};
             float icon_font_size = icon_size * 0.75f;
             vg_font_get_metrics(dlg->font, icon_font_size, &icon_metrics);
-            vg_font_draw_text(canvas,
-                              dlg->font,
-                              icon_font_size,
-                              body_x + icon_size * 0.28f,
-                              body_y + (icon_size - (float)(icon_metrics.ascent - icon_metrics.descent)) * 0.5f +
-                                  (float)icon_metrics.ascent,
-                              glyph,
-                              theme->colors.accent_primary);
+            vg_font_draw_text(
+                canvas,
+                dlg->font,
+                icon_font_size,
+                body_x + icon_size * 0.28f,
+                body_y + (icon_size - (float)(icon_metrics.ascent - icon_metrics.descent)) * 0.5f +
+                    (float)icon_metrics.ascent,
+                glyph,
+                theme->colors.accent_primary);
         }
     }
 
@@ -991,16 +990,27 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
             font_metrics.line_height > 0 ? (float)font_metrics.line_height : dlg->font_size;
         float text_y = content_y + (float)font_metrics.ascent;
 
-        vgfx_set_clip(win, (int32_t)content_x, (int32_t)content_y, (int32_t)body_w, (int32_t)body_h);
+        vgfx_set_clip(
+            win, (int32_t)content_x, (int32_t)content_y, (int32_t)body_w, (int32_t)body_h);
         if (line_count <= 0 || !lines) {
-            vg_font_draw_text(
-                canvas, dlg->font, dlg->font_size, content_x, text_y, dlg->message, dlg->text_color);
+            vg_font_draw_text(canvas,
+                              dlg->font,
+                              dlg->font_size,
+                              content_x,
+                              text_y,
+                              dlg->message,
+                              dlg->text_color);
             line_count = 1;
         } else {
             for (int i = 0; i < line_count; i++) {
                 const char *line = lines[i] ? lines[i] : "";
-                vg_font_draw_text(
-                    canvas, dlg->font, dlg->font_size, content_x, text_y + (float)i * line_height, line, dlg->text_color);
+                vg_font_draw_text(canvas,
+                                  dlg->font,
+                                  dlg->font_size,
+                                  content_x,
+                                  text_y + (float)i * line_height,
+                                  line,
+                                  dlg->text_color);
             }
         }
         vgfx_clear_clip(win);
@@ -1014,7 +1024,8 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
         float clip_h = body_y + body_h - content_y;
         if (clip_h < 0.0f)
             clip_h = 0.0f;
-        vgfx_set_clip(win, (int32_t)content_x, (int32_t)content_y, (int32_t)body_w, (int32_t)clip_h);
+        vgfx_set_clip(
+            win, (int32_t)content_x, (int32_t)content_y, (int32_t)body_w, (int32_t)clip_h);
         vg_widget_paint(dlg->content, canvas);
         vgfx_clear_clip(win);
     }
@@ -1041,12 +1052,18 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
                 btn_bg = vg_color_lighten(btn_bg, is_default ? 0.08f : 0.05f);
             }
             uint32_t btn_border =
-                is_default ? vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.4f)
-                           : theme->colors.border_primary;
+                is_default
+                    ? vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.4f)
+                    : theme->colors.border_primary;
             uint32_t btn_fg = is_default ? 0x00FFFFFF : dlg->text_color;
 
-            dialog_fill_round_rect(
-                win, (int32_t)button_x, (int32_t)button_y, (int32_t)btn_w, (int32_t)button_h, radius / 2, btn_bg);
+            dialog_fill_round_rect(win,
+                                   (int32_t)button_x,
+                                   (int32_t)button_y,
+                                   (int32_t)btn_w,
+                                   (int32_t)button_h,
+                                   radius / 2,
+                                   btn_bg);
             dialog_stroke_round_rect(win,
                                      (int32_t)button_x,
                                      (int32_t)button_y,
@@ -1061,9 +1078,10 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
                 float text_x = button_x + (btn_w - metrics.width) / 2.0f;
                 vg_font_metrics_t button_metrics = {0};
                 vg_font_get_metrics(dlg->font, dlg->font_size, &button_metrics);
-                float text_y = button_y +
-                               (button_h - (float)(button_metrics.ascent - button_metrics.descent)) * 0.5f +
-                               (float)button_metrics.ascent;
+                float text_y =
+                    button_y +
+                    (button_h - (float)(button_metrics.ascent - button_metrics.descent)) * 0.5f +
+                    (float)button_metrics.ascent;
                 vgfx_set_clip(
                     win, (int32_t)button_x, (int32_t)button_y, (int32_t)btn_w, (int32_t)button_h);
                 vg_font_draw_text(
@@ -1084,12 +1102,18 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
                 btn_bg = vg_color_lighten(btn_bg, is_default ? 0.08f : 0.05f);
             }
             uint32_t btn_border =
-                is_default ? vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.4f)
-                           : theme->colors.border_primary;
+                is_default
+                    ? vg_color_blend(theme->colors.accent_primary, theme->colors.border_focus, 0.4f)
+                    : theme->colors.border_primary;
             uint32_t btn_fg = is_default ? 0x00FFFFFF : dlg->text_color;
 
-            dialog_fill_round_rect(
-                win, (int32_t)button_x, (int32_t)button_y, (int32_t)btn_w, (int32_t)button_h, radius / 2, btn_bg);
+            dialog_fill_round_rect(win,
+                                   (int32_t)button_x,
+                                   (int32_t)button_y,
+                                   (int32_t)btn_w,
+                                   (int32_t)button_h,
+                                   radius / 2,
+                                   btn_bg);
             dialog_stroke_round_rect(win,
                                      (int32_t)button_x,
                                      (int32_t)button_y,
@@ -1104,9 +1128,10 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
                 float text_x = button_x + (btn_w - metrics.width) / 2.0f;
                 vg_font_metrics_t button_metrics = {0};
                 vg_font_get_metrics(dlg->font, dlg->font_size, &button_metrics);
-                float text_y = button_y +
-                               (button_h - (float)(button_metrics.ascent - button_metrics.descent)) * 0.5f +
-                               (float)button_metrics.ascent;
+                float text_y =
+                    button_y +
+                    (button_h - (float)(button_metrics.ascent - button_metrics.descent)) * 0.5f +
+                    (float)button_metrics.ascent;
                 vgfx_set_clip(
                     win, (int32_t)button_x, (int32_t)button_y, (int32_t)btn_w, (int32_t)button_h);
                 vg_font_draw_text(
@@ -1144,7 +1169,8 @@ static int find_button_at(vg_dialog_t *dlg, float px, float py) {
             float btn_w = get_button_width(dlg, dlg->custom_buttons[i].label);
             button_x -= btn_w;
 
-            if (px >= button_x && px < button_x + btn_w && py >= button_y && py < button_y + button_h) {
+            if (px >= button_x && px < button_x + btn_w && py >= button_y &&
+                py < button_y + button_h) {
                 return i;
             }
 
@@ -1155,7 +1181,8 @@ static int find_button_at(vg_dialog_t *dlg, float px, float py) {
             float btn_w = get_button_width(dlg, buttons[i].label);
             button_x -= btn_w;
 
-            if (px >= button_x && px < button_x + btn_w && py >= button_y && py < button_y + button_h) {
+            if (px >= button_x && px < button_x + btn_w && py >= button_y &&
+                py < button_y + button_h) {
                 return i;
             }
 
@@ -1206,7 +1233,8 @@ static void trigger_button_click(vg_dialog_t *dlg, int button_index) {
     }
 }
 
-/// @brief VTable handle_event: intercepts mouse move/down for title-drag and close-button hover, key-down for Escape/Enter dismissal, and propagates remaining events to child widgets.
+/// @brief VTable handle_event: intercepts mouse move/down for title-drag and close-button hover,
+/// key-down for Escape/Enter dismissal, and propagates remaining events to child widgets.
 static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
@@ -1226,9 +1254,10 @@ static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 widget->x = event->mouse.screen_x - parent_sx - (float)dlg->drag_offset_x;
                 widget->y = event->mouse.screen_y - parent_sy - (float)dlg->drag_offset_y;
                 if (dlg->modal_parent) {
-                    float max_x = dlg->modal_parent->width - widget->width - (float)DIALOG_SCREEN_MARGIN;
-                    float max_y =
-                        dlg->modal_parent->height - dialog_title_height() - (float)DIALOG_SCREEN_MARGIN;
+                    float max_x =
+                        dlg->modal_parent->width - widget->width - (float)DIALOG_SCREEN_MARGIN;
+                    float max_y = dlg->modal_parent->height - dialog_title_height() -
+                                  (float)DIALOG_SCREEN_MARGIN;
                     float min_x = (float)DIALOG_SCREEN_MARGIN;
                     float min_y = (float)DIALOG_SCREEN_MARGIN;
                     if (widget->x < min_x)
@@ -1787,9 +1816,15 @@ void vg_dialog_set_on_close(vg_dialog_t *dialog,
 void vg_dialog_set_font(vg_dialog_t *dialog, vg_font_t *font, float size) {
     if (!dialog)
         return;
+    float font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    float title_font_size = font_size + dialog_ui_scale();
+    if (dialog->font == font && dialog->font_size == font_size &&
+        dialog->title_font_size == title_font_size) {
+        return;
+    }
     dialog->font = font;
-    dialog->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
-    dialog->title_font_size = dialog->font_size + dialog_ui_scale();
+    dialog->font_size = font_size;
+    dialog->title_font_size = title_font_size;
     dialog->base.needs_layout = true;
     dialog->base.needs_paint = true;
 }

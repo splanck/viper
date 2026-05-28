@@ -192,8 +192,8 @@ struct DivTrapSequence {
 }
 
 [[nodiscard]] std::string makeRunNativeCommand(const std::filesystem::path &ilPath) {
-    return viper::tests::quoteForShell(std::filesystem::path(VIPER_ILC_PATH)) +
-           " codegen x64 " + viper::tests::quoteForShell(ilPath) + " -run-native";
+    return viper::tests::quoteForShell(std::filesystem::path(VIPER_ILC_PATH)) + " codegen x64 " +
+           viper::tests::quoteForShell(ilPath) + " -run-native";
 }
 
 [[nodiscard]] int runNativeCommand(const std::filesystem::path &ilPath,

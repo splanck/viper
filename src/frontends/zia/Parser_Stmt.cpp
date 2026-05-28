@@ -181,10 +181,11 @@ StmtPtr Parser::parseBlock() {
         statements.push_back(std::move(stmt));
     }
 
-    if (!expect(TokenKind::RBrace, "}"))
+    Token rbraceTok;
+    if (!expect(TokenKind::RBrace, "}", &rbraceTok))
         return nullptr;
 
-    return std::make_unique<BlockStmt>(loc, std::move(statements));
+    return std::make_unique<BlockStmt>(loc, rbraceTok.loc, std::move(statements));
 }
 
 /// @brief Parse a local variable declaration (var x: Type = expr; or final/let x = expr;).
@@ -526,8 +527,7 @@ StmtPtr Parser::parseDeferStmt() {
     if (!expect(TokenKind::Semicolon, ";"))
         return nullptr;
 
-    return std::make_unique<DeferStmt>(
-        loc, std::make_unique<ExprStmt>(loc, std::move(expr)));
+    return std::make_unique<DeferStmt>(loc, std::make_unique<ExprStmt>(loc, std::move(expr)));
 }
 
 /// @brief Parse a guard statement (guard condition else { body }).
@@ -623,10 +623,10 @@ StmtPtr Parser::parseMatchStmt() {
                 return nullptr;
             std::vector<StmtPtr> statements;
             statements.push_back(std::move(stmt));
-            arm.body = std::make_unique<BlockExpr>(arm.pattern.literal ? arm.pattern.literal->loc
-                                                                        : loc,
-                                                   std::move(statements),
-                                                   nullptr);
+            arm.body =
+                std::make_unique<BlockExpr>(arm.pattern.literal ? arm.pattern.literal->loc : loc,
+                                            std::move(statements),
+                                            nullptr);
         } else {
             // Expression body
             arm.body = parseExpressionAllowingStructLiterals();

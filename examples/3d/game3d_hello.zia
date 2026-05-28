@@ -1,0 +1,18 @@
+module game3d_hello;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func start() {
+    var world = World3D.New("Game3D Hello", 128, 96);
+    Quality.Apply(world, QualityLevel.get_Balanced()); Lighting.Outdoor(world, Vec3.New(-0.4, -1.0, -0.2)); PostFX.Crisp(world);
+    var ground = Prefab.Ground(18.0, Materials.Rubber(0.25, 0.35, 0.25)); Entity3D.attachBody(ground, BodyDef.StaticPlane(18.0)); World3D.spawn(world, ground);
+    var player = Entity3D.New(); Entity3D.setPosition(player, 0.0, 1.0, 4.0); World3D.spawn(world, player);
+    var character = CharacterController3D.New(world, player, 0.32, 1.8, 70.0);
+    var fps = FirstPersonController.New(world); FirstPersonController.set_character(fps, character); World3D.setCameraController(world, fps);
+    World3D.runFramesOnly(world, 1, 0.016);
+    World3D.destroy(world);
+    Terminal.Say("PASS");
+}

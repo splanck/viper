@@ -34,7 +34,7 @@ file(WRITE "${_quoted_project}/main.zia" "func start() {}\n")
 file(WRITE "${_quoted_project}/asset dir/config.txt" "ok\n")
 file(WRITE "${_quoted_project}/scripts/post install.sh" "echo post-install\n")
 file(WRITE "${_quoted_project}/viper.project"
-"project quotedpkg
+        "project quotedpkg
 version 1.0.0
 lang zia
 entry main.zia
@@ -56,7 +56,7 @@ set(_missing_project "${TEST_WORK_DIR}/missing-project")
 file(MAKE_DIRECTORY "${_missing_project}")
 file(WRITE "${_missing_project}/main.zia" "func start() {}\n")
 file(WRITE "${_missing_project}/viper.project"
-"project missingpkg
+        "project missingpkg
 version 1.0.0
 lang zia
 entry main.zia
@@ -79,7 +79,7 @@ set(_bad_url_project "${TEST_WORK_DIR}/bad-url-project")
 file(MAKE_DIRECTORY "${_bad_url_project}")
 file(WRITE "${_bad_url_project}/main.zia" "func start() {}\n")
 file(WRITE "${_bad_url_project}/viper.project"
-"project badurl
+        "project badurl
 version 1.0.0
 lang zia
 entry main.zia
@@ -102,7 +102,7 @@ set(_bad_assoc_project "${TEST_WORK_DIR}/bad-assoc-project")
 file(MAKE_DIRECTORY "${_bad_assoc_project}")
 file(WRITE "${_bad_assoc_project}/main.zia" "func start() {}\n")
 file(WRITE "${_bad_assoc_project}/viper.project"
-"project badassoc
+        "project badassoc
 version 1.0.0
 lang zia
 entry main.zia
@@ -125,7 +125,7 @@ set(_dup_assoc_project "${TEST_WORK_DIR}/dup-assoc-project")
 file(MAKE_DIRECTORY "${_dup_assoc_project}")
 file(WRITE "${_dup_assoc_project}/main.zia" "func start() {}\n")
 file(WRITE "${_dup_assoc_project}/viper.project"
-"project dupassoc
+        "project dupassoc
 version 1.0.0
 lang zia
 entry main.zia
@@ -149,7 +149,7 @@ set(_bad_scalar_project "${TEST_WORK_DIR}/bad-scalar-project")
 file(MAKE_DIRECTORY "${_bad_scalar_project}")
 file(WRITE "${_bad_scalar_project}/main.zia" "func start() {}\n")
 file(WRITE "${_bad_scalar_project}/viper.project"
-"project badscalar
+        "project badscalar
 version 1.0.0
 lang zia
 entry main.zia
@@ -172,7 +172,7 @@ set(_linux_dep_project "${TEST_WORK_DIR}/linux-dep-project")
 file(MAKE_DIRECTORY "${_linux_dep_project}")
 file(WRITE "${_linux_dep_project}/main.zia" "func start() {}\n")
 file(WRITE "${_linux_dep_project}/viper.project"
-"project linuxdeps
+        "project linuxdeps
 version 1.0.0
 lang zia
 entry main.zia
@@ -193,7 +193,7 @@ set(_bad_deb_version_project "${TEST_WORK_DIR}/bad-deb-version-project")
 file(MAKE_DIRECTORY "${_bad_deb_version_project}")
 file(WRITE "${_bad_deb_version_project}/main.zia" "func start() {}\n")
 file(WRITE "${_bad_deb_version_project}/viper.project"
-"project baddebversion
+        "project baddebversion
 version -1.0
 lang zia
 entry main.zia
@@ -215,7 +215,7 @@ set(_bad_macos_id_project "${TEST_WORK_DIR}/bad-macos-id-project")
 file(MAKE_DIRECTORY "${_bad_macos_id_project}")
 file(WRITE "${_bad_macos_id_project}/main.zia" "func start() {}\n")
 file(WRITE "${_bad_macos_id_project}/viper.project"
-"project badmacid
+        "project badmacid
 version 1.0.0
 lang zia
 entry main.zia
@@ -238,7 +238,7 @@ set(_bad_macos_sign_project "${TEST_WORK_DIR}/bad-macos-sign-project")
 file(MAKE_DIRECTORY "${_bad_macos_sign_project}")
 file(WRITE "${_bad_macos_sign_project}/main.zia" "func start() {}\n")
 file(WRITE "${_bad_macos_sign_project}/viper.project"
-"project badmacsign
+        "project badmacsign
 version 1.0.0
 lang zia
 entry main.zia
@@ -261,7 +261,7 @@ set(_bad_macos_notary_project "${TEST_WORK_DIR}/bad-macos-notary-project")
 file(MAKE_DIRECTORY "${_bad_macos_notary_project}")
 file(WRITE "${_bad_macos_notary_project}/main.zia" "func start() {}\n")
 file(WRITE "${_bad_macos_notary_project}/viper.project"
-"project badmacnotary
+        "project badmacnotary
 version 1.0.0
 lang zia
 entry main.zia
@@ -285,7 +285,7 @@ set(_macos_sign_project "${TEST_WORK_DIR}/macos-sign-project")
 file(MAKE_DIRECTORY "${_macos_sign_project}")
 file(WRITE "${_macos_sign_project}/main.zia" "func start() {}\n")
 file(WRITE "${_macos_sign_project}/viper.project"
-"project macsign
+        "project macsign
 version 1.0.0
 lang zia
 entry main.zia
@@ -309,7 +309,7 @@ set(_windows_scope_project "${TEST_WORK_DIR}/windows-scope-project")
 file(MAKE_DIRECTORY "${_windows_scope_project}")
 file(WRITE "${_windows_scope_project}/main.zia" "func start() {}\n")
 file(WRITE "${_windows_scope_project}/viper.project"
-"project winscope
+        "project winscope
 version 1.0.0
 lang zia
 entry main.zia
@@ -357,7 +357,7 @@ set(_windows_thumbprint_only_project "${TEST_WORK_DIR}/windows-thumbprint-only-p
 file(MAKE_DIRECTORY "${_windows_thumbprint_only_project}")
 file(WRITE "${_windows_thumbprint_only_project}/main.zia" "func start() {}\n")
 file(WRITE "${_windows_thumbprint_only_project}/viper.project"
-"project winthumbonly
+        "project winthumbonly
 version 1.0.0
 lang zia
 entry main.zia
@@ -395,7 +395,7 @@ set(_bad_windows_scope_project "${TEST_WORK_DIR}/bad-windows-scope-project")
 file(MAKE_DIRECTORY "${_bad_windows_scope_project}")
 file(WRITE "${_bad_windows_scope_project}/main.zia" "func start() {}\n")
 file(WRITE "${_bad_windows_scope_project}/viper.project"
-"project badwinscope
+        "project badwinscope
 version 1.0.0
 lang zia
 entry main.zia
@@ -418,7 +418,7 @@ set(_no_version_project "${TEST_WORK_DIR}/no-version-project")
 file(MAKE_DIRECTORY "${_no_version_project}")
 file(WRITE "${_no_version_project}/main.zia" "func start() {}\n")
 file(WRITE "${_no_version_project}/viper.project"
-"project noversionpkg
+        "project noversionpkg
 lang zia
 entry main.zia
 ")

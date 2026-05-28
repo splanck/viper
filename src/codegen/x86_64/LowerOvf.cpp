@@ -70,23 +70,23 @@ void lowerOverflowOps(MFunction &fn) {
         if (auto existing = findBlock(fn, trapLabel)) {
             trapIndex = *existing;
             auto &trapBlock = fn.blocks[*trapIndex];
-            const bool hasRuntimeCall = std::any_of(
-                trapBlock.instructions.begin(),
-                trapBlock.instructions.end(),
-                [](const MInstr &instr) {
-                    if (instr.opcode != MOpcode::CALL || instr.operands.empty()) {
-                        return false;
-                    }
-                    const auto *label = std::get_if<OpLabel>(&instr.operands.front());
-                    return label && label->name == "rt_trap_ovf";
-                });
-            auto ud2It = std::find_if(
-                trapBlock.instructions.begin(),
-                trapBlock.instructions.end(),
-                [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
+            const bool hasRuntimeCall =
+                std::any_of(trapBlock.instructions.begin(),
+                            trapBlock.instructions.end(),
+                            [](const MInstr &instr) {
+                                if (instr.opcode != MOpcode::CALL || instr.operands.empty()) {
+                                    return false;
+                                }
+                                const auto *label = std::get_if<OpLabel>(&instr.operands.front());
+                                return label && label->name == "rt_trap_ovf";
+                            });
+            auto ud2It =
+                std::find_if(trapBlock.instructions.begin(),
+                             trapBlock.instructions.end(),
+                             [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
             if (!hasRuntimeCall) {
-                MInstr call =
-                    MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap_ovf")});
+                MInstr call = MInstr::make(MOpcode::CALL,
+                                           std::vector<Operand>{makeLabelOperand("rt_trap_ovf")});
                 if (ud2It != trapBlock.instructions.end()) {
                     ud2It = trapBlock.instructions.insert(ud2It, std::move(call));
                     ++ud2It;
@@ -192,8 +192,7 @@ rewrite:
             joInstr.loc = instr.loc;
             replacement.push_back(std::move(joInstr));
 
-            const auto beginIt =
-                block.instructions.begin() + static_cast<std::ptrdiff_t>(i);
+            const auto beginIt = block.instructions.begin() + static_cast<std::ptrdiff_t>(i);
             block.instructions.erase(beginIt);
             block.instructions.insert(block.instructions.begin() + static_cast<std::ptrdiff_t>(i),
                                       replacement.begin(),

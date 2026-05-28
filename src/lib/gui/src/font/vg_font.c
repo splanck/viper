@@ -433,8 +433,8 @@ uint32_t vg_utf8_decode(const char **str) {
         *str += 3;
     } else if ((s[0] & 0xF8) == 0xF0) {
         // 4-byte sequence
-        if (s[1] == 0 || s[2] == 0 || s[3] == 0 || (s[1] & 0xC0) != 0x80 ||
-            (s[2] & 0xC0) != 0x80 || (s[3] & 0xC0) != 0x80) {
+        if (s[1] == 0 || s[2] == 0 || s[3] == 0 || (s[1] & 0xC0) != 0x80 || (s[2] & 0xC0) != 0x80 ||
+            (s[3] & 0xC0) != 0x80) {
             *str += 1;
             return 0xFFFD;
         }

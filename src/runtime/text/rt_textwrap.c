@@ -79,9 +79,11 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
 
-    size_t alloc_size = checked_mul_add(
-        1, checked_i64_to_size(src_len, "TextWrapper.Wrap: invalid length"), 2,
-        "TextWrapper.Wrap: output length overflow");
+    size_t alloc_size =
+        checked_mul_add(1,
+                        checked_i64_to_size(src_len, "TextWrapper.Wrap: invalid length"),
+                        2,
+                        "TextWrapper.Wrap: output length overflow");
     char *result = checked_malloc(alloc_size, "TextWrapper.Wrap: memory allocation failed");
 
     int64_t result_pos = 0;
@@ -272,9 +274,9 @@ rt_string rt_textwrap_dedent(rt_string text) {
         return rt_string_ref(text);
 
     // Build result without common indent
-    char *result = checked_malloc(
-        checked_i64_to_size(src_len, "TextWrapper.Dedent: invalid length") + 1,
-        "TextWrapper.Dedent: memory allocation failed");
+    char *result =
+        checked_malloc(checked_i64_to_size(src_len, "TextWrapper.Dedent: invalid length") + 1,
+                       "TextWrapper.Dedent: memory allocation failed");
 
     int64_t result_pos = 0;
     int64_t skip_remaining = common_len;

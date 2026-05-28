@@ -73,7 +73,8 @@ static vg_widget_vtable_t g_textinput_vtable = {.destroy = textinput_destroy,
 // Helper Functions
 //=============================================================================
 
-/// @brief Grows input->text to hold at least @p needed bytes, doubling from TEXTINPUT_INITIAL_CAPACITY.
+/// @brief Grows input->text to hold at least @p needed bytes, doubling from
+/// TEXTINPUT_INITIAL_CAPACITY.
 static bool ensure_capacity(vg_textinput_t *input, size_t needed) {
     if (needed <= input->text_capacity)
         return true;
@@ -122,8 +123,7 @@ static bool textinput_codepoint_is_text(uint32_t cp) {
         return false;
     if (cp >= 0xD800 && cp <= 0xDFFF)
         return false;
-    if ((cp >= 0xE000 && cp <= 0xF8FF) ||
-        (cp >= 0xF0000 && cp <= 0xFFFFD) ||
+    if ((cp >= 0xE000 && cp <= 0xF8FF) || (cp >= 0xF0000 && cp <= 0xFFFFD) ||
         (cp >= 0x100000 && cp <= 0x10FFFD))
         return false;
     return true;
@@ -145,7 +145,8 @@ static size_t textinput_byte_offset(const vg_textinput_t *input, size_t char_pos
     return (size_t)vg_utf8_offset(input->text, (int)textinput_clamp_char_pos(input, char_pos));
 }
 
-/// @brief Advances @p *cursor past one well-formed UTF-8 sequence within [cursor, limit); returns false on error.
+/// @brief Advances @p *cursor past one well-formed UTF-8 sequence within [cursor, limit); returns
+/// false on error.
 static bool textinput_utf8_advance_bounded(const char **cursor, const char *limit) {
     if (!cursor || !*cursor || *cursor >= limit || **cursor == '\0')
         return false;
@@ -206,7 +207,8 @@ static size_t textinput_char_index_from_byte_offset(const char *text, size_t byt
     return chars;
 }
 
-/// @brief Counts the number of well-formed UTF-8 codepoints in the first @p byte_len bytes of @p text.
+/// @brief Counts the number of well-formed UTF-8 codepoints in the first @p byte_len bytes of @p
+/// text.
 static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_len) {
     if (!text)
         return 0;
@@ -225,7 +227,8 @@ static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_
     return chars;
 }
 
-/// @brief Returns the byte length of the shortest prefix of @p text containing exactly @p max_chars codepoints.
+/// @brief Returns the byte length of the shortest prefix of @p text containing exactly @p max_chars
+/// codepoints.
 static size_t textinput_prefix_for_codepoints(const char *text, size_t max_chars) {
     if (!text)
         return 0;
@@ -242,7 +245,8 @@ static size_t textinput_prefix_for_codepoints(const char *text, size_t max_chars
     return (size_t)(cursor - text);
 }
 
-/// @brief Returns the byte length of the longest well-formed UTF-8 prefix of @p text within @p max_bytes.
+/// @brief Returns the byte length of the longest well-formed UTF-8 prefix of @p text within @p
+/// max_bytes.
 static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes) {
     if (!text)
         return 0;
@@ -301,14 +305,16 @@ static char *textinput_sanitize_utf8_copy(const char *text,
     return clean;
 }
 
-/// @brief Returns true if @p ch is a whitespace or punctuation character used as a Ctrl+Arrow word boundary.
+/// @brief Returns true if @p ch is a whitespace or punctuation character used as a Ctrl+Arrow word
+/// boundary.
 static bool textinput_is_word_separator(unsigned char ch) {
     if (ch <= ' ')
         return true;
     return strchr(".,;:!?()[]{}<>/\\|+-*=~`'\"@", (int)ch) != NULL;
 }
 
-/// @brief Returns true if the codepoint at @p char_pos in the input's text is a word boundary character.
+/// @brief Returns true if the codepoint at @p char_pos in the input's text is a word boundary
+/// character.
 static bool textinput_char_is_word_separator_at(const vg_textinput_t *input, size_t char_pos) {
     size_t char_count = textinput_char_count(input);
     if (!input || char_pos >= char_count)
@@ -340,7 +346,8 @@ static void textinput_reset_undo_history(vg_textinput_t *input) {
     input->undo_pos = 0;
 }
 
-/// @brief Clamps and sets cursor_pos, selection_start, and selection_end all to @p pos (collapses selection).
+/// @brief Clamps and sets cursor_pos, selection_start, and selection_end all to @p pos (collapses
+/// selection).
 static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos) {
     size_t clamped = textinput_clamp_char_pos(input, pos);
     input->cursor_pos = clamped;
@@ -437,15 +444,16 @@ static void textinput_get_line_at_index(const vg_textinput_t *input,
             return;
         }
 
-        size_t line_chars = textinput_codepoint_count_in_prefix(input->text + start_byte,
-                                                                end_byte - start_byte);
+        size_t line_chars =
+            textinput_codepoint_count_in_prefix(input->text + start_byte, end_byte - start_byte);
         start_byte = end_byte + 1;
         start_char += line_chars + 1;
         line++;
     }
 }
 
-/// @brief Returns the line index and byte/char range for the logical line that contains codepoint @p char_pos.
+/// @brief Returns the line index and byte/char range for the logical line that contains codepoint
+/// @p char_pos.
 static void textinput_get_line_for_char_pos(const vg_textinput_t *input,
                                             size_t char_pos,
                                             size_t *out_line_index,
@@ -483,15 +491,17 @@ static void textinput_get_line_for_char_pos(const vg_textinput_t *input,
 }
 
 /// @brief Returns the codepoint index of the character nearest to @p local_x within @p line_index.
-static size_t textinput_hit_test_line_x(const vg_textinput_t *input, size_t line_index, float local_x) {
+static size_t textinput_hit_test_line_x(const vg_textinput_t *input,
+                                        size_t line_index,
+                                        float local_x) {
     size_t start_byte = 0;
     size_t end_byte = 0;
     size_t start_char = 0;
     textinput_get_line_at_index(input, line_index, &start_byte, &end_byte, &start_char);
 
     char *line_text = textinput_dup_range(input->text, start_byte, end_byte);
-    size_t line_chars = textinput_codepoint_count_in_prefix(input->text + start_byte,
-                                                            end_byte - start_byte);
+    size_t line_chars =
+        textinput_codepoint_count_in_prefix(input->text + start_byte, end_byte - start_byte);
     int hit = line_text ? vg_font_hit_test(input->font, input->font_size, line_text, local_x) : -1;
     free(line_text);
     if (hit < 0)
@@ -501,8 +511,11 @@ static size_t textinput_hit_test_line_x(const vg_textinput_t *input, size_t line
     return start_char + (size_t)hit;
 }
 
-/// @brief Converts a local (x,y) click point to a codepoint index across all lines using line_height.
-static size_t textinput_hit_test_multiline(const vg_textinput_t *input, float local_x, float local_y) {
+/// @brief Converts a local (x,y) click point to a codepoint index across all lines using
+/// line_height.
+static size_t textinput_hit_test_multiline(const vg_textinput_t *input,
+                                           float local_x,
+                                           float local_y) {
     if (!input || !input->font)
         return textinput_char_count(input);
 
@@ -538,8 +551,11 @@ static float textinput_multiline_cursor_x(const vg_textinput_t *input, size_t cu
     return cursor_x;
 }
 
-/// @brief Moves @p cursor_pos up (direction < 0) or down (direction > 0) one line, preserving the column offset.
-static size_t textinput_move_vertical_cursor(const vg_textinput_t *input, size_t cursor_pos, int direction) {
+/// @brief Moves @p cursor_pos up (direction < 0) or down (direction > 0) one line, preserving the
+/// column offset.
+static size_t textinput_move_vertical_cursor(const vg_textinput_t *input,
+                                             size_t cursor_pos,
+                                             int direction) {
     size_t line_index = 0;
     size_t line_start_byte = 0;
     size_t line_end_byte = 0;
@@ -572,7 +588,8 @@ static size_t textinput_move_vertical_cursor(const vg_textinput_t *input, size_t
     return target_start_char + column;
 }
 
-/// @brief Returns the codepoint index of the start (@p to_end=false) or end (@p to_end=true) of the current line.
+/// @brief Returns the codepoint index of the start (@p to_end=false) or end (@p to_end=true) of the
+/// current line.
 static size_t textinput_line_boundary(const vg_textinput_t *input, size_t cursor_pos, bool to_end) {
     size_t line_start_byte = 0;
     size_t line_end_byte = 0;
@@ -759,7 +776,8 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
     return input;
 }
 
-/// @brief VTable destroy: frees the text buffer, placeholder string, and all undo ring-buffer snapshots.
+/// @brief VTable destroy: frees the text buffer, placeholder string, and all undo ring-buffer
+/// snapshots.
 static void textinput_destroy(vg_widget_t *widget) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
@@ -810,7 +828,8 @@ static void textinput_measure(vg_widget_t *widget, float available_width, float 
     vg_widget_apply_constraints(widget);
 }
 
-/// @brief VTable paint: draws background, border, placeholder/text with selection highlight, and blinking cursor.
+/// @brief VTable paint: draws background, border, placeholder/text with selection highlight, and
+/// blinking cursor.
 static void textinput_paint(vg_widget_t *widget, void *canvas) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -884,8 +903,7 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
 
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(input->font, input->font_size, &font_metrics);
-    text_y +=
-        (widget->height + (float)font_metrics.ascent + (float)font_metrics.descent) / 2.0f;
+    text_y += (widget->height + (float)font_metrics.ascent + (float)font_metrics.descent) / 2.0f;
 
     const char *display_text = input->text;
     uint32_t display_color = text_color;
@@ -932,19 +950,15 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
         size_t line_count = textinput_line_count(input);
         size_t current_line = 0;
         size_t current_line_start_char = 0;
-        textinput_get_line_for_char_pos(input,
-                                        input->cursor_pos,
-                                        &current_line,
-                                        NULL,
-                                        NULL,
-                                        &current_line_start_char);
+        textinput_get_line_for_char_pos(
+            input, input->cursor_pos, &current_line, NULL, NULL, &current_line_start_char);
 
         for (size_t line = 0; line < line_count; line++) {
             size_t line_start_byte = 0, line_end_byte = 0, line_start_char = 0;
             textinput_get_line_at_index(
                 input, line, &line_start_byte, &line_end_byte, &line_start_char);
-            size_t line_char_len = textinput_codepoint_count_in_prefix(input->text + line_start_byte,
-                                                                       line_end_byte - line_start_byte);
+            size_t line_char_len = textinput_codepoint_count_in_prefix(
+                input->text + line_start_byte, line_end_byte - line_start_byte);
             float line_y = base_y + (float)line * line_h;
             if (line_y + line_h < widget->y || line_y > widget->y + widget->height)
                 continue;
@@ -955,15 +969,18 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
 
             if ((widget->state & VG_STATE_FOCUSED) && sel_start != sel_end) {
                 size_t draw_start = sel_start > line_start_char ? sel_start : line_start_char;
-                size_t draw_end = sel_end < (line_start_char + line_char_len) ? sel_end
-                                                                              : (line_start_char + line_char_len);
+                size_t draw_end = sel_end < (line_start_char + line_char_len)
+                                      ? sel_end
+                                      : (line_start_char + line_char_len);
                 if (draw_start < draw_end) {
                     size_t start_col = draw_start - line_start_char;
                     size_t end_col = draw_end - line_start_char;
                     float sel_x0 =
-                        base_x + vg_font_get_cursor_x(input->font, input->font_size, line_text, (int)start_col);
+                        base_x + vg_font_get_cursor_x(
+                                     input->font, input->font_size, line_text, (int)start_col);
                     float sel_x1 =
-                        base_x + vg_font_get_cursor_x(input->font, input->font_size, line_text, (int)end_col);
+                        base_x + vg_font_get_cursor_x(
+                                     input->font, input->font_size, line_text, (int)end_col);
                     vgfx_fill_rect(win,
                                    (int32_t)sel_x0,
                                    (int32_t)line_y,
@@ -1001,8 +1018,8 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
                 size_t col = input->cursor_pos >= current_line_start_char
                                  ? (input->cursor_pos - current_line_start_char)
                                  : 0;
-                float cursor_x =
-                    base_x + vg_font_get_cursor_x(input->font, input->font_size, line_text, (int)col);
+                float cursor_x = base_x + vg_font_get_cursor_x(
+                                              input->font, input->font_size, line_text, (int)col);
                 vgfx_line(win,
                           (int32_t)cursor_x,
                           (int32_t)(line_y + 2.0f),
@@ -1053,8 +1070,8 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
         // longer than the visible asterisks. Allocate exactly what is needed.
         size_t char_count = textinput_char_count(input);
         char stack_buf[256];
-        char *masked = (char_count + 1 <= sizeof(stack_buf)) ? stack_buf
-                                                              : (char *)malloc(char_count + 1);
+        char *masked =
+            (char_count + 1 <= sizeof(stack_buf)) ? stack_buf : (char *)malloc(char_count + 1);
         if (masked) {
             for (size_t m = 0; m < char_count; m++)
                 masked[m] = '*';
@@ -1091,7 +1108,8 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
 // Undo / Redo — ring buffer of text snapshots
 //=============================================================================
 
-/// @brief Records the current text and cursor as a new undo snapshot; truncates any redo tail first.
+/// @brief Records the current text and cursor as a new undo snapshot; truncates any redo tail
+/// first.
 static void textinput_push_undo(vg_textinput_t *input) {
     if (!input)
         return;
@@ -1197,7 +1215,8 @@ static void textinput_redo(vg_textinput_t *input) {
     input->base.needs_paint = true;
 }
 
-/// @brief VTable handle_event: dispatches mouse (click/drag/scroll) and keyboard events to editing actions.
+/// @brief VTable handle_event: dispatches mouse (click/drag/scroll) and keyboard events to editing
+/// actions.
 static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
@@ -1287,8 +1306,8 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (input->multiline) {
                 float padding_y = 6.0f;
                 float viewport_h = input->base.height - padding_y * 2.0f;
-                float max_scroll_y = (float)textinput_line_count(input) * textinput_line_height(input) -
-                                     viewport_h;
+                float max_scroll_y =
+                    (float)textinput_line_count(input) * textinput_line_height(input) - viewport_h;
                 input->scroll_y -= event->wheel.delta_y * textinput_line_height(input) * 2.0f;
                 if (input->scroll_y < 0.0f)
                     input->scroll_y = 0.0f;
@@ -1399,21 +1418,25 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         break;
                     case VG_KEY_UP:
                         if (input->multiline)
-                            input->cursor_pos = textinput_move_vertical_cursor(input, input->cursor_pos, -1);
+                            input->cursor_pos =
+                                textinput_move_vertical_cursor(input, input->cursor_pos, -1);
                         break;
                     case VG_KEY_DOWN:
                         if (input->multiline)
-                            input->cursor_pos = textinput_move_vertical_cursor(input, input->cursor_pos, 1);
+                            input->cursor_pos =
+                                textinput_move_vertical_cursor(input, input->cursor_pos, 1);
                         break;
                     case VG_KEY_HOME:
                         input->cursor_pos =
-                            input->multiline && !has_ctrl ? textinput_line_boundary(input, input->cursor_pos, false)
-                                                          : 0;
+                            input->multiline && !has_ctrl
+                                ? textinput_line_boundary(input, input->cursor_pos, false)
+                                : 0;
                         break;
                     case VG_KEY_END:
                         input->cursor_pos =
-                            input->multiline && !has_ctrl ? textinput_line_boundary(input, input->cursor_pos, true)
-                                                          : char_count;
+                            input->multiline && !has_ctrl
+                                ? textinput_line_boundary(input, input->cursor_pos, true)
+                                : char_count;
                         break;
                     default:
                         handled = false;
@@ -1439,11 +1462,11 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     case VG_KEY_LEFT: {
                         size_t pos = input->cursor_pos;
                         size_t byte_pos = textinput_byte_offset(input, pos);
-                        while (byte_pos > 0 &&
-                               textinput_is_word_separator((unsigned char)input->text[byte_pos - 1]))
+                        while (byte_pos > 0 && textinput_is_word_separator(
+                                                   (unsigned char)input->text[byte_pos - 1]))
                             byte_pos--;
-                        while (byte_pos > 0 &&
-                               !textinput_is_word_separator((unsigned char)input->text[byte_pos - 1]))
+                        while (byte_pos > 0 && !textinput_is_word_separator(
+                                                   (unsigned char)input->text[byte_pos - 1]))
                             byte_pos--;
                         pos = textinput_char_index_from_byte_offset(input->text, byte_pos);
                         if (has_shift) {
@@ -1524,7 +1547,8 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 case VG_KEY_UP:
                     if (input->multiline) {
                         size_t old = input->cursor_pos;
-                        input->cursor_pos = textinput_move_vertical_cursor(input, input->cursor_pos, -1);
+                        input->cursor_pos =
+                            textinput_move_vertical_cursor(input, input->cursor_pos, -1);
                         if (has_shift) {
                             if (input->selection_start == input->selection_end)
                                 input->selection_start = old;
@@ -1539,7 +1563,8 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 case VG_KEY_DOWN:
                     if (input->multiline) {
                         size_t old = input->cursor_pos;
-                        input->cursor_pos = textinput_move_vertical_cursor(input, input->cursor_pos, 1);
+                        input->cursor_pos =
+                            textinput_move_vertical_cursor(input, input->cursor_pos, 1);
                         if (has_shift) {
                             if (input->selection_start == input->selection_end)
                                 input->selection_start = old;
@@ -1586,13 +1611,15 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 case VG_KEY_HOME:
                     if (has_shift) {
                         input->cursor_pos =
-                            input->multiline && !has_ctrl ? textinput_line_boundary(input, input->cursor_pos, false)
-                                                          : 0;
+                            input->multiline && !has_ctrl
+                                ? textinput_line_boundary(input, input->cursor_pos, false)
+                                : 0;
                         input->selection_end = input->cursor_pos;
                     } else {
                         input->cursor_pos =
-                            input->multiline && !has_ctrl ? textinput_line_boundary(input, input->cursor_pos, false)
-                                                          : 0;
+                            input->multiline && !has_ctrl
+                                ? textinput_line_boundary(input, input->cursor_pos, false)
+                                : 0;
                         input->selection_start = input->selection_end = input->cursor_pos;
                     }
                     textinput_ensure_cursor_visible(input);
@@ -1600,14 +1627,16 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
                 case VG_KEY_END:
                     if (has_shift) {
-                        input->cursor_pos = input->multiline && !has_ctrl
-                                                ? textinput_line_boundary(input, input->cursor_pos, true)
-                                                : textinput_char_count(input);
+                        input->cursor_pos =
+                            input->multiline && !has_ctrl
+                                ? textinput_line_boundary(input, input->cursor_pos, true)
+                                : textinput_char_count(input);
                         input->selection_end = input->cursor_pos;
                     } else {
-                        input->cursor_pos = input->multiline && !has_ctrl
-                                                ? textinput_line_boundary(input, input->cursor_pos, true)
-                                                : textinput_char_count(input);
+                        input->cursor_pos =
+                            input->multiline && !has_ctrl
+                                ? textinput_line_boundary(input, input->cursor_pos, true)
+                                : textinput_char_count(input);
                         input->selection_start = input->selection_end = input->cursor_pos;
                     }
                     textinput_ensure_cursor_visible(input);
@@ -1866,9 +1895,8 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     }
     size_t selection_start_byte = textinput_byte_offset(input, selection_start);
     size_t selection_end_byte = textinput_byte_offset(input, selection_end);
-    size_t delete_bytes = selection_end_byte > selection_start_byte
-                              ? selection_end_byte - selection_start_byte
-                              : 0;
+    size_t delete_bytes =
+        selection_end_byte > selection_start_byte ? selection_end_byte - selection_start_byte : 0;
     size_t delete_chars = selection_end > selection_start ? selection_end - selection_start : 0;
 
     if (input->max_length > 0) {
@@ -1937,7 +1965,8 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     }
 }
 
-/// @brief Deletes the selected byte range, collapses the cursor to the start, and optionally fires on_change.
+/// @brief Deletes the selected byte range, collapses the cursor to the start, and optionally fires
+/// on_change.
 static void textinput_delete_selection_internal(vg_textinput_t *input, bool notify) {
     if (!input || input->read_only)
         return;

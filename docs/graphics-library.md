@@ -177,7 +177,8 @@ int vgfx_peek_event(vgfx_window_t window, vgfx_event_t* out_event);
 void vgfx_clear_events(vgfx_window_t window);
 int32_t vgfx_event_overflow_count(vgfx_window_t window);
 
-// State queries
+// State queries. Mouse positions are logical pixels when a window coordinate
+// scale is active.
 int vgfx_key_down(vgfx_window_t window, vgfx_key_t key);
 int vgfx_mouse_pos(vgfx_window_t window, int32_t* out_x, int32_t* out_y);
 int vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button);

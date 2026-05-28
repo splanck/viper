@@ -12,8 +12,8 @@
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
-#include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "tests/TestHarness.hpp"
 
 #include <unordered_set>

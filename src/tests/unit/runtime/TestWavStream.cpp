@@ -13,8 +13,8 @@
 #include "tests/TestHarness.hpp"
 
 #include <cstdint>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 extern "C" {

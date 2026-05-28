@@ -1021,8 +1021,7 @@ rt_string rt_path_norm(rt_string path) {
 
     // Add components
     for (size_t j = 0; j < comp_count; j++) {
-        if (j > 0 || (prefix_len > 0 && !is_path_sep(data[prefix_len - 1]) &&
-                      !is_drive_relative))
+        if (j > 0 || (prefix_len > 0 && !is_path_sep(data[prefix_len - 1]) && !is_drive_relative))
             rt_sb_append_bytes(&sb, PATH_SEP_STR, 1);
 
         rt_sb_append_bytes(&sb, data + comp_starts[j], comp_ends[j] - comp_starts[j]);

@@ -53,11 +53,11 @@ struct DiagnosticFixIt {
 
 /// @brief Single diagnostic message with location.
 struct Diagnostic {
-    Severity severity;   ///< Message severity
-    std::string message; ///< Human-readable text
-    SourceLoc loc;       ///< Optional source location
-    std::string code;    ///< Optional diagnostic code (e.g., "B1001", "IL001")
-    SourceRange range{}; ///< Optional range to underline when printing snippets.
+    Severity severity;                   ///< Message severity
+    std::string message;                 ///< Human-readable text
+    SourceLoc loc;                       ///< Optional source location
+    std::string code;                    ///< Optional diagnostic code (e.g., "B1001", "IL001")
+    SourceRange range{};                 ///< Optional range to underline when printing snippets.
     std::vector<DiagnosticNote> notes{}; ///< Optional related notes.
     std::string stage{}; ///< Optional pipeline stage (parse, sema, lower, verify, runtime).
     std::string help{};  ///< Optional help text or URL for this diagnostic code.

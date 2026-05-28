@@ -81,11 +81,7 @@ struct FastPathContext {
                     MFunction &mf,
                     const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths,
                     const std::unordered_map<std::string, std::size_t> *knownVarArgNamedArgCounts)
-        : fn(fn),
-          ti(ti),
-          fb(fb),
-          mf(mf),
-          argOrder(ti.intArgOrder),
+        : fn(fn), ti(ti), fb(fb), mf(mf), argOrder(ti.intArgOrder),
           stringLiteralByteLengths(stringLiteralByteLengths),
           knownVarArgNamedArgCounts(knownVarArgNamedArgCounts) {}
 

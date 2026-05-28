@@ -22,8 +22,8 @@
 
 #include <assert.h>
 #include <setjmp.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -37,13 +37,13 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                                         \
-    do {                                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
         g_expect_trap = 1;                                                                         \
-        if (setjmp(g_trap_env) == 0) {                                                            \
+        if (setjmp(g_trap_env) == 0) {                                                             \
             (void)(expr);                                                                          \
             g_expect_trap = 0;                                                                     \
-            assert(!"expected runtime trap");                                                     \
+            assert(!"expected runtime trap");                                                      \
         } else {                                                                                   \
             g_expect_trap = 0;                                                                     \
         }                                                                                          \

@@ -6,8 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 extern "C" {
-#include "rt_graphics_internal.h"
 #include "rt_bitmapfont.h"
+#include "rt_graphics_internal.h"
 }
 
 #include <cassert>
@@ -74,15 +74,18 @@ static rt_canvas *make_canvas(int32_t width, int32_t height) {
     return canvas;
 }
 
-static TestBitmapFont *make_font() {
-    auto *font = static_cast<TestBitmapFont *>(
-        rt_obj_new_i64(RT_BITMAPFONT_CLASS_ID, sizeof(TestBitmapFont)));
+static TestBitmapFont *make_font_as(int64_t class_id) {
+    auto *font = static_cast<TestBitmapFont *>(rt_obj_new_i64(class_id, sizeof(TestBitmapFont)));
     assert(font != nullptr);
     std::memset(font, 0, sizeof(TestBitmapFont));
     font->line_height = 1;
     font->max_width = 5;
     font->ascent = 1;
     return font;
+}
+
+static TestBitmapFont *make_font() {
+    return make_font_as(RT_BITMAPFONT_CLASS_ID);
 }
 
 static void set_glyph(
@@ -148,6 +151,14 @@ static void test_text_font_bg_covers_glyph_overhang() {
     assert(window->fill_count == 1);
     assert(window->last_fill_x == 10);
     assert(window->last_fill_w == 3);
+}
+
+static void test_spritefont_alias_uses_bitmapfont_contract() {
+    auto *font = make_font_as(RT_SPRITEFONT_CLASS_ID);
+    set_glyph(font, 'A', 3, 0, 2, 0xE0);
+
+    assert(rt_bitmapfont_text_width(font, S("A")) == 3);
+    assert(rt_bitmapfont_char_height(font) == 1);
 }
 
 } // namespace
@@ -217,7 +228,9 @@ extern "C" float vgfx_window_get_scale(vgfx_window_t window) {
 }
 
 extern "C" void vgfx_set_coord_scale(vgfx_window_t, float) {}
+
 extern "C" void vgfx_set_clip(vgfx_window_t, int32_t, int32_t, int32_t, int32_t) {}
+
 extern "C" void vgfx_clear_clip(vgfx_window_t) {}
 
 extern "C" int32_t vgfx_get_size(vgfx_window_t window, int32_t *width, int32_t *height) {
@@ -256,5 +269,6 @@ int main() {
     test_text_width_accounts_for_right_overhang_and_bmp_codepoints();
     test_text_font_right_uses_visual_bounds();
     test_text_font_bg_covers_glyph_overhang();
+    test_spritefont_alias_uses_bitmapfont_contract();
     return 0;
 }

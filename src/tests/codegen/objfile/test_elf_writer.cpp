@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "codegen/common/objfile/CodeSection.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/objfile/CodeSection.hpp"
 #include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
@@ -117,8 +117,7 @@ static const ObjSymbol *findSymbol(const ObjFile &obj, const std::string &name) 
     return nullptr;
 }
 
-static size_t findElfSymbolEntryOffset(const std::vector<uint8_t> &data,
-                                       const std::string &name) {
+static size_t findElfSymbolEntryOffset(const std::vector<uint8_t> &data, const std::string &name) {
     const size_t symHdr = sectionHeaderOff(data, kSecSymtab);
     const size_t strHdr = sectionHeaderOff(data, kSecStrtab);
     const uint64_t symOff = readLE64(data, symHdr + 24);
@@ -582,10 +581,10 @@ static void testRodataRelocations() {
 
     auto data = readFile(path);
     size_t relaHdr = sectionHeaderOff(data, kSecRelaRodata);
-    CHECK(readLE32(data, relaHdr + 4) == 4);                 // SHT_RELA
-    CHECK(readLE32(data, relaHdr + 40) == kSecSymtab);       // sh_link
-    CHECK(readLE32(data, relaHdr + 44) == kSecRodata);       // sh_info
-    CHECK(readLE64(data, relaHdr + 32) == 24);               // one Elf64_Rela
+    CHECK(readLE32(data, relaHdr + 4) == 4);           // SHT_RELA
+    CHECK(readLE32(data, relaHdr + 40) == kSecSymtab); // sh_link
+    CHECK(readLE32(data, relaHdr + 44) == kSecRodata); // sh_info
+    CHECK(readLE64(data, relaHdr + 32) == 24);         // one Elf64_Rela
 
     uint64_t relaOff = readLE64(data, relaHdr + 24);
     uint64_t rOffset = readLE64(data, static_cast<size_t>(relaOff));
@@ -769,9 +768,9 @@ static void testMalformedRelAddendFails() {
     auto data = readFile(path);
     size_t relaHdr = sectionHeaderOff(data, kSecRelaText);
     uint64_t relaOff = readLE64(data, relaHdr + 24);
-    writeLE32(data, relaHdr + 4, 9);   // SHT_REL, no explicit addend.
-    writeLE64(data, relaHdr + 32, 16); // one Elf64_Rel entry.
-    writeLE64(data, relaHdr + 56, 16); // sh_entsize = sizeof(Elf64_Rel).
+    writeLE32(data, relaHdr + 4, 9);                  // SHT_REL, no explicit addend.
+    writeLE64(data, relaHdr + 32, 16);                // one Elf64_Rel entry.
+    writeLE64(data, relaHdr + 56, 16);                // sh_entsize = sizeof(Elf64_Rel).
     writeLE64(data, static_cast<size_t>(relaOff), 4); // PC32 addend read would overrun .text.
 
     ObjFile obj;
@@ -933,12 +932,8 @@ static void testA64PageOffsetShapeValidationRejectsSubAndWrongScale() {
 
         std::ostringstream errStream;
         ElfWriter writer(ObjArch::AArch64);
-        CHECK(!writer.write("/tmp/viper_test_elf_bad_a64_sub_pageoff.o",
-                            text,
-                            rodata,
-                            errStream));
-        CHECK(errStream.str().find("does not match the AArch64 instruction") !=
-              std::string::npos);
+        CHECK(!writer.write("/tmp/viper_test_elf_bad_a64_sub_pageoff.o", text, rodata, errStream));
+        CHECK(errStream.str().find("does not match the AArch64 instruction") != std::string::npos);
         std::remove("/tmp/viper_test_elf_bad_a64_sub_pageoff.o");
     }
 
@@ -950,12 +945,8 @@ static void testA64PageOffsetShapeValidationRejectsSubAndWrongScale() {
 
         std::ostringstream errStream;
         ElfWriter writer(ObjArch::AArch64);
-        CHECK(!writer.write("/tmp/viper_test_elf_bad_a64_ldst_scale.o",
-                            text,
-                            rodata,
-                            errStream));
-        CHECK(errStream.str().find("does not match the AArch64 instruction") !=
-              std::string::npos);
+        CHECK(!writer.write("/tmp/viper_test_elf_bad_a64_ldst_scale.o", text, rodata, errStream));
+        CHECK(errStream.str().find("does not match the AArch64 instruction") != std::string::npos);
         std::remove("/tmp/viper_test_elf_bad_a64_ldst_scale.o");
     }
 }

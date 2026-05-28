@@ -50,7 +50,7 @@ struct rt_lighting2d_impl {
     int64_t max_lights;    // Pool capacity
     int64_t light_count;   // Active light count
     struct rt_dyn_light lights[MAX_DYN_LIGHTS_CAP];
-    int64_t tile_count;    // Per-frame screen-space light count
+    int64_t tile_count; // Per-frame screen-space light count
     struct rt_dyn_light tile_lights[MAX_DYN_LIGHTS_CAP];
 };
 
@@ -104,13 +104,12 @@ static int64_t lighting_mul_div_sat_i64(int64_t a, int64_t b, int64_t divisor) {
     return (int64_t)value;
 }
 
-/// @brief Construct a Lighting2D system with `max_lights` dynamic-light slots (capped at MAX_DYN_LIGHTS_CAP=128).
-/// Defaults: darkness=0 (off), tint=near-black with blue cast, player radius=180, player color=0x303240.
-/// Returns a GC-managed handle; NULL on allocation failure.
+/// @brief Construct a Lighting2D system with `max_lights` dynamic-light slots (capped at
+/// MAX_DYN_LIGHTS_CAP=128). Defaults: darkness=0 (off), tint=near-black with blue cast, player
+/// radius=180, player color=0x303240. Returns a GC-managed handle; NULL on allocation failure.
 rt_lighting2d rt_lighting2d_new(int64_t max_lights) {
-    struct rt_lighting2d_impl *lit =
-        (struct rt_lighting2d_impl *)rt_obj_new_i64(RT_LIGHTING2D_CLASS_ID,
-                                                    (int64_t)sizeof(struct rt_lighting2d_impl));
+    struct rt_lighting2d_impl *lit = (struct rt_lighting2d_impl *)rt_obj_new_i64(
+        RT_LIGHTING2D_CLASS_ID, (int64_t)sizeof(struct rt_lighting2d_impl));
     if (!lit)
         return NULL;
 

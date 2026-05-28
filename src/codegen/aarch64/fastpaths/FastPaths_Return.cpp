@@ -101,13 +101,12 @@ std::optional<MFunction> tryReturnFastPaths(FastPathContext &ctx) {
                             if (ctx.stringLiteralByteLengths) {
                                 const auto it = ctx.stringLiteralByteLengths->find(sym);
                                 if (it != ctx.stringLiteralByteLengths->end()) {
-                                    bbMir.instrs.push_back(
-                                        MInstr{MOpcode::MovRI,
-                                               {MOperand::regOp(PhysReg::X1),
-                                                MOperand::immOp(
-                                                    static_cast<long long>(it->second))}});
-                                    bbMir.instrs.push_back(
-                                        MInstr{MOpcode::Bl, {MOperand::labelOp("rt_str_from_lit")}});
+                                    bbMir.instrs.push_back(MInstr{
+                                        MOpcode::MovRI,
+                                        {MOperand::regOp(PhysReg::X1),
+                                         MOperand::immOp(static_cast<long long>(it->second))}});
+                                    bbMir.instrs.push_back(MInstr{
+                                        MOpcode::Bl, {MOperand::labelOp("rt_str_from_lit")}});
                                 } else {
                                     bbMir.instrs.push_back(
                                         MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});

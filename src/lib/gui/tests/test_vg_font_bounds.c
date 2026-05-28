@@ -25,21 +25,21 @@
 #include "vg_font.h"
 #include "vg_ttf_internal.h"
 
-#include <stdint.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static int tests_failed = 0;
 
-#define EXPECT_TRUE(expr)                                                                            \
-    do {                                                                                             \
-        if (!(expr)) {                                                                               \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #expr);                                   \
-            tests_failed++;                                                                          \
-            return;                                                                                  \
-        }                                                                                            \
+#define EXPECT_TRUE(expr)                                                                          \
+    do {                                                                                           \
+        if (!(expr)) {                                                                             \
+            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #expr);                                 \
+            tests_failed++;                                                                        \
+            return;                                                                                \
+        }                                                                                          \
     } while (0)
 
 #define EXPECT_NULL(expr) EXPECT_TRUE((expr) == NULL)
@@ -65,7 +65,8 @@ static void put_u32(uint8_t *p, uint32_t value) {
 }
 
 /// @brief Write a 16-byte TTF table directory entry at the given index slot.
-static void put_table(uint8_t *dir, int index, const char tag[4], uint32_t offset, uint32_t length) {
+static void put_table(
+    uint8_t *dir, int index, const char tag[4], uint32_t offset, uint32_t length) {
     uint8_t *entry = dir + 12 + index * 16;
     memcpy(entry, tag, 4);
     put_u32(entry + 4, 0);
@@ -121,7 +122,7 @@ static uint32_t build_cmap(uint8_t *out, enum cmap_mode mode) {
     put_u16(sub + 0, 4);
     put_u16(sub + 2, 32);
     put_u16(sub + 4, 0);
-    put_u16(sub + 6, 4);  // segCountX2, two segments
+    put_u16(sub + 6, 4); // segCountX2, two segments
     put_u16(sub + 8, 4);
     put_u16(sub + 10, 1);
     put_u16(sub + 12, 0);
@@ -194,7 +195,8 @@ static size_t build_minimal_font(uint8_t *font,
     return offset;
 }
 
-/// @brief A table with offset UINT32_MAX causes an integer-overflow wrap; vg_font_load must reject it.
+/// @brief A table with offset UINT32_MAX causes an integer-overflow wrap; vg_font_load must reject
+/// it.
 static void test_wrapped_table_bounds_rejected(void) {
     uint8_t font[64] = {0};
     put_u32(font + 0, 0x00010000);
@@ -203,21 +205,24 @@ static void test_wrapped_table_bounds_rejected(void) {
     EXPECT_NULL(vg_font_load(font, sizeof(font)));
 }
 
-/// @brief A cmap format-4 subtable shorter than its declared length must cause vg_font_load to return NULL.
+/// @brief A cmap format-4 subtable shorter than its declared length must cause vg_font_load to
+/// return NULL.
 static void test_truncated_cmap4_rejected(void) {
     uint8_t font[512];
     size_t size = build_minimal_font(font, CMAP_TRUNCATED_FORMAT4, 10, 0, 2, 8);
     EXPECT_NULL(vg_font_load(font, size));
 }
 
-/// @brief A cmap format-12 subtable with an invalid group count must cause vg_font_load to return NULL.
+/// @brief A cmap format-12 subtable with an invalid group count must cause vg_font_load to return
+/// NULL.
 static void test_bad_cmap12_rejected(void) {
     uint8_t font[512];
     size_t size = build_minimal_font(font, CMAP_BAD_FORMAT12, 10, 0, 2, 8);
     EXPECT_NULL(vg_font_load(font, size));
 }
 
-/// @brief Load succeeds for a font whose glyf data is too short; rasterize returns NULL without crashing.
+/// @brief Load succeeds for a font whose glyf data is too short; rasterize returns NULL without
+/// crashing.
 static void test_truncated_glyf_rejected_on_rasterize(void) {
     uint8_t font_data[512];
     size_t size = build_minimal_font(font_data, CMAP_VALID_FORMAT4, 9, 9, 2, 8);
@@ -240,7 +245,8 @@ static void test_zero_hmtx_metrics_use_fallback_advance(void) {
     vg_font_destroy(font);
 }
 
-/// @brief vg_utf8_decode returns U+FFFD and advances one byte for overlong, surrogate, and too-large sequences.
+/// @brief vg_utf8_decode returns U+FFFD and advances one byte for overlong, surrogate, and
+/// too-large sequences.
 static void test_utf8_decoder_rejects_invalid_scalar_values(void) {
     const char overlong[] = {(char)0xC0, (char)0xAF, 0};
     const char surrogate[] = {(char)0xED, (char)0xA0, (char)0x80, 0};
@@ -259,7 +265,8 @@ static void test_utf8_decoder_rejects_invalid_scalar_values(void) {
     EXPECT_TRUE(p == too_large + 1);
 }
 
-/// @brief A name-table Windows string with an odd byte length is parsed safely; family_name stays empty.
+/// @brief A name-table Windows string with an odd byte length is parsed safely; family_name stays
+/// empty.
 static void test_name_table_odd_utf16_length_does_not_overread(void) {
     uint8_t name[19] = {0};
     put_u16(name + 0, 0);  // format
@@ -279,7 +286,8 @@ static void test_name_table_odd_utf16_length_does_not_overread(void) {
     EXPECT_TRUE(font.family_name[0] == '\0');
 }
 
-/// @brief Serialise a minimal simple contour with two on-curve points at (0,0) and (10,0); returns byte length.
+/// @brief Serialise a minimal simple contour with two on-curve points at (0,0) and (10,0); returns
+/// byte length.
 static size_t append_simple_two_point_glyph(uint8_t *out) {
     put_i16(out + 0, 1);
     put_i16(out + 2, 0);
@@ -294,7 +302,8 @@ static size_t append_simple_two_point_glyph(uint8_t *out) {
     return 17;
 }
 
-/// @brief Serialise a composite glyph that aligns its component via point indices; returns byte length.
+/// @brief Serialise a composite glyph that aligns its component via point indices; returns byte
+/// length.
 static size_t append_composite_point_aligned_glyph(uint8_t *out) {
     put_i16(out + 0, -1);
     put_i16(out + 2, 0);
@@ -314,7 +323,8 @@ static size_t append_composite_point_aligned_glyph(uint8_t *out) {
     return 26;
 }
 
-/// @brief Point-aligned composite glyph: component offset is derived from parent point 1 → child point 0 alignment.
+/// @brief Point-aligned composite glyph: component offset is derived from parent point 1 → child
+/// point 0 alignment.
 static void test_composite_glyph_point_indices_align_component(void) {
     uint8_t data[128] = {0};
     uint32_t loca_offset = 0;
@@ -345,8 +355,8 @@ static void test_composite_glyph_point_indices_align_component(void) {
     int *contours = NULL;
     int num_points = 0;
     int num_contours = 0;
-    EXPECT_TRUE(ttf_get_glyph_outline(
-        &font, 1, &x, &y, &flags, &contours, &num_points, &num_contours));
+    EXPECT_TRUE(
+        ttf_get_glyph_outline(&font, 1, &x, &y, &flags, &contours, &num_points, &num_contours));
     EXPECT_TRUE(num_points == 4);
     EXPECT_TRUE(num_contours == 2);
     EXPECT_TRUE(x[0] == 0.0f);

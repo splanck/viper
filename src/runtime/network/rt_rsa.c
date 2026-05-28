@@ -83,7 +83,8 @@ static int rsa_validate_public_components(const rt_rsa_key_t *key) {
         return 0;
     if (key->modulus_len < RT_RSA_MIN_MOD_BYTES || key->modulus_len > RT_RSA_MAX_MOD_BYTES)
         return 0;
-    if (rsa_be_is_zero(key->modulus, key->modulus_len) || (key->modulus[key->modulus_len - 1] & 1u) == 0)
+    if (rsa_be_is_zero(key->modulus, key->modulus_len) ||
+        (key->modulus[key->modulus_len - 1] & 1u) == 0)
         return 0;
     if (key->public_exponent_len == 0 || key->public_exponent_len > 8 ||
         key->public_exponent_len > key->modulus_len)
@@ -141,8 +142,8 @@ static void rsa_mul_add_u64(uint64_t a,
     uint64_t word0 = acc0 & 0xFFFFFFFFu;
     uint64_t carry0 = acc0 >> 32;
 
-    uint64_t acc1 = (p0 >> 32) + (p1 & 0xFFFFFFFFu) + (p2 & 0xFFFFFFFFu) +
-                    (addend >> 32) + (carry_in >> 32) + carry0;
+    uint64_t acc1 = (p0 >> 32) + (p1 & 0xFFFFFFFFu) + (p2 & 0xFFFFFFFFu) + (addend >> 32) +
+                    (carry_in >> 32) + carry0;
     uint64_t word1 = acc1 & 0xFFFFFFFFu;
     uint64_t carry1 = acc1 >> 32;
 
@@ -181,8 +182,8 @@ static int rsa_der_read_tlv(
     } else {
         size_t num_len_bytes = (size_t)(buf[1] & 0x7F);
         size_t value = 0;
-        if (num_len_bytes == 0 || num_len_bytes > sizeof(size_t) ||
-            2 + num_len_bytes > buf_len || buf[2] == 0x00)
+        if (num_len_bytes == 0 || num_len_bytes > sizeof(size_t) || 2 + num_len_bytes > buf_len ||
+            buf[2] == 0x00)
             return 0;
         for (size_t i = 0; i < num_len_bytes; i++)
             value = (value << 8) | buf[2 + i];
@@ -253,7 +254,8 @@ static int rsa_parse_der_integer(
     return 1;
 }
 
-/// @brief Return the digest length in bytes for an RSA hash identifier (32/48/64 for SHA-256/384/512).
+/// @brief Return the digest length in bytes for an RSA hash identifier (32/48/64 for
+/// SHA-256/384/512).
 static size_t rsa_hash_len(rt_rsa_hash_t hash_id) {
     switch (hash_id) {
         case RT_RSA_HASH_SHA256:
@@ -375,7 +377,10 @@ static void rsa_words_from_be(const uint8_t *data, size_t len, uint64_t *out, si
 ///          PSS/PKCS#1 padding routines need a specific output size).
 ///          Stops early once the limb supply is exhausted, leaving
 ///          the high bytes of `out` zero-padded.
-static void rsa_words_to_be(const uint64_t *words, size_t word_count, uint8_t *out, size_t out_len) {
+static void rsa_words_to_be(const uint64_t *words,
+                            size_t word_count,
+                            uint8_t *out,
+                            size_t out_len) {
     memset(out, 0, out_len);
     for (size_t i = 0; i < out_len; i++) {
         size_t word_index = i / 8;
@@ -470,7 +475,8 @@ static void rsa_mod_double_inplace(uint64_t *value, const uint64_t *modulus, siz
         rsa_words_sub_inplace(value, modulus, word_count);
 }
 
-/// @brief Compute `R² mod N` where R = 2^(64*word_count) — the Montgomery domain conversion constant.
+/// @brief Compute `R² mod N` where R = 2^(64*word_count) — the Montgomery domain conversion
+/// constant.
 /// @details Montgomery arithmetic represents values in the form
 ///          `aR mod N` so multiplications can avoid the cost of
 ///          division-based modular reduction. Going from a normal
@@ -638,7 +644,8 @@ static int rsa_modexp_bytes(const uint8_t *base,
     size_t word_count;
     size_t bit_count;
 
-    if (!base || !exp || !mod || !out || mod_len == 0 || out_len < mod_len || mod_len > RT_RSA_MAX_MOD_BYTES)
+    if (!base || !exp || !mod || !out || mod_len == 0 || out_len < mod_len ||
+        mod_len > RT_RSA_MAX_MOD_BYTES)
         return 0;
     if ((mod[mod_len - 1] & 1u) == 0)
         return 0;
@@ -839,15 +846,63 @@ static int rsa_pss_verify_encoded(const rt_rsa_key_t *key,
 ///          with the digest portion left to be appended by the caller.
 ///          Returns NULL for unknown hash IDs.
 static const uint8_t *rsa_pkcs1_digest_info_prefix(rt_rsa_hash_t hash_id, size_t *len_out) {
-    static const uint8_t SHA256_PREFIX[] = {
-        0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01,
-        0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20};
-    static const uint8_t SHA384_PREFIX[] = {
-        0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01,
-        0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30};
-    static const uint8_t SHA512_PREFIX[] = {
-        0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01,
-        0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40};
+    static const uint8_t SHA256_PREFIX[] = {0x30,
+                                            0x31,
+                                            0x30,
+                                            0x0d,
+                                            0x06,
+                                            0x09,
+                                            0x60,
+                                            0x86,
+                                            0x48,
+                                            0x01,
+                                            0x65,
+                                            0x03,
+                                            0x04,
+                                            0x02,
+                                            0x01,
+                                            0x05,
+                                            0x00,
+                                            0x04,
+                                            0x20};
+    static const uint8_t SHA384_PREFIX[] = {0x30,
+                                            0x41,
+                                            0x30,
+                                            0x0d,
+                                            0x06,
+                                            0x09,
+                                            0x60,
+                                            0x86,
+                                            0x48,
+                                            0x01,
+                                            0x65,
+                                            0x03,
+                                            0x04,
+                                            0x02,
+                                            0x02,
+                                            0x05,
+                                            0x00,
+                                            0x04,
+                                            0x30};
+    static const uint8_t SHA512_PREFIX[] = {0x30,
+                                            0x51,
+                                            0x30,
+                                            0x0d,
+                                            0x06,
+                                            0x09,
+                                            0x60,
+                                            0x86,
+                                            0x48,
+                                            0x01,
+                                            0x65,
+                                            0x03,
+                                            0x04,
+                                            0x02,
+                                            0x03,
+                                            0x05,
+                                            0x00,
+                                            0x04,
+                                            0x40};
 
     if (!len_out)
         return NULL;
@@ -918,8 +973,7 @@ int rt_rsa_parse_public_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_key
         return 0;
     pos = hdr_len;
     if (!rsa_parse_der_integer(der, end, &pos, &key.modulus, &key.modulus_len) ||
-        !rsa_parse_der_integer(
-            der, end, &pos, &key.public_exponent, &key.public_exponent_len) ||
+        !rsa_parse_der_integer(der, end, &pos, &key.public_exponent, &key.public_exponent_len) ||
         pos != end || !rsa_validate_public_components(&key)) {
         rt_rsa_key_free(&key);
         return 0;
@@ -965,22 +1019,19 @@ int rt_rsa_parse_private_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_ke
     if (end != der_len)
         return 0;
     pos = hdr_len;
-    if (!rsa_parse_der_integer(der, end, &pos, &version, &version_len) ||
-        version_len != 1 || version[0] != 0x00 ||
+    if (!rsa_parse_der_integer(der, end, &pos, &version, &version_len) || version_len != 1 ||
+        version[0] != 0x00 ||
         !rsa_parse_der_integer(der, end, &pos, &key.modulus, &key.modulus_len) ||
-        !rsa_parse_der_integer(
-            der, end, &pos, &key.public_exponent, &key.public_exponent_len) ||
-        !rsa_parse_der_integer(
-            der, end, &pos, &key.private_exponent, &key.private_exponent_len) ||
+        !rsa_parse_der_integer(der, end, &pos, &key.public_exponent, &key.public_exponent_len) ||
+        !rsa_parse_der_integer(der, end, &pos, &key.private_exponent, &key.private_exponent_len) ||
         !rsa_parse_der_integer(der, end, &pos, &prime1, &prime1_len) ||
         !rsa_parse_der_integer(der, end, &pos, &prime2, &prime2_len) ||
         !rsa_parse_der_integer(der, end, &pos, &exponent1, &exponent1_len) ||
         !rsa_parse_der_integer(der, end, &pos, &exponent2, &exponent2_len) ||
-        !rsa_parse_der_integer(der, end, &pos, &coefficient, &coefficient_len) ||
-        pos != end || !rsa_validate_private_components(&key) ||
-        rsa_be_is_zero(prime1, prime1_len) || rsa_be_is_zero(prime2, prime2_len) ||
-        rsa_be_is_zero(exponent1, exponent1_len) || rsa_be_is_zero(exponent2, exponent2_len) ||
-        rsa_be_is_zero(coefficient, coefficient_len)) {
+        !rsa_parse_der_integer(der, end, &pos, &coefficient, &coefficient_len) || pos != end ||
+        !rsa_validate_private_components(&key) || rsa_be_is_zero(prime1, prime1_len) ||
+        rsa_be_is_zero(prime2, prime2_len) || rsa_be_is_zero(exponent1, exponent1_len) ||
+        rsa_be_is_zero(exponent2, exponent2_len) || rsa_be_is_zero(coefficient, coefficient_len)) {
         goto done;
     }
 
@@ -1038,12 +1089,11 @@ int rt_rsa_parse_private_key_pkcs8(const uint8_t *der, size_t der_len, rt_rsa_ke
     if (outer_end != der_len)
         return 0;
     pos = hdr_len;
-    if (!rsa_parse_der_integer(der, outer_end, &pos, &version, &version_len) ||
-        version_len != 1 || version[0] != 0x00)
+    if (!rsa_parse_der_integer(der, outer_end, &pos, &version, &version_len) || version_len != 1 ||
+        version[0] != 0x00)
         goto done;
 
-    if (!rsa_der_read_tlv(der + pos, outer_end - pos, &tag, &alg_len, &alg_hdr) ||
-        tag != 0x30) {
+    if (!rsa_der_read_tlv(der + pos, outer_end - pos, &tag, &alg_len, &alg_hdr) || tag != 0x30) {
         goto done;
     }
     {
@@ -1061,8 +1111,7 @@ int rt_rsa_parse_private_key_pkcs8(const uint8_t *der, size_t der_len, rt_rsa_ke
         if (!rsa_der_params_absent_or_null(alg + alg_pos, alg_len - alg_pos))
             goto done;
     }
-    if (!rsa_der_read_tlv(der + pos, outer_end - pos, &tag, &value_len, &hdr_len) ||
-        tag != 0x04) {
+    if (!rsa_der_read_tlv(der + pos, outer_end - pos, &tag, &value_len, &hdr_len) || tag != 0x04) {
         goto done;
     }
     if (pos + hdr_len + value_len != outer_end)
@@ -1089,8 +1138,7 @@ int rt_rsa_public_equals(const rt_rsa_key_t *lhs, const rt_rsa_key_t *rhs) {
     return lhs->modulus_len == rhs->modulus_len &&
                    lhs->public_exponent_len == rhs->public_exponent_len &&
                    memcmp(lhs->modulus, rhs->modulus, lhs->modulus_len) == 0 &&
-                   memcmp(lhs->public_exponent, rhs->public_exponent, lhs->public_exponent_len) ==
-                       0
+                   memcmp(lhs->public_exponent, rhs->public_exponent, lhs->public_exponent_len) == 0
                ? 1
                : 0;
 }

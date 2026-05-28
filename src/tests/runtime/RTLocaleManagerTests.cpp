@@ -12,9 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_list.h"
 #include "rt_locale.h"
 #include "rt_locale_manager.h"
-#include "rt_list.h"
 #include "rt_object.h"
 #include "rt_string.h"
 
@@ -48,16 +48,16 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                         \
-    do {                                                                          \
-        g_expect_trap = 1;                                                         \
-        if (setjmp(g_trap_env) == 0) {                                            \
-            (void)(expr);                                                          \
-            g_expect_trap = 0;                                                     \
-            assert(!"expected runtime trap");                                     \
-        } else {                                                                   \
-            g_expect_trap = 0;                                                     \
-        }                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                      \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
     } while (0)
 
 static void test_result(const char *name, bool passed) {
@@ -87,8 +87,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_locale_mgr_%ld_%s",
-             base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/viper_locale_mgr_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }
@@ -188,8 +187,7 @@ static void test_is_loaded() {
     rt_string fr = S("fr-FR");
     void *loc_fr = rt_locale_try_parse(fr);
     rt_string_unref(fr);
-    test_result("IsLoaded(fr-FR, unloaded) == false",
-                rt_locale_manager_is_loaded(loc_fr) == 0);
+    test_result("IsLoaded(fr-FR, unloaded) == false", rt_locale_manager_is_loaded(loc_fr) == 0);
 }
 
 //=============================================================================
@@ -272,8 +270,7 @@ static void test_load_from_json_registers_locale() {
     rt_string fr_tag = S("fr-FR");
     void *fr = rt_locale_parse(fr_tag);
     rt_string_unref(fr_tag);
-    test_result("LoadFromJson registers fr-FR",
-                rt_locale_manager_is_loaded(fr) == 1);
+    test_result("LoadFromJson registers fr-FR", rt_locale_manager_is_loaded(fr) == 1);
     release_obj(fr);
 
     rt_string path2 = S(file.c_str());
@@ -366,8 +363,7 @@ static void test_search_path_roundtrip() {
         rt_string sp = rt_locale_manager_search_path();
         const char *cs = rt_string_cstr(sp);
         // Don't hard-code the separator; just check both sub-paths appear.
-        test_result("SearchPath contains first path",
-                    strstr(cs, "/opt/viper/locales") != nullptr);
+        test_result("SearchPath contains first path", strstr(cs, "/opt/viper/locales") != nullptr);
         test_result("SearchPath contains second path",
                     strstr(cs, "/home/user/.viper/locales") != nullptr);
         rt_string_unref(sp);
@@ -376,8 +372,7 @@ static void test_search_path_roundtrip() {
     {
         rt_locale_manager_reset();
         rt_string sp = rt_locale_manager_search_path();
-        test_result("Reset clears SearchPath",
-                    strcmp(rt_string_cstr(sp), "") == 0);
+        test_result("Reset clears SearchPath", strcmp(rt_string_cstr(sp), "") == 0);
         rt_string_unref(sp);
     }
 }

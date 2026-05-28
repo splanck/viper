@@ -60,6 +60,7 @@ class Game {
     // Frame timing
     hide Integer dt;
     hide Integer uiTick;
+    hide Integer simAccumulator;
     hide Boolean audioReady;
 
     hide sound.SoundManager sfx;
@@ -81,8 +82,9 @@ class Game {
         self.setupActions();
 
         playSession = new session.Session();
-        dt = 16;
+        dt = config.SIM_STEP_MS;
         uiTick = 0;
+        simAccumulator = 0;
 
         sfx = new sound.SoundManager();
         profile = new progression.Progression("crackman_profile");
@@ -161,8 +163,13 @@ class Game {
 
         while running && canvas.BeginFrame() != 0 {
             dt = canvas.DeltaTime;
+            if dt <= 0 {
+                dt = config.SIM_STEP_MS;
+            }
+            if dt > config.DT_MAX {
+                dt = config.DT_MAX;
+            }
             uiTick = uiTick + dt;
-            playSession.updateFrame(dt);
             profile.update(dt);
 
             // Advance frame counter and clear edge flags
@@ -186,16 +193,16 @@ class Game {
                 self.updateSummary();
                 self.renderSummary();
             } else if sm.IsState(config.STATE_READY) {
-                self.updateReady();
+                self.updateSimulation();
                 self.render();
             } else if sm.IsState(config.STATE_PLAYING) {
-                self.updatePlaying();
+                self.updateSimulation();
                 self.render();
             } else if sm.IsState(config.STATE_PAUSED) {
                 self.updatePaused();
                 self.render();
             } else if sm.IsState(config.STATE_DYING) {
-                self.updateDying();
+                self.updateSimulation();
                 self.render();
             } else if sm.IsState(config.STATE_WIN) {
                 self.updateWin();
@@ -206,6 +213,46 @@ class Game {
         }
 
         sfx.shutdown();
+    }
+
+    hide func resetSimulationClock() {
+        simAccumulator = 0;
+    }
+
+    hide func isSimulationState() -> Boolean {
+        return sm.IsState(config.STATE_READY) ||
+               sm.IsState(config.STATE_PLAYING) ||
+               sm.IsState(config.STATE_DYING);
+    }
+
+    hide func updateSimulation() {
+        simAccumulator = simAccumulator + dt;
+        if simAccumulator > config.DT_MAX {
+            simAccumulator = config.DT_MAX;
+        }
+
+        var steps = 0;
+        while simAccumulator >= config.SIM_STEP_MS && steps < config.MAX_SIM_STEPS {
+            playSession.updateFrame(config.SIM_STEP_MS);
+
+            if sm.IsState(config.STATE_READY) {
+                self.updateReady();
+            } else if sm.IsState(config.STATE_PLAYING) {
+                self.updatePlaying();
+            } else if sm.IsState(config.STATE_DYING) {
+                self.updateDying();
+            } else {
+                break;
+            }
+
+            simAccumulator = simAccumulator - config.SIM_STEP_MS;
+            steps = steps + 1;
+
+            if !self.isSimulationState() {
+                self.resetSimulationClock();
+                break;
+            }
+        }
     }
 
     hide func ensureAudioReady() {
@@ -237,6 +284,7 @@ class Game {
             playSession.resetGame();
             playSession.startReady(sfx);
             profile.noteLevelReached(playSession.getLevel());
+            self.resetSimulationClock();
             sm.Transition(config.STATE_READY);
         } else if event == frontend.FRONTEND_EVENT_OPEN_PROFILE {
             sm.Transition(config.STATE_PROFILE);
@@ -308,6 +356,7 @@ class Game {
             playSession.resetGame();
             playSession.startReady(sfx);
             profile.noteLevelReached(playSession.getLevel());
+            self.resetSimulationClock();
             sm.Transition(config.STATE_READY);
         } else if event == frontend.FRONTEND_EVENT_OPEN_PROFILE {
             sm.Transition(config.STATE_PROFILE);
@@ -336,6 +385,7 @@ class Game {
     hide func updatePlaying() {
         var event = playSession.updatePlaying(sfx);
         if event == session.EVENT_PAUSE {
+            self.resetSimulationClock();
             sm.Transition(config.STATE_PAUSED);
             return;
         }
@@ -348,10 +398,12 @@ class Game {
             profile.save();
             playSession.setHighScore(profile.getHighScore());
             sfx.playMenuMusic();
+            self.resetSimulationClock();
             sm.Transition(config.STATE_SUMMARY);
             return;
         }
         if event == session.EVENT_WIN {
+            self.resetSimulationClock();
             sm.Transition(config.STATE_WIN);
             return;
         }
@@ -376,6 +428,7 @@ class Game {
     hide func updatePaused() {
         if Action.Pressed(config.ACTION_PAUSE) || Action.Pressed(config.ACTION_CONFIRM) {
             sfx.playPause();
+            self.resetSimulationClock();
             sm.Transition(config.STATE_PLAYING);
         }
         if Action.Pressed(config.ACTION_CANCEL) {
@@ -384,6 +437,7 @@ class Game {
             profile.finishRun(playSession.getScore(), playSession.getLevel());
             profile.save();
             playSession.setHighScore(profile.getHighScore());
+            self.resetSimulationClock();
             sm.Transition(config.STATE_SUMMARY);
         }
     }
@@ -398,11 +452,13 @@ class Game {
             playSession.nextLevel();
             playSession.startReady(sfx);
             profile.noteLevelReached(playSession.getLevel());
+            self.resetSimulationClock();
             sm.Transition(config.STATE_READY);
         }
         if Action.Pressed(config.ACTION_CANCEL) {
             sfx.playMenuSelect();
             sfx.playMenuMusic();
+            self.resetSimulationClock();
             sm.Transition(config.STATE_MENU);
         }
     }

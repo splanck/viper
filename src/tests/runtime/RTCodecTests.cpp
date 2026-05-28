@@ -342,7 +342,8 @@ static void test_hex_decode() {
 
     rt_string hex_nul = rt_const_cstr("610062");
     const char nul_bytes[] = {'a', '\0', 'b'};
-    test_result("'610062' -> 'a\\0b'", bytes_eq(rt_codec_hex_dec(hex_nul), nul_bytes, sizeof(nul_bytes)));
+    test_result("'610062' -> 'a\\0b'",
+                bytes_eq(rt_codec_hex_dec(hex_nul), nul_bytes, sizeof(nul_bytes)));
 
     printf("\n");
 }

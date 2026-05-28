@@ -34,19 +34,26 @@ namespace il::frontends::basic {
 
 namespace {
 
+/// @brief True if @p target is an HTTP(S) server route-registration method (Get/Post/Put/Delete).
 bool isHttpServerRouteTarget(const std::string &target) {
     return target == "Viper.Network.HttpServer.Get" || target == "Viper.Network.HttpServer.Post" ||
-           target == "Viper.Network.HttpServer.Put" || target == "Viper.Network.HttpServer.Delete" ||
-           target == "Viper.Network.HttpsServer.Get" || target == "Viper.Network.HttpsServer.Post" ||
-           target == "Viper.Network.HttpsServer.Put" || target == "Viper.Network.HttpsServer.Delete";
+           target == "Viper.Network.HttpServer.Put" ||
+           target == "Viper.Network.HttpServer.Delete" ||
+           target == "Viper.Network.HttpsServer.Get" ||
+           target == "Viper.Network.HttpsServer.Post" ||
+           target == "Viper.Network.HttpsServer.Put" ||
+           target == "Viper.Network.HttpsServer.Delete";
 }
 
+/// @brief True if a procedure signature matches the HTTP handler shape `void(ptr, ptr)`.
 bool isValidHttpHandlerSignature(const ::il::frontends::basic::ProcedureSignature *sig) {
     return sig && sig->retType.kind == il::core::Type::Kind::Void && sig->paramTypes.size() == 2 &&
            sig->paramTypes[0].kind == il::core::Type::Kind::Ptr &&
            sig->paramTypes[1].kind == il::core::Type::Kind::Ptr;
 }
 
+/// @brief Resolve an HTTP handler tag (a procedure name) to its lowered callee symbol.
+/// @return The callee name if the named procedure has a valid handler signature; else "".
 std::string resolveHttpHandlerTarget(const Lowerer &lowerer, const std::string &tag) {
     const auto *sig = lowerer.findProcSignature(tag);
     if (!isValidHttpHandlerSignature(sig))
@@ -54,12 +61,14 @@ std::string resolveHttpHandlerTarget(const Lowerer &lowerer, const std::string &
     return lowerer.resolveCalleeName(tag);
 }
 
+/// @brief Select the runtime BindHandler target (HTTP vs HTTPS) for a route-registration target.
 const char *httpServerBindHandlerTarget(const std::string &target) {
     if (target.rfind("Viper.Network.HttpsServer.", 0) == 0)
         return "Viper.Network.HttpsServer.BindHandler";
     return "Viper.Network.HttpServer.BindHandler";
 }
 
+/// @brief Map a Lowerer::ExprType to the corresponding runtime BasicType.
 BasicType basicTypeFromExprType(Lowerer::ExprType ty) {
     switch (ty) {
         case Lowerer::ExprType::F64:
@@ -76,6 +85,7 @@ BasicType basicTypeFromExprType(Lowerer::ExprType ty) {
     }
 }
 
+/// @brief Map a Lowerer::ExprType to the corresponding BASIC AST Type (objects map to I64).
 ::il::frontends::basic::Type astTypeFromExprType(Lowerer::ExprType ty) {
     switch (ty) {
         case Lowerer::ExprType::F64:
@@ -93,16 +103,10 @@ BasicType basicTypeFromExprType(Lowerer::ExprType ty) {
 
 } // namespace
 
-/// @brief Lower an instance method call, dispatching through the mangled name.
-///
-/// @details Evaluates the receiver expression, prepends it to the argument list,
-///          and emits a direct call using the class-aware mangled identifier.
-///          When the class name cannot be resolved the raw method name is used,
-///          preserving compatibility with late-bound scenarios.
-///
-/// @param expr AST node representing the method invocation.
-/// @return Result value placeholder; currently the runtime returns @c void so
-///         a zero integer is used to preserve SSA expectations.
+/// @brief Compute the runtime BasicType of each argument of a method call.
+/// @param expr The method-call expression.
+/// @return One BasicType per argument (Unknown for a null argument), used for runtime-catalog
+///         overload lookup.
 std::vector<BasicType> Lowerer::methodCallRuntimeArgTypes(const MethodCallExpr &expr) {
     std::vector<BasicType> result;
     result.reserve(expr.args.size());
@@ -111,8 +115,11 @@ std::vector<BasicType> Lowerer::methodCallRuntimeArgTypes(const MethodCallExpr &
     return result;
 }
 
-std::vector<::il::frontends::basic::Type>
-Lowerer::methodCallAstArgTypes(const MethodCallExpr &expr) {
+/// @brief Compute the BASIC AST Type of each argument of a method call.
+/// @param expr The method-call expression.
+/// @return One AST Type per argument (I64 for a null argument), used for overload resolution.
+std::vector<::il::frontends::basic::Type> Lowerer::methodCallAstArgTypes(
+    const MethodCallExpr &expr) {
     std::vector<::il::frontends::basic::Type> result;
     result.reserve(expr.args.size());
     for (const auto &arg : expr.args)
@@ -121,6 +128,13 @@ Lowerer::methodCallAstArgTypes(const MethodCallExpr &expr) {
     return result;
 }
 
+/// @brief Try to lower a method call as a static call (`Class.Method(...)`).
+/// @param expr The method-call expression.
+/// @return The lowered result, or nullopt when the base is not a static class reference (so the
+///         caller falls through to instance dispatch).
+/// @details Only applies when the base is a bare class name with no shadowing variable. Handles
+///          user classes (overload-resolved, argument-coerced, object/scalar return types) and
+///          static calls on runtime-catalog classes (reporting E_NO_SUCH_METHOD with candidates).
 std::optional<Lowerer::RVal> Lowerer::tryLowerStaticMethodCall(const MethodCallExpr &expr) {
     // Static method calls: Class.Method(...)
     if (const auto *vb = as<const VarExpr>(*expr.base)) {
@@ -247,6 +261,17 @@ std::optional<Lowerer::RVal> Lowerer::tryLowerStaticMethodCall(const MethodCallE
     return std::nullopt;
 }
 
+/// @brief Lower a method-call expression (`base.method(args)`) to IL.
+/// @param expr The method-call expression.
+/// @return The call result and its IL type.
+/// @details Resolution order: static call (tryLowerStaticMethodCall); runtime-catalog instance
+///          method (with HTTP route → BindHandler special-casing); `Viper.Core.Object` fallback
+///          (ToString/Equals) when the user class does not override; interface dispatch for
+///          `(x AS IFace).m()` via itable lookup; virtual dispatch via the object's method table
+///          slot; and finally a direct mangled call. Applies private-access checks, overload
+///          resolution (using the declaring class for inherited methods), argument coercion, and
+///          return-value release scheduling. BASE-qualified calls force direct dispatch to the
+///          base class using the `ME` receiver.
 Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
     if (!expr.base)
         return {Value::constInt(0), Type(Type::Kind::I64)};
@@ -360,10 +385,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
             }
 
             auto &midx = runtimeMethodIndex();
-            auto info =
-                midx.find(std::string(il::runtime::RTCLASS_OBJECT),
-                          expr.method,
-                          methodCallRuntimeArgTypes(expr));
+            auto info = midx.find(std::string(il::runtime::RTCLASS_OBJECT),
+                                  expr.method,
+                                  methodCallRuntimeArgTypes(expr));
             if (info && !info->hasReceiver)
                 info = std::nullopt;
             if (info && !userClassHasMethod) {
@@ -410,10 +434,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                 RVal rhs = lowerExpr(*expr.args[0]);
                 runtimeTracker.trackCalleeName(std::string(il::runtime::RTCLASS_OBJECT) +
                                                ".Equals");
-                Value result = emitCallRet(
-                    Type(Type::Kind::I1),
-                    std::string(il::runtime::RTCLASS_OBJECT) + ".Equals",
-                    {base.value, rhs.value});
+                Value result = emitCallRet(Type(Type::Kind::I1),
+                                           std::string(il::runtime::RTCLASS_OBJECT) + ".Equals",
+                                           {base.value, rhs.value});
                 return {result, Type(Type::Kind::I1)};
             }
         }
@@ -706,6 +729,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
 // OopLoweringContext-aware implementations
 // -------------------------------------------------------------------------
 
+/// @brief Context-aware overload of lowerMethodCallExpr() that pre-warms the class-info cache.
+/// @details Pre-caches the receiver's class info in @p ctx (accelerating access-control and
+///          overload resolution), then delegates to the single-argument overload.
 Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx) {
     // Pre-cache class info for method dispatch target.
     // This accelerates access control and overload resolution.

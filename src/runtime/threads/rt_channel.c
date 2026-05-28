@@ -35,8 +35,8 @@
 #include "rt_object.h"
 #include "rt_threads.h"
 
-#include <setjmp.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -244,11 +244,8 @@ static void channel_save_trap_error(char *buffer, size_t buffer_size, const char
 /// @brief Retain a runtime reference on @p item while the channel lock is held,
 ///        trap-recovering (with @p fallback message) on a retain failure.
 /// @return non-zero on success; 0 if the retain trapped (item not enqueued).
-static int8_t channel_retain_item_locked(channel_impl *ch,
-                                         void *channel,
-                                         void *item,
-                                         int64_t *waiting_counter,
-                                         const char *fallback) {
+static int8_t channel_retain_item_locked(
+    channel_impl *ch, void *channel, void *item, int64_t *waiting_counter, const char *fallback) {
     if (!item)
         return 1;
 
@@ -304,8 +301,7 @@ void *rt_channel_new(int64_t capacity) {
     // For synchronous channels, use capacity of 1 internally
     int64_t buffer_size = (capacity == 0) ? 1 : capacity;
 
-    channel_impl *ch =
-        (channel_impl *)rt_obj_new_i64(RT_CHANNEL_CLASS_ID, sizeof(channel_impl));
+    channel_impl *ch = (channel_impl *)rt_obj_new_i64(RT_CHANNEL_CLASS_ID, sizeof(channel_impl));
     if (!ch)
         return NULL;
 
@@ -983,9 +979,8 @@ int8_t rt_channel_get_is_full(void *channel) {
     rt_obj_retain_maybe(channel);
 
     rt_monitor_enter(ch->monitor);
-    int8_t full =
-        (ch->capacity == 0) ? ((ch->count != 0 || ch->waiting_receivers == 0) ? 1 : 0)
-                            : ((ch->count >= ch->capacity) ? 1 : 0);
+    int8_t full = (ch->capacity == 0) ? ((ch->count != 0 || ch->waiting_receivers == 0) ? 1 : 0)
+                                      : ((ch->count >= ch->capacity) ? 1 : 0);
     rt_monitor_exit(ch->monitor);
     channel_release_object(channel);
 

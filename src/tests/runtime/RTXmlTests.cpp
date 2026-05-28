@@ -156,7 +156,8 @@ static void test_escape_unescape(void) {
     const char unescaped_bytes[] = {'a', '\0', '&', 'b'};
     rt_string with_nul = rt_string_from_bytes(entity_after_nul, sizeof(entity_after_nul));
     rt_string unescaped_nul = rt_xml_unescape(with_nul);
-    check("unescape scans past embedded NUL", str_eq_bytes(unescaped_nul, unescaped_bytes, sizeof(unescaped_bytes)));
+    check("unescape scans past embedded NUL",
+          str_eq_bytes(unescaped_nul, unescaped_bytes, sizeof(unescaped_bytes)));
 
     rt_string_unref(unescaped_nul);
     rt_string_unref(with_nul);
@@ -255,8 +256,8 @@ static void test_whitespace_doctype_and_invalid_chars(void) {
     rt_string_unref(text);
     release_obj(doc);
 
-    const char invalid_bytes[] = {'<', 'r', 'o', 'o', 't', '>', '\x01',
-                                  '<', '/', 'r', 'o', 'o', 't', '>'};
+    const char invalid_bytes[] = {
+        '<', 'r', 'o', 'o', 't', '>', '\x01', '<', '/', 'r', 'o', 'o', 't', '>'};
     rt_string invalid = rt_string_from_bytes(invalid_bytes, sizeof(invalid_bytes));
     check("invalid XML control char rejected", !rt_xml_is_valid(invalid));
     rt_string_unref(invalid);

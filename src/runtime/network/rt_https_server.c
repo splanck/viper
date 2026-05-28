@@ -38,9 +38,9 @@
 #include "rt_threadpool.h"
 #include "rt_tls_server_internal.h"
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -808,8 +808,7 @@ static int server_headers_to_http2(const server_res_t *src, rt_http2_header_t **
             const char *k = rt_string_cstr(key);
             const char *v = val ? rt_string_cstr((rt_string)val) : NULL;
             if (k && v && !contains_crlf(k) && !contains_crlf(v) &&
-                !is_server_managed_header_name(k) &&
-                !rt_http2_header_append_copy(&headers, k, v)) {
+                !is_server_managed_header_name(k) && !rt_http2_header_append_copy(&headers, k, v)) {
                 rt_http2_headers_free(headers);
                 if (rt_obj_release_check0(keys))
                     rt_obj_free(keys);
@@ -852,7 +851,8 @@ static void handle_connection_http2(rt_http_server_impl *server, rt_tls_session_
     https_conn_set_recv_timeout(tls, 30000);
     https_conn_set_send_timeout(tls, 30000);
 
-    while (https_conn_is_open(tls) && https_server_is_running(server) && rt_http2_conn_is_usable(h2)) {
+    while (https_conn_is_open(tls) && https_server_is_running(server) &&
+           rt_http2_conn_is_usable(h2)) {
         rt_http2_request_t h2req;
         server_req_t req;
         server_res_t res;
@@ -873,8 +873,12 @@ static void handle_connection_http2(rt_http_server_impl *server, rt_tls_session_
 
         build_route_response(server, &req, &res);
         if (!server_headers_to_http2(&res, &resp_headers) ||
-            !rt_http2_server_send_response(
-                h2, h2req.stream_id, res.status_code, resp_headers, (uint8_t *)res.body, res.body_len)) {
+            !rt_http2_server_send_response(h2,
+                                           h2req.stream_id,
+                                           res.status_code,
+                                           resp_headers,
+                                           (uint8_t *)res.body,
+                                           res.body_len)) {
             rt_http2_headers_free(resp_headers);
             free(res.body);
             if (res.headers && rt_obj_release_check0(res.headers))

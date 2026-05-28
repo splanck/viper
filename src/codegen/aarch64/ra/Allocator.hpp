@@ -67,8 +67,8 @@ class LinearAllocator {
     RegPools pools_;
     std::unordered_map<uint16_t, VState> gprStates_;
     std::unordered_map<uint16_t, VState> fprStates_;
-    unsigned currentInstrIdx_{0};    ///< Current instruction index for LRU tracking.
-    std::size_t currentBlockIdx_{0}; ///< Current block index for liveness lookups.
+    unsigned currentInstrIdx_{0};        ///< Current instruction index for LRU tracking.
+    std::size_t currentBlockIdx_{0};     ///< Current block index for liveness lookups.
     unsigned currentBlockInstrCount_{0}; ///< Instruction count of the current block.
     std::unordered_map<uint16_t, std::vector<unsigned>>
         usePositionsGPR_; ///< All use positions for GPR vregs.

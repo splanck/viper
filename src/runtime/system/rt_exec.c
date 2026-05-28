@@ -111,7 +111,10 @@ static char *read_pipe_output(FILE *fp, size_t *out_len) {
 
 /// @brief Build argv array from program and Seq of arguments.
 /// Caller must free the returned array and release owned argument strings.
-static char **build_argv(const char *program, void *args, rt_string **out_owned_args, int64_t *out_argc) {
+static char **build_argv(const char *program,
+                         void *args,
+                         rt_string **out_owned_args,
+                         int64_t *out_argc) {
     int64_t nargs = args ? rt_seq_len(args) : 0;
     int64_t total = 1 + nargs + 1; // program + args + NULL terminator
     *out_owned_args = NULL;

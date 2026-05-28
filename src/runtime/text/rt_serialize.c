@@ -169,7 +169,8 @@ static int xml_name_char(int c) {
     return isalnum((unsigned char)c) || c == '_' || c == ':' || c == '-' || c == '.';
 }
 
-/// @brief Produce a valid XML element name from `name`, prefixing `fallback` if the first char is invalid.
+/// @brief Produce a valid XML element name from `name`, prefixing `fallback` if the first char is
+/// invalid.
 ///        Invalid continuation characters are replaced with `_`.
 static rt_string sanitized_xml_name(const char *name, const char *fallback) {
     const char *src = (name && *name) ? name : fallback;
@@ -236,7 +237,8 @@ static void *generic_to_xml_element(const char *name, void *obj) {
         int64_t nkeys = rt_seq_len(keys);
         for (int64_t i = 0; i < nkeys; i++) {
             rt_string key = (rt_string)rt_seq_get(keys, i);
-            if (str_eq_cstr(key, "@attrs") || str_eq_cstr(key, "@text") || str_eq_cstr(key, "#text"))
+            if (str_eq_cstr(key, "@attrs") || str_eq_cstr(key, "@text") ||
+                str_eq_cstr(key, "#text"))
                 continue;
             void *child = generic_to_xml_element(rt_string_cstr(key), rt_map_get(obj, key));
             if (child) {
@@ -407,7 +409,8 @@ static rt_string format_toml_from_generic(void *obj) {
 }
 
 /// @brief Return 1 if `obj` is a Seq whose every element is also a Seq (i.e., a 2-D table).
-///        An empty Seq is considered valid. Used to decide whether CSV format can be applied directly.
+///        An empty Seq is considered valid. Used to decide whether CSV format can be applied
+///        directly.
 static int seq_rows_are_sequences(void *obj) {
     if (!is_seq_obj(obj))
         return 0;

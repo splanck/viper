@@ -34,8 +34,8 @@
 
 #include "support/small_vector.hpp"
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <exception>
 #include <new>
 #include <string>
@@ -520,8 +520,13 @@ static void threads_async_run_handler(void **args, void *result) {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
-    auto *payload = new (std::nothrow) VmAsyncRunPayload{
-        &module, std::move(program), parentVm->externRegistry(), entryFn, arg, arg != nullptr, promise};
+    auto *payload = new (std::nothrow) VmAsyncRunPayload{&module,
+                                                         std::move(program),
+                                                         parentVm->externRegistry(),
+                                                         entryFn,
+                                                         arg,
+                                                         arg != nullptr,
+                                                         promise};
     if (!payload) {
         rt_promise_set_error(promise, rt_const_cstr("Async.Run: payload allocation failed"));
         if (rt_obj_release_check0(promise))
@@ -729,8 +734,7 @@ void registerThreadsRuntimeExternals() {
     {
         ExternDesc ext;
         ext.name = "Viper.Threads.Parallel.ForEachPool";
-        ext.signature =
-            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr});
+        ext.signature = make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_foreach_pool_handler);
         RuntimeBridge::registerExtern(ext);
     }
@@ -744,8 +748,8 @@ void registerThreadsRuntimeExternals() {
     {
         ExternDesc ext;
         ext.name = "Viper.Threads.Parallel.MapPool";
-        ext.signature =
-            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_map_pool_handler);
         RuntimeBridge::registerExtern(ext);
     }
@@ -781,16 +785,17 @@ void registerThreadsRuntimeExternals() {
     {
         ExternDesc ext;
         ext.name = "Viper.Threads.Parallel.Reduce";
-        ext.signature =
-            make_signature(ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.signature = make_signature(
+            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_reduce_handler);
         RuntimeBridge::registerExtern(ext);
     }
     {
         ExternDesc ext;
         ext.name = "Viper.Threads.Parallel.ReducePool";
-        ext.signature = make_signature(
-            ext.name, {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr, SigParam::Ptr}, {SigParam::Ptr});
+        ext.signature = make_signature(ext.name,
+                                       {SigParam::Ptr, SigParam::Ptr, SigParam::Ptr, SigParam::Ptr},
+                                       {SigParam::Ptr});
         ext.fn = reinterpret_cast<void *>(&threads_parallel_reduce_pool_handler);
         RuntimeBridge::registerExtern(ext);
     }

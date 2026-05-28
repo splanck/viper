@@ -192,14 +192,14 @@ TEST(Allocator, LowersLargeSpilledParallelCopyWithoutScratchExhaustion) {
 
     MBasicBlock join{};
     join.label = "join";
-    join.instructions.push_back(MInstr::make(
-        MOpcode::MOVrr,
-        {makeVRegOperand(RegClass::GPR, 300), makeVRegOperand(RegClass::GPR, 100)}));
+    join.instructions.push_back(
+        MInstr::make(MOpcode::MOVrr,
+                     {makeVRegOperand(RegClass::GPR, 300), makeVRegOperand(RegClass::GPR, 100)}));
     for (uint16_t i = 1; i < kCount; ++i) {
-        join.instructions.push_back(MInstr::make(
-            MOpcode::ADDrr,
-            {makeVRegOperand(RegClass::GPR, 300),
-             makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(100 + i))}));
+        join.instructions.push_back(
+            MInstr::make(MOpcode::ADDrr,
+                         {makeVRegOperand(RegClass::GPR, 300),
+                          makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(100 + i))}));
     }
     join.instructions.push_back(MInstr::make(MOpcode::RET, {}));
 

@@ -66,27 +66,27 @@ class CelebrationManager {
         strikeStreak = strikeStreak + 1;
 
         if (strikeStreak >= 3) {
-            triggerCelebration(TURKEY, "TURKEY!", config.HUD_COLOR_GOLD, config.CELEBRATE_TURKEY_DURATION);
+            triggerCelebration(TURKEY, config.HUD_COLOR_GOLD, config.CELEBRATE_TURKEY_DURATION);
         } else {
-            triggerCelebration(STRIKE, "STRIKE!", config.HUD_COLOR_RED, config.CELEBRATE_STRIKE_DURATION);
+            triggerCelebration(STRIKE, config.HUD_COLOR_RED, config.CELEBRATE_STRIKE_DURATION);
         }
     }
 
     /// @brief Spare just rolled. Resets streak.
     expose func onSpare() {
         strikeStreak = 0;
-        triggerCelebration(SPARE, "SPARE!", config.HUD_COLOR_GREEN, config.CELEBRATE_SPARE_DURATION);
+        triggerCelebration(SPARE, config.HUD_COLOR_GREEN, config.CELEBRATE_SPARE_DURATION);
     }
 
     /// @brief Gutter ball. Resets streak.
     expose func onGutter() {
         strikeStreak = 0;
-        triggerCelebration(GUTTER, "GUTTER BALL", config.HUD_COLOR_GRAY, config.CELEBRATE_GUTTER_DURATION);
+        triggerCelebration(GUTTER, config.HUD_COLOR_GRAY, config.CELEBRATE_GUTTER_DURATION);
     }
 
     /// @brief Perfect 300 game — longest celebration (5 s by default).
     expose func onPerfectGame() {
-        triggerCelebration(PERFECT, "PERFECT GAME! 300!", config.HUD_COLOR_GOLD, config.CELEBRATE_PERFECT_DURATION);
+        triggerCelebration(PERFECT, config.HUD_COLOR_GOLD, config.CELEBRATE_PERFECT_DURATION);
     }
 
     /// @brief Frame closed open (no spare/strike). Resets streak.
@@ -94,8 +94,8 @@ class CelebrationManager {
         strikeStreak = 0;
     }
 
-    /// @brief Activate a celebration with the given type/message/colour/duration.
-    hide func triggerCelebration(ctype: Integer, msg: String, color: Integer, duration: Float) {
+    /// @brief Activate a celebration with the given type/colour/duration.
+    hide func triggerCelebration(ctype: Integer, color: Integer, duration: Float) {
         activeType = ctype;
         timer = duration;
         flashTimer = config.CELEBRATE_FLASH_DURATION;

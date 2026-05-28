@@ -66,10 +66,10 @@ extern void *rt_json_parse_object(rt_string text);
 #define RT_MSG_BUNDLE_MAX_DEPTH 16
 
 typedef struct rt_message_bundle {
-    void *locale;    ///< Locale handle; strong ref through GC
+    void *locale;                 ///< Locale handle; strong ref through GC
     const rt_locale_data_t *data; ///< retained locale data for plural lookup
-    void *entries;   ///< rt_map<rt_string, rt_string>
-    void *fallback;  ///< optional bundle to consult on miss
+    void *entries;                ///< rt_map<rt_string, rt_string>
+    void *fallback;               ///< optional bundle to consult on miss
 } rt_message_bundle_t;
 
 /// @brief Unchecked cast of an opaque handle to the message-bundle struct.
@@ -161,8 +161,8 @@ static int validate_string_list(void *list) {
 ///                 zero retains it so the caller keeps its own reference.
 /// @details Traps on allocation failure. Installs @ref bundle_finalizer.
 static void *bundle_alloc(void *locale, void *map, int take_map) {
-    rt_message_bundle_t *bundle = (rt_message_bundle_t *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_message_bundle_t));
+    rt_message_bundle_t *bundle =
+        (rt_message_bundle_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_message_bundle_t));
     if (!bundle) {
         rt_trap("Viper.Localization.MessageBundle: allocation failed");
         return NULL;
@@ -262,7 +262,8 @@ void *rt_message_bundle_get_locale(void *self) {
 }
 
 int64_t rt_message_bundle_get_count(void *self) {
-    if (!self) return 0;
+    if (!self)
+        return 0;
     extern int64_t rt_map_len(void *);
     return rt_map_len(as_bundle(self)->entries);
 }
@@ -280,7 +281,8 @@ static rt_string bundle_lookup_direct(rt_message_bundle_t *self, rt_string key) 
     // rt_map_get_str returns a borrowed reference; retain it so the caller owns
     // a proper reference.
     rt_string v = rt_map_get_str(self->entries, key);
-    if (v) rt_string_ref(v);
+    if (v)
+        rt_string_ref(v);
     return v;
 }
 
@@ -288,8 +290,7 @@ static rt_string bundle_lookup_direct(rt_message_bundle_t *self, rt_string key) 
 /// @details Tries every entry of the locale's fallback chain in order, building
 ///          the qualified key on the stack (heap only for >255-byte keys).
 /// @return A retained string the caller owns, or NULL if no qualified key hit.
-static rt_string bundle_lookup_locale_qualified(rt_message_bundle_t *self,
-                                                rt_string key) {
+static rt_string bundle_lookup_locale_qualified(rt_message_bundle_t *self, rt_string key) {
     if (!self || !self->locale || !key)
         return NULL;
     const char *key_cs = rt_string_cstr(key);
@@ -317,7 +318,8 @@ static rt_string bundle_lookup_locale_qualified(rt_message_bundle_t *self,
                 memcpy(buf + tag_len + 1, key_cs, (size_t)key_len);
                 buf[needed] = '\0';
                 qkey = rt_string_from_bytes(buf, needed);
-                if (buf != stack) free(buf);
+                if (buf != stack)
+                    free(buf);
             }
         }
         rt_string_unref(tag);
@@ -374,7 +376,8 @@ rt_string rt_message_bundle_try_get(void *self, rt_string key) {
 }
 
 int8_t rt_message_bundle_has(void *self, rt_string key) {
-    if (!self || !key) return 0;
+    if (!self || !key)
+        return 0;
     rt_string r = bundle_lookup(as_bundle(self), key, 0);
     if (r) {
         rt_string_unref(r); // bundle_lookup now retains; unref to balance
@@ -391,8 +394,7 @@ int8_t rt_message_bundle_has(void *self, rt_string key) {
 /// @details rt_map_get_str returns a borrowed reference — we MUST NOT unref
 ///          it. The map retains its entries for its own lifetime; our job
 ///          is to read the cstr contents and move on.
-static int append_value(rt_string_builder *sb, const char *name, size_t name_len,
-                        void *vars) {
+static int append_value(rt_string_builder *sb, const char *name, size_t name_len, void *vars) {
     if (!vars)
         return 0;
     if (!is_map_object(vars))
@@ -602,7 +604,8 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
                               ? other_stack
                               : (char *)malloc(other_needed + 1);
         if (!other_buf) {
-            if (buf != stack_buf) free(buf);
+            if (buf != stack_buf)
+                free(buf);
             rt_trap("Viper.Localization.MessageBundle: plural fallback allocation failed");
             return rt_string_from_bytes("", 0);
         }
@@ -613,9 +616,11 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
         rt_string other_key = rt_string_from_bytes(other_buf, other_needed);
         tmpl = bundle_lookup(bundle, other_key, 0);
         rt_string_unref(other_key);
-        if (other_buf != other_stack) free(other_buf);
+        if (other_buf != other_stack)
+            free(other_buf);
     }
-    if (buf != stack_buf) free(buf);
+    if (buf != stack_buf)
+        free(buf);
 
     if (!tmpl) {
         rt_trap("Viper.Localization.MessageBundle: missing plural key (no 'other' form)");
@@ -679,7 +684,8 @@ void *rt_message_bundle_keys(void *self) {
     extern void *rt_seq_get(void *, int64_t);
     void *seq = rt_map_keys(as_bundle(self)->entries);
     void *list = rt_list_new();
-    if (!seq) return list;
+    if (!seq)
+        return list;
     int64_t n = rt_seq_len(seq);
     for (int64_t i = 0; i < n; ++i) {
         rt_list_push(list, rt_seq_get(seq, i));

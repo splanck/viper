@@ -278,9 +278,8 @@ ILScalarType mapILToken(std::string_view tok) {
         return ILScalarType::String;
     if (tok == "void")
         return ILScalarType::Void;
-    if (tok == "obj" || tok == "ptr" || tok.rfind("obj<", 0) == 0 ||
-        tok.rfind("ptr<", 0) == 0 || tok == "seq" || tok.rfind("seq<", 0) == 0 ||
-        tok == "list" || tok.rfind("list<", 0) == 0)
+    if (tok == "obj" || tok == "ptr" || tok.rfind("obj<", 0) == 0 || tok.rfind("ptr<", 0) == 0 ||
+        tok == "seq" || tok.rfind("seq<", 0) == 0 || tok == "list" || tok.rfind("list<", 0) == 0)
         return ILScalarType::Object;
     return ILScalarType::Unknown;
 }

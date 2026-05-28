@@ -38,8 +38,8 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -160,9 +160,8 @@ void *rt_linereader_open(rt_string path) {
         return NULL;
     }
 
-    rt_linereader_impl *lr =
-        (rt_linereader_impl *)rt_obj_new_i64(RT_LINEREADER_CLASS_ID,
-                                             (int64_t)sizeof(rt_linereader_impl));
+    rt_linereader_impl *lr = (rt_linereader_impl *)rt_obj_new_i64(
+        RT_LINEREADER_CLASS_ID, (int64_t)sizeof(rt_linereader_impl));
     if (!lr) {
         fclose(fp);
         rt_trap("LineReader.Open: memory allocation failed");

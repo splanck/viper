@@ -1,0 +1,16 @@
+module test_game3d_runframes_callback_reject;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Terminal as Terminal;
+
+func onFrame(dt: Float) {
+    if (dt < 0.0) {
+        Terminal.Say("unexpected");
+    }
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D Callback Reject Probe", 32, 24);
+    Game3D.World3D.runFrames(world, 1, 0.016, &onFrame);
+    Game3D.World3D.destroy(world);
+}

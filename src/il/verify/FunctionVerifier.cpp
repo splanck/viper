@@ -125,14 +125,10 @@ bool isRuntimeExplicitRelease(const Instr &instr) {
     if (instr.op != Opcode::Call)
         return false;
     return instr.callee == "rt_str_release" || instr.callee == "rt_str_release_maybe" ||
-           instr.callee == "Viper.String.ReleaseMaybe" ||
-           instr.callee == "rt_arr_i32_release" ||
-           instr.callee == "rt_arr_i64_release" ||
-           instr.callee == "rt_arr_f64_release" ||
-           instr.callee == "rt_arr_str_release" ||
-           instr.callee == "rt_arr_obj_release" ||
-           instr.callee == "rt_obj_release_check0" ||
-           instr.callee == "rt_obj_release_known_check0";
+           instr.callee == "Viper.String.ReleaseMaybe" || instr.callee == "rt_arr_i32_release" ||
+           instr.callee == "rt_arr_i64_release" || instr.callee == "rt_arr_f64_release" ||
+           instr.callee == "rt_arr_str_release" || instr.callee == "rt_arr_obj_release" ||
+           instr.callee == "rt_obj_release_check0" || instr.callee == "rt_obj_release_known_check0";
 }
 
 bool isRuntimeArrayRetain(const Instr &instr) {
@@ -150,8 +146,7 @@ bool isRuntimeObjectFinalizerCall(const Instr &instr) {
 }
 
 bool isPureControlTerminator(Opcode op) {
-    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::SwitchI32 ||
-           op == Opcode::Ret;
+    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::SwitchI32 || op == Opcode::Ret;
 }
 
 bool opcodeMayThrowOrTrap(Opcode op) {
@@ -268,9 +263,7 @@ std::optional<int64_t> checkedAdd(int64_t lhs, int64_t rhs) {
 }
 
 std::optional<StackLocationKey> stackLocationKey(
-    const Value &ptr,
-    const std::unordered_map<unsigned, const Instr *> &defs,
-    unsigned depth = 0) {
+    const Value &ptr, const std::unordered_map<unsigned, const Instr *> &defs, unsigned depth = 0) {
     if (depth > 32 || ptr.kind != Value::Kind::Temp)
         return std::nullopt;
 
@@ -301,7 +294,8 @@ std::optional<StackLocationKey> stackLocationKey(
     return base;
 }
 
-std::unordered_set<unsigned> computeStackDerivedTemps(const Function &fn, const BlockMap &blockMap) {
+std::unordered_set<unsigned> computeStackDerivedTemps(const Function &fn,
+                                                      const BlockMap &blockMap) {
     std::unordered_map<unsigned, const Instr *> defs;
     std::unordered_set<unsigned> stackDerived;
     std::unordered_set<StackLocationKey, StackLocationKeyHash> stackPtrLocations;
@@ -695,8 +689,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                         directCalleeEffects(instr.callee, functionMap_, externs_);
                     if (attrs.pure && !(effects.known && effects.pure))
                         return failAttr("pure function calls non-pure callee");
-                    if (attrs.readonly &&
-                        !(effects.known && (effects.readonly || effects.pure)))
+                    if (attrs.readonly && !(effects.known && (effects.readonly || effects.pure)))
                         return failAttr("readonly function calls memory-writing callee");
                     if (attrs.nothrow && !(effects.known && effects.nothrow))
                         return failAttr("nothrow function calls throwing callee");
@@ -859,8 +852,8 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
         }
 
         const size_t entryIndex = blockIndex[entry];
-        std::vector<std::vector<unsigned char>> dom(
-            blocks.size(), std::vector<unsigned char>(blocks.size(), 1));
+        std::vector<std::vector<unsigned char>> dom(blocks.size(),
+                                                    std::vector<unsigned char>(blocks.size(), 1));
 
         auto setRootDom = [&](size_t index) {
             std::fill(dom[index].begin(), dom[index].end(), 0);
@@ -955,12 +948,14 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
             size_t index;
             unsigned id;
         };
+
         struct ReleasedUse {
             const BasicBlock *block;
             const Instr *instr;
             size_t index;
             unsigned id;
         };
+
         struct RetainSite {
             const BasicBlock *block;
             const Instr *instr;
@@ -1039,9 +1034,9 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
 
                 std::ostringstream message;
                 message << "double release of %" << second.id;
-                return Expected<void>{makeError(
-                    second.instr->loc,
-                    formatInstrDiag(fn, *second.block, *second.instr, message.str()))};
+                return Expected<void>{
+                    makeError(second.instr->loc,
+                              formatInstrDiag(fn, *second.block, *second.instr, message.str()))};
             }
 
             for (const ReleasedUse &use : releasedUses) {
@@ -1072,8 +1067,8 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
         if (!stackDerived.empty()) {
             for (const auto &blk : fn.blocks) {
                 for (const auto &instr : blk.instructions) {
-                    auto failEscape = [&](const Value &op, std::string_view action)
-                        -> Expected<void> {
+                    auto failEscape = [&](const Value &op,
+                                          std::string_view action) -> Expected<void> {
                         if (op.kind != Value::Kind::Temp || !stackDerived.contains(op.id))
                             return {};
                         std::ostringstream msg;

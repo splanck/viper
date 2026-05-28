@@ -51,8 +51,7 @@ static void test_en_us_display_name() {
     rt_string_unref(in);
 
     test_result("DisplayName(en-US) = \"English (United States)\"",
-                str_eq(rt_locale_info_display_name(loc, nullptr),
-                       "English (United States)"));
+                str_eq(rt_locale_info_display_name(loc, nullptr), "English (United States)"));
     test_result("LanguageName(en-US) = \"English\"",
                 str_eq(rt_locale_info_language_name(loc, nullptr), "English"));
     test_result("RegionName(en-US) = \"United States\"",
@@ -66,8 +65,7 @@ static void test_en_us_text_direction() {
 
     test_result("TextDirection(en-US) = \"ltr\"",
                 str_eq(rt_locale_info_text_direction(loc), "ltr"));
-    test_result("IsRightToLeft(en-US) = false",
-                rt_locale_info_is_rtl(loc) == 0);
+    test_result("IsRightToLeft(en-US) = false", rt_locale_info_is_rtl(loc) == 0);
 }
 
 static void test_en_us_calendar() {
@@ -75,8 +73,7 @@ static void test_en_us_calendar() {
     void *loc = rt_locale_parse(in);
     rt_string_unref(in);
 
-    test_result("FirstDayOfWeek(en-US) = 0 (Sunday)",
-                rt_locale_info_first_day_of_week(loc) == 0);
+    test_result("FirstDayOfWeek(en-US) = 0 (Sunday)", rt_locale_info_first_day_of_week(loc) == 0);
 }
 
 static void test_en_us_measurement_and_currency() {
@@ -84,10 +81,8 @@ static void test_en_us_measurement_and_currency() {
     void *loc = rt_locale_parse(in);
     rt_string_unref(in);
 
-    test_result("MeasurementSystem(en-US) = \"us\"",
-                str_eq(rt_locale_info_measurement(loc), "us"));
-    test_result("Currency(en-US) = \"USD\"",
-                str_eq(rt_locale_info_currency(loc), "USD"));
+    test_result("MeasurementSystem(en-US) = \"us\"", str_eq(rt_locale_info_measurement(loc), "us"));
+    test_result("Currency(en-US) = \"USD\"", str_eq(rt_locale_info_currency(loc), "USD"));
 }
 
 //=============================================================================
@@ -100,12 +95,10 @@ static void test_null_locale_falls_back() {
     // NULL locale — should not trap, should yield the invariant's values
     // which for Phase 1 are the baked en-US record.
     test_result("DisplayName(NULL) falls back to en-US",
-                str_eq(rt_locale_info_display_name(nullptr, nullptr),
-                       "English (United States)"));
+                str_eq(rt_locale_info_display_name(nullptr, nullptr), "English (United States)"));
     test_result("TextDirection(NULL) = \"ltr\"",
                 str_eq(rt_locale_info_text_direction(nullptr), "ltr"));
-    test_result("FirstDayOfWeek(NULL) = 0",
-                rt_locale_info_first_day_of_week(nullptr) == 0);
+    test_result("FirstDayOfWeek(NULL) = 0", rt_locale_info_first_day_of_week(nullptr) == 0);
 }
 
 static void test_unregistered_locale_falls_back() {
@@ -119,8 +112,7 @@ static void test_unregistered_locale_falls_back() {
     rt_string_unref(in);
 
     test_result("DisplayName(fr-FR unregistered) = en-US fallback",
-                str_eq(rt_locale_info_display_name(loc, nullptr),
-                       "English (United States)"));
+                str_eq(rt_locale_info_display_name(loc, nullptr), "English (United States)"));
     test_result("Currency(fr-FR unregistered) = USD fallback",
                 str_eq(rt_locale_info_currency(loc), "USD"));
 }

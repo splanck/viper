@@ -127,9 +127,9 @@ static void test_tempfile() {
         else
             unsetenv("TMPDIR");
     }
- #endif
+#endif
 
- #ifndef _WIN32
+#ifndef _WIN32
     // Test 8: Invalid TMPDIR values fall back instead of being trusted.
     {
         char bad_tmpdir[256];
@@ -151,7 +151,7 @@ static void test_tempfile() {
             unsetenv("TMPDIR");
         remove(bad_tmpdir);
     }
- #endif
+#endif
 
     // Test 9: Prefix and extension are filename fragments, not paths.
     {

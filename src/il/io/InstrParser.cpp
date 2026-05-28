@@ -285,15 +285,13 @@ Expected<void> parseWithMetadata(Opcode opcode,
                     std::ostringstream oss;
                     oss << "missing " << (spec.role ? spec.role : "operand") << " for "
                         << info.name;
-                    return Expected<void>{
-                        il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
+                    return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
                 }
                 if (previousParsedKind == OperandParseKind::Value &&
                     previousDelimiter == TokenDelimiter::Whitespace) {
                     std::ostringstream oss;
                     oss << "missing comma before " << (spec.role ? spec.role : "operand");
-                    return Expected<void>{
-                        il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
+                    return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
                 }
                 auto value = operandParser.parseValueToken(token);
                 if (!value)

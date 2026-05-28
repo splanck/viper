@@ -41,7 +41,6 @@ RunResult run_process(const std::vector<std::string> &argv,
 /// @param cwd Optional working directory to set before launching the process.
 /// @param env Environment variable overrides expressed as key/value pairs.
 /// @return Captured process result including exit code and output streams.
-RunResult run_shell_command(
-    const std::string &command,
-    std::optional<std::string> cwd = std::nullopt,
-    const std::vector<std::pair<std::string, std::string>> &env = {});
+RunResult run_shell_command(const std::string &command,
+                            std::optional<std::string> cwd = std::nullopt,
+                            const std::vector<std::pair<std::string, std::string>> &env = {});

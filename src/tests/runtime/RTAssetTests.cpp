@@ -94,7 +94,8 @@ static void test_unsafe_asset_names_are_rejected() {
     const char *tmp = getenv("TEMP");
     if (!tmp)
         tmp = ".";
-    snprintf(absolute_path, sizeof(absolute_path), "%s\\viper_abs_asset_%d.bin", tmp, (int)GETPID());
+    snprintf(
+        absolute_path, sizeof(absolute_path), "%s\\viper_abs_asset_%d.bin", tmp, (int)GETPID());
 #else
     snprintf(absolute_path, sizeof(absolute_path), "/tmp/viper_abs_asset_%d.bin", (int)GETPID());
 #endif

@@ -275,7 +275,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver {
     do {                                                                                           \
         if (state.ip < state.bb->instructions.size()) [[likely]] {                                 \
             if (vm.tracingActive_ || vm.stepBudget > 0 ||                                          \
-                vm.debugStepMode_ != VM::DebugStepMode::None) [[unlikely]]                          \
+                vm.debugStepMode_ != VM::DebugStepMode::None) [[unlikely]]                         \
                 goto LBL_SLOW_PATH;                                                                \
             ++vm.instrCount;                                                                       \
             currentInstr = &state.bb->instructions[state.ip];                                      \

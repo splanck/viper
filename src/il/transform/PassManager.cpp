@@ -154,23 +154,46 @@ PassManager::PassManager() {
     // (to propagate constants through inlined code from call sites).
     // mem2reg runs before loop optimizers so stack-promoted induction variables
     // and scalar temporaries are visible to SCCP/LICM/loop cleanup.
-    registerPipeline(
-        "O2", {"simplify-cfg", "mem2reg",      "simplify-cfg",
-               "loop-simplify", "licm",        "loop-rotate", "indvars",      "loop-unroll",
-               "simplify-cfg",
-               "sccp", // Pre-inline SCCP: simplify callees
-               "check-opt",     "eh-opt",       "dce",         "simplify-cfg", "sibling-recursion",
-               "devirt",        "inline-o2",    "simplify-cfg",
-               "sccp",      // Post-inline SCCP: propagate call-site constants
-               "constfold", // Fold runtime math calls exposed by SCCP
-               "loop-simplify", "licm",      "loop-rotate", "indvars", "loop-unroll",
-               "check-opt",
-               "runtime-fastpath", "array-fastpath", "ownership-opt",
-               "peephole",
-               "check-opt",
-               "dce",       // Clean up after second SCCP
-               "simplify-cfg",  "gvn",          "reassociate", "earlycse",     "dse",
-               "dce",           "late-cleanup"});
+    registerPipeline("O2",
+                     {"simplify-cfg",
+                      "mem2reg",
+                      "simplify-cfg",
+                      "loop-simplify",
+                      "licm",
+                      "loop-rotate",
+                      "indvars",
+                      "loop-unroll",
+                      "simplify-cfg",
+                      "sccp", // Pre-inline SCCP: simplify callees
+                      "check-opt",
+                      "eh-opt",
+                      "dce",
+                      "simplify-cfg",
+                      "sibling-recursion",
+                      "devirt",
+                      "inline-o2",
+                      "simplify-cfg",
+                      "sccp",      // Post-inline SCCP: propagate call-site constants
+                      "constfold", // Fold runtime math calls exposed by SCCP
+                      "loop-simplify",
+                      "licm",
+                      "loop-rotate",
+                      "indvars",
+                      "loop-unroll",
+                      "check-opt",
+                      "runtime-fastpath",
+                      "array-fastpath",
+                      "ownership-opt",
+                      "peephole",
+                      "check-opt",
+                      "dce", // Clean up after second SCCP
+                      "simplify-cfg",
+                      "gvn",
+                      "reassociate",
+                      "earlycse",
+                      "dse",
+                      "dce",
+                      "late-cleanup"});
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.
@@ -181,7 +204,8 @@ PassManager::PassManager() {
 /// @param aggressive Whether to enable aggressive simplifications.
 void PassManager::addSimplifyCFG(bool aggressive) {
     passRegistry_.registerFunctionPass(
-        "simplify-cfg", [aggressive](core::Function &function, AnalysisManager &analysis) {
+        "simplify-cfg",
+        [aggressive](core::Function &function, AnalysisManager &analysis) {
             SimplifyCFG pass(aggressive);
             pass.setModule(&analysis.module());
             pass.setAnalysisManager(&analysis);

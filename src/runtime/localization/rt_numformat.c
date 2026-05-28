@@ -47,16 +47,16 @@
 #include "rt_string_builder.h"
 #include "rt_trap.h"
 
-#include <errno.h>
 #include <ctype.h>
+#include <errno.h>
 #include <float.h>
 #include <limits.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdarg.h>
 
 #if defined(_WIN32)
 #include <locale.h>
@@ -81,14 +81,21 @@ typedef enum {
 /// @brief Canonical CLDR-style name for a rounding mode (defaults "halfEven").
 static const char *rounding_mode_name(rounding_mode_t m) {
     switch (m) {
-        case ROUND_HALF_UP:   return "halfUp";
-        case ROUND_HALF_DOWN: return "halfDown";
-        case ROUND_UP:        return "up";
-        case ROUND_DOWN:      return "down";
-        case ROUND_CEILING:   return "ceiling";
-        case ROUND_FLOOR:     return "floor";
+        case ROUND_HALF_UP:
+            return "halfUp";
+        case ROUND_HALF_DOWN:
+            return "halfDown";
+        case ROUND_UP:
+            return "up";
+        case ROUND_DOWN:
+            return "down";
+        case ROUND_CEILING:
+            return "ceiling";
+        case ROUND_FLOOR:
+            return "floor";
         case ROUND_HALF_EVEN:
-        default:              return "halfEven";
+        default:
+            return "halfEven";
     }
 }
 
@@ -96,12 +103,18 @@ static const char *rounding_mode_name(rounding_mode_t m) {
 static rounding_mode_t rounding_mode_parse(const char *s) {
     if (!s)
         return ROUND_HALF_EVEN;
-    if (strcmp(s, "halfUp") == 0)   return ROUND_HALF_UP;
-    if (strcmp(s, "halfDown") == 0) return ROUND_HALF_DOWN;
-    if (strcmp(s, "up") == 0)       return ROUND_UP;
-    if (strcmp(s, "down") == 0)     return ROUND_DOWN;
-    if (strcmp(s, "ceiling") == 0)  return ROUND_CEILING;
-    if (strcmp(s, "floor") == 0)    return ROUND_FLOOR;
+    if (strcmp(s, "halfUp") == 0)
+        return ROUND_HALF_UP;
+    if (strcmp(s, "halfDown") == 0)
+        return ROUND_HALF_DOWN;
+    if (strcmp(s, "up") == 0)
+        return ROUND_UP;
+    if (strcmp(s, "down") == 0)
+        return ROUND_DOWN;
+    if (strcmp(s, "ceiling") == 0)
+        return ROUND_CEILING;
+    if (strcmp(s, "floor") == 0)
+        return ROUND_FLOOR;
     return ROUND_HALF_EVEN;
 }
 
@@ -120,8 +133,7 @@ static int loc_vsnprintf_c(char *out, size_t cap, const char *fmt, va_list args)
 #endif
 #if defined(_WIN32)
     _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
-    int n = c_locale ? _vsnprintf_l(out, cap, fmt, c_locale, args)
-                     : vsnprintf(out, cap, fmt, args);
+    int n = c_locale ? _vsnprintf_l(out, cap, fmt, c_locale, args) : vsnprintf(out, cap, fmt, args);
     if (c_locale)
         _free_locale(c_locale);
 #else
@@ -160,7 +172,8 @@ static int loc_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
 /// @return malloc'd NUL-terminated string the caller frees, or NULL on OOM /
 ///         when the formatted result would exceed the 4096-byte safety cap.
 static char *loc_sprintf_alloc_c(size_t *out_len, const char *fmt, ...) {
-    if (out_len) *out_len = 0;
+    if (out_len)
+        *out_len = 0;
     size_t cap = 128;
     for (;;) {
         char *buf = (char *)malloc(cap);
@@ -171,7 +184,8 @@ static char *loc_sprintf_alloc_c(size_t *out_len, const char *fmt, ...) {
         int n = loc_vsnprintf_c(buf, cap, fmt, args);
         va_end(args);
         if (n >= 0 && (size_t)n < cap) {
-            if (out_len) *out_len = (size_t)n;
+            if (out_len)
+                *out_len = (size_t)n;
             return buf;
         }
         free(buf);
@@ -217,13 +231,13 @@ static double loc_strtod_c(const char *input, char **endptr) {
 //===----------------------------------------------------------------------===//
 
 typedef struct rt_numformat {
-    void                   *locale;       ///< strong Locale handle ref
-    const rt_locale_data_t *data;         ///< non-owning
-    int64_t                 min_frac;
-    int64_t                 max_frac;
-    int8_t                  grouping;
-    int8_t                  strict;
-    rounding_mode_t         rounding;
+    void *locale;                 ///< strong Locale handle ref
+    const rt_locale_data_t *data; ///< non-owning
+    int64_t min_frac;
+    int64_t max_frac;
+    int8_t grouping;
+    int8_t strict;
+    rounding_mode_t rounding;
 } rt_numformat_t;
 
 /// @brief Unchecked cast of an opaque handle to the NumberFormat instance.
@@ -257,8 +271,7 @@ static void fmt_finalizer(void *obj) {
 ///          grouping / rounding from the locale defaults. Traps on allocation
 ///          failure; installs @ref fmt_finalizer.
 static rt_numformat_t *fmt_alloc(void *locale) {
-    rt_numformat_t *fmt = (rt_numformat_t *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_numformat_t));
+    rt_numformat_t *fmt = (rt_numformat_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_numformat_t));
     if (!fmt) {
         rt_trap("Viper.Localization.NumberFormat: allocation failed");
         return NULL;
@@ -270,7 +283,7 @@ static rt_numformat_t *fmt_alloc(void *locale) {
     fmt->data = rt_locale_get_data(locale);
     rt_locale_manager_retain_data(fmt->data);
     fmt->min_frac = 0;
-    fmt->max_frac = 3;  // default matches common display conventions
+    fmt->max_frac = 3; // default matches common display conventions
     fmt->grouping = 1;
     fmt->strict = 0;
     fmt->rounding = ROUND_HALF_EVEN;
@@ -293,36 +306,58 @@ void *rt_numformat_for_locale(void *locale) {
 // Property accessors
 //===----------------------------------------------------------------------===//
 
-void *rt_numformat_get_locale(void *self)      { return self ? as_fmt(self)->locale : NULL; }
-int64_t rt_numformat_get_min_frac(void *self)  { return self ? as_fmt(self)->min_frac : 0; }
-int64_t rt_numformat_get_max_frac(void *self)  { return self ? as_fmt(self)->max_frac : 3; }
-int8_t  rt_numformat_get_grouping(void *self)  { return self ? as_fmt(self)->grouping : 1; }
-int8_t  rt_numformat_get_strict(void *self)    { return self ? as_fmt(self)->strict : 0; }
+void *rt_numformat_get_locale(void *self) {
+    return self ? as_fmt(self)->locale : NULL;
+}
+
+int64_t rt_numformat_get_min_frac(void *self) {
+    return self ? as_fmt(self)->min_frac : 0;
+}
+
+int64_t rt_numformat_get_max_frac(void *self) {
+    return self ? as_fmt(self)->max_frac : 3;
+}
+
+int8_t rt_numformat_get_grouping(void *self) {
+    return self ? as_fmt(self)->grouping : 1;
+}
+
+int8_t rt_numformat_get_strict(void *self) {
+    return self ? as_fmt(self)->strict : 0;
+}
 
 void rt_numformat_set_min_frac(void *self, int64_t value) {
-    if (!self) return;
-    if (value < 0) value = 0;
-    if (value > 20) value = 20;
+    if (!self)
+        return;
+    if (value < 0)
+        value = 0;
+    if (value > 20)
+        value = 20;
     as_fmt(self)->min_frac = value;
     if (as_fmt(self)->max_frac < value)
         as_fmt(self)->max_frac = value;
 }
 
 void rt_numformat_set_max_frac(void *self, int64_t value) {
-    if (!self) return;
-    if (value < 0) value = 0;
-    if (value > 20) value = 20;
+    if (!self)
+        return;
+    if (value < 0)
+        value = 0;
+    if (value > 20)
+        value = 20;
     as_fmt(self)->max_frac = value;
     if (as_fmt(self)->min_frac > value)
         as_fmt(self)->min_frac = value;
 }
 
 void rt_numformat_set_grouping(void *self, int8_t value) {
-    if (self) as_fmt(self)->grouping = value ? 1 : 0;
+    if (self)
+        as_fmt(self)->grouping = value ? 1 : 0;
 }
 
 void rt_numformat_set_strict(void *self, int8_t value) {
-    if (self) as_fmt(self)->strict = value ? 1 : 0;
+    if (self)
+        as_fmt(self)->strict = value ? 1 : 0;
 }
 
 rt_string rt_numformat_get_rounding(void *self) {
@@ -411,12 +446,17 @@ typedef struct digit_spans {
 /// @brief Byte length of the leading UTF-8 codepoint in @p s (0 if empty/NULL,
 ///        1 on a malformed lead byte so callers always make forward progress).
 static size_t utf8_cp_len(const char *s) {
-    if (!s || !*s) return 0;
+    if (!s || !*s)
+        return 0;
     unsigned char c = (unsigned char)s[0];
-    if (c < 0x80) return 1;
-    if ((c & 0xE0) == 0xC0 && s[1]) return 2;
-    if ((c & 0xF0) == 0xE0 && s[1] && s[2]) return 3;
-    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3]) return 4;
+    if (c < 0x80)
+        return 1;
+    if ((c & 0xE0) == 0xC0 && s[1])
+        return 2;
+    if ((c & 0xF0) == 0xE0 && s[1] && s[2])
+        return 3;
+    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3])
+        return 4;
     return 1;
 }
 
@@ -475,13 +515,10 @@ static void append_grouped_ascii_number(rt_string_builder *sb,
     rt_sb_init(&tmp);
     if (fmt->grouping && nums->group_sep && nums->group_sep[0] != '\0') {
         int primary = nums->group_size > 0 ? nums->group_size : 3;
-        int secondary = nums->secondary_group_size > 0
-                            ? nums->secondary_group_size
-                            : primary;
+        int secondary = nums->secondary_group_size > 0 ? nums->secondary_group_size : primary;
         size_t sep_len = strlen(nums->group_sep);
         if (primary == secondary) {
-            rt_numfmt_group_digits(&tmp, digits, digit_len,
-                                   nums->group_sep, sep_len, primary);
+            rt_numfmt_group_digits(&tmp, digits, digit_len, nums->group_sep, sep_len, primary);
         } else if (digit_len <= primary || primary <= 0 || secondary <= 0) {
             (void)rt_sb_append_bytes(&tmp, digits, (size_t)digit_len);
         } else {
@@ -513,8 +550,10 @@ static void append_grouped_ascii_number(rt_string_builder *sb,
 /// @param value      real-valued input
 /// @param override_digits    >= 0 to force exactly this many fraction digits
 ///                           (used by DecimalN); -1 to use min/max
-static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
-                              double value, int override_digits) {
+static void fmt_render_number(rt_string_builder *sb,
+                              const rt_numformat_t *fmt,
+                              double value,
+                              int override_digits) {
     const rt_locdata_numbers_t *nums = &fmt->data->numbers;
 
     if (!isfinite(value)) {
@@ -540,8 +579,10 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
             digits_used = 20;
     } else {
         int64_t mx = fmt->max_frac;
-        if (mx < 0) mx = 0;
-        if (mx > 20) mx = 20;
+        if (mx < 0)
+            mx = 0;
+        if (mx > 20)
+            mx = 20;
         digits_used = (int)mx;
     }
 
@@ -586,8 +627,10 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
     // and strip trailing zeros past min_frac.
     int emit_digits = digits_used;
     int min_f = override_digits >= 0 ? digits_used : (int)fmt->min_frac;
-    if (min_f < 0) min_f = 0;
-    if (min_f > digits_used) min_f = digits_used;
+    if (min_f < 0)
+        min_f = 0;
+    if (min_f > digits_used)
+        min_f = digits_used;
     if (frac_ptr && frac_len > 0 && override_digits < 0) {
         while (emit_digits > min_f && frac_ptr[emit_digits - 1] == '0')
             --emit_digits;
@@ -604,7 +647,8 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
 /// @details Avoids @c double so every magnitude (incl. INT64_MIN) is exact;
 ///          builds digits right-to-left into a stack buffer, negates via the
 ///          @c -(v+1)+1 trick so INT64_MIN doesn't overflow, then groups.
-static void fmt_render_integer_exact(rt_string_builder *sb, const rt_numformat_t *fmt,
+static void fmt_render_integer_exact(rt_string_builder *sb,
+                                     const rt_numformat_t *fmt,
                                      int64_t value) {
     const rt_locdata_numbers_t *nums = &fmt->data->numbers;
     uint64_t mag;
@@ -650,8 +694,10 @@ rt_string rt_numformat_decimal_n(void *self, double value, int64_t digits) {
     if (!self)
         return rt_string_from_bytes("", 0);
     rt_numformat_t *fmt = as_fmt(self);
-    if (digits < 0) digits = 0;
-    if (digits > 20) digits = 20;
+    if (digits < 0)
+        digits = 0;
+    if (digits > 20)
+        digits = 20;
     rt_string_builder sb;
     rt_sb_init(&sb);
     fmt_render_number(&sb, fmt, value, (int)digits);
@@ -686,8 +732,10 @@ rt_string rt_numformat_percent(void *self, double value) {
 }
 
 /// @brief Expand a currency pattern ("{s}{n}" or similar) into @p sb.
-static void expand_currency(rt_string_builder *sb, const char *pattern,
-                            const char *symbol, rt_string number) {
+static void expand_currency(rt_string_builder *sb,
+                            const char *pattern,
+                            const char *symbol,
+                            rt_string number) {
     if (!pattern)
         pattern = "{s}{n}";
     const char *p = pattern;
@@ -745,15 +793,14 @@ rt_string rt_numformat_currency_of(void *self, double value, rt_string code) {
     const char *sym = cur->symbol ? cur->symbol : "$";
     const char *code_cs = code ? rt_string_cstr(code) : NULL;
     int64_t code_len = code ? rt_str_len(code) : 0;
-    if (!code_cs || code_len != 3 ||
-        code_cs[0] < 'A' || code_cs[0] > 'Z' ||
-        code_cs[1] < 'A' || code_cs[1] > 'Z' ||
-        code_cs[2] < 'A' || code_cs[2] > 'Z') {
-        rt_trap("Viper.Localization.NumberFormat: CurrencyOf requires a 3-letter uppercase ISO code");
+    if (!code_cs || code_len != 3 || code_cs[0] < 'A' || code_cs[0] > 'Z' || code_cs[1] < 'A' ||
+        code_cs[1] > 'Z' || code_cs[2] < 'A' || code_cs[2] > 'Z') {
+        rt_trap(
+            "Viper.Localization.NumberFormat: CurrencyOf requires a 3-letter uppercase ISO code");
         return rt_string_from_bytes("", 0);
     }
-    if (fmt->data->currency.default_code
-        && strncmp(code_cs, fmt->data->currency.default_code, 3) != 0) {
+    if (fmt->data->currency.default_code &&
+        strncmp(code_cs, fmt->data->currency.default_code, 3) != 0) {
         // Non-default code — use the code itself as the symbol placeholder.
         // Phase 2 ships without the full ISO symbol table; treating it as
         // the literal code is honest and safe.
@@ -804,12 +851,15 @@ rt_string rt_numformat_scientific(void *self, double value, int64_t digits) {
                // apply only decimal separator substitution.
 
     int d = (int)digits;
-    if (d < 0) d = 0;
-    if (d > 20) d = 20;
+    if (d < 0)
+        d = 0;
+    if (d > 20)
+        d = 20;
 
     char buf[64];
     int len = loc_snprintf_c(buf, sizeof(buf), "%.*e", d, value);
-    if (len < 0) len = 0;
+    if (len < 0)
+        len = 0;
 
     // Substitute decimal separator if the locale differs from ".".
     const char *dec_sep = fmt->data->numbers.decimal_sep;
@@ -845,8 +895,7 @@ rt_string rt_numformat_ordinal(void *self, int64_t value) {
 
 /// @brief Try to match @p prefix at the start of @p input; return length
 ///        consumed on success, 0 on no match. NULL/empty prefix matches 0.
-static size_t match_prefix(const char *input, size_t input_len,
-                           const char *prefix) {
+static size_t match_prefix(const char *input, size_t input_len, const char *prefix) {
     if (!prefix || !*prefix)
         return 0;
     size_t plen = strlen(prefix);
@@ -858,33 +907,36 @@ static size_t match_prefix(const char *input, size_t input_len,
 }
 
 typedef struct {
-    int     success;        ///< 1 on full parse, 0 on failure
-    double  value;          ///< parsed value (double precision)
-    int     had_sign;       ///< 1 if input had an explicit sign
-    int     negative;
-    int64_t int_value;      ///< exact integer value when allow_fraction == 0
+    int success;  ///< 1 on full parse, 0 on failure
+    double value; ///< parsed value (double precision)
+    int had_sign; ///< 1 if input had an explicit sign
+    int negative;
+    int64_t int_value; ///< exact integer value when allow_fraction == 0
 } parse_result_t;
 
 /// @brief Match one digit at @p input, ASCII or the locale's native glyphs.
 /// @param consumed Receives the byte length of the matched glyph (0 if none).
 /// @return The digit value 0-9, or -1 if @p input does not start with a digit.
-static int match_locale_digit(const char *input, size_t input_len,
+static int match_locale_digit(const char *input,
+                              size_t input_len,
                               const rt_locdata_numbers_t *nums,
                               size_t *consumed) {
-    if (consumed) *consumed = 0;
+    if (consumed)
+        *consumed = 0;
     if (input_len == 0)
         return -1;
     if (input[0] >= '0' && input[0] <= '9') {
-        if (consumed) *consumed = 1;
+        if (consumed)
+            *consumed = 1;
         return input[0] - '0';
     }
     digit_spans_t ds = digit_spans_from_locale(nums);
     if (!ds.valid)
         return -1;
     for (int d = 0; d < 10; ++d) {
-        if (ds.len[d] > 0 && input_len >= ds.len[d] &&
-            memcmp(input, ds.ptr[d], ds.len[d]) == 0) {
-            if (consumed) *consumed = ds.len[d];
+        if (ds.len[d] > 0 && input_len >= ds.len[d] && memcmp(input, ds.ptr[d], ds.len[d]) == 0) {
+            if (consumed)
+                *consumed = ds.len[d];
             return d;
         }
     }
@@ -912,14 +964,18 @@ static void scan_number_free(scan_number_t *sn) {
 ///          or native digit glyphs, and ignores group separators. Leaves the
 ///          collected ASCII digit runs in @c sn->digits / @c sn->frac for a
 ///          downstream exact/double parse. @c sn->success reports a clean scan.
-static void scan_number_parts(scan_number_t *sn, const char *input, size_t input_len,
-                              const rt_numformat_t *fmt, int allow_fraction) {
+static void scan_number_parts(scan_number_t *sn,
+                              const char *input,
+                              size_t input_len,
+                              const rt_numformat_t *fmt,
+                              int allow_fraction) {
     memset(sn, 0, sizeof(*sn));
     rt_sb_init(&sn->digits);
     rt_sb_init(&sn->frac);
 
     size_t i = 0;
-    while (i < input_len && isspace((unsigned char)input[i])) ++i;
+    while (i < input_len && isspace((unsigned char)input[i]))
+        ++i;
     if (i >= input_len)
         return;
 
@@ -946,13 +1002,12 @@ static void scan_number_parts(scan_number_t *sn, const char *input, size_t input
     }
 
     size_t digit_count = 0;
-    int group_run = 0;          // digits since last separator
+    int group_run = 0; // digits since last separator
     int had_group_sep = 0;
-    int first_group_len = -1;   // length of leading group when we hit first sep
+    int first_group_len = -1; // length of leading group when we hit first sep
     int primary_group = nums->group_size > 0 ? nums->group_size : 3;
-    int secondary_group = nums->secondary_group_size > 0
-                              ? nums->secondary_group_size
-                              : primary_group;
+    int secondary_group =
+        nums->secondary_group_size > 0 ? nums->secondary_group_size : primary_group;
 
     while (i < input_len) {
         size_t consumed = 0;
@@ -963,8 +1018,8 @@ static void scan_number_parts(scan_number_t *sn, const char *input, size_t input
             digit_count++;
             i += consumed;
             ++group_run;
-        } else if (grp_len && i + grp_len <= input_len
-                   && memcmp(input + i, grp_sep, grp_len) == 0) {
+        } else if (grp_len && i + grp_len <= input_len &&
+                   memcmp(input + i, grp_sep, grp_len) == 0) {
             if (digit_count == 0)
                 return; // leading group sep
             if (!had_group_sep) {
@@ -989,8 +1044,7 @@ static void scan_number_parts(scan_number_t *sn, const char *input, size_t input
 
     // Fractional part.
     size_t frac_count = 0;
-    if (allow_fraction && i + dec_len <= input_len
-        && memcmp(input + i, dec_sep, dec_len) == 0) {
+    if (allow_fraction && i + dec_len <= input_len && memcmp(input + i, dec_sep, dec_len) == 0) {
         i += dec_len;
         sn->had_frac = 1;
         while (i < input_len) {
@@ -1010,7 +1064,8 @@ static void scan_number_parts(scan_number_t *sn, const char *input, size_t input
     }
 
     // Trailing whitespace tolerated; anything else is a failure.
-    while (i < input_len && isspace((unsigned char)input[i])) ++i;
+    while (i < input_len && isspace((unsigned char)input[i]))
+        ++i;
     if (i != input_len)
         return;
 
@@ -1021,7 +1076,8 @@ static void scan_number_parts(scan_number_t *sn, const char *input, size_t input
 }
 
 /// @brief Parse a locale-formatted decimal number from @p input.
-static parse_result_t parse_decimal(const char *input, size_t input_len,
+static parse_result_t parse_decimal(const char *input,
+                                    size_t input_len,
                                     const rt_numformat_t *fmt,
                                     int allow_fraction) {
     parse_result_t pr = {0};
@@ -1070,7 +1126,8 @@ static parse_result_t parse_decimal(const char *input, size_t input_len,
 ///          accumulates in @c uint64_t with a per-digit overflow guard against
 ///          a sign-aware limit, so INT64_MIN parses and out-of-range fails
 ///          cleanly. @c pr.success is 0 on empty/overflow/garbage input.
-static parse_result_t parse_integer_exact(const char *input, size_t input_len,
+static parse_result_t parse_integer_exact(const char *input,
+                                          size_t input_len,
                                           const rt_numformat_t *fmt) {
     parse_result_t pr = {0};
     scan_number_t sn;
@@ -1116,8 +1173,10 @@ double rt_numformat_parse_decimal(void *self, rt_string input) {
     }
     const char *cs = rt_string_cstr(input);
     int64_t len = rt_str_len(input);
-    parse_result_t pr = parse_decimal(cs, (size_t)len, as_fmt(self),
-                                       /*allow_fraction=*/1);
+    parse_result_t pr = parse_decimal(cs,
+                                      (size_t)len,
+                                      as_fmt(self),
+                                      /*allow_fraction=*/1);
     if (!pr.success) {
         rt_trap("Viper.Localization.NumberFormat: cannot parse input as a decimal");
         return 0;
@@ -1130,8 +1189,10 @@ void *rt_numformat_try_parse_decimal(void *self, rt_string input) {
         return rt_option_none();
     const char *cs = rt_string_cstr(input);
     int64_t len = rt_str_len(input);
-    parse_result_t pr = parse_decimal(cs, (size_t)len, as_fmt(self),
-                                       /*allow_fraction=*/1);
+    parse_result_t pr = parse_decimal(cs,
+                                      (size_t)len,
+                                      as_fmt(self),
+                                      /*allow_fraction=*/1);
     if (!pr.success)
         return rt_option_none();
     return rt_option_some_f64(pr.value);
@@ -1167,30 +1228,48 @@ void *rt_numformat_try_parse_integer(void *self, rt_string input) {
 ///        either end of @p input, returning the trimmed slice via @p out_start
 ///        and @p out_len.
 static void strip_currency_affixes(const rt_numformat_t *fmt,
-                                   const char *input, size_t input_len,
-                                   const char **out_start, size_t *out_len) {
+                                   const char *input,
+                                   size_t input_len,
+                                   const char **out_start,
+                                   size_t *out_len) {
     const char *symbol = fmt->data->currency.symbol;
     const char *code = fmt->data->currency.default_code;
     const char *p = input;
     size_t len = input_len;
 
     // Leading whitespace.
-    while (len > 0 && isspace((unsigned char)p[0])) { ++p; --len; }
+    while (len > 0 && isspace((unsigned char)p[0])) {
+        ++p;
+        --len;
+    }
 
     // Leading symbol / code.
     for (int attempt = 0; attempt < 2; ++attempt) {
         size_t adv = match_prefix(p, len, symbol);
-        if (adv) { p += adv; len -= adv; continue; }
+        if (adv) {
+            p += adv;
+            len -= adv;
+            continue;
+        }
         adv = match_prefix(p, len, code);
-        if (adv) { p += adv; len -= adv; continue; }
+        if (adv) {
+            p += adv;
+            len -= adv;
+            continue;
+        }
         break;
     }
 
     // Leading whitespace again.
-    while (len > 0 && isspace((unsigned char)p[0])) { ++p; --len; }
+    while (len > 0 && isspace((unsigned char)p[0])) {
+        ++p;
+        --len;
+    }
 
     // Trailing whitespace.
-    while (len > 0 && isspace((unsigned char)p[len - 1])) { --len; }
+    while (len > 0 && isspace((unsigned char)p[len - 1])) {
+        --len;
+    }
 
     // Trailing symbol / code.
     for (int attempt = 0; attempt < 2; ++attempt) {
@@ -1212,8 +1291,13 @@ static void strip_currency_affixes(const rt_numformat_t *fmt,
     }
 
     // Re-trim whitespace around inner content.
-    while (len > 0 && isspace((unsigned char)p[0])) { ++p; --len; }
-    while (len > 0 && isspace((unsigned char)p[len - 1])) { --len; }
+    while (len > 0 && isspace((unsigned char)p[0])) {
+        ++p;
+        --len;
+    }
+    while (len > 0 && isspace((unsigned char)p[len - 1])) {
+        --len;
+    }
 
     *out_start = p;
     *out_len = len;
@@ -1223,8 +1307,10 @@ static void strip_currency_affixes(const rt_numformat_t *fmt,
 ///        @p symbol, other bytes copied as-is.
 /// @return 1 on success; 0 if the "{n}" number placeholder is encountered
 ///         (the caller splits the pattern on "{n}", so it must not appear here).
-static int expand_currency_pattern_affix(rt_string_builder *sb, const char *p,
-                                         size_t len, const char *symbol) {
+static int expand_currency_pattern_affix(rt_string_builder *sb,
+                                         const char *p,
+                                         size_t len,
+                                         const char *symbol) {
     for (size_t i = 0; i < len;) {
         if (i + 3 <= len && p[i] == '{' && p[i + 1] == 's' && p[i + 2] == '}') {
             if (symbol)
@@ -1245,9 +1331,12 @@ static int expand_currency_pattern_affix(rt_string_builder *sb, const char *p,
 ///          checks @p input starts/ends with them; on success returns the
 ///          interior number slice via @p out_start / @p out_len.
 /// @return 1 on match, 0 if the pattern lacks "{n}" or the affixes don't match.
-static int match_currency_pattern(const char *pattern, const char *symbol,
-                                  const char *input, size_t input_len,
-                                  const char **out_start, size_t *out_len) {
+static int match_currency_pattern(const char *pattern,
+                                  const char *symbol,
+                                  const char *input,
+                                  size_t input_len,
+                                  const char **out_start,
+                                  size_t *out_len) {
     if (!pattern)
         return 0;
     const char *nph = strstr(pattern, "{n}");
@@ -1263,8 +1352,7 @@ static int match_currency_pattern(const char *pattern, const char *symbol,
         rt_sb_free(&suf);
         return 0;
     }
-    if (input_len < pre.len + suf.len ||
-        (pre.len && memcmp(input, pre.data, pre.len) != 0) ||
+    if (input_len < pre.len + suf.len || (pre.len && memcmp(input, pre.data, pre.len) != 0) ||
         (suf.len && memcmp(input + input_len - suf.len, suf.data, suf.len) != 0)) {
         rt_sb_free(&pre);
         rt_sb_free(&suf);
@@ -1283,36 +1371,52 @@ static int match_currency_pattern(const char *pattern, const char *symbol,
 ///          currency symbol/ISO-code affixes. Yields the number text via
 ///          @p out_start / @p out_len for a downstream numeric parse.
 static int extract_currency_number(const rt_numformat_t *fmt,
-                                   const char *input, size_t input_len,
-                                   const char **out_start, size_t *out_len,
+                                   const char *input,
+                                   size_t input_len,
+                                   const char **out_start,
+                                   size_t *out_len,
                                    int *out_negative) {
     const char *p = input;
     size_t len = input_len;
-    while (len > 0 && isspace((unsigned char)p[0])) { ++p; --len; }
-    while (len > 0 && isspace((unsigned char)p[len - 1])) { --len; }
+    while (len > 0 && isspace((unsigned char)p[0])) {
+        ++p;
+        --len;
+    }
+    while (len > 0 && isspace((unsigned char)p[len - 1])) {
+        --len;
+    }
 
     int accounting = 0;
     if (len >= 2 && p[0] == '(' && p[len - 1] == ')') {
         accounting = 1;
         ++p;
         len -= 2;
-        while (len > 0 && isspace((unsigned char)p[0])) { ++p; --len; }
-        while (len > 0 && isspace((unsigned char)p[len - 1])) { --len; }
+        while (len > 0 && isspace((unsigned char)p[0])) {
+            ++p;
+            --len;
+        }
+        while (len > 0 && isspace((unsigned char)p[len - 1])) {
+            --len;
+        }
     }
 
     const char *inner = NULL;
     size_t inner_len = 0;
     const char *symbol = fmt->data->currency.symbol;
     const char *code = fmt->data->currency.default_code;
-    if (match_currency_pattern(fmt->data->currency.pattern_negative, symbol, p, len, &inner, &inner_len) ||
-        match_currency_pattern(fmt->data->currency.pattern_negative, code, p, len, &inner, &inner_len)) {
+    if (match_currency_pattern(
+            fmt->data->currency.pattern_negative, symbol, p, len, &inner, &inner_len) ||
+        match_currency_pattern(
+            fmt->data->currency.pattern_negative, code, p, len, &inner, &inner_len)) {
         *out_start = inner;
         *out_len = inner_len;
         *out_negative = 1;
         return 1;
     }
-    if (match_currency_pattern(fmt->data->currency.pattern_positive, symbol, p, len, &inner, &inner_len) ||
-        match_currency_pattern(fmt->data->currency.pattern_positive, code, p, len, &inner, &inner_len)) {
+    if (match_currency_pattern(
+            fmt->data->currency.pattern_positive, symbol, p, len, &inner, &inner_len) ||
+        match_currency_pattern(
+            fmt->data->currency.pattern_positive, code, p, len, &inner, &inner_len)) {
         *out_start = inner;
         *out_len = inner_len;
         *out_negative = accounting;
@@ -1335,8 +1439,10 @@ double rt_numformat_parse_currency(void *self, rt_string input) {
     size_t inner_len = 0;
     int negative_pattern = 0;
     extract_currency_number(fmt, cs, (size_t)len, &inner, &inner_len, &negative_pattern);
-    parse_result_t pr = parse_decimal(inner, inner_len, fmt,
-                                       /*allow_fraction=*/1);
+    parse_result_t pr = parse_decimal(inner,
+                                      inner_len,
+                                      fmt,
+                                      /*allow_fraction=*/1);
     if (!pr.success) {
         rt_trap("Viper.Localization.NumberFormat: cannot parse input as currency");
         return 0;
@@ -1354,8 +1460,10 @@ void *rt_numformat_try_parse_currency(void *self, rt_string input) {
     size_t inner_len = 0;
     int negative_pattern = 0;
     extract_currency_number(fmt, cs, (size_t)len, &inner, &inner_len, &negative_pattern);
-    parse_result_t pr = parse_decimal(inner, inner_len, fmt,
-                                       /*allow_fraction=*/1);
+    parse_result_t pr = parse_decimal(inner,
+                                      inner_len,
+                                      fmt,
+                                      /*allow_fraction=*/1);
     if (!pr.success)
         return rt_option_none();
     return rt_option_some_f64(negative_pattern && pr.value > 0 ? -pr.value : pr.value);

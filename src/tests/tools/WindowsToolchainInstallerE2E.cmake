@@ -66,9 +66,9 @@ endif ()
 
 if (EXISTS "${_uninstaller}")
     execute_process(COMMAND "${_uninstaller}" /quiet /norestart
-                    RESULT_VARIABLE _pre_uninstall_rv
-                    OUTPUT_VARIABLE _pre_uninstall_out
-                    ERROR_VARIABLE _pre_uninstall_err)
+            RESULT_VARIABLE _pre_uninstall_rv
+            OUTPUT_VARIABLE _pre_uninstall_out
+            ERROR_VARIABLE _pre_uninstall_err)
     if (NOT _pre_uninstall_rv EQUAL 0)
         message(FATAL_ERROR
                 "pre-existing Viper uninstall failed\nstdout:\n${_pre_uninstall_out}\nstderr:\n${_pre_uninstall_err}")
@@ -76,9 +76,9 @@ if (EXISTS "${_uninstaller}")
 endif ()
 
 execute_process(COMMAND "${_installer}" /quiet /norestart
-                RESULT_VARIABLE _install_rv
-                OUTPUT_VARIABLE _install_out
-                ERROR_VARIABLE _install_err)
+        RESULT_VARIABLE _install_rv
+        OUTPUT_VARIABLE _install_out
+        ERROR_VARIABLE _install_err)
 if (NOT _install_rv EQUAL 0)
     message(FATAL_ERROR
             "per-user Viper installer failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
@@ -88,9 +88,9 @@ if (NOT EXISTS "${_installed_viper}")
 endif ()
 
 execute_process(COMMAND "${_installed_viper}" --version
-                RESULT_VARIABLE _version_rv
-                OUTPUT_VARIABLE _version_out
-                ERROR_VARIABLE _version_err)
+        RESULT_VARIABLE _version_rv
+        OUTPUT_VARIABLE _version_out
+        ERROR_VARIABLE _version_err)
 if (NOT _version_rv EQUAL 0)
     message(FATAL_ERROR
             "installed viper --version failed\nstdout:\n${_version_out}\nstderr:\n${_version_err}")
@@ -98,10 +98,10 @@ endif ()
 
 set(_path_probe_ps [=[$machine=[Environment]::GetEnvironmentVariable('Path','Machine'); $user=[Environment]::GetEnvironmentVariable('Path','User'); $env:Path=($machine + ';' + $user); viper --version]=])
 execute_process(COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
-                        -Command "${_path_probe_ps}"
-                RESULT_VARIABLE _path_rv
-                OUTPUT_VARIABLE _path_out
-                ERROR_VARIABLE _path_err)
+        -Command "${_path_probe_ps}"
+        RESULT_VARIABLE _path_rv
+        OUTPUT_VARIABLE _path_out
+        ERROR_VARIABLE _path_err)
 if (NOT _path_rv EQUAL 0)
     message(FATAL_ERROR
             "installed viper was not discoverable through a fresh registry PATH projection\nstdout:\n${_path_out}\nstderr:\n${_path_err}")
@@ -110,9 +110,9 @@ endif ()
 set(_run_bas "${_tmp_root}/installer-run-smoke.bas")
 file(WRITE "${_run_bas}" "10 PRINT \"INSTALLER-RUN-SMOKE\"\n")
 execute_process(COMMAND "${_installed_viper}" run "${_run_bas}"
-                RESULT_VARIABLE _run_rv
-                OUTPUT_VARIABLE _run_out
-                ERROR_VARIABLE _run_err)
+        RESULT_VARIABLE _run_rv
+        OUTPUT_VARIABLE _run_out
+        ERROR_VARIABLE _run_err)
 if (NOT _run_rv EQUAL 0)
     message(FATAL_ERROR
             "installed viper run failed\nstdout:\n${_run_out}\nstderr:\n${_run_err}")
@@ -156,10 +156,10 @@ if (NOT EXISTS "${_installed_exe}")
     message(FATAL_ERROR "installed viper did not produce native smoke executable: ${_installed_exe}")
 endif ()
 execute_process(COMMAND "${_installed_exe}"
-                WORKING_DIRECTORY "${_tmp_root}"
-                RESULT_VARIABLE _native_rv
-                OUTPUT_VARIABLE _native_out
-                ERROR_VARIABLE _native_err)
+        WORKING_DIRECTORY "${_tmp_root}"
+        RESULT_VARIABLE _native_rv
+        OUTPUT_VARIABLE _native_out
+        ERROR_VARIABLE _native_err)
 if (NOT _native_rv EQUAL 0)
     message(FATAL_ERROR
             "native executable built by installed viper failed\nstdout:\n${_native_out}\nstderr:\n${_native_err}")
@@ -220,9 +220,9 @@ if (NOT EXISTS "${_uninstaller}")
     message(FATAL_ERROR "installer did not install uninstall.exe: ${_uninstaller}")
 endif ()
 execute_process(COMMAND "${_uninstaller}" /quiet /norestart
-                RESULT_VARIABLE _uninstall_rv
-                OUTPUT_VARIABLE _uninstall_out
-                ERROR_VARIABLE _uninstall_err)
+        RESULT_VARIABLE _uninstall_rv
+        OUTPUT_VARIABLE _uninstall_out
+        ERROR_VARIABLE _uninstall_err)
 if (NOT _uninstall_rv EQUAL 0)
     message(FATAL_ERROR
             "per-user Viper uninstall failed\nstdout:\n${_uninstall_out}\nstderr:\n${_uninstall_err}")

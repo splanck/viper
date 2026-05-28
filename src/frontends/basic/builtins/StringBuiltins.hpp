@@ -134,13 +134,13 @@ class LowerCtx {
     /// @brief Refresh @ref argValues_ entry @p idx from the cached lowered RVal.
     void syncValue(std::size_t idx) noexcept;
 
-    Lowerer &lowerer_;                ///< Borrowed lowering driver.
-    const BuiltinCallExpr &call_;     ///< Borrowed builtin call being lowered.
+    Lowerer &lowerer_;            ///< Borrowed lowering driver.
+    const BuiltinCallExpr &call_; ///< Borrowed builtin call being lowered.
     std::vector<std::optional<Lowerer::RVal>> loweredArgs_; ///< Per-arg lazily lowered values.
-    std::vector<Value> argValues_;    ///< Materialized IL values mirroring loweredArgs_.
+    std::vector<Value> argValues_; ///< Materialized IL values mirroring loweredArgs_.
     std::vector<il::support::SourceLoc> argLocs_; ///< Per-argument source locations.
-    std::vector<bool> hasArg_;        ///< Presence flag per argument slot.
-    Type resultType_{Type(Type::Kind::I64)}; ///< Handler-selected result type (default i64).
+    std::vector<bool> hasArg_;                    ///< Presence flag per argument slot.
+    Type resultType_{Type(Type::Kind::I64)};      ///< Handler-selected result type (default i64).
 };
 
 } // namespace il::frontends::basic::builtins

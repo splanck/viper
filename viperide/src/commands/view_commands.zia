@@ -160,17 +160,19 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     }
 
     if appSettings.codeFolding {
-        engine.editor.SetAutoFoldDetection(1);
-    } else {
+        engine.editor.SetShowFoldGutter(1);
         engine.editor.SetAutoFoldDetection(0);
+    } else {
+        engine.editor.SetShowFoldGutter(0);
+        engine.editor.SetAutoFoldDetection(0);
+        engine.editor.ClearFoldRegions();
     }
 
     liveDiag.enabled = appSettings.autoCheckOnSave;
     if appSettings.autoCheckOnSave {
         liveDiag.invalidate();
     } else {
-        shell.diagListBox.Clear();
-        shell.HideProblemsPanel();
+        shell.ClearProblemsPanel();
         shell.minimap.ClearMarkers();
         engine.editor.ClearHighlights();
     }
@@ -243,7 +245,7 @@ func handleToggleTheme(appSettings: settings.SettingsManager) {
 func handleKeybindings(shell: app_shell.AppShell,
                        registry: command_registry.CommandRegistry) {
     if shell == null or registry == null { return; }
-    shell.outputListBox.Clear();
+    shell.BeginOutputRows();
     var conflictCount = registry.ShortcutConflictCount();
     if conflictCount == 0 {
         shell.outputListBox.AddItem("Keyboard Shortcuts - no conflicts");
@@ -267,17 +269,25 @@ func handleKeybindings(shell: app_shell.AppShell,
         }
         i = i + 1;
     }
-    shell.outputListBox.SetVisible(1);
     shell.ShowOutputPanel();
     shell.SetStatusLeft("Keyboard shortcuts");
 }
 
 func handleCopyToolSelection(shell: app_shell.AppShell) {
     if shell.CopySelectedToolRow() {
-        GUI.Toast.Success("Copied selected row");
-        shell.SetStatusLeft("Copied selected tool row");
+        GUI.Toast.Success("Copied selected rows");
+        shell.SetStatusLeft("Copied selected tool rows");
     } else {
         GUI.Toast.Info("No tool row selected");
+    }
+}
+
+func handleCopyOutputText(shell: app_shell.AppShell) {
+    if shell.CopyOutputText() {
+        GUI.Toast.Success("Copied output text");
+        shell.SetStatusLeft("Copied full output");
+    } else {
+        GUI.Toast.Info("No output to copy");
     }
 }
 
@@ -304,9 +314,17 @@ func handleToggleOutputWrap(shell: app_shell.AppShell) {
     }
 }
 
+func handleToggleOutputAutoScroll(shell: app_shell.AppShell) {
+    if shell.ToggleOutputAutoScroll() {
+        shell.SetStatusLeft("Output auto-scroll enabled");
+    } else {
+        shell.SetStatusLeft("Output auto-scroll locked");
+    }
+}
+
 func handleRecentFiles(shell: app_shell.AppShell,
                        sessionMgr: session.SessionManager) {
-    shell.outputListBox.Clear();
+    shell.BeginOutputRows();
     var count = sessionMgr.RecentFileCount();
     if count <= 0 {
         shell.outputListBox.AddItem("Recent Files - none");

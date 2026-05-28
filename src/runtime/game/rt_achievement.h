@@ -21,8 +21,8 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include <stdint.h>
 #include "rt_string.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {

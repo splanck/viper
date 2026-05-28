@@ -14,9 +14,9 @@
   "nodes": [
     {
       "name": "node",
-      "position": [0.000000, 0.000000, 0.000000],
-      "rotation": [0.000000, 0.000000, 0.000000, 1.000000],
-      "scale": [1.000000, 1.000000, 1.000000],
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
       "visible": true,
       "hasMesh": true,
       "hasMaterial": true,

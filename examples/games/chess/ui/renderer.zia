@@ -1,8 +1,8 @@
 module renderer;
 
 bind Viper.Graphics;
-bind Viper.Time;
 bind Color = Viper.Graphics.Color;
+bind Clock = Viper.Time.Clock;
 bind "../core/config";
 bind "../core/board";
 bind "./pieces";
@@ -100,28 +100,23 @@ class BoardRenderer {
         return r * 8 + f;
     }
 
-    /// @brief Vertical-gradient background plus subtle radial accents.
+    /// @brief Vertical-gradient background with restrained top/bottom bands.
     expose func drawGameBackdrop() {
         canvas.GradientV(0, 0, WIN_W, WIN_H, theme.BG_TOP, theme.BG_BOTTOM);
-        canvas.BoxAlpha(0, 0, WIN_W, WIN_H / 2, theme.BG_NOISE, 36);
-
-        var boardFrame = layout.boardFrameRect();
-        var panel = layout.sidePanelRect();
-        canvas.EllipseAlpha(boardFrame.x + boardFrame.w / 2, boardFrame.y + boardFrame.h / 2,
-                            360, 270, theme.ACCENT_GOLD_SOFT, 18);
-        canvas.EllipseAlpha(panel.x + panel.w / 2, panel.y + 120,
-                            280, 180, theme.ACCENT_BLUE, 18);
+        canvas.BoxAlpha(0, 0, WIN_W, 96, theme.BG_NOISE, 38);
+        canvas.BoxAlpha(0, WIN_H - 110, WIN_W, 110, 0x000000, 28);
+        canvas.Line(0, 92, WIN_W, 92, theme.CARD_BORDER_SOFT);
+        canvas.Line(0, WIN_H - 110, WIN_W, WIN_H - 110, theme.CARD_BORDER_SOFT);
     }
 
-    /// @brief Background for the main menu — gradient + accent ellipses
+    /// @brief Background for the main menu — gradient bands
     ///        + a small chess-board preview off to the left of the card.
     expose func drawMenuBackdrop() {
         canvas.GradientV(0, 0, WIN_W, WIN_H, theme.BG_TOP, theme.BG_BOTTOM);
+        canvas.BoxAlpha(0, 0, WIN_W, 108, theme.BG_NOISE, 34);
+        canvas.BoxAlpha(0, WIN_H - 128, WIN_W, 128, 0x000000, 24);
 
         var card = layout.menuCardRect();
-        canvas.EllipseAlpha(card.x - 80, card.y + 100, 220, 180, theme.ACCENT_GOLD_SOFT, 26);
-        canvas.EllipseAlpha(card.x + card.w + 50, card.y + 250, 240, 220, theme.ACCENT_BLUE, 24);
-
         drawMenuPreviewBoard(card.x - 210, card.y + 54);
     }
 
@@ -153,7 +148,8 @@ class BoardRenderer {
         var fileLabels = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
         canvas.BoxAlpha(frame.x + 10, frame.y + 14, frame.w, frame.h, 0x000000, 96);
-        canvas.GradientV(frame.x, frame.y, frame.w, frame.h, theme.BOARD_FRAME_OUT, theme.BOARD_FRAME_IN);
+        canvas.RoundBox(frame.x, frame.y, frame.w, frame.h, 14, theme.BOARD_FRAME_OUT);
+        canvas.BoxAlpha(frame.x + 3, frame.y + 3, frame.w - 6, 44, theme.BOARD_FRAME_IN, 82);
         canvas.RoundFrame(frame.x, frame.y, frame.w, frame.h, 14, theme.ACCENT_GOLD_SOFT);
         canvas.RoundFrame(frame.x + 2, frame.y + 2, frame.w - 4, frame.h - 4, 12, theme.BOARD_FRAME_IN);
 
@@ -342,8 +338,11 @@ class BoardRenderer {
         widgets.drawButton(canvas, drawBtn, "DRAW", layout.contains(drawBtn, mx, my), mouseDown and layout.contains(drawBtn, mx, my), false, false, false);
         widgets.drawButton(canvas, resignBtn, "RESIGN", layout.contains(resignBtn, mx, my), mouseDown and layout.contains(resignBtn, mx, my), false, false, true);
 
-        theme.drawTextScaled(canvas, WIN_W - 360, foot.y + 18, statusText, 1, theme.TEXT_SECONDARY);
-        theme.drawTextScaled(canvas, WIN_W - 164, foot.y + 18, "N new  ESC menu", 1, theme.TEXT_MUTED);
+        var statusX = resignBtn.x + resignBtn.w + 22;
+        var hintText = "Ctrl+Z undo";
+        var hintW = theme.textWidth(hintText, 1);
+        theme.drawTextClipped(canvas, statusX, foot.y + 18, WIN_W - statusX - hintW - 54, statusText, 1, theme.TEXT_SECONDARY);
+        theme.drawTextRightClipped(canvas, WIN_W - hintW - 28, foot.y + 18, hintW, hintText, 1, theme.TEXT_MUTED);
     }
 
     /// @brief Right-side info panel: black card / move log / white card / info card.
@@ -399,48 +398,52 @@ class BoardRenderer {
         if checked { statusCol = theme.ACCENT_RED; }
         if thinking { statusCol = theme.ACCENT_BLUE; }
 
-        var tick = Viper.Time.GetTickCount();
+        var tick = Clock.Ticks();
         var dotCol = statusCol;
         if active {
             dotCol = theme.pulseColor(statusCol, 18, tick, 1200);
         }
 
         canvas.Disc(card.x + 26, card.y + 28, 8, dotCol);
-        theme.drawTextScaled(canvas, card.x + 44, card.y + 18, sideName, 2, theme.TEXT_PRIMARY);
-        theme.drawTextRight(canvas, card.x + 18, card.y + 18, card.w - 36, formatClock(timeSec), 2, theme.ACCENT_CREAM);
+        theme.drawTextClipped(canvas, card.x + 44, card.y + 18, card.w / 2, sideName, 2, theme.TEXT_PRIMARY);
+        theme.drawTextRightClipped(canvas, card.x + card.w - 154, card.y + 18, 136, formatClock(timeSec), 2, theme.ACCENT_CREAM);
 
         var badge = "";
         if humanSide { badge = "HUMAN"; } else { badge = "ENGINE"; }
         if thinking { badge = "THINKING"; }
         if checked { badge = "CHECK"; }
 
-        var badgeRect = layout.rect(card.x + 18, card.y + 54, 108, 26);
+        var badgeRect = layout.rect(card.x + 18, card.y + 54, 116, 26);
         widgets.drawBadge(canvas, badgeRect, badge, statusCol);
 
         if materialLead > 0 {
-            theme.drawTextScaled(canvas, card.x + card.w - 94, card.y + 60, "+" + Int(materialLead / 100), 2, theme.ACCENT_GOLD);
+            theme.drawTextRightClipped(canvas, card.x + card.w - 96, card.y + 60, 78, "+" + Int(materialLead / 100), 2, theme.ACCENT_GOLD);
         }
 
-        widgets.drawDivider(canvas, card.x + 18, card.y + 90, card.w - 36);
-        theme.drawTextScaled(canvas, card.x + 18, card.y + 98, "CAPTURED", 1, theme.TEXT_MUTED);
-        drawCapturedPieces(card.x + 108, card.y + 92, captures, !whiteCard);
+        widgets.drawDivider(canvas, card.x + 18, card.y + 88, card.w - 36);
+        theme.drawTextScaled(canvas, card.x + 18, card.y + 102, "CAPTURED", 1, theme.TEXT_MUTED);
+        drawCapturedPieces(card.x + 118, card.y + 95, captures, !whiteCard, card.w - 136);
     }
 
-    hide func drawCapturedPieces(x: Integer, y: Integer, captures: List[Integer], capturedAreWhite: Boolean) {
-        var col = 0;
-        var row = 0;
+    hide func drawCapturedPieces(x: Integer, y: Integer, captures: List[Integer], capturedAreWhite: Boolean, maxW: Integer) {
+        var iconStep = 22;
+        var maxIcons = maxW / iconStep;
+        if maxIcons <= 0 { return; }
+
+        canvas.SetClipRect(x, y, maxW, iconStep);
         for i in 0..captures.length() {
+            if i >= maxIcons {
+                canvas.ClearClipRect();
+                theme.drawTextScaled(canvas, x + maxW - 24, y + 7, "+" + Int(captures.length() - i), 1, theme.TEXT_MUTED);
+                return;
+            }
             var sprite = pieces.getMiniPiece(captures.get(i), capturedAreWhite);
             if sprite == null { continue; }
-            var px = x + col * 30;
-            var py = y + row * 30;
+            var px = x + i * iconStep;
+            var py = y;
             canvas.BlitAlpha(px, py, sprite);
-            col = col + 1;
-            if col >= 9 {
-                col = 0;
-                row = row + 1;
-            }
         }
+        canvas.ClearClipRect();
     }
 
     hide func drawMoveCard(card: Rect, history: List[String]) {
@@ -454,8 +457,9 @@ class BoardRenderer {
         theme.drawTextScaled(canvas, list.x + 186, list.y + 10, "Black", 1, theme.TEXT_MUTED);
 
         var total = history.length();
-        var visibleRows = 10;
-        var rowH = 20;
+        var rowH = 18;
+        var visibleRows = (list.h - 42) / rowH;
+        if visibleRows < 1 { visibleRows = 1; }
         var start = total - visibleRows * 2;
         if start < 0 { start = 0; }
         if start % 2 != 0 { start = start - 1; }
@@ -473,9 +477,9 @@ class BoardRenderer {
                 canvas.BoxAlpha(list.x + 6, rowY - 2, list.w - 12, rowH, theme.ACCENT_GOLD_SOFT, 48);
             }
 
-            theme.drawTextScaled(canvas, list.x + 10, rowY, Int(moveNum) + ".", 1, theme.TEXT_MUTED);
-            theme.drawTextScaled(canvas, list.x + 58, rowY, whiteMove, 1, theme.TEXT_PRIMARY);
-            theme.drawTextScaled(canvas, list.x + 186, rowY, blackMove, 1, theme.TEXT_PRIMARY);
+            theme.drawTextClipped(canvas, list.x + 10, rowY, 42, Int(moveNum) + ".", 1, theme.TEXT_MUTED);
+            theme.drawTextClipped(canvas, list.x + 58, rowY, 118, whiteMove, 1, theme.TEXT_PRIMARY);
+            theme.drawTextClipped(canvas, list.x + 186, rowY, list.w - 204, blackMove, 1, theme.TEXT_PRIMARY);
 
             i = i + 2;
             row = row + 1;
@@ -485,23 +489,23 @@ class BoardRenderer {
 
     hide func drawInfoCard(card: Rect, gameMode: Integer, aiDepth: Integer, playerIsWhite: Boolean) {
         widgets.drawSectionTitle(canvas, layout.rect(card.x + 18, card.y + 18, 0, 0), "MATCH");
-        theme.drawTextScaled(canvas, card.x + 18, card.y + 46, "MODE", 1, theme.TEXT_MUTED);
-        theme.drawTextScaled(canvas, card.x + 110, card.y + 46, modeVerbose(gameMode), 1, theme.TEXT_PRIMARY);
+        theme.drawTextScaled(canvas, card.x + 18, card.y + 42, "MODE", 1, theme.TEXT_MUTED);
+        theme.drawTextClipped(canvas, card.x + 110, card.y + 42, card.w - 128, modeVerbose(gameMode), 1, theme.TEXT_PRIMARY);
 
-        theme.drawTextScaled(canvas, card.x + 18, card.y + 68, "LEVEL", 1, theme.TEXT_MUTED);
-        theme.drawTextScaled(canvas, card.x + 110, card.y + 68, difficultyString(aiDepth), 1, theme.TEXT_PRIMARY);
+        theme.drawTextScaled(canvas, card.x + 18, card.y + 62, "LEVEL", 1, theme.TEXT_MUTED);
+        theme.drawTextClipped(canvas, card.x + 110, card.y + 62, card.w - 128, difficultyString(aiDepth), 1, theme.TEXT_PRIMARY);
 
         if gameMode == MODE_PVC {
-            theme.drawTextScaled(canvas, card.x + 18, card.y + 90, "YOU", 1, theme.TEXT_MUTED);
+            theme.drawTextScaled(canvas, card.x + 18, card.y + 82, "YOU", 1, theme.TEXT_MUTED);
             if playerIsWhite {
-                theme.drawTextScaled(canvas, card.x + 110, card.y + 90, "WHITE", 1, theme.TEXT_PRIMARY);
+                theme.drawTextClipped(canvas, card.x + 110, card.y + 82, card.w - 128, "WHITE", 1, theme.TEXT_PRIMARY);
             } else {
-                theme.drawTextScaled(canvas, card.x + 110, card.y + 90, "BLACK", 1, theme.TEXT_PRIMARY);
+                theme.drawTextClipped(canvas, card.x + 110, card.y + 82, card.w - 128, "BLACK", 1, theme.TEXT_PRIMARY);
             }
         }
 
-        widgets.drawDivider(canvas, card.x + 18, card.y + card.h - 42, card.w - 36);
-        theme.drawTextScaled(canvas, card.x + 18, card.y + card.h - 28, "Drag pieces or click source and destination.", 1, theme.TEXT_MUTED);
+        widgets.drawDivider(canvas, card.x + 18, card.y + card.h - 20, card.w - 36);
+        theme.drawTextClipped(canvas, card.x + 18, card.y + card.h - 10, card.w - 36, "Click or drag pieces.", 1, theme.TEXT_MUTED);
     }
 
     /// @brief Modal pawn-promotion dialog with four piece choices.
@@ -509,8 +513,8 @@ class BoardRenderer {
         canvas.BoxAlpha(0, 0, WIN_W, WIN_H, theme.SCRIM, 165);
         var dialog = layout.promoDialogRect();
         widgets.drawCard(canvas, dialog, theme.ACCENT_GOLD, true);
-        theme.drawTextCentered(canvas, dialog.x, dialog.y + 18, dialog.w, "PROMOTE PAWN", 2, theme.ACCENT_GOLD);
-        theme.drawTextCentered(canvas, dialog.x, dialog.y + 52, dialog.w, "Choose a piece", 1, theme.TEXT_SECONDARY);
+        theme.drawTextCenteredClipped(canvas, dialog.x + 18, dialog.y + 18, dialog.w - 36, "PROMOTE PAWN", 2, theme.ACCENT_GOLD);
+        theme.drawTextCenteredClipped(canvas, dialog.x + 18, dialog.y + 52, dialog.w - 36, "Choose a piece", 1, theme.TEXT_SECONDARY);
 
         var promoTypes = [QUEEN, ROOK, BISHOP, KNIGHT];
         for i in 0..4 {
@@ -520,7 +524,7 @@ class BoardRenderer {
             if sprite != null {
                 canvas.BlitAlpha(tile.x + (tile.w - PIECE_SZ) / 2, tile.y + 8, sprite);
             }
-            theme.drawTextCentered(canvas, tile.x, tile.y + 66, tile.w, promoName(promoTypes.get(i)), 1, theme.TEXT_SECONDARY);
+            theme.drawTextCenteredClipped(canvas, tile.x + 4, tile.y + 66, tile.w - 8, promoName(promoTypes.get(i)), 1, theme.TEXT_SECONDARY);
         }
     }
 
@@ -534,10 +538,10 @@ class BoardRenderer {
 
         theme.drawTextScaled(canvas, card.x + 42, card.y + 30, "VIPER", 2, theme.TEXT_MUTED);
         theme.drawTextScaled(canvas, card.x + 42, card.y + 56, "CHESS", 4, theme.ACCENT_GOLD);
-        theme.drawTextScaled(canvas, card.x + 42, card.y + 104,
-                             "A cleaner, richer native canvas presentation for the Zia chess demo.",
-                             1,
-                             theme.TEXT_SECONDARY);
+        theme.drawTextClipped(canvas, card.x + 42, card.y + 104, card.w - 84,
+                              "Native Zia chess with local and engine play.",
+                              1,
+                              theme.TEXT_SECONDARY);
 
         theme.drawTextScaled(canvas, card.x + 42, card.y + 150, "GAME MODE", 1, theme.TEXT_MUTED);
         widgets.drawSegmentButton(canvas, layout.modeButtonRect(0), "PVP",
@@ -578,7 +582,7 @@ class BoardRenderer {
                            false,
                            true,
                            false);
-        theme.drawTextCentered(canvas, card.x, card.y + 486, card.w, "Drag to move pieces. N starts a new game. ESC returns here.", 1, theme.TEXT_MUTED);
+        theme.drawTextCenteredClipped(canvas, card.x + 42, card.y + 486, card.w - 84, "Press Enter to start.", 1, theme.TEXT_MUTED);
     }
 
     /// @brief Modal game-over overlay with reason + winner + NEW/MENU.
@@ -587,8 +591,8 @@ class BoardRenderer {
         var dialog = layout.gameOverDialogRect();
         widgets.drawCard(canvas, dialog, theme.ACCENT_GOLD, true);
 
-        theme.drawTextCentered(canvas, dialog.x, dialog.y + 26, dialog.w, winnerText, 3, theme.ACCENT_GOLD);
-        theme.drawTextCentered(canvas, dialog.x, dialog.y + 88, dialog.w, reason, 1, theme.TEXT_SECONDARY);
+        theme.drawTextCenteredClipped(canvas, dialog.x + 24, dialog.y + 26, dialog.w - 48, winnerText, 3, theme.ACCENT_GOLD);
+        theme.drawTextCenteredClipped(canvas, dialog.x + 24, dialog.y + 88, dialog.w - 48, reason, 1, theme.TEXT_SECONDARY);
 
         widgets.drawButton(canvas, layout.gameOverNewRect(), "NEW GAME",
                            layout.contains(layout.gameOverNewRect(), mx, my),

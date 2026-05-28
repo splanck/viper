@@ -135,9 +135,9 @@ static bool emitSubWidthCheckedBinary(MFunction &mf,
     const std::string trapLabel = ".Ltrap_subwidth_ovf_" + mf.name + "_" +
                                   std::to_string(mf.blocks.size()) + "_" +
                                   std::to_string(out.instrs.size());
-    out.instrs.push_back(MInstr{
-        MOpcode::CmpRR,
-        {MOperand::vregOp(RegClass::GPR, narrowed), MOperand::vregOp(RegClass::GPR, dst)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::CmpRR,
+               {MOperand::vregOp(RegClass::GPR, narrowed), MOperand::vregOp(RegClass::GPR, dst)}});
     out.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
 
@@ -199,8 +199,8 @@ static bool cbrConsumesTemp(const il::core::BasicBlock &bb, unsigned tempId) {
     if (bb.instructions.empty())
         return false;
     const auto &term = bb.instructions.back();
-    return term.op == Opcode::CBr && !term.operands.empty() && term.operands[0].kind == Value::Kind::Temp &&
-           term.operands[0].id == tempId;
+    return term.op == Opcode::CBr && !term.operands.empty() &&
+           term.operands[0].kind == Value::Kind::Temp && term.operands[0].id == tempId;
 }
 
 /// @brief Counter for generating unique trap labels within a function.
@@ -245,9 +245,8 @@ static void spillEntryBlockParams(const il::core::Function &fn,
     for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi) {
         const auto &param = bbIn.params[pi];
         const auto &loc = layout.locations[pi];
-        const RegClass cls = (loc.cls == viper::codegen::common::CallArgClass::FPR)
-                                 ? RegClass::FPR
-                                 : RegClass::GPR;
+        const RegClass cls =
+            (loc.cls == viper::codegen::common::CallArgClass::FPR) ? RegClass::FPR : RegClass::GPR;
 
         // Use param.id (not pi) for the spill key so it matches LivenessAnalysis's
         // cross-block spill keys — otherwise entry-block and later-block reloads
@@ -256,39 +255,36 @@ static void spillEntryBlockParams(const il::core::Function &fn,
         funcParamSpillOffset[param.id] = spillOffset;
 
         if (loc.inRegister) {
-            const PhysReg src = (cls == RegClass::FPR)
-                                    ? ti.f64ArgOrder[loc.regIndex]
-                                    : ti.intArgOrder[loc.regIndex];
-            const MOpcode storeOpc = (cls == RegClass::FPR) ? MOpcode::StrFprFpImm
-                                                            : MOpcode::StrRegFpImm;
-            out.instrs.push_back(MInstr{
-                storeOpc, {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
+            const PhysReg src = (cls == RegClass::FPR) ? ti.f64ArgOrder[loc.regIndex]
+                                                       : ti.intArgOrder[loc.regIndex];
+            const MOpcode storeOpc =
+                (cls == RegClass::FPR) ? MOpcode::StrFprFpImm : MOpcode::StrRegFpImm;
+            out.instrs.push_back(
+                MInstr{storeOpc, {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
         } else {
             // Stack parameter: caller placed it at [FP + 16 + slotIdx * 8] after
             // our prologue (stp x29, x30, [sp, #-16]!; mov x29, sp). Round-trip
             // through a vreg so the allocator chooses a non-conflicting scratch.
             const int callerArgOffset = 16 + static_cast<int>(loc.stackSlotIndex) * 8;
             const uint16_t tmpVid = allocateNextVReg(nextVRegId);
-            const MOpcode loadOpc = (cls == RegClass::FPR) ? MOpcode::LdrFprFpImm
-                                                           : MOpcode::LdrRegFpImm;
-            const MOpcode storeOpc = (cls == RegClass::FPR) ? MOpcode::StrFprFpImm
-                                                            : MOpcode::StrRegFpImm;
-            out.instrs.push_back(MInstr{
-                loadOpc,
-                {MOperand::vregOp(cls, tmpVid), MOperand::immOp(callerArgOffset)}});
-            out.instrs.push_back(MInstr{
-                storeOpc,
-                {MOperand::vregOp(cls, tmpVid), MOperand::immOp(spillOffset)}});
+            const MOpcode loadOpc =
+                (cls == RegClass::FPR) ? MOpcode::LdrFprFpImm : MOpcode::LdrRegFpImm;
+            const MOpcode storeOpc =
+                (cls == RegClass::FPR) ? MOpcode::StrFprFpImm : MOpcode::StrRegFpImm;
+            out.instrs.push_back(
+                MInstr{loadOpc, {MOperand::vregOp(cls, tmpVid), MOperand::immOp(callerArgOffset)}});
+            out.instrs.push_back(
+                MInstr{storeOpc, {MOperand::vregOp(cls, tmpVid), MOperand::immOp(spillOffset)}});
         }
 
         // Reload from the spill slot into a fresh vreg for first use.
         const uint16_t vid = allocateNextVReg(nextVRegId);
         tempVReg[param.id] = vid;
         tempRegClass[param.id] = cls;
-        const MOpcode reloadOpc = (cls == RegClass::FPR) ? MOpcode::LdrFprFpImm
-                                                          : MOpcode::LdrRegFpImm;
-        out.instrs.push_back(MInstr{
-            reloadOpc, {MOperand::vregOp(cls, vid), MOperand::immOp(spillOffset)}});
+        const MOpcode reloadOpc =
+            (cls == RegClass::FPR) ? MOpcode::LdrFprFpImm : MOpcode::LdrRegFpImm;
+        out.instrs.push_back(
+            MInstr{reloadOpc, {MOperand::vregOp(cls, vid), MOperand::immOp(spillOffset)}});
     }
 }
 
@@ -345,9 +341,8 @@ static PhiAssignment allocatePhiSlots(const il::core::Function &fn, FrameBuilder
         for (const auto &param : bb.params) {
             const uint16_t id = allocatePhiVReg(phiNextId);
             ids.push_back(id);
-            const RegClass cls = (param.type.kind == il::core::Type::Kind::F64)
-                                     ? RegClass::FPR
-                                     : RegClass::GPR;
+            const RegClass cls =
+                (param.type.kind == il::core::Type::Kind::F64) ? RegClass::FPR : RegClass::GPR;
             classes.push_back(cls);
             spillOffsets.push_back(fb.ensureSpill(id));
         }
@@ -460,8 +455,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
             tempVReg[tempId] = vid;
             const int offset = spillIt->second;
             auto clsIt = tempRegClass.find(tempId);
-            const RegClass cls =
-                (clsIt != tempRegClass.end()) ? clsIt->second : RegClass::GPR;
+            const RegClass cls = (clsIt != tempRegClass.end()) ? clsIt->second : RegClass::GPR;
             if (cls == RegClass::FPR) {
                 bbOutFn().instrs.push_back(
                     MInstr{MOpcode::LdrFprFpImm,
@@ -477,8 +471,15 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
         // This ensures parameters are preserved across function calls within the entry block.
         // ABI registers (x0-x7, v0-v7) are caller-saved and will be clobbered by calls.
         if (bi == 0 && !bbIn.params.empty())
-            spillEntryBlockParams(fn, bbIn, *ti_, fb, bbOutFn(),
-                                  tempVReg, tempRegClass, funcParamSpillOffset, nextVRegId);
+            spillEntryBlockParams(fn,
+                                  bbIn,
+                                  *ti_,
+                                  fb,
+                                  bbOutFn(),
+                                  tempVReg,
+                                  tempRegClass,
+                                  funcParamSpillOffset,
+                                  nextVRegId);
 
         // Load block parameters from spill slots into fresh vregs at block entry.
         // The edge copies store values to these spill slots before branching here.
@@ -516,15 +517,13 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                     spillIt != liveness.crossBlockSpillOffset.end()) {
                     const int crossBlockOffset = spillIt->second;
                     if (cls == RegClass::FPR) {
-                        bbOutFn().instrs.push_back(
-                            MInstr{MOpcode::StrFprFpImm,
-                                   {MOperand::vregOp(RegClass::FPR, vid),
-                                    MOperand::immOp(crossBlockOffset)}});
+                        bbOutFn().instrs.push_back(MInstr{MOpcode::StrFprFpImm,
+                                                          {MOperand::vregOp(RegClass::FPR, vid),
+                                                           MOperand::immOp(crossBlockOffset)}});
                     } else {
-                        bbOutFn().instrs.push_back(
-                            MInstr{MOpcode::StrRegFpImm,
-                                   {MOperand::vregOp(RegClass::GPR, vid),
-                                    MOperand::immOp(crossBlockOffset)}});
+                        bbOutFn().instrs.push_back(MInstr{MOpcode::StrRegFpImm,
+                                                          {MOperand::vregOp(RegClass::GPR, vid),
+                                                           MOperand::immOp(crossBlockOffset)}});
                     }
                 }
             }
@@ -567,11 +566,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                             phiRegClass,
                             phiSpillOffset,
                             liveness.crossBlockSpillOffset,
-                                      liveness.tempDefBlock,
-                                      liveness.crossBlockTemps,
-                                      stringLiteralByteLengths_,
-                                      &knownVarArgNamedArgCounts_,
-                                      trapLabelCounter};
+                            liveness.tempDefBlock,
+                            liveness.crossBlockTemps,
+                            stringLiteralByteLengths_,
+                            &knownVarArgNamedArgCounts_,
+                            trapLabelCounter};
 
         for (const auto &ins : bbIn.instructions) {
             // Record instruction count so we can stamp source loc on new MInstrs.
@@ -654,8 +653,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                                                        rhs,
                                                        rcls)) {
                                 const bool fpBinary = binOp && isFloatingPointOp(ins.op);
-                                const bool fpCompare =
-                                    !binOp && isFloatingPointCompareOp(ins.op);
+                                const bool fpCompare = !binOp && isFloatingPointCompareOp(ins.op);
                                 if (fpBinary || fpCompare) {
                                     if (lcls != RegClass::FPR) {
                                         const uint16_t converted = allocateNextVReg(nextVRegId);
@@ -689,53 +687,55 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                                             mf, bbOutFn(), ins, dst, lhs, rhs, nextVRegId)) {
                                         // Width-aware checked arithmetic emitted above.
                                     } else {
-                                    // Check if we can use immediate form for this operation
-                                    const bool hasConstRHS =
-                                        ins.operands[1].kind == il::core::Value::Kind::ConstInt;
-                                    const bool isShift = (ins.op == il::core::Opcode::Shl ||
-                                                          ins.op == il::core::Opcode::LShr ||
-                                                          ins.op == il::core::Opcode::AShr);
-                                    const bool isAddSub = (ins.op == il::core::Opcode::Add ||
-                                                           ins.op == il::core::Opcode::IAddOvf ||
-                                                           ins.op == il::core::Opcode::Sub ||
-                                                           ins.op == il::core::Opcode::ISubOvf);
-                                    const bool isBitwise = (ins.op == il::core::Opcode::And ||
-                                                            ins.op == il::core::Opcode::Or ||
-                                                            ins.op == il::core::Opcode::Xor);
+                                        // Check if we can use immediate form for this operation
+                                        const bool hasConstRHS =
+                                            ins.operands[1].kind == il::core::Value::Kind::ConstInt;
+                                        const bool isShift = (ins.op == il::core::Opcode::Shl ||
+                                                              ins.op == il::core::Opcode::LShr ||
+                                                              ins.op == il::core::Opcode::AShr);
+                                        const bool isAddSub =
+                                            (ins.op == il::core::Opcode::Add ||
+                                             ins.op == il::core::Opcode::IAddOvf ||
+                                             ins.op == il::core::Opcode::Sub ||
+                                             ins.op == il::core::Opcode::ISubOvf);
+                                        const bool isBitwise = (ins.op == il::core::Opcode::And ||
+                                                                ins.op == il::core::Opcode::Or ||
+                                                                ins.op == il::core::Opcode::Xor);
 
-                                    // Use immediate form if:
-                                    // 1. RHS is a constant AND
-                                    // 2. Operation supports immediate AND
-                                    // 3. Value fits in the instruction's immediate field
-                                    bool useImmediate = false;
-                                    if (hasConstRHS && binOp->supportsImmediate) {
-                                        const auto immVal = ins.operands[1].i64;
-                                        if (isShift && isValidShiftAmount(immVal))
-                                            useImmediate = true;
-                                        else if (isAddSub && isUImm12(immVal))
-                                            useImmediate = true;
-                                        else if (isBitwise &&
-                                                 isLogicalImmediate(static_cast<uint64_t>(immVal)))
-                                            useImmediate = true;
-                                    }
+                                        // Use immediate form if:
+                                        // 1. RHS is a constant AND
+                                        // 2. Operation supports immediate AND
+                                        // 3. Value fits in the instruction's immediate field
+                                        bool useImmediate = false;
+                                        if (hasConstRHS && binOp->supportsImmediate) {
+                                            const auto immVal = ins.operands[1].i64;
+                                            if (isShift && isValidShiftAmount(immVal))
+                                                useImmediate = true;
+                                            else if (isAddSub && isUImm12(immVal))
+                                                useImmediate = true;
+                                            else if (isBitwise &&
+                                                     isLogicalImmediate(
+                                                         static_cast<uint64_t>(immVal)))
+                                                useImmediate = true;
+                                        }
 
-                                    if (useImmediate) {
-                                        // Emit with immediate operand - no need to materialize RHS
-                                        // Note: FP ops have supportsImmediate=false, so rc is
-                                        // always GPR here
-                                        bbOutFn().instrs.push_back(
-                                            MInstr{binOp->immOp,
-                                                   {MOperand::vregOp(rc, dst),
-                                                    MOperand::vregOp(rc, lhs),
-                                                    MOperand::immOp(ins.operands[1].i64)}});
-                                    } else {
-                                        // Emit binary op with all register operands
-                                        bbOutFn().instrs.push_back(
-                                            MInstr{binOp->mirOp,
-                                                   {MOperand::vregOp(rc, dst),
-                                                    MOperand::vregOp(rc, lhs),
-                                                    MOperand::vregOp(rc, rhs)}});
-                                    }
+                                        if (useImmediate) {
+                                            // Emit with immediate operand - no need to materialize
+                                            // RHS Note: FP ops have supportsImmediate=false, so rc
+                                            // is always GPR here
+                                            bbOutFn().instrs.push_back(
+                                                MInstr{binOp->immOp,
+                                                       {MOperand::vregOp(rc, dst),
+                                                        MOperand::vregOp(rc, lhs),
+                                                        MOperand::immOp(ins.operands[1].i64)}});
+                                        } else {
+                                            // Emit binary op with all register operands
+                                            bbOutFn().instrs.push_back(
+                                                MInstr{binOp->mirOp,
+                                                       {MOperand::vregOp(rc, dst),
+                                                        MOperand::vregOp(rc, lhs),
+                                                        MOperand::vregOp(rc, rhs)}});
+                                        }
                                     }
                                 } else {
                                     // Emit comparison (cmp + cset)

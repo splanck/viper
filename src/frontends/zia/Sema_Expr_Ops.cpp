@@ -129,8 +129,7 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
             }
 
             if (!leftType && !handledWriteOnlyProperty && baseType &&
-                baseType->kind == TypeKindSem::Ptr &&
-                !baseType->name.empty()) {
+                baseType->kind == TypeKindSem::Ptr && !baseType->name.empty()) {
                 std::string setterName = baseType->name + ".set_" + fieldExpr->field;
                 if (Symbol *setter = lookupSymbol(setterName);
                     setter && setter->kind == Symbol::Kind::Function && setter->type &&
@@ -284,12 +283,11 @@ TypeRef Sema::checkComparisonBinary(BinaryExpr *expr, TypeRef leftType, TypeRef 
                           compareRight->toDisplayString());
             }
         } else {
-            bool compatible = (leftType->isNumeric() && rightType->isNumeric()) ||
-                              (leftType->kind == TypeKindSem::String &&
-                               rightType->kind == TypeKindSem::String);
+            bool compatible =
+                (leftType->isNumeric() && rightType->isNumeric()) ||
+                (leftType->kind == TypeKindSem::String && rightType->kind == TypeKindSem::String);
             if (!compatible) {
-                error(expr->loc,
-                      "Relational comparison requires numeric operands or two Strings");
+                error(expr->loc, "Relational comparison requires numeric operands or two Strings");
             }
         }
     }
@@ -338,35 +336,32 @@ TypeRef Sema::recordBinaryAssignment(BinaryExpr *expr, TypeRef leftType, TypeRef
     {
         if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
             TypeRef baseType = typeOf(fieldExpr->base.get());
-            if (baseType && baseType->kind == TypeKindSem::Optional &&
-                baseType->innerType())
+            if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
                 baseType = baseType->innerType();
 
-            if (baseType && (baseType->kind == TypeKindSem::Class ||
-                             baseType->kind == TypeKindSem::Struct ||
-                             baseType->kind == TypeKindSem::Module)) {
+            if (baseType &&
+                (baseType->kind == TypeKindSem::Class || baseType->kind == TypeKindSem::Struct ||
+                 baseType->kind == TypeKindSem::Module)) {
                 std::string memberKey = baseType->name + "." + fieldExpr->field;
-                bool assigningDuringInit =
-                    currentSelfType_ && currentSelfType_->name == baseType->name &&
-                    currentMethod_ && currentMethod_->name == "init";
+                bool assigningDuringInit = currentSelfType_ &&
+                                           currentSelfType_->name == baseType->name &&
+                                           currentMethod_ && currentMethod_->name == "init";
                 if (finalFields_.contains(memberKey) && !assigningDuringInit) {
-                    error(expr->loc,
-                          "Cannot assign to final field '" + fieldExpr->field + "'");
+                    error(expr->loc, "Cannot assign to final field '" + fieldExpr->field + "'");
                 }
             }
 
-            if (baseType && (baseType->kind == TypeKindSem::Class ||
-                             baseType->kind == TypeKindSem::Struct)) {
+            if (baseType &&
+                (baseType->kind == TypeKindSem::Class || baseType->kind == TypeKindSem::Struct)) {
                 std::string declaringOwner;
                 if (const PropertyDecl *prop = propertyDeclForLowering(
                         baseType->name, fieldExpr->field, &declaringOwner)) {
                     if (!prop->setterBody) {
                         error(expr->loc,
-                              "Property '" + fieldExpr->field + "' of type '" +
-                                  declaringOwner + "' is read-only");
+                              "Property '" + fieldExpr->field + "' of type '" + declaringOwner +
+                                  "' is read-only");
                     } else {
-                        resolvedFieldSetters_[fieldExpr] =
-                            declaringOwner + ".set_" + prop->name;
+                        resolvedFieldSetters_[fieldExpr] = declaringOwner + ".set_" + prop->name;
                     }
                 }
             }
@@ -374,8 +369,7 @@ TypeRef Sema::recordBinaryAssignment(BinaryExpr *expr, TypeRef leftType, TypeRef
             // Resolve runtime class property setters (e.g., ctrl.VY = value).
             // Getters are resolved in Sema_Expr_Advanced; setters need the same
             // symbol-table lookup here on the assignment path.
-            if (baseType &&
-                resolvedFieldSetters_.find(fieldExpr) == resolvedFieldSetters_.end()) {
+            if (baseType && resolvedFieldSetters_.find(fieldExpr) == resolvedFieldSetters_.end()) {
                 std::string setterName = baseType->name + ".set_" + fieldExpr->field;
                 Symbol *setter = lookupSymbol(setterName);
                 if (setter && setter->kind == Symbol::Kind::Function) {
@@ -398,16 +392,14 @@ TypeRef Sema::recordBinaryAssignment(BinaryExpr *expr, TypeRef leftType, TypeRef
         if (expr->left->kind == ExprKind::Ident) {
             auto *lhsIdent = static_cast<IdentExpr *>(expr->left.get());
             Symbol *sym = currentScope_->lookup(lhsIdent->name);
-            bool assigningFinalFieldDuringInit =
-                sym && sym->kind == Symbol::Kind::Field && currentSelfType_ &&
-                currentMethod_ && currentMethod_->name == "init";
+            bool assigningFinalFieldDuringInit = sym && sym->kind == Symbol::Kind::Field &&
+                                                 currentSelfType_ && currentMethod_ &&
+                                                 currentMethod_->name == "init";
             if (sym && sym->isFinal && !assigningFinalFieldDuringInit) {
                 if (sym->kind == Symbol::Kind::Field) {
-                    error(expr->loc,
-                          "Cannot assign to final field '" + lhsIdent->name + "'");
+                    error(expr->loc, "Cannot assign to final field '" + lhsIdent->name + "'");
                 } else {
-                    error(expr->loc,
-                          "Cannot reassign final variable '" + lhsIdent->name + "'");
+                    error(expr->loc, "Cannot reassign final variable '" + lhsIdent->name + "'");
                 }
             }
             if (sym && sym->type)
@@ -422,18 +414,14 @@ TypeRef Sema::recordBinaryAssignment(BinaryExpr *expr, TypeRef leftType, TypeRef
             if (baseType && baseType->kind == TypeKindSem::String) {
                 error(expr->loc, "Cannot assign through a String index");
             } else if (baseType && baseType->kind != TypeKindSem::Unknown &&
-                       baseType->kind != TypeKindSem::List &&
-                       baseType->kind != TypeKindSem::Map &&
+                       baseType->kind != TypeKindSem::List && baseType->kind != TypeKindSem::Map &&
                        baseType->kind != TypeKindSem::FixedArray) {
-                error(expr->loc,
-                      "Indexed assignment requires a List, Map, or fixed-size array");
+                error(expr->loc, "Indexed assignment requires a List, Map, or fixed-size array");
             }
         }
         if (assignTarget && rightType && assignTarget->kind != TypeKindSem::Unknown &&
-            rightType->kind != TypeKindSem::Unknown &&
-            assignTarget->kind != TypeKindSem::Error &&
-            rightType->kind != TypeKindSem::Error &&
-            !assignTarget->isAssignableFrom(*rightType)) {
+            rightType->kind != TypeKindSem::Unknown && assignTarget->kind != TypeKindSem::Error &&
+            rightType->kind != TypeKindSem::Error && !assignTarget->isAssignableFrom(*rightType)) {
             errorTypeMismatch(expr->loc, assignTarget, rightType);
         }
     }

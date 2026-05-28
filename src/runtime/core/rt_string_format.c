@@ -92,8 +92,7 @@ static bool rt_string_contains_embedded_nul(rt_string s) {
 ///          doesn't depend on the host's `LC_CTYPE` setting. Recognises space, tab,
 ///          newline, carriage return, form-feed, and vertical-tab.
 static bool rt_string_format_is_ascii_space(unsigned char ch) {
-    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
-           ch == '\v';
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v';
 }
 
 /// @brief Parse a runtime string as a signed 64-bit integer.
@@ -273,8 +272,8 @@ double rt_val(rt_string s) {
     // numeric prefix via strtod, ignore any trailing garbage. Process-default
     // LC_NUMERIC is C across every runtime path (we never call setlocale),
     // so plain strtod is safe without the C-locale-swap dance.
-    while (*data == ' ' || *data == '\t' || *data == '\n' || *data == '\r'
-           || *data == '\v' || *data == '\f')
+    while (*data == ' ' || *data == '\t' || *data == '\n' || *data == '\r' || *data == '\v' ||
+           *data == '\f')
         ++data;
     if (!*data)
         return 0.0;

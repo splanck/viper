@@ -131,7 +131,8 @@ int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desire
         return 0;
     rt_monitor_enter(cell);
     // Returns the old value (whether exchange happened or not)
-    int64_t old = (int64_t)InterlockedCompareExchange64(&cell->value, (LONG64)desired, (LONG64)expected);
+    int64_t old =
+        (int64_t)InterlockedCompareExchange64(&cell->value, (LONG64)desired, (LONG64)expected);
     rt_monitor_exit(cell);
     return old;
 }
@@ -185,8 +186,7 @@ static RtSafeI64 *require_safe(void *obj, const char *what) {
 /// @see rt_safe_i64_get For reading the value
 /// @see rt_safe_i64_set For writing the value
 void *rt_safe_i64_new(int64_t initial) {
-    RtSafeI64 *cell =
-        (RtSafeI64 *)rt_obj_new_i64(RT_SAFE_I64_CLASS_ID, (int64_t)sizeof(RtSafeI64));
+    RtSafeI64 *cell = (RtSafeI64 *)rt_obj_new_i64(RT_SAFE_I64_CLASS_ID, (int64_t)sizeof(RtSafeI64));
     if (!cell)
         rt_trap("SafeI64.New: alloc failed");
     if (!cell)

@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_bytes.h"
 #include "rt_binfile.h"
+#include "rt_bytes.h"
 #include "rt_internal.h"
 #include "rt_stream.h"
 #include "rt_string.h"

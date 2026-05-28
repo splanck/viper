@@ -168,10 +168,9 @@ TEST(AArch64PeepholeSubpasses, StoreLoadForwardingStopsAtOverlappingPairStore) {
     std::vector<MInstr> instrs;
     instrs.push_back(
         MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X1), MOperand::immOp(-8)}});
-    instrs.push_back(MInstr{MOpcode::StpRegFpImm,
-                            {MOperand::regOp(PhysReg::X3),
-                             MOperand::regOp(PhysReg::X4),
-                             MOperand::immOp(-16)}});
+    instrs.push_back(
+        MInstr{MOpcode::StpRegFpImm,
+               {MOperand::regOp(PhysReg::X3), MOperand::regOp(PhysReg::X4), MOperand::immOp(-16)}});
     instrs.push_back(
         MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X2), MOperand::immOp(-8)}});
 
@@ -255,10 +254,9 @@ TEST(AArch64PeepholeSubpasses, LoopPhiEdgeMovesPreserveOverlappingSources) {
     auto stats = runPeephole(fn);
     EXPECT_GT(stats.loopConstsHoisted, 0);
 
-    const auto latchIt =
-        std::find_if(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
-            return bb.name == "latch";
-        });
+    const auto latchIt = std::find_if(fn.blocks.begin(),
+                                      fn.blocks.end(),
+                                      [](const MBasicBlock &bb) { return bb.name == "latch"; });
     ASSERT_TRUE(latchIt != fn.blocks.end());
 
     std::vector<std::pair<PhysReg, PhysReg>> movs;
@@ -345,10 +343,9 @@ TEST(AArch64PeepholeSubpasses, LoopPhiRejectsLoopsContainingCalls) {
     loop.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("may_touch_callee_saved")}});
     loop.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("latch")}});
 
-    latch.instrs.push_back(MInstr{MOpcode::AddsRI,
-                                  {MOperand::regOp(PhysReg::X24),
-                                   MOperand::regOp(PhysReg::X22),
-                                   MOperand::immOp(1)}});
+    latch.instrs.push_back(
+        MInstr{MOpcode::AddsRI,
+               {MOperand::regOp(PhysReg::X24), MOperand::regOp(PhysReg::X22), MOperand::immOp(1)}});
     latch.instrs.push_back(
         MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X24), MOperand::immOp(-40)}});
     latch.instrs.push_back(
@@ -454,10 +451,9 @@ TEST(AArch64PeepholeSubpasses, JoinPhiCoalescerSkipsLoopHeaderBackedgeWithCalls)
     body.instrs.push_back(
         MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X22), MOperand::immOp(-32)}});
     body.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("may_touch_loop_state")}});
-    body.instrs.push_back(MInstr{MOpcode::AddsRI,
-                                 {MOperand::regOp(PhysReg::X11),
-                                  MOperand::regOp(PhysReg::X22),
-                                  MOperand::immOp(1)}});
+    body.instrs.push_back(
+        MInstr{MOpcode::AddsRI,
+               {MOperand::regOp(PhysReg::X11), MOperand::regOp(PhysReg::X22), MOperand::immOp(1)}});
     body.instrs.push_back(
         MInstr{MOpcode::BCond, {MOperand::condOp("vs"), MOperand::labelOp("trap")}});
     body.instrs.push_back(
@@ -469,10 +465,9 @@ TEST(AArch64PeepholeSubpasses, JoinPhiCoalescerSkipsLoopHeaderBackedgeWithCalls)
 
     (void)runPeephole(fn);
 
-    const auto loopIt =
-        std::find_if(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
-            return bb.name == "loop";
-        });
+    const auto loopIt = std::find_if(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
+        return bb.name == "loop";
+    });
     ASSERT_TRUE(loopIt != fn.blocks.end());
 
     const bool stillLoadsLoopIndex =
@@ -504,29 +499,27 @@ TEST(AArch64PeepholeSubpasses, LoopConstHoistRejectsBackwardJoinEdge) {
         MInstr{MOpcode::Cbz, {MOperand::regOp(PhysReg::X0), MOperand::labelOp("then_path")}});
     entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("else_path")}});
 
-    elsePath.instrs.push_back(MInstr{MOpcode::MovRI,
-                                     {MOperand::regOp(PhysReg::X20), MOperand::immOp(1)}});
+    elsePath.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X20), MOperand::immOp(1)}});
     elsePath.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("join")}});
 
-    join.instrs.push_back(MInstr{MOpcode::MovRI,
-                                 {MOperand::regOp(PhysReg::X28), MOperand::immOp(6)}});
-    join.instrs.push_back(MInstr{MOpcode::MovRR,
-                                 {MOperand::regOp(PhysReg::X4),
-                                  MOperand::regOp(PhysReg::X28)}});
+    join.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X28), MOperand::immOp(6)}});
+    join.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X4), MOperand::regOp(PhysReg::X28)}});
     join.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
 
-    thenPath.instrs.push_back(MInstr{MOpcode::MovRI,
-                                     {MOperand::regOp(PhysReg::X21), MOperand::immOp(42)}});
+    thenPath.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X21), MOperand::immOp(42)}});
     thenPath.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("join")}});
 
     exit.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     (void)runPeephole(fn);
 
-    const auto joinIt =
-        std::find_if(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
-            return bb.name == "join";
-        });
+    const auto joinIt = std::find_if(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
+        return bb.name == "join";
+    });
     ASSERT_TRUE(joinIt != fn.blocks.end());
 
     const bool joinStillDefinesScale =

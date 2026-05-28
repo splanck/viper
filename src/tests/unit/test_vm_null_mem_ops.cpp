@@ -210,9 +210,8 @@ int main(int argc, char *argv[]) {
         auto m = makeLoadModule();
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
-        bool loadOk = containsAll(result.stderrText,
-                                  "Trap @main:entry#0 line 1: InvalidOperation (code=0)",
-                                  "null load");
+        bool loadOk = containsAll(
+            result.stderrText, "Trap @main:entry#0 line 1: InvalidOperation (code=0)", "null load");
         assert(loadOk);
     }
 

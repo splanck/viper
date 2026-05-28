@@ -234,6 +234,30 @@ static void test_packed_payload_keeps_shapes_beyond_32() {
     }
 }
 
+static void test_clone_copies_delta_payloads_and_weights() {
+    void *mt = rt_morphtarget3d_new(2);
+    rt_morphtarget3d_add_shape(mt, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(mt, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_normal_delta(mt, 0, 0, 0.25, 0.5, 0.75);
+    rt_morphtarget3d_set_weight(mt, 0, 0.6);
+
+    void *clone = rt_morphtarget3d_clone(mt);
+    EXPECT_TRUE(clone != nullptr, "MorphTarget3D.Clone returns a complete clone");
+    EXPECT_TRUE(rt_morphtarget3d_get_shape_count(clone) == 1,
+                "MorphTarget3D.Clone copies shape count");
+    EXPECT_NEAR(
+        rt_morphtarget3d_get_weight(clone, 0), 0.6, 0.001, "MorphTarget3D.Clone copies weights");
+
+    const float *clone_pos = rt_morphtarget3d_get_packed_deltas(clone);
+    const float *clone_nrm = rt_morphtarget3d_get_packed_normal_deltas(clone);
+    EXPECT_TRUE(clone_pos != nullptr, "MorphTarget3D.Clone copies position deltas");
+    EXPECT_TRUE(clone_nrm != nullptr, "MorphTarget3D.Clone copies normal deltas");
+    if (clone_pos)
+        EXPECT_NEAR(clone_pos[0], 1.0f, 1e-6f, "Clone keeps position delta X");
+    if (clone_nrm)
+        EXPECT_NEAR(clone_nrm[2], 0.75f, 1e-6f, "Clone keeps normal delta Z");
+}
+
 namespace {
 static int g_morph_release_count = 0;
 } // namespace
@@ -287,6 +311,7 @@ int main() {
     test_packed_payload_exports_positions_and_normals();
     test_add_shape_grows_beyond_32_entries();
     test_packed_payload_keeps_shapes_beyond_32();
+    test_clone_copies_delta_payloads_and_weights();
     test_mesh_clone_and_clear_manage_morph_target_lifetime();
 
     printf("MorphTarget3D tests: %d/%d passed\n", tests_passed, tests_run);

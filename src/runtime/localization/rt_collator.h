@@ -35,8 +35,8 @@
 
 #include "rt.hpp"
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,17 +56,17 @@ void *rt_collator_get_locale(void *self);
 /// @brief Get the comparison strength (1=primary, 2=+accent, 3=+case).
 int64_t rt_collator_get_strength(void *self);
 /// @brief Set the comparison strength; values >3 warn and clamp to 3.
-void    rt_collator_set_strength(void *self, int64_t value);
+void rt_collator_set_strength(void *self, int64_t value);
 
 /// @brief Get whether case differences are ignored (0/1).
 int8_t rt_collator_get_ignore_case(void *self);
 /// @brief Set whether case differences are ignored.
-void   rt_collator_set_ignore_case(void *self, int8_t value);
+void rt_collator_set_ignore_case(void *self, int8_t value);
 
 /// @brief Get whether accent/diacritic differences are ignored (0/1).
 int8_t rt_collator_get_ignore_accents(void *self);
 /// @brief Set whether accent/diacritic differences are ignored.
-void   rt_collator_set_ignore_accents(void *self, int8_t value);
+void rt_collator_set_ignore_accents(void *self, int8_t value);
 
 //===----------------------------------------------------------------------===//
 // Comparisons
@@ -100,13 +100,14 @@ typedef struct rt_collator_locale_patch {
 /// @brief Populate P/S/T weights for a codepoint. Returns 0 on known
 ///        characters; 1 when the codepoint falls into codepoint-order
 ///        fallback territory (caller should use cp itself as primary).
-int rt_collator_codepoint_weights(uint32_t cp, uint32_t *primary,
-                                  uint16_t *secondary, uint16_t *tertiary);
+int rt_collator_codepoint_weights(uint32_t cp,
+                                  uint32_t *primary,
+                                  uint16_t *secondary,
+                                  uint16_t *tertiary);
 
 /// @brief Return the locale patch table for @p tag (or NULL). @p out_count
 ///        is set to the patch count.
-const rt_collator_locale_patch_t *rt_collator_locale_patches(const char *tag,
-                                                             size_t *out_count);
+const rt_collator_locale_patch_t *rt_collator_locale_patches(const char *tag, size_t *out_count);
 
 #ifdef __cplusplus
 }

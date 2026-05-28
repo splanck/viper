@@ -1,0 +1,226 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: src/runtime/graphics/rt_zia_completion.h
+// Purpose: Runtime bridge declarations for the Zia language completion engine, provided by fe_zia
+// at link time via weak/strong symbol resolution.
+//
+// Key invariants:
+//   - Strong implementations live in src/frontends/zia/rt_zia_completion.cpp (fe_zia).
+//   - Weak stub implementations in viper_runtime allow linking without fe_zia and return
+//     protocol-shaped "completion unavailable" payloads.
+//   - Symbols are resolved at final link time when both fe_zia and viper_runtime are linked.
+//   - Completion API takes source text, cursor line (1-based), and column (0-based).
+//
+// Ownership/Lifetime:
+//   - Returned completion results are heap-allocated strings; caller must release them.
+//   - Source text string is borrowed for the duration of the call only.
+//
+// Links: src/frontends/zia/rt_zia_completion.cpp (strong implementation),
+// src/runtime/core/rt_string.h
+//
+//===----------------------------------------------------------------------===//
+#pragma once
+
+#include "rt_string.h"
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/// @brief Run Zia code completion at the given source position.
+/// @param source Zia source text (full file contents).
+/// @param line   1-based line number of the cursor.
+/// @param col    0-based column number of the cursor.
+/// @return Tab-delimited completion items: label\tinsertText\tkindInt\tdetail\n
+///         Returns an unavailable item when only the weak runtime stub is linked.
+rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
+
+/// @brief Run Zia code completion with the real source file path for relative bind resolution.
+/// @param source    Zia source text (full file contents).
+/// @param file_path Absolute or project-relative path for the source file; empty uses "<editor>".
+/// @param line      1-based line number of the cursor.
+/// @param col       0-based column number of the cursor.
+/// @return Tab-delimited completion items: label\tinsertText\tkindInt\tdetail\n
+rt_string rt_zia_complete_for_file(rt_string source,
+                                   rt_string file_path,
+                                   int64_t line,
+                                   int64_t col);
+
+/// @brief Run Zia completion and return structured completion maps.
+/// @return Viper.Collections.Seq of Viper.Collections.Map completion items.
+void *rt_zia_completion_items(rt_string source, int64_t line, int64_t col);
+
+/// @brief Run path-aware Zia completion and return structured completion maps.
+void *rt_zia_completion_items_for_file(rt_string source,
+                                       rt_string file_path,
+                                       int64_t line,
+                                       int64_t col);
+
+/// @brief Start path-aware completion on a background worker.
+void *rt_zia_completion_begin_items_for_file(rt_string source,
+                                             rt_string file_path,
+                                             int64_t line,
+                                             int64_t col);
+
+/// @brief Return call signature help for the invocation active at the source location.
+/// @param source Zia source text (full file contents).
+/// @param line   1-based line number of the cursor.
+/// @param col    0-based column number of the cursor.
+/// @return Human-readable signature text, or an empty string when no call resolves.
+rt_string rt_zia_signature_help(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return call signature help with the real source file path for relative bind resolution.
+rt_string rt_zia_signature_help_for_file(rt_string source,
+                                         rt_string file_path,
+                                         int64_t line,
+                                         int64_t col);
+
+/// @brief Return structured signature help for the invocation active at the source location.
+void *rt_zia_signature_info(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return structured signature help with the real source file path.
+void *rt_zia_signature_info_for_file(rt_string source,
+                                     rt_string file_path,
+                                     int64_t line,
+                                     int64_t col);
+
+/// @brief Start path-aware structured signature help on a background worker.
+void *rt_zia_completion_begin_signature_info_for_file(rt_string source,
+                                                      rt_string file_path,
+                                                      int64_t line,
+                                                      int64_t col);
+
+/// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
+/// @param source Zia source text (full file contents).
+/// @return One diagnostic per line encoded as severity\tline\tcol\tcode\tmessage.
+///         The weak runtime stub returns a warning diagnostic explaining that fe_zia is absent.
+rt_string rt_zia_check(rt_string source);
+
+/// @brief Run semantic analysis with the real source file path for relative bind resolution.
+rt_string rt_zia_check_for_file(rt_string source, rt_string file_path);
+
+/// @brief Run semantic analysis and return structured diagnostic maps.
+/// @return Viper.Collections.Seq of Viper.Collections.Map diagnostics.
+void *rt_zia_toolchain_check(rt_string source);
+
+/// @brief Run path-aware semantic analysis and return structured diagnostic maps.
+void *rt_zia_toolchain_check_for_file(rt_string source, rt_string file_path);
+
+/// @brief Start path-aware semantic diagnostics on a background worker.
+void *rt_zia_toolchain_begin_check_for_file(rt_string source, rt_string file_path);
+
+/// @brief Compile source to IL and return a structured result map.
+/// @return Viper.Collections.Map with success, diagnostics, sourcePath, outputPath, and il.
+void *rt_zia_toolchain_compile(rt_string source);
+
+/// @brief Compile source with a file path and return a structured result map.
+void *rt_zia_toolchain_compile_for_file(rt_string source, rt_string file_path);
+
+/// @brief Create a project language index rooted at @p root.
+/// @return Opaque Viper.Zia.ProjectIndex.Handle object, or null when fe_zia is unavailable.
+void *rt_zia_project_index_new(rt_string root);
+
+/// @brief Check whether @p handle is a live ProjectIndex handle.
+int8_t rt_zia_project_index_is_valid(void *handle);
+
+/// @brief Store dirty/current source for @p file_path in the project index.
+int8_t rt_zia_project_index_update_file(void *handle, rt_string file_path, rt_string source);
+
+/// @brief Remove @p file_path from the project index.
+int8_t rt_zia_project_index_remove_file(void *handle, rt_string file_path);
+
+/// @brief Remove all files from the project index.
+void rt_zia_project_index_clear(void *handle);
+
+/// @brief Dispose the native project index payload. The handle object remains inert.
+void rt_zia_project_index_destroy(void *handle);
+
+/// @brief Return a structured definition map for the identifier at @p line/@p col.
+void *rt_zia_project_index_definition(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col);
+
+/// @brief Return structured semantic references for the identifier at @p line/@p col.
+void *rt_zia_project_index_references(
+    void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col);
+
+/// @brief Return workspace edits for a semantic rename without applying them.
+void *rt_zia_project_index_rename_edits(void *handle,
+                                        rt_string file_path,
+                                        rt_string source,
+                                        int64_t line,
+                                        int64_t col,
+                                        rt_string new_name);
+
+/// @brief Return hover information for the identifier at the given source location.
+/// @param source Zia source text (full file contents).
+/// @param line   1-based line number of the cursor.
+/// @param col    0-based column number of the cursor.
+/// @return Human-readable hover text, or an empty string when nothing is found.
+rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return hover information with the real source file path for relative bind resolution.
+rt_string rt_zia_hover_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Return structured hover information for the identifier at the given source location.
+void *rt_zia_hover_info(rt_string source, int64_t line, int64_t col);
+
+/// @brief Return structured hover information with the real source file path.
+void *rt_zia_hover_info_for_file(rt_string source, rt_string file_path, int64_t line, int64_t col);
+
+/// @brief Start path-aware structured hover info on a background worker.
+void *rt_zia_completion_begin_hover_info_for_file(rt_string source,
+                                                  rt_string file_path,
+                                                  int64_t line,
+                                                  int64_t col);
+
+/// @brief Return serialized document symbols for the supplied source.
+/// @param source Zia source text (full file contents).
+/// @return Tab-delimited symbol rows, or an empty string when no symbols are found.
+rt_string rt_zia_symbols(rt_string source);
+
+/// @brief Return document symbols with the real source file path for relative bind resolution.
+rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path);
+
+/// @brief Start path-aware document symbol extraction on a background worker.
+void *rt_zia_completion_begin_symbols_for_file(rt_string source, rt_string file_path);
+
+/// @brief Return whether a semantic background job has completed.
+int8_t rt_zia_semantic_job_is_done(void *handle);
+
+/// @brief Return whether a completed semantic background job failed.
+int8_t rt_zia_semantic_job_is_error(void *handle);
+
+/// @brief Return a completed semantic background job's error string, if any.
+rt_string rt_zia_semantic_job_error(void *handle);
+
+/// @brief Return the numeric semantic background job kind.
+int64_t rt_zia_semantic_job_kind(void *handle);
+
+/// @brief Mark a semantic background job as canceled. Running work may finish later.
+void rt_zia_semantic_job_cancel(void *handle);
+
+/// @brief Materialize a completion job result as Seq<Map>.
+void *rt_zia_semantic_job_completion_items(void *handle);
+
+/// @brief Materialize a signature job result as Map.
+void *rt_zia_semantic_job_signature_info(void *handle);
+
+/// @brief Materialize a hover job result as Map.
+void *rt_zia_semantic_job_hover_info(void *handle);
+
+/// @brief Materialize a symbols job result as serialized symbol rows.
+rt_string rt_zia_semantic_job_symbols(void *handle);
+
+/// @brief Materialize a diagnostics job result as Seq<Map>.
+void *rt_zia_semantic_job_diagnostics(void *handle);
+
+/// @brief Flush the cached parse result, forcing a fresh parse on the next call.
+void rt_zia_completion_clear_cache(void);
+
+#ifdef __cplusplus
+}
+#endif

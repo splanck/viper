@@ -118,9 +118,17 @@ func ApplyRenameEdits(edits: Any,
         var openIdx = docMgr.FindByPath(openPath);
         if openIdx >= 0 {
             var doc = docMgr.documents.get(openIdx);
-            doc.content = Map.GetStr(newContentByPath, openPath);
-            doc.isModified = true;
-            result.changedDocuments = result.changedDocuments + 1;
+            var newContent = Map.GetStr(newContentByPath, openPath);
+            if newContent != doc.content {
+                if openIdx != docMgr.activeIndex {
+                    doc.pendingWorkspaceUndoContent = doc.content;
+                    doc.pendingWorkspaceUndoLabel = "Rename";
+                    doc.hasPendingWorkspaceUndo = true;
+                }
+                doc.content = newContent;
+                doc.isModified = true;
+                result.changedDocuments = result.changedDocuments + 1;
+            }
         }
         p = p + 1;
     }
@@ -165,13 +173,36 @@ func ValidateRenameEdits(edits: Any,
         while j < Seq.get_Length(edits) {
             var other = Seq.Get(edits, j);
             if EditsOverlap(edit, other) {
-                return "Overlapping workspace edits in " + path;
+                return RenameConflictMessage(edit, other);
             }
             j = j + 1;
         }
         i = i + 1;
     }
     return "";
+}
+
+func RenameConflictMessage(edit: Any,
+                           other: Any) -> String {
+    var path = Map.GetStr(edit, "file");
+    var otherPath = Map.GetStr(other, "file");
+    if path == "" { path = otherPath; }
+    return "Overlapping workspace edits.\n"
+           + "Rename was canceled before changing files.\n"
+           + "File: " + path + "\n"
+           + "First edit:  " + EditRange(edit) + " -> " + Map.GetStr(edit, "newText") + "\n"
+           + "Second edit: " + EditRange(other) + " -> " + Map.GetStr(other, "newText");
+}
+
+func EditLocation(edit: Any) -> String {
+    return Map.GetStr(edit, "file") + ":"
+           + Map.GetInt(edit, "startLine") + ":" + Map.GetInt(edit, "startColumn")
+           + "-" + Map.GetInt(edit, "endLine") + ":" + Map.GetInt(edit, "endColumn");
+}
+
+func EditRange(edit: Any) -> String {
+    return Map.GetInt(edit, "startLine") + ":" + Map.GetInt(edit, "startColumn")
+           + "-" + Map.GetInt(edit, "endLine") + ":" + Map.GetInt(edit, "endColumn");
 }
 
 func EditsOverlap(a: Any, b: Any) -> Boolean {

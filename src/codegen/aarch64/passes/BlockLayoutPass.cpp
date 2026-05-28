@@ -95,7 +95,8 @@ static void layoutFunction(MFunction &fn) {
                     }
                 }
 
-                if (bb.instrs.size() >= 2 && isConditionalBranch(bb.instrs[bb.instrs.size() - 2].opc) &&
+                if (bb.instrs.size() >= 2 &&
+                    isConditionalBranch(bb.instrs[bb.instrs.size() - 2].opc) &&
                     last.opc == MOpcode::Br) {
                     // Prefer the explicit false-edge target so the trailing
                     // unconditional branch can collapse into fallthrough.

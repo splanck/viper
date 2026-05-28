@@ -20,12 +20,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_string.h"
 #include "runtime/audio/rt_audio.h"
 #include "runtime/core/rt_context.h"
 #include "runtime/core/rt_gc.h"
 #include "runtime/core/rt_heap.h"
 #include "runtime/oop/rt_object.h"
-#include "rt_string.h"
 
 #include <cassert>
 #include <cstdio>

@@ -10,7 +10,8 @@
 // Key invariants:
 //   - Each key maps to a sequence of values; duplicate keys are supported.
 //   - Keys are copied by byte length; embedded NUL bytes are part of key identity.
-//   - rt_multimap_get returns an owning snapshot Seq of all values for the key (empty Seq if absent).
+//   - rt_multimap_get returns an owning snapshot Seq of all values for the key (empty Seq if
+//   absent).
 //   - Values are retained when added and in returned snapshots; released when removed.
 //   - Removing a key removes all its associated values.
 //

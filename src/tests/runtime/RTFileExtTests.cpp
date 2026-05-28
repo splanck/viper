@@ -537,7 +537,8 @@ static void test_write_all_text() {
     create_test_file(file_path, "old contents that should disappear");
 
     rt_io_file_write_all_text(path, rt_const_cstr("fresh text"));
-    test_result("text replaced", rt_str_eq(rt_io_file_read_all_text(path), rt_const_cstr("fresh text")));
+    test_result("text replaced",
+                rt_str_eq(rt_io_file_read_all_text(path), rt_const_cstr("fresh text")));
     test_result("size matches replacement", rt_file_size(path) == 10);
 
     remove_file(file_path);
@@ -609,8 +610,7 @@ static void test_read_all_lines() {
     path = rt_const_cstr(file_path);
     lines = rt_io_file_read_all_lines(path);
     test_result("trailing empty lines preserved", rt_seq_len(lines) == 3);
-    test_result("trailing line0",
-                rt_str_eq((rt_string)rt_seq_get(lines, 0), rt_const_cstr("one")));
+    test_result("trailing line0", rt_str_eq((rt_string)rt_seq_get(lines, 0), rt_const_cstr("one")));
     test_result("trailing line1 empty", rt_str_len((rt_string)rt_seq_get(lines, 1)) == 0);
     test_result("trailing line2 empty", rt_str_len((rt_string)rt_seq_get(lines, 2)) == 0);
 

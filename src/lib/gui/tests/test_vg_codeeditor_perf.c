@@ -8,14 +8,48 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "vg_ide_widgets.h"
 #include "vg_event.h"
+#include "vg_ide_widgets.h"
 
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#define PERF_TYPING_5K_FRAME_BUDGET_MS 16.0
+#define PERF_TYPING_20K_FRAME_BUDGET_MS 33.0
+#define PERF_PAINT_50K_BUDGET_MS 16.0
+#define PERF_SCROLL_50K_BUDGET_MS 16.0
+#define PERF_SELECTION_DRAG_50K_BUDGET_MS 16.0
+#define PERF_MINIMAP_50K_BUDGET_MS 16.0
+
+static double now_ms(void) {
+#ifdef _WIN32
+    static LARGE_INTEGER freq;
+    if (freq.QuadPart == 0)
+        QueryPerformanceFrequency(&freq);
+    LARGE_INTEGER value;
+    QueryPerformanceCounter(&value);
+    return ((double)value.QuadPart * 1000.0) / (double)freq.QuadPart;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0;
+#endif
+}
+
+static void assert_under_ms(const char *name, double elapsed_ms, double budget_ms) {
+    if (elapsed_ms > budget_ms) {
+        fprintf(stderr, "%s took %.3f ms, budget %.3f ms\n", name, elapsed_ms, budget_ms);
+        assert(elapsed_ms <= budget_ms);
+    }
+}
 
 static void put_u16(uint8_t *p, uint16_t value) {
     p[0] = (uint8_t)(value >> 8);
@@ -33,7 +67,8 @@ static void put_u32(uint8_t *p, uint32_t value) {
     p[3] = (uint8_t)value;
 }
 
-static void put_table(uint8_t *dir, int index, const char tag[4], uint32_t offset, uint32_t length) {
+static void put_table(
+    uint8_t *dir, int index, const char tag[4], uint32_t offset, uint32_t length) {
     uint8_t *entry = dir + 12 + index * 16;
     memcpy(entry, tag, 4);
     put_u32(entry + 4, 0);
@@ -155,8 +190,24 @@ static void send_key_char(vg_codeeditor_t *editor, char ch) {
     assert(handled);
 }
 
+static void send_mouse(vg_codeeditor_t *editor, vg_event_type_t type, float x, float y) {
+    vg_event_t event = vg_event_mouse(type, x, y, VG_MOUSE_LEFT, VG_MOD_NONE);
+    bool handled = editor->base.vtable->handle_event(&editor->base, &event);
+    assert(handled);
+}
+
+static void send_wheel(vg_codeeditor_t *editor, float delta_y) {
+    vg_event_t event;
+    memset(&event, 0, sizeof(event));
+    event.type = VG_EVENT_MOUSE_WHEEL;
+    event.wheel.delta_y = delta_y;
+    bool handled = editor->base.vtable->handle_event(&editor->base, &event);
+    assert(handled);
+}
+
 static void test_nowrap_large_file_navigation_avoids_linear_scans(void) {
     enum { line_count = 50000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -200,8 +251,33 @@ static void test_full_text_copy_counter(void) {
     vg_widget_destroy(&editor->base);
 }
 
+static void test_set_text_clears_stale_fold_regions(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+    vg_codeeditor_set_text(editor, "one\ntwo\nthree");
+
+    editor->fold_regions = (struct vg_fold_region *)calloc(1, sizeof(*editor->fold_regions));
+    assert(editor->fold_regions != NULL);
+    editor->fold_region_cap = 1;
+    editor->fold_region_count = 1;
+    editor->fold_regions[0].start_line = 0;
+    editor->fold_regions[0].end_line = 2;
+    editor->fold_regions[0].folded = true;
+    vg_codeeditor_refresh_layout_state(editor);
+    assert(editor->has_folded_lines);
+
+    vg_codeeditor_set_text(editor, "replacement");
+    assert(editor->fold_regions == NULL);
+    assert(editor->fold_region_count == 0);
+    assert(editor->fold_region_cap == 0);
+    assert(!editor->has_folded_lines);
+
+    vg_widget_destroy(&editor->base);
+}
+
 static void test_folded_large_file_navigation_uses_layout_cache(void) {
     enum { line_count = 50000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -238,6 +314,7 @@ static void test_folded_large_file_navigation_uses_layout_cache(void) {
 
 static void test_wrapped_large_file_navigation_uses_layout_cache(void) {
     enum { line_count = 20000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -266,6 +343,7 @@ static void test_wrapped_large_file_navigation_uses_layout_cache(void) {
 
 static void test_highlight_span_paint_uses_line_index(void) {
     enum { line_count = 50000, span_count = 10000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -283,7 +361,8 @@ static void test_highlight_span_paint_uses_line_index(void) {
     vg_codeeditor_set_font(editor, font, 16.0f);
     vg_codeeditor_set_text(editor, text);
 
-    editor->highlight_spans = (struct vg_highlight_span *)calloc(span_count, sizeof(*editor->highlight_spans));
+    editor->highlight_spans =
+        (struct vg_highlight_span *)calloc(span_count, sizeof(*editor->highlight_spans));
     assert(editor->highlight_spans != NULL);
     editor->highlight_span_cap = span_count;
     editor->highlight_span_count = span_count;
@@ -311,6 +390,7 @@ static void test_highlight_span_paint_uses_line_index(void) {
 
 static void test_typing_burst_does_not_copy_full_buffer(void) {
     enum { line_count = 20000, burst_count = 200 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -340,6 +420,7 @@ static void test_typing_burst_does_not_copy_full_buffer(void) {
 
 static void test_large_selection_does_not_copy_full_buffer(void) {
     enum { line_count = 20000 };
+
     char *text = make_lines(line_count);
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
@@ -361,6 +442,210 @@ static void test_large_selection_does_not_copy_full_buffer(void) {
     assert(stats.visual_row_linear_scans == 0);
     assert(stats.locate_visual_row_linear_scans == 0);
 
+    vg_widget_destroy(&editor->base);
+    free(text);
+}
+
+static void test_typing_and_paint_wall_clock_budgets(void) {
+    const int line_counts[] = {5000, 20000};
+    const double budgets[] = {PERF_TYPING_5K_FRAME_BUDGET_MS, PERF_TYPING_20K_FRAME_BUDGET_MS};
+
+    uint8_t font_blob[512];
+    size_t font_size = build_minimal_test_font(font_blob);
+    vg_font_t *font = vg_font_load(font_blob, font_size);
+    assert(font != NULL);
+
+    for (int case_idx = 0; case_idx < 2; case_idx++) {
+        int line_count = line_counts[case_idx];
+        char *text = make_lines(line_count);
+        vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+        assert(editor != NULL);
+
+        editor->base.width = 900.0f;
+        editor->base.height = 600.0f;
+        editor->word_wrap = false;
+        editor->show_line_numbers = false;
+        editor->gutter_width = 0.0f;
+        vg_codeeditor_set_font(editor, font, 16.0f);
+        vg_codeeditor_set_text(editor, text);
+        vg_codeeditor_set_cursor(editor, line_count / 2, 4);
+        editor->base.vtable->paint(&editor->base, NULL);
+
+        vg_codeeditor_reset_perf_stats(editor);
+        double max_ms = 0.0;
+        for (int i = 0; i < 80; i++) {
+            double start = now_ms();
+            send_key_char(editor, 'x');
+            editor->base.vtable->paint(&editor->base, NULL);
+            double elapsed = now_ms() - start;
+            if (elapsed > max_ms)
+                max_ms = elapsed;
+        }
+
+        assert_under_ms(line_count == 5000 ? "5k typing+paint frame" : "20k typing+paint frame",
+                        max_ms,
+                        budgets[case_idx]);
+
+        vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(editor);
+        assert(stats.full_text_copies == 0);
+        assert(stats.full_text_copy_bytes == 0);
+        assert(stats.total_height_linear_scans == 0);
+        assert(stats.total_visual_row_linear_scans == 0);
+        assert(stats.visual_row_linear_scans == 0);
+        assert(stats.locate_visual_row_linear_scans == 0);
+
+        vg_widget_destroy(&editor->base);
+        free(text);
+    }
+
+    vg_font_destroy(font);
+}
+
+static void test_paint_and_scroll_wall_clock_budgets(void) {
+    enum { line_count = 50000 };
+
+    char *text = make_lines(line_count);
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+
+    uint8_t font_blob[512];
+    size_t font_size = build_minimal_test_font(font_blob);
+    vg_font_t *font = vg_font_load(font_blob, font_size);
+    assert(font != NULL);
+
+    editor->base.width = 900.0f;
+    editor->base.height = 600.0f;
+    editor->word_wrap = false;
+    editor->show_line_numbers = false;
+    editor->gutter_width = 0.0f;
+    vg_codeeditor_set_font(editor, font, 16.0f);
+    vg_codeeditor_set_text(editor, text);
+    editor->base.vtable->paint(&editor->base, NULL);
+
+    vg_codeeditor_reset_perf_stats(editor);
+    double max_paint_ms = 0.0;
+    for (int i = 0; i < 40; i++) {
+        int line = (i * 1237) % line_count;
+        double start = now_ms();
+        vg_codeeditor_scroll_to_line(editor, line);
+        editor->base.vtable->paint(&editor->base, NULL);
+        double elapsed = now_ms() - start;
+        if (elapsed > max_paint_ms)
+            max_paint_ms = elapsed;
+    }
+    assert_under_ms("50k scroll+paint frame", max_paint_ms, PERF_PAINT_50K_BUDGET_MS);
+
+    double max_wheel_ms = 0.0;
+    for (int i = 0; i < 80; i++) {
+        double start = now_ms();
+        send_wheel(editor, -1.0f);
+        editor->base.vtable->paint(&editor->base, NULL);
+        double elapsed = now_ms() - start;
+        if (elapsed > max_wheel_ms)
+            max_wheel_ms = elapsed;
+    }
+    assert_under_ms("50k wheel-scroll frame", max_wheel_ms, PERF_SCROLL_50K_BUDGET_MS);
+
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(editor);
+    assert(stats.full_text_copies == 0);
+    assert(stats.full_text_copy_bytes == 0);
+    assert(stats.total_height_linear_scans == 0);
+    assert(stats.total_visual_row_linear_scans == 0);
+    assert(stats.visual_row_linear_scans == 0);
+    assert(stats.locate_visual_row_linear_scans == 0);
+
+    vg_font_destroy(font);
+    vg_widget_destroy(&editor->base);
+    free(text);
+}
+
+static void test_pointer_selection_drag_wall_clock_budget(void) {
+    enum { line_count = 50000 };
+
+    char *text = make_lines(line_count);
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+
+    uint8_t font_blob[512];
+    size_t font_size = build_minimal_test_font(font_blob);
+    vg_font_t *font = vg_font_load(font_blob, font_size);
+    assert(font != NULL);
+
+    editor->base.width = 900.0f;
+    editor->base.height = 600.0f;
+    editor->word_wrap = false;
+    editor->show_line_numbers = false;
+    editor->gutter_width = 0.0f;
+    vg_codeeditor_set_font(editor, font, 16.0f);
+    vg_codeeditor_set_text(editor, text);
+    editor->base.vtable->paint(&editor->base, NULL);
+
+    vg_codeeditor_reset_perf_stats(editor);
+    send_mouse(editor, VG_EVENT_MOUSE_DOWN, 20.0f, 12.0f);
+    assert(editor->selection_dragging);
+
+    double max_ms = 0.0;
+    for (int i = 0; i < 120; i++) {
+        float y = 12.0f + (float)((i % 28) + 1) * editor->line_height;
+        double start = now_ms();
+        send_mouse(editor, VG_EVENT_MOUSE_MOVE, 220.0f, y);
+        editor->base.vtable->paint(&editor->base, NULL);
+        double elapsed = now_ms() - start;
+        if (elapsed > max_ms)
+            max_ms = elapsed;
+    }
+    send_mouse(editor, VG_EVENT_MOUSE_UP, 220.0f, 12.0f + 20.0f * editor->line_height);
+
+    assert_under_ms("50k pointer selection-drag frame", max_ms, PERF_SELECTION_DRAG_50K_BUDGET_MS);
+    assert(!editor->selection_dragging);
+    assert(editor->has_selection);
+    assert(editor->cursor_line > 0);
+
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(editor);
+    assert(stats.full_text_copies == 0);
+    assert(stats.full_text_copy_bytes == 0);
+    assert(stats.total_height_linear_scans == 0);
+    assert(stats.total_visual_row_linear_scans == 0);
+    assert(stats.visual_row_linear_scans == 0);
+    assert(stats.locate_visual_row_linear_scans == 0);
+
+    char *selection = vg_codeeditor_get_selection(editor);
+    assert(selection != NULL);
+    assert(strlen(selection) > 0);
+    free(selection);
+
+    vg_font_destroy(font);
+    vg_widget_destroy(&editor->base);
+    free(text);
+}
+
+static void test_minimap_wall_clock_budget(void) {
+    enum { line_count = 50000 };
+
+    char *text = make_lines(line_count);
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+    editor->base.width = 900.0f;
+    editor->base.height = 600.0f;
+    editor->word_wrap = false;
+    vg_codeeditor_set_text(editor, text);
+    vg_codeeditor_scroll_to_line(editor, line_count / 2);
+
+    vg_minimap_t *minimap = vg_minimap_create(editor);
+    assert(minimap != NULL);
+    minimap->base.width = 120.0f;
+    minimap->base.height = 600.0f;
+
+    double start = now_ms();
+    minimap->base.vtable->paint(&minimap->base, NULL);
+    double elapsed = now_ms() - start;
+    assert_under_ms("50k minimap paint", elapsed, PERF_MINIMAP_50K_BUDGET_MS);
+
+    vg_codeeditor_perf_stats_t stats = vg_codeeditor_get_perf_stats(editor);
+    assert(stats.full_text_copies == 0);
+    assert(stats.full_text_copy_bytes == 0);
+
+    vg_minimap_destroy(minimap);
     vg_widget_destroy(&editor->base);
     free(text);
 }
@@ -389,6 +674,15 @@ static void test_auto_indent_newline_is_single_undo_step(void) {
 static void test_pair_autoclose_skip_and_undo(void) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     assert(editor != NULL);
+
+    uint8_t font_blob[512];
+    size_t font_size = build_minimal_test_font(font_blob);
+    vg_font_t *font = vg_font_load(font_blob, font_size);
+    assert(font != NULL);
+    editor->base.width = 900.0f;
+    editor->base.height = 600.0f;
+    editor->base.state |= VG_STATE_FOCUSED;
+    vg_codeeditor_set_font(editor, font, 16.0f);
     vg_codeeditor_set_text(editor, "");
 
     send_key_char(editor, '(');
@@ -397,6 +691,12 @@ static void test_pair_autoclose_skip_and_undo(void) {
     free(text);
     assert(editor->cursor_line == 0);
     assert(editor->cursor_col == 1);
+    editor->base.vtable->paint(&editor->base, NULL);
+    assert(editor->pair_match_active);
+    assert(editor->pair_anchor_line == 0);
+    assert(editor->pair_anchor_col == 1);
+    assert(editor->pair_peer_line == 0);
+    assert(editor->pair_peer_col == 0);
 
     uint64_t revision_before_skip = editor->revision;
     send_key_char(editor, ')');
@@ -405,6 +705,10 @@ static void test_pair_autoclose_skip_and_undo(void) {
     free(text);
     assert(editor->cursor_col == 2);
     assert(editor->revision == revision_before_skip);
+    editor->base.vtable->paint(&editor->base, NULL);
+    assert(editor->pair_match_active);
+    assert(editor->pair_anchor_col == 1);
+    assert(editor->pair_peer_col == 0);
 
     vg_codeeditor_undo(editor);
     text = vg_codeeditor_get_text(editor);
@@ -412,6 +716,57 @@ static void test_pair_autoclose_skip_and_undo(void) {
     free(text);
     assert(editor->cursor_line == 0);
     assert(editor->cursor_col == 0);
+    editor->base.vtable->paint(&editor->base, NULL);
+    assert(!editor->pair_match_active);
+
+    vg_codeeditor_set_text(editor, "{\n    call()\n}");
+    vg_codeeditor_set_cursor(editor, 2, 0);
+    editor->base.vtable->paint(&editor->base, NULL);
+    assert(editor->pair_match_active);
+    assert(editor->pair_anchor_line == 2);
+    assert(editor->pair_anchor_col == 0);
+    assert(editor->pair_peer_line == 0);
+    assert(editor->pair_peer_col == 0);
+
+    vg_font_destroy(font);
+    vg_widget_destroy(&editor->base);
+}
+
+static void test_closing_brace_formats_indent_on_type(void) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    assert(editor != NULL);
+
+    vg_codeeditor_set_text(editor, "{\n        ");
+    vg_codeeditor_set_cursor(editor, 1, 8);
+    send_key_char(editor, '}');
+    char *text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{\n    }") == 0);
+    free(text);
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 5);
+
+    vg_codeeditor_undo(editor);
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{\n        ") == 0);
+    free(text);
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 8);
+
+    vg_codeeditor_set_text(editor, "{\n    }");
+    vg_codeeditor_set_cursor(editor, 1, 4);
+    send_key_char(editor, '}');
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{\n}") == 0);
+    free(text);
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 1);
+
+    vg_codeeditor_undo(editor);
+    text = vg_codeeditor_get_text(editor);
+    assert(strcmp(text, "{\n    }") == 0);
+    free(text);
+    assert(editor->cursor_line == 1);
+    assert(editor->cursor_col == 4);
 
     vg_widget_destroy(&editor->base);
 }
@@ -419,13 +774,19 @@ static void test_pair_autoclose_skip_and_undo(void) {
 int main(void) {
     test_nowrap_large_file_navigation_avoids_linear_scans();
     test_full_text_copy_counter();
+    test_set_text_clears_stale_fold_regions();
     test_folded_large_file_navigation_uses_layout_cache();
     test_wrapped_large_file_navigation_uses_layout_cache();
     test_highlight_span_paint_uses_line_index();
     test_typing_burst_does_not_copy_full_buffer();
     test_large_selection_does_not_copy_full_buffer();
+    test_typing_and_paint_wall_clock_budgets();
+    test_paint_and_scroll_wall_clock_budgets();
+    test_pointer_selection_drag_wall_clock_budget();
+    test_minimap_wall_clock_budget();
     test_auto_indent_newline_is_single_undo_step();
     test_pair_autoclose_skip_and_undo();
+    test_closing_brace_formats_indent_on_type();
     printf("test_vg_codeeditor_perf: PASSED\n");
     return 0;
 }

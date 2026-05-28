@@ -23,8 +23,8 @@
 
 #include "BranchOpt.hpp"
 
-#include <string>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -41,9 +41,10 @@ namespace {
 /// @param nameToIdx Mapping from block label to block index.
 /// @param placed Per-block flag marking already-laid-out blocks.
 /// @return Index of the first unplaced successor, or @c std::nullopt.
-std::optional<std::size_t> lookupUnplacedTarget(const MInstr &instr,
-                                                const std::unordered_map<std::string, std::size_t> &nameToIdx,
-                                                const std::vector<bool> &placed) {
+std::optional<std::size_t> lookupUnplacedTarget(
+    const MInstr &instr,
+    const std::unordered_map<std::string, std::size_t> &nameToIdx,
+    const std::vector<bool> &placed) {
     for (auto it = instr.operands.rbegin(); it != instr.operands.rend(); ++it) {
         const auto *lbl = std::get_if<OpLabel>(&*it);
         if (!lbl)
@@ -136,8 +137,7 @@ void traceBlockLayout(MFunction &fn, PeepholeStats &stats) {
             const auto &instrs = fn.blocks[cur].instructions;
             if (!instrs.empty()) {
                 const auto &last = instrs.back();
-                if (instrs.size() >= 2 &&
-                    instrs[instrs.size() - 2].opcode == MOpcode::JCC &&
+                if (instrs.size() >= 2 && instrs[instrs.size() - 2].opcode == MOpcode::JCC &&
                     last.opcode == MOpcode::JMP) {
                     if (auto fallthrough = lookupUnplacedTarget(last, nameToIdx, placed)) {
                         cur = *fallthrough;

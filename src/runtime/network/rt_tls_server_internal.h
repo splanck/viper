@@ -26,10 +26,10 @@ typedef struct rt_tls_server_ctx rt_tls_server_ctx_t;
 ///          and private key are held inside the context for every
 ///          subsequent @ref rt_tls_server_accept_socket call.
 typedef struct rt_tls_server_config {
-    const char *cert_file;      ///< PEM-encoded server cert chain (leaf first).
-    const char *key_file;       ///< PEM-encoded private key matching the leaf.
-    const char *alpn_protocol;  ///< Optional comma-separated ALPN advertise list.
-    int timeout_ms;             ///< Per-handshake timeout; 0 = default 30 s.
+    const char *cert_file;     ///< PEM-encoded server cert chain (leaf first).
+    const char *key_file;      ///< PEM-encoded private key matching the leaf.
+    const char *alpn_protocol; ///< Optional comma-separated ALPN advertise list.
+    int timeout_ms;            ///< Per-handshake timeout; 0 = default 30 s.
 } rt_tls_server_config_t;
 
 /// @brief Initialise @p config with default field values.

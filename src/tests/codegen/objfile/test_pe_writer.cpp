@@ -393,8 +393,7 @@ TEST(PeWriter, ResourceDirectoryIncludesAsInvokerManifest) {
     EXPECT_TRUE(std::find(names.begin(), names.end(), ".rsrc") != names.end());
 
     std::string fileText(data.begin(), data.end());
-    EXPECT_TRUE(fileText.find("requestedExecutionLevel level=\"asInvoker\"") !=
-                std::string::npos);
+    EXPECT_TRUE(fileText.find("requestedExecutionLevel level=\"asInvoker\"") != std::string::npos);
 }
 
 TEST(PeWriter, SkipsNonAllocDebugSections) {

@@ -42,6 +42,7 @@ crackman/
     utils.zia           Shared grid movement and coordinate helpers
     smoke_probe.zia     Headless smoke coverage for sprites, ghost return, and progression
     movement_probe.zia  Headless boundary regression coverage for maze/player movement
+    ghost_stall_probe.zia Headless regression coverage for active ghosts stalling
 
     audio/
         sfx_bank.zia    Procedural SFX registration

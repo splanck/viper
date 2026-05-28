@@ -64,8 +64,8 @@ static void spinner_adjust_value(vg_spinner_t *spinner, double delta) {
 
 /// @brief Return true if local coordinates (x,y) fall within the up-arrow button.
 static bool spinner_point_in_up_button(const vg_spinner_t *spinner, float x, float y) {
-    return x >= spinner->base.width - spinner->button_width && x < spinner->base.width && y >= 0.0f &&
-           y < spinner->base.height * 0.5f;
+    return x >= spinner->base.width - spinner->button_width && x < spinner->base.width &&
+           y >= 0.0f && y < spinner->base.height * 0.5f;
 }
 
 /// @brief Return true if local coordinates (x,y) fall within the down-arrow button.
@@ -112,7 +112,8 @@ vg_spinner_t *vg_spinner_create(vg_widget_t *parent) {
     spinner->bg_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.35f);
     spinner->text_color = theme->colors.fg_primary;
     spinner->border_color = theme->colors.border_primary;
-    spinner->button_color = vg_color_blend(theme->colors.bg_tertiary, theme->colors.bg_secondary, 0.45f);
+    spinner->button_color =
+        vg_color_blend(theme->colors.bg_tertiary, theme->colors.bg_secondary, 0.45f);
 
     spinner->base.constraints.min_width = 80.0f;
     spinner->base.constraints.min_height = theme->input.height;
@@ -133,15 +134,15 @@ static void spinner_destroy(vg_widget_t *widget) {
         vg_widget_release_input_capture();
 }
 
-/// @brief VTable measure: sizes the spinner from text extent plus up/down button gutter and input padding.
+/// @brief VTable measure: sizes the spinner from text extent plus up/down button gutter and input
+/// padding.
 static void spinner_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_spinner_t *spinner = (vg_spinner_t *)widget;
     (void)available_width;
     (void)available_height;
 
     float width = widget->constraints.min_width > 0.0f ? widget->constraints.min_width : 80.0f;
-    float height =
-        widget->constraints.min_height > 0.0f ? widget->constraints.min_height : 28.0f;
+    float height = widget->constraints.min_height > 0.0f ? widget->constraints.min_height : 28.0f;
 
     if (spinner->font && spinner->text_buffer) {
         vg_text_metrics_t metrics = {0};
@@ -159,7 +160,8 @@ static void spinner_measure(vg_widget_t *widget, float available_width, float av
     vg_widget_apply_constraints(widget);
 }
 
-/// @brief VTable paint: draws the input field background, current value text, up/down arrow buttons with hover/press tints, border, and focus ring.
+/// @brief VTable paint: draws the input field background, current value text, up/down arrow buttons
+/// with hover/press tints, border, and focus ring.
 static void spinner_paint(vg_widget_t *widget, void *canvas) {
     vg_spinner_t *spinner = (vg_spinner_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -196,7 +198,8 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
 
     vgfx_fill_rect((vgfx_window_t)canvas, x, y, w, h, bg_color);
     if (w > 2) {
-        vgfx_fill_rect((vgfx_window_t)canvas, x + 1, y + 1, w - 2, 1, vg_color_lighten(bg_color, 0.08f));
+        vgfx_fill_rect(
+            (vgfx_window_t)canvas, x + 1, y + 1, w - 2, 1, vg_color_lighten(bg_color, 0.08f));
     }
     vgfx_fill_rect((vgfx_window_t)canvas,
                    button_x,
@@ -237,11 +240,13 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
         vg_font_get_metrics(spinner->font, spinner->font_size, &metrics);
 
         vg_text_metrics_t text_metrics = {0};
-        vg_font_measure_text(spinner->font, spinner->font_size, spinner->text_buffer, &text_metrics);
+        vg_font_measure_text(
+            spinner->font, spinner->font_size, spinner->text_buffer, &text_metrics);
 
         const float text_area_w = widget->width - spinner->button_width - 12.0f;
-        const float text_x = spinner->editing ? (widget->x + 8.0f)
-                                              : (widget->x + 8.0f + (text_area_w - text_metrics.width) * 0.5f);
+        const float text_x = spinner->editing
+                                 ? (widget->x + 8.0f)
+                                 : (widget->x + 8.0f + (text_area_w - text_metrics.width) * 0.5f);
         const float text_y = widget->y +
                              (widget->height - (metrics.ascent - metrics.descent)) * 0.5f +
                              metrics.ascent;
@@ -251,8 +256,13 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
         int32_t clip_h = h - 4;
         if (clip_w > 0 && clip_h > 0)
             vgfx_set_clip((vgfx_window_t)canvas, clip_x, clip_y, clip_w, clip_h);
-        vg_font_draw_text(
-            canvas, spinner->font, spinner->font_size, text_x, text_y, spinner->text_buffer, text_color);
+        vg_font_draw_text(canvas,
+                          spinner->font,
+                          spinner->font_size,
+                          text_x,
+                          text_y,
+                          spinner->text_buffer,
+                          text_color);
         if ((widget->state & VG_STATE_FOCUSED) && spinner->editing) {
             size_t cursor_pos = spinner->cursor_pos;
             size_t text_len = strlen(spinner->text_buffer);
@@ -261,15 +271,11 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
             char saved = spinner->text_buffer[cursor_pos];
             spinner->text_buffer[cursor_pos] = '\0';
             vg_text_metrics_t cursor_metrics = {0};
-            vg_font_measure_text(spinner->font, spinner->font_size, spinner->text_buffer, &cursor_metrics);
+            vg_font_measure_text(
+                spinner->font, spinner->font_size, spinner->text_buffer, &cursor_metrics);
             spinner->text_buffer[cursor_pos] = saved;
             int32_t cursor_x = (int32_t)(text_x + cursor_metrics.width);
-            vgfx_line((vgfx_window_t)canvas,
-                      cursor_x,
-                      y + 5,
-                      cursor_x,
-                      y + h - 5,
-                      text_color);
+            vgfx_line((vgfx_window_t)canvas, cursor_x, y + 5, cursor_x, y + h - 5, text_color);
         }
         if (clip_w > 0 && clip_h > 0)
             vgfx_clear_clip((vgfx_window_t)canvas);
@@ -279,21 +285,12 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
         (widget->state & VG_STATE_DISABLED) ? theme->colors.fg_disabled : theme->colors.fg_primary;
     vgfx_line((vgfx_window_t)canvas, up_mid_x - 4, up_mid_y + 2, up_mid_x, up_mid_y - 2, glyph);
     vgfx_line((vgfx_window_t)canvas, up_mid_x, up_mid_y - 2, up_mid_x + 4, up_mid_y + 2, glyph);
-    vgfx_line((vgfx_window_t)canvas,
-              up_mid_x - 4,
-              down_mid_y - 2,
-              up_mid_x,
-              down_mid_y + 2,
-              glyph);
-    vgfx_line((vgfx_window_t)canvas,
-              up_mid_x,
-              down_mid_y + 2,
-              up_mid_x + 4,
-              down_mid_y - 2,
-              glyph);
+    vgfx_line((vgfx_window_t)canvas, up_mid_x - 4, down_mid_y - 2, up_mid_x, down_mid_y + 2, glyph);
+    vgfx_line((vgfx_window_t)canvas, up_mid_x, down_mid_y + 2, up_mid_x + 4, down_mid_y - 2, glyph);
 }
 
-/// @brief VTable handle_event: handles click on up/down arrow buttons, mouse-wheel increment/decrement, arrow/Home/End keys, and inline text editing.
+/// @brief VTable handle_event: handles click on up/down arrow buttons, mouse-wheel
+/// increment/decrement, arrow/Home/End keys, and inline text editing.
 static bool spinner_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_spinner_t *spinner = (vg_spinner_t *)widget;
     if (widget->state & VG_STATE_DISABLED)
@@ -303,7 +300,8 @@ static bool spinner_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_MOVE: {
             const bool old_up_hovered = spinner->up_hovered;
             const bool old_down_hovered = spinner->down_hovered;
-            spinner->up_hovered = spinner_point_in_up_button(spinner, event->mouse.x, event->mouse.y);
+            spinner->up_hovered =
+                spinner_point_in_up_button(spinner, event->mouse.x, event->mouse.y);
             spinner->down_hovered =
                 spinner_point_in_down_button(spinner, event->mouse.x, event->mouse.y);
             if (old_up_hovered != spinner->up_hovered ||
@@ -554,7 +552,8 @@ static void spinner_insert_char(vg_spinner_t *spinner, char ch) {
     bool allow = false;
     if (ch >= '0' && ch <= '9') {
         allow = true;
-    } else if (ch == '.' && spinner->decimal_places > 0 && strchr(spinner->text_buffer, '.') == NULL) {
+    } else if (ch == '.' && spinner->decimal_places > 0 &&
+               strchr(spinner->text_buffer, '.') == NULL) {
         allow = true;
     } else if (ch == '-' && spinner->min_value < 0.0 && spinner->cursor_pos == 0 &&
                strchr(spinner->text_buffer, '-') == NULL) {

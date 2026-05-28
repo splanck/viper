@@ -81,8 +81,7 @@ void *rt_plural_rules_categories(void *self); // List<str>
 rt_plural_category_t rt_plural_rules_select_cardinal(const rt_locale_data_t *data, double n);
 
 /// @brief Evaluate the cardinal chain with pure-integer operands.
-rt_plural_category_t rt_plural_rules_select_cardinal_int(const rt_locale_data_t *data,
-                                                         int64_t n);
+rt_plural_category_t rt_plural_rules_select_cardinal_int(const rt_locale_data_t *data, int64_t n);
 
 /// @brief Evaluate the ordinal chain on a rt_locale_data_t.
 rt_plural_category_t rt_plural_rules_select_ordinal(const rt_locale_data_t *data, int64_t n);

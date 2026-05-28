@@ -2,7 +2,7 @@
 """Convert a TTF/TTC file to a C source array for compile-time embedding.
 
 Usage:
-    python3 scripts/embed_font.py <font.ttf> > src/runtime/graphics/fonts/embedded_font.c
+    python3 scripts/embed_font.py <font.ttf> > src/runtime/graphics/text/fonts/embedded_font.c
 
 Re-run this script whenever the source font file is replaced.
 The output is committed to the repository alongside the .ttf source.

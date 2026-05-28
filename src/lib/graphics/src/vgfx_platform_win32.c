@@ -597,9 +597,10 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win->mouse_x = x; /* Update input state */
             win->mouse_y = y;
 
-            vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_MOVE,
-                                  .time_ms = timestamp,
-                                  .data.mouse_move = {.x = x, .y = y, .modifiers = win32_modifiers()}};
+            vgfx_event_t event = {
+                .type = VGFX_EVENT_MOUSE_MOVE,
+                .time_ms = timestamp,
+                .data.mouse_move = {.x = x, .y = y, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
@@ -729,14 +730,13 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             win->mouse_y = y;
 
             float delta = (float)GET_WHEEL_DELTA_WPARAM(wparam) / (float)WHEEL_DELTA;
-            vgfx_event_t event = {
-                .type = VGFX_EVENT_SCROLL,
-                .time_ms = timestamp,
-                .data.scroll = {.delta_x = 0.0f,
-                                .delta_y = 0.0f,
-                                .x = x,
-                                .y = y,
-                                .modifiers = win32_modifiers()}};
+            vgfx_event_t event = {.type = VGFX_EVENT_SCROLL,
+                                  .time_ms = timestamp,
+                                  .data.scroll = {.delta_x = 0.0f,
+                                                  .delta_y = 0.0f,
+                                                  .x = x,
+                                                  .y = y,
+                                                  .modifiers = win32_modifiers()}};
             if (msg == WM_MOUSEWHEEL)
                 event.data.scroll.delta_y = -delta;
             else

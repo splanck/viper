@@ -17,9 +17,9 @@
 
 #include <cassert>
 #include <cfloat>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <cmath>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -99,8 +99,7 @@ static void test_grouped_embedded_nul_separator() {
     const char sep_bytes[] = {':', '\0', ':'};
     rt_string sep = make_bytes(sep_bytes, sizeof(sep_bytes));
     rt_string r = rt_fmt_int_grouped(1234567, sep);
-    const char expected[] = {'1', ':', '\0', ':', '2', '3', '4',
-                             ':', '\0', ':', '5', '6', '7'};
+    const char expected[] = {'1', ':', '\0', ':', '2', '3', '4', ':', '\0', ':', '5', '6', '7'};
     assert(bytes_eq(r, expected, sizeof(expected)));
     rt_string_unref(r);
     rt_string_unref(sep);

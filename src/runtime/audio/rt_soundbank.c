@@ -37,6 +37,7 @@
 
 #define BANK_MAX_ENTRIES 64
 #define RT_SOUNDBANK_CLASS_ID INT64_C(-0x730101)
+
 typedef struct {
     rt_string name;
     void *sound; /* retained rt_sound wrapper */
@@ -121,8 +122,8 @@ static void rt_soundbank_finalize(void *obj) {
 ///          sounds to be played by name (e.g., bank.Play("jump")). Supports
 ///          up to BANK_MAX_ENTRIES sounds.
 void *rt_soundbank_new(void) {
-    rt_soundbank_impl *bank =
-        (rt_soundbank_impl *)rt_obj_new_i64(RT_SOUNDBANK_CLASS_ID, (int64_t)sizeof(rt_soundbank_impl));
+    rt_soundbank_impl *bank = (rt_soundbank_impl *)rt_obj_new_i64(
+        RT_SOUNDBANK_CLASS_ID, (int64_t)sizeof(rt_soundbank_impl));
     if (!bank)
         return NULL;
 

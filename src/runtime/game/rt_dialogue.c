@@ -213,8 +213,8 @@ static int32_t dlg_copy_utf8(char *dst, size_t dst_cap, const char *src) {
 
 /// @brief Rendered text height in pixels for the dialogue's font and scale.
 static int32_t dlg_text_height_px(const rt_dialogue_impl *d) {
-    int32_t base_height = d->font ? (int32_t)rt_bitmapfont_text_height(d->font)
-                                  : (int32_t)rt_canvas_text_height();
+    int32_t base_height =
+        d->font ? (int32_t)rt_bitmapfont_text_height(d->font) : (int32_t)rt_canvas_text_height();
     return base_height * d->text_scale;
 }
 
@@ -233,15 +233,21 @@ static int32_t dlg_measure_bytes(const rt_dialogue_impl *d, const char *text, si
     if (!measured)
         return 0;
 
-    int64_t width = d->font ? rt_bitmapfont_text_width(d->font, measured) : rt_canvas_text_width(measured);
+    int64_t width =
+        d->font ? rt_bitmapfont_text_width(d->font, measured) : rt_canvas_text_width(measured);
     rt_str_release_maybe(measured);
     return (int32_t)(width * d->text_scale);
 }
 
 /// @brief Draw a byte run of text at (x, y) on @p canvas using the dialogue's
 ///        font/scale (falls back to the canvas default font when none set).
-static void dlg_draw_bytes(
-    const rt_dialogue_impl *d, void *canvas, int32_t x, int32_t y, const char *text, size_t byte_len, int32_t color) {
+static void dlg_draw_bytes(const rt_dialogue_impl *d,
+                           void *canvas,
+                           int32_t x,
+                           int32_t y,
+                           const char *text,
+                           size_t byte_len,
+                           int32_t color) {
     if (!canvas || !text || byte_len == 0)
         return;
 
@@ -272,8 +278,13 @@ static int8_t dlg_is_space(unsigned char c) {
 /// @brief Draw one word-wrapped line, revealing only the first
 ///        d->revealed_chars codepoints (typewriter effect), clipped to the
 ///        (max_x, max_y) bounds.
-static void dlg_draw_wrapped_revealed(
-    const rt_dialogue_impl *d, void *canvas, const dlg_line *line, int32_t text_x, int32_t text_y, int32_t max_x, int32_t max_y) {
+static void dlg_draw_wrapped_revealed(const rt_dialogue_impl *d,
+                                      void *canvas,
+                                      const dlg_line *line,
+                                      int32_t text_x,
+                                      int32_t text_y,
+                                      int32_t max_x,
+                                      int32_t max_y) {
     if (!line || line->text_len_bytes <= 0)
         return;
 
@@ -446,7 +457,8 @@ void rt_dialogue_set_speaker_color(void *dlg, int64_t color) {
 
 /// @brief Set the bg color of the dialogue.
 void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetBgColor: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.SetBgColor: expected Viper.Game.Dialogue");
     if (!d)
         return;
     d->bg_color = clamp_i64_to_i32(color);
@@ -463,7 +475,8 @@ void rt_dialogue_set_border_color(void *dlg, int64_t color) {
 
 /// @brief Set the inner padding (pixels) between the box edge and text.
 void rt_dialogue_set_padding(void *dlg, int64_t padding) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetPadding: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.SetPadding: expected Viper.Game.Dialogue");
     if (d)
         d->padding = padding <= 0 ? 0 : clamp_i64_to_i32(padding);
 }
@@ -672,7 +685,8 @@ int8_t rt_dialogue_is_line_complete(void *dlg) {
 
 /// @brief Check whether the typewriter effect has fully revealed all text.
 int8_t rt_dialogue_is_finished(void *dlg) {
-    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.IsFinished: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.IsFinished: expected Viper.Game.Dialogue");
     return d ? d->finished : 0;
 }
 
@@ -684,8 +698,7 @@ int8_t rt_dialogue_is_waiting(void *dlg) {
 
 /// @brief Return the count of elements in the dialogue.
 int64_t rt_dialogue_get_line_count(void *dlg) {
-    rt_dialogue_impl *d =
-        checked_dialogue(dlg, "Dialogue.LineCount: expected Viper.Game.Dialogue");
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.LineCount: expected Viper.Game.Dialogue");
     return d ? d->line_count : 0;
 }
 

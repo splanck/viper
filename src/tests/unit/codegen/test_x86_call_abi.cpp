@@ -523,19 +523,16 @@ TEST(X64CallABI, SetccCallArgIsByteZeroExtendedBeforeArgumentMove) {
     FrameInfo frame{};
     lowerCall(block, 1, plan, sysvTarget(), frame);
 
-    const auto movzxIt = std::find_if(block.instructions.begin(), block.instructions.end(),
-                                      [](const MInstr &instr) {
-                                          if (instr.opcode != MOpcode::MOVZXrr8 ||
-                                              instr.operands.size() < 2) {
-                                              return false;
-                                          }
-                                          const auto *dst = asReg(instr.operands[0]);
-                                          const auto *src = asReg(instr.operands[1]);
-                                          return dst && src && dst->isPhys && !src->isPhys &&
-                                                 static_cast<PhysReg>(dst->idOrPhys) ==
-                                                     PhysReg::R11 &&
-                                                 src->idOrPhys == 1;
-                                      });
+    const auto movzxIt =
+        std::find_if(block.instructions.begin(), block.instructions.end(), [](const MInstr &instr) {
+            if (instr.opcode != MOpcode::MOVZXrr8 || instr.operands.size() < 2) {
+                return false;
+            }
+            const auto *dst = asReg(instr.operands[0]);
+            const auto *src = asReg(instr.operands[1]);
+            return dst && src && dst->isPhys && !src->isPhys &&
+                   static_cast<PhysReg>(dst->idOrPhys) == PhysReg::R11 && src->idOrPhys == 1;
+        });
     EXPECT_TRUE(movzxIt != block.instructions.end());
 }
 

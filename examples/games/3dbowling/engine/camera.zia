@@ -2,12 +2,12 @@
 // MODULE: camera (CameraController)
 // PURPOSE: Camera state machine for the bowling demo. Five modes: title
 //          (slow orbit on the menu), aim (over-the-shoulder behind the
-//          ball), follow (tracks the ball after release), overhead
+//          ball), roll (stable lane view after release), overhead
 //          (bird's-eye review), cinematic (Bezier swoop on a strike).
 //
 // WHERE-THIS-FITS: One per BowlingGame. Game state transitions
 //          (aiming → throwing → settling → celebrating) call setAimMode
-//          / setFollowMode / startCinematic etc. and the camera takes
+//          / setRollMode / startCinematic etc. and the camera takes
 //          care of the smooth interpolation.
 //
 // KEY-DESIGN-CHOICES:
@@ -34,7 +34,7 @@ bind "../config";
 
 var MODE_TITLE: Integer = 0;
 var MODE_AIM: Integer = 1;
-var MODE_FOLLOW: Integer = 2;
+var MODE_ROLL: Integer = 2;
 var MODE_OVERHEAD: Integer = 3;
 var MODE_CINEMATIC: Integer = 4;
 
@@ -91,9 +91,16 @@ class CameraController {
         applyLookAt();
     }
 
-    /// @brief Switch to ball-following camera (positions update via updateFollow).
-    expose func setFollowMode() {
-        mode = MODE_FOLLOW;
+    /// @brief Switch to a stable lane camera for the roll.
+    expose func setRollMode() {
+        mode = MODE_ROLL;
+        eyeX = 0.0;
+        eyeY = config.CAM_ROLL_HEIGHT;
+        eyeZ = -config.CAM_ROLL_BEHIND;
+        targetX = 0.0;
+        targetY = config.CAM_ROLL_LOOK_Y;
+        targetZ = config.CAM_ROLL_LOOK_Z;
+        applyLookAt();
     }
 
     /// @brief Switch to overhead bird's-eye review camera.
@@ -145,16 +152,16 @@ class CameraController {
         applyLookAt();
     }
 
-    /// @brief Per-frame follow-camera lerp tracking the ball.
-    expose func updateFollow(ballX: Float, ballZ: Float, dt: Float) {
-        if (mode != MODE_FOLLOW) { return; }
+    /// @brief Per-frame roll-camera settle. Keeps the view close and stable.
+    expose func updateRoll(dt: Float) {
+        if (mode != MODE_ROLL) { return; }
 
-        eyeX = lerp(eyeX, ballX * 0.28 + 0.2, dt * config.CAM_FOLLOW_SMOOTH);
-        eyeY = lerp(eyeY, config.CAM_FOLLOW_HEIGHT, dt * config.CAM_FOLLOW_SMOOTH);
-        eyeZ = lerp(eyeZ, ballZ - config.CAM_FOLLOW_DIST, dt * config.CAM_FOLLOW_SMOOTH);
-        targetX = lerp(targetX, ballX * 0.26, dt * config.CAM_FOLLOW_SMOOTH);
-        targetY = lerp(targetY, 0.25, dt * config.CAM_FOLLOW_SMOOTH);
-        targetZ = lerp(targetZ, ballZ + config.CAM_FOLLOW_LOOK_AHEAD, dt * config.CAM_FOLLOW_SMOOTH);
+        eyeX = lerp(eyeX, 0.0, dt * config.CAM_FOLLOW_SMOOTH);
+        eyeY = lerp(eyeY, config.CAM_ROLL_HEIGHT, dt * config.CAM_FOLLOW_SMOOTH);
+        eyeZ = lerp(eyeZ, -config.CAM_ROLL_BEHIND, dt * config.CAM_FOLLOW_SMOOTH);
+        targetX = lerp(targetX, 0.0, dt * config.CAM_FOLLOW_SMOOTH);
+        targetY = lerp(targetY, config.CAM_ROLL_LOOK_Y, dt * config.CAM_FOLLOW_SMOOTH);
+        targetZ = lerp(targetZ, config.CAM_ROLL_LOOK_Z, dt * config.CAM_FOLLOW_SMOOTH);
         applyLookAt();
     }
 

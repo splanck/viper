@@ -20,6 +20,7 @@ bind "editor/completion";
 bind "editor/diagnostics";
 bind "editor/hover";
 bind "editor/symbols";
+bind "editor/inlay_hints";
 bind "services/file_utils";
 bind "services/locations";
 bind "build/build_system";
@@ -122,6 +123,7 @@ func main() {
     completer.Setup(engine.editor, shell.app);
     completer.SetEngine(engine);
     completer.SetScheduler(editorScheduler);
+    completer.SetWorkspaceContext(projMgr, docMgr);
 
     // Real-time diagnostics (errors-as-you-type)
     var liveDiag = new diagnostics.LiveDiagnostics();
@@ -135,6 +137,8 @@ func main() {
     var sigCtrl = new signature.SignatureController();
     sigCtrl.setup(shell.app);
     sigCtrl.SetScheduler(editorScheduler);
+
+    var inlayCtrl = new inlay_hints.InlayHintController();
 
     // Symbol outline panel (below diagnostics, toggled via View menu)
     var symbolOutline = new symbols.SymbolOutline();
@@ -226,6 +230,7 @@ func main() {
     var prevCursorCol  = 1;
     var minimapVisible = appSettings.minimapVisible;
     var lastServiceName = "";
+    var paletteMode = "commands";
     var lastBreakpointPath = "";
     var lastBreakpointVersion = -1;
     var autoSaveRevision = engine.GetRevision();
@@ -256,24 +261,35 @@ func main() {
             activeToolPath = activeToolDoc.filePath;
             activeService = languageServices.ForDocument(activeToolDoc);
         }
+        var activeProjectName = "";
+        if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+            activeProjectName = projMgr.project.name;
+        }
+        shell.SetWorkspaceStatus(activeProjectName, activeService.name);
         if activeService.name != lastServiceName {
-            commandRegistry.PopulatePalette(shell.commandPalette, activeService);
+            if paletteMode == "commands" {
+                commandRegistry.PopulatePalette(shell.commandPalette, activeService);
+            }
             commandRegistry.ApplyCapabilities(activeService);
             lastServiceName = activeService.name;
         }
         completer.SetSourcePath(activeToolPath);
         completer.SetEnabled(activeService.canComplete);
         liveDiag.setSourcePath(activeToolPath);
-        liveDiag.enabled = activeService.canDiagnose;
+        liveDiag.enabled = appSettings.autoCheckOnSave and activeService.canDiagnose;
         hoverCtrl.setSourcePath(activeToolPath);
         hoverCtrl.setEnabled(activeService.canHover);
         sigCtrl.setSourcePath(activeToolPath);
+        inlayCtrl.SetEnabled(activeService.name == language_service.LANGUAGE_ZIA);
         symbolOutline.setSourcePath(activeToolPath);
         symbolOutline.setEnabled(activeService.canDocumentSymbols);
+        symbolOutline.setSemanticFoldingEnabled(appSettings.codeFolding
+                                                and activeService.canDocumentSymbols
+                                                and symbolOutline.visible,
+                                                engine);
+        var typedThisFrame = Input.Keyboard.GetText();
         var perfSpan = perfMon.StartSpan();
         indexer.EnsureProject(projMgr, docMgr);
-        indexer.PumpIndex(8);
-        indexer.SyncActiveWhenIdle(docMgr, engine);
         perfMon.AddIndex(perfSpan);
         if activeToolDoc != null {
             if lastBreakpointPath != activeToolDoc.filePath or lastBreakpointVersion != breakpointStore.version {
@@ -288,11 +304,9 @@ func main() {
         }
         debug_commands.PumpGutter(shell, docMgr, engine, breakpointStore);
 
-        var typedThisFrame = Input.Keyboard.GetText();
-
         if completer.isVisible {
             if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_TAB()) {
-                completer.AcceptTypedTab("\t");
+                completer.AcceptTabKey();
                 typedThisFrame = "";
             } else if Input.Keyboard.WasPressed(Input.Keyboard.get_KEY_ENTER()) {
                 completer.AcceptSelected();
@@ -307,6 +321,10 @@ func main() {
                 completer.NavigateUp();
                 typedThisFrame = "";
             } else if completer.AcceptTypedTab(typedThisFrame) {
+                typedThisFrame = "";
+            } else if completer.AcceptIfEditorInsertedTab() {
+                typedThisFrame = "";
+            } else if completer.AcceptHeldTabKey(Input.Keyboard.IsDown(Input.Keyboard.get_KEY_TAB())) {
                 typedThisFrame = "";
             } else if typedThisFrame != "" {
                 completer.AcceptIfCommitCharacter(typedThisFrame);
@@ -332,6 +350,9 @@ func main() {
         sigCtrl.update(engine);
         perfMon.AddSignature(perfSpan);
         perfSpan = perfMon.StartSpan();
+        inlayCtrl.update(engine);
+        perfMon.AddInlay(perfSpan);
+        perfSpan = perfMon.StartSpan();
         symbolOutline.update(engine);
         perfMon.AddSymbols(perfSpan);
         symbolOutline.handleClicks(engine);
@@ -340,15 +361,26 @@ func main() {
             completer.TriggerCompletion();
             perfMon.AddCompletion(perfSpan);
         }
+        if Shortcuts.WasTriggered("signature_trigger") != 0 {
+            perfSpan = perfMon.StartSpan();
+            sigCtrl.trigger(engine);
+            perfMon.AddSignature(perfSpan);
+        }
 
         // Dot / paren triggers must come from text input, not cursor motion.
         var curCursorLine = engine.GetCursorLine();
         var curCursorCol  = engine.GetCursorCol();
-        if Str.IndexOf(typedThisFrame, ".") != 0 {
+        var typedDot = Str.IndexOf(typedThisFrame, ".") != 0;
+        var typedIdentifier = HasIdentifierInput(typedThisFrame);
+        var suppressAutoCompletion = false;
+        if typedDot or typedIdentifier {
+            suppressAutoCompletion = completer.ShouldSuppressAutoTrigger();
+        }
+        if typedDot and suppressAutoCompletion == false {
             perfSpan = perfMon.StartSpan();
             completer.TriggerCompletion();
             perfMon.AddCompletion(perfSpan);
-        } else if HasIdentifierInput(typedThisFrame) {
+        } else if typedIdentifier and suppressAutoCompletion == false {
             completer.ScheduleCompletion();
         }
         if Str.IndexOf(typedThisFrame, "(") != 0 {
@@ -378,9 +410,32 @@ func main() {
         // ====================================================================
         var cpSelected = "";
         if shell.commandPalette.WasSelected() != 0 {
-            cpSelected = commandRegistry.NormalizeId(shell.commandPalette.GetSelected());
+            var rawPaletteSelection = shell.commandPalette.GetSelected();
+            if paletteMode == "quickopen" {
+                search_commands.HandleQuickOpenPaletteSelection(shell, projMgr, docMgr, engine, tabs,
+                                                                rawPaletteSelection);
+                paletteMode = "commands";
+                shell.commandPalette.SetPlaceholder("Type a command...");
+                commandRegistry.PopulatePalette(shell.commandPalette, activeService);
+            } else {
+                cpSelected = commandRegistry.NormalizeId(rawPaletteSelection);
+                if cpSelected != "" and commandRegistry.IsExecutable(cpSelected, activeService) == false {
+                    var disabledReason = commandRegistry.DisabledReason(cpSelected, activeService);
+                    shell.SetStatusLeft(disabledReason);
+                    GUI.Toast.Info(disabledReason);
+                    cpSelected = "";
+                }
+            }
+        }
+        if paletteMode != "commands" and shell.commandPalette.IsVisible() == 0 {
+            paletteMode = "commands";
+            shell.commandPalette.SetPlaceholder("Type a command...");
+            commandRegistry.PopulatePalette(shell.commandPalette, activeService);
         }
         if Shortcuts.WasTriggered("palette") != 0 {
+            paletteMode = "commands";
+            shell.commandPalette.SetPlaceholder("Type a command...");
+            commandRegistry.PopulatePalette(shell.commandPalette, activeService);
             shell.commandPalette.Show();
         }
 
@@ -480,7 +535,8 @@ func main() {
                                 shell.SetBreadcrumbPath(activeAfterRename.filePath);
                             }
                             indexer.RemoveFile(selectedPath);
-                            indexer.SyncOpenDocuments(docMgr);
+                            ReindexAfterTreeMove(projMgr, indexer, docMgr);
+                            InvalidateWorkspaceLocations(shell, locStore, engine);
                             var status = "Renamed: " + Path.Name(renamedPath);
                             if projMgr.lastBindRewriteCount > 0 {
                                 status = status + " (" + projMgr.lastBindRewriteCount + " bind updates)";
@@ -499,6 +555,8 @@ func main() {
                 if GUI.MessageBox.Confirm("Delete", "Delete " + Path.Name(deletePath) + "?") != 0 {
                     if projMgr.DeleteSelected(docMgr) {
                         indexer.RemoveFile(deletePath);
+                        ReindexAfterTreeMove(projMgr, indexer, docMgr);
+                        InvalidateWorkspaceLocations(shell, locStore, engine);
                         tabs.RefreshFromDocuments(docMgr);
                         var activeAfterDelete = docMgr.GetActive();
                         if activeAfterDelete != null {
@@ -570,18 +628,18 @@ func main() {
         // File commands
         if triggered("new", shell.miNew, shell.tbNew, cpSelected)      { file_commands.handleNew(shell, docMgr, engine, tabs); }
         if triggered("open", shell.miOpen, shell.tbOpen, cpSelected)    { file_commands.handleOpen(shell, docMgr, engine, tabs); RecordActiveFile(sessionMgr, docMgr); pendingReload = false; }
-        if shell.miOpenFolder.WasClicked() != 0 {
+        if triggered("openfolder", shell.miOpenFolder, null, cpSelected) {
             if file_commands.ConfirmCloseDocuments(shell, docMgr, engine, "Open Folder", -1) {
                 file_commands.handleOpenFolder(shell, projMgr);
                 indexer.Open(projMgr.project.rootPath, docMgr);
             }
         }
         if triggered("save", shell.miSave, shell.tbSave, cpSelected)   { file_commands.handleSave(shell, docMgr, engine, tabs); pendingReload = false; }
-        if shell.miSaveAs.WasClicked() != 0                            { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
+        if triggered("saveas", shell.miSaveAs, null, cpSelected)       { file_commands.handleSaveAs(shell, docMgr, engine, tabs); }
         if triggered("saveall", shell.miSaveAll, shell.tbSaveAll, cpSelected) { file_commands.handleSaveAll(shell, docMgr, engine, tabs); }
         if triggered("reload", shell.miReload, null, cpSelected)       { file_commands.handleReload(shell, docMgr, engine, tabs); pendingReload = false; }
-        if triggeredNoMenu("recentfiles", cpSelected)                  { view_commands.handleRecentFiles(shell, sessionMgr); }
-        if triggeredNoMenu("reopenclosed", cpSelected)                 { ReopenClosedFile(shell, docMgr, engine, tabs, sessionMgr); pendingReload = false; }
+        if triggeredMenu("recentfiles", shell.miRecentFiles, cpSelected) { view_commands.handleRecentFiles(shell, sessionMgr); }
+        if triggeredMenu("reopenclosed", shell.miReopenClosed, cpSelected) { ReopenClosedFile(shell, docMgr, engine, tabs, sessionMgr); pendingReload = false; }
 
         // Close — also check tab close button
         var closeIdx = -1;
@@ -616,33 +674,46 @@ func main() {
         }
 
         // Edit commands
-        if triggered("undo", shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(engine); }
+        if triggered("undo", shell.miUndo, null, cpSelected)           { edit_commands.handleUndo(engine, docMgr); }
         if triggered("redo", shell.miRedo, null, cpSelected)           { edit_commands.handleRedo(engine); }
         if triggered("cut", shell.miCut, null, cpSelected)             { edit_commands.handleCut(engine); }
         if triggered("copy", shell.miCopy, null, cpSelected)           { edit_commands.handleCopy(engine); }
         if triggered("paste", shell.miPaste, null, cpSelected)         { edit_commands.handlePaste(engine); }
         if triggered("selectall", shell.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(engine); }
         if triggered("find", shell.miFind, shell.tbFind, cpSelected)    { edit_commands.handleFind(shell); }
-        if triggeredNoMenu("goto", cpSelected)                          { edit_commands.handleGoToLine(shell, engine); }
-        if triggeredNoMenu("gotodef", cpSelected)                       { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
+        if triggeredMenu("goto", shell.miGoToLine, cpSelected)           { edit_commands.handleGoToLine(shell, engine); }
+        if triggeredMenu("gotodef", shell.miGoToDefinition, cpSelected)  { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
         if triggeredMenu("findrefs", shell.miFindReferences, cpSelected) { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
+        if triggeredMenu("incomingcalls", shell.miIncomingCalls, cpSelected) { edit_commands.handleIncomingCalls(shell, docMgr, engine, indexer, locStore); }
+        if triggeredMenu("outgoingcalls", shell.miOutgoingCalls, cpSelected) { edit_commands.handleOutgoingCalls(shell, docMgr, engine, indexer, locStore); }
         if triggeredMenu("rename", shell.miRenameSymbol, cpSelected)     { edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer); }
         if triggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(shell, engine); }
         if triggeredNoMenu("skipoccurrence", cpSelected)                 { edit_commands.handleSkipOccurrence(shell, engine); }
         if triggeredNoMenu("selectalloccurrences", cpSelected)           { edit_commands.handleSelectAllOccurrences(shell, engine); }
         if triggeredNoMenu("clearcursors", cpSelected)                   { edit_commands.handleClearCursors(shell, engine); }
+        if triggeredNoMenu("expandselection", cpSelected)                { edit_commands.handleExpandSelection(shell, engine); }
+        if triggeredNoMenu("shrinkselection", cpSelected)                { edit_commands.handleShrinkSelection(shell, engine); }
         if triggeredNoMenu("togglelinecomment", cpSelected)              { edit_commands.handleToggleLineComment(shell, docMgr, engine); }
+        if triggeredNoMenu("toggleblockcomment", cpSelected)             { edit_commands.handleToggleBlockComment(shell, docMgr, engine); }
         if triggeredNoMenu("duplicateline", cpSelected)                  { edit_commands.handleDuplicateLine(shell, engine); }
         if triggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(shell, engine); }
         if triggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(shell, engine); }
-        if triggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatUnavailable(shell); }
-        if triggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatUnavailable(shell); }
+        if triggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(shell, docMgr, engine); }
+        if triggeredNoMenu("extractlocal", cpSelected)                   { edit_commands.handleExtractLocalVariable(shell, docMgr, engine); }
+        if triggeredNoMenu("extractfunction", cpSelected)                { edit_commands.handleExtractFunction(shell, docMgr, engine); }
+        if triggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(shell, docMgr, engine); }
+        if triggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(shell, docMgr, engine); }
+        if triggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(shell, docMgr, engine); }
+        if triggeredNoMenu("createmissingbind", cpSelected)              { edit_commands.handleCreateMissingBind(shell, docMgr, engine, projMgr); }
+        if triggeredNoMenu("trimtrailingwhitespace", cpSelected)          { edit_commands.handleTrimTrailingWhitespace(shell, docMgr, engine); }
+        if triggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatDocument(shell, docMgr, engine); }
+        if triggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(shell, docMgr, engine); }
 
         // Error navigation (F8 / Shift+F8)
-        if triggeredNoMenu("nexterror", cpSelected) {
+        if triggeredMenu("nexterror", shell.miNextError, cpSelected) {
             navigateDiagnostic(shell, docMgr, engine, tabs, locStore, 1);
         }
-        if triggeredNoMenu("preverror", cpSelected) {
+        if triggeredMenu("preverror", shell.miPreviousError, cpSelected) {
             navigateDiagnostic(shell, docMgr, engine, tabs, locStore, -1);
         }
         if triggeredNoMenu("checknow", cpSelected) {
@@ -653,6 +724,16 @@ func main() {
             } else {
                 shell.SetStatusLeft("Diagnostics complete");
             }
+        }
+        if (shell.miSignatureHelp != null and shell.miSignatureHelp.WasClicked() != 0)
+           or cpSelected == "signature_trigger" {
+            sigCtrl.trigger(engine);
+        }
+        if triggeredNoMenu("signaturenextoverload", cpSelected) {
+            sigCtrl.NextOverload();
+        }
+        if triggeredNoMenu("signatureprevoverload", cpSelected) {
+            sigCtrl.PreviousOverload();
         }
 
         // FindBar per-frame updates
@@ -680,18 +761,25 @@ func main() {
         if triggered("settings", shell.miPreferences, null, cpSelected)        { overlays.OpenSettings(shell, appSettings); }
         if triggeredNoMenu("keybindings", cpSelected)                          { view_commands.handleKeybindings(shell, commandRegistry); }
         if triggeredNoMenu("copytoolrow", cpSelected)                          { view_commands.handleCopyToolSelection(shell); }
+        if triggeredNoMenu("copyoutputtext", cpSelected)                       { view_commands.handleCopyOutputText(shell); }
         if triggeredNoMenu("clearoutput", cpSelected)                          { view_commands.handleClearOutput(shell); }
         if triggeredNoMenu("filteroutput", cpSelected)                         { view_commands.handleFilterOutput(shell); }
         if triggeredNoMenu("toggleoutputwrap", cpSelected)                     { view_commands.handleToggleOutputWrap(shell); }
+        if triggeredNoMenu("toggleoutputautoscroll", cpSelected)               { view_commands.handleToggleOutputAutoScroll(shell); }
         if triggeredNoMenu("treenewfile", cpSelected)                          { TreeNewFile(shell, projMgr, docMgr, engine, tabs, sessionMgr); }
         if triggeredNoMenu("treenewfolder", cpSelected)                        { TreeNewFolder(shell, projMgr); }
-        if triggeredNoMenu("treerename", cpSelected)                           { TreeRename(shell, projMgr, docMgr, engine, tabs, indexer); }
-        if triggeredNoMenu("treedelete", cpSelected)                           { TreeDelete(shell, projMgr, docMgr, engine, tabs, indexer); }
+        if triggeredNoMenu("treerename", cpSelected)                           { TreeRename(shell, projMgr, docMgr, engine, tabs, indexer, locStore); }
+        if triggeredNoMenu("treedelete", cpSelected)                           { TreeDelete(shell, projMgr, docMgr, engine, tabs, indexer, locStore); }
         if triggeredNoMenu("treerefresh", cpSelected)                          { projMgr.RefreshTree(); indexer.EnsureProject(projMgr, docMgr); shell.SetStatusLeft("Project tree refreshed"); }
         if shell.miAbout.WasClicked() != 0                                     { overlays.OpenAbout(shell); }
-        if triggeredNoMenu("quickopen", cpSelected) { search_commands.handleQuickOpen(shell, projMgr, docMgr, engine, tabs); }
-        if triggeredNoMenu("searchproject", cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
-        if triggeredNoMenu("symboloutline", cpSelected) { symbolOutline.toggle(); }
+        if triggeredMenu("quickopen", shell.miQuickOpen, cpSelected) {
+            if search_commands.ShowQuickOpenPalette(shell, projMgr) {
+                paletteMode = "quickopen";
+            }
+        }
+        if triggeredMenu("searchproject", shell.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(shell, projMgr, docMgr, engine, locStore, searcher); }
+        if triggeredMenu("workspacesymbols", shell.miWorkspaceSymbols, cpSelected) { search_commands.handleWorkspaceSymbols(shell, projMgr, docMgr, engine, locStore); }
+        if triggeredMenu("symboloutline", shell.miSymbolOutline, cpSelected) { symbolOutline.toggle(); }
 
         // Build commands — toolbar items wired alongside menu items
         if triggered("build", shell.miBuild, shell.tbBuild, cpSelected)         { build_commands.handleBuild(shell, docMgr, projMgr, engine, tabs, buildSys, locStore); }
@@ -773,6 +861,18 @@ func main() {
         }
         if overlayAction == ide_overlays.ACTION_RESET_FONT_SIZE {
             overlays.ResetFontSize();
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_APPEARANCE {
+            shell.SetStatusLeft("Appearance defaults restored");
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_EDITING {
+            shell.SetStatusLeft("Editing defaults restored");
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_INTELLISENSE {
+            shell.SetStatusLeft("IntelliSense defaults restored");
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_STARTUP {
+            shell.SetStatusLeft("Startup defaults restored");
         }
         if overlayAction == ide_overlays.ACTION_APPLY_SETTINGS {
             var requestedPath = overlays.ReadFontPath();
@@ -969,7 +1069,7 @@ func main() {
         perfSpan = perfMon.StartSpan();
         shell.Render();
         perfMon.AddRender(perfSpan);
-        perfMon.EndFrame(engine.editor);
+        perfMon.EndFrame(engine.editor, indexer);
     }
 
     // ========================================================================
@@ -1004,6 +1104,7 @@ func triggeredNoMenu(name: String, cpSelected: String) -> Boolean {
 
 func triggeredMenu(name: String, menuItem: GUI.MenuItem, cpSelected: String) -> Boolean {
     if menuItem != null and menuItem.WasClicked() != 0 { return true; }
+    if Shortcuts.WasTriggered(name) != 0 { return true; }
     if cpSelected == name { return true; }
     return false;
 }
@@ -1137,7 +1238,8 @@ func TreeRename(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,
                 tabs: editor_tabs.EditorTabs,
-                indexer: project_index.ProjectIndexer) {
+                indexer: project_index.ProjectIndexer,
+                locStore: locations.LocationStore) {
     var selectedPath = projMgr.SelectedPath();
     if selectedPath == "" { return; }
     var renameTo = GUI.MessageBox.Prompt("Rename", "New name:");
@@ -1164,7 +1266,8 @@ func TreeRename(shell: app_shell.AppShell,
         shell.SetBreadcrumbPath(activeAfterRename.filePath);
     }
     indexer.RemoveFile(selectedPath);
-    indexer.SyncOpenDocuments(docMgr);
+    ReindexAfterTreeMove(projMgr, indexer, docMgr);
+    InvalidateWorkspaceLocations(shell, locStore, engine);
     var status = "Renamed: " + Path.Name(renamedPath);
     if projMgr.lastBindRewriteCount > 0 {
         status = status + " (" + projMgr.lastBindRewriteCount + " bind updates)";
@@ -1177,7 +1280,8 @@ func TreeDelete(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,
                 tabs: editor_tabs.EditorTabs,
-                indexer: project_index.ProjectIndexer) {
+                indexer: project_index.ProjectIndexer,
+                locStore: locations.LocationStore) {
     var deletePath = projMgr.SelectedPath();
     if deletePath == "" { return; }
     if GUI.MessageBox.Confirm("Delete", "Delete " + Path.Name(deletePath) + "?") == 0 {
@@ -1188,6 +1292,8 @@ func TreeDelete(shell: app_shell.AppShell,
         return;
     }
     indexer.RemoveFile(deletePath);
+    ReindexAfterTreeMove(projMgr, indexer, docMgr);
+    InvalidateWorkspaceLocations(shell, locStore, engine);
     tabs.RefreshFromDocuments(docMgr);
     var activeAfterDelete = docMgr.GetActive();
     if activeAfterDelete != null {
@@ -1197,6 +1303,36 @@ func TreeDelete(shell: app_shell.AppShell,
         engine.ClearModified();
     }
     shell.SetStatusLeft("Deleted: " + Path.Name(deletePath));
+}
+
+func ReindexAfterTreeMove(projMgr: project_manager.ProjectManager,
+                          indexer: project_index.ProjectIndexer,
+                          docMgr: document_manager.DocumentManager) {
+    if indexer == null { return; }
+    if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+        indexer.Open(projMgr.project.rootPath, docMgr);
+        return;
+    }
+    indexer.SyncOpenDocuments(docMgr);
+}
+
+func InvalidateWorkspaceLocations(shell: app_shell.AppShell,
+                                  locStore: locations.LocationStore,
+                                  engine: editor_engine.EditorEngine) {
+    if locStore != null {
+        locStore.Clear();
+    }
+    if shell != null {
+        shell.ClearProblemsPanel();
+        shell.searchListBox.Clear();
+        shell.HideSearchPanel();
+        shell.referencesListBox.Clear();
+        shell.HideReferencesPanel();
+        shell.minimap.ClearMarkers();
+    }
+    if engine != null and engine.editor != null {
+        engine.editor.ClearHighlights();
+    }
 }
 
 // Navigate to next/previous diagnostic in the diagnostics panel.
@@ -1210,14 +1346,14 @@ func navigateDiagnostic(shell: app_shell.AppShell,
                         locStore: locations.LocationStore,
                         direction: Integer) {
     var count = shell.diagListBox.Count;
-    if count == 0 {
+    if count <= 1 {
         GUI.Toast.Info("No diagnostics");
         return;
     }
 
     currentDiagIdx = currentDiagIdx + direction;
-    if currentDiagIdx >= count { currentDiagIdx = 0; }
-    if currentDiagIdx < 0 { currentDiagIdx = count - 1; }
+    if currentDiagIdx >= count { currentDiagIdx = 1; }
+    if currentDiagIdx < 1 { currentDiagIdx = count - 1; }
 
     shell.diagListBox.SelectIndex(currentDiagIdx);
     var selItem = shell.diagListBox.Selected;

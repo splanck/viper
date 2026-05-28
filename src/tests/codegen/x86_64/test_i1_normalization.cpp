@@ -101,9 +101,7 @@ namespace {
     ILInstr branchInstr{};
     branchInstr.opcode = "cbr";
     branchInstr.ops = {
-        makeValueRef(cmpInstr.resultId, ILValue::Kind::I1),
-        makeLabel("taken"),
-        makeLabel("merge")};
+        makeValueRef(cmpInstr.resultId, ILValue::Kind::I1), makeLabel("taken"), makeLabel("merge")};
 
     ILBlock entry{};
     entry.name = "entry";
@@ -250,8 +248,7 @@ int main() {
     std::vector<FrameInfo> frames;
     std::string errors;
     CodegenOptions options{};
-    if (!legalizeModuleToMIR(
-            branchArgModule, hostTarget(), options, roData, mir, frames, errors)) {
+    if (!legalizeModuleToMIR(branchArgModule, hostTarget(), options, roData, mir, frames, errors)) {
         std::cerr << errors;
         return EXIT_FAILURE;
     }

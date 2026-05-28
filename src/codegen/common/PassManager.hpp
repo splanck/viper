@@ -86,8 +86,7 @@ template <typename ModuleT> class PassManager {
                 *timingStream_ << "[time-compile] codegen";
                 if (!timingPrefix_.empty())
                     *timingStream_ << "." << timingPrefix_;
-                *timingStream_ << "." << typeid(*pass).name() << " " << elapsed.count()
-                               << "ms\n";
+                *timingStream_ << "." << typeid(*pass).name() << " " << elapsed.count() << "ms\n";
             }
             if (!ok) {
                 return false;

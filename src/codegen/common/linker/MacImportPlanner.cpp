@@ -91,28 +91,75 @@ static constexpr const char *kMacLibSystemPrefixes[] = {
     nullptr,
 };
 static constexpr const char *kMacLibSystemExact[] = {
-    "_NSGetExecutablePath", "_NSGetArgc",         "_NSGetArgv",         "_Block_copy",
-    "_Block_release",      "_Block_object_assign","_Block_object_dispose","dyld_stub_binder",
-    "_tlv_atexit",         "_tlv_bootstrap",      "mach_timebase_info", "mach_absolute_time",
-    "mach_task_self_",     "mach_host_self",      "task_info",          "host_page_size",
-    "_os_unfair_lock_lock","_os_unfair_lock_unlock","os_unfair_lock_lock","os_unfair_lock_unlock",
-    "cxa_atexit",          "cxa_finalize",        "cxa_finalize_ranges","cxa_thread_atexit",
+    "_NSGetExecutablePath",
+    "_NSGetArgc",
+    "_NSGetArgv",
+    "_Block_copy",
+    "_Block_release",
+    "_Block_object_assign",
+    "_Block_object_dispose",
+    "dyld_stub_binder",
+    "_tlv_atexit",
+    "_tlv_bootstrap",
+    "mach_timebase_info",
+    "mach_absolute_time",
+    "mach_task_self_",
+    "mach_host_self",
+    "task_info",
+    "host_page_size",
+    "_os_unfair_lock_lock",
+    "_os_unfair_lock_unlock",
+    "os_unfair_lock_lock",
+    "os_unfair_lock_unlock",
+    "cxa_atexit",
+    "cxa_finalize",
+    "cxa_finalize_ranges",
+    "cxa_thread_atexit",
     nullptr,
 };
 static constexpr const char *kMacCoreFoundationPrefixes[] = {"CF", "kCF", nullptr};
 static constexpr const char *kMacFoundationPrefixes[] = {
-    "NSString","NSAttributedString","NSArray","NSDictionary","NSSet","NSMutable","NSData","NSError",
-    "NSURL","NSBundle","NSFileManager","NSDate","NSLocale","NSProcessInfo","NSRunLoop","NSTimer",
-    "NSThread","NSNotification","NSIndexSet","NSCharacterSet","NSPredicate","NSCoder","NSJSON",
-    "NSUserDefaults","NSAutoreleasePool","NSObject","NSDefaultRunLoop", nullptr,
+    "NSString",
+    "NSAttributedString",
+    "NSArray",
+    "NSDictionary",
+    "NSSet",
+    "NSMutable",
+    "NSData",
+    "NSError",
+    "NSURL",
+    "NSBundle",
+    "NSFileManager",
+    "NSDate",
+    "NSLocale",
+    "NSProcessInfo",
+    "NSRunLoop",
+    "NSTimer",
+    "NSThread",
+    "NSNotification",
+    "NSIndexSet",
+    "NSCharacterSet",
+    "NSPredicate",
+    "NSCoder",
+    "NSJSON",
+    "NSUserDefaults",
+    "NSAutoreleasePool",
+    "NSObject",
+    "NSDefaultRunLoop",
+    nullptr,
 };
-static constexpr const char *kMacFoundationExact[] = {"NSLog","NSSearchPathForDirectoriesInDomains",nullptr};
+static constexpr const char *kMacFoundationExact[] = {
+    "NSLog", "NSSearchPathForDirectoriesInDomains", nullptr};
 static constexpr const char *kMacAppKitPrefixes[] = {
-    "NSApp","NSApplication","NSWindow","NSView","NSColor","NSEvent","NSCursor","NSGraphicsContext",
-    "NSOpenGL","NSMenu","NSMenuItem","NSScreen","NSImage","NSFont","NSResponder","NSPanel",
-    "NSPasteboard","NSText","NSControl","NSButton","NSScroll","NSTable","NSOutline","NSBezierPath",
-    "NSMake","NSRect","NSPoint","NSSize","NSDrag","NSBackingStore","NSWindowStyle",
-    "NSApplicationActivationPolicy", nullptr,
+    "NSApp",        "NSApplication",  "NSWindow",      "NSView",
+    "NSColor",      "NSEvent",        "NSCursor",      "NSGraphicsContext",
+    "NSOpenGL",     "NSMenu",         "NSMenuItem",    "NSScreen",
+    "NSImage",      "NSFont",         "NSResponder",   "NSPanel",
+    "NSPasteboard", "NSText",         "NSControl",     "NSButton",
+    "NSScroll",     "NSTable",        "NSOutline",     "NSBezierPath",
+    "NSMake",       "NSRect",         "NSPoint",       "NSSize",
+    "NSDrag",       "NSBackingStore", "NSWindowStyle", "NSApplicationActivationPolicy",
+    nullptr,
 };
 static constexpr const char *kMacImageIOPrefixes[] = {
     "CGImageSource",
@@ -122,31 +169,59 @@ static constexpr const char *kMacImageIOPrefixes[] = {
     nullptr,
 };
 static constexpr const char *kMacCoreGraphicsPrefixes[] = {"CG", "kCG", nullptr};
-static constexpr const char *kMacIOKitPrefixes[] = {"IOKit","IOHID","IOService","IORegistryEntry",nullptr};
+static constexpr const char *kMacIOKitPrefixes[] = {
+    "IOKit", "IOHID", "IOService", "IORegistryEntry", nullptr};
 static constexpr const char *kMacObjCPrefixes[] = {"objc_", "OBJC_", "_objc_", nullptr};
 static constexpr const char *kMacObjCExact[] = {"sel_registerName", "sel_getName", nullptr};
 static constexpr const char *kMacUTIPrefixes[] = {"UTType", "UTCopy", nullptr};
-static constexpr const char *kMacAudioToolboxPrefixes[] = {"AudioQueue", "AudioServices", "AudioComponent", nullptr};
+static constexpr const char *kMacAudioToolboxPrefixes[] = {
+    "AudioQueue", "AudioServices", "AudioComponent", nullptr};
 static constexpr const char *kMacCoreAudioPrefixes[] = {"AudioObject", "AudioDevice", nullptr};
 static constexpr const char *kMacMetalPrefixes[] = {"MTLCreate", "MTL", nullptr};
-static constexpr const char *kMacQuartzCorePrefixes[] = {"CAMetalLayer","CATransaction","CALayer","CAAnimation","CAMediaTiming",nullptr};
+static constexpr const char *kMacQuartzCorePrefixes[] = {
+    "CAMetalLayer", "CATransaction", "CALayer", "CAAnimation", "CAMediaTiming", nullptr};
 static constexpr const char *kMacSecurityPrefixes[] = {"Sec", "kSec", nullptr};
 
 static constexpr MacImportRule kMacImportRules[] = {
     {"/usr/lib/libSystem.B.dylib", kMacLibSystemPrefixes, kMacLibSystemExact},
-    {"/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation", kMacCoreFoundationPrefixes, kMacNoMatches},
-    {"/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation", kMacFoundationPrefixes, kMacFoundationExact},
-    {"/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit", kMacAppKitPrefixes, kMacNoMatches},
-    {"/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO", kMacImageIOPrefixes, kMacNoMatches},
-    {"/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics", kMacCoreGraphicsPrefixes, kMacNoMatches},
-    {"/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit", kMacIOKitPrefixes, kMacNoMatches},
+    {"/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+     kMacCoreFoundationPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+     kMacFoundationPrefixes,
+     kMacFoundationExact},
+    {"/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+     kMacAppKitPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO",
+     kMacImageIOPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+     kMacCoreGraphicsPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit",
+     kMacIOKitPrefixes,
+     kMacNoMatches},
     {"/usr/lib/libobjc.A.dylib", kMacObjCPrefixes, kMacObjCExact},
-    {"/System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/UniformTypeIdentifiers", kMacUTIPrefixes, kMacNoMatches},
-    {"/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox", kMacAudioToolboxPrefixes, kMacNoMatches},
-    {"/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio", kMacCoreAudioPrefixes, kMacNoMatches},
-    {"/System/Library/Frameworks/Metal.framework/Versions/A/Metal", kMacMetalPrefixes, kMacNoMatches},
-    {"/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore", kMacQuartzCorePrefixes, kMacNoMatches},
-    {"/System/Library/Frameworks/Security.framework/Versions/A/Security", kMacSecurityPrefixes, kMacNoMatches},
+    {"/System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/"
+     "UniformTypeIdentifiers",
+     kMacUTIPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox",
+     kMacAudioToolboxPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio",
+     kMacCoreAudioPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+     kMacMetalPrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore",
+     kMacQuartzCorePrefixes,
+     kMacNoMatches},
+    {"/System/Library/Frameworks/Security.framework/Versions/A/Security",
+     kMacSecurityPrefixes,
+     kMacNoMatches},
 };
 
 bool macSymbolMatchesRule(const std::string &sym, const MacImportRule &rule) {
@@ -178,9 +253,32 @@ const MacImportRule *findMacImportRule(const std::string &sym) {
 
 bool isMacFrameworkLikeSymbol(const std::string &sym) {
     static constexpr const char *kFrameworkPrefixes[] = {
-        "CF","kCF","CG","kCG","NS","IOKit","IOHID","IOService","IORegistryEntry","objc_","OBJC_",
-        "_objc_","UTType","UTCopy","AudioQueue","AudioServices","AudioComponent","AudioObject",
-        "AudioDevice","MTL","Sec","kSec","CAMetalLayer","CATransaction","CALayer", nullptr,
+        "CF",
+        "kCF",
+        "CG",
+        "kCG",
+        "NS",
+        "IOKit",
+        "IOHID",
+        "IOService",
+        "IORegistryEntry",
+        "objc_",
+        "OBJC_",
+        "_objc_",
+        "UTType",
+        "UTCopy",
+        "AudioQueue",
+        "AudioServices",
+        "AudioComponent",
+        "AudioObject",
+        "AudioDevice",
+        "MTL",
+        "Sec",
+        "kSec",
+        "CAMetalLayer",
+        "CATransaction",
+        "CALayer",
+        nullptr,
     };
 
     const std::string stripped = stripLeadingUnderscores(sym);

@@ -1,0 +1,129 @@
+module game3d_bowling_setup;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func spawnPin(world: Game3D.World3D, x: Float, z: Float, index: Integer) -> Game3D.Entity3D {
+    var pin = Game3D.Prefab.Cylinder(0.16, 0.92, 18, Game3D.Materials.Plastic(0.96, 0.94, 0.86));
+    Game3D.Entity3D.setName(pin, "Pin" + index);
+    Game3D.Entity3D.setPosition(pin, x, 0.46, z);
+    var body = Game3D.BodyDef.Capsule(0.16, 0.92, 0.85);
+    Game3D.BodyDef.set_friction(body, 0.72);
+    Game3D.BodyDef.set_restitution(body, 0.12);
+    Game3D.Entity3D.attachBody(pin, body);
+    Game3D.World3D.spawn(world, pin);
+    return pin;
+}
+
+func runSetup(render: Boolean) -> Float {
+    var world = Game3D.World3D.New("Game3D Bowling Setup", 160, 90);
+    var canvas = Game3D.World3D.get_canvas(world);
+    Canvas3D.SetDTMax(canvas, 50);
+
+    Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
+    Game3D.Lighting.Interior(world);
+    Game3D.PostFX.Crisp(world);
+    Game3D.World3D.setFog(world, 0.018, 0.020, 0.026, 12.0, 70.0);
+
+    var laneMat = Game3D.Materials.Plastic(0.70, 0.52, 0.30);
+    var railMat = Game3D.Materials.Metal(0.42, 0.47, 0.52);
+    var ballMat = Game3D.Materials.Plastic(0.08, 0.18, 0.72);
+
+    var lane = Game3D.Prefab.BoxXYZ(3.2, 0.12, 12.0, laneMat);
+    Game3D.Entity3D.setName(lane, "Lane");
+    Game3D.Entity3D.setPosition(lane, 0.0, -0.06, 0.0);
+    Game3D.Entity3D.attachBody(lane, Game3D.BodyDef.StaticBox(1.6, 0.06, 6.0));
+    Game3D.World3D.spawn(world, lane);
+
+    var leftRail = Game3D.Prefab.BoxXYZ(0.18, 0.28, 12.0, railMat);
+    Game3D.Entity3D.setName(leftRail, "LeftRail");
+    Game3D.Entity3D.setPosition(leftRail, -1.78, 0.08, 0.0);
+    Game3D.Entity3D.attachBody(leftRail, Game3D.BodyDef.StaticBox(0.09, 0.14, 6.0));
+    Game3D.World3D.spawn(world, leftRail);
+
+    var rightRail = Game3D.Prefab.BoxXYZ(0.18, 0.28, 12.0, railMat);
+    Game3D.Entity3D.setName(rightRail, "RightRail");
+    Game3D.Entity3D.setPosition(rightRail, 1.78, 0.08, 0.0);
+    Game3D.Entity3D.attachBody(rightRail, Game3D.BodyDef.StaticBox(0.09, 0.14, 6.0));
+    Game3D.World3D.spawn(world, rightRail);
+
+    var ball = Game3D.Prefab.Sphere(0.28, 20, ballMat);
+    Game3D.Entity3D.setName(ball, "BowlingBall");
+    Game3D.Entity3D.setPosition(ball, 0.0, 0.30, 4.7);
+    var ballBody = Game3D.BodyDef.Sphere(0.28, 3.2);
+    Game3D.BodyDef.set_friction(ballBody, 0.48);
+    Game3D.BodyDef.set_restitution(ballBody, 0.18);
+    Game3D.BodyDef.set_useCCD(ballBody, true);
+    Game3D.Entity3D.attachBody(ball, ballBody);
+    Game3D.World3D.spawn(world, ball);
+
+    var p1 = spawnPin(world, 0.0, -3.30, 1);
+    spawnPin(world, -0.24, -3.72, 2);
+    spawnPin(world, 0.24, -3.72, 3);
+    spawnPin(world, -0.48, -4.14, 4);
+    spawnPin(world, 0.0, -4.14, 5);
+    spawnPin(world, 0.48, -4.14, 6);
+    spawnPin(world, -0.72, -4.56, 7);
+    spawnPin(world, -0.24, -4.56, 8);
+    spawnPin(world, 0.24, -4.56, 9);
+    spawnPin(world, 0.72, -4.56, 10);
+
+    var follow = Game3D.FollowController.New(world, ball, Math.Vec3.New(0.0, 2.6, 5.8));
+    Game3D.World3D.setCameraController(world, follow);
+
+    Game3D.Entity3D.applyImpulse(ball, 0.0, 0.0, -9.0);
+
+    var frame = 0;
+    var hits = 0;
+    while (frame < 150) {
+        Game3D.World3D.stepSimulation(world, 1.0 / 60.0);
+        hits = hits + Game3D.World3D.collisionEventCount(world, Game3D.CollisionPhase.get_Enter());
+        Game3D.World3D.clearCollisionEvents(world);
+
+        if (render && frame == 149) {
+            Game3D.World3D.beginFrame(world);
+            Game3D.World3D.drawScene(world);
+            Game3D.World3D.drawEffects(world);
+            Game3D.World3D.endScene(world);
+            Canvas3D.BeginOverlay(canvas);
+            Canvas3D.DrawRect2D(canvas, 12, 12, 88, 3, 0x00E8FF);
+            Canvas3D.DrawText2D(canvas, 20, 28, "BOWLING", 0xFFFFFF);
+            Canvas3D.DrawText2D(canvas, 20, 42, "hits " + hits, 0xC6D6E8);
+            Canvas3D.EndOverlay(canvas);
+            var snap = Game3D.World3D.captureFinalFrame(world);
+            Pixels.SavePng(snap, "/tmp/game3d_bowling_setup.png");
+            if (snap == null || Pixels.get_Width(snap) != 160 || Pixels.get_Height(snap) != 90) {
+                Terminal.Say("FAIL: bowling final-frame capture failed");
+                Game3D.World3D.destroy(world);
+                return -99999.0;
+            }
+        }
+        frame = frame + 1;
+    }
+
+    var ballPos = Game3D.Entity3D.position(ball);
+    var pinPos = Game3D.Entity3D.position(p1);
+    var metric = Math.Vec3.get_Z(ballPos) + Math.Vec3.get_X(pinPos) + Math.Vec3.get_Z(pinPos) + hits;
+    Game3D.World3D.destroy(world);
+    return metric;
+}
+
+func start() {
+    var a = runSetup(true);
+    if (a < -90000.0) { return; }
+    var b = runSetup(false);
+    if (near(a, b, 0.0001) == false) {
+        Terminal.Say("FAIL: bowling setup replay diverged");
+        return;
+    }
+    Terminal.Say("PASS");
+}

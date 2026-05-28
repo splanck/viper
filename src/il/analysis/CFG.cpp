@@ -142,7 +142,8 @@ const std::vector<il::core::Block *> &successors(const CFGContext &ctx, const il
 /// @param B Target block whose incoming edges are requested.
 /// @return Cached list of predecessor blocks; empty if none are found.
 /// @note Blocks with non-branch terminators are ignored.
-const std::vector<il::core::Block *> &predecessors(const CFGContext &ctx, const il::core::Block &B) {
+const std::vector<il::core::Block *> &predecessors(const CFGContext &ctx,
+                                                   const il::core::Block &B) {
     auto it = ctx.blockPredecessors.find(&B);
     if (it == ctx.blockPredecessors.end())
         return emptyBlockList();

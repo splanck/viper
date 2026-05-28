@@ -41,8 +41,8 @@ namespace viper::pkg {
 
 /// @brief Base directory anchor for a file or directory entry in the installer.
 enum class WindowsInstallRoot : uint64_t {
-    InstallDir   = 0, ///< Relative to %ProgramFiles%\<installDirName>
-    DesktopDir   = 1, ///< Relative to the user's Desktop folder
+    InstallDir = 0,   ///< Relative to %ProgramFiles%\<installDirName>
+    DesktopDir = 1,   ///< Relative to the user's Desktop folder
     StartMenuDir = 2, ///< Relative to %ProgramData%\Microsoft\Windows\Start Menu\Programs
 };
 
@@ -55,7 +55,7 @@ struct WindowsPackageDirEntry {
 /// @brief A file to be extracted from the ZIP overlay by the installer.
 struct WindowsPackageFileEntry {
     WindowsInstallRoot root{WindowsInstallRoot::InstallDir}; ///< Base directory anchor
-    std::string relativePath;      ///< Destination path relative to root
+    std::string relativePath;                                ///< Destination path relative to root
     uint64_t overlayDataOffset{0}; ///< Byte offset of this file's data within the ZIP overlay
     uint64_t sizeBytes{0};         ///< Uncompressed file size in bytes
     uint32_t crc32{0};             ///< CRC-32 checksum of the uncompressed data
@@ -63,42 +63,51 @@ struct WindowsPackageFileEntry {
 
 /// @brief A file-type association to register in the Windows registry.
 struct WindowsFileAssociationEntry {
-    std::string extension;             ///< Extension including leading dot (e.g. ".zia")
-    std::string description;           ///< Human-readable type description
-    std::string mimeType;              ///< MIME type string (e.g. "text/x-zia")
-    std::string progId;                ///< ProgID to register (e.g. "Viper.ZiaSource.1")
-    std::string openCommandArguments;  ///< Arguments appended after the exe path in the Open command
+    std::string extension;            ///< Extension including leading dot (e.g. ".zia")
+    std::string description;          ///< Human-readable type description
+    std::string mimeType;             ///< MIME type string (e.g. "text/x-zia")
+    std::string progId;               ///< ProgID to register (e.g. "Viper.ZiaSource.1")
+    std::string openCommandArguments; ///< Arguments appended after the exe path in the Open command
 };
 
 /// @brief Full layout metadata consumed by the installer/uninstaller stub codegen.
 struct WindowsPackageLayout {
-    std::string displayName;       ///< User-visible application name (e.g. "Crackman")
-    std::string installDirName;    ///< Subdirectory under %ProgramFiles% (e.g. "Crackman")
-    std::string version;           ///< Version string for Add/Remove Programs (e.g. "0.1.0")
-    std::string identifier;        ///< Reverse-DNS identifier for registry keys
-    std::string publisher;         ///< Publisher name shown in Add/Remove Programs
-    std::string executableName;    ///< Name of the main executable (e.g. "crackman.exe")
-    uint64_t overlayFileOffset{0}; ///< Byte offset within the installer PE where the ZIP overlay begins
-    bool createDesktopShortcut{false};          ///< Create a .lnk on the user's Desktop
-    bool createStartMenuShortcut{false};        ///< Create a .lnk in the Start Menu Programs folder
-    bool addToPath{false};                      ///< Add installDir\pathRelativePath to the system Path
-    bool cleanInstallRootBeforeInstall{false};  ///< Remove the install root before extracting (upgrade path)
-    std::string compressedPayloadRelativePath;  ///< Optional stored inner ZIP expanded into installDir.
-    std::string compressedPayloadManifestRelativePath; ///< Optional next manifest used for stale cleanup.
-    std::string installedManifestRelativePath;  ///< Current installed-file manifest path under installDir.
-    std::string pathRelativePath;               ///< Subdir within installDir to add to Path (e.g. "bin")
-    std::string fileAssociationExecutableRelativePath; ///< Exe used for Open commands (relative to installDir)
-    bool perUserInstall{false};                 ///< Install under the current user profile and HKCU.
-    std::string homepage;                       ///< Optional support/update URL for Add/Remove Programs.
-    std::string displayIconRelativePath;        ///< Icon path relative to installDir for Add/Remove Programs.
-    uint32_t estimatedSizeKb{0};                ///< Approximate installed size in KiB for ARP.
-    std::string installDate;                    ///< YYYYMMDD packaging/install metadata date.
-    std::vector<WindowsPackageDirEntry> installDirectories;   ///< Directories to create on install
-    std::vector<WindowsPackageDirEntry> uninstallDirectories; ///< Directories to remove on uninstall
-    std::vector<WindowsPackageFileEntry> installFiles;         ///< Files to extract on install
-    std::vector<WindowsPackageFileEntry> installedFiles;       ///< Files left on disk after install
-    std::vector<WindowsPackageFileEntry> uninstallFiles;       ///< Files to delete on uninstall
-    std::vector<WindowsFileAssociationEntry> fileAssociations; ///< File associations to register/deregister
+    std::string displayName;    ///< User-visible application name (e.g. "Crackman")
+    std::string installDirName; ///< Subdirectory under %ProgramFiles% (e.g. "Crackman")
+    std::string version;        ///< Version string for Add/Remove Programs (e.g. "0.1.0")
+    std::string identifier;     ///< Reverse-DNS identifier for registry keys
+    std::string publisher;      ///< Publisher name shown in Add/Remove Programs
+    std::string executableName; ///< Name of the main executable (e.g. "crackman.exe")
+    uint64_t overlayFileOffset{
+        0}; ///< Byte offset within the installer PE where the ZIP overlay begins
+    bool createDesktopShortcut{false};   ///< Create a .lnk on the user's Desktop
+    bool createStartMenuShortcut{false}; ///< Create a .lnk in the Start Menu Programs folder
+    bool addToPath{false};               ///< Add installDir\pathRelativePath to the system Path
+    bool cleanInstallRootBeforeInstall{
+        false}; ///< Remove the install root before extracting (upgrade path)
+    std::string
+        compressedPayloadRelativePath; ///< Optional stored inner ZIP expanded into installDir.
+    std::string
+        compressedPayloadManifestRelativePath; ///< Optional next manifest used for stale cleanup.
+    std::string
+        installedManifestRelativePath; ///< Current installed-file manifest path under installDir.
+    std::string pathRelativePath;      ///< Subdir within installDir to add to Path (e.g. "bin")
+    std::string fileAssociationExecutableRelativePath; ///< Exe used for Open commands (relative to
+                                                       ///< installDir)
+    bool perUserInstall{false}; ///< Install under the current user profile and HKCU.
+    std::string homepage;       ///< Optional support/update URL for Add/Remove Programs.
+    std::string
+        displayIconRelativePath; ///< Icon path relative to installDir for Add/Remove Programs.
+    uint32_t estimatedSizeKb{0}; ///< Approximate installed size in KiB for ARP.
+    std::string installDate;     ///< YYYYMMDD packaging/install metadata date.
+    std::vector<WindowsPackageDirEntry> installDirectories; ///< Directories to create on install
+    std::vector<WindowsPackageDirEntry>
+        uninstallDirectories;                            ///< Directories to remove on uninstall
+    std::vector<WindowsPackageFileEntry> installFiles;   ///< Files to extract on install
+    std::vector<WindowsPackageFileEntry> installedFiles; ///< Files left on disk after install
+    std::vector<WindowsPackageFileEntry> uninstallFiles; ///< Files to delete on uninstall
+    std::vector<WindowsFileAssociationEntry>
+        fileAssociations; ///< File associations to register/deregister
 };
 
 /// @brief Result of building an installer/uninstaller stub.

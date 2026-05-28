@@ -347,7 +347,8 @@ func start() {    var argc = Viper.System.Environment.GetArgumentCount();
     ASSERT_TRUE(result.succeeded());
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
-    EXPECT_GE(countCallsTo(*mainFn, "Viper.System.Environment.GetArgumentCount"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.System.Environment.GetArgumentCount"),
+              static_cast<size_t>(1));
 }
 
 /// @brief Range step validation checks positivity without rejecting INT64_MAX.

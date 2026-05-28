@@ -61,17 +61,19 @@
 //===----------------------------------------------------------------------===//
 
 typedef struct rt_collator {
-    void                    *locale;
-    const rt_locale_data_t  *data;
-    int                      strength;        // 1..3
-    int8_t                   ignore_case;
-    int8_t                   ignore_accents;
+    void *locale;
+    const rt_locale_data_t *data;
+    int strength; // 1..3
+    int8_t ignore_case;
+    int8_t ignore_accents;
     const rt_collator_locale_patch_t *patches;
-    size_t                    patch_count;
+    size_t patch_count;
 } rt_collator_t;
 
 /// @brief Unchecked cast of an opaque handle to the collator instance.
-static rt_collator_t *as_col(void *obj) { return (rt_collator_t *)obj; }
+static rt_collator_t *as_col(void *obj) {
+    return (rt_collator_t *)obj;
+}
 
 /// @brief Emit a non-fatal collator warning to stderr (NULL message ignored).
 static void col_warn(const char *message) {
@@ -107,8 +109,7 @@ static void col_finalizer(void *obj) {
 ///          when no JSON locale file was loaded. Traps on allocation failure;
 ///          installs @ref col_finalizer.
 static void *col_alloc(void *locale) {
-    rt_collator_t *c = (rt_collator_t *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_collator_t));
+    rt_collator_t *c = (rt_collator_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_collator_t));
     if (!c) {
         rt_trap("Viper.Localization.Collator: allocation failed");
         return NULL;
@@ -119,7 +120,8 @@ static void *col_alloc(void *locale) {
     c->data = rt_locale_get_data(locale);
     rt_locale_manager_retain_data(c->data);
     c->strength = c->data->collation.strength > 0 ? c->data->collation.strength : 3;
-    if (c->strength > 3) c->strength = 3;
+    if (c->strength > 3)
+        c->strength = 3;
     c->ignore_case = 0;
     c->ignore_accents = 0;
 
@@ -148,8 +150,14 @@ void *rt_collator_new(void) {
     col_release_handle(current);
     return col;
 }
-void *rt_collator_for_locale(void *locale) { return col_alloc(locale); }
-void *rt_collator_get_locale(void *self) { return self ? as_col(self)->locale : NULL; }
+
+void *rt_collator_for_locale(void *locale) {
+    return col_alloc(locale);
+}
+
+void *rt_collator_get_locale(void *self) {
+    return self ? as_col(self)->locale : NULL;
+}
 
 //===----------------------------------------------------------------------===//
 // Property accessors
@@ -160,8 +168,10 @@ int64_t rt_collator_get_strength(void *self) {
 }
 
 void rt_collator_set_strength(void *self, int64_t value) {
-    if (!self) return;
-    if (value < 1) value = 1;
+    if (!self)
+        return;
+    if (value < 1)
+        value = 1;
     if (value > 3) {
         // Strength 4 (quaternary) isn't supported in v1; clamp with a
         // diagnostic so callers see the downgrade.
@@ -176,7 +186,8 @@ int8_t rt_collator_get_ignore_case(void *self) {
 }
 
 void rt_collator_set_ignore_case(void *self, int8_t value) {
-    if (self) as_col(self)->ignore_case = value ? 1 : 0;
+    if (self)
+        as_col(self)->ignore_case = value ? 1 : 0;
 }
 
 int8_t rt_collator_get_ignore_accents(void *self) {
@@ -184,7 +195,8 @@ int8_t rt_collator_get_ignore_accents(void *self) {
 }
 
 void rt_collator_set_ignore_accents(void *self, int8_t value) {
-    if (self) as_col(self)->ignore_accents = value ? 1 : 0;
+    if (self)
+        as_col(self)->ignore_accents = value ? 1 : 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -198,24 +210,44 @@ void rt_collator_set_ignore_accents(void *self, int8_t value) {
 ///          so a malformed stream still makes forward progress.
 static uint32_t col_decode(const char *s, size_t len, size_t *pos) {
     size_t i = *pos;
-    if (i >= len) return 0;
+    if (i >= len)
+        return 0;
     uint8_t c = (uint8_t)s[i];
     uint32_t cp;
     size_t need;
     uint32_t min_cp = 0;
-    if (c < 0x80) { cp = c; need = 1; }
-    else if (c >= 0xC2 && c <= 0xDF) { cp = c & 0x1F; need = 2; min_cp = 0x80; }
-    else if (c >= 0xE0 && c <= 0xEF) { cp = c & 0x0F; need = 3; min_cp = 0x800; }
-    else if (c >= 0xF0 && c <= 0xF4) { cp = c & 0x07; need = 4; min_cp = 0x10000; }
-    else { *pos = i + 1; return 0xFFFD; }
-    if (i + need > len) { *pos = len; return 0xFFFD; }
+    if (c < 0x80) {
+        cp = c;
+        need = 1;
+    } else if (c >= 0xC2 && c <= 0xDF) {
+        cp = c & 0x1F;
+        need = 2;
+        min_cp = 0x80;
+    } else if (c >= 0xE0 && c <= 0xEF) {
+        cp = c & 0x0F;
+        need = 3;
+        min_cp = 0x800;
+    } else if (c >= 0xF0 && c <= 0xF4) {
+        cp = c & 0x07;
+        need = 4;
+        min_cp = 0x10000;
+    } else {
+        *pos = i + 1;
+        return 0xFFFD;
+    }
+    if (i + need > len) {
+        *pos = len;
+        return 0xFFFD;
+    }
     for (size_t k = 1; k < need; ++k) {
         uint8_t nc = (uint8_t)s[i + k];
-        if ((nc & 0xC0) != 0x80) { *pos = i + 1; return 0xFFFD; }
+        if ((nc & 0xC0) != 0x80) {
+            *pos = i + 1;
+            return 0xFFFD;
+        }
         cp = (cp << 6) | (nc & 0x3F);
     }
-    if ((need > 1 && cp < min_cp) || (cp >= 0xD800 && cp <= 0xDFFF) ||
-        cp > 0x10FFFF) {
+    if ((need > 1 && cp < min_cp) || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) {
         *pos = i + 1;
         return 0xFFFD;
     }
@@ -231,8 +263,8 @@ static uint32_t col_decode(const char *s, size_t len, size_t *pos) {
 /// @details Locale tailoring patches win over the base classifier; otherwise
 ///          weights come from the shared collation table plus the combining-
 ///          mark accent weight. Outputs feed the multi-level sort key.
-static void get_weights(rt_collator_t *col, uint32_t cp,
-                        uint32_t *pri, uint16_t *sec, uint16_t *ter) {
+static void get_weights(
+    rt_collator_t *col, uint32_t cp, uint32_t *pri, uint16_t *sec, uint16_t *ter) {
     // Apply any locale patches first (they override the base classifier).
     if (col->patches) {
         for (size_t i = 0; i < col->patch_count; ++i) {
@@ -260,13 +292,20 @@ typedef struct sort_weight {
 ///          else 0 (no secondary contribution).
 static uint16_t combining_secondary(uint32_t cp) {
     switch (cp) {
-        case 0x0300: return 1; // grave
-        case 0x0301: return 2; // acute
-        case 0x0302: return 3; // circumflex
-        case 0x0303: return 4; // tilde
-        case 0x0308: return 5; // diaeresis
-        case 0x030A: return 6; // ring
-        case 0x0327: return 7; // cedilla
+        case 0x0300:
+            return 1; // grave
+        case 0x0301:
+            return 2; // acute
+        case 0x0302:
+            return 3; // circumflex
+        case 0x0303:
+            return 4; // tilde
+        case 0x0308:
+            return 5; // diaeresis
+        case 0x030A:
+            return 6; // ring
+        case 0x0327:
+            return 7; // cedilla
         default:
             if (cp >= 0x0300 && cp <= 0x036F)
                 return 9;
@@ -279,8 +318,10 @@ static uint16_t combining_secondary(uint32_t cp) {
 ///        collation key. Caller frees the returned array; @p out_count gets
 ///        the element count. Traps on the 1 MiB input cap or allocation
 ///        failure (returns NULL).
-static sort_weight_t *collect_weights(rt_collator_t *col, const char *s,
-                                      size_t len, size_t *out_count) {
+static sort_weight_t *collect_weights(rt_collator_t *col,
+                                      const char *s,
+                                      size_t len,
+                                      size_t *out_count) {
     if (len > MAX_INPUT_BYTES) {
         rt_trap("Viper.Localization.Collator: input exceeds 1 MiB cap");
         return NULL;
@@ -328,8 +369,7 @@ static sort_weight_t *collect_weights(rt_collator_t *col, const char *s,
 ///        weights are emitted in order with a 0x00 separator between levels.
 ///        Big-endian 16-bit emission for primaries preserves ordering.
 /// @return Malloc'd byte buffer; caller frees. *out_len set to byte length.
-static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len,
-                              size_t *out_len) {
+static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len, size_t *out_len) {
     if (len > MAX_INPUT_BYTES) {
         rt_trap("Viper.Localization.Collator: input exceeds 1 MiB cap");
         return NULL;
@@ -369,7 +409,8 @@ static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len,
             }
         }
     }
-    buf[off++] = 0x00; buf[off++] = 0x00; // primary/secondary separator
+    buf[off++] = 0x00;
+    buf[off++] = 0x00; // primary/secondary separator
 
     // Secondary level.
     if (col->strength >= 2 && !col->ignore_accents) {
@@ -379,7 +420,8 @@ static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len,
             buf[off++] = (uint8_t)(sec & 0xFF);
         }
     }
-    buf[off++] = 0x00; buf[off++] = 0x00; // secondary/tertiary separator
+    buf[off++] = 0x00;
+    buf[off++] = 0x00; // secondary/tertiary separator
 
     // Tertiary level.
     if (col->strength >= 3 && !col->ignore_case) {
@@ -399,7 +441,8 @@ static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len,
 //===----------------------------------------------------------------------===//
 
 int64_t rt_collator_compare(void *self, rt_string a, rt_string b) {
-    if (!self) return 0;
+    if (!self)
+        return 0;
     const char *as = a ? rt_string_cstr(a) : "";
     const char *bs = b ? rt_string_cstr(b) : "";
     int64_t alen = a ? rt_str_len(a) : 0;
@@ -422,8 +465,10 @@ int64_t rt_collator_compare(void *self, rt_string a, rt_string b) {
     free(ka);
     free(kb);
 
-    if (cmp < 0) return -1;
-    if (cmp > 0) return 1;
+    if (cmp < 0)
+        return -1;
+    if (cmp > 0)
+        return 1;
     return 0;
 }
 
@@ -436,13 +481,15 @@ int8_t rt_collator_equals(void *self, rt_string a, rt_string b) {
 //===----------------------------------------------------------------------===//
 
 rt_string rt_collator_sort_key(void *self, rt_string s) {
-    if (!self || !s) return rt_string_from_bytes("", 0);
+    if (!self || !s)
+        return rt_string_from_bytes("", 0);
     const char *cs = rt_string_cstr(s);
     int64_t len = rt_str_len(s);
 
     size_t key_len = 0;
     uint8_t *key = build_raw_key(as_col(self), cs, (size_t)len, &key_len);
-    if (!key) return rt_string_from_bytes("", 0);
+    if (!key)
+        return rt_string_from_bytes("", 0);
 
     // Hex-encode so callers can store the result in an rt_string without
     // embedded NUL issues. Byte-wise comparison of hex strings preserves
@@ -451,7 +498,7 @@ rt_string rt_collator_sort_key(void *self, rt_string s) {
     rt_sb_init(&sb);
     static const char hex[] = "0123456789abcdef";
     for (size_t i = 0; i < key_len; ++i) {
-        char pair[2] = { hex[(key[i] >> 4) & 0xF], hex[key[i] & 0xF] };
+        char pair[2] = {hex[(key[i] >> 4) & 0xF], hex[key[i] & 0xF]};
         (void)rt_sb_append_bytes(&sb, pair, 2);
     }
     free(key);
@@ -466,10 +513,12 @@ rt_string rt_collator_sort_key(void *self, rt_string s) {
 //===----------------------------------------------------------------------===//
 
 void *rt_collator_sort(void *self, void *items) {
-    if (!self || !items) return rt_list_new();
+    if (!self || !items)
+        return rt_list_new();
     int64_t n = rt_list_len(items);
     void *out = rt_list_new();
-    if (n <= 0) return out;
+    if (n <= 0)
+        return out;
 
     typedef struct sort_item {
         rt_string value;

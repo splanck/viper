@@ -57,8 +57,8 @@ Expected<void> validateGlobal(const Global &global) {
 
     if (global.type.kind == Type::Kind::Void || global.type.kind == Type::Kind::Error ||
         global.type.kind == Type::Kind::ResumeTok) {
-        return Expected<void>{makeError({}, "global @" + global.name + " has unsupported type " +
-                                                global.type.toString())};
+        return Expected<void>{makeError(
+            {}, "global @" + global.name + " has unsupported type " + global.type.toString())};
     }
 
     if (global.linkage == Linkage::Import && !global.init.empty()) {

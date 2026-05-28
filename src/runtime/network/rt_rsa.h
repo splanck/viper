@@ -53,10 +53,12 @@ typedef struct {
     uint8_t *public_exponent;   ///< Public exponent e (big-endian, typically 65537).
     size_t public_exponent_len; ///< Length of @c public_exponent in bytes.
     uint8_t *private_exponent;  ///< Private exponent d (big-endian); NULL for public-only keys.
-    size_t private_exponent_len;///< Length of @c private_exponent in bytes (0 when @c d is absent).
+    size_t
+        private_exponent_len; ///< Length of @c private_exponent in bytes (0 when @c d is absent).
 } rt_rsa_key_t;
 
-/// @brief Zero-initialise an rt_rsa_key_t so it is safe to pass to rt_rsa_key_free without prior parse.
+/// @brief Zero-initialise an rt_rsa_key_t so it is safe to pass to rt_rsa_key_free without prior
+/// parse.
 void rt_rsa_key_init(rt_rsa_key_t *key);
 
 /// @brief Release all heap buffers owned by key and zero the struct.
@@ -77,7 +79,8 @@ int rt_rsa_parse_private_key_pkcs1(const uint8_t *der, size_t der_len, rt_rsa_ke
 /// @return 1 on success; 0 on malformed input or unrecognised algorithm.
 int rt_rsa_parse_private_key_pkcs8(const uint8_t *der, size_t der_len, rt_rsa_key_t *out);
 
-/// @brief Test whether two rt_rsa_key_t values have the same public components (modulus + exponent).
+/// @brief Test whether two rt_rsa_key_t values have the same public components (modulus +
+/// exponent).
 /// @return 1 if equal, 0 otherwise.
 int rt_rsa_public_equals(const rt_rsa_key_t *lhs, const rt_rsa_key_t *rhs);
 

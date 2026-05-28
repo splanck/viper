@@ -1,0 +1,176 @@
+// smoke_probe.zia - One-frame validation for the Game3D open-world showcase.
+module smoke_probe;
+
+bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Math as Math;
+bind Viper.Terminal as Terminal;
+bind "./config";
+bind "./game";
+
+func red(px: Integer) -> Integer {
+    return Math.Bits.And(px >> 24, 0xFF);
+}
+
+func green(px: Integer) -> Integer {
+    return Math.Bits.And(px >> 16, 0xFF);
+}
+
+func blue(px: Integer) -> Integer {
+    return Math.Bits.And(px >> 8, 0xFF);
+}
+
+func luminance(px: Integer) -> Integer {
+    return (red(px) * 30 + green(px) * 59 + blue(px) * 11) / 100;
+}
+
+func nearChannel(value: Integer, target: Integer) -> Boolean {
+    if (value < target - 2) { return false; }
+    if (value > target + 2) { return false; }
+    return true;
+}
+
+func nearColor(px: Integer, r: Integer, g: Integer, b: Integer) -> Boolean {
+    if (nearChannel(red(px), r) == false) { return false; }
+    if (nearChannel(green(px), g) == false) { return false; }
+    if (nearChannel(blue(px), b) == false) { return false; }
+    return true;
+}
+
+func isHudTextPixel(px: Integer) -> Boolean {
+    if (nearColor(px, 255, 255, 255)) { return true; }
+    if (nearColor(px, 168, 186, 203)) { return true; }
+    if (nearColor(px, 255, 221, 68)) { return true; }
+    if (nearColor(px, 125, 255, 154)) { return true; }
+    return false;
+}
+
+func assertShowcaseFrame(img: Pixels) -> Boolean {
+    if (img == null) {
+        Terminal.Say("FAIL: showcase capture returned null");
+        return false;
+    }
+
+    var width = Pixels.get_Width(img);
+    var height = Pixels.get_Height(img);
+    if (width < 64 || height < 64) {
+        Terminal.Say("FAIL: showcase capture size mismatch");
+        return false;
+    }
+
+    var accent = Pixels.Get(img, 20, 15);
+    if (red(accent) > 96 || green(accent) < 130 || blue(accent) < 150) {
+        Terminal.Say("FAIL: showcase final HUD overlay was not composited");
+        return false;
+    }
+
+    var stepX = width / 16;
+    var stepY = height / 12;
+    if (stepX < 1) { stepX = 1; }
+    if (stepY < 1) { stepY = 1; }
+
+    var total = 0;
+    var magenta = 0;
+    var minL = 9999;
+    var maxL = -1;
+    var y = height / 5;
+    while (y < height - 8) {
+        var x = 8;
+        while (x < width - 8) {
+            var px = Pixels.Get(img, x, y);
+            var r = red(px);
+            var g = green(px);
+            var b = blue(px);
+            var lum = luminance(px);
+            if (r > 180 && g < 90 && b > 180) {
+                magenta = magenta + 1;
+            }
+            if (lum < minL) { minL = lum; }
+            if (lum > maxL) { maxL = lum; }
+            total = total + 1;
+            x = x + stepX;
+        }
+        y = y + stepY;
+    }
+
+    if (total <= 0 || magenta * 5 > total) {
+        Terminal.Say("FAIL: showcase frame is magenta-dominant");
+        return false;
+    }
+    if (maxL - minL < 18) {
+        Terminal.Say("FAIL: showcase frame lost visible scene structure");
+        return false;
+    }
+
+    var lowerTotal = 0;
+    var lowerLit = 0;
+    var lowerSum = 0;
+    var lowerY = height / 2;
+    while (lowerY < height - 42) {
+        var lowerX = 32;
+        while (lowerX < width - 32) {
+            if (lowerX < width - 190 || lowerY < height - 190) {
+                var lowerLum = luminance(Pixels.Get(img, lowerX, lowerY));
+                lowerSum = lowerSum + lowerLum;
+                lowerTotal = lowerTotal + 1;
+                if (lowerLum > 24) {
+                    lowerLit = lowerLit + 1;
+                }
+            }
+            lowerX = lowerX + stepX;
+        }
+        lowerY = lowerY + stepY;
+    }
+    if (lowerTotal <= 0 || lowerSum / lowerTotal < 12 || lowerLit * 6 < lowerTotal) {
+        Terminal.Say("FAIL: showcase foreground is too dark");
+        return false;
+    }
+    if (lowerSum / lowerTotal > 108) {
+        Terminal.Say("FAIL: showcase foreground is overexposed");
+        return false;
+    }
+
+    var upperRightLum = luminance(Pixels.Get(img, width - 28, 32));
+    if (upperRightLum < 48) {
+        Terminal.Say("FAIL: showcase postfx has excessive edge darkening");
+        return false;
+    }
+
+    var overflow = 0;
+    var hudRight = config.HUD_PANEL_X + config.HUD_PANEL_W;
+    var oy = config.HUD_PANEL_Y + 16;
+    while (oy < config.HUD_PANEL_Y + config.HUD_PANEL_H - 8) {
+        var ox = hudRight + 2;
+        while (ox < hudRight + 72 && ox < width - 2) {
+            if (isHudTextPixel(Pixels.Get(img, ox, oy))) {
+                overflow = overflow + 1;
+            }
+            ox = ox + 1;
+        }
+        oy = oy + 1;
+    }
+    if (overflow > 6) {
+        Terminal.Say("FAIL: showcase HUD text overflows the panel");
+        return false;
+    }
+
+    return true;
+}
+
+func main() {
+    var game = new Game3DShowcase();
+    game.setup("Game3D Showcase Smoke", 960, 540);
+    game.step(0.016);
+    game.renderFrame();
+    var finalFrame = World3D.captureFinalFrame(game.getWorld());
+    if (finalFrame != null) {
+        Pixels.SavePng(finalFrame, "/tmp/game3d_showcase_games_current.png");
+    }
+    if (assertShowcaseFrame(finalFrame) == false) {
+        game.destroy();
+        return;
+    }
+    World3D.present(game.getWorld());
+    game.destroy();
+    Terminal.Say("RESULT: ok");
+}

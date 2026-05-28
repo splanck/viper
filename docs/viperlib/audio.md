@@ -10,9 +10,7 @@ last-verified: 2026-05-15
 
 **Part of the [Viper Runtime Library](README.md)**
 
-The canonical namespace is `Viper.Sound`. The runtime also exposes
-`Viper.Audio.*` as a compatibility alias for older examples and projects; the
-classes and behavior are the same.
+All audio classes live in the `Viper.Sound` namespace.
 
 ## Contents
 
@@ -42,6 +40,7 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 | Method       | Signature        | Description                                       |
 |--------------|------------------|---------------------------------------------------|
 | `Load(path)` | `Sound(String)`  | Load a sound from WAV, OGG Vorbis, or MP3. Returns `null` on failure |
+| `LoadAsset(path)` | `Sound(String)` | Load WAV, OGG Vorbis, or MP3 bytes through `Viper.IO.Assets`; accepts plain asset paths and `asset://` URIs |
 
 ### Methods
 
@@ -81,7 +80,7 @@ bind Viper.Text.Fmt as Fmt;
 func start() {
     Audio.Init();
 
-    var snd = Sound.Load("laser.wav");
+    var snd = Sound.LoadAsset("assets/audio/laser.wav");
     if snd != null {
         // Play with default settings
         var id = snd.Play();

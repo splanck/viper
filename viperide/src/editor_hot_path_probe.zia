@@ -4,7 +4,9 @@ bind "ui/app_shell";
 bind "core/document_manager";
 bind "core/project_manager";
 bind "editor/editor_engine";
+bind "editor/inlay_hints";
 bind "editor/project_index";
+bind "editor/symbols";
 
 bind Viper.Terminal as Terminal;
 bind Str = Viper.String;
@@ -169,10 +171,15 @@ func main() {
 
     var indexer = new project_index.ProjectIndexer();
     indexer.EnsureProject(projMgr, docMgr);
+    indexer.ResetPerfStats();
     var baseSyncs = indexer.syncCount;
     indexer.SyncOpenDocuments(docMgr);
     if indexer.syncCount != baseSyncs {
         fail(shell, "open document sync repeated unchanged content");
+        return;
+    }
+    if indexer.updateCount != 0 or indexer.updateBytes != 0 {
+        fail(shell, "unchanged open document updated project index counters");
         return;
     }
     doc.content = doc.content + "// dirty tab\n";
@@ -181,9 +188,18 @@ func main() {
         fail(shell, "open document sync missed changed content");
         return;
     }
+    if indexer.updateCount != 1 or indexer.updateBytes < Str.Length(doc.content) {
+        fail(shell, "open document project index counters");
+        return;
+    }
+    indexer.ResetPerfStats();
     indexer.SyncOpenDocuments(docMgr);
     if indexer.syncCount != baseSyncs + 1 {
         fail(shell, "open document sync repeated changed content");
+        return;
+    }
+    if indexer.updateCount != 0 or indexer.updateBytes != 0 {
+        fail(shell, "project index counters reset or unchanged sync");
         return;
     }
     baseSyncs = indexer.syncCount;
@@ -212,6 +228,10 @@ func main() {
         fail(shell, "index sync did not run after idle");
         return;
     }
+    if indexer.updateCount != 1 or indexer.updateBytes <= 0 {
+        fail(shell, "active idle sync project index counters");
+        return;
+    }
 
     var large = "";
     var largeLine = "let value = 42;\n";
@@ -236,6 +256,75 @@ func main() {
     }
     if engine.editor.GetFullTextCopyCount() != 0 {
         fail(shell, "large-buffer cursor movement copied full text");
+        return;
+    }
+
+    var inlayCtrl = new inlay_hints.InlayHintController();
+    engine.editor.ResetPerfStats();
+    inlayCtrl.Refresh(engine);
+    if inlayCtrl.lastHintCount != 0 or engine.editor.GetInlayHintCount() != 0 {
+        fail(shell, "large-buffer inlay hints were not capped");
+        return;
+    }
+    if engine.editor.GetFullTextCopyCount() != 0 {
+        fail(shell, "large-buffer inlay scan copied full text");
+        return;
+    }
+
+    var foldStressSource = "module FoldPerf;\n";
+    var foldStressRaw = "";
+    var foldLine = 2;
+    var foldIdx = 0;
+    while foldIdx < 1200 {
+        foldStressSource = foldStressSource
+            + "func fold" + foldIdx + "() -> Integer {\n"
+            + "    return " + foldIdx + ";\n"
+            + "}\n";
+        foldStressRaw = foldStressRaw
+            + "fold" + foldIdx + "\tfunction\tFunction()->Integer\t" + foldLine + "\n";
+        foldLine = foldLine + 3;
+        foldIdx = foldIdx + 1;
+    }
+    engine.SetText(foldStressSource);
+    var foldStartMs = Viper.Time.GetTickCount();
+    var foldCount = symbols.ApplySemanticFoldRegions(engine, foldStressRaw, 0, foldStressSource);
+    var foldElapsedMs = Viper.Time.GetTickCount() - foldStartMs;
+    if foldCount != 200 {
+        fail(shell, "semantic fold perf count: " + foldCount);
+        return;
+    }
+    if foldElapsedMs > 250 {
+        fail(shell, "semantic fold generation exceeded budget: " + foldElapsedMs + "ms");
+        return;
+    }
+
+    var hiddenOutline = new symbols.SymbolOutline();
+    hiddenOutline.setSourcePath("fold_perf.zia");
+    hiddenOutline.setSemanticFoldingEnabled(true, engine);
+    var hiddenFoldTicks = 0;
+    while hiddenFoldTicks < 20 {
+        hiddenOutline.update(engine);
+        Clock.Sleep(1);
+        hiddenFoldTicks = hiddenFoldTicks + 1;
+    }
+    if hiddenOutline.foldedPath != "" {
+        fail(shell, "hidden semantic folding ran while outline hidden");
+        return;
+    }
+
+    var visibleOutline = new symbols.SymbolOutline();
+    visibleOutline.setup(shell.editorArea);
+    visibleOutline.setSourcePath("fold_perf.zia");
+    visibleOutline.toggle();
+    visibleOutline.setSemanticFoldingEnabled(true, engine);
+    var foldPumpTicks = 0;
+    while visibleOutline.foldedPath == "" and foldPumpTicks < 200 {
+        visibleOutline.update(engine);
+        Clock.Sleep(1);
+        foldPumpTicks = foldPumpTicks + 1;
+    }
+    if visibleOutline.foldedPath != "fold_perf.zia" {
+        fail(shell, "visible semantic folding initial refresh");
         return;
     }
 

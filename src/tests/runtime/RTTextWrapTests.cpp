@@ -10,9 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_textwrap.h"
-#include "rt_seq.h"
 
 #include <cassert>
 #include <cstdio>

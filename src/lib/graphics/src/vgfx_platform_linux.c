@@ -39,8 +39,8 @@
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
-#include <X11/cursorfont.h>
 #include <X11/Xutil.h>
+#include <X11/cursorfont.h>
 #include <X11/keysym.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -59,42 +59,42 @@
 ///
 /// @invariant display != NULL implies window != 0 && gc != NULL
 typedef struct {
-    Display *display;      ///< X11 connection to server
-    int screen;            ///< Screen number
-    Window window;         ///< Native X11 window handle
-    GC gc;                 ///< Graphics context for drawing
-    Atom wm_delete_window; ///< Atom for WM_DELETE_WINDOW protocol
-    XImage *ximage;        ///< XImage wrapper for presentation buffer
-    uint8_t *ximage_buf;   ///< BGRA presentation buffer (R↔B swizzled from win->pixels)
-    Visual *visual;        ///< Visual used for window and XImage
-    int depth;             ///< Depth matching visual (24 or 32)
-    Colormap colormap;     ///< Colormap for the chosen visual (None if default)
+    Display *display;       ///< X11 connection to server
+    int screen;             ///< Screen number
+    Window window;          ///< Native X11 window handle
+    GC gc;                  ///< Graphics context for drawing
+    Atom wm_delete_window;  ///< Atom for WM_DELETE_WINDOW protocol
+    XImage *ximage;         ///< XImage wrapper for presentation buffer
+    uint8_t *ximage_buf;    ///< BGRA presentation buffer (R↔B swizzled from win->pixels)
+    Visual *visual;         ///< Visual used for window and XImage
+    int depth;              ///< Depth matching visual (24 or 32)
+    Colormap colormap;      ///< Colormap for the chosen visual (None if default)
     size_t ximage_buf_size; ///< Size of ximage_buf in bytes
-    int width;             ///< Cached window width
-    int height;            ///< Cached window height
-    int close_requested;   ///< 1 if WM_DELETE_WINDOW received, 0 otherwise
+    int width;              ///< Cached window width
+    int height;             ///< Cached window height
+    int close_requested;    ///< 1 if WM_DELETE_WINDOW received, 0 otherwise
     // XDND (drag-and-drop) atoms
-    Atom xdnd_aware;     ///< XdndAware atom
-    Atom xdnd_enter;     ///< XdndEnter atom
-    Atom xdnd_position;  ///< XdndPosition atom
-    Atom xdnd_status;    ///< XdndStatus atom
-    Atom xdnd_drop;      ///< XdndDrop atom
-    Atom xdnd_finished;  ///< XdndFinished atom
-    Atom xdnd_selection; ///< XdndSelection atom
-    Atom xdnd_type_list; ///< XdndTypeList atom
-    Atom text_uri_list;  ///< text/uri-list MIME type atom
-    Window xdnd_source;  ///< Source window for current drag
-    Atom clipboard_atom;          ///< CLIPBOARD selection atom
-    Atom utf8_string_atom;        ///< UTF8_STRING target atom
-    Atom targets_atom;            ///< TARGETS target atom
-    Atom incr_atom;               ///< INCR target/property atom
-    Atom clipboard_property_atom; ///< Property used for selection conversion
-    char *clipboard_text;         ///< Owned text while this window owns CLIPBOARD
-    XIM xim;             ///< Input method for UTF-8 text input
-    XIC xic;             ///< Input context for UTF-8 text input
-    int cursor_type;     ///< Last requested cursor type
-    int cursor_visible;  ///< 1 if cursor should be visible
-    Cursor blank_cursor; ///< Cached invisible cursor
+    Atom xdnd_aware;                  ///< XdndAware atom
+    Atom xdnd_enter;                  ///< XdndEnter atom
+    Atom xdnd_position;               ///< XdndPosition atom
+    Atom xdnd_status;                 ///< XdndStatus atom
+    Atom xdnd_drop;                   ///< XdndDrop atom
+    Atom xdnd_finished;               ///< XdndFinished atom
+    Atom xdnd_selection;              ///< XdndSelection atom
+    Atom xdnd_type_list;              ///< XdndTypeList atom
+    Atom text_uri_list;               ///< text/uri-list MIME type atom
+    Window xdnd_source;               ///< Source window for current drag
+    Atom clipboard_atom;              ///< CLIPBOARD selection atom
+    Atom utf8_string_atom;            ///< UTF8_STRING target atom
+    Atom targets_atom;                ///< TARGETS target atom
+    Atom incr_atom;                   ///< INCR target/property atom
+    Atom clipboard_property_atom;     ///< Property used for selection conversion
+    char *clipboard_text;             ///< Owned text while this window owns CLIPBOARD
+    XIM xim;                          ///< Input method for UTF-8 text input
+    XIC xic;                          ///< Input context for UTF-8 text input
+    int cursor_type;                  ///< Last requested cursor type
+    int cursor_visible;               ///< 1 if cursor should be visible
+    Cursor blank_cursor;              ///< Cached invisible cursor
     struct vgfx_window *owner_window; ///< Backlink for multi-window global services
     struct vgfx_window *next_window;  ///< Intrusive list of live X11 windows
 } vgfx_x11_data;
@@ -198,8 +198,7 @@ static void parse_xdnd_uri_list(struct vgfx_window *win,
     size_t line_start = 0;
     for (size_t i = 0; i <= len; i++) {
         if (i == len || data[i] == '\n') {
-            enqueue_xdnd_uri_line(
-                win, timestamp, (const char *)data + line_start, i - line_start);
+            enqueue_xdnd_uri_line(win, timestamp, (const char *)data + line_start, i - line_start);
             line_start = i + 1;
         }
     }
@@ -319,16 +318,15 @@ static int utf8_decode_codepoint(const char *bytes, int len, uint32_t *out_codep
         (s[2] & 0xC0) == 0x80) {
         if ((s[0] == 0xE0 && s[1] < 0xA0) || (s[0] == 0xED && s[1] >= 0xA0))
             return 1;
-        *out_codepoint = ((uint32_t)(s[0] & 0x0F) << 12) |
-                         ((uint32_t)(s[1] & 0x3F) << 6) | (uint32_t)(s[2] & 0x3F);
+        *out_codepoint = ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
+                         (uint32_t)(s[2] & 0x3F);
         return 3;
     }
     if (len >= 4 && s[0] >= 0xF0 && s[0] <= 0xF4 && (s[1] & 0xC0) == 0x80 &&
         (s[2] & 0xC0) == 0x80 && (s[3] & 0xC0) == 0x80) {
         if ((s[0] == 0xF0 && s[1] < 0x90) || (s[0] == 0xF4 && s[1] > 0x8F))
             return 1;
-        *out_codepoint = ((uint32_t)(s[0] & 0x07) << 18) |
-                         ((uint32_t)(s[1] & 0x3F) << 12) |
+        *out_codepoint = ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
                          ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
         return 4;
     }
@@ -336,11 +334,8 @@ static int utf8_decode_codepoint(const char *bytes, int len, uint32_t *out_codep
     return 1;
 }
 
-static void x11_enqueue_text_input_events(struct vgfx_window *win,
-                                          int64_t timestamp,
-                                          int mods,
-                                          const char *text,
-                                          int text_len) {
+static void x11_enqueue_text_input_events(
+    struct vgfx_window *win, int64_t timestamp, int mods, const char *text, int text_len) {
     int offset = 0;
 
     if (!win || !text || text_len <= 0)
@@ -460,16 +455,8 @@ static int x11_create_ximage_resources(vgfx_x11_data *x11,
         return 0;
     }
 
-    XImage *image = XCreateImage(x11->display,
-                                 x11->visual,
-                                 x11->depth,
-                                 ZPixmap,
-                                 0,
-                                 (char *)buf,
-                                 width,
-                                 height,
-                                 32,
-                                 stride);
+    XImage *image = XCreateImage(
+        x11->display, x11->visual, x11->depth, ZPixmap, 0, (char *)buf, width, height, 32, stride);
     if (!image) {
         free(buf);
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create XImage");
@@ -908,15 +895,11 @@ static Bool x11_property_new_value_predicate(Display *display, XEvent *event, XP
     x11_property_wait_t *wait = (x11_property_wait_t *)arg;
     return wait && wait->x11 && event && event->type == PropertyNotify &&
            event->xproperty.window == wait->x11->window &&
-           event->xproperty.atom == wait->property &&
-           event->xproperty.state == PropertyNewValue;
+           event->xproperty.atom == wait->property && event->xproperty.state == PropertyNewValue;
 }
 
-static int x11_append_bytes(char **result,
-                            size_t *len,
-                            size_t *cap,
-                            const unsigned char *data,
-                            size_t nitems) {
+static int x11_append_bytes(
+    char **result, size_t *len, size_t *cap, const unsigned char *data, size_t nitems) {
     if (!result || !len || !cap)
         return 0;
     if (nitems == 0)
@@ -945,9 +928,7 @@ static int x11_append_bytes(char **result,
     return 1;
 }
 
-static char *x11_read_incr_text_property(vgfx_x11_data *x11,
-                                         Atom property,
-                                         Atom requested_target) {
+static char *x11_read_incr_text_property(vgfx_x11_data *x11, Atom property, Atom requested_target) {
     if (!x11 || !x11->display || property == None)
         return NULL;
 
@@ -962,10 +943,8 @@ static char *x11_read_incr_text_property(vgfx_x11_data *x11,
 
     while (vgfx_platform_now_ms() - start < 1000) {
         XEvent prop_event;
-        if (!XCheckIfEvent(x11->display,
-                           &prop_event,
-                           x11_property_new_value_predicate,
-                           (XPointer)&wait)) {
+        if (!XCheckIfEvent(
+                x11->display, &prop_event, x11_property_new_value_predicate, (XPointer)&wait)) {
             usleep(1000);
             continue;
         }
@@ -1154,8 +1133,12 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 int text_len = 0;
                 if (x11->xic) {
                     Status status = 0;
-                    text_len = Xutf8LookupString(
-                        x11->xic, &event.xkey, text_storage, (int)sizeof(text_buf), &keysym, &status);
+                    text_len = Xutf8LookupString(x11->xic,
+                                                 &event.xkey,
+                                                 text_storage,
+                                                 (int)sizeof(text_buf),
+                                                 &keysym,
+                                                 &status);
                     if (status == XBufferOverflow && text_len > 0 && text_len < INT_MAX) {
                         int text_cap = text_len + 1;
                         text_storage = (char *)malloc((size_t)text_cap);
@@ -1296,11 +1279,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 vgfx_event_t vgfx_event = {
                     .type = VGFX_EVENT_MOUSE_DOWN,
                     .time_ms = timestamp,
-                    .data.mouse_button = {
-                        .x = x,
-                        .y = y,
-                        .button = button,
-                        .modifiers = x11_modifiers(event.xbutton.state)}};
+                    .data.mouse_button = {.x = x,
+                                          .y = y,
+                                          .button = button,
+                                          .modifiers = x11_modifiers(event.xbutton.state)}};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
             }
@@ -1329,11 +1311,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 vgfx_event_t vgfx_event = {
                     .type = VGFX_EVENT_MOUSE_UP,
                     .time_ms = timestamp,
-                    .data.mouse_button = {
-                        .x = x,
-                        .y = y,
-                        .button = button,
-                        .modifiers = x11_modifiers(event.xbutton.state)}};
+                    .data.mouse_button = {.x = x,
+                                          .y = y,
+                                          .button = button,
+                                          .modifiers = x11_modifiers(event.xbutton.state)}};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
             }
@@ -1382,10 +1363,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case SelectionNotify: {
                 /* XDND: received selection data (file paths as text/uri-list) */
                 if (event.xselection.property == x11->xdnd_selection) {
-                    char *data = x11_read_text_property(
-                        x11, x11->xdnd_selection, x11->text_uri_list);
+                    char *data =
+                        x11_read_text_property(x11, x11->xdnd_selection, x11->text_uri_list);
                     if (data && data[0] != '\0')
-                        parse_xdnd_uri_list(win, timestamp, (const unsigned char *)data, strlen(data));
+                        parse_xdnd_uri_list(
+                            win, timestamp, (const unsigned char *)data, strlen(data));
                     free(data);
 
                     /* Send XdndFinished to complete the protocol */
@@ -1460,8 +1442,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                         x11->width = event.xconfigure.width;
                         x11->height = event.xconfigure.height;
                         vgfx_event_t vgfx_event = {0};
-                        vgfx_internal_init_resize_event(
-                            &vgfx_event, win, timestamp, event.xconfigure.width, event.xconfigure.height);
+                        vgfx_internal_init_resize_event(&vgfx_event,
+                                                        win,
+                                                        timestamp,
+                                                        event.xconfigure.width,
+                                                        event.xconfigure.height);
                         vgfx_internal_enqueue_event(win, &vgfx_event);
                     } else {
                         if (new_image) {

@@ -33,8 +33,8 @@
 #pragma once
 
 #include "il/core/Type.hpp"
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
@@ -177,10 +177,10 @@ struct RuntimeSignature {
     std::vector<RuntimeHiddenParam> hiddenParams; ///< Hidden arguments appended by the bridge.
     RuntimeTrapClass trapClass{RuntimeTrapClass::None}; ///< Trap semantics for the helper.
     bool nothrow{false};                                ///< Helper is guaranteed not to throw.
-    bool readonly{false}; ///< Helper may read from memory without writes.
-    bool pure{false};     ///< Helper has no observable side effects.
-    bool isVarArg{false}; ///< Helper uses C-style variadic arguments.
-    std::uint64_t objectParamMask{0};  ///< Parameters spelled `obj` in the runtime surface.
+    bool readonly{false};             ///< Helper may read from memory without writes.
+    bool pure{false};                 ///< Helper has no observable side effects.
+    bool isVarArg{false};             ///< Helper uses C-style variadic arguments.
+    std::uint64_t objectParamMask{0}; ///< Parameters spelled `obj` in the runtime surface.
     std::uint64_t consumedArgMask{0}; ///< IL-visible args whose ownership is consumed.
     std::uint64_t retainedArgMask{0}; ///< IL-visible args whose reference count is retained.
     std::uint64_t ownedOutArgMask{0}; ///< Pointer args that receive an owned reference.

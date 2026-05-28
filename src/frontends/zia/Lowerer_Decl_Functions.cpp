@@ -238,8 +238,13 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
         decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
 
     if (decl.isAsync) {
-        lowerAsyncFunctionDecl(decl, mangledName, params, returnType, ilReturnType,
-                               declaredReturnType, cachedParamTypes);
+        lowerAsyncFunctionDecl(decl,
+                               mangledName,
+                               params,
+                               returnType,
+                               ilReturnType,
+                               declaredReturnType,
+                               cachedParamTypes);
         return;
     }
 

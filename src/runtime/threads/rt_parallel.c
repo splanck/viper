@@ -52,8 +52,8 @@
 #include "rt_threadpool.h"
 
 #include <limits.h>
-#include <stdint.h>
 #include <setjmp.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1413,7 +1413,8 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
                 result = combine(result, tasks[i].result);
             }
         } else {
-            parallel_copy_error(combine_error, sizeof(combine_error), "Parallel.Reduce: reducer trapped");
+            parallel_copy_error(
+                combine_error, sizeof(combine_error), "Parallel.Reduce: reducer trapped");
             combine_failed = 1;
         }
         rt_trap_clear_recovery();

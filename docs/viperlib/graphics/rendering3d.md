@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-21
+last-verified: 2026-05-27
 ---
 
 # 3D Rendering, Animation, and Environment
@@ -13,9 +13,119 @@ last-verified: 2026-05-21
 
 This page documents the `Viper.Graphics3D` runtime surface for classes not covered by [3D Physics](physics3d.md). For mesh loading, material authoring, scene graphs, and the full 3D asset pipeline, see the [Graphics 3D Guide](../../graphics3d-guide.md).
 
+For the higher-level code-first game workflow, see [Game3D](game3d.md).
+`Viper.Game3D` is implemented in the same C runtime layer and wraps the lower
+level rendering, physics, input, audio, and final-frame contracts documented
+here.
+
 ---
 
 ## Camera And Rendering
+
+### Canvas3D Frame Finalization
+
+`Canvas3D.End()` closes the current 3D or 2D draw pass. It does not present the
+frame and does not run post-processing. Finalization is the step that applies
+`PostFX3D` and composites any final overlay recorded for the frame.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `BeginOverlay()` | `Void()` | Start recording a final 2D overlay pass |
+| `EndOverlay()` | `Void()` | Finish final overlay recording |
+| `ClearOverlay()` | `Void()` | Discard the current frame's recorded final overlay |
+| `Resize(w, h)` | `Void(Integer, Integer)` | Resize the canvas and active backend output targets |
+| `FinalizeFrame()` | `Void()` | Apply post-FX and final overlay once, without presenting |
+| `ScreenshotFinal()` | `Object()` | Finalize if needed, then capture finalized pixels |
+| `FrameFinalized` | `Boolean` | True once the current frame has been finalized |
+
+Use final overlays for HUD text, reticles, debug labels, and capture annotations
+that must remain crisp after bloom, tonemapping, or color grading. `Flip()`
+finalizes automatically if the frame has not already been finalized, so
+`ScreenshotFinal()` can be followed by `Flip()` without re-running post-FX.
+
+```rust
+Canvas3D.Begin(canvas, cam)
+Canvas3D.DrawMesh(canvas, mesh, model, material)
+Canvas3D.End(canvas)
+
+Canvas3D.BeginOverlay(canvas)
+Canvas3D.DrawText2D(canvas, 12, 12, "READY", 0xFFFFFFFF)
+Canvas3D.EndOverlay(canvas)
+
+var capture = Canvas3D.ScreenshotFinal(canvas)
+Canvas3D.Flip(canvas)
+```
+
+The repo-level sample `examples/3d/walk_min.zia` shows the complete Phase 0B
+frame path in one small program: explicit default lighting, a primitive scene,
+CPU-safe post-FX, final overlay recording, and `ScreenshotFinal()` coverage.
+`examples/3d/walk_min_probe.zia` is registered as a software-backend ctest and
+compares against `examples/3d/baselines/walk_min_software.png`.
+
+### Canvas3D Synthetic Input and Clock
+
+Live loops call `Canvas3D.Poll()` once per frame and then read
+`Viper.Input.Keyboard`, `Viper.Input.Mouse`, gamepad, or action APIs. `Poll()`
+returns the last raw window event code, but gameplay should normally use those
+state APIs because they expose coherent `WasPressed`, `WasReleased`, held, and
+mouse-delta state.
+
+Deterministic tests can switch a canvas to scripted input and fixed time:
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetInputSource(mode)` | `Void(Integer)` | `0` live, `1` synthetic, `2` live plus synthetic |
+| `PushSyntheticKey(key, down)` | `Void(Integer, Boolean)` | Queue a synthetic key transition |
+| `PushSyntheticMouse(dx, dy, buttons, wheel)` | `Void(Double, Double, Integer, Double)` | Queue mouse delta, button bitmask, and vertical wheel |
+| `ClearSyntheticInput()` | `Void()` | Clear queues and release synthetic-held buttons/keys |
+| `SetClockSource(mode)` | `Void(Integer)` | `0` live wall clock, `1` fixed synthetic dt |
+| `SetSyntheticDeltaTimeSec(dt)` | `Void(Double)` | Configure fixed synthetic dt in seconds |
+| `AdvanceSyntheticFrame()` | `Void()` | Advance one deterministic input/timing frame without pumping OS events |
+
+Synthetic events are applied through the same keyboard and mouse state update
+functions as live events. That means camera controllers and action bindings do
+not need a test-only input path. `DeltaTime`/`DeltaTimeSec` can be zero on the
+first live frame before the first `Flip()`; with the synthetic clock selected,
+they report the configured fixed dt after `AdvanceSyntheticFrame()`, synthetic
+`Poll()`, or `Flip()`.
+
+### Canvas3D Quality Profiles
+
+`Canvas3D.SetQuality(profile)` installs a backend-safe post-FX profile:
+
+| Profile | Value | Behavior |
+|---------|-------|----------|
+| Performance | `0` | Minimal CPU-safe chain |
+| Balanced | `1` | CPU-safe bloom, tonemap, FXAA, and color grade |
+| Cinematic | `2` | CPU-safe cinematic chain, plus SSAO/DOF/motion blur only on GPU-window post-FX |
+
+The fallback state is inspectable for debug overlays:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `QualityRequested` | `Integer` | Last requested profile |
+| `QualityActive` | `Integer` | Active profile after fallback |
+| `QualityFallback` | `Boolean` | True when unsupported GPU-only effects were omitted |
+| `QualityFallbackReason` | `String` | Empty when no fallback occurred |
+
+`PostFX3D.NewQuality(canvas, profile)` builds the same chain without attaching
+it. Game3D quality helpers should wrap these runtime APIs rather than hand-roll
+backend checks in Zia code.
+
+### Canvas3D Lighting Helpers
+
+`Canvas3D.SetDefaultLighting()` installs an explicit key/fill directional setup
+and a readable ambient color. It is not implicit fallback lighting: scenes stay
+dark after `ClearLights()` plus low ambient unless the caller opts into new
+lights.
+
+| Method / Property | Signature | Description |
+|-------------------|-----------|-------------|
+| `SetLight(index, light)` | `Void(Integer, Object)` | Bind or clear a retained light slot |
+| `ClearLights()` | `Void()` | Clear every retained canvas light slot |
+| `SetDefaultLighting()` | `Void()` | Install conservative key/fill/ambient defaults |
+| `LightCount` | `Integer` | Count active enabled canvas-slot lights |
+| `SetAmbient(r, g, b)` | `Void(Double, Double, Double)` | Set ambient color |
 
 ### Viper.Graphics3D.Camera3D
 
@@ -47,6 +157,7 @@ This page documents the `Viper.Graphics3D` runtime surface for classes not cover
 
 Camera positions and FPS-style movement inputs are clamped to the runtime's safe world range before
 view/projection matrices are generated. Non-finite position components fall back to `0.0`.
+`SmoothFollow` and `SmoothLookAt` keep FPS-style yaw/pitch state synchronized with the resulting view.
 
 ```rust
 bind Viper.Graphics3D.Camera3D as Camera3D;
@@ -107,7 +218,7 @@ Cubemap texture resource for environment mapping and skyboxes. Use `Canvas3D.Loa
 
 ### Viper.Graphics3D.Light3D
 
-Scene light with configurable color and intensity. Directional, point, and spot variants are created via the `Canvas3D` scene light API.
+Scene light with configurable color, intensity, and enabled state.
 
 **Type:** Instance (obj)
 **Constructor:** `Canvas3D.AddDirectionalLight(...)` (returned as `Light3D`)
@@ -118,6 +229,18 @@ Scene light with configurable color and intensity. Directional, point, and spot 
 |--------|-----------|-------------|
 | `SetIntensity(value)` | `Void(Double)` | Set light intensity multiplier |
 | `SetColor(r, g, b)` | `Void(Double, Double, Double)` | Set light color using normalized RGB components |
+| `SetEnabled(enabled)` | `Void(Boolean)` | Toggle contribution without clearing the light slot |
+
+#### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Type` | Integer | Read | `0=directional`, `1=point`, `2=ambient`, `3=spot` |
+| `Color` | Object | Read | RGB `Vec3` |
+| `Intensity` | Double | Read | Brightness multiplier |
+| `Enabled` | Boolean | Read/Write | Disabled lights are skipped by rendering |
+| `Direction` | Object | Read | Direction `Vec3` |
+| `Position` | Object | Read | Position `Vec3` |
 
 ---
 
@@ -171,10 +294,12 @@ Mesh raycast result returned by `Canvas3D.Raycast`. Read-only value type.
 
 | Property        | Type    | Access | Description |
 |-----------------|---------|--------|-------------|
-| `Distance`      | Double  | Read   | Distance along the ray to the hit point |
+| `Distance`      | Double  | Read   | Euclidean distance along the ray to the hit point |
 | `Point`         | Object  | Read   | World-space hit point as `Vec3` |
 | `Normal`        | Object  | Read   | Surface normal at the hit point as `Vec3` |
 | `TriangleIndex` | Integer | Read   | Index of the hit triangle in the mesh |
+
+Ray queries normalize non-zero directions internally. Zero-length or non-finite directions miss, and distances remain world-unit distances even when the input direction was not normalized.
 
 ---
 
@@ -202,6 +327,12 @@ Bone hierarchy for skeletal mesh deformation. Typically loaded alongside a model
 | `FindBone(name)` | `Integer(String)` | Return the bone index, or `-1` if not found |
 | `GetBoneName(index)` | `String(Integer)` | Return the name of bone at `index` |
 
+Skinning weights are normalized consistently across CPU and GPU draw paths. Missing palettes copy
+vertices through unchanged, and unused backend bone-palette slots are treated as identity transforms.
+Add every bone before binding the skeleton to a mesh or constructing animation players, blenders, or
+controllers; those runtime objects freeze the skeleton topology because their pose buffers are sized
+from the current bone count.
+
 ---
 
 ### Viper.Graphics3D.Animation3D
@@ -223,7 +354,7 @@ Single keyframe animation track referencing a `Skeleton3D`.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `AddKeyframe(boneIndex, time, translation, rotation, scale)` | `Void(Integer, Double, Object, Object, Object)` | Add a keyframe for the given bone at `time` seconds |
+| `AddKeyframe(boneIndex, time, translation, rotation, scale)` | `Void(Integer, Double, Object, Object, Object)` | Add a keyframe for the given bone at `time` seconds; `null` TRS parts fall back to bind pose |
 
 ---
 
@@ -248,9 +379,12 @@ Plays a single `Animation3D` track on a `Skeleton3D` with optional crossfade.
 |--------|-----------|-------------|
 | `Play(animation)` | `Void(Object)` | Start playing an `Animation3D` |
 | `Crossfade(animation, duration)` | `Void(Object, Double)` | Blend into a new animation over `duration` seconds |
-| `Stop()` | `Void()` | Stop the current animation |
+| `Stop()` | `Void()` | Stop the current animation and output the bind pose |
 | `Update(deltaSeconds)` | `Void(Double)` | Advance the animation by the given delta |
-| `GetBoneMatrix(boneIndex)` | `Object(Integer)` | Return the current skinning matrix for `boneIndex` |
+| `GetBoneMatrix(boneIndex)` | `Object(Integer)` | Return the current global/world matrix for `boneIndex` |
+
+Crossfades blend all bones, including channels that exist in only one clip, against bind pose. The
+fading-out clip keeps its own speed and looping behavior during the transition.
 
 ```rust
 bind Viper.Graphics3D.AnimPlayer3D as AnimPlayer3D;
@@ -296,6 +430,9 @@ Blends multiple named animation states by weight. Useful for blend trees (run/wa
 | `SetSpeed(index, speed)` | `Void(Integer, Double)` | Set playback speed for state at `index` |
 | `Update(deltaSeconds)` | `Void(Double)` | Advance all states and produce the blended pose |
 
+`Update(0.0)` recomputes the pose without advancing time. New states inherit their animation's
+looping flag unless overridden by speed/time control in code.
+
 ---
 
 ### Viper.Graphics3D.AnimController3D
@@ -329,14 +466,18 @@ Stateful animation controller with named states, triggered transitions, animatio
 | `SetStateLooping(state, loop)` | `Void(String, Boolean)` | Override loop setting for a state |
 | `AddEvent(state, time, name)` | `Void(String, Double, String)` | Register a named event to fire at a playback time |
 | `PollEvent()` | `String()` | Dequeue the next fired event name, or empty string |
-| `SetRootMotionBone(index)` | `Void(Integer)` | Designate a bone to extract root motion from |
+| `SetRootMotionBone(index)` | `Void(Integer)` | Designate a bone to extract root motion from; `-1` disables it |
 | `ConsumeRootMotion()` | `Object()` | Read and clear the accumulated root motion `Vec3` |
 | `SetLayerWeight(layer, weight)` | `Void(Integer, Double)` | Set the blend weight for an additive layer |
 | `SetLayerMask(layer, boneMask)` | `Void(Integer, Integer)` | Restrict a layer to a bone mask bitmask |
 | `PlayLayer(layer, state)` | `Boolean(Integer, String)` | Play a state on an additive layer |
 | `CrossfadeLayer(layer, state, duration)` | `Boolean(Integer, String, Double)` | Blend into a new state on an additive layer over `duration` seconds |
 | `StopLayer(layer)` | `Void(Integer)` | Stop the additive layer |
-| `GetBoneMatrix(boneIndex)` | `Object(Integer)` | Return the current skinning matrix for `boneIndex` |
+| `GetBoneMatrix(boneIndex)` | `Object(Integer)` | Return the current global/world matrix for `boneIndex` |
+
+Root motion is disabled by default, preserves loop-wrap deltas, and resets its accumulated
+translation/rotation when disabled or switched to another bone. `Stop()` returns all layers to bind
+pose while keeping state metadata intact.
 
 ```rust
 bind Viper.Graphics3D.AnimController3D as AnimController3D;
@@ -381,9 +522,12 @@ Per-vertex morph target system for facial animation or shape blending.
 | `AddShape(name)` | `Integer(String)` | Add a named morph shape; returns its index |
 | `SetDelta(shape, vertex, dx, dy, dz)` | `Void(Integer, Integer, Double, Double, Double)` | Set the position delta for a vertex in a shape |
 | `SetNormalDelta(shape, vertex, dx, dy, dz)` | `Void(Integer, Integer, Double, Double, Double)` | Set the normal delta for a vertex in a shape |
-| `SetWeight(index, weight)` | `Void(Integer, Double)` | Set blend weight `[0.0–1.0]` for shape at `index` |
+| `SetWeight(index, weight)` | `Void(Integer, Double)` | Set blend weight `[-1.0–1.0]` for shape at `index` |
 | `GetWeight(index)` | `Double(Integer)` | Get the current weight for a shape |
 | `SetWeightByName(name, weight)` | `Void(String, Double)` | Set blend weight by shape name |
+
+GPU backends clamp active morph shapes to shader-indexable limits and disable morphing on upload
+failure instead of reusing stale buffers; larger shape sets should use the CPU-applied path.
 
 ---
 
@@ -392,6 +536,9 @@ Per-vertex morph target system for facial animation or shape blending.
 ### Viper.Graphics3D.Particles3D
 
 3D particle emitter with configurable spawn, physics, color, and render properties.
+`Draw` submits one batched billboard mesh per emitter. Additive particles skip
+sorting; alpha particles sort a temporary key array back-to-front without
+mutating the emitter's live particle order.
 
 **Type:** Instance (obj)
 **Constructor:** `Particles3D.New(maxParticles)`
@@ -469,7 +616,7 @@ Time-limited projected decal placed in a 3D scene (bullet holes, blood splats, s
 
 ## Spatial Audio
 
-### Viper.Graphics3D.Audio3D
+### Viper.Graphics3D.Sound3D
 
 Static utilities for positioning audio in 3D space via listeners and voice IDs.
 
@@ -482,16 +629,16 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 | `SetListener(position, forward)` | `Void(Object, Object)` | Set the listener position and orientation |
 | `PlayAt(sound, position, volume, loop)` | `Integer(Object, Object, Double, Integer)` | Spawn a spatialized voice at a world position; returns voice ID |
 | `UpdateVoice(voiceId, position, volume)` | `Void(Integer, Object, Double)` | Update the position and volume of a live spatialized voice |
-| `SyncBindings(deltaSeconds)` | `Void(Double)` | Propagate node/camera bindings from `AudioSource3D` and `AudioListener3D` |
+| `SyncBindings(deltaSeconds)` | `Void(Double)` | Propagate node/camera bindings from `SoundSource3D` and `SoundListener3D` |
 
 ---
 
-### Viper.Graphics3D.AudioListener3D
+### Viper.Graphics3D.SoundListener3D
 
 3D audio listener that tracks a scene node or camera position.
 
 **Type:** Instance (obj)
-**Constructor:** `AudioListener3D.New()`
+**Constructor:** `SoundListener3D.New()`
 
 #### Properties
 
@@ -509,19 +656,23 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 | `SetPosition(pos)` | `Void(Object)` | Set position from a `Vec3` |
 | `SetForward(dir)` | `Void(Object)` | Set facing direction from a `Vec3` |
 | `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
-| `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode3D` position each `Audio3D.SyncBindings` call |
+| `BindNode(sceneNode)` | `Void(Object)` | Automatically track a `SceneNode3D` position each `Sound3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove the node binding |
 | `BindCamera(camera)` | `Void(Object)` | Automatically track a `Camera3D` position and forward |
 | `ClearCameraBinding()` | `Void()` | Remove the camera binding |
 
 ---
 
-### Viper.Graphics3D.AudioSource3D
+### Viper.Graphics3D.SoundSource3D
 
 3D audio source positioned in world space, with range and Doppler support.
+Sources are full-volume through `RefDistance`, attenuate linearly until
+`MaxDistance`, and compute a Doppler factor from listener/source velocity. The
+current mixer applies volume and pan; the Doppler factor is kept in the spatial
+calculation path for playback-rate-capable backends.
 
 **Type:** Instance (obj)
-**Constructor:** `AudioSource3D.New(sound)`
+**Constructor:** `SoundSource3D.New(sound)`
 
 #### Properties
 
@@ -529,6 +680,8 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 |---------------|---------|------------|-------------|
 | `Position`    | Object  | Read/Write | Source world position as `Vec3` |
 | `Velocity`    | Object  | Read/Write | Source velocity for Doppler as `Vec3` |
+| `DopplerFactor` | Double | Read       | Latest computed Doppler pitch multiplier |
+| `RefDistance` | Double  | Read/Write | Full-volume radius before linear falloff begins |
 | `MaxDistance` | Double  | Read/Write | Attenuation roll-off distance |
 | `Volume`      | Integer | Read/Write | Base volume `0–100` |
 | `Looping`     | Boolean | Read/Write | True to loop the audio |
@@ -543,27 +696,27 @@ Static utilities for positioning audio in 3D space via listeners and voice IDs.
 | `SetVelocity(vel)` | `Void(Object)` | Set Doppler velocity from a `Vec3` |
 | `Play()` | `Integer()` | Start playback; returns voice ID |
 | `Stop()` | `Void()` | Stop playback |
-| `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode3D` each `Audio3D.SyncBindings` call |
+| `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode3D` each `Sound3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove node binding |
 
 ```rust
-bind Viper.Graphics3D.AudioSource3D as AudioSource3D;
-bind Viper.Graphics3D.AudioListener3D as AudioListener3D;
-bind Viper.Graphics3D.Audio3D as Audio3D;
+bind Viper.Graphics3D.SoundSource3D as SoundSource3D;
+bind Viper.Graphics3D.SoundListener3D as SoundListener3D;
+bind Viper.Graphics3D.Sound3D as Sound3D;
 bind Viper.Sound.Sound as Sound;
 
-var listener = AudioListener3D.New()
+var listener = SoundListener3D.New()
 listener.IsActive = true
 listener.BindCamera(cam)
 
-var explosion = Sound.Load("assets/explosion.ogg")
-var src = AudioSource3D.New(explosion)
+var explosion = Sound.LoadAsset("assets/explosion.ogg")
+var src = SoundSource3D.New(explosion)
 src.MaxDistance = 40.0
 src.SetPosition(Vec3.New(10.0, 0.0, 0.0))
 src.Play()
 
 // per frame
-Audio3D.SyncBindings(deltaSeconds)
+Sound3D.SyncBindings(deltaSeconds)
 ```
 
 ---
@@ -573,6 +726,9 @@ Audio3D.SyncBindings(deltaSeconds)
 ### Viper.Graphics3D.NavMesh3D
 
 Walkable navigation mesh built from scene geometry. Used with `NavAgent3D` for pathfinding.
+`Build` rejects non-manifold shared edges, where more than two triangles own the
+same undirected edge, because adjacency/pathfinding would otherwise be
+ambiguous.
 
 **Type:** Static (none)
 **Constructor:** `NavMesh3D.Build(mesh, agentRadius, agentHeight)`
@@ -666,6 +822,9 @@ Heightmap terrain with multi-layer splat texturing, LOD, and normal generation.
 | `GetNormalAt(worldX, worldZ)` | `Object(Double, Double)` | Sample terrain surface normal as `Vec3` |
 | `SetLODDistances(near, far)` | `Void(Double, Double)` | Set LOD transition distances |
 | `SetSkirtDepth(depth)` | `Void(Double)` | Set the tile skirt depth to hide LOD seams |
+
+Terrain splatting is enabled only when the splat map and all four layer textures are present.
+Incomplete splat sets render with the base material/fallback texture.
 
 ```rust
 bind Viper.Graphics3D.Terrain3D as Terrain3D;
@@ -777,7 +936,8 @@ World-space transform (position, rotation quaternion, scale) with matrix output.
 | `Translate(delta)` | `Void(Object)` | Move by a `Vec3` offset |
 
 Very large Euler angles and incremental rotation angles are reduced before trigonometry runs, and
-the stored quaternion is kept normalized.
+the stored quaternion is kept normalized. Finite zero scale is preserved; only non-finite scale
+components are replaced with a safe identity value.
 
 ---
 
@@ -833,7 +993,12 @@ Efficient GPU-instanced rendering of many copies of the same mesh.
 | `Clear()` | `Void()` | Remove all instances |
 
 `Add` and `Set` require a valid runtime `Mat4` object with a complete matrix payload; foreign or
-undersized objects are ignored.
+undersized objects are ignored. Stack-backed mesh fixtures can be drawn through the instanced path
+when used by runtime systems. Draw submission sanitizes material scalars before narrowing to backend
+floats. Raw instanced draw submission retains mesh/material objects for the deferred frame and
+synthesizes previous instance matrices on the GPU path when explicit previous matrices are not
+supplied. Motion history is separated by batch buffer identity, so keep the same instance-matrix
+buffer across frames when continuous motion vectors are desired.
 
 ---
 
@@ -875,6 +1040,7 @@ Texture atlas for 3D rendering with named-region management.
 
 - `Transform3D` is distinct from `SceneNode3D` — use `Transform3D` for standalone matrix math and non-scene-graph transforms; attach nodes to the scene for scene-managed transform hierarchies.
 - `AnimController3D.PollEvent` returns events one at a time per call; poll it in a loop until an empty string is returned if multiple events fire in one update.
-- `NavMesh3D` is rebuilt by `NavMesh3D.Build`; the mesh is not dynamic. Rebuild when geometry changes.
-- `Particles3D.Draw` should be called after `Canvas3D.Flush` to render particles on top of opaque geometry.
-- `Audio3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.
+- `NavMesh3D` is rebuilt by `NavMesh3D.Build`; the mesh is not dynamic. Rebuild when geometry changes, and keep baked meshes manifold at shared edges.
+- `Particles3D.Draw` should be called inside the `Canvas3D.Begin`/`End` scene pass after opaque geometry when you want particles over the main scene.
+- Deferred static heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; skinned and morphed draws retain the live mesh because animation data is resolved at backend submission time.
+- `Sound3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.

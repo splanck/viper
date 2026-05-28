@@ -463,9 +463,9 @@ void *rt_option_filter_wrapper(void *obj, void *pred) {
 // Conversion
 //=============================================================================
 
-/// @brief Convert Option → Result by supplying an error value: `Some(v) → Ok(v)`, `None → Err(err)`.
-/// Preserves the value-type variant so e.g. `Some(i64) → Ok_i64`. Used to bridge missing-data
-/// failures into the Result error-handling pipeline.
+/// @brief Convert Option → Result by supplying an error value: `Some(v) → Ok(v)`, `None →
+/// Err(err)`. Preserves the value-type variant so e.g. `Some(i64) → Ok_i64`. Used to bridge
+/// missing-data failures into the Result error-handling pipeline.
 void *rt_option_ok_or(void *obj, void *err) {
     if (!obj)
         return rt_result_err(err);

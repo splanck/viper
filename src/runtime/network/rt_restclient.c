@@ -339,7 +339,8 @@ void rt_restclient_set_keep_alive(void *obj, int8_t keep_alive) {
     if (!client->keep_alive && client->connection_pool)
         rt_http_conn_pool_clear(client->connection_pool);
     if (client->keep_alive && !client->connection_pool)
-        client->connection_pool = rt_http_conn_pool_new(client->pool_size > 0 ? client->pool_size : 8);
+        client->connection_pool =
+            rt_http_conn_pool_new(client->pool_size > 0 ? client->pool_size : 8);
 }
 
 /// @brief Resize the keep-alive pool. Existing idle connections are dropped.

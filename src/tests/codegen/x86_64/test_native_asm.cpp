@@ -85,25 +85,30 @@ static bool hasSystemAssembler() {
     // hang on some CI configurations).  Only PATH matters because the
     // CodegenPipeline invokes "clang" without a full path.
     const char *pathEnv = std::getenv("PATH");
-    if (!pathEnv) return false;
+    if (!pathEnv)
+        return false;
     std::string pathStr(pathEnv);
     std::size_t pos = 0;
     while (pos < pathStr.size()) {
         std::size_t end = pathStr.find(';', pos);
-        if (end == std::string::npos) end = pathStr.size();
+        if (end == std::string::npos)
+            end = pathStr.size();
         std::string dir = pathStr.substr(pos, end - pos);
         if (!dir.empty()) {
             auto candidate = std::filesystem::path(dir) / "clang.exe";
-            if (std::filesystem::exists(candidate)) return true;
+            if (std::filesystem::exists(candidate))
+                return true;
         }
         pos = end + 1;
     }
     return false;
 #else
     FILE *p = popen("cc --version 2>/dev/null", "r");
-    if (!p) return false;
+    if (!p)
+        return false;
     char buf[128];
-    while (fgets(buf, sizeof(buf), p)) {}
+    while (fgets(buf, sizeof(buf), p)) {
+    }
     int rc = pclose(p);
     return rc == 0;
 #endif
@@ -228,27 +233,27 @@ CHECK(runNative(in, obj) == 0);
 CHECK(fs::exists(obj));
 // Verify it's a valid object file by checking magic bytes.
 {
-std::ifstream f(obj, std::ios::binary);
-ASSERT(static_cast<bool>(f));
-uint8_t magic[4]{};
-f.read(reinterpret_cast<char *>(magic), 4);
-ASSERT(static_cast<bool>(f));
+    std::ifstream f(obj, std::ios::binary);
+    ASSERT(static_cast<bool>(f));
+    uint8_t magic[4]{};
+    f.read(reinterpret_cast<char *>(magic), 4);
+    ASSERT(static_cast<bool>(f));
 #if defined(__APPLE__)
-// Mach-O: 0xFEEDFACF (64-bit little-endian)
-CHECK(magic[0] == 0xCF);
-CHECK(magic[1] == 0xFA);
-CHECK(magic[2] == 0xED);
-CHECK(magic[3] == 0xFE);
+    // Mach-O: 0xFEEDFACF (64-bit little-endian)
+    CHECK(magic[0] == 0xCF);
+    CHECK(magic[1] == 0xFA);
+    CHECK(magic[2] == 0xED);
+    CHECK(magic[3] == 0xFE);
 #elif defined(_WIN32)
-// COFF: Machine field at offset 0 should be 0x8664 (AMD64)
-CHECK(magic[0] == 0x64);
-CHECK(magic[1] == 0x86);
+    // COFF: Machine field at offset 0 should be 0x8664 (AMD64)
+    CHECK(magic[0] == 0x64);
+    CHECK(magic[1] == 0x86);
 #else
-// ELF: 0x7F 'E' 'L' 'F'
-CHECK(magic[0] == 0x7F);
-CHECK(magic[1] == 'E');
-CHECK(magic[2] == 'L');
-CHECK(magic[3] == 'F');
+    // ELF: 0x7F 'E' 'L' 'F'
+    CHECK(magic[0] == 0x7F);
+    CHECK(magic[1] == 'E');
+    CHECK(magic[2] == 'L');
+    CHECK(magic[3] == 'F');
 #endif
 }
 fs::remove(obj);
@@ -264,23 +269,23 @@ if (!hasSystemAssembler()) {
     std::cerr << "[ SKIPPED  ] NativeAsmX64.EquivBasicReturn (no system assembler)\n";
     ++gPass;
 } else {
-const std::string in = outPath("nasm_equiv.il");
-writeFile(in,
-          "il 0.1\n"
-          "func @pick_second(%a:i64, %b:i64) -> i64 {\n"
-          "entry(%a:i64, %b:i64):\n"
-          "  ret %b\n"
-          "}\n"
-          "func @main() -> i64 {\n"
-          "entry:\n"
-          "  %v = call @pick_second(10, 17)\n"
-          "  ret %v\n"
-          "}\n");
-const int sysRc = runSystem(in, "", true);
-const int natRc = runNative(in, "", true);
-CHECK(sysRc == natRc);
-CHECK(natRc == 17);
-fs::remove(in);
+    const std::string in = outPath("nasm_equiv.il");
+    writeFile(in,
+              "il 0.1\n"
+              "func @pick_second(%a:i64, %b:i64) -> i64 {\n"
+              "entry(%a:i64, %b:i64):\n"
+              "  ret %b\n"
+              "}\n"
+              "func @main() -> i64 {\n"
+              "entry:\n"
+              "  %v = call @pick_second(10, 17)\n"
+              "  ret %v\n"
+              "}\n");
+    const int sysRc = runSystem(in, "", true);
+    const int natRc = runNative(in, "", true);
+    CHECK(sysRc == natRc);
+    CHECK(natRc == 17);
+    fs::remove(in);
 }
 TEST_END()
 

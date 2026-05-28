@@ -169,7 +169,8 @@ static bool reserveFileBytes(uint64_t offShtab,
                              size_t &out) {
     uint64_t shtabBytes = 0;
     uint64_t total = 0;
-    if (!checkedMulU64(numSections, kShEntSize, "ElfWriter", "section header table", err, shtabBytes) ||
+    if (!checkedMulU64(
+            numSections, kShEntSize, "ElfWriter", "section header table", err, shtabBytes) ||
         !checkedAddU64(offShtab, shtabBytes, "ElfWriter", "file reserve size", err, total))
         return false;
     return checkedSizeTFromU64(total, "ElfWriter", "file reserve size", err, out);
@@ -263,504 +264,507 @@ bool ElfWriter::write(const std::string &path,
                       const CodeSection &rodata,
                       std::ostream &err) {
     try {
-    // --- 1. Build .shstrtab (section name string table) ---
-    StringTable shstrtab;
-    uint32_t shNameNull = 0; // empty string at offset 0
-    uint32_t shNameText = shstrtab.add(".text");
-    uint32_t shNameRodata = shstrtab.add(".rodata");
-    uint32_t shNameRelaText = shstrtab.add(".rela.text");
-    uint32_t shNameRelaRodata = shstrtab.add(".rela.rodata");
-    uint32_t shNameSymtab = shstrtab.add(".symtab");
-    uint32_t shNameStrtab = shstrtab.add(".strtab");
-    uint32_t shNameShstrtab = shstrtab.add(".shstrtab");
-    uint32_t shNameNoteGnuStack = shstrtab.add(".note.GNU-stack");
+        // --- 1. Build .shstrtab (section name string table) ---
+        StringTable shstrtab;
+        uint32_t shNameNull = 0; // empty string at offset 0
+        uint32_t shNameText = shstrtab.add(".text");
+        uint32_t shNameRodata = shstrtab.add(".rodata");
+        uint32_t shNameRelaText = shstrtab.add(".rela.text");
+        uint32_t shNameRelaRodata = shstrtab.add(".rela.rodata");
+        uint32_t shNameSymtab = shstrtab.add(".symtab");
+        uint32_t shNameStrtab = shstrtab.add(".strtab");
+        uint32_t shNameShstrtab = shstrtab.add(".shstrtab");
+        uint32_t shNameNoteGnuStack = shstrtab.add(".note.GNU-stack");
 
-    const bool hasDebugLine = !debugLineData_.empty();
-    uint32_t shNameDebugLine = 0;
-    if (hasDebugLine)
-        shNameDebugLine = shstrtab.add(".debug_line");
+        const bool hasDebugLine = !debugLineData_.empty();
+        uint32_t shNameDebugLine = 0;
+        if (hasDebugLine)
+            shNameDebugLine = shstrtab.add(".debug_line");
 
-    // --- 2. Build symbol table and .strtab ---
-    // ELF requires: null sym, section syms (local), then globals, then externals.
-    // We need to remap symbol indices from CodeSection's table to ELF indices.
+        // --- 2. Build symbol table and .strtab ---
+        // ELF requires: null sym, section syms (local), then globals, then externals.
+        // We need to remap symbol indices from CodeSection's table to ELF indices.
 
-    StringTable strtab;
-    std::vector<uint8_t> symtabBytes;
+        StringTable strtab;
+        std::vector<uint8_t> symtabBytes;
 
-    // Collect symbols from both text and rodata sections.
-    // We need a unified symbol table.
-    struct ElfSym {
-        uint32_t strOffset;
-        uint8_t info;
-        uint16_t shndx;
-        uint64_t value;
-        uint64_t size;
-        bool isLocal;
-    };
+        // Collect symbols from both text and rodata sections.
+        // We need a unified symbol table.
+        struct ElfSym {
+            uint32_t strOffset;
+            uint8_t info;
+            uint16_t shndx;
+            uint64_t value;
+            uint64_t size;
+            bool isLocal;
+        };
 
-    std::vector<ElfSym> locals, globals;
+        std::vector<ElfSym> locals, globals;
 
-    // Symbol index 0: null symbol (always first).
-    writeSym(symtabBytes, 0, 0, 0, 0, 0, 0);
+        // Symbol index 0: null symbol (always first).
+        writeSym(symtabBytes, 0, 0, 0, 0, 0, 0);
 
-    // Section symbols for .text and .rodata (local).
-    // These are used as targets for cross-section relocations.
-    writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, kSecText, 0, 0);
+        // Section symbols for .text and .rodata (local).
+        // These are used as targets for cross-section relocations.
+        writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, kSecText, 0, 0);
 
-    writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, kSecRodata, 0, 0);
+        writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, kSecRodata, 0, 0);
 
-    uint32_t elfLocalCount = 3; // null + 2 section symbols
+        uint32_t elfLocalCount = 3; // null + 2 section symbols
 
-    // Map from CodeSection symbol index → ELF symbol index.
-    // We process text symbols then rodata symbols.
-    std::unordered_map<uint32_t, uint32_t> textSymMap;
-    std::unordered_map<uint32_t, uint32_t> rodataSymMap;
+        // Map from CodeSection symbol index → ELF symbol index.
+        // We process text symbols then rodata symbols.
+        std::unordered_map<uint32_t, uint32_t> textSymMap;
+        std::unordered_map<uint32_t, uint32_t> rodataSymMap;
 
-    // First pass: collect locals (defined symbols other than section symbols).
-    // Second pass: collect globals and externals.
-    // For simplicity, treat all defined symbols as globals (they're exported functions).
+        // First pass: collect locals (defined symbols other than section symbols).
+        // Second pass: collect globals and externals.
+        // For simplicity, treat all defined symbols as globals (they're exported functions).
 
-    // Process text section symbols.
-    struct PendingSym {
-        uint32_t origIdx;
-        const Symbol *sym;
-        uint16_t shndx;
-        bool fromText; // true = text section, false = rodata
-    };
+        // Process text section symbols.
+        struct PendingSym {
+            uint32_t origIdx;
+            const Symbol *sym;
+            uint16_t shndx;
+            bool fromText; // true = text section, false = rodata
+        };
 
-    std::vector<PendingSym> pendingLocals, pendingGlobals;
+        std::vector<PendingSym> pendingLocals, pendingGlobals;
 
-    for (uint32_t i = 1; i < text.symbols().count(); ++i) {
-        const Symbol &s = text.symbols().at(i);
-        PendingSym ps{i, &s, 0, true};
+        for (uint32_t i = 1; i < text.symbols().count(); ++i) {
+            const Symbol &s = text.symbols().at(i);
+            PendingSym ps{i, &s, 0, true};
 
-        if (s.binding == SymbolBinding::External) {
-            ps.shndx = kShnUndef;
-            pendingGlobals.push_back(ps);
-        } else if (s.binding == SymbolBinding::Local) {
-            ps.shndx = kSecText;
-            pendingLocals.push_back(ps);
-        } else {
-            // Global defined symbol.
-            ps.shndx = kSecText;
-            pendingGlobals.push_back(ps);
+            if (s.binding == SymbolBinding::External) {
+                ps.shndx = kShnUndef;
+                pendingGlobals.push_back(ps);
+            } else if (s.binding == SymbolBinding::Local) {
+                ps.shndx = kSecText;
+                pendingLocals.push_back(ps);
+            } else {
+                // Global defined symbol.
+                ps.shndx = kSecText;
+                pendingGlobals.push_back(ps);
+            }
         }
-    }
 
-    // Process rodata section symbols.
-    for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
-        const Symbol &s = rodata.symbols().at(i);
-        PendingSym ps{i, &s, 0, false};
+        // Process rodata section symbols.
+        for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+            const Symbol &s = rodata.symbols().at(i);
+            PendingSym ps{i, &s, 0, false};
 
-        if (s.binding == SymbolBinding::External) {
-            ps.shndx = kShnUndef;
-            pendingGlobals.push_back(ps);
-        } else if (s.binding == SymbolBinding::Local) {
-            ps.shndx = kSecRodata;
-            pendingLocals.push_back(ps);
-        } else {
-            ps.shndx = kSecRodata;
-            pendingGlobals.push_back(ps);
+            if (s.binding == SymbolBinding::External) {
+                ps.shndx = kShnUndef;
+                pendingGlobals.push_back(ps);
+            } else if (s.binding == SymbolBinding::Local) {
+                ps.shndx = kSecRodata;
+                pendingLocals.push_back(ps);
+            } else {
+                ps.shndx = kSecRodata;
+                pendingGlobals.push_back(ps);
+            }
         }
-    }
 
-    // Write local symbols first.
-    for (const auto &ps : pendingLocals) {
-        uint32_t nameOff = strtab.add(ps.sym->name);
-        uint8_t type = elfSymbolType(*ps.sym);
-        uint64_t value = 0;
-        const CodeSection &source = ps.fromText ? text : rodata;
-        if (!physicalSymbolValue(source, *ps.sym, ps.fromText ? ".text" : ".rodata", err, value))
-            return false;
-        writeSym(symtabBytes,
-                 nameOff,
-                 (kStbLocal << 4) | type,
-                 kStvDefault,
-                 ps.shndx,
-                 value,
-                 ps.sym->size);
-        uint32_t elfIdx = elfLocalCount++;
-        if (ps.fromText)
-            textSymMap[ps.origIdx] = elfIdx;
-        else
-            rodataSymMap[ps.origIdx] = elfIdx;
-    }
-
-    // sh_info = first non-local symbol index.
-    uint32_t firstGlobalIdx = elfLocalCount;
-
-    std::vector<PendingSym> pendingDefinedGlobals;
-    std::vector<PendingSym> pendingExternals;
-    for (const auto &ps : pendingGlobals) {
-        if (ps.sym->binding == SymbolBinding::External)
-            pendingExternals.push_back(ps);
-        else
-            pendingDefinedGlobals.push_back(ps);
-    }
-
-    // Write defined globals before undefined references so definitions win.
-    std::unordered_map<std::string, uint32_t> globalNameMap;
-    uint32_t elfGlobalIdx = elfLocalCount;
-    for (const auto &ps : pendingDefinedGlobals) {
-        if (globalNameMap.count(ps.sym->name)) {
-            err << "ElfWriter: duplicate global symbol '" << ps.sym->name << "'\n";
-            return false;
-        }
-        uint32_t nameOff = strtab.add(ps.sym->name);
-        uint8_t type = elfSymbolType(*ps.sym);
-        uint16_t shndx = ps.shndx;
-        uint64_t value = 0;
-        const CodeSection &source = ps.fromText ? text : rodata;
-        if (!physicalSymbolValue(source, *ps.sym, ps.fromText ? ".text" : ".rodata", err, value))
-            return false;
-        writeSym(
-            symtabBytes, nameOff, (kStbGlobal << 4) | type, kStvDefault, shndx, value, ps.sym->size);
-        if (ps.fromText)
-            textSymMap[ps.origIdx] = elfGlobalIdx;
-        else
-            rodataSymMap[ps.origIdx] = elfGlobalIdx;
-        globalNameMap[ps.sym->name] = elfGlobalIdx;
-        ++elfGlobalIdx;
-    }
-
-    for (const auto &ps : pendingExternals) {
-        auto existing = globalNameMap.find(ps.sym->name);
-        if (existing != globalNameMap.end()) {
+        // Write local symbols first.
+        for (const auto &ps : pendingLocals) {
+            uint32_t nameOff = strtab.add(ps.sym->name);
+            uint8_t type = elfSymbolType(*ps.sym);
+            uint64_t value = 0;
+            const CodeSection &source = ps.fromText ? text : rodata;
+            if (!physicalSymbolValue(
+                    source, *ps.sym, ps.fromText ? ".text" : ".rodata", err, value))
+                return false;
+            writeSym(symtabBytes,
+                     nameOff,
+                     (kStbLocal << 4) | type,
+                     kStvDefault,
+                     ps.shndx,
+                     value,
+                     ps.sym->size);
+            uint32_t elfIdx = elfLocalCount++;
             if (ps.fromText)
-                textSymMap[ps.origIdx] = existing->second;
+                textSymMap[ps.origIdx] = elfIdx;
             else
-                rodataSymMap[ps.origIdx] = existing->second;
-            continue;
+                rodataSymMap[ps.origIdx] = elfIdx;
         }
-        uint32_t nameOff = strtab.add(ps.sym->name);
-        writeSym(symtabBytes,
-                 nameOff,
-                 (kStbGlobal << 4) | kSttNotype,
-                 kStvDefault,
-                 kShnUndef,
-                 0,
-                 0);
-        if (ps.fromText)
-            textSymMap[ps.origIdx] = elfGlobalIdx;
-        else
-            rodataSymMap[ps.origIdx] = elfGlobalIdx;
-        globalNameMap[ps.sym->name] = elfGlobalIdx;
-        ++elfGlobalIdx;
-    }
 
-    // Build name→ELF index map for defined rodata symbols.
-    // Used to redirect text relocations that reference undefined symbols
-    // which are actually defined in rodata (cross-section references).
-    std::unordered_map<std::string, uint32_t> definedRodataByName;
-    for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
-        const Symbol &s = rodata.symbols().at(i);
-        if (s.binding != SymbolBinding::External) {
-            auto elfIt = rodataSymMap.find(i);
-            if (elfIt != rodataSymMap.end()) {
-                auto [it, inserted] = definedRodataByName.emplace(s.name, elfIt->second);
-                if (!inserted)
-                    it->second = UINT32_MAX;
+        // sh_info = first non-local symbol index.
+        uint32_t firstGlobalIdx = elfLocalCount;
+
+        std::vector<PendingSym> pendingDefinedGlobals;
+        std::vector<PendingSym> pendingExternals;
+        for (const auto &ps : pendingGlobals) {
+            if (ps.sym->binding == SymbolBinding::External)
+                pendingExternals.push_back(ps);
+            else
+                pendingDefinedGlobals.push_back(ps);
+        }
+
+        // Write defined globals before undefined references so definitions win.
+        std::unordered_map<std::string, uint32_t> globalNameMap;
+        uint32_t elfGlobalIdx = elfLocalCount;
+        for (const auto &ps : pendingDefinedGlobals) {
+            if (globalNameMap.count(ps.sym->name)) {
+                err << "ElfWriter: duplicate global symbol '" << ps.sym->name << "'\n";
+                return false;
+            }
+            uint32_t nameOff = strtab.add(ps.sym->name);
+            uint8_t type = elfSymbolType(*ps.sym);
+            uint16_t shndx = ps.shndx;
+            uint64_t value = 0;
+            const CodeSection &source = ps.fromText ? text : rodata;
+            if (!physicalSymbolValue(
+                    source, *ps.sym, ps.fromText ? ".text" : ".rodata", err, value))
+                return false;
+            writeSym(symtabBytes,
+                     nameOff,
+                     (kStbGlobal << 4) | type,
+                     kStvDefault,
+                     shndx,
+                     value,
+                     ps.sym->size);
+            if (ps.fromText)
+                textSymMap[ps.origIdx] = elfGlobalIdx;
+            else
+                rodataSymMap[ps.origIdx] = elfGlobalIdx;
+            globalNameMap[ps.sym->name] = elfGlobalIdx;
+            ++elfGlobalIdx;
+        }
+
+        for (const auto &ps : pendingExternals) {
+            auto existing = globalNameMap.find(ps.sym->name);
+            if (existing != globalNameMap.end()) {
+                if (ps.fromText)
+                    textSymMap[ps.origIdx] = existing->second;
+                else
+                    rodataSymMap[ps.origIdx] = existing->second;
+                continue;
+            }
+            uint32_t nameOff = strtab.add(ps.sym->name);
+            writeSym(
+                symtabBytes, nameOff, (kStbGlobal << 4) | kSttNotype, kStvDefault, kShnUndef, 0, 0);
+            if (ps.fromText)
+                textSymMap[ps.origIdx] = elfGlobalIdx;
+            else
+                rodataSymMap[ps.origIdx] = elfGlobalIdx;
+            globalNameMap[ps.sym->name] = elfGlobalIdx;
+            ++elfGlobalIdx;
+        }
+
+        // Build name→ELF index map for defined rodata symbols.
+        // Used to redirect text relocations that reference undefined symbols
+        // which are actually defined in rodata (cross-section references).
+        std::unordered_map<std::string, uint32_t> definedRodataByName;
+        for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+            const Symbol &s = rodata.symbols().at(i);
+            if (s.binding != SymbolBinding::External) {
+                auto elfIt = rodataSymMap.find(i);
+                if (elfIt != rodataSymMap.end()) {
+                    auto [it, inserted] = definedRodataByName.emplace(s.name, elfIt->second);
+                    if (!inserted)
+                        it->second = UINT32_MAX;
+                }
             }
         }
-    }
 
-    std::unordered_map<std::string, uint32_t> definedTextByName;
-    for (uint32_t i = 1; i < text.symbols().count(); ++i) {
-        const Symbol &s = text.symbols().at(i);
-        if (s.binding != SymbolBinding::External) {
-            auto elfIt = textSymMap.find(i);
-            if (elfIt != textSymMap.end()) {
-                auto [it, inserted] = definedTextByName.emplace(s.name, elfIt->second);
-                if (!inserted)
-                    it->second = UINT32_MAX;
+        std::unordered_map<std::string, uint32_t> definedTextByName;
+        for (uint32_t i = 1; i < text.symbols().count(); ++i) {
+            const Symbol &s = text.symbols().at(i);
+            if (s.binding != SymbolBinding::External) {
+                auto elfIt = textSymMap.find(i);
+                if (elfIt != textSymMap.end()) {
+                    auto [it, inserted] = definedTextByName.emplace(s.name, elfIt->second);
+                    if (!inserted)
+                        it->second = UINT32_MAX;
+                }
             }
         }
-    }
 
-    auto resolveRelocSym = [&](const Relocation &rel,
-                               const CodeSection &source,
-                               const std::unordered_map<uint32_t, uint32_t> &sourceMap,
-                               const std::unordered_map<std::string, uint32_t> &targetByName,
-                               const char *sectionName,
-                               uint32_t &elfSymIdx,
-                               int64_t &effectiveAddend) -> bool {
-        elfSymIdx = 0;
-        effectiveAddend = rel.addend;
-        if (rel.targetSection != SymbolSection::Undefined) {
-            if (rel.targetOffsetValid) {
-                const CodeSection &target =
-                    (rel.targetSection == SymbolSection::Text) ? text : rodata;
-                const char *targetName =
-                    (rel.targetSection == SymbolSection::Text) ? ".text" : ".rodata";
-                if (rel.targetOffset > target.bytes().size()) {
-                    err << "ElfWriter: relocation in " << sectionName << " at offset "
-                        << rel.offset << " references " << targetName << " offset "
-                        << rel.targetOffset << " beyond section contents\n";
+        auto resolveRelocSym = [&](const Relocation &rel,
+                                   const CodeSection &source,
+                                   const std::unordered_map<uint32_t, uint32_t> &sourceMap,
+                                   const std::unordered_map<std::string, uint32_t> &targetByName,
+                                   const char *sectionName,
+                                   uint32_t &elfSymIdx,
+                                   int64_t &effectiveAddend) -> bool {
+            elfSymIdx = 0;
+            effectiveAddend = rel.addend;
+            if (rel.targetSection != SymbolSection::Undefined) {
+                if (rel.targetOffsetValid) {
+                    const CodeSection &target =
+                        (rel.targetSection == SymbolSection::Text) ? text : rodata;
+                    const char *targetName =
+                        (rel.targetSection == SymbolSection::Text) ? ".text" : ".rodata";
+                    if (rel.targetOffset > target.bytes().size()) {
+                        err << "ElfWriter: relocation in " << sectionName << " at offset "
+                            << rel.offset << " references " << targetName << " offset "
+                            << rel.targetOffset << " beyond section contents\n";
+                        return false;
+                    }
+                    if (!checkedSectionOffsetAddend(rel.addend,
+                                                    rel.targetOffset,
+                                                    "ElfWriter",
+                                                    sectionName,
+                                                    rel.offset,
+                                                    err,
+                                                    effectiveAddend))
+                        return false;
+                    elfSymIdx = (rel.targetSection == SymbolSection::Text) ? 1u : 2u;
+                    return true;
+                }
+                if (rel.symbolIndex >= source.symbols().count()) {
+                    err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                        << " references unknown symbol index " << rel.symbolIndex << "\n";
                     return false;
                 }
-                if (!checkedSectionOffsetAddend(rel.addend,
-                                                rel.targetOffset,
-                                                "ElfWriter",
-                                                sectionName,
-                                                rel.offset,
-                                                err,
-                                                effectiveAddend))
+                const Symbol &sym = source.symbols().at(rel.symbolIndex);
+                auto nameIt = targetByName.find(sym.name);
+                if (nameIt == targetByName.end()) {
+                    err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                        << " references missing cross-section target '" << sym.name << "'\n";
                     return false;
-                elfSymIdx = (rel.targetSection == SymbolSection::Text) ? 1u : 2u;
+                }
+                if (nameIt->second == UINT32_MAX) {
+                    err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                        << " references ambiguous cross-section target '" << sym.name << "'\n";
+                    return false;
+                }
+                elfSymIdx = nameIt->second;
                 return true;
             }
-            if (rel.symbolIndex >= source.symbols().count()) {
+
+            auto it = sourceMap.find(rel.symbolIndex);
+            if (it == sourceMap.end()) {
                 err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
                     << " references unknown symbol index " << rel.symbolIndex << "\n";
                 return false;
             }
-            const Symbol &sym = source.symbols().at(rel.symbolIndex);
-            auto nameIt = targetByName.find(sym.name);
-            if (nameIt == targetByName.end()) {
-                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
-                    << " references missing cross-section target '" << sym.name << "'\n";
-                return false;
-            }
-            if (nameIt->second == UINT32_MAX) {
-                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
-                    << " references ambiguous cross-section target '" << sym.name << "'\n";
-                return false;
-            }
-            elfSymIdx = nameIt->second;
+            elfSymIdx = it->second;
             return true;
+        };
+
+        // --- 3. Build .rela.text ---
+        std::vector<uint8_t> relaBytes;
+        for (const auto &rel : text.relocations()) {
+            if (!validateRelocationShape("ElfWriter", arch_, text, rel, ".text", err))
+                return false;
+            uint32_t elfSymIdx = 0;
+            int64_t effectiveAddend = rel.addend;
+            const auto &targetMap = (rel.targetSection == SymbolSection::Rodata)
+                                        ? definedRodataByName
+                                        : definedTextByName;
+            if (!resolveRelocSym(
+                    rel, text, textSymMap, targetMap, ".text", elfSymIdx, effectiveAddend))
+                return false;
+
+            const size_t physicalRelOffset = rel.offset - text.logicalOffsetBias();
+            uint32_t relocType = elfRelocType(rel.kind, arch_);
+            uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
+            writeRela(relaBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, effectiveAddend);
         }
 
-        auto it = sourceMap.find(rel.symbolIndex);
-        if (it == sourceMap.end()) {
-            err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
-                << " references unknown symbol index " << rel.symbolIndex << "\n";
+        std::vector<uint8_t> relaRodataBytes;
+        for (const auto &rel : rodata.relocations()) {
+            if (!validateRelocationShape("ElfWriter", arch_, rodata, rel, ".rodata", err))
+                return false;
+            uint32_t elfSymIdx = 0;
+            int64_t effectiveAddend = rel.addend;
+            const auto &targetMap = (rel.targetSection == SymbolSection::Text)
+                                        ? definedTextByName
+                                        : definedRodataByName;
+            if (!resolveRelocSym(
+                    rel, rodata, rodataSymMap, targetMap, ".rodata", elfSymIdx, effectiveAddend))
+                return false;
+
+            const size_t physicalRelOffset = rel.offset - rodata.logicalOffsetBias();
+            uint32_t relocType = elfRelocType(rel.kind, arch_);
+            uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
+            writeRela(
+                relaRodataBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, effectiveAddend);
+        }
+
+        // --- 4. Compute file layout ---
+        uint64_t textAlign = (arch_ == ObjArch::X86_64) ? 16 : 4;
+
+        // Section data sizes
+        uint64_t textSize = text.bytes().size();
+        uint64_t rodataSize = rodata.bytes().size();
+        uint64_t relaSize = relaBytes.size();
+        uint64_t relaRodataSize = relaRodataBytes.size();
+        uint64_t symtabSize = symtabBytes.size();
+        uint64_t strtabSize = strtab.size();
+        uint64_t shstrtabSize = shstrtab.size();
+
+        // File offsets (sequential, aligned)
+        uint64_t offText = 0;
+        uint64_t offRodata = 0;
+        uint64_t offRelaText = 0;
+        uint64_t offRelaRodata = 0;
+        uint64_t offSymtab = 0;
+        uint64_t offStrtab = 0;
+        uint64_t offShstrtab = 0;
+        uint64_t cursor = 0;
+        if (!checkedAlignUpU64(kEhSize, textAlign, "ElfWriter", ".text offset", err, offText) ||
+            !checkedAddU64(offText, textSize, "ElfWriter", ".text data", err, cursor) ||
+            !checkedAlignUpU64(cursor, 8, "ElfWriter", ".rodata offset", err, offRodata) ||
+            !checkedAddU64(offRodata, rodataSize, "ElfWriter", ".rodata data", err, cursor) ||
+            !checkedAlignUpU64(cursor, 8, "ElfWriter", ".rela.text offset", err, offRelaText) ||
+            !checkedAddU64(offRelaText, relaSize, "ElfWriter", ".rela.text data", err, cursor) ||
+            !checkedAlignUpU64(cursor, 8, "ElfWriter", ".rela.rodata offset", err, offRelaRodata) ||
+            !checkedAddU64(
+                offRelaRodata, relaRodataSize, "ElfWriter", ".rela.rodata data", err, cursor) ||
+            !checkedAlignUpU64(cursor, 8, "ElfWriter", ".symtab offset", err, offSymtab) ||
+            !checkedAddU64(offSymtab, symtabSize, "ElfWriter", ".symtab data", err, offStrtab) ||
+            !checkedAddU64(offStrtab, strtabSize, "ElfWriter", ".strtab data", err, offShstrtab))
+            return false;
+        // .note.GNU-stack has zero size, its offset doesn't matter but we place it next.
+        uint64_t offNoteGnuStack = 0;
+        if (!checkedAddU64(
+                offShstrtab, shstrtabSize, "ElfWriter", ".shstrtab data", err, offNoteGnuStack))
+            return false;
+        // .debug_line (optional, non-alloc) — placed after .note.GNU-stack.
+        uint64_t debugLineSize = debugLineData_.size();
+        uint64_t offDebugLine = offNoteGnuStack;
+        uint64_t debugEnd = 0;
+        uint64_t offShtab = 0;
+        if (!checkedAddU64(
+                offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd) ||
+            !checkedAlignUpU64(debugEnd, 8, "ElfWriter", "section header table", err, offShtab))
+            return false;
+
+        // --- 5. Build the file ---
+        const uint16_t numSections = hasDebugLine ? 10 : 9;
+
+        std::vector<uint8_t> file;
+        size_t reserveSize = 0;
+        if (!reserveFileBytes(offShtab, numSections, err, reserveSize))
+            return false;
+        file.reserve(reserveSize);
+
+        // ELF header (64 bytes)
+        uint16_t machine = (arch_ == ObjArch::X86_64) ? kEmX86_64 : kEmAarch64;
+        writeEhdr(file, machine, offShtab, numSections, kSecShstrtab);
+
+        // .text
+        padTo(file, static_cast<size_t>(offText));
+        file.insert(file.end(), text.bytes().begin(), text.bytes().end());
+
+        // .rodata
+        padTo(file, static_cast<size_t>(offRodata));
+        file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+
+        // .rela.text
+        padTo(file, static_cast<size_t>(offRelaText));
+        file.insert(file.end(), relaBytes.begin(), relaBytes.end());
+
+        // .rela.rodata
+        padTo(file, static_cast<size_t>(offRelaRodata));
+        file.insert(file.end(), relaRodataBytes.begin(), relaRodataBytes.end());
+
+        // .symtab
+        padTo(file, static_cast<size_t>(offSymtab));
+        file.insert(file.end(), symtabBytes.begin(), symtabBytes.end());
+
+        // .strtab
+        padTo(file, static_cast<size_t>(offStrtab));
+        {
+            const auto &d = strtab.data();
+            file.insert(file.end(), d.begin(), d.end());
+        }
+
+        // .shstrtab
+        padTo(file, static_cast<size_t>(offShstrtab));
+        {
+            const auto &d = shstrtab.data();
+            file.insert(file.end(), d.begin(), d.end());
+        }
+
+        // .note.GNU-stack (zero size, no data to append)
+
+        // .debug_line (optional)
+        if (hasDebugLine)
+            file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
+
+        // Section header table
+        padTo(file, static_cast<size_t>(offShtab));
+
+        // [0] Null section
+        writeShdr(file, shNameNull, kShtNull, 0, 0, 0, 0, 0, 0, 0);
+
+        // [1] .text
+        writeShdr(file,
+                  shNameText,
+                  kShtProgbits,
+                  kShfAlloc | kShfExecinstr,
+                  offText,
+                  textSize,
+                  0,
+                  0,
+                  textAlign,
+                  0);
+
+        // [2] .rodata
+        writeShdr(file, shNameRodata, kShtProgbits, kShfAlloc, offRodata, rodataSize, 0, 0, 8, 0);
+
+        // [3] .rela.text
+        writeShdr(file,
+                  shNameRelaText,
+                  kShtRela,
+                  kShfInfoLink,
+                  offRelaText,
+                  relaSize,
+                  kSecSymtab,
+                  kSecText,
+                  8,
+                  24);
+
+        // [4] .rela.rodata
+        writeShdr(file,
+                  shNameRelaRodata,
+                  kShtRela,
+                  kShfInfoLink,
+                  offRelaRodata,
+                  relaRodataSize,
+                  kSecSymtab,
+                  kSecRodata,
+                  8,
+                  24);
+
+        // [5] .symtab
+        writeShdr(file,
+                  shNameSymtab,
+                  kShtSymtab,
+                  0,
+                  offSymtab,
+                  symtabSize,
+                  kSecStrtab,
+                  firstGlobalIdx,
+                  8,
+                  24);
+
+        // [6] .strtab
+        writeShdr(file, shNameStrtab, kShtStrtab, 0, offStrtab, strtabSize, 0, 0, 1, 0);
+
+        // [7] .shstrtab
+        writeShdr(file, shNameShstrtab, kShtStrtab, 0, offShstrtab, shstrtabSize, 0, 0, 1, 0);
+
+        // [8] .note.GNU-stack
+        writeShdr(file, shNameNoteGnuStack, kShtProgbits, 0, offNoteGnuStack, 0, 0, 0, 1, 0);
+
+        // [9] .debug_line (optional, non-alloc)
+        if (hasDebugLine)
+            writeShdr(
+                file, shNameDebugLine, kShtProgbits, 0, offDebugLine, debugLineSize, 0, 0, 1, 0);
+
+        // --- 6. Write to disk ---
+        std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+        if (!ofs) {
+            err << "ElfWriter: cannot open " << path << " for writing\n";
             return false;
         }
-        elfSymIdx = it->second;
+        if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
+            return false;
         return true;
-    };
-
-    // --- 3. Build .rela.text ---
-    std::vector<uint8_t> relaBytes;
-    for (const auto &rel : text.relocations()) {
-        if (!validateRelocationShape("ElfWriter", arch_, text, rel, ".text", err))
-            return false;
-        uint32_t elfSymIdx = 0;
-        int64_t effectiveAddend = rel.addend;
-        const auto &targetMap =
-            (rel.targetSection == SymbolSection::Rodata) ? definedRodataByName : definedTextByName;
-        if (!resolveRelocSym(rel, text, textSymMap, targetMap, ".text", elfSymIdx, effectiveAddend))
-            return false;
-
-        const size_t physicalRelOffset = rel.offset - text.logicalOffsetBias();
-        uint32_t relocType = elfRelocType(rel.kind, arch_);
-        uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-        writeRela(relaBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, effectiveAddend);
-    }
-
-    std::vector<uint8_t> relaRodataBytes;
-    for (const auto &rel : rodata.relocations()) {
-        if (!validateRelocationShape("ElfWriter", arch_, rodata, rel, ".rodata", err))
-            return false;
-        uint32_t elfSymIdx = 0;
-        int64_t effectiveAddend = rel.addend;
-        const auto &targetMap =
-            (rel.targetSection == SymbolSection::Text) ? definedTextByName : definedRodataByName;
-        if (!resolveRelocSym(
-                rel, rodata, rodataSymMap, targetMap, ".rodata", elfSymIdx, effectiveAddend))
-            return false;
-
-        const size_t physicalRelOffset = rel.offset - rodata.logicalOffsetBias();
-        uint32_t relocType = elfRelocType(rel.kind, arch_);
-        uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-        writeRela(relaRodataBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, effectiveAddend);
-    }
-
-    // --- 4. Compute file layout ---
-    uint64_t textAlign = (arch_ == ObjArch::X86_64) ? 16 : 4;
-
-    // Section data sizes
-    uint64_t textSize = text.bytes().size();
-    uint64_t rodataSize = rodata.bytes().size();
-    uint64_t relaSize = relaBytes.size();
-    uint64_t relaRodataSize = relaRodataBytes.size();
-    uint64_t symtabSize = symtabBytes.size();
-    uint64_t strtabSize = strtab.size();
-    uint64_t shstrtabSize = shstrtab.size();
-
-    // File offsets (sequential, aligned)
-    uint64_t offText = 0;
-    uint64_t offRodata = 0;
-    uint64_t offRelaText = 0;
-    uint64_t offRelaRodata = 0;
-    uint64_t offSymtab = 0;
-    uint64_t offStrtab = 0;
-    uint64_t offShstrtab = 0;
-    uint64_t cursor = 0;
-    if (!checkedAlignUpU64(kEhSize, textAlign, "ElfWriter", ".text offset", err, offText) ||
-        !checkedAddU64(offText, textSize, "ElfWriter", ".text data", err, cursor) ||
-        !checkedAlignUpU64(cursor, 8, "ElfWriter", ".rodata offset", err, offRodata) ||
-        !checkedAddU64(offRodata, rodataSize, "ElfWriter", ".rodata data", err, cursor) ||
-        !checkedAlignUpU64(cursor, 8, "ElfWriter", ".rela.text offset", err, offRelaText) ||
-        !checkedAddU64(offRelaText, relaSize, "ElfWriter", ".rela.text data", err, cursor) ||
-        !checkedAlignUpU64(
-            cursor, 8, "ElfWriter", ".rela.rodata offset", err, offRelaRodata) ||
-        !checkedAddU64(
-            offRelaRodata, relaRodataSize, "ElfWriter", ".rela.rodata data", err, cursor) ||
-        !checkedAlignUpU64(cursor, 8, "ElfWriter", ".symtab offset", err, offSymtab) ||
-        !checkedAddU64(offSymtab, symtabSize, "ElfWriter", ".symtab data", err, offStrtab) ||
-        !checkedAddU64(offStrtab, strtabSize, "ElfWriter", ".strtab data", err, offShstrtab))
-        return false;
-    // .note.GNU-stack has zero size, its offset doesn't matter but we place it next.
-    uint64_t offNoteGnuStack = 0;
-    if (!checkedAddU64(offShstrtab,
-                       shstrtabSize,
-                       "ElfWriter",
-                       ".shstrtab data",
-                       err,
-                       offNoteGnuStack))
-        return false;
-    // .debug_line (optional, non-alloc) — placed after .note.GNU-stack.
-    uint64_t debugLineSize = debugLineData_.size();
-    uint64_t offDebugLine = offNoteGnuStack;
-    uint64_t debugEnd = 0;
-    uint64_t offShtab = 0;
-    if (!checkedAddU64(offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd) ||
-        !checkedAlignUpU64(debugEnd, 8, "ElfWriter", "section header table", err, offShtab))
-        return false;
-
-    // --- 5. Build the file ---
-    const uint16_t numSections = hasDebugLine ? 10 : 9;
-
-    std::vector<uint8_t> file;
-    size_t reserveSize = 0;
-    if (!reserveFileBytes(offShtab, numSections, err, reserveSize))
-        return false;
-    file.reserve(reserveSize);
-
-    // ELF header (64 bytes)
-    uint16_t machine = (arch_ == ObjArch::X86_64) ? kEmX86_64 : kEmAarch64;
-    writeEhdr(file, machine, offShtab, numSections, kSecShstrtab);
-
-    // .text
-    padTo(file, static_cast<size_t>(offText));
-    file.insert(file.end(), text.bytes().begin(), text.bytes().end());
-
-    // .rodata
-    padTo(file, static_cast<size_t>(offRodata));
-    file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
-
-    // .rela.text
-    padTo(file, static_cast<size_t>(offRelaText));
-    file.insert(file.end(), relaBytes.begin(), relaBytes.end());
-
-    // .rela.rodata
-    padTo(file, static_cast<size_t>(offRelaRodata));
-    file.insert(file.end(), relaRodataBytes.begin(), relaRodataBytes.end());
-
-    // .symtab
-    padTo(file, static_cast<size_t>(offSymtab));
-    file.insert(file.end(), symtabBytes.begin(), symtabBytes.end());
-
-    // .strtab
-    padTo(file, static_cast<size_t>(offStrtab));
-    {
-        const auto &d = strtab.data();
-        file.insert(file.end(), d.begin(), d.end());
-    }
-
-    // .shstrtab
-    padTo(file, static_cast<size_t>(offShstrtab));
-    {
-        const auto &d = shstrtab.data();
-        file.insert(file.end(), d.begin(), d.end());
-    }
-
-    // .note.GNU-stack (zero size, no data to append)
-
-    // .debug_line (optional)
-    if (hasDebugLine)
-        file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
-
-    // Section header table
-    padTo(file, static_cast<size_t>(offShtab));
-
-    // [0] Null section
-    writeShdr(file, shNameNull, kShtNull, 0, 0, 0, 0, 0, 0, 0);
-
-    // [1] .text
-    writeShdr(file,
-              shNameText,
-              kShtProgbits,
-              kShfAlloc | kShfExecinstr,
-              offText,
-              textSize,
-              0,
-              0,
-              textAlign,
-              0);
-
-    // [2] .rodata
-    writeShdr(file, shNameRodata, kShtProgbits, kShfAlloc, offRodata, rodataSize, 0, 0, 8, 0);
-
-    // [3] .rela.text
-    writeShdr(file,
-              shNameRelaText,
-              kShtRela,
-              kShfInfoLink,
-              offRelaText,
-              relaSize,
-              kSecSymtab,
-              kSecText,
-              8,
-              24);
-
-    // [4] .rela.rodata
-    writeShdr(file,
-              shNameRelaRodata,
-              kShtRela,
-              kShfInfoLink,
-              offRelaRodata,
-              relaRodataSize,
-              kSecSymtab,
-              kSecRodata,
-              8,
-              24);
-
-    // [5] .symtab
-    writeShdr(file,
-              shNameSymtab,
-              kShtSymtab,
-              0,
-              offSymtab,
-              symtabSize,
-              kSecStrtab,
-              firstGlobalIdx,
-              8,
-              24);
-
-    // [6] .strtab
-    writeShdr(file, shNameStrtab, kShtStrtab, 0, offStrtab, strtabSize, 0, 0, 1, 0);
-
-    // [7] .shstrtab
-    writeShdr(file, shNameShstrtab, kShtStrtab, 0, offShstrtab, shstrtabSize, 0, 0, 1, 0);
-
-    // [8] .note.GNU-stack
-    writeShdr(file, shNameNoteGnuStack, kShtProgbits, 0, offNoteGnuStack, 0, 0, 0, 1, 0);
-
-    // [9] .debug_line (optional, non-alloc)
-    if (hasDebugLine)
-        writeShdr(file, shNameDebugLine, kShtProgbits, 0, offDebugLine, debugLineSize, 0, 0, 1, 0);
-
-    // --- 6. Write to disk ---
-    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-    if (!ofs) {
-        err << "ElfWriter: cannot open " << path << " for writing\n";
-        return false;
-    }
-    if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
-        return false;
-    return true;
     } catch (const std::exception &ex) {
         err << "ElfWriter: " << ex.what() << "\n";
         return false;
@@ -800,594 +804,617 @@ bool ElfWriter::write(const std::string &path,
                       const CodeSection &rodata,
                       std::ostream &err) {
     try {
-    // For 0 or 1 text sections, delegate to single-section write.
-    if (textSections.size() <= 1) {
-        if (textSections.size() == 1)
-            return write(path, textSections[0], rodata, err);
-        CodeSection empty;
-        return write(path, empty, rodata, err);
-    }
+        // For 0 or 1 text sections, delegate to single-section write.
+        if (textSections.size() <= 1) {
+            if (textSections.size() == 1)
+                return write(path, textSections[0], rodata, err);
+            CodeSection empty;
+            return write(path, empty, rodata, err);
+        }
 
-    const bool hasDebugLine = !debugLineData_.empty();
-    const size_t N = textSections.size();
-    const size_t baseSectionCount = 7 + (hasDebugLine ? 1 : 0);
-    if (N > (static_cast<size_t>(UINT16_MAX) - baseSectionCount) / 2) {
-        err << "ElfWriter: too many text sections for ELF writer (" << N << ")\n";
-        return false;
-    }
-    const size_t sectionCount = 2 * N + baseSectionCount;
+        const bool hasDebugLine = !debugLineData_.empty();
+        const size_t N = textSections.size();
+        const size_t baseSectionCount = 7 + (hasDebugLine ? 1 : 0);
+        if (N > (static_cast<size_t>(UINT16_MAX) - baseSectionCount) / 2) {
+            err << "ElfWriter: too many text sections for ELF writer (" << N << ")\n";
+            return false;
+        }
+        const size_t sectionCount = 2 * N + baseSectionCount;
 
-    // --- 1. Extract function names from each text section ---
-    const std::vector<std::string> funcNames = collectElfTextFuncNames(textSections);
+        // --- 1. Extract function names from each text section ---
+        const std::vector<std::string> funcNames = collectElfTextFuncNames(textSections);
 
-    // --- 2. Section index layout ---
-    // [0] null
-    // [1..N] .text.func1 ... .text.funcN
-    // [N+1] .rodata
-    // [N+2..2N+1] .rela.text.func1 ... .rela.text.funcN
-    // [2N+2] .rela.rodata
-    // [2N+3] .symtab
-    // [2N+4] .strtab
-    // [2N+5] .shstrtab
-    // [2N+6] .note.GNU-stack
-    auto secText = [](size_t i) -> uint16_t { return static_cast<uint16_t>(i + 1); };
-    const uint16_t secRodata = static_cast<uint16_t>(N + 1);
-    auto secRelaText = [&](size_t i) -> uint16_t { return static_cast<uint16_t>(N + 2 + i); };
-    const uint16_t secRelaRodata = static_cast<uint16_t>(2 * N + 2);
-    const uint16_t secSymtab = static_cast<uint16_t>(2 * N + 3);
-    const uint16_t secStrtab = static_cast<uint16_t>(2 * N + 4);
-    const uint16_t secShstrtab = static_cast<uint16_t>(2 * N + 5);
-    const uint16_t numSections = static_cast<uint16_t>(sectionCount);
+        // --- 2. Section index layout ---
+        // [0] null
+        // [1..N] .text.func1 ... .text.funcN
+        // [N+1] .rodata
+        // [N+2..2N+1] .rela.text.func1 ... .rela.text.funcN
+        // [2N+2] .rela.rodata
+        // [2N+3] .symtab
+        // [2N+4] .strtab
+        // [2N+5] .shstrtab
+        // [2N+6] .note.GNU-stack
+        auto secText = [](size_t i) -> uint16_t { return static_cast<uint16_t>(i + 1); };
+        const uint16_t secRodata = static_cast<uint16_t>(N + 1);
+        auto secRelaText = [&](size_t i) -> uint16_t { return static_cast<uint16_t>(N + 2 + i); };
+        const uint16_t secRelaRodata = static_cast<uint16_t>(2 * N + 2);
+        const uint16_t secSymtab = static_cast<uint16_t>(2 * N + 3);
+        const uint16_t secStrtab = static_cast<uint16_t>(2 * N + 4);
+        const uint16_t secShstrtab = static_cast<uint16_t>(2 * N + 5);
+        const uint16_t numSections = static_cast<uint16_t>(sectionCount);
 
-    // --- 3. Build .shstrtab ---
-    StringTable shstrtab;
+        // --- 3. Build .shstrtab ---
+        StringTable shstrtab;
 
-    std::vector<uint32_t> shNameText(N);
-    for (size_t i = 0; i < N; ++i)
-        shNameText[i] = shstrtab.add(".text." + funcNames[i]);
+        std::vector<uint32_t> shNameText(N);
+        for (size_t i = 0; i < N; ++i)
+            shNameText[i] = shstrtab.add(".text." + funcNames[i]);
 
-    uint32_t shNameRodata = shstrtab.add(".rodata");
+        uint32_t shNameRodata = shstrtab.add(".rodata");
 
-    std::vector<uint32_t> shNameRelaText(N);
-    for (size_t i = 0; i < N; ++i)
-        shNameRelaText[i] = shstrtab.add(".rela.text." + funcNames[i]);
+        std::vector<uint32_t> shNameRelaText(N);
+        for (size_t i = 0; i < N; ++i)
+            shNameRelaText[i] = shstrtab.add(".rela.text." + funcNames[i]);
 
-    uint32_t shNameRelaRodata = shstrtab.add(".rela.rodata");
-    uint32_t shNameSymtab = shstrtab.add(".symtab");
-    uint32_t shNameStrtab = shstrtab.add(".strtab");
-    uint32_t shNameShstrtab = shstrtab.add(".shstrtab");
-    uint32_t shNameNoteGnuStack = shstrtab.add(".note.GNU-stack");
+        uint32_t shNameRelaRodata = shstrtab.add(".rela.rodata");
+        uint32_t shNameSymtab = shstrtab.add(".symtab");
+        uint32_t shNameStrtab = shstrtab.add(".strtab");
+        uint32_t shNameShstrtab = shstrtab.add(".shstrtab");
+        uint32_t shNameNoteGnuStack = shstrtab.add(".note.GNU-stack");
 
-    uint32_t shNameDebugLine = 0;
-    if (hasDebugLine)
-        shNameDebugLine = shstrtab.add(".debug_line");
+        uint32_t shNameDebugLine = 0;
+        if (hasDebugLine)
+            shNameDebugLine = shstrtab.add(".debug_line");
 
-    // --- 4. Build symbol table ---
-    StringTable strtab;
-    std::vector<uint8_t> symtabBytes;
+        // --- 4. Build symbol table ---
+        StringTable strtab;
+        std::vector<uint8_t> symtabBytes;
 
-    // [0] null symbol
-    writeSym(symtabBytes, 0, 0, 0, 0, 0, 0);
+        // [0] null symbol
+        writeSym(symtabBytes, 0, 0, 0, 0, 0, 0);
 
-    // Section symbols for each text section
-    for (size_t i = 0; i < N; ++i)
-        writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, secText(i), 0, 0);
+        // Section symbols for each text section
+        for (size_t i = 0; i < N; ++i)
+            writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, secText(i), 0, 0);
 
-    // Section symbol for .rodata
-    writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, secRodata, 0, 0);
+        // Section symbol for .rodata
+        writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, secRodata, 0, 0);
 
-    // null + N text section syms + 1 rodata section sym
-    uint32_t elfLocalCount = static_cast<uint32_t>(N + 2);
+        // null + N text section syms + 1 rodata section sym
+        uint32_t elfLocalCount = static_cast<uint32_t>(N + 2);
 
-    // Per-text-section maps: CodeSection sym idx → unified ELF sym idx
-    std::vector<std::unordered_map<uint32_t, uint32_t>> textSymMaps(N);
-    std::unordered_map<uint32_t, uint32_t> rodataSymMap;
+        // Per-text-section maps: CodeSection sym idx → unified ELF sym idx
+        std::vector<std::unordered_map<uint32_t, uint32_t>> textSymMaps(N);
+        std::unordered_map<uint32_t, uint32_t> rodataSymMap;
 
-    struct PendingSym {
-        uint32_t origIdx;
-        const Symbol *sym;
-        uint16_t shndx;
-        size_t textIdx; // index into textSections; SIZE_MAX for rodata
-    };
+        struct PendingSym {
+            uint32_t origIdx;
+            const Symbol *sym;
+            uint16_t shndx;
+            size_t textIdx; // index into textSections; SIZE_MAX for rodata
+        };
 
-    std::vector<PendingSym> pendingLocals, pendingDefinedGlobals, pendingExternals;
+        std::vector<PendingSym> pendingLocals, pendingDefinedGlobals, pendingExternals;
 
-    // Collect symbols from all text sections.
-    for (size_t ti = 0; ti < N; ++ti) {
-        const auto &sec = textSections[ti];
-        for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
-            const auto &s = sec.symbols().at(i);
-            PendingSym ps{i, &s, 0, ti};
+        // Collect symbols from all text sections.
+        for (size_t ti = 0; ti < N; ++ti) {
+            const auto &sec = textSections[ti];
+            for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
+                const auto &s = sec.symbols().at(i);
+                PendingSym ps{i, &s, 0, ti};
+
+                if (s.binding == SymbolBinding::External) {
+                    ps.shndx = kShnUndef;
+                    pendingExternals.push_back(ps);
+                } else if (s.binding == SymbolBinding::Local) {
+                    ps.shndx = secText(ti);
+                    pendingLocals.push_back(ps);
+                } else {
+                    ps.shndx = secText(ti);
+                    pendingDefinedGlobals.push_back(ps);
+                }
+            }
+        }
+
+        // Collect rodata symbols.
+        for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+            const auto &s = rodata.symbols().at(i);
+            PendingSym ps{i, &s, 0, SIZE_MAX};
 
             if (s.binding == SymbolBinding::External) {
                 ps.shndx = kShnUndef;
                 pendingExternals.push_back(ps);
             } else if (s.binding == SymbolBinding::Local) {
-                ps.shndx = secText(ti);
+                ps.shndx = secRodata;
                 pendingLocals.push_back(ps);
             } else {
-                ps.shndx = secText(ti);
+                ps.shndx = secRodata;
                 pendingDefinedGlobals.push_back(ps);
             }
         }
-    }
 
-    // Collect rodata symbols.
-    for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
-        const auto &s = rodata.symbols().at(i);
-        PendingSym ps{i, &s, 0, SIZE_MAX};
-
-        if (s.binding == SymbolBinding::External) {
-            ps.shndx = kShnUndef;
-            pendingExternals.push_back(ps);
-        } else if (s.binding == SymbolBinding::Local) {
-            ps.shndx = secRodata;
-            pendingLocals.push_back(ps);
-        } else {
-            ps.shndx = secRodata;
-            pendingDefinedGlobals.push_back(ps);
-        }
-    }
-
-    // Write local symbols first (ELF requires locals before globals).
-    for (const auto &ps : pendingLocals) {
-        uint32_t nameOff = strtab.add(ps.sym->name);
-        uint8_t type = elfSymbolType(*ps.sym);
-        uint64_t value = 0;
-        const CodeSection &source = (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
-        if (!physicalSymbolValue(
-                source, *ps.sym, (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata", err, value))
-            return false;
-        writeSym(symtabBytes,
-                 nameOff,
-                 (kStbLocal << 4) | type,
-                 kStvDefault,
-                 ps.shndx,
-                 value,
-                 ps.sym->size);
-        uint32_t elfIdx = elfLocalCount++;
-        if (ps.textIdx != SIZE_MAX)
-            textSymMaps[ps.textIdx][ps.origIdx] = elfIdx;
-        else
-            rodataSymMap[ps.origIdx] = elfIdx;
-    }
-
-    uint32_t firstGlobalIdx = elfLocalCount;
-
-    // Write defined global symbols first (so defined takes priority in dedup map).
-    std::unordered_map<std::string, uint32_t> globalNameMap;
-    uint32_t elfGlobalIdx = elfLocalCount;
-
-    for (const auto &ps : pendingDefinedGlobals) {
-        auto it = globalNameMap.find(ps.sym->name);
-        if (it != globalNameMap.end()) {
-            err << "ElfWriter: duplicate global symbol '" << ps.sym->name << "'\n";
-            return false;
-        }
-        uint32_t nameOff = strtab.add(ps.sym->name);
-        uint64_t value = 0;
-        const CodeSection &source = (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
-        if (!physicalSymbolValue(
-                source, *ps.sym, (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata", err, value))
-            return false;
-        writeSym(symtabBytes,
-                 nameOff,
-                 (kStbGlobal << 4) | elfSymbolType(*ps.sym),
-                 kStvDefault,
-                 ps.shndx,
-                 value,
-                 ps.sym->size);
-        globalNameMap[ps.sym->name] = elfGlobalIdx;
-        if (ps.textIdx != SIZE_MAX)
-            textSymMaps[ps.textIdx][ps.origIdx] = elfGlobalIdx;
-        else
-            rodataSymMap[ps.origIdx] = elfGlobalIdx;
-        ++elfGlobalIdx;
-    }
-
-    // Then write external (undefined) symbols (reuse if name already present).
-    for (const auto &ps : pendingExternals) {
-        auto it = globalNameMap.find(ps.sym->name);
-        if (it != globalNameMap.end()) {
+        // Write local symbols first (ELF requires locals before globals).
+        for (const auto &ps : pendingLocals) {
+            uint32_t nameOff = strtab.add(ps.sym->name);
+            uint8_t type = elfSymbolType(*ps.sym);
+            uint64_t value = 0;
+            const CodeSection &source =
+                (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
+            if (!physicalSymbolValue(
+                    source, *ps.sym, (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata", err, value))
+                return false;
+            writeSym(symtabBytes,
+                     nameOff,
+                     (kStbLocal << 4) | type,
+                     kStvDefault,
+                     ps.shndx,
+                     value,
+                     ps.sym->size);
+            uint32_t elfIdx = elfLocalCount++;
             if (ps.textIdx != SIZE_MAX)
-                textSymMaps[ps.textIdx][ps.origIdx] = it->second;
+                textSymMaps[ps.textIdx][ps.origIdx] = elfIdx;
             else
-                rodataSymMap[ps.origIdx] = it->second;
-            continue;
+                rodataSymMap[ps.origIdx] = elfIdx;
         }
-        uint32_t nameOff = strtab.add(ps.sym->name);
-        writeSym(
-            symtabBytes, nameOff, (kStbGlobal << 4) | kSttNotype, kStvDefault, kShnUndef, 0, 0);
-        globalNameMap[ps.sym->name] = elfGlobalIdx;
-        if (ps.textIdx != SIZE_MAX)
-            textSymMaps[ps.textIdx][ps.origIdx] = elfGlobalIdx;
-        else
-            rodataSymMap[ps.origIdx] = elfGlobalIdx;
-        ++elfGlobalIdx;
-    }
 
-    // Build name→ELF index map for defined rodata symbols (cross-section refs).
-    std::unordered_map<std::string, uint32_t> definedRodataByName;
-    for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
-        const auto &s = rodata.symbols().at(i);
-        if (s.binding != SymbolBinding::External) {
-            auto elfIt = rodataSymMap.find(i);
-            if (elfIt != rodataSymMap.end()) {
-                auto [it, inserted] = definedRodataByName.emplace(s.name, elfIt->second);
+        uint32_t firstGlobalIdx = elfLocalCount;
+
+        // Write defined global symbols first (so defined takes priority in dedup map).
+        std::unordered_map<std::string, uint32_t> globalNameMap;
+        uint32_t elfGlobalIdx = elfLocalCount;
+
+        for (const auto &ps : pendingDefinedGlobals) {
+            auto it = globalNameMap.find(ps.sym->name);
+            if (it != globalNameMap.end()) {
+                err << "ElfWriter: duplicate global symbol '" << ps.sym->name << "'\n";
+                return false;
+            }
+            uint32_t nameOff = strtab.add(ps.sym->name);
+            uint64_t value = 0;
+            const CodeSection &source =
+                (ps.textIdx != SIZE_MAX) ? textSections[ps.textIdx] : rodata;
+            if (!physicalSymbolValue(
+                    source, *ps.sym, (ps.textIdx != SIZE_MAX) ? ".text" : ".rodata", err, value))
+                return false;
+            writeSym(symtabBytes,
+                     nameOff,
+                     (kStbGlobal << 4) | elfSymbolType(*ps.sym),
+                     kStvDefault,
+                     ps.shndx,
+                     value,
+                     ps.sym->size);
+            globalNameMap[ps.sym->name] = elfGlobalIdx;
+            if (ps.textIdx != SIZE_MAX)
+                textSymMaps[ps.textIdx][ps.origIdx] = elfGlobalIdx;
+            else
+                rodataSymMap[ps.origIdx] = elfGlobalIdx;
+            ++elfGlobalIdx;
+        }
+
+        // Then write external (undefined) symbols (reuse if name already present).
+        for (const auto &ps : pendingExternals) {
+            auto it = globalNameMap.find(ps.sym->name);
+            if (it != globalNameMap.end()) {
+                if (ps.textIdx != SIZE_MAX)
+                    textSymMaps[ps.textIdx][ps.origIdx] = it->second;
+                else
+                    rodataSymMap[ps.origIdx] = it->second;
+                continue;
+            }
+            uint32_t nameOff = strtab.add(ps.sym->name);
+            writeSym(
+                symtabBytes, nameOff, (kStbGlobal << 4) | kSttNotype, kStvDefault, kShnUndef, 0, 0);
+            globalNameMap[ps.sym->name] = elfGlobalIdx;
+            if (ps.textIdx != SIZE_MAX)
+                textSymMaps[ps.textIdx][ps.origIdx] = elfGlobalIdx;
+            else
+                rodataSymMap[ps.origIdx] = elfGlobalIdx;
+            ++elfGlobalIdx;
+        }
+
+        // Build name→ELF index map for defined rodata symbols (cross-section refs).
+        std::unordered_map<std::string, uint32_t> definedRodataByName;
+        for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
+            const auto &s = rodata.symbols().at(i);
+            if (s.binding != SymbolBinding::External) {
+                auto elfIt = rodataSymMap.find(i);
+                if (elfIt != rodataSymMap.end()) {
+                    auto [it, inserted] = definedRodataByName.emplace(s.name, elfIt->second);
+                    if (!inserted)
+                        it->second = UINT32_MAX;
+                }
+            }
+        }
+
+        std::unordered_map<std::string, uint32_t> definedTextByName;
+        for (size_t ti = 0; ti < N; ++ti) {
+            const auto &sec = textSections[ti];
+            for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
+                const auto &s = sec.symbols().at(i);
+                if (s.binding == SymbolBinding::External)
+                    continue;
+                auto elfIt = textSymMaps[ti].find(i);
+                if (elfIt == textSymMaps[ti].end())
+                    continue;
+                auto [it, inserted] = definedTextByName.emplace(s.name, elfIt->second);
                 if (!inserted)
                     it->second = UINT32_MAX;
             }
         }
-    }
 
-    std::unordered_map<std::string, uint32_t> definedTextByName;
-    for (size_t ti = 0; ti < N; ++ti) {
-        const auto &sec = textSections[ti];
-        for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
-            const auto &s = sec.symbols().at(i);
-            if (s.binding == SymbolBinding::External)
-                continue;
-            auto elfIt = textSymMaps[ti].find(i);
-            if (elfIt == textSymMaps[ti].end())
-                continue;
-            auto [it, inserted] = definedTextByName.emplace(s.name, elfIt->second);
-            if (!inserted)
-                it->second = UINT32_MAX;
-        }
-    }
-
-    auto resolveRelocSym = [&](const Relocation &rel,
-                               const CodeSection &source,
-                               const std::unordered_map<uint32_t, uint32_t> &sourceMap,
-                               const std::unordered_map<std::string, uint32_t> &targetByName,
-                               const char *sectionName,
-                               size_t sourceTextIndex,
-                               uint32_t &elfSymIdx) -> bool {
-        elfSymIdx = 0;
-        if (rel.targetSection != SymbolSection::Undefined) {
-            if (rel.targetOffsetValid) {
-                const CodeSection *target = nullptr;
-                const char *targetName = nullptr;
-                if (rel.targetSection == SymbolSection::Rodata) {
-                    target = &rodata;
-                    targetName = ".rodata";
-                    elfSymIdx = static_cast<uint32_t>(N + 1);
-                } else {
-                    size_t textIdx = sourceTextIndex;
-                    if (rel.targetSectionIdentityValid) {
-                        textIdx = SIZE_MAX;
-                        size_t matches = 0;
-                        for (size_t ti = 0; ti < N; ++ti) {
-                            if (textSections[ti].matchesSectionIdentity(rel.targetSectionIdentity)) {
-                                textIdx = ti;
-                                ++matches;
+        auto resolveRelocSym = [&](const Relocation &rel,
+                                   const CodeSection &source,
+                                   const std::unordered_map<uint32_t, uint32_t> &sourceMap,
+                                   const std::unordered_map<std::string, uint32_t> &targetByName,
+                                   const char *sectionName,
+                                   size_t sourceTextIndex,
+                                   uint32_t &elfSymIdx) -> bool {
+            elfSymIdx = 0;
+            if (rel.targetSection != SymbolSection::Undefined) {
+                if (rel.targetOffsetValid) {
+                    const CodeSection *target = nullptr;
+                    const char *targetName = nullptr;
+                    if (rel.targetSection == SymbolSection::Rodata) {
+                        target = &rodata;
+                        targetName = ".rodata";
+                        elfSymIdx = static_cast<uint32_t>(N + 1);
+                    } else {
+                        size_t textIdx = sourceTextIndex;
+                        if (rel.targetSectionIdentityValid) {
+                            textIdx = SIZE_MAX;
+                            size_t matches = 0;
+                            for (size_t ti = 0; ti < N; ++ti) {
+                                if (textSections[ti].matchesSectionIdentity(
+                                        rel.targetSectionIdentity)) {
+                                    textIdx = ti;
+                                    ++matches;
+                                }
+                            }
+                            if (matches > 1) {
+                                err << "ElfWriter: relocation in " << sectionName << " at offset "
+                                    << rel.offset
+                                    << " references duplicate .text section identity\n";
+                                return false;
+                            }
+                        } else if (textIdx == SIZE_MAX || textIdx >= N ||
+                                   rel.targetOffset > textSections[textIdx].bytes().size()) {
+                            textIdx = SIZE_MAX;
+                            size_t matches = 0;
+                            for (size_t ti = 0; ti < N; ++ti) {
+                                if (rel.targetOffset <= textSections[ti].bytes().size()) {
+                                    textIdx = ti;
+                                    ++matches;
+                                }
+                            }
+                            if (matches > 1) {
+                                err << "ElfWriter: relocation in " << sectionName << " at offset "
+                                    << rel.offset << " references ambiguous .text offset "
+                                    << rel.targetOffset
+                                    << "; use section-identity relocation overload\n";
+                                return false;
                             }
                         }
-                        if (matches > 1) {
+                        if (textIdx == SIZE_MAX || textIdx >= N) {
                             err << "ElfWriter: relocation in " << sectionName << " at offset "
-                                << rel.offset << " references duplicate .text section identity\n";
+                                << rel.offset << " references .text offset " << rel.targetOffset
+                                << " beyond section contents\n";
                             return false;
                         }
-                    } else if (textIdx == SIZE_MAX || textIdx >= N ||
-                               rel.targetOffset > textSections[textIdx].bytes().size()) {
-                        textIdx = SIZE_MAX;
-                        size_t matches = 0;
-                        for (size_t ti = 0; ti < N; ++ti) {
-                            if (rel.targetOffset <= textSections[ti].bytes().size()) {
-                                textIdx = ti;
-                                ++matches;
-                            }
-                        }
-                        if (matches > 1) {
-                            err << "ElfWriter: relocation in " << sectionName << " at offset "
-                                << rel.offset << " references ambiguous .text offset "
-                                << rel.targetOffset
-                                << "; use section-identity relocation overload\n";
-                            return false;
-                        }
+                        target = &textSections[textIdx];
+                        targetName = ".text";
+                        elfSymIdx = static_cast<uint32_t>(1 + textIdx);
                     }
-                    if (textIdx == SIZE_MAX || textIdx >= N) {
+                    if (rel.targetOffset > target->bytes().size()) {
                         err << "ElfWriter: relocation in " << sectionName << " at offset "
-                            << rel.offset << " references .text offset " << rel.targetOffset
-                            << " beyond section contents\n";
+                            << rel.offset << " references " << targetName << " offset "
+                            << rel.targetOffset << " beyond section contents\n";
                         return false;
                     }
-                    target = &textSections[textIdx];
-                    targetName = ".text";
-                    elfSymIdx = static_cast<uint32_t>(1 + textIdx);
+                    return true;
                 }
-                if (rel.targetOffset > target->bytes().size()) {
-                    err << "ElfWriter: relocation in " << sectionName << " at offset "
-                        << rel.offset << " references " << targetName << " offset "
-                        << rel.targetOffset << " beyond section contents\n";
+                if (rel.symbolIndex >= source.symbols().count()) {
+                    err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                        << " references unknown symbol index " << rel.symbolIndex << "\n";
                     return false;
                 }
+                const Symbol &sym = source.symbols().at(rel.symbolIndex);
+                auto nameIt = targetByName.find(sym.name);
+                if (nameIt == targetByName.end()) {
+                    err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                        << " references missing cross-section target '" << sym.name << "'\n";
+                    return false;
+                }
+                if (nameIt->second == UINT32_MAX) {
+                    err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                        << " references ambiguous cross-section target '" << sym.name << "'\n";
+                    return false;
+                }
+                elfSymIdx = nameIt->second;
                 return true;
             }
-            if (rel.symbolIndex >= source.symbols().count()) {
+
+            auto it = sourceMap.find(rel.symbolIndex);
+            if (it == sourceMap.end()) {
                 err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
                     << " references unknown symbol index " << rel.symbolIndex << "\n";
                 return false;
             }
-            const Symbol &sym = source.symbols().at(rel.symbolIndex);
-            auto nameIt = targetByName.find(sym.name);
-            if (nameIt == targetByName.end()) {
-                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
-                    << " references missing cross-section target '" << sym.name << "'\n";
-                return false;
-            }
-            if (nameIt->second == UINT32_MAX) {
-                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
-                    << " references ambiguous cross-section target '" << sym.name << "'\n";
-                return false;
-            }
-            elfSymIdx = nameIt->second;
+            elfSymIdx = it->second;
             return true;
+        };
+
+        // --- 5. Build .rela.text.* entries ---
+        std::vector<std::vector<uint8_t>> allRelaBytes(N);
+        for (size_t ti = 0; ti < N; ++ti) {
+            for (const auto &rel : textSections[ti].relocations()) {
+                if (!validateRelocationShape(
+                        "ElfWriter", arch_, textSections[ti], rel, ".text", err))
+                    return false;
+                uint32_t elfSymIdx = 0;
+                const auto &targetMap = (rel.targetSection == SymbolSection::Rodata)
+                                            ? definedRodataByName
+                                            : definedTextByName;
+                if (!resolveRelocSym(
+                        rel, textSections[ti], textSymMaps[ti], targetMap, ".text", ti, elfSymIdx))
+                    return false;
+                int64_t effectiveAddend = rel.addend;
+                if (rel.targetOffsetValid) {
+                    if (!checkedSectionOffsetAddend(rel.addend,
+                                                    rel.targetOffset,
+                                                    "ElfWriter",
+                                                    ".text",
+                                                    rel.offset,
+                                                    err,
+                                                    effectiveAddend))
+                        return false;
+                }
+                const size_t physicalRelOffset = rel.offset - textSections[ti].logicalOffsetBias();
+                uint32_t relocType = elfRelocType(rel.kind, arch_);
+                uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
+                writeRela(allRelaBytes[ti],
+                          static_cast<uint64_t>(physicalRelOffset),
+                          rInfo,
+                          effectiveAddend);
+            }
         }
 
-        auto it = sourceMap.find(rel.symbolIndex);
-        if (it == sourceMap.end()) {
-            err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
-                << " references unknown symbol index " << rel.symbolIndex << "\n";
-            return false;
-        }
-        elfSymIdx = it->second;
-        return true;
-    };
-
-    // --- 5. Build .rela.text.* entries ---
-    std::vector<std::vector<uint8_t>> allRelaBytes(N);
-    for (size_t ti = 0; ti < N; ++ti) {
-        for (const auto &rel : textSections[ti].relocations()) {
-            if (!validateRelocationShape("ElfWriter", arch_, textSections[ti], rel, ".text", err))
+        std::vector<uint8_t> relaRodataBytes;
+        for (const auto &rel : rodata.relocations()) {
+            if (!validateRelocationShape("ElfWriter", arch_, rodata, rel, ".rodata", err))
                 return false;
             uint32_t elfSymIdx = 0;
-            const auto &targetMap = (rel.targetSection == SymbolSection::Rodata)
-                                        ? definedRodataByName
-                                        : definedTextByName;
+            const auto &targetMap = (rel.targetSection == SymbolSection::Text)
+                                        ? definedTextByName
+                                        : definedRodataByName;
             if (!resolveRelocSym(
-                    rel, textSections[ti], textSymMaps[ti], targetMap, ".text", ti, elfSymIdx))
+                    rel, rodata, rodataSymMap, targetMap, ".rodata", SIZE_MAX, elfSymIdx))
                 return false;
             int64_t effectiveAddend = rel.addend;
             if (rel.targetOffsetValid) {
                 if (!checkedSectionOffsetAddend(rel.addend,
                                                 rel.targetOffset,
                                                 "ElfWriter",
-                                                ".text",
+                                                ".rodata",
                                                 rel.offset,
                                                 err,
                                                 effectiveAddend))
                     return false;
             }
-            const size_t physicalRelOffset = rel.offset - textSections[ti].logicalOffsetBias();
+            const size_t physicalRelOffset = rel.offset - rodata.logicalOffsetBias();
             uint32_t relocType = elfRelocType(rel.kind, arch_);
             uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-            writeRela(allRelaBytes[ti], static_cast<uint64_t>(physicalRelOffset), rInfo, effectiveAddend);
+            writeRela(
+                relaRodataBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, effectiveAddend);
         }
-    }
 
-    std::vector<uint8_t> relaRodataBytes;
-    for (const auto &rel : rodata.relocations()) {
-        if (!validateRelocationShape("ElfWriter", arch_, rodata, rel, ".rodata", err))
-            return false;
-        uint32_t elfSymIdx = 0;
-        const auto &targetMap =
-            (rel.targetSection == SymbolSection::Text) ? definedTextByName : definedRodataByName;
-        if (!resolveRelocSym(rel, rodata, rodataSymMap, targetMap, ".rodata", SIZE_MAX, elfSymIdx))
-            return false;
-        int64_t effectiveAddend = rel.addend;
-        if (rel.targetOffsetValid) {
-            if (!checkedSectionOffsetAddend(rel.addend,
-                                            rel.targetOffset,
-                                            "ElfWriter",
-                                            ".rodata",
-                                            rel.offset,
-                                            err,
-                                            effectiveAddend))
+        // --- 6. Compute file layout ---
+        uint64_t textAlign = (arch_ == ObjArch::X86_64) ? 16 : 4;
+
+        // Text section offsets.
+        std::vector<uint64_t> textOffsets(N);
+        std::vector<uint64_t> textSizes(N);
+        uint64_t cursor = kEhSize;
+        for (size_t i = 0; i < N; ++i) {
+            textSizes[i] = textSections[i].bytes().size();
+            if (!checkedAlignUpU64(
+                    cursor, textAlign, "ElfWriter", ".text offset", err, textOffsets[i]) ||
+                !checkedAddU64(
+                    textOffsets[i], textSizes[i], "ElfWriter", ".text data", err, cursor))
                 return false;
         }
-        const size_t physicalRelOffset = rel.offset - rodata.logicalOffsetBias();
-        uint32_t relocType = elfRelocType(rel.kind, arch_);
-        uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;
-        writeRela(relaRodataBytes, static_cast<uint64_t>(physicalRelOffset), rInfo, effectiveAddend);
-    }
 
-    // --- 6. Compute file layout ---
-    uint64_t textAlign = (arch_ == ObjArch::X86_64) ? 16 : 4;
-
-    // Text section offsets.
-    std::vector<uint64_t> textOffsets(N);
-    std::vector<uint64_t> textSizes(N);
-    uint64_t cursor = kEhSize;
-    for (size_t i = 0; i < N; ++i) {
-        textSizes[i] = textSections[i].bytes().size();
-        if (!checkedAlignUpU64(cursor, textAlign, "ElfWriter", ".text offset", err, textOffsets[i]) ||
-            !checkedAddU64(textOffsets[i], textSizes[i], "ElfWriter", ".text data", err, cursor))
+        uint64_t rodataSize = rodata.bytes().size();
+        uint64_t offRodata = 0;
+        if (!checkedAlignUpU64(cursor, 8, "ElfWriter", ".rodata offset", err, offRodata) ||
+            !checkedAddU64(offRodata, rodataSize, "ElfWriter", ".rodata data", err, cursor))
             return false;
-    }
 
-    uint64_t rodataSize = rodata.bytes().size();
-    uint64_t offRodata = 0;
-    if (!checkedAlignUpU64(cursor, 8, "ElfWriter", ".rodata offset", err, offRodata) ||
-        !checkedAddU64(offRodata, rodataSize, "ElfWriter", ".rodata data", err, cursor))
-        return false;
-
-    // .rela.text.* offsets (always allocated, even if empty).
-    std::vector<uint64_t> relaOffsets(N);
-    std::vector<uint64_t> relaSizes(N);
-    for (size_t i = 0; i < N; ++i) {
-        relaSizes[i] = allRelaBytes[i].size();
-        if (!checkedAlignUpU64(
-                cursor, 8, "ElfWriter", ".rela.text offset", err, relaOffsets[i]) ||
-            !checkedAddU64(
-                relaOffsets[i], relaSizes[i], "ElfWriter", ".rela.text data", err, cursor))
-            return false;
-    }
-
-    uint64_t relaRodataSize = relaRodataBytes.size();
-    uint64_t offRelaRodata = 0;
-    if (!checkedAlignUpU64(cursor, 8, "ElfWriter", ".rela.rodata offset", err, offRelaRodata) ||
-        !checkedAddU64(
-            offRelaRodata, relaRodataSize, "ElfWriter", ".rela.rodata data", err, cursor))
-        return false;
-
-    uint64_t symtabSize = symtabBytes.size();
-    uint64_t offSymtab = 0;
-    if (!checkedAlignUpU64(cursor, 8, "ElfWriter", ".symtab offset", err, offSymtab) ||
-        !checkedAddU64(offSymtab, symtabSize, "ElfWriter", ".symtab data", err, cursor))
-        return false;
-
-    uint64_t strtabSize = strtab.size();
-    uint64_t offStrtab = cursor;
-    if (!checkedAddU64(offStrtab, strtabSize, "ElfWriter", ".strtab data", err, cursor))
-        return false;
-
-    uint64_t shstrtabSize = shstrtab.size();
-    uint64_t offShstrtab = cursor;
-    if (!checkedAddU64(offShstrtab, shstrtabSize, "ElfWriter", ".shstrtab data", err, cursor))
-        return false;
-
-    uint64_t offNoteGnuStack = cursor;
-    uint64_t debugLineSize = debugLineData_.size();
-    uint64_t offDebugLine = offNoteGnuStack;
-    uint64_t debugEnd = 0;
-    uint64_t offShtab = 0;
-    if (!checkedAddU64(offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd) ||
-        !checkedAlignUpU64(debugEnd, 8, "ElfWriter", "section header table", err, offShtab))
-        return false;
-
-    // --- 7. Build the file ---
-    std::vector<uint8_t> file;
-    size_t reserveSize = 0;
-    if (!reserveFileBytes(offShtab, numSections, err, reserveSize))
-        return false;
-    file.reserve(reserveSize);
-
-    uint16_t machine = (arch_ == ObjArch::X86_64) ? kEmX86_64 : kEmAarch64;
-    writeEhdr(file, machine, offShtab, numSections, secShstrtab);
-
-    // .text.* section data
-    for (size_t i = 0; i < N; ++i) {
-        padTo(file, static_cast<size_t>(textOffsets[i]));
-        file.insert(file.end(), textSections[i].bytes().begin(), textSections[i].bytes().end());
-    }
-
-    // .rodata
-    padTo(file, static_cast<size_t>(offRodata));
-    file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
-
-    // .rela.text.* data
-    for (size_t i = 0; i < N; ++i) {
-        if (!allRelaBytes[i].empty()) {
-            padTo(file, static_cast<size_t>(relaOffsets[i]));
-            file.insert(file.end(), allRelaBytes[i].begin(), allRelaBytes[i].end());
+        // .rela.text.* offsets (always allocated, even if empty).
+        std::vector<uint64_t> relaOffsets(N);
+        std::vector<uint64_t> relaSizes(N);
+        for (size_t i = 0; i < N; ++i) {
+            relaSizes[i] = allRelaBytes[i].size();
+            if (!checkedAlignUpU64(
+                    cursor, 8, "ElfWriter", ".rela.text offset", err, relaOffsets[i]) ||
+                !checkedAddU64(
+                    relaOffsets[i], relaSizes[i], "ElfWriter", ".rela.text data", err, cursor))
+                return false;
         }
-    }
 
-    if (!relaRodataBytes.empty()) {
-        padTo(file, static_cast<size_t>(offRelaRodata));
-        file.insert(file.end(), relaRodataBytes.begin(), relaRodataBytes.end());
-    }
+        uint64_t relaRodataSize = relaRodataBytes.size();
+        uint64_t offRelaRodata = 0;
+        if (!checkedAlignUpU64(cursor, 8, "ElfWriter", ".rela.rodata offset", err, offRelaRodata) ||
+            !checkedAddU64(
+                offRelaRodata, relaRodataSize, "ElfWriter", ".rela.rodata data", err, cursor))
+            return false;
 
-    // .symtab
-    padTo(file, static_cast<size_t>(offSymtab));
-    file.insert(file.end(), symtabBytes.begin(), symtabBytes.end());
+        uint64_t symtabSize = symtabBytes.size();
+        uint64_t offSymtab = 0;
+        if (!checkedAlignUpU64(cursor, 8, "ElfWriter", ".symtab offset", err, offSymtab) ||
+            !checkedAddU64(offSymtab, symtabSize, "ElfWriter", ".symtab data", err, cursor))
+            return false;
 
-    // .strtab
-    padTo(file, static_cast<size_t>(offStrtab));
-    {
-        const auto &d = strtab.data();
-        file.insert(file.end(), d.begin(), d.end());
-    }
+        uint64_t strtabSize = strtab.size();
+        uint64_t offStrtab = cursor;
+        if (!checkedAddU64(offStrtab, strtabSize, "ElfWriter", ".strtab data", err, cursor))
+            return false;
 
-    // .shstrtab
-    padTo(file, static_cast<size_t>(offShstrtab));
-    {
-        const auto &d = shstrtab.data();
-        file.insert(file.end(), d.begin(), d.end());
-    }
+        uint64_t shstrtabSize = shstrtab.size();
+        uint64_t offShstrtab = cursor;
+        if (!checkedAddU64(offShstrtab, shstrtabSize, "ElfWriter", ".shstrtab data", err, cursor))
+            return false;
 
-    // .note.GNU-stack (zero size — no data to append)
+        uint64_t offNoteGnuStack = cursor;
+        uint64_t debugLineSize = debugLineData_.size();
+        uint64_t offDebugLine = offNoteGnuStack;
+        uint64_t debugEnd = 0;
+        uint64_t offShtab = 0;
+        if (!checkedAddU64(
+                offDebugLine, debugLineSize, "ElfWriter", ".debug_line data", err, debugEnd) ||
+            !checkedAlignUpU64(debugEnd, 8, "ElfWriter", "section header table", err, offShtab))
+            return false;
 
-    // .debug_line (optional)
-    if (hasDebugLine)
-        file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
+        // --- 7. Build the file ---
+        std::vector<uint8_t> file;
+        size_t reserveSize = 0;
+        if (!reserveFileBytes(offShtab, numSections, err, reserveSize))
+            return false;
+        file.reserve(reserveSize);
 
-    // --- 8. Section header table ---
-    padTo(file, static_cast<size_t>(offShtab));
+        uint16_t machine = (arch_ == ObjArch::X86_64) ? kEmX86_64 : kEmAarch64;
+        writeEhdr(file, machine, offShtab, numSections, secShstrtab);
 
-    // [0] Null section
-    writeShdr(file, 0, kShtNull, 0, 0, 0, 0, 0, 0, 0);
+        // .text.* section data
+        for (size_t i = 0; i < N; ++i) {
+            padTo(file, static_cast<size_t>(textOffsets[i]));
+            file.insert(file.end(), textSections[i].bytes().begin(), textSections[i].bytes().end());
+        }
 
-    // [1..N] .text.funcname sections
-    for (size_t i = 0; i < N; ++i) {
+        // .rodata
+        padTo(file, static_cast<size_t>(offRodata));
+        file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+
+        // .rela.text.* data
+        for (size_t i = 0; i < N; ++i) {
+            if (!allRelaBytes[i].empty()) {
+                padTo(file, static_cast<size_t>(relaOffsets[i]));
+                file.insert(file.end(), allRelaBytes[i].begin(), allRelaBytes[i].end());
+            }
+        }
+
+        if (!relaRodataBytes.empty()) {
+            padTo(file, static_cast<size_t>(offRelaRodata));
+            file.insert(file.end(), relaRodataBytes.begin(), relaRodataBytes.end());
+        }
+
+        // .symtab
+        padTo(file, static_cast<size_t>(offSymtab));
+        file.insert(file.end(), symtabBytes.begin(), symtabBytes.end());
+
+        // .strtab
+        padTo(file, static_cast<size_t>(offStrtab));
+        {
+            const auto &d = strtab.data();
+            file.insert(file.end(), d.begin(), d.end());
+        }
+
+        // .shstrtab
+        padTo(file, static_cast<size_t>(offShstrtab));
+        {
+            const auto &d = shstrtab.data();
+            file.insert(file.end(), d.begin(), d.end());
+        }
+
+        // .note.GNU-stack (zero size — no data to append)
+
+        // .debug_line (optional)
+        if (hasDebugLine)
+            file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
+
+        // --- 8. Section header table ---
+        padTo(file, static_cast<size_t>(offShtab));
+
+        // [0] Null section
+        writeShdr(file, 0, kShtNull, 0, 0, 0, 0, 0, 0, 0);
+
+        // [1..N] .text.funcname sections
+        for (size_t i = 0; i < N; ++i) {
+            writeShdr(file,
+                      shNameText[i],
+                      kShtProgbits,
+                      kShfAlloc | kShfExecinstr,
+                      textOffsets[i],
+                      textSizes[i],
+                      0,
+                      0,
+                      textAlign,
+                      0);
+        }
+
+        // [N+1] .rodata
+        writeShdr(file, shNameRodata, kShtProgbits, kShfAlloc, offRodata, rodataSize, 0, 0, 8, 0);
+
+        // [N+2..2N+1] .rela.text.funcname sections
+        for (size_t i = 0; i < N; ++i) {
+            writeShdr(file,
+                      shNameRelaText[i],
+                      kShtRela,
+                      kShfInfoLink,
+                      relaOffsets[i],
+                      relaSizes[i],
+                      secSymtab,
+                      secText(i),
+                      8,
+                      24);
+        }
+
+        // .rela.rodata
         writeShdr(file,
-                  shNameText[i],
-                  kShtProgbits,
-                  kShfAlloc | kShfExecinstr,
-                  textOffsets[i],
-                  textSizes[i],
-                  0,
-                  0,
-                  textAlign,
-                  0);
-    }
-
-    // [N+1] .rodata
-    writeShdr(file, shNameRodata, kShtProgbits, kShfAlloc, offRodata, rodataSize, 0, 0, 8, 0);
-
-    // [N+2..2N+1] .rela.text.funcname sections
-    for (size_t i = 0; i < N; ++i) {
-        writeShdr(file,
-                  shNameRelaText[i],
+                  shNameRelaRodata,
                   kShtRela,
                   kShfInfoLink,
-                  relaOffsets[i],
-                  relaSizes[i],
+                  offRelaRodata,
+                  relaRodataSize,
                   secSymtab,
-                  secText(i),
+                  secRodata,
                   8,
                   24);
-    }
 
-    // .rela.rodata
-    writeShdr(file,
-              shNameRelaRodata,
-              kShtRela,
-              kShfInfoLink,
-              offRelaRodata,
-              relaRodataSize,
-              secSymtab,
-              secRodata,
-              8,
-              24);
+        // .symtab
+        writeShdr(file,
+                  shNameSymtab,
+                  kShtSymtab,
+                  0,
+                  offSymtab,
+                  symtabSize,
+                  secStrtab,
+                  firstGlobalIdx,
+                  8,
+                  24);
 
-    // .symtab
-    writeShdr(
-        file, shNameSymtab, kShtSymtab, 0, offSymtab, symtabSize, secStrtab, firstGlobalIdx, 8, 24);
+        // .strtab
+        writeShdr(file, shNameStrtab, kShtStrtab, 0, offStrtab, strtabSize, 0, 0, 1, 0);
 
-    // .strtab
-    writeShdr(file, shNameStrtab, kShtStrtab, 0, offStrtab, strtabSize, 0, 0, 1, 0);
+        // .shstrtab
+        writeShdr(file, shNameShstrtab, kShtStrtab, 0, offShstrtab, shstrtabSize, 0, 0, 1, 0);
 
-    // .shstrtab
-    writeShdr(file, shNameShstrtab, kShtStrtab, 0, offShstrtab, shstrtabSize, 0, 0, 1, 0);
+        // .note.GNU-stack
+        writeShdr(file, shNameNoteGnuStack, kShtProgbits, 0, offNoteGnuStack, 0, 0, 0, 1, 0);
 
-    // .note.GNU-stack
-    writeShdr(file, shNameNoteGnuStack, kShtProgbits, 0, offNoteGnuStack, 0, 0, 0, 1, 0);
+        // .debug_line (optional, non-alloc)
+        if (hasDebugLine)
+            writeShdr(
+                file, shNameDebugLine, kShtProgbits, 0, offDebugLine, debugLineSize, 0, 0, 1, 0);
 
-    // .debug_line (optional, non-alloc)
-    if (hasDebugLine)
-        writeShdr(file, shNameDebugLine, kShtProgbits, 0, offDebugLine, debugLineSize, 0, 0, 1, 0);
-
-    // --- 9. Write to disk ---
-    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-    if (!ofs) {
-        err << "ElfWriter: cannot open " << path << " for writing\n";
-        return false;
-    }
-    if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
-        return false;
-    return true;
+        // --- 9. Write to disk ---
+        std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+        if (!ofs) {
+            err << "ElfWriter: cannot open " << path << " for writing\n";
+            return false;
+        }
+        if (!checkedWriteAll(ofs, file, "ElfWriter", path, err))
+            return false;
+        return true;
     } catch (const std::exception &ex) {
         err << "ElfWriter: " << ex.what() << "\n";
         return false;

@@ -200,9 +200,8 @@ static char *cookie_strdup_manual_domain(const char *text) {
     while (*out == '.' || *out == ' ' || *out == '\t')
         memmove(out, out + 1, strlen(out));
     len = strlen(out);
-    while (len > 0 &&
-           (out[len - 1] == ' ' || out[len - 1] == '\t' || out[len - 1] == '.' ||
-            out[len - 1] == '/')) {
+    while (len > 0 && (out[len - 1] == ' ' || out[len - 1] == '\t' || out[len - 1] == '.' ||
+                       out[len - 1] == '/')) {
         out[--len] = '\0';
     }
     if (len >= 2 && out[0] == '[' && out[len - 1] == ']') {
@@ -229,8 +228,18 @@ static char *cookie_default_path(const char *request_path) {
 
 static int cookie_month_index(const char *month) {
     static const char *const kMonths[] = {
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
     };
     for (int i = 0; i < 12; i++) {
         if (strncasecmp(month, kMonths[i], 3) == 0)
@@ -260,13 +269,13 @@ static int parse_cookie_expires(const char *text, int64_t *out_epoch) {
     if (month_index < 0)
         return -1;
 
-    if (day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
-        second < 0 || second > 60 || year < 1601)
+    if (day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 ||
+        second > 60 || year < 1601)
         return -1;
 
-    *out_epoch = rt_network_days_from_civil(year, (unsigned)(month_index + 1), (unsigned)day) *
-                     86400 +
-                 hour * 3600 + minute * 60 + second;
+    *out_epoch =
+        rt_network_days_from_civil(year, (unsigned)(month_index + 1), (unsigned)day) * 86400 +
+        hour * 3600 + minute * 60 + second;
     return 0;
 }
 
@@ -339,7 +348,8 @@ static int cookie_path_matches(const rt_http_cookie *cookie, const char *request
         return 0;
     if (cookie_len == 1)
         return 1;
-    return path[cookie_len] == '\0' || path[cookie_len] == '/' || cookie_path[cookie_len - 1] == '/';
+    return path[cookie_len] == '\0' || path[cookie_len] == '/' ||
+           cookie_path[cookie_len - 1] == '/';
 }
 
 static int cookie_is_expired(const rt_http_cookie *cookie, int64_t now) {
@@ -413,8 +423,7 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
     }
 
     for (rt_http_cookie *cookie = c->cookies; cookie; cookie = cookie->next) {
-        if ((cookie->secure && !is_secure) ||
-            !cookie_domain_matches(cookie, host_cstr) ||
+        if ((cookie->secure && !is_secure) || !cookie_domain_matches(cookie, host_cstr) ||
             !cookie_path_matches(cookie, path_cstr)) {
             continue;
         }
@@ -431,8 +440,7 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
         size_t index = 0;
         for (rt_http_cookie *cookie = c->cookies; cookie; cookie = cookie->next) {
             int written;
-            if ((cookie->secure && !is_secure) ||
-                !cookie_domain_matches(cookie, host_cstr) ||
+            if ((cookie->secure && !is_secure) || !cookie_domain_matches(cookie, host_cstr) ||
                 !cookie_path_matches(cookie, path_cstr)) {
                 continue;
             }
@@ -462,10 +470,10 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
 }
 
 static void store_cookie_line_locked(rt_http_client_impl *c,
-                              const char *host,
-                              const char *request_path,
-                              int is_secure,
-                              const char *line) {
+                                     const char *host,
+                                     const char *request_path,
+                                     int is_secure,
+                                     const char *line) {
     const char *cookie_end;
     const char *eq;
     size_t cookie_len;
@@ -583,8 +591,7 @@ static void store_cookie_line_locked(rt_http_client_impl *c,
         rt_string host_str = rt_string_from_bytes(host, strlen(host));
         int host_is_ip = rt_dns_is_ip(host_str);
         rt_string_unref(host_str);
-        if (!cookie->domain || !*cookie->domain ||
-            !cookie_domain_matches(cookie, host) ||
+        if (!cookie->domain || !*cookie->domain || !cookie_domain_matches(cookie, host) ||
             host_is_ip == 1) {
             free_cookie_list(cookie);
             return;

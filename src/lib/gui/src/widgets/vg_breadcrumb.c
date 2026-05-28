@@ -43,32 +43,15 @@ static void breadcrumb_measure(vg_widget_t *widget, float available_width, float
 static void breadcrumb_paint(vg_widget_t *widget, void *canvas);
 static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event);
 static void breadcrumb_set_font_widget(vg_widget_t *widget, void *font, float size);
-static void breadcrumb_fill_round_rect(vgfx_window_t win,
-                                       int32_t x,
-                                       int32_t y,
-                                       int32_t w,
-                                       int32_t h,
-                                       int32_t radius,
-                                       uint32_t color);
-static void breadcrumb_stroke_round_rect(vgfx_window_t win,
-                                         int32_t x,
-                                         int32_t y,
-                                         int32_t w,
-                                         int32_t h,
-                                         int32_t radius,
-                                         uint32_t color);
+static void breadcrumb_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color);
+static void breadcrumb_stroke_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color);
 static float breadcrumb_outer_padding(const vg_breadcrumb_t *bc);
-static bool breadcrumb_item_rect(const vg_breadcrumb_t *bc,
-                                 int index,
-                                 float *out_x,
-                                 float *out_y,
-                                 float *out_w,
-                                 float *out_h);
-static bool breadcrumb_dropdown_rect(const vg_breadcrumb_t *bc,
-                                     float *out_x,
-                                     float *out_y,
-                                     float *out_w,
-                                     float *out_h);
+static bool breadcrumb_item_rect(
+    const vg_breadcrumb_t *bc, int index, float *out_x, float *out_y, float *out_w, float *out_h);
+static bool breadcrumb_dropdown_rect(
+    const vg_breadcrumb_t *bc, float *out_x, float *out_y, float *out_w, float *out_h);
 static int breadcrumb_find_dropdown_item_at(const vg_breadcrumb_t *bc, float px, float py);
 
 //=============================================================================
@@ -105,13 +88,8 @@ static void free_breadcrumb_item(vg_breadcrumb_item_t *item) {
 }
 
 /// @brief Fill a rectangle with rounded corners using four corner circles and three fill rects.
-static void breadcrumb_fill_round_rect(vgfx_window_t win,
-                                       int32_t x,
-                                       int32_t y,
-                                       int32_t w,
-                                       int32_t h,
-                                       int32_t radius,
-                                       uint32_t color) {
+static void breadcrumb_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (w <= 0 || h <= 0)
         return;
 
@@ -137,13 +115,8 @@ static void breadcrumb_fill_round_rect(vgfx_window_t win,
 }
 
 /// @brief Stroke a rounded rectangle border using four edge lines and four corner circles.
-static void breadcrumb_stroke_round_rect(vgfx_window_t win,
-                                         int32_t x,
-                                         int32_t y,
-                                         int32_t w,
-                                         int32_t h,
-                                         int32_t radius,
-                                         uint32_t color) {
+static void breadcrumb_stroke_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (w <= 1 || h <= 1)
         return;
 
@@ -177,12 +150,8 @@ static float breadcrumb_outer_padding(const vg_breadcrumb_t *bc) {
 }
 
 /// @brief Compute the bounding rectangle for the breadcrumb item at index.
-static bool breadcrumb_item_rect(const vg_breadcrumb_t *bc,
-                                 int index,
-                                 float *out_x,
-                                 float *out_y,
-                                 float *out_w,
-                                 float *out_h) {
+static bool breadcrumb_item_rect(
+    const vg_breadcrumb_t *bc, int index, float *out_x, float *out_y, float *out_w, float *out_h) {
     float x = 0.0f;
     float item_y = 0.0f;
     float item_h = 0.0f;
@@ -224,11 +193,8 @@ static bool breadcrumb_item_rect(const vg_breadcrumb_t *bc,
 }
 
 /// @brief Compute the bounding rectangle of the currently open drop-down panel.
-static bool breadcrumb_dropdown_rect(const vg_breadcrumb_t *bc,
-                                     float *out_x,
-                                     float *out_y,
-                                     float *out_w,
-                                     float *out_h) {
+static bool breadcrumb_dropdown_rect(
+    const vg_breadcrumb_t *bc, float *out_x, float *out_y, float *out_w, float *out_h) {
     vg_breadcrumb_item_t *item = NULL;
     float crumb_x = 0.0f;
     float crumb_y = 0.0f;
@@ -243,8 +209,8 @@ static bool breadcrumb_dropdown_rect(const vg_breadcrumb_t *bc,
     }
 
     item = &bc->items[bc->dropdown_index];
-    if (item->dropdown_count == 0 || !breadcrumb_item_rect(
-                                         bc, bc->dropdown_index, &crumb_x, &crumb_y, &crumb_w, &crumb_h)) {
+    if (item->dropdown_count == 0 ||
+        !breadcrumb_item_rect(bc, bc->dropdown_index, &crumb_x, &crumb_y, &crumb_w, &crumb_h)) {
         return false;
     }
 
@@ -339,7 +305,8 @@ void vg_breadcrumb_destroy(vg_breadcrumb_t *bc) {
     vg_widget_destroy(&bc->base);
 }
 
-/// @brief VTable measure: sums item widths including separators, claims available width, and sets a fixed height from the theme input height.
+/// @brief VTable measure: sums item widths including separators, claims available width, and sets a
+/// fixed height from the theme input height.
 static void breadcrumb_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -379,7 +346,8 @@ static void breadcrumb_measure(vg_widget_t *widget, float available_width, float
     widget->measured_height = height + (theme ? theme->spacing.sm * 2.0f : 8.0f);
 }
 
-/// @brief VTable paint: clips to the widget, draws each breadcrumb item with hover highlight, separator arrows, overflow dropdown button, and open panel overlay.
+/// @brief VTable paint: clips to the widget, draws each breadcrumb item with hover highlight,
+/// separator arrows, overflow dropdown button, and open panel overlay.
 static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -401,27 +369,26 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
     if (radius < 4)
         radius = 4;
 
-    uint32_t strip_bg = theme ? vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f)
-                              : 0x252526u;
+    uint32_t strip_bg =
+        theme ? vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f)
+              : 0x252526u;
     uint32_t strip_border = theme ? theme->colors.border_secondary : 0x3C3C3Cu;
     uint32_t strip_highlight =
         theme ? vg_color_lighten(strip_bg, 0.06f) : vg_color_lighten(strip_bg, 0.06f);
     uint32_t accent = theme ? theme->colors.accent_primary : strip_border;
-    uint32_t text_color = bc->text_color ? bc->text_color
-                                         : (theme ? theme->colors.fg_secondary : 0xD0D0D0u);
+    uint32_t text_color =
+        bc->text_color ? bc->text_color : (theme ? theme->colors.fg_secondary : 0xD0D0D0u);
     uint32_t current_text = theme ? theme->colors.fg_primary : 0xFFFFFFu;
-    uint32_t hover_bg = bc->hover_bg ? bc->hover_bg
-                                     : (theme ? vg_color_blend(theme->colors.bg_hover,
-                                                               theme->colors.bg_selected,
-                                                               0.25f)
-                                              : 0x2F3440u);
-    uint32_t active_bg = theme ? vg_color_blend(theme->colors.bg_selected,
-                                                theme->colors.accent_primary,
-                                                0.18f)
-                               : 0x334C73u;
-    uint32_t separator_color = bc->separator_color
-                                   ? bc->separator_color
-                                   : (theme ? theme->colors.fg_tertiary : 0x8A8A8Au);
+    uint32_t hover_bg =
+        bc->hover_bg
+            ? bc->hover_bg
+            : (theme ? vg_color_blend(theme->colors.bg_hover, theme->colors.bg_selected, 0.25f)
+                     : 0x2F3440u);
+    uint32_t active_bg =
+        theme ? vg_color_blend(theme->colors.bg_selected, theme->colors.accent_primary, 0.18f)
+              : 0x334C73u;
+    uint32_t separator_color =
+        bc->separator_color ? bc->separator_color : (theme ? theme->colors.fg_tertiary : 0x8A8A8Au);
 
     breadcrumb_fill_round_rect(win,
                                (int32_t)widget->x,
@@ -430,8 +397,13 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
                                (int32_t)widget->height,
                                radius,
                                bc->bg_color ? bc->bg_color : strip_bg);
-    breadcrumb_stroke_round_rect(
-        win, (int32_t)widget->x, (int32_t)widget->y, (int32_t)widget->width, (int32_t)widget->height, radius, strip_border);
+    breadcrumb_stroke_round_rect(win,
+                                 (int32_t)widget->x,
+                                 (int32_t)widget->y,
+                                 (int32_t)widget->width,
+                                 (int32_t)widget->height,
+                                 radius,
+                                 strip_border);
     if (widget->width > radius * 2.0f) {
         vgfx_fill_rect(win,
                        (int32_t)(widget->x + radius),
@@ -447,8 +419,11 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
                        accent);
     }
 
-    vgfx_set_clip(
-        win, (int32_t)widget->x, (int32_t)widget->y, (int32_t)widget->width, (int32_t)widget->height);
+    vgfx_set_clip(win,
+                  (int32_t)widget->x,
+                  (int32_t)widget->y,
+                  (int32_t)widget->width,
+                  (int32_t)widget->height);
 
     for (size_t i = 0; i < bc->item_count; i++) {
         vg_breadcrumb_item_t *item = &bc->items[i];
@@ -474,8 +449,13 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
         }
 
         uint32_t crumb_text = is_current ? current_text : text_color;
-        vg_font_draw_text(
-            canvas, bc->font, bc->font_size, x + bc->item_padding, baseline_y, item->label, crumb_text);
+        vg_font_draw_text(canvas,
+                          bc->font,
+                          bc->font_size,
+                          x + bc->item_padding,
+                          baseline_y,
+                          item->label,
+                          crumb_text);
 
         x += item_width;
 
@@ -519,8 +499,12 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
                 vg_font_metrics_t dd_metrics = {0};
                 vg_font_get_metrics(bc->font, bc->font_size, &dd_metrics);
                 if ((int)i == bc->dropdown_hovered) {
-                    vgfx_fill_rect(
-                        win, (int32_t)dd_x, (int32_t)row_y, (int32_t)dd_w, (int32_t)row_h, dd_hover);
+                    vgfx_fill_rect(win,
+                                   (int32_t)dd_x,
+                                   (int32_t)row_y,
+                                   (int32_t)dd_w,
+                                   (int32_t)row_h,
+                                   dd_hover);
                 }
                 vg_font_draw_text(canvas,
                                   bc->font,
@@ -569,7 +553,8 @@ static int find_item_at(vg_breadcrumb_t *bc, float px, float py) {
     return -1;
 }
 
-/// @brief VTable handle_event: handles click on items and overflow dropdown, hover tracking, and mouse-leave cleanup.
+/// @brief VTable handle_event: handles click on items and overflow dropdown, hover tracking, and
+/// mouse-leave cleanup.
 static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
 

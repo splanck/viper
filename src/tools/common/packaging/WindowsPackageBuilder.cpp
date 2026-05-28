@@ -32,8 +32,8 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
@@ -108,8 +108,8 @@ void validateStubPathFits(const std::string &path, const char *fieldName) {
 /// all directories, all files, the optional PATH entry, the file association
 /// executable path, and all file association ProgID command arguments.
 void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
-    const std::string installDir = layout.installDirName.empty() ? layout.displayName
-                                                                 : layout.installDirName;
+    const std::string installDir =
+        layout.installDirName.empty() ? layout.displayName : layout.installDirName;
     validateWindowsFileName(installDir, "Windows install directory");
     const std::string rootProbe =
         (layout.perUserInstall ? "%LocalAppData%\\" : "%ProgramFiles%\\") + installDir;
@@ -178,17 +178,16 @@ uint32_t rotr32(uint32_t value, unsigned bits) {
 
 std::string sha256Hex(const uint8_t *data, size_t len) {
     static constexpr std::array<uint32_t, 64> k = {
-        0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u,
-        0x923f82a4u, 0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
-        0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u, 0xe49b69c1u, 0xefbe4786u,
-        0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
-        0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u, 0xc6e00bf3u, 0xd5a79147u,
-        0x06ca6351u, 0x14292967u, 0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
-        0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u, 0xa2bfe8a1u, 0xa81a664bu,
-        0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
-        0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au,
-        0x5b9cca4fu, 0x682e6ff3u, 0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
-        0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u};
+        0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u,
+        0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu,
+        0x9bdc06a7u, 0xc19bf174u, 0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu,
+        0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau, 0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+        0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u, 0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu,
+        0x53380d13u, 0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u, 0xa2bfe8a1u, 0xa81a664bu,
+        0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u, 0x19a4c116u,
+        0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+        0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u, 0x90befffau, 0xa4506cebu, 0xbef9a3f7u,
+        0xc67178f2u};
     uint32_t h[8] = {0x6a09e667u,
                      0xbb67ae85u,
                      0x3c6ef372u,
@@ -214,8 +213,7 @@ std::string sha256Hex(const uint8_t *data, size_t len) {
             const size_t p = off + i * 4u;
             w[i] = (static_cast<uint32_t>(msg[p]) << 24) |
                    (static_cast<uint32_t>(msg[p + 1]) << 16) |
-                   (static_cast<uint32_t>(msg[p + 2]) << 8) |
-                   static_cast<uint32_t>(msg[p + 3]);
+                   (static_cast<uint32_t>(msg[p + 2]) << 8) | static_cast<uint32_t>(msg[p + 3]);
         }
         for (size_t i = 16; i < 64; ++i) {
             const uint32_t s0 = rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^ (w[i - 15] >> 3);
@@ -314,8 +312,8 @@ std::optional<size_t> peRvaToFileOffset(const std::vector<PeSectionInfo> &sectio
         if (sec.rawSize == 0)
             continue;
         if (rva >= sec.rva && rva - sec.rva < sec.rawSize) {
-            const size_t off = static_cast<size_t>(sec.rawOffset) +
-                               static_cast<size_t>(rva - sec.rva);
+            const size_t off =
+                static_cast<size_t>(sec.rawOffset) + static_cast<size_t>(rva - sec.rva);
             if (off < fileSize)
                 return off;
         }
@@ -406,16 +404,15 @@ bool isKnownWindowsRedistributableDll(const std::string &dll) {
         return false;
     }
     static const std::set<std::string> exact = {
-        "advapi32.dll",    "bcrypt.dll",       "cfgmgr32.dll",   "combase.dll",
-        "comctl32.dll",    "crypt32.dll",      "d3d11.dll",      "d3d12.dll",
-        "dcomp.dll",       "dwmapi.dll",       "dxgi.dll",       "gdi32.dll",
-        "imm32.dll",       "iphlpapi.dll",     "kernel32.dll",   "msvcrt.dll",
-        "ntdll.dll",
-        "ole32.dll",       "oleaut32.dll",     "propsys.dll",    "rpcrt4.dll",
-        "secur32.dll",     "setupapi.dll",     "shell32.dll",    "shlwapi.dll",
-        "user32.dll",      "uxtheme.dll",      "version.dll",    "winmm.dll",
-        "winspool.drv",    "ws2_32.dll",       "wtsapi32.dll",   "ucrtbase.dll",
-        "xinput1_4.dll",   "xinput9_1_0.dll",  "d3dcompiler_47.dll",
+        "advapi32.dll",     "bcrypt.dll",         "cfgmgr32.dll",    "combase.dll",
+        "comctl32.dll",     "crypt32.dll",        "d3d11.dll",       "d3d12.dll",
+        "dcomp.dll",        "dwmapi.dll",         "dxgi.dll",        "gdi32.dll",
+        "imm32.dll",        "iphlpapi.dll",       "kernel32.dll",    "msvcrt.dll",
+        "ntdll.dll",        "ole32.dll",          "oleaut32.dll",    "propsys.dll",
+        "rpcrt4.dll",       "secur32.dll",        "setupapi.dll",    "shell32.dll",
+        "shlwapi.dll",      "user32.dll",         "uxtheme.dll",     "version.dll",
+        "winmm.dll",        "winspool.drv",       "ws2_32.dll",      "wtsapi32.dll",
+        "ucrtbase.dll",     "xinput1_4.dll",      "xinput9_1_0.dll", "d3dcompiler_47.dll",
         "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"};
     auto hasNumericSuffix = [](std::string_view text) {
         if (text.empty())
@@ -482,8 +479,7 @@ std::vector<fs::path> discoverAdjacentDllDependencies(const fs::path &exePath) {
                 continue;
             }
             throw std::runtime_error("Windows package executable imports non-system DLL '" + dll +
-                                     "' but no adjacent DLL was found next to " +
-                                     exePath.string());
+                                     "' but no adjacent DLL was found next to " + exePath.string());
         }
     }
     return deps;
@@ -546,7 +542,8 @@ std::string toolchainVSCodeInstallScript() {
            "for %%F in (\"%VSIX_DIR%\\*.vsix\") do set \"VSIX=%%~fF\"\r\n"
            "if not defined VSIX (\r\n"
            "  echo No packaged VS Code extension was found under \"%VSIX_DIR%\".\r\n"
-           "  echo Build misc\\editors\\vscode\\zia\\zia-language-*.vsix before packaging to install it here.\r\n"
+           "  echo Build misc\\editors\\vscode\\zia\\zia-language-*.vsix before packaging to "
+           "install it here.\r\n"
            "  exit /b 2\r\n"
            ")\r\n"
            "where code.cmd >nul 2>nul\r\n"
@@ -612,8 +609,7 @@ std::array<uint16_t, 4> windowsVersionPartsForResource(const std::string &versio
         if (!std::isdigit(static_cast<unsigned char>(version[pos])))
             break;
         uint32_t value = 0;
-        while (pos < version.size() &&
-               std::isdigit(static_cast<unsigned char>(version[pos]))) {
+        while (pos < version.size() && std::isdigit(static_cast<unsigned char>(version[pos]))) {
             value = value * 10u + static_cast<uint32_t>(version[pos] - '0');
             if (value > 65535u)
                 throw std::runtime_error("Windows VERSIONINFO numeric version component "
@@ -638,8 +634,8 @@ PEVersionInfo windowsVersionInfoForLayout(const WindowsPackageLayout &layout,
     info.fileVersion = windowsVersionPartsForResource(version);
     info.productVersion = info.fileVersion;
     info.companyName = layout.publisher;
-    info.fileDescription =
-        descriptionSuffix.empty() ? layout.displayName : layout.displayName + " " + descriptionSuffix;
+    info.fileDescription = descriptionSuffix.empty() ? layout.displayName
+                                                     : layout.displayName + " " + descriptionSuffix;
     info.fileVersionText = version;
     info.internalName = filename;
     info.originalFilename = filename;
@@ -704,8 +700,7 @@ void appendPayloadManifestEntry(std::ostringstream *payloadManifest,
     if (payloadManifest == nullptr)
         return;
     *payloadManifest << sha256Hex(data, len) << "  "
-                     << sanitizePackageRelativePath(overlayName,
-                                                    "Windows package manifest path")
+                     << sanitizePackageRelativePath(overlayName, "Windows package manifest path")
                      << "\n";
 }
 
@@ -740,7 +735,8 @@ void addStoredOverlayFile(ZipWriter &zip,
     layout.installFiles.push_back(WindowsPackageFileEntry{
         root, installRelativePath, entry.localDataOffset, entry.uncompressedSize, entry.crc32});
     appendPayloadManifestEntry(payloadManifest, overlayName, data, len);
-    registerInstalledFile(layout, root, installRelativePath, entry.uncompressedSize, deleteOnUninstall);
+    registerInstalledFile(
+        layout, root, installRelativePath, entry.uncompressedSize, deleteOnUninstall);
 }
 
 void addCompressedPayloadFile(ZipWriter &payloadZip,
@@ -754,8 +750,7 @@ void addCompressedPayloadFile(ZipWriter &payloadZip,
                               bool deleteOnUninstall,
                               std::vector<std::string> *installManifestPaths = nullptr) {
     payloadZip.addFile(payloadName, data, len, unixMode);
-    layout.installedFiles.push_back(
-        WindowsPackageFileEntry{root, installRelativePath, 0, len, 0});
+    layout.installedFiles.push_back(WindowsPackageFileEntry{root, installRelativePath, 0, len, 0});
     registerInstalledFile(layout, root, installRelativePath, len, deleteOnUninstall);
     if (installManifestPaths != nullptr && root == WindowsInstallRoot::InstallDir) {
         installManifestPaths->push_back(
@@ -770,10 +765,11 @@ std::string buildWindowsInstalledManifest(std::vector<std::string> paths,
     std::sort(paths.begin(), paths.end(), [](const std::string &a, const std::string &b) {
         return lowerAscii(a) < lowerAscii(b);
     });
-    paths.erase(std::unique(paths.begin(), paths.end(), [](const std::string &a,
-                                                           const std::string &b) {
-                    return lowerAscii(a) == lowerAscii(b);
-                }),
+    paths.erase(std::unique(paths.begin(),
+                            paths.end(),
+                            [](const std::string &a, const std::string &b) {
+                                return lowerAscii(a) == lowerAscii(b);
+                            }),
                 paths.end());
     std::ostringstream os;
     for (const auto &path : paths)
@@ -814,7 +810,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     const auto &pkg = params.pkgConfig;
     const std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     const std::string exec = normalizeExecName(params.projectName);
-    const std::string installDir = pkg.windowsInstallDir.empty() ? displayName : pkg.windowsInstallDir;
+    const std::string installDir =
+        pkg.windowsInstallDir.empty() ? displayName : pkg.windowsInstallDir;
     validateWindowsFileName(displayName, "Windows display name");
     validateWindowsFileName(installDir, "Windows install directory");
     validateWindowsProgIdBase(pkg.identifier, "Windows package identifier");
@@ -845,12 +842,11 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     layout.createStartMenuShortcut = pkg.shortcutMenu;
     layout.cleanInstallRootBeforeInstall = false;
     for (const auto &assoc : pkg.fileAssociations) {
-        layout.fileAssociations.push_back(
-            {assoc.extension,
-             assoc.description,
-             assoc.mimeType,
-             windowsProgIdFor(pkg, exec, assoc),
-             assoc.openCommandArguments});
+        layout.fileAssociations.push_back({assoc.extension,
+                                           assoc.description,
+                                           assoc.mimeType,
+                                           windowsProgIdFor(pkg, exec, assoc),
+                                           assoc.openCommandArguments});
     }
 
     std::set<std::string> installDirSet;
@@ -869,7 +865,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 
     std::vector<uint8_t> icoData;
     if (!pkg.iconPath.empty()) {
-        fs::path iconSrc = resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
+        fs::path iconSrc =
+            resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
         if (!fs::is_regular_file(iconSrc))
             throw std::runtime_error("package icon not found: " + pkg.iconPath);
         auto srcImage = pngRead(iconSrc.string());
@@ -922,7 +919,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         const std::string sourceRel =
             sanitizePackageRelativePath(asset.sourcePath, "asset source path");
         const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
-        fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
+        fs::path srcPath =
+            resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         const std::string targetDir =
             sanitizePackageRelativePath(asset.targetPath, "asset target path");
         validateWindowsRelativePath(targetDir, "asset target path");
@@ -973,8 +971,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                                              &installedManifestPaths);
                 });
         } else if (fs::is_regular_file(srcPath)) {
-            const std::string relInstall = joinPackageRelativePath(
-                targetDir, sourceLeaf, "asset path");
+            const std::string relInstall =
+                joinPackageRelativePath(targetDir, sourceLeaf, "asset path");
             addParentDirs(layout.installDirectories,
                           installDirSet,
                           WindowsInstallRoot::InstallDir,
@@ -1005,15 +1003,15 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
             lnk.iconPath = windowsInstallEnvPath(installDir, layout.perUserInstall, exec + ".ico");
         const auto lnkData = generateLnk(lnk);
         addStoredOverlayFile(zip,
-                       "meta/start_menu.lnk",
-                       lnkData.data(),
-                       lnkData.size(),
-                       0100644,
-                       layout,
-                       WindowsInstallRoot::StartMenuDir,
-                       displayName + ".lnk",
-                       true,
-                       &payloadManifest);
+                             "meta/start_menu.lnk",
+                             lnkData.data(),
+                             lnkData.size(),
+                             0100644,
+                             layout,
+                             WindowsInstallRoot::StartMenuDir,
+                             displayName + ".lnk",
+                             true,
+                             &payloadManifest);
     }
 
     if (pkg.shortcutDesktop) {
@@ -1025,22 +1023,19 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
             lnk.iconPath = windowsInstallEnvPath(installDir, layout.perUserInstall, exec + ".ico");
         const auto lnkData = generateLnk(lnk);
         addStoredOverlayFile(zip,
-                       "meta/desktop.lnk",
-                       lnkData.data(),
-                       lnkData.size(),
-                       0100644,
-                       layout,
-                       WindowsInstallRoot::DesktopDir,
-                       displayName + ".lnk",
-                       true,
-                       &payloadManifest);
+                             "meta/desktop.lnk",
+                             lnkData.data(),
+                             lnkData.size(),
+                             0100644,
+                             layout,
+                             WindowsInstallRoot::DesktopDir,
+                             displayName + ".lnk",
+                             true,
+                             &payloadManifest);
     }
 
-    registerInstalledFile(layout,
-                          WindowsInstallRoot::InstallDir,
-                          layout.installedManifestRelativePath,
-                          0,
-                          true);
+    registerInstalledFile(
+        layout, WindowsInstallRoot::InstallDir, layout.installedManifestRelativePath, 0, true);
     finalizeUninstallDirs(layout);
 
     auto uninstStub = buildUninstallerStub(layout, params.archStr);
@@ -1181,12 +1176,11 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.perUserInstall = params.installScope == "user";
     if (params.registerFileAssociations) {
         for (const auto &assoc : params.manifest.fileAssociations) {
-            layout.fileAssociations.push_back(
-                {assoc.extension,
-                 assoc.description,
-                 assoc.mimeType,
-                 toolchainProgIdFor(params.identifier, assoc),
-                 toolchainOpenCommandArgsFor(assoc)});
+            layout.fileAssociations.push_back({assoc.extension,
+                                               assoc.description,
+                                               assoc.mimeType,
+                                               toolchainProgIdFor(params.identifier, assoc),
+                                               toolchainOpenCommandArgsFor(assoc)});
         }
     }
 
@@ -1212,10 +1206,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                      "symlinks to regular files: " +
                                      file.stagedRelativePath);
         }
-        addParentDirs(layout.installDirectories,
-                      installDirSet,
-                      WindowsInstallRoot::InstallDir,
-                      relInstall);
+        addParentDirs(
+            layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, relInstall);
         const auto data = readFile(file.stagedAbsolutePath.string());
         addCompressedPayloadFile(payloadZip,
                                  relInstall,
@@ -1237,10 +1229,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         }
     }
 
-    addUniqueDir(layout.installDirectories,
-                 installDirSet,
-                 WindowsInstallRoot::InstallDir,
-                 "bin");
+    addUniqueDir(layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, "bin");
     {
         const std::string script = toolchainDeveloperPromptScript();
         addCompressedPayloadFile(payloadZip,
@@ -1290,52 +1279,49 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         promptLnk.targetPath = "%SystemRoot%\\System32\\cmd.exe";
         promptLnk.workingDir = "%USERPROFILE%";
         promptLnk.arguments =
-            "/k " + windowsQuotedPath(windowsInstallEnvPath(params.installDirName,
-                                                            layout.perUserInstall,
-                                                            "bin\\viper-dev.cmd"));
+            "/k " + windowsQuotedPath(windowsInstallEnvPath(
+                        params.installDirName, layout.perUserInstall, "bin\\viper-dev.cmd"));
         promptLnk.description = params.displayName + " Developer Prompt";
         promptLnk.iconPath =
             windowsInstallEnvPath(params.installDirName, layout.perUserInstall, "bin\\viper.exe");
         const auto promptData = generateLnk(promptLnk);
         addStoredOverlayFile(zip,
-                       "meta/viper_developer_prompt.lnk",
-                       promptData.data(),
-                       promptData.size(),
-                       0100644,
-                       layout,
-                       WindowsInstallRoot::StartMenuDir,
-                       "Viper Developer Prompt.lnk",
-                       true,
-                       &payloadManifest);
+                             "meta/viper_developer_prompt.lnk",
+                             promptData.data(),
+                             promptData.size(),
+                             0100644,
+                             layout,
+                             WindowsInstallRoot::StartMenuDir,
+                             "Viper Developer Prompt.lnk",
+                             true,
+                             &payloadManifest);
 
         LnkParams vscodeLnk;
         vscodeLnk.targetPath = "%SystemRoot%\\System32\\cmd.exe";
         vscodeLnk.workingDir = "%USERPROFILE%";
         vscodeLnk.arguments =
-            "/c " + windowsQuotedPath(windowsInstallEnvPath(params.installDirName,
-                                                            layout.perUserInstall,
-                                                            "bin\\viper-install-vscode-extension.cmd"));
+            "/c " +
+            windowsQuotedPath(windowsInstallEnvPath(params.installDirName,
+                                                    layout.perUserInstall,
+                                                    "bin\\viper-install-vscode-extension.cmd"));
         vscodeLnk.description = "Install " + params.displayName + " VS Code extension";
         vscodeLnk.iconPath =
             windowsInstallEnvPath(params.installDirName, layout.perUserInstall, "bin\\viper.exe");
         const auto vscodeData = generateLnk(vscodeLnk);
         addStoredOverlayFile(zip,
-                       "meta/viper_vscode_extension.lnk",
-                       vscodeData.data(),
-                       vscodeData.size(),
-                       0100644,
-                       layout,
-                       WindowsInstallRoot::StartMenuDir,
-                       "Install VS Code Extension.lnk",
-                       true,
-                       &payloadManifest);
+                             "meta/viper_vscode_extension.lnk",
+                             vscodeData.data(),
+                             vscodeData.size(),
+                             0100644,
+                             layout,
+                             WindowsInstallRoot::StartMenuDir,
+                             "Install VS Code Extension.lnk",
+                             true,
+                             &payloadManifest);
     }
 
-    registerInstalledFile(layout,
-                          WindowsInstallRoot::InstallDir,
-                          layout.installedManifestRelativePath,
-                          0,
-                          true);
+    registerInstalledFile(
+        layout, WindowsInstallRoot::InstallDir, layout.installedManifestRelativePath, 0, true);
     finalizeUninstallDirs(layout);
 
     auto uninstStub = buildUninstallerStub(layout, params.archStr);

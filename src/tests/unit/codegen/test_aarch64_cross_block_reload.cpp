@@ -84,10 +84,9 @@ TEST(AArch64CrossBlockReload, ReloadsSharedTempOncePerSuccessorBlock) {
     const MFunction mir = lowering.lowerFunction(fn);
 
     ASSERT_EQ(mir.blocks.size(), 2u);
-    const auto useIt =
-        std::find_if(mir.blocks.begin(), mir.blocks.end(), [](const MBasicBlock &bb) {
-            return bb.name == "use";
-        });
+    const auto useIt = std::find_if(mir.blocks.begin(),
+                                    mir.blocks.end(),
+                                    [](const MBasicBlock &bb) { return bb.name == "use"; });
     ASSERT_TRUE(useIt != mir.blocks.end());
 
     std::size_t reloadCount = 0;
@@ -169,9 +168,9 @@ TEST(AArch64CrossBlockReload, ReloadsTempsUsedOnlyInBranchArguments) {
     LowerILToMIR lowering{linuxTarget()};
     const MFunction mir = lowering.lowerFunction(fn);
 
-    const auto midIt = std::find_if(mir.blocks.begin(), mir.blocks.end(), [](const MBasicBlock &bb) {
-        return bb.name == "mid";
-    });
+    const auto midIt = std::find_if(mir.blocks.begin(),
+                                    mir.blocks.end(),
+                                    [](const MBasicBlock &bb) { return bb.name == "mid"; });
     ASSERT_TRUE(midIt != mir.blocks.end());
 
     std::size_t reloadCount = 0;

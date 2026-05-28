@@ -59,7 +59,7 @@ void *rt_reltimefmt_get_locale(void *self);
 /// @brief Current style identifier ("long" default; "short" for compact form).
 rt_string rt_reltimefmt_get_style(void *self);
 /// @brief Set the style ("long" or "short"); other values trap.
-void      rt_reltimefmt_set_style(void *self, rt_string style);
+void rt_reltimefmt_set_style(void *self, rt_string style);
 
 //===----------------------------------------------------------------------===//
 // Format methods

@@ -19,8 +19,8 @@
 #include "rt_string.h"
 
 #include <cassert>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 

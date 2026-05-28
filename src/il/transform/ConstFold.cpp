@@ -510,16 +510,20 @@ void constFold(Module &m) {
                                 break;
                             // Shift operations
                             case Opcode::Shl:
-                                res = static_cast<long long>(static_cast<unsigned long long>(lhs)
-                                                             << (static_cast<unsigned long long>(rhs) & 63ULL));
+                                res = static_cast<long long>(
+                                    static_cast<unsigned long long>(lhs)
+                                    << (static_cast<unsigned long long>(rhs) & 63ULL));
                                 break;
                             case Opcode::LShr:
-                                res = static_cast<long long>(static_cast<unsigned long long>(lhs)
-                                                             >> (static_cast<unsigned long long>(rhs) & 63ULL));
+                                res = static_cast<long long>(
+                                    static_cast<unsigned long long>(lhs) >>
+                                    (static_cast<unsigned long long>(rhs) & 63ULL));
                                 break;
                             case Opcode::AShr:
                                 res = arithmeticShiftRight(
-                                    lhs, static_cast<unsigned>(static_cast<unsigned long long>(rhs) & 63ULL));
+                                    lhs,
+                                    static_cast<unsigned>(static_cast<unsigned long long>(rhs) &
+                                                          63ULL));
                                 break;
                             // Integer comparisons - produce boolean results
                             case Opcode::ICmpEq:

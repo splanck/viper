@@ -749,9 +749,11 @@ int vgfx_key_down(vgfx_window_t window, vgfx_key_t key);
 
 /// @brief Get the current mouse position.
 /// @details Retrieves the last reported mouse coordinates relative to the
-///          window.  Coordinates are updated during vgfx_update().  Returns 0
-///          if the mouse is outside the window bounds, but still writes the
-///          coordinates (which may be negative or exceed window dimensions).
+///          window. When a window coordinate scale is active, coordinates are
+///          returned in logical pixels. Coordinates are updated during
+///          vgfx_update(). Returns 0 if the mouse is outside the window bounds,
+///          but still writes the coordinates (which may be negative or exceed
+///          window dimensions).
 /// @param window Window handle
 /// @param out_x Pointer to receive X coordinate (may be NULL)
 /// @param out_y Pointer to receive Y coordinate (may be NULL)

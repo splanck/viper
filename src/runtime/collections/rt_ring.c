@@ -44,12 +44,12 @@
 
 /// @brief Ring buffer implementation structure.
 typedef struct rt_ring_impl {
-    void **vptr;           ///< Vtable pointer placeholder.
-    void **items;          ///< Array of element pointers.
-    size_t capacity;       ///< Maximum number of elements.
-    size_t head;           ///< Index of oldest element.
-    size_t count;          ///< Number of elements currently stored.
-    int8_t owns_elements;  ///< Whether stored elements are retained/released.
+    void **vptr;          ///< Vtable pointer placeholder.
+    void **items;         ///< Array of element pointers.
+    size_t capacity;      ///< Maximum number of elements.
+    size_t head;          ///< Index of oldest element.
+    size_t count;         ///< Number of elements currently stored.
+    int8_t owns_elements; ///< Whether stored elements are retained/released.
 } rt_ring_impl;
 
 /// @brief Checked cast of an opaque handle to the RingBuffer implementation;
@@ -136,7 +136,8 @@ void *rt_ring_new(int64_t capacity) {
     if ((uint64_t)capacity > SIZE_MAX / sizeof(void *))
         rt_trap("Ring: allocation size overflow");
 
-    rt_ring_impl *ring = (rt_ring_impl *)rt_obj_new_i64(RT_RING_CLASS_ID, (int64_t)sizeof(rt_ring_impl));
+    rt_ring_impl *ring =
+        (rt_ring_impl *)rt_obj_new_i64(RT_RING_CLASS_ID, (int64_t)sizeof(rt_ring_impl));
     if (!ring)
         return NULL;
 

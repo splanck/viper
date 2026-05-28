@@ -70,21 +70,22 @@ var WINDOW_TITLE: String = "3D Bowling";
 // =========================================================================
 // Camera
 // =========================================================================
-var CAMERA_FOV: Float = 50.0;
+var CAMERA_FOV: Float = 34.0;
 var CAMERA_NEAR: Float = 0.1;
 var CAMERA_FAR: Float = 200.0;
 
-var CAM_AIM_HEIGHT: Float = 2.2;
-var CAM_AIM_BEHIND: Float = 3.9;
-var CAM_AIM_LOOK_Z: Float = 11.0;
-var CAM_AIM_LOOK_Y: Float = 0.48;
+var CAM_AIM_HEIGHT: Float = 1.46;
+var CAM_AIM_BEHIND: Float = 3.05;
+var CAM_AIM_LOOK_Z: Float = 15.15;
+var CAM_AIM_LOOK_Y: Float = 0.34;
 
-var CAM_FOLLOW_HEIGHT: Float = 2.0;
-var CAM_FOLLOW_DIST: Float = 3.3;
-var CAM_FOLLOW_LOOK_AHEAD: Float = 5.5;
-var CAM_FOLLOW_SMOOTH: Float = 5.5;
+var CAM_FOLLOW_SMOOTH: Float = 6.6;
+var CAM_ROLL_HEIGHT: Float = 1.36;
+var CAM_ROLL_BEHIND: Float = 2.92;
+var CAM_ROLL_LOOK_Z: Float = 15.65;
+var CAM_ROLL_LOOK_Y: Float = 0.31;
 
-var CAM_OVER_HEIGHT: Float = 6.5;
+var CAM_OVER_HEIGHT: Float = 5.8;
 
 var CAM_CINE_DURATION: Float = 2.6;
 var CAM_CINE_HEIGHT: Float = 2.2;
@@ -112,6 +113,7 @@ var LANE_DOT_Z1: Float = 2.0;
 var LANE_DOT_Z2: Float = 3.0;
 var LANE_DOT_COUNT: Integer = 5;
 var LANE_DOT_SPACING: Float = 0.16;
+var LANE_BOARD_COUNT: Integer = 39;
 
 var OIL_START_Z: Float = 0.8;
 var OIL_END_HOUSE: Float = 12.2;
@@ -132,20 +134,23 @@ var PIN_COUNT: Integer = 10;
 var PIN_SPACING: Float = 0.305;
 var PIN_RADIUS: Float = 0.055;
 var PIN_HEIGHT: Float = 0.38;
-var PIN_CAPSULE_HEIGHT: Float = 0.22;
-var PIN_BODY_RADIUS: Float = PIN_RADIUS * 0.72;
-var PIN_BODY_CENTER_Y: Float = PIN_BODY_RADIUS;
-var PIN_DRAW_Y_OFFSET: Float = PIN_HEIGHT / 2.0 - PIN_BODY_CENTER_Y;
+var PIN_CAPSULE_HEIGHT: Float = PIN_HEIGHT;
+var PIN_BODY_RADIUS: Float = PIN_RADIUS * 1.08;
+var PIN_BODY_CENTER_Y: Float = PIN_CAPSULE_HEIGHT / 2.0;
+var PIN_DRAW_Y_OFFSET: Float = 0.0;
 var PIN_MASS: Float = 1.88;
-var PIN_RESTITUTION: Float = 0.20;
-var PIN_FRICTION: Float = 0.64;
+var PIN_RESTITUTION: Float = 0.26;
+var PIN_FRICTION: Float = 0.72;
 var PIN_Z_OFFSET: Float = 15.5;
-var PIN_KNOCKDOWN_SPEED: Float = 0.92;
-var PIN_KNOCKDOWN_DISPLACEMENT: Float = 0.105;
-var PIN_KNOCKDOWN_SPEED_DISPLACEMENT: Float = 0.045;
-var PIN_REST_SNAP_DISPLACEMENT: Float = 0.02;
-var PIN_SETTLE_SNAP_SPEED: Float = 0.08;
-var PIN_TILT_SPEED: Float = 4.5;
+var PIN_KNOCKDOWN_SPEED: Float = 0.62;
+var PIN_KNOCKDOWN_DISPLACEMENT: Float = 0.062;
+var PIN_KNOCKDOWN_SPEED_DISPLACEMENT: Float = 0.018;
+var PIN_KNOCKDOWN_ANGULAR_SPEED: Float = 1.20;
+var PIN_IMPACT_KNOCKDOWN_IMPULSE: Float = 0.36;
+var PIN_IMPACT_KNOCKDOWN_SPEED: Float = 0.95;
+var PIN_REST_SNAP_DISPLACEMENT: Float = 0.012;
+var PIN_SETTLE_SNAP_SPEED: Float = 0.045;
+var PIN_TILT_SPEED: Float = 5.8;
 var PIN_TILT_MAX: Float = 1.57;
 
 var SWEEP_SPEED: Float = 3.0;
@@ -160,25 +165,25 @@ var RESET_DROP_HEIGHT: Float = 2.6;
 // Ball
 // =========================================================================
 var BALL_MASS_LIGHT: Float = 4.5;
-var BALL_SPEED_MAX_LIGHT: Float = 12.4;
-var BALL_HOOK_LIGHT: Float = 1.35;
-var BALL_COLOR_LIGHT_R: Float = 0.24;
-var BALL_COLOR_LIGHT_G: Float = 0.48;
+var BALL_SPEED_MAX_LIGHT: Float = 6.25;
+var BALL_HOOK_LIGHT: Float = 1.16;
+var BALL_COLOR_LIGHT_R: Float = 0.07;
+var BALL_COLOR_LIGHT_G: Float = 0.52;
 var BALL_COLOR_LIGHT_B: Float = 0.92;
 
 var BALL_MASS_MEDIUM: Float = 6.0;
-var BALL_SPEED_MAX_MEDIUM: Float = 10.9;
-var BALL_HOOK_MEDIUM: Float = 1.05;
-var BALL_COLOR_MEDIUM_R: Float = 0.45;
-var BALL_COLOR_MEDIUM_G: Float = 0.12;
-var BALL_COLOR_MEDIUM_B: Float = 0.58;
+var BALL_SPEED_MAX_MEDIUM: Float = 5.95;
+var BALL_HOOK_MEDIUM: Float = 0.98;
+var BALL_COLOR_MEDIUM_R: Float = 0.10;
+var BALL_COLOR_MEDIUM_G: Float = 0.66;
+var BALL_COLOR_MEDIUM_B: Float = 0.54;
 
 var BALL_MASS_HEAVY: Float = 7.3;
-var BALL_SPEED_MAX_HEAVY: Float = 9.9;
+var BALL_SPEED_MAX_HEAVY: Float = 5.70;
 var BALL_HOOK_HEAVY: Float = 0.82;
-var BALL_COLOR_HEAVY_R: Float = 0.82;
-var BALL_COLOR_HEAVY_G: Float = 0.12;
-var BALL_COLOR_HEAVY_B: Float = 0.12;
+var BALL_COLOR_HEAVY_R: Float = 0.88;
+var BALL_COLOR_HEAVY_G: Float = 0.18;
+var BALL_COLOR_HEAVY_B: Float = 0.28;
 
 var BALL_RADIUS: Float = 0.109;
 var BALL_RESTITUTION: Float = 0.12;
@@ -193,46 +198,56 @@ var BALL_HEAVY: Integer = 2;
 // =========================================================================
 // Throw Mechanics
 // =========================================================================
-var THROW_SPEED_MIN: Float = 5.0;
-var THROW_POWER_RATE: Float = 0.82;
-var AIM_SPEED: Float = 1.45;
-var AIM_MAX: Float = 0.22;
+var THROW_SPEED_MIN: Float = 3.15;
+var THROW_POWER_RATE: Float = 0.34;
+var THROW_POWER_MAX: Float = 0.72;
+var AIM_SPEED: Float = 0.46;
+var AIM_MAX: Float = 0.16;
 var AIM_RELEASE_ANGLE: Float = 0.11;
-var SPIN_RATE: Float = 1.0;
-var SPIN_MAX: Float = 0.42;
+var SPIN_RATE: Float = 0.48;
+var SPIN_MAX: Float = 0.32;
 var SPIN_VISUAL_SPEED: Float = 7.0;
-var BACKEND_HOOK_FORCE: Float = 2.2;
-var EARLY_HOOK_FORCE: Float = 0.08;
-var SPIN_DECAY_OIL: Float = 0.10;
-var SPIN_DECAY_DRY: Float = 0.32;
-var SIDE_DRAG: Float = 0.46;
+var BALL_AXIS_SPIN_SPEED: Float = 2.6;
+var BACKEND_HOOK_FORCE: Float = 0.58;
+var EARLY_HOOK_FORCE: Float = 0.0;
+var SPIN_DECAY_OIL: Float = 0.07;
+var SPIN_DECAY_DRY: Float = 0.38;
+var SIDE_DRAG: Float = 0.92;
+var LANE_ASSIST_EDGE_RATIO: Float = 0.34;
+var LANE_ASSIST_FORCE: Float = 54.0;
+var LANE_ASSIST_DAMP: Float = 4.8;
+var LANE_SAFE_HALF_WIDTH: Float = 0.34;
+var LANE_STABILIZE_END_Z: Float = PIN_Z_OFFSET - 0.18;
+var GUTTER_ENABLED: Integer = 0;
 
 var BALL_START_X: Float = 0.0;
-var BALL_START_Y_OFFSET: Float = 0.01;
+var BALL_START_Y_OFFSET: Float = 0.026;
 var BALL_START_Z: Float = -1.5;
 var BALL_THROW_Z: Float = -0.85;
-var BALL_RELEASE_X_SCALE: Float = 0.38;
-var BALL_TARGET_X_SCALE: Float = 0.62;
+var BALL_RELEASE_X_SCALE: Float = 0.16;
+var BALL_TARGET_X_SCALE: Float = 0.30;
 var BALL_TARGET_Z: Float = PIN_Z_OFFSET - 0.95;
-var BALL_SIDE_SPEED_SCALE: Float = 1.05;
-var BALL_SIDE_SPEED_MAX: Float = 0.58;
-var BALL_DECK_IMPACT_SLOWDOWN: Float = 0.90;
-var BALL_DECK_IMPACT_SIDE_DAMP: Float = 0.88;
+var BALL_SIDE_SPEED_SCALE: Float = 0.18;
+var BALL_SIDE_SPEED_MAX: Float = 0.10;
+var BALL_ROLL_MIN_SPEED: Float = 3.28;
+var BALL_DECK_IMPACT_SLOWDOWN: Float = 0.86;
+var BALL_DECK_IMPACT_SIDE_DAMP: Float = 0.82;
 
 var GUTTER_Y: Float = -0.11;
 var GUTTER_TRIGGER_WIDTH: Float = 0.04;
 var GUTTER_EXIT_Z: Float = PIN_Z_OFFSET + 2.8;
 var GUTTER_DETECT_Z: Float = 0.80;
-var GUTTER_DETECT_OVERHANG: Float = 0.18;
+var GUTTER_DETECT_END_Z: Float = PIN_Z_OFFSET - 2.80;
+var GUTTER_DETECT_OVERHANG: Float = 0.28;
 
 // =========================================================================
 // Physics
 // =========================================================================
 var GRAVITY_Y: Float = -9.81;
-var PHYSICS_DT: Float = 0.016;
+var PHYSICS_DT: Float = 0.012;
 var DT_CLAMP: Float = 0.05;
-var MAX_FIXED_STEPS: Integer = 6;
-var SETTLE_TIME: Float = 2.4;
+var MAX_FIXED_STEPS: Integer = 8;
+var SETTLE_TIME: Float = 2.2;
 var SETTLE_SPEED_THRESHOLD: Float = 0.08;
 var IMPACT_COOLDOWN: Float = 0.08;
 
@@ -249,15 +264,15 @@ var LIGHT_MAIN_DIR_X: Float = -0.2;
 var LIGHT_MAIN_DIR_Y: Float = -1.0;
 var LIGHT_MAIN_DIR_Z: Float = -0.3;
 var LIGHT_MAIN_R: Float = 1.0;
-var LIGHT_MAIN_G: Float = 0.96;
-var LIGHT_MAIN_B: Float = 0.92;
+var LIGHT_MAIN_G: Float = 0.98;
+var LIGHT_MAIN_B: Float = 0.94;
 
 var LIGHT_FILL_DIR_X: Float = 0.15;
 var LIGHT_FILL_DIR_Y: Float = -0.7;
 var LIGHT_FILL_DIR_Z: Float = 0.9;
-var LIGHT_FILL_R: Float = 0.52;
-var LIGHT_FILL_G: Float = 0.50;
-var LIGHT_FILL_B: Float = 0.56;
+var LIGHT_FILL_R: Float = 0.48;
+var LIGHT_FILL_G: Float = 0.56;
+var LIGHT_FILL_B: Float = 0.68;
 
 var LIGHT_SPOT_X: Float = 0.0;
 var LIGHT_SPOT_Y: Float = 4.8;
@@ -269,57 +284,63 @@ var LIGHT_SPOT_ATTENUATION: Float = 0.045;
 var LIGHT_SPOT_INNER_ANGLE: Float = 22.0;
 var LIGHT_SPOT_OUTER_ANGLE: Float = 42.0;
 
-var AMBIENT_R: Float = 0.25;
-var AMBIENT_G: Float = 0.24;
-var AMBIENT_B: Float = 0.22;
+var AMBIENT_R: Float = 0.20;
+var AMBIENT_G: Float = 0.23;
+var AMBIENT_B: Float = 0.26;
 
 // =========================================================================
 // Materials / Colors
 // =========================================================================
-var LANE_COLOR_R: Float = 0.72;
-var LANE_COLOR_G: Float = 0.52;
-var LANE_COLOR_B: Float = 0.26;
-var LANE_OIL_COLOR_R: Float = 0.76;
-var LANE_OIL_COLOR_G: Float = 0.60;
-var LANE_OIL_COLOR_B: Float = 0.32;
-var LANE_SHININESS: Float = 64.0;
-var LANE_OIL_SHININESS: Float = 128.0;
-var LANE_REFLECTIVITY: Float = 0.08;
-var LANE_OIL_REFLECTIVITY: Float = 0.36;
+var LANE_COLOR_R: Float = 0.58;
+var LANE_COLOR_G: Float = 0.43;
+var LANE_COLOR_B: Float = 0.25;
+var LANE_BOARD_LIGHT_R: Float = 0.86;
+var LANE_BOARD_LIGHT_G: Float = 0.64;
+var LANE_BOARD_LIGHT_B: Float = 0.34;
+var LANE_BOARD_DARK_R: Float = 0.68;
+var LANE_BOARD_DARK_G: Float = 0.46;
+var LANE_BOARD_DARK_B: Float = 0.24;
+var LANE_OIL_COLOR_R: Float = 0.58;
+var LANE_OIL_COLOR_G: Float = 0.76;
+var LANE_OIL_COLOR_B: Float = 0.88;
+var LANE_SHININESS: Float = 96.0;
+var LANE_OIL_SHININESS: Float = 180.0;
+var LANE_REFLECTIVITY: Float = 0.12;
+var LANE_OIL_REFLECTIVITY: Float = 0.42;
 
-var APPROACH_COLOR_R: Float = 0.48;
-var APPROACH_COLOR_G: Float = 0.32;
-var APPROACH_COLOR_B: Float = 0.18;
+var APPROACH_COLOR_R: Float = 0.30;
+var APPROACH_COLOR_G: Float = 0.34;
+var APPROACH_COLOR_B: Float = 0.36;
 
-var GUTTER_COLOR_R: Float = 0.28;
-var GUTTER_COLOR_G: Float = 0.30;
-var GUTTER_COLOR_B: Float = 0.36;
+var GUTTER_COLOR_R: Float = 0.10;
+var GUTTER_COLOR_G: Float = 0.12;
+var GUTTER_COLOR_B: Float = 0.16;
 
-var WALL_COLOR_R: Float = 0.4;
-var WALL_COLOR_G: Float = 0.25;
-var WALL_COLOR_B: Float = 0.15;
+var WALL_COLOR_R: Float = 0.20;
+var WALL_COLOR_G: Float = 0.24;
+var WALL_COLOR_B: Float = 0.30;
 
-var BACKWALL_COLOR_R: Float = 0.08;
-var BACKWALL_COLOR_G: Float = 0.10;
-var BACKWALL_COLOR_B: Float = 0.14;
-var ROOM_FLOOR_R: Float = 0.16;
-var ROOM_FLOOR_G: Float = 0.14;
-var ROOM_FLOOR_B: Float = 0.16;
-var ROOM_SIDE_LANE_R: Float = 0.46;
-var ROOM_SIDE_LANE_G: Float = 0.34;
-var ROOM_SIDE_LANE_B: Float = 0.20;
-var ROOM_SIDE_GUTTER_R: Float = 0.18;
-var ROOM_SIDE_GUTTER_G: Float = 0.20;
-var ROOM_SIDE_GUTTER_B: Float = 0.25;
-var ROOM_WALL_R: Float = 0.18;
-var ROOM_WALL_G: Float = 0.20;
-var ROOM_WALL_B: Float = 0.24;
+var BACKWALL_COLOR_R: Float = 0.06;
+var BACKWALL_COLOR_G: Float = 0.09;
+var BACKWALL_COLOR_B: Float = 0.12;
+var ROOM_FLOOR_R: Float = 0.09;
+var ROOM_FLOOR_G: Float = 0.11;
+var ROOM_FLOOR_B: Float = 0.13;
+var ROOM_SIDE_LANE_R: Float = 0.24;
+var ROOM_SIDE_LANE_G: Float = 0.28;
+var ROOM_SIDE_LANE_B: Float = 0.30;
+var ROOM_SIDE_GUTTER_R: Float = 0.08;
+var ROOM_SIDE_GUTTER_G: Float = 0.10;
+var ROOM_SIDE_GUTTER_B: Float = 0.14;
+var ROOM_WALL_R: Float = 0.13;
+var ROOM_WALL_G: Float = 0.17;
+var ROOM_WALL_B: Float = 0.22;
 
-var PIN_DECK_COLOR_R: Float = 0.24;
-var PIN_DECK_COLOR_G: Float = 0.20;
-var PIN_DECK_COLOR_B: Float = 0.16;
-var PIN_DECK_SHININESS: Float = 42.0;
-var PIN_DECK_REFLECTIVITY: Float = 0.04;
+var PIN_DECK_COLOR_R: Float = 0.16;
+var PIN_DECK_COLOR_G: Float = 0.19;
+var PIN_DECK_COLOR_B: Float = 0.22;
+var PIN_DECK_SHININESS: Float = 68.0;
+var PIN_DECK_REFLECTIVITY: Float = 0.08;
 
 var PIN_COLOR_R: Float = 1.0;
 var PIN_COLOR_G: Float = 0.99;
@@ -327,9 +348,9 @@ var PIN_COLOR_B: Float = 1.0;
 var PIN_SHININESS: Float = 128.0;
 var PIN_REFLECTIVITY: Float = 0.12;
 var PIN_EMISSIVE: Float = 0.05;
-var PIN_NECK_R: Float = 0.92;
-var PIN_NECK_G: Float = 0.12;
-var PIN_NECK_B: Float = 0.14;
+var PIN_NECK_R: Float = 0.96;
+var PIN_NECK_G: Float = 0.04;
+var PIN_NECK_B: Float = 0.07;
 var PIN_NECK_REFLECTIVITY: Float = 0.08;
 var PIN_NECK_EMISSIVE: Float = 0.12;
 
@@ -338,9 +359,9 @@ var FOUL_LINE_G: Float = 0.1;
 var FOUL_LINE_B: Float = 0.1;
 var FOUL_LINE_EMISSIVE: Float = 0.3;
 
-var ARROW_COLOR_R: Float = 0.62;
-var ARROW_COLOR_G: Float = 0.45;
-var ARROW_COLOR_B: Float = 0.22;
+var ARROW_COLOR_R: Float = 0.05;
+var ARROW_COLOR_G: Float = 0.18;
+var ARROW_COLOR_B: Float = 0.24;
 
 var SWEEP_COLOR_R: Float = 0.32;
 var SWEEP_COLOR_G: Float = 0.32;
@@ -350,9 +371,9 @@ var LIGHT_FIXTURE_R: Float = 0.74;
 var LIGHT_FIXTURE_G: Float = 0.68;
 var LIGHT_FIXTURE_B: Float = 0.60;
 
-var CLEAR_R: Float = 0.08;
-var CLEAR_G: Float = 0.10;
-var CLEAR_B: Float = 0.16;
+var CLEAR_R: Float = 0.045;
+var CLEAR_G: Float = 0.065;
+var CLEAR_B: Float = 0.085;
 
 // =========================================================================
 // HUD / Menus
@@ -365,9 +386,9 @@ var SCORE_FRAME_10_W: Integer = 110;
 var METER_W: Integer = 160;
 var METER_H: Integer = 18;
 var METER_Y_OFFSET: Integer = 72;
-var METER_COLOR_LOW: Integer = 0x44FF44;
-var METER_COLOR_MID: Integer = 0xFF8844;
-var METER_COLOR_HIGH: Integer = 0xFF3333;
+var METER_COLOR_LOW: Integer = 0x2EDB9B;
+var METER_COLOR_MID: Integer = 0xFFD166;
+var METER_COLOR_HIGH: Integer = 0xEF476F;
 var METER_THRESHOLD_MID: Float = 0.7;
 var METER_THRESHOLD_HIGH: Float = 0.9;
 
@@ -380,18 +401,18 @@ var MSG_DURATION_LONG: Float = 3.5;
 var MSG_DURATION_RESULTS: Float = 7.0;
 
 var HUD_COLOR_WHITE: Integer = 0xFFFFFF;
-var HUD_COLOR_GRAY: Integer = 0x8A8A9F;
-var HUD_COLOR_DARK: Integer = 0x222233;
-var HUD_COLOR_GOLD: Integer = 0xFFDD44;
-var HUD_COLOR_RED: Integer = 0xFF4444;
-var HUD_COLOR_GREEN: Integer = 0x44FF88;
-var HUD_COLOR_CYAN: Integer = 0x44DDFF;
-var HUD_COLOR_FRAME_BG: Integer = 0x121824;
-var HUD_COLOR_FRAME_ACTIVE: Integer = 0x27364D;
-var HUD_COLOR_FRAME_BORDER: Integer = 0x4C5E7A;
-var HUD_COLOR_MENU_BG: Integer = 0x162235;
-var HUD_COLOR_MENU_CARD: Integer = 0x263449;
-var HUD_COLOR_MENU_ACCENT: Integer = 0x62D2FF;
+var HUD_COLOR_GRAY: Integer = 0xA8B1BD;
+var HUD_COLOR_DARK: Integer = 0x111820;
+var HUD_COLOR_GOLD: Integer = 0xFFD166;
+var HUD_COLOR_RED: Integer = 0xEF476F;
+var HUD_COLOR_GREEN: Integer = 0x2EDB9B;
+var HUD_COLOR_CYAN: Integer = 0x56CFE1;
+var HUD_COLOR_FRAME_BG: Integer = 0x101820;
+var HUD_COLOR_FRAME_ACTIVE: Integer = 0x1D2A34;
+var HUD_COLOR_FRAME_BORDER: Integer = 0x4B6472;
+var HUD_COLOR_MENU_BG: Integer = 0x0E171D;
+var HUD_COLOR_MENU_CARD: Integer = 0x182630;
+var HUD_COLOR_MENU_ACCENT: Integer = 0x56CFE1;
 
 // =========================================================================
 // Particles / Decals

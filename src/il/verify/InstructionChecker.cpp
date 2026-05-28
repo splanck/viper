@@ -483,9 +483,8 @@ std::optional<IntRange> mulRanges(const IntRange &lhs, const IntRange &rhs) {
     return IntRange{lo, hi};
 }
 
-std::optional<IntRange> rangeForValue(
-    const Value &value,
-    const std::unordered_map<unsigned, IntRange> &ranges) {
+std::optional<IntRange> rangeForValue(const Value &value,
+                                      const std::unordered_map<unsigned, IntRange> &ranges) {
     if (value.kind == Value::Kind::ConstInt)
         return exactRange(value.i64);
     if (value.kind != Value::Kind::Temp)
@@ -687,8 +686,7 @@ std::unordered_map<unsigned, IntRange> collectIncomingRanges(const VerifyCtx &ct
 }
 
 std::optional<IntRange> computeInstructionRange(
-    const Instr &instr,
-    const std::unordered_map<unsigned, IntRange> &ranges) {
+    const Instr &instr, const std::unordered_map<unsigned, IntRange> &ranges) {
     if (instr.operands.size() < 2)
         return std::nullopt;
 
@@ -711,16 +709,14 @@ std::optional<IntRange> computeInstructionRange(
                 return mulRanges(*lhs, *rhs);
             break;
         case Opcode::And:
-            if (instr.operands[1].kind == Value::Kind::ConstInt &&
-                instr.operands[1].i64 >= 0)
+            if (instr.operands[1].kind == Value::Kind::ConstInt && instr.operands[1].i64 >= 0)
                 return IntRange{0, instr.operands[1].i64};
-            if (instr.operands[0].kind == Value::Kind::ConstInt &&
-                instr.operands[0].i64 >= 0)
+            if (instr.operands[0].kind == Value::Kind::ConstInt && instr.operands[0].i64 >= 0)
                 return IntRange{0, instr.operands[0].i64};
             break;
         case Opcode::LShr:
-            if (instr.operands[1].kind == Value::Kind::ConstInt &&
-                instr.operands[1].i64 > 0 && instr.operands[1].i64 < 64)
+            if (instr.operands[1].kind == Value::Kind::ConstInt && instr.operands[1].i64 > 0 &&
+                instr.operands[1].i64 < 64)
                 return IntRange{0, std::numeric_limits<int64_t>::max()};
             break;
         default:
@@ -784,8 +780,10 @@ bool isSignBiasForDividend(const BasicBlock &block,
 bool isVerifiedSignBiasAddDemotion(const VerifyCtx &ctx) {
     if (ctx.instr.op != Opcode::Add || ctx.instr.operands.size() != 2)
         return false;
-    return isSignBiasForDividend(ctx.block, ctx.instr, ctx.instr.operands[0], ctx.instr.operands[1]) ||
-           isSignBiasForDividend(ctx.block, ctx.instr, ctx.instr.operands[1], ctx.instr.operands[0]);
+    return isSignBiasForDividend(
+               ctx.block, ctx.instr, ctx.instr.operands[0], ctx.instr.operands[1]) ||
+           isSignBiasForDividend(
+               ctx.block, ctx.instr, ctx.instr.operands[1], ctx.instr.operands[0]);
 }
 
 /// @brief Validate one false-edge proof for a checked-sub demotion.
@@ -798,7 +796,8 @@ bool isVerifiedSignBiasAddDemotion(const VerifyCtx &ctx) {
 /// @param term Predecessor terminator.
 /// @return True if the predecessor's edge proves the current `sub` cannot
 ///         signed-overflow.
-bool falseEdgeProvesCheckedSubDemotion(const VerifyCtx &ctx, const BasicBlock &pred,
+bool falseEdgeProvesCheckedSubDemotion(const VerifyCtx &ctx,
+                                       const BasicBlock &pred,
                                        const Instr &term) {
     if (term.op != Opcode::CBr || term.operands.size() != 1 || term.labels.size() < 2)
         return false;

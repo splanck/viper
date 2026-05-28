@@ -29,6 +29,13 @@
 
 namespace il::frontends::basic {
 
+/// @brief Assign namespace paths and canonical qualified names to procedures in a program.
+/// @param prog The parsed program (mutated in place; only annotations are added).
+/// @details Walks the statement tree depth-first, maintaining a stack of canonicalized
+///          (lowercased) namespace segments. Each FunctionDecl/SubDecl records its namespace
+///          path and a qualified name formed by joining the namespace segments with '.' and
+///          appending the suffix-stripped, canonicalized procedure name. AST structure is left
+///          intact; class qualification is handled elsewhere.
 void CollectProcedures(Program &prog) {
     std::vector<std::string> nsStack;
 

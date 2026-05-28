@@ -155,8 +155,8 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l) {
                 std::string msg = "operand type mismatch";
                 de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
             } else if (fieldTy == Type::Object &&
-                       (exprTy == Type::Int || exprTy == Type::Float ||
-                        exprTy == Type::String || exprTy == Type::Bool)) {
+                       (exprTy == Type::Int || exprTy == Type::Float || exprTy == Type::String ||
+                        exprTy == Type::Bool)) {
                 std::string msg = "operand type mismatch";
                 de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
             }
@@ -183,9 +183,8 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l) {
     if (isNewVariable && hasNoSuffix &&
         (exprTy == Type::String || exprTy == Type::Bool || exprTy == Type::Float ||
          exprTy == Type::Object || assignedObjectClass.has_value())) {
-        varTypes_[v.name] = (exprTy == Type::Object || assignedObjectClass.has_value())
-                                ? Type::Object
-                                : exprTy;
+        varTypes_[v.name] =
+            (exprTy == Type::Object || assignedObjectClass.has_value()) ? Type::Object : exprTy;
     }
 
     resolveAndTrackSymbol(v.name, SymbolKind::Definition);
@@ -297,10 +296,9 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l) {
                     static_cast<uint32_t>(a.name.size()),
                     std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
         }
-        if (auto itType = varTypes_.find(a.name); itType != varTypes_.end() &&
-                                                  itType->second != Type::ArrayInt &&
-                                                  itType->second != Type::ArrayString &&
-                                                  itType->second != Type::ArrayObject) {
+        if (auto itType = varTypes_.find(a.name);
+            itType != varTypes_.end() && itType->second != Type::ArrayInt &&
+            itType->second != Type::ArrayString && itType->second != Type::ArrayObject) {
             de.emit(diag::BasicDiag::NotAnArray,
                     a.loc,
                     static_cast<uint32_t>(a.name.size()),
@@ -436,9 +434,8 @@ void SemanticAnalyzer::analyzeMemberAssignment(MemberAccessExpr &m, const LetStm
     } else if (targetTy == Type::Bool && exprTy != Type::Bool) {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
-    } else if (targetTy == Type::Object &&
-               (exprTy == Type::Int || exprTy == Type::Float || exprTy == Type::String ||
-                exprTy == Type::Bool)) {
+    } else if (targetTy == Type::Object && (exprTy == Type::Int || exprTy == Type::Float ||
+                                            exprTy == Type::String || exprTy == Type::Bool)) {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
     }
@@ -507,26 +504,16 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l) {
                             insertImplicitCast(*arg, Type::Int);
                             std::string msg =
                                 "narrowing conversion from FLOAT to INT in array index";
-                            de.emit(il::support::Severity::Warning,
-                                    "B2002",
-                                    c->loc,
-                                    1,
-                                    std::move(msg));
+                            de.emit(
+                                il::support::Severity::Warning, "B2002", c->loc, 1, std::move(msg));
                         } else {
                             std::string msg = "index type mismatch";
-                            de.emit(il::support::Severity::Error,
-                                    "B2001",
-                                    c->loc,
-                                    1,
-                                    std::move(msg));
+                            de.emit(
+                                il::support::Severity::Error, "B2001", c->loc, 1, std::move(msg));
                         }
                     } else if (ty != Type::Unknown && ty != Type::Int) {
                         std::string msg = "index type mismatch";
-                        de.emit(il::support::Severity::Error,
-                                "B2001",
-                                c->loc,
-                                1,
-                                std::move(msg));
+                        de.emit(il::support::Severity::Error, "B2001", c->loc, 1, std::move(msg));
                     }
                 }
 

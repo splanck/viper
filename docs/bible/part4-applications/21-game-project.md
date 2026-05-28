@@ -1422,7 +1422,7 @@ if powerUp.containsPoint(frog.x, frog.y) {
 
 These exercises progressively build on the Frogger project, from small modifications to significant new features.
 
-**Exercise 21.1 - Sound Effects**: Add sound effects for hopping, dying, and scoring. Use the Viper.Sound module to load and play WAV files. `Viper.Audio` remains available as a compatibility alias for older projects. Make the death sound different for cars versus drowning.
+**Exercise 21.1 - Sound Effects**: Add sound effects for hopping, dying, and scoring. Use the Viper.Sound module to load and play WAV files. Make the death sound different for cars versus drowning.
 
 **Exercise 21.2 - High Score**: Implement a high score system that persists between game sessions. Display the high score on the title screen and the game over screen. Show a special message when the player beats their previous best.
 

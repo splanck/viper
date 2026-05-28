@@ -11,12 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_audio.h"
-#include "rt_audio3d.h"
 #include "rt_animcontroller3d.h"
+#include "rt_audio.h"
 #include "rt_canvas3d.h"
-#include "rt_audiolistener3d.h"
-#include "rt_audiosource3d.h"
 #include "rt_collider3d.h"
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
@@ -26,6 +23,9 @@
 #include "rt_navagent3d.h"
 #include "rt_physics3d.h"
 #include "rt_scene3d.h"
+#include "rt_sound3d.h"
+#include "rt_soundlistener3d.h"
+#include "rt_soundsource3d.h"
 #include "rt_terrain3d.h"
 
 #include <cassert>
@@ -64,6 +64,7 @@ int main() {
         fn_bits(&rt_scene_node3d_get_animator),
         fn_bits(&rt_fbx_get_morph_target),
         fn_bits(&rt_gltf_load),
+        fn_bits(&rt_gltf_load_asset),
         fn_bits(&rt_gltf_mesh_count),
         fn_bits(&rt_gltf_get_mesh),
         fn_bits(&rt_gltf_material_count),
@@ -97,6 +98,7 @@ int main() {
         fn_bits(&rt_anim_controller3d_get_final_palette_data),
         fn_bits(&rt_anim_controller3d_get_previous_palette_data),
         fn_bits(&rt_model3d_load),
+        fn_bits(&rt_model3d_load_asset),
         fn_bits(&rt_model3d_get_mesh_count),
         fn_bits(&rt_model3d_get_material_count),
         fn_bits(&rt_model3d_get_skeleton_count),
@@ -239,37 +241,40 @@ int main() {
         fn_bits(&rt_navagent3d_set_auto_repath),
         fn_bits(&rt_navagent3d_bind_character),
         fn_bits(&rt_navagent3d_bind_node),
-        fn_bits(&rt_audio3d_sync_bindings),
-        fn_bits(&rt_audiolistener3d_new),
-        fn_bits(&rt_audiolistener3d_get_position),
-        fn_bits(&rt_audiolistener3d_set_position),
-        fn_bits(&rt_audiolistener3d_get_forward),
-        fn_bits(&rt_audiolistener3d_set_forward),
-        fn_bits(&rt_audiolistener3d_get_velocity),
-        fn_bits(&rt_audiolistener3d_set_velocity),
-        fn_bits(&rt_audiolistener3d_get_is_active),
-        fn_bits(&rt_audiolistener3d_set_is_active),
-        fn_bits(&rt_audiolistener3d_bind_node),
-        fn_bits(&rt_audiolistener3d_clear_node_binding),
-        fn_bits(&rt_audiolistener3d_bind_camera),
-        fn_bits(&rt_audiolistener3d_clear_camera_binding),
-        fn_bits(&rt_audiosource3d_new),
-        fn_bits(&rt_audiosource3d_get_position),
-        fn_bits(&rt_audiosource3d_set_position),
-        fn_bits(&rt_audiosource3d_get_velocity),
-        fn_bits(&rt_audiosource3d_set_velocity),
-        fn_bits(&rt_audiosource3d_get_max_distance),
-        fn_bits(&rt_audiosource3d_set_max_distance),
-        fn_bits(&rt_audiosource3d_get_volume),
-        fn_bits(&rt_audiosource3d_set_volume),
-        fn_bits(&rt_audiosource3d_get_looping),
-        fn_bits(&rt_audiosource3d_set_looping),
-        fn_bits(&rt_audiosource3d_get_is_playing),
-        fn_bits(&rt_audiosource3d_get_voice_id),
-        fn_bits(&rt_audiosource3d_play),
-        fn_bits(&rt_audiosource3d_stop),
-        fn_bits(&rt_audiosource3d_bind_node),
-        fn_bits(&rt_audiosource3d_clear_node_binding),
+        fn_bits(&rt_sound3d_sync_bindings),
+        fn_bits(&rt_soundlistener3d_new),
+        fn_bits(&rt_soundlistener3d_get_position),
+        fn_bits(&rt_soundlistener3d_set_position),
+        fn_bits(&rt_soundlistener3d_get_forward),
+        fn_bits(&rt_soundlistener3d_set_forward),
+        fn_bits(&rt_soundlistener3d_get_velocity),
+        fn_bits(&rt_soundlistener3d_set_velocity),
+        fn_bits(&rt_soundlistener3d_get_is_active),
+        fn_bits(&rt_soundlistener3d_set_is_active),
+        fn_bits(&rt_soundlistener3d_bind_node),
+        fn_bits(&rt_soundlistener3d_clear_node_binding),
+        fn_bits(&rt_soundlistener3d_bind_camera),
+        fn_bits(&rt_soundlistener3d_clear_camera_binding),
+        fn_bits(&rt_soundsource3d_new),
+        fn_bits(&rt_soundsource3d_get_position),
+        fn_bits(&rt_soundsource3d_set_position),
+        fn_bits(&rt_soundsource3d_get_velocity),
+        fn_bits(&rt_soundsource3d_set_velocity),
+        fn_bits(&rt_soundsource3d_get_doppler_factor),
+        fn_bits(&rt_soundsource3d_get_ref_distance),
+        fn_bits(&rt_soundsource3d_set_ref_distance),
+        fn_bits(&rt_soundsource3d_get_max_distance),
+        fn_bits(&rt_soundsource3d_set_max_distance),
+        fn_bits(&rt_soundsource3d_get_volume),
+        fn_bits(&rt_soundsource3d_set_volume),
+        fn_bits(&rt_soundsource3d_get_looping),
+        fn_bits(&rt_soundsource3d_set_looping),
+        fn_bits(&rt_soundsource3d_get_is_playing),
+        fn_bits(&rt_soundsource3d_get_voice_id),
+        fn_bits(&rt_soundsource3d_play),
+        fn_bits(&rt_soundsource3d_stop),
+        fn_bits(&rt_soundsource3d_bind_node),
+        fn_bits(&rt_soundsource3d_clear_node_binding),
     };
 
     for (std::uintptr_t bits : surface) {

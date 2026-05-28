@@ -278,9 +278,7 @@ Expected<void> parseCallAttrs(ParserState &state, Instr &instr, const std::strin
     return {};
 }
 
-Expected<void> parseIndirectSignature(ParserState &state,
-                                      Instr &instr,
-                                      const std::string &body) {
+Expected<void> parseIndirectSignature(ParserState &state, Instr &instr, const std::string &body) {
     const size_t lp = body.find('(');
     const size_t rp = body.rfind(')');
     if (lp == std::string::npos || rp == std::string::npos || rp < lp ||

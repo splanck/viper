@@ -165,7 +165,8 @@ static void test_is_valid_negative() {
     memcpy(valid_plus_nul, "12345678-1234-1234-1234-123456789abc", 36);
     valid_plus_nul[36] = '\0';
     rt_string embedded_nul = rt_string_from_bytes(valid_plus_nul, sizeof(valid_plus_nul));
-    test_result("Valid GUID bytes plus embedded NUL is invalid", rt_guid_is_valid(embedded_nul) == 0);
+    test_result("Valid GUID bytes plus embedded NUL is invalid",
+                rt_guid_is_valid(embedded_nul) == 0);
 
     printf("\n");
 }

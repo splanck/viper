@@ -408,7 +408,8 @@ static void async_http_post_worker(void *arg) {
     if (setjmp(recovery) == 0) {
         rt_string result;
         url = rt_string_from_bytes(a->url, strlen(a->url));
-        body = a->body ? rt_string_from_bytes(a->body, strlen(a->body)) : rt_string_from_bytes("", 0);
+        body =
+            a->body ? rt_string_from_bytes(a->body, strlen(a->body)) : rt_string_from_bytes("", 0);
         result = rt_http_post(url, body);
         rt_string_unref(url);
         rt_string_unref(body);

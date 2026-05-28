@@ -52,7 +52,8 @@ DominatorSets computeDominators(std::size_t blockCount,
     // universal set so intersections converge from "everything" downward.
     setBit(result.bits[0], 0);
     for (std::size_t i = 1; i < blockCount; ++i) {
-        std::fill(result.bits[i].begin(), result.bits[i].end(),
+        std::fill(result.bits[i].begin(),
+                  result.bits[i].end(),
                   std::numeric_limits<std::uint64_t>::max());
         result.bits[i].back() &= tailMask;
     }

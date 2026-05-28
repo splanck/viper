@@ -1033,6 +1033,30 @@ if (WIN32)
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 
+add_test(NAME zia_smoke_3dbowling_trajectory
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/trajectory_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")
+set_tests_properties(zia_smoke_3dbowling_trajectory PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_3dbowling_aim
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/aim_smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbowling")
+set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        TIMEOUT 30)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+if (WIN32)
+    set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+
 add_test(NAME zia_smoke_3dscene
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dscene/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dscene")
@@ -1047,6 +1071,32 @@ endif ()
 if (WIN32)
     set_tests_properties(zia_smoke_3dscene PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+
+add_test(NAME zia_smoke_game3d_showcase
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
+set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        TIMEOUT 90)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+if (WIN32)
+    set_tests_properties(zia_smoke_game3d_showcase PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+if (APPLE)
+    add_test(NAME zia_smoke_game3d_showcase_software
+            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase/smoke_probe.zia"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/game3d-showcase")
+    set_tests_properties(zia_smoke_game3d_showcase_software PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "zia;smoke;graphics3d;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 90)
 endif ()
 
 add_test(NAME zia_smoke_3dbaseball
@@ -1117,6 +1167,14 @@ add_test(NAME zia_smoke_crackman_movement
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/crackman/movement_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/crackman")
 set_tests_properties(zia_smoke_crackman_movement PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
+add_test(NAME zia_smoke_crackman_ghost_stall
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/crackman/ghost_stall_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/crackman")
+set_tests_properties(zia_smoke_crackman_ghost_stall PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke"
         TIMEOUT 30)
@@ -1301,6 +1359,7 @@ set(G3D_ZIA_TESTS
         test_canvas3d_obj
         test_material3d_pbr
         test_model3d
+        test_model3d_load_asset
         test_scene3d_bindings
         test_physics3d_rotation
         test_collider3d_advanced
@@ -1319,6 +1378,267 @@ foreach (test_name IN LISTS G3D_ZIA_TESTS)
                 TIMEOUT 30)
     endif ()
 endforeach ()
+
+set(GAME3D_SURFACE_PROBE "${G3D_TESTS_DIR}/game3d_surface_probe.zia")
+if (EXISTS "${GAME3D_SURFACE_PROBE}")
+    add_test(NAME g3d_game3d_surface_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_SURFACE_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_game3d_surface_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_WORLD_PROBE "${G3D_TESTS_DIR}/test_game3d_world_probe.zia")
+if (EXISTS "${GAME3D_WORLD_PROBE}")
+    add_test(NAME g3d_test_game3d_world_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_WORLD_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_world_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_RUNFRAMES_PROBE "${G3D_TESTS_DIR}/test_game3d_runframes_probe.zia")
+if (EXISTS "${GAME3D_RUNFRAMES_PROBE}")
+    add_test(NAME g3d_test_game3d_runframes_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_RUNFRAMES_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_runframes_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_RUNFRAMES_CALLBACK_REJECT_PROBE "${G3D_TESTS_DIR}/test_game3d_runframes_callback_reject.zia")
+if (EXISTS "${GAME3D_RUNFRAMES_CALLBACK_REJECT_PROBE}")
+    add_test(NAME g3d_test_game3d_runframes_callback_reject
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_RUNFRAMES_CALLBACK_REJECT_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_runframes_callback_reject PROPERTIES
+            PASS_REGULAR_EXPRESSION "Game3D.World3D.runFrames: callback must be a native function pointer"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(CANVAS3D_SYNTHETIC_INPUT_PROBE "${G3D_TESTS_DIR}/test_canvas3d_synthetic_input.zia")
+if (EXISTS "${CANVAS3D_SYNTHETIC_INPUT_PROBE}")
+    add_test(NAME g3d_test_canvas3d_synthetic_input
+            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_SYNTHETIC_INPUT_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_canvas3d_synthetic_input PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_CAMERA_CONTROLLERS_PROBE "${G3D_TESTS_DIR}/test_game3d_camera_controllers_probe.zia")
+if (EXISTS "${GAME3D_CAMERA_CONTROLLERS_PROBE}")
+    add_test(NAME g3d_test_game3d_camera_controllers_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_CAMERA_CONTROLLERS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_camera_controllers_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_CHARACTER_CONTROLLER_PROBE "${G3D_TESTS_DIR}/test_game3d_character_controller_probe.zia")
+if (EXISTS "${GAME3D_CHARACTER_CONTROLLER_PROBE}")
+    add_test(NAME g3d_test_game3d_character_controller_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_CHARACTER_CONTROLLER_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_character_controller_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_PRESETS_PROBE "${G3D_TESTS_DIR}/test_game3d_presets_probe.zia")
+if (EXISTS "${GAME3D_PRESETS_PROBE}")
+    add_test(NAME g3d_test_game3d_presets_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_PRESETS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_presets_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_ASSETS_PROBE "${G3D_TESTS_DIR}/test_game3d_assets_probe.zia")
+if (EXISTS "${GAME3D_ASSETS_PROBE}")
+    add_test(NAME g3d_test_game3d_assets_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_ASSETS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_assets_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_PHYSICS_PROBE "${G3D_TESTS_DIR}/test_game3d_physics_probe.zia")
+if (EXISTS "${GAME3D_PHYSICS_PROBE}")
+    add_test(NAME g3d_test_game3d_physics_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_PHYSICS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_physics_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_COLLISION_PROBE "${G3D_TESTS_DIR}/test_game3d_collision_probe.zia")
+if (EXISTS "${GAME3D_COLLISION_PROBE}")
+    add_test(NAME g3d_test_game3d_collision_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_COLLISION_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_collision_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_ANIM_PROBE "${G3D_TESTS_DIR}/test_game3d_anim_probe.zia")
+if (EXISTS "${GAME3D_ANIM_PROBE}")
+    add_test(NAME g3d_test_game3d_anim_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_ANIM_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_anim_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_SOUND_PROBE "${G3D_TESTS_DIR}/test_game3d_sound_probe.zia")
+if (EXISTS "${GAME3D_SOUND_PROBE}")
+    add_test(NAME g3d_test_game3d_sound_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_SOUND_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_sound_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_EFFECTS_PROBE "${G3D_TESTS_DIR}/test_game3d_effects_probe.zia")
+if (EXISTS "${GAME3D_EFFECTS_PROBE}")
+    add_test(NAME g3d_test_game3d_effects_probe
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_EFFECTS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_effects_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_DOCS_SNIPPETS_PROBE "${G3D_TESTS_DIR}/test_game3d_docs_snippets.zia")
+if (EXISTS "${GAME3D_DOCS_SNIPPETS_PROBE}")
+    add_test(NAME g3d_test_game3d_docs_snippets
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_DOCS_SNIPPETS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_docs_snippets PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(CANVAS3D_QUALITY_PROFILES_PROBE "${G3D_TESTS_DIR}/test_canvas3d_quality_profiles.zia")
+if (EXISTS "${CANVAS3D_QUALITY_PROFILES_PROBE}")
+    add_test(NAME g3d_test_canvas3d_quality_profiles
+            COMMAND $<TARGET_FILE:viper> run "${CANVAS3D_QUALITY_PROFILES_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_canvas3d_quality_profiles PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(WALK_MIN_VISUAL_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/walk_min_probe.zia")
+if (EXISTS "${WALK_MIN_VISUAL_PROBE}")
+    add_test(NAME g3d_walk_min_visual_probe
+            COMMAND $<TARGET_FILE:viper> run "${WALK_MIN_VISUAL_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_walk_min_visual_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_SHOWCASE_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/game3d_showcase/showcase.zia")
+if (EXISTS "${GAME3D_SHOWCASE_PROBE}")
+    add_test(NAME g3d_game3d_showcase
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_SHOWCASE_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_game3d_showcase PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 45)
+endif ()
+
+set(GAME3D_HELLO_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/game3d_hello.zia")
+if (EXISTS "${GAME3D_HELLO_PROBE}")
+    add_test(NAME g3d_game3d_hello
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_HELLO_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_game3d_hello PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_STARTER_DIR "${CMAKE_SOURCE_DIR}/examples/3d/game3d_starter")
+set(GAME3D_STARTER_PROBE "${GAME3D_STARTER_DIR}/test.zia")
+if (EXISTS "${GAME3D_STARTER_PROBE}")
+    add_test(NAME g3d_game3d_starter_probe
+            COMMAND $<TARGET_FILE:viper> run "test.zia"
+            WORKING_DIRECTORY "${GAME3D_STARTER_DIR}")
+    set_tests_properties(g3d_game3d_starter_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+
+    add_test(NAME g3d_game3d_starter_package_dry_run
+            COMMAND $<TARGET_FILE:viper> package "." --target tarball --dry-run
+            WORKING_DIRECTORY "${GAME3D_STARTER_DIR}")
+    set_tests_properties(g3d_game3d_starter_package_dry_run PROPERTIES
+            PASS_REGULAR_EXPRESSION "Asset: assets -> assets"
+            LABELS "runtime;graphics3d;zia"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_BOWLING_SETUP_PROBE "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/game3d/game3d_setup.zia")
+if (EXISTS "${GAME3D_BOWLING_SETUP_PROBE}")
+    add_test(NAME g3d_game3d_bowling_setup
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_BOWLING_SETUP_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_game3d_bowling_setup PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
 
 if (NOT TARGET runtime_surface_audit_bundle)
     add_custom_target(runtime_surface_audit_bundle

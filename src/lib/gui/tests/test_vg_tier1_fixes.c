@@ -388,7 +388,8 @@ TEST(listbox_end_key_selects_last) {
     vg_widget_destroy(&lb->base);
 }
 
-/// @brief BUG-GUI-005 — Up from index 0 and Down from the last index both clamp to avoid out-of-bounds.
+/// @brief BUG-GUI-005 — Up from index 0 and Down from the last index both clamp to avoid
+/// out-of-bounds.
 TEST(listbox_clamps_at_ends) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -415,7 +416,8 @@ TEST(listbox_clamps_at_ends) {
 // BUG-GUI-007 — TextInput Shift+select and Ctrl+word-jump
 //=============================================================================
 
-/// @brief BUG-GUI-007 — Shift+Left moves the cursor left and extends the selection anchor rightward.
+/// @brief BUG-GUI-007 — Shift+Left moves the cursor left and extends the selection anchor
+/// rightward.
 TEST(textinput_shift_left_extends_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -538,7 +540,8 @@ TEST(textinput_ctrl_left_jumps_word) {
     vg_widget_destroy(&ti->base);
 }
 
-/// @brief BUG-GUI-007 — Plain Left with an active selection collapses to the selection start without moving further.
+/// @brief BUG-GUI-007 — Plain Left with an active selection collapses to the selection start
+/// without moving further.
 TEST(textinput_plain_left_collapses_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -558,7 +561,8 @@ TEST(textinput_plain_left_collapses_selection) {
     vg_widget_destroy(&ti->base);
 }
 
-/// @brief BUG-GUI-007 — Backspace removes the full multi-byte UTF-8 codepoint (€ = 3 bytes), not just one byte.
+/// @brief BUG-GUI-007 — Backspace removes the full multi-byte UTF-8 codepoint (€ = 3 bytes), not
+/// just one byte.
 TEST(textinput_utf8_backspace_removes_whole_codepoint) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -578,7 +582,8 @@ TEST(textinput_utf8_backspace_removes_whole_codepoint) {
     vg_widget_destroy(&ti->base);
 }
 
-/// @brief BUG-GUI-007 — get_selection on a codepoint-indexed range returns the full UTF-8 byte sequence.
+/// @brief BUG-GUI-007 — get_selection on a codepoint-indexed range returns the full UTF-8 byte
+/// sequence.
 TEST(textinput_utf8_selection_extracts_full_character) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -595,7 +600,8 @@ TEST(textinput_utf8_selection_extracts_full_character) {
     vg_widget_destroy(&ti->base);
 }
 
-/// @brief BUG-GUI-007 — a single-line textinput discards '\n' KEY_CHAR events without modifying text.
+/// @brief BUG-GUI-007 — a single-line textinput discards '\n' KEY_CHAR events without modifying
+/// text.
 TEST(textinput_single_line_ignores_newline_char_input) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -621,7 +627,8 @@ TEST(textinput_max_length_counts_utf8_codepoints) {
     vg_widget_destroy(&ti->base);
 }
 
-/// @brief BUG-GUI-007 — read-only textinput allows Left to collapse an active selection without modifying text.
+/// @brief BUG-GUI-007 — read-only textinput allows Left to collapse an active selection without
+/// modifying text.
 TEST(textinput_readonly_navigation_collapses_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -659,7 +666,8 @@ TEST(listbox_virtual_mouse_selects_index) {
     vg_widget_destroy(&lb->base);
 }
 
-/// @brief Virtual-mode listbox: large wheel delta is clamped to the maximum scroll_y for the item count.
+/// @brief Virtual-mode listbox: large wheel delta is clamped to the maximum scroll_y for the item
+/// count.
 TEST(listbox_virtual_wheel_clamps_using_total_count) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);

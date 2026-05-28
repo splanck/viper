@@ -54,6 +54,9 @@ std::optional<Type> inferAstTypeFromSuffix(std::string_view name) {
     return std::nullopt;
 }
 
+/// @brief Infer an identifier's BASIC type from its suffix, defaulting to integer.
+/// @param name Identifier to inspect.
+/// @return The suffix-implied type, or `Type::I64` when the name has no type sigil.
 Type inferAstTypeFromName(std::string_view name) {
     if (auto suffixType = inferAstTypeFromSuffix(name))
         return *suffixType;

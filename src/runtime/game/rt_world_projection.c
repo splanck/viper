@@ -42,11 +42,8 @@ double rt_world_projection_linear_x(double world_x,
     return origin_x + (world_x - camera_x) * pixels_per_unit;
 }
 
-double rt_world_projection_linear_y(double world_y,
-                                    double camera_y,
-                                    double origin_y,
-                                    double pixels_per_unit,
-                                    int8_t flip_y) {
+double rt_world_projection_linear_y(
+    double world_y, double camera_y, double origin_y, double pixels_per_unit, int8_t flip_y) {
     double offset = (world_y - camera_y) * pixels_per_unit;
     return flip_y ? origin_y - offset : origin_y + offset;
 }
@@ -65,11 +62,8 @@ double rt_world_projection_isometric_y(double world_x,
     return origin_y + (world_x + world_y) * (tile_height * 0.5);
 }
 
-double rt_world_projection_perspective_scale(double depth,
-                                             double near_depth,
-                                             double far_depth,
-                                             double near_scale,
-                                             double far_scale) {
+double rt_world_projection_perspective_scale(
+    double depth, double near_depth, double far_depth, double near_scale, double far_scale) {
     if (!isfinite(depth) || !isfinite(near_depth) || !isfinite(far_depth) ||
         !isfinite(near_scale) || !isfinite(far_scale)) {
         return near_scale;
@@ -90,11 +84,8 @@ double rt_world_projection_perspective_x(double world_x,
     return center_x + world_x * focal_length / projection_safe_depth(depth);
 }
 
-double rt_world_projection_perspective_y(double world_y,
-                                         double center_y,
-                                         double depth,
-                                         double focal_length,
-                                         int8_t flip_y) {
+double rt_world_projection_perspective_y(
+    double world_y, double center_y, double depth, double focal_length, int8_t flip_y) {
     double offset = world_y * focal_length / projection_safe_depth(depth);
     return flip_y ? center_y - offset : center_y + offset;
 }

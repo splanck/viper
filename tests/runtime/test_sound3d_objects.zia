@@ -1,0 +1,67 @@
+module TestSound3DObjects;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Sound;
+bind Viper.Terminal;
+
+func start() {
+    var cam = Camera3D.New(60.0, 1.0, 0.1, 100.0);
+    Camera3D.LookAt(
+        cam, Vec3.New(1.0, 2.0, 6.0), Vec3.New(1.0, 2.0, 5.0), Vec3.New(0.0, 1.0, 0.0));
+
+    var scene = Scene3D.New();
+    var parent = SceneNode3D.New();
+    var node = SceneNode3D.New();
+    SceneNode3D.SetPosition(parent, 2.0, 0.0, 3.0);
+    SceneNode3D.SetPosition(node, -1.0, 0.5, 4.0);
+    SceneNode3D.AddChild(parent, node);
+    Scene3D.Add(scene, parent);
+
+    var listener = SoundListener3D.New();
+    SoundListener3D.BindCamera(listener, cam);
+    SoundListener3D.set_IsActive(listener, true);
+
+    var source = SoundSource3D.New(Synth.Tone(440, 200, 0));
+    SoundSource3D.BindNode(source, node);
+    SoundSource3D.set_MaxDistance(source, 18.0);
+    SoundSource3D.set_Volume(source, 70);
+
+    Scene3D.SyncBindings(scene, 0.25);
+
+    var listenerPos = SoundListener3D.get_Position(listener);
+    if (Vec3.get_X(listenerPos) < 0.99 || Vec3.get_X(listenerPos) > 1.01 ||
+        Vec3.get_Z(listenerPos) < 5.99 || Vec3.get_Z(listenerPos) > 6.01) {
+        Say("FAIL: SoundListener3D should follow a bound Camera3D");
+        return;
+    }
+
+    var sourcePos = SoundSource3D.get_Position(source);
+    if (Vec3.get_X(sourcePos) < 0.99 || Vec3.get_X(sourcePos) > 1.01 ||
+        Vec3.get_Y(sourcePos) < 0.49 || Vec3.get_Y(sourcePos) > 0.51 ||
+        Vec3.get_Z(sourcePos) < 6.99 || Vec3.get_Z(sourcePos) > 7.01) {
+        Say("FAIL: SoundSource3D should cache the bound SceneNode3D world position");
+        return;
+    }
+
+    if (Audio.IsAvailable()) {
+        if (Audio.Init() != 0) {
+            var voice = SoundSource3D.Play(source);
+            if (voice <= 0) {
+                Say("FAIL: SoundSource3D.Play should return a live voice when audio is available");
+                return;
+            }
+            if (SoundSource3D.get_IsPlaying(source) != true) {
+                Say("FAIL: SoundSource3D should report IsPlaying after Play");
+                return;
+            }
+            SoundSource3D.Stop(source);
+            if (SoundSource3D.get_VoiceId(source) != 0) {
+                Say("FAIL: SoundSource3D.Stop should clear VoiceId");
+                return;
+            }
+        }
+    }
+
+    Say("RESULT: ok");
+}

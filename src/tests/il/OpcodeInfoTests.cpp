@@ -22,16 +22,16 @@
 
 namespace {
 
-std::string metadataShape(il::core::Opcode op,
-                          il::core::ResultArity resultArity,
-                          il::core::TypeCategory resultType,
-                          uint8_t numOperandsMin,
-                          uint8_t numOperandsMax,
-                          const std::array<il::core::TypeCategory, il::core::kMaxOperandCategories>
-                              &operandTypes,
-                          bool hasSideEffects,
-                          uint8_t numSuccessors,
-                          bool isTerminator) {
+std::string metadataShape(
+    il::core::Opcode op,
+    il::core::ResultArity resultArity,
+    il::core::TypeCategory resultType,
+    uint8_t numOperandsMin,
+    uint8_t numOperandsMax,
+    const std::array<il::core::TypeCategory, il::core::kMaxOperandCategories> &operandTypes,
+    bool hasSideEffects,
+    uint8_t numSuccessors,
+    bool isTerminator) {
     std::ostringstream out;
     out << il::core::opcode_mnemonic(op) << ':' << static_cast<int>(resultArity) << ':'
         << static_cast<int>(resultType) << ':' << static_cast<unsigned>(numOperandsMin) << ':'
@@ -93,9 +93,9 @@ TEST(IL, OpcodeVerifierStrategiesStayAssigned) {
 
     EXPECT_EQ(il::verify::getInstructionSpec(Opcode::SDiv).strategy, VerifyStrategy::Reject);
     ASSERT_NE(il::verify::getInstructionSpec(Opcode::SDiv).rejectMessage, nullptr);
-    EXPECT_NE(std::string{il::verify::getInstructionSpec(Opcode::SDiv).rejectMessage}.find(
-                  "sdiv.chk0"),
-              std::string::npos);
+    EXPECT_NE(
+        std::string{il::verify::getInstructionSpec(Opcode::SDiv).rejectMessage}.find("sdiv.chk0"),
+        std::string::npos);
 
     EXPECT_EQ(il::verify::getInstructionSpec(Opcode::Alloca).strategy, VerifyStrategy::Alloca);
     EXPECT_EQ(il::verify::getInstructionSpec(Opcode::GEP).strategy, VerifyStrategy::GEP);

@@ -188,15 +188,13 @@ int64_t rt_duration_create(
     int64_t days, int64_t hours, int64_t minutes, int64_t seconds, int64_t millis) {
     int64_t total = 0;
     int64_t part;
-    if (dur_checked_mul_i64(days, MS_PER_DAY, &part) ||
-        dur_checked_add_i64(total, part, &total) ||
+    if (dur_checked_mul_i64(days, MS_PER_DAY, &part) || dur_checked_add_i64(total, part, &total) ||
         dur_checked_mul_i64(hours, MS_PER_HOUR, &part) ||
         dur_checked_add_i64(total, part, &total) ||
         dur_checked_mul_i64(minutes, MS_PER_MINUTE, &part) ||
         dur_checked_add_i64(total, part, &total) ||
         dur_checked_mul_i64(seconds, MS_PER_SECOND, &part) ||
-        dur_checked_add_i64(total, part, &total) ||
-        dur_checked_add_i64(total, millis, &total)) {
+        dur_checked_add_i64(total, part, &total) || dur_checked_add_i64(total, millis, &total)) {
         rt_trap_ovf();
         return 0;
     }
@@ -515,12 +513,10 @@ rt_string rt_duration_to_iso(int64_t duration) {
                                                  (unsigned long long)millis));
             } else {
                 if (p < end)
-                    dur_append_snprintf(&p,
-                                        end,
-                                        snprintf(p,
-                                                 (size_t)(end - p),
-                                                 "%lluS",
-                                                 (unsigned long long)seconds));
+                    dur_append_snprintf(
+                        &p,
+                        end,
+                        snprintf(p, (size_t)(end - p), "%lluS", (unsigned long long)seconds));
             }
         }
     }

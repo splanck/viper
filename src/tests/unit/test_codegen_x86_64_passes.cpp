@@ -500,10 +500,9 @@ viper::codegen::x64::Operand physGpr(viper::codegen::x64::PhysReg reg) {
 
 viper::codegen::x64::Operand rbpMem(int disp) {
     viper::codegen::x64::OpMem mem{};
-    mem.base = viper::codegen::x64::OpReg{
-        true,
-        viper::codegen::x64::RegClass::GPR,
-        static_cast<uint16_t>(viper::codegen::x64::PhysReg::RBP)};
+    mem.base = viper::codegen::x64::OpReg{true,
+                                          viper::codegen::x64::RegClass::GPR,
+                                          static_cast<uint16_t>(viper::codegen::x64::PhysReg::RBP)};
     mem.disp = disp;
     return mem;
 }
@@ -542,9 +541,8 @@ TEST(LoweringPass, PreservesF64ImmediateStoreOperandKind) {
     ASSERT_EQ(module.lowered->funcs[0].blocks.size(), 1U);
 
     const auto &instrs = module.lowered->funcs[0].blocks[0].instrs;
-    const auto it = std::find_if(instrs.begin(), instrs.end(), [](const auto &instr) {
-        return instr.opcode == "store";
-    });
+    const auto it = std::find_if(
+        instrs.begin(), instrs.end(), [](const auto &instr) { return instr.opcode == "store"; });
     ASSERT_TRUE(it != instrs.end());
     ASSERT_GE(it->ops.size(), 2U);
     EXPECT_EQ(it->ops[0].kind, viper::codegen::x64::ILValue::Kind::PTR);
@@ -566,9 +564,8 @@ TEST(LoweringPass, PreservesFunctionAddressStoreOperandKind) {
     ASSERT_EQ(module.lowered->funcs[1].blocks.size(), 1U);
 
     const auto &instrs = module.lowered->funcs[1].blocks[0].instrs;
-    const auto it = std::find_if(instrs.begin(), instrs.end(), [](const auto &instr) {
-        return instr.opcode == "store";
-    });
+    const auto it = std::find_if(
+        instrs.begin(), instrs.end(), [](const auto &instr) { return instr.opcode == "store"; });
     ASSERT_TRUE(it != instrs.end());
     ASSERT_GE(it->ops.size(), 2U);
     EXPECT_EQ(it->ops[0].kind, viper::codegen::x64::ILValue::Kind::PTR);
@@ -719,10 +716,8 @@ TEST(SchedulerPass, PreservesWin64FrameSetupBeforeCalleeSaves) {
     entry.label = "entry";
     entry.instructions.push_back(
         MInstr::make(MOpcode::MOVrr, {physGpr(PhysReg::RBP), physGpr(PhysReg::RSP)}));
-    entry.instructions.push_back(
-        MInstr::make(MOpcode::ADDri, {physGpr(PhysReg::RSP), OpImm{-64}}));
-    entry.instructions.push_back(
-        MInstr::make(MOpcode::MOVrm, {rbpMem(-8), physGpr(PhysReg::RBX)}));
+    entry.instructions.push_back(MInstr::make(MOpcode::ADDri, {physGpr(PhysReg::RSP), OpImm{-64}}));
+    entry.instructions.push_back(MInstr::make(MOpcode::MOVrm, {rbpMem(-8), physGpr(PhysReg::RBX)}));
     entry.instructions.push_back(
         MInstr::make(MOpcode::MOVrm, {rbpMem(-16), physGpr(PhysReg::RDI)}));
 

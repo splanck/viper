@@ -226,9 +226,11 @@ TEST(NativeAsmArm64, TargetFlagsSelectObjectFormat) {
               "  ret 0\n"
               "}\n");
 
-    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-o", darwinObj.c_str(), "--target-darwin"}), 0);
+    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-o", darwinObj.c_str(), "--target-darwin"}),
+              0);
     ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-o", linuxObj.c_str(), "--target-linux"}), 0);
-    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-o", windowsObj.c_str(), "--target-windows"}), 0);
+    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-o", windowsObj.c_str(), "--target-windows"}),
+              0);
 
     auto readMagic = [](const std::string &path) {
         std::array<uint8_t, 4> magic{};

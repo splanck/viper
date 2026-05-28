@@ -37,11 +37,11 @@
 #include "rt_platform.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <limits.h>
 
 // Platform-specific includes
 #if defined(__linux__)
@@ -392,7 +392,8 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
         if (GetLastError() == ERROR_IO_INCOMPLETE)
             return; // Still pending
         w->pending_read = FALSE;
-        watcher_queue_event_owned(w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
+        watcher_queue_event_owned(
+            w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
         if (w->is_watching)
             (void)watcher_start_windows_read(w);
         return;
@@ -401,7 +402,8 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
     w->pending_read = FALSE;
 
     if (bytes_returned == 0) {
-        watcher_queue_event_owned(w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
+        watcher_queue_event_owned(
+            w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
         if (w->is_watching)
             (void)watcher_start_windows_read(w);
         return;
@@ -748,8 +750,7 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     watcher_read_kqueue_events(w, watcher_timeout_to_int(ms));
 #elif defined(_WIN32)
     if (w->pending_read) {
-        DWORD timeout =
-            ms < 0 ? INFINITE : (ms > (int64_t)0xFFFFFFFEu ? 0xFFFFFFFEu : (DWORD)ms);
+        DWORD timeout = ms < 0 ? INFINITE : (ms > (int64_t)0xFFFFFFFEu ? 0xFFFFFFFEu : (DWORD)ms);
         DWORD wait_result = WaitForSingleObject(w->overlapped.hEvent, timeout);
         if (wait_result == WAIT_OBJECT_0) {
             watcher_read_windows_events(w);

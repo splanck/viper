@@ -54,8 +54,7 @@ struct RuntimeOwnershipEffects {
 
 namespace detail {
 
-[[nodiscard]] constexpr bool startsWith(std::string_view value,
-                                        std::string_view prefix) noexcept {
+[[nodiscard]] constexpr bool startsWith(std::string_view value, std::string_view prefix) noexcept {
     return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
 }
 
@@ -114,18 +113,15 @@ namespace detail {
         return effects;
     }
 
-    if (name == "rt_str_substr" || name == "rt_csv_quote_alloc" ||
-        name == "rt_str_split_fields" || name == "rt_int_to_str" ||
-        name == "rt_f64_to_str" || name == "rt_str_i16_alloc" ||
-        name == "rt_str_i32_alloc" || name == "rt_str_f_alloc" ||
-        name == "rt_const_cstr" || name == "rt_str_from_lit" ||
-        name == "rt_str_left" || name == "rt_str_right" || name == "rt_str_mid" ||
-        name == "rt_str_mid_len" || name == "rt_str_ltrim" ||
-        name == "rt_str_rtrim" || name == "rt_str_trim" ||
-        name == "rt_str_ucase" || name == "rt_str_lcase" || name == "rt_str_chr" ||
-        name == "rt_args_get" || name == "rt_cmdline" || name == "rt_getkey_str" ||
-        name == "rt_inkey_str" || name == "rt_term_read_line" ||
-        name == "rt_term_ask" || name == "Viper.String.Left" ||
+    if (name == "rt_str_substr" || name == "rt_csv_quote_alloc" || name == "rt_str_split_fields" ||
+        name == "rt_int_to_str" || name == "rt_f64_to_str" || name == "rt_str_i16_alloc" ||
+        name == "rt_str_i32_alloc" || name == "rt_str_f_alloc" || name == "rt_const_cstr" ||
+        name == "rt_str_from_lit" || name == "rt_str_left" || name == "rt_str_right" ||
+        name == "rt_str_mid" || name == "rt_str_mid_len" || name == "rt_str_ltrim" ||
+        name == "rt_str_rtrim" || name == "rt_str_trim" || name == "rt_str_ucase" ||
+        name == "rt_str_lcase" || name == "rt_str_chr" || name == "rt_args_get" ||
+        name == "rt_cmdline" || name == "rt_getkey_str" || name == "rt_inkey_str" ||
+        name == "rt_term_read_line" || name == "rt_term_ask" || name == "Viper.String.Left" ||
         name == "Viper.String.Right" || name == "Viper.String.Mid2" ||
         name == "Viper.String.Mid3" || name == "Viper.String.LTrim" ||
         name == "Viper.String.RTrim" || name == "Viper.String.Trim" ||
@@ -144,8 +140,7 @@ namespace detail {
         return effects;
     }
 
-    if (name == "rt_arr_i32_retain" || name == "rt_arr_i64_retain" ||
-        name == "rt_arr_f64_retain") {
+    if (name == "rt_arr_i32_retain" || name == "rt_arr_i64_retain" || name == "rt_arr_f64_retain") {
         effects.retainedArgMask = 0b1;
         return effects;
     }
@@ -169,12 +164,9 @@ namespace detail {
         name == "rt_deque_peek_front" || name == "rt_deque_peek_back" ||
         name == "rt_deque_pop_front" || name == "rt_deque_pop_back" ||
         name == "rt_deque_try_pop_front" || name == "rt_deque_try_pop_back" ||
-        name == "Viper.Collections.Deque.Get" ||
-        name == "Viper.Collections.Deque.PeekFront" ||
-        name == "Viper.Collections.Deque.PeekBack" ||
-        name == "Viper.Collections.Deque.First" ||
-        name == "Viper.Collections.Deque.Last" ||
-        name == "Viper.Collections.Deque.PopFront" ||
+        name == "Viper.Collections.Deque.Get" || name == "Viper.Collections.Deque.PeekFront" ||
+        name == "Viper.Collections.Deque.PeekBack" || name == "Viper.Collections.Deque.First" ||
+        name == "Viper.Collections.Deque.Last" || name == "Viper.Collections.Deque.PopFront" ||
         name == "Viper.Collections.Deque.PopBack" ||
         name == "Viper.Collections.Deque.TryPopFront" ||
         name == "Viper.Collections.Deque.TryPopBack" || name == "rt_stack_pop" ||
@@ -185,18 +177,15 @@ namespace detail {
         name == "rt_seq_remove" || name == "Viper.Collections.Seq.Pop" ||
         name == "Viper.Collections.Seq.Remove" || name == "rt_multimap_get_first" ||
         name == "Viper.Collections.MultiMap.GetFirst" || name == "rt_pqueue_pop" ||
-        name == "rt_pqueue_try_pop" || name == "rt_pqueue_peek" ||
-        name == "rt_pqueue_try_peek" || name == "Viper.Collections.Heap.Pop" ||
-        name == "Viper.Collections.Heap.TryPop" ||
-        name == "Viper.Collections.Heap.Peek" ||
-        name == "Viper.Collections.Heap.TryPeek") {
+        name == "rt_pqueue_try_pop" || name == "rt_pqueue_peek" || name == "rt_pqueue_try_peek" ||
+        name == "Viper.Collections.Heap.Pop" || name == "Viper.Collections.Heap.TryPop" ||
+        name == "Viper.Collections.Heap.Peek" || name == "Viper.Collections.Heap.TryPeek") {
         effects.returnsOwned = true;
         return effects;
     }
 
     if (name == "rt_iter_next" || name == "rt_iter_peek" ||
-        name == "Viper.Collections.Iterator.Next" ||
-        name == "Viper.Collections.Iterator.Peek") {
+        name == "Viper.Collections.Iterator.Next" || name == "Viper.Collections.Iterator.Peek") {
         effects.returnsOwned = true;
         return effects;
     }
@@ -233,25 +222,20 @@ namespace detail {
         return effects;
     }
 
-    if (name == "rt_bitset_to_string" || name == "rt_bytes_to_str" ||
-        name == "rt_bytes_to_hex" || name == "rt_bytes_to_base64" ||
-        name == "rt_orderedmap_key_at" || name == "rt_trie_longest_prefix" ||
-        name == "rt_sortedset_first" || name == "rt_sortedset_last" ||
-        name == "rt_sortedset_floor" || name == "rt_sortedset_ceil" ||
-        name == "rt_sortedset_lower" || name == "rt_sortedset_higher" ||
-        name == "rt_sortedset_at" || name == "Viper.Collections.BitSet.ToString" ||
-        name == "Viper.Collections.Bytes.ToStr" ||
-        name == "Viper.Collections.Bytes.ToHex" ||
-        name == "Viper.Collections.Bytes.ToBase64" ||
+    if (name == "rt_bitset_to_string" || name == "rt_bytes_to_str" || name == "rt_bytes_to_hex" ||
+        name == "rt_bytes_to_base64" || name == "rt_orderedmap_key_at" ||
+        name == "rt_trie_longest_prefix" || name == "rt_sortedset_first" ||
+        name == "rt_sortedset_last" || name == "rt_sortedset_floor" ||
+        name == "rt_sortedset_ceil" || name == "rt_sortedset_lower" ||
+        name == "rt_sortedset_higher" || name == "rt_sortedset_at" ||
+        name == "Viper.Collections.BitSet.ToString" || name == "Viper.Collections.Bytes.ToStr" ||
+        name == "Viper.Collections.Bytes.ToHex" || name == "Viper.Collections.Bytes.ToBase64" ||
         name == "Viper.Collections.OrderedMap.KeyAt" ||
         name == "Viper.Collections.Trie.LongestPrefix" ||
-        name == "Viper.Collections.SortedSet.First" ||
-        name == "Viper.Collections.SortedSet.Last" ||
-        name == "Viper.Collections.SortedSet.Floor" ||
-        name == "Viper.Collections.SortedSet.Ceil" ||
+        name == "Viper.Collections.SortedSet.First" || name == "Viper.Collections.SortedSet.Last" ||
+        name == "Viper.Collections.SortedSet.Floor" || name == "Viper.Collections.SortedSet.Ceil" ||
         name == "Viper.Collections.SortedSet.Lower" ||
-        name == "Viper.Collections.SortedSet.Higher" ||
-        name == "Viper.Collections.SortedSet.At") {
+        name == "Viper.Collections.SortedSet.Higher" || name == "Viper.Collections.SortedSet.At") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
@@ -259,32 +243,28 @@ namespace detail {
 
     if (name == "rt_map_keys" || name == "rt_map_values" || name == "rt_orderedmap_keys" ||
         name == "rt_orderedmap_values" || name == "rt_frozenmap_keys" ||
-        name == "rt_frozenmap_values" || name == "rt_frozenset_items" ||
-        name == "rt_bag_items" || name == "rt_bag_union" || name == "rt_bag_intersect" ||
-        name == "rt_bag_diff" || name == "rt_set_items" || name == "rt_set_union" ||
-        name == "rt_set_intersect" || name == "rt_set_diff" || name == "rt_sparse_indices" ||
-        name == "rt_sparse_values" || name == "rt_multimap_get" ||
-        name == "rt_multimap_keys" || name == "rt_intmap_keys" ||
+        name == "rt_frozenmap_values" || name == "rt_frozenset_items" || name == "rt_bag_items" ||
+        name == "rt_bag_union" || name == "rt_bag_intersect" || name == "rt_bag_diff" ||
+        name == "rt_set_items" || name == "rt_set_union" || name == "rt_set_intersect" ||
+        name == "rt_set_diff" || name == "rt_sparse_indices" || name == "rt_sparse_values" ||
+        name == "rt_multimap_get" || name == "rt_multimap_keys" || name == "rt_intmap_keys" ||
         name == "rt_intmap_values" || name == "rt_countmap_keys" ||
         name == "rt_countmap_most_common" || name == "rt_lrucache_keys" ||
-        name == "rt_lrucache_values" || name == "rt_weakmap_keys" ||
-        name == "rt_pqueue_to_seq" || name == "rt_ring_to_seq" || name == "rt_deque_to_seq" ||
-        name == "rt_deque_to_list" || name == "rt_stack_to_seq" ||
-        name == "rt_stack_to_list" || name == "rt_queue_to_seq" ||
-        name == "rt_queue_to_list" || name == "rt_list_to_seq" ||
-        name == "rt_list_to_set" || name == "rt_list_to_stack" ||
-        name == "rt_list_to_queue" || name == "rt_seq_to_list" ||
-        name == "rt_seq_to_set" || name == "rt_seq_to_stack" ||
-        name == "rt_seq_to_queue" || name == "rt_seq_to_deque" ||
-        name == "rt_seq_to_bag" || name == "rt_seq_slice" || name == "rt_seq_take" ||
-        name == "rt_seq_drop" || name == "rt_seq_keep_wrapper" ||
+        name == "rt_lrucache_values" || name == "rt_weakmap_keys" || name == "rt_pqueue_to_seq" ||
+        name == "rt_ring_to_seq" || name == "rt_deque_to_seq" || name == "rt_deque_to_list" ||
+        name == "rt_stack_to_seq" || name == "rt_stack_to_list" || name == "rt_queue_to_seq" ||
+        name == "rt_queue_to_list" || name == "rt_list_to_seq" || name == "rt_list_to_set" ||
+        name == "rt_list_to_stack" || name == "rt_list_to_queue" || name == "rt_seq_to_list" ||
+        name == "rt_seq_to_set" || name == "rt_seq_to_stack" || name == "rt_seq_to_queue" ||
+        name == "rt_seq_to_deque" || name == "rt_seq_to_bag" || name == "rt_seq_slice" ||
+        name == "rt_seq_take" || name == "rt_seq_drop" || name == "rt_seq_keep_wrapper" ||
         name == "rt_seq_reject_wrapper" || name == "rt_seq_apply_wrapper" ||
         name == "rt_seq_take_while_wrapper" || name == "rt_seq_drop_while_wrapper" ||
-        name == "rt_trie_keys" || name == "rt_trie_with_prefix" ||
-        name == "rt_sortedset_items" || name == "rt_sortedset_range" ||
-        name == "rt_sortedset_take" || name == "rt_sortedset_skip" ||
-        name == "rt_sortedset_union" || name == "rt_sortedset_intersect" ||
-        name == "rt_sortedset_diff" || name == "rt_iter_to_seq") {
+        name == "rt_trie_keys" || name == "rt_trie_with_prefix" || name == "rt_sortedset_items" ||
+        name == "rt_sortedset_range" || name == "rt_sortedset_take" ||
+        name == "rt_sortedset_skip" || name == "rt_sortedset_union" ||
+        name == "rt_sortedset_intersect" || name == "rt_sortedset_diff" ||
+        name == "rt_iter_to_seq") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;
@@ -311,8 +291,7 @@ namespace detail {
         return effects;
     }
 
-    if (name == "rt_unbox_str" || name == "Viper.Core.Box.ToStr" ||
-        name == "Viper.Box.ToStr" ||
+    if (name == "rt_unbox_str" || name == "Viper.Core.Box.ToStr" || name == "Viper.Box.ToStr" ||
         name == "rt_box_to_i64_option" || name == "rt_box_to_f64_option" ||
         name == "rt_box_to_i1_option" || name == "rt_box_to_str_option" ||
         name == "Viper.Core.Box.TryToI64" || name == "Viper.Core.Box.TryToF64" ||
@@ -332,9 +311,8 @@ namespace detail {
         name == "Viper.Parse.Int64" || name == "Viper.Parse.DoubleOption" ||
         name == "Viper.Parse.Int64Option" || name == "Viper.Parse.TryInt" ||
         name == "Viper.Parse.TryNum" || name == "Viper.Parse.TryBool" ||
-        name == "Viper.Core.Convert.ToString_Int" ||
-        name == "Viper.Core.Convert.ToString_Double" || name == "Viper.Convert.ToString_Int" ||
-        name == "Viper.Convert.ToString_Double") {
+        name == "Viper.Core.Convert.ToString_Int" || name == "Viper.Core.Convert.ToString_Double" ||
+        name == "Viper.Convert.ToString_Int" || name == "Viper.Convert.ToString_Double") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;

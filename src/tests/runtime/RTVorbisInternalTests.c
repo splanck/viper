@@ -87,9 +87,9 @@ static void test_setup_rejects_oversized_codebook_dimension(void) {
     size_t setup_len;
 
     memset(&bw, 0, sizeof(bw));
-    bw_put_bits(&bw, 0, 8);         // one codebook
+    bw_put_bits(&bw, 0, 8); // one codebook
     bw_put_bits(&bw, 0x564342u, 24);
-    bw_put_bits(&bw, 257, 16);      // dimensions exceed internal vector buffers
+    bw_put_bits(&bw, 257, 16); // dimensions exceed internal vector buffers
     bw_put_bits(&bw, 1, 24);
     setup_len = bw_finish_setup(&bw, setup, sizeof(setup));
 

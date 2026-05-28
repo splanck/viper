@@ -33,10 +33,10 @@
 
 #include "vgfx.h"
 #include "vgfx_internal.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
 
 //===----------------------------------------------------------------------===//
 // Platform-Specific Headers for Aligned Allocation
@@ -197,8 +197,7 @@ static int framebuffer_size_bytes(int32_t width, int32_t height, size_t *out_siz
 
 int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int32_t height) {
     if (!win || width <= 0 || height <= 0) {
-        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM,
-                                "Invalid framebuffer resize dimensions");
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Invalid framebuffer resize dimensions");
         return 0;
     }
     if (width > VGFX_MAX_WIDTH || height > VGFX_MAX_HEIGHT) {
@@ -214,8 +213,7 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
         vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Framebuffer resize size overflow");
         return 0;
     }
-    uint8_t *new_pixels =
-        (uint8_t *)aligned_alloc_wrapper(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
+    uint8_t *new_pixels = (uint8_t *)aligned_alloc_wrapper(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
     if (!new_pixels) {
         vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate resized framebuffer");
         return 0;
@@ -1231,7 +1229,8 @@ int32_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t *out
 /// @param window Window handle
 /// @param color  RGB color (format: 0x00RRGGBB)
 ///
-/// @post Active clip pixels, or all pixels when clipping is disabled, are set to color with alpha=0xFF
+/// @post Active clip pixels, or all pixels when clipping is disabled, are set to color with
+/// alpha=0xFF
 void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
     if (!window)
         return;
@@ -1272,8 +1271,7 @@ void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
         return;
 
     for (int64_t y = top; y < bottom; y++) {
-        uint8_t *row =
-            window->pixels + (size_t)y * (size_t)window->stride + (size_t)left * 4u;
+        uint8_t *row = window->pixels + (size_t)y * (size_t)window->stride + (size_t)left * 4u;
         for (int64_t x = left; x < right; x++) {
             row[0] = r;
             row[1] = g;

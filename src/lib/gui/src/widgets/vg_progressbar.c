@@ -35,13 +35,8 @@ static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_
 static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, float h);
 static void progressbar_paint(vg_widget_t *widget, void *canvas);
 static void progressbar_paint_circular(vg_widget_t *widget, void *canvas);
-static void progressbar_fill_round_rect(vgfx_window_t win,
-                                        int32_t x,
-                                        int32_t y,
-                                        int32_t w,
-                                        int32_t h,
-                                        int32_t radius,
-                                        uint32_t color);
+static void progressbar_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color);
 
 //=============================================================================
 // VTable
@@ -61,7 +56,8 @@ static vg_widget_vtable_t g_progressbar_vtable = {
 // VTable Implementations
 //=============================================================================
 
-/// @brief VTable measure: sizes the bar to 100 px wide and the taller of 8 px, the percentage label height, or 32% of theme input height.
+/// @brief VTable measure: sizes the bar to 100 px wide and the taller of 8 px, the percentage label
+/// height, or 32% of theme input height.
 static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_progressbar_t *pb = (vg_progressbar_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -95,14 +91,10 @@ static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, 
     widget->height = h;
 }
 
-/// @brief Fills a rounded rectangle with @p radius corner arcs; degrades to a plain rect when radius is zero or the rect is too small.
-static void progressbar_fill_round_rect(vgfx_window_t win,
-                                        int32_t x,
-                                        int32_t y,
-                                        int32_t w,
-                                        int32_t h,
-                                        int32_t radius,
-                                        uint32_t color) {
+/// @brief Fills a rounded rectangle with @p radius corner arcs; degrades to a plain rect when
+/// radius is zero or the rect is too small.
+static void progressbar_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (w <= 0 || h <= 0)
         return;
     if (radius <= 0 || w <= radius * 2 || h <= radius * 2) {
@@ -118,7 +110,8 @@ static void progressbar_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
-/// @brief VTable paint: draws the track, then the fill (determinate bar or indeterminate sliding block), and optionally the percentage label.
+/// @brief VTable paint: draws the track, then the fill (determinate bar or indeterminate sliding
+/// block), and optionally the percentage label.
 static void progressbar_paint(vg_widget_t *widget, void *canvas) {
     vg_progressbar_t *pb = (vg_progressbar_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
@@ -131,8 +124,10 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas) {
         return;
     }
 
-    uint32_t track_color = pb->track_color ? pb->track_color
-                                           : vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
+    uint32_t track_color =
+        pb->track_color
+            ? pb->track_color
+            : vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
     uint32_t fill_color = pb->fill_color ? pb->fill_color : theme->colors.accent_primary;
     int32_t radius = (int32_t)pb->corner_radius;
     if (radius < 2)
@@ -159,7 +154,8 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas) {
         if (block_end > x + w)
             block_end = x + w;
         if (block_end > block_x)
-            progressbar_fill_round_rect(win, block_x, y, block_end - block_x, h, radius, fill_color);
+            progressbar_fill_round_rect(
+                win, block_x, y, block_end - block_x, h, radius, fill_color);
     }
 
     if (pb->show_percentage && pb->font && pb->style == VG_PROGRESS_BAR) {
@@ -171,9 +167,9 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas) {
         vg_font_metrics_t font_metrics = {0};
         vg_font_get_metrics(pb->font, pb->font_size, &font_metrics);
         float text_x = widget->x + (widget->width - text_metrics.width) * 0.5f;
-        float text_y =
-            widget->y + (widget->height - (font_metrics.ascent - font_metrics.descent)) * 0.5f +
-            font_metrics.ascent;
+        float text_y = widget->y +
+                       (widget->height - (font_metrics.ascent - font_metrics.descent)) * 0.5f +
+                       font_metrics.ascent;
         uint32_t text_color = pct >= 50 ? 0x00FFFFFF : theme->colors.fg_primary;
         int32_t clip_w = w - 4;
         int32_t clip_h = h - 2;
@@ -196,8 +192,10 @@ static void progressbar_paint_circular(vg_widget_t *widget, void *canvas) {
     if (size <= 4)
         return;
 
-    uint32_t track_color = pb->track_color ? pb->track_color
-                                           : vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
+    uint32_t track_color =
+        pb->track_color
+            ? pb->track_color
+            : vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
     uint32_t fill_color = pb->fill_color ? pb->fill_color : theme->colors.accent_primary;
     int32_t cx = x + w / 2;
     int32_t cy = y + h / 2;
@@ -243,10 +241,11 @@ static void progressbar_paint_circular(vg_widget_t *widget, void *canvas) {
         vg_font_metrics_t font_metrics = {0};
         vg_font_get_metrics(pb->font, pb->font_size, &font_metrics);
         float text_x = widget->x + (widget->width - text_metrics.width) * 0.5f;
-        float text_y =
-            widget->y + (widget->height - (font_metrics.ascent - font_metrics.descent)) * 0.5f +
-            font_metrics.ascent;
-        vg_font_draw_text(canvas, pb->font, pb->font_size, text_x, text_y, buf, theme->colors.fg_primary);
+        float text_y = widget->y +
+                       (widget->height - (font_metrics.ascent - font_metrics.descent)) * 0.5f +
+                       font_metrics.ascent;
+        vg_font_draw_text(
+            canvas, pb->font, pb->font_size, text_x, text_y, buf, theme->colors.fg_primary);
     }
 }
 
@@ -267,7 +266,8 @@ vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent) {
 
     // Default appearance
     vg_theme_t *theme = vg_theme_get_current();
-    progress->track_color = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
+    progress->track_color =
+        vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.45f);
     progress->fill_color = theme->colors.accent_primary;
     progress->corner_radius = 4;
     progress->font = theme->typography.font_regular;
@@ -339,8 +339,7 @@ void vg_progressbar_set_font(vg_progressbar_t *progress, vg_font_t *font, float 
     if (!progress)
         return;
     progress->font = font;
-    progress->font_size =
-        size > 0.0f ? size : vg_theme_get_current()->typography.size_small;
+    progress->font_size = size > 0.0f ? size : vg_theme_get_current()->typography.size_small;
     progress->base.needs_layout = true;
     progress->base.needs_paint = true;
 }

@@ -1,0 +1,121 @@
+module test_game3d_sound_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D as G3D;
+bind Viper.Math as Math;
+bind Viper.Sound as Sound;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) {
+        d = 0.0 - d;
+    }
+    return d <= eps;
+}
+
+func start() {
+    var world = Game3D.World3D.New("Game3D Audio Probe", 80, 60);
+    var audio = Game3D.World3D.get_audio(world);
+    var camera = Game3D.World3D.get_camera(world);
+    var listener = Game3D.Sound3D.get_listener(audio);
+    if (audio == null || listener == null) {
+        fail("world did not create Sound3D/listener");
+        return;
+    }
+    if (Game3D.Sound3D.get_listenerFollowsCamera(audio) == false) {
+        fail("listener should follow camera by default");
+        return;
+    }
+
+    G3D.Camera3D.LookAt(
+        camera,
+        Math.Vec3.New(3.0, 2.0, 6.0),
+        Math.Vec3.New(3.0, 2.0, 5.0),
+        Math.Vec3.New(0.0, 1.0, 0.0));
+    Game3D.World3D.stepSimulation(world, 0.1);
+    var listenerPos = G3D.SoundListener3D.get_Position(listener);
+    if (near(Math.Vec3.get_X(listenerPos), 3.0, 0.01) == false) {
+        fail("listener did not follow camera");
+        return;
+    }
+
+    Game3D.Sound3D.listenerFollowCamera(audio, false);
+    G3D.Camera3D.LookAt(
+        camera,
+        Math.Vec3.New(8.0, 2.0, 6.0),
+        Math.Vec3.New(8.0, 2.0, 5.0),
+        Math.Vec3.New(0.0, 1.0, 0.0));
+    Game3D.World3D.stepSimulation(world, 0.1);
+    listenerPos = G3D.SoundListener3D.get_Position(listener);
+    if (near(Math.Vec3.get_X(listenerPos), 3.0, 0.01) == false) {
+        fail("listenerFollowCamera(false) did not freeze listener");
+        return;
+    }
+
+    Game3D.Sound3D.setListenerPose(
+        audio,
+        Math.Vec3.New(9.0, 1.0, 2.0),
+        Math.Vec3.New(0.0, 0.0, -1.0),
+        Math.Vec3.New(0.0, 1.0, 0.0));
+    listenerPos = G3D.SoundListener3D.get_Position(listener);
+    if (near(Math.Vec3.get_X(listenerPos), 9.0, 0.01) == false) {
+        fail("setListenerPose did not update listener position");
+        return;
+    }
+
+    Game3D.Sound3D.setAttenuation(audio, 2.0, 8.0);
+    Game3D.Sound3D.set_volume(audio, 65);
+    if (near(Game3D.Sound3D.get_maxDistance(audio), 8.0, 0.01) == false ||
+        Game3D.Sound3D.get_volume(audio) != 65) {
+        fail("attenuation/volume settings did not stick");
+        return;
+    }
+
+    var clip = Sound.Synth.Tone(440, 80, 0);
+    if (clip != null) {
+        var oneShot = Game3D.Sound3D.playAt(audio, clip, Math.Vec3.New(1.0, 0.0, 0.0));
+        if (oneShot == null) {
+            fail("playAt did not return an SoundSource3D");
+            return;
+        }
+        if (near(G3D.SoundSource3D.get_MaxDistance(oneShot), 8.0, 0.01) == false) {
+            fail("playAt did not apply attenuation");
+            return;
+        }
+
+        var entity = Game3D.Entity3D.New();
+        Game3D.Entity3D.setPosition(entity, 1.0, 0.0, 0.0);
+        Game3D.World3D.spawn(world, entity);
+        var attached = Game3D.Sound3D.playAttached(audio, clip, entity);
+        if (attached == null) {
+            fail("playAttached did not return an SoundSource3D");
+            return;
+        }
+        Game3D.Entity3D.setPosition(entity, 4.0, 0.0, 0.0);
+        Game3D.World3D.stepSimulation(world, 0.1);
+        var sourcePos = G3D.SoundSource3D.get_Position(attached);
+        if (near(Math.Vec3.get_X(sourcePos), 4.0, 0.01) == false) {
+            fail("attached source did not follow entity");
+            return;
+        }
+
+        Game3D.Sound3D.play2D(audio, clip);
+        if (Game3D.Sound3D.get_sourceCount(audio) < 2) {
+            fail("Sound3D did not track created sources");
+            return;
+        }
+        Game3D.Sound3D.clearSources(audio);
+        if (Game3D.Sound3D.get_sourceCount(audio) != 0) {
+            fail("clearSources did not clear source tracking");
+            return;
+        }
+    }
+
+    Game3D.World3D.destroy(world);
+    Terminal.Say("PASS");
+}

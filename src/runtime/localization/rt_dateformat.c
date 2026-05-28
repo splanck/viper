@@ -29,8 +29,8 @@
 #include "rt_dateformat.h"
 
 #include "rt_datetime.h"
-#include "rt_internal.h"
 #include "rt_heap.h"
+#include "rt_internal.h"
 #include "rt_locale.h"
 #include "rt_locale_data.h"
 #include "rt_locale_manager.h"
@@ -57,7 +57,7 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
 //===----------------------------------------------------------------------===//
 
 typedef struct rt_dateformat_inst {
-    void                   *locale;
+    void *locale;
     const rt_locale_data_t *data;
 } rt_dateformat_inst_t;
 
@@ -91,8 +91,8 @@ static void df_finalizer(void *obj) {
 /// @details Retains the locale handle + its data. Traps on allocation failure;
 ///          installs @ref df_finalizer.
 static void *df_alloc(void *locale) {
-    rt_dateformat_inst_t *fmt = (rt_dateformat_inst_t *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_dateformat_inst_t));
+    rt_dateformat_inst_t *fmt =
+        (rt_dateformat_inst_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_dateformat_inst_t));
     if (!fmt) {
         rt_trap("Viper.Localization.DateFormat: allocation failed");
         return NULL;
@@ -145,74 +145,84 @@ static rt_string render_with_pattern(void *self, int64_t timestamp, const char *
 //===----------------------------------------------------------------------===//
 
 rt_string rt_dateformat_short(void *self, int64_t ts) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return render_with_pattern(self, ts, as_fmt(self)->data->dates.patterns.short_p);
 }
 
 rt_string rt_dateformat_medium(void *self, int64_t ts) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return render_with_pattern(self, ts, as_fmt(self)->data->dates.patterns.medium_p);
 }
 
 rt_string rt_dateformat_long(void *self, int64_t ts) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return render_with_pattern(self, ts, as_fmt(self)->data->dates.patterns.long_p);
 }
 
 rt_string rt_dateformat_full(void *self, int64_t ts) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return render_with_pattern(self, ts, as_fmt(self)->data->dates.patterns.full_p);
 }
 
 rt_string rt_dateformat_time_short(void *self, int64_t ts) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return render_with_pattern(self, ts, as_fmt(self)->data->dates.patterns.time_short);
 }
 
 rt_string rt_dateformat_time_medium(void *self, int64_t ts) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return render_with_pattern(self, ts, as_fmt(self)->data->dates.patterns.time_medium);
 }
 
 rt_string rt_dateformat_datetime_short(void *self, int64_t ts) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     rt_dateformat_inst_t *fmt = as_fmt(self);
-    if (fmt->data->dates.patterns.datetime_short &&
-        *fmt->data->dates.patterns.datetime_short)
+    if (fmt->data->dates.patterns.datetime_short && *fmt->data->dates.patterns.datetime_short)
         return render_with_pattern(self, ts, fmt->data->dates.patterns.datetime_short);
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_dateformat_emit_pattern(&sb, ts,
-                                fmt->data->dates.patterns.short_p,
-                                strlen(fmt->data->dates.patterns.short_p),
-                                fmt->data);
+    rt_dateformat_emit_pattern(&sb,
+                               ts,
+                               fmt->data->dates.patterns.short_p,
+                               strlen(fmt->data->dates.patterns.short_p),
+                               fmt->data);
     (void)rt_sb_append_cstr(&sb, " ");
-    rt_dateformat_emit_pattern(&sb, ts,
-                                fmt->data->dates.patterns.time_short,
-                                strlen(fmt->data->dates.patterns.time_short),
-                                fmt->data);
+    rt_dateformat_emit_pattern(&sb,
+                               ts,
+                               fmt->data->dates.patterns.time_short,
+                               strlen(fmt->data->dates.patterns.time_short),
+                               fmt->data);
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
 }
 
 rt_string rt_dateformat_datetime_medium(void *self, int64_t ts) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     rt_dateformat_inst_t *fmt = as_fmt(self);
-    if (fmt->data->dates.patterns.datetime_medium &&
-        *fmt->data->dates.patterns.datetime_medium)
+    if (fmt->data->dates.patterns.datetime_medium && *fmt->data->dates.patterns.datetime_medium)
         return render_with_pattern(self, ts, fmt->data->dates.patterns.datetime_medium);
     rt_string_builder sb;
     rt_sb_init(&sb);
-    rt_dateformat_emit_pattern(&sb, ts,
-                                fmt->data->dates.patterns.medium_p,
-                                strlen(fmt->data->dates.patterns.medium_p),
-                                fmt->data);
+    rt_dateformat_emit_pattern(&sb,
+                               ts,
+                               fmt->data->dates.patterns.medium_p,
+                               strlen(fmt->data->dates.patterns.medium_p),
+                               fmt->data);
     (void)rt_sb_append_cstr(&sb, " ");
-    rt_dateformat_emit_pattern(&sb, ts,
-                                fmt->data->dates.patterns.time_medium,
-                                strlen(fmt->data->dates.patterns.time_medium),
-                                fmt->data);
+    rt_dateformat_emit_pattern(&sb,
+                               ts,
+                               fmt->data->dates.patterns.time_medium,
+                               strlen(fmt->data->dates.patterns.time_medium),
+                               fmt->data);
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -268,7 +278,8 @@ rt_string rt_dateformat_date_only(void *self, void *dateonly, rt_string style) {
         else if (strcmp(style_cs, "full") == 0)
             pattern = fmt->data->dates.patterns.full_p;
         else {
-            rt_trap("Viper.Localization.DateFormat: unknown style (expected short/medium/long/full)");
+            rt_trap(
+                "Viper.Localization.DateFormat: unknown style (expected short/medium/long/full)");
             return rt_string_from_bytes("", 0);
         }
     }
@@ -298,10 +309,10 @@ rt_string rt_dateformat_month_name(void *self, int64_t month, int8_t abbreviated
         return rt_string_from_bytes("", 0);
     }
     const rt_locale_data_t *data = as_fmt(self)->data;
-    const char *const *arr = abbreviated ? data->dates.months_abbr
-                                          : data->dates.months_wide;
+    const char *const *arr = abbreviated ? data->dates.months_abbr : data->dates.months_wide;
     const char *s = arr ? arr[month - 1] : NULL;
-    if (!s) s = "";
+    if (!s)
+        s = "";
     return rt_string_from_bytes(s, strlen(s));
 }
 
@@ -311,10 +322,10 @@ rt_string rt_dateformat_day_name(void *self, int64_t dow, int8_t abbreviated) {
         return rt_string_from_bytes("", 0);
     }
     const rt_locale_data_t *data = as_fmt(self)->data;
-    const char *const *arr = abbreviated ? data->dates.days_abbr
-                                          : data->dates.days_wide;
+    const char *const *arr = abbreviated ? data->dates.days_abbr : data->dates.days_wide;
     const char *s = arr ? arr[dow] : NULL;
-    if (!s) s = "";
+    if (!s)
+        s = "";
     return rt_string_from_bytes(s, strlen(s));
 }
 
@@ -323,6 +334,7 @@ rt_string rt_dateformat_am_pm(void *self, int8_t is_pm) {
         return rt_string_from_bytes("", 0);
     const rt_locale_data_t *data = as_fmt(self)->data;
     const char *s = is_pm ? data->dates.pm : data->dates.am;
-    if (!s) s = is_pm ? "PM" : "AM";
+    if (!s)
+        s = is_pm ? "PM" : "AM";
     return rt_string_from_bytes(s, strlen(s));
 }

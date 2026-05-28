@@ -400,14 +400,14 @@ TEST(ModuleLinker, ImportSignatureMismatchFails) {
 TEST(ModuleLinker, ImportVarArgMismatchFails) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
-    Function imported = makeI64FuncWithParams(
-        "helper", Linkage::Import, {Param{"x", Type(Type::Kind::I64), 0}});
+    Function imported =
+        makeI64FuncWithParams("helper", Linkage::Import, {Param{"x", Type(Type::Kind::I64), 0}});
     imported.isVarArg = false;
     a.functions.push_back(std::move(imported));
 
     Module b;
-    Function exported = makeI64FuncWithParams(
-        "helper", Linkage::Export, {Param{"x", Type(Type::Kind::I64), 0}});
+    Function exported =
+        makeI64FuncWithParams("helper", Linkage::Export, {Param{"x", Type(Type::Kind::I64), 0}});
     exported.isVarArg = true;
     BasicBlock entry;
     entry.label = "entry";

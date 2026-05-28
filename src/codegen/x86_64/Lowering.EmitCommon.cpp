@@ -82,8 +82,7 @@ void emitRetainStringVReg(MIRBuilder &builder, const VReg &valueVReg) {
 
 /// @brief True if @p kind is integer-like (I64/I1/PTR) — GPR-eligible.
 [[nodiscard]] bool isIntegerLikeKind(ILValue::Kind kind) noexcept {
-    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 ||
-           kind == ILValue::Kind::PTR;
+    return kind == ILValue::Kind::I64 || kind == ILValue::Kind::I1 || kind == ILValue::Kind::PTR;
 }
 
 /// @brief Assert @p value has an integer-like IL kind (I64/I1/PTR).
@@ -360,12 +359,11 @@ Operand EmitCommon::materialiseDisplacement(const Operand &baseOp, int64_t &disp
     const Operand offset = makeVRegOperand(offsetReg.cls, offsetReg.id);
     const VReg addrReg = builder().makeTempVReg(RegClass::GPR);
     const Operand addr = makeVRegOperand(addrReg.cls, addrReg.id);
-    builder().append(MInstr::make(
-        MOpcode::MOVri, std::vector<Operand>{clone(offset), makeImmOperand(disp)}));
-    builder().append(MInstr::make(
-        MOpcode::MOVrr, std::vector<Operand>{clone(addr), clone(baseOp)}));
-    builder().append(MInstr::make(
-        MOpcode::ADDrr, std::vector<Operand>{clone(addr), offset}));
+    builder().append(
+        MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(offset), makeImmOperand(disp)}));
+    builder().append(
+        MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(addr), clone(baseOp)}));
+    builder().append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{clone(addr), offset}));
     disp = 0;
     return addr;
 }
@@ -604,8 +602,8 @@ void EmitCommon::emitSelect(const ILInstr &instr) {
         if (std::holds_alternative<OpImm>(cmovSource)) {
             const VReg tmpVReg = builder().makeTempVReg(destReg.cls);
             cmovSource = makeVRegOperand(tmpVReg.cls, tmpVReg.id);
-            builder().append(MInstr::make(
-                MOpcode::MOVri, std::vector<Operand>{clone(cmovSource), clone(trueVal)}));
+            builder().append(MInstr::make(MOpcode::MOVri,
+                                          std::vector<Operand>{clone(cmovSource), clone(trueVal)}));
         }
 
         builder().append(MInstr::make(
@@ -864,7 +862,6 @@ void EmitCommon::emitCast(const ILInstr &instr, MOpcode opc, RegClass dstCls, Re
     } else {
         builder().append(MInstr::make(opc, std::vector<Operand>{clone(dest), src}));
     }
-
 }
 
 /// @brief Emit a division or remainder pseudo instruction.
@@ -989,8 +986,8 @@ void EmitCommon::emitFCmpNanSafe(const ILInstr &instr, std::string_view suffix) 
     auto emitSetccBool = [&](int code, const Operand &target) {
         builder().append(MInstr::make(MOpcode::SETcc,
                                       std::vector<Operand>{makeImmOperand(code), clone(target)}));
-        builder().append(MInstr::make(MOpcode::MOVZXrr8,
-                                      std::vector<Operand>{clone(target), clone(target)}));
+        builder().append(
+            MInstr::make(MOpcode::MOVZXrr8, std::vector<Operand>{clone(target), clone(target)}));
     };
 
     if (suffix == "lt" || suffix == "le") {

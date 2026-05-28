@@ -14,8 +14,10 @@
 //   - Maximum playlist capacity is fixed at compile time.
 //
 // Ownership/Lifetime:
-//   - Playlist objects are GC-managed runtime objects; they are freed when their refcount drops to 0.
-//   - Track strings are retained by the underlying sequence; callers keep ownership of their inputs too.
+//   - Playlist objects are GC-managed runtime objects; they are freed when their refcount drops to
+//   0.
+//   - Track strings are retained by the underlying sequence; callers keep ownership of their inputs
+//   too.
 //   - rt_playlist_get returns a retained string reference; C callers must release it when done.
 //
 // Links: src/runtime/audio/rt_playlist.c (implementation), src/runtime/audio/rt_audio.h
@@ -38,7 +40,7 @@ typedef enum {
 } rt_playlist_repeat_t;
 
 //=============================================================================
-// Viper.Audio.Playlist
+// Viper.Sound.Playlist
 //=============================================================================
 
 /// @brief Create a new empty playlist.

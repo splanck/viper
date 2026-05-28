@@ -192,11 +192,11 @@ static bool br_has_data(bit_reader_t *br) {
 
 /// @brief LSB-first bit-stream writer used by the DEFLATE compressor.
 typedef struct {
-    uint8_t *data;    ///< Output byte buffer (heap-allocated, grown by bw_ensure).
-    size_t capacity;  ///< Allocated capacity of `data` in bytes.
-    size_t len;       ///< Number of complete bytes written to `data`.
-    uint32_t buffer;  ///< Pending bit accumulator (LSB = next bit to emit).
-    int bits_in_buf;  ///< Number of valid bits currently in `buffer`.
+    uint8_t *data;   ///< Output byte buffer (heap-allocated, grown by bw_ensure).
+    size_t capacity; ///< Allocated capacity of `data` in bytes.
+    size_t len;      ///< Number of complete bytes written to `data`.
+    uint32_t buffer; ///< Pending bit accumulator (LSB = next bit to emit).
+    int bits_in_buf; ///< Number of valid bits currently in `buffer`.
 } bit_writer_t;
 
 /// @brief Initialize a bit writer with a starting buffer capacity.
@@ -475,7 +475,9 @@ static void init_fixed_trees_impl(void) {
 
 #ifdef _WIN32
 /// @brief `InitOnce` callback that builds the fixed Huffman trees (Windows).
-static BOOL CALLBACK init_fixed_trees_once_cb(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context) {
+static BOOL CALLBACK init_fixed_trees_once_cb(PINIT_ONCE InitOnce,
+                                              PVOID Parameter,
+                                              PVOID *Context) {
     (void)InitOnce;
     (void)Parameter;
     (void)Context;
@@ -524,9 +526,9 @@ static const int code_length_order[MAX_CODE_LEN_CODES] = {
 
 /// @brief Growable byte buffer used to accumulate DEFLATE decompressor output.
 typedef struct {
-    uint8_t *data;   ///< Heap-allocated output buffer (grown by out_ensure).
-    size_t len;      ///< Number of valid bytes written to `data`.
-    size_t capacity; ///< Allocated capacity of `data` in bytes.
+    uint8_t *data;     ///< Heap-allocated output buffer (grown by out_ensure).
+    size_t len;        ///< Number of valid bytes written to `data`.
+    size_t capacity;   ///< Allocated capacity of `data` in bytes.
     size_t max_output; ///< Maximum allowed decompressed bytes.
 } output_buffer_t;
 
@@ -1455,11 +1457,8 @@ static void *gunzip_member_data(const uint8_t *data, size_t len, size_t *member_
     }
 
     size_t deflate_consumed = 0;
-    void *result = inflate_data_limited_ex(data + pos,
-                                           len - pos,
-                                           INFLATE_DEFAULT_MAX_OUTPUT,
-                                           &deflate_consumed,
-                                           true);
+    void *result = inflate_data_limited_ex(
+        data + pos, len - pos, INFLATE_DEFAULT_MAX_OUTPUT, &deflate_consumed, true);
 
     if (deflate_consumed > len - pos || len - pos - deflate_consumed < 8) {
         compress_release_temp_object(result);

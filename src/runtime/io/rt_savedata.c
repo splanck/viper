@@ -96,8 +96,8 @@ typedef struct SaveEntry {
 
 /// @brief Internal save-data store: game identity, on-disk path, and entry list.
 typedef struct {
-    char *game_name; ///< Validated game name (alphanumeric, dash, underscore, ≤64 chars).
-    char *file_path; ///< Absolute path to the save JSON file.
+    char *game_name;    ///< Validated game name (alphanumeric, dash, underscore, ≤64 chars).
+    char *file_path;    ///< Absolute path to the save JSON file.
     SaveEntry *entries; ///< Head of the singly-linked entry list.
 } rt_savedata_impl;
 
@@ -150,8 +150,7 @@ static int savedata_is_valid_utf8(const char *data, size_t len) {
             unsigned char c1 = (unsigned char)data[i + 1];
             unsigned char c2 = (unsigned char)data[i + 2];
             unsigned char c3 = (unsigned char)data[i + 3];
-            if (c1 < 0x90 || c1 > 0xBF || c2 < 0x80 || c2 > 0xBF || c3 < 0x80 ||
-                c3 > 0xBF)
+            if (c1 < 0x90 || c1 > 0xBF || c2 < 0x80 || c2 > 0xBF || c3 < 0x80 || c3 > 0xBF)
                 return 0;
             i += 4;
         } else if (c >= 0xF1 && c <= 0xF3) {
@@ -160,8 +159,7 @@ static int savedata_is_valid_utf8(const char *data, size_t len) {
             unsigned char c1 = (unsigned char)data[i + 1];
             unsigned char c2 = (unsigned char)data[i + 2];
             unsigned char c3 = (unsigned char)data[i + 3];
-            if (c1 < 0x80 || c1 > 0xBF || c2 < 0x80 || c2 > 0xBF || c3 < 0x80 ||
-                c3 > 0xBF)
+            if (c1 < 0x80 || c1 > 0xBF || c2 < 0x80 || c2 > 0xBF || c3 < 0x80 || c3 > 0xBF)
                 return 0;
             i += 4;
         } else if (c == 0xF4) {
@@ -170,8 +168,7 @@ static int savedata_is_valid_utf8(const char *data, size_t len) {
             unsigned char c1 = (unsigned char)data[i + 1];
             unsigned char c2 = (unsigned char)data[i + 2];
             unsigned char c3 = (unsigned char)data[i + 3];
-            if (c1 < 0x80 || c1 > 0x8F || c2 < 0x80 || c2 > 0xBF || c3 < 0x80 ||
-                c3 > 0xBF)
+            if (c1 < 0x80 || c1 > 0x8F || c2 < 0x80 || c2 > 0xBF || c3 < 0x80 || c3 > 0xBF)
                 return 0;
             i += 4;
         } else {
@@ -755,14 +752,15 @@ static char *compute_save_path(const char *game_name) {
         snprintf(path, needed, "%s%s%s\\save.json", base, middle, game_name);
     free(appdata);
 #elif defined(__APPLE__)
-    size_t needed = strlen(home) + strlen("/Library/Application Support/Viper/") + strlen(game_name) +
-                    strlen("/save.json") + 1;
+    size_t needed = strlen(home) + strlen("/Library/Application Support/Viper/") +
+                    strlen(game_name) + strlen("/save.json") + 1;
     path = (char *)malloc(needed);
     if (path)
-        snprintf(path, needed, "%s/Library/Application Support/Viper/%s/save.json", home, game_name);
+        snprintf(
+            path, needed, "%s/Library/Application Support/Viper/%s/save.json", home, game_name);
 #else
-    size_t needed =
-        strlen(home) + strlen("/.local/share/viper/") + strlen(game_name) + strlen("/save.json") + 1;
+    size_t needed = strlen(home) + strlen("/.local/share/viper/") + strlen(game_name) +
+                    strlen("/save.json") + 1;
     path = (char *)malloc(needed);
     if (path)
         snprintf(path, needed, "%s/.local/share/viper/%s/save.json", home, game_name);
@@ -834,7 +832,8 @@ static int savedata_set_int_entry(SaveEntry **head, rt_string key, int64_t value
     return 1;
 }
 
-/// @brief Insert or update a string entry at the head of the list (same semantics as the int variant).
+/// @brief Insert or update a string entry at the head of the list (same semantics as the int
+/// variant).
 static int savedata_set_string_entry(SaveEntry **head, rt_string key, rt_string value) {
     if (!head || !key)
         return 0;

@@ -89,7 +89,7 @@ TypePtr Parser::parseBaseType() {
             // If so, parse as a fixed-size array type: T[N].
             // Otherwise fall through to the generic type path: T[Type, ...].
             if (peek(1).kind == TokenKind::IntegerLiteral) {
-                advance(); // consume '['
+                advance();                  // consume '['
                 Token countTok = advance(); // consume N
                 if (countTok.requiresNegation || countTok.intValue < 0) {
                     error("fixed-size array count must be a non-negative Integer literal");

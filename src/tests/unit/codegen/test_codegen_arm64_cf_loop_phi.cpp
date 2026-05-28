@@ -64,8 +64,8 @@ TEST(Arm64CLI, CF_Loop_Phi) {
     EXPECT_EQ(asmText.find(".edge.f."), std::string::npos);
     const bool hasSplitHotBody = asmText.find("Lbody_body:") != std::string::npos &&
                                  asmText.find("b Lbody_body") != std::string::npos;
-    const bool hasCollapsedBody =
-        asmText.find("Lbody:\n") != std::string::npos && asmText.find("b Lbody") != std::string::npos;
+    const bool hasCollapsedBody = asmText.find("Lbody:\n") != std::string::npos &&
+                                  asmText.find("b Lbody") != std::string::npos;
     EXPECT_TRUE(hasSplitHotBody || hasCollapsedBody);
 }
 

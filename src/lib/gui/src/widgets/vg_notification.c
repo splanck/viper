@@ -45,20 +45,10 @@ static void notification_manager_measure(vg_widget_t *widget,
 static void notification_manager_paint(vg_widget_t *widget, void *canvas);
 static bool notification_manager_handle_event(vg_widget_t *widget, vg_event_t *event);
 static uint32_t notification_fade_color(uint32_t color, uint32_t backdrop, float opacity);
-static void notification_fill_round_rect(vgfx_window_t win,
-                                         int32_t x,
-                                         int32_t y,
-                                         int32_t w,
-                                         int32_t h,
-                                         int32_t radius,
-                                         uint32_t color);
-static void notification_stroke_round_rect(vgfx_window_t win,
-                                           int32_t x,
-                                           int32_t y,
-                                           int32_t w,
-                                           int32_t h,
-                                           int32_t radius,
-                                           uint32_t color);
+static void notification_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color);
+static void notification_stroke_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color);
 static char *notification_dup_range(const char *text, size_t len);
 static int notification_wrap_text(vg_notification_manager_t *mgr,
                                   const char *text,
@@ -131,13 +121,8 @@ static uint32_t notification_fade_color(uint32_t color, uint32_t backdrop, float
 }
 
 /// @brief Fill a rounded rectangle, falling back to a plain rect when radius is zero or too large.
-static void notification_fill_round_rect(vgfx_window_t win,
-                                         int32_t x,
-                                         int32_t y,
-                                         int32_t w,
-                                         int32_t h,
-                                         int32_t radius,
-                                         uint32_t color) {
+static void notification_fill_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (w <= 0 || h <= 0)
         return;
     int32_t max_radius = w < h ? w / 2 : h / 2;
@@ -156,14 +141,10 @@ static void notification_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
-/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is zero or too large.
-static void notification_stroke_round_rect(vgfx_window_t win,
-                                           int32_t x,
-                                           int32_t y,
-                                           int32_t w,
-                                           int32_t h,
-                                           int32_t radius,
-                                           uint32_t color) {
+/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is
+/// zero or too large.
+static void notification_stroke_round_rect(
+    vgfx_window_t win, int32_t x, int32_t y, int32_t w, int32_t h, int32_t radius, uint32_t color) {
     if (w <= 1 || h <= 1)
         return;
     int32_t max_radius = w < h ? w / 2 : h / 2;
@@ -193,7 +174,8 @@ static char *notification_dup_range(const char *text, size_t len) {
     return copy;
 }
 
-/// @brief Word-wrap text to fit max_width, returning the line count and optionally allocating out_lines[].
+/// @brief Word-wrap text to fit max_width, returning the line count and optionally allocating
+/// out_lines[].
 static int notification_wrap_text(vg_notification_manager_t *mgr,
                                   const char *text,
                                   float font_size,
@@ -332,7 +314,8 @@ static float notification_text_block_height(vg_notification_manager_t *mgr,
     return notification_line_height(mgr, font_size) * (float)line_count;
 }
 
-/// @brief Compute the total card height for notif including title, message, action button, and padding.
+/// @brief Compute the total card height for notif including title, message, action button, and
+/// padding.
 static float notification_measure_height(vg_notification_manager_t *mgr,
                                          vg_notification_t *notif,
                                          float *out_action_h) {
@@ -344,12 +327,14 @@ static float notification_measure_height(vg_notification_manager_t *mgr,
     float action_h = notification_line_height(mgr, mgr->font_size) + 8.0f;
 
     if (notif->title && notif->title[0]) {
-        notif_height += notification_text_block_height(mgr, notif->title, mgr->title_font_size, content_width);
+        notif_height +=
+            notification_text_block_height(mgr, notif->title, mgr->title_font_size, content_width);
     }
     if (notif->message && notif->message[0]) {
         if (notif->title && notif->title[0])
             notif_height += 6.0f;
-        notif_height += notification_text_block_height(mgr, notif->message, mgr->font_size, content_width);
+        notif_height +=
+            notification_text_block_height(mgr, notif->message, mgr->font_size, content_width);
     }
     if (notif->action_label && notif->action_label[0]) {
         if ((notif->title && notif->title[0]) || (notif->message && notif->message[0]))
@@ -371,7 +356,8 @@ static void notification_request_dismiss(vg_notification_t *notif, uint64_t now_
         notif->dismiss_started_at = now_ms;
 }
 
-/// @brief Compute the screen-space bounding rect (and optional action-button rect) for the notification at target_index.
+/// @brief Compute the screen-space bounding rect (and optional action-button rect) for the
+/// notification at target_index.
 static bool notification_bounds_for_index(vg_notification_manager_t *mgr,
                                           size_t target_index,
                                           float *out_x,
@@ -438,7 +424,8 @@ static bool notification_bounds_for_index(vg_notification_manager_t *mgr,
             slide_t = 1.0f;
 
         float notif_x = x + (1.0f - slide_t) * 24.0f * (from_right ? 1.0f : -1.0f);
-        float notif_y = (from_top ? y : y - notif_height) + (1.0f - slide_t) * 8.0f * (from_top ? -1.0f : 1.0f);
+        float notif_y =
+            (from_top ? y : y - notif_height) + (1.0f - slide_t) * 8.0f * (from_top ? -1.0f : 1.0f);
         if (i == target_index) {
             if (out_x)
                 *out_x = notif_x;
@@ -531,7 +518,8 @@ void vg_notification_manager_destroy(vg_notification_manager_t *mgr) {
     vg_widget_destroy(&mgr->base);
 }
 
-/// @brief vtable measure — reports available_width × available_height; the manager overlays the entire parent.
+/// @brief vtable measure — reports available_width × available_height; the manager overlays the
+/// entire parent.
 static void notification_manager_measure(vg_widget_t *widget,
                                          float available_width,
                                          float available_height) {
@@ -562,8 +550,16 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
 
         float notif_x = 0.0f, notif_y = 0.0f, notif_w = 0.0f, notif_h = 0.0f;
         float action_x = 0.0f, action_y = 0.0f, action_w = 0.0f, action_h = 0.0f;
-        if (!notification_bounds_for_index(
-                mgr, i, &notif_x, &notif_y, &notif_w, &notif_h, &action_x, &action_y, &action_w, &action_h)) {
+        if (!notification_bounds_for_index(mgr,
+                                           i,
+                                           &notif_x,
+                                           &notif_y,
+                                           &notif_w,
+                                           &notif_h,
+                                           &action_x,
+                                           &action_y,
+                                           &action_w,
+                                           &action_h)) {
             continue;
         }
 
@@ -605,7 +601,12 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
         notification_fill_round_rect(win, x, y, accent_w, h, radius / 2, accent_color);
         if (w > 12) {
             vgfx_fill_rect(
-                win, x + 10, y + 1, w - 20, 1, notification_fade_color(vg_color_lighten(card_bg, 0.07f), backdrop, opacity));
+                win,
+                x + 10,
+                y + 1,
+                w - 20,
+                1,
+                notification_fade_color(vg_color_lighten(card_bg, 0.07f), backdrop, opacity));
         }
 
         float content_x = notif_x + (float)mgr->padding + 10.0f;
@@ -647,8 +648,8 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
                 if (notif->title && notif->title[0])
                     content_y += 6.0f;
                 char **lines = NULL;
-                int line_count =
-                    notification_wrap_text(mgr, notif->message, mgr->font_size, content_w, &lines, NULL);
+                int line_count = notification_wrap_text(
+                    mgr, notif->message, mgr->font_size, content_w, &lines, NULL);
                 float line_h = notification_line_height(mgr, mgr->font_size);
                 vg_font_metrics_t metrics = {0};
                 vg_font_get_metrics(mgr->font, mgr->font_size, &metrics);
@@ -668,10 +669,20 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
 
             if (notif->action_label && notif->action_label[0]) {
                 int32_t ar = (int32_t)(action_h * 0.5f);
-                notification_fill_round_rect(
-                    win, (int32_t)action_x, (int32_t)action_y, (int32_t)action_w, (int32_t)action_h, ar, action_bg);
-                notification_stroke_round_rect(
-                    win, (int32_t)action_x, (int32_t)action_y, (int32_t)action_w, (int32_t)action_h, ar, action_border);
+                notification_fill_round_rect(win,
+                                             (int32_t)action_x,
+                                             (int32_t)action_y,
+                                             (int32_t)action_w,
+                                             (int32_t)action_h,
+                                             ar,
+                                             action_bg);
+                notification_stroke_round_rect(win,
+                                               (int32_t)action_x,
+                                               (int32_t)action_y,
+                                               (int32_t)action_w,
+                                               (int32_t)action_h,
+                                               ar,
+                                               action_border);
                 vg_font_metrics_t metrics = {0};
                 vg_text_metrics_t text_metrics = {0};
                 vg_font_get_metrics(mgr->font, mgr->font_size, &metrics);
@@ -680,9 +691,9 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
                 if (text_metrics.width + 24.0f < action_w) {
                     label_x = action_x + (action_w - text_metrics.width) * 0.5f;
                 }
-                float label_y =
-                    action_y + (action_h - (float)(metrics.ascent - metrics.descent)) * 0.5f +
-                    (float)metrics.ascent;
+                float label_y = action_y +
+                                (action_h - (float)(metrics.ascent - metrics.descent)) * 0.5f +
+                                (float)metrics.ascent;
                 vg_font_draw_text(canvas,
                                   mgr->font,
                                   mgr->font_size,
@@ -699,7 +710,8 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief vtable handle_event — on click, hit-test all visible notifications; invoke action callback or dismiss.
+/// @brief vtable handle_event — on click, hit-test all visible notifications; invoke action
+/// callback or dismiss.
 static bool notification_manager_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_notification_manager_t *mgr = (vg_notification_manager_t *)widget;
 
@@ -851,7 +863,8 @@ uint32_t vg_notification_show(vg_notification_manager_t *mgr,
         mgr, type, title, message, duration_ms, NULL, NULL, NULL);
 }
 
-/// @brief Show a notification with an optional action button that invokes action_callback when clicked.
+/// @brief Show a notification with an optional action button that invokes action_callback when
+/// clicked.
 ///
 /// @param mgr             Manager to add to; may be NULL (returns 0).
 /// @param type            VG_NOTIFICATION_INFO/SUCCESS/WARNING/ERROR.
@@ -859,7 +872,8 @@ uint32_t vg_notification_show(vg_notification_manager_t *mgr,
 /// @param message         Optional body text; may be NULL.
 /// @param duration_ms     Auto-dismiss delay in ms; 0 for persistent.
 /// @param action_label    Button label text; may be NULL (no button rendered).
-/// @param action_callback Invoked with (notification_id, user_data) when button is clicked; may be NULL.
+/// @param action_callback Invoked with (notification_id, user_data) when button is clicked; may be
+/// NULL.
 /// @param user_data       Opaque pointer forwarded to action_callback.
 /// @return                Unique notification ID, or 0 on failure.
 uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
@@ -978,7 +992,8 @@ void vg_notification_dismiss_all(vg_notification_manager_t *mgr) {
 /// @brief Set which screen corner (or centre) new notifications stack from.
 ///
 /// @param mgr      Manager to configure; may be NULL (no-op).
-/// @param position VG_NOTIFICATION_TOP_RIGHT, _TOP_LEFT, _BOTTOM_RIGHT, _BOTTOM_LEFT, _TOP_CENTER, or _BOTTOM_CENTER.
+/// @param position VG_NOTIFICATION_TOP_RIGHT, _TOP_LEFT, _BOTTOM_RIGHT, _BOTTOM_LEFT, _TOP_CENTER,
+/// or _BOTTOM_CENTER.
 void vg_notification_manager_set_position(vg_notification_manager_t *mgr,
                                           vg_notification_position_t position) {
     if (!mgr)
@@ -994,6 +1009,8 @@ void vg_notification_manager_set_position(vg_notification_manager_t *mgr,
 /// @param size Body point size (title rendered at size + 2).
 void vg_notification_manager_set_font(vg_notification_manager_t *mgr, vg_font_t *font, float size) {
     if (!mgr)
+        return;
+    if (mgr->font == font && mgr->font_size == size && mgr->title_font_size == size + 2)
         return;
     mgr->font = font;
     mgr->font_size = size;

@@ -375,9 +375,8 @@ const detail::PassFactory *PassRegistry::lookup(std::string_view id) const {
 }
 
 void registerLoopSimplifyPass(PassRegistry &registry) {
-    registry.registerFunctionPass("loop-simplify",
-                                  []() { return std::make_unique<LoopSimplify>(); },
-                                  true);
+    registry.registerFunctionPass(
+        "loop-simplify", []() { return std::make_unique<LoopSimplify>(); }, true);
 }
 
 void registerLICMPass(PassRegistry &registry) {
@@ -385,7 +384,8 @@ void registerLICMPass(PassRegistry &registry) {
 }
 
 void registerLICMSafePass(PassRegistry &registry) {
-    registry.registerFunctionPass("licm-safe", []() { return std::make_unique<LICM>(false); }, true);
+    registry.registerFunctionPass(
+        "licm-safe", []() { return std::make_unique<LICM>(false); }, true);
 }
 
 void registerSCCPPass(PassRegistry &registry) {
@@ -408,8 +408,7 @@ void registerSCCPPass(PassRegistry &registry) {
             for (std::size_t worker = 0; worker < workerCount; ++worker) {
                 workers.emplace_back([&]() {
                     for (;;) {
-                        const std::size_t index =
-                            nextIndex.fetch_add(1, std::memory_order_relaxed);
+                        const std::size_t index = nextIndex.fetch_add(1, std::memory_order_relaxed);
                         if (index >= functionCount)
                             break;
                         changedFunctions[index] = sccp(module.functions[index]) ? 1 : 0;
@@ -517,7 +516,8 @@ void registerEHOptPass(PassRegistry &registry) {
 }
 
 void registerLoopRotatePass(PassRegistry &registry) {
-    registry.registerFunctionPass("loop-rotate", []() { return std::make_unique<LoopRotate>(); }, true);
+    registry.registerFunctionPass(
+        "loop-rotate", []() { return std::make_unique<LoopRotate>(); }, true);
 }
 
 } // namespace il::transform

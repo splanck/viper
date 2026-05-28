@@ -15,8 +15,8 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
-#include <condition_variable>
 #include <cmath>
+#include <condition_variable>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -830,12 +830,11 @@ static void test_vm_safety_trap_regressions() {
     auto f64TrapModule = [](double value, BCOpcode op) {
         BytecodeModule module;
         const uint16_t valueIdx = addF64(module, value);
-        addDirectBytecodeMain(module,
-                              {encodeOp16(BCOpcode::LOAD_F64, valueIdx),
-                               encodeOp(op),
-                               encodeOp(BCOpcode::RETURN)},
-                              0,
-                              1);
+        addDirectBytecodeMain(
+            module,
+            {encodeOp16(BCOpcode::LOAD_F64, valueIdx), encodeOp(op), encodeOp(BCOpcode::RETURN)},
+            0,
+            1);
         return module;
     };
 
@@ -862,10 +861,8 @@ static void test_vm_safety_trap_regressions() {
             expectMainTrap(module, threaded, TrapKind::DomainError);
         }
         {
-            BytecodeModule module = createDirectBytecodeModule({encodeOp8(BCOpcode::LOAD_LOCAL, 3),
-                                                                encodeOp(BCOpcode::RETURN)},
-                                                               1,
-                                                               1);
+            BytecodeModule module = createDirectBytecodeModule(
+                {encodeOp8(BCOpcode::LOAD_LOCAL, 3), encodeOp(BCOpcode::RETURN)}, 1, 1);
             expectMainTrap(module, threaded, TrapKind::InvalidOpcode);
         }
         {
@@ -2277,22 +2274,16 @@ static void test_async_run_retains_bytecode_argument() {
         ext.fn = fn;
         (void)il::vm::registerExternIn(il::vm::processGlobalExternRegistry(), ext);
     };
-    registerExtern("test.marker.make",
-                   {},
-                   {SigKind::Ptr},
-                   reinterpret_cast<void *>(&make_async_arg_marker));
+    registerExtern(
+        "test.marker.make", {}, {SigKind::Ptr}, reinterpret_cast<void *>(&make_async_arg_marker));
     registerExtern("test.marker.release",
                    {SigKind::Ptr},
                    {},
                    reinterpret_cast<void *>(&release_async_arg_marker));
-    registerExtern("test.marker.count",
-                   {},
-                   {SigKind::I64},
-                   reinterpret_cast<void *>(&count_async_arg_marker));
     registerExtern(
-        "test.gate.wait", {}, {}, reinterpret_cast<void *>(&wait_async_arg_native));
-    registerExtern(
-        "test.gate.open", {}, {}, reinterpret_cast<void *>(&open_async_arg_native));
+        "test.marker.count", {}, {SigKind::I64}, reinterpret_cast<void *>(&count_async_arg_marker));
+    registerExtern("test.gate.wait", {}, {}, reinterpret_cast<void *>(&wait_async_arg_native));
+    registerExtern("test.gate.open", {}, {}, reinterpret_cast<void *>(&open_async_arg_native));
 
     for (bool threaded : {false, true}) {
         reset_async_arg_state();
@@ -2405,10 +2396,8 @@ static void test_thread_start_owned_retains_bytecode_argument() {
                        {},
                        {SigKind::I64},
                        reinterpret_cast<void *>(&count_async_arg_marker));
-        registerExtern(
-            "test.gate.wait", {}, {}, reinterpret_cast<void *>(&wait_async_arg_native));
-        registerExtern(
-            "test.gate.open", {}, {}, reinterpret_cast<void *>(&open_async_arg_native));
+        registerExtern("test.gate.wait", {}, {}, reinterpret_cast<void *>(&wait_async_arg_native));
+        registerExtern("test.gate.open", {}, {}, reinterpret_cast<void *>(&open_async_arg_native));
 
         for (bool threaded : {false, true}) {
             reset_async_arg_state();

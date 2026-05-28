@@ -58,9 +58,9 @@ typedef enum {
 } rtf_style_t;
 
 typedef struct rt_reltimefmt_inst {
-    void                   *locale;
+    void *locale;
     const rt_locale_data_t *data;
-    rtf_style_t             style;
+    rtf_style_t style;
 } rt_reltimefmt_inst_t;
 
 /// @brief Unchecked cast of an opaque handle to the RelativeTimeFormat inst.
@@ -93,8 +93,8 @@ static void rtf_finalizer(void *obj) {
 /// @details Retains the locale handle + its data, defaults to the long style.
 ///          Traps on allocation failure; installs @ref rtf_finalizer.
 static void *rtf_alloc(void *locale) {
-    rt_reltimefmt_inst_t *fmt = (rt_reltimefmt_inst_t *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_reltimefmt_inst_t));
+    rt_reltimefmt_inst_t *fmt =
+        (rt_reltimefmt_inst_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_reltimefmt_inst_t));
     if (!fmt) {
         rt_trap("Viper.Localization.RelativeTimeFormat: allocation failed");
         return NULL;
@@ -131,9 +131,11 @@ rt_string rt_reltimefmt_get_style(void *self) {
 }
 
 void rt_reltimefmt_set_style(void *self, rt_string style) {
-    if (!self || !style) return;
+    if (!self || !style)
+        return;
     const char *cs = rt_string_cstr(style);
-    if (!cs) return;
+    if (!cs)
+        return;
     if (strcmp(cs, "short") == 0)
         as_fmt(self)->style = RTF_STYLE_SHORT;
     else if (strcmp(cs, "long") == 0)
@@ -159,27 +161,56 @@ typedef enum {
 /// @brief CLDR keyword for a time unit ("second".."year"); defaults "second".
 static const char *unit_name(rtf_unit_t u) {
     switch (u) {
-        case UNIT_SECOND: return "second";
-        case UNIT_MINUTE: return "minute";
-        case UNIT_HOUR:   return "hour";
-        case UNIT_DAY:    return "day";
-        case UNIT_WEEK:   return "week";
-        case UNIT_MONTH:  return "month";
-        case UNIT_YEAR:   return "year";
+        case UNIT_SECOND:
+            return "second";
+        case UNIT_MINUTE:
+            return "minute";
+        case UNIT_HOUR:
+            return "hour";
+        case UNIT_DAY:
+            return "day";
+        case UNIT_WEEK:
+            return "week";
+        case UNIT_MONTH:
+            return "month";
+        case UNIT_YEAR:
+            return "year";
     }
     return "second";
 }
 
 /// @brief Parse a unit keyword into @p out; returns 1 on match, 0 if unknown.
 static int unit_from_name(const char *name, rtf_unit_t *out) {
-    if (!name) return 0;
-    if (strcmp(name, "second") == 0) { *out = UNIT_SECOND; return 1; }
-    if (strcmp(name, "minute") == 0) { *out = UNIT_MINUTE; return 1; }
-    if (strcmp(name, "hour")   == 0) { *out = UNIT_HOUR;   return 1; }
-    if (strcmp(name, "day")    == 0) { *out = UNIT_DAY;    return 1; }
-    if (strcmp(name, "week")   == 0) { *out = UNIT_WEEK;   return 1; }
-    if (strcmp(name, "month")  == 0) { *out = UNIT_MONTH;  return 1; }
-    if (strcmp(name, "year")   == 0) { *out = UNIT_YEAR;   return 1; }
+    if (!name)
+        return 0;
+    if (strcmp(name, "second") == 0) {
+        *out = UNIT_SECOND;
+        return 1;
+    }
+    if (strcmp(name, "minute") == 0) {
+        *out = UNIT_MINUTE;
+        return 1;
+    }
+    if (strcmp(name, "hour") == 0) {
+        *out = UNIT_HOUR;
+        return 1;
+    }
+    if (strcmp(name, "day") == 0) {
+        *out = UNIT_DAY;
+        return 1;
+    }
+    if (strcmp(name, "week") == 0) {
+        *out = UNIT_WEEK;
+        return 1;
+    }
+    if (strcmp(name, "month") == 0) {
+        *out = UNIT_MONTH;
+        return 1;
+    }
+    if (strcmp(name, "year") == 0) {
+        *out = UNIT_YEAR;
+        return 1;
+    }
     return 0;
 }
 
@@ -189,7 +220,7 @@ static int unit_from_name(const char *name, rtf_unit_t *out) {
 
 typedef struct {
     rtf_unit_t unit;
-    int64_t    count;   // absolute count in the selected unit
+    int64_t count; // absolute count in the selected unit
 } unit_pick_t;
 
 /// @brief Choose the largest unit whose threshold @p abs_ms reaches and the
@@ -197,20 +228,44 @@ typedef struct {
 ///        year≈365d), e.g. 90 min → {hour, 1}.
 static unit_pick_t pick_unit(int64_t abs_ms) {
     unit_pick_t p;
-    const int64_t MS_SEC   = 1000LL;
-    const int64_t MS_MIN   = 60LL * MS_SEC;
-    const int64_t MS_HOUR  = 60LL * MS_MIN;
-    const int64_t MS_DAY   = 24LL * MS_HOUR;
-    const int64_t MS_WEEK  = 7LL  * MS_DAY;
+    const int64_t MS_SEC = 1000LL;
+    const int64_t MS_MIN = 60LL * MS_SEC;
+    const int64_t MS_HOUR = 60LL * MS_MIN;
+    const int64_t MS_DAY = 24LL * MS_HOUR;
+    const int64_t MS_WEEK = 7LL * MS_DAY;
     const int64_t MS_MONTH = 30LL * MS_DAY;
-    const int64_t MS_YEAR  = 365LL * MS_DAY;
+    const int64_t MS_YEAR = 365LL * MS_DAY;
 
-    if (abs_ms >= MS_YEAR)  { p.unit = UNIT_YEAR;   p.count = abs_ms / MS_YEAR;  return p; }
-    if (abs_ms >= MS_MONTH) { p.unit = UNIT_MONTH;  p.count = abs_ms / MS_MONTH; return p; }
-    if (abs_ms >= MS_WEEK)  { p.unit = UNIT_WEEK;   p.count = abs_ms / MS_WEEK;  return p; }
-    if (abs_ms >= MS_DAY)   { p.unit = UNIT_DAY;    p.count = abs_ms / MS_DAY;   return p; }
-    if (abs_ms >= MS_HOUR)  { p.unit = UNIT_HOUR;   p.count = abs_ms / MS_HOUR;  return p; }
-    if (abs_ms >= MS_MIN)   { p.unit = UNIT_MINUTE; p.count = abs_ms / MS_MIN;   return p; }
+    if (abs_ms >= MS_YEAR) {
+        p.unit = UNIT_YEAR;
+        p.count = abs_ms / MS_YEAR;
+        return p;
+    }
+    if (abs_ms >= MS_MONTH) {
+        p.unit = UNIT_MONTH;
+        p.count = abs_ms / MS_MONTH;
+        return p;
+    }
+    if (abs_ms >= MS_WEEK) {
+        p.unit = UNIT_WEEK;
+        p.count = abs_ms / MS_WEEK;
+        return p;
+    }
+    if (abs_ms >= MS_DAY) {
+        p.unit = UNIT_DAY;
+        p.count = abs_ms / MS_DAY;
+        return p;
+    }
+    if (abs_ms >= MS_HOUR) {
+        p.unit = UNIT_HOUR;
+        p.count = abs_ms / MS_HOUR;
+        return p;
+    }
+    if (abs_ms >= MS_MIN) {
+        p.unit = UNIT_MINUTE;
+        p.count = abs_ms / MS_MIN;
+        return p;
+    }
     p.unit = UNIT_SECOND;
     p.count = abs_ms / MS_SEC;
     return p;
@@ -222,20 +277,33 @@ static unit_pick_t pick_unit(int64_t abs_ms) {
 
 /// @brief Select the unit phrase for plural category @p cat, falling back
 ///        through "other" then any non-empty form so output is never empty.
-static const char *unit_plural_form(const rt_locdata_reltime_unit_t *u,
-                                    rt_plural_category_t cat) {
+static const char *unit_plural_form(const rt_locdata_reltime_unit_t *u, rt_plural_category_t cat) {
     const char *result = NULL;
     switch (cat) {
-        case RT_PLURAL_ZERO:  result = u->zero;  break;
-        case RT_PLURAL_ONE:   result = u->one;   break;
-        case RT_PLURAL_TWO:   result = u->two;   break;
-        case RT_PLURAL_FEW:   result = u->few;   break;
-        case RT_PLURAL_MANY:  result = u->many;  break;
+        case RT_PLURAL_ZERO:
+            result = u->zero;
+            break;
+        case RT_PLURAL_ONE:
+            result = u->one;
+            break;
+        case RT_PLURAL_TWO:
+            result = u->two;
+            break;
+        case RT_PLURAL_FEW:
+            result = u->few;
+            break;
+        case RT_PLURAL_MANY:
+            result = u->many;
+            break;
         case RT_PLURAL_OTHER:
-        default:              result = u->other; break;
+        default:
+            result = u->other;
+            break;
     }
-    if (!result) result = u->other;
-    if (!result) result = "";
+    if (!result)
+        result = u->other;
+    if (!result)
+        result = "";
     return result;
 }
 
@@ -252,12 +320,17 @@ typedef struct digit_spans {
 /// @brief Byte length of the leading UTF-8 codepoint in @p s (0 if empty/NULL,
 ///        1 on a malformed lead byte so callers always make forward progress).
 static size_t utf8_cp_len(const char *s) {
-    if (!s || !*s) return 0;
+    if (!s || !*s)
+        return 0;
     unsigned char c = (unsigned char)s[0];
-    if (c < 0x80) return 1;
-    if ((c & 0xE0) == 0xC0 && s[1]) return 2;
-    if ((c & 0xF0) == 0xE0 && s[1] && s[2]) return 3;
-    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3]) return 4;
+    if (c < 0x80)
+        return 1;
+    if ((c & 0xE0) == 0xC0 && s[1])
+        return 2;
+    if ((c & 0xF0) == 0xE0 && s[1] && s[2])
+        return 3;
+    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3])
+        return 4;
     return 1;
 }
 
@@ -284,9 +357,7 @@ static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
 
 /// @brief Append @p n as decimal digits, transliterated to the locale's
 ///        native digit glyphs (ASCII fallback). No grouping separators.
-static void append_localized_int(rt_string_builder *sb,
-                                 const rt_locale_data_t *data,
-                                 int64_t n) {
+static void append_localized_int(rt_string_builder *sb, const rt_locale_data_t *data, int64_t n) {
     char num[32];
     int k = snprintf(num, sizeof(num), "%lld", (long long)n);
     if (k <= 0)
@@ -305,9 +376,11 @@ static void append_localized_int(rt_string_builder *sb,
 
 /// @brief Expand a relative-time template into @p sb, substituting "{n}" with
 ///        the localized count and "{unit}" with the resolved unit phrase.
-static void expand_template(rt_string_builder *sb, const char *tmpl,
+static void expand_template(rt_string_builder *sb,
+                            const char *tmpl,
                             const rt_locale_data_t *data,
-                            int64_t n, const char *unit_form) {
+                            int64_t n,
+                            const char *unit_form) {
     if (!tmpl || !*tmpl)
         return;
     const char *p = tmpl;
@@ -315,8 +388,8 @@ static void expand_template(rt_string_builder *sb, const char *tmpl,
         if (p[0] == '{' && p[1] == 'n' && p[2] == '}') {
             append_localized_int(sb, data, n);
             p += 3;
-        } else if (p[0] == '{' && p[1] == 'u' && p[2] == 'n' && p[3] == 'i'
-                   && p[4] == 't' && p[5] == '}') {
+        } else if (p[0] == '{' && p[1] == 'u' && p[2] == 'n' && p[3] == 'i' && p[4] == 't' &&
+                   p[5] == '}') {
             (void)rt_sb_append_cstr(sb, unit_form);
             p += 6;
         } else {
@@ -336,12 +409,9 @@ static void expand_template(rt_string_builder *sb, const char *tmpl,
 ///          count, selects the past (duration >= 0, "ago") vs. future
 ///          (duration < 0, "in") template at the requested @p style, and
 ///          expands it. INT64_MIN is clamped to avoid negation overflow.
-static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration,
-                             rtf_style_t style) {
+static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration, rtf_style_t style) {
     int is_past = duration >= 0;
-    int64_t abs_ms = duration < 0
-                         ? (duration == INT64_MIN ? INT64_MAX : -duration)
-                         : duration;
+    int64_t abs_ms = duration < 0 ? (duration == INT64_MIN ? INT64_MAX : -duration) : duration;
     if (abs_ms < 1000) {
         const char *now = fmt->data->reltime.now ? fmt->data->reltime.now : "now";
         return rt_string_from_bytes(now, strlen(now));
@@ -349,11 +419,9 @@ static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration,
 
     unit_pick_t pick = pick_unit(abs_ms);
 
-    rt_plural_category_t cat =
-        rt_plural_rules_select_cardinal_int(fmt->data, pick.count);
+    rt_plural_category_t cat = rt_plural_rules_select_cardinal_int(fmt->data, pick.count);
     const rt_locdata_reltime_unit_t *units =
-        style == RTF_STYLE_SHORT ? fmt->data->reltime.short_units
-                                 : fmt->data->reltime.units;
+        style == RTF_STYLE_SHORT ? fmt->data->reltime.short_units : fmt->data->reltime.units;
     const rt_locdata_reltime_unit_t *u = &units[(int)pick.unit];
     const char *unit_form = unit_plural_form(u, cat);
 
@@ -378,13 +446,15 @@ static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration,
 //===----------------------------------------------------------------------===//
 
 rt_string rt_reltimefmt_format(void *self, int64_t duration) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     rt_reltimefmt_inst_t *fmt = as_fmt(self);
     return format_core(fmt, duration, fmt->style);
 }
 
 rt_string rt_reltimefmt_format_from(void *self, int64_t then_ts, int64_t now_ts) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     // Both timestamps are Unix seconds; convert the delta to milliseconds so
     // the core formatter sees the same unit as rt_duration's total_millis.
     // Check for overflow before the multiply by 1000.
@@ -405,12 +475,14 @@ rt_string rt_reltimefmt_format_from(void *self, int64_t then_ts, int64_t now_ts)
 }
 
 rt_string rt_reltimefmt_short(void *self, int64_t duration) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return format_core(as_fmt(self), duration, RTF_STYLE_SHORT);
 }
 
 rt_string rt_reltimefmt_long(void *self, int64_t duration) {
-    if (!self) return rt_string_from_bytes("", 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
     return format_core(as_fmt(self), duration, RTF_STYLE_LONG);
 }
 
@@ -434,11 +506,9 @@ rt_string rt_reltimefmt_numeric(void *self, int64_t value, rt_string unit) {
         return rt_string_from_bytes(now, strlen(now));
     }
 
-    rt_plural_category_t cat =
-        rt_plural_rules_select_cardinal_int(fmt->data, count);
+    rt_plural_category_t cat = rt_plural_rules_select_cardinal_int(fmt->data, count);
     const rt_locdata_reltime_unit_t *units =
-        fmt->style == RTF_STYLE_SHORT ? fmt->data->reltime.short_units
-                                      : fmt->data->reltime.units;
+        fmt->style == RTF_STYLE_SHORT ? fmt->data->reltime.short_units : fmt->data->reltime.units;
     const rt_locdata_reltime_unit_t *ud = &units[(int)u];
     const char *unit_form = unit_plural_form(ud, cat);
     (void)unit_name; // silence unused-static warning on strict builds

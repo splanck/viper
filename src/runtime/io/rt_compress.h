@@ -59,7 +59,8 @@ void *rt_compress_inflate(void *data);
 /// @param data Bytes object containing compressed data.
 /// @param max_output Maximum allowed decompressed byte count.
 /// @return New Bytes object with decompressed data.
-/// @note Traps if data is NULL, max_output is negative, corrupted, truncated, or exceeds max_output.
+/// @note Traps if data is NULL, max_output is negative, corrupted, truncated, or exceeds
+/// max_output.
 void *rt_compress_inflate_limit(void *data, int64_t max_output);
 
 //=========================================================================

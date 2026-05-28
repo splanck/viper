@@ -62,11 +62,8 @@ SemanticAnalyzer::Type analyzeCallExpr(SemanticAnalyzer &analyzer, const CallExp
                 const auto argTy = context.evaluate(*arg);
                 if (argTy != SemanticAnalyzer::Type::Unknown &&
                     argTy != SemanticAnalyzer::Type::Int) {
-                    context.diagnostics().emit(il::support::Severity::Error,
-                                               "B2001",
-                                               arg->loc,
-                                               1,
-                                               "index type mismatch");
+                    context.diagnostics().emit(
+                        il::support::Severity::Error, "B2001", arg->loc, 1, "index type mismatch");
                 }
             }
             return semantic_analyzer_detail::semanticTypeFromOopField(*field);

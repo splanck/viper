@@ -18,8 +18,8 @@
 #include "rt_string.h"
 #include "rt_trap.h"
 
-#include <cassert>
 #include <atomic>
+#include <cassert>
 #include <csetjmp>
 #include <cstdint>
 #include <cstdio>

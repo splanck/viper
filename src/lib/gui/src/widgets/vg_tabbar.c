@@ -124,7 +124,8 @@ static void free_retired_tabs(vg_tabbar_t *tabbar) {
     tabbar->retired_tabs = NULL;
 }
 
-/// @brief Returns the pixel width of @p tab's button including title text, padding, and optional close-button gutter; clamped to max_tab_width.
+/// @brief Returns the pixel width of @p tab's button including title text, padding, and optional
+/// close-button gutter; clamped to max_tab_width.
 static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar->font || !tab->title) {
         return tabbar->max_tab_width > 0.0f ? tabbar->max_tab_width : 100.0f;
@@ -152,7 +153,8 @@ static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     return width;
 }
 
-/// @brief Returns a heap-allocated copy of the tab title, appending " *" when the tab is marked modified; caller must free.
+/// @brief Returns a heap-allocated copy of the tab title, appending " *" when the tab is marked
+/// modified; caller must free.
 static char *make_tab_title(const vg_tab_t *tab) {
     if (!tab || !tab->title)
         return strdup("");
@@ -179,7 +181,8 @@ static size_t utf8_prev_boundary(const char *text, size_t len) {
     return len;
 }
 
-/// @brief Returns a heap-allocated copy of @p title truncated with "..." to fit within @p max_width pixels; caller must free.
+/// @brief Returns a heap-allocated copy of @p title truncated with "..." to fit within @p max_width
+/// pixels; caller must free.
 static char *fit_tab_title(vg_tabbar_t *tabbar, const char *title, float max_width) {
     if (!title)
         return strdup("");
@@ -215,7 +218,8 @@ static char *fit_tab_title(vg_tabbar_t *tabbar, const char *title, float max_wid
     return buf;
 }
 
-/// @brief Returns the tab whose button spans widget-local @p x (accounting for scroll_x), or NULL if no tab covers that coordinate.
+/// @brief Returns the tab whose button spans widget-local @p x (accounting for scroll_x), or NULL
+/// if no tab covers that coordinate.
 static vg_tab_t *find_tab_at_x(vg_tabbar_t *tabbar, float x) {
     float tab_x = -tabbar->scroll_x;
 
@@ -229,7 +233,8 @@ static vg_tab_t *find_tab_at_x(vg_tabbar_t *tabbar, float x) {
     return NULL;
 }
 
-/// @brief Returns the absolute X offset (before scroll) of @p target's left edge within the tab strip.
+/// @brief Returns the absolute X offset (before scroll) of @p target's left edge within the tab
+/// strip.
 static float get_tab_x(vg_tabbar_t *tabbar, vg_tab_t *target) {
     float x = 0;
     for (vg_tab_t *tab = tabbar->first_tab; tab && tab != target; tab = tab->next) {
@@ -238,7 +243,8 @@ static float get_tab_x(vg_tabbar_t *tabbar, vg_tab_t *target) {
     return x;
 }
 
-/// @brief Returns the insertion index (0-based) at which a dragged tab should be dropped based on @p local_x position.
+/// @brief Returns the insertion index (0-based) at which a dragged tab should be dropped based on
+/// @p local_x position.
 static int tabbar_target_index_from_x(vg_tabbar_t *tabbar, float local_x) {
     if (!tabbar || tabbar->tab_count <= 1)
         return 0;
@@ -254,7 +260,8 @@ static int tabbar_target_index_from_x(vg_tabbar_t *tabbar, float local_x) {
     return tabbar->tab_count - 1;
 }
 
-/// @brief Moves @p tab to @p new_index in the doubly-linked list, updating first_tab/last_tab; returns true if the order changed.
+/// @brief Moves @p tab to @p new_index in the doubly-linked list, updating first_tab/last_tab;
+/// returns true if the order changed.
 static bool tabbar_move_tab_to_index(vg_tabbar_t *tabbar, vg_tab_t *tab, int new_index) {
     if (!tabbar || !tab || tabbar->tab_count < 2)
         return false;
@@ -316,7 +323,8 @@ static bool tabbar_move_tab_to_index(vg_tabbar_t *tabbar, vg_tab_t *tab, int new
     return true;
 }
 
-/// @brief Returns true if @p local_x/local_y falls within @p tab's close button rectangle (only when the tab is closable).
+/// @brief Returns true if @p local_x/local_y falls within @p tab's close button rectangle (only
+/// when the tab is closable).
 static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local_x, float local_y) {
     if (!tabbar || !tab || !tab->closable)
         return false;
@@ -332,7 +340,8 @@ static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local
            local_y < close_y + close_h;
 }
 
-/// @brief Updates the widget tooltip to show the hovered tab's tooltip, saving and restoring the global tooltip when hover changes.
+/// @brief Updates the widget tooltip to show the hovered tab's tooltip, saving and restoring the
+/// global tooltip when hover changes.
 static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar) {
     if (!tabbar)
         return;
@@ -377,7 +386,8 @@ static bool tabbar_can_focus(vg_widget_t *widget) {
     return widget && widget->enabled && widget->visible;
 }
 
-/// @brief Adjusts scroll_x so that @p tab's button is fully visible within the current widget width.
+/// @brief Adjusts scroll_x so that @p tab's button is fully visible within the current widget
+/// width.
 static void tabbar_ensure_tab_visible(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar || !tab)
         return;
@@ -442,7 +452,8 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     tabbar->close_button_size = TABBAR_DEFAULT_CLOSE_SIZE * s;
     tabbar->max_tab_width = TABBAR_DEFAULT_MAX_WIDTH * s;
     tabbar->active_bg = theme->colors.bg_primary;
-    tabbar->inactive_bg = vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.35f);
+    tabbar->inactive_bg =
+        vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.35f);
     tabbar->text_color = theme->colors.fg_primary;
     tabbar->close_color = theme->colors.fg_secondary;
 
@@ -490,7 +501,8 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     return tabbar;
 }
 
-/// @brief VTable destroy: releases input capture if held, frees all tab nodes (title, tooltip, struct), and saved tooltip text.
+/// @brief VTable destroy: releases input capture if held, frees all tab nodes (title, tooltip,
+/// struct), and saved tooltip text.
 static void tabbar_destroy(vg_widget_t *widget) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
 
@@ -508,7 +520,8 @@ static void tabbar_destroy(vg_widget_t *widget) {
     free(tabbar->saved_tooltip_text);
 }
 
-/// @brief VTable measure: sums all tab widths into total_width, claims available_width, and re-clamps scroll_x to prevent over-scroll after tab removal.
+/// @brief VTable measure: sums all tab widths into total_width, claims available_width, and
+/// re-clamps scroll_x to prevent over-scroll after tab removal.
 static void tabbar_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
     (void)available_height;
@@ -535,7 +548,8 @@ static void tabbar_measure(vg_widget_t *widget, float available_width, float ava
         tabbar->scroll_x = 0.0f;
 }
 
-/// @brief VTable paint: renders the bar background, clips tabs, draws each tab with background, active accent bar, truncated title, modified dot, and close button.
+/// @brief VTable paint: renders the bar background, clips tabs, draws each tab with background,
+/// active accent bar, truncated title, modified dot, and close button.
 static void tabbar_paint(vg_widget_t *widget, void *canvas) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -585,11 +599,16 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
         if (tab == tabbar->hovered_tab && tab != tabbar->active_tab) {
             bg = vg_color_blend(bg, theme->colors.bg_hover, 0.55f);
         }
-        uint32_t text_color = (tab == tabbar->active_tab) ? tabbar->text_color : theme->colors.fg_secondary;
+        uint32_t text_color =
+            (tab == tabbar->active_tab) ? tabbar->text_color : theme->colors.fg_secondary;
 
         // Draw tab background
-        vgfx_fill_rect(
-            win, (int32_t)tab_x, (int32_t)widget->y, (int32_t)width, (int32_t)widget->height - 1, bg);
+        vgfx_fill_rect(win,
+                       (int32_t)tab_x,
+                       (int32_t)widget->y,
+                       (int32_t)width,
+                       (int32_t)widget->height - 1,
+                       bg);
         vgfx_fill_rect(win,
                        (int32_t)(tab_x + width - 1.0f),
                        (int32_t)widget->y + 4,
@@ -672,7 +691,8 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
     vgfx_clear_clip(win);
 }
 
-/// @brief VTable handle_event: handles tab click/select, close-button click, drag-to-reorder gesture, hover tracking, mouse-wheel scroll, and left/right arrow key navigation.
+/// @brief VTable handle_event: handles tab click/select, close-button click, drag-to-reorder
+/// gesture, hover tracking, mouse-wheel scroll, and left/right arrow key navigation.
 static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -690,7 +710,8 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 tab_close_button_hit(tabbar, tabbar->hovered_tab, local_x, event->mouse.y);
             tabbar_sync_hover_tooltip(tabbar);
 
-            if (old_hover != tabbar->hovered_tab || old_close_hover != tabbar->close_button_hovered) {
+            if (old_hover != tabbar->hovered_tab ||
+                old_close_hover != tabbar->close_button_hovered) {
                 widget->needs_paint = true;
             }
 

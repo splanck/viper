@@ -172,11 +172,8 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt) {
     }
 
     if (loopVarType != SemanticAnalyzer::Type::Unknown && !isNumericLoopType(loopVarType))
-        emitLoopTypeError(context,
-                          stmt.varExpr ? stmt.varExpr->loc : stmt.loc,
-                          1,
-                          "FOR variable",
-                          loopVarType);
+        emitLoopTypeError(
+            context, stmt.varExpr ? stmt.varExpr->loc : stmt.loc, 1, "FOR variable", loopVarType);
 
     if (stmt.start) {
         auto type = context.evaluateExpr(*stmt.start);

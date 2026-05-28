@@ -967,10 +967,10 @@ static int vaud_music_prepare_wav_read_buffer(struct vaud_music *music) {
     int32_t source_rate =
         music->source_sample_rate > 0 ? music->source_sample_rate : music->sample_rate;
     if (source_rate != VAUD_SAMPLE_RATE)
-        raw_frames = ((int64_t)(VAUD_MUSIC_BUFFER_FRAMES - 1) * source_rate +
-                      VAUD_SAMPLE_RATE - 1) /
-                         VAUD_SAMPLE_RATE +
-                     2;
+        raw_frames =
+            ((int64_t)(VAUD_MUSIC_BUFFER_FRAMES - 1) * source_rate + VAUD_SAMPLE_RATE - 1) /
+                VAUD_SAMPLE_RATE +
+            2;
     if (raw_frames <= 0 || raw_frames > (int64_t)(SIZE_MAX / (size_t)bytes_per_frame))
         return 0;
 
@@ -1024,10 +1024,10 @@ static void vaud_music_advance_wav_source(struct vaud_music *music, int32_t fram
 static int32_t vaud_music_resample_source_request(int32_t source_rate) {
     if (source_rate <= 0)
         return 0;
-    int64_t raw_needed = ((int64_t)(VAUD_MUSIC_BUFFER_FRAMES - 1) * source_rate +
-                          VAUD_SAMPLE_RATE - 1) /
-                             VAUD_SAMPLE_RATE +
-                         2;
+    int64_t raw_needed =
+        ((int64_t)(VAUD_MUSIC_BUFFER_FRAMES - 1) * source_rate + VAUD_SAMPLE_RATE - 1) /
+            VAUD_SAMPLE_RATE +
+        2;
     if (raw_needed <= 0 || raw_needed > INT32_MAX)
         return 0;
     return (int32_t)raw_needed;
@@ -1335,8 +1335,7 @@ static int vaud_music_needs_refill_locked(vaud_music_t music) {
         return 1;
     for (int32_t n = 0; n < VAUD_MUSIC_BUFFER_COUNT; n++) {
         int32_t idx = (music->current_buffer + n) % VAUD_MUSIC_BUFFER_COUNT;
-        if (music->buffer_frames[idx] <= 0 && !music->buffer_refilling[idx] &&
-            !music->stream_eof)
+        if (music->buffer_frames[idx] <= 0 && !music->buffer_refilling[idx] && !music->stream_eof)
             return 1;
     }
     return 0;
@@ -1476,7 +1475,8 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
     music->file = file;
     music->data_offset = data_offset;
     music->data_size = data_size;
-    if (!vaud_checked_resampled_frames(frames, sample_rate, VAUD_SAMPLE_RATE, &music->frame_count)) {
+    if (!vaud_checked_resampled_frames(
+            frames, sample_rate, VAUD_SAMPLE_RATE, &music->frame_count)) {
         vaud_free_music(music);
         return NULL;
     }
@@ -1684,10 +1684,8 @@ vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path) {
     }
     int total_samples = mp3_stream_total_samples(stream);
     if (total_samples > 0) {
-        if (!vaud_checked_resampled_frames(total_samples,
-                                           music->source_sample_rate,
-                                           VAUD_SAMPLE_RATE,
-                                           &music->frame_count)) {
+        if (!vaud_checked_resampled_frames(
+                total_samples, music->source_sample_rate, VAUD_SAMPLE_RATE, &music->frame_count)) {
             vaud_free_music(music);
             return NULL;
         }

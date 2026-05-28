@@ -112,12 +112,29 @@ static void test_ray_aabb_inside() {
     EXPECT_NEAR(t, 0.0, 0.01, "Ray inside AABB returns 0");
 }
 
+static void test_ray_aabb_rejects_zero_direction_inside_box() {
+    void *origin = rt_vec3_new(0, 0, 0);
+    void *dir = rt_vec3_new(0, 0, 0);
+    void *mn = rt_vec3_new(-1, -1, -1);
+    void *mx = rt_vec3_new(1, 1, 1);
+    double t = rt_ray3d_intersect_aabb(origin, dir, mn, mx);
+    EXPECT_TRUE(t < 0.0, "Ray-AABB rejects zero-length direction even from inside the box");
+}
+
 static void test_ray_sphere_hit() {
     void *origin = rt_vec3_new(0, 0, 5);
     void *dir = rt_vec3_new(0, 0, -1);
     void *center = rt_vec3_new(0, 0, 0);
     double t = rt_ray3d_intersect_sphere(origin, dir, center, 1.0);
     EXPECT_NEAR(t, 4.0, 0.01, "Ray-sphere hit at distance 4");
+}
+
+static void test_ray_sphere_inside_returns_zero() {
+    void *origin = rt_vec3_new(0, 0, 0);
+    void *dir = rt_vec3_new(0, 0, -2);
+    void *center = rt_vec3_new(0, 0, 0);
+    double t = rt_ray3d_intersect_sphere(origin, dir, center, 1.0);
+    EXPECT_NEAR(t, 0.0, 0.01, "Ray-sphere returns zero when origin is inside");
 }
 
 static void test_ray_sphere_miss() {
@@ -182,6 +199,14 @@ static void test_sphere_penetration_coincident_centers() {
     EXPECT_NEAR(rt_vec3_z(pen), 0.0, 0.01, "Coincident sphere penetration Z = 0");
 }
 
+static void test_sphere_penetration_pushes_a_away_from_b() {
+    void *a = rt_vec3_new(0, 0, 0);
+    void *b = rt_vec3_new(0.5, 0, 0);
+    void *pen = rt_sphere3d_penetration(a, 1.0, b, 1.0);
+    EXPECT_NEAR(rt_vec3_x(pen), -1.5, 0.01, "Sphere penetration vector pushes A away from B");
+    EXPECT_NEAR(rt_vec3_y(pen), 0.0, 0.01, "Sphere penetration side axis remains zero");
+}
+
 static void test_ray_mesh() {
     void *origin = rt_vec3_new(0, 0, 5);
     void *dir = rt_vec3_new(0, 0, -1);
@@ -192,6 +217,25 @@ static void test_ray_mesh() {
         EXPECT_NEAR(rt_ray3d_hit_distance(hit), 4.0, 0.01, "Ray-mesh distance = 4");
         void *pt = rt_ray3d_hit_point(hit);
         EXPECT_NEAR(rt_vec3_z(pt), 1.0, 0.01, "Hit point Z = 1 (front face of box)");
+    }
+}
+
+static void test_ray_mesh_unnormalized_direction_reports_world_distance() {
+    void *origin = rt_vec3_new(0, 0, 5);
+    void *dir = rt_vec3_new(0, 0, -2);
+    void *box = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    void *hit = rt_ray3d_intersect_mesh(origin, dir, box, rt_mat4_identity());
+    EXPECT_TRUE(hit != nullptr, "Ray-mesh accepts unnormalized non-zero directions");
+    if (hit) {
+        EXPECT_NEAR(rt_ray3d_hit_distance(hit),
+                    4.0,
+                    0.01,
+                    "Ray-mesh unnormalized direction reports Euclidean distance");
+        void *pt = rt_ray3d_hit_point(hit);
+        EXPECT_NEAR(rt_vec3_z(pt),
+                    1.0,
+                    0.01,
+                    "Ray-mesh unnormalized direction reports the correct hit point");
     }
 }
 
@@ -221,8 +265,8 @@ static void test_ray_mesh_and_hit_accessors_reject_wrong_handles() {
                 "Ray-mesh rejects non-Mat4 transform handles");
     EXPECT_TRUE(rt_ray3d_intersect_mesh(origin, dir, identity, identity) == nullptr,
                 "Ray-mesh rejects non-Mesh3D handles");
-    EXPECT_NEAR(rt_ray3d_hit_distance(box), -1.0, 0.01,
-                "RayHit3D.Distance rejects non-hit handles");
+    EXPECT_NEAR(
+        rt_ray3d_hit_distance(box), -1.0, 0.01, "RayHit3D.Distance rejects non-hit handles");
     EXPECT_TRUE(rt_ray3d_hit_triangle(box) == -1, "RayHit3D.Triangle rejects non-hit handles");
     pt = rt_ray3d_hit_point(box);
     EXPECT_NEAR(rt_vec3_x(pt), 0.0, 0.01, "RayHit3D.Point returns safe zero for bad handles");
@@ -259,9 +303,10 @@ static void test_aabb_canonicalizes_inverted_bounds() {
                 1.0,
                 0.01,
                 "AABB penetration canonicalizes inverted min/max bounds");
-    closest = rt_aabb3d_closest_point(rt_vec3_new(1, 1, 1), rt_vec3_new(-1, -1, -1), rt_vec3_new(3, 0, 0));
-    EXPECT_NEAR(rt_vec3_x(closest), 1.0, 0.01,
-                "AABB closest-point canonicalizes inverted min/max bounds");
+    closest = rt_aabb3d_closest_point(
+        rt_vec3_new(1, 1, 1), rt_vec3_new(-1, -1, -1), rt_vec3_new(3, 0, 0));
+    EXPECT_NEAR(
+        rt_vec3_x(closest), 1.0, 0.01, "AABB closest-point canonicalizes inverted min/max bounds");
     EXPECT_TRUE(rt_aabb3d_sphere_overlaps(a0, a1, rt_vec3_new(1, 1, 1), -1.0) == 0,
                 "AABB-sphere rejects negative radii");
 }
@@ -283,7 +328,9 @@ int main() {
     test_ray_aabb_hit();
     test_ray_aabb_miss();
     test_ray_aabb_inside();
+    test_ray_aabb_rejects_zero_direction_inside_box();
     test_ray_sphere_hit();
+    test_ray_sphere_inside_returns_zero();
     test_ray_sphere_miss();
     test_ray_sphere_rejects_invalid_inputs();
     test_aabb_overlaps();
@@ -291,7 +338,9 @@ int main() {
     test_aabb_penetration();
     test_aabb_penetration_uses_per_axis_centers();
     test_sphere_penetration_coincident_centers();
+    test_sphere_penetration_pushes_a_away_from_b();
     test_ray_mesh();
+    test_ray_mesh_unnormalized_direction_reports_world_distance();
     test_ray_mesh_translated();
     test_ray_mesh_and_hit_accessors_reject_wrong_handles();
     test_aabb_closest_point_surface_inside();

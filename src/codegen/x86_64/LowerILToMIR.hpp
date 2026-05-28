@@ -43,7 +43,7 @@ struct ILValue {
 
     Kind kind{Kind::I64};    ///< Static type of the value.
     int id{-1};              ///< SSA identifier (>= 0) or -1 for immediates.
-    std::uint8_t bits{64};    ///< Integer scalar width when kind is I1/I64.
+    std::uint8_t bits{64};   ///< Integer scalar width when kind is I1/I64.
     double f64{0.0};         ///< Payload for floating constants.
     int64_t i64{0};          ///< Payload for integer constants.
     std::string label{};     ///< Payload for label references.

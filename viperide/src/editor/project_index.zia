@@ -11,9 +11,11 @@ bind Seq = Viper.Collections.Seq;
 bind Map = Viper.Collections.Map;
 bind Obj = Viper.Core.Object;
 bind IO = Viper.IO;
+bind Str = Viper.String;
 
 final INDEX_IDLE_MS = 350;
 final INDEX_FILES_PER_FRAME = 8;
+final INDEX_MAX_SOURCE_BYTES = 200000;
 
 class ProjectIndexer {
     expose Any handle;
@@ -32,6 +34,8 @@ class ProjectIndexer {
     expose scheduler.EditorScheduler workScheduler;
     expose List syncedOpenPaths;
     expose List syncedOpenContents;
+    expose Integer updateCount;
+    expose Integer updateBytes;
 
     expose func init() {
         handle = null;
@@ -49,6 +53,8 @@ class ProjectIndexer {
         indexedFileCount = 0;
         syncedOpenPaths = new List();
         syncedOpenContents = new List();
+        updateCount = 0;
+        updateBytes = 0;
     }
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
@@ -82,7 +88,6 @@ class ProjectIndexer {
         handle = ProjectIndex.New(root);
         valid = ProjectIndex.IsValid(handle);
         if valid {
-            StartIndexWorkspace();
             SyncOpenDocuments(docMgr);
         }
     }
@@ -107,6 +112,11 @@ class ProjectIndexer {
         syncedOpenContents = new List();
     }
 
+    expose func ResetPerfStats() {
+        updateCount = 0;
+        updateBytes = 0;
+    }
+
     expose func StartIndexWorkspace() {
         if valid == false { return; }
         pendingIndexFiles = FileIndex.Enumerate(rootPath, ".zia", "", false);
@@ -127,9 +137,17 @@ class ProjectIndexer {
             pendingIndexPos = pendingIndexPos + 1;
             processed = processed + 1;
             var path = Map.GetStr(entry, "path");
+            var size = Map.GetInt(entry, "size");
+            if size > INDEX_MAX_SOURCE_BYTES {
+                continue;
+            }
             if IO.File.Exists(path) {
-                ProjectIndex.UpdateFile(handle, path, IO.File.ReadAllText(path));
-                indexedFileCount = indexedFileCount + 1;
+                var content = IO.File.ReadAllText(path);
+                if ShouldIndexContent(content) {
+                    ProjectIndex.UpdateFile(handle, path, content);
+                    TrackUpdate(content);
+                    indexedFileCount = indexedFileCount + 1;
+                }
             }
         }
         if pendingIndexPos >= total {
@@ -142,6 +160,9 @@ class ProjectIndexer {
 
     expose func FinishPendingIndex() {
         if valid == false { return; }
+        if indexing == false and pendingIndexFiles == null {
+            StartIndexWorkspace();
+        }
         while indexing {
             PumpIndex(128);
         }
@@ -164,7 +185,10 @@ class ProjectIndexer {
                     needsSync = false;
                 }
                 if needsSync {
-                    ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
+                    if ShouldIndexContent(doc.content) {
+                        ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
+                        TrackUpdate(doc.content);
+                    }
                     if syncedIdx >= 0 {
                         syncedOpenPaths.removeAt(syncedIdx);
                         syncedOpenContents.removeAt(syncedIdx);
@@ -201,7 +225,10 @@ class ProjectIndexer {
         if doc.filePath == syncedActivePath and revision == syncedActiveRevision { return false; }
 
         doc.content = engine.GetTextSnapshot();
-        ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
+        if ShouldIndexContent(doc.content) {
+            ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
+            TrackUpdate(doc.content);
+        }
         var syncedIdx = FindSyncedOpenPath(doc.filePath);
         if syncedIdx >= 0 {
             syncedOpenPaths.removeAt(syncedIdx);
@@ -263,8 +290,21 @@ class ProjectIndexer {
     expose func UpdateFile(path: String) {
         if valid == false or path == "" { return; }
         if IO.File.Exists(path) {
-            ProjectIndex.UpdateFile(handle, path, IO.File.ReadAllText(path));
+            var content = IO.File.ReadAllText(path);
+            if ShouldIndexContent(content) {
+                ProjectIndex.UpdateFile(handle, path, content);
+                TrackUpdate(content);
+            }
         }
+    }
+
+    hide func ShouldIndexContent(content: String) -> Boolean {
+        return Str.Length(content) <= INDEX_MAX_SOURCE_BYTES;
+    }
+
+    hide func TrackUpdate(content: String) {
+        updateCount = updateCount + 1;
+        updateBytes = updateBytes + Str.Length(content);
     }
 
     expose func Definition(path: String,
@@ -272,6 +312,7 @@ class ProjectIndexer {
                            line: Integer,
                            col: Integer) -> Any {
         if valid == false { return null; }
+        EnsureWorkspaceIndexStarted();
         PumpIndex(INDEX_FILES_PER_FRAME);
         return ProjectIndex.Definition(handle, path, source, line, col);
     }
@@ -281,6 +322,7 @@ class ProjectIndexer {
                            line: Integer,
                            col: Integer) -> Any {
         if valid == false { return null; }
+        EnsureWorkspaceIndexStarted();
         PumpIndex(INDEX_FILES_PER_FRAME);
         return ProjectIndex.References(handle, path, source, line, col);
     }
@@ -291,7 +333,15 @@ class ProjectIndexer {
                             col: Integer,
                             newName: String) -> Any {
         if valid == false { return null; }
+        EnsureWorkspaceIndexStarted();
         PumpIndex(INDEX_FILES_PER_FRAME);
         return ProjectIndex.RenameEdits(handle, path, source, line, col, newName);
+    }
+
+    hide func EnsureWorkspaceIndexStarted() {
+        if valid == false { return; }
+        if indexing == false and pendingIndexFiles == null {
+            StartIndexWorkspace();
+        }
     }
 }

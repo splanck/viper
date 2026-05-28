@@ -3,11 +3,11 @@
 // RTSpriteAnimTests.cpp - Unit tests for rt_spriteanim
 //===----------------------------------------------------------------------===//
 
-#include "rt_spriteanim.h"
 #include "rt_particle.h"
+#include "rt_spriteanim.h"
 #include <cassert>
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 
 static int tests_passed = 0;

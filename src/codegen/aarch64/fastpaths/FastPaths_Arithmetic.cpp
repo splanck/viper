@@ -425,10 +425,8 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
                             }
                         };
 
-                        auto mop1 =
-                            isCheckedOverflowOp(op1I.op) ? std::nullopt : mapOp(op1I.op);
-                        auto mop2 =
-                            isCheckedOverflowOp(op2I.op) ? std::nullopt : mapOp(op2I.op);
+                        auto mop1 = isCheckedOverflowOp(op1I.op) ? std::nullopt : mapOp(op1I.op);
+                        auto mop2 = isCheckedOverflowOp(op2I.op) ? std::nullopt : mapOp(op2I.op);
                         if (mop1 && mop2) {
                             const PhysReg r0 = ctx.argOrder[static_cast<std::size_t>(p0)];
                             const PhysReg r1 = ctx.argOrder[static_cast<std::size_t>(p1)];

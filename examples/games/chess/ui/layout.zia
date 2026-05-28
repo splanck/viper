@@ -57,6 +57,8 @@ final FOOT_H = 52;
 final BOARD_SIZE = SQ_SIZE * 8;
 final BOARD_FRAME_PAD = 14;
 final SIDE_PANEL_W = 480;
+final PLAYER_CARD_H = 126;
+final MOVE_CARD_H = 260;
 
 /// @brief Construct a Rect inline. Used by every layout function.
 func rect(px: Integer, py: Integer, pw: Integer, ph: Integer) -> Rect {
@@ -126,19 +128,19 @@ func resignButtonRect() -> Rect {
 
 func blackCardRect() -> Rect {
     var p = sidePanelRect();
-    return rect(p.x, p.y, p.w, 116);
+    return rect(p.x, p.y, p.w, PLAYER_CARD_H);
 }
 
 func moveCardRect() -> Rect {
     var top = blackCardRect();
     var p = sidePanelRect();
-    return rect(p.x, top.y + top.h + CARD_GAP, p.w, 278);
+    return rect(p.x, top.y + top.h + CARD_GAP, p.w, MOVE_CARD_H);
 }
 
 func whiteCardRect() -> Rect {
     var moves = moveCardRect();
     var p = sidePanelRect();
-    return rect(p.x, moves.y + moves.h + CARD_GAP, p.w, 116);
+    return rect(p.x, moves.y + moves.h + CARD_GAP, p.w, PLAYER_CARD_H);
 }
 
 func infoCardRect() -> Rect {

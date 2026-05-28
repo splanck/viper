@@ -38,9 +38,7 @@ namespace {
 /// @brief Normalize a tar entry path: strips the leading "./" prefix (emitted by some
 /// tools), removes trailing slashes, sanitizes via sanitizePackageRelativePath,
 /// then re-appends "/" for directory entries. Returns "" for the root ".".
-std::string normalizeTarEntryPath(const std::string &path,
-                                  bool directory,
-                                  const char *fieldName) {
+std::string normalizeTarEntryPath(const std::string &path, bool directory, const char *fieldName) {
     std::string clean = path;
     if (clean.rfind("./", 0) == 0)
         clean = clean.substr(2);

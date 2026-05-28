@@ -35,8 +35,8 @@
 
 #include "rt_locale.h"
 
-#include "rt_internal.h"
 #include "rt_heap.h"
+#include "rt_internal.h"
 #include "rt_list.h"
 #include "rt_locale_data.h"
 #include "rt_locale_manager.h"
@@ -100,6 +100,7 @@ static int loc_is_separator(char c) {
 ///          language/script/region behavioural queries.
 /// @return 0 on success, -1 on structural failure.
 int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale_t *out);
+
 int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale_t *out) {
     if (!out)
         return -1;
@@ -113,6 +114,7 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
         return -1;
 
     enum { MAX_SUBTAGS = 32 };
+
     char subtags[MAX_SUBTAGS][9];
     size_t sub_lens[MAX_SUBTAGS];
     size_t sub_count = 0;
@@ -187,21 +189,19 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
             for (size_t k = 0; k < sub_len; ++k)
                 out->language[k] = loc_to_lower(sub[k]);
             out->language[sub_len] = '\0';
-        } else if (!after_extension && !saw_private
-                   && sub_len == 4 && out->script[0] == '\0' && out->region[0] == '\0'
-                   && loc_is_alpha(sub[0]) && loc_is_alpha(sub[1])
-                   && loc_is_alpha(sub[2]) && loc_is_alpha(sub[3])) {
+        } else if (!after_extension && !saw_private && sub_len == 4 && out->script[0] == '\0' &&
+                   out->region[0] == '\0' && loc_is_alpha(sub[0]) && loc_is_alpha(sub[1]) &&
+                   loc_is_alpha(sub[2]) && loc_is_alpha(sub[3])) {
             // Script: exactly 4 letters, Title-case
             is_script_subtag = 1;
             out->script[0] = loc_to_upper(sub[0]);
             for (size_t k = 1; k < 4; ++k)
                 out->script[k] = loc_to_lower(sub[k]);
             out->script[4] = '\0';
-        } else if (!after_extension && !saw_private
-                   && out->region[0] == '\0'
-                   && ((sub_len == 2 && loc_is_alpha(sub[0]) && loc_is_alpha(sub[1]))
-                       || (sub_len == 3 && loc_is_digit(sub[0])
-                           && loc_is_digit(sub[1]) && loc_is_digit(sub[2])))) {
+        } else if (!after_extension && !saw_private && out->region[0] == '\0' &&
+                   ((sub_len == 2 && loc_is_alpha(sub[0]) && loc_is_alpha(sub[1])) ||
+                    (sub_len == 3 && loc_is_digit(sub[0]) && loc_is_digit(sub[1]) &&
+                     loc_is_digit(sub[2])))) {
             // Region: 2 letters or 3 digits
             is_region_subtag = 1;
             if (sub_len + 1 > RT_LOCALE_REGION_CAP)
@@ -223,8 +223,7 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
                 if (st + 1 >= sub_count)
                     return -1;
                 char sc = loc_to_lower(sub[0]);
-                int bit = loc_is_digit(sc) ? (sc - '0')
-                                           : (10 + (sc - 'a'));
+                int bit = loc_is_digit(sc) ? (sc - '0') : (10 + (sc - 'a'));
                 if (bit < 0 || bit >= 64)
                     return -1;
                 uint64_t mask = UINT64_C(1) << bit;
@@ -236,8 +235,8 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
                 if (sub_len < 2 || sub_len > 8)
                     return -1;
             } else {
-                int valid_variant = (sub_len >= 5 && sub_len <= 8)
-                                    || (sub_len == 4 && loc_is_digit(sub[0]));
+                int valid_variant =
+                    (sub_len >= 5 && sub_len <= 8) || (sub_len == 4 && loc_is_digit(sub[0]));
                 if (!valid_variant)
                     return -1;
             }
@@ -292,6 +291,7 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
 ///          so the data record's formatter_refs counter stays accurate.
 /// @param obj Pointer to the rt_locale_t being collected; NULL is safe.
 void rt_locale_internal_finalizer(void *obj);
+
 void rt_locale_internal_finalizer(void *obj) {
     rt_locale_t *l = (rt_locale_t *)obj;
     if (!l)
@@ -407,8 +407,8 @@ void *rt_locale_parse_internal(rt_string tag, int strict) {
     }
 
     // Special case: "root" is allowed and maps to the invariant locale.
-    if (strcmp(parsed.language, "root") == 0 && parsed.script[0] == '\0'
-        && parsed.region[0] == '\0') {
+    if (strcmp(parsed.language, "root") == 0 && parsed.script[0] == '\0' &&
+        parsed.region[0] == '\0') {
         return loc_make_invariant();
     }
 

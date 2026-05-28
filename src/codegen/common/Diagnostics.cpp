@@ -25,7 +25,8 @@ void Diagnostics::error(std::string message) {
 
 void Diagnostics::error(std::string code, std::string message, il::support::SourceLoc loc) {
     errors_.push_back(message);
-    il::support::Diagnostic diag{il::support::Severity::Error, std::move(message), loc, std::move(code)};
+    il::support::Diagnostic diag{
+        il::support::Severity::Error, std::move(message), loc, std::move(code)};
     diag.stage = "codegen";
     diagnostics_.push_back(std::move(diag));
 }

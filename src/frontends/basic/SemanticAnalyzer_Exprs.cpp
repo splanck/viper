@@ -118,8 +118,8 @@ static RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view target
             return RuntimePointerBridgeRole::Payload;
     }
 
-    if (is("Viper.Threads.Thread.StartOwned") ||
-        is("Viper.Threads.Thread.StartSafeOwned") || is("Viper.Threads.Async.RunOwned")) {
+    if (is("Viper.Threads.Thread.StartOwned") || is("Viper.Threads.Thread.StartSafeOwned") ||
+        is("Viper.Threads.Async.RunOwned")) {
         return argIndex == 0 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
     }
 
@@ -143,8 +143,7 @@ static RuntimePointerBridgeRole runtimePointerBridgeRole(std::string_view target
     if (is("Viper.Threads.Async.MapOwned"))
         return argIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
 
-    if (is("Viper.Network.HttpServer.BindHandler") ||
-        is("Viper.Network.HttpsServer.BindHandler")) {
+    if (is("Viper.Network.HttpServer.BindHandler") || is("Viper.Network.HttpsServer.BindHandler")) {
         return argIndex == 1 ? RuntimePointerBridgeRole::Callback : RuntimePointerBridgeRole::None;
     }
 
@@ -192,13 +191,11 @@ static bool isAddressOfArg(const ExprPtr &expr) {
 /// @return The corresponding SemanticAnalyzer::Type, or nullopt if unknown.
 static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::string_view ty) {
     auto trimRuntimeToken = [](std::string_view token) {
-        while (!token.empty() &&
-               (token.front() == ' ' || token.front() == '\t' || token.front() == '\n' ||
-                token.front() == '\r'))
+        while (!token.empty() && (token.front() == ' ' || token.front() == '\t' ||
+                                  token.front() == '\n' || token.front() == '\r'))
             token.remove_prefix(1);
-        while (!token.empty() &&
-               (token.back() == ' ' || token.back() == '\t' || token.back() == '\n' ||
-                token.back() == '\r'))
+        while (!token.empty() && (token.back() == ' ' || token.back() == '\t' ||
+                                  token.back() == '\n' || token.back() == '\r'))
             token.remove_suffix(1);
         if (!token.empty() && token.back() == '?')
             token.remove_suffix(1);
@@ -441,8 +438,8 @@ std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer, con
 
         if (auto runtimeBase = runtimeClassQNameFromExpr(*access->base)) {
             if (const auto *klass = analyzer.oopIndex().findClass(*runtimeBase)) {
-                if (const auto *field = analyzer.oopIndex().findField(klass->qualifiedName,
-                                                                      access->member);
+                if (const auto *field =
+                        analyzer.oopIndex().findField(klass->qualifiedName, access->member);
                     field && !field->objectClassName.empty()) {
                     return field->objectClassName;
                 }
@@ -450,8 +447,7 @@ std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer, con
         }
 
         if (auto baseClass = inferObjectClassQName(analyzer, *access->base)) {
-            if (const auto *field =
-                    analyzer.oopIndex().findField(*baseClass, access->member);
+            if (const auto *field = analyzer.oopIndex().findField(*baseClass, access->member);
                 field && !field->objectClassName.empty()) {
                 return field->objectClassName;
             }
@@ -557,15 +553,13 @@ bool SemanticAnalyzer::checkRuntimePointerSafety(std::string_view target,
         semantic_analyzer_detail::RuntimePointerBridgeRole role =
             semantic_analyzer_detail::runtimePointerBridgeRole(targetName, i);
         if (role == semantic_analyzer_detail::RuntimePointerBridgeRole::Callback &&
-            i < args.size() &&
-            semantic_analyzer_detail::isAddressOfArg(args[i])) {
+            i < args.size() && semantic_analyzer_detail::isAddressOfArg(args[i])) {
             safeCallbacks[i] = true;
             continue;
         }
 
         if (role == semantic_analyzer_detail::RuntimePointerBridgeRole::Payload &&
-            i < args.size() &&
-            !semantic_analyzer_detail::isAddressOfArg(args[i])) {
+            i < args.size() && !semantic_analyzer_detail::isAddressOfArg(args[i])) {
             bool pairedWithCallback = false;
             for (std::size_t prior = 0; prior < i && prior < safeCallbacks.size(); ++prior) {
                 if (safeCallbacks[prior]) {
@@ -1051,9 +1045,8 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
     }
 
   private:
-    void validateArrayFieldIndexArgs(
-        MethodCallExpr &expr,
-        const std::vector<SemanticAnalyzer::Type> &argTypes) {
+    void validateArrayFieldIndexArgs(MethodCallExpr &expr,
+                                     const std::vector<SemanticAnalyzer::Type> &argTypes) {
         for (std::size_t i = 0; i < expr.args.size(); ++i) {
             auto &arg = expr.args[i];
             if (!arg)
@@ -1072,8 +1065,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
                     analyzer_.de.emit(
                         il::support::Severity::Error, "B2001", expr.loc, 1, std::move(msg));
                 }
-            } else if (ty != SemanticAnalyzer::Type::Unknown &&
-                       ty != SemanticAnalyzer::Type::Int) {
+            } else if (ty != SemanticAnalyzer::Type::Unknown && ty != SemanticAnalyzer::Type::Int) {
                 std::string msg = "index type mismatch";
                 analyzer_.de.emit(
                     il::support::Severity::Error, "B2001", expr.loc, 1, std::move(msg));

@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tools/viper/cli.hpp"
 #include "tests/common/PlatformSkip.h"
+#include "tools/viper/cli.hpp"
 
 #include <cassert>
 #include <filesystem>

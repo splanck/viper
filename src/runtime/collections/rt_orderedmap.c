@@ -209,8 +209,10 @@ void *rt_orderedmap_new(void) {
     rt_orderedmap_impl *m =
         (rt_orderedmap_impl *)rt_obj_new_i64(RT_ORDEREDMAP_CLASS_ID, sizeof(rt_orderedmap_impl));
     if (!m)
-        rt_trap_raise_kind(
-            RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, "OrderedMap: memory allocation failed");
+        rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
+                           Err_RuntimeError,
+                           -1,
+                           "OrderedMap: memory allocation failed");
     m->capacity = 16;
     m->count = 0;
     m->buckets = (rt_om_entry **)calloc(16, sizeof(rt_om_entry *));

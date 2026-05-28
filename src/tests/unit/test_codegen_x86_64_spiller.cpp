@@ -100,12 +100,10 @@ TEST(Spiller, ReusesSlotForDisjointIntervals) {
 
     std::deque<PhysReg> pool{};
     std::vector<MInstr> firstPrefix{};
-    spiller.spillValueWithReuse(
-        RegClass::GPR, 1, first, pool, firstPrefix, firstResult, 0U, 2U);
+    spiller.spillValueWithReuse(RegClass::GPR, 1, first, pool, firstPrefix, firstResult, 0U, 2U);
 
     std::vector<MInstr> secondPrefix{};
-    spiller.spillValueWithReuse(
-        RegClass::GPR, 2, second, pool, secondPrefix, secondResult, 5U, 7U);
+    spiller.spillValueWithReuse(RegClass::GPR, 2, second, pool, secondPrefix, secondResult, 5U, 7U);
 
     EXPECT_EQ(first.spill.slot, 0);
     EXPECT_EQ(second.spill.slot, 0);

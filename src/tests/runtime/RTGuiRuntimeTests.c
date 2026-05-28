@@ -10,14 +10,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "../../runtime/graphics/rt_gui_internal.h"
+#include "../../runtime/graphics/gui/rt_gui_internal.h"
 #include "rt_gui.h"
 #include "rt_pixels.h"
 
 #include <assert.h>
 #include <math.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifndef _WIN32
@@ -196,8 +196,7 @@ static void test_statusbar_click_is_edge_triggered(void) {
 
     vg_statusbar_t *statusbar = vg_statusbar_create(app.root);
     assert(statusbar);
-    vg_statusbar_item_t *item =
-        vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "ready");
+    vg_statusbar_item_t *item = vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "ready");
     assert(item);
     void *item_handle = rt_gui_wrap_statusbar_item(item);
 
@@ -1271,6 +1270,48 @@ static void test_runtime_listbox_select_index_rejects_out_of_range_indices(void)
     printf("test_runtime_listbox_select_index_rejects_out_of_range_indices: PASSED\n");
 }
 
+static void test_runtime_listbox_selected_text_copies_multi_selection(void) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+    vg_listbox_item_t *first = vg_listbox_add_item(listbox, "first", NULL);
+    vg_listbox_item_t *second = vg_listbox_add_item(listbox, "second", NULL);
+    vg_listbox_item_t *third = vg_listbox_add_item(listbox, "third", NULL);
+    assert(first && second && third);
+
+    rt_listbox_set_multi_select(listbox, 1);
+    rt_listbox_select(listbox, rt_gui_wrap_listbox_item(first));
+    rt_listbox_select(listbox, rt_gui_wrap_listbox_item(third));
+    rt_string selected = rt_listbox_get_selected_text(listbox);
+    assert(strcmp(rt_string_cstr(selected), "first\nthird") == 0);
+    rt_string_unref(selected);
+
+    rt_listbox_set_multi_select(listbox, 0);
+    selected = rt_listbox_get_selected_text(listbox);
+    assert(strcmp(rt_string_cstr(selected), "third") == 0);
+    rt_string_unref(selected);
+
+    (void)second;
+    vg_widget_destroy(&listbox->base);
+    printf("test_runtime_listbox_selected_text_copies_multi_selection: PASSED\n");
+}
+
+static void test_runtime_listbox_item_text_color_override(void) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+    void *item_handle = rt_listbox_add_item(listbox, rt_const_cstr("error row"));
+    vg_listbox_item_t *item = rt_gui_listbox_item_from_handle(item_handle);
+    assert(item);
+    assert(item->has_text_color == false);
+
+    rt_listbox_item_set_text_color(item_handle, 0xE06C75);
+    assert(item->has_text_color);
+    assert(item->text_color == 0xE06C75u);
+    assert(listbox->base.needs_paint);
+
+    vg_widget_destroy(&listbox->base);
+    printf("test_runtime_listbox_item_text_color_override: PASSED\n");
+}
+
 static void test_treeview_selection_changed_reports_removal_and_clear(void) {
     vg_treeview_t *tree = vg_treeview_create(NULL);
     assert(tree);
@@ -1313,6 +1354,7 @@ static void test_removed_listbox_and_treeview_handles_are_inert(void) {
     assert(rt_str_len(rt_listbox_item_get_text(item)) == 0);
     assert(rt_str_len(rt_listbox_item_get_data(item)) == 0);
     rt_listbox_item_set_text(item, rt_const_cstr("ignored"));
+    rt_listbox_item_set_text_color(item, 0xE06C75);
     rt_listbox_select(listbox, item);
     assert(rt_listbox_get_selected(listbox) == NULL);
 
@@ -1820,9 +1862,8 @@ static void test_breadcrumb_clicked_data_preserves_embedded_nuls(void) {
     void *crumb = rt_breadcrumb_new(&app);
     assert(crumb);
     const char payload[] = {'a', '\0', 'b'};
-    rt_breadcrumb_add_item(crumb,
-                           rt_const_cstr("node"),
-                           rt_string_from_bytes(payload, sizeof(payload)));
+    rt_breadcrumb_add_item(
+        crumb, rt_const_cstr("node"), rt_string_from_bytes(payload, sizeof(payload)));
 
     rt_breadcrumb_data_view_t *view = (rt_breadcrumb_data_view_t *)crumb;
     assert(view->breadcrumb && view->breadcrumb->item_count == 1);
@@ -1869,7 +1910,8 @@ static void test_shortcuts_reject_invalid_bindings_atomically(void) {
     rt_shortcuts_unregister(rt_string_from_bytes(bad_id, sizeof(bad_id)));
     assert(app.shortcut_count == 1);
 
-    rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+NotAKey"), rt_const_cstr("bad"));
+    rt_shortcuts_register(
+        rt_const_cstr("save"), rt_const_cstr("Ctrl+NotAKey"), rt_const_cstr("bad"));
     assert(app.shortcut_count == 1);
     assert(strcmp(app.shortcuts[0].keys, "Ctrl+S") == 0);
     assert(app.shortcuts[0].parsed_key == 'S');
@@ -2649,6 +2691,8 @@ int main(void) {
     test_treeview_and_listbox_data_preserve_embedded_nuls();
     test_listbox_selection_changed_is_edge_triggered();
     test_runtime_listbox_select_index_rejects_out_of_range_indices();
+    test_runtime_listbox_selected_text_copies_multi_selection();
+    test_runtime_listbox_item_text_color_override();
     test_treeview_selection_changed_reports_removal_and_clear();
     test_removed_listbox_and_treeview_handles_are_inert();
     test_listbox_and_treeview_reject_foreign_child_handles();

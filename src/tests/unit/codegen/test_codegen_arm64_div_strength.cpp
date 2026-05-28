@@ -177,10 +177,8 @@ TEST(AArch64DivStrength, SDivByNegativeConstantUsesMagicMultiply) {
     for (const auto &instr : bb.instrs) {
         if (instr.opc == MOpcode::SmulhRRR)
             foundSmulh = true;
-        if (instr.opc == MOpcode::SubRRR &&
-            instr.ops.size() == 3 &&
-            instr.ops[1].kind == MOperand::Kind::Reg &&
-            instr.ops[2].kind == MOperand::Kind::Reg) {
+        if (instr.opc == MOpcode::SubRRR && instr.ops.size() == 3 &&
+            instr.ops[1].kind == MOperand::Kind::Reg && instr.ops[2].kind == MOperand::Kind::Reg) {
             foundNegate = true;
         }
         EXPECT_NE(instr.opc, MOpcode::SDivRRR);
@@ -199,13 +197,16 @@ TEST(AArch64DivStrength, SDivStrengthReductionUsesDominatingConstant) {
     fn.blocks.push_back(MBasicBlock{"entry", {}});
     auto &bb = fn.blocks.back();
 
-    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X15), MOperand::immOp(3)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X15), MOperand::immOp(3)}});
     bb.instrs.push_back(MInstr{MOpcode::SDivRRR,
                                {MOperand::regOp(PhysReg::X13),
                                 MOperand::regOp(PhysReg::X14),
                                 MOperand::regOp(PhysReg::X15)}});
-    bb.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X13)}});
-    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X15), MOperand::immOp(5)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X13)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X15), MOperand::immOp(5)}});
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     auto stats = runPeephole(fn);
@@ -214,10 +215,8 @@ TEST(AArch64DivStrength, SDivStrengthReductionUsesDominatingConstant) {
     bool foundMagicDiv3 = false;
     for (const auto &instr : bb.instrs) {
         if (instr.opc == MOpcode::MovRI && instr.ops.size() == 2 &&
-            instr.ops[0].kind == MOperand::Kind::Reg &&
-            instr.ops[0].reg.isPhys &&
-            instr.ops[1].kind == MOperand::Kind::Imm &&
-            instr.ops[1].imm == kMagicDiv3) {
+            instr.ops[0].kind == MOperand::Kind::Reg && instr.ops[0].reg.isPhys &&
+            instr.ops[1].kind == MOperand::Kind::Imm && instr.ops[1].imm == kMagicDiv3) {
             foundMagicDiv3 = true;
             break;
         }

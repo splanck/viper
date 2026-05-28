@@ -23,10 +23,10 @@
 //        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
-#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -138,7 +138,8 @@ static void colorpalette_destroy(vg_widget_t *widget) {
     palette->color_count = 0;
 }
 
-/// @brief VTable measure: computes grid dimensions from column count × swatch_size + gaps, then applies constraints; falls back to a single swatch size when the palette is empty.
+/// @brief VTable measure: computes grid dimensions from column count × swatch_size + gaps, then
+/// applies constraints; falls back to a single swatch size when the palette is empty.
 static void colorpalette_measure(vg_widget_t *widget,
                                  float available_width,
                                  float available_height) {
@@ -179,7 +180,8 @@ static void colorpalette_measure(vg_widget_t *widget,
     }
 }
 
-/// @brief VTable paint: fills the background, draws each swatch in the grid, and renders a double-border highlight around the selected swatch.
+/// @brief VTable paint: fills the background, draws each swatch in the grid, and renders a
+/// double-border highlight around the selected swatch.
 static void colorpalette_paint(vg_widget_t *widget, void *canvas) {
     vg_colorpalette_t *palette = (vg_colorpalette_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
@@ -264,7 +266,8 @@ static int colorpalette_hit_test_swatch(vg_colorpalette_t *palette, float x, flo
     return index;
 }
 
-/// @brief VTable handle_event: hit-tests mouse-down and click events against the swatch grid, updating selected_index and firing on_select on a confirmed click.
+/// @brief VTable handle_event: hit-tests mouse-down and click events against the swatch grid,
+/// updating selected_index and firing on_select on a confirmed click.
 static bool colorpalette_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_colorpalette_t *palette = (vg_colorpalette_t *)widget;
 

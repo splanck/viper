@@ -190,8 +190,7 @@ static void *bytes_from_vector(const std::vector<uint8_t> &bytes) {
 static size_t find_zip_signature(const std::vector<uint8_t> &bytes, uint32_t sig) {
     for (size_t i = 0; i + 4 <= bytes.size(); ++i) {
         uint32_t found = (uint32_t)bytes[i] | ((uint32_t)bytes[i + 1] << 8) |
-                         ((uint32_t)bytes[i + 2] << 16) |
-                         ((uint32_t)bytes[i + 3] << 24);
+                         ((uint32_t)bytes[i + 2] << 16) | ((uint32_t)bytes[i + 3] << 24);
         if (found == sig) {
             return i;
         }
@@ -533,7 +532,8 @@ static void test_path_retained_after_caller_release() {
     rt_string_unref(owned_path);
 
     for (int i = 0; i < 64; i++) {
-        rt_string noise = rt_string_from_bytes("path-lifetime-noise", strlen("path-lifetime-noise"));
+        rt_string noise =
+            rt_string_from_bytes("path-lifetime-noise", strlen("path-lifetime-noise"));
         rt_string_unref(noise);
     }
 

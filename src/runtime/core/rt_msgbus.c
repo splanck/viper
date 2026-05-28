@@ -48,8 +48,8 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
-#include <setjmp.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -237,9 +237,7 @@ static void mb_release_bus(rt_msgbus_impl *mb) {
 /// @param callbacks Snapshot array of callback pointers (modified in place).
 /// @param retained  Parallel array of one-byte "was retained" flags (may be NULL).
 /// @param index     Slot to release; negative indices are ignored.
-static void mb_release_snapshot_callback(void **callbacks,
-                                         unsigned char *retained,
-                                         int64_t index) {
+static void mb_release_snapshot_callback(void **callbacks, unsigned char *retained, int64_t index) {
     if (!callbacks || index < 0)
         return;
     void *callback = callbacks[index];
@@ -372,8 +370,8 @@ static void mb_free_topic_node(mb_topic *t) {
 ///          user data traps, the remaining nodes are still released (no leak)
 ///          and the original error is preserved and re-raised afterward.
 static void mb_free_sub_chain(mb_sub *s) {
-    mb_sub * volatile cursor = s;
-    mb_sub * volatile active_sub = NULL;
+    mb_sub *volatile cursor = s;
+    mb_sub *volatile active_sub = NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -416,8 +414,8 @@ static void mb_free_sub_chain(mb_sub *s) {
 ///          name and free the node. Iterative (no recursion) so deep buckets don't
 ///          consume stack.
 static void mb_free_topic_chain(mb_topic *t) {
-    mb_topic * volatile cursor = t;
-    mb_topic * volatile active_topic = NULL;
+    mb_topic *volatile cursor = t;
+    mb_topic *volatile active_topic = NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -892,8 +890,9 @@ int8_t rt_msgbus_unsubscribe(void *obj, int64_t sub_id) {
                         snprintf(saved_error,
                                  sizeof(saved_error),
                                  "%s",
-                                 err && err[0] ? err
-                                               : "rt_msgbus_unsubscribe: trap while freeing subscription");
+                                 err && err[0]
+                                     ? err
+                                     : "rt_msgbus_unsubscribe: trap while freeing subscription");
                         rt_trap_clear_recovery();
                         mb_free_sub(victim);
                         mb_free_topic_node(empty_topic);
@@ -962,7 +961,8 @@ int64_t rt_msgbus_publish(void *obj, rt_string topic, void *data) {
         rt_trap("rt_msgbus: memory allocation failed");
         return 0;
     }
-    unsigned char *callback_retained = (unsigned char *)calloc((size_t)t->count, sizeof(unsigned char));
+    unsigned char *callback_retained =
+        (unsigned char *)calloc((size_t)t->count, sizeof(unsigned char));
     if (!callback_retained) {
         mb_unlock(mb);
         free(callbacks);

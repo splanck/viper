@@ -136,7 +136,8 @@ static const char *strcasestr_custom(const char *haystack, const char *needle) {
     return NULL;
 }
 
-/// @brief VTable set_font trampoline — propagates a font change to all text inputs and buttons in the bar.
+/// @brief VTable set_font trampoline — propagates a font change to all text inputs and buttons in
+/// the bar.
 static void findreplacebar_set_font_widget(vg_widget_t *widget, void *font, float size) {
     if (!widget || !font)
         return;
@@ -199,12 +200,11 @@ static uint32_t fr_utf8_decode_at(const char *p, size_t max_len) {
         return s[0];
     if (max_len >= 2 && (s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80)
         return ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
-    if (max_len >= 3 && (s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 &&
-        (s[2] & 0xC0) == 0x80)
+    if (max_len >= 3 && (s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80)
         return ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
                (uint32_t)(s[2] & 0x3F);
-    if (max_len >= 4 && (s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 &&
-        (s[2] & 0xC0) == 0x80 && (s[3] & 0xC0) == 0x80)
+    if (max_len >= 4 && (s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80 &&
+        (s[3] & 0xC0) == 0x80)
         return ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
                ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
     return 0xFFFD;
@@ -462,7 +462,8 @@ static bool fr_regex_match_repeat(const char *atom,
     if (fr_regex_match_atom(atom, text, case_sensitive, &after_atom, &atom_len) && atom_len > 0) {
         size_t tail_len = 0;
         int next_min = min_count > 0 ? min_count - 1 : 0;
-        if (fr_regex_match_repeat(atom, rest, text + atom_len, case_sensitive, next_min, &tail_len)) {
+        if (fr_regex_match_repeat(
+                atom, rest, text + atom_len, case_sensitive, next_min, &tail_len)) {
             *matched_len = atom_len + tail_len;
             return true;
         }
@@ -759,7 +760,8 @@ static void on_find_next_click(vg_widget_t *btn, void *user_data) {
     vg_findreplacebar_find_next(bar);
 }
 
-/// @brief Button callback: replaces the current match with the replacement text in the linked editor.
+/// @brief Button callback: replaces the current match with the replacement text in the linked
+/// editor.
 static void on_replace_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
@@ -784,7 +786,8 @@ static void on_close_click(vg_widget_t *btn, void *user_data) {
     }
 }
 
-/// @brief Checkbox callback: re-runs the current search when a match option (case, whole-word, regex) changes.
+/// @brief Checkbox callback: re-runs the current search when a match option (case, whole-word,
+/// regex) changes.
 static void on_option_change(vg_widget_t *cb, bool checked, void *user_data) {
     (void)checked;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
@@ -808,7 +811,8 @@ static void on_option_change(vg_widget_t *cb, bool checked, void *user_data) {
     perform_search(bar);
 }
 
-/// @brief Text-input callback: triggers a live search in the linked editor as the find query text changes.
+/// @brief Text-input callback: triggers a live search in the linked editor as the find query text
+/// changes.
 static void on_find_text_change(vg_widget_t *input, const char *text, void *user_data) {
     (void)input;
     (void)text;
@@ -906,7 +910,8 @@ vg_findreplacebar_t *vg_findreplacebar_create(void) {
     return bar;
 }
 
-/// @brief VTable destroy: releases input capture if held; child widgets freed by base widget hierarchy.
+/// @brief VTable destroy: releases input capture if held; child widgets freed by base widget
+/// hierarchy.
 static void findreplacebar_destroy(vg_widget_t *widget) {
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)widget;
 
@@ -916,7 +921,8 @@ static void findreplacebar_destroy(vg_widget_t *widget) {
     // Child widgets are destroyed by parent destruction
 }
 
-/// @brief VTable measure: determines bar height from single vs. double row (show_replace), then claims available width.
+/// @brief VTable measure: determines bar height from single vs. double row (show_replace), then
+/// claims available width.
 static void findreplacebar_measure(vg_widget_t *widget,
                                    float available_width,
                                    float available_height) {
@@ -928,7 +934,8 @@ static void findreplacebar_measure(vg_widget_t *widget,
         bar->show_replace ? FINDREPLACEBAR_HEIGHT_REPLACE : FINDREPLACEBAR_HEIGHT;
 }
 
-/// @brief VTable arrange: lays out find/replace rows, option checkboxes, and navigation buttons within the bar bounds.
+/// @brief VTable arrange: lays out find/replace rows, option checkboxes, and navigation buttons
+/// within the bar bounds.
 static void findreplacebar_arrange(
     vg_widget_t *widget, float x, float y, float width, float height) {
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)widget;
@@ -1021,7 +1028,8 @@ static void findreplacebar_arrange(
     findreplacebar_apply_replace_visibility(bar);
 }
 
-/// @brief VTable paint: draws the bar background, separator line, and match-count label; child widgets paint themselves.
+/// @brief VTable paint: draws the bar background, separator line, and match-count label; child
+/// widgets paint themselves.
 static void findreplacebar_paint(vg_widget_t *widget, void *canvas) {
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -1076,7 +1084,8 @@ static void findreplacebar_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief VTable handle_event: handles Escape to close the bar and Tab/Shift-Tab to cycle focus between find/replace inputs.
+/// @brief VTable handle_event: handles Escape to close the bar and Tab/Shift-Tab to cycle focus
+/// between find/replace inputs.
 static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)widget;
 
@@ -1120,8 +1129,7 @@ static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) 
             event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_x : event->mouse.screen_x;
         float screen_y =
             event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_y : event->mouse.screen_y;
-        vg_widget_t *target =
-            vg_widget_hit_test(widget, screen_x, screen_y);
+        vg_widget_t *target = vg_widget_hit_test(widget, screen_x, screen_y);
         if (target && target != widget) {
             return vg_event_send(target, event);
         }

@@ -72,24 +72,22 @@ static uint32_t commandpalette_decode_utf8(const char **cursor) {
     const unsigned char *s = (const unsigned char *)*cursor;
     if (!s || !*s)
         return 0;
-    size_t remaining = strlen((const char *)s);
     if (s[0] < 0x80) {
         *cursor += 1;
         return s[0];
     }
-    if (remaining >= 2 && (s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) {
+    if ((s[0] & 0xE0) == 0xC0 && s[1] && (s[1] & 0xC0) == 0x80) {
         uint32_t cp = ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
         *cursor += 2;
         return cp >= 0x80 ? cp : 0xFFFD;
     }
-    if (remaining >= 3 && (s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 &&
-        (s[2] & 0xC0) == 0x80) {
+    if ((s[0] & 0xF0) == 0xE0 && s[1] && s[2] && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80) {
         uint32_t cp = ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
                       (uint32_t)(s[2] & 0x3F);
         *cursor += 3;
         return cp >= 0x800 && !(cp >= 0xD800 && cp <= 0xDFFF) ? cp : 0xFFFD;
     }
-    if (remaining >= 4 && (s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 &&
+    if ((s[0] & 0xF8) == 0xF0 && s[1] && s[2] && s[3] && (s[1] & 0xC0) == 0x80 &&
         (s[2] & 0xC0) == 0x80 && (s[3] & 0xC0) == 0x80) {
         uint32_t cp = ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
                       ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
@@ -114,7 +112,8 @@ static bool commandpalette_is_word_boundary(uint32_t cp) {
     return cp == 0 || cp == ' ' || cp == '_' || cp == '-';
 }
 
-/// @brief Compute a fuzzy-match score for pattern against text; returns 0 (no match) or a positive score (higher = better).
+/// @brief Compute a fuzzy-match score for pattern against text; returns 0 (no match) or a positive
+/// score (higher = better).
 static int fuzzy_match_score(const char *pattern, const char *text) {
     if (!pattern || !text)
         return 0;
@@ -246,7 +245,8 @@ static void commandpalette_ensure_selection_visible(vg_commandpalette_t *palette
     }
 }
 
-/// @brief Encode a Unicode codepoint to UTF-8 in out[]; returns byte length (1-4) or 0 for invalid codepoints.
+/// @brief Encode a Unicode codepoint to UTF-8 in out[]; returns byte length (1-4) or 0 for invalid
+/// codepoints.
 static size_t utf8_encode_codepoint(uint32_t codepoint, char out[4]) {
     if (codepoint >= 0xD800 && codepoint <= 0xDFFF)
         return 0;
@@ -388,7 +388,8 @@ void vg_commandpalette_destroy(vg_commandpalette_t *palette) {
     vg_widget_destroy(&palette->base);
 }
 
-/// @brief vtable measure — compute desired size as fixed width × (search bar + visible_count × item_height).
+/// @brief vtable measure — compute desired size as fixed width × (search bar + visible_count ×
+/// item_height).
 static void commandpalette_measure(vg_widget_t *widget,
                                    float available_width,
                                    float available_height) {
@@ -406,7 +407,8 @@ static void commandpalette_measure(vg_widget_t *widget,
     widget->measured_height = search_height + visible * palette->item_height;
 }
 
-/// @brief vtable paint — draw the search bar (query or placeholder) and the visible filtered result rows.
+/// @brief vtable paint — draw the search bar (query or placeholder) and the visible filtered result
+/// rows.
 static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
     vg_commandpalette_t *palette = (vg_commandpalette_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
@@ -422,8 +424,7 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
 
     vgfx_fill_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, palette->bg_color);
     vgfx_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, 0xFF3C3C3C);
-    vgfx_fill_rect(
-        win, (int32_t)x, (int32_t)(y + search_height - 1.0f), (int32_t)w, 1, 0xFF3C3C3C);
+    vgfx_fill_rect(win, (int32_t)x, (int32_t)(y + search_height - 1.0f), (int32_t)w, 1, 0xFF3C3C3C);
 
     if (palette->font) {
         const char *query =
@@ -433,13 +434,8 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
         uint32_t query_color = (palette->current_query && palette->current_query[0])
                                    ? palette->text_color
                                    : palette->shortcut_color;
-        vg_font_draw_text(canvas,
-                          palette->font,
-                          palette->font_size,
-                          x + 12.0f,
-                          y + 24.0f,
-                          query,
-                          query_color);
+        vg_font_draw_text(
+            canvas, palette->font, palette->font_size, x + 12.0f, y + 24.0f, query, query_color);
     }
 
     // Draw filtered results
@@ -495,7 +491,8 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief vtable handle_event — dispatch key input (typing, backspace, arrows, Enter, Escape) and mouse clicks/hover/scroll.
+/// @brief vtable handle_event — dispatch key input (typing, backspace, arrows, Enter, Escape) and
+/// mouse clicks/hover/scroll.
 static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_commandpalette_t *palette = (vg_commandpalette_t *)widget;
 
@@ -554,7 +551,8 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
             commandpalette_ensure_selection_visible(palette);
             if (palette->selected_index < palette->first_visible_index)
                 palette->selected_index = palette->first_visible_index;
-            if (palette->selected_index >= palette->first_visible_index + (int)palette->max_visible) {
+            if (palette->selected_index >=
+                palette->first_visible_index + (int)palette->max_visible) {
                 palette->selected_index =
                     palette->first_visible_index + (int)palette->max_visible - 1;
             }
@@ -566,7 +564,8 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
     if (event->type == VG_EVENT_MOUSE_MOVE) {
         float local_y = event->mouse.y - 36.0f;
         if (local_y >= 0.0f) {
-            int hovered = palette->first_visible_index + (int)(local_y / (float)palette->item_height);
+            int hovered =
+                palette->first_visible_index + (int)(local_y / (float)palette->item_height);
             if (hovered >= 0 && hovered < (int)palette->filtered_count &&
                 hovered < palette->first_visible_index + (int)palette->max_visible) {
                 if (palette->hovered_index != hovered) {
@@ -583,7 +582,8 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
     if (event->type == VG_EVENT_MOUSE_DOWN || event->type == VG_EVENT_CLICK) {
         float local_y = event->mouse.y - 36.0f;
         if (local_y >= 0.0f) {
-            int clicked = palette->first_visible_index + (int)(local_y / (float)palette->item_height);
+            int clicked =
+                palette->first_visible_index + (int)(local_y / (float)palette->item_height);
             if (clicked >= 0 && clicked < (int)palette->filtered_count &&
                 clicked < palette->first_visible_index + (int)palette->max_visible) {
                 palette->selected_index = clicked;
@@ -638,8 +638,7 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
         size_t new_cap = palette->command_capacity * 2;
         if (new_cap < 32)
             new_cap = 32;
-        if (new_cap <= palette->command_capacity ||
-            new_cap > SIZE_MAX / sizeof(vg_command_t *)) {
+        if (new_cap <= palette->command_capacity || new_cap > SIZE_MAX / sizeof(vg_command_t *)) {
             free_command(cmd);
             return NULL;
         }
@@ -704,7 +703,8 @@ vg_command_t *vg_commandpalette_get_command(vg_commandpalette_t *palette, const 
     return NULL;
 }
 
-/// @brief Show the palette, clearing any previous query and rebuilding the filtered list from all commands.
+/// @brief Show the palette, clearing any previous query and rebuilding the filtered list from all
+/// commands.
 ///
 /// @param palette Palette to show; may be NULL (no-op).
 void vg_commandpalette_show(vg_commandpalette_t *palette) {
@@ -773,8 +773,7 @@ void vg_commandpalette_execute_selected(vg_commandpalette_t *palette) {
     snapshot.shortcut = cmd->shortcut ? strdup(cmd->shortcut) : NULL;
     snapshot.category = cmd->category ? strdup(cmd->category) : NULL;
     if ((cmd->id && !snapshot.id) || (cmd->label && !snapshot.label) ||
-        (cmd->description && !snapshot.description) ||
-        (cmd->category && !snapshot.category) ||
+        (cmd->description && !snapshot.description) || (cmd->category && !snapshot.category) ||
         (cmd->shortcut && !snapshot.shortcut)) {
         free(snapshot.id);
         free(snapshot.label);
@@ -808,7 +807,8 @@ void vg_commandpalette_execute_selected(vg_commandpalette_t *palette) {
     free(snapshot.category);
 }
 
-/// @brief Register lifecycle callbacks invoked when a command is executed or the palette is dismissed.
+/// @brief Register lifecycle callbacks invoked when a command is executed or the palette is
+/// dismissed.
 ///
 /// @param palette    Palette to configure; may be NULL (no-op).
 /// @param on_execute Called after executing a command, before hiding; may be NULL.
@@ -835,6 +835,8 @@ void vg_commandpalette_set_callbacks(vg_commandpalette_t *palette,
 /// @param size    Point size.
 void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, float size) {
     if (!palette)
+        return;
+    if (palette->font == font && palette->font_size == size)
         return;
 
     palette->font = font;

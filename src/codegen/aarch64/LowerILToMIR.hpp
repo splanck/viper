@@ -21,8 +21,8 @@
 #pragma once
 
 #include <cstddef>
-#include <ostream>
 #include <optional>
+#include <ostream>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -48,9 +48,9 @@ class LowerILToMIR {
     /// @param ti Target info (calling convention, register names, alignment).
     /// @param stringLiteralByteLengths Optional per-symbol byte-length map for
     ///        runtime-string materialisation; the pointed-to map must outlive the lowerer.
-    explicit LowerILToMIR(
-        const TargetInfo &ti,
-        const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr) noexcept
+    explicit LowerILToMIR(const TargetInfo &ti,
+                          const std::unordered_map<std::string, std::size_t>
+                              *stringLiteralByteLengths = nullptr) noexcept
         : ti_(&ti), stringLiteralByteLengths_(stringLiteralByteLengths) {}
 
     /// @brief Register known named-argument counts for variadic callees.

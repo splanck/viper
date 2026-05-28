@@ -348,16 +348,18 @@ TEST(ConstFoldEdge, SDivChk0_Normal) {
 }
 
 TEST(ConstFoldEdge, ClampI64_InvertedBounds) {
-    auto module = buildRuntimeCallConstFoldTest(
-        "rt_clamp_i64", {Value::constInt(5), Value::constInt(10), Value::constInt(0)},
-        Type(Type::Kind::I64));
+    auto module =
+        buildRuntimeCallConstFoldTest("rt_clamp_i64",
+                                      {Value::constInt(5), Value::constInt(10), Value::constInt(0)},
+                                      Type(Type::Kind::I64));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, 5));
 }
 
 TEST(ConstFoldEdge, ClampF64_InvertedBounds) {
     auto module = buildRuntimeCallConstFoldTest(
-        "rt_clamp_f64", {Value::constFloat(-2.0), Value::constFloat(1.0), Value::constFloat(-1.0)},
+        "rt_clamp_f64",
+        {Value::constFloat(-2.0), Value::constFloat(1.0), Value::constFloat(-1.0)},
         Type(Type::Kind::F64));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToFloat(module, -1.0));

@@ -50,6 +50,7 @@ class Maze {
     hide Grid2D tiles;
     hide Pathfinder ghostPathfinder;
     hide SpriteBatch drawBatch;
+    hide Pixels wallLayer;
     hide Integer totalDots;
     hide Integer dotsRemaining;
 
@@ -61,6 +62,7 @@ class Maze {
         // Create Grid2D with dimensions and default value
         tiles = Grid2D.New(config.GRID_WIDTH, config.GRID_HEIGHT, config.TILE_EMPTY);
         drawBatch = SpriteBatch.New(1024);
+        wallLayer = null;
         totalDots = 0;
         dotsRemaining = 0;
 
@@ -254,7 +256,39 @@ class Maze {
 
     expose func reset() {
         tiles.Fill(config.TILE_EMPTY);
+        wallLayer = null;
         self.initializeMaze();
+    }
+
+    hide func ensureWallLayer() {
+        if wallLayer != null {
+            return;
+        }
+
+        sprites.prewarmGameplayAssets();
+        wallLayer = Pixels.New(config.PLAYFIELD_WIDTH, config.PLAYFIELD_HEIGHT);
+        wallLayer.Clear();
+
+        for y in 0..config.GRID_HEIGHT {
+            for x in 0..config.GRID_WIDTH {
+                var tile = tiles.Get(x, y);
+                if tile == config.TILE_WALL {
+                    var mask = 0;
+                    if self.isWall(x, y - 1) { mask = mask + 1; }
+                    if self.isWall(x + 1, y) { mask = mask + 2; }
+                    if self.isWall(x, y + 1) { mask = mask + 4; }
+                    if self.isWall(x - 1, y) { mask = mask + 8; }
+
+                    var wallSpr = sprites.getWallTile(mask);
+                    wallLayer.Copy(x * config.TILE_SIZE, y * config.TILE_SIZE,
+                                   wallSpr, 0, 0, wallSpr.Width, wallSpr.Height);
+                } else if tile == config.TILE_GATE {
+                    var gateSpr = sprites.getGate();
+                    wallLayer.Copy(x * config.TILE_SIZE, y * config.TILE_SIZE,
+                                   gateSpr, 0, 0, gateSpr.Width, gateSpr.Height);
+                }
+            }
+        }
     }
 
     expose func draw(canvas: Canvas) {
@@ -263,6 +297,9 @@ class Maze {
             pelletVisible = !pelletVisible;
         }
 
+        self.ensureWallLayer();
+        canvas.BlitAlpha(config.PLAYFIELD_X, config.PLAYFIELD_Y, wallLayer);
+
         drawBatch.Begin();
         for y in 0..config.GRID_HEIGHT {
             for x in 0..config.GRID_WIDTH {
@@ -270,21 +307,12 @@ class Maze {
                 var screenX = utils.gridToScreenX(x);
                 var screenY = utils.gridToScreenY(y);
 
-                if tile == config.TILE_WALL {
-                    var mask = 0;
-                    if self.isWall(x, y - 1) { mask = mask + 1; }
-                    if self.isWall(x + 1, y) { mask = mask + 2; }
-                    if self.isWall(x, y + 1) { mask = mask + 4; }
-                    if self.isWall(x - 1, y) { mask = mask + 8; }
-                    drawBatch.DrawPixels(sprites.getWallTile(mask), screenX, screenY);
-                } else if tile == config.TILE_DOT {
+                if tile == config.TILE_DOT {
                     drawBatch.DrawPixels(sprites.getDot(), screenX, screenY);
                 } else if tile == config.TILE_PELLET {
                     if pelletVisible {
                         drawBatch.DrawPixels(sprites.getPellet(), screenX, screenY);
                     }
-                } else if tile == config.TILE_GATE {
-                    drawBatch.DrawPixels(sprites.getGate(), screenX, screenY);
                 }
             }
         }

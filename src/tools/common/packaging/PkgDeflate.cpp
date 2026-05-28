@@ -351,8 +351,9 @@ static HuffmanTree *sFixedLitTree = nullptr;
 static HuffmanTree *sFixedDistTree = nullptr;
 static std::once_flag sFixedTreesFlag;
 
-/// @brief Initialize the RFC 1951 §3.2.6 fixed Huffman trees exactly once (thread-safe via `std::call_once`).
-/// The trees are heap-allocated and intentionally never freed — read-only after initialization.
+/// @brief Initialize the RFC 1951 §3.2.6 fixed Huffman trees exactly once (thread-safe via
+/// `std::call_once`). The trees are heap-allocated and intentionally never freed — read-only after
+/// initialization.
 static void initFixedTrees() {
     std::call_once(sFixedTreesFlag, []() {
         // Literal/length code lengths (RFC 1951 section 3.2.6)
@@ -404,12 +405,12 @@ struct OutputBuffer {
         len = 0;
     }
 
-    /// @brief Grow the decompression buffer; throws `DeflateError` if the output size limit is reached.
+    /// @brief Grow the decompression buffer; throws `DeflateError` if the output size limit is
+    /// reached.
     void ensure(size_t need) {
         if (need > maxOutput || len > maxOutput - need) {
             const size_t maxMB = maxOutput / (1024u * 1024u);
-            throw DeflateError("inflate: output exceeds " + std::to_string(maxMB) +
-                               " MB limit");
+            throw DeflateError("inflate: output exceeds " + std::to_string(maxMB) + " MB limit");
         }
         if (len + need > capacity) {
             size_t newCap = capacity * 2;
@@ -685,7 +686,8 @@ struct LZ77State {
     static constexpr int kNil = -1;
 
     /// @brief Allocate `head[]` and `prev[]` arrays and initialize all entries to `kNil`.
-    /// `head` maps a 3-byte rolling hash to the most-recent position; `prev` is the sliding-window chain.
+    /// `head` maps a 3-byte rolling hash to the most-recent position; `prev` is the sliding-window
+    /// chain.
     void init() {
         head = static_cast<int *>(std::malloc(kHashSize * sizeof(int)));
         prev = static_cast<int *>(std::malloc(kWindowSize * sizeof(int)));
@@ -702,7 +704,8 @@ struct LZ77State {
             prev[i] = kNil;
     }
 
-    /// @brief Release `head` and `prev` arrays. Called on error paths; the destructor also frees them.
+    /// @brief Release `head` and `prev` arrays. Called on error paths; the destructor also frees
+    /// them.
     void free() {
         std::free(head);
         std::free(prev);
@@ -714,9 +717,9 @@ struct LZ77State {
         return ((d[0] << 10) ^ (d[1] << 5) ^ d[2]) & kHashMask;
     }
 
-    /// @brief Walk the hash chain for `data+pos` and return the longest match in the sliding window.
-    /// Sets `*matchDist` to the distance of the best match. Returns 0 if no match meets `kMinMatchLen`.
-    /// `maxChain` limits chain traversal depth to bound CPU cost.
+    /// @brief Walk the hash chain for `data+pos` and return the longest match in the sliding
+    /// window. Sets `*matchDist` to the distance of the best match. Returns 0 if no match meets
+    /// `kMinMatchLen`. `maxChain` limits chain traversal depth to bound CPU cost.
     int findMatch(const uint8_t *data, size_t pos, size_t len, int maxChain, int *matchDist) const {
         if (pos + kMinMatchLen > len)
             return 0;

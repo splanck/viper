@@ -12,9 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_list.h"
 #include "rt_locale.h"
 #include "rt_locale_manager.h"
-#include "rt_list.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -34,16 +34,16 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                         \
-    do {                                                                          \
-        g_expect_trap = 1;                                                         \
-        if (setjmp(g_trap_env) == 0) {                                            \
-            (void)(expr);                                                          \
-            g_expect_trap = 0;                                                     \
-            assert(!"expected runtime trap");                                     \
-        } else {                                                                   \
-            g_expect_trap = 0;                                                     \
-        }                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                      \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
     } while (0)
 
 static void test_result(const char *name, bool passed) {
@@ -181,9 +181,9 @@ static void test_property_accessors() {
         void *loc = rt_locale_parse(in);
         rt_string_unref(in);
         test_result("en-US.Language == \"en\"", field_eq(rt_locale_language(loc), "en"));
-        test_result("en-US.Script == \"\"",     field_eq(rt_locale_script(loc), ""));
-        test_result("en-US.Region == \"US\"",   field_eq(rt_locale_region(loc), "US"));
-        test_result("en-US.Tag == \"en-US\"",   field_eq(rt_locale_tag(loc), "en-US"));
+        test_result("en-US.Script == \"\"", field_eq(rt_locale_script(loc), ""));
+        test_result("en-US.Region == \"US\"", field_eq(rt_locale_region(loc), "US"));
+        test_result("en-US.Tag == \"en-US\"", field_eq(rt_locale_tag(loc), "en-US"));
     }
     {
         rt_string in = S("en-Latn-US");
@@ -244,11 +244,11 @@ static void test_equals() {
     rt_string_unref(b_str);
     rt_string_unref(c_str);
 
-    test_result("Equals(en-US, en-US) = 1",         rt_locale_equals(a, a) == 1);
-    test_result("Equals(en-US, EN_us canonical)",    rt_locale_equals(a, b) == 1);
-    test_result("Equals(en-US, fr-FR) = 0",         rt_locale_equals(a, c) == 0);
-    test_result("Equals(null, null) = 1",            rt_locale_equals(nullptr, nullptr) == 1);
-    test_result("Equals(a, null) = 0",               rt_locale_equals(a, nullptr) == 0);
+    test_result("Equals(en-US, en-US) = 1", rt_locale_equals(a, a) == 1);
+    test_result("Equals(en-US, EN_us canonical)", rt_locale_equals(a, b) == 1);
+    test_result("Equals(en-US, fr-FR) = 0", rt_locale_equals(a, c) == 0);
+    test_result("Equals(null, null) = 1", rt_locale_equals(nullptr, nullptr) == 1);
+    test_result("Equals(a, null) = 0", rt_locale_equals(a, nullptr) == 0);
 }
 
 //=============================================================================
@@ -277,9 +277,9 @@ static void test_fallbacks() {
         void *chain = rt_locale_fallbacks(loc);
         test_result("en-Latn-US chain length 4", list_len(chain) == 4);
         test_result("chain[0] = en-Latn-US", list_tag_at(chain, 0, "en-Latn-US"));
-        test_result("chain[1] = en-US",      list_tag_at(chain, 1, "en-US"));
-        test_result("chain[2] = en",         list_tag_at(chain, 2, "en"));
-        test_result("chain[3] = root",       list_tag_at(chain, 3, "root"));
+        test_result("chain[1] = en-US", list_tag_at(chain, 1, "en-US"));
+        test_result("chain[2] = en", list_tag_at(chain, 2, "en"));
+        test_result("chain[3] = root", list_tag_at(chain, 3, "root"));
     }
     // en-US -> [en-US, en, root]
     {
@@ -288,9 +288,9 @@ static void test_fallbacks() {
         rt_string_unref(in);
         void *chain = rt_locale_fallbacks(loc);
         test_result("en-US chain length 3", list_len(chain) == 3);
-        test_result("chain[0] = en-US",   list_tag_at(chain, 0, "en-US"));
-        test_result("chain[1] = en",      list_tag_at(chain, 1, "en"));
-        test_result("chain[2] = root",    list_tag_at(chain, 2, "root"));
+        test_result("chain[0] = en-US", list_tag_at(chain, 0, "en-US"));
+        test_result("chain[1] = en", list_tag_at(chain, 1, "en"));
+        test_result("chain[2] = root", list_tag_at(chain, 2, "root"));
     }
     // en -> [en, root]
     {
@@ -299,15 +299,15 @@ static void test_fallbacks() {
         rt_string_unref(in);
         void *chain = rt_locale_fallbacks(loc);
         test_result("en chain length 2", list_len(chain) == 2);
-        test_result("chain[0] = en",     list_tag_at(chain, 0, "en"));
-        test_result("chain[1] = root",   list_tag_at(chain, 1, "root"));
+        test_result("chain[0] = en", list_tag_at(chain, 0, "en"));
+        test_result("chain[1] = root", list_tag_at(chain, 1, "root"));
     }
     // root -> [root] (special case: invariant-only chain)
     {
         void *root = rt_locale_invariant();
         void *chain = rt_locale_fallbacks(root);
         test_result("root chain length 1", list_len(chain) == 1);
-        test_result("chain[0] = root",     list_tag_at(chain, 0, "root"));
+        test_result("chain[0] = root", list_tag_at(chain, 0, "root"));
     }
     // Extensions/variants fall back through their base tag.
     {
@@ -319,8 +319,8 @@ static void test_fallbacks() {
         test_result("extension chain[0] full tag",
                     list_tag_at(chain, 0, "en-US-u-ca-gregory-x-private"));
         test_result("extension chain[1] = en-US", list_tag_at(chain, 1, "en-US"));
-        test_result("extension chain[2] = en",    list_tag_at(chain, 2, "en"));
-        test_result("extension chain[3] = root",  list_tag_at(chain, 3, "root"));
+        test_result("extension chain[2] = en", list_tag_at(chain, 2, "en"));
+        test_result("extension chain[3] = root", list_tag_at(chain, 3, "root"));
     }
     {
         rt_string in = S("sl-rozaj-biske");
@@ -329,8 +329,8 @@ static void test_fallbacks() {
         void *chain = rt_locale_fallbacks(loc);
         test_result("variant chain length 3", list_len(chain) == 3);
         test_result("variant chain[0] full tag", list_tag_at(chain, 0, "sl-rozaj-biske"));
-        test_result("variant chain[1] = sl",      list_tag_at(chain, 1, "sl"));
-        test_result("variant chain[2] = root",    list_tag_at(chain, 2, "root"));
+        test_result("variant chain[1] = sl", list_tag_at(chain, 1, "sl"));
+        test_result("variant chain[2] = root", list_tag_at(chain, 2, "root"));
     }
 }
 

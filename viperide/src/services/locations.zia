@@ -16,6 +16,7 @@ final KIND_BUILD = 3;
 final KIND_DEFINITION = 4;
 final KIND_REFERENCE = 5;
 final KIND_SCENE = 6;
+final KIND_SYMBOL = 7;
 
 class Location {
     expose Integer id;

@@ -135,9 +135,8 @@ static struct rt_particle_snapshot_impl *checked_snapshot(rt_particle_snapshot s
 }
 
 rt_particle_snapshot rt_particle_snapshot_new(double x, double y, double size, int64_t color) {
-    struct rt_particle_snapshot_impl *snapshot =
-        (struct rt_particle_snapshot_impl *)rt_obj_new_i64(
-            RT_PARTICLE_SNAPSHOT_CLASS_ID, (int64_t)sizeof(struct rt_particle_snapshot_impl));
+    struct rt_particle_snapshot_impl *snapshot = (struct rt_particle_snapshot_impl *)rt_obj_new_i64(
+        RT_PARTICLE_SNAPSHOT_CLASS_ID, (int64_t)sizeof(struct rt_particle_snapshot_impl));
     if (!snapshot)
         return NULL;
     snapshot->x = x;
@@ -148,22 +147,26 @@ rt_particle_snapshot rt_particle_snapshot_new(double x, double y, double size, i
 }
 
 double rt_particle_snapshot_x(rt_particle_snapshot snapshot) {
-    snapshot = checked_snapshot(snapshot, "ParticleSnapshot.X: expected Viper.Game.ParticleSnapshot");
+    snapshot =
+        checked_snapshot(snapshot, "ParticleSnapshot.X: expected Viper.Game.ParticleSnapshot");
     return snapshot ? snapshot->x : 0.0;
 }
 
 double rt_particle_snapshot_y(rt_particle_snapshot snapshot) {
-    snapshot = checked_snapshot(snapshot, "ParticleSnapshot.Y: expected Viper.Game.ParticleSnapshot");
+    snapshot =
+        checked_snapshot(snapshot, "ParticleSnapshot.Y: expected Viper.Game.ParticleSnapshot");
     return snapshot ? snapshot->y : 0.0;
 }
 
 double rt_particle_snapshot_size(rt_particle_snapshot snapshot) {
-    snapshot = checked_snapshot(snapshot, "ParticleSnapshot.Size: expected Viper.Game.ParticleSnapshot");
+    snapshot =
+        checked_snapshot(snapshot, "ParticleSnapshot.Size: expected Viper.Game.ParticleSnapshot");
     return snapshot ? snapshot->size : 0.0;
 }
 
 int64_t rt_particle_snapshot_color(rt_particle_snapshot snapshot) {
-    snapshot = checked_snapshot(snapshot, "ParticleSnapshot.Color: expected Viper.Game.ParticleSnapshot");
+    snapshot =
+        checked_snapshot(snapshot, "ParticleSnapshot.Color: expected Viper.Game.ParticleSnapshot");
     return snapshot ? snapshot->color : 0;
 }
 
@@ -302,11 +305,8 @@ static uint32_t particle_alpha_over_rgba(uint32_t dst, uint32_t src) {
 }
 
 /// @brief Overflow-safe disc coverage test for arbitrary int64 centers.
-static int8_t particle_point_in_disc_i64(int64_t x,
-                                         int64_t y,
-                                         int64_t cx,
-                                         int64_t cy,
-                                         int64_t radius) {
+static int8_t particle_point_in_disc_i64(
+    int64_t x, int64_t y, int64_t cx, int64_t cy, int64_t radius) {
     long double dx = (long double)x - (long double)cx;
     long double dy = (long double)y - (long double)cy;
     long double rr = (long double)radius * (long double)radius;
@@ -416,7 +416,8 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles) {
 
 /// @brief Destroy a particle emitter and free its particle pool.
 void rt_particle_emitter_destroy(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Destroy: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.Destroy: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (rt_obj_release_check0(emitter))
@@ -425,8 +426,8 @@ void rt_particle_emitter_destroy(rt_particle_emitter emitter) {
 
 /// @brief Set the emission origin point (new particles spawn here).
 void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, double y) {
-    emitter =
-        checked_emitter(emitter, "ParticleEmitter.SetPosition: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter,
+                              "ParticleEmitter.SetPosition: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->x = particle_finite_or(x, emitter->x);
@@ -447,7 +448,8 @@ double rt_particle_emitter_y(rt_particle_emitter emitter) {
 
 /// @brief Set the emission rate in particles per update tick.
 void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.SetRate: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.SetRate: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (!isfinite(rate) || rate < 0.0)
@@ -467,8 +469,8 @@ double rt_particle_emitter_rate(rt_particle_emitter emitter) {
 void rt_particle_emitter_set_lifetime(rt_particle_emitter emitter,
                                       int64_t min_frames,
                                       int64_t max_frames) {
-    emitter =
-        checked_emitter(emitter, "ParticleEmitter.SetLifetime: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter,
+                              "ParticleEmitter.SetLifetime: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (min_frames < 1)
@@ -485,8 +487,8 @@ void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,
                                       double max_speed,
                                       double min_angle,
                                       double max_angle) {
-    emitter =
-        checked_emitter(emitter, "ParticleEmitter.SetVelocity: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter,
+                              "ParticleEmitter.SetVelocity: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (!isfinite(min_speed) || min_speed < 0.0)
@@ -515,7 +517,8 @@ void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, dou
 
 /// @brief Set the color for newly spawned particles (0xAARRGGBB, alpha in high byte).
 void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.SetColor: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.SetColor: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->color = color;
@@ -523,7 +526,8 @@ void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color) {
 
 /// @brief Set the initial size range for new particles (each gets a random value).
 void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, double max_size) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.SetSize: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.SetSize: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
     if (!isfinite(min_size) || min_size < 0.1)
@@ -558,7 +562,8 @@ void rt_particle_emitter_set_shrink(rt_particle_emitter emitter, int8_t shrink) 
 
 /// @brief Begin continuous particle emission at the configured rate.
 void rt_particle_emitter_start(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Start: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.Start: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
     emitter->emitting = 1;
@@ -588,13 +593,15 @@ int8_t rt_particle_emitter_fade_out(rt_particle_emitter emitter) {
 
 /// @brief Check whether size shrinking is enabled.
 int8_t rt_particle_emitter_shrink(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Shrink: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.Shrink: expected Viper.Game.ParticleEmitter");
     return emitter ? emitter->shrink : 0;
 }
 
 /// @brief Get the current emission color (0xAARRGGBB, alpha in high byte).
 int64_t rt_particle_emitter_color(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Color: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.Color: expected Viper.Game.ParticleEmitter");
     return emitter ? emitter->color : 0;
 }
 
@@ -629,7 +636,8 @@ static void emit_one(struct rt_particle_emitter_impl *e) {
 
 /// @brief Emit a one-shot burst of particles (up to the remaining capacity).
 void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Burst: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.Burst: expected Viper.Game.ParticleEmitter");
     if (!emitter || count < 1)
         return;
     for (int64_t i = 0; i < count && emitter->active_count < emitter->max_particles; i++) {
@@ -639,7 +647,8 @@ void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count) {
 
 /// @brief Advance all particles by one tick — apply gravity, age, fade/shrink, and spawn new ones.
 void rt_particle_emitter_update(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Update: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.Update: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
 
@@ -701,13 +710,15 @@ void rt_particle_emitter_update(rt_particle_emitter emitter) {
 
 /// @brief Get the number of currently active (alive) particles.
 int64_t rt_particle_emitter_count(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Count: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.Count: expected Viper.Game.ParticleEmitter");
     return emitter ? emitter->active_count : 0;
 }
 
 /// @brief Kill all active particles immediately, resetting the pool to empty.
 void rt_particle_emitter_clear(rt_particle_emitter emitter) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.Clear: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.Clear: expected Viper.Game.ParticleEmitter");
     if (!emitter)
         return;
     for (int64_t i = 0; i < emitter->max_particles; i++) {
@@ -775,8 +786,8 @@ int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
                                            void *pixels,
                                            int64_t offset_x,
                                            int64_t offset_y) {
-    emitter =
-        checked_emitter(emitter, "ParticleEmitter.DrawToPixels: expected Viper.Game.ParticleEmitter");
+    emitter = checked_emitter(emitter,
+                              "ParticleEmitter.DrawToPixels: expected Viper.Game.ParticleEmitter");
     if (!emitter || !pixels || rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
         return 0;
 
@@ -812,7 +823,8 @@ int64_t rt_particle_emitter_draw_at(rt_particle_emitter emitter,
                                     void *canvas,
                                     int64_t offset_x,
                                     int64_t offset_y) {
-    emitter = checked_emitter(emitter, "ParticleEmitter.DrawAt: expected Viper.Game.ParticleEmitter");
+    emitter =
+        checked_emitter(emitter, "ParticleEmitter.DrawAt: expected Viper.Game.ParticleEmitter");
     if (!emitter || !canvas || !rt_canvas_is_handle(canvas))
         return 0;
 

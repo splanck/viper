@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_channel.h"
 #include "rt_cancellation.h"
+#include "rt_channel.h"
 #include "rt_concmap.h"
 #include "rt_concqueue.h"
 #include "rt_debounce.h"

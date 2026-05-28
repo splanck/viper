@@ -44,10 +44,10 @@
 #include "rt_string.h"
 #include "rt_trap.h"
 
-#include <math.h>
 #include <locale.h>
-#include <stdint.h>
+#include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,8 +57,8 @@
 //===----------------------------------------------------------------------===//
 
 typedef struct rt_plural_rules_inst {
-    void                    *locale;  ///< strong Locale handle ref
-    const rt_locale_data_t  *data;    ///< non-owning
+    void *locale;                 ///< strong Locale handle ref
+    const rt_locale_data_t *data; ///< non-owning
 } rt_plural_rules_inst_t;
 
 /// @brief Drop one GC reference to @p obj and free it if the count hit zero.
@@ -90,8 +90,7 @@ static int plural_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
 #endif
 #if defined(_WIN32)
     _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
-    int n = c_locale ? _vsnprintf_l(out, cap, fmt, c_locale, args)
-                     : vsnprintf(out, cap, fmt, args);
+    int n = c_locale ? _vsnprintf_l(out, cap, fmt, c_locale, args) : vsnprintf(out, cap, fmt, args);
     if (c_locale)
         _free_locale(c_locale);
 #else
@@ -116,8 +115,8 @@ static int plural_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
 
 /// @brief CLDR operands packed for rule evaluation.
 typedef struct {
-    double  n;  ///< absolute value
-    double  i_d; ///< integer part as double, preserving INT64_MIN magnitude
+    double n;   ///< absolute value
+    double i_d; ///< integer part as double, preserving INT64_MIN magnitude
     int64_t i;  ///< integer part
     int64_t v;  ///< visible fraction digit count (with trailing zeros)
     int64_t f;  ///< visible fraction digits as integer (with trailing zeros)
@@ -235,12 +234,24 @@ static double eval_expr(const rt_plural_rule_node_t *node, const plural_operands
         case RT_PRN_VAR: {
             double v;
             switch (node->u.var.var) {
-                case RT_PVAR_N: v = op->n;    break;
-                case RT_PVAR_I: v = op->i_d;  break;
-                case RT_PVAR_V: v = (double)op->v; break;
-                case RT_PVAR_F: v = (double)op->f; break;
-                case RT_PVAR_T: v = (double)op->t; break;
-                default:        v = 0.0;      break;
+                case RT_PVAR_N:
+                    v = op->n;
+                    break;
+                case RT_PVAR_I:
+                    v = op->i_d;
+                    break;
+                case RT_PVAR_V:
+                    v = (double)op->v;
+                    break;
+                case RT_PVAR_F:
+                    v = (double)op->f;
+                    break;
+                case RT_PVAR_T:
+                    v = (double)op->t;
+                    break;
+                default:
+                    v = 0.0;
+                    break;
             }
             if (node->u.var.mod > 0)
                 return fmod(v, (double)node->u.var.mod);
@@ -307,7 +318,8 @@ static int eval_pred(const rt_plural_rule_node_t *node, const plural_operands_t 
 /// @brief Return the first rule entry whose predicate matches @p op,
 ///        defaulting to RT_PLURAL_OTHER when none do (CLDR fallback).
 static rt_plural_category_t walk_chain(const rt_plural_rule_entry_t *entries,
-                                       size_t count, const plural_operands_t *op) {
+                                       size_t count,
+                                       const plural_operands_t *op) {
     if (!entries || count == 0)
         return RT_PLURAL_OTHER;
     for (size_t i = 0; i < count; ++i) {
@@ -328,8 +340,7 @@ rt_plural_category_t rt_plural_rules_select_cardinal(const rt_locale_data_t *dat
     return walk_chain(data->plural_cardinal, data->cardinal_count, &op);
 }
 
-rt_plural_category_t rt_plural_rules_select_cardinal_int(const rt_locale_data_t *data,
-                                                         int64_t n) {
+rt_plural_category_t rt_plural_rules_select_cardinal_int(const rt_locale_data_t *data, int64_t n) {
     if (!data)
         return RT_PLURAL_OTHER;
     plural_operands_t op = operands_from_int(n);
@@ -345,13 +356,19 @@ rt_plural_category_t rt_plural_rules_select_ordinal(const rt_locale_data_t *data
 
 const char *rt_plural_rules_category_name(rt_plural_category_t cat) {
     switch (cat) {
-        case RT_PLURAL_ZERO:  return "zero";
-        case RT_PLURAL_ONE:   return "one";
-        case RT_PLURAL_TWO:   return "two";
-        case RT_PLURAL_FEW:   return "few";
-        case RT_PLURAL_MANY:  return "many";
+        case RT_PLURAL_ZERO:
+            return "zero";
+        case RT_PLURAL_ONE:
+            return "one";
+        case RT_PLURAL_TWO:
+            return "two";
+        case RT_PLURAL_FEW:
+            return "few";
+        case RT_PLURAL_MANY:
+            return "many";
         case RT_PLURAL_OTHER:
-        default:              return "other";
+        default:
+            return "other";
     }
 }
 
@@ -367,8 +384,8 @@ static rt_string category_to_string(rt_plural_category_t cat) {
 }
 
 void *rt_plural_rules_for_locale(void *locale) {
-    rt_plural_rules_inst_t *self = (rt_plural_rules_inst_t *)rt_obj_new_i64(
-        0, (int64_t)sizeof(rt_plural_rules_inst_t));
+    rt_plural_rules_inst_t *self =
+        (rt_plural_rules_inst_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_plural_rules_inst_t));
     if (!self) {
         rt_trap("Viper.Localization.PluralRules: allocation failed");
         return NULL;

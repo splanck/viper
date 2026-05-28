@@ -44,6 +44,17 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// Keep the cache root trivially initialized: native-linked tools may call this
+// runtime object before C++ global constructors from archive members have run.
+struct GitignoreCacheEntry {
+    std::string key;
+    int64_t modified{-2};
+    std::vector<std::string> patterns;
+    GitignoreCacheEntry *next{nullptr};
+};
+
+GitignoreCacheEntry *g_gitignoreCacheHead = nullptr;
+
 std::string toStd(rt_string s) {
     if (!s)
         return {};
@@ -139,8 +150,7 @@ bool wildcardMatchRec(std::string_view text, std::string_view pattern) {
         if (pi < pattern.size() && pattern[pi] == '*') {
             star = pi++;
             match = ti;
-        } else if (pi < pattern.size() &&
-                   (pattern[pi] == '?' || pattern[pi] == text[ti])) {
+        } else if (pi < pattern.size() && (pattern[pi] == '?' || pattern[pi] == text[ti])) {
             pi++;
             ti++;
         } else if (star != std::string_view::npos) {
@@ -240,14 +250,68 @@ std::vector<std::string> readGitignorePatterns(const fs::path &root) {
     return patterns;
 }
 
-bool shouldIgnorePath(const fs::path &root,
-                      const std::string &relativePath,
-                      bool isDir,
-                      const std::vector<std::string> &extraPatterns,
-                      bool includeGitignore) {
-    static const char *hardExcludes[] = {
-        ".git/", ".hg/", ".svn/", ".viper/", ".viper-cache/", "build/", "cmake-build-*/",
-        "node_modules/", ".DS_Store"};
+int64_t fileTimeSeconds(const fs::path &path) {
+#ifdef _WIN32
+    struct _stat64i32 st{};
+    const std::wstring wide = path.wstring();
+    if (_wstat64i32(wide.c_str(), &st) != 0)
+        return -1;
+#else
+    struct stat st{};
+    if (stat(path.c_str(), &st) != 0)
+        return -1;
+#endif
+    return static_cast<int64_t>(st.st_mtime);
+}
+
+std::vector<std::string> cachedGitignorePatterns(const fs::path &root) {
+    std::error_code ec;
+    std::string key = normalizeSlashes(fs::absolute(root, ec).lexically_normal().string());
+    if (ec)
+        key = normalizeSlashes(root.lexically_normal().string());
+
+    const int64_t modified = fileTimeSeconds(root / ".gitignore");
+    for (GitignoreCacheEntry *entry = g_gitignoreCacheHead; entry; entry = entry->next) {
+        if (entry->key == key && entry->modified == modified)
+            return entry->patterns;
+    }
+
+    std::vector<std::string> patterns;
+    if (modified >= 0)
+        patterns = readGitignorePatterns(root);
+
+    for (GitignoreCacheEntry *entry = g_gitignoreCacheHead; entry; entry = entry->next) {
+        if (entry->key == key) {
+            entry->modified = modified;
+            entry->patterns = patterns;
+            return patterns;
+        }
+    }
+
+    auto *entry = new GitignoreCacheEntry();
+    entry->key = key;
+    entry->modified = modified;
+    entry->patterns = patterns;
+    entry->next = g_gitignoreCacheHead;
+    g_gitignoreCacheHead = entry;
+    return patterns;
+}
+
+bool shouldIgnorePathWithPatterns(const std::string &relativePath,
+                                  bool isDir,
+                                  const std::vector<std::string> &extraPatterns,
+                                  const std::vector<std::string> &gitignorePatterns) {
+    static const char *hardExcludes[] = {".*/",
+                                         ".*",
+                                         ".git/",
+                                         ".hg/",
+                                         ".svn/",
+                                         ".viper/",
+                                         ".viper-cache/",
+                                         "build/",
+                                         "cmake-build-*/",
+                                         "node_modules/",
+                                         ".DS_Store"};
 
     std::string rel = normalizeSlashes(relativePath);
     for (const char *pattern : hardExcludes) {
@@ -256,10 +320,7 @@ bool shouldIgnorePath(const fs::path &root,
     }
 
     std::vector<std::string> patterns = extraPatterns;
-    if (includeGitignore) {
-        auto fromGitignore = readGitignorePatterns(root);
-        patterns.insert(patterns.end(), fromGitignore.begin(), fromGitignore.end());
-    }
+    patterns.insert(patterns.end(), gitignorePatterns.begin(), gitignorePatterns.end());
 
     bool ignored = false;
     for (std::string pattern : patterns) {
@@ -275,6 +336,17 @@ bool shouldIgnorePath(const fs::path &root,
     return ignored;
 }
 
+bool shouldIgnorePath(const fs::path &root,
+                      const std::string &relativePath,
+                      bool isDir,
+                      const std::vector<std::string> &extraPatterns,
+                      bool includeGitignore) {
+    std::vector<std::string> gitignorePatterns;
+    if (includeGitignore)
+        gitignorePatterns = cachedGitignorePatterns(root);
+    return shouldIgnorePathWithPatterns(relativePath, isDir, extraPatterns, gitignorePatterns);
+}
+
 int64_t stablePathId(const std::string &path) {
     uint64_t hash = 1469598103934665603ULL;
     for (unsigned char ch : path) {
@@ -282,20 +354,6 @@ int64_t stablePathId(const std::string &path) {
         hash *= 1099511628211ULL;
     }
     return static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
-}
-
-int64_t fileTimeSeconds(const fs::path &path) {
-#ifdef _WIN32
-    struct _stat64i32 st {};
-    const std::wstring wide = path.wstring();
-    if (_wstat64i32(wide.c_str(), &st) != 0)
-        return -1;
-#else
-    struct stat st {};
-    if (stat(path.c_str(), &st) != 0)
-        return -1;
-#endif
-    return static_cast<int64_t>(st.st_mtime);
 }
 
 void *makeDiagnostic(const std::string &message,
@@ -338,18 +396,18 @@ std::string mapGetString(void *map, const char *key) {
 
 std::string eventTypeName(int64_t type) {
     switch (type) {
-    case RT_WATCH_EVENT_CREATED:
-        return "created";
-    case RT_WATCH_EVENT_MODIFIED:
-        return "modified";
-    case RT_WATCH_EVENT_DELETED:
-        return "deleted";
-    case RT_WATCH_EVENT_RENAMED:
-        return "renamed";
-    case RT_WATCH_EVENT_OVERFLOW:
-        return "overflow";
-    default:
-        return "none";
+        case RT_WATCH_EVENT_CREATED:
+            return "created";
+        case RT_WATCH_EVENT_MODIFIED:
+            return "modified";
+        case RT_WATCH_EVENT_DELETED:
+            return "deleted";
+        case RT_WATCH_EVENT_RENAMED:
+            return "renamed";
+        case RT_WATCH_EVENT_OVERFLOW:
+            return "overflow";
+        default:
+            return "none";
     }
 }
 
@@ -418,9 +476,8 @@ std::pair<std::string, std::string> splitDirectiveLine(const std::string &line) 
 
 std::string manifestKey(std::string key) {
     key = lower(key);
-    key.erase(std::remove_if(key.begin(), key.end(), [](char c) {
-                  return c == '-' || c == '_' || c == '.';
-              }),
+    key.erase(std::remove_if(
+                  key.begin(), key.end(), [](char c) { return c == '-' || c == '_' || c == '.'; }),
               key.end());
     return key;
 }
@@ -439,9 +496,7 @@ std::vector<std::string> readLines(const std::string &text) {
     return lines;
 }
 
-std::optional<size_t> offsetForLineColumn(const std::string &text,
-                                          int64_t line,
-                                          int64_t column) {
+std::optional<size_t> offsetForLineColumn(const std::string &text, int64_t line, int64_t column) {
     if (line < 1 || column < 1)
         return std::nullopt;
     int64_t curLine = 1;
@@ -490,8 +545,8 @@ bool loadEditRecord(void *obj, EditRecord &out, void *diagnostics, int64_t index
         return false;
     }
     if (out.startLine < 1 || out.startColumn < 1 || out.endLine < 1 || out.endColumn < 1) {
-        pushDiagnostic(diagnostics, "workspace edit has invalid 1-based range",
-                       out.file, index, "edit.range");
+        pushDiagnostic(
+            diagnostics, "workspace edit has invalid 1-based range", out.file, index, "edit.range");
         return false;
     }
     return true;
@@ -514,8 +569,11 @@ bool validateEditRecords(std::vector<EditRecord> &records,
             contents[record.file] = buffer.str();
         }
         if (record.expectedMtime >= 0 && fileTimeSeconds(record.file) != record.expectedMtime) {
-            pushDiagnostic(diagnostics, "edit target changed since expectedMtime",
-                           record.file, 0, "edit.version");
+            pushDiagnostic(diagnostics,
+                           "edit target changed since expectedMtime",
+                           record.file,
+                           0,
+                           "edit.version");
             ok = false;
             continue;
         }
@@ -523,8 +581,11 @@ bool validateEditRecords(std::vector<EditRecord> &records,
         auto start = offsetForLineColumn(text, record.startLine, record.startColumn);
         auto end = offsetForLineColumn(text, record.endLine, record.endColumn);
         if (!start || !end || *start > *end) {
-            pushDiagnostic(diagnostics, "workspace edit range is outside the file",
-                           record.file, 0, "edit.range");
+            pushDiagnostic(diagnostics,
+                           "workspace edit range is outside the file",
+                           record.file,
+                           0,
+                           "edit.range");
             ok = false;
             continue;
         }
@@ -541,8 +602,8 @@ bool validateEditRecords(std::vector<EditRecord> &records,
         });
         for (size_t i = 1; i < vec.size(); i++) {
             if (vec[i - 1]->endOffset > vec[i]->startOffset) {
-                pushDiagnostic(diagnostics, "workspace edit ranges overlap", file, 0,
-                               "edit.overlap");
+                pushDiagnostic(
+                    diagnostics, "workspace edit ranges overlap", file, 0, "edit.overlap");
                 ok = false;
             }
         }
@@ -574,6 +635,7 @@ void *rt_workspace_file_index_enumerate(rt_string root_s,
         extensions.insert(lower(ext));
     }
     const auto extraPatterns = splitList(toStd(excludes_csv));
+    const auto gitignorePatterns = cachedGitignorePatterns(root);
 
     fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
     fs::recursive_directory_iterator end;
@@ -583,7 +645,7 @@ void *rt_workspace_file_index_enumerate(rt_string root_s,
         if (relEc || rel.empty() || rel == ".")
             continue;
         bool isDir = it->is_directory(ec);
-        if (shouldIgnorePath(root, rel, isDir, extraPatterns, true)) {
+        if (shouldIgnorePathWithPatterns(rel, isDir, extraPatterns, gitignorePatterns)) {
             if (isDir)
                 it.disable_recursion_pending();
             continue;
@@ -605,7 +667,8 @@ void *rt_workspace_file_index_enumerate(rt_string root_s,
         mapSetStr(entry, "kind", isDir ? "directory" : "file");
         rt_map_set_bool(entry, rt_const_cstr("isDirectory"), isDir ? 1 : 0);
         rt_map_set_int(entry, rt_const_cstr("id"), stablePathId(normalizeSlashes(path)));
-        rt_map_set_int(entry, rt_const_cstr("size"),
+        rt_map_set_int(entry,
+                       rt_const_cstr("size"),
                        (!isDir && !ec) ? static_cast<int64_t>(it->file_size(ec)) : 0);
         rt_map_set_int(entry, rt_const_cstr("modified"), fileTimeSeconds(it->path()));
         seqPushOwned(out, entry);
@@ -639,8 +702,8 @@ void *rt_workspace_watcher_poll_batch(void *watcher, int64_t max_events) {
         mapSetStr(event, "path", toStd(path));
         mapSetStr(event, "typeName", eventTypeName(type));
         rt_map_set_int(event, rt_const_cstr("type"), type);
-        rt_map_set_bool(event, rt_const_cstr("requiresRescan"),
-                        type == RT_WATCH_EVENT_OVERFLOW ? 1 : 0);
+        rt_map_set_bool(
+            event, rt_const_cstr("requiresRescan"), type == RT_WATCH_EVENT_OVERFLOW ? 1 : 0);
         seqPushOwned(events, event);
     }
     return events;
@@ -685,7 +748,8 @@ void *rt_asset_resolver_resolve(rt_string scene_path_s,
         if (fs::exists(candidate, ec)) {
             const std::string resolved = fs::absolute(candidate, ec).lexically_normal().string();
             mapSetStr(result, "path", resolved);
-            mapSetStr(result, "displayPath", fs::relative(candidate, projectRoot, ec).generic_string());
+            mapSetStr(
+                result, "displayPath", fs::relative(candidate, projectRoot, ec).generic_string());
             mapSetStr(result, "source", source);
             rt_map_set_bool(result, rt_const_cstr("exists"), 1);
             rt_map_set_bool(result, rt_const_cstr("found"), 1);
@@ -738,8 +802,11 @@ void *rt_project_manifest_parse_text(rt_string text_s) {
                 sectionKind = "buildConfigs";
                 mapSetStr(sectionMap, "name", section.substr(6));
             } else {
-                pushDiagnostic(diagnostics, "unknown manifest section '" + section + "'",
-                               "", lineNo, "manifest.section");
+                pushDiagnostic(diagnostics,
+                               "unknown manifest section '" + section + "'",
+                               "",
+                               lineNo,
+                               "manifest.section");
                 releaseObject(sectionMap);
                 sectionMap = nullptr;
             }
@@ -750,8 +817,8 @@ void *rt_project_manifest_parse_text(rt_string text_s) {
 
         auto [key, value] = splitDirectiveLine(stripped);
         if (key.empty() || value.empty()) {
-            pushDiagnostic(diagnostics, "manifest directive missing value", "", lineNo,
-                           "manifest.value");
+            pushDiagnostic(
+                diagnostics, "manifest directive missing value", "", lineNo, "manifest.value");
             continue;
         }
         const std::string canonical = manifestKey(key);
@@ -785,8 +852,11 @@ void *rt_project_manifest_parse_text(rt_string text_s) {
             mapSetStr(run, "name", value);
             appendConfigMap(manifest, "runConfigs", run);
         } else {
-            pushDiagnostic(diagnostics, "unknown manifest directive '" + key + "'",
-                           "", lineNo, "manifest.directive");
+            pushDiagnostic(diagnostics,
+                           "unknown manifest directive '" + key + "'",
+                           "",
+                           lineNo,
+                           "manifest.directive");
         }
     }
 

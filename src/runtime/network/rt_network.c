@@ -67,7 +67,8 @@ static void rt_tcp_finalize(void *obj) {
     }
 }
 
-/// @brief GC finalizer for TCP server — close the listening socket and free the bound-address string.
+/// @brief GC finalizer for TCP server — close the listening socket and free the bound-address
+/// string.
 static void rt_tcp_server_finalize(void *obj) {
     if (!obj)
         return;
@@ -1037,7 +1038,8 @@ int8_t rt_tcp_server_is_listening(void *obj) {
 // TcpServer - Accept and Close
 //=============================================================================
 
-/// @brief Accept the next pending connection — blocks indefinitely. Returns a connected `rt_tcp_t*`.
+/// @brief Accept the next pending connection — blocks indefinitely. Returns a connected
+/// `rt_tcp_t*`.
 void *rt_tcp_server_accept(void *obj) {
     return rt_tcp_server_accept_for(obj, 0);
 }

@@ -209,9 +209,8 @@ std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const {
         result.assign(data_ + dataOff, data_ + dataOff + entry.compressedSize);
     } else if (entry.method == 8) {
         // DEFLATE
-        result = inflate(data_ + dataOff,
-                         entry.compressedSize,
-                         static_cast<size_t>(entry.uncompressedSize));
+        result = inflate(
+            data_ + dataOff, entry.compressedSize, static_cast<size_t>(entry.uncompressedSize));
     } else {
         throw ZipReadError("ZIP: unsupported compression method " + std::to_string(entry.method));
     }
@@ -221,8 +220,7 @@ std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const {
 
     // Verify CRC-32 for every entry, including zero-length files/directories.
     static constexpr uint8_t kEmpty = 0;
-    uint32_t actualCrc =
-        rt_crc32_compute(result.empty() ? &kEmpty : result.data(), result.size());
+    uint32_t actualCrc = rt_crc32_compute(result.empty() ? &kEmpty : result.data(), result.size());
     if (actualCrc != entry.crc32)
         throw ZipReadError("ZIP: CRC-32 mismatch for '" + entry.name + "'");
 

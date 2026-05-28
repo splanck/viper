@@ -44,11 +44,8 @@ static int tests_run = 0;
     do {                                                                                           \
         tests_run++;                                                                               \
         if (std::fabs((double)(a) - (double)(b)) > (eps)) {                                        \
-            std::fprintf(stderr,                                                                   \
-                         "FAIL: %s (got %f, expected %f)\n",                                       \
-                         msg,                                                                      \
-                         (double)(a),                                                              \
-                         (double)(b));                                                             \
+            std::fprintf(                                                                          \
+                stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));        \
         } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
@@ -89,7 +86,9 @@ static void test_navagent_bound_node_reaches_target_in_world_space() {
     EXPECT_NEAR(world[0], 4.0, 0.35, "NavAgent3D drives bound SceneNode3D in world X");
     EXPECT_NEAR(world[2], 4.0, 0.35, "NavAgent3D drives bound SceneNode3D in world Z");
     EXPECT_NEAR(rt_vec3_x(pos), world[0], 0.01, "NavAgent3D position matches bound node world X");
-    EXPECT_NEAR(rt_navagent3d_get_remaining_distance(agent), 0.0, 0.3,
+    EXPECT_NEAR(rt_navagent3d_get_remaining_distance(agent),
+                0.0,
+                0.3,
                 "NavAgent3D remaining distance reaches zero near the target");
     EXPECT_TRUE(rt_navagent3d_get_has_path(agent) == 0,
                 "NavAgent3D clears active path state after arriving");
@@ -116,7 +115,8 @@ static void test_navagent_bound_character_moves_controller() {
     vel = rt_navagent3d_get_velocity(agent);
     EXPECT_TRUE(rt_vec3_x(pos) > 1.5, "NavAgent3D advances a bound Character3D");
     EXPECT_TRUE(rt_vec3_x(vel) >= 0.0, "NavAgent3D exposes actual velocity after character motion");
-    EXPECT_TRUE(rt_navagent3d_get_has_path(agent) == 0 || rt_navagent3d_get_remaining_distance(agent) < 1.5,
+    EXPECT_TRUE(rt_navagent3d_get_has_path(agent) == 0 ||
+                    rt_navagent3d_get_remaining_distance(agent) < 1.5,
                 "NavAgent3D reduces remaining distance while driving Character3D");
 }
 
@@ -132,7 +132,8 @@ static void test_navagent_warp_resets_motion_and_rebuilds_path() {
     rt_navagent3d_warp(agent, rt_vec3_new(-3.0, 0.0, 0.0));
     pos = rt_navagent3d_get_position(agent);
     vel = rt_navagent3d_get_velocity(agent);
-    EXPECT_NEAR(rt_vec3_x(pos), -3.0, 0.2, "NavAgent3D.Warp moves immediately to the snapped position");
+    EXPECT_NEAR(
+        rt_vec3_x(pos), -3.0, 0.2, "NavAgent3D.Warp moves immediately to the snapped position");
     EXPECT_NEAR(rt_vec3_x(vel), 0.0, 0.001, "NavAgent3D.Warp clears the previous frame velocity");
     EXPECT_TRUE(rt_navagent3d_get_has_path(agent) != 0,
                 "NavAgent3D.Warp rebuilds a live path when a target is still active");
@@ -167,9 +168,13 @@ static void test_navagent_character_binding_updates_bound_node() {
 
     get_node_world_position(child, world_pos);
     char_pos = rt_character3d_get_position(character);
-    EXPECT_NEAR(world_pos[0], rt_vec3_x(char_pos), 0.01,
+    EXPECT_NEAR(world_pos[0],
+                rt_vec3_x(char_pos),
+                0.01,
                 "NavAgent3D mirrors bound Character3D X into the bound SceneNode3D");
-    EXPECT_NEAR(world_pos[2], rt_vec3_z(char_pos), 0.01,
+    EXPECT_NEAR(world_pos[2],
+                rt_vec3_z(char_pos),
+                0.01,
                 "NavAgent3D mirrors bound Character3D Z into the bound SceneNode3D");
 }
 

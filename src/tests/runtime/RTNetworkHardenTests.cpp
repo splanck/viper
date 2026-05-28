@@ -20,8 +20,8 @@
 
 #include "tests/common/PosixCompat.h"
 
-#include "rt_bytes.h"
 #include "rt_async_socket.h"
+#include "rt_bytes.h"
 #include "rt_error.h"
 #include "rt_future.h"
 #include "rt_internal.h"

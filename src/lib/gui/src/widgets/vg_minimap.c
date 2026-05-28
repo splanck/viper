@@ -42,7 +42,10 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event);
 static int minimap_document_line_count(const vg_minimap_t *minimap);
 static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y);
 static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line);
-static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *out_last);
+static int minimap_trimmed_line_bounds(const char *text,
+                                       int max_columns,
+                                       int *out_first,
+                                       int *out_last);
 static vg_codeeditor_t *minimap_live_editor(vg_minimap_t *minimap);
 
 //=============================================================================
@@ -106,12 +109,13 @@ void vg_minimap_destroy(vg_minimap_t *minimap) {
     vg_widget_destroy(&minimap->base);
 }
 
-/// @brief VTable measure: uses preferred_width constraint (default 96 px) for width and claims all available height.
+/// @brief VTable measure: uses preferred_width constraint (default 96 px) for width and claims all
+/// available height.
 static void minimap_measure(vg_widget_t *widget, float available_width, float available_height) {
     (void)available_width;
 
-    float width = widget->constraints.preferred_width > 0.0f ? widget->constraints.preferred_width
-                                                              : 96.0f;
+    float width =
+        widget->constraints.preferred_width > 0.0f ? widget->constraints.preferred_width : 96.0f;
     if (widget->constraints.min_width > 0.0f && width < widget->constraints.min_width)
         width = widget->constraints.min_width;
     if (widget->constraints.max_width > 0.0f && width > widget->constraints.max_width)
@@ -143,7 +147,8 @@ static vg_codeeditor_t *minimap_live_editor(vg_minimap_t *minimap) {
     return minimap->editor;
 }
 
-/// @brief Returns the line count of the linked editor, or 1 if no editor is attached or the editor is empty.
+/// @brief Returns the line count of the linked editor, or 1 if no editor is attached or the editor
+/// is empty.
 static int minimap_document_line_count(const vg_minimap_t *minimap) {
     vg_codeeditor_t *editor = minimap_live_editor((vg_minimap_t *)minimap);
     if (!editor || editor->line_count <= 0)
@@ -151,7 +156,8 @@ static int minimap_document_line_count(const vg_minimap_t *minimap) {
     return editor->line_count;
 }
 
-/// @brief Converts widget-local @p local_y to a document line index proportional to the inner drawing area height.
+/// @brief Converts widget-local @p local_y to a document line index proportional to the inner
+/// drawing area height.
 static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y) {
     if (!minimap_live_editor(minimap))
         return 0;
@@ -198,8 +204,12 @@ static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line) {
     minimap->base.needs_paint = true;
 }
 
-/// @brief Scans @p text for the first and last non-whitespace byte positions, writing them into @p out_first and @p out_last; returns 0 for blank lines.
-static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *out_last) {
+/// @brief Scans @p text for the first and last non-whitespace byte positions, writing them into @p
+/// out_first and @p out_last; returns 0 for blank lines.
+static int minimap_trimmed_line_bounds(const char *text,
+                                       int max_columns,
+                                       int *out_first,
+                                       int *out_last) {
     int first = -1;
     int last = -1;
 
@@ -211,11 +221,16 @@ static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *ou
         return 0;
     }
 
-    for (int i = 0; text[i]; i++) {
+    if (max_columns < 1)
+        max_columns = 1;
+
+    for (int i = 0; text[i] && i <= max_columns; i++) {
         if (text[i] != ' ' && text[i] != '\t') {
             if (first < 0)
                 first = i;
             last = i;
+            if (last >= max_columns)
+                break;
         }
     }
 
@@ -226,7 +241,8 @@ static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *ou
     return first >= 0 && last >= first;
 }
 
-/// @brief VTable paint: draws background, then proportional text bars for each document line, marker overlays, and the viewport highlight rectangle.
+/// @brief VTable paint: draws background, then proportional text bars for each document line,
+/// marker overlays, and the viewport highlight rectangle.
 static void minimap_paint(vg_widget_t *widget, void *canvas) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
     vg_codeeditor_t *editor = minimap_live_editor(minimap);
@@ -266,12 +282,17 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
     float visible_columns = 120.0f * (0.1f / scale);
     if (visible_columns < 24.0f)
         visible_columns = 24.0f;
+    int scan_columns = (int)(visible_columns + 1.0f);
+    if (scan_columns < 24)
+        scan_columns = 24;
+    if (scan_columns > 240)
+        scan_columns = 240;
 
     int max_lines_to_draw = inner_h * 2;
     if (max_lines_to_draw < 1)
         max_lines_to_draw = 1;
-    if (max_lines_to_draw > 2048)
-        max_lines_to_draw = 2048;
+    if (max_lines_to_draw > 1024)
+        max_lines_to_draw = 1024;
     int line_step = (line_count + max_lines_to_draw - 1) / max_lines_to_draw;
     if (line_step < 1)
         line_step = 1;
@@ -288,7 +309,7 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
 
         int first = -1;
         int last = -1;
-        if (!minimap_trimmed_line_bounds(editor->lines[line].text, &first, &last))
+        if (!minimap_trimmed_line_bounds(editor->lines[line].text, scan_columns, &first, &last))
             continue;
 
         float start_ratio = (float)first / visible_columns;
@@ -338,7 +359,8 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief VTable handle_event: handles mouse-down to start a drag-scroll and mouse-move while dragging, translating Y to a document line.
+/// @brief VTable handle_event: handles mouse-down to start a drag-scroll and mouse-move while
+/// dragging, translating Y to a document line.
 static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
     if (!minimap_live_editor(minimap))
@@ -348,7 +370,8 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_DOWN:
             minimap->dragging = true;
             minimap->drag_start_y = (int)event->mouse.y;
-            minimap_scroll_editor_to_line(minimap, minimap_line_from_local_y(minimap, event->mouse.y));
+            minimap_scroll_editor_to_line(minimap,
+                                          minimap_line_from_local_y(minimap, event->mouse.y));
             return true;
 
         case VG_EVENT_MOUSE_UP:
@@ -358,8 +381,8 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_MOUSE_MOVE:
             if (minimap->dragging) {
                 minimap->drag_start_y = (int)event->mouse.y;
-                minimap_scroll_editor_to_line(
-                    minimap, minimap_line_from_local_y(minimap, event->mouse.y));
+                minimap_scroll_editor_to_line(minimap,
+                                              minimap_line_from_local_y(minimap, event->mouse.y));
                 return true;
             }
             break;

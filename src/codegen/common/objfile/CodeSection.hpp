@@ -92,24 +92,20 @@ struct WinArm64UnwindEntry {
 class CodeSection {
   public:
     CodeSection() : sectionIdentity_(allocateSectionIdentity()) {}
+
     CodeSection(const CodeSection &other)
-        : bytes_(other.bytes_),
-          relocations_(other.relocations_),
-          symbols_(other.symbols_),
-          unwindEntries_(other.unwindEntries_),
-          win64UnwindEntries_(other.win64UnwindEntries_),
-          winArm64UnwindEntries_(other.winArm64UnwindEntries_),
-          offsetBias_(other.offsetBias_),
+        : bytes_(other.bytes_), relocations_(other.relocations_), symbols_(other.symbols_),
+          unwindEntries_(other.unwindEntries_), win64UnwindEntries_(other.win64UnwindEntries_),
+          winArm64UnwindEntries_(other.winArm64UnwindEntries_), offsetBias_(other.offsetBias_),
           sectionIdentityAliases_(other.sectionIdentityAliases_),
           sectionIdentity_(allocateSectionIdentity()) {
         addSectionIdentityAlias(other.sectionIdentity_);
         retargetSelfIdentity(other.sectionIdentity_, sectionIdentity_);
     }
+
     CodeSection(CodeSection &&other)
-        : bytes_(std::move(other.bytes_)),
-          relocations_(std::move(other.relocations_)),
-          symbols_(std::move(other.symbols_)),
-          unwindEntries_(std::move(other.unwindEntries_)),
+        : bytes_(std::move(other.bytes_)), relocations_(std::move(other.relocations_)),
+          symbols_(std::move(other.symbols_)), unwindEntries_(std::move(other.unwindEntries_)),
           win64UnwindEntries_(std::move(other.win64UnwindEntries_)),
           winArm64UnwindEntries_(std::move(other.winArm64UnwindEntries_)),
           offsetBias_(other.offsetBias_),
@@ -119,6 +115,7 @@ class CodeSection {
         other.sectionIdentityAliases_.clear();
         other.sectionIdentity_ = allocateSectionIdentity();
     }
+
     CodeSection &operator=(const CodeSection &other) {
         if (this == &other)
             return *this;
@@ -135,6 +132,7 @@ class CodeSection {
         retargetSelfIdentity(other.sectionIdentity_, sectionIdentity_);
         return *this;
     }
+
     CodeSection &operator=(CodeSection &&other) {
         if (this == &other)
             return *this;
@@ -270,7 +268,8 @@ class CodeSection {
                        SymbolSection targetSection = SymbolSection::Undefined) {
         if (symbolIndex >= symbols_.count())
             throw std::out_of_range("CodeSection relocation symbol index is out of range");
-        relocations_.push_back(Relocation{currentOffset(), kind, symbolIndex, addend, targetSection});
+        relocations_.push_back(
+            Relocation{currentOffset(), kind, symbolIndex, addend, targetSection});
     }
 
     /// Record a relocation at a specific offset.
@@ -303,7 +302,8 @@ class CodeSection {
                                     SymbolSection targetSection,
                                     size_t targetOffset,
                                     int64_t addend = 0) {
-        addSectionOffsetRelocationAt(currentOffset(), kind, target, targetSection, targetOffset, addend);
+        addSectionOffsetRelocationAt(
+            currentOffset(), kind, target, targetSection, targetOffset, addend);
     }
 
     /// Record a section-offset relocation at a specific source offset.
@@ -313,7 +313,8 @@ class CodeSection {
                                       size_t targetOffset,
                                       int64_t addend = 0) {
         if (targetSection == SymbolSection::Undefined)
-            throw std::invalid_argument("CodeSection section-offset relocation requires a target section");
+            throw std::invalid_argument(
+                "CodeSection section-offset relocation requires a target section");
         if (offset < offsetBias_ || offset - offsetBias_ > bytes_.size())
             throw std::out_of_range("CodeSection relocation offset is out of range");
         Relocation rel{offset, kind, 0, addend, targetSection};
@@ -330,7 +331,8 @@ class CodeSection {
                                       size_t targetOffset,
                                       int64_t addend = 0) {
         if (targetSection == SymbolSection::Undefined)
-            throw std::invalid_argument("CodeSection section-offset relocation requires a target section");
+            throw std::invalid_argument(
+                "CodeSection section-offset relocation requires a target section");
         if (offset < offsetBias_ || offset - offsetBias_ > bytes_.size())
             throw std::out_of_range("CodeSection relocation offset is out of range");
         Relocation rel{offset, kind, 0, addend, targetSection};
@@ -419,8 +421,9 @@ class CodeSection {
     bool matchesSectionIdentity(uint64_t identity) const {
         if (identity == sectionIdentity_)
             return true;
-        return std::find(sectionIdentityAliases_.begin(), sectionIdentityAliases_.end(), identity) !=
-               sectionIdentityAliases_.end();
+        return std::find(sectionIdentityAliases_.begin(),
+                         sectionIdentityAliases_.end(),
+                         identity) != sectionIdentityAliases_.end();
     }
 
     /// Return true when [offset, offset + width) is within emitted bytes.
@@ -493,7 +496,8 @@ class CodeSection {
 
         for (const auto &reloc : other.relocations()) {
             if (reloc.symbolIndex >= symbolRemap.size())
-                throw std::out_of_range("CodeSection append relocation symbol index is out of range");
+                throw std::out_of_range(
+                    "CodeSection append relocation symbol index is out of range");
             Relocation rebased = reloc;
             rebased.offset = rebaseLogicalOffset(reloc.offset);
             rebased.symbolIndex = symbolRemap[reloc.symbolIndex];
@@ -514,7 +518,8 @@ class CodeSection {
 
         for (const auto &entry : other.unwindEntries()) {
             if (entry.symbolIndex >= symbolRemap.size())
-                throw std::out_of_range("CodeSection append compact unwind symbol index is out of range");
+                throw std::out_of_range(
+                    "CodeSection append compact unwind symbol index is out of range");
             CompactUnwindEntry rebased = entry;
             rebased.symbolIndex = symbolRemap[entry.symbolIndex];
             unwindEntries_.push_back(rebased);
@@ -522,7 +527,8 @@ class CodeSection {
 
         for (const auto &entry : other.win64UnwindEntries()) {
             if (entry.symbolIndex >= symbolRemap.size())
-                throw std::out_of_range("CodeSection append Win64 unwind symbol index is out of range");
+                throw std::out_of_range(
+                    "CodeSection append Win64 unwind symbol index is out of range");
             Win64UnwindEntry rebased = entry;
             rebased.symbolIndex = symbolRemap[entry.symbolIndex];
             win64UnwindEntries_.push_back(std::move(rebased));

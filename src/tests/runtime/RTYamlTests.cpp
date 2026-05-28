@@ -232,8 +232,8 @@ static void test_duplicate_keys_are_invalid() {
 }
 
 static void test_yaml_12_boolean_keywords_and_plain_hashes() {
-    rt_string yaml =
-        make_str("answer: yes\npower: on\ndisabled: off\ntruth: true\ninf: inf\nnan: nan\nvalue: a#b # comment\n");
+    rt_string yaml = make_str("answer: yes\npower: on\ndisabled: off\ntruth: true\ninf: inf\nnan: "
+                              "nan\nvalue: a#b # comment\n");
     void *root = rt_yaml_parse(yaml);
     assert(root != nullptr);
 

@@ -64,8 +64,8 @@
 #include <io.h>
 #include <process.h>
 #include <sys/utime.h>
-#include <windows.h>
 #include <wchar.h>
+#include <windows.h>
 #else
 #include <utime.h>
 #endif
@@ -134,7 +134,9 @@ static uint64_t rt_fileext_random_u64(unsigned attempt) {
 /// @details Combines the parent directory prefix, `prefix`, PID, random entropy,
 ///          and `attempt` counter to produce a collision-resistant name. Returns a
 ///          heap-allocated string; caller must free. Returns NULL on alloc failure.
-static char *rt_fileext_make_parent_temp_path(const char *path, const char *prefix, unsigned attempt) {
+static char *rt_fileext_make_parent_temp_path(const char *path,
+                                              const char *prefix,
+                                              unsigned attempt) {
     size_t path_len = strlen(path);
     size_t parent_len = 0;
     for (size_t i = 0; i < path_len; ++i) {
@@ -163,13 +165,8 @@ static char *rt_fileext_make_parent_temp_path(const char *path, const char *pref
 #else
     unsigned long pid = (unsigned long)getpid();
 #endif
-    int written = snprintf(tmp + parent_len,
-                           cap - parent_len,
-                           "%s%lu.%s.%u",
-                           prefix,
-                           pid,
-                           nonce,
-                           attempt);
+    int written =
+        snprintf(tmp + parent_len, cap - parent_len, "%s%lu.%s.%u", prefix, pid, nonce, attempt);
     if (written < 0 || (size_t)written >= cap - parent_len) {
         free(tmp);
         return NULL;
@@ -306,6 +303,7 @@ static int rt_fileext_open(const char *path, int flags, int pmode) {
 #endif
     return fd;
 }
+
 #define rt_fileext_stat_path stat
 #define rt_fileext_unlink unlink
 #define rt_fileext_utime utime
@@ -593,7 +591,10 @@ static int rt_fileext_is_regular_mode(int mode) {
 /// @brief **Atomic-write to disk:** write to an exclusive temp sidecar, fsync (POSIX) or
 /// _commit (Win32), close, atomically rename over the destination, and fsync the parent
 /// directory on POSIX so the name replacement is crash-durable.
-static int rt_fileext_write_atomic_utf8(const char *path, const uint8_t *data, size_t len, int binary) {
+static int rt_fileext_write_atomic_utf8(const char *path,
+                                        const uint8_t *data,
+                                        size_t len,
+                                        int binary) {
     char *tmp = NULL;
     int fd = rt_fileext_open_temp_utf8(path, binary, &tmp);
     if (fd < 0)
@@ -749,8 +750,7 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
         rt_trap("Viper.IO.File.AppendLine: failed to open file");
 
     const uint8_t *data = NULL;
-    size_t len =
-        rt_file_string_require_view(text, &data, "Viper.IO.File.AppendLine: invalid text");
+    size_t len = rt_file_string_require_view(text, &data, "Viper.IO.File.AppendLine: invalid text");
     size_t written = 0;
     while (written < len) {
         ssize_t n = rt_posix_write(fd, data + written, len - written);
@@ -984,8 +984,7 @@ void *rt_io_file_read_all_lines(rt_string path) {
 /// How:  Converts to host path and calls unlink(); errors are ignored.
 /// @brief Delete a file. Trap if the path is null/empty; silently succeeds if the file is missing.
 void rt_io_file_delete(rt_string path) {
-    const char *cpath =
-        rt_io_file_require_path(path, "Viper.IO.File.Delete: invalid file path");
+    const char *cpath = rt_io_file_require_path(path, "Viper.IO.File.Delete: invalid file path");
     if (rt_fileext_unlink(cpath) != 0 && errno != ENOENT)
         rt_trap("Viper.IO.File.Delete: failed to delete file");
 }
@@ -1140,8 +1139,7 @@ void rt_file_copy(rt_string src, rt_string dst) {
 /// Why:  Allow file relocation without platform-specific APIs.
 /// How:  Uses rename(); falls back to copy+delete if needed.
 static void rt_file_move_impl(rt_string src, rt_string dst, int replace) {
-    const char *src_path =
-        rt_io_file_require_path(src, "Viper.IO.File.Move: invalid source path");
+    const char *src_path = rt_io_file_require_path(src, "Viper.IO.File.Move: invalid source path");
     const char *dst_path =
         rt_io_file_require_path(dst, "Viper.IO.File.Move: invalid destination path");
 
@@ -1238,9 +1236,8 @@ void rt_file_write_lines(rt_string path, void *lines) {
     int64_t count = rt_seq_len(lines);
     for (int64_t i = 0; i < count; i++) {
         const uint8_t *unused = NULL;
-        (void)rt_file_string_require_view((rt_string)rt_seq_get(lines, i),
-                                          &unused,
-                                          "Viper.IO.File.WriteLines: invalid line");
+        (void)rt_file_string_require_view(
+            (rt_string)rt_seq_get(lines, i), &unused, "Viper.IO.File.WriteLines: invalid line");
     }
 
     char *tmp_path = NULL;
@@ -1301,8 +1298,7 @@ void rt_io_file_write_all_lines(rt_string path, void *lines) {
 /// @brief Append `text` (no newline added) to the end of a file. Like `_append_line` but doesn't
 /// add a trailing LF — useful for binary-style appends.
 void rt_file_append(rt_string path, rt_string text) {
-    const char *cpath =
-        rt_io_file_require_path(path, "Viper.IO.File.Append: invalid file path");
+    const char *cpath = rt_io_file_require_path(path, "Viper.IO.File.Append: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | O_APPEND | RT_FILE_O_BINARY, 0666);
     if (fd < 0)

@@ -4,10 +4,27 @@
   "tileWidth": 16,
   "tileHeight": 16,
   "layers": [
-    {"name":"base","visible":1,"asset":"","data":[0,7,0,0]}
+    {
+      "name": "base",
+      "visible": 1,
+      "asset": "",
+      "data": [
+        0,
+        7,
+        0,
+        0
+      ]
+    }
   ],
   "objects": [
-    {"type":"Player","id":"player","x":10,"y":20}
+    {
+      "type": "Player",
+      "id": "player",
+      "x": 10,
+      "y": 20
+    }
   ],
-  "properties": {"tileset":"tiles/base.png"}
+  "properties": {
+    "tileset": "tiles/base.png"
+  }
 }

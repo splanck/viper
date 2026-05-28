@@ -71,8 +71,9 @@ int rt_http2_client_roundtrip(rt_http2_conn_t *conn,
                               size_t max_body_len,
                               rt_http2_response_t *out_res);
 
-int rt_http2_server_receive_request(
-    rt_http2_conn_t *conn, size_t max_body_len, rt_http2_request_t *out_req);
+int rt_http2_server_receive_request(rt_http2_conn_t *conn,
+                                    size_t max_body_len,
+                                    rt_http2_request_t *out_req);
 int rt_http2_server_send_response(rt_http2_conn_t *conn,
                                   int stream_id,
                                   int status,

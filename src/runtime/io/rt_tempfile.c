@@ -127,13 +127,13 @@ static void generate_unique_id(char *buffer, size_t size) {
         close(fd);
         if (got != sizeof(rnd)) {
             int64_t seq = __atomic_fetch_add(&fallback_counter, 1, __ATOMIC_RELAXED) + 1;
-            rnd ^= (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^
-                   (uint64_t)time(NULL) ^ (uint64_t)seq;
+            rnd ^= (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^ (uint64_t)time(NULL) ^
+                   (uint64_t)seq;
         }
     } else {
         int64_t seq = __atomic_fetch_add(&fallback_counter, 1, __ATOMIC_RELAXED) + 1;
-        rnd = (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^ (uint64_t)time(NULL) ^
-              (uint64_t)seq;
+        rnd =
+            (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid() ^ (uint64_t)time(NULL) ^ (uint64_t)seq;
     }
 #endif
 
@@ -279,16 +279,15 @@ rt_string rt_tempfile_path_with_prefix(rt_string prefix) {
     return rt_tempfile_path_with_ext(prefix, rt_const_cstr(".tmp"));
 }
 
-/// @brief Path generator with custom prefix AND extension. Format: `{tempdir}/{prefix}{16-hex-id}{ext}`.
-/// The 16-hex random ID gives ~2^64 entropy — collision chance negligible even after millions of calls.
+/// @brief Path generator with custom prefix AND extension. Format:
+/// `{tempdir}/{prefix}{16-hex-id}{ext}`. The 16-hex random ID gives ~2^64 entropy — collision
+/// chance negligible even after millions of calls.
 rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension) {
     char unique_id[64];
     generate_unique_id(unique_id, sizeof(unique_id));
 
-    const char *prefix_cstr =
-        tempfile_require_fragment(prefix, "TempFile: invalid prefix");
-    const char *ext_cstr =
-        tempfile_require_fragment(extension, "TempFile: invalid extension");
+    const char *prefix_cstr = tempfile_require_fragment(prefix, "TempFile: invalid prefix");
+    const char *ext_cstr = tempfile_require_fragment(extension, "TempFile: invalid extension");
 
     // Build filename: prefix + unique_id + extension
     size_t prefix_len = strlen(prefix_cstr);
@@ -326,8 +325,7 @@ rt_string rt_tempfile_create(void) {
 rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
 #ifndef _WIN32
     /* S-21: Use mkstemp for atomic, exclusive, unpredictable file creation on POSIX */
-    const char *prefix_cstr =
-        tempfile_require_fragment(prefix, "TempFile.Create: invalid prefix");
+    const char *prefix_cstr = tempfile_require_fragment(prefix, "TempFile.Create: invalid prefix");
     rt_string temp_dir = rt_tempfile_dir();
     const char *dir_cstr = rt_string_cstr(temp_dir);
 

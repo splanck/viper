@@ -550,8 +550,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         // Write the object file using the native writer for x86_64.
         // Must specify ObjArch::X86_64 explicitly — createHostObjectFileWriter()
         // would pick the host arch (e.g. arm64 on Apple Silicon).
-        auto writer = objfile::createObjectFileWriter(
-            targetObjectFormat(targetPlatform), objfile::ObjArch::X86_64);
+        auto writer = objfile::createObjectFileWriter(targetObjectFormat(targetPlatform),
+                                                      objfile::ObjArch::X86_64);
         if (!writer) {
             err << "error: no native object file writer for this platform\n";
             result.exit_code = 1;
@@ -568,16 +568,14 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         if (hasDebugLine)
             writer->setDebugLineData(std::move(pipelineModule.debugLineData));
 
-        const bool wroteObject =
-            hasDebugLine
-                ? writer->write(objPath.string(),
-                                *pipelineModule.binaryText,
-                                *pipelineModule.binaryRodata,
-                                err)
-                : writer->write(objPath.string(),
-                                pipelineModule.binaryTextSections,
-                                *pipelineModule.binaryRodata,
-                                err);
+        const bool wroteObject = hasDebugLine ? writer->write(objPath.string(),
+                                                              *pipelineModule.binaryText,
+                                                              *pipelineModule.binaryRodata,
+                                                              err)
+                                              : writer->write(objPath.string(),
+                                                              pipelineModule.binaryTextSections,
+                                                              *pipelineModule.binaryRodata,
+                                                              err);
         if (!wroteObject) {
             result.exit_code = 1;
             return finish();
@@ -626,18 +624,17 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         if (opts_.link_mode == LinkMode::System)
             err << "warning: --system-link is deprecated; using the native linker\n";
 
-        const int linkExit =
-            linkObjectWithNativeLinker(objPath,
-                                       exePath,
-                                       ctx,
-                                       targetPlatform,
-                                       opts_.extra_objects,
-                                       opts_.stack_size,
-                                       opts_.fast_link,
-                                       opts_.emit_debug_lines,
-                                       opts_.windows_debug_runtime,
-                                       out,
-                                       err);
+        const int linkExit = linkObjectWithNativeLinker(objPath,
+                                                        exePath,
+                                                        ctx,
+                                                        targetPlatform,
+                                                        opts_.extra_objects,
+                                                        opts_.stack_size,
+                                                        opts_.fast_link,
+                                                        opts_.emit_debug_lines,
+                                                        opts_.windows_debug_runtime,
+                                                        out,
+                                                        err);
         if (linkExit != 0) {
             result.exit_code = linkExit == -1 ? 1 : linkExit;
             return finish();
@@ -740,18 +737,17 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     if (opts_.link_mode == LinkMode::System)
         err << "warning: --system-link is deprecated; using the native linker\n";
 
-    const int linkExit =
-        linkObjectWithNativeLinker(objPath,
-                                   exePath,
-                                   ctx,
-                                   targetPlatform,
-                                   opts_.extra_objects,
-                                   opts_.stack_size,
-                                   opts_.fast_link,
-                                   opts_.emit_debug_lines,
-                                   opts_.windows_debug_runtime,
-                                   out,
-                                   err);
+    const int linkExit = linkObjectWithNativeLinker(objPath,
+                                                    exePath,
+                                                    ctx,
+                                                    targetPlatform,
+                                                    opts_.extra_objects,
+                                                    opts_.stack_size,
+                                                    opts_.fast_link,
+                                                    opts_.emit_debug_lines,
+                                                    opts_.windows_debug_runtime,
+                                                    out,
+                                                    err);
 
     {
         std::error_code ec;

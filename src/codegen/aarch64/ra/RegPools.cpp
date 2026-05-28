@@ -108,9 +108,10 @@ PhysReg RegPools::takeGPRPreferCalleeSaved(const TargetInfo & /*ti*/) {
     return r;
 }
 
-void RegPools::releaseGPR(PhysReg r, const TargetInfo & ti) {
+void RegPools::releaseGPR(PhysReg r, const TargetInfo &ti) {
     if (!isAllocatableGPR(r) || isArgRegister(r, ti))
-        throw std::runtime_error("AArch64 register allocator: attempted to release non-allocatable GPR");
+        throw std::runtime_error(
+            "AArch64 register allocator: attempted to release non-allocatable GPR");
     if (std::find(gprFree.begin(), gprFree.end(), r) != gprFree.end())
         throw std::runtime_error("AArch64 register allocator: duplicate GPR release");
     // Release register back to pool - push to back to maintain FIFO order
@@ -144,9 +145,10 @@ PhysReg RegPools::takeFPRPreferCalleeSaved(const TargetInfo & /*ti*/) {
     return r;
 }
 
-void RegPools::releaseFPR(PhysReg r, const TargetInfo & ti) {
+void RegPools::releaseFPR(PhysReg r, const TargetInfo &ti) {
     if (!isFPR(r) || isArgRegister(r, ti) || r == kScratchFPR || r == kScratchFPR2)
-        throw std::runtime_error("AArch64 register allocator: attempted to release non-allocatable FPR");
+        throw std::runtime_error(
+            "AArch64 register allocator: attempted to release non-allocatable FPR");
     if (std::find(fprFree.begin(), fprFree.end(), r) != fprFree.end())
         throw std::runtime_error("AArch64 register allocator: duplicate FPR release");
     // Release register back to pool - push to back to maintain FIFO order

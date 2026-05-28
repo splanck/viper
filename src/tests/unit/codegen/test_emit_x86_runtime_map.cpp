@@ -48,10 +48,10 @@ TEST(Codegen_X64_RuntimeNameMap, MachODirectSymbolsUseDarwinPrefix) {
     MBasicBlock entry{};
     entry.label = fn.name;
     entry.append(MInstr::make(MOpcode::CALL, {makeLabelOperand("Viper.Terminal.PrintI64")}));
-    entry.append(MInstr::make(MOpcode::LEA,
-                              {makePhysRegOperand(RegClass::GPR,
-                                                  static_cast<uint16_t>(PhysReg::RAX)),
-                               makeRipLabelOperand("global_data")}));
+    entry.append(
+        MInstr::make(MOpcode::LEA,
+                     {makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX)),
+                      makeRipLabelOperand("global_data")}));
     entry.append(MInstr::make(MOpcode::JMP, {makeLabelOperand(".Ldone")}));
     entry.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(".Ldone")}));
     entry.append(MInstr::make(MOpcode::RET));

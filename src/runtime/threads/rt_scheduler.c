@@ -90,8 +90,7 @@ static int64_t current_time_ms(void) {
     if (g_sched_freq.QuadPart <= 0)
         return 0;
     return (int64_t)((counter.QuadPart / g_sched_freq.QuadPart) * 1000LL +
-                     ((counter.QuadPart % g_sched_freq.QuadPart) * 1000LL) /
-                         g_sched_freq.QuadPart);
+                     ((counter.QuadPart % g_sched_freq.QuadPart) * 1000LL) / g_sched_freq.QuadPart);
 #else
     struct timespec ts;
 #ifdef CLOCK_MONOTONIC
@@ -229,8 +228,8 @@ static void scheduler_finalizer(void *obj) {
 ///
 /// @return A new Scheduler object. Traps on allocation failure.
 void *rt_scheduler_new(void) {
-    rt_scheduler_data *data =
-        (rt_scheduler_data *)rt_obj_new_i64(RT_SCHEDULER_CLASS_ID, (int64_t)sizeof(rt_scheduler_data));
+    rt_scheduler_data *data = (rt_scheduler_data *)rt_obj_new_i64(
+        RT_SCHEDULER_CLASS_ID, (int64_t)sizeof(rt_scheduler_data));
     if (!data) {
         rt_trap("Scheduler: memory allocation failed");
         return NULL;

@@ -503,8 +503,8 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
             ar.symbolIndex.emplace(symName, it->second);
             ar.symbolCandidates[symName].push_back(it->second);
         } else {
-            err << "error: archive symbol '" << symName
-                << "' references missing member offset " << fileOffset << " in '" << path << "'\n";
+            err << "error: archive symbol '" << symName << "' references missing member offset "
+                << fileOffset << " in '" << path << "'\n";
             return false;
         }
     }

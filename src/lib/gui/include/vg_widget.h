@@ -102,6 +102,7 @@ typedef enum vg_widget_type {
     VG_WIDGET_STATUSBAR,    ///< IDE-style status bar at the bottom.
     VG_WIDGET_DIALOG,       ///< Modal or modeless dialog window.
     VG_WIDGET_CODEEDITOR,   ///< Source code editor with syntax highlighting.
+    VG_WIDGET_OUTPUTPANE,   ///< Append-only styled console/output log.
     VG_WIDGET_IMAGE,        ///< Raster image display.
     VG_WIDGET_SPINNER,      ///< Numeric up/down spinner control.
     VG_WIDGET_COLORSWATCH,  ///< Single-color preview swatch.
@@ -264,7 +265,7 @@ typedef struct vg_widget_vtable {
 ///          user-supplied callbacks, and an opaque pointer to implementation-
 ///          specific data.
 struct vg_widget {
-    uint64_t magic; ///< Live-widget sentinel used by runtime handle validation.
+    uint64_t magic;          ///< Live-widget sentinel used by runtime handle validation.
     vg_widget_t *_live_prev; ///< Private: previous entry in the live-widget registry.
     vg_widget_t *_live_next; ///< Private: next entry in the live-widget registry.
 
@@ -299,12 +300,12 @@ struct vg_widget {
     vg_layout_params_t layout; ///< Flex, margin, and padding values used by the parent layout.
 
     // State
-    uint32_t state;    ///< Bitwise OR of vg_widget_state_t flags.
-    bool visible;      ///< Whether the widget and its subtree are rendered.
-    bool enabled;      ///< Whether the widget accepts user input.
-    bool needs_layout; ///< Dirty flag: layout must be recomputed before next paint.
-    bool needs_paint;  ///< Dirty flag: widget must be repainted.
-    bool manual_position; ///< Runtime: parent layout should not overwrite x/y.
+    uint32_t state;           ///< Bitwise OR of vg_widget_state_t flags.
+    bool visible;             ///< Whether the widget and its subtree are rendered.
+    bool enabled;             ///< Whether the widget accepts user input.
+    bool needs_layout;        ///< Dirty flag: layout must be recomputed before next paint.
+    bool needs_paint;         ///< Dirty flag: widget must be repainted.
+    bool manual_position;     ///< Runtime: parent layout should not overwrite x/y.
     bool _paint_screen_space; ///< Runtime: x/y are temporarily absolute during paint.
 
     // Tab order

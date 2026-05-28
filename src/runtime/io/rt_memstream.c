@@ -144,9 +144,8 @@ static int check_read(rt_memstream_impl *ms, int64_t count, const char *op) {
 
 /// @brief Construct an empty in-memory stream. Buffer grows on demand. GC-managed.
 void *rt_memstream_new(void) {
-    rt_memstream_impl *ms =
-        (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
-                                            (int64_t)sizeof(rt_memstream_impl));
+    rt_memstream_impl *ms = (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
+                                                                (int64_t)sizeof(rt_memstream_impl));
     if (!ms) {
         rt_trap("MemStream.New: memory allocation failed");
         return NULL;
@@ -167,9 +166,8 @@ void *rt_memstream_new_capacity(int64_t capacity) {
     if (capacity < 0)
         rt_trap("MemStream.NewCapacity: negative capacity");
 
-    rt_memstream_impl *ms =
-        (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
-                                            (int64_t)sizeof(rt_memstream_impl));
+    rt_memstream_impl *ms = (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
+                                                                (int64_t)sizeof(rt_memstream_impl));
     if (!ms) {
         rt_trap("MemStream.New: memory allocation failed");
         return NULL;
@@ -201,9 +199,8 @@ void *rt_memstream_from_bytes(void *bytes) {
     int64_t bytes_len = rt_bytes_len(bytes);
     const uint8_t *bytes_data = rt_bytes_data_const(bytes);
 
-    rt_memstream_impl *ms =
-        (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
-                                            (int64_t)sizeof(rt_memstream_impl));
+    rt_memstream_impl *ms = (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
+                                                                (int64_t)sizeof(rt_memstream_impl));
     if (!ms) {
         rt_trap("MemStream.FromBytes: memory allocation failed");
         return NULL;
@@ -371,7 +368,8 @@ void rt_memstream_write_i16(void *obj, int64_t value) {
     ms->pos += 2;
 }
 
-/// @brief Read 2 bytes as unsigned uint16 (little-endian, zero-extended to int64). Advances pos by 2.
+/// @brief Read 2 bytes as unsigned uint16 (little-endian, zero-extended to int64). Advances pos
+/// by 2.
 int64_t rt_memstream_read_u16(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadU16: null stream");
@@ -442,7 +440,8 @@ void rt_memstream_write_i32(void *obj, int64_t value) {
     ms->pos += 4;
 }
 
-/// @brief Read 4 bytes as unsigned uint32 (little-endian, zero-extended to int64). Advances pos by 4.
+/// @brief Read 4 bytes as unsigned uint32 (little-endian, zero-extended to int64). Advances pos
+/// by 4.
 int64_t rt_memstream_read_u32(void *obj) {
     if (!obj) {
         rt_trap("MemStream.ReadU32: null stream");

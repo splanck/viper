@@ -17,8 +17,8 @@
 #include "tests/TestHarness.hpp"
 
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -58,11 +58,8 @@ static void put_f32_le(uint8_t *dst, float value) {
     dst[3] = (uint8_t)((bits >> 24) & 0xffu);
 }
 
-static void put_binary_triangle(uint8_t *dst,
-                                const float normal[3],
-                                const float v1[3],
-                                const float v2[3],
-                                const float v3[3]) {
+static void put_binary_triangle(
+    uint8_t *dst, const float normal[3], const float v1[3], const float v2[3], const float v3[3]) {
     for (int i = 0; i < 3; i++)
         put_f32_le(dst + i * 4, normal[i]);
     for (int i = 0; i < 3; i++)

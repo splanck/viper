@@ -115,7 +115,7 @@ static NSCursor *macos_cursor_for_type(int32_t cursor_type) {
 static CGDirectDisplayID macos_display_id_for_screen(NSScreen *screen) {
     if (!screen)
         return CGMainDisplayID();
-    NSNumber *screen_number = [[screen deviceDescription] objectForKey:@"NSScreenNumber"];
+    NSNumber *screen_number = [[screen deviceDescription] objectForKey:@ "NSScreenNumber"];
     return screen_number ? (CGDirectDisplayID)[screen_number unsignedIntValue] : CGMainDisplayID();
 }
 
@@ -162,7 +162,8 @@ static void macos_sync_window_metrics(struct vgfx_window *win,
     vgfx_internal_refresh_scale_factor(win, (float)backing_scale);
 
     NSRect content_rect = [platform->view bounds];
-    int32_t new_width = vgfx_internal_round_scaled((float)content_rect.size.width * win->scale_factor);
+    int32_t new_width =
+        vgfx_internal_round_scaled((float)content_rect.size.width * win->scale_factor);
     int32_t new_height =
         vgfx_internal_round_scaled((float)content_rect.size.height * win->scale_factor);
 
@@ -607,18 +608,17 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
 
     CGImageRef image = NULL;
     if (colorSpace && provider) {
-        image =
-            CGImageCreate(_vgfxWindow->width,  /* width in pixels */
-                          _vgfxWindow->height, /* height in pixels */
-                          8,                   /* bits per component (R/G/B/A each 8 bits) */
-                          32,                  /* bits per pixel (4 * 8 = 32) */
-                          _vgfxWindow->stride, /* bytes per row */
-                          colorSpace,          /* color space (RGB) */
-                          kCGBitmapByteOrderDefault | kCGImageAlphaLast, /* format (RGBA) */
-                          provider,                                      /* data provider */
-                          NULL,                                          /* decode array (none) */
-                          false,                      /* should interpolate (no, pixel art) */
-                          kCGRenderingIntentDefault); /* rendering intent */
+        image = CGImageCreate(_vgfxWindow->width,  /* width in pixels */
+                              _vgfxWindow->height, /* height in pixels */
+                              8,                   /* bits per component (R/G/B/A each 8 bits) */
+                              32,                  /* bits per pixel (4 * 8 = 32) */
+                              _vgfxWindow->stride, /* bytes per row */
+                              colorSpace,          /* color space (RGB) */
+                              kCGBitmapByteOrderDefault | kCGImageAlphaLast, /* format (RGBA) */
+                              provider,                                      /* data provider */
+                              NULL,                       /* decode array (none) */
+                              false,                      /* should interpolate (no, pixel art) */
+                              kCGRenderingIntentDefault); /* rendering intent */
     }
 
     /* Get the view's Core Graphics context */
@@ -1015,8 +1015,7 @@ static uint32_t macos_codepoint_at(NSString *string, NSUInteger *index) {
             unichar low = [string characterAtIndex:*index];
             if (low >= 0xDC00 && low <= 0xDFFF) {
                 (*index)++;
-                return 0x10000 + ((((uint32_t)high - 0xD800) << 10) |
-                                  ((uint32_t)low - 0xDC00));
+                return 0x10000 + ((((uint32_t)high - 0xD800) << 10) | ((uint32_t)low - 0xDC00));
             }
         }
         return 0xFFFD;
@@ -1038,10 +1037,10 @@ static void macos_enqueue_text_input_events(struct vgfx_window *win,
     while (index < length) {
         uint32_t codepoint = macos_codepoint_at(characters, &index);
         if (vgfx_internal_should_emit_text_input(codepoint, modifiers)) {
-            vgfx_event_t text_event = {.type = VGFX_EVENT_TEXT_INPUT,
-                                       .time_ms = timestamp,
-                                       .data.text = {.codepoint = codepoint,
-                                                     .modifiers = modifiers}};
+            vgfx_event_t text_event = {
+                .type = VGFX_EVENT_TEXT_INPUT,
+                .time_ms = timestamp,
+                .data.text = {.codepoint = codepoint, .modifiers = modifiers}};
             vgfx_internal_enqueue_event(win, &text_event);
         }
     }
@@ -1069,8 +1068,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                    reach the game/runtime input path. */
                 NSEventModifierFlags flags = [event modifierFlags];
                 vgfx_key_t key =
-                    translate_keycode(
-                        [event keyCode], [event charactersIgnoringModifiers], flags);
+                    translate_keycode([event keyCode], [event charactersIgnoringModifiers], flags);
                 NSMenu *mainMenu = [NSApp mainMenu];
                 if (mainMenu && macos_should_check_menu_key_equivalent(key, flags) &&
                     [mainMenu performKeyEquivalent:event]) {
@@ -1091,9 +1089,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 case NSEventTypeKeyDown: {
                     NSEventModifierFlags flags = [event modifierFlags];
                     int mods = macos_modifiers(flags);
-                    vgfx_key_t key =
-                        translate_keycode(
-                            [event keyCode], [event charactersIgnoringModifiers], flags);
+                    vgfx_key_t key = translate_keycode(
+                        [event keyCode], [event charactersIgnoringModifiers], flags);
                     if (key != VGFX_KEY_UNKNOWN && key < 512) {
                         win->key_state[key] = 1; /* Update input state */
 
@@ -1113,9 +1110,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
 
                 case NSEventTypeKeyUp: {
                     NSEventModifierFlags flags = [event modifierFlags];
-                    vgfx_key_t key =
-                        translate_keycode(
-                            [event keyCode], [event charactersIgnoringModifiers], flags);
+                    vgfx_key_t key = translate_keycode(
+                        [event keyCode], [event charactersIgnoringModifiers], flags);
                     if (key != VGFX_KEY_UNKNOWN && key < 512) {
                         win->key_state[key] = 0; /* Update input state */
 
@@ -1178,11 +1174,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_MOUSE_DOWN,
                         .time_ms = timestamp,
-                        .data.mouse_button = {
-                            .x = x,
-                            .y = y,
-                            .button = button,
-                            .modifiers = macos_modifiers([event modifierFlags])}};
+                        .data.mouse_button = {.x = x,
+                                              .y = y,
+                                              .button = button,
+                                              .modifiers = macos_modifiers([event modifierFlags])}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                     break;
                 }
@@ -1213,11 +1208,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_MOUSE_UP,
                         .time_ms = timestamp,
-                        .data.mouse_button = {
-                            .x = x,
-                            .y = y,
-                            .button = button,
-                            .modifiers = macos_modifiers([event modifierFlags])}};
+                        .data.mouse_button = {.x = x,
+                                              .y = y,
+                                              .button = button,
+                                              .modifiers = macos_modifiers([event modifierFlags])}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                     break;
                 }
@@ -1245,12 +1239,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     vgfx_event_t vgfx_event = {
                         .type = VGFX_EVENT_SCROLL,
                         .time_ms = timestamp,
-                        .data.scroll = {
-                            .delta_x = dx,
-                            .delta_y = dy,
-                            .x = x,
-                            .y = y,
-                            .modifiers = macos_modifiers([event modifierFlags])}};
+                        .data.scroll = {.delta_x = dx,
+                                        .delta_y = dy,
+                                        .x = x,
+                                        .y = y,
+                                        .modifiers = macos_modifiers([event modifierFlags])}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                     break;
                 }
@@ -1702,10 +1695,13 @@ void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {
     CGFloat local_y_points_from_bottom =
         (content.origin.y - screen_frame.origin.y) + (content.size.height - point_y);
 
-    CGPoint display_point = CGPointMake(vgfx_internal_round_scaled((float)(local_x_points * display_scale)),
-                                        vgfx_internal_round_scaled((float)((screen_frame.size.height -
-                                                                           local_y_points_from_bottom) *
-                                                                          display_scale)));
+    /* Cursor positions use the same point-space coordinate system as NSWindow
+     * geometry. Multiplying by the Retina backing scale moves the pointer
+     * toward the bottom-right on HiDPI displays even though drawing uses
+     * physical backing pixels. */
+    CGPoint display_point = CGPointMake(
+        vgfx_internal_round_scaled((float)local_x_points),
+        vgfx_internal_round_scaled((float)(screen_frame.size.height - local_y_points_from_bottom)));
 
     CGDisplayMoveCursorToPoint(display_id, display_point);
     CGAssociateMouseAndMouseCursorPosition(true);

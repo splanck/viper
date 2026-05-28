@@ -402,8 +402,8 @@ static void test_gzip_rejects_reserved_flags() {
 static void test_gzip_rejects_truncated_optional_filename() {
     printf("Testing GZIP optional filename bounds:\n");
 
-    uint8_t truncated[] = {0x1F, 0x8B, 0x08, 0x08, 0, 0, 0, 0, 0, 0xFF,
-                           'n',  'a',  'm',  'e',  'x', 'x', 'x', 'x'};
+    uint8_t truncated[] = {
+        0x1F, 0x8B, 0x08, 0x08, 0, 0, 0, 0, 0, 0xFF, 'n', 'a', 'm', 'e', 'x', 'x', 'x', 'x'};
     void *compressed = make_bytes(truncated, sizeof(truncated));
 
     EXPECT_TRAP(rt_compress_gunzip(compressed));

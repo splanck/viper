@@ -1,0 +1,27 @@
+module TestModel3DLoadAsset;
+
+bind Viper.Graphics3D;
+bind Viper.Terminal;
+
+func start() {
+    var model = Model3D.LoadAsset("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+    if (model == null) {
+        Say("FAIL: Model3D.LoadAsset should load glTF assets through filesystem fallback");
+        return;
+    }
+    if (Model3D.get_MeshCount(model) != 1) {
+        Say("FAIL: Model3D.LoadAsset should expose imported meshes");
+        return;
+    }
+    var mesh = Model3D.GetMesh(model, 0);
+    if (mesh == null) {
+        Say("FAIL: Model3D.GetMesh should return the loaded mesh");
+        return;
+    }
+    var root = Model3D.Instantiate(model);
+    if (root == null || SceneNode3D.get_ChildCount(root) != 1) {
+        Say("FAIL: Model3D.LoadAsset should instantiate imported glTF templates");
+        return;
+    }
+    Say("PASS");
+}

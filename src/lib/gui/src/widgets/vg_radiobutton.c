@@ -86,7 +86,8 @@ static void radio_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_widget_apply_constraints(widget);
 }
 
-/// @brief VTable paint: draws the outer border circle, inner background, optional fill dot (selected), focus ring, and label text.
+/// @brief VTable paint: draws the outer border circle, inner background, optional fill dot
+/// (selected), focus ring, and label text.
 static void radio_paint(vg_widget_t *widget, void *canvas) {
     vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -123,7 +124,8 @@ static void radio_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief VTable handle_event: selects this button on click or Space key; deselection of siblings is handled inside vg_radiobutton_set_selected.
+/// @brief VTable handle_event: selects this button on click or Space key; deselection of siblings
+/// is handled inside vg_radiobutton_set_selected.
 static bool radio_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
 
@@ -171,7 +173,8 @@ vg_radiogroup_t *vg_radiogroup_create(void) {
     return group;
 }
 
-/// @brief Removes @p radio from @p group's button array, compacts the array, and updates selected_index accordingly.
+/// @brief Removes @p radio from @p group's button array, compacts the array, and updates
+/// selected_index accordingly.
 static void radiogroup_unregister(vg_radiogroup_t *group, vg_radiobutton_t *radio) {
     if (!group || !radio)
         return;
@@ -286,7 +289,8 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
     return radio;
 }
 
-/// @brief Directly updates @p radio's selected state and VG_STATE_CHECKED flag, firing on_change if @p notify is true and the state changed.
+/// @brief Directly updates @p radio's selected state and VG_STATE_CHECKED flag, firing on_change if
+/// @p notify is true and the state changed.
 static void radio_apply_selected(vg_radiobutton_t *radio, bool selected, bool notify) {
     if (!radio)
         return;

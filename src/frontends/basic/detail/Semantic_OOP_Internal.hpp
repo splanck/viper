@@ -92,7 +92,7 @@ class OopIndexBuilder {
     void build(const Program &program);
 
   private:
-    OopIndex &index_;          ///< Index being populated (borrowed).
+    OopIndex &index_;            ///< Index being populated (borrowed).
     DiagnosticEmitter *emitter_; ///< Diagnostics sink (may be null).
 
     /// Namespace path of the declaration currently being scanned.
@@ -103,7 +103,7 @@ class OopIndexBuilder {
 
     /// @brief Active USING imports/aliases used to resolve unqualified names.
     struct UsingContext {
-        std::unordered_set<std::string> imports;             ///< Imported namespace prefixes.
+        std::unordered_set<std::string> imports;              ///< Imported namespace prefixes.
         std::unordered_map<std::string, std::string> aliases; ///< alias -> qualified target.
     } usingCtx_;
 

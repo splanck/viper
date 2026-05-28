@@ -63,8 +63,8 @@
 #include "il/core/Value.hpp"
 
 #include "il/transform/OverflowArithmetic.hpp"
-#include "il/transform/SimplifyCFG/ReachabilityCleanup.hpp"
 #include "il/transform/SimplifyCFG.hpp"
+#include "il/transform/SimplifyCFG/ReachabilityCleanup.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -430,8 +430,9 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx) {
             return FoldResult::constant(Value::constInt(static_cast<long long>(ulhs % urhs)));
         }
         case Opcode::Shl:
-            return FoldResult::constant(Value::constInt(static_cast<long long>(
-                static_cast<unsigned long long>(lhs) << (static_cast<unsigned long long>(rhs) & 63ULL))));
+            return FoldResult::constant(Value::constInt(
+                static_cast<long long>(static_cast<unsigned long long>(lhs)
+                                       << (static_cast<unsigned long long>(rhs) & 63ULL))));
         case Opcode::LShr:
             return FoldResult::constant(Value::constInt(
                 static_cast<long long>(static_cast<unsigned long long>(lhs) >>

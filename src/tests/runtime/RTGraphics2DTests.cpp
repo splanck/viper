@@ -22,8 +22,10 @@
 
 #include <cassert>
 #include <climits>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -740,6 +742,42 @@ static void test_layout_rendergraph_tile_helpers_and_importers() {
     printf("test_layout_rendergraph_tile_helpers_and_importers: PASSED\n");
 }
 
+static void test_rotation_and_scaled_tilemap_edge_inputs() {
+    void *pixels = rt_pixels_new(2, 2);
+    assert(pixels != nullptr);
+    void *texture = rt_texture2d_new(pixels);
+    assert(texture != nullptr);
+    void *renderer = rt_renderer2d_new(4);
+    assert(renderer != nullptr);
+
+    rt_renderer2d_begin(renderer);
+    rt_renderer2d_draw_texture_rotated(renderer, texture, 0, 0, std::nan(""));
+    rt_renderer2d_draw_texture_rotated_at(
+        renderer, texture, 0, 0, 1, 1, std::numeric_limits<double>::infinity());
+    assert(rt_renderer2d_count(renderer) == 0);
+
+    rt_renderer2d_draw_texture_rotated(renderer, texture, 0, 0, 720.0 + 45.0);
+    assert(rt_renderer2d_count(renderer) == 1);
+
+    void *tilemap = rt_tilemap_new(2, 2, 16, 16);
+    assert(tilemap != nullptr);
+    void *hit =
+        rt_tilemap_hit_test_scaled(tilemap, INT64_MIN, INT64_MAX, INT64_MAX, INT64_MIN, INT64_MAX);
+    assert(hit != nullptr);
+
+    if (rt_obj_release_check0(hit))
+        rt_obj_free(hit);
+    if (rt_obj_release_check0(tilemap))
+        rt_obj_free(tilemap);
+    if (rt_obj_release_check0(renderer))
+        rt_obj_free(renderer);
+    if (rt_obj_release_check0(texture))
+        rt_obj_free(texture);
+    if (rt_obj_release_check0(pixels))
+        rt_obj_free(pixels);
+    printf("test_rotation_and_scaled_tilemap_edge_inputs: PASSED\n");
+}
+
 int main() {
     test_graphics2d_handles_have_unique_classes_and_reject_wrong_types();
     test_render_target_alpha_blend();
@@ -751,6 +789,7 @@ int main() {
     test_animation_collision_palette_gradient_and_rig();
     test_camera_extreme_arithmetic_saturates();
     test_layout_rendergraph_tile_helpers_and_importers();
+    test_rotation_and_scaled_tilemap_edge_inputs();
     printf("RTGraphics2DTests: ALL PASSED\n");
     return 0;
 }

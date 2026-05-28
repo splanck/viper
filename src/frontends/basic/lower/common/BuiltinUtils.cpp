@@ -30,6 +30,8 @@ namespace il::frontends::basic::lower::common {
 namespace {
 constexpr std::string_view kDiagMissingBuiltinEmitter = "B4004";
 
+/// @brief Register all builtin lowering handlers exactly once per process (thread-safe via a
+///        function-local static).
 void ensureBuiltinHandlers() {
     static const bool initialized = [] {
         builtins::registerDefaultBuiltins();

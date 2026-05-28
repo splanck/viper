@@ -76,6 +76,9 @@ static void test_file_index_and_ignore() {
     write_file(root / "src/main.zia", "module Main;\n");
     write_file(root / "assets/tiles.png", "png");
     write_file(root / "build/generated.zia", "skip");
+    write_file(root / ".cache/generated.zia", "skip");
+    write_file(root / ".claude/worktrees/agent/src/copied.zia", "skip");
+    write_file(root / ".secret.zia", "skip");
     write_file(root / "ignored/hidden.zia", "skip");
     write_file(root / "keep.tmp", "keep");
 
@@ -86,6 +89,9 @@ static void test_file_index_and_ignore() {
     assert(seq_contains_relative(entries, "assets/tiles.png"));
     assert(seq_contains_relative(entries, "keep.tmp"));
     assert(!seq_contains_relative(entries, "build/generated.zia"));
+    assert(!seq_contains_relative(entries, ".cache/generated.zia"));
+    assert(!seq_contains_relative(entries, ".claude/worktrees/agent/src/copied.zia"));
+    assert(!seq_contains_relative(entries, ".secret.zia"));
     assert(!seq_contains_relative(entries, "ignored/hidden.zia"));
 
     assert(rt_workspace_file_index_should_ignore(
@@ -119,17 +125,16 @@ static void test_asset_resolver_and_manifest() {
     assert(rt_map_get_bool(missing, rt_const_cstr("found")) == 0);
     assert(get_str(missing, "diagnostic").find("missing.png") != std::string::npos);
 
-    rt_string manifest_text = rt_const_cstr(
-        "project Demo\n"
-        "lang zia\n"
-        "entry src/main.zia\n"
-        "sources src\n"
-        "exclude build\n"
-        "asset-root assets\n"
-        "default-scene scenes/level.json\n"
-        "[run.play]\n"
-        "entry src/main.zia\n"
-        "args --dev, --scene=one\n");
+    rt_string manifest_text = rt_const_cstr("project Demo\n"
+                                            "lang zia\n"
+                                            "entry src/main.zia\n"
+                                            "sources src\n"
+                                            "exclude build\n"
+                                            "asset-root assets\n"
+                                            "default-scene scenes/level.json\n"
+                                            "[run.play]\n"
+                                            "entry src/main.zia\n"
+                                            "args --dev, --scene=one\n");
     void *manifest = rt_project_manifest_parse_text(manifest_text);
     assert(rt_map_get_bool(manifest, rt_const_cstr("valid")) == 1);
     assert(get_str(manifest, "name") == "Demo");

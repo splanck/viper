@@ -42,8 +42,8 @@
 static int is_c_or_posix(const char *s) {
     if (!s || !*s)
         return 1;
-    return (strcmp(s, "C") == 0) || (strcmp(s, "POSIX") == 0) ||
-           (strcmp(s, "c") == 0) || (strcmp(s, "posix") == 0);
+    return (strcmp(s, "C") == 0) || (strcmp(s, "POSIX") == 0) || (strcmp(s, "c") == 0) ||
+           (strcmp(s, "posix") == 0);
 }
 
 /// @brief Strip encoding suffixes and convert a POSIX locale string to a near-BCP-47 tag.
@@ -92,7 +92,7 @@ int rt_locale_platform_detect_system(char *out, size_t cap) {
     // explicitly sets them; in that case we fall back to the invariant locale,
     // which is honest: we don't have Foundation available to ask for
     // preferredLanguages.
-    static const char *const kVars[] = { "LC_ALL", "LANG", "LC_MESSAGES", NULL };
+    static const char *const kVars[] = {"LC_ALL", "LANG", "LC_MESSAGES", NULL};
     for (size_t i = 0; kVars[i]; ++i) {
         const char *val = getenv(kVars[i]);
         if (is_c_or_posix(val))

@@ -11,8 +11,18 @@ bind Viper.Zia.SemanticJob as SemanticJob;
 bind "../editor/zia_query";
 bind "../editor/editor_engine";
 bind "../editor/scheduler";
+bind "../core/project_manager";
+bind "../core/document_manager";
+bind IO = Viper.IO;
+bind Path = Viper.IO.Path;
 
 final COMPLETION_DEBOUNCE_MS = 180;
+final WORKSPACE_SYMBOL_FILES_PER_FRAME = 1;
+final MAX_WORKSPACE_COMPLETION_ITEMS = 80;
+final MAX_VISIBLE_COMPLETION_ITEMS = 80;
+final MAX_WORKSPACE_SYMBOL_CACHE_ITEMS = 300;
+final WORKSPACE_SYMBOL_PUMP_INTERVAL_MS = 500;
+final FILTER_PREFIX_UNSET = "<unset>";
 
 // ============================================================================
 // MODULE: completion
@@ -87,6 +97,7 @@ class CompletionController {
     expose Integer pendingJobQueryCol;
     expose Integer pendingJobCursorLine;
     expose Integer pendingJobCursorCol;
+    expose Integer visibleRevision;
 
     // Cached semantic result plus the filtered visible insertTexts.
     expose List allLabels;
@@ -105,6 +116,23 @@ class CompletionController {
     expose List replaceEndCols;
     expose List cursorOffsets;
     expose List commitCharacters;
+    expose project_manager.ProjectManager workspaceProject;
+    expose document_manager.DocumentManager workspaceDocs;
+    expose String workspaceRoot;
+    expose Integer workspaceFileCount;
+    expose Integer workspaceFileIndex;
+    expose Boolean workspaceCacheReady;
+    expose List workspaceLabels;
+    expose List workspaceKinds;
+    expose List workspaceTypes;
+    expose List workspacePaths;
+    expose List workspaceLines;
+    expose Any workspacePendingJob;
+    expose String workspacePendingPath;
+    expose Integer workspacePendingLineOffset;
+    expose String visiblePrefix;
+    expose Integer workspaceLastPumpMs;
+    expose Boolean tabAcceptKeyDown;
 
     /// @brief Initialize an empty/hidden controller.
     expose func init() {
@@ -126,6 +154,7 @@ class CompletionController {
         pendingJobQueryCol = 0;
         pendingJobCursorLine = -1;
         pendingJobCursorCol = -1;
+        visibleRevision = -1;
         allLabels      = new List();
         allDisplays    = new List();
         allInsertTexts = new List();
@@ -143,6 +172,23 @@ class CompletionController {
         cursorOffsets = new List();
         commitCharacters = new List();
         engine          = null;
+        workspaceProject = null;
+        workspaceDocs = null;
+        workspaceRoot = "";
+        workspaceFileCount = -1;
+        workspaceFileIndex = 0;
+        workspaceCacheReady = false;
+        workspaceLabels = new List();
+        workspaceKinds = new List();
+        workspaceTypes = new List();
+        workspacePaths = new List();
+        workspaceLines = new List();
+        workspacePendingJob = null;
+        workspacePendingPath = "";
+        workspacePendingLineOffset = 0;
+        visiblePrefix = FILTER_PREFIX_UNSET;
+        workspaceLastPumpMs = 0;
+        tabAcceptKeyDown = false;
     }
 
     /// @brief Construct the popup panel and embed a ListBox.
@@ -179,6 +225,12 @@ class CompletionController {
         workScheduler = value;
     }
 
+    expose func SetWorkspaceContext(project: project_manager.ProjectManager,
+                                    docs: document_manager.DocumentManager) {
+        workspaceProject = project;
+        workspaceDocs = docs;
+    }
+
     /// @brief Set the active file's path so CompleteForFile can resolve
     ///        relative `bind` paths correctly.
     expose func SetSourcePath(path: String) {
@@ -186,10 +238,21 @@ class CompletionController {
     }
 
     expose func SetEnabled(value: Boolean) {
+        if enabled == value {
+            return;
+        }
         enabled = value;
         if enabled == false {
             Hide();
         }
+    }
+
+    expose func ShouldSuppressAutoTrigger() -> Boolean {
+        if editor == null {
+            return false;
+        }
+        return ShouldSuppressAutoCompletionLine(editor.GetLine(editor.CursorLine),
+                                                editor.CursorCol);
     }
 
     /// @brief Schedule a semantic completion query after the typing debounce.
@@ -225,7 +288,17 @@ class CompletionController {
         if enabled == false or editor == null {
             return;
         }
-        CancelPendingJob();
+        if pendingJob != null {
+            pendingSinceMs = Viper.Time.GetTickCount();
+            pendingQuery = true;
+            if workScheduler != null and engine != null {
+                workScheduler.Queue(scheduler.JOB_COMPLETION,
+                                    sourcePath,
+                                    engine.GetRevision(),
+                                    COMPLETION_DEBOUNCE_MS);
+            }
+            return;
+        }
 
         // Get current source and cursor position
         var text = editor.Text;
@@ -280,47 +353,37 @@ class CompletionController {
         cursorOffsets = new List();
         commitCharacters = new List();
         itemCount = 0;
+        visiblePrefix = FILTER_PREFIX_UNSET;
 
-        if items == null {
-            Hide();
-            return;
-        }
-        if Seq.get_Length(items) == 0 {
-            Hide();
-            return;
-        }
+        if items != null {
+            var itemIdx = 0;
+            while itemIdx < Seq.get_Length(items) {
+                var item = Seq.Get(items, itemIdx);
+                itemIdx = itemIdx + 1;
 
-        var itemIdx = 0;
-        while itemIdx < Seq.get_Length(items) {
-            var item = Seq.Get(items, itemIdx);
-            itemIdx = itemIdx + 1;
+                var label = Map.GetStr(item, "label");
+                if label == "" { continue; }
+                var ins = Map.GetStr(item, "insertText");
+                if ins == "" { ins = label; }
 
-            var label = Map.GetStr(item, "label");
-            if label == "" { continue; }
-            var ins = Map.GetStr(item, "insertText");
-            if ins == "" { ins = label; }
+                var displayText = FormatCompletionDisplay(label,
+                                                           Map.GetInt(item, "kind"),
+                                                           Map.GetStr(item, "detail"),
+                                                           Map.GetStr(item, "documentation"),
+                                                           Map.GetStr(item, "source"));
 
-            var kindTag = kindLabel(Map.GetInt(item, "kind"));
-            var detail = Map.GetStr(item, "detail");
-
-            var displayText = label;
-            if kindTag != "" {
-                displayText = kindTag + " " + label;
+                allLabels.Push(label);
+                allDisplays.Push(displayText);
+                allInsertTexts.Push(ins);
+                allReplaceStartLines.Push(Map.GetIntOr(item, "replacementStartLine", curLine) - 1 - off);
+                allReplaceStartCols.Push(Map.GetIntOr(item, "replacementStartColumn", curCol));
+                allReplaceEndLines.Push(Map.GetIntOr(item, "replacementEndLine", curLine) - 1 - off);
+                allReplaceEndCols.Push(Map.GetIntOr(item, "replacementEndColumn", curCol));
+                allCursorOffsets.Push(Map.GetIntOr(item, "cursorOffset", -1));
+                allCommitCharacters.Push(Map.GetStr(item, "commitCharacters"));
             }
-            if detail != "" {
-                displayText = displayText + "  — " + detail;
-            }
-
-            allLabels.Push(label);
-            allDisplays.Push(displayText);
-            allInsertTexts.Push(ins);
-            allReplaceStartLines.Push(Map.GetIntOr(item, "replacementStartLine", curLine) - 1 - off);
-            allReplaceStartCols.Push(Map.GetIntOr(item, "replacementStartColumn", curCol));
-            allReplaceEndLines.Push(Map.GetIntOr(item, "replacementEndLine", curLine) - 1 - off);
-            allReplaceEndCols.Push(Map.GetIntOr(item, "replacementEndColumn", curCol));
-            allCursorOffsets.Push(Map.GetIntOr(item, "cursorOffset", -1));
-            allCommitCharacters.Push(Map.GetStr(item, "commitCharacters"));
         }
+        AddWorkspaceSymbolCompletions(off, curLine, curCol);
 
         if allLabels.count() == 0 {
             Hide();
@@ -343,6 +406,11 @@ class CompletionController {
         listbox.SelectIndex(0);
         lastLine  = editor.CursorLine;
         lastCol   = editor.CursorCol;
+        if engine != null {
+            visibleRevision = engine.GetRevision();
+        } else {
+            visibleRevision = editor.Revision;
+        }
         isVisible = true;
         popup.SetVisible(1);
         editor.Focus();
@@ -388,6 +456,10 @@ class CompletionController {
     }
 
     expose func RebuildVisibleItems(prefix: String) {
+        if prefix == visiblePrefix {
+            return;
+        }
+        visiblePrefix = prefix;
         listbox.Clear();
         insertTexts = new List();
         replaceStartLines = new List();
@@ -400,7 +472,7 @@ class CompletionController {
 
         var normalizedPrefix = Str.ToLower(prefix);
         var i = 0;
-        while i < allLabels.count() {
+        while i < allLabels.count() and itemCount < MAX_VISIBLE_COMPLETION_ITEMS {
             var label = Obj.ToString(allLabels.get(i));
             var display = Obj.ToString(allDisplays.get(i));
             var insertText = Obj.ToString(allInsertTexts.get(i));
@@ -435,6 +507,15 @@ class CompletionController {
         AcceptSelectedInternal(false);
     }
 
+    expose func AcceptTabKey() -> Boolean {
+        if isVisible == false or itemCount == 0 {
+            return false;
+        }
+        tabAcceptKeyDown = true;
+        AcceptSelectedInternal(true);
+        return true;
+    }
+
     expose func AcceptTypedTab(typed: String) -> Boolean {
         if isVisible == false or itemCount == 0 or typed == "" {
             return false;
@@ -442,7 +523,73 @@ class CompletionController {
         if ContainsAny("\t", typed) == false {
             return false;
         }
+        tabAcceptKeyDown = true;
         AcceptSelectedInternal(true);
+        return true;
+    }
+
+    expose func AcceptHeldTabKey(tabDown: Boolean) -> Boolean {
+        if tabDown == false {
+            tabAcceptKeyDown = false;
+            return false;
+        }
+        if tabAcceptKeyDown {
+            return false;
+        }
+        tabAcceptKeyDown = true;
+        return AcceptTabKey();
+    }
+
+    expose func MarkTabKeyHandled() {
+        tabAcceptKeyDown = true;
+    }
+
+    /// @brief Accept after the focused editor consumed Tab as indentation.
+    /// @details GUI dispatch gives the focused CodeEditor first chance at Tab.
+    ///          On platforms where that happens before `Keyboard.WasPressed`
+    ///          is observable here, the editor revision advances and the
+    ///          cursor sits after inserted spaces/tabs. Treat that exact shape
+    ///          as a completion accept and replace the prefix plus inserted
+    ///          indentation in one undoable edit.
+    expose func AcceptIfEditorInsertedTab() -> Boolean {
+        if isVisible == false or itemCount == 0 or editor == null {
+            return false;
+        }
+
+        var currentRevision = editor.Revision;
+        if engine != null {
+            currentRevision = engine.GetRevision();
+        }
+        if currentRevision == visibleRevision {
+            return false;
+        }
+
+        var activeIndex = listbox.SelectedIndex;
+        if activeIndex < 0 {
+            activeIndex = selectedIndex;
+        }
+        if activeIndex < 0 or activeIndex >= itemCount {
+            return false;
+        }
+
+        var endLine = ListIntAt(replaceEndLines, activeIndex, editor.CursorLine);
+        var endCol = ListIntAt(replaceEndCols, activeIndex, editor.CursorCol);
+        if editor.CursorLine != endLine or editor.CursorCol <= endCol {
+            return false;
+        }
+
+        var gapLen = editor.CursorCol - endCol;
+        var lineText = editor.GetLine(endLine);
+        if gapLen <= 0 or Str.Length(lineText) < editor.CursorCol {
+            return false;
+        }
+        var gap = Str.MidLen(lineText, endCol + 1, gapLen);
+        if IsOnlyIndentWhitespace(gap) == false {
+            return false;
+        }
+
+        AcceptSelectedInternal(true);
+        tabAcceptKeyDown = true;
         return true;
     }
 
@@ -556,6 +703,11 @@ class CompletionController {
     /// @brief Show the popup and focus the listbox for keyboard navigation.
     expose func Show() {
         isVisible = true;
+        if engine != null {
+            visibleRevision = engine.GetRevision();
+        } else if editor != null {
+            visibleRevision = editor.Revision;
+        }
         popup.SetVisible(1);
         editor.Focus();
     }
@@ -563,7 +715,9 @@ class CompletionController {
     /// @brief Keep keyboard focus on the editor while completions are open.
     expose func EnsureFocus() {
         if isVisible and editor != null {
-            editor.Focus();
+            if editor.IsFocused() == 0 {
+                editor.Focus();
+            }
         }
     }
 
@@ -582,6 +736,19 @@ class CompletionController {
     /// @return true if an event was consumed (currently always false —
     ///         reserved for future use).
     expose func Update(typed: String) -> Boolean {
+        if Input.Keyboard.IsDown(Input.Keyboard.get_KEY_TAB()) == false {
+            tabAcceptKeyDown = false;
+        }
+
+        if typed == "" and isVisible == false and pendingQuery == false and pendingJob == null
+           and workspacePendingJob != null {
+            var nowMs = Viper.Time.GetTickCount();
+            if nowMs - workspaceLastPumpMs >= WORKSPACE_SYMBOL_PUMP_INTERVAL_MS {
+                workspaceLastPumpMs = nowMs;
+                PumpWorkspaceSymbolCache(WORKSPACE_SYMBOL_FILES_PER_FRAME);
+            }
+        }
+
         if PollPendingJob() {
             return true;
         }
@@ -610,6 +777,11 @@ class CompletionController {
         EnsureFocus();
         if typed != "" {
             RebuildVisibleItems(CurrentPrefix());
+            if engine != null {
+                visibleRevision = engine.GetRevision();
+            } else {
+                visibleRevision = editor.Revision;
+            }
             if itemCount == 0 {
                 ScheduleCompletion();
             }
@@ -628,6 +800,306 @@ class CompletionController {
         }
 
         return false;
+    }
+
+    expose func PumpWorkspaceSymbolCache(maxFiles: Integer) -> Integer {
+        if workspaceProject == null or workspaceProject.project == null or workspaceProject.project.isOpen == false {
+            ClearWorkspaceSymbolCache();
+            return 0;
+        }
+
+        var root = workspaceProject.project.rootPath;
+        var fileCount = workspaceProject.CachedFileCount();
+        if root != workspaceRoot or fileCount != workspaceFileCount {
+            workspaceRoot = root;
+            workspaceFileCount = fileCount;
+            workspaceFileIndex = 0;
+            workspaceCacheReady = false;
+            workspaceLabels = new List();
+            workspaceKinds = new List();
+            workspaceTypes = new List();
+            workspacePaths = new List();
+            workspaceLines = new List();
+            CancelWorkspaceSymbolJob();
+            workspaceLastPumpMs = 0;
+        }
+
+        if workspaceCacheReady { return 0; }
+        if workspaceLabels.count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
+            workspaceCacheReady = true;
+            CancelWorkspaceSymbolJob();
+            return 0;
+        }
+
+        var limit = maxFiles;
+        if limit <= 0 { limit = WORKSPACE_SYMBOL_FILES_PER_FRAME; }
+
+        var processed = 0;
+        if workspacePendingJob != null {
+            if SemanticJob.IsDone(workspacePendingJob) == false {
+                return 0;
+            }
+            var job = workspacePendingJob;
+            var jobPath = workspacePendingPath;
+            var jobLineOff = workspacePendingLineOffset;
+            workspacePendingJob = null;
+            workspacePendingPath = "";
+            workspacePendingLineOffset = 0;
+            if SemanticJob.IsError(job) == false {
+                AddRawWorkspaceSymbolsToCache(jobPath,
+                                              SemanticJob.Symbols(job),
+                                              jobLineOff);
+            }
+            processed = processed + 1;
+        }
+
+        while workspaceFileIndex < workspaceFileCount and processed < limit
+              and workspaceLabels.count() < MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
+            var filePath = workspaceProject.CachedFileAt(workspaceFileIndex);
+            workspaceFileIndex = workspaceFileIndex + 1;
+            processed = processed + 1;
+
+            if Str.ToLower(Path.Ext(filePath)) != ".zia" { continue; }
+            var content = WorkspaceContentFor(filePath);
+            if content == "" { continue; }
+            var qcontent = zia_query.WrapForQuery(content);
+            var lineOff = zia_query.LineOffset(content);
+            var job2 = ZiaCompletion.BeginSymbolsForFile(qcontent, filePath);
+            if job2 != null {
+                workspacePendingJob = job2;
+                workspacePendingPath = filePath;
+                workspacePendingLineOffset = lineOff;
+                return processed;
+            }
+
+            AddRawWorkspaceSymbolsToCache(filePath,
+                                          ZiaCompletion.SymbolsForFile(qcontent, filePath),
+                                          lineOff);
+        }
+
+        if workspacePendingJob == null {
+            if workspaceFileIndex >= workspaceFileCount
+               or workspaceLabels.count() >= MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
+                workspaceCacheReady = true;
+            }
+        }
+        return processed;
+    }
+
+    hide func ClearWorkspaceSymbolCache() {
+        CancelWorkspaceSymbolJob();
+        workspaceRoot = "";
+        workspaceFileCount = -1;
+        workspaceFileIndex = 0;
+        workspaceCacheReady = false;
+        workspaceLabels = new List();
+        workspaceKinds = new List();
+        workspaceTypes = new List();
+        workspacePaths = new List();
+        workspaceLines = new List();
+        workspaceLastPumpMs = 0;
+    }
+
+    hide func CancelWorkspaceSymbolJob() {
+        if workspacePendingJob != null {
+            SemanticJob.Cancel(workspacePendingJob);
+            workspacePendingJob = null;
+        }
+        workspacePendingPath = "";
+        workspacePendingLineOffset = 0;
+    }
+
+    hide func WorkspaceContentFor(filePath: String) -> String {
+        if workspaceDocs != null {
+            var idx = workspaceDocs.FindByPath(filePath);
+            if idx >= 0 {
+                return workspaceDocs.documents.get(idx).content;
+            }
+        }
+        if IO.File.Exists(filePath) {
+            return IO.File.ReadAllText(filePath);
+        }
+        return "";
+    }
+
+    hide func AddRawWorkspaceSymbolsToCache(filePath: String,
+                                            raw: String,
+                                            lineOff: Integer) {
+        if raw == "" { return; }
+        var rows = Str.Split(raw, "\n");
+        var i = 0;
+        while i < Seq.get_Length(rows)
+              and workspaceLabels.count() < MAX_WORKSPACE_SYMBOL_CACHE_ITEMS {
+            var row = Obj.ToString(Seq.Get(rows, i));
+            i = i + 1;
+            if row == "" { continue; }
+
+            var parts = Str.Split(row, "\t");
+            if Seq.get_Length(parts) < 4 { continue; }
+
+            var name = Obj.ToString(Seq.Get(parts, 0));
+            var kind = Obj.ToString(Seq.Get(parts, 1));
+            var typeText = Obj.ToString(Seq.Get(parts, 2));
+            var lineText = Obj.ToString(Seq.Get(parts, 3));
+            if name == "" or lineText == "0" { continue; }
+
+            var symbolLine = Viper.Core.Convert.ToInt(lineText) - lineOff;
+            if symbolLine < 1 { continue; }
+            if WorkspaceCacheContains(name, filePath, symbolLine) { continue; }
+
+            workspaceLabels.Push(name);
+            workspaceKinds.Push(kind);
+            workspaceTypes.Push(typeText);
+            workspacePaths.Push(filePath);
+            workspaceLines.Push("" + symbolLine);
+        }
+    }
+
+    hide func WorkspaceCacheContains(name: String,
+                                     filePath: String,
+                                     line: Integer) -> Boolean {
+        var i = 0;
+        while i < workspaceLabels.count() {
+            if Obj.ToString(workspaceLabels.get(i)) == name
+               and Obj.ToString(workspacePaths.get(i)) == filePath
+               and Viper.Core.Convert.ToInt(Obj.ToString(workspaceLines.get(i))) == line {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    hide func AddWorkspaceSymbolCompletions(off: Integer,
+                                            curLine: Integer,
+                                            curCol: Integer) {
+        if workspaceProject == null or workspaceProject.project == null or workspaceProject.project.isOpen == false {
+            return;
+        }
+
+        var prefix = CurrentPrefix();
+        if IsMemberAccessCompletion(prefix) {
+            return;
+        }
+
+        var actualLine = curLine - 1 - off;
+        if actualLine < 0 { actualLine = 0; }
+        var startCol = curCol - Str.Length(prefix);
+        if startCol < 0 { startCol = 0; }
+
+        var added = 0;
+
+        var i = 0;
+        while i < workspaceLabels.count() and added < MAX_WORKSPACE_COMPLETION_ITEMS {
+            var label = Obj.ToString(workspaceLabels.get(i));
+            var path = Obj.ToString(workspacePaths.get(i));
+            if path != sourcePath and WorkspaceSymbolMatchesPrefix(label, prefix)
+               and LabelAlreadyListed(label) == false {
+                AddWorkspaceCompletion(label,
+                                       Obj.ToString(workspaceKinds.get(i)),
+                                       Obj.ToString(workspaceTypes.get(i)),
+                                       path,
+                                       actualLine,
+                                       startCol,
+                                       curCol);
+                added = added + 1;
+            }
+            i = i + 1;
+        }
+    }
+
+    hide func AddOpenWorkspaceSymbolCompletions(prefix: String,
+                                                actualLine: Integer,
+                                                startCol: Integer,
+                                                curCol: Integer,
+                                                limit: Integer) -> Integer {
+        if workspaceDocs == null { return 0; }
+        var added = 0;
+        var i = 0;
+        while i < workspaceDocs.GetCount() and added < limit {
+            var doc = workspaceDocs.documents.get(i);
+            i = i + 1;
+            if doc.language != "zia" or doc.filePath == "" or doc.filePath == sourcePath { continue; }
+
+            var raw = ZiaCompletion.SymbolsForFile(zia_query.WrapForQuery(doc.content), doc.filePath);
+            var rows = Str.Split(raw, "\n");
+            var lineOff = zia_query.LineOffset(doc.content);
+            var r = 0;
+            while r < Seq.get_Length(rows) and added < limit {
+                var row = Obj.ToString(Seq.Get(rows, r));
+                r = r + 1;
+                if row == "" { continue; }
+                var parts = Str.Split(row, "\t");
+                if Seq.get_Length(parts) < 4 { continue; }
+                var label = Obj.ToString(Seq.Get(parts, 0));
+                var lineText = Obj.ToString(Seq.Get(parts, 3));
+                if label == "" or lineText == "0" { continue; }
+                var symbolLine = Viper.Core.Convert.ToInt(lineText) - lineOff;
+                if symbolLine < 1 { continue; }
+                if WorkspaceSymbolMatchesPrefix(label, prefix) and LabelAlreadyListed(label) == false {
+                    AddWorkspaceCompletion(label,
+                                           Obj.ToString(Seq.Get(parts, 1)),
+                                           Obj.ToString(Seq.Get(parts, 2)),
+                                           doc.filePath,
+                                           actualLine,
+                                           startCol,
+                                           curCol);
+                    added = added + 1;
+                }
+            }
+        }
+        return added;
+    }
+
+    hide func AddWorkspaceCompletion(label: String,
+                                     kind: String,
+                                     typeText: String,
+                                     filePath: String,
+                                     actualLine: Integer,
+                                     startCol: Integer,
+                                     curCol: Integer) {
+        var detail = "workspace";
+        if typeText != "" {
+            detail = typeText + "  -  workspace";
+        }
+        if workspaceProject != null and workspaceProject.project != null and workspaceProject.project.isOpen {
+            detail = detail + "  " + workspaceProject.RelativePath(filePath);
+        }
+
+        allLabels.Push(label);
+        allDisplays.Push(kindLabel(WorkspaceKindCode(kind)) + " " + label + "  -  " + detail);
+        allInsertTexts.Push(label);
+        allReplaceStartLines.Push(actualLine);
+        allReplaceStartCols.Push(startCol);
+        allReplaceEndLines.Push(actualLine);
+        allReplaceEndCols.Push(curCol);
+        allCursorOffsets.Push(-1);
+        allCommitCharacters.Push("");
+    }
+
+    hide func LabelAlreadyListed(label: String) -> Boolean {
+        var i = 0;
+        while i < allLabels.count() {
+            if Obj.ToString(allLabels.get(i)) == label {
+                return true;
+            }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    hide func WorkspaceSymbolMatchesPrefix(label: String, prefix: String) -> Boolean {
+        if prefix == "" { return true; }
+        return StartsWith(Str.ToLower(label), Str.ToLower(prefix));
+    }
+
+    hide func IsMemberAccessCompletion(prefix: String) -> Boolean {
+        if editor == null { return false; }
+        var startCol = editor.CursorCol - Str.Length(prefix);
+        if startCol <= 0 { return false; }
+        var line = editor.GetLine(editor.CursorLine);
+        if Str.Length(line) < startCol { return false; }
+        return Str.MidLen(line, startCol, 1) == ".";
     }
 }
 
@@ -655,11 +1127,96 @@ func ContainsAny(characters: String, typed: String) -> Boolean {
     return false;
 }
 
+func IsOnlyIndentWhitespace(text: String) -> Boolean {
+    if text == "" { return false; }
+    var i = 1;
+    while i <= Str.Length(text) {
+        var ch = Str.MidLen(text, i, 1);
+        if ch != " " and ch != "\t" {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+expose func ShouldSuppressAutoCompletionLine(line: String, cursorCol: Integer) -> Boolean {
+    var limit = cursorCol;
+    if limit < 0 { limit = 0; }
+    if limit > Str.Length(line) { limit = Str.Length(line); }
+
+    var inString = false;
+    var escaped = false;
+    var i = 1;
+    while i <= limit {
+        var ch = Str.MidLen(line, i, 1);
+        if inString {
+            if escaped {
+                escaped = false;
+            } else if ch == "\\" {
+                escaped = true;
+            } else if ch == "\"" {
+                inString = false;
+            }
+        } else {
+            if ch == "\"" {
+                inString = true;
+            } else if ch == "/" and i < limit and Str.MidLen(line, i + 1, 1) == "/" {
+                return true;
+            }
+        }
+        i = i + 1;
+    }
+    return inString;
+}
+
 func ListIntAt(values: List, index: Integer, fallback: Integer) -> Integer {
     if index < 0 or index >= values.count() {
         return fallback;
     }
     return Viper.Core.Convert.ToInt(Obj.ToString(values.get(index)));
+}
+
+func FormatCompletionDisplay(label: String,
+                             kind: Integer,
+                             detail: String,
+                             documentation: String,
+                             source: String) -> String {
+    var kindTag = kindLabel(kind);
+    var text = label;
+    if kindTag != "" {
+        text = kindTag + " " + label;
+    }
+    if detail != "" {
+        text = text + "  -  " + ShortInlineText(detail, 72);
+    }
+
+    var meta = "";
+    var doc = ShortInlineText(documentation, 96);
+    if doc != "" {
+        meta = doc;
+    }
+    if source != "" {
+        if meta != "" {
+            meta = meta + "  ";
+        }
+        meta = meta + "[" + source + "]";
+    }
+    if meta != "" {
+        text = text + "  -  " + meta;
+    }
+    return text;
+}
+
+func ShortInlineText(text: String, limit: Integer) -> String {
+    var cleaned = Str.Trim(Str.Replace(Str.Replace(text, "\n", " "), "\t", " "));
+    if limit <= 0 or Str.Length(cleaned) <= limit {
+        return cleaned;
+    }
+    if limit <= 3 {
+        return Str.Left(cleaned, limit);
+    }
+    return Str.Left(cleaned, limit - 3) + "...";
 }
 
 /// @brief Map a CompletionKind integer to a short bracketed tag.
@@ -684,4 +1241,12 @@ func kindLabel(k: Integer) -> String {
     if k == 11 { return "[RT]"; }  // Runtime class
     if k == 12 { return "[P]"; }   // Property
     return "";
+}
+
+func WorkspaceKindCode(kind: String) -> Integer {
+    if kind == "function" { return 6; }
+    if kind == "variable" { return 2; }
+    if kind == "type" { return 11; }
+    if kind == "module" { return 10; }
+    return 7;
 }

@@ -60,13 +60,15 @@ void writeBE32(std::vector<uint8_t> &out, uint32_t val) {
     out.push_back(static_cast<uint8_t>(val & 0xFF));
 }
 
-/// @brief Append a 16-bit little-endian integer to `out`. Used for ICO ICONDIR and ICONDIRENTRY fields.
+/// @brief Append a 16-bit little-endian integer to `out`. Used for ICO ICONDIR and ICONDIRENTRY
+/// fields.
 void writeLE16(std::vector<uint8_t> &out, uint16_t val) {
     out.push_back(static_cast<uint8_t>(val & 0xFF));
     out.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
 }
 
-/// @brief Append a 32-bit little-endian integer to `out`. Used for ICO SizeInBytes and FileOffset fields.
+/// @brief Append a 32-bit little-endian integer to `out`. Used for ICO SizeInBytes and FileOffset
+/// fields.
 void writeLE32(std::vector<uint8_t> &out, uint32_t val) {
     out.push_back(static_cast<uint8_t>(val & 0xFF));
     out.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
@@ -159,6 +161,7 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage) {
 /// Width/Height values of 256+ are encoded as 0 per the ICO specification.
 std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
     validateSourceImage(srcImage);
+
     // First, generate all the PNG blobs for sizes that fit
     struct IcoEntry {
         uint32_t size;
@@ -200,14 +203,14 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
         // Width/Height: 0 encodes 256
         uint8_t w = (e.size >= 256) ? 0 : static_cast<uint8_t>(e.size);
         uint8_t h = w;
-        result.push_back(w);                                        // Width
-        result.push_back(h);                                        // Height
-        result.push_back(0);                                        // ColorCount
-        result.push_back(0);                                        // Reserved
-        writeLE16(result, 1);                                       // Planes
-        writeLE16(result, 32);                                      // BitCount (32bpp RGBA)
+        result.push_back(w);                                         // Width
+        result.push_back(h);                                         // Height
+        result.push_back(0);                                         // ColorCount
+        result.push_back(0);                                         // Reserved
+        writeLE16(result, 1);                                        // Planes
+        writeLE16(result, 32);                                       // BitCount (32bpp RGBA)
         writeLE32(result, checkedIconSize(e.pngData.size(), "ICO")); // Size
-        writeLE32(result, currentOffset);                           // FileOffset
+        writeLE32(result, currentOffset);                            // FileOffset
 
         const uint32_t pngSize = checkedIconSize(e.pngData.size(), "ICO");
         if (currentOffset > std::numeric_limits<uint32_t>::max() - pngSize)

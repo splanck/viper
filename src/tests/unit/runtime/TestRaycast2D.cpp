@@ -38,8 +38,8 @@ TEST(Raycast, LineRectEdge) {
 }
 
 TEST(Raycast, LineRectRejectsInvalidInput) {
-    EXPECT_FALSE(rt_collision_line_rect(
-        std::numeric_limits<double>::infinity(), 0, 10, 10, 0, 0, 10, 10));
+    EXPECT_FALSE(
+        rt_collision_line_rect(std::numeric_limits<double>::infinity(), 0, 10, 10, 0, 0, 10, 10));
     EXPECT_FALSE(rt_collision_line_rect(0, 0, 10, 10, 0, 0, -1, 10));
     EXPECT_FALSE(rt_collision_line_rect(0, 0, 10, 10, 0, 0, 10, -1));
 }

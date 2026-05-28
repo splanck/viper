@@ -269,12 +269,6 @@ TEST(RuntimeMethodIndexBasic, SoundFactoriesPreserveConcreteReturnClass) {
     EXPECT_EQ(build->target, std::string("Viper.Sound.MusicGen.Build"));
     EXPECT_EQ(build->ret, BasicType::Object);
     EXPECT_EQ(build->returnClassQName, std::string("Viper.Sound.Sound"));
-
-    auto compatTone = runtimeMethodIndex().find("Viper.Audio.Synth", "Tone", 3);
-    ASSERT_TRUE(compatTone.has_value());
-    EXPECT_EQ(compatTone->target, std::string("Viper.Audio.Synth.Tone"));
-    EXPECT_EQ(compatTone->ret, BasicType::Object);
-    EXPECT_EQ(compatTone->returnClassQName, std::string("Viper.Audio.Sound"));
 }
 
 TEST(RuntimeMethodIndexBasic, GraphicsSurfaceBindingsAreCataloged) {
@@ -361,9 +355,10 @@ TEST(RuntimeMethodIndexBasic, TypedLookupMatchesArgumentTypes) {
 TEST(RuntimeMethodIndexBasic, TypedLookupAcceptsObjectCompatibleArguments) {
     runtimeMethodIndex().seed();
 
-    auto mapSet = runtimeMethodIndex().find(
-        "Viper.Collections.Map", "Set", std::vector<BasicType>{BasicType::String,
-                                                               BasicType::String});
+    auto mapSet =
+        runtimeMethodIndex().find("Viper.Collections.Map",
+                                  "Set",
+                                  std::vector<BasicType>{BasicType::String, BasicType::String});
     ASSERT_TRUE(mapSet.has_value());
     EXPECT_EQ(mapSet->target, std::string("Viper.Collections.Map.Set"));
 
@@ -380,10 +375,10 @@ TEST(RuntimeMethodIndexBasic, TypedLookupAcceptsObjectCompatibleArguments) {
 TEST(RuntimeMethodIndexBasic, TypedLookupAcceptsIntegerBooleanArguments) {
     runtimeMethodIndex().seed();
 
-    auto looping = runtimeMethodIndex().find(
-        "Viper.Graphics3D.AnimController3D",
-        "SetStateLooping",
-        std::vector<BasicType>{BasicType::String, BasicType::Int});
+    auto looping =
+        runtimeMethodIndex().find("Viper.Graphics3D.AnimController3D",
+                                  "SetStateLooping",
+                                  std::vector<BasicType>{BasicType::String, BasicType::Int});
     ASSERT_TRUE(looping.has_value());
     EXPECT_EQ(looping->target, std::string("Viper.Graphics3D.AnimController3D.SetStateLooping"));
 }

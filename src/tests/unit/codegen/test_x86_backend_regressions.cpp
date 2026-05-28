@@ -185,10 +185,10 @@ bool blockContainsOpcode(const MBasicBlock &block, MOpcode opcode) {
 }
 
 std::size_t countOpcode(const MBasicBlock &block, MOpcode opcode) {
-    return static_cast<std::size_t>(
-        std::count_if(block.instructions.begin(),
-                      block.instructions.end(),
-                      [&](const MInstr &instr) { return instr.opcode == opcode; }));
+    return static_cast<std::size_t>(std::count_if(
+        block.instructions.begin(), block.instructions.end(), [&](const MInstr &instr) {
+            return instr.opcode == opcode;
+        }));
 }
 
 MFunction rawFunction(std::string name, std::vector<MInstr> instructions) {
@@ -651,12 +651,12 @@ TEST(X86BackendRegressions, CompareBranchFoldAcceptsExistingMovzx32) {
     const Operand lhs = makeVRegOperand(RegClass::GPR, 1);
     const Operand rhs = makeVRegOperand(RegClass::GPR, 2);
     const Operand flag = makeVRegOperand(RegClass::GPR, 3);
-    entry.instructions = {MInstr::make(MOpcode::CMPrr, {lhs, rhs}),
-                          MInstr::make(MOpcode::SETcc, {makeImmOperand(1), flag}),
-                          MInstr::make(MOpcode::MOVZXrr32, {flag, flag}),
-                          MInstr::make(MOpcode::TESTrr, {flag, flag}),
-                          MInstr::make(MOpcode::JCC,
-                                       {makeImmOperand(1), makeLabelOperand(".L_yes")})};
+    entry.instructions = {
+        MInstr::make(MOpcode::CMPrr, {lhs, rhs}),
+        MInstr::make(MOpcode::SETcc, {makeImmOperand(1), flag}),
+        MInstr::make(MOpcode::MOVZXrr32, {flag, flag}),
+        MInstr::make(MOpcode::TESTrr, {flag, flag}),
+        MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(".L_yes")})};
     fn.blocks.push_back(std::move(entry));
 
     ISel isel(sysvTarget());
@@ -726,12 +726,15 @@ TEST(X86BackendRegressions, NanSafeFcmpNormalizesSetccBytesBeforeBooleanCombine)
     entry.name = "entry";
     entry.paramIds = {0, 1};
     entry.paramKinds = {ILValue::Kind::F64, ILValue::Kind::F64};
-    entry.instrs = {
-        op("fcmp_eq", {val(ILValue::Kind::F64, 0), val(ILValue::Kind::F64, 1)}, 2,
-           ILValue::Kind::I1),
-        op("fcmp_ne", {val(ILValue::Kind::F64, 0), val(ILValue::Kind::F64, 1)}, 3,
-           ILValue::Kind::I1),
-        op("ret", {imm(0)})};
+    entry.instrs = {op("fcmp_eq",
+                       {val(ILValue::Kind::F64, 0), val(ILValue::Kind::F64, 1)},
+                       2,
+                       ILValue::Kind::I1),
+                    op("fcmp_ne",
+                       {val(ILValue::Kind::F64, 0), val(ILValue::Kind::F64, 1)},
+                       3,
+                       ILValue::Kind::I1),
+                    op("ret", {imm(0)})};
 
     ILFunction fn{};
     fn.name = "fcmp_byte_zext";
@@ -1791,10 +1794,10 @@ TEST(X86BackendRegressions, MulToLeaDoesNotEraseConstantUsedInLaterBlock) {
     entry.label = ".L_mul_const_cross_block_entry";
     const Operand value = makeVRegOperand(RegClass::GPR, 1);
     const Operand factor = makeVRegOperand(RegClass::GPR, 2);
-    entry.instructions = {MInstr::make(MOpcode::MOVri, {factor, makeImmOperand(5)}),
-                          MInstr::make(MOpcode::IMULrr, {value, factor}),
-                          MInstr::make(MOpcode::JMP,
-                                       {makeLabelOperand(".L_mul_const_cross_block_next")})};
+    entry.instructions = {
+        MInstr::make(MOpcode::MOVri, {factor, makeImmOperand(5)}),
+        MInstr::make(MOpcode::IMULrr, {value, factor}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_mul_const_cross_block_next")})};
 
     MBasicBlock next{};
     next.label = ".L_mul_const_cross_block_next";
@@ -2147,13 +2150,13 @@ TEST(X86BackendRegressions, SibFoldDoesNotEraseAddResultUsedInLaterBlock) {
     const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
     const Operand addr = makeVRegOperand(RegClass::GPR, 4);
     const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
-    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
-                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
-                          MInstr::make(MOpcode::MOVrr, {addr, base}),
-                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
-                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}}),
-                          MInstr::make(MOpcode::JMP,
-                                       {makeLabelOperand(".L_sib_add_cross_block_next")})};
+    entry.instructions = {
+        MInstr::make(MOpcode::MOVrr, {scaled, index}),
+        MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+        MInstr::make(MOpcode::MOVrr, {addr, base}),
+        MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+        MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_sib_add_cross_block_next")})};
 
     MBasicBlock next{};
     next.label = ".L_sib_add_cross_block_next";
@@ -2184,13 +2187,13 @@ TEST(X86BackendRegressions, SibFoldDoesNotEraseShiftResultUsedInLaterBlock) {
     const Operand scaled = makeVRegOperand(RegClass::GPR, 3);
     const Operand addr = makeVRegOperand(RegClass::GPR, 4);
     const Operand loaded = makeVRegOperand(RegClass::GPR, 5);
-    entry.instructions = {MInstr::make(MOpcode::MOVrr, {scaled, index}),
-                          MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
-                          MInstr::make(MOpcode::MOVrr, {addr, base}),
-                          MInstr::make(MOpcode::ADDrr, {addr, scaled}),
-                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}}),
-                          MInstr::make(MOpcode::JMP,
-                                       {makeLabelOperand(".L_sib_shift_cross_block_next")})};
+    entry.instructions = {
+        MInstr::make(MOpcode::MOVrr, {scaled, index}),
+        MInstr::make(MOpcode::SHLri, {scaled, makeImmOperand(3)}),
+        MInstr::make(MOpcode::MOVrr, {addr, base}),
+        MInstr::make(MOpcode::ADDrr, {addr, scaled}),
+        MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr)}}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_sib_shift_cross_block_next")})};
 
     MBasicBlock next{};
     next.label = ".L_sib_shift_cross_block_next";
@@ -2472,9 +2475,10 @@ TEST(X86BackendRegressions, LeaFoldStillCombinesStableInputsAfterInterveningInst
     const Operand addr = makeVRegOperand(RegClass::GPR, 3);
     const Operand loaded = makeVRegOperand(RegClass::GPR, 4);
     const Operand scratch = makeVRegOperand(RegClass::GPR, 5);
-    entry.instructions = {MInstr::make(MOpcode::LEA, {addr, Operand{indexedMem(base, index, 4, 8)}}),
-                          MInstr::make(MOpcode::MOVri, {scratch, makeImmOperand(99)}),
-                          MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr, 16)}})};
+    entry.instructions = {
+        MInstr::make(MOpcode::LEA, {addr, Operand{indexedMem(base, index, 4, 8)}}),
+        MInstr::make(MOpcode::MOVri, {scratch, makeImmOperand(99)}),
+        MInstr::make(MOpcode::MOVmr, {loaded, Operand{baseMem(addr, 16)}})};
     fn.blocks.push_back(std::move(entry));
 
     ISel isel(sysvTarget());
@@ -3158,10 +3162,11 @@ TEST(X86BackendRegressions, XmmSelectRejectsLabelArm) {
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I1};
-    entry.instrs = {
-        op("select", {val(ILValue::Kind::I1, 0), label("not_f64"), immF64(0.0)}, 1,
-           ILValue::Kind::F64),
-        op("ret", {val(ILValue::Kind::F64, 1)}, -1, ILValue::Kind::F64)};
+    entry.instrs = {op("select",
+                       {val(ILValue::Kind::I1, 0), label("not_f64"), immF64(0.0)},
+                       1,
+                       ILValue::Kind::F64),
+                    op("ret", {val(ILValue::Kind::F64, 1)}, -1, ILValue::Kind::F64)};
 
     ILFunction fn{};
     fn.name = "select_label_xmm_arm";
@@ -3200,49 +3205,46 @@ TEST(X86BackendRegressions, FpAddRejectsGprOperand) {
 }
 
 TEST(X86BackendRegressions, BitwiseAndRejectsF64Result) {
-    expectCompileRejects("and_f64_result",
-                         {op("and", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1,
-                             ILValue::Kind::F64),
-                          op("ret", {})},
-                         {0},
-                         {ILValue::Kind::F64});
+    expectCompileRejects(
+        "and_f64_result",
+        {op("and", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1, ILValue::Kind::F64),
+         op("ret", {})},
+        {0},
+        {ILValue::Kind::F64});
 }
 
 TEST(X86BackendRegressions, BitwiseOrRejectsF64Result) {
-    expectCompileRejects("or_f64_result",
-                         {op("or", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1,
-                             ILValue::Kind::F64),
-                          op("ret", {})},
-                         {0},
-                         {ILValue::Kind::F64});
+    expectCompileRejects(
+        "or_f64_result",
+        {op("or", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1, ILValue::Kind::F64), op("ret", {})},
+        {0},
+        {ILValue::Kind::F64});
 }
 
 TEST(X86BackendRegressions, BitwiseXorRejectsF64Result) {
-    expectCompileRejects("xor_f64_result",
-                         {op("xor", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1,
-                             ILValue::Kind::F64),
-                          op("ret", {})},
-                         {0},
-                         {ILValue::Kind::F64});
+    expectCompileRejects(
+        "xor_f64_result",
+        {op("xor", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1, ILValue::Kind::F64),
+         op("ret", {})},
+        {0},
+        {ILValue::Kind::F64});
 }
 
 TEST(X86BackendRegressions, ShiftRejectsF64Result) {
-    expectCompileRejects("shl_f64_result",
-                         {op("shl", {val(ILValue::Kind::F64, 0), imm(1)}, 1,
-                             ILValue::Kind::F64),
-                          op("ret", {})},
-                         {0},
-                         {ILValue::Kind::F64});
+    expectCompileRejects(
+        "shl_f64_result",
+        {op("shl", {val(ILValue::Kind::F64, 0), imm(1)}, 1, ILValue::Kind::F64), op("ret", {})},
+        {0},
+        {ILValue::Kind::F64});
 }
 
 TEST(X86BackendRegressions, ShiftRejectsF64Count) {
-    expectCompileRejects("shl_f64_count",
-                         {op("shl", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::F64, 1)},
-                             2,
-                             ILValue::Kind::I64),
-                          op("ret", {val(ILValue::Kind::I64, 2)})},
-                         {0, 1},
-                         {ILValue::Kind::I64, ILValue::Kind::F64});
+    expectCompileRejects(
+        "shl_f64_count",
+        {op("shl", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::F64, 1)}, 2, ILValue::Kind::I64),
+         op("ret", {val(ILValue::Kind::I64, 2)})},
+        {0, 1},
+        {ILValue::Kind::I64, ILValue::Kind::F64});
 }
 
 TEST(X86BackendRegressions, ConstNullRejectsNonPointerResult) {
@@ -3251,39 +3253,37 @@ TEST(X86BackendRegressions, ConstNullRejectsNonPointerResult) {
 }
 
 TEST(X86BackendRegressions, FPToSIRejectsNonF64Source) {
-    expectCompileRejects("fptosi_i64_source",
-                         {op("fptosi", {imm(1)}, 0, ILValue::Kind::I64),
-                          op("ret", {val(ILValue::Kind::I64, 0)})});
+    expectCompileRejects(
+        "fptosi_i64_source",
+        {op("fptosi", {imm(1)}, 0, ILValue::Kind::I64), op("ret", {val(ILValue::Kind::I64, 0)})});
 }
 
 TEST(X86BackendRegressions, FPToSIRejectsNonIntegerResult) {
     expectCompileRejects("fptosi_f64_result",
-                         {op("fptosi", {immF64(1.0)}, 0, ILValue::Kind::F64),
-                          op("ret", {})});
+                         {op("fptosi", {immF64(1.0)}, 0, ILValue::Kind::F64), op("ret", {})});
 }
 
 TEST(X86BackendRegressions, FPToUIRejectsNonIntegerResult) {
     expectCompileRejects("fptoui_f64_result",
-                         {op("fptoui", {immF64(1.0)}, 0, ILValue::Kind::F64),
-                          op("ret", {})});
+                         {op("fptoui", {immF64(1.0)}, 0, ILValue::Kind::F64), op("ret", {})});
 }
 
 TEST(X86BackendRegressions, SIToFPRejectsNonF64Result) {
-    expectCompileRejects("sitofp_i64_result",
-                         {op("sitofp", {imm(1)}, 0, ILValue::Kind::I64),
-                          op("ret", {val(ILValue::Kind::I64, 0)})});
+    expectCompileRejects(
+        "sitofp_i64_result",
+        {op("sitofp", {imm(1)}, 0, ILValue::Kind::I64), op("ret", {val(ILValue::Kind::I64, 0)})});
 }
 
 TEST(X86BackendRegressions, UIToFPRejectsNonF64Result) {
-    expectCompileRejects("uitofp_i64_result",
-                         {op("uitofp", {imm(1)}, 0, ILValue::Kind::I64),
-                          op("ret", {val(ILValue::Kind::I64, 0)})});
+    expectCompileRejects(
+        "uitofp_i64_result",
+        {op("uitofp", {imm(1)}, 0, ILValue::Kind::I64), op("ret", {val(ILValue::Kind::I64, 0)})});
 }
 
 TEST(X86BackendRegressions, NarrowCastRejectsNonIntegerResult) {
-    expectCompileRejects("narrow_ptr_result",
-                         {opBits("si_narrow_chk", {imm(1)}, 0, ILValue::Kind::PTR, 16),
-                          op("ret", {})});
+    expectCompileRejects(
+        "narrow_ptr_result",
+        {opBits("si_narrow_chk", {imm(1)}, 0, ILValue::Kind::PTR, 16), op("ret", {})});
 }
 
 TEST(X86BackendRegressions, UnknownIntegerCompareOpcodeIsRejected) {
@@ -3291,8 +3291,7 @@ TEST(X86BackendRegressions, UnknownIntegerCompareOpcodeIsRejected) {
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I64};
-    entry.instrs = {op("icmp_unknown", {val(ILValue::Kind::I64, 0), imm(1)}, 1,
-                       ILValue::Kind::I1),
+    entry.instrs = {op("icmp_unknown", {val(ILValue::Kind::I64, 0), imm(1)}, 1, ILValue::Kind::I1),
                     op("ret", {val(ILValue::Kind::I1, 1)})};
 
     ILFunction fn{};
@@ -3307,9 +3306,9 @@ TEST(X86BackendRegressions, UnknownFloatingCompareOpcodeIsRejected) {
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::F64};
-    entry.instrs = {op("fcmp_unknown", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1,
-                       ILValue::Kind::I1),
-                    op("ret", {val(ILValue::Kind::I1, 1)})};
+    entry.instrs = {
+        op("fcmp_unknown", {val(ILValue::Kind::F64, 0), immF64(1.0)}, 1, ILValue::Kind::I1),
+        op("ret", {val(ILValue::Kind::I1, 1)})};
 
     ILFunction fn{};
     fn.name = "fcmp_unknown_suffix";
@@ -3323,9 +3322,11 @@ TEST(X86BackendRegressions, FcmpEqRejectsGprOperand) {
     entry.name = "entry";
     entry.paramIds = {0, 1};
     entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::F64};
-    entry.instrs = {
-        op("fcmp_eq", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::F64, 1)}, 2, ILValue::Kind::I1),
-        op("ret", {val(ILValue::Kind::I1, 2)})};
+    entry.instrs = {op("fcmp_eq",
+                       {val(ILValue::Kind::I64, 0), val(ILValue::Kind::F64, 1)},
+                       2,
+                       ILValue::Kind::I1),
+                    op("ret", {val(ILValue::Kind::I1, 2)})};
 
     ILFunction fn{};
     fn.name = "fcmp_eq_gpr_operand";
@@ -3339,9 +3340,11 @@ TEST(X86BackendRegressions, FcmpGtRejectsGprOperand) {
     entry.name = "entry";
     entry.paramIds = {0, 1};
     entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::F64};
-    entry.instrs = {
-        op("fcmp_gt", {val(ILValue::Kind::I64, 0), val(ILValue::Kind::F64, 1)}, 2, ILValue::Kind::I1),
-        op("ret", {val(ILValue::Kind::I1, 2)})};
+    entry.instrs = {op("fcmp_gt",
+                       {val(ILValue::Kind::I64, 0), val(ILValue::Kind::F64, 1)},
+                       2,
+                       ILValue::Kind::I1),
+                    op("ret", {val(ILValue::Kind::I1, 2)})};
 
     ILFunction fn{};
     fn.name = "fcmp_gt_gpr_operand";
@@ -3399,8 +3402,8 @@ TEST(X86BackendRegressions, ISelRejectsReservedTemporaryVregSentinel) {
 
     MBasicBlock entry{};
     entry.label = ".L_isel_reserved_temp";
-    const Operand dst =
-        makeVRegOperand(RegClass::GPR, static_cast<uint16_t>(std::numeric_limits<uint16_t>::max() - 1));
+    const Operand dst = makeVRegOperand(
+        RegClass::GPR, static_cast<uint16_t>(std::numeric_limits<uint16_t>::max() - 1));
     entry.instructions = {MInstr::make(MOpcode::ADDrr, {dst, makeImmOperand(1LL << 40)})};
     fn.blocks = {entry};
 
@@ -3561,10 +3564,9 @@ TEST(X86BackendRegressions, FrameStoreForwardingHonorsCrossClassAliases) {
     const Operand rbx = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBX));
     const Operand xmm0 = makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(PhysReg::XMM0));
 
-    std::vector<MInstr> instrs = {
-        MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rax}),
-        MInstr::make(MOpcode::MOVSDrm, {makeMemOperand(rbp, -8), xmm0}),
-        MInstr::make(MOpcode::MOVmr, {rbx, makeMemOperand(rbp, -8)})};
+    std::vector<MInstr> instrs = {MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rax}),
+                                  MInstr::make(MOpcode::MOVSDrm, {makeMemOperand(rbp, -8), xmm0}),
+                                  MInstr::make(MOpcode::MOVmr, {rbx, makeMemOperand(rbp, -8)})};
 
     peephole::PeepholeStats stats{};
     const std::size_t forwarded = peephole::forwardFrameStoreLoads(instrs, stats);
@@ -3589,10 +3591,9 @@ TEST(X86BackendRegressions, DeadFrameStoreEliminationHonorsCrossClassAliases) {
     ASSERT_EQ(overwritten.size(), 1u);
     EXPECT_EQ(overwritten.front().opcode, MOpcode::MOVSDrm);
 
-    std::vector<MInstr> observed = {
-        MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rax}),
-        MInstr::make(MOpcode::MOVSDmr, {xmm0, makeMemOperand(rbp, -8)}),
-        MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rbx})};
+    std::vector<MInstr> observed = {MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rax}),
+                                    MInstr::make(MOpcode::MOVSDmr, {xmm0, makeMemOperand(rbp, -8)}),
+                                    MInstr::make(MOpcode::MOVrm, {makeMemOperand(rbp, -8), rbx})};
 
     peephole::PeepholeStats observedStats{};
     EXPECT_EQ(peephole::eliminateDeadFrameStores(observed, observedStats), 0u);
@@ -3627,8 +3628,7 @@ TEST(X86BackendRegressions, FrameLoweringPreservesCalleeSavedAddressRegisters) {
         MBasicBlock entry{};
         entry.label = std::string(".L_") + testCase.name;
 
-        const Operand dst =
-            makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+        const Operand dst = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
         const OpReg address =
             makePhysReg(RegClass::GPR, static_cast<uint16_t>(testCase.addressReg));
         const Operand mem =
@@ -3723,11 +3723,7 @@ TEST(X86BackendRegressions, TruncMasksBooleanResultWidth) {
     entry.name = "entry";
     entry.paramIds = {0};
     entry.paramKinds = {ILValue::Kind::I64};
-    entry.instrs = {opBits("trunc",
-                           {val(ILValue::Kind::I64, 0)},
-                           1,
-                           ILValue::Kind::I1,
-                           1),
+    entry.instrs = {opBits("trunc", {val(ILValue::Kind::I64, 0)}, 1, ILValue::Kind::I1, 1),
                     op("ret", {val(ILValue::Kind::I1, 1)})};
 
     ILFunction fn{};

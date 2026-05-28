@@ -99,9 +99,12 @@ rt_string rt_machine_os(void) {
 }
 
 /// @brief Return the OS version string in the platform's native format. Per-OS source:
-///   - **Windows:** `GetVersionExA` → `"major.minor.build"` (deprecated but stable for VPN-style versions).
-///   - **macOS:** `sysctlbyname("kern.osproductversion")` (e.g. "14.5"); falls back to `uname.release`.
-///   - **Linux:** Parses `VERSION_ID=` from `/etc/os-release` (e.g. "22.04"); falls back to `uname.release`.
+///   - **Windows:** `GetVersionExA` → `"major.minor.build"` (deprecated but stable for VPN-style
+///   versions).
+///   - **macOS:** `sysctlbyname("kern.osproductversion")` (e.g. "14.5"); falls back to
+///   `uname.release`.
+///   - **Linux:** Parses `VERSION_ID=` from `/etc/os-release` (e.g. "22.04"); falls back to
+///   `uname.release`.
 ///   - **Other Unix / ViperDOS:** `uname.release`.
 /// Returns "unknown" if every probe fails.
 rt_string rt_machine_os_ver(void) {

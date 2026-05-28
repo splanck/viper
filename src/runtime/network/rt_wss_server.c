@@ -422,8 +422,8 @@ static int ws_server_handshake(void *tcp, const char *required_subprotocol) {
     }
 
     if (!ws_sec_key_is_valid(ws_key) || !ws_host_header_is_valid(host_header) || !saw_upgrade ||
-        !saw_connection ||
-        !saw_version || !ws_origin_matches_expected(origin_header, host_header, "https", 443))
+        !saw_connection || !saw_version ||
+        !ws_origin_matches_expected(origin_header, host_header, "https", 443))
         return 0;
     if (protocol_header[0] != '\0' && !ws_protocol_header_is_valid(protocol_header))
         return 0;
@@ -512,7 +512,8 @@ static void ws_server_remove_client(rt_ws_server_impl *s, int slot, void *tcp) {
     WS_MUTEX_UNLOCK(&s->io_lock);
 }
 
-static int ws_server_send_locked(rt_ws_server_impl *s, void *tcp, uint8_t opcode, const void *data, size_t len) {
+static int ws_server_send_locked(
+    rt_ws_server_impl *s, void *tcp, uint8_t opcode, const void *data, size_t len) {
     int ok = 0;
     if (!s || !tcp)
         return 0;

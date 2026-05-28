@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "codegen/common/linker/MachOCodeSign.hpp"
 #include "codegen/common/linker/MachOBindRebase.hpp"
+#include "codegen/common/linker/MachOCodeSign.hpp"
 
 #include <algorithm>
 #include <cstdint>

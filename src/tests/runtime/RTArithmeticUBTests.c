@@ -43,18 +43,18 @@ void vm_trap(const char *msg) {
         }                                                                                          \
     } while (0)
 
-#define EXPECT_TRAP(expr)                                                                         \
-    do {                                                                                          \
-        tests_run++;                                                                              \
-        g_expect_trap = 1;                                                                        \
-        if (setjmp(g_trap_env) == 0) {                                                            \
-            (void)(expr);                                                                         \
-            g_expect_trap = 0;                                                                    \
-            tests_failed++;                                                                       \
-            fprintf(stderr, "FAIL %s:%d: expected trap for %s\n", __FILE__, __LINE__, #expr);     \
-        } else {                                                                                  \
-            g_expect_trap = 0;                                                                    \
-        }                                                                                         \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        tests_run++;                                                                               \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            tests_failed++;                                                                        \
+            fprintf(stderr, "FAIL %s:%d: expected trap for %s\n", __FILE__, __LINE__, #expr);      \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
     } while (0)
 
 //=============================================================================

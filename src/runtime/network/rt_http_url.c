@@ -1287,7 +1287,8 @@ rt_string rt_url_encode_query(void *map) {
     return str;
 }
 
-/// @brief Parse a `name=value&…` query string into a `Map[String,String]`. Inverse of `encode_query`.
+/// @brief Parse a `name=value&…` query string into a `Map[String,String]`. Inverse of
+/// `encode_query`.
 void *rt_url_decode_query(rt_string query) {
     void *map = rt_map_new();
     const char *str = query ? rt_string_cstr(query) : NULL;

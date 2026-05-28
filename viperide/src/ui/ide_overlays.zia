@@ -14,21 +14,24 @@ final ACTION_USE_SYSTEM_FONT = 3;
 final ACTION_RESET_FONT_SIZE = 4;
 final ACTION_CLOSE_SETTINGS = 5;
 final ACTION_CLOSE_ABOUT = 6;
+final ACTION_RESET_APPEARANCE = 7;
+final ACTION_RESET_EDITING = 8;
+final ACTION_RESET_INTELLISENSE = 9;
+final ACTION_RESET_STARTUP = 10;
 
-final SETTINGS_PANEL_WIDTH = 860;
-final SETTINGS_PANEL_HEIGHT = 600;
+final SETTINGS_DOCK_WIDTH = 420;
+final SETTINGS_DOCK_MAX_WIDTH = 520;
+final SETTINGS_DOCK_MIN_WIDTH = 320;
 final ABOUT_PANEL_WIDTH = 520;
 final ABOUT_PANEL_HEIGHT = 270;
 final FIELD_LABEL_WIDTH = 200;
 final PANEL_SCREEN_MARGIN = 28;
-final SETTINGS_MIN_WIDTH = 560;
-final SETTINGS_MIN_HEIGHT = 420;
 
-/// @brief Floating in-app overlays for ViperIDE settings and about panels.
-/// @details These replace the old stacked MessageBox/Prompt flow with
-///          persistent controls that can be edited inline.
+/// @brief Docked Preferences surface plus the floating About panel.
+/// @details Preferences live in the workbench side panel so they can stay open
+///          while the editor remains visible.
 class IdeOverlays {
-    expose GUI.FloatingPanel settingsPanel;
+    expose GUI.VBox settingsPanel;
     expose GUI.FloatingPanel aboutPanel;
 
     expose GUI.TextInput fontPathInput;
@@ -52,16 +55,22 @@ class IdeOverlays {
     expose GUI.Button browseFontButton;
     expose GUI.Button useSystemFontButton;
     expose GUI.Button resetFontSizeButton;
+    expose GUI.Button resetAppearanceButton;
+    expose GUI.Button resetEditingButton;
+    expose GUI.Button resetIntelliSenseButton;
+    expose GUI.Button resetStartupButton;
     expose GUI.Button applySettingsButton;
     expose GUI.Button closeSettingsButton;
     expose GUI.Button aboutCloseButton;
 
     expose Boolean settingsVisible;
     expose Boolean aboutVisible;
+    expose Integer settingsDockWidth;
 
     expose func init() {
         settingsVisible = false;
         aboutVisible = false;
+        settingsDockWidth = 0;
     }
 
     expose func Setup(shell: app_shell.AppShell) {
@@ -217,6 +226,22 @@ class IdeOverlays {
             if browseFontButton.WasClicked() != 0 { return ACTION_BROWSE_FONT; }
             if useSystemFontButton.WasClicked() != 0 { return ACTION_USE_SYSTEM_FONT; }
             if resetFontSizeButton.WasClicked() != 0 { return ACTION_RESET_FONT_SIZE; }
+            if resetAppearanceButton.WasClicked() != 0 {
+                ResetAppearanceDefaults();
+                return ACTION_RESET_APPEARANCE;
+            }
+            if resetEditingButton.WasClicked() != 0 {
+                ResetEditingDefaults();
+                return ACTION_RESET_EDITING;
+            }
+            if resetIntelliSenseButton.WasClicked() != 0 {
+                ResetIntelliSenseDefaults();
+                return ACTION_RESET_INTELLISENSE;
+            }
+            if resetStartupButton.WasClicked() != 0 {
+                ResetStartupDefaults();
+                return ACTION_RESET_STARTUP;
+            }
             if applySettingsButton.WasClicked() != 0 { return ACTION_APPLY_SETTINGS; }
             if closeSettingsButton.WasClicked() != 0 { return ACTION_CLOSE_SETTINGS; }
         }
@@ -313,22 +338,53 @@ class IdeOverlays {
         fontSizeSpinner.SetValue(settings.DEFAULT_FONT_SIZE);
     }
 
+    expose func ResetAppearanceDefaults() {
+        fontPathInput.SetText("");
+        fontSizeSpinner.SetValue(settings.DEFAULT_FONT_SIZE);
+        themeDropdown.SetSelected(0);
+        minimapCheck.SetChecked(0);
+    }
+
+    expose func ResetEditingDefaults() {
+        tabWidthSpinner.SetValue(4.0);
+        autoCheckCheck.SetChecked(1);
+        codeFoldingCheck.SetChecked(1);
+        wordWrapCheck.SetChecked(0);
+        lineNumbersCheck.SetChecked(1);
+        insertSpacesCheck.SetChecked(1);
+        trimWhitespaceCheck.SetChecked(0);
+        finalNewlineCheck.SetChecked(1);
+        autoSaveCheck.SetChecked(0);
+    }
+
+    expose func ResetIntelliSenseDefaults() {
+        diagnosticsDelaySpinner.SetValue(500.0);
+        completionDelaySpinner.SetValue(180.0);
+    }
+
+    expose func ResetStartupDefaults() {
+        restoreSessionCheck.SetChecked(1);
+        restoreLastProjectCheck.SetChecked(1);
+        confirmCloseCheck.SetChecked(1);
+    }
+
     expose func SetFontPath(path: String) {
         fontPathInput.SetText(path);
         fontPathInput.Focus();
     }
 
     hide func setupSettingsPanel(shell: app_shell.AppShell) {
-        settingsPanel = GUI.FloatingPanel.New(shell.app);
-        settingsPanel.SetSize(SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_HEIGHT);
+        settingsPanel = shell.preferencesPanel;
+        settingsPanel.SetSize(SETTINGS_DOCK_WIDTH, 0);
         settingsPanel.SetVisible(0);
 
         var root = GUI.VBox.New();
-        root.SetPadding(20.0);
+        root.SetPadding(18.0);
         root.SetSpacing(14.0);
+        root.SetFlex(1.0);
         settingsPanel.AddChild(root);
 
-        var title = GUI.Label.New(root, "Editor Settings");
+        var title = GUI.Label.New(root, "Preferences");
         title.SetMargin(1);
 
         var intro = GUI.Label.New(
@@ -429,6 +485,8 @@ class IdeOverlays {
         themeDropdown.SetFlex(1.0);
         themeDropdown.AddItem("Dark");
         themeDropdown.AddItem("Light");
+        resetAppearanceButton = GUI.Button.New(body, "Restore Appearance Defaults");
+        resetAppearanceButton.SetStyle(2);
 
         var togglesTitle = GUI.Label.New(body, "Editing");
         togglesTitle.SetMargin(1);
@@ -445,6 +503,8 @@ class IdeOverlays {
         trimWhitespaceCheck = GUI.Checkbox.New(body, "Trim trailing whitespace on save");
         finalNewlineCheck = GUI.Checkbox.New(body, "Ensure final newline on save");
         autoSaveCheck = GUI.Checkbox.New(body, "Auto-save named files after idle");
+        resetEditingButton = GUI.Button.New(body, "Restore Editing Defaults");
+        resetEditingButton.SetStyle(2);
 
         var intelliTitle = GUI.Label.New(body, "IntelliSense");
         intelliTitle.SetMargin(1);
@@ -481,6 +541,8 @@ class IdeOverlays {
         completionDelaySpinner.SetStep(25.0);
         completionDelaySpinner.SetDecimals(0);
         completionDelaySpinner.SetSize(130, 0);
+        resetIntelliSenseButton = GUI.Button.New(body, "Restore IntelliSense Defaults");
+        resetIntelliSenseButton.SetStyle(2);
 
         var startupTitle = GUI.Label.New(body, "Startup and safety");
         startupTitle.SetMargin(1);
@@ -491,6 +553,8 @@ class IdeOverlays {
         restoreSessionCheck = GUI.Checkbox.New(body, "Restore open files on launch");
         restoreLastProjectCheck = GUI.Checkbox.New(body, "Restore the last project on launch");
         confirmCloseCheck = GUI.Checkbox.New(body, "Confirm before closing unsaved files");
+        resetStartupButton = GUI.Button.New(body, "Restore Startup Defaults");
+        resetStartupButton.SetStyle(2);
 
         var footer = GUI.HBox.New();
         footer.SetSpacing(10.0);
@@ -537,26 +601,27 @@ class IdeOverlays {
 
     hide func layoutSettingsPanel(shell: app_shell.AppShell) {
         if settingsPanel == null { return; }
-        var rootW = shell.app.GetWidth();
-        var rootH = shell.app.GetHeight();
+        // GUI widgets lay out in physical pixels, but the dock breakpoints below
+        // are logical so the panel adapts identically on 1x and HiDPI displays.
+        // Convert the physical window width to logical, pick the dock width, then
+        // scale it back to physical for the layout engine. settingsDockWidth is
+        // stored in logical pixels so it stays stable across display scales.
+        var scale = shell.app.GetScale();
+        if scale < 1.0 { scale = 1.0; }
+        var rootW = Convert.NumToInt((1.0 * shell.app.GetWidth()) / scale);
         if rootW <= 0 { rootW = 1280; }
-        if rootH <= 0 { rootH = 800; }
-        var maxW = rootW - (PANEL_SCREEN_MARGIN * 2);
-        var maxH = rootH - (PANEL_SCREEN_MARGIN * 2);
-        if maxW <= 0 { maxW = rootW; }
-        if maxH <= 0 { maxH = rootH; }
-        var panelW = SETTINGS_PANEL_WIDTH;
-        var panelH = SETTINGS_PANEL_HEIGHT;
+        var panelW = SETTINGS_DOCK_WIDTH;
+        if rootW < 760 { panelW = SETTINGS_DOCK_MIN_WIDTH; }
+        if rootW > 1320 { panelW = SETTINGS_DOCK_MAX_WIDTH; }
+        var maxW = (rootW * 55) / 100;
         if panelW > maxW { panelW = maxW; }
-        if panelH > maxH { panelH = maxH; }
-        if panelW < SETTINGS_MIN_WIDTH and maxW >= SETTINGS_MIN_WIDTH { panelW = SETTINGS_MIN_WIDTH; }
-        if panelH < SETTINGS_MIN_HEIGHT and maxH >= SETTINGS_MIN_HEIGHT { panelH = SETTINGS_MIN_HEIGHT; }
-        settingsPanel.SetSize(panelW, panelH);
-        var x = (rootW - panelW) / 2;
-        var y = (rootH - panelH) / 2;
-        if x < PANEL_SCREEN_MARGIN { x = PANEL_SCREEN_MARGIN; }
-        if y < PANEL_SCREEN_MARGIN { y = PANEL_SCREEN_MARGIN; }
-        settingsPanel.SetPosition(x, y);
+        if maxW >= SETTINGS_DOCK_MIN_WIDTH and panelW < SETTINGS_DOCK_MIN_WIDTH {
+            panelW = SETTINGS_DOCK_MIN_WIDTH;
+        }
+        if panelW < 240 { panelW = 240; }
+        if settingsDockWidth == panelW { return; }
+        settingsDockWidth = panelW;
+        settingsPanel.SetSize(Convert.NumToInt(scale * panelW), 0);
     }
 
     hide func layoutAboutPanel(shell: app_shell.AppShell) {

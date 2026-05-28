@@ -10,9 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_option.h"
 #include "rt_box.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_result.h"
 #include "rt_string.h"
 

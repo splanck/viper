@@ -9,6 +9,7 @@
 #define VIPER_ENABLE_GRAPHICS 1
 #endif
 
+#include "rt_asset.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_gltf.h"
@@ -23,6 +24,8 @@
 #include <cstring>
 #include <string>
 #include <vector>
+
+#include "VpaWriter.hpp"
 
 extern "C" {
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
@@ -278,8 +281,7 @@ static void test_gltf_resolves_percent_encoded_external_buffers() {
     const char *bin_path = "/tmp/viper gltf encoded buffer.bin";
     const char *gltf_path = "/tmp/viper_gltf_encoded_external_buffer.gltf";
     std::vector<uint8_t> gltf_buffer;
-    const float positions[9] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f,
-                                0.0f, 0.0f, 3.0f, 0.0f};
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f, 3.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
 
     for (float v : positions)
@@ -298,7 +300,8 @@ static void test_gltf_resolves_percent_encoded_external_buffers() {
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
         "\"buffers\":[{\"uri\":\"viper%20gltf%20encoded%20buffer.bin\",\"byteLength\":" +
-        std::to_string(gltf_buffer.size()) + "}],"
+        std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
@@ -330,11 +333,187 @@ static void test_gltf_resolves_percent_encoded_external_buffers() {
     EXPECT_NEAR(mesh->vertices[2].pos[1], 3.0, 0.001, "External buffer vertex Y is loaded");
 }
 
+static void test_gltf_load_asset_resolves_mounted_external_buffers() {
+    const char *pack_path = "/tmp/viper_gltf_asset_pack.vpa";
+    const char *png_path = "/tmp/viper_gltf_asset_texture.png";
+    void *pixels = rt_pixels_new(1, 1);
+    rt_pixels_set(pixels, 0, 0, 0x224466FFll);
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "Package texture PNG can be written");
+    std::vector<uint8_t> png_bytes;
+    EXPECT_TRUE(read_file_bytes(png_path, png_bytes), "Package texture PNG can be read");
+    if (png_bytes.empty())
+        return;
+
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"buffers/tri.bin\",\"byteLength\":" +
+        std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"images\":[{\"uri\":\"textures/albedo.png\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"material\":0}]}]"
+        "}";
+
+    viper::asset::VpaWriter writer;
+    writer.addEntry("assets/models/tri.gltf",
+                    reinterpret_cast<const uint8_t *>(gltf_json.data()),
+                    gltf_json.size(),
+                    false);
+    writer.addEntry("assets/models/buffers/tri.bin", gltf_buffer.data(), gltf_buffer.size(), false);
+    writer.addEntry("assets/models/textures/albedo.png", png_bytes.data(), png_bytes.size(), false);
+    std::string err;
+    bool wrote_pack = writer.writeToFile(pack_path, err);
+    EXPECT_TRUE(wrote_pack, "Mounted glTF asset pack can be written");
+    if (!err.empty())
+        std::fprintf(stderr, "VPA write detail: %s\n", err.c_str());
+    if (!wrote_pack)
+        return;
+
+    bool mounted = rt_asset_mount(rt_const_cstr(pack_path)) == 1;
+    EXPECT_TRUE(mounted, "Mounted glTF asset pack can mount");
+    if (!mounted)
+        return;
+    void *asset = rt_gltf_load_asset(rt_const_cstr("asset://assets/models/tri.gltf"));
+    EXPECT_TRUE(asset != nullptr, "GLTF.LoadAsset loads a root model from a mounted asset URI");
+    if (asset) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+        auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "GLTF.LoadAsset imports geometry from a mounted external buffer");
+        EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
+                        rt_pixels_get(material->texture, 0, 0) == 0x224466FFll,
+                    "GLTF.LoadAsset imports package-relative external textures");
+        if (mesh) {
+            EXPECT_NEAR(
+                mesh->vertices[1].pos[0], 4.0, 0.001, "Mounted external buffer vertex X is loaded");
+            EXPECT_NEAR(
+                mesh->vertices[2].pos[1], 5.0, 0.001, "Mounted external buffer vertex Y is loaded");
+        }
+    }
+
+    rt_asset_unmount(rt_const_cstr(pack_path));
+    std::remove(png_path);
+    std::remove(pack_path);
+}
+
+static std::vector<uint8_t> make_triangle_glb(float x1, float y2) {
+    std::vector<uint8_t> bin;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, x1, 0.0f, 0.0f, 0.0f, y2, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(bin, v);
+    for (uint16_t v : indices)
+        append_bytes(bin, v);
+    size_t gltf_byte_length = bin.size();
+    while ((bin.size() & 3u) != 0)
+        bin.push_back(0);
+
+    std::string json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"byteLength\":" +
+        std::to_string(gltf_byte_length) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}]"
+        "}";
+    while ((json.size() & 3u) != 0)
+        json.push_back(' ');
+
+    std::vector<uint8_t> glb;
+    glb.insert(glb.end(), {'g', 'l', 'T', 'F'});
+    append_u32_le(glb, 2);
+    append_u32_le(glb, (uint32_t)(12 + 8 + json.size() + 8 + bin.size()));
+    append_u32_le(glb, (uint32_t)json.size());
+    append_u32_le(glb, 0x4E4F534Au);
+    glb.insert(glb.end(), json.begin(), json.end());
+    append_u32_le(glb, (uint32_t)bin.size());
+    append_u32_le(glb, 0x004E4942u);
+    glb.insert(glb.end(), bin.begin(), bin.end());
+    return glb;
+}
+
+static void test_gltf_load_asset_handles_glb_filesystem_and_mounted_package() {
+    const char *glb_path = "/tmp/viper_gltf_asset_triangle.glb";
+    const char *pack_path = "/tmp/viper_gltf_asset_glb_pack.vpa";
+    std::vector<uint8_t> glb = make_triangle_glb(8.0f, 9.0f);
+
+    FILE *f = std::fopen(glb_path, "wb");
+    EXPECT_TRUE(f != nullptr, "GLB fixture can be written");
+    if (!f)
+        return;
+    std::fwrite(glb.data(), 1, glb.size(), f);
+    std::fclose(f);
+
+    void *fs_asset = rt_gltf_load_asset(rt_const_cstr(glb_path));
+    EXPECT_TRUE(fs_asset != nullptr, "GLTF.LoadAsset loads GLB through filesystem fallback");
+    if (fs_asset) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(fs_asset, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "Filesystem GLB imports embedded BIN geometry");
+        if (mesh) {
+            EXPECT_NEAR(mesh->vertices[1].pos[0], 8.0, 0.001, "Filesystem GLB vertex X loads");
+            EXPECT_NEAR(mesh->vertices[2].pos[1], 9.0, 0.001, "Filesystem GLB vertex Y loads");
+        }
+    }
+
+    viper::asset::VpaWriter writer;
+    writer.addEntry("assets/models/tri.glb", glb.data(), glb.size(), false);
+    std::string err;
+    bool wrote_pack = writer.writeToFile(pack_path, err);
+    EXPECT_TRUE(wrote_pack, "GLB asset pack can be written");
+    if (!wrote_pack)
+        return;
+    bool mounted = rt_asset_mount(rt_const_cstr(pack_path)) == 1;
+    EXPECT_TRUE(mounted, "GLB asset pack can mount");
+    if (!mounted)
+        return;
+
+    void *pack_asset = rt_gltf_load_asset(rt_const_cstr("asset://assets/models/tri.glb"));
+    EXPECT_TRUE(pack_asset != nullptr, "GLTF.LoadAsset loads GLB from a mounted package");
+    if (pack_asset) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(pack_asset, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "Mounted GLB imports embedded BIN geometry");
+    }
+
+    rt_asset_unmount(rt_const_cstr(pack_path));
+    std::remove(pack_path);
+    std::remove(glb_path);
+}
+
 static void test_gltf_rejects_out_of_range_indices() {
     const char *gltf_path = "/tmp/viper_gltf_bad_indices.gltf";
     std::vector<uint8_t> gltf_buffer;
-    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                0.0f, 0.0f, 1.0f, 0.0f};
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 99};
 
     for (float v : positions)
@@ -347,7 +526,8 @@ static void test_gltf_rejects_out_of_range_indices() {
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
         "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
@@ -495,46 +675,114 @@ static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
     const char *gltf_path = "/tmp/viper_gltf_extended_attrs.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float positions[12] = {
-        0.0f, 0.0f, 0.0f,
-        1.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f,
-        1.0f, 1.0f, 0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        0.0f,
     };
     const float normals[12] = {
-        0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, 1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
     };
     const float uvs[8] = {
-        0.0f, 0.0f,
-        1.0f, 0.0f,
-        0.0f, 1.0f,
-        1.0f, 1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        1.0f,
     };
     const uint8_t colors[16] = {
-        255, 0, 0, 255,
-        0, 255, 0, 255,
-        0, 0, 255, 255,
-        255, 255, 255, 128,
+        255,
+        0,
+        0,
+        255,
+        0,
+        255,
+        0,
+        255,
+        0,
+        0,
+        255,
+        255,
+        255,
+        255,
+        255,
+        128,
     };
     const float tangents[16] = {
-        1.0f, 0.0f, 0.0f, 1.0f,
-        1.0f, 0.0f, 0.0f, 1.0f,
-        1.0f, 0.0f, 0.0f, 1.0f,
-        1.0f, 0.0f, 0.0f, -1.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        -1.0f,
     };
     const uint8_t joints[16] = {
-        1, 2, 3, 4,
-        4, 3, 2, 1,
-        5, 6, 7, 8,
-        8, 7, 6, 5,
+        1,
+        2,
+        3,
+        4,
+        4,
+        3,
+        2,
+        1,
+        5,
+        6,
+        7,
+        8,
+        8,
+        7,
+        6,
+        5,
     };
     const uint8_t weights[16] = {
-        255, 0, 0, 0,
-        128, 127, 0, 0,
-        64, 64, 64, 63,
-        0, 0, 255, 0,
+        255,
+        0,
+        0,
+        0,
+        128,
+        127,
+        0,
+        0,
+        64,
+        64,
+        64,
+        63,
+        0,
+        0,
+        255,
+        0,
     };
     const uint16_t indices[4] = {0, 1, 2, 3};
 
@@ -576,13 +824,16 @@ static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
         "    {\"bufferView\": 0, \"componentType\": 5126, \"count\": 4, \"type\": \"VEC3\"},\n"
         "    {\"bufferView\": 1, \"componentType\": 5126, \"count\": 4, \"type\": \"VEC3\"},\n"
         "    {\"bufferView\": 2, \"componentType\": 5126, \"count\": 4, \"type\": \"VEC2\"},\n"
-        "    {\"bufferView\": 3, \"componentType\": 5121, \"normalized\": true, \"count\": 4, \"type\": \"VEC4\"},\n"
+        "    {\"bufferView\": 3, \"componentType\": 5121, \"normalized\": true, \"count\": 4, "
+        "\"type\": \"VEC4\"},\n"
         "    {\"bufferView\": 4, \"componentType\": 5126, \"count\": 4, \"type\": \"VEC4\"},\n"
         "    {\"bufferView\": 5, \"componentType\": 5121, \"count\": 4, \"type\": \"VEC4\"},\n"
-        "    {\"bufferView\": 6, \"componentType\": 5121, \"normalized\": true, \"count\": 4, \"type\": \"VEC4\"},\n"
+        "    {\"bufferView\": 6, \"componentType\": 5121, \"normalized\": true, \"count\": 4, "
+        "\"type\": \"VEC4\"},\n"
         "    {\"bufferView\": 7, \"componentType\": 5123, \"count\": 4, \"type\": \"SCALAR\"}\n"
         "  ],\n"
-        "  \"materials\": [{\"pbrMetallicRoughness\": {\"baseColorFactor\": [1.0, 1.0, 1.0, 1.0]}}],\n"
+        "  \"materials\": [{\"pbrMetallicRoughness\": {\"baseColorFactor\": [1.0, 1.0, 1.0, "
+        "1.0]}}],\n"
         "  \"meshes\": [{\"primitives\": [{\n"
         "    \"attributes\": {\n"
         "      \"POSITION\": 0,\n"
@@ -607,7 +858,8 @@ static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
     std::fclose(gltf);
 
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
-    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses triangle-strip meshes with extended attributes");
+    EXPECT_TRUE(asset != nullptr,
+                "GLTF.Load parses triangle-strip meshes with extended attributes");
     if (!asset)
         return;
 
@@ -619,11 +871,14 @@ static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
     EXPECT_TRUE(mesh->vertex_count == 4 && mesh->index_count == 6,
                 "GLTF.Load triangulates triangle strips into indexed triangles");
     EXPECT_NEAR(mesh->vertices[0].color[0], 1.0, 0.001, "GLTF.Load normalizes COLOR_0 red");
-    EXPECT_NEAR(mesh->vertices[3].color[3], 128.0 / 255.0, 0.001, "GLTF.Load normalizes COLOR_0 alpha");
-    EXPECT_NEAR(mesh->vertices[3].tangent[3], -1.0, 0.001, "GLTF.Load preserves tangent handedness");
+    EXPECT_NEAR(
+        mesh->vertices[3].color[3], 128.0 / 255.0, 0.001, "GLTF.Load normalizes COLOR_0 alpha");
+    EXPECT_NEAR(
+        mesh->vertices[3].tangent[3], -1.0, 0.001, "GLTF.Load preserves tangent handedness");
     EXPECT_TRUE(mesh->vertices[0].bone_indices[0] == 1 && mesh->vertices[0].bone_indices[3] == 4,
                 "GLTF.Load preserves JOINTS_0 indices");
-    EXPECT_NEAR(mesh->vertices[1].bone_weights[0], 128.0 / 255.0, 0.001, "GLTF.Load normalizes WEIGHTS_0");
+    EXPECT_NEAR(
+        mesh->vertices[1].bone_weights[0], 128.0 / 255.0, 0.001, "GLTF.Load normalizes WEIGHTS_0");
     EXPECT_TRUE(mesh->bone_count == 9, "GLTF.Load grows the mesh bone palette from JOINTS_0 data");
     EXPECT_TRUE(mesh->indices[0] == 0 && mesh->indices[1] == 1 && mesh->indices[2] == 2 &&
                     mesh->indices[3] == 2 && mesh->indices[4] == 1 && mesh->indices[5] == 3,
@@ -659,16 +914,13 @@ static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
         return offset;
     };
 
-    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                       0.0f, 0.0f, 1.0f, 0.0f};
+    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     static const uint8_t joints0[12] = {1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4};
-    static const float weights0[12] = {0.10f, 0.20f, 0.05f, 0.05f,
-                                       0.10f, 0.20f, 0.05f, 0.05f,
-                                       0.10f, 0.20f, 0.05f, 0.05f};
+    static const float weights0[12] = {
+        0.10f, 0.20f, 0.05f, 0.05f, 0.10f, 0.20f, 0.05f, 0.05f, 0.10f, 0.20f, 0.05f, 0.05f};
     static const uint8_t joints1[12] = {5, 6, 7, 8, 5, 6, 7, 8, 5, 6, 7, 8};
-    static const float weights1[12] = {0.30f, 0.15f, 0.10f, 0.05f,
-                                       0.30f, 0.15f, 0.10f, 0.05f,
-                                       0.30f, 0.15f, 0.10f, 0.05f};
+    static const float weights1[12] = {
+        0.30f, 0.15f, 0.10f, 0.05f, 0.30f, 0.15f, 0.10f, 0.05f, 0.30f, 0.15f, 0.10f, 0.05f};
     static const uint16_t indices[3] = {0, 1, 2};
 
     size_t pos_off = append_float_array(positions, 9);
@@ -682,20 +934,27 @@ static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
     std::string gltf_json =
         "{\"asset\":{\"version\":\"2.0\"},"
         "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(pos_off) + ",\"byteLength\":36},"
+        std::to_string(pos_off) +
+        ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(joints0_off) + ",\"byteLength\":12},"
+        std::to_string(joints0_off) +
+        ",\"byteLength\":12},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(weights0_off) + ",\"byteLength\":48},"
+        std::to_string(weights0_off) +
+        ",\"byteLength\":48},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(joints1_off) + ",\"byteLength\":12},"
+        std::to_string(joints1_off) +
+        ",\"byteLength\":12},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(weights1_off) + ",\"byteLength\":48},"
+        std::to_string(weights1_off) +
+        ",\"byteLength\":48},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(idx_off) + ",\"byteLength\":6}"
+        std::to_string(idx_off) +
+        ",\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
@@ -721,9 +980,13 @@ static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
                     mesh->vertices[0].bone_indices[2] == 5 &&
                     mesh->vertices[0].bone_indices[3] == 6,
                 "GLTF.Load keeps the four strongest influences across JOINTS_0 and JOINTS_1");
-    EXPECT_NEAR(mesh->vertices[0].bone_weights[0], 0.10 / 0.75, 0.001,
+    EXPECT_NEAR(mesh->vertices[0].bone_weights[0],
+                0.10 / 0.75,
+                0.001,
                 "GLTF.Load renormalizes reduced JOINTS_1 influence weights");
-    EXPECT_NEAR(mesh->vertices[0].bone_weights[2], 0.30 / 0.75, 0.001,
+    EXPECT_NEAR(mesh->vertices[0].bone_weights[2],
+                0.30 / 0.75,
+                0.001,
                 "GLTF.Load keeps the strongest secondary influence");
     EXPECT_TRUE(mesh->bone_count == 7, "GLTF.Load includes retained JOINTS_1 palette entries");
 }
@@ -754,12 +1017,15 @@ static void test_gltf_applies_matrix_nodes_in_column_major_order() {
         "    {\"bufferView\": 0, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC3\"},\n"
         "    {\"bufferView\": 1, \"componentType\": 5123, \"count\": 3, \"type\": \"SCALAR\"}\n"
         "  ],\n"
-        "  \"materials\": [{\"pbrMetallicRoughness\": {\"baseColorFactor\": [1.0, 1.0, 1.0, 1.0]}}],\n"
-        "  \"meshes\": [{\"primitives\": [{\"attributes\": {\"POSITION\": 0}, \"indices\": 1, \"material\": 0}]}],\n"
+        "  \"materials\": [{\"pbrMetallicRoughness\": {\"baseColorFactor\": [1.0, 1.0, 1.0, "
+        "1.0]}}],\n"
+        "  \"meshes\": [{\"primitives\": [{\"attributes\": {\"POSITION\": 0}, \"indices\": 1, "
+        "\"material\": 0}]}],\n"
         "  \"nodes\": [{\n"
         "    \"name\": \"MatrixNode\",\n"
         "    \"mesh\": 0,\n"
-        "    \"matrix\": [2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 5.0, 6.0, 7.0, 1.0]\n"
+        "    \"matrix\": [2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 5.0, 6.0, "
+        "7.0, 1.0]\n"
         "  }],\n"
         "  \"scenes\": [{\"nodes\": [0]}],\n"
         "  \"scene\": 0\n"
@@ -831,19 +1097,32 @@ static void test_gltf_imports_skins_and_animation_clips() {
         return offset;
     };
 
-    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                       0.0f, 0.0f, 1.0f, 0.0f};
+    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     static const uint16_t joints[12] = {0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0};
-    static const float weights[12] = {1.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.75f,
-                                      0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+    static const float weights[12] = {
+        1.0f, 0.0f, 0.0f, 0.0f, 0.25f, 0.75f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
     static const uint16_t indices[3] = {0, 1, 2};
-    static const float inverse_binds[32] = {
-        1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -1, 0, 1};
+    static const float inverse_binds[32] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0,  0, 1,
+                                            1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -1, 0, 1};
     static const float anim_times[2] = {0.0f, 1.0f};
-    static const float anim_translations[18] = {
-        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 2.0f, 3.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    static const float anim_translations[18] = {0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                2.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                2.0f,
+                                                3.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f};
     static const float anim_mid_times[1] = {0.5f};
     static const float anim_scales[3] = {1.0f, 1.0f, 1.0f};
 
@@ -862,26 +1141,36 @@ static void test_gltf_imports_skins_and_animation_clips() {
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
         "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(pos_off) + ",\"byteLength\":36},"
+        std::to_string(pos_off) +
+        ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(joints_off) + ",\"byteLength\":24},"
+        std::to_string(joints_off) +
+        ",\"byteLength\":24},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(weights_off) + ",\"byteLength\":48},"
+        std::to_string(weights_off) +
+        ",\"byteLength\":48},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(indices_off) + ",\"byteLength\":6},"
+        std::to_string(indices_off) +
+        ",\"byteLength\":6},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(inverse_off) + ",\"byteLength\":128},"
+        std::to_string(inverse_off) +
+        ",\"byteLength\":128},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(times_off) + ",\"byteLength\":8},"
+        std::to_string(times_off) +
+        ",\"byteLength\":8},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(trans_off) + ",\"byteLength\":72},"
+        std::to_string(trans_off) +
+        ",\"byteLength\":72},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(mid_times_off) + ",\"byteLength\":4},"
+        std::to_string(mid_times_off) +
+        ",\"byteLength\":4},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(scale_off) + ",\"byteLength\":12}"
+        std::to_string(scale_off) +
+        ",\"byteLength\":12}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
@@ -924,7 +1213,8 @@ static void test_gltf_imports_skins_and_animation_clips() {
     EXPECT_TRUE(mesh != nullptr, "GLTF.Load exposes the skinned mesh");
     if (mesh) {
         EXPECT_TRUE(mesh->bone_count == 2, "GLTF.Load remaps joint attributes to runtime bones");
-        EXPECT_TRUE(mesh->vertices[1].bone_indices[0] == 0 && mesh->vertices[1].bone_indices[1] == 1,
+        EXPECT_TRUE(mesh->vertices[1].bone_indices[0] == 0 &&
+                        mesh->vertices[1].bone_indices[1] == 1,
                     "GLTF.Load preserves mixed joint influences");
         EXPECT_NEAR(mesh->vertices[1].bone_weights[0], 0.25, 0.001, "GLTF.Load keeps root weight");
         EXPECT_NEAR(mesh->vertices[1].bone_weights[1], 0.75, 0.001, "GLTF.Load keeps child weight");
@@ -982,14 +1272,18 @@ static void test_gltf_splits_animation_clips_per_skin() {
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
         "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(times_off) + ",\"byteLength\":8},"
+        std::to_string(times_off) +
+        ",\"byteLength\":8},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(skin_a_off) + ",\"byteLength\":24},"
+        std::to_string(skin_a_off) +
+        ",\"byteLength\":24},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(skin_b_off) + ",\"byteLength\":24}"
+        std::to_string(skin_b_off) +
+        ",\"byteLength\":24}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},"
@@ -1071,14 +1365,18 @@ static void test_gltf_applies_sparse_accessors() {
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
         "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(sparse_idx_off) + ",\"byteLength\":4},"
+        std::to_string(sparse_idx_off) +
+        ",\"byteLength\":4},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(sparse_value_off) + ",\"byteLength\":24},"
+        std::to_string(sparse_value_off) +
+        ",\"byteLength\":24},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(index_off) + ",\"byteLength\":6}"
+        std::to_string(index_off) +
+        ",\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"componentType\":5126,\"count\":3,\"type\":\"VEC3\","
@@ -1108,7 +1406,8 @@ static void test_gltf_applies_sparse_accessors() {
     EXPECT_NEAR(mesh->vertices[1].pos[0], 1.0, 0.001, "Sparse accessor overrides X");
     EXPECT_NEAR(mesh->vertices[1].pos[1], 2.0, 0.001, "Sparse accessor overrides Y");
     EXPECT_NEAR(mesh->vertices[1].pos[2], 3.0, 0.001, "Sparse accessor overrides Z");
-    EXPECT_NEAR(mesh->vertices[2].pos[1], 1.0, 0.001, "Sparse accessor can author a valid triangle");
+    EXPECT_NEAR(
+        mesh->vertices[2].pos[1], 1.0, 0.001, "Sparse accessor can author a valid triangle");
 }
 
 static void test_gltf_imports_morph_targets() {
@@ -1133,16 +1432,12 @@ static void test_gltf_imports_morph_targets() {
         return offset;
     };
 
-    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                       0.0f, 0.0f, 1.0f, 0.0f};
-    static const float normals[9] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                                     1.0f, 0.0f, 0.0f, 1.0f};
-    static const float morph_positions[9] = {0.0f, 0.0f, 0.0f, 0.25f, 0.5f,
-                                             0.0f, 0.0f, -0.25f, 0.0f};
-    static const float morph_normals[9] = {0.0f, 0.0f, 0.0f, 0.0f, 0.1f,
-                                           0.0f, 0.0f, 0.0f, -0.1f};
-    static const float morph_tangents[9] = {0.0f, 0.0f, 0.0f, 0.2f, 0.0f,
-                                            0.0f, 0.0f, 0.0f, -0.2f};
+    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    static const float normals[9] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
+    static const float morph_positions[9] = {
+        0.0f, 0.0f, 0.0f, 0.25f, 0.5f, 0.0f, 0.0f, -0.25f, 0.0f};
+    static const float morph_normals[9] = {0.0f, 0.0f, 0.0f, 0.0f, 0.1f, 0.0f, 0.0f, 0.0f, -0.1f};
+    static const float morph_tangents[9] = {0.0f, 0.0f, 0.0f, 0.2f, 0.0f, 0.0f, 0.0f, 0.0f, -0.2f};
     static const uint16_t indices[3] = {0, 1, 2};
 
     size_t pos_off = append_float_array(positions, 9);
@@ -1157,20 +1452,27 @@ static void test_gltf_imports_morph_targets() {
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
         "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(pos_off) + ",\"byteLength\":36},"
+        std::to_string(pos_off) +
+        ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(norm_off) + ",\"byteLength\":36},"
+        std::to_string(norm_off) +
+        ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(morph_pos_off) + ",\"byteLength\":36},"
+        std::to_string(morph_pos_off) +
+        ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(morph_norm_off) + ",\"byteLength\":36},"
+        std::to_string(morph_norm_off) +
+        ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(morph_tangent_off) + ",\"byteLength\":36},"
+        std::to_string(morph_tangent_off) +
+        ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" +
-        std::to_string(idx_off) + ",\"byteLength\":6}"
+        std::to_string(idx_off) +
+        ",\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
@@ -1296,8 +1598,7 @@ static void test_gltf_rejects_unsafe_external_buffer_paths() {
 static void test_gltf_assigns_default_material_to_materialless_primitives() {
     const char *gltf_path = "/tmp/viper_gltf_default_material.gltf";
     std::vector<uint8_t> gltf_buffer;
-    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                0.0f, 0.0f, 1.0f, 0.0f};
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
     for (float v : positions)
         append_bytes(gltf_buffer, v);
@@ -1308,7 +1609,8 @@ static void test_gltf_assigns_default_material_to_materialless_primitives() {
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
         "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}],"
         "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
@@ -1331,8 +1633,7 @@ static void test_gltf_assigns_default_material_to_materialless_primitives() {
 static void test_gltf_uses_texture_texcoord_and_transform() {
     const char *gltf_path = "/tmp/viper_gltf_texcoord_transform.gltf";
     std::vector<uint8_t> gltf_buffer;
-    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                0.0f, 0.0f, 1.0f, 0.0f};
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const float uv0[6] = {0.0f, 0.0f, 0.1f, 0.1f, 0.2f, 0.2f};
     const float uv1[6] = {0.25f, 0.5f, 0.5f, 0.25f, 1.0f, 0.75f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -1349,7 +1650,8 @@ static void test_gltf_uses_texture_texcoord_and_transform() {
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
         "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) + "}],"
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
         "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
         "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":24},"
@@ -1410,7 +1712,8 @@ static void test_gltf_imports_material_extensions_supported_by_material3d() {
         "\"specularColorFactor\":[0.2,0.3,0.4],\"specularTexture\":{\"index\":0}},"
         "\"KHR_materials_clearcoat\":{\"clearcoatFactor\":0.6}}}]"
         "}";
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Material-extension glTF fixture can be created");
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Material-extension glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load parses material extension assets");
     if (!asset)
@@ -1435,7 +1738,8 @@ static void test_gltf_preserves_negative_matrix_scale_sign() {
         "\"nodes\":[{\"name\":\"Mirror\",\"matrix\":[-2,0,0,0,0,3,0,0,0,0,4,0,0,0,0,1]}],"
         "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
         "}";
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Negative-scale glTF fixture can be created");
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Negative-scale glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load parses negative-scale matrix nodes");
     if (!asset)
@@ -1462,10 +1766,11 @@ static void test_gltf_rejects_skins_over_runtime_bone_limit() {
         nodes += "{\"name\":\"J" + std::to_string(i) + "\"}";
         joints += std::to_string(i);
     }
-    std::string gltf_json =
-        "{\"asset\":{\"version\":\"2.0\"},\"skins\":[{\"joints\":[" + joints +
-        "]}],\"nodes\":[" + nodes + "],\"scenes\":[{\"nodes\":[0]}],\"scene\":0}";
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Oversized-skin glTF fixture can be created");
+    std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},\"skins\":[{\"joints\":[" + joints +
+                            "]}],\"nodes\":[" + nodes +
+                            "],\"scenes\":[{\"nodes\":[0]}],\"scene\":0}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Oversized-skin glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset == nullptr,
                 "GLTF.Load rejects skins above the runtime 256-bone palette limit");
@@ -1473,37 +1778,37 @@ static void test_gltf_rejects_skins_over_runtime_bone_limit() {
 
 static void test_gltf_rejects_unsupported_required_extensions() {
     const char *gltf_path = "/tmp/viper_gltf_required_extension.gltf";
-    std::string gltf_json =
-        "{\"asset\":{\"version\":\"2.0\"},"
-        "\"extensionsRequired\":[\"KHR_draco_mesh_compression\"],"
-        "\"extensionsUsed\":[\"KHR_draco_mesh_compression\"]}";
+    std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},"
+                            "\"extensionsRequired\":[\"KHR_draco_mesh_compression\"],"
+                            "\"extensionsUsed\":[\"KHR_draco_mesh_compression\"]}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "Required-extension glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
-    EXPECT_TRUE(asset == nullptr,
-                "GLTF.Load rejects unsupported required extensions instead of rendering fallback data");
+    EXPECT_TRUE(
+        asset == nullptr,
+        "GLTF.Load rejects unsupported required extensions instead of rendering fallback data");
 }
 
 static void test_gltf_imports_required_punctual_lights() {
     const char *gltf_path = "/tmp/viper_gltf_punctual_light.gltf";
-    std::string gltf_json =
-        "{\n"
-        "  \"asset\": {\"version\": \"2.0\"},\n"
-        "  \"extensionsUsed\": [\"KHR_lights_punctual\"],\n"
-        "  \"extensionsRequired\": [\"KHR_lights_punctual\"],\n"
-        "  \"extensions\": {\"KHR_lights_punctual\": {\"lights\": [{\n"
-        "    \"type\": \"spot\",\n"
-        "    \"color\": [0.2, 0.4, 0.6],\n"
-        "    \"intensity\": 7.5,\n"
-        "    \"range\": 5.0,\n"
-        "    \"spot\": {\"innerConeAngle\": 0.1, \"outerConeAngle\": 0.5}\n"
-        "  }]}},\n"
-        "  \"nodes\": [{\"name\": \"lamp\", \"translation\": [1.0, 2.0, 3.0], "
-        "\"extensions\": {\"KHR_lights_punctual\": {\"light\": 0}}}],\n"
-        "  \"scenes\": [{\"nodes\": [0]}],\n"
-        "  \"scene\": 0\n"
-        "}\n";
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Punctual-light glTF fixture can be created");
+    std::string gltf_json = "{\n"
+                            "  \"asset\": {\"version\": \"2.0\"},\n"
+                            "  \"extensionsUsed\": [\"KHR_lights_punctual\"],\n"
+                            "  \"extensionsRequired\": [\"KHR_lights_punctual\"],\n"
+                            "  \"extensions\": {\"KHR_lights_punctual\": {\"lights\": [{\n"
+                            "    \"type\": \"spot\",\n"
+                            "    \"color\": [0.2, 0.4, 0.6],\n"
+                            "    \"intensity\": 7.5,\n"
+                            "    \"range\": 5.0,\n"
+                            "    \"spot\": {\"innerConeAngle\": 0.1, \"outerConeAngle\": 0.5}\n"
+                            "  }]}},\n"
+                            "  \"nodes\": [{\"name\": \"lamp\", \"translation\": [1.0, 2.0, 3.0], "
+                            "\"extensions\": {\"KHR_lights_punctual\": {\"light\": 0}}}],\n"
+                            "  \"scenes\": [{\"nodes\": [0]}],\n"
+                            "  \"scene\": 0\n"
+                            "}\n";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Punctual-light glTF fixture can be created");
 
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts required KHR_lights_punctual");
@@ -1610,17 +1915,17 @@ static void test_gltf_preserves_independent_texture_slot_metadata() {
 
 static void test_gltf_rejects_invalid_scene_graph_links() {
     const char *gltf_path = "/tmp/viper_gltf_invalid_scene_graph.gltf";
-    std::string gltf_json =
-        "{\n"
-        "  \"asset\": {\"version\": \"2.0\"},\n"
-        "  \"nodes\": [\n"
-        "    {\"name\": \"A\", \"children\": [1]},\n"
-        "    {\"name\": \"B\", \"children\": [0]}\n"
-        "  ],\n"
-        "  \"scenes\": [{\"nodes\": [0]}],\n"
-        "  \"scene\": 0\n"
-        "}\n";
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Invalid scene-graph glTF fixture can be created");
+    std::string gltf_json = "{\n"
+                            "  \"asset\": {\"version\": \"2.0\"},\n"
+                            "  \"nodes\": [\n"
+                            "    {\"name\": \"A\", \"children\": [1]},\n"
+                            "    {\"name\": \"B\", \"children\": [0]}\n"
+                            "  ],\n"
+                            "  \"scenes\": [{\"nodes\": [0]}],\n"
+                            "  \"scene\": 0\n"
+                            "}\n";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Invalid scene-graph glTF fixture can be created");
 
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load keeps resources while rejecting cyclic node graphs");
@@ -1636,6 +1941,8 @@ int main() {
     test_gltf_accessors_reject_wrong_handles();
     test_gltf_loads_data_uri_buffers_and_embedded_textures();
     test_gltf_resolves_percent_encoded_external_buffers();
+    test_gltf_load_asset_resolves_mounted_external_buffers();
+    test_gltf_load_asset_handles_glb_filesystem_and_mounted_package();
     test_gltf_rejects_out_of_range_indices();
     test_gltf_builds_scene_hierarchy_for_active_scene();
     test_gltf_imports_extended_vertex_attributes_and_triangle_strips();

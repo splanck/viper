@@ -25,13 +25,13 @@
 
 #include "codegen/common/linker/LinkTypes.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <chrono>
-#include <atomic>
-#include <cstring>
 #include <limits>
 #include <ostream>
 #include <stdexcept>
@@ -215,10 +215,9 @@ inline bool writeBinaryFileAtomically(const std::string &path,
         if (makeExecutable) {
             std::error_code permEc;
             fs::permissions(target,
-                            fs::perms::owner_exec | fs::perms::owner_read |
-                                fs::perms::owner_write | fs::perms::group_read |
-                                fs::perms::group_exec | fs::perms::others_read |
-                                fs::perms::others_exec,
+                            fs::perms::owner_exec | fs::perms::owner_read | fs::perms::owner_write |
+                                fs::perms::group_read | fs::perms::group_exec |
+                                fs::perms::others_read | fs::perms::others_exec,
                             permEc);
         }
 #else
@@ -234,9 +233,9 @@ inline bool writeBinaryFileAtomically(const std::string &path,
 
     static std::atomic<uint64_t> nonce{0};
     for (uint32_t attempt = 0; attempt < 32; ++attempt) {
-        const uint64_t seed = static_cast<uint64_t>(
-                                  std::chrono::steady_clock::now().time_since_epoch().count()) ^
-                              nonce.fetch_add(1, std::memory_order_relaxed);
+        const uint64_t seed =
+            static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
+            nonce.fetch_add(1, std::memory_order_relaxed);
         const fs::path tempPath =
             dir / (finalPath.filename().string() + ".tmp." + std::to_string(seed + attempt));
 

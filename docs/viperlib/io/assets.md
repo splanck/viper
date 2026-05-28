@@ -33,6 +33,11 @@ Pre-compressed formats (`.png`, `.jpg`, `.ogg`, `.mp3`, `.glb`, etc.) automatica
 
 ## API Reference
 
+Asset names may be written either as plain package paths such as
+`"assets/models/tree.glb"` or with the explicit `asset://` scheme, such as
+`"asset://models/tree.glb"`. The scheme is stripped before lookup; it is useful
+when code needs to make it clear that the value is a packaged asset path.
+
 ### Assets.Load(name: String) -> Object?
 
 Load an asset by name. Returns a typed object based on file extension:
@@ -82,7 +87,7 @@ Returns the directory containing the running executable. Uses platform-specific 
 
 ## Resolution Order
 
-When `Assets.Load("sprites/hero.png")` is called:
+When `Assets.Load("sprites/hero.png")` or `Assets.Load("asset://sprites/hero.png")` is called:
 
 1. **Embedded registry** (in `.rodata`) — zero disk I/O
 2. **Mounted packs** (last mounted first) — single file read
@@ -107,6 +112,7 @@ bind Viper.Graphics;
 
 // Load from embedded or mounted packs — transparent
 var hero = Assets.Load("sprites/hero.png");
+var hero2 = Assets.Load("asset://sprites/hero.png");
 var sound = Assets.Load("audio/click.wav");
 var data = Assets.LoadBytes("config.json");
 

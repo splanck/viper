@@ -446,9 +446,8 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &) {
 
 /// @brief Register sibling recursion pass.
 void registerSiblingRecursionPass(PassRegistry &registry) {
-    registry.registerFunctionPass("sibling-recursion",
-                                  []() { return std::make_unique<SiblingRecursion>(); },
-                                  true);
+    registry.registerFunctionPass(
+        "sibling-recursion", []() { return std::make_unique<SiblingRecursion>(); }, true);
 }
 
 } // namespace il::transform

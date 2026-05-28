@@ -146,8 +146,8 @@ inline bool validateRelocationShape(const char *writerName,
                                     std::ostream &err) {
     if (!relocationKindMatchesArch(rel.kind, arch)) {
         err << writerName << ": relocation kind " << relocKindName(rel.kind)
-            << " is not valid for this object architecture in " << sectionName
-            << " at offset " << rel.offset << "\n";
+            << " is not valid for this object architecture in " << sectionName << " at offset "
+            << rel.offset << "\n";
         return false;
     }
 
@@ -161,9 +161,9 @@ inline bool validateRelocationShape(const char *writerName,
     if (arch == ObjArch::AArch64 && width == 4) {
         const uint32_t insn = readRelocLE32(section, rel.offset);
         auto badInstruction = [&]() {
-            err << writerName << ": relocation kind " << relocKindName(rel.kind)
-                << " at offset " << rel.offset << " does not match the AArch64 instruction in "
-                << sectionName << "\n";
+            err << writerName << ": relocation kind " << relocKindName(rel.kind) << " at offset "
+                << rel.offset << " does not match the AArch64 instruction in " << sectionName
+                << "\n";
             return false;
         };
         switch (rel.kind) {
@@ -176,8 +176,7 @@ inline bool validateRelocationShape(const char *writerName,
                     return badInstruction();
                 break;
             case RelocKind::A64CondBr19:
-                if ((insn & 0xFF000010u) != 0x54000000u &&
-                    (insn & 0x7E000000u) != 0x34000000u)
+                if ((insn & 0xFF000010u) != 0x54000000u && (insn & 0x7E000000u) != 0x34000000u)
                     return badInstruction();
                 break;
             case RelocKind::A64AdrpPage21:

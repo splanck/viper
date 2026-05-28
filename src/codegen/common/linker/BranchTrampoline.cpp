@@ -82,12 +82,10 @@ bool checkedAddressDelta(uint64_t lhs, uint64_t rhs, int64_t &out) {
     }
 
     const uint64_t delta = rhs - lhs;
-    const uint64_t minMag =
-        static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
+    const uint64_t minMag = static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1ULL;
     if (delta > minMag)
         return false;
-    out = (delta == minMag) ? std::numeric_limits<int64_t>::min()
-                            : -static_cast<int64_t>(delta);
+    out = (delta == minMag) ? std::numeric_limits<int64_t>::min() : -static_cast<int64_t>(delta);
     return true;
 }
 
@@ -102,7 +100,8 @@ bool checkedAddI64(uint64_t base, int64_t addend, uint64_t &out) {
 }
 
 /// Build LocationMap: (objIdx, secIdx) → (outSecIdx, chunkOffset).
-using LocationMap = std::unordered_map<InputSectionKey, std::pair<size_t, size_t>, InputSectionKeyHash>;
+using LocationMap =
+    std::unordered_map<InputSectionKey, std::pair<size_t, size_t>, InputSectionKeyHash>;
 
 LocationMap buildLocMap(const LinkLayout &layout) {
     LocationMap map;
@@ -110,7 +109,8 @@ LocationMap buildLocMap(const LinkLayout &layout) {
         for (const auto &chunk : layout.sections[si].chunks) {
             if (chunk.synthetic)
                 continue;
-            map[InputSectionKey{chunk.inputObjIndex, chunk.inputSecIndex}] = {si, chunk.outputOffset};
+            map[InputSectionKey{chunk.inputObjIndex, chunk.inputSecIndex}] = {si,
+                                                                              chunk.outputOffset};
         }
     }
     return map;
@@ -306,7 +306,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             if (!checkedAddU64(layout.sections[it->second.first].virtualAddr,
                                static_cast<uint64_t>(it->second.second),
                                withChunk) ||
-                !checkedAddU64(withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
+                !checkedAddU64(
+                    withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
                 err << "error: symbol address overflow while resolving '" << name << "'\n";
                 return false;
             }
@@ -340,8 +341,9 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
 
                 // Resolve target symbol address.
                 if (rel.symIndex >= obj.symbols.size()) {
-                    err << "error: " << obj.name << ": branch relocation references invalid symbol index "
-                        << rel.symIndex << "\n";
+                    err << "error: " << obj.name
+                        << ": branch relocation references invalid symbol index " << rel.symIndex
+                        << "\n";
                     return false;
                 }
                 const ObjSymbol &targetSym = obj.symbols[rel.symIndex];
@@ -368,9 +370,9 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                 oob.targetSymIndex = rel.symIndex;
                 oob.targetAddend = A;
                 oob.targetSymName =
-                    symName.empty() ? ("$local@" + std::to_string(oi) + ":" +
-                                       std::to_string(rel.symIndex))
-                                    : symName;
+                    symName.empty()
+                        ? ("$local@" + std::to_string(oi) + ":" + std::to_string(rel.symIndex))
+                        : symName;
                 oob.targetAddr = target;
                 outOfRange.push_back(std::move(oob));
             }
@@ -538,9 +540,9 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                                                 true});
         }
     }
-    std::stable_sort(textSec.chunks.begin(), textSec.chunks.end(), [](const auto &a, const auto &b) {
-        return a.outputOffset < b.outputOffset;
-    });
+    std::stable_sort(textSec.chunks.begin(),
+                     textSec.chunks.end(),
+                     [](const auto &a, const auto &b) { return a.outputOffset < b.outputOffset; });
 
     if (!assignSectionVirtualAddresses(layout, platform, err))
         return false;
@@ -560,7 +562,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             if (!checkedAddU64(layout.sections[it->second.first].virtualAddr,
                                static_cast<uint64_t>(it->second.second),
                                withChunk) ||
-                !checkedAddU64(withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
+                !checkedAddU64(
+                    withChunk, static_cast<uint64_t>(entry.offset), entry.resolvedAddr)) {
                 err << "error: symbol address overflow while resolving '" << name << "'\n";
                 return false;
             }
@@ -580,13 +583,14 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         if (!resolveRelocSymbol(
                 targetSym, trampoline.targetObjIdx, locMap, layout, platform, resolvedTarget) ||
             !checkedAddI64(resolvedTarget, trampoline.targetAddend, trampoline.targetAddr)) {
-            err << "error: trampoline target address overflow for '"
-                << trampoline.targetSymName << "'\n";
+            err << "error: trampoline target address overflow for '" << trampoline.targetSymName
+                << "'\n";
             return false;
         }
 
         uint64_t tramVA = 0;
-        if (!checkedAddU64(textSec.virtualAddr, static_cast<uint64_t>(trampoline.actualOffset), tramVA)) {
+        if (!checkedAddU64(
+                textSec.virtualAddr, static_cast<uint64_t>(trampoline.actualOffset), tramVA)) {
             err << "error: trampoline address overflow for '" << trampoline.targetSymName << "'\n";
             return false;
         }
@@ -607,8 +611,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         uint64_t pageP = tramVA & ~0xFFFULL;
         int64_t pageDelta = 0;
         if (!checkedAddressDelta(pageS, pageP, pageDelta)) {
-            err << "error: trampoline ADRP delta out of range for '"
-                << trampoline.targetSymName << "'\n";
+            err << "error: trampoline ADRP delta out of range for '" << trampoline.targetSymName
+                << "'\n";
             return false;
         }
         int64_t immHiLo = pageDelta >> 12;
@@ -641,8 +645,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         auto &rel = objects[oob.objIdx].sections[oob.secIdx].relocs[oob.relocIdx];
         size_t patchOff = 0;
         if (!checkedAddSize(chunkBase, rel.offset, patchOff)) {
-            err << "error: branch trampoline patch site offset overflow for '"
-                << oob.targetSymName << "'\n";
+            err << "error: branch trampoline patch site offset overflow for '" << oob.targetSymName
+                << "'\n";
             return false;
         }
         size_t patchEnd = 0;
@@ -655,8 +659,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             // with no diagnostic.
             err << "error: " << objects[oob.objIdx].name
                 << ": branch trampoline patch site at offset " << patchOff
-                << " is out of bounds in output section '" << outSec.name << "' (size="
-                << outSec.data.size() << ")\n";
+                << " is out of bounds in output section '" << outSec.name
+                << "' (size=" << outSec.data.size() << ")\n";
             return false;
         }
 
@@ -676,7 +680,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         }
         int64_t disp = 0;
         if (!checkedAddressDelta(tramVA, P, disp)) {
-            err << "error: trampoline branch delta out of range for '" << oob.targetSymName << "'\n";
+            err << "error: trampoline branch delta out of range for '" << oob.targetSymName
+                << "'\n";
             return false;
         }
         if ((disp & 0x3) != 0) {

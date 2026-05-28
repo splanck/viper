@@ -48,16 +48,16 @@ extern "C" void vm_trap(const char *msg) {
     abort();
 }
 
-#define EXPECT_TRAP(expr)                                                         \
-    do {                                                                          \
-        g_expect_trap = 1;                                                         \
-        if (setjmp(g_trap_env) == 0) {                                            \
-            (void)(expr);                                                          \
-            g_expect_trap = 0;                                                     \
-            assert(!"expected runtime trap");                                     \
-        } else {                                                                   \
-            g_expect_trap = 0;                                                     \
-        }                                                                          \
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                             \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                      \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
     } while (0)
 
 static void test_result(const char *name, bool passed) {
@@ -81,8 +81,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_reltime_%ld_%s",
-             base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/viper_reltime_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }
@@ -159,12 +158,9 @@ static void test_past_units() {
     void *f = en_rtf();
 
     // Sub-second durations yield the neutral relative phrase.
-    test_result("Format(500ms) = now",
-                eq(rt_reltimefmt_format(f, 500), "now"));
-    test_result("Format(0ms) = now",
-                eq(rt_reltimefmt_format(f, 0), "now"));
-    test_result("Format(1000ms) = 1 second ago",
-                eq(rt_reltimefmt_format(f, 1000), "1 second ago"));
+    test_result("Format(500ms) = now", eq(rt_reltimefmt_format(f, 500), "now"));
+    test_result("Format(0ms) = now", eq(rt_reltimefmt_format(f, 0), "now"));
+    test_result("Format(1000ms) = 1 second ago", eq(rt_reltimefmt_format(f, 1000), "1 second ago"));
     test_result("Format(5s) = 5 seconds ago",
                 eq(rt_reltimefmt_format(f, 5 * 1000), "5 seconds ago"));
     test_result("Format(1 min) = 1 minute ago",
@@ -195,8 +191,7 @@ static void test_future_units() {
     printf("Testing Format future units:\n");
     void *f = en_rtf();
 
-    test_result("Format(-1s) = in 1 second",
-                eq(rt_reltimefmt_format(f, -1000), "in 1 second"));
+    test_result("Format(-1s) = in 1 second", eq(rt_reltimefmt_format(f, -1000), "in 1 second"));
     test_result("Format(-5s) = in 5 seconds",
                 eq(rt_reltimefmt_format(f, -5 * 1000), "in 5 seconds"));
     test_result("Format(-1 hr) = in 1 hour",
@@ -247,8 +242,7 @@ static void test_numeric() {
     rt_string_unref(hour);
 
     rt_string second = S("second");
-    test_result("Numeric(0, second) = now",
-                eq(rt_reltimefmt_numeric(f, 0, second), "now"));
+    test_result("Numeric(0, second) = now", eq(rt_reltimefmt_numeric(f, 0, second), "now"));
     rt_string_unref(second);
 
     rt_string bad = S("eon");
@@ -265,14 +259,12 @@ static void test_style() {
     printf("Testing Style property:\n");
     void *f = en_rtf();
 
-    test_result("default Style = long",
-                eq(rt_reltimefmt_get_style(f), "long"));
+    test_result("default Style = long", eq(rt_reltimefmt_get_style(f), "long"));
 
     rt_string short_style = S("short");
     rt_reltimefmt_set_style(f, short_style);
     rt_string_unref(short_style);
-    test_result("Style set to short",
-                eq(rt_reltimefmt_get_style(f), "short"));
+    test_result("Style set to short", eq(rt_reltimefmt_get_style(f), "short"));
 
     test_result("Short formatter uses short unit table",
                 eq(rt_reltimefmt_format(f, 2LL * 60 * 60 * 1000), "2 hr ago"));
@@ -288,8 +280,7 @@ static void test_loaded_now_digits_and_short() {
     load_rel_locale();
     void *f = rtf_for_tag("ar-XR");
 
-    test_result("Loaded now string is used",
-                eq(rt_reltimefmt_format(f, 0), "right now"));
+    test_result("Loaded now string is used", eq(rt_reltimefmt_format(f, 0), "right now"));
 
     rt_string short_style = S("short");
     rt_reltimefmt_set_style(f, short_style);

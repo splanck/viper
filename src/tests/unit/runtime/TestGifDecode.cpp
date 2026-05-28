@@ -26,7 +26,7 @@
 #include <cstring>
 
 extern "C" {
-#include "runtime/graphics/rt_gif.h"
+#include "runtime/graphics/media/rt_gif.h"
 void *rt_pixels_load_gif(void *path);
 int64_t rt_pixels_width(void *pixels);
 int64_t rt_pixels_height(void *pixels);

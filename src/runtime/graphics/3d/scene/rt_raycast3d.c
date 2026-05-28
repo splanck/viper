@@ -1,0 +1,1046 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/scene/rt_raycast3d.c
+// Purpose: 3D raycasting and AABB collision detection for picking, shooting,
+//   and physics. Implements Möller–Trumbore ray-triangle intersection, slab
+//   method ray-AABB, quadratic ray-sphere, and AABB overlap/penetration.
+//
+// Key invariants:
+//   - Public ray queries normalize non-zero directions internally, so distances are world units.
+//   - Möller–Trumbore returns parametric t; t < 0 means behind ray origin.
+//   - Ray-mesh transforms the ray into object space via inverse model matrix.
+//   - AABB penetration returns the minimum push-out vector (shortest axis).
+//   - Capsule-vs-AABB uses exact segment-to-AABB distance.
+//
+// Ownership/Lifetime:
+//   - RayHit3D is GC-managed; no finalizer needed (no owned heap allocations).
+//   - Returned Vec3 hit-point / normal handles are caller-owned.
+//
+// Links: rt_raycast3d.h, rt_canvas3d_internal.h
+//
+//===----------------------------------------------------------------------===//
+
+#ifdef VIPER_ENABLE_GRAPHICS
+
+#include "rt_raycast3d.h"
+#include "rt_canvas3d_internal.h"
+#include "rt_mat4.h"
+
+#include <float.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void *rt_vec3_new(double x, double y, double z);
+extern double rt_vec3_x(void *v);
+extern double rt_vec3_y(void *v);
+extern double rt_vec3_z(void *v);
+
+#define EPSILON 1e-8
+
+/// @brief Clamp a scalar into the closed range `[lo, hi]`. Used by the per-axis closest-
+/// point query and the box-projection paths that map an arbitrary point onto an AABB.
+static double clampd(double v, double lo, double hi) {
+    if (v < lo)
+        return lo;
+    if (v > hi)
+        return hi;
+    return v;
+}
+
+/// @brief Return non-zero if all three components of the raw double[3] vector are finite (not
+/// NaN/inf).
+static int vec3_is_finite_raw(const double *v) {
+    return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
+}
+
+/// @brief Read a boxed Vec3 handle into `out[3]`; returns 0 (and leaves caller to
+///        reject) when `obj` is not a Vec3 or any component is non-finite.
+static int vec3_read_finite(void *obj, double *out) {
+    if (!out || !rt_g3d_is_vec3(obj))
+        return 0;
+    out[0] = rt_vec3_x(obj);
+    out[1] = rt_vec3_y(obj);
+    out[2] = rt_vec3_z(obj);
+    return vec3_is_finite_raw(out);
+}
+
+/// @brief Normalize a vec3 in place; returns 0 (leaving @p v unchanged) if it is
+///   non-finite or shorter than EPSILON, else 1.
+static int vec3_normalize_raw(double *v) {
+    double len_sq;
+    double inv_len;
+    if (!vec3_is_finite_raw(v))
+        return 0;
+    len_sq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    if (!isfinite(len_sq) || len_sq < EPSILON * EPSILON)
+        return 0;
+    inv_len = 1.0 / sqrt(len_sq);
+    v[0] *= inv_len;
+    v[1] *= inv_len;
+    v[2] *= inv_len;
+    return 1;
+}
+
+/// @brief Checked cast of an opaque handle to a Mat4 payload; NULL on class mismatch.
+static mat4_impl *raycast3d_mat4_checked(void *obj) {
+    if (!obj)
+        return NULL;
+    if (!rt_heap_is_payload(obj) || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
+        return NULL;
+    return (mat4_impl *)obj;
+}
+
+/// @brief True if all 16 lanes of a 4x4 double matrix are finite (no NaN/Inf).
+static int mat4d_is_finite(const double *m) {
+    if (!m)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m[i]))
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Canonicalize an AABB in place by swapping any axis where min > max,
+///        so subsequent overlap/clamp tests can assume `mn[i] <= mx[i]`.
+static void aabb3d_canonicalize_raw(double *mn, double *mx) {
+    for (int i = 0; i < 3; i++) {
+        if (mn[i] > mx[i]) {
+            double tmp = mn[i];
+            mn[i] = mx[i];
+            mx[i] = tmp;
+        }
+    }
+}
+
+/// @brief Find the closest point on segment [a, b] to @p point (raw double[3] form).
+/// @details Projects @p point onto the line through a and b, clamps the projection
+///   parameter to [0, 1] to stay within the segment, and writes the result to @p closest.
+///   Degenerate (zero-length) segments collapse to point a. Used by capsule overlap tests.
+static void segment3d_closest_point_raw(const double *a,
+                                        const double *b,
+                                        const double *point,
+                                        double *closest) {
+    double dx = b[0] - a[0];
+    double dy = b[1] - a[1];
+    double dz = b[2] - a[2];
+    double len_sq = dx * dx + dy * dy + dz * dz;
+    if (!isfinite(len_sq) || len_sq < 1e-12) {
+        closest[0] = a[0];
+        closest[1] = a[1];
+        closest[2] = a[2];
+        return;
+    }
+    double t = ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy + (point[2] - a[2]) * dz) / len_sq;
+    t = clampd(t, 0.0, 1.0);
+    closest[0] = a[0] + t * dx;
+    closest[1] = a[1] + t * dy;
+    closest[2] = a[2] + t * dz;
+}
+
+/// @brief Project a 3-point onto an axis-aligned bounding box by clamping each
+/// coordinate independently into the box's extent. The result is the closest point on
+/// (or inside) the box to the input point. Used by sphere-vs-AABB and capsule-vs-AABB
+/// overlap tests; takes raw double arrays so the inner-loop tests don't have to allocate
+/// throwaway Vec3 wrappers.
+static void aabb3d_clamp_point_raw(const double *mn,
+                                   const double *mx,
+                                   const double *point,
+                                   double *closest) {
+    closest[0] = clampd(point[0], mn[0], mx[0]);
+    closest[1] = clampd(point[1], mn[1], mx[1]);
+    closest[2] = clampd(point[2], mn[2], mx[2]);
+}
+
+/// @brief Squared distance from point `p` to AABB [mn,mx] (0 when `p` is inside).
+static double point_aabb_distance_sq_raw(const double *mn, const double *mx, const double *p) {
+    double c[3];
+    aabb3d_clamp_point_raw(mn, mx, p, c);
+    double dx = p[0] - c[0];
+    double dy = p[1] - c[1];
+    double dz = p[2] - c[2];
+    return dx * dx + dy * dy + dz * dz;
+}
+
+/// @brief Evaluate the parametric point `a + d*t` into `out[3]`.
+static void segment_point_at_raw(const double *a, const double *d, double t, double *out) {
+    out[0] = a[0] + d[0] * t;
+    out[1] = a[1] + d[1] * t;
+    out[2] = a[2] + d[2] * t;
+}
+
+/// @brief Squared distance between segment a–b and AABB [mn,mx].
+/// @details Builds a candidate set of segment parameters — the endpoints plus
+///          each axis slab-boundary crossing in `(0,1)` — sorts them, then takes
+///          the minimum point-to-AABB distance over those samples and the
+///          midpoints between consecutive samples. A sampling approximation that
+///          is exact at the breakpoints where the nearest box feature changes.
+static double segment_aabb_distance_sq_raw(const double *a,
+                                           const double *b,
+                                           const double *mn,
+                                           const double *mx) {
+    double d[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    double ts[8];
+    int count = 0;
+    double best = DBL_MAX;
+    ts[count++] = 0.0;
+    ts[count++] = 1.0;
+    for (int axis = 0; axis < 3; axis++) {
+        if (fabs(d[axis]) <= EPSILON)
+            continue;
+        double t0 = (mn[axis] - a[axis]) / d[axis];
+        double t1 = (mx[axis] - a[axis]) / d[axis];
+        if (t0 > 0.0 && t0 < 1.0)
+            ts[count++] = t0;
+        if (t1 > 0.0 && t1 < 1.0)
+            ts[count++] = t1;
+    }
+    for (int i = 1; i < count; i++) {
+        double key = ts[i];
+        int j = i - 1;
+        while (j >= 0 && ts[j] > key) {
+            ts[j + 1] = ts[j];
+            j--;
+        }
+        ts[j + 1] = key;
+    }
+    for (int i = 0; i < count; i++) {
+        double p[3];
+        segment_point_at_raw(a, d, ts[i], p);
+        double dist_sq = point_aabb_distance_sq_raw(mn, mx, p);
+        if (isfinite(dist_sq) && dist_sq < best)
+            best = dist_sq;
+    }
+    for (int i = 0; i + 1 < count; i++) {
+        double lo = ts[i];
+        double hi = ts[i + 1];
+        double mid = (lo + hi) * 0.5;
+        double denom = 0.0;
+        double numer = 0.0;
+        for (int axis = 0; axis < 3; axis++) {
+            double pm = a[axis] + d[axis] * mid;
+            double boundary;
+            if (pm < mn[axis])
+                boundary = mn[axis];
+            else if (pm > mx[axis])
+                boundary = mx[axis];
+            else
+                continue;
+            denom += d[axis] * d[axis];
+            numer += d[axis] * (a[axis] - boundary);
+        }
+        if (denom > EPSILON) {
+            double t = -numer / denom;
+            if (t > lo && t < hi) {
+                double p[3];
+                segment_point_at_raw(a, d, t, p);
+                double dist_sq = point_aabb_distance_sq_raw(mn, mx, p);
+                if (isfinite(dist_sq) && dist_sq < best)
+                    best = dist_sq;
+            }
+        }
+    }
+    return best;
+}
+
+/// @brief Slab-method ray-vs-AABB intersection. For each axis, intersect the ray with
+/// the two parallel slab planes and accumulate `[tmin, tmax]` for the union of axes.
+/// Special-cases parallel rays (|dir| < EPSILON) by checking origin containment in the
+/// slab. Returns the smallest non-negative `t` (entry distance) or 0 when the ray
+/// originates inside the box; -1 when no intersection. The all-double signature lets
+/// hot inner loops skip Vec3 boxing.
+static double rt_ray3d_intersect_aabb_raw(const double *origin,
+                                          const double *dir,
+                                          const double *mn,
+                                          const double *mx) {
+    double tmin = -DBL_MAX, tmax = DBL_MAX;
+    double len_sq = dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2];
+    if (!isfinite(len_sq) || len_sq < EPSILON * EPSILON)
+        return -1.0;
+    for (int i = 0; i < 3; i++) {
+        if (fabs(dir[i]) < EPSILON) {
+            if (origin[i] < mn[i] || origin[i] > mx[i])
+                return -1.0;
+            continue;
+        }
+        {
+            double inv = 1.0 / dir[i];
+            double t0 = (mn[i] - origin[i]) * inv;
+            double t1 = (mx[i] - origin[i]) * inv;
+            if (t0 > t1) {
+                double tmp = t0;
+                t0 = t1;
+                t1 = tmp;
+            }
+            if (t0 > tmin)
+                tmin = t0;
+            if (t1 < tmax)
+                tmax = t1;
+            if (tmin > tmax)
+                return -1.0;
+        }
+    }
+    return tmin >= 0.0 ? tmin : (tmax >= 0.0 ? 0.0 : -1.0);
+}
+
+/// @brief Transform a 3-point through a 4×4 matrix as `M * (point, 1)`. Drops the w
+/// row (assumed identity for the affine transforms used here). Allocation-free wrapper
+/// used by ray-into-mesh-local-space conversion before triangle intersection tests.
+static void mat4_transform_point_raw(const double *m, const double *point, double *out) {
+    out[0] = m[0] * point[0] + m[1] * point[1] + m[2] * point[2] + m[3];
+    out[1] = m[4] * point[0] + m[5] * point[1] + m[6] * point[2] + m[7];
+    out[2] = m[8] * point[0] + m[9] * point[1] + m[10] * point[2] + m[11];
+}
+
+/// @brief Invert a 4×4 row-major matrix using the cofactor / adjugate method. Computes
+/// each adjugate entry as the signed minor of the transpose, then divides by the
+/// determinant (taken from the first row · first row of cofactors). Returns 0 on
+/// success, -1 when |det| < 1e-12 (singular). Used by raycast queries to bring a
+/// world-space ray into a mesh's local space for triangle intersection.
+static int mat4d_invert(const double *m, double *out) {
+    double inv[16];
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+             m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+             m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+             m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+              m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+             m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+             m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+             m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+              m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+             m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+             m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+              m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+              m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+             m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+             m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+              m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+              m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+
+    {
+        double det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+        if (!isfinite(det) || fabs(det) < 1e-12)
+            return -1;
+        det = 1.0 / det;
+        for (int i = 0; i < 16; i++)
+            out[i] = inv[i] * det;
+    }
+    return 0;
+}
+
+/*==========================================================================
+ * RayHit3D — result of ray-mesh intersection
+ *=========================================================================*/
+
+typedef struct {
+    double distance;
+    double point[3];
+    double normal[3];
+    int64_t triangle_index;
+} rt_rayhit3d;
+
+/*==========================================================================
+ * Möller–Trumbore ray-triangle intersection
+ *
+ * Returns parametric distance t (>= 0 = hit), or -1 if miss.
+ * Edge vectors e1 = v1-v0, e2 = v2-v0. Uses cross products to compute
+ * barycentric coordinates (u, v) and distance t simultaneously.
+ *=========================================================================*/
+
+/// @brief Möller–Trumbore ray-triangle intersection. Returns the Euclidean distance
+/// `t` along the ray to the hit point (≥ 0 on hit), or -1 on miss / NULL inputs /
+/// degenerate (parallel) ray. Computes barycentric coordinates inline and rejects
+/// hits with `u`, `v`, or `1 - u - v` outside `[0, 1]`. The classic algorithm — no
+/// precomputation required, branch-light enough for tight inner loops over triangle
+/// soups.
+double rt_ray3d_intersect_triangle(
+    void *origin, void *dir, void *v0_obj, void *v1_obj, void *v2_obj) {
+    double o[3];
+    double d[3];
+    double a_pt[3];
+    double b_pt[3];
+    double c_pt[3];
+    if (!vec3_read_finite(origin, o) || !vec3_read_finite(dir, d) ||
+        !vec3_read_finite(v0_obj, a_pt) || !vec3_read_finite(v1_obj, b_pt) ||
+        !vec3_read_finite(v2_obj, c_pt))
+        return -1.0;
+    if (!vec3_normalize_raw(d))
+        return -1.0;
+
+    double ox = o[0], oy = o[1], oz = o[2];
+    double dx = d[0], dy = d[1], dz = d[2];
+
+    double ax = a_pt[0], ay = a_pt[1], az = a_pt[2];
+    double bx = b_pt[0], by = b_pt[1], bz = b_pt[2];
+    double cx = c_pt[0], cy = c_pt[1], cz = c_pt[2];
+
+    /* Edge vectors */
+    double e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+    double e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
+
+    /* P = dir × e2 */
+    double px = dy * e2z - dz * e2y;
+    double py = dz * e2x - dx * e2z;
+    double pz = dx * e2y - dy * e2x;
+
+    double det = e1x * px + e1y * py + e1z * pz;
+    if (fabs(det) < EPSILON)
+        return -1.0; /* parallel */
+
+    double inv_det = 1.0 / det;
+
+    /* T = origin - v0 */
+    double tx = ox - ax, ty = oy - ay, tz = oz - az;
+
+    /* u = T · P * inv_det */
+    double u = (tx * px + ty * py + tz * pz) * inv_det;
+    if (u < 0.0 || u > 1.0)
+        return -1.0;
+
+    /* Q = T × e1 */
+    double qx = ty * e1z - tz * e1y;
+    double qy = tz * e1x - tx * e1z;
+    double qz = tx * e1y - ty * e1x;
+
+    /* v = dir · Q * inv_det */
+    double v = (dx * qx + dy * qy + dz * qz) * inv_det;
+    if (v < 0.0 || u + v > 1.0)
+        return -1.0;
+
+    /* t = e2 · Q * inv_det */
+    double t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
+    return t >= 0.0 ? t : -1.0;
+}
+
+/*==========================================================================
+ * Ray-AABB intersection (slab method)
+ *=========================================================================*/
+
+/// @brief Test ray–AABB intersection using the slab method.
+/// @details Returns the nearest positive intersection distance, or -1.0 on miss.
+///          Uses the standard slab algorithm: project the ray onto each axis,
+///          compute entry/exit intervals, and check for overlap.
+/// @param origin   Vec3 ray origin.
+/// @param dir      Vec3 ray direction (need not be normalized; zero-length misses).
+/// @param aabb_min Vec3 minimum corner of the axis-aligned bounding box.
+/// @param aabb_max Vec3 maximum corner of the axis-aligned bounding box.
+/// @return Euclidean distance to the nearest hit, or -1.0 on miss.
+double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max) {
+    double o[3], d[3], mn[3], mx[3];
+    if (!vec3_read_finite(origin, o) || !vec3_read_finite(dir, d) ||
+        !vec3_read_finite(aabb_min, mn) || !vec3_read_finite(aabb_max, mx))
+        return -1.0;
+    if (!vec3_normalize_raw(d))
+        return -1.0;
+    aabb3d_canonicalize_raw(mn, mx);
+    return rt_ray3d_intersect_aabb_raw(o, d, mn, mx);
+}
+
+/*==========================================================================
+ * Ray-sphere intersection (quadratic formula)
+ *=========================================================================*/
+
+/// @brief Test ray–sphere intersection using the quadratic formula.
+/// @details Solves the quadratic |O + tD - C|² = r² for the smallest positive t.
+///          Returns -1.0 on miss. The ray origin may be inside the sphere (returns 0 distance).
+/// @param origin Vec3 ray origin.
+/// @param dir    Vec3 ray direction.
+/// @param center Vec3 sphere center.
+/// @param radius Sphere radius.
+/// @return Distance t to nearest hit, or -1.0 on miss.
+double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double radius) {
+    double o[3], d[3], cpt[3];
+    if (!vec3_read_finite(origin, o) || !vec3_read_finite(dir, d) || !vec3_read_finite(center, cpt))
+        return -1.0;
+    if (!vec3_normalize_raw(d))
+        return -1.0;
+
+    double ox = o[0], oy = o[1], oz = o[2];
+    double dx = d[0], dy = d[1], dz = d[2];
+    double cx = cpt[0], cy = cpt[1], cz = cpt[2];
+    if (!isfinite(radius) || radius < 0.0)
+        return -1.0;
+
+    double lx = ox - cx, ly = oy - cy, lz = oz - cz;
+    double a = dx * dx + dy * dy + dz * dz;
+    if (!isfinite(a) || a < EPSILON)
+        return -1.0;
+    double b = 2.0 * (lx * dx + ly * dy + lz * dz);
+    double c = lx * lx + ly * ly + lz * lz - radius * radius;
+    if (c <= 0.0)
+        return 0.0;
+
+    double disc = b * b - 4.0 * a * c;
+    if (!isfinite(disc) || disc < 0.0)
+        return -1.0;
+
+    double sqrt_disc = sqrt(disc);
+    double t0 = (-b - sqrt_disc) / (2.0 * a);
+    double t1 = (-b + sqrt_disc) / (2.0 * a);
+
+    if (t0 >= 0.0)
+        return t0;
+    if (t1 >= 0.0)
+        return t1;
+    return -1.0;
+}
+
+/*==========================================================================
+ * Ray-mesh intersection (iterate triangles, AABB early-out)
+ *=========================================================================*/
+
+/// @brief Test ray–mesh intersection by iterating all triangles.
+/// @details Performs an AABB early-out test, then iterates each triangle in the
+///          mesh using the Möller–Trumbore algorithm. If a transform is provided,
+///          vertices are transformed to world space per-triangle (avoids computing
+///          the inverse model matrix). Returns a RayHit3D with distance, position,
+///          normal, and triangle index on hit, or NULL on miss.
+/// @param origin        Vec3 ray origin in world space.
+/// @param dir           Vec3 ray direction (need not be normalized).
+/// @param mesh_obj      Mesh handle to test against.
+/// @param transform_obj Optional Mat4 model transform (NULL = identity).
+/// @return Opaque RayHit3D handle, or NULL on miss.
+void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *transform_obj) {
+    double world_origin[3];
+    double world_dir[3];
+    rt_mesh3d *m = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    mat4_impl *transform = NULL;
+    if (!vec3_read_finite(origin, world_origin) || !vec3_read_finite(dir, world_dir) || !m)
+        return NULL;
+    if (!vec3_normalize_raw(world_dir))
+        return NULL;
+    if (transform_obj) {
+        transform = raycast3d_mat4_checked(transform_obj);
+        if (!transform || !mat4d_is_finite(transform->m))
+            return NULL;
+    }
+
+    if (m->vertex_count == 0 || m->index_count < 3)
+        return NULL;
+    {
+        double obj_origin[3];
+        double obj_dir[3];
+        double inv_model[16];
+        int has_transform = (transform != NULL);
+        int use_object_space = 0;
+        double best_t = 1e30;
+        int64_t best_tri = -1;
+        uint32_t best_i0 = 0, best_i1 = 0, best_i2 = 0;
+        double best_obj_point[3] = {0, 0, 0};
+
+        rt_mesh3d_refresh_bounds(m);
+
+        if (has_transform) {
+            const double *model = transform->m;
+            if (mat4d_invert(model, inv_model) == 0) {
+                double world_target[3] = {world_origin[0] + world_dir[0],
+                                          world_origin[1] + world_dir[1],
+                                          world_origin[2] + world_dir[2]};
+                double obj_target[3];
+                mat4_transform_point_raw(inv_model, world_origin, obj_origin);
+                mat4_transform_point_raw(inv_model, world_target, obj_target);
+                obj_dir[0] = obj_target[0] - obj_origin[0];
+                obj_dir[1] = obj_target[1] - obj_origin[1];
+                obj_dir[2] = obj_target[2] - obj_origin[2];
+                use_object_space = 1;
+            }
+        }
+
+        if (!use_object_space) {
+            obj_origin[0] = world_origin[0];
+            obj_origin[1] = world_origin[1];
+            obj_origin[2] = world_origin[2];
+            obj_dir[0] = world_dir[0];
+            obj_dir[1] = world_dir[1];
+            obj_dir[2] = world_dir[2];
+        }
+
+        {
+            double bounds_min[3] = {m->aabb_min[0], m->aabb_min[1], m->aabb_min[2]};
+            double bounds_max[3] = {m->aabb_max[0], m->aabb_max[1], m->aabb_max[2]};
+            if (has_transform && !use_object_space) {
+                const double *model = transform->m;
+                double corners[8][3];
+                double world_min[3] = {DBL_MAX, DBL_MAX, DBL_MAX};
+                double world_max[3] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};
+                corners[0][0] = bounds_min[0];
+                corners[0][1] = bounds_min[1];
+                corners[0][2] = bounds_min[2];
+                corners[1][0] = bounds_max[0];
+                corners[1][1] = bounds_min[1];
+                corners[1][2] = bounds_min[2];
+                corners[2][0] = bounds_min[0];
+                corners[2][1] = bounds_max[1];
+                corners[2][2] = bounds_min[2];
+                corners[3][0] = bounds_max[0];
+                corners[3][1] = bounds_max[1];
+                corners[3][2] = bounds_min[2];
+                corners[4][0] = bounds_min[0];
+                corners[4][1] = bounds_min[1];
+                corners[4][2] = bounds_max[2];
+                corners[5][0] = bounds_max[0];
+                corners[5][1] = bounds_min[1];
+                corners[5][2] = bounds_max[2];
+                corners[6][0] = bounds_min[0];
+                corners[6][1] = bounds_max[1];
+                corners[6][2] = bounds_max[2];
+                corners[7][0] = bounds_max[0];
+                corners[7][1] = bounds_max[1];
+                corners[7][2] = bounds_max[2];
+                for (int i = 0; i < 8; i++) {
+                    double p[3];
+                    mat4_transform_point_raw(model, corners[i], p);
+                    for (int axis = 0; axis < 3; axis++) {
+                        if (p[axis] < world_min[axis])
+                            world_min[axis] = p[axis];
+                        if (p[axis] > world_max[axis])
+                            world_max[axis] = p[axis];
+                    }
+                }
+                if (rt_ray3d_intersect_aabb_raw(world_origin, world_dir, world_min, world_max) <
+                    0.0)
+                    return NULL;
+            } else if (rt_ray3d_intersect_aabb_raw(obj_origin, obj_dir, bounds_min, bounds_max) <
+                       0.0) {
+                return NULL;
+            }
+        }
+
+        for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
+            uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
+            if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
+                continue;
+
+            double ax = m->vertices[i0].pos[0], ay = m->vertices[i0].pos[1],
+                   az = m->vertices[i0].pos[2];
+            double bx = m->vertices[i1].pos[0], by = m->vertices[i1].pos[1],
+                   bz = m->vertices[i1].pos[2];
+            double cx = m->vertices[i2].pos[0], cy = m->vertices[i2].pos[1],
+                   cz = m->vertices[i2].pos[2];
+
+            if (has_transform && !use_object_space) {
+                const double *model = transform->m;
+                double a[3] = {ax, ay, az}, b[3] = {bx, by, bz}, c[3] = {cx, cy, cz};
+                mat4_transform_point_raw(model, a, a);
+                mat4_transform_point_raw(model, b, b);
+                mat4_transform_point_raw(model, c, c);
+                ax = a[0];
+                ay = a[1];
+                az = a[2];
+                bx = b[0];
+                by = b[1];
+                bz = b[2];
+                cx = c[0];
+                cy = c[1];
+                cz = c[2];
+            }
+
+            {
+                double e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+                double e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
+                double px = obj_dir[1] * e2z - obj_dir[2] * e2y;
+                double py = obj_dir[2] * e2x - obj_dir[0] * e2z;
+                double pz = obj_dir[0] * e2y - obj_dir[1] * e2x;
+                double det = e1x * px + e1y * py + e1z * pz;
+                if (fabs(det) < EPSILON)
+                    continue;
+                {
+                    double inv_det = 1.0 / det;
+                    double tvx = obj_origin[0] - ax, tvy = obj_origin[1] - ay,
+                           tvz = obj_origin[2] - az;
+                    double u = (tvx * px + tvy * py + tvz * pz) * inv_det;
+                    if (u < 0.0 || u > 1.0)
+                        continue;
+                    {
+                        double qx = tvy * e1z - tvz * e1y;
+                        double qy = tvz * e1x - tvx * e1z;
+                        double qz = tvx * e1y - tvy * e1x;
+                        double v = (obj_dir[0] * qx + obj_dir[1] * qy + obj_dir[2] * qz) * inv_det;
+                        if (v < 0.0 || u + v > 1.0)
+                            continue;
+                        {
+                            double t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
+                            if (t >= 0.0 && t < best_t) {
+                                best_t = t;
+                                best_tri = (int64_t)(i / 3);
+                                best_i0 = i0;
+                                best_i1 = i1;
+                                best_i2 = i2;
+                                best_obj_point[0] = obj_origin[0] + obj_dir[0] * t;
+                                best_obj_point[1] = obj_origin[1] + obj_dir[1] * t;
+                                best_obj_point[2] = obj_origin[2] + obj_dir[2] * t;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (best_tri < 0)
+            return NULL;
+
+        {
+            rt_rayhit3d *hit = (rt_rayhit3d *)rt_obj_new_i64(RT_G3D_RAYHIT3D_CLASS_ID,
+                                                             (int64_t)sizeof(rt_rayhit3d));
+            double best_normal[3];
+            if (!hit)
+                return NULL;
+
+            {
+                double a[3] = {m->vertices[best_i0].pos[0],
+                               m->vertices[best_i0].pos[1],
+                               m->vertices[best_i0].pos[2]};
+                double b[3] = {m->vertices[best_i1].pos[0],
+                               m->vertices[best_i1].pos[1],
+                               m->vertices[best_i1].pos[2]};
+                double c[3] = {m->vertices[best_i2].pos[0],
+                               m->vertices[best_i2].pos[1],
+                               m->vertices[best_i2].pos[2]};
+                if (has_transform) {
+                    const double *model = transform->m;
+                    mat4_transform_point_raw(model, a, a);
+                    mat4_transform_point_raw(model, b, b);
+                    mat4_transform_point_raw(model, c, c);
+                    if (use_object_space)
+                        mat4_transform_point_raw(model, best_obj_point, hit->point);
+                    else {
+                        hit->point[0] = world_origin[0] + world_dir[0] * best_t;
+                        hit->point[1] = world_origin[1] + world_dir[1] * best_t;
+                        hit->point[2] = world_origin[2] + world_dir[2] * best_t;
+                    }
+                } else {
+                    hit->point[0] = world_origin[0] + world_dir[0] * best_t;
+                    hit->point[1] = world_origin[1] + world_dir[1] * best_t;
+                    hit->point[2] = world_origin[2] + world_dir[2] * best_t;
+                }
+
+                {
+                    double e1x = b[0] - a[0], e1y = b[1] - a[1], e1z = b[2] - a[2];
+                    double e2x = c[0] - a[0], e2y = c[1] - a[1], e2z = c[2] - a[2];
+                    best_normal[0] = e1y * e2z - e1z * e2y;
+                    best_normal[1] = e1z * e2x - e1x * e2z;
+                    best_normal[2] = e1x * e2y - e1y * e2x;
+                }
+            }
+
+            {
+                double nlen =
+                    sqrt(best_normal[0] * best_normal[0] + best_normal[1] * best_normal[1] +
+                         best_normal[2] * best_normal[2]);
+                if (nlen > 1e-8) {
+                    best_normal[0] /= nlen;
+                    best_normal[1] /= nlen;
+                    best_normal[2] /= nlen;
+                } else {
+                    best_normal[0] = 0.0;
+                    best_normal[1] = 1.0;
+                    best_normal[2] = 0.0;
+                }
+            }
+
+            {
+                double dir_len_sq = world_dir[0] * world_dir[0] + world_dir[1] * world_dir[1] +
+                                    world_dir[2] * world_dir[2];
+                hit->distance = dir_len_sq > 1e-12
+                                    ? (((hit->point[0] - world_origin[0]) * world_dir[0] +
+                                        (hit->point[1] - world_origin[1]) * world_dir[1] +
+                                        (hit->point[2] - world_origin[2]) * world_dir[2]) /
+                                       dir_len_sq)
+                                    : 0.0;
+            }
+            hit->normal[0] = best_normal[0];
+            hit->normal[1] = best_normal[1];
+            hit->normal[2] = best_normal[2];
+            hit->triangle_index = best_tri;
+            return hit;
+        }
+    }
+}
+
+/*==========================================================================
+ * AABB-AABB collision
+ *=========================================================================*/
+
+/// @brief Test whether two axis-aligned bounding boxes overlap.
+/// @return 1 if they overlap on all three axes, 0 otherwise.
+int8_t rt_aabb3d_overlaps(void *min_a, void *max_a, void *min_b, void *max_b) {
+    double amin[3], amax[3], bmin[3], bmax[3];
+    if (!vec3_read_finite(min_a, amin) || !vec3_read_finite(max_a, amax) ||
+        !vec3_read_finite(min_b, bmin) || !vec3_read_finite(max_b, bmax))
+        return 0;
+    aabb3d_canonicalize_raw(amin, amax);
+    aabb3d_canonicalize_raw(bmin, bmax);
+    return (amin[0] <= bmax[0] && amax[0] >= bmin[0] && amin[1] <= bmax[1] && amax[1] >= bmin[1] &&
+            amin[2] <= bmax[2] && amax[2] >= bmin[2])
+               ? 1
+               : 0;
+}
+
+/// @brief Compute the minimum-axis penetration vector to separate two overlapping AABBs.
+/// @details Finds the axis with the smallest overlap and returns a push vector
+///          along that axis. Returns (0,0,0) if the boxes do not overlap.
+void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) {
+    double amin[3], amax[3], bmin[3], bmax[3];
+    if (!vec3_read_finite(min_a, amin) || !vec3_read_finite(max_a, amax) ||
+        !vec3_read_finite(min_b, bmin) || !vec3_read_finite(max_b, bmax))
+        return rt_vec3_new(0, 0, 0);
+    aabb3d_canonicalize_raw(amin, amax);
+    aabb3d_canonicalize_raw(bmin, bmax);
+
+    /* No overlap → zero penetration */
+    if (amin[0] > bmax[0] || amax[0] < bmin[0] || amin[1] > bmax[1] || amax[1] < bmin[1] ||
+        amin[2] > bmax[2] || amax[2] < bmin[2])
+        return rt_vec3_new(0, 0, 0);
+
+    /* Compute overlap on each axis */
+    double ox = (amax[0] < bmax[0] ? amax[0] - bmin[0] : bmax[0] - amin[0]);
+    double oy = (amax[1] < bmax[1] ? amax[1] - bmin[1] : bmax[1] - amin[1]);
+    double oz = (amax[2] < bmax[2] ? amax[2] - bmin[2] : bmax[2] - amin[2]);
+
+    /* Push out on the axis of minimum overlap */
+    double ax = fabs(ox), ay = fabs(oy), az = fabs(oz);
+    double cax = (amin[0] + amax[0]) * 0.5;
+    double cay = (amin[1] + amax[1]) * 0.5;
+    double caz = (amin[2] + amax[2]) * 0.5;
+    double cb;
+
+    if (ax <= ay && ax <= az) {
+        cb = (bmin[0] + bmax[0]) * 0.5;
+        return rt_vec3_new(cax < cb ? -ox : ox, 0, 0);
+    } else if (ay <= az) {
+        cb = (bmin[1] + bmax[1]) * 0.5;
+        return rt_vec3_new(0, cay < cb ? -oy : oy, 0);
+    } else {
+        cb = (bmin[2] + bmax[2]) * 0.5;
+        return rt_vec3_new(0, 0, caz < cb ? -oz : oz);
+    }
+}
+
+/*==========================================================================
+ * RayHit3D accessors
+ *=========================================================================*/
+
+/// @brief Get the distance along the ray to the hit point.
+double rt_ray3d_hit_distance(void *hit) {
+    rt_rayhit3d *h = (rt_rayhit3d *)rt_g3d_checked_or_null(hit, RT_G3D_RAYHIT3D_CLASS_ID);
+    return h ? h->distance : -1.0;
+}
+
+/// @brief Get the world-space position of the hit point as a new Vec3.
+void *rt_ray3d_hit_point(void *hit) {
+    rt_rayhit3d *h = (rt_rayhit3d *)rt_g3d_checked_or_null(hit, RT_G3D_RAYHIT3D_CLASS_ID);
+    if (!h)
+        return rt_vec3_new(0, 0, 0);
+    return rt_vec3_new(h->point[0], h->point[1], h->point[2]);
+}
+
+/// @brief Get the surface normal at the hit point as a new Vec3.
+void *rt_ray3d_hit_normal(void *hit) {
+    rt_rayhit3d *h = (rt_rayhit3d *)rt_g3d_checked_or_null(hit, RT_G3D_RAYHIT3D_CLASS_ID);
+    if (!h)
+        return rt_vec3_new(0, 1, 0);
+    return rt_vec3_new(h->normal[0], h->normal[1], h->normal[2]);
+}
+
+/// @brief Get the index of the triangle that was hit (-1 if no hit).
+int64_t rt_ray3d_hit_triangle(void *hit) {
+    rt_rayhit3d *h = (rt_rayhit3d *)rt_g3d_checked_or_null(hit, RT_G3D_RAYHIT3D_CLASS_ID);
+    return h ? h->triangle_index : -1;
+}
+
+/*==========================================================================
+ * Shape-shape collision primitives (for Physics3D)
+ *=========================================================================*/
+
+/// @brief Test whether two spheres overlap (distance < sum of radii).
+int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, double radius_b) {
+    double ca[3], cb[3];
+    if (!vec3_read_finite(center_a, ca) || !vec3_read_finite(center_b, cb))
+        return 0;
+    radius_a = isfinite(radius_a) && radius_a > 0.0 ? radius_a : 0.0;
+    radius_b = isfinite(radius_b) && radius_b > 0.0 ? radius_b : 0.0;
+    double dx = cb[0] - ca[0];
+    double dy = cb[1] - ca[1];
+    double dz = cb[2] - ca[2];
+    double dist_sq = dx * dx + dy * dy + dz * dz;
+    double r_sum = radius_a + radius_b;
+    return isfinite(dist_sq) && dist_sq <= r_sum * r_sum ? 1 : 0;
+}
+
+/// @brief Compute the penetration vector to separate two overlapping spheres.
+void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, double radius_b) {
+    double ca[3], cb[3];
+    if (!vec3_read_finite(center_a, ca) || !vec3_read_finite(center_b, cb))
+        return rt_vec3_new(0, 0, 0);
+    radius_a = isfinite(radius_a) && radius_a > 0.0 ? radius_a : 0.0;
+    radius_b = isfinite(radius_b) && radius_b > 0.0 ? radius_b : 0.0;
+    double dx = cb[0] - ca[0];
+    double dy = cb[1] - ca[1];
+    double dz = cb[2] - ca[2];
+    double dist_sq = dx * dx + dy * dy + dz * dz;
+    if (!isfinite(dist_sq))
+        return rt_vec3_new(0, 0, 0);
+    double dist = sqrt(dist_sq);
+    double r_sum = radius_a + radius_b;
+    if (r_sum <= 0.0 || dist >= r_sum)
+        return rt_vec3_new(0, 0, 0);
+    double depth = r_sum - dist;
+    if (dist < 1e-12)
+        return rt_vec3_new(0, depth, 0);
+    double inv_dist = 1.0 / dist;
+    return rt_vec3_new(-dx * inv_dist * depth, -dy * inv_dist * depth, -dz * inv_dist * depth);
+}
+
+/// @brief Find the closest point on an AABB surface to a given point.
+void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point) {
+    double p[3], mn[3], mx[3];
+    if (!vec3_read_finite(point, p) || !vec3_read_finite(aabb_min, mn) ||
+        !vec3_read_finite(aabb_max, mx))
+        return rt_vec3_new(0, 0, 0);
+    aabb3d_canonicalize_raw(mn, mx);
+    {
+        double c[3];
+        aabb3d_clamp_point_raw(mn, mx, p, c);
+        if (p[0] >= mn[0] && p[0] <= mx[0] && p[1] >= mn[1] && p[1] <= mx[1] && p[2] >= mn[2] &&
+            p[2] <= mx[2]) {
+            double dx0 = fabs(p[0] - mn[0]), dx1 = fabs(mx[0] - p[0]);
+            double dy0 = fabs(p[1] - mn[1]), dy1 = fabs(mx[1] - p[1]);
+            double dz0 = fabs(p[2] - mn[2]), dz1 = fabs(mx[2] - p[2]);
+            double best = dx0;
+            c[0] = mn[0];
+            c[1] = p[1];
+            c[2] = p[2];
+            if (dx1 < best) {
+                best = dx1;
+                c[0] = mx[0];
+                c[1] = p[1];
+                c[2] = p[2];
+            }
+            if (dy0 < best) {
+                best = dy0;
+                c[0] = p[0];
+                c[1] = mn[1];
+                c[2] = p[2];
+            }
+            if (dy1 < best) {
+                best = dy1;
+                c[0] = p[0];
+                c[1] = mx[1];
+                c[2] = p[2];
+            }
+            if (dz0 < best) {
+                best = dz0;
+                c[0] = p[0];
+                c[1] = p[1];
+                c[2] = mn[2];
+            }
+            if (dz1 < best) {
+                c[0] = p[0];
+                c[1] = p[1];
+                c[2] = mx[2];
+            }
+        }
+        return rt_vec3_new(c[0], c[1], c[2]);
+    }
+}
+
+/// @brief Test whether an AABB and a sphere overlap.
+int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, double radius) {
+    double p[3], mn[3], mx[3];
+    if (!vec3_read_finite(center, p) || !vec3_read_finite(aabb_min, mn) ||
+        !vec3_read_finite(aabb_max, mx) || !isfinite(radius) || radius < 0.0)
+        return 0;
+    aabb3d_canonicalize_raw(mn, mx);
+    {
+        double c[3];
+        aabb3d_clamp_point_raw(mn, mx, p, c);
+        {
+            double dx = p[0] - c[0];
+            double dy = p[1] - c[1];
+            double dz = p[2] - c[2];
+            return (dx * dx + dy * dy + dz * dz) <= radius * radius ? 1 : 0;
+        }
+    }
+}
+
+/// @brief Closest point on a finite line segment to a query point. Projects the point
+/// onto the segment direction, clamps the parametric `t` to `[0, 1]` (so the result
+/// stays on the segment, never on its infinite extension), and reconstructs the world
+/// position. Degenerate zero-length segments collapse to endpoint A. Used by capsule
+/// overlap tests and AI path-following.
+void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
+    double a[3], b[3], p[3];
+    double closest[3];
+    if (!vec3_read_finite(seg_a, a) || !vec3_read_finite(seg_b, b) || !vec3_read_finite(point, p))
+        return rt_vec3_new(0, 0, 0);
+    segment3d_closest_point_raw(a, b, p, closest);
+    return rt_vec3_new(closest[0], closest[1], closest[2]);
+}
+
+/// @brief Capsule-vs-sphere overlap. Reduces to a point-segment distance check —
+/// the capsule's surface is everywhere `cap_radius` from its core segment, so the
+/// sphere intersects the capsule when the sphere centre is within `cap_radius +
+/// sphere_radius` of the closest point on the segment. Squared comparison avoids the
+/// sqrt.
+int8_t rt_capsule3d_sphere_overlaps(
+    void *cap_a, void *cap_b, double cap_radius, void *sphere_center, double sphere_radius) {
+    double a[3], b[3], c[3];
+    double closest[3];
+    if (!vec3_read_finite(cap_a, a) || !vec3_read_finite(cap_b, b) ||
+        !vec3_read_finite(sphere_center, c))
+        return 0;
+    cap_radius = isfinite(cap_radius) && cap_radius > 0.0 ? cap_radius : 0.0;
+    sphere_radius = isfinite(sphere_radius) && sphere_radius > 0.0 ? sphere_radius : 0.0;
+    segment3d_closest_point_raw(a, b, c, closest);
+    double dx = c[0] - closest[0];
+    double dy = c[1] - closest[1];
+    double dz = c[2] - closest[2];
+    double r_sum = cap_radius + sphere_radius;
+    double dist_sq = dx * dx + dy * dy + dz * dz;
+    return isfinite(dist_sq) && dist_sq <= r_sum * r_sum ? 1 : 0;
+}
+
+/// @brief Exact capsule-vs-AABB overlap using segment-to-box squared distance.
+/// @details Minimises the convex point-to-AABB distance function over the capsule's
+/// core segment by splitting the segment at box slab boundaries and checking each
+/// interval's quadratic minimum. The capsule overlaps when that exact segment-box
+/// distance is within the capsule radius.
+int8_t rt_capsule3d_aabb_overlaps(
+    void *cap_a, void *cap_b, double radius, void *aabb_min, void *aabb_max) {
+    double a[3], b[3], mn[3], mx[3];
+    if (!vec3_read_finite(cap_a, a) || !vec3_read_finite(cap_b, b) ||
+        !vec3_read_finite(aabb_min, mn) || !vec3_read_finite(aabb_max, mx))
+        return 0;
+    aabb3d_canonicalize_raw(mn, mx);
+    radius = isfinite(radius) && radius > 0.0 ? radius : 0.0;
+    double dist_sq = segment_aabb_distance_sq_raw(a, b, mn, mx);
+    return isfinite(dist_sq) && dist_sq <= radius * radius ? 1 : 0;
+}
+
+#else
+typedef int rt_graphics_disabled_tu_guard;
+#endif /* VIPER_ENABLE_GRAPHICS */

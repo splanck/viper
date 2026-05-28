@@ -36,8 +36,8 @@
 #include "common/RunProcess.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -105,7 +105,8 @@ std::string lowerAscii(std::string text) {
 }
 
 /// @brief Return Unix permission bits for a toolchain file.
-/// Uses the stored `unixMode` if non-zero; otherwise defaults to 0755 for executables and 0644 for data files.
+/// Uses the stored `unixMode` if non-zero; otherwise defaults to 0755 for executables and 0644 for
+/// data files.
 uint32_t permissionBitsFor(const ToolchainFileEntry &file) {
     const uint32_t bits = file.unixMode & 07777u;
     if (bits != 0)
@@ -140,9 +141,9 @@ std::string portableArchiveVersionComponent(const std::string &version) {
     return out;
 }
 
-/// @brief Append a hidden terminal-type .desktop file to `dataFiles` for the given file associations.
-/// Writes a `noDisplay=true` desktop entry under `usr/share/applications/<desktopName>`.
-/// No-op when `associations` is empty.
+/// @brief Append a hidden terminal-type .desktop file to `dataFiles` for the given file
+/// associations. Writes a `noDisplay=true` desktop entry under
+/// `usr/share/applications/<desktopName>`. No-op when `associations` is empty.
 void addToolchainDesktopMetadata(std::vector<DataFile> &dataFiles,
                                  const std::string &desktopName,
                                  const std::string &execPath,
@@ -167,9 +168,9 @@ void addToolchainDesktopMetadata(std::vector<DataFile> &dataFiles,
                            0644);
 }
 
-/// @brief Append MIME XML and separate .desktop files (one for .il, one for source types) to `dataFiles`.
-/// Splits `manifest.fileAssociations` into IL vs. source groups so each gets its own desktop handler.
-/// No-op when `manifest.fileAssociations` is empty.
+/// @brief Append MIME XML and separate .desktop files (one for .il, one for source types) to
+/// `dataFiles`. Splits `manifest.fileAssociations` into IL vs. source groups so each gets its own
+/// desktop handler. No-op when `manifest.fileAssociations` is empty.
 void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
                                          const ToolchainInstallManifest &manifest,
                                          const std::string &packageName,
@@ -186,10 +187,8 @@ void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
             sourceAssociations.push_back(assoc);
     }
 
-    addToolchainDesktopMetadata(dataFiles,
-                                packageName + "-source.desktop",
-                                viperExecPath + " run",
-                                sourceAssociations);
+    addToolchainDesktopMetadata(
+        dataFiles, packageName + "-source.desktop", viperExecPath + " run", sourceAssociations);
     addToolchainDesktopMetadata(
         dataFiles, packageName + "-il.desktop", viperExecPath + " -run", ilAssociations);
 
@@ -199,23 +198,21 @@ void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
                            0644);
 }
 
-/// @brief Collect all Linux install files from the manifest, mapping each to its FHS path under /usr
-/// via `LinuxUsrRoot` policy, then appending generated file-association metadata entries.
+/// @brief Collect all Linux install files from the manifest, mapping each to its FHS path under
+/// /usr via `LinuxUsrRoot` policy, then appending generated file-association metadata entries.
 std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest &manifest,
                                                  const std::string &packageName) {
     std::vector<DataFile> dataFiles;
     dataFiles.reserve(manifest.files.size() + 2);
     for (const auto &file : manifest.files) {
         const std::string installPath = mapInstallPath(file, InstallPathPolicy::LinuxUsrRoot);
-        const std::string relInstall =
-            sanitizePackageRelativePath(installPath.size() > 1 ? installPath.substr(1) : installPath,
-                                        "linux install path");
+        const std::string relInstall = sanitizePackageRelativePath(
+            installPath.size() > 1 ? installPath.substr(1) : installPath, "linux install path");
         if (file.symlink)
             dataFiles.push_back(DataFile::link(relInstall, file.symlinkTarget));
         else
-            dataFiles.emplace_back(relInstall,
-                                   readFile(file.stagedAbsolutePath.string()),
-                                   permissionBitsFor(file));
+            dataFiles.emplace_back(
+                relInstall, readFile(file.stagedAbsolutePath.string()), permissionBitsFor(file));
     }
     addToolchainFileAssociationMetadata(dataFiles, manifest, packageName, "/usr/bin/viper");
     return dataFiles;
@@ -249,7 +246,8 @@ void addDirectoriesForDataFiles(TarWriter &tar, const std::vector<DataFile> &dat
         tar.addDirectory(dir, 0755);
 }
 
-/// @brief Map a Viper arch string ("x64", "arm64") to the RPM architecture name ("x86_64"/"aarch64").
+/// @brief Map a Viper arch string ("x64", "arm64") to the RPM architecture name
+/// ("x86_64"/"aarch64").
 std::string rpmArchFor(const std::string &arch) {
     validateToolchainArchitecture(arch);
     return arch == "arm64" ? "aarch64" : "x86_64";
@@ -493,7 +491,8 @@ bool rpmbuildAvailable() {
 }
 
 /// @brief Find the .rpm produced by rpmbuild under `tmpRoot/RPMS/<arch>/`.
-/// Expects exactly one file matching `<packageName>-<version>-*.<arch>.rpm`; throws if none or more than one.
+/// Expects exactly one file matching `<packageName>-<version>-*.<arch>.rpm`; throws if none or more
+/// than one.
 fs::path findGeneratedRpm(const fs::path &tmpRoot,
                           const std::string &packageName,
                           const std::string &version,
@@ -620,8 +619,8 @@ void validateDataFilePaths(const std::vector<DataFile> &dataFiles) {
     }
 }
 
-/// @brief Validate that `path` is normalized for portable archive use (no `..`, no absolute prefix).
-/// Throws with `fieldName` in the error message if the path is not canonical.
+/// @brief Validate that `path` is normalized for portable archive use (no `..`, no absolute
+/// prefix). Throws with `fieldName` in the error message if the path is not canonical.
 void validatePortableArchivePath(const std::string &path, const char *fieldName) {
     const std::string clean = sanitizePackageRelativePath(path, fieldName);
     if (clean != path)
@@ -682,8 +681,8 @@ std::string portableArchivePlatformName() {
 /// @brief Generate a unique temp directory path combining `stem`, PID, and steady-clock tick.
 /// The PID+tick combination avoids collisions between concurrent packaging invocations.
 fs::path uniqueTempPackagingDir(std::string_view stem) {
-    const auto tick =
-        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto tick = static_cast<unsigned long long>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
     const auto pid =
 #if defined(_WIN32)
         static_cast<unsigned long long>(_getpid());
@@ -699,6 +698,7 @@ fs::path uniqueTempPackagingDir(std::string_view stem) {
 class TempDirGuard {
   public:
     explicit TempDirGuard(fs::path path) : path_(std::move(path)) {}
+
     ~TempDirGuard() {
         if (!path_.empty()) {
             std::error_code ec;
@@ -741,7 +741,8 @@ void buildDebPackage(const LinuxBuildParams &params) {
         const std::string sourceRel =
             sanitizePackageRelativePath(asset.sourcePath, "asset source path");
         const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
-        fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
+        fs::path srcPath =
+            resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
 
         std::string sharePrefix = joinPackageRelativePath("usr/share/" + pkgName, targetDir);
@@ -754,7 +755,8 @@ void buildDebPackage(const LinuxBuildParams &params) {
             safeDirectoryIterateResolved(
                 srcPath, params.projectRoot, [&](const SafeDirectoryEntry &entry) {
                     auto relPath = sanitizePackageRelativePath(
-                        entry.logicalPath.lexically_relative(srcPath).generic_string(), "asset path");
+                        entry.logicalPath.lexically_relative(srcPath).generic_string(),
+                        "asset path");
                     if (entry.directory) {
                         dataFiles.push_back(DataFile::dir(
                             joinPackageRelativePath(sharePrefix, relPath, "asset path")));
@@ -768,9 +770,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
                 });
         } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
-            dataFiles.emplace_back(joinPackageRelativePath(sharePrefix,
-                                                           sourceLeaf,
-                                                           "asset path"),
+            dataFiles.emplace_back(joinPackageRelativePath(sharePrefix, sourceLeaf, "asset path"),
                                    std::move(fileData),
                                    permissionBitsForFilesystemPath(srcPath));
         } else {
@@ -804,7 +804,8 @@ void buildDebPackage(const LinuxBuildParams &params) {
 
     // Icon PNGs at standard sizes (via IconGenerator)
     if (!pkg.iconPath.empty()) {
-        fs::path iconSrc = resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
+        fs::path iconSrc =
+            resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
         if (!fs::is_regular_file(iconSrc))
             throw std::runtime_error("package icon not found: " + pkg.iconPath);
         auto srcImage = pngRead(iconSrc.string());
@@ -933,9 +934,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
     }
 
     // postinst script (update MIME database, desktop database, custom hooks)
-    bool needPostinst =
-        needDesktopEntry || pkg.shortcutDesktop ||
-        !pkg.postInstallScript.empty();
+    bool needPostinst = needDesktopEntry || pkg.shortcutDesktop || !pkg.postInstallScript.empty();
     if (needPostinst) {
         std::ostringstream pi;
         pi << "#!/bin/sh\n";
@@ -949,8 +948,9 @@ void buildDebPackage(const LinuxBuildParams &params) {
         if (pkg.shortcutDesktop) {
             pi << "for d in /root/Desktop /home/*/Desktop; do "
                   "[ -d \"$d\" ] || continue; "
-                  "(cp /usr/share/applications/" << pkgName << ".desktop \"$d/" << pkgName
-               << ".desktop\" && chmod 755 \"$d/" << pkgName << ".desktop\") || true; done\n";
+                  "(cp /usr/share/applications/"
+               << pkgName << ".desktop \"$d/" << pkgName << ".desktop\" && chmod 755 \"$d/"
+               << pkgName << ".desktop\") || true; done\n";
         }
         if (!pkg.postInstallScript.empty())
             pi << normalizePackageHookScript(pkg.postInstallScript, "post-install script") << "\n";
@@ -964,10 +964,12 @@ void buildDebPackage(const LinuxBuildParams &params) {
         pr << "#!/bin/sh\n";
         pr << "set -e\n";
         if (!pkg.preUninstallScript.empty())
-            pr << normalizePackageHookScript(pkg.preUninstallScript, "pre-uninstall script") << "\n";
+            pr << normalizePackageHookScript(pkg.preUninstallScript, "pre-uninstall script")
+               << "\n";
         if (pkg.shortcutDesktop) {
             pr << "for d in /root/Desktop /home/*/Desktop; do "
-                  "[ -e \"$d/" << pkgName << ".desktop\" ] && rm -f \"$d/" << pkgName
+                  "[ -e \"$d/"
+               << pkgName << ".desktop\" ] && rm -f \"$d/" << pkgName
                << ".desktop\" || true; done\n";
         }
         controlTar.addFileString("./prerm", pr.str(), 0755);
@@ -1021,10 +1023,10 @@ void buildTarball(const LinuxBuildParams &params) {
                                  params.executablePath);
 
     // Top-level directory in the tarball
-    std::string topDir = sanitizePackageRelativePath(
-                             pkgName + "-" + portableArchiveVersionComponent(version),
-                             "tarball top-level directory") +
-                         "/";
+    std::string topDir =
+        sanitizePackageRelativePath(pkgName + "-" + portableArchiveVersionComponent(version),
+                                    "tarball top-level directory") +
+        "/";
 
     TarWriter tar;
     tar.addDirectory(topDir, 0755);
@@ -1038,7 +1040,8 @@ void buildTarball(const LinuxBuildParams &params) {
         const std::string sourceRel =
             sanitizePackageRelativePath(asset.sourcePath, "asset source path");
         const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
-        fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
+        fs::path srcPath =
+            resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
 
         std::string prefix = joinPackageRelativePath(topDir, targetDir, "asset target path");
@@ -1070,11 +1073,10 @@ void buildTarball(const LinuxBuildParams &params) {
                 });
         } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
-            tar.addFile(
-                joinPackageRelativePath(prefix, sourceLeaf, "asset path"),
-                fileData.data(),
-                fileData.size(),
-                permissionBitsForFilesystemPath(srcPath));
+            tar.addFile(joinPackageRelativePath(prefix, sourceLeaf, "asset path"),
+                        fileData.data(),
+                        fileData.size(),
+                        permissionBitsForFilesystemPath(srcPath));
         } else {
             throw std::runtime_error("asset is not a regular file or directory: " +
                                      asset.sourcePath);
@@ -1119,10 +1121,7 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
         else if (df.directory)
             continue;
         else
-            dataTar.addFile("./" + df.installPath,
-                            df.data.data(),
-                            df.data.size(),
-                            df.mode);
+            dataTar.addFile("./" + df.installPath, df.data.data(), df.data.size(), df.mode);
     }
     const auto dataTarBytes = dataTar.finish();
     const auto dataTarGz = gzip(dataTarBytes.data(), dataTarBytes.size());
@@ -1155,8 +1154,8 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
                 md5s << md5hex(df.data.data(), df.data.size()) << "  " << df.installPath << "\n";
         controlTar.addFileString("./md5sums", md5s.str(), 0644);
     }
-    const bool hasManPages =
-        std::any_of(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
+    const bool hasManPages = std::any_of(
+        manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
             return entry.kind == ToolchainFileKind::ManPage;
         });
     const bool hasFileAssociations = !manifest.fileAssociations.empty();
@@ -1164,21 +1163,20 @@ void buildToolchainDebPackage(const LinuxToolchainBuildParams &params) {
         std::ostringstream postinst;
         postinst << "#!/bin/sh\nset -e\n";
         if (hasManPages)
-            postinst << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
+            postinst
+                << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
         if (hasFileAssociations) {
             postinst << "if command -v update-mime-database >/dev/null 2>&1; then "
                         "update-mime-database /usr/share/mime || true; fi\n";
             postinst << "if command -v update-desktop-database >/dev/null 2>&1; then "
                         "update-desktop-database /usr/share/applications || true; fi\n";
         }
-        controlTar.addFileString(
-            "./postinst",
-            postinst.str(),
-            0755);
+        controlTar.addFileString("./postinst", postinst.str(), 0755);
         std::ostringstream postrm;
         postrm << "#!/bin/sh\nset -e\n";
         if (hasManPages)
-            postrm << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
+            postrm
+                << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
         if (hasFileAssociations) {
             postrm << "if command -v update-mime-database >/dev/null 2>&1; then "
                       "update-mime-database /usr/share/mime || true; fi\n";
@@ -1238,21 +1236,16 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
             tar.addSymlink(topDir + relPath, file.symlinkTarget);
         } else {
             const auto data = readFile(file.stagedAbsolutePath.string());
-            tar.addFile(topDir + relPath,
-                        data.data(),
-                        data.size(),
-                        permissionBitsFor(file));
+            tar.addFile(topDir + relPath, data.data(), data.size(), permissionBitsFor(file));
         }
     }
     if (platform == "linux" && !manifest.fileAssociations.empty()) {
         std::vector<DataFile> generated;
         addToolchainFileAssociationMetadata(generated, manifest, packageName, "viper");
         for (const auto &df : generated) {
-            const std::string portablePath =
-                sanitizePackageRelativePath(df.installPath.rfind("usr/", 0) == 0
-                                                ? df.installPath.substr(4)
-                                                : df.installPath,
-                                            "toolchain tarball generated metadata path");
+            const std::string portablePath = sanitizePackageRelativePath(
+                df.installPath.rfind("usr/", 0) == 0 ? df.installPath.substr(4) : df.installPath,
+                "toolchain tarball generated metadata path");
             installManifestPaths.push_back(portablePath);
             tar.addFile(topDir + portablePath, df.data.data(), df.data.size(), df.mode);
         }
@@ -1337,10 +1330,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
         if (file.symlink) {
             tar.addSymlink(sourceTopDir + sourcePath, file.symlinkTarget);
         } else if (!file.directory) {
-            tar.addFile(sourceTopDir + sourcePath,
-                        file.data.data(),
-                        file.data.size(),
-                        file.mode);
+            tar.addFile(sourceTopDir + sourcePath, file.data.data(), file.data.size(), file.mode);
         }
     }
     const auto tarBytes = tar.finish();
@@ -1370,9 +1360,10 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "%description\nViper compiler toolchain\n\n";
     spec << "%prep\n%setup -q\n\n";
     spec << "%build\n:\n\n";
-    spec << "%install\nrm -rf %{buildroot}\nmkdir -p %{buildroot}/usr\ncp -a . %{buildroot}/usr/\n\n";
-    const bool hasManPages =
-        std::any_of(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
+    spec << "%install\nrm -rf %{buildroot}\nmkdir -p %{buildroot}/usr\ncp -a . "
+            "%{buildroot}/usr/\n\n";
+    const bool hasManPages = std::any_of(
+        manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
             return entry.kind == ToolchainFileKind::ManPage;
         });
     const bool hasFileAssociations = !manifest.fileAssociations.empty();
@@ -1381,19 +1372,25 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
         if (hasManPages)
             spec << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
         if (hasFileAssociations) {
-            spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime || true; fi\n";
-            spec << "if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications || true; fi\n\n";
+            spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database "
+                    "/usr/share/mime || true; fi\n";
+            spec << "if command -v update-desktop-database >/dev/null 2>&1; then "
+                    "update-desktop-database /usr/share/applications || true; fi\n\n";
         } else {
             spec << "\n";
         }
         if (hasFileAssociations) {
             spec << "%postun\n";
             if (hasManPages)
-                spec << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n";
-            spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime || true; fi\n";
-            spec << "if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications || true; fi\n\n";
+                spec << "if command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; "
+                        "fi\n";
+            spec << "if command -v update-mime-database >/dev/null 2>&1; then update-mime-database "
+                    "/usr/share/mime || true; fi\n";
+            spec << "if command -v update-desktop-database >/dev/null 2>&1; then "
+                    "update-desktop-database /usr/share/applications || true; fi\n\n";
         } else if (hasManPages) {
-            spec << "%postun\nif command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || true; fi\n\n";
+            spec << "%postun\nif command -v mandb >/dev/null 2>&1; then mandb >/dev/null 2>&1 || "
+                    "true; fi\n\n";
         }
     }
     spec << "%files\n";
@@ -1420,8 +1417,8 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
                                       "-bb",
                                       specPath.string()});
     if (rr.exit_code != 0) {
-        throw std::runtime_error("rpmbuild failed while generating toolchain rpm:\n" +
-                                 rr.out + rr.err);
+        throw std::runtime_error("rpmbuild failed while generating toolchain rpm:\n" + rr.out +
+                                 rr.err);
     }
 
     const fs::path rpmPath = findGeneratedRpm(tmpRoot, packageName, version, arch);

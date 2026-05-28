@@ -193,7 +193,7 @@ if (VIPER_BUILD_TESTING)
     set_tests_properties(test_vg_codeeditor_perf PROPERTIES LABELS "gui;viperide;perf" TIMEOUT 15)
 
     if (UNIX AND NOT APPLE)
-        foreach(vg_gui_test_target
+        foreach (vg_gui_test_target
                 test_vg_font
                 test_vg_widgets_new
                 test_vg_tier1_fixes

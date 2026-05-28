@@ -63,8 +63,7 @@ static std::string temp_dir(const char *name) {
     if (!base || !*base)
         base = "/tmp";
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s/viper_plural_%ld_%s",
-             base, (long)TEST_GETPID(), name);
+    snprintf(buf, sizeof(buf), "%s/viper_plural_%ld_%s", base, (long)TEST_GETPID(), name);
     TEST_MKDIR(buf);
     return std::string(buf);
 }
@@ -116,16 +115,13 @@ static void test_cardinal_int_en() {
     printf("Testing PluralRules.CardinalInt (en-US):\n");
     void *pr = en_rules();
 
-    test_result("CardinalInt(1) = one",  eq(rt_plural_rules_cardinal_int(pr, 1), "one"));
-    test_result("CardinalInt(0) = other",eq(rt_plural_rules_cardinal_int(pr, 0), "other"));
-    test_result("CardinalInt(2) = other",eq(rt_plural_rules_cardinal_int(pr, 2), "other"));
-    test_result("CardinalInt(3) = other",eq(rt_plural_rules_cardinal_int(pr, 3), "other"));
-    test_result("CardinalInt(100) = other",
-                eq(rt_plural_rules_cardinal_int(pr, 100), "other"));
-    test_result("CardinalInt(-1) = one (abs)",
-                eq(rt_plural_rules_cardinal_int(pr, -1), "one"));
-    test_result("CardinalInt(-7) = other (abs)",
-                eq(rt_plural_rules_cardinal_int(pr, -7), "other"));
+    test_result("CardinalInt(1) = one", eq(rt_plural_rules_cardinal_int(pr, 1), "one"));
+    test_result("CardinalInt(0) = other", eq(rt_plural_rules_cardinal_int(pr, 0), "other"));
+    test_result("CardinalInt(2) = other", eq(rt_plural_rules_cardinal_int(pr, 2), "other"));
+    test_result("CardinalInt(3) = other", eq(rt_plural_rules_cardinal_int(pr, 3), "other"));
+    test_result("CardinalInt(100) = other", eq(rt_plural_rules_cardinal_int(pr, 100), "other"));
+    test_result("CardinalInt(-1) = one (abs)", eq(rt_plural_rules_cardinal_int(pr, -1), "one"));
+    test_result("CardinalInt(-7) = other (abs)", eq(rt_plural_rules_cardinal_int(pr, -7), "other"));
 }
 
 //=============================================================================
@@ -137,7 +133,7 @@ static void test_cardinal_double_en() {
     void *pr = en_rules();
 
     // Integer-valued double: same as int path.
-    test_result("Cardinal(1.0) = one",   eq(rt_plural_rules_cardinal(pr, 1.0), "one"));
+    test_result("Cardinal(1.0) = one", eq(rt_plural_rules_cardinal(pr, 1.0), "one"));
     test_result("Cardinal(0.0) = other", eq(rt_plural_rules_cardinal(pr, 0.0), "other"));
     test_result("Cardinal(2.0) = other", eq(rt_plural_rules_cardinal(pr, 2.0), "other"));
 
@@ -157,34 +153,34 @@ static void test_ordinal_en() {
     void *pr = en_rules();
 
     // n mod 10 == 1 and n mod 100 != 11 -> one
-    test_result("Ordinal(1) = one",  eq(rt_plural_rules_ordinal(pr, 1),  "one"));
+    test_result("Ordinal(1) = one", eq(rt_plural_rules_ordinal(pr, 1), "one"));
     test_result("Ordinal(21) = one", eq(rt_plural_rules_ordinal(pr, 21), "one"));
     test_result("Ordinal(31) = one", eq(rt_plural_rules_ordinal(pr, 31), "one"));
-    test_result("Ordinal(101) = one",eq(rt_plural_rules_ordinal(pr, 101),"one"));
+    test_result("Ordinal(101) = one", eq(rt_plural_rules_ordinal(pr, 101), "one"));
 
     // n mod 100 == 11 -> other (the teen exception)
     test_result("Ordinal(11) = other", eq(rt_plural_rules_ordinal(pr, 11), "other"));
-    test_result("Ordinal(111) = other",eq(rt_plural_rules_ordinal(pr, 111),"other"));
+    test_result("Ordinal(111) = other", eq(rt_plural_rules_ordinal(pr, 111), "other"));
 
     // n mod 10 == 2 and n mod 100 != 12 -> two
-    test_result("Ordinal(2) = two",  eq(rt_plural_rules_ordinal(pr, 2),  "two"));
+    test_result("Ordinal(2) = two", eq(rt_plural_rules_ordinal(pr, 2), "two"));
     test_result("Ordinal(22) = two", eq(rt_plural_rules_ordinal(pr, 22), "two"));
-    test_result("Ordinal(102) = two",eq(rt_plural_rules_ordinal(pr, 102),"two"));
-    test_result("Ordinal(12) = other",eq(rt_plural_rules_ordinal(pr, 12),"other"));
-    test_result("Ordinal(112) = other",eq(rt_plural_rules_ordinal(pr, 112),"other"));
+    test_result("Ordinal(102) = two", eq(rt_plural_rules_ordinal(pr, 102), "two"));
+    test_result("Ordinal(12) = other", eq(rt_plural_rules_ordinal(pr, 12), "other"));
+    test_result("Ordinal(112) = other", eq(rt_plural_rules_ordinal(pr, 112), "other"));
 
     // n mod 10 == 3 and n mod 100 != 13 -> few
-    test_result("Ordinal(3) = few",  eq(rt_plural_rules_ordinal(pr, 3),  "few"));
+    test_result("Ordinal(3) = few", eq(rt_plural_rules_ordinal(pr, 3), "few"));
     test_result("Ordinal(23) = few", eq(rt_plural_rules_ordinal(pr, 23), "few"));
-    test_result("Ordinal(103) = few",eq(rt_plural_rules_ordinal(pr, 103),"few"));
-    test_result("Ordinal(13) = other",eq(rt_plural_rules_ordinal(pr, 13),"other"));
-    test_result("Ordinal(113) = other",eq(rt_plural_rules_ordinal(pr, 113),"other"));
+    test_result("Ordinal(103) = few", eq(rt_plural_rules_ordinal(pr, 103), "few"));
+    test_result("Ordinal(13) = other", eq(rt_plural_rules_ordinal(pr, 13), "other"));
+    test_result("Ordinal(113) = other", eq(rt_plural_rules_ordinal(pr, 113), "other"));
 
     // other catch-all
-    test_result("Ordinal(4) = other",  eq(rt_plural_rules_ordinal(pr, 4),  "other"));
+    test_result("Ordinal(4) = other", eq(rt_plural_rules_ordinal(pr, 4), "other"));
     test_result("Ordinal(10) = other", eq(rt_plural_rules_ordinal(pr, 10), "other"));
-    test_result("Ordinal(100) = other",eq(rt_plural_rules_ordinal(pr, 100),"other"));
-    test_result("Ordinal(0) = other",  eq(rt_plural_rules_ordinal(pr, 0),  "other"));
+    test_result("Ordinal(100) = other", eq(rt_plural_rules_ordinal(pr, 100), "other"));
+    test_result("Ordinal(0) = other", eq(rt_plural_rules_ordinal(pr, 0), "other"));
 }
 
 //=============================================================================
@@ -205,15 +201,20 @@ static void test_categories() {
     for (int64_t i = 0; i < n; ++i) {
         rt_string entry = (rt_string)rt_list_get(list, i);
         const char *cs = rt_string_cstr(entry);
-        if (!cs) continue;
-        if (strcmp(cs, "one") == 0)   has_one = true;
-        if (strcmp(cs, "two") == 0)   has_two = true;
-        if (strcmp(cs, "few") == 0)   has_few = true;
-        if (strcmp(cs, "other") == 0) has_other = true;
+        if (!cs)
+            continue;
+        if (strcmp(cs, "one") == 0)
+            has_one = true;
+        if (strcmp(cs, "two") == 0)
+            has_two = true;
+        if (strcmp(cs, "few") == 0)
+            has_few = true;
+        if (strcmp(cs, "other") == 0)
+            has_other = true;
     }
-    test_result("Categories includes one",   has_one);
-    test_result("Categories includes two",   has_two);
-    test_result("Categories includes few",   has_few);
+    test_result("Categories includes one", has_one);
+    test_result("Categories includes two", has_two);
+    test_result("Categories includes few", has_few);
     test_result("Categories includes other", has_other);
 }
 
@@ -239,12 +240,9 @@ static void test_loaded_range_rules() {
     rt_string_unref(tag);
     void *pr = rt_plural_rules_for_locale(loc);
 
-    test_result("within matches fractional n",
-                eq(rt_plural_rules_cardinal(pr, 1.5), "zero"));
-    test_result("in matches integral range",
-                eq(rt_plural_rules_cardinal_int(pr, 4), "two"));
-    test_result("in rejects fractional n",
-                eq(rt_plural_rules_cardinal(pr, 4.5), "other"));
+    test_result("within matches fractional n", eq(rt_plural_rules_cardinal(pr, 1.5), "zero"));
+    test_result("in matches integral range", eq(rt_plural_rules_cardinal_int(pr, 4), "two"));
+    test_result("in rejects fractional n", eq(rt_plural_rules_cardinal(pr, 4.5), "other"));
     test_result("not within catches values outside range",
                 eq(rt_plural_rules_cardinal_int(pr, 11), "few"));
     test_result("INT64_MIN magnitude modulo is correct",
@@ -256,8 +254,9 @@ static void test_loaded_range_rules() {
 static void test_nonfinite_cardinal() {
     printf("Testing PluralRules nonfinite Cardinal inputs:\n");
     void *pr = en_rules();
-    test_result("Cardinal(NaN) = other",
-                eq(rt_plural_rules_cardinal(pr, std::numeric_limits<double>::quiet_NaN()), "other"));
+    test_result(
+        "Cardinal(NaN) = other",
+        eq(rt_plural_rules_cardinal(pr, std::numeric_limits<double>::quiet_NaN()), "other"));
     test_result("Cardinal(+Inf) = other",
                 eq(rt_plural_rules_cardinal(pr, std::numeric_limits<double>::infinity()), "other"));
 }

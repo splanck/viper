@@ -314,7 +314,8 @@ void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size);
 
 /// @brief Advance cursor blink timer; call each frame with elapsed seconds
 /// @param input Text input widget
-/// @param dt Elapsed time in seconds since last call; NaN, infinity, and negative values are ignored
+/// @param dt Elapsed time in seconds since last call; NaN, infinity, and negative values are
+/// ignored
 void vg_textinput_tick(vg_textinput_t *input, float dt);
 
 //=============================================================================
@@ -408,15 +409,17 @@ typedef enum vg_scroll_direction {
 typedef struct vg_scrollview {
     vg_widget_t base;
 
-    float scroll_x;                  ///< Horizontal scroll position
-    float scroll_y;                  ///< Vertical scroll position
-    float content_width;             ///< Effective content width after auto/explicit resolution
-    float content_height;            ///< Effective content height after auto/explicit resolution
-    float explicit_content_width;    ///< Caller-provided content width, when has_explicit_content_width
-    float explicit_content_height;   ///< Caller-provided content height, when has_explicit_content_height
-    bool has_explicit_content_width; ///< Keep width fixed instead of deriving from children
-    bool has_explicit_content_height;///< Keep height fixed instead of deriving from children
-    vg_scroll_direction_t direction; ///< Scroll direction
+    float scroll_x;       ///< Horizontal scroll position
+    float scroll_y;       ///< Vertical scroll position
+    float content_width;  ///< Effective content width after auto/explicit resolution
+    float content_height; ///< Effective content height after auto/explicit resolution
+    float
+        explicit_content_width; ///< Caller-provided content width, when has_explicit_content_width
+    float explicit_content_height;    ///< Caller-provided content height, when
+                                      ///< has_explicit_content_height
+    bool has_explicit_content_width;  ///< Keep width fixed instead of deriving from children
+    bool has_explicit_content_height; ///< Keep height fixed instead of deriving from children
+    vg_scroll_direction_t direction;  ///< Scroll direction
 
     // Scrollbars
     bool show_h_scrollbar;     ///< Show horizontal scrollbar
@@ -476,13 +479,15 @@ void vg_scrollview_set_direction(vg_scrollview_t *scroll, vg_scroll_direction_t 
 
 /// @brief ListBox item structure
 typedef struct vg_listbox_item {
-    uint64_t magic;      ///< Live-item sentinel for stale handle detection
+    uint64_t magic;           ///< Live-item sentinel for stale handle detection
     struct vg_listbox *owner; ///< Owning listbox while the item is live
-    char *text;          ///< Item text (owned)
-    size_t text_len;     ///< Item text length in bytes
-    void *user_data;     ///< User data
-    bool owns_user_data; ///< Free user_data when the item is destroyed
-    bool selected;       ///< Is item selected
+    char *text;               ///< Item text (owned)
+    size_t text_len;          ///< Item text length in bytes
+    uint32_t text_color;      ///< Optional text color override
+    void *user_data;          ///< User data
+    bool owns_user_data;      ///< Free user_data when the item is destroyed
+    bool has_text_color;      ///< Whether text_color overrides the listbox text color
+    bool selected;            ///< Is item selected
     struct vg_listbox_item *next;
     struct vg_listbox_item *prev;
     struct vg_listbox_item *retired_next; ///< Retired-item list link
@@ -515,15 +520,15 @@ typedef struct vg_listbox_cache_entry {
 typedef struct vg_listbox {
     vg_widget_t base;
 
-    vg_listbox_item_t *first_item;    ///< First item
-    vg_listbox_item_t *last_item;     ///< Last item
-    int item_count;                   ///< Number of items
-    vg_listbox_item_t *selected;      ///< Currently selected item
-    vg_listbox_item_t *prev_selected; ///< Previous selection (for change detection)
+    vg_listbox_item_t *first_item;      ///< First item
+    vg_listbox_item_t *last_item;       ///< Last item
+    int item_count;                     ///< Number of items
+    vg_listbox_item_t *selected;        ///< Currently selected item
+    vg_listbox_item_t *prev_selected;   ///< Previous selection (for change detection)
     vg_listbox_item_t *anchor_selected; ///< Range-selection anchor (non-virtual mode)
-    vg_listbox_item_t *hovered;       ///< Currently hovered item
-    vg_listbox_item_t *retired_items; ///< Detached stale handles freed when listbox is destroyed
-    uint64_t selection_revision;      ///< Incremented whenever logical selection changes
+    vg_listbox_item_t *hovered;         ///< Currently hovered item
+    vg_listbox_item_t *retired_items;   ///< Detached stale handles freed when listbox is destroyed
+    uint64_t selection_revision;        ///< Incremented whenever logical selection changes
     uint64_t reported_selection_revision; ///< Last selection revision reported to runtime callers
 
     vg_font_t *font;   ///< Font for rendering
@@ -551,10 +556,10 @@ typedef struct vg_listbox {
     bool *selection_bitmap;           ///< Selection state for virtual mode
     size_t selection_bitmap_size;     ///< Logical bitmap size
     size_t selection_bitmap_capacity; ///< Allocated bitmap capacity
-    size_t selected_index;        ///< Currently selected index (virtual mode)
-    size_t prev_selected_index;   ///< Previous selected index (virtual mode change detection)
-    size_t anchor_selected_index; ///< Range-selection anchor (virtual mode)
-    size_t hovered_index;         ///< Currently hovered index (virtual mode)
+    size_t selected_index;            ///< Currently selected index (virtual mode)
+    size_t prev_selected_index;       ///< Previous selected index (virtual mode change detection)
+    size_t anchor_selected_index;     ///< Range-selection anchor (virtual mode)
+    size_t hovered_index;             ///< Currently hovered index (virtual mode)
 
     // Appearance
     uint32_t bg_color;     ///< Background color
@@ -606,6 +611,11 @@ vg_listbox_item_t *vg_listbox_get_selected(vg_listbox_t *listbox);
 /// @param item Item handle to test.
 /// @return true if the item is still live; false if it has been removed or the listbox destroyed.
 bool vg_listbox_item_is_live(const vg_listbox_item_t *item);
+
+/// @brief Override the rendered text color for one item.
+/// @param item  Live ListBox item.
+/// @param color RGB/RGBA color value interpreted by the active backend.
+void vg_listbox_item_set_text_color(vg_listbox_item_t *item, uint32_t color);
 
 /// @brief Set the font used for item text rendering.
 /// @param listbox ListBox widget.
@@ -664,6 +674,14 @@ void vg_listbox_select_index(vg_listbox_t *listbox, size_t index);
 /// @param listbox ListBox widget
 /// @return Selected index or SIZE_MAX if none
 size_t vg_listbox_get_selected_index(vg_listbox_t *listbox);
+
+/// @brief Scroll to the first row without changing selection.
+/// @param listbox ListBox widget.
+void vg_listbox_scroll_to_top(vg_listbox_t *listbox);
+
+/// @brief Scroll to the last row without changing selection.
+/// @param listbox ListBox widget.
+void vg_listbox_scroll_to_bottom(vg_listbox_t *listbox);
 
 //=============================================================================
 // Dropdown/ComboBox Widget

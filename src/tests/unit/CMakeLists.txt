@@ -30,6 +30,23 @@ function(viper_add_isolated_runtime_test target)
             ${CMAKE_SOURCE_DIR}/src/runtime/io
             ${CMAKE_SOURCE_DIR}/src/runtime/system
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/common
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/math
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/render
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/scene
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/physics
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/anim
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/nav
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/world
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/audio
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/assets
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/backend
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/gui
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/input
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/media
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/text
             ${CMAKE_SOURCE_DIR}/src/runtime/audio
             ${CMAKE_SOURCE_DIR}/src/runtime/threads
             ${CMAKE_SOURCE_DIR}/src/runtime/network)
@@ -696,7 +713,7 @@ function(viper_add_runtime_tests)
 
     viper_add_isolated_runtime_test(test_rt_tilemap_render_contract
             ${VIPER_TESTS_DIR}/runtime/RTTilemapRenderContractTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_tilemap.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_tilemap.c)
 
     viper_add_test(test_rt_physics_joints ${VIPER_TESTS_DIR}/unit/test_rt_physics_joints.cpp)
     target_link_libraries(test_rt_physics_joints PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -740,13 +757,19 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_scene3d_bindings test_rt_scene3d_bindings)
     viper_add_test_labels(test_rt_scene3d_bindings graphics3d unit)
 
+    viper_add_test(test_rt_game3d ${VIPER_TESTS_DIR}/unit/test_rt_game3d.cpp)
+    target_link_libraries(test_rt_game3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_rt_game3d PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    viper_add_ctest(test_rt_game3d test_rt_game3d)
+    viper_add_test_labels(test_rt_game3d graphics3d unit)
+
     viper_add_test(test_rt_gltf ${VIPER_TESTS_DIR}/unit/test_rt_gltf.cpp)
-    target_link_libraries(test_rt_gltf PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_gltf PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_packaging)
     viper_add_ctest(test_rt_gltf test_rt_gltf)
     viper_add_test_labels(test_rt_gltf graphics3d unit)
 
     viper_add_test(test_rt_model3d ${VIPER_TESTS_DIR}/unit/test_rt_model3d.cpp)
-    target_link_libraries(test_rt_model3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_model3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_packaging)
     target_compile_definitions(test_rt_model3d PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     viper_add_ctest(test_rt_model3d test_rt_model3d)
     viper_add_test_labels(test_rt_model3d graphics3d unit)
@@ -783,6 +806,7 @@ function(viper_add_runtime_tests)
 
     viper_add_test(test_vgfx3d_backend_metal_shared ${VIPER_TESTS_DIR}/unit/test_vgfx3d_backend_metal_shared.c)
     target_link_libraries(test_vgfx3d_backend_metal_shared PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_vgfx3d_backend_metal_shared PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     viper_add_ctest(test_vgfx3d_backend_metal_shared test_vgfx3d_backend_metal_shared)
     viper_add_test_labels(test_vgfx3d_backend_metal_shared graphics3d unit)
 
@@ -820,9 +844,9 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_navagent3d PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_navagent3d test_rt_navagent3d)
 
-    viper_add_test(test_rt_audio3d_objects ${VIPER_TESTS_DIR}/unit/test_rt_audio3d_objects.cpp)
-    target_link_libraries(test_rt_audio3d_objects PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-    viper_add_ctest(test_rt_audio3d_objects test_rt_audio3d_objects)
+    viper_add_test(test_rt_sound3d_objects ${VIPER_TESTS_DIR}/unit/test_rt_sound3d_objects.cpp)
+    target_link_libraries(test_rt_sound3d_objects PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_sound3d_objects test_rt_sound3d_objects)
 
     viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
     target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1252,28 +1276,28 @@ function(viper_add_runtime_tests)
             ${VIPER_TESTS_DIR}/runtime/RTAchievementTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/game/rt_achievement.c)
 
-    viper_add_isolated_runtime_test(test_rt_audio3d_contract
-            ${VIPER_TESTS_DIR}/runtime/RTAudio3DTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_audio3d.c)
-    target_compile_definitions(test_rt_audio3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+    viper_add_isolated_runtime_test(test_rt_sound3d_contract
+            ${VIPER_TESTS_DIR}/runtime/RTSound3DTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/audio/rt_sound3d.c)
+    target_compile_definitions(test_rt_sound3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
 
     viper_add_isolated_runtime_test(test_rt_videowidget_contract
             ${VIPER_TESTS_DIR}/runtime/RTVideoWidgetContractTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_videowidget.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/gui/rt_videowidget.c)
     target_compile_definitions(test_rt_videowidget_contract PRIVATE
             VIPER_ENABLE_GRAPHICS=1
             RT_NO_MAIN_THREAD_ASSERT=1)
 
     viper_add_isolated_runtime_test(test_rt_particles3d_contract
             ${VIPER_TESTS_DIR}/runtime/RTParticles3DContractTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_particles3d.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/world/rt_particles3d.c)
     target_compile_definitions(test_rt_particles3d_contract PRIVATE
             VIPER_ENABLE_GRAPHICS=1
             RT_G3D_ALLOW_STACK_FIXTURES=1)
 
     viper_add_isolated_runtime_test(test_rt_water3d_contract
             ${VIPER_TESTS_DIR}/runtime/RTWater3DContractTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_water3d.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/world/rt_water3d.c)
     target_compile_definitions(test_rt_water3d_contract PRIVATE
             VIPER_ENABLE_GRAPHICS=1
             RT_G3D_ALLOW_STACK_FIXTURES=1)
@@ -1371,11 +1395,11 @@ function(viper_add_runtime_tests)
 
     viper_add_isolated_runtime_test(test_rt_spritebatch_contract
             ${VIPER_TESTS_DIR}/runtime/RTSpriteBatchContractTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_spritebatch.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_spritebatch.c)
 
     viper_add_isolated_runtime_test(test_rt_sprite_contract
             ${VIPER_TESTS_DIR}/runtime/RTSpriteContractTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_sprite.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_sprite.c)
     target_compile_definitions(test_rt_sprite_contract PRIVATE
             RT_PIXELS_INTERNAL_ASSUME_STRUCT_HANDLE=1)
 
@@ -1403,8 +1427,8 @@ function(viper_add_runtime_tests)
 
     viper_add_isolated_runtime_test(test_rt_canvas_contract
             ${VIPER_TESTS_DIR}/runtime/RTCanvasContractTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_drawing.c
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_drawing_advanced.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_drawing.c
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_drawing_advanced.c)
     target_compile_definitions(test_rt_canvas_contract PRIVATE
             VIPER_ENABLE_GRAPHICS=1
             RT_DRAWING_ADVANCED_NO_PATH2D=1
@@ -1412,12 +1436,12 @@ function(viper_add_runtime_tests)
 
     viper_add_isolated_runtime_test(test_rt_canvas_state_contract
             ${VIPER_TESTS_DIR}/runtime/RTCanvasStateContractTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_canvas.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/2d/rt_canvas.c)
     target_compile_definitions(test_rt_canvas_state_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
 
     viper_add_isolated_runtime_test(test_rt_bitmapfont_contract
             ${VIPER_TESTS_DIR}/runtime/RTBitmapFontContractTests.cpp
-            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_bitmapfont.c)
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/text/rt_bitmapfont.c)
     target_compile_definitions(test_rt_bitmapfont_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
 
     viper_add_test(test_rt_canvas_frame ${VIPER_TESTS_DIR}/runtime/RTCanvasFrameTests.cpp)
@@ -2020,7 +2044,7 @@ function(viper_add_runtime_tests)
     viper_add_ctest(test_rt_physics2d test_rt_physics2d)
 
     viper_add_test(test_rt_audio_integration ${VIPER_TESTS_DIR}/runtime/RTAudioIntegrationTests.cpp)
-    target_link_libraries(test_rt_audio_integration PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_audio_integration PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_packaging)
     viper_add_ctest(test_rt_audio_integration test_rt_audio_integration)
 
     viper_add_test(test_rt_heap_alloc ${VIPER_TESTS_DIR}/runtime/RTHeapAllocTests.cpp)

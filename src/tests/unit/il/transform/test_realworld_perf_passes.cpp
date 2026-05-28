@@ -211,8 +211,8 @@ TEST(RealWorldPerfPasses, RuntimeFastPathRewritesKnownObjectReferenceCounting) {
 
     BasicBlock entry;
     entry.label = "entry";
-    entry.instructions.push_back(
-        makeCall("rt_obj_new_i64", Type(Type::Kind::Ptr), {Value::constInt(7), Value::constInt(16)}, 0));
+    entry.instructions.push_back(makeCall(
+        "rt_obj_new_i64", Type(Type::Kind::Ptr), {Value::constInt(7), Value::constInt(16)}, 0));
     entry.instructions.push_back(
         makeCall("rt_obj_retain_maybe", Type(Type::Kind::Void), {Value::temp(0)}));
     entry.instructions.push_back(

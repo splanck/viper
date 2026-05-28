@@ -297,8 +297,8 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                     addressTaken.insert(targetSym.name);
                     size_t targetOffset = 0;
                     if (addSignedOffset(git->second.offset, rel.addend, targetOffset))
-                        addressTakenAddresses.insert(
-                            CodeAddressKey{git->second.objIndex, git->second.secIndex, targetOffset});
+                        addressTakenAddresses.insert(CodeAddressKey{
+                            git->second.objIndex, git->second.secIndex, targetOffset});
                 }
             }
         }
@@ -338,8 +338,8 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
             bool hasOtherSectionSymbol = false;
             for (size_t sym_i = 1; sym_i < obj.symbols.size(); ++sym_i) {
                 const auto &sym = obj.symbols[sym_i];
-                if (sym.sectionIndex == si &&
-                    !(sym.binding == ObjSymbol::Global && sym.offset == 0 && sym.name == funcName)) {
+                if (sym.sectionIndex == si && !(sym.binding == ObjSymbol::Global &&
+                                                sym.offset == 0 && sym.name == funcName)) {
                     hasOtherSectionSymbol = true;
                     break;
                 }

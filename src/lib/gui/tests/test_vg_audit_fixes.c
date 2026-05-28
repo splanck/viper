@@ -29,12 +29,12 @@
 #include "vg_widgets.h"
 #include "vgfx.h"
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 //=============================================================================
 // Test Harness
@@ -43,7 +43,8 @@
 static int g_passed = 0;
 static int g_failed = 0;
 
-/// @brief Portable strdup replacement used to set up drag-drop string fields without depending on POSIX strdup.
+/// @brief Portable strdup replacement used to set up drag-drop string fields without depending on
+/// POSIX strdup.
 static char *test_strdup_local(const char *s) {
     size_t len = strlen(s) + 1;
     char *copy = (char *)malloc(len);
@@ -97,14 +98,16 @@ static void d1_on_result_reenters(vg_dialog_t *dlg, vg_dialog_result_t r, void *
     vg_dialog_close(dlg, VG_DIALOG_RESULT_CANCEL);
 }
 
-/// @brief Close callback that increments a counter; used to verify it fires exactly once despite re-entry.
+/// @brief Close callback that increments a counter; used to verify it fires exactly once despite
+/// re-entry.
 static void d1_on_close(vg_dialog_t *dlg, void *ud) {
     (void)dlg;
     (void)ud;
     g_d1_close_calls++;
 }
 
-/// @brief Fix #1 — closing_in_progress guard prevents result and close callbacks from firing more than once.
+/// @brief Fix #1 — closing_in_progress guard prevents result and close callbacks from firing more
+/// than once.
 TEST(dialog_close_reentry_is_guarded) {
     g_d1_result_calls = 0;
     g_d1_close_calls = 0;
@@ -144,7 +147,8 @@ static void d7_on_close(vg_dialog_t *dlg, void *ud) {
     g_d7_close_ud = ud;
 }
 
-/// @brief Fix #7 — set_on_close routes its own user_data independently from the result callback's user_data.
+/// @brief Fix #7 — set_on_close routes its own user_data independently from the result callback's
+/// user_data.
 TEST(dialog_set_on_close_user_data_routed_independently) {
     g_d7_result_ud = (void *)0x1; // sentinel
     g_d7_close_ud = (void *)0x1;
@@ -171,7 +175,8 @@ TEST(dialog_set_on_close_user_data_routed_independently) {
 // Fix #2: tooltip manager clears references on widget destroy
 //=============================================================================
 
-/// @brief Fix #2 — tooltip manager clears its hovered_widget reference when the hovered widget is destroyed.
+/// @brief Fix #2 — tooltip manager clears its hovered_widget reference when the hovered widget is
+/// destroyed.
 TEST(tooltip_manager_drops_pointer_when_widget_destroyed) {
     vg_tooltip_manager_t *mgr = vg_tooltip_manager_get();
     ASSERT_NOT_NULL(mgr);
@@ -203,7 +208,8 @@ TEST(tooltip_manager_drops_pointer_when_widget_destroyed) {
 // Fix #3: notification created_at is stamped on first manager update
 //=============================================================================
 
-/// @brief Fix #3 — created_at is stamped on the first manager update tick, preventing instant dismissal.
+/// @brief Fix #3 — created_at is stamped on the first manager update tick, preventing instant
+/// dismissal.
 TEST(notification_auto_dismiss_uses_lazy_created_at) {
     vg_notification_manager_t *mgr = vg_notification_manager_create();
     ASSERT_NOT_NULL(mgr);
@@ -236,7 +242,8 @@ TEST(notification_auto_dismiss_uses_lazy_created_at) {
 // Fix #4: find/replace advances by match length, not one byte
 //=============================================================================
 
-/// @brief Fix #4 — search advances by match length so "aa" in "aaaa" yields 2 non-overlapping matches.
+/// @brief Fix #4 — search advances by match length so "aa" in "aaaa" yields 2 non-overlapping
+/// matches.
 TEST(findreplacebar_search_finds_overlapping_pattern_non_overlapping) {
     vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(ed);
@@ -265,7 +272,8 @@ TEST(findreplacebar_search_finds_overlapping_pattern_non_overlapping) {
 // Fix #5: tabbar measure re-clamps scroll_x after total_width shrinks
 //=============================================================================
 
-/// @brief Fix #5 — tabbar measure re-clamps scroll_x to 0 when enough tabs are removed that all fit.
+/// @brief Fix #5 — tabbar measure re-clamps scroll_x to 0 when enough tabs are removed that all
+/// fit.
 TEST(tabbar_measure_clamps_scroll_after_tabs_removed) {
     vg_tabbar_t *tb = vg_tabbar_create(NULL);
     ASSERT_NOT_NULL(tb);
@@ -305,7 +313,8 @@ TEST(tabbar_measure_clamps_scroll_after_tabs_removed) {
 // Fix #6: contextmenu_show_at no longer requires impl_data
 //=============================================================================
 
-/// @brief Fix #6 — show_at records coordinates without accessing impl_data, so NULL impl_data is safe.
+/// @brief Fix #6 — show_at records coordinates without accessing impl_data, so NULL impl_data is
+/// safe.
 TEST(contextmenu_show_at_does_not_dereference_impl_data) {
     vg_contextmenu_t *menu = vg_contextmenu_create();
     ASSERT_NOT_NULL(menu);
@@ -327,7 +336,8 @@ TEST(contextmenu_show_at_does_not_dereference_impl_data) {
     vg_widget_destroy(&menu->base);
 }
 
-/// @brief Fix #6b — item icon setter deep-copies pixel data, replaces old icon on re-set, and widens measured width.
+/// @brief Fix #6b — item icon setter deep-copies pixel data, replaces old icon on re-set, and
+/// widens measured width.
 TEST(contextmenu_item_icon_setter_owns_replaces_and_reserves_space) {
     vg_contextmenu_t *plain = vg_contextmenu_create();
     ASSERT_NOT_NULL(plain);
@@ -343,8 +353,22 @@ TEST(contextmenu_item_icon_setter_owns_replaces_and_reserves_space) {
     ASSERT_NOT_NULL(item);
     ASSERT(item->owner_contextmenu == menu);
 
-    uint8_t rgba[16] = {0x10, 0x20, 0x30, 0xFF, 0x40, 0x50, 0x60, 0x80,
-                        0x70, 0x80, 0x90, 0x40, 0xA0, 0xB0, 0xC0, 0x00};
+    uint8_t rgba[16] = {0x10,
+                        0x20,
+                        0x30,
+                        0xFF,
+                        0x40,
+                        0x50,
+                        0x60,
+                        0x80,
+                        0x70,
+                        0x80,
+                        0x90,
+                        0x40,
+                        0xA0,
+                        0xB0,
+                        0xC0,
+                        0x00};
     vg_icon_t image = vg_icon_from_pixels(rgba, 2, 2);
     ASSERT_EQ(image.type, VG_ICON_IMAGE);
     ASSERT_NOT_NULL(image.data.image.pixels);
@@ -371,7 +395,8 @@ TEST(contextmenu_item_icon_setter_owns_replaces_and_reserves_space) {
 // Fix #8: clamp_editor_position helpers (verified indirectly via set_cursor)
 //=============================================================================
 
-/// @brief Fix #8 — set_cursor clamps line first, then col against the new line's length; negatives go to (0,0).
+/// @brief Fix #8 — set_cursor clamps line first, then col against the new line's length; negatives
+/// go to (0,0).
 TEST(codeeditor_set_cursor_clamps_atomic) {
     vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(ed);
@@ -398,7 +423,8 @@ TEST(codeeditor_set_cursor_clamps_atomic) {
 // Fix #10: splitpane proportional clamp when min sizes exceed available
 //=============================================================================
 
-/// @brief Fix #10 — when min sizes exceed available space, both panes share space proportionally rather than zeroing the first.
+/// @brief Fix #10 — when min sizes exceed available space, both panes share space proportionally
+/// rather than zeroing the first.
 TEST(splitpane_proportional_clamp_when_mins_exceed_available) {
     vg_splitpane_t *sp = vg_splitpane_create(NULL, VG_SPLIT_HORIZONTAL);
     ASSERT_NOT_NULL(sp);
@@ -507,7 +533,8 @@ static vg_widget_vtable_t g_fixed_vtable = {
     .arrange = fixed_arrange,
 };
 
-/// @brief Fix #12 — flex non-stretch alignment gives children their full measured_height; margins are offsets only.
+/// @brief Fix #12 — flex non-stretch alignment gives children their full measured_height; margins
+/// are offsets only.
 TEST(flex_non_stretch_keeps_measured_height) {
     vg_widget_t *hbox = vg_hbox_create(0.0f);
     vg_hbox_set_align(hbox, VG_ALIGN_CENTER); // non-stretch
@@ -533,7 +560,8 @@ TEST(flex_non_stretch_keeps_measured_height) {
 // Fix #13: textinput password mask handles long content (no fixed buffer)
 //=============================================================================
 
-/// @brief Fix #13 — password mask uses dynamic allocation; 4000-char text survives round-trip without truncation.
+/// @brief Fix #13 — password mask uses dynamic allocation; 4000-char text survives round-trip
+/// without truncation.
 TEST(textinput_password_long_text_round_trip_intact) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -541,6 +569,7 @@ TEST(textinput_password_long_text_round_trip_intact) {
 
     // Build a 4000-character ASCII payload — well past the old 1023 cap.
     enum { N = 4000 };
+
     char *payload = (char *)malloc(N + 1);
     ASSERT_NOT_NULL(payload);
     for (int i = 0; i < N; i++)
@@ -571,7 +600,8 @@ TEST(textinput_password_long_text_round_trip_intact) {
 // at paint time; this test guards against future regressions in scroll_y
 // clamping that would propagate the same divide-by-zero.
 
-/// @brief Fix #9 — scroll_y stays finite (0) when content fits exactly, preventing a divide-by-zero NaN.
+/// @brief Fix #9 — scroll_y stays finite (0) when content fits exactly, preventing a divide-by-zero
+/// NaN.
 TEST(codeeditor_exact_fit_scroll_position_finite) {
     vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(ed);
@@ -594,7 +624,8 @@ TEST(codeeditor_exact_fit_scroll_position_finite) {
 // event.mouse.x/y on a wheel event destroys wheel.delta_x/y. The fix removes
 // VG_EVENT_MOUSE_WHEEL from event_has_widget_local_mouse_coords and the
 // analogous list in rt_gui_send_event_to_widget.
-/// @brief R2 — wheel.delta_x/y are not overwritten when the event dispatch loop localises mouse coordinates.
+/// @brief R2 — wheel.delta_x/y are not overwritten when the event dispatch loop localises mouse
+/// coordinates.
 TEST(wheel_delta_survives_localize_call) {
     // Simulate the event-construction sequence for a scroll event.
     vg_event_t ev;
@@ -698,7 +729,8 @@ static vg_widget_vtable_t g_mouseup_click_order_vtable = {
     .handle_event = mouseup_click_order_handle_event,
 };
 
-/// @brief R2 — MOUSE_UP handler fires before the synthesized CLICK event in the same dispatch sequence.
+/// @brief R2 — MOUSE_UP handler fires before the synthesized CLICK event in the same dispatch
+/// sequence.
 TEST(mouseup_handler_runs_before_synthesized_click) {
     vg_widget_t *widget = vg_widget_create(VG_WIDGET_CUSTOM);
     ASSERT_NOT_NULL(widget);
@@ -720,7 +752,8 @@ TEST(mouseup_handler_runs_before_synthesized_click) {
     vg_widget_destroy(widget);
 }
 
-/// @brief R2 — a removed listbox item handle is no longer live; selecting it leaves selected unchanged.
+/// @brief R2 — a removed listbox item handle is no longer live; selecting it leaves selected
+/// unchanged.
 TEST(listbox_removed_item_handle_is_inert) {
     vg_listbox_t *listbox = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(listbox);
@@ -735,7 +768,8 @@ TEST(listbox_removed_item_handle_is_inert) {
     vg_widget_destroy(&listbox->base);
 }
 
-/// @brief R2 — removed treeview nodes and their subtrees become inert; operations on them are no-ops.
+/// @brief R2 — removed treeview nodes and their subtrees become inert; operations on them are
+/// no-ops.
 TEST(treeview_removed_node_handles_are_inert) {
     vg_treeview_t *tree = vg_treeview_create(NULL);
     ASSERT_NOT_NULL(tree);
@@ -756,7 +790,8 @@ TEST(treeview_removed_node_handles_are_inert) {
     vg_widget_destroy(&tree->base);
 }
 
-/// @brief R2 — scrollview content_height updates when the child's preferred size changes between arrange calls.
+/// @brief R2 — scrollview content_height updates when the child's preferred size changes between
+/// arrange calls.
 TEST(scrollview_auto_content_size_tracks_child_measurement) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
@@ -778,7 +813,8 @@ TEST(scrollview_auto_content_size_tracks_child_measurement) {
     vg_widget_destroy(root);
 }
 
-/// @brief R2 — vg_dropdown_clear closes the open popup and releases input capture before clearing items.
+/// @brief R2 — vg_dropdown_clear closes the open popup and releases input capture before clearing
+/// items.
 TEST(dropdown_clear_closes_open_capture) {
     vg_dropdown_t *dropdown = vg_dropdown_create(NULL);
     ASSERT_NOT_NULL(dropdown);
@@ -797,7 +833,8 @@ TEST(dropdown_clear_closes_open_capture) {
     vg_widget_destroy(&dropdown->base);
 }
 
-/// @brief R2 — add_separator returns a non-NULL item handle with separator==true and the correct owner.
+/// @brief R2 — add_separator returns a non-NULL item handle with separator==true and the correct
+/// owner.
 TEST(contextmenu_separator_returns_item_handle) {
     vg_contextmenu_t *menu = vg_contextmenu_create();
     ASSERT_NOT_NULL(menu);
@@ -821,7 +858,8 @@ TEST(widget_live_sentinel_rejects_non_widget_storage) {
 // is gated on vgfx_get_size succeeding, so here we only verify that the
 // absence of a window does not crash and the panel still positions below by
 // default.
-/// @brief A3 — opening a dropdown with no window (NULL impl_data) does not crash; panel defaults to below.
+/// @brief A3 — opening a dropdown with no window (NULL impl_data) does not crash; panel defaults to
+/// below.
 TEST(dropdown_flip_above_without_window_is_noop) {
     vg_dropdown_t *dd = vg_dropdown_create(NULL);
     ASSERT_NOT_NULL(dd);
@@ -881,7 +919,8 @@ TEST(scrollview_narrow_still_hit_tests_children) {
 
 // A5: Tooltip wrap must terminate on whitespace-only content. A bug in the
 // advance logic could spin the wrap loop forever on "   " / tab-only text.
-/// @brief A5 — tooltip word-wrap terminates in bounded time on whitespace-only content (no infinite loop).
+/// @brief A5 — tooltip word-wrap terminates in bounded time on whitespace-only content (no infinite
+/// loop).
 TEST(tooltip_wrap_terminates_on_whitespace_only_text) {
     vg_tooltip_t *tip = vg_tooltip_create();
     ASSERT_NOT_NULL(tip);
@@ -889,10 +928,10 @@ TEST(tooltip_wrap_terminates_on_whitespace_only_text) {
     tip->max_width = 12;             // very narrow to force wrap
     tip->padding = 1;
 
-    // The post-fix progress guard ensures tooltip_measure returns in bounded
-    // time even for pathological whitespace input. If the guard is missing,
-    // this call loops forever and the test times out.
-    tooltip_measure:;
+// The post-fix progress guard ensures tooltip_measure returns in bounded
+// time even for pathological whitespace input. If the guard is missing,
+// this call loops forever and the test times out.
+tooltip_measure:;
     // Exercise measure via the widget vtable (the internal wrap is called).
     if (tip->base.vtable && tip->base.vtable->measure)
         tip->base.vtable->measure(&tip->base, 0.0f, 0.0f);
@@ -936,7 +975,8 @@ TEST(treeview_collapse_reclamps_scroll) {
 
 // A10: Notification fade with fade_duration_ms == 0 must not produce NaN
 // opacity and must snap to dismissed promptly past duration.
-/// @brief A10 — zero fade_duration_ms snaps opacity to 1 (not NaN) and dismisses promptly past duration.
+/// @brief A10 — zero fade_duration_ms snaps opacity to 1 (not NaN) and dismisses promptly past
+/// duration.
 TEST(notification_zero_fade_duration_snaps_cleanly) {
     vg_notification_manager_t *mgr = vg_notification_manager_create();
     ASSERT_NOT_NULL(mgr);
@@ -957,7 +997,8 @@ TEST(notification_zero_fade_duration_snaps_cleanly) {
     vg_widget_destroy(&mgr->base);
 }
 
-/// @brief R2 — tooltip manager respects duration_ms hide-delay, hiding after exactly hide_timer ms on leave.
+/// @brief R2 — tooltip manager respects duration_ms hide-delay, hiding after exactly hide_timer ms
+/// on leave.
 TEST(tooltip_manager_honors_duration_and_hide_delay) {
     vg_tooltip_manager_t *mgr = vg_tooltip_manager_get();
     ASSERT_NOT_NULL(mgr);
@@ -997,7 +1038,8 @@ TEST(tooltip_manager_honors_duration_and_hide_delay) {
     vg_tooltip_manager_on_leave(mgr);
 }
 
-/// @brief R2 — manually dismissed notification plays fade+slide exit animation before being removed.
+/// @brief R2 — manually dismissed notification plays fade+slide exit animation before being
+/// removed.
 TEST(notification_manual_dismiss_respects_exit_animation) {
     vg_notification_manager_t *mgr = vg_notification_manager_create();
     ASSERT_NOT_NULL(mgr);
@@ -1038,7 +1080,8 @@ TEST(notification_manual_dismiss_respects_exit_animation) {
 // Round 3 — Viper.GUI class audit fixes
 //=============================================================================
 
-/// @brief R3 — radiogroup_destroy clears button→group pointers; button_destroy removes it from group's list.
+/// @brief R3 — radiogroup_destroy clears button→group pointers; button_destroy removes it from
+/// group's list.
 TEST(radiogroup_destroy_and_radio_destroy_clear_cross_references) {
     vg_radiogroup_t *group = vg_radiogroup_create();
     ASSERT_NOT_NULL(group);
@@ -1099,8 +1142,10 @@ typedef struct {
 } colorpalette_select_state_t;
 
 /// @brief on_select callback that counts invocations and records the last selected index and color.
-static void colorpalette_select_counter(
-    vg_widget_t *palette, uint32_t color, int index, void *user_data) {
+static void colorpalette_select_counter(vg_widget_t *palette,
+                                        uint32_t color,
+                                        int index,
+                                        void *user_data) {
     (void)palette;
     colorpalette_select_state_t *state = (colorpalette_select_state_t *)user_data;
     state->count++;
@@ -1108,7 +1153,8 @@ static void colorpalette_select_counter(
     state->last_color = color;
 }
 
-/// @brief R3 — on_select fires once per CLICK event and not on MOUSE_DOWN; index and color are accurate.
+/// @brief R3 — on_select fires once per CLICK event and not on MOUSE_DOWN; index and color are
+/// accurate.
 TEST(colorpalette_click_callback_fires_once_per_click) {
     uint32_t colors[] = {0xFF112233u, 0xFF445566u};
     vg_colorpalette_t *palette = vg_colorpalette_create(NULL);
@@ -1136,7 +1182,8 @@ TEST(colorpalette_click_callback_fires_once_per_click) {
     vg_widget_destroy(&palette->base);
 }
 
-/// @brief R3 — label, checkbox, and radiobutton adopt the current theme's font_regular on construction.
+/// @brief R3 — label, checkbox, and radiobutton adopt the current theme's font_regular on
+/// construction.
 TEST(label_and_checkbox_use_theme_regular_font_on_create) {
     vg_theme_t *old_theme = vg_theme_get_current();
     vg_theme_t theme = *old_theme;
@@ -1164,7 +1211,8 @@ TEST(label_and_checkbox_use_theme_regular_font_on_create) {
     vg_radiogroup_destroy(group);
 }
 
-/// @brief R3 — Ctrl-clicking a selected item deselects it; current falls back to the previous selection.
+/// @brief R3 — Ctrl-clicking a selected item deselects it; current falls back to the previous
+/// selection.
 TEST(listbox_ctrl_toggle_off_does_not_leave_deselected_current_item) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -1191,7 +1239,8 @@ TEST(listbox_ctrl_toggle_off_does_not_leave_deselected_current_item) {
     vg_widget_destroy(&lb->base);
 }
 
-/// @brief R3 — Ctrl-toggle in virtual-mode listbox deselects item and moves current_index to previous selection.
+/// @brief R3 — Ctrl-toggle in virtual-mode listbox deselects item and moves current_index to
+/// previous selection.
 TEST(listbox_virtual_ctrl_toggle_off_clears_or_moves_current_index) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -1215,7 +1264,8 @@ TEST(listbox_virtual_ctrl_toggle_off_clears_or_moves_current_index) {
     vg_widget_destroy(&lb->base);
 }
 
-/// @brief R3 — wheel event bubbles (returns false) when the scrollview is already at the scroll limit.
+/// @brief R3 — wheel event bubbles (returns false) when the scrollview is already at the scroll
+/// limit.
 TEST(scrollview_wheel_bubbles_when_scroll_does_not_change) {
     vg_scrollview_t *sv = vg_scrollview_create(NULL);
     ASSERT_NOT_NULL(sv);
@@ -1276,7 +1326,8 @@ TEST(slider_and_spinner_ranges_normalize_and_reject_nonfinite_values) {
     vg_widget_destroy(&spinner->base);
 }
 
-/// @brief R3 — spinner text_buffer is dynamically sized; 90-decimal format produces output longer than 64 bytes.
+/// @brief R3 — spinner text_buffer is dynamically sized; 90-decimal format produces output longer
+/// than 64 bytes.
 TEST(spinner_decimal_display_resizes_beyond_legacy_fixed_buffer) {
     vg_spinner_t *spinner = vg_spinner_create(NULL);
     ASSERT_NOT_NULL(spinner);
@@ -1296,8 +1347,10 @@ static int dropdown_last_index = -2;
 static char dropdown_last_text[64];
 
 /// @brief on_change callback that counts invocations and records the last selected index and text.
-static void dropdown_change_counter(
-    vg_widget_t *dropdown, int index, const char *text, void *user_data) {
+static void dropdown_change_counter(vg_widget_t *dropdown,
+                                    int index,
+                                    const char *text,
+                                    void *user_data) {
     (void)dropdown;
     (void)user_data;
     dropdown_change_count++;
@@ -1305,12 +1358,15 @@ static void dropdown_change_counter(
     snprintf(dropdown_last_text, sizeof(dropdown_last_text), "%s", text ? text : "");
 }
 
-/// @brief R3 — typeahead matches against the first Unicode codepoint of each item, not just the first byte.
+/// @brief R3 — typeahead matches against the first Unicode codepoint of each item, not just the
+/// first byte.
 TEST(dropdown_unicode_typeahead_decodes_first_codepoint) {
     vg_dropdown_t *dd = vg_dropdown_create(NULL);
     ASSERT_NOT_NULL(dd);
     vg_dropdown_add_item(dd, "alpha");
-    vg_dropdown_add_item(dd, "\xC3\xA9" "clair");
+    vg_dropdown_add_item(dd,
+                         "\xC3\xA9"
+                         "clair");
 
     vg_event_t ev = {0};
     ev.type = VG_EVENT_KEY_CHAR;
@@ -1321,7 +1377,8 @@ TEST(dropdown_unicode_typeahead_decodes_first_codepoint) {
     vg_widget_destroy(&dd->base);
 }
 
-/// @brief R3 — removing or clearing items fires on_change only when the effective selection actually changes.
+/// @brief R3 — removing or clearing items fires on_change only when the effective selection
+/// actually changes.
 TEST(dropdown_remove_and_clear_notify_effective_selection_changes) {
     vg_dropdown_t *dd = vg_dropdown_create(NULL);
     ASSERT_NOT_NULL(dd);
@@ -1347,7 +1404,8 @@ TEST(dropdown_remove_and_clear_notify_effective_selection_changes) {
     vg_widget_destroy(&dd->base);
 }
 
-/// @brief R3 — unhandled KEY_DOWN events (e.g. Escape) bubble to the parent rather than being consumed.
+/// @brief R3 — unhandled KEY_DOWN events (e.g. Escape) bubble to the parent rather than being
+/// consumed.
 TEST(textinput_unhandled_keydown_bubbles_to_parent) {
     vg_textinput_t *input = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(input);
@@ -1365,12 +1423,12 @@ TEST(textinput_unhandled_keydown_bubbles_to_parent) {
 
 /// @brief Write a minimal valid 2×1 24-bit BMP to disk so vg_image_load_file can be tested.
 static bool write_test_bmp_2x1(const char *path) {
-    static const uint8_t bmp[] = {
-        0x42, 0x4D, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00, 0x00, 0x00,
-        0x28, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00,
-        0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x13, 0x0B, 0x00, 0x00,
-        0x13, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00};
+    static const uint8_t bmp[] = {0x42, 0x4D, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36,
+                                  0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+                                  0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00,
+                                  0x00, 0x08, 0x00, 0x00, 0x00, 0x13, 0x0B, 0x00, 0x00, 0x13, 0x0B,
+                                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                  0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00};
     FILE *f = fopen(path, "wb");
     if (!f)
         return false;
@@ -1404,7 +1462,8 @@ TEST(image_load_file_decodes_bmp_into_rgba_pixels) {
     remove(path);
 }
 
-/// @brief R3 — max_size, NaN constraints, negative margins, and NaN flex are all sanitised to valid values.
+/// @brief R3 — max_size, NaN constraints, negative margins, and NaN flex are all sanitised to valid
+/// values.
 TEST(layout_measure_constraints_and_negative_arrange_are_clamped) {
     vg_widget_t *vbox = vg_vbox_create(0.0f);
     ASSERT_NOT_NULL(vbox);
@@ -1473,7 +1532,8 @@ TEST(layout_measure_constraints_and_negative_arrange_are_clamped) {
 static int g_route_outside_events = 0;
 static int g_route_modal_events = 0;
 
-/// @brief vtable handle_event — increments the per-widget counter keyed by user_data tag (1=outside, 2=modal).
+/// @brief vtable handle_event — increments the per-widget counter keyed by user_data tag
+/// (1=outside, 2=modal).
 static bool route_test_handle_event(vg_widget_t *widget, vg_event_t *event) {
     if (widget->user_data == (void *)1)
         g_route_outside_events++;
@@ -1493,7 +1553,8 @@ static vg_widget_vtable_t g_route_test_vtable = {
     .can_focus = route_test_can_focus,
 };
 
-/// @brief R4 — when a modal root is set, input_capture held by an outside widget is released on mouse-down.
+/// @brief R4 — when a modal root is set, input_capture held by an outside widget is released on
+/// mouse-down.
 TEST(modal_root_releases_external_mouse_capture) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     vg_widget_t *outside = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -1588,7 +1649,8 @@ TEST(menubar_remove_rejects_cross_owner_handles) {
     vg_widget_destroy(&bar->base);
 }
 
-/// @brief R4 — zero capacity is re-allocated on set_text; surrogate and out-of-range codepoints are silently dropped.
+/// @brief R4 — zero capacity is re-allocated on set_text; surrogate and out-of-range codepoints are
+/// silently dropped.
 TEST(textinput_zero_capacity_and_invalid_codepoints_are_ignored) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -1699,7 +1761,8 @@ TEST(treeview_keyboard_navigation_scrolls_selected_node_into_view) {
     vg_widget_destroy(&tree->base);
 }
 
-/// @brief R4 — remove_child clears focus, input-capture, modal-root, and reported-click for the removed subtree.
+/// @brief R4 — remove_child clears focus, input-capture, modal-root, and reported-click for the
+/// removed subtree.
 TEST(widget_remove_child_clears_runtime_references_to_subtree) {
     vg_widget_runtime_state_t empty = {0};
     vg_widget_set_runtime_state(&empty);
@@ -1731,7 +1794,8 @@ TEST(widget_remove_child_clears_runtime_references_to_subtree) {
     vg_widget_set_runtime_state(&empty);
 }
 
-/// @brief R4 — clear_children clears all runtime references (focus, capture, modal, click) for every child.
+/// @brief R4 — clear_children clears all runtime references (focus, capture, modal, click) for
+/// every child.
 TEST(widget_clear_children_clears_runtime_references_to_subtrees) {
     vg_widget_runtime_state_t empty = {0};
     vg_widget_set_runtime_state(&empty);
@@ -1762,7 +1826,8 @@ TEST(widget_clear_children_clears_runtime_references_to_subtrees) {
     vg_widget_set_runtime_state(&empty);
 }
 
-/// @brief R4 — set_runtime_state and set_focus silently discard pointers that fail vg_widget_is_live.
+/// @brief R4 — set_runtime_state and set_focus silently discard pointers that fail
+/// vg_widget_is_live.
 TEST(widget_runtime_restore_and_focus_reject_invalid_handles) {
     vg_widget_runtime_state_t empty = {0};
     vg_widget_set_runtime_state(&empty);
@@ -1814,7 +1879,8 @@ TEST(widget_runtime_restore_and_focus_reject_invalid_handles) {
 static int g_take_impl_destroy_count = 0;
 static int g_take_impl_saw_data = 0;
 
-/// @brief vtable destroy — calls vg_widget_take_impl_data and frees the data; used to verify take semantics.
+/// @brief vtable destroy — calls vg_widget_take_impl_data and frees the data; used to verify take
+/// semantics.
 static void take_impl_destroy(vg_widget_t *widget) {
     void *data = vg_widget_take_impl_data(widget);
     if (data) {
@@ -1844,7 +1910,8 @@ TEST(widget_impl_data_can_be_taken_by_custom_destroy) {
     ASSERT_EQ(g_take_impl_saw_data, 1);
 }
 
-/// @brief R5 — widget_destroy frees drag_type, drag_data, accepted_drop_types, and _drop_received_* strings.
+/// @brief R5 — widget_destroy frees drag_type, drag_data, accepted_drop_types, and _drop_received_*
+/// strings.
 TEST(widget_destroy_releases_owned_drag_drop_strings) {
     vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(widget);
@@ -1863,7 +1930,8 @@ TEST(widget_destroy_releases_owned_drag_drop_strings) {
     ASSERT_TRUE(true);
 }
 
-/// @brief R5 — get_focused(root) returns the focused widget only if it lives in that root's subtree.
+/// @brief R5 — get_focused(root) returns the focused widget only if it lives in that root's
+/// subtree.
 TEST(widget_get_focused_is_scoped_to_root_subtree) {
     vg_widget_runtime_state_t empty = {0};
     vg_widget_set_runtime_state(&empty);
@@ -1906,12 +1974,14 @@ TEST(widget_insert_child_negative_index_clamps_to_front) {
     vg_widget_destroy(parent);
 }
 
-/// @brief R5 — focus_next/prev work correctly beyond 512 focusable widgets (dynamic allocation path).
+/// @brief R5 — focus_next/prev work correctly beyond 512 focusable widgets (dynamic allocation
+/// path).
 TEST(widget_tab_order_handles_more_than_legacy_fixed_cap) {
     vg_widget_runtime_state_t empty = {0};
     vg_widget_set_runtime_state(&empty);
 
     enum { COUNT = 520 };
+
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
 
@@ -1934,7 +2004,8 @@ TEST(widget_tab_order_handles_more_than_legacy_fixed_cap) {
     vg_widget_set_runtime_state(&empty);
 }
 
-/// @brief R5 — resize event carries logical pixel dimensions; falls back to physical when logical fields are zero.
+/// @brief R5 — resize event carries logical pixel dimensions; falls back to physical when logical
+/// fields are zero.
 TEST(platform_resize_event_reports_logical_gui_dimensions) {
     vgfx_event_t pe;
     memset(&pe, 0, sizeof(pe));
@@ -1963,14 +2034,16 @@ TEST(platform_resize_event_reports_logical_gui_dimensions) {
 static float g_painted_child_x = -1.0f;
 static float g_painted_child_y = -1.0f;
 
-/// @brief vtable paint — records the widget's x/y at paint time for screen-space coordinate assertions.
+/// @brief vtable paint — records the widget's x/y at paint time for screen-space coordinate
+/// assertions.
 static void test_capture_paint(vg_widget_t *widget, void *canvas) {
     (void)canvas;
     g_painted_child_x = widget->x;
     g_painted_child_y = widget->y;
 }
 
-/// @brief R6 — child widget's x/y at paint time are in screen space; layout-space coordinates are not mutated.
+/// @brief R6 — child widget's x/y at paint time are in screen space; layout-space coordinates are
+/// not mutated.
 TEST(widget_paint_uses_screen_space_for_nested_children) {
     vg_widget_vtable_t paint_vtable = {0};
     paint_vtable.paint = test_capture_paint;
@@ -2000,7 +2073,8 @@ TEST(widget_paint_uses_screen_space_for_nested_children) {
     vg_widget_destroy(root);
 }
 
-/// @brief R6 — grid_place with negative row/col clamps to (0,0); child is placed and sized in the first cell.
+/// @brief R6 — grid_place with negative row/col clamps to (0,0); child is placed and sized in the
+/// first cell.
 TEST(grid_negative_placement_clamps_to_first_cell) {
     vg_widget_t *grid = vg_grid_create(2, 2);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_LABEL);
@@ -2042,7 +2116,8 @@ TEST(image_opacity_sanitizes_nan) {
     vg_widget_destroy(&image->base);
 }
 
-/// @brief R6 — set_text strips invalid UTF-8 bytes; insert respects max_length and drops invalid sequences.
+/// @brief R6 — set_text strips invalid UTF-8 bytes; insert respects max_length and drops invalid
+/// sequences.
 TEST(textinput_sanitizes_invalid_utf8_before_storage) {
     vg_textinput_t *input = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(input);
@@ -2064,7 +2139,8 @@ TEST(textinput_sanitizes_invalid_utf8_before_storage) {
     vg_widget_destroy(&input->base);
 }
 
-/// @brief R6 — KEY_CHAR with a multi-byte codepoint inserts the complete UTF-8 byte sequence, not a partial one.
+/// @brief R6 — KEY_CHAR with a multi-byte codepoint inserts the complete UTF-8 byte sequence, not a
+/// partial one.
 TEST(codeeditor_inserts_utf8_as_complete_byte_sequences) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(editor);
@@ -2090,7 +2166,8 @@ TEST(codeeditor_inserts_utf8_as_complete_byte_sequences) {
 static int g_capture_release_clicks = 0;
 static int g_capture_release_ups = 0;
 
-/// @brief vtable handle_event — acquires capture on DOWN, releases on UP, increments counters for UP and CLICK.
+/// @brief vtable handle_event — acquires capture on DOWN, releases on UP, increments counters for
+/// UP and CLICK.
 static bool capture_release_handle_event(vg_widget_t *widget, vg_event_t *event) {
     if (event->type == VG_EVENT_MOUSE_DOWN) {
         vg_widget_set_input_capture(widget);
@@ -2112,7 +2189,8 @@ static vg_widget_vtable_t g_capture_release_vtable = {
     .handle_event = capture_release_handle_event,
 };
 
-/// @brief R6 — releasing capture in the MOUSE_UP handler prevents a synthetic CLICK from firing outside bounds.
+/// @brief R6 — releasing capture in the MOUSE_UP handler prevents a synthetic CLICK from firing
+/// outside bounds.
 TEST(captured_mouseup_release_suppresses_outside_synthetic_click) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
@@ -2139,7 +2217,8 @@ TEST(captured_mouseup_release_suppresses_outside_synthetic_click) {
     vg_widget_destroy(root);
 }
 
-/// @brief R6 — adding more children than a grid's explicit row count creates implicit rows with positive dimensions.
+/// @brief R6 — adding more children than a grid's explicit row count creates implicit rows with
+/// positive dimensions.
 TEST(grid_auto_flow_creates_implicit_rows) {
     vg_widget_t *grid = vg_grid_create(2, 1);
     vg_widget_t *a = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -2181,7 +2260,8 @@ static vg_widget_vtable_t g_capture_local_coords_vtable = {
     .handle_event = capture_local_coords_handle_event,
 };
 
-/// @brief R6 — captured MOUSE_UP events are localised exactly once to the captured widget's coordinate space.
+/// @brief R6 — captured MOUSE_UP events are localised exactly once to the captured widget's
+/// coordinate space.
 TEST(captured_mouse_events_are_localized_once) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
@@ -2205,7 +2285,8 @@ TEST(captured_mouse_events_are_localized_once) {
     vg_widget_destroy(root);
 }
 
-/// @brief vtable handle_event — destroys itself on MOUSE_DOWN to test dispatch safety after self-destroy.
+/// @brief vtable handle_event — destroys itself on MOUSE_DOWN to test dispatch safety after
+/// self-destroy.
 static bool destroy_self_on_event(vg_widget_t *widget, vg_event_t *event) {
     if (event->type == VG_EVENT_MOUSE_DOWN) {
         vg_widget_destroy(widget);
@@ -2218,7 +2299,8 @@ static vg_widget_vtable_t g_destroy_self_vtable = {
     .handle_event = destroy_self_on_event,
 };
 
-/// @brief R6 — an event handler may call vg_widget_destroy on itself without corrupting the dispatch loop.
+/// @brief R6 — an event handler may call vg_widget_destroy on itself without corrupting the
+/// dispatch loop.
 TEST(event_handler_can_destroy_target_during_dispatch) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
@@ -2262,7 +2344,8 @@ static vg_widget_vtable_t g_per_root_focus_vtable = {
     .can_focus = per_root_focus_can_focus,
 };
 
-/// @brief R6 — each root tree has independent focus state; keyboard events go to the focused widget in that root only.
+/// @brief R6 — each root tree has independent focus state; keyboard events go to the focused widget
+/// in that root only.
 TEST(event_dispatch_keeps_focus_state_per_root) {
     vg_widget_t *root_a = vg_widget_create(VG_WIDGET_CONTAINER);
     vg_widget_t *root_b = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -2306,7 +2389,8 @@ TEST(event_dispatch_keeps_focus_state_per_root) {
     vg_widget_destroy(root_b);
 }
 
-/// @brief R6 — surrogate codepoints (0xD800–0xDFFF) are dropped silently by both command palette and file dialog.
+/// @brief R6 — surrogate codepoints (0xD800–0xDFFF) are dropped silently by both command palette
+/// and file dialog.
 TEST(commandpalette_and_filedialog_reject_surrogate_codepoints) {
     vg_commandpalette_t *palette = vg_commandpalette_create();
     ASSERT_NOT_NULL(palette);
@@ -2408,7 +2492,8 @@ TEST(findreplace_whole_word_does_not_match_inside_utf8_word) {
     vg_widget_destroy(&ed->base);
 }
 
-/// @brief R6 — append_line, select_all, clear, and max_lines=0 all leave line_count and has_selection consistent.
+/// @brief R6 — append_line, select_all, clear, and max_lines=0 all leave line_count and
+/// has_selection consistent.
 TEST(outputpane_append_line_and_clear_keep_line_state_consistent) {
     vg_outputpane_t *pane = vg_outputpane_create();
     ASSERT_NOT_NULL(pane);
@@ -2451,7 +2536,8 @@ static void context_dismiss_cb(vg_contextmenu_t *menu, void *ud) {
     g_context_dismiss_ud = ud;
 }
 
-/// @brief R6 — callbacks route correct user_data; submenu dismiss restores parent capture; destroyed registry is inert.
+/// @brief R6 — callbacks route correct user_data; submenu dismiss restores parent capture;
+/// destroyed registry is inert.
 TEST(contextmenu_callbacks_capture_and_registry_are_lifetime_safe) {
     int select_marker = 1;
     int dismiss_marker = 2;
@@ -2498,7 +2584,8 @@ TEST(contextmenu_callbacks_capture_and_registry_are_lifetime_safe) {
 static float g_direct_event_mouse_x = 0.0f;
 static float g_direct_event_mouse_y = 0.0f;
 
-/// @brief vtable handle_event — captures the MOUSE_MOVE coordinates seen at the parent level after bubbling.
+/// @brief vtable handle_event — captures the MOUSE_MOVE coordinates seen at the parent level after
+/// bubbling.
 static bool direct_event_parent_handler(vg_widget_t *widget, vg_event_t *event) {
     (void)widget;
     if (event->type == VG_EVENT_MOUSE_MOVE) {
@@ -2513,7 +2600,8 @@ static vg_widget_vtable_t g_direct_event_parent_vtable = {
     .handle_event = direct_event_parent_handler,
 };
 
-/// @brief R6 — vg_event_send restores the original screen-space coordinates after bubbling through parent vtables.
+/// @brief R6 — vg_event_send restores the original screen-space coordinates after bubbling through
+/// parent vtables.
 TEST(direct_event_send_restores_mouse_coordinates_after_bubbling) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CUSTOM);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -2551,7 +2639,8 @@ static vg_widget_vtable_t g_custom_paint_vtable = {
     .paint = custom_paint_records_local_geometry,
 };
 
-/// @brief R6 — vg_widget_get_bounds returns layout-space coordinates while paint receives screen-space x/y.
+/// @brief R6 — vg_widget_get_bounds returns layout-space coordinates while paint receives
+/// screen-space x/y.
 TEST(custom_widget_paint_can_query_layout_geometry) {
     int dummy_canvas = 0;
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -2574,7 +2663,8 @@ TEST(custom_widget_paint_can_query_layout_geometry) {
     vg_widget_destroy(root);
 }
 
-/// @brief R6 — destroying a focused child clears the root's focus state so subsequent key dispatch returns false.
+/// @brief R6 — destroying a focused child clears the root's focus state so subsequent key dispatch
+/// returns false.
 TEST(event_root_state_forgets_destroyed_child_focus) {
     vg_widget_t *root_a = vg_widget_create(VG_WIDGET_CONTAINER);
     vg_widget_t *root_b = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -2604,7 +2694,8 @@ TEST(event_root_state_forgets_destroyed_child_focus) {
     vg_widget_destroy(root_b);
 }
 
-/// @brief R6 — vg_key_from_vgfx_key maps known platform keys and returns VG_KEY_UNKNOWN for unmapped values.
+/// @brief R6 — vg_key_from_vgfx_key maps known platform keys and returns VG_KEY_UNKNOWN for
+/// unmapped values.
 TEST(vgfx_special_keys_translate_through_public_helper) {
     ASSERT_EQ(vg_key_from_vgfx_key(VGFX_KEY_LEFT), VG_KEY_LEFT);
     ASSERT_EQ(vg_key_from_vgfx_key(VGFX_KEY_TAB), VG_KEY_TAB);
@@ -2612,7 +2703,8 @@ TEST(vgfx_special_keys_translate_through_public_helper) {
     ASSERT_EQ(vg_key_from_vgfx_key(-1), VG_KEY_UNKNOWN);
 }
 
-/// @brief R6 — grid_place at a row beyond the declared row count extends the implicit row set for arrange.
+/// @brief R6 — grid_place at a row beyond the declared row count extends the implicit row set for
+/// arrange.
 TEST(grid_explicit_placement_extends_effective_rows) {
     vg_widget_t *grid = vg_grid_create(2, 1);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
@@ -2678,7 +2770,8 @@ static vg_widget_vtable_t g_overlay_count_vtable = {
     .paint_overlay = overlay_count_paint,
 };
 
-/// @brief R7 — scrollview's internal overlay pass does not trigger an extra paint_overlay call on children.
+/// @brief R7 — scrollview's internal overlay pass does not trigger an extra paint_overlay call on
+/// children.
 TEST(scrollview_internal_overlay_children_are_not_repainted_by_global_pass) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_SCROLLVIEW);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
@@ -2694,7 +2787,8 @@ TEST(scrollview_internal_overlay_children_are_not_repainted_by_global_pass) {
     vg_widget_destroy(root);
 }
 
-/// @brief R7 — removing and re-adding a child to a grid clears placement metadata so it flows from column 0.
+/// @brief R7 — removing and re-adding a child to a grid clears placement metadata so it flows from
+/// column 0.
 TEST(grid_placement_metadata_is_removed_when_child_detaches) {
     vg_widget_t *grid = vg_grid_create(2, 1);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
@@ -2717,7 +2811,8 @@ TEST(grid_placement_metadata_is_removed_when_child_detaches) {
     vg_widget_destroy(grid);
 }
 
-/// @brief R7 — removing and re-adding a child to a dock clears the side-dock metadata so it fills the center.
+/// @brief R7 — removing and re-adding a child to a dock clears the side-dock metadata so it fills
+/// the center.
 TEST(dock_metadata_is_removed_when_child_detaches) {
     vg_widget_t *dock = vg_dock_create();
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
@@ -2761,7 +2856,8 @@ static void radio_b_change(vg_widget_t *radio, bool selected, void *user_data) {
         g_radio_b_false++;
 }
 
-/// @brief R7 — selecting a radio button fires on_change for both old and new button, marks both needs_paint.
+/// @brief R7 — selecting a radio button fires on_change for both old and new button, marks both
+/// needs_paint.
 TEST(radiobutton_group_selection_updates_callbacks_dirty_and_clear_state) {
     vg_radiogroup_t *group = vg_radiogroup_create();
     ASSERT_NOT_NULL(group);
@@ -2811,7 +2907,8 @@ static void checkbox_change_counter(vg_widget_t *checkbox, bool checked, void *u
     g_checkbox_last_checked = checked;
 }
 
-/// @brief R7 — set_indeterminate(true) clears checked state and VG_STATE_CHECKED, firing on_change once.
+/// @brief R7 — set_indeterminate(true) clears checked state and VG_STATE_CHECKED, firing on_change
+/// once.
 TEST(checkbox_indeterminate_clears_checked_state_and_style_flag) {
     vg_checkbox_t *cb = vg_checkbox_create(NULL, "Tri");
     ASSERT_NOT_NULL(cb);
@@ -2844,7 +2941,8 @@ static void textinput_change_counter(vg_widget_t *widget, const char *text, void
     g_textinput_change_count++;
 }
 
-/// @brief R7 — inserting over a selection emits exactly one on_change event, not two (delete + insert).
+/// @brief R7 — inserting over a selection emits exactly one on_change event, not two (delete +
+/// insert).
 TEST(textinput_replacement_insert_emits_single_change) {
     vg_textinput_t *input = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(input);
@@ -2870,7 +2968,8 @@ static void assert_preferred_measure(vg_widget_t *widget) {
     ASSERT_NEAR(widget->measured_height, 48.0f, 0.001f);
 }
 
-/// @brief R7 — textinput, scrollview, slider, progressbar, spinner, listbox, dropdown, checkbox, radio all clamp to preferred_size.
+/// @brief R7 — textinput, scrollview, slider, progressbar, spinner, listbox, dropdown, checkbox,
+/// radio all clamp to preferred_size.
 TEST(specialized_widgets_honor_preferred_size_constraints) {
     vg_textinput_t *textinput = vg_textinput_create(NULL);
     vg_scrollview_t *scrollview = vg_scrollview_create(NULL);
@@ -2928,7 +3027,8 @@ TEST(specialized_widgets_honor_max_size_constraints) {
     vg_widget_destroy(&slider->base);
 }
 
-/// @brief R7 — NaN progress value clamps to 0; negative or NaN tick deltas leave animation_phase unchanged.
+/// @brief R7 — NaN progress value clamps to 0; negative or NaN tick deltas leave animation_phase
+/// unchanged.
 TEST(progressbar_sanitizes_nan_value_and_normalizes_phase) {
     vg_progressbar_t *pb = vg_progressbar_create(NULL);
     ASSERT_NOT_NULL(pb);
@@ -3019,7 +3119,8 @@ TEST(breadcrumb_clear_releases_dropdown_capture) {
     vg_widget_destroy(&bc->base);
 }
 
-/// @brief R7 — set_font with a negative or NaN size leaves font_size unchanged at the current valid value.
+/// @brief R7 — set_font with a negative or NaN size leaves font_size unchanged at the current valid
+/// value.
 TEST(spinner_set_font_rejects_invalid_sizes) {
     vg_spinner_t *spinner = vg_spinner_create(NULL);
     ASSERT_NOT_NULL(spinner);
@@ -3035,7 +3136,8 @@ TEST(spinner_set_font_rejects_invalid_sizes) {
     vg_widget_destroy(&spinner->base);
 }
 
-/// @brief R7 — set_placeholder sets needs_layout and needs_paint so the new text is measured and repainted.
+/// @brief R7 — set_placeholder sets needs_layout and needs_paint so the new text is measured and
+/// repainted.
 TEST(dropdown_placeholder_marks_layout_dirty) {
     vg_dropdown_t *dd = vg_dropdown_create(NULL);
     ASSERT_NOT_NULL(dd);
@@ -3080,6 +3182,7 @@ TEST(widget_capture_and_modal_reject_non_live_pointers) {
 
 TEST(event_dispatch_keeps_state_for_more_than_legacy_root_cap) {
     enum { ROOT_COUNT = 20 };
+
     vg_widget_t *roots[ROOT_COUNT] = {0};
     vg_widget_t *children[ROOT_COUNT] = {0};
 
@@ -3385,8 +3488,7 @@ TEST(toolbar_removed_item_handles_are_inert) {
 TEST(statusbar_removed_item_handles_are_inert) {
     vg_statusbar_t *statusbar = vg_statusbar_create(NULL);
     ASSERT_NOT_NULL(statusbar);
-    vg_statusbar_item_t *item =
-        vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "Ready");
+    vg_statusbar_item_t *item = vg_statusbar_add_text(statusbar, VG_STATUSBAR_ZONE_LEFT, "Ready");
     ASSERT_NOT_NULL(item);
 
     statusbar->hovered_item = item;
@@ -3844,7 +3946,8 @@ TEST(toolbar_capacity_overflow_is_rejected) {
 
     toolbar->item_count = SIZE_MAX;
     toolbar->item_capacity = SIZE_MAX;
-    ASSERT_NULL(vg_toolbar_add_button(toolbar, "overflow", "overflow", vg_icon_from_glyph('x'), NULL, NULL));
+    ASSERT_NULL(vg_toolbar_add_button(
+        toolbar, "overflow", "overflow", vg_icon_from_glyph('x'), NULL, NULL));
 
     toolbar->items = old_items;
     toolbar->item_count = old_count;
@@ -3912,6 +4015,7 @@ TEST(icon_from_pixels_rejects_size_overflow) {
 
 TEST(contextmenu_registry_grows_beyond_legacy_cap) {
     enum { MENU_COUNT = 70 };
+
     vg_widget_t *widgets[MENU_COUNT] = {0};
     vg_contextmenu_t *menus[MENU_COUNT] = {0};
 

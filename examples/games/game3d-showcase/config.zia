@@ -1,0 +1,82 @@
+// config.zia - Tunables for the Game3D open-world showcase.
+module config;
+
+var WINDOW_TITLE: String = "Game3D Open World Showcase";
+var WINDOW_WIDTH: Integer = 1280;
+var WINDOW_HEIGHT: Integer = 720;
+
+var CLEAR_R: Float = 0.50;
+var CLEAR_G: Float = 0.66;
+var CLEAR_B: Float = 0.88;
+
+var DT_MAX_MS: Integer = 50;
+var DT_MAX_SEC: Float = 0.05;
+
+var CAMERA_FOV: Float = 64.0;
+var CAMERA_NEAR: Float = 0.1;
+var CAMERA_FAR: Float = 420.0;
+var CAMERA_DISTANCE: Float = 10.4;
+var CAMERA_DISTANCE_MIN: Float = 5.8;
+var CAMERA_DISTANCE_MAX: Float = 18.0;
+var CAMERA_TARGET_HEIGHT: Float = 1.35;
+var CAMERA_LOOK_AHEAD: Float = 3.6;
+var CAMERA_MIN_CLEARANCE: Float = 1.3;
+var CAMERA_PITCH_START: Float = 0.24;
+var CAMERA_PITCH_MIN: Float = -0.30;
+var CAMERA_PITCH_MAX: Float = 0.82;
+var CAMERA_MOUSE_SENS: Float = 0.0065;
+var CAMERA_WHEEL_SPEED: Float = 1.0;
+
+var PLAYER_MOVE_SPEED: Float = 9.2;
+var PLAYER_SPRINT_MULT: Float = 1.75;
+var PLAYER_RADIUS: Float = 0.42;
+var PLAYER_BODY_HEIGHT: Float = 1.05;
+var PLAYER_GROUND_OFFSET: Float = 0.54;
+
+var TERRAIN_SIZE: Integer = 144;
+var TERRAIN_SCALE_X: Float = 1.75;
+var TERRAIN_SCALE_Y: Float = 25.0;
+var TERRAIN_SCALE_Z: Float = 1.75;
+var TERRAIN_NOISE_SCALE: Float = 3.9;
+var TERRAIN_NOISE_OCTAVES: Integer = 6;
+var TERRAIN_NOISE_PERSIST: Float = 0.48;
+var TERRAIN_MARGIN: Float = 4.5;
+var TERRAIN_LOD_NEAR: Float = 110.0;
+var TERRAIN_LOD_FAR: Float = 260.0;
+var TERRAIN_SKIRT_DEPTH: Float = 3.5;
+
+var SKYBOX_FACE_SIZE: Integer = 64;
+var TERRAIN_TEXTURE_SIZE: Integer = 64;
+var SPLAT_SIZE: Integer = 128;
+
+var WATER_HEIGHT: Float = 2.2;
+var WATER_R: Float = 0.12;
+var WATER_G: Float = 0.32;
+var WATER_B: Float = 0.46;
+var WATER_A: Float = 0.34;
+var WATER_REFLECTIVITY: Float = 0.36;
+var BEACON_TRIGGER_RADIUS: Float = 2.8;
+
+var AMBIENT_R: Float = 0.34;
+var AMBIENT_G: Float = 0.38;
+var AMBIENT_B: Float = 0.42;
+var FOG_R: Float = 0.36;
+var FOG_G: Float = 0.46;
+var FOG_B: Float = 0.56;
+var FOG_NEAR: Float = 125.0;
+var FOG_FAR: Float = 340.0;
+var SHADOW_BIAS: Float = 0.006;
+
+var HUD_PANEL_X: Integer = 14;
+var HUD_PANEL_Y: Integer = 14;
+var HUD_PANEL_W: Integer = 430;
+var HUD_PANEL_H: Integer = 142;
+
+var HUD_PANEL: Integer = 0x111A26;
+var HUD_CARD: Integer = 0x26364B;
+var HUD_ACCENT: Integer = 0x62D2FF;
+var HUD_TEXT: Integer = 0xFFFFFF;
+var HUD_MUTED: Integer = 0xA8BACB;
+var HUD_GOOD: Integer = 0x7DFF9A;
+var HUD_WARN: Integer = 0xFFDD44;
+var HUD_DANGER: Integer = 0xFF7D66;
