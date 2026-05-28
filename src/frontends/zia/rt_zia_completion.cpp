@@ -431,6 +431,29 @@ std::string normalizeProjectPath(const ProjectIndex &index, std::string path) {
     return fsPath.lexically_normal().string();
 }
 
+std::string projectPathLookupKey(std::string path) {
+    std::replace(path.begin(), path.end(), '\\', '/');
+#ifdef _WIN32
+    std::transform(path.begin(), path.end(), path.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+#endif
+    return path;
+}
+
+std::string canonicalProjectPath(const ProjectIndex &index, const std::string &path) {
+    std::string normalized = normalizeProjectPath(index, path);
+    if (index.sources.find(normalized) != index.sources.end())
+        return normalized;
+
+    const std::string lookup = projectPathLookupKey(normalized);
+    for (const auto &[indexedPath, _] : index.sources) {
+        if (projectPathLookupKey(indexedPath) == lookup)
+            return indexedPath;
+    }
+    return normalized;
+}
+
 ProjectIndexHandle *asProjectIndexHandle(void *handle) {
     if (!rt_obj_is_instance(handle, kProjectIndexClassId, sizeof(ProjectIndexHandle)))
         return nullptr;
@@ -675,18 +698,18 @@ SymbolRange definitionRangeForKey(const ProjectIndex &index, const SymbolKey &ke
 
     SymbolRange range;
     range.valid = true;
-    range.file = key.file;
+    range.file = canonicalProjectPath(index, key.file);
     range.line = key.line;
     range.column = key.column;
     range.endLine = key.line;
     range.endColumn = key.column + static_cast<uint32_t>(key.displayName.size());
 
-    auto sourceIt = index.sources.find(key.file);
+    auto sourceIt = index.sources.find(range.file);
     if (sourceIt == index.sources.end())
         return range;
 
     il::support::SourceManager sm;
-    uint32_t fileId = sm.addFile(key.file);
+    uint32_t fileId = sm.addFile(range.file);
     sm.setSource(fileId, sourceIt->second.source);
     for (const auto &token : lexIdentifierTokens(sourceIt->second.source, fileId)) {
         if (token.loc.line != key.line)

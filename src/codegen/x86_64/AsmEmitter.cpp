@@ -179,6 +179,49 @@ constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept {
     return true;
 }
 
+[[nodiscard]] bool hasSingleOperandKind(std::span<const Operand> operands,
+                                        bool (*predicate)(const Operand &)) noexcept {
+    bool found = false;
+    for (const auto &operand : operands) {
+        if (!predicate(operand))
+            continue;
+        if (found)
+            return false;
+        found = true;
+    }
+    return found;
+}
+
+[[nodiscard]] bool isConditionOperand(const Operand &operand) noexcept {
+    return std::holds_alternative<OpImm>(operand);
+}
+
+[[nodiscard]] bool isLabelOperand(const Operand &operand) noexcept {
+    return std::holds_alternative<OpLabel>(operand);
+}
+
+[[nodiscard]] bool isSetccDestinationOperand(const Operand &operand) noexcept {
+    return std::holds_alternative<OpReg>(operand) || std::holds_alternative<OpMem>(operand);
+}
+
+/// @brief Predicate: does @p operands fit an order-independent condition shape?
+/// @details Hand-built MIR in tests historically used both `{cc, dst}` and
+///          `{dst, cc}` for SETcc, and both `{cc, label}` and `{label, cc}` for
+///          JCC. The opcode-specific emitters below already select operands by
+///          kind, so the table lookup must allow the same shapes through.
+[[nodiscard]] bool matchesFlexibleConditionPattern(MOpcode op,
+                                                   std::span<const Operand> operands) noexcept {
+    if (operands.size() != 2)
+        return false;
+    if (op == MOpcode::JCC) {
+        return hasSingleOperandKind(operands, isLabelOperand);
+    }
+    if (op == MOpcode::SETcc) {
+        return hasSingleOperandKind(operands, isSetccDestinationOperand);
+    }
+    return false;
+}
+
 /// @brief Provide an overload set capable of visiting std::variant operands.
 /// @details Aggregates multiple lambda visitors into a single callable so
 ///          @ref std::visit can dispatch over operand kinds without defining a
@@ -416,7 +459,8 @@ const EncodingRow *find_encoding(MOpcode op, std::span<const Operand> operands) 
         if (row.opcode != op) {
             continue;
         }
-        if (matchesPattern(row.pattern, operands)) {
+        if (matchesPattern(row.pattern, operands) ||
+            matchesFlexibleConditionPattern(row.opcode, operands)) {
             return &row;
         }
     }
@@ -750,7 +794,10 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             if (!branchTarget && !operands.empty()) {
                 branchTarget = &operands.back();
             }
-            const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
+            if (!cond) {
+                throw std::runtime_error("x86-64 asm emitter: JCC requires a condition code");
+            }
+            const auto suffix = conditionSuffix(cond->val);
             os << suffix << ' ';
             if (!branchTarget) {
                 os << "#<missing>\n";
@@ -801,7 +848,10 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
                 dest = &operand;
             }
         }
-        const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
+        if (!cond) {
+            throw std::runtime_error("x86-64 asm emitter: SETcc requires a condition code");
+        }
+        const auto suffix = conditionSuffix(cond->val);
         os << suffix << ' ';
         if (dest) {
             // SETcc requires 8-bit destination register

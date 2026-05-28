@@ -315,7 +315,11 @@ class CompletionController {
         var job = ZiaCompletion.BeginItemsForFile(qtext, sourcePath, curLine, curCol);
         if job != null {
             pendingJob = job;
-            pendingJobRevision = editor.Revision;
+            if engine != null {
+                pendingJobRevision = engine.GetRevision();
+            } else {
+                pendingJobRevision = editor.Revision;
+            }
             pendingJobPath = sourcePath;
             pendingJobLineOffset = off;
             pendingJobQueryLine = curLine;
@@ -724,6 +728,7 @@ class CompletionController {
     /// @brief Hide the popup and return focus to the editor.
     expose func Hide() {
         CancelPendingJob();
+        CancelWorkspaceSymbolJob();
         isVisible = false;
         popup.SetVisible(0);
         if editor != null {
@@ -738,15 +743,6 @@ class CompletionController {
     expose func Update(typed: String) -> Boolean {
         if Input.Keyboard.IsDown(Input.Keyboard.get_KEY_TAB()) == false {
             tabAcceptKeyDown = false;
-        }
-
-        if typed == "" and isVisible == false and pendingQuery == false and pendingJob == null
-           and workspacePendingJob != null {
-            var nowMs = Viper.Time.GetTickCount();
-            if nowMs - workspaceLastPumpMs >= WORKSPACE_SYMBOL_PUMP_INTERVAL_MS {
-                workspaceLastPumpMs = nowMs;
-                PumpWorkspaceSymbolCache(WORKSPACE_SYMBOL_FILES_PER_FRAME);
-            }
         }
 
         if PollPendingJob() {

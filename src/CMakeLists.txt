@@ -563,6 +563,8 @@ endif ()
 # silently returns "Zia completion unavailable" payloads.
 if (APPLE)
     target_link_options(zia PRIVATE LINKER:-force_load,$<TARGET_FILE:fe_zia>)
+elseif (MSVC)
+    target_link_options(zia PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:fe_zia>")
 elseif (UNIX)
     target_link_libraries(zia PRIVATE
             -Wl,--whole-archive $<TARGET_FILE:fe_zia> -Wl,--no-whole-archive

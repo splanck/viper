@@ -624,6 +624,37 @@ int main() {
         CHECK(bytesMatch(bytes, {0x41, 0x0F, 0x95, 0xC0}));
     }
 
+    // Hand-built MIR may present SETcc as {dst, cc}; encode by operand kind.
+    {
+        auto bytes = encodeOne(MOpcode::SETcc, {gpr(PhysReg::RAX), imm(0)});
+        CHECK(bytes.size() == 3);
+        CHECK(bytesMatch(bytes, {0x0F, 0x94, 0xC0}));
+    }
+
+    // setne -1(%rbp) -> 0F 95 45 FF
+    {
+        auto bytes = encodeOne(MOpcode::SETcc, {imm(1), mem(PhysReg::RBP, -1)});
+        CHECK(bytes.size() == 4);
+        CHECK(bytesMatch(bytes, {0x0F, 0x95, 0x45, 0xFF}));
+    }
+
+    // sete (%r12) -> 41 0F 94 04 24
+    {
+        auto bytes = encodeOne(MOpcode::SETcc, {mem(PhysReg::R12, 0), imm(0)});
+        CHECK(bytes.size() == 5);
+        CHECK(bytesMatch(bytes, {0x41, 0x0F, 0x94, 0x04, 0x24}));
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::SETcc, {gpr(PhysReg::RAX), label(".Lnot_a_condition")});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("condition code") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
     // ================================================================
     // 20. MOVZXrr8 (movzbq) and MOVZXrr32 (movl)
     // ================================================================
@@ -841,6 +872,50 @@ int main() {
         CHECK(text.bytes().size() == 4);
         CHECK(text.bytes()[0] == 0x75); // JNE short
         CHECK(static_cast<int8_t>(text.bytes()[1]) == 1);
+    }
+
+    // Hand-built MIR may present JCC as {label, cc}; encode by operand kind.
+    {
+        MFunction fn;
+        fn.name = "test_label_first_jcc";
+        MBasicBlock bb;
+        bb.label = ".Lentry";
+        bb.append(MInstr::make(MOpcode::JCC, {label(".Ltarget"), imm(1)}));
+        bb.append(MInstr::make(MOpcode::RET, {}));
+        fn.addBlock(std::move(bb));
+
+        MBasicBlock bb2;
+        bb2.label = ".Ltarget";
+        bb2.append(MInstr::make(MOpcode::RET, {}));
+        fn.addBlock(std::move(bb2));
+
+        X64BinaryEncoder enc;
+        CodeSection text, rodata;
+        enc.encodeFunction(fn, text, rodata, false);
+
+        CHECK(text.bytes().size() == 4);
+        CHECK(text.bytes()[0] == 0x75);
+        CHECK(static_cast<int8_t>(text.bytes()[1]) == 1);
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::JCC, {label(".Ltarget"), gpr(PhysReg::RAX)});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("condition code") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        bool threw = false;
+        try {
+            (void)encodeOne(MOpcode::JCC, {imm(1), gpr(PhysReg::RAX)});
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("label target") != std::string::npos;
+        }
+        CHECK(threw);
     }
 
     // ================================================================

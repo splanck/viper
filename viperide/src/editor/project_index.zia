@@ -141,6 +141,9 @@ class ProjectIndexer {
             if size > INDEX_MAX_SOURCE_BYTES {
                 continue;
             }
+            if FindSyncedOpenPath(path) >= 0 {
+                continue;
+            }
             if IO.File.Exists(path) {
                 var content = IO.File.ReadAllText(path);
                 if ShouldIndexContent(content) {
@@ -194,7 +197,7 @@ class ProjectIndexer {
                         syncedOpenContents.removeAt(syncedIdx);
                     }
                     syncedOpenPaths.add(doc.filePath);
-                    syncedOpenContents.add(doc.content);
+                    syncedOpenContents.add(SnapshotContent(doc.content));
                     syncCount = syncCount + 1;
                 }
             }
@@ -203,9 +206,10 @@ class ProjectIndexer {
     }
 
     expose func FindSyncedOpenPath(path: String) -> Integer {
+        var target = NormalizePath(path);
         var i = 0;
         while i < syncedOpenPaths.count() {
-            if Obj.ToString(syncedOpenPaths.get(i)) == path {
+            if NormalizePath(Obj.ToString(syncedOpenPaths.get(i))) == target {
                 return i;
             }
             i = i + 1;
@@ -235,7 +239,7 @@ class ProjectIndexer {
             syncedOpenContents.removeAt(syncedIdx);
         }
         syncedOpenPaths.add(doc.filePath);
-        syncedOpenContents.add(doc.content);
+        syncedOpenContents.add(SnapshotContent(doc.content));
         syncedActivePath = doc.filePath;
         syncedActiveRevision = revision;
         pendingActivePath = "";
@@ -300,6 +304,16 @@ class ProjectIndexer {
 
     hide func ShouldIndexContent(content: String) -> Boolean {
         return Str.Length(content) <= INDEX_MAX_SOURCE_BYTES;
+    }
+
+    hide func SnapshotContent(content: String) -> String {
+        if content == "" { return ""; }
+        return Str.MidLen(content, 1, Str.Length(content));
+    }
+
+    hide func NormalizePath(path: String) -> String {
+        if path == "" { return ""; }
+        return IO.Path.Norm(IO.Path.Abs(path));
     }
 
     hide func TrackUpdate(content: String) {

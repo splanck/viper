@@ -18,6 +18,8 @@
 
 #include "codegen/x86_64/OperandRoles.hpp"
 
+#include <variant>
+
 namespace viper::codegen::x64 {
 
 /// @brief Compute the (use, def) role pair for operand @p idx of @p instr.
@@ -110,7 +112,12 @@ std::pair<bool, bool> operandRoles(const MInstr &instr, std::size_t idx) noexcep
             return {idx == 0, false};
 
         case MOpcode::SETcc:
-            return {false, idx == 1};
+            if (idx < instr.operands.size() &&
+                (std::holds_alternative<OpReg>(instr.operands[idx]) ||
+                 std::holds_alternative<OpMem>(instr.operands[idx]))) {
+                return {false, true};
+            }
+            return {false, false};
 
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
@@ -212,6 +219,14 @@ bool hasObservableSideEffects(MOpcode opcode) noexcept {
         case MOpcode::UD2:
         case MOpcode::IDIVrm:
         case MOpcode::DIVrm:
+        case MOpcode::DIVS64rr:
+        case MOpcode::REMS64rr:
+        case MOpcode::DIVS64Chk0rr:
+        case MOpcode::REMS64Chk0rr:
+        case MOpcode::DIVU64rr:
+        case MOpcode::REMU64rr:
+        case MOpcode::DIVU64Chk0rr:
+        case MOpcode::REMU64Chk0rr:
         case MOpcode::CQO:
         case MOpcode::ADDOvfrr:
         case MOpcode::SUBOvfrr:

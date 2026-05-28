@@ -6158,7 +6158,24 @@ void rt_game3d_world_draw_overlay(void *obj, void *overlay) {
 void *rt_game3d_world_capture_final_frame(void *obj) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.captureFinalFrame: invalid world");
-    return world && world->canvas ? rt_canvas3d_screenshot_final(world->canvas) : NULL;
+    if (!world || !world->canvas)
+        return NULL;
+
+    rt_canvas3d *canvas = (rt_canvas3d *)world->canvas;
+    if (world->width <= 0 || world->height <= 0 || world->width > INT32_MAX ||
+        world->height > INT32_MAX)
+        return rt_canvas3d_screenshot_final(world->canvas);
+
+    rt_canvas3d_finalize_frame(world->canvas);
+
+    const int32_t saved_w = canvas->width;
+    const int32_t saved_h = canvas->height;
+    canvas->width = (int32_t)world->width;
+    canvas->height = (int32_t)world->height;
+    void *pixels = rt_canvas3d_screenshot(world->canvas);
+    canvas->width = saved_w;
+    canvas->height = saved_h;
+    return pixels;
 }
 
 /// @brief Present the finished frame to the window (flip buffers). See header.

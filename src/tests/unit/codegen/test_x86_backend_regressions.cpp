@@ -1186,6 +1186,27 @@ TEST(X86BackendRegressions, AssemblyEmitterRejectsNonLabelConditionalBranchTarge
     EXPECT_NE(result.errors.find("JCC requires a label target"), std::string::npos);
 }
 
+TEST(X86BackendRegressions, AssemblyEmitterAcceptsLabelFirstConditionalBranch) {
+    const MFunction fn =
+        rawFunction("label_first_jcc",
+                    {MInstr::make(MOpcode::JCC,
+                                  {makeLabelOperand(".L_label_first_done"), makeImmOperand(1)})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("jne .L_label_first_done"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, AssemblyEmitterRejectsConditionalBranchWithoutCondition) {
+    const Operand target = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const MFunction fn = rawFunction(
+        "bad_jcc_no_cond",
+        {MInstr::make(MOpcode::JCC, {makeLabelOperand(".L_bad_jcc_no_cond_done"), target})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_NE(result.errors.find("JCC requires a condition code"), std::string::npos);
+}
+
 TEST(X86BackendRegressions, AssemblyEmitterRejectsRegisterLeaSource) {
     const Operand dst = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
     const Operand src = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBX));
@@ -1213,6 +1234,26 @@ TEST(X86BackendRegressions, AssemblyEmitterRejectsXmmSetccDestination) {
 
     const CodegenResult result = emitRawAssembly(fn);
     EXPECT_NE(result.errors.find("SETcc requires GPR or memory destination"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, AssemblyEmitterAcceptsDestinationFirstSetcc) {
+    const Operand dst = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const MFunction fn =
+        rawFunction("dst_first_setcc", {MInstr::make(MOpcode::SETcc, {dst, makeImmOperand(0)})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("sete %al"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, AssemblyEmitterRejectsSetccWithoutCondition) {
+    const Operand dst = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+    const MFunction fn = rawFunction(
+        "bad_setcc_no_cond",
+        {MInstr::make(MOpcode::SETcc, {dst, makeLabelOperand(".L_bad_setcc_no_cond")})});
+
+    const CodegenResult result = emitRawAssembly(fn);
+    EXPECT_NE(result.errors.find("SETcc requires a condition code"), std::string::npos);
 }
 
 TEST(X86BackendRegressions, AssemblyEmitterRejectsXmmMovzxOperand) {
@@ -1660,6 +1701,37 @@ TEST(X86BackendRegressions, InvalidConditionCodeThrowsDiagnosticException) {
     std::ostringstream out;
 
     EXPECT_THROWS(emitter.emitFunction(out, fn, sysvTarget()), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, SetccOperandRolesFollowDestinationKind) {
+    const Operand rax = makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(PhysReg::RAX));
+
+    const MInstr canonical = MInstr::make(MOpcode::SETcc, {makeImmOperand(0), rax});
+    const auto [canonicalCondUse, canonicalCondDef] = operandRoles(canonical, 0);
+    const auto [canonicalDstUse, canonicalDstDef] = operandRoles(canonical, 1);
+    EXPECT_FALSE(canonicalCondUse);
+    EXPECT_FALSE(canonicalCondDef);
+    EXPECT_FALSE(canonicalDstUse);
+    EXPECT_TRUE(canonicalDstDef);
+
+    const MInstr destinationFirst = MInstr::make(MOpcode::SETcc, {rax, makeImmOperand(0)});
+    const auto [dstUse, dstDef] = operandRoles(destinationFirst, 0);
+    const auto [condUse, condDef] = operandRoles(destinationFirst, 1);
+    EXPECT_FALSE(dstUse);
+    EXPECT_TRUE(dstDef);
+    EXPECT_FALSE(condUse);
+    EXPECT_FALSE(condDef);
+}
+
+TEST(X86BackendRegressions, DivisionPseudosRemainObservableUntilLowered) {
+    EXPECT_TRUE(hasObservableSideEffects(MOpcode::DIVS64rr));
+    EXPECT_TRUE(hasObservableSideEffects(MOpcode::REMS64rr));
+    EXPECT_TRUE(hasObservableSideEffects(MOpcode::DIVS64Chk0rr));
+    EXPECT_TRUE(hasObservableSideEffects(MOpcode::REMS64Chk0rr));
+    EXPECT_TRUE(hasObservableSideEffects(MOpcode::DIVU64rr));
+    EXPECT_TRUE(hasObservableSideEffects(MOpcode::REMU64rr));
+    EXPECT_TRUE(hasObservableSideEffects(MOpcode::DIVU64Chk0rr));
+    EXPECT_TRUE(hasObservableSideEffects(MOpcode::REMU64Chk0rr));
 }
 
 TEST(X86BackendRegressions, Win64XmmCalleeSaveUnwindOffsetsAre16ByteAligned) {
@@ -3531,6 +3603,95 @@ TEST(X86BackendRegressions, BranchChainEliminationRetargetsJccBeforeFinalJump) {
     EXPECT_EQ(stats.branchChainsEliminated, 1u);
 }
 
+TEST(X86BackendRegressions, BranchChainEliminationRetargetsLabelFirstJcc) {
+    MFunction fn{};
+    fn.name = "label_first_jcc_branch_chain";
+
+    MBasicBlock entry{};
+    entry.label = ".L_label_first_jcc_branch_chain_entry";
+    entry.instructions = {
+        MInstr::make(MOpcode::JCC, {makeLabelOperand(".L_chain"), makeImmOperand(1)}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_exit")})};
+
+    MBasicBlock chain{};
+    chain.label = ".L_chain";
+    chain.instructions = {MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_target")})};
+
+    MBasicBlock target{};
+    target.label = ".L_target";
+    target.instructions = {MInstr::make(MOpcode::RET)};
+
+    MBasicBlock exit{};
+    exit.label = ".L_exit";
+    exit.instructions = {MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, chain, target, exit};
+
+    peephole::PeepholeStats stats{};
+    peephole::eliminateBranchChains(fn, stats);
+
+    ASSERT_EQ(fn.blocks.front().instructions.front().opcode, MOpcode::JCC);
+    const auto *targetLabel =
+        std::get_if<OpLabel>(&fn.blocks.front().instructions.front().operands[0]);
+    ASSERT_TRUE(targetLabel != nullptr);
+    EXPECT_EQ(targetLabel->name, ".L_target");
+    EXPECT_EQ(stats.branchChainsEliminated, 1u);
+}
+
+TEST(X86BackendRegressions, BranchChainEliminationSkipsMalformedSingleJumpBlock) {
+    MFunction fn{};
+    fn.name = "malformed_single_jump_chain";
+
+    MBasicBlock entry{};
+    entry.label = ".L_malformed_single_jump_chain_entry";
+    entry.instructions = {MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_chain")})};
+
+    MBasicBlock chain{};
+    chain.label = ".L_chain";
+    chain.instructions = {MInstr::make(MOpcode::JMP)};
+
+    fn.blocks = {entry, chain};
+
+    peephole::PeepholeStats stats{};
+    EXPECT_NO_THROW(peephole::eliminateBranchChains(fn, stats));
+    EXPECT_EQ(stats.branchChainsEliminated, 0u);
+}
+
+TEST(X86BackendRegressions, BranchInversionHandlesLabelFirstJcc) {
+    MFunction fn{};
+    fn.name = "label_first_jcc_inversion";
+
+    MBasicBlock entry{};
+    entry.label = ".L_label_first_jcc_inversion_entry";
+    entry.instructions = {
+        MInstr::make(MOpcode::JCC, {makeLabelOperand(".L_next"), makeImmOperand(1)}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_exit")})};
+
+    MBasicBlock next{};
+    next.label = ".L_next";
+    next.instructions = {MInstr::make(MOpcode::RET)};
+
+    MBasicBlock exit{};
+    exit.label = ".L_exit";
+    exit.instructions = {MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, next, exit};
+
+    peephole::PeepholeStats stats{};
+    peephole::invertConditionalBranches(fn, stats);
+
+    ASSERT_EQ(fn.blocks.front().instructions.size(), 1u);
+    const MInstr &branch = fn.blocks.front().instructions.front();
+    ASSERT_EQ(branch.opcode, MOpcode::JCC);
+    const auto *targetLabel = std::get_if<OpLabel>(&branch.operands[0]);
+    ASSERT_TRUE(targetLabel != nullptr);
+    EXPECT_EQ(targetLabel->name, ".L_exit");
+    const auto *cond = std::get_if<OpImm>(&branch.operands[1]);
+    ASSERT_TRUE(cond != nullptr);
+    EXPECT_EQ(cond->val, 0);
+    EXPECT_EQ(stats.branchesInverted, 1u);
+}
+
 TEST(X86BackendRegressions, ColdBlockMovementPreservesImplicitFallthrough) {
     MFunction fn{};
     fn.name = "cold_fallthrough";
@@ -3556,6 +3717,45 @@ TEST(X86BackendRegressions, ColdBlockMovementPreservesImplicitFallthrough) {
     ASSERT_EQ(fn.blocks.size(), 3u);
     EXPECT_EQ(fn.blocks[1].label, ".L_cold_fallthrough_trap");
     EXPECT_EQ(stats.coldBlocksMoved, 0u);
+}
+
+TEST(X86BackendRegressions, TraceLayoutSkipsImplicitFallthroughBlocks) {
+    MFunction fn{};
+    fn.name = "trace_implicit_fallthrough";
+
+    MBasicBlock entry{};
+    entry.label = ".L_trace_implicit_fallthrough_entry";
+    entry.instructions = {MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_pred")})};
+
+    MBasicBlock other{};
+    other.label = ".L_other";
+    other.instructions = {MInstr::make(MOpcode::RET)};
+
+    MBasicBlock other2{};
+    other2.label = ".L_other2";
+    other2.instructions = {MInstr::make(MOpcode::RET)};
+
+    MBasicBlock pred{};
+    pred.label = ".L_pred";
+    pred.instructions = {
+        MInstr::make(MOpcode::MOVri, {makeVRegOperand(RegClass::GPR, 1), makeImmOperand(7)})};
+
+    MBasicBlock succ{};
+    succ.label = ".L_succ";
+    succ.instructions = {MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, other, other2, pred, succ};
+
+    peephole::PeepholeStats stats{};
+    peephole::traceBlockLayout(fn, stats);
+
+    ASSERT_EQ(fn.blocks.size(), 5u);
+    EXPECT_EQ(fn.blocks[0].label, ".L_trace_implicit_fallthrough_entry");
+    EXPECT_EQ(fn.blocks[1].label, ".L_other");
+    EXPECT_EQ(fn.blocks[2].label, ".L_other2");
+    EXPECT_EQ(fn.blocks[3].label, ".L_pred");
+    EXPECT_EQ(fn.blocks[4].label, ".L_succ");
+    EXPECT_EQ(stats.blocksReordered, 0u);
 }
 
 TEST(X86BackendRegressions, FrameStoreForwardingHonorsCrossClassAliases) {

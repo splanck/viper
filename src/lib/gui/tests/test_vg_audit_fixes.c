@@ -1708,15 +1708,11 @@ TEST(findreplacebar_regex_search_finds_variable_length_matches) {
     vg_findreplacebar_set_options(bar, &options);
     vg_findreplacebar_find(bar, "[0-9]+");
 
-#ifndef _WIN32
     ASSERT_EQ(bar->match_count, (size_t)3);
     ASSERT_EQ(bar->matches[0].start_col, (uint32_t)6);
     ASSERT_EQ(bar->matches[0].end_col, (uint32_t)9);
     ASSERT_EQ(bar->matches[1].start_col, (uint32_t)1);
     ASSERT_EQ(bar->matches[2].start_col, (uint32_t)4);
-#else
-    ASSERT_EQ(bar->match_count, (size_t)0);
-#endif
 
     vg_widget_destroy(&bar->base);
     vg_widget_destroy(&ed->base);

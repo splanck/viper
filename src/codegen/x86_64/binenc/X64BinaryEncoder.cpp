@@ -186,6 +186,72 @@ static const OpLabel &checkedSingleLabelOperand(const MInstr &instr, const char 
     return label;
 }
 
+struct CheckedJccOperands {
+    int condition{0};
+    const OpLabel *label{nullptr};
+};
+
+static CheckedJccOperands checkedJccOperands(const std::vector<Operand> &ops,
+                                             const char *context) {
+    const OpImm *condition = nullptr;
+    const OpLabel *label = nullptr;
+    for (const auto &operand : ops) {
+        if (const auto *imm = std::get_if<OpImm>(&operand)) {
+            if (condition)
+                throw std::runtime_error(std::string(context) +
+                                         " requires exactly one condition code");
+            condition = imm;
+            continue;
+        }
+        if (const auto *target = std::get_if<OpLabel>(&operand)) {
+            if (label)
+                throw std::runtime_error(std::string(context) +
+                                         " requires exactly one label target");
+            label = target;
+        }
+    }
+
+    if (!condition)
+        throw std::runtime_error(std::string(context) + " requires a condition code");
+    if (!label)
+        throw std::runtime_error(std::string(context) + " requires a label target");
+    if (label->name.empty())
+        throw std::runtime_error(std::string(context) + " label target must not be empty");
+    return CheckedJccOperands{static_cast<int>(condition->val), label};
+}
+
+struct CheckedSetccOperands {
+    int condition{0};
+    const Operand *destination{nullptr};
+};
+
+static CheckedSetccOperands checkedSetccOperands(const std::vector<Operand> &ops,
+                                                 const char *context) {
+    const OpImm *condition = nullptr;
+    const Operand *destination = nullptr;
+    for (const auto &operand : ops) {
+        if (const auto *imm = std::get_if<OpImm>(&operand)) {
+            if (condition)
+                throw std::runtime_error(std::string(context) +
+                                         " requires exactly one condition code");
+            condition = imm;
+            continue;
+        }
+        if (std::holds_alternative<OpReg>(operand) || std::holds_alternative<OpMem>(operand)) {
+            if (destination)
+                throw std::runtime_error(std::string(context) +
+                                         " requires exactly one destination");
+            destination = &operand;
+        }
+    }
+
+    if (!condition)
+        throw std::runtime_error(std::string(context) + " requires a condition code");
+    if (!destination)
+        throw std::runtime_error(std::string(context) + " requires a GPR or memory destination");
+    return CheckedSetccOperands{static_cast<int>(condition->val), destination};
+}
+
 /// @brief Test whether @p op is an internal-branch opcode (`JMP` or `JCC`).
 /// @param op MIR opcode to classify.
 /// @return True when @p op is an intra-function branch that may need patching.
@@ -889,9 +955,20 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         // --- SETcc ---
         case MOpcode::SETcc: {
             requireOps(2);
-            int cc = static_cast<int>(immFromOperand(ops[0]));
-            PhysReg dst = gprFromOperand(ops[1], "SETcc destination");
-            encodeSETcc(cc, dst, text);
+            const auto setcc = checkedSetccOperands(ops, "x86-64 binary encoder: SETcc");
+            if (const auto *dstReg = std::get_if<OpReg>(setcc.destination)) {
+                encodeSETcc(setcc.condition, toPhys(*dstReg), text);
+            } else if (const auto *dstMem = std::get_if<OpMem>(setcc.destination)) {
+                const uint8_t cc = x86CC(setcc.condition);
+                emitWithMemOperand(/*reg3=*/0,
+                                   /*regRex=*/0,
+                                   *dstMem,
+                                   text,
+                                   /*rexW=*/false,
+                                   /*mandatoryPrefix=*/0,
+                                   /*opByte1=*/0x0F,
+                                   /*opByte2=*/static_cast<uint8_t>(0x90 + cc));
+            }
             return;
         }
 
@@ -974,10 +1051,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
 
         case MOpcode::JCC: {
             requireOps(2);
-            int cc = static_cast<int>(immFromOperand(ops[0]));
-            if (!std::holds_alternative<OpLabel>(ops[1]))
-                throw std::runtime_error("x86-64 binary encoder: JCC requires a label target");
-            encodeBranchLabel(op, labelFromOperand(ops[1]).name, cc, text);
+            const auto jcc = checkedJccOperands(ops, "x86-64 binary encoder: JCC");
+            encodeBranchLabel(op, jcc.label->name, jcc.condition, text);
             return;
         }
 
