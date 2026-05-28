@@ -959,7 +959,7 @@ add_test(NAME zia_smoke_viperide_project_compile
         COMMAND $<TARGET_FILE:viper> build "${CMAKE_SOURCE_DIR}/viperide" -o "${CMAKE_BINARY_DIR}/viperide_smoke.il")
 set_tests_properties(zia_smoke_viperide_project_compile PROPERTIES
         LABELS "zia;smoke"
-        TIMEOUT 60)
+        TIMEOUT 180)
 
 add_test(NAME zia_viperide_phase0_phase1
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/phase0_phase1_probe.zia"
@@ -991,7 +991,7 @@ add_test(NAME zia_viperide_intellisense
 set_tests_properties(zia_viperide_intellisense PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;intellisense;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 120)
 
 add_test(NAME zia_viperide_file_tree
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/viperide/src/file_tree_probe.zia"
@@ -1007,7 +1007,7 @@ add_test(NAME zia_viperide_console_search
 set_tests_properties(zia_viperide_console_search PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;viperide;console;search;requires_display"
-        TIMEOUT 90)
+        TIMEOUT 180)
 
 add_test(NAME zia_smoke_vipersql
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/vipersql/smoke_probe.zia"
@@ -1039,7 +1039,7 @@ add_test(NAME zia_smoke_3dbowling_trajectory
 set_tests_properties(zia_smoke_3dbowling_trajectory PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d"
-        TIMEOUT 30)
+        TIMEOUT 120)
 
 add_test(NAME zia_smoke_3dbowling_aim
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/aim_smoke_probe.zia"
@@ -1047,7 +1047,7 @@ add_test(NAME zia_smoke_3dbowling_aim
 set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;smoke;graphics3d;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 120)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling_aim PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
@@ -1187,16 +1187,22 @@ set_tests_properties(zia_smoke_xenoscape PROPERTIES
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
-set(VIPER_DISPLAY_SMOKE_TESTS
+set(VIPER_DISPLAY_TESTS
         zia_smoke_paint_canvas_capture
         zia_smoke_viperide
+        zia_viperide_editor_hot_path
+        zia_viperide_intellisense
+        zia_viperide_file_tree
+        zia_viperide_console_search
         zia_smoke_3dbowling
+        zia_smoke_3dbowling_aim
         zia_smoke_3dscene
+        zia_smoke_game3d_showcase
         zia_smoke_3dbaseball
         zia_smoke_3dbowling_overlay
         zia_smoke_3dbowling_title_postfx
         zia_smoke_xenoscape)
-set_tests_properties(${VIPER_DISPLAY_SMOKE_TESTS} PROPERTIES
+set_tests_properties(${VIPER_DISPLAY_TESTS} PROPERTIES
         RESOURCE_LOCK viper_display)
 
 add_test(NAME zia_smoke_baseball

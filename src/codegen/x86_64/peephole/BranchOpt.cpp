@@ -51,7 +51,7 @@ std::optional<std::size_t> lookupUnplacedTarget(
             continue;
         auto target = nameToIdx.find(lbl->name);
         if (target == nameToIdx.end() || placed[target->second])
-            return std::nullopt;
+            continue;
         return target->second;
     }
     return std::nullopt;
@@ -70,26 +70,62 @@ bool fallsThroughToNext(const MBasicBlock &block) {
     return last != MOpcode::JMP && last != MOpcode::RET && last != MOpcode::UD2;
 }
 
+OpLabel *singleLabelOperand(MInstr &instr) noexcept {
+    OpLabel *label = nullptr;
+    for (auto &operand : instr.operands) {
+        auto *candidate = std::get_if<OpLabel>(&operand);
+        if (!candidate)
+            continue;
+        if (label)
+            return nullptr;
+        label = candidate;
+    }
+    return label;
+}
+
+const OpLabel *singleLabelOperand(const MInstr &instr) noexcept {
+    const OpLabel *label = nullptr;
+    for (const auto &operand : instr.operands) {
+        const auto *candidate = std::get_if<OpLabel>(&operand);
+        if (!candidate)
+            continue;
+        if (label)
+            return nullptr;
+        label = candidate;
+    }
+    return label;
+}
+
+OpImm *singleConditionOperand(MInstr &instr) noexcept {
+    OpImm *condition = nullptr;
+    for (auto &operand : instr.operands) {
+        auto *candidate = std::get_if<OpImm>(&operand);
+        if (!candidate)
+            continue;
+        if (condition)
+            return nullptr;
+        condition = candidate;
+    }
+    return condition;
+}
+
 /// @brief Apply forwarding to a JMP/JCC's target label.
-/// @details For JMP the label is at operand 0; for JCC the condition code is
-///          at 0 and the label at 1. The function follows the @p forwarding
-///          table once (single hop), updating the operand in place when a
-///          new target is recorded for the current label.
+/// @details The function follows the @p forwarding table once (single hop),
+///          updating the sole label operand in place when a new target is
+///          recorded for the current label. Scanning by operand kind keeps
+///          hand-built MIR that uses `{label, cc}` for JCC from becoming a
+///          silent peephole miss.
 /// @param instr Branch instruction to rewrite.
 /// @param forwarding Map of @c old_label -> @c new_label.
 /// @return True when the operand was rewritten.
 bool retargetBranchLabel(MInstr &instr,
                          const std::unordered_map<std::string, std::string> &forwarding) {
-    OpLabel *label = nullptr;
-    if (instr.opcode == MOpcode::JMP && !instr.operands.empty()) {
-        label = std::get_if<OpLabel>(&instr.operands[0]);
-    } else if (instr.opcode == MOpcode::JCC && instr.operands.size() >= 2) {
-        label = std::get_if<OpLabel>(&instr.operands[1]);
-    }
-
-    if (!label) {
+    if (instr.opcode != MOpcode::JMP && instr.opcode != MOpcode::JCC)
         return false;
-    }
+
+    OpLabel *label = singleLabelOperand(instr);
+    if (!label)
+        return false;
 
     const auto it = forwarding.find(label->name);
     if (it == forwarding.end() || it->second == label->name) {
@@ -115,6 +151,15 @@ void traceBlockLayout(MFunction &fn, PeepholeStats &stats) {
         return;
 
     const auto n = fn.blocks.size();
+
+    // Reordering a block with an implicit fall-through successor changes its
+    // control flow unless the successor stays physically adjacent. Keep trace
+    // layout to fully explicit CFG shapes; moveColdBlocks has its own local
+    // protection for fall-through pairs.
+    for (std::size_t bi = 0; bi + 1 < n; ++bi) {
+        if (fallsThroughToNext(fn.blocks[bi]))
+            return;
+    }
 
     // Build label -> index map.
     std::unordered_map<std::string, std::size_t> nameToIdx;
@@ -278,7 +323,7 @@ void eliminateBranchChains(MFunction &fn, PeepholeStats &stats) {
     std::unordered_map<std::string, std::string> forwarding;
     for (const auto &block : fn.blocks) {
         if (block.instructions.size() == 1 && block.instructions[0].opcode == MOpcode::JMP) {
-            const auto *lbl = std::get_if<OpLabel>(&block.instructions[0].operands[0]);
+            const auto *lbl = singleLabelOperand(block.instructions[0]);
             if (lbl)
                 forwarding[block.label] = lbl->name;
         }
@@ -328,22 +373,23 @@ void invertConditionalBranches(MFunction &fn, PeepholeStats &stats) {
         if (secondToLast.opcode != MOpcode::JCC || last.opcode != MOpcode::JMP)
             continue;
 
-        // JCC operands: {OpImm(cc), OpLabel(target)}
+        // JCC operands are usually {OpImm(cc), OpLabel(target)}, but older
+        // hand-built tests used {OpLabel(target), OpImm(cc)}.
         if (secondToLast.operands.size() < 2 || last.operands.size() < 1)
             continue;
 
         // Check: JCC target is the next block's label (i.e., it skips over the JMP).
-        const auto *jccLabel = std::get_if<OpLabel>(&secondToLast.operands[1]);
+        auto *jccLabel = singleLabelOperand(secondToLast);
         if (!jccLabel || jccLabel->name != nextBlock.label)
             continue;
 
         // Get the JMP target — this becomes the inverted JCC target.
-        const auto *jmpLabel = std::get_if<OpLabel>(&last.operands[0]);
+        const auto *jmpLabel = singleLabelOperand(last);
         if (!jmpLabel)
             continue;
 
         // Invert the condition code.
-        const auto *ccImm = std::get_if<OpImm>(&secondToLast.operands[0]);
+        auto *ccImm = singleConditionOperand(secondToLast);
         if (!ccImm)
             continue;
 
@@ -357,8 +403,8 @@ void invertConditionalBranches(MFunction &fn, PeepholeStats &stats) {
             continue;
 
         // Rewrite: JCC(invCC, jmpTarget)
-        secondToLast.operands[0] = OpImm{kInvertTable[cc]};
-        secondToLast.operands[1] = *jmpLabel;
+        ccImm->val = kInvertTable[cc];
+        *jccLabel = *jmpLabel;
         block.instructions.pop_back(); // Remove JMP.
         ++stats.branchesInverted;
     }
