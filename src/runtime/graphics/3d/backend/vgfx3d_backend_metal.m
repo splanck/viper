@@ -145,6 +145,7 @@
 @property(nonatomic) vgfx3d_postfx_chain_t gpuPostfxChain;
 @property(nonatomic) vgfx3d_metal_frame_history_t frameHistory;
 @property(nonatomic) int8_t postfxEncodedThisFrame;
+@property(nonatomic) int8_t postfxCompositedToDrawable;
 @end
 
 @implementation VGFXMetalContext
@@ -1453,6 +1454,7 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
 
     ctx.displayTexture = nil;
     ctx.postfxEncodedThisFrame = 0;
+    ctx.postfxCompositedToDrawable = 0;
 }
 
 static int metal_upload_rgba_to_bgra_texture(id<MTLTexture> tex,
@@ -1639,6 +1641,7 @@ static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted)
         ctx.cmdBuf = nil;
         ctx.frameBuffers = nil;
         ctx.drawable = nil;
+        ctx.postfxCompositedToDrawable = 0;
     }
 }
 
@@ -1667,6 +1670,7 @@ static void metal_detach_render_target(VGFXMetalContext *ctx, BOOL syncColor) {
     ctx.rttTarget = NULL;
     ctx.displayTexture = nil;
     ctx.postfxEncodedThisFrame = 0;
+    ctx.postfxCompositedToDrawable = 0;
 }
 
 static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTexture> texture) {
@@ -1679,7 +1683,9 @@ static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTe
     ctx.displayTexture = texture;
 }
 
-static BOOL metal_present_texture(VGFXMetalContext *ctx, id<MTLTexture> texture) {
+static BOOL metal_present_texture(VGFXMetalContext *ctx,
+                                  id<MTLTexture> texture,
+                                  BOOL schedulePresent) {
     NSUInteger copy_w;
     NSUInteger copy_h;
     id<CAMetalDrawable> drawable;
@@ -1720,7 +1726,8 @@ static BOOL metal_present_texture(VGFXMetalContext *ctx, id<MTLTexture> texture)
          destinationLevel:0
         destinationOrigin:MTLOriginMake(0, 0, 0)];
     [blit endEncoding];
-    [ctx.cmdBuf presentDrawable:drawable];
+    if (schedulePresent)
+        [ctx.cmdBuf presentDrawable:drawable];
     ctx.displayTexture = texture;
     return YES;
 }
@@ -2671,6 +2678,8 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
 
         ctx.currentTargetKind = vgfx3d_metal_choose_target_kind(
             ctx.rttActive ? 1 : 0, ctx.gpuPostfxEnabled, cam->load_existing_color);
+        if (!ctx.rttActive && cam->load_existing_color && ctx.postfxCompositedToDrawable)
+            ctx.currentTargetKind = VGFX3D_METAL_TARGET_SWAPCHAIN;
         is_overlay_pass = ctx.currentTargetKind == VGFX3D_METAL_TARGET_OVERLAY ? 1 : 0;
         history = ctx.frameHistory;
         load_existing_color = vgfx3d_metal_should_load_existing_color(
@@ -2712,6 +2721,7 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             ctx.drawable = nil;
             ctx.displayTexture = nil;
             ctx.postfxEncodedThisFrame = 0;
+            ctx.postfxCompositedToDrawable = 0;
             new_command_buffer = YES;
         } else if (!ctx.frameBuffers)
             ctx.frameBuffers = [NSMutableArray arrayWithCapacity:32];
@@ -3362,11 +3372,18 @@ static void metal_present(void *backend_ctx) {
             metal_commit_pending(ctx, NO);
             return;
         }
+        if (ctx.postfxCompositedToDrawable && ctx.cmdBuf && ctx.drawable) {
+            (void)metal_capture_current_drawable_to_display_texture(ctx);
+            [ctx.cmdBuf presentDrawable:ctx.drawable];
+            metal_commit_pending(ctx, NO);
+            ctx.postfxCompositedToDrawable = 0;
+            return;
+        }
 
         final_texture = metal_active_readback_texture(ctx);
         if (!final_texture)
             final_texture = ctx.offscreenColor;
-        if (metal_present_texture(ctx, final_texture))
+        if (metal_present_texture(ctx, final_texture, YES))
             metal_commit_pending(ctx, NO);
         else {
             metal_commit_pending(ctx, YES);
@@ -3466,6 +3483,7 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
         ctx.rttDepthTexture = entry.depthTexture;
         ctx.displayTexture = nil;
         ctx.postfxEncodedThisFrame = 0;
+        ctx.postfxCompositedToDrawable = 0;
         ctx.rttActive = YES;
     }
 }
@@ -3966,7 +3984,7 @@ static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *c
 
     if (!ctx || !ctx.cmdBuf || !ctx.drawable)
         return 0;
-    if (!ctx.displayTexture || ctx.displayTexture == ctx.postfxColorTexture ||
+    if (!ctx.displayTexture || ctx.displayTexture.pixelFormat != MTLPixelFormatBGRA8Unorm ||
         (int32_t)ctx.displayTexture.width != ctx.width ||
         (int32_t)ctx.displayTexture.height != ctx.height) {
         ctx.displayTexture = metal_new_color_texture(ctx,
@@ -4151,12 +4169,32 @@ static void metal_present_postfx(void *backend_ctx, const vgfx3d_postfx_chain_t 
             return;
         }
 
-        if (metal_present_texture(ctx, final_texture))
+        if (metal_present_texture(ctx, final_texture, YES)) {
             metal_commit_pending(ctx, NO);
-        else {
+            ctx.postfxCompositedToDrawable = 0;
+        } else {
             metal_commit_pending(ctx, YES);
             metal_present_texture_to_framebuffer(ctx, final_texture);
+            ctx.postfxCompositedToDrawable = 0;
         }
+    }
+}
+
+/// @brief Metal `apply_postfx` — composite post-FX to the drawable without committing.
+static void metal_apply_postfx(void *backend_ctx, const vgfx3d_postfx_chain_t *postfx) {
+    if (!backend_ctx || !postfx)
+        return;
+    @autoreleasepool {
+        VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
+        id<MTLTexture> final_texture;
+
+        if (!ctx)
+            return;
+        final_texture = metal_encode_postfx_if_needed(ctx, postfx);
+        if (!final_texture)
+            return;
+        if (metal_present_texture(ctx, final_texture, NO))
+            ctx.postfxCompositedToDrawable = 1;
     }
 }
 
@@ -4233,6 +4271,7 @@ static void metal_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
             return;
         ctx.gpuPostfxEnabled = desired_enabled;
         ctx.postfxEncodedThisFrame = 0;
+        ctx.postfxCompositedToDrawable = 0;
         ctx.displayTexture = nil;
         if (!ctx.gpuPostfxEnabled) {
             metal_reset_gpu_postfx_chain(ctx);
@@ -4301,6 +4340,7 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     .present = metal_present,
     .readback_rgba = metal_readback_rgba,
     .present_postfx = metal_present_postfx,
+    .apply_postfx = metal_apply_postfx,
     .set_gpu_postfx_enabled = metal_set_gpu_postfx_enabled,
     .set_gpu_postfx_snapshot = metal_set_gpu_postfx_snapshot,
     .show_gpu_layer = metal_show_gpu_layer,

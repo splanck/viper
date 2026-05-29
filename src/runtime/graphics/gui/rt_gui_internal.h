@@ -129,6 +129,9 @@ typedef struct {
     int shortcut_cap;
     int shortcuts_global_enabled;
     char *triggered_shortcut_id;
+    char **triggered_shortcut_ids;
+    int triggered_shortcut_count;
+    int triggered_shortcut_cap;
     rt_gui_file_drop_data_t file_drop;
     vg_commandpalette_t **command_palettes;
     int command_palette_count;
@@ -337,8 +340,9 @@ static inline int rt_gui_widget_type_accepts_runtime_children(vg_widget_type_t t
 
 /// @brief Resolve a parent handle only when it can own arbitrary runtime children.
 /// @details NULL is valid for detached widget creation and returns NULL. Non-NULL
-///          invalid handles and leaf widgets both return NULL; callers that need
-///          to distinguish explicit NULL should check their original argument.
+///          invalid handles return NULL. Only explicit runtime-container widget
+///          types are accepted; leaf widgets are rejected even if their vtable
+///          lacks a custom arrange callback.
 static inline vg_widget_t *rt_gui_widget_parent_container_from_handle(void *handle) {
     vg_widget_t *parent = rt_gui_widget_parent_from_handle(handle);
     if (!parent)
@@ -526,6 +530,15 @@ static inline int rt_string_contains_nul(rt_string str) {
     if (!bytes)
         return 0;
     return memchr(bytes, '\0', (size_t)len64) != NULL;
+}
+
+/// @brief Convert a runtime string to a C string only when it contains no embedded NUL.
+/// @details Use for identifiers, filesystem paths, filters, shortcuts, and other
+///          non-display values where silent C-string truncation would be incorrect.
+static inline char *rt_string_to_cstr_no_nul(rt_string str) {
+    if (rt_string_contains_nul(str))
+        return NULL;
+    return rt_string_to_cstr(str);
 }
 
 /// @brief Convert a runtime string to GUI-visible UTF-8 text.

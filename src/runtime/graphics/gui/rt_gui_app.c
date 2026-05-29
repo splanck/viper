@@ -27,8 +27,8 @@
 //
 // Ownership/Lifetime:
 //   - rt_gui_app_t is allocated via rt_obj_new_i64 (GC heap) and zeroed;
-//     rt_gui_app_destroy must be called explicitly to release the window and
-//     widget tree before GC reclaims the struct.
+//     rt_gui_app_destroy releases the window/widget tree and is also installed
+//     as a GC finalizer fallback for leaked app handles.
 //   - The root widget and all its children are owned by the vg widget tree;
 //     vg_widget_destroy(root) frees the entire subtree.
 //
@@ -56,6 +56,12 @@ static int s_registered_app_cap = 0;
 static const void **s_destroyed_app_handles = NULL;
 static int s_destroyed_app_count = 0;
 static int s_destroyed_app_cap = 0;
+
+#define RT_GUI_DESTROYED_APP_TOMBSTONE_LIMIT 1024
+
+extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+
+static void rt_gui_app_finalizer(void *app_ptr);
 
 /// @brief Return the index of `app` in `s_registered_apps`, or -1 if not found.
 /// @details Linear search over the live-app registry. The registry is small
@@ -118,16 +124,24 @@ static void rt_gui_forget_destroyed_app_handle(const void *handle) {
 }
 
 /// @brief Record `handle` in the destroyed-app tombstone list so future lookups reject it.
-/// @details The list grows dynamically with geometric capacity. Duplicate entries
-///          are skipped. A handle that wasn't found in the live registry should
-///          still be noted (e.g., if the GC freed it before unregister ran).
+/// @details The list is capped and drops the oldest tombstone when full. Duplicate
+///          entries are skipped. A handle that wasn't found in the live registry
+///          should still be noted (e.g., if the GC freed it before unregister ran).
 static void rt_gui_note_destroyed_app_handle(const void *handle) {
     if (!handle || rt_gui_destroyed_app_index(handle) >= 0)
         return;
+    if (s_destroyed_app_count >= RT_GUI_DESTROYED_APP_TOMBSTONE_LIMIT) {
+        memmove(&s_destroyed_app_handles[0],
+                &s_destroyed_app_handles[1],
+                (size_t)(s_destroyed_app_count - 1) * sizeof(*s_destroyed_app_handles));
+        s_destroyed_app_count--;
+    }
     if (s_destroyed_app_count >= s_destroyed_app_cap) {
         if (s_destroyed_app_cap > INT_MAX / 2)
             return;
         int new_cap = s_destroyed_app_cap ? s_destroyed_app_cap * 2 : 4;
+        if (new_cap > RT_GUI_DESTROYED_APP_TOMBSTONE_LIMIT)
+            new_cap = RT_GUI_DESTROYED_APP_TOMBSTONE_LIMIT;
         void *p =
             realloc(s_destroyed_app_handles, (size_t)new_cap * sizeof(*s_destroyed_app_handles));
         if (!p)
@@ -1301,6 +1315,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
         return NULL;
     memset(app, 0, sizeof(rt_gui_app_t));
     app->magic = RT_GUI_APP_MAGIC;
+    rt_obj_set_finalizer(app, rt_gui_app_finalizer);
 
     // Create window
     vgfx_window_params_t params = vgfx_window_params_default();
@@ -1360,6 +1375,14 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
 
     rt_gui_activate_app(app);
     return app;
+}
+
+/// @brief GC finalizer for GUI apps. Mirrors explicit Destroy so native windows
+///        and widget trees do not leak when user code drops the app handle.
+static void rt_gui_app_finalizer(void *app_ptr) {
+    rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
+    if (app && app->magic == RT_GUI_APP_MAGIC)
+        rt_gui_app_destroy(app_ptr);
 }
 
 /// @brief Lazily load the default font on first use.
@@ -1457,6 +1480,12 @@ void rt_gui_app_destroy(void *app_ptr) {
     app->shortcut_cap = 0;
     free(app->triggered_shortcut_id);
     app->triggered_shortcut_id = NULL;
+    for (int i = 0; i < app->triggered_shortcut_count; i++)
+        free(app->triggered_shortcut_ids[i]);
+    free(app->triggered_shortcut_ids);
+    app->triggered_shortcut_ids = NULL;
+    app->triggered_shortcut_count = 0;
+    app->triggered_shortcut_cap = 0;
 
     if (s_current_app == app || s_active_app == app) {
         rt_gui_macos_menu_app_destroy(app);

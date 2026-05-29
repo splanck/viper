@@ -49,6 +49,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define CANVAS3D_MAX_INSTANCES 1048576
 #define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
 #define CANVAS3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 #define CANVAS3D_SYNTHETIC_KEY_QUEUE_MAX 64
@@ -267,6 +268,16 @@ static void canvas3d_release_synthetic_input(rt_canvas3d *c) {
 /// post-processing).
 static int canvas3d_backend_uses_gpu_postfx(const rt_canvas3d *c) {
     return c && c->backend && c->backend->present_postfx && c->render_target == NULL;
+}
+
+/// @brief True when GPU post-FX can be split from final presentation.
+///
+/// Split-capable backends composite the post-FX scene first, then Canvas3D
+/// replays final-overlay commands over that composited target before calling
+/// the normal present hook.
+static int canvas3d_backend_splits_gpu_postfx_present(const rt_canvas3d *c) {
+    return c && c->backend && c->backend->apply_postfx && c->backend->present &&
+           c->render_target == NULL;
 }
 
 /// @brief True when the canvas's RTT is owned by a hardware backend.
@@ -1351,6 +1362,21 @@ static int canvas3d_track_temp_object(rt_canvas3d *c, void *obj) {
     return 1;
 }
 
+static void canvas3d_release_tracked_temp_object(rt_canvas3d *c, void *obj) {
+    if (!c || !obj)
+        return;
+    for (int32_t i = 0; i < c->temp_obj_count; ++i) {
+        if (c->temp_objects[i] == obj) {
+            for (int32_t j = i; j < c->temp_obj_count - 1; ++j)
+                c->temp_objects[j] = c->temp_objects[j + 1];
+            c->temp_objects[--c->temp_obj_count] = NULL;
+            if (rt_obj_release_check0(obj))
+                rt_obj_free(obj);
+            return;
+        }
+    }
+}
+
 /// @brief Copy mesh vertex+index arrays into canvas-owned temp buffers.
 /// @details Used when the mesh's owning heap object may be freed before the GPU
 ///          consumes the draw command — the snapshot lives on the canvas's temp
@@ -1463,10 +1489,6 @@ static int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
 static int canvas3d_should_snapshot_geometry(const rt_mesh3d *mesh, void *mesh_obj) {
     if (!mesh || !mesh_obj)
         return 0;
-    if (mesh->bone_palette || mesh->prev_bone_palette || mesh->morph_deltas ||
-        mesh->morph_normal_deltas || mesh->morph_weights || mesh->prev_morph_weights) {
-        return 0;
-    }
     if (rt_heap_is_payload(mesh_obj))
         return 1;
     return 0;
@@ -3511,6 +3533,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     const void *pending_splat_layers[4] = {NULL, NULL, NULL, NULL};
     float pending_splat_layer_scales[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     float validated_model_matrix[16];
+    int mesh_obj_tracked = 0;
     if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
         mesh = (rt_mesh3d *)mesh_obj;
     if (!c)
@@ -3550,10 +3573,16 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     int needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
 
-    if (rt_heap_is_payload(mesh_obj) && !canvas3d_track_temp_object(c, mesh_obj))
+    if (rt_heap_is_payload(mesh_obj)) {
+        if (!canvas3d_track_temp_object(c, mesh_obj))
+            return;
+        mesh_obj_tracked = 1;
+    }
+    if (!canvas3d_track_temp_object(c, material_obj)) {
+        if (mesh_obj_tracked)
+            canvas3d_release_tracked_temp_object(c, mesh_obj);
         return;
-    if (!canvas3d_track_temp_object(c, material_obj))
-        return;
+    }
 
     deferred_draw_t queued;
     deferred_draw_t *dd = &queued;
@@ -3567,8 +3596,11 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     if (needs_generated_tangents) {
         if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
             return;
-        if (!canvas3d_generate_snapshot_tangents(mesh, queued_vertices, queued_indices))
+        if (!canvas3d_generate_snapshot_tangents(mesh, queued_vertices, queued_indices)) {
+            canvas3d_release_tracked_temp_buffer(c, queued_vertices);
+            canvas3d_release_tracked_temp_buffer(c, queued_indices);
             return;
+        }
     } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
                !canvas3d_snapshot_mesh_geometry_cached(c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
         return;
@@ -3683,9 +3715,14 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     rt_mesh3d *mesh;
     rt_material3d *mat;
     vgfx3d_draw_cmd_t base_cmd;
+    int mesh_obj_tracked = 0;
 
     if (!instance_matrices || instance_count <= 0)
         return;
+    if (instance_count > CANVAS3D_MAX_INSTANCES) {
+        rt_trap("Canvas3D.DrawMeshInstanced: instance count exceeds limit");
+        return;
+    }
     c = rt_canvas3d_checked_or_stack(canvas_obj);
     mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
     if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
@@ -3735,18 +3772,27 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
         return;
     }
-    if (rt_heap_is_payload(mesh_obj) && !canvas3d_track_temp_object(c, mesh_obj))
+    if (rt_heap_is_payload(mesh_obj)) {
+        if (!canvas3d_track_temp_object(c, mesh_obj))
+            return;
+        mesh_obj_tracked = 1;
+    }
+    if (!canvas3d_track_temp_object(c, material_obj)) {
+        if (mesh_obj_tracked)
+            canvas3d_release_tracked_temp_object(c, mesh_obj);
         return;
-    if (!canvas3d_track_temp_object(c, material_obj))
-        return;
+    }
 
     vgfx3d_vertex_t *queued_vertices = mesh->vertices;
     uint32_t *queued_indices = mesh->indices;
     if (needs_generated_tangents) {
         if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
             return;
-        if (!canvas3d_generate_snapshot_tangents(mesh, queued_vertices, queued_indices))
+        if (!canvas3d_generate_snapshot_tangents(mesh, queued_vertices, queued_indices)) {
+            canvas3d_release_tracked_temp_buffer(c, queued_vertices);
+            canvas3d_release_tracked_temp_buffer(c, queued_indices);
             return;
+        }
     } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
                !canvas3d_snapshot_mesh_geometry_cached(c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
         return;
@@ -4172,8 +4218,14 @@ void rt_canvas3d_finalize_frame(void *obj) {
 
     if (canvas3d_backend_uses_gpu_postfx(c)) {
         if (c->frame_gpu_postfx_enabled) {
-            canvas3d_replay_final_overlay(c);
-            c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_chain);
+            if (canvas3d_backend_splits_gpu_postfx_present(c)) {
+                c->backend->apply_postfx(c->backend_ctx, &c->frame_postfx_chain);
+                canvas3d_replay_final_overlay(c);
+                c->backend->present(c->backend_ctx);
+            } else {
+                canvas3d_replay_final_overlay(c);
+                c->backend->present_postfx(c->backend_ctx, &c->frame_postfx_chain);
+            }
             c->frame_presented_by_finalize = 1;
             c->frame_finalized = 1;
             return;

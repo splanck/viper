@@ -471,11 +471,32 @@ static void test_world_add_remove() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     EXPECT_TRUE(rt_world3d_try_add(w, b) != 0, "TryAdd returns true for a valid body");
     EXPECT_TRUE(rt_world3d_body_count(w) == 1, "Body count = 1 after add");
+    EXPECT_TRUE(rt_world3d_contains_body(w, b) != 0, "World contains added body");
     EXPECT_TRUE(rt_world3d_try_add(w, b) != 0, "TryAdd returns true for an existing body");
     EXPECT_TRUE(rt_world3d_body_count(w) == 1, "TryAdd keeps duplicate body count stable");
     EXPECT_TRUE(rt_world3d_try_add(w, w) == 0, "TryAdd returns false for invalid body handles");
     rt_world3d_remove(w, b);
     EXPECT_TRUE(rt_world3d_body_count(w) == 0, "Body count = 0 after remove");
+    EXPECT_TRUE(rt_world3d_contains_body(w, b) == 0, "World no longer contains removed body");
+}
+
+static void test_world_remove_purges_contacts_for_body() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 0.5, 0.0, 0.0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_event_count(world) == 1,
+                "World records contact before removal");
+
+    rt_world3d_remove(world, b);
+    EXPECT_TRUE(rt_world3d_get_collision_event_count(world) == 0,
+                "World removal purges contacts mentioning the removed body");
+    EXPECT_TRUE(rt_world3d_get_enter_event_count(world) == 0,
+                "World removal purges enter events mentioning the removed body");
 }
 
 static void test_world_rejects_duplicate_body_adds() {
@@ -1041,6 +1062,11 @@ static void test_collision_event_bodies() {
 
     double depth = rt_world3d_get_collision_depth(world, 0);
     EXPECT_TRUE(depth > 0, "collision event: depth > 0");
+
+    void *event0 = rt_world3d_get_collision_event(world, 0);
+    void *event1 = rt_world3d_get_collision_event(world, 0);
+    EXPECT_TRUE(event0 != nullptr && event0 == event1,
+                "collision event objects are cached per frame");
 }
 
 static void test_world_raycast_returns_nearest_hit() {
@@ -1170,6 +1196,23 @@ static void test_world_overlap_queries_reject_nonfinite_inputs() {
                 "OverlapSphere rejects non-finite center");
     EXPECT_TRUE(rt_world3d_overlap_aabb(world, minv, bad_maxv, 1) == nullptr,
                 "OverlapAabb rejects non-finite bounds");
+}
+
+static void test_world_query_broadphase_cache_invalidates_after_body_move() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    void *center = rt_vec3_new(0.0, 0.0, 0.0);
+    rt_body3d_set_position(body, 0.0, 0.0, 0.0);
+    rt_world3d_add(world, body);
+
+    void *hits = rt_world3d_overlap_sphere(world, center, 0.25, -1);
+    EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 1,
+                "query broadphase initially sees the body");
+
+    rt_body3d_set_position(body, 10.0, 0.0, 0.0);
+    hits = rt_world3d_overlap_sphere(world, center, 0.25, -1);
+    EXPECT_TRUE(hits == nullptr || rt_physics_hit_list3d_get_count(hits) == 0,
+                "query broadphase cache invalidates after body movement");
 }
 
 static void test_collision_events_enter_stay_exit() {
@@ -1569,6 +1612,7 @@ int main() {
     /* World */
     test_world_create();
     test_world_add_remove();
+    test_world_remove_purges_contacts_for_body();
     test_world_rejects_duplicate_body_adds();
     test_world_body_storage_grows_past_initial_capacity();
     test_world_contact_storage_grows_past_initial_capacity();
@@ -1627,6 +1671,7 @@ int main() {
     test_world_sweep_sphere_reports_started_penetrating();
     test_world_overlap_queries_honor_mask();
     test_world_overlap_queries_reject_nonfinite_inputs();
+    test_world_query_broadphase_cache_invalidates_after_body_move();
     test_collision_events_enter_stay_exit();
     test_query_mask_zero_matches_no_layers();
     test_kinematic_static_trigger_contacts_are_reported();

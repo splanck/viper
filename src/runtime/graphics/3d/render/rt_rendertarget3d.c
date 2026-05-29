@@ -263,8 +263,11 @@ void rt_canvas3d_set_render_target(void *canvas, void *target) {
         (rt_rendertarget3d *)rt_g3d_checked_or_null(target, RT_G3D_RENDERTARGET3D_CLASS_ID);
     if (!rtd || !rtd->target)
         return;
-    if (!vgfx3d_rendertarget_ensure_color(rtd->target) ||
-        !vgfx3d_rendertarget_ensure_depth(rtd->target)) {
+    if (c->backend == &vgfx3d_software_backend && !vgfx3d_rendertarget_ensure_color(rtd->target)) {
+        rt_trap("Canvas3D.SetRenderTarget: buffer allocation failed");
+        return;
+    }
+    if (!vgfx3d_rendertarget_ensure_depth(rtd->target)) {
         rt_trap("Canvas3D.SetRenderTarget: buffer allocation failed");
         return;
     }

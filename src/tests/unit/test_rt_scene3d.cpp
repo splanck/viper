@@ -147,6 +147,31 @@ static void test_add_remove_child() {
     EXPECT_TRUE(rt_scene_node3d_get_parent(node) == nullptr, "Removed node has no parent");
 }
 
+static void test_try_add_reports_parenting_success() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+
+    EXPECT_TRUE(rt_scene3d_try_add(scene, parent) != 0, "Scene3D.TryAdd succeeds for a node");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(parent) == rt_scene3d_get_root(scene),
+                "Scene3D.TryAdd parents node under root");
+    EXPECT_TRUE(rt_scene3d_try_add(scene, scene) == 0,
+                "Scene3D.TryAdd rejects non-node handles");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 2,
+                "Scene3D.TryAdd failure leaves node count unchanged");
+
+    EXPECT_TRUE(rt_scene_node3d_try_add_child(parent, child) != 0,
+                "SceneNode3D.TryAddChild succeeds for valid child");
+    EXPECT_TRUE(rt_scene_node3d_try_add_child(parent, child) != 0,
+                "SceneNode3D.TryAddChild reports success for existing child");
+    EXPECT_TRUE(rt_scene_node3d_child_count(parent) == 1,
+                "SceneNode3D.TryAddChild keeps duplicate child count stable");
+    EXPECT_TRUE(rt_scene_node3d_try_add_child(child, parent) == 0,
+                "SceneNode3D.TryAddChild rejects cycles");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(parent) == rt_scene3d_get_root(scene),
+                "Cycle rejection leaves existing parent intact");
+}
+
 static void test_scene_remove_ignores_nodes_from_other_scenes() {
     void *scene_a = rt_scene3d_new();
     void *scene_b = rt_scene3d_new();
@@ -506,6 +531,12 @@ static void test_node_sanitizes_nonfinite_transform_and_lod() {
                 0.0,
                 0.001,
                 "SceneNode non-finite LOD distance clamps to zero");
+    void *replacement = rt_mesh3d_new_box(0.5, 0.5, 0.5);
+    rt_scene_node3d_add_lod(node, NAN, replacement);
+    EXPECT_TRUE(rt_scene_node3d_get_lod_count(node) == 1,
+                "SceneNode duplicate LOD thresholds replace the existing entry");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(node, 0) == replacement,
+                "SceneNode duplicate LOD replacement keeps the new mesh");
 }
 
 static void test_node_body_sync_preserves_negative_scale_handedness() {
@@ -1570,6 +1601,7 @@ static void test_scene_roundtrip_preserves_high_precision_transform() {
 int main() {
     test_create_scene_and_node();
     test_add_remove_child();
+    test_try_add_reports_parenting_success();
     test_scene_remove_ignores_nodes_from_other_scenes();
     test_translation_propagation();
     test_world_position_and_scale_getters();

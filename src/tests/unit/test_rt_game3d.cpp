@@ -423,6 +423,12 @@ static bool test_world_entity_registry_and_collision_clear() {
     EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
                   1,
                   "despawn removes entity body from physics");
+    EXPECT_TRUE(rt_world3d_contains_body(rt_game3d_world_get_physics(world), body) == 0,
+                "despawn removes parent body from physics membership");
+    EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("Hero")) == nullptr,
+                "findEntity ignores despawned entities after lazy name-index rebuild");
+    EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("Muzzle")) == nullptr,
+                "findNode ignores despawned child nodes");
     EXPECT_EQ_INT(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)),
                   2,
                   "despawn detaches the parent subtree from the scene");

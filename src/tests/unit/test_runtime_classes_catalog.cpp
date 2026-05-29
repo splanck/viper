@@ -124,6 +124,19 @@ int main() {
     assert(guiCodeEditorCls != nullptr && "Viper.GUI.CodeEditor not found in catalog");
     assert(hasProperty(*guiCodeEditorCls, "Revision", "i64"));
     assert(hasMethod(*guiCodeEditorCls, "GetGutterClickSlot", "i64()"));
+    assert(hasMethod(*guiCodeEditorCls, "GetShowLineNumbers", "i64()"));
+
+    const il::runtime::RuntimeClass *guiTestHarnessCls = findClass("Viper.GUI.TestHarness");
+    assert(guiTestHarnessCls != nullptr && "Viper.GUI.TestHarness not found in catalog");
+    assert(hasMethod(*guiTestHarnessCls, "AssertNonBlank", "i1(obj)"));
+
+    const il::runtime::RuntimeClass *guiToastCls = findClass("Viper.GUI.Toast");
+    assert(guiToastCls != nullptr && "Viper.GUI.Toast not found in catalog");
+    assert(hasMethod(*guiToastCls, "New", "obj(str,i64,i64)"));
+
+    const il::runtime::RuntimeClass *guiFontCls = findClass("Viper.GUI.Font");
+    assert(guiFontCls != nullptr && "Viper.GUI.Font not found in catalog");
+    assert(hasMethod(*guiFontCls, "Load", "obj(str)"));
 
     const il::runtime::RuntimeClass *guiTreeViewCls = findClass("Viper.GUI.TreeView");
     assert(guiTreeViewCls != nullptr && "Viper.GUI.TreeView not found in catalog");

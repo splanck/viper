@@ -95,7 +95,11 @@ static int fake_readback_rgba(void *, uint8_t *, int32_t, int32_t, int32_t) {
     return 0;
 }
 
+static void fake_present(void *) {}
+
 static void fake_present_postfx(void *, const vgfx3d_postfx_chain_t *) {}
+
+static void fake_apply_postfx(void *, const vgfx3d_postfx_chain_t *) {}
 
 static vgfx3d_backend_t make_fake_gpu_backend() {
     vgfx3d_backend_t backend = {};
@@ -108,7 +112,9 @@ static vgfx3d_backend_t make_fake_gpu_backend() {
     backend.draw_skybox = fake_draw_skybox;
     backend.submit_draw_instanced = fake_submit_draw_instanced;
     backend.readback_rgba = fake_readback_rgba;
+    backend.present = fake_present;
     backend.present_postfx = fake_present_postfx;
+    backend.apply_postfx = fake_apply_postfx;
     return backend;
 }
 
@@ -186,12 +192,12 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "GPU backend advertises post effects when present_postfx exists");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX) != 0,
                 "GPU backend advertises GPU post effects when present_postfx exists");
-    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY) == 0,
-                "GPU backend does not advertise final overlay after GPU postfx by default");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY) != 0,
+                "GPU backend advertises final overlay after split GPU postfx");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT) != 0,
                 "GPU backend advertises final screenshots when readback hook exists");
-    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY) == 0,
-                "GPU backend does not advertise GPU postfx overlay composition until implemented");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY) != 0,
+                "GPU backend advertises GPU postfx overlay composition when split apply/present exists");
 
     EXPECT_TRUE(backend_supports(&canvas, "hardware_instancing"),
                 "BackendSupports accepts hardware_instancing");
@@ -202,8 +208,8 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "BackendSupports accepts gpu_post_fx alias");
     EXPECT_TRUE(backend_supports(&canvas, "final-screenshot"),
                 "BackendSupports accepts final-screenshot alias");
-    EXPECT_TRUE(!backend_supports(&canvas, "gpu-postfx-overlay"),
-                "BackendSupports reports GPU postfx overlay unsupported until implemented");
+    EXPECT_TRUE(backend_supports(&canvas, "gpu-postfx-overlay"),
+                "BackendSupports reports GPU postfx overlay support when split apply/present exists");
     EXPECT_TRUE(!backend_supports(&canvas, "missing_feature"),
                 "BackendSupports rejects unknown capability names");
 }

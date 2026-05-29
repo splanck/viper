@@ -204,9 +204,12 @@ static void rt_commandpalette_on_execute(vg_commandpalette_t *palette,
 /// `rt_commandpalette_get_selected_id`.
 void *rt_commandpalette_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
-    if (parent && !rt_gui_app_from_handle(parent) && !rt_gui_widget_parent_from_handle(parent))
+    vg_widget_t *parent_widget = parent ? rt_gui_widget_parent_from_handle(parent) : NULL;
+    if (parent && !rt_gui_app_from_handle(parent) && !parent_widget)
         return NULL;
     rt_gui_app_t *app = rt_gui_app_from_handle(parent);
+    if (!app && parent_widget)
+        app = rt_gui_app_from_widget(parent_widget);
     if (!app)
         app = s_current_app;
     if (!app)
@@ -342,6 +345,8 @@ void rt_commandpalette_remove_command(void *palette, rt_string id) {
         return;
     rt_commandpalette_data_t *data = rt_commandpalette_checked(palette);
     if (!data || !data->palette)
+        return;
+    if (rt_string_contains_nul(id))
         return;
     char *cid = rt_string_to_cstr(id);
     vg_commandpalette_remove_command(data->palette, cid);

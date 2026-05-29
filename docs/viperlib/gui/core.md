@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-29
+last-verified: 2026-05-28
 ---
 
 # Core & Application
@@ -147,7 +147,7 @@ handles are ignored.
 
 ### Lifecycle And Validation
 
-`Destroy()` is idempotent. After an app is destroyed, app methods reject the stale handle without dereferencing it. The `Root` widget is owned by the app, so destroy the application with `app.Destroy()`; calling widget `Destroy()` on `app.Root` is ignored.
+`Destroy()` is idempotent. After an app is destroyed, app methods reject the stale handle without dereferencing it. Apps also install a runtime finalizer as a fallback, so leaked app handles release their native window and widget tree when collected, but explicit `app.Destroy()` remains the preferred deterministic cleanup path. The `Root` widget is owned by the app, so destroy the application with `app.Destroy()`; calling widget `Destroy()` on `app.Root` is ignored.
 
 `SetSize()` and `SetWindowSize()` share the same window-size validation. Width and height are clamped to at least one pixel and to the platform `int32` range, and invalid font sizes, scale factors, and non-finite numeric values fall back to bounded defaults.
 When `SetPreventClose(1)` is active, a window close request no longer sets
@@ -207,6 +207,7 @@ while !app.get_ShouldClose() {
 
 Font loading for GUI widgets. Supports TrueType (.ttf) fonts.
 TrueType outline rasterization preserves separate contour boundaries, so glyphs with holes or multiple independent contours render with the intended even-odd fill instead of connecting unrelated contour endpoints.
+`Font.Load(path)` rejects paths containing embedded NUL bytes instead of passing a truncated path to the platform loader.
 
 **Type:** Static/Instance
 **Constructor:** `Viper.GUI.Font.Load(path)`
@@ -254,8 +255,10 @@ Common numeric setters clamp invalid input: negative sizes, margins, padding, fl
 `SetSize()` is ignored on `App.Root`; use `App.SetWindowSize()` to resize the window while the root remains controlled by the app layout pass.
 `AddChild()` and widget constructors accept `App.Root`, an app handle, or a
 container-like parent such as `VBox`, `HBox`, `ScrollView`, `SplitPane`,
-`Dialog`, or a custom container. Leaf controls such as buttons, labels, sliders,
-dropdowns, tree views, toolbars, and menus reject runtime children.
+`Dialog`, or a custom container. Simple widgets that do not provide custom
+child arrangement can also host runtime children; they use a fallback vertical
+flow so children are measured and positioned instead of becoming invisible
+descendants.
 `SetPosition()` marks the widget as manually positioned. Parent layout managers
 leave manually positioned children at their assigned coordinates, so use
 preferred size, flex, and margins for children that should remain managed by

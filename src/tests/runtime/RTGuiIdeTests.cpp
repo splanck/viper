@@ -28,6 +28,10 @@ static std::string take(rt_string value) {
     return out;
 }
 
+static int64_t visible_count(void *tree) {
+    return rt_seq_len(rt_virtual_tree_visible_rows(tree));
+}
+
 int main() {
     void *h = rt_gui_test_harness_new();
     rt_gui_test_harness_register_widget(h,
@@ -68,10 +72,38 @@ int main() {
         tree, rt_const_cstr("src"), rt_const_cstr("main.zia"), rt_const_cstr("main.zia"));
     void *expand = rt_virtual_tree_expand(tree, rt_const_cstr("src"));
     assert(rt_map_get_bool(expand, rt_const_cstr("expanded")) == 1);
-    assert(rt_seq_len(rt_virtual_tree_visible_rows(tree)) == 2);
+    assert(visible_count(tree) == 2);
+    rt_virtual_tree_select_id(tree, rt_const_cstr("main.zia"));
+    assert(take(rt_virtual_tree_get_selected_id(tree)) == "main.zia");
     rt_virtual_tree_refresh_subtree(tree, rt_const_cstr("src"));
+    assert(take(rt_virtual_tree_get_selected_id(tree)).empty());
+    assert(visible_count(tree) == 1);
     expand = rt_virtual_tree_expand(tree, rt_const_cstr("src"));
     assert(rt_map_get_bool(expand, rt_const_cstr("needsPopulate")) == 1);
+
+    void *tree2 = rt_virtual_tree_new();
+    rt_virtual_tree_add_node(tree2, rt_const_cstr(""), rt_const_cstr("root"), rt_const_cstr("Root"));
+    rt_virtual_tree_add_node(tree2, rt_const_cstr("root"), rt_const_cstr("a"), rt_const_cstr("A"));
+    rt_virtual_tree_add_node(tree2, rt_const_cstr("root"), rt_const_cstr("b"), rt_const_cstr("B"));
+    expand = rt_virtual_tree_expand(tree2, rt_const_cstr("root"));
+    assert(rt_map_get_bool(expand, rt_const_cstr("expanded")) == 1);
+    assert(visible_count(tree2) == 3);
+    rt_virtual_tree_add_node(tree2, rt_const_cstr("b"), rt_const_cstr("a"), rt_const_cstr("A moved"));
+    assert(visible_count(tree2) == 2);
+    expand = rt_virtual_tree_expand(tree2, rt_const_cstr("b"));
+    assert(rt_map_get_bool(expand, rt_const_cstr("expanded")) == 1);
+    assert(visible_count(tree2) == 3);
+    rt_virtual_tree_add_node(
+        tree2, rt_const_cstr("a"), rt_const_cstr("root"), rt_const_cstr("Cycle attempt"));
+    assert(visible_count(tree2) == 3);
+
+    void *tree3 = rt_virtual_tree_new();
+    rt_virtual_tree_add_node(
+        tree3, rt_const_cstr("missing"), rt_const_cstr("leaf"), rt_const_cstr("Leaf"));
+    assert(visible_count(tree3) == 1);
+    expand = rt_virtual_tree_expand(tree3, rt_const_cstr("missing"));
+    assert(rt_map_get_bool(expand, rt_const_cstr("expanded")) == 1);
+    assert(visible_count(tree3) == 2);
 
     void *command = rt_command_state_new(rt_const_cstr("build"), rt_const_cstr("Build"));
     rt_command_state_set_enabled(command, 0);

@@ -475,13 +475,11 @@ void rt_mesh3d_add_vertex(
     if (!mesh_value_fits_float(x) || !mesh_value_fits_float(y) || !mesh_value_fits_float(z) ||
         !mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) || !mesh_value_fits_float(nz) ||
         !mesh_value_fits_float(u) || !mesh_value_fits_float(v)) {
-        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddVertex: vertex attributes must be finite and fit float range");
         return;
     }
 
     if (m->vertex_count == UINT32_MAX) {
-        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddVertex: vertex capacity overflow");
         return;
     }
@@ -541,29 +539,24 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
         return;
 
     if (v0 < 0 || v1 < 0 || v2 < 0) {
-        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: vertex index must be non-negative");
         return;
     }
     if ((uint64_t)v0 >= m->vertex_count || (uint64_t)v1 >= m->vertex_count ||
         (uint64_t)v2 >= m->vertex_count) {
-        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: vertex index out of range");
         return;
     }
     if (v0 == v1 || v1 == v2 || v0 == v2) {
-        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: degenerate triangle");
         return;
     }
     if (!mesh_indices_form_triangle(m, (uint32_t)v0, (uint32_t)v1, (uint32_t)v2)) {
-        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: degenerate triangle");
         return;
     }
 
     if (m->index_count > UINT32_MAX - 3u) {
-        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: index capacity overflow");
         return;
     }
@@ -2359,9 +2352,12 @@ static void *stl_load_binary(const uint8_t *data, size_t len) {
             break;
     }
 
-    if (((rt_mesh3d *)mesh)->build_failed)
+    if (((rt_mesh3d *)mesh)->build_failed) {
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         return mesh_return_null_if_build_failed(mesh);
+    }
     if (((rt_mesh3d *)mesh)->index_count == 0) {
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         return NULL;
@@ -2423,9 +2419,12 @@ static void *stl_load_binary_stream(FILE *f, uint32_t tri_count) {
             break;
     }
 
-    if (((rt_mesh3d *)mesh)->build_failed)
+    if (((rt_mesh3d *)mesh)->build_failed) {
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         return mesh_return_null_if_build_failed(mesh);
+    }
     if (((rt_mesh3d *)mesh)->index_count == 0) {
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         return NULL;
@@ -2634,6 +2633,7 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
     if (parse_failed || state != STL_ASCII_OUTSIDE_FACET || emitted_triangles == 0 ||
         ((rt_mesh3d *)mesh)->build_failed) {
         free(text);
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         return NULL;
@@ -2732,6 +2732,7 @@ static void *stl_load_ascii_stream(FILE *f) {
     free(line_buf);
     if (parse_failed || state != STL_ASCII_OUTSIDE_FACET || emitted_triangles == 0 ||
         ((rt_mesh3d *)mesh)->build_failed) {
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         return NULL;

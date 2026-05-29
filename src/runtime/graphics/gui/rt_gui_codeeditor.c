@@ -629,7 +629,9 @@ void rt_codeeditor_set_language(void *editor, rt_string language) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
         return;
-    char *clang = rt_string_to_cstr(language);
+    char *clang = rt_string_to_cstr_no_nul(language);
+    if (language && !clang)
+        return;
     if (!clang)
         return;
 
@@ -673,7 +675,9 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
         return;
 
     // Parse comma-separated keywords into array
-    char *ckw = rt_string_to_cstr(keywords);
+    char *ckw = rt_string_to_cstr_no_nul(keywords);
+    if (keywords && !ckw)
+        return;
     if (!ckw || !ckw[0]) {
         free(ckw);
         for (int i = 0; i < ce->custom_keyword_count; i++)
@@ -867,12 +871,10 @@ void rt_codeeditor_set_show_line_numbers(void *editor, int64_t show) {
 }
 
 /// @brief `CodeEditor.GetShowLineNumbers` — read the line-number visibility flag.
-///
-/// Returns 1 (showing) for NULL receiver to match the default.
 int64_t rt_codeeditor_get_show_line_numbers(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
-        return 1; // Default to showing
+        return 0;
     return ce->show_line_numbers ? 1 : 0;
 }
 
@@ -964,8 +966,9 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     /* Update existing icon on same line+type if present */
     for (int i = 0; i < ce->gutter_icon_count; i++) {
         if (ce->gutter_icons[i].line == line_i && ce->gutter_icons[i].type == type) {
+            vg_icon_t new_image = rt_codeeditor_icon_from_pixels(pixels);
             vg_icon_destroy(&ce->gutter_icons[i].image);
-            ce->gutter_icons[i].image = rt_codeeditor_icon_from_pixels(pixels);
+            ce->gutter_icons[i].image = new_image;
             ce->base.needs_paint = true;
             return;
         }
@@ -985,11 +988,12 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     }
     /* Default color per type */
     static const uint32_t s_type_colors[] = {0xFFE81123, 0xFFFFB900, 0xFFE81123, 0xFF0078D4};
+    vg_icon_t new_image = rt_codeeditor_icon_from_pixels(pixels);
     struct vg_gutter_icon *icon = &ce->gutter_icons[ce->gutter_icon_count++];
     icon->line = line_i;
     icon->type = type;
     icon->color = s_type_colors[type];
-    icon->image = rt_codeeditor_icon_from_pixels(pixels);
+    icon->image = new_image;
     ce->base.needs_paint = true;
 }
 
@@ -2197,8 +2201,14 @@ void rt_codeeditor_insert_at_cursor(void *editor, rt_string text) {
     free(cstr);
 }
 
+static int rt_codeeditor_identifier_byte(unsigned char c) {
+    return isalnum(c) || c == '_' || c >= 0x80;
+}
+
 /// @brief Return the identifier word under the primary cursor.
-/// @details Scans left and right from cursor_col over [A-Za-z0-9_] characters.
+/// @details Scans left and right from cursor_col over ASCII identifier bytes
+///          plus non-ASCII UTF-8 continuation/lead bytes so multibyte words
+///          are not split in the middle.
 rt_string rt_codeeditor_get_word_at_cursor(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
     if (!ce)
@@ -2211,12 +2221,12 @@ rt_string rt_codeeditor_get_word_at_cursor(void *editor) {
 
     /* scan left to find word start */
     int start = col;
-    while (start > 0 && (isalnum((unsigned char)text[start - 1]) || text[start - 1] == '_'))
+    while (start > 0 && rt_codeeditor_identifier_byte((unsigned char)text[start - 1]))
         --start;
 
     /* scan right to find word end */
     int end = col;
-    while (end < len && (isalnum((unsigned char)text[end]) || text[end] == '_'))
+    while (end < len && rt_codeeditor_identifier_byte((unsigned char)text[end]))
         ++end;
 
     return rt_string_from_bytes(text + start, (size_t)(end - start));
@@ -2237,10 +2247,10 @@ void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text) {
 
     /* find word boundaries */
     int start = col;
-    while (start > 0 && (isalnum((unsigned char)text[start - 1]) || text[start - 1] == '_'))
+    while (start > 0 && rt_codeeditor_identifier_byte((unsigned char)text[start - 1]))
         --start;
     int end = col;
-    while (end < len && (isalnum((unsigned char)text[end]) || text[end] == '_'))
+    while (end < len && rt_codeeditor_identifier_byte((unsigned char)text[end]))
         ++end;
 
     char *cstr = rt_string_to_gui_cstr(new_text);

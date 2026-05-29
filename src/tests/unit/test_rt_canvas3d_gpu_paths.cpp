@@ -126,6 +126,10 @@ static int final_readback_saw_finalized = 0;
 static int final_readback_saw_submit_count = 0;
 static int final_present_postfx_calls = 0;
 static int final_present_postfx_saw_submit_count = 0;
+static int final_apply_postfx_calls = 0;
+static int final_apply_postfx_saw_submit_count = 0;
+static int final_present_calls = 0;
+static int final_present_saw_submit_count = 0;
 static vgfx3d_draw_cmd_t final_last_draw_cmd;
 
 static void noop_end_frame(void *) {}
@@ -135,6 +139,16 @@ static void noop_present_postfx(void *, const vgfx3d_postfx_chain_t *) {}
 static void record_present_postfx(void *, const vgfx3d_postfx_chain_t *) {
     final_present_postfx_calls++;
     final_present_postfx_saw_submit_count = final_submit_draw_calls;
+}
+
+static void record_apply_postfx(void *, const vgfx3d_postfx_chain_t *) {
+    final_apply_postfx_calls++;
+    final_apply_postfx_saw_submit_count = final_submit_draw_calls;
+}
+
+static void record_present(void *) {
+    final_present_calls++;
+    final_present_saw_submit_count = final_submit_draw_calls;
 }
 
 static void noop_draw(void *,
@@ -329,6 +343,10 @@ static void reset_final_frame_records(void) {
     final_readback_saw_submit_count = 0;
     final_present_postfx_calls = 0;
     final_present_postfx_saw_submit_count = 0;
+    final_apply_postfx_calls = 0;
+    final_apply_postfx_saw_submit_count = 0;
+    final_present_calls = 0;
+    final_present_saw_submit_count = 0;
     std::memset(&final_last_draw_cmd, 0, sizeof(final_last_draw_cmd));
     last_readback_w = 0;
     last_readback_h = 0;
@@ -2169,6 +2187,8 @@ static void test_gpu_postfx_final_overlay_presents_composited_frame(void) {
     backend.submit_draw = record_final_draw;
     backend.end_frame = record_final_end_frame;
     backend.present_postfx = record_present_postfx;
+    backend.apply_postfx = record_apply_postfx;
+    backend.present = record_present;
 
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &backend);
@@ -2187,10 +2207,16 @@ static void test_gpu_postfx_final_overlay_presents_composited_frame(void) {
 
     EXPECT_TRUE(final_submit_draw_calls == 1,
                 "GPU postfx finalize replays final overlay during finalization");
-    EXPECT_TRUE(final_present_postfx_calls == 1,
-                "GPU postfx final overlays still present through backend post-FX");
-    EXPECT_TRUE(final_present_postfx_saw_submit_count == 1,
-                "Backend post-FX presentation runs after final overlay replay");
+    EXPECT_TRUE(final_apply_postfx_calls == 1,
+                "GPU postfx finalization applies post-FX before final overlay replay");
+    EXPECT_TRUE(final_apply_postfx_saw_submit_count == 0,
+                "Backend post-FX apply runs before final overlay replay");
+    EXPECT_TRUE(final_present_postfx_calls == 0,
+                "Split GPU postfx path avoids legacy present_postfx overwrite");
+    EXPECT_TRUE(final_present_calls == 1,
+                "GPU postfx final overlays present through the normal backend present hook");
+    EXPECT_TRUE(final_present_saw_submit_count == 1,
+                "Backend presentation runs after final overlay replay");
     EXPECT_TRUE(canvas.frame_presented_by_finalize == 1,
                 "Final-overlay GPU postfx frames are presented by finalization");
     EXPECT_TRUE(rt_canvas3d_get_frame_finalized(&canvas) == 1,
