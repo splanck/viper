@@ -505,6 +505,8 @@ rt_string rt_str_flip(rt_string str) {
     size_t len = rt_string_len_bytes(str);
     if (len == 0)
         return rt_empty_string();
+    if (len == SIZE_MAX)
+        return NULL;
 
     const char *data = str->data;
 
@@ -519,6 +521,8 @@ rt_string rt_str_flip(rt_string str) {
     }
 
     // Allocate positions array (offsets of each character start)
+    if (char_count > (SIZE_MAX / sizeof(size_t)) - 1)
+        return NULL;
     size_t *positions = (size_t *)malloc((char_count + 1) * sizeof(size_t));
     if (!positions)
         return NULL;

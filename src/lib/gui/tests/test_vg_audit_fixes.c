@@ -35,6 +35,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <process.h>
+#define TEST_PROCESS_ID _getpid
+#else
+#include <unistd.h>
+#define TEST_PROCESS_ID getpid
+#endif
 
 //=============================================================================
 // Test Harness
@@ -51,6 +58,26 @@ static char *test_strdup_local(const char *s) {
     if (copy)
         memcpy(copy, s, len);
     return copy;
+}
+
+static void test_make_temp_path(char *out, size_t out_size, const char *stem, const char *ext) {
+    if (!out || out_size == 0)
+        return;
+
+    const char *dir = getenv("TMPDIR");
+#ifdef _WIN32
+    if (!dir || !*dir)
+        dir = getenv("TEMP");
+    if (!dir || !*dir)
+        dir = getenv("TMP");
+#endif
+    if (!dir || !*dir)
+        dir = "/tmp";
+
+    size_t dir_len = strlen(dir);
+    const char *sep = (dir_len > 0 && (dir[dir_len - 1] == '/' || dir[dir_len - 1] == '\\')) ? "" : "/";
+    snprintf(out, out_size, "%s%s%s_%ld%s", dir, sep, stem, (long)TEST_PROCESS_ID(), ext ? ext : "");
+    out[out_size - 1] = '\0';
 }
 
 #define TEST(name) static void test_##name(void)
@@ -1439,7 +1466,8 @@ static bool write_test_bmp_2x1(const char *path) {
 
 /// @brief R3 — vg_image_load_file decodes a 2×1 BMP into RGBA pixels with correct channel values.
 TEST(image_load_file_decodes_bmp_into_rgba_pixels) {
-    const char *path = "/tmp/vg_image_load_file_test.bmp";
+    char path[512];
+    test_make_temp_path(path, sizeof(path), "vg_image_load_file_test", ".bmp");
     remove(path);
     ASSERT_TRUE(write_test_bmp_2x1(path));
 

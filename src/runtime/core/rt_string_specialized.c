@@ -176,6 +176,10 @@ rt_string rt_str_slug(rt_string str) {
     size_t len = rt_string_len_bytes(str);
     if (len == 0)
         return rt_string_from_bytes("", 0);
+    if (len == SIZE_MAX) {
+        rt_trap("String.Slug: input too large");
+        return rt_string_from_bytes("", 0);
+    }
 
     char *buf = (char *)malloc(len + 1);
     if (!buf)
@@ -213,6 +217,8 @@ int64_t rt_str_levenshtein(rt_string a, rt_string b) {
         return 0;
     size_t alen = a ? rt_string_len_bytes(a) : 0;
     size_t blen = b ? rt_string_len_bytes(b) : 0;
+    if (alen > (size_t)INT64_MAX || blen > (size_t)INT64_MAX)
+        return -1;
     if (alen == 0)
         return (int64_t)blen;
     if (blen == 0)
@@ -232,6 +238,8 @@ int64_t rt_str_levenshtein(rt_string a, rt_string b) {
         blen = tmp_n;
     }
 
+    if (blen > (SIZE_MAX / sizeof(size_t)) - 1)
+        return -1;
     size_t *row = (size_t *)malloc((blen + 1) * sizeof(size_t));
     if (!row)
         return -1;
@@ -269,6 +277,8 @@ double rt_str_jaro(rt_string a, rt_string b) {
         return 1.0;
     size_t alen = a ? rt_string_len_bytes(a) : 0;
     size_t blen = b ? rt_string_len_bytes(b) : 0;
+    if (alen > (size_t)INT64_MAX || blen > (size_t)INT64_MAX)
+        return 0.0;
     if (alen == 0 && blen == 0)
         return 1.0;
     if (alen == 0 || blen == 0)

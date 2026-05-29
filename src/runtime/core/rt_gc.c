@@ -379,40 +379,47 @@ int64_t rt_gc_tracked_count(void) {
 #define WEAK_BUCKET_COUNT 64
 
 /// @brief Lazily allocate the weak-reference bucket table on first use.
-static void ensure_weak_buckets(void) {
+/// @return 1 on success, 0 on allocation failure. Callers trap after dropping the GC lock.
+static int ensure_weak_buckets(void) {
     if (g_gc.weak_buckets)
-        return;
+        return 1;
     g_gc.weak_bucket_count = WEAK_BUCKET_COUNT;
     g_gc.weak_buckets = (weak_chain *)calloc((size_t)g_gc.weak_bucket_count, sizeof(weak_chain));
     if (!g_gc.weak_buckets)
-        rt_trap("gc: memory allocation failed");
+        return 0;
+    return 1;
+}
+
+static weak_chain *ensure_weak_chain(void *target) {
+    if (!ensure_weak_buckets())
+        return NULL;
+    uint64_t bucket = ptr_hash(target) % (uint64_t)g_gc.weak_bucket_count;
+
+    weak_chain *wc = g_gc.weak_buckets[bucket].next;
+    while (wc) {
+        if (wc->target == target)
+            return wc;
+        wc = wc->next;
+    }
+
+    weak_chain *new_wc = (weak_chain *)malloc(sizeof(weak_chain));
+    if (!new_wc)
+        return NULL;
+    new_wc->target = target;
+    new_wc->head = NULL;
+    new_wc->next = g_gc.weak_buckets[bucket].next;
+    g_gc.weak_buckets[bucket].next = new_wc;
+    return new_wc;
 }
 
 /// @brief Add @p ref to the per-target weak-reference chain for @p target.
 /// @return 1 on success, 0 on allocation failure.
 static int register_weak_ref(void *target, rt_weakref *ref) {
-    ensure_weak_buckets();
-    uint64_t bucket = ptr_hash(target) % (uint64_t)g_gc.weak_bucket_count;
-
-    /* Find existing chain for this target. */
-    weak_chain *wc = g_gc.weak_buckets[bucket].next;
-    while (wc) {
-        if (wc->target == target) {
-            ref->next_for_target = wc->head;
-            wc->head = ref;
-            return 1;
-        }
-        wc = wc->next;
-    }
-
-    /* Create new chain. */
-    weak_chain *new_wc = (weak_chain *)malloc(sizeof(weak_chain));
-    if (!new_wc)
+    weak_chain *wc = ensure_weak_chain(target);
+    if (!wc)
         return 0;
-    new_wc->target = target;
-    new_wc->head = ref;
-    new_wc->next = g_gc.weak_buckets[bucket].next;
-    g_gc.weak_buckets[bucket].next = new_wc;
+    ref->next_for_target = wc->head;
+    wc->head = ref;
     return 1;
 }
 
@@ -670,15 +677,26 @@ void rt_weakref_reset(rt_weakref *ref, void *target) {
         rt_trap("gc: invalid or freed weak reference");
         return;
     }
+    if (ref->target == target) {
+        gc_unlock();
+        return;
+    }
+    weak_chain *new_chain = NULL;
+    if (target) {
+        new_chain = ensure_weak_chain(target);
+        if (!new_chain) {
+            gc_unlock();
+            rt_trap("gc: weak reference allocation failed");
+            return;
+        }
+    }
     if (ref->target)
         unregister_weak_ref(ref->target, ref);
     ref->target = target;
     ref->next_for_target = NULL;
-    if (target && !register_weak_ref(target, ref)) {
-        ref->target = NULL;
-        gc_unlock();
-        rt_trap("gc: weak reference allocation failed");
-        return;
+    if (new_chain) {
+        ref->next_for_target = new_chain->head;
+        new_chain->head = ref;
     }
     gc_unlock();
 }
