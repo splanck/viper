@@ -34,7 +34,6 @@
 #include <iostream>
 #include <map>
 #include <optional>
-#include <regex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -901,14 +900,74 @@ static std::string relativePathString(const fs::path &path, const fs::path &base
     return pathToGenericString(rel);
 }
 
+static bool isIdentifierChar(char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+static bool isRuntimeSymbolAt(const std::string &text, size_t pos) {
+    if (pos + 3 > text.size() || text.compare(pos, 3, "rt_") != 0)
+        return false;
+    if (pos > 0 && isIdentifierChar(text[pos - 1]))
+        return false;
+    if (pos + 3 >= text.size() || !isIdentifierChar(text[pos + 3]))
+        return false;
+    return true;
+}
+
+static size_t findMatchingParen(const std::string &text, size_t openPos) {
+    int depth = 1;
+    bool inQuotes = false;
+    for (size_t cursor = openPos + 1; cursor < text.size(); ++cursor) {
+        char c = text[cursor];
+        if (c == '"' && (cursor == 0 || text[cursor - 1] != '\\')) {
+            inQuotes = !inQuotes;
+        } else if (!inQuotes) {
+            if (c == '(')
+                ++depth;
+            else if (c == ')' && --depth == 0)
+                return cursor;
+        }
+    }
+    return std::string::npos;
+}
+
+static size_t findDeclarationStart(const std::string &text, size_t symbolPos) {
+    size_t start = symbolPos;
+    while (start > 0) {
+        char c = text[start - 1];
+        if (c == ';' || c == '{' || c == '}')
+            break;
+        --start;
+    }
+    return start;
+}
+
+static std::string normalizeReturnType(std::string retType) {
+    retType = trim(retType);
+
+    // Keep the parser tolerant of annotations that appear on their own line.
+    if (size_t newline = retType.find_last_of("\r\n"); newline != std::string::npos)
+        retType = trim(retType.substr(newline + 1));
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const char *kw : {"extern ", "_Noreturn ", "static ", "inline "}) {
+            std::string kwStr(kw);
+            if (retType.substr(0, kwStr.size()) == kwStr) {
+                retType = trim(retType.substr(kwStr.size()));
+                changed = true;
+            }
+        }
+    }
+    return retType;
+}
+
 static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclarations(
     const fs::path &runtimeDir, const fs::path &repoRoot) {
     std::unordered_map<std::string, RuntimePrototype> result;
     if (!fs::exists(runtimeDir))
         return result;
-
-    // Accept both `void *rt_name(...)` and `void * rt_name(...)` styles.
-    std::regex proto(R"(([\w\s\*]+?)\s*\b(rt_[A-Za-z0-9_]+)\s*\(([^;{}]*)\)\s*;)");
 
     for (const auto &entry : fs::recursive_directory_iterator(runtimeDir)) {
         if (!entry.is_regular_file())
@@ -926,24 +985,47 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
         contents = stripComments(contents);
         contents = stripPreprocessor(contents);
 
-        for (std::sregex_iterator it(contents.begin(), contents.end(), proto), end; it != end;
-             ++it) {
-            std::string retType = trim((*it)[1].str());
-            std::string funcName = (*it)[2].str();
-            std::string argsStr = (*it)[3].str();
+        for (size_t pos = 0; (pos = contents.find("rt_", pos)) != std::string::npos;) {
+            if (!isRuntimeSymbolAt(contents, pos)) {
+                pos += 3;
+                continue;
+            }
+
+            size_t nameEnd = pos + 3;
+            while (nameEnd < contents.size() && isIdentifierChar(contents[nameEnd]))
+                ++nameEnd;
+
+            size_t cursor = nameEnd;
+            while (cursor < contents.size() &&
+                   std::isspace(static_cast<unsigned char>(contents[cursor])))
+                ++cursor;
+            if (cursor >= contents.size() || contents[cursor] != '(') {
+                pos = nameEnd;
+                continue;
+            }
+
+            size_t close = findMatchingParen(contents, cursor);
+            if (close == std::string::npos) {
+                pos = nameEnd;
+                continue;
+            }
+
+            size_t afterClose = close + 1;
+            while (afterClose < contents.size() &&
+                   std::isspace(static_cast<unsigned char>(contents[afterClose])))
+                ++afterClose;
+            if (afterClose >= contents.size() || contents[afterClose] != ';') {
+                pos = nameEnd;
+                continue;
+            }
+
+            const size_t declStart = findDeclarationStart(contents, pos);
+            std::string retType = normalizeReturnType(contents.substr(declStart, pos - declStart));
+            std::string funcName = contents.substr(pos, nameEnd - pos);
+            std::string argsStr = contents.substr(cursor + 1, close - cursor - 1);
 
             auto existing = result.find(funcName);
             bool haveExisting = existing != result.end();
-
-            // Strip storage-class specifiers and attributes from the return
-            // type.  The regex can capture these when scanning .c files that
-            // contain forward declarations like "extern void rt_trap(...);"
-            // or "_Noreturn void rt_trap(...);" etc.
-            for (const char *kw : {"extern ", "_Noreturn ", "static ", "inline "}) {
-                std::string kwStr(kw);
-                if (retType.substr(0, kwStr.size()) == kwStr)
-                    retType = trim(retType.substr(kwStr.size()));
-            }
 
             RuntimePrototype proto;
             CSignature sig;
@@ -957,8 +1039,10 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
                 proto.paramNames.push_back(extractParamName(arg));
             }
 
-            if (sig.returnType.empty())
+            if (sig.returnType.empty()) {
+                pos = afterClose + 1;
                 continue;
+            }
 
             proto.signature = std::move(sig);
             proto.headerPath = relativePathString(path, repoRoot);
@@ -967,6 +1051,8 @@ static std::unordered_map<std::string, RuntimePrototype> loadRuntimeHeaderDeclar
             } else if (existing->second.signature.returnType.empty()) {
                 existing->second = std::move(proto);
             }
+
+            pos = afterClose + 1;
         }
     }
 
@@ -988,7 +1074,6 @@ static std::unordered_set<std::string> loadRuntimeSourceTokens(const fs::path &r
     if (!fs::exists(runtimeDir))
         return tokens;
 
-    const std::regex re(R"(\brt_[A-Za-z0-9_]+\b)");
     for (const auto &entry : fs::recursive_directory_iterator(runtimeDir)) {
         if (!entry.is_regular_file())
             continue;
@@ -997,8 +1082,17 @@ static std::unordered_set<std::string> loadRuntimeSourceTokens(const fs::path &r
             continue;
 
         const std::string text = readTextFile(path);
-        for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it)
-            tokens.insert((*it)[0].str());
+        for (size_t pos = 0; (pos = text.find("rt_", pos)) != std::string::npos;) {
+            if (!isRuntimeSymbolAt(text, pos)) {
+                pos += 3;
+                continue;
+            }
+            size_t end = pos + 3;
+            while (end < text.size() && isIdentifierChar(text[end]))
+                ++end;
+            tokens.insert(text.substr(pos, end - pos));
+            pos = end;
+        }
     }
     return tokens;
 }

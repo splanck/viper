@@ -2133,7 +2133,7 @@ static void test_final_overlay_replays_after_finalize(void) {
     EXPECT_TRUE(begin_frame_calls == 0,
                 "Canvas3D.BeginOverlay records commands without touching the backend");
 
-    rt_canvas3d_draw_rect2d(&canvas, 4, 5, 12, 8, 0xFF00FFFF);
+    rt_canvas3d_draw_rect2d(&canvas, 4, 5, 12, 8, 0x62D2FF);
     EXPECT_TRUE(canvas.final_overlay_count == 1,
                 "Final overlay screen draws are stored in the final overlay queue");
     EXPECT_TRUE(canvas.draw_count == 0,
@@ -2155,7 +2155,7 @@ static void test_final_overlay_replays_after_finalize(void) {
                 "Canvas3D.ClearOverlay frees recorded final overlay geometry");
 
     rt_canvas3d_begin_overlay(&canvas);
-    rt_canvas3d_draw_rect2d(&canvas, 4, 5, 12, 8, 0xFF00FFFF);
+    rt_canvas3d_draw_rect2d(&canvas, 4, 5, 12, 8, 0x62D2FF);
     rt_canvas3d_end_overlay(&canvas);
 
     rt_canvas3d_finalize_frame(&canvas);
@@ -2169,6 +2169,18 @@ static void test_final_overlay_replays_after_finalize(void) {
                 "Canvas3D.FinalizeFrame submits the recorded final overlay draw");
     EXPECT_TRUE(final_last_draw_cmd.disable_depth_test == 1,
                 "Canvas3D.FinalizeFrame submits final overlays with depth disabled");
+    EXPECT_TRUE(std::fabs(final_last_draw_cmd.diffuse_color[0] - 1.0f) < 0.001f &&
+                    std::fabs(final_last_draw_cmd.diffuse_color[1] - 1.0f) < 0.001f &&
+                    std::fabs(final_last_draw_cmd.diffuse_color[2] - 1.0f) < 0.001f,
+                "Canvas3D.FinalizeFrame keeps screen overlay material diffuse white");
+    if (final_last_draw_cmd.vertices) {
+        const vgfx3d_vertex_t *verts =
+            static_cast<const vgfx3d_vertex_t *>(final_last_draw_cmd.vertices);
+        EXPECT_TRUE(std::fabs(verts[0].color[0] - (98.0f / 255.0f)) < 0.001f &&
+                        std::fabs(verts[0].color[1] - (210.0f / 255.0f)) < 0.001f &&
+                        std::fabs(verts[0].color[2] - 1.0f) < 0.001f,
+                    "Canvas3D.FinalizeFrame carries screen overlay color in vertex color");
+    }
     EXPECT_TRUE(final_end_frame_calls == 1,
                 "Canvas3D.FinalizeFrame closes the final overlay backend pass");
 
