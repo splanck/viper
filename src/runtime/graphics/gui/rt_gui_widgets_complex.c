@@ -1426,7 +1426,7 @@ void rt_listbox_item_set_data(void *item, rt_string data) {
     if (data && !new_data)
         return;
     if (it->owns_user_data && it->user_data)
-        free(it->user_data);
+        rt_gui_string_data_free_if_owned(it->user_data);
     it->user_data = new_data;
     it->owns_user_data = new_data != NULL;
 }

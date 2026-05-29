@@ -416,7 +416,7 @@ void rt_gui_invalidate_contextmenu_tree(vg_contextmenu_t *menu) {
 /// @return Opaque font handle, or NULL if the file could not be loaded.
 void *rt_font_load(rt_string path) {
     RT_ASSERT_MAIN_THREAD();
-    char *cpath = rt_string_to_cstr(path);
+    char *cpath = rt_string_to_cstr_no_nul(path);
     if (!cpath)
         return NULL;
 
@@ -1385,7 +1385,7 @@ void rt_treeview_node_set_data(void *node, rt_string data) {
         return;
     // Free old data if it exists and is owned by the runtime string wrapper.
     if (n->owns_user_data && n->user_data)
-        free(n->user_data);
+        rt_gui_string_data_free_if_owned(n->user_data);
     // Store length-tagged data so embedded NUL bytes round-trip correctly.
     n->user_data = new_data;
     n->owns_user_data = new_data != NULL;

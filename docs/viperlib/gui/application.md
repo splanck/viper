@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-11
+last-verified: 2026-05-28
 ---
 
 # Application Components
@@ -275,6 +275,7 @@ Command palette for searchable command execution.
 
 The palette renders a full panel background, row highlight, and right-aligned shortcuts. Keyboard navigation and mouse-wheel scrolling now maintain a visible selection window, so moving past the first page of results keeps the active command onscreen.
 Palette wrapper handles are finalized by the runtime collector and are disconnected when the owning app is destroyed, so explicit `Destroy()` and app shutdown use the same idempotent cleanup path.
+The constructor accepts an app handle, app root, or widget parent. A widget parent resolves ownership from its app tree, so command shortcuts route through the same app that owns the palette.
 
 **Constructor:** `NEW Viper.GUI.CommandPalette(parent)`
 
@@ -459,6 +460,7 @@ Object-style dialogs remember the app that created them, include the default boo
 `FileDialog.New(type)` returns `NULL` for unknown mode values instead of silently creating an open-file dialog.
 On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available. The lower-level C convenience API can install a modal runner so `Open`, `Save`, and `SelectFolder` wait for the in-app dialog instead of returning immediately.
 `OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\`; use `PathListCount()` and `PathListGet()` to decode the list without truncating paths that contain those characters.
+Dialog paths and filter patterns reject embedded NUL bytes instead of truncating the value passed to native or in-app dialog code. `SetFilter(NULL, pattern)` and `AddFilter(NULL, pattern)` use the label `Files`, while a missing or invalid pattern is ignored.
 The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
 
 | Method                                          | Signature                        | Description                              |
@@ -676,7 +678,7 @@ vbox.SetPadding(20.0)
 Keyboard shortcut registration system (static methods).
 
 Shortcut matching uses the translated `VG_KEY_*` key space, so function keys, arrows, `Home`/`End`, `PageUp`/`PageDown`, and other named keys match the same strings accepted by `Register()`. Function keys are case-insensitive (`F5` and `f5` are equivalent), and malformed tokens such as `F1x` are rejected. Focused widgets receive key-down events first; a global shortcut only fires when the widget tree leaves the key unhandled. While a modal dialog is open, global shortcuts are suppressed so accelerators cannot leak through the modal.
-Invalid shortcut strings are rejected without registering a new shortcut or replacing an existing one. IDs and key specs containing embedded NUL bytes are rejected instead of being truncated. `SetGlobalEnabled(0)` stops new shortcut matches, but `WasTriggered(id)` still reports a shortcut that was already triggered earlier in the same frame.
+Invalid shortcut strings are rejected without registering a new shortcut or replacing an existing one. IDs and key specs containing embedded NUL bytes are rejected instead of being truncated. Shortcut triggers are retained for the whole current frame: `GetTriggered()` returns the first triggered id, and `WasTriggered(id)` can report any shortcut fired before the next poll clears the frame state. `SetGlobalEnabled(0)` stops new shortcut matches, but `WasTriggered(id)` still reports a shortcut that was already triggered earlier in the same frame.
 
 | Method                                          | Signature               | Description                              |
 |-------------------------------------------------|-------------------------|------------------------------------------|
@@ -844,7 +846,7 @@ These helpers are runtime-side primitives for editor applications that need dete
 
 `Viper.GUI.VirtualList.New(rowCount, rowHeight, viewportHeight)` tracks visible row ranges and stable selection by id for large lists. `VisibleRange(scrollY)` returns a map with `first`, `last`, and `count`; `SetRowId(row, id)`, `SelectId(id)`, `GetSelectedId()`, and `GetSelectedIndex()` keep selection stable across rebuilds.
 
-`Viper.GUI.VirtualTree.New()` supports lazy tree models. `AddNode(parentId, id, text)`, `Expand(id)`, `Collapse(id)`, `VisibleRows()`, `SelectId(id)`, and `RefreshSubtree(id)` let a project tree preserve expansion/selection while requesting repopulation only for dirty subtrees.
+`Viper.GUI.VirtualTree.New()` supports lazy tree models. `AddNode(parentId, id, text)`, `Expand(id)`, `Collapse(id)`, `VisibleRows()`, `SelectId(id)`, and `RefreshSubtree(id)` let a project tree preserve expansion/selection while requesting repopulation only for dirty subtrees. `AddNode` rejects empty ids, self-parenting, and moves that would put a node under its own descendant; valid reparenting removes the node from its old parent. `RefreshSubtree(id)` removes descendants of the refreshed node and clears selection if the selected id was removed.
 
 #### CommandState and Accessibility
 

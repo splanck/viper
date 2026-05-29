@@ -2967,6 +2967,7 @@ RT_CLASS_BEGIN("Viper.GUI.TestHarness", GuiTestHarness, "obj", GuiTestHarnessNew
     RT_METHOD("GetFocus",       "str()",                           GuiTestHarnessGetFocus)
     RT_METHOD("FocusOrder",     "obj<Viper.Collections.Seq>()",    GuiTestHarnessFocusOrder)
     RT_METHOD("CaptureRegion",  "obj<Viper.Collections.Map>(i64,i64,i64,i64)", GuiTestHarnessCaptureRegion)
+    RT_METHOD("AssertNonBlank", "i1(obj)",                         GuiTestHarnessAssertNonblank)
 RT_CLASS_END()
 
 RT_CLASS_BEGIN("Viper.GUI.VirtualList", GuiVirtualList, "obj", GuiVirtualListNew)
@@ -3041,6 +3042,7 @@ RT_FUNC(ToastSetMaxVisible,   rt_toast_set_max_visible,  "Viper.GUI.Toast.SetMax
 RT_FUNC(ToastDismissAll,      rt_toast_dismiss_all,      "Viper.GUI.Toast.DismissAll",      "void()")
 
 RT_CLASS_BEGIN("Viper.GUI.Toast", GuiToast, "obj", ToastNew)
+    RT_METHOD("New",              "obj(str,i64,i64)", ToastNew)
     RT_METHOD("Info",             "void(str)",  ToastInfo)
     RT_METHOD("Success",          "void(str)",  ToastSuccess)
     RT_METHOD("Warning",          "void(str)",  ToastWarning)
@@ -8543,6 +8545,7 @@ RT_CLASS_END()
 
 // Viper.GUI.Font - font loading
 RT_CLASS_BEGIN("Viper.GUI.Font", GuiFont, "obj", GuiFontLoad)
+    RT_METHOD("Load", "obj(str)", GuiFontLoad)
     RT_METHOD("Destroy", "void()", GuiFontDestroy)
 RT_CLASS_END()
 

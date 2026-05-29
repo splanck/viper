@@ -1249,8 +1249,9 @@ void vg_widget_measure(vg_widget_t *root, float available_width, float available
     if (!root || !root->visible)
         return;
 
-    bool recurse_children =
-        !root->vtable || !root->vtable->measure || root->vtable->measure == default_measure;
+    bool fallback_child_layout = root->vtable && !root->vtable->arrange && root->first_child;
+    bool recurse_children = !root->vtable || !root->vtable->measure ||
+                            root->vtable->measure == default_measure || fallback_child_layout;
     if (recurse_children) {
         VG_FOREACH_VISIBLE_CHILD(root, child) {
             vg_widget_measure(child, available_width, available_height);
@@ -1260,6 +1261,25 @@ void vg_widget_measure(vg_widget_t *root, float available_width, float available
     // Then measure this widget
     if (root->vtable && root->vtable->measure) {
         root->vtable->measure(root, available_width, available_height);
+    }
+
+    if (fallback_child_layout) {
+        float child_w = 0.0f;
+        float child_h = 0.0f;
+        VG_FOREACH_VISIBLE_CHILD(root, child) {
+            float w = child->measured_width + child->layout.margin_left + child->layout.margin_right;
+            float h = child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
+            if (w > child_w)
+                child_w = w;
+            child_h += h;
+        }
+        float padded_w = child_w + root->layout.padding_left + root->layout.padding_right;
+        float padded_h = child_h + root->layout.padding_top + root->layout.padding_bottom;
+        if (padded_w > root->measured_width)
+            root->measured_width = padded_w;
+        if (padded_h > root->measured_height)
+            root->measured_height = padded_h;
+        vg_widget_apply_constraints(root);
     }
 }
 
@@ -1275,11 +1295,15 @@ void vg_widget_arrange(vg_widget_t *root, float x, float y, float width, float h
         root->vtable->arrange(root, x, y, width, height);
     } else {
         // Widgets without arrange (MenuBar, Toolbar, StatusBar, etc.)
-        // just need their position and size set.
+        // just need their position and size set. If runtime code attached
+        // children anyway, lay those children out with the base vertical flow
+        // so AddChild does not create invisible/orphaned descendants.
         root->x = x;
         root->y = y;
         root->width = width;
         root->height = height;
+        if (root->first_child)
+            default_arrange(root, x, y, width, height);
     }
 
     root->needs_layout = false;

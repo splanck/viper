@@ -174,20 +174,6 @@ static void rt_findbar_widget_destroy(vg_widget_t *widget) {
         s_findbar_original_vtable->destroy(widget);
 }
 
-/// @brief Sever the two-way wrapper↔bar link: clear the bar's `user_data` back-pointer,
-///        drop its search target, and null the wrapper's bar/editor references.
-static void rt_findbar_detach_wrapper(rt_findbar_data_t *data) {
-    if (!data)
-        return;
-    if (data->bar && vg_widget_is_live(&data->bar->base)) {
-        if (data->bar->base.user_data == data)
-            data->bar->base.user_data = NULL;
-        vg_findreplacebar_set_target(data->bar, NULL);
-    }
-    data->bar = NULL;
-    data->bound_editor = NULL;
-}
-
 /// @brief Release the find/replace bar widget and free cached text buffers.
 static void rt_findbar_dispose(rt_findbar_data_t *data) {
     if (!data)
@@ -212,15 +198,7 @@ static void rt_findbar_dispose(rt_findbar_data_t *data) {
 /// @brief GC finalizer — delegates to `rt_findbar_dispose`.
 static void rt_findbar_finalize(void *bar) {
     rt_findbar_data_t *data = (rt_findbar_data_t *)bar;
-    if (!data)
-        return;
-    free(data->find_text);
-    data->find_text = NULL;
-    free(data->replace_text);
-    data->replace_text = NULL;
-    rt_findbar_detach_wrapper(data);
-    data->magic = 0;
-    rt_findbar_unregister_wrapper(data);
+    rt_findbar_dispose(data);
 }
 
 /// @brief Create a new find/replace bar widget.

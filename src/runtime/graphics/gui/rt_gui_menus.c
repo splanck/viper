@@ -1239,7 +1239,7 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
     vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
     if (!tb)
         return NULL;
-    char *cicon = rt_string_to_cstr(icon_path);
+    char *cicon = rt_string_to_cstr_no_nul(icon_path);
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
     if ((icon_path && !cicon) || !ctooltip) {
         free(cicon);
@@ -1273,7 +1273,7 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
     if (!tb)
         return NULL;
-    char *cicon = rt_string_to_cstr(icon_path);
+    char *cicon = rt_string_to_cstr_no_nul(icon_path);
     char *ctext = rt_string_to_gui_cstr(text);
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
     if ((icon_path && !cicon) || !ctext || !ctooltip) {
@@ -1306,7 +1306,7 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     vg_toolbar_t *tb = rt_toolbar_checked(toolbar);
     if (!tb)
         return NULL;
-    char *cicon = rt_string_to_cstr(icon_path);
+    char *cicon = rt_string_to_cstr_no_nul(icon_path);
     char *ctooltip = rt_string_to_gui_cstr(tooltip);
     if ((icon_path && !cicon) || !ctooltip) {
         free(cicon);
@@ -1451,7 +1451,7 @@ void rt_toolbaritem_set_icon(void *item, rt_string icon_path) {
     vg_toolbar_item_t *ti = rt_toolbaritem_checked(item);
     if (!ti)
         return;
-    char *cicon = rt_string_to_cstr(icon_path);
+    char *cicon = rt_string_to_cstr_no_nul(icon_path);
     vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
     free(cicon);
     vg_toolbar_item_set_icon(ti, icon);

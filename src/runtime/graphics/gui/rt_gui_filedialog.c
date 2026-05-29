@@ -231,8 +231,8 @@ static int rt_filedialog_show_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) 
 rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter) {
     RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_gui_cstr(title);
-    char *cfilter = rt_string_to_cstr(filter);
-    char *cpath = rt_string_to_cstr(default_path);
+    char *cfilter = rt_string_to_cstr_no_nul(filter);
+    char *cpath = rt_string_to_cstr_no_nul(default_path);
 
 #ifdef __APPLE__
     // Use native macOS file dialog
@@ -276,8 +276,8 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter) {
     RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_gui_cstr(title);
-    char *cpath = rt_string_to_cstr(default_path);
-    char *cfilter = rt_string_to_cstr(filter);
+    char *cpath = rt_string_to_cstr_no_nul(default_path);
+    char *cfilter = rt_string_to_cstr_no_nul(filter);
 
 #ifdef __APPLE__
     size_t count = 0;
@@ -356,9 +356,9 @@ rt_string rt_filedialog_save(rt_string title,
                              rt_string default_name) {
     RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_gui_cstr(title);
-    char *cfilter = rt_string_to_cstr(filter);
+    char *cfilter = rt_string_to_cstr_no_nul(filter);
     char *cname = rt_string_to_gui_cstr(default_name);
-    char *cpath = rt_string_to_cstr(default_path);
+    char *cpath = rt_string_to_cstr_no_nul(default_path);
 
 #ifdef __APPLE__
     // Use native macOS file dialog
@@ -405,7 +405,7 @@ rt_string rt_filedialog_save(rt_string title,
 rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
     RT_ASSERT_MAIN_THREAD();
     char *ctitle = rt_string_to_gui_cstr(title);
-    char *cpath = rt_string_to_cstr(default_path);
+    char *cpath = rt_string_to_cstr_no_nul(default_path);
 
 #ifdef __APPLE__
     // Use native macOS file dialog
@@ -698,7 +698,9 @@ void rt_filedialog_set_path(void *dialog, rt_string path) {
     rt_filedialog_data_t *data = rt_filedialog_data_checked(dialog);
     if (!data)
         return;
-    char *cpath = rt_string_to_cstr(path);
+    char *cpath = rt_string_to_cstr_no_nul(path);
+    if (path && !cpath)
+        return;
     vg_filedialog_set_initial_path(data->dialog, cpath);
     if (cpath)
         free(cpath);
@@ -712,14 +714,14 @@ void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
     if (!data)
         return;
     char *cname = name ? rt_string_to_gui_cstr(name) : NULL;
-    char *cpattern = pattern ? rt_string_to_cstr(pattern) : NULL;
-    if ((name && !cname) || (pattern && !cpattern)) {
+    char *cpattern = pattern ? rt_string_to_cstr_no_nul(pattern) : NULL;
+    if (!pattern || (name && !cname) || !cpattern) {
         free(cname);
         free(cpattern);
         return;
     }
     vg_filedialog_clear_filters(data->dialog);
-    vg_filedialog_add_filter(data->dialog, cname, cpattern);
+    vg_filedialog_add_filter(data->dialog, cname ? cname : "Files", cpattern);
     if (cname)
         free(cname);
     if (cpattern)
@@ -734,13 +736,13 @@ void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
     if (!data)
         return;
     char *cname = name ? rt_string_to_gui_cstr(name) : NULL;
-    char *cpattern = pattern ? rt_string_to_cstr(pattern) : NULL;
-    if ((name && !cname) || (pattern && !cpattern)) {
+    char *cpattern = pattern ? rt_string_to_cstr_no_nul(pattern) : NULL;
+    if (!pattern || (name && !cname) || !cpattern) {
         free(cname);
         free(cpattern);
         return;
     }
-    vg_filedialog_add_filter(data->dialog, cname, cpattern);
+    vg_filedialog_add_filter(data->dialog, cname ? cname : "Files", cpattern);
     if (cname)
         free(cname);
     if (cpattern)

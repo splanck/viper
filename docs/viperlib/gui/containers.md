@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-29
+last-verified: 2026-05-28
 ---
 
 # Containers & Advanced
@@ -275,6 +275,7 @@ Hiding line numbers fully collapses the line-number gutter. `SetLineNumberWidth(
 Syntax-colored text now renders in contiguous same-color runs instead of issuing one draw call per byte, which keeps large highlighted files responsive.
 Keyboard text input and pasted text preserve valid multi-byte UTF-8 sequences as complete byte ranges. Document replacement builds the new line array before swapping it into the editor, so allocation failure leaves the previous document intact instead of installing partially initialized lines.
 `SetText()` uses the runtime string byte length when replacing the document, so `GetText()` round-trips embedded NUL bytes instead of truncating at the first NUL.
+`GetWordAtCursor()` and `ReplaceWordAtCursor()` keep non-ASCII UTF-8 bytes with the surrounding identifier instead of splitting a multibyte word in the middle.
 Gutter icon slots are validated as `0..3`; invalid slots are ignored. Read `GetGutterClickLine()` and `GetGutterClickSlot()` before consuming the event with `WasGutterClicked()`; consuming the event clears the stored line and slot back to `-1`.
 `ScrollTopLine` exposes the zero-based source line nearest the top of the viewport, so applications can persist and restore editor scroll state without inferring it from pixels.
 Selection range getters return normalized zero-based source coordinates for the requested cursor; if the cursor has no active selection or the cursor index is invalid, they return `0`.

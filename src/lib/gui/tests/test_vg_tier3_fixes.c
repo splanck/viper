@@ -982,6 +982,42 @@ TEST(tab_index_defaults_to_minus_one) {
 }
 
 //=============================================================================
+// Runtime AddChild Fallback Layout
+//=============================================================================
+
+TEST(leaf_widget_addchild_fallback_lays_out_children) {
+    vg_label_t *parent = vg_label_create(NULL, "Parent");
+    ASSERT_NOT_NULL(parent);
+    vg_button_t *child = vg_button_create(NULL, "Run");
+    ASSERT_NOT_NULL(child);
+
+    parent->base.layout.padding_left = 4.0f;
+    parent->base.layout.padding_top = 3.0f;
+    parent->base.layout.padding_right = 6.0f;
+    parent->base.layout.padding_bottom = 5.0f;
+
+    vg_widget_add_child(&parent->base, &child->base);
+    ASSERT_EQ(&parent->base, child->base.parent);
+
+    vg_widget_measure(&parent->base, 240.0f, 120.0f);
+    ASSERT_TRUE(child->base.measured_width > 0.0f);
+    ASSERT_TRUE(child->base.measured_height > 0.0f);
+    ASSERT_TRUE(parent->base.measured_width >= child->base.measured_width + 10.0f);
+    ASSERT_TRUE(parent->base.measured_height >= child->base.measured_height + 8.0f);
+
+    vg_widget_arrange(
+        &parent->base, 10.0f, 20.0f, parent->base.measured_width, parent->base.measured_height);
+    ASSERT_EQ(10, (int)parent->base.x);
+    ASSERT_EQ(20, (int)parent->base.y);
+    ASSERT_EQ(4, (int)child->base.x);
+    ASSERT_EQ(3, (int)child->base.y);
+    ASSERT_TRUE(child->base.width > 0.0f);
+    ASSERT_TRUE(child->base.height > 0.0f);
+
+    vg_widget_destroy(&parent->base);
+}
+
+//=============================================================================
 // FEAT-005: Button Icon Support
 //=============================================================================
 
@@ -1077,6 +1113,9 @@ int main(void) {
     RUN(focus_prev_reverses_tab_index_order);
     RUN(tab_index_defaults_to_minus_one);
     RUN(key_tab_dispatch_moves_focus_when_unhandled);
+
+    printf("\nRuntime AddChild Fallback Layout\n");
+    RUN(leaf_widget_addchild_fallback_lays_out_children);
 
     printf("\nFEAT-005: Button Icon\n");
     RUN(button_set_icon_stores_text);

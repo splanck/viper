@@ -44,7 +44,7 @@
 /// @brief Copy text to the system clipboard.
 void rt_clipboard_set_text(rt_string text) {
     RT_ASSERT_MAIN_THREAD();
-    char *ctext = rt_string_to_cstr(text);
+    char *ctext = rt_string_to_gui_cstr(text);
     if (ctext) {
         vgfx_clipboard_set_text(ctext);
         free(ctext);
@@ -98,6 +98,50 @@ static void rt_shortcuts_ensure_capacity(rt_gui_app_t *app) {
         return;
     app->shortcuts = p;
     app->shortcut_cap = new_cap;
+}
+
+static void rt_shortcuts_free_triggered_queue(rt_gui_app_t *app) {
+    if (!app)
+        return;
+    for (int i = 0; i < app->triggered_shortcut_count; i++) {
+        free(app->triggered_shortcut_ids[i]);
+    }
+    free(app->triggered_shortcut_ids);
+    app->triggered_shortcut_ids = NULL;
+    app->triggered_shortcut_count = 0;
+    app->triggered_shortcut_cap = 0;
+    free(app->triggered_shortcut_id);
+    app->triggered_shortcut_id = NULL;
+}
+
+static int rt_shortcuts_record_triggered(rt_gui_app_t *app, const char *id) {
+    if (!app || !id)
+        return 0;
+    if (app->triggered_shortcut_count >= app->triggered_shortcut_cap) {
+        if (app->triggered_shortcut_cap > INT_MAX / 2)
+            return 0;
+        int new_cap = app->triggered_shortcut_cap ? app->triggered_shortcut_cap * 2 : 4;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(*app->triggered_shortcut_ids))
+            return 0;
+        void *p = realloc(app->triggered_shortcut_ids,
+                          (size_t)new_cap * sizeof(*app->triggered_shortcut_ids));
+        if (!p)
+            return 0;
+        app->triggered_shortcut_ids = (char **)p;
+        app->triggered_shortcut_cap = new_cap;
+    }
+
+    char *queued_id = strdup(id);
+    if (!queued_id)
+        return 0;
+    app->triggered_shortcut_ids[app->triggered_shortcut_count++] = queued_id;
+
+    char *last_id = strdup(id);
+    if (last_id) {
+        free(app->triggered_shortcut_id);
+        app->triggered_shortcut_id = last_id;
+    }
+    return 1;
 }
 
 /// @brief Parse a `+`-separated shortcut string (e.g. `"Ctrl+Shift+S"`) into modifier flags + key
@@ -410,15 +454,14 @@ void rt_shortcuts_clear(void) {
     app->shortcuts = NULL;
     app->shortcut_count = 0;
     app->shortcut_cap = 0;
-    free(app->triggered_shortcut_id);
-    app->triggered_shortcut_id = NULL;
+    rt_shortcuts_free_triggered_queue(app);
 }
 
 /// @brief Check if any registered keyboard shortcut was triggered this frame.
 int64_t rt_shortcuts_was_triggered(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
-    if (!app || !app->triggered_shortcut_id || !id)
+    if (!app || !id)
         return 0;
     if (rt_string_contains_nul(id))
         return 0;
@@ -427,12 +470,25 @@ int64_t rt_shortcuts_was_triggered(rt_string id) {
     if (id_len64 < 0)
         return 0;
     size_t id_len = (size_t)id_len64;
-    size_t triggered_len = strlen(app->triggered_shortcut_id);
-    if (id_len != triggered_len)
+    const char *id_bytes = id_len > 0 ? rt_string_cstr(id) : "";
+    if (!id_bytes)
         return 0;
 
-    const char *id_bytes = id_len > 0 ? rt_string_cstr(id) : "";
-    return id_bytes && memcmp(id_bytes, app->triggered_shortcut_id, id_len) == 0 ? 1 : 0;
+    for (int i = 0; i < app->triggered_shortcut_count; i++) {
+        const char *triggered = app->triggered_shortcut_ids[i];
+        if (!triggered)
+            continue;
+        size_t triggered_len = strlen(triggered);
+        if (id_len == triggered_len && memcmp(id_bytes, triggered, id_len) == 0)
+            return 1;
+    }
+
+    if (app->triggered_shortcut_id) {
+        size_t triggered_len = strlen(app->triggered_shortcut_id);
+        if (id_len == triggered_len && memcmp(id_bytes, app->triggered_shortcut_id, id_len) == 0)
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Reset all per-shortcut triggered flags and the cached triggered-id string.
@@ -444,13 +500,10 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
-    if (!app->triggered_shortcut_id)
-        return;
     for (int i = 0; i < app->shortcut_count; i++) {
         app->shortcuts[i].triggered = 0;
     }
-    free(app->triggered_shortcut_id);
-    app->triggered_shortcut_id = NULL;
+    rt_shortcuts_free_triggered_queue(app);
 }
 
 /// @brief Match a key event against registered global shortcuts; trigger on hit.
@@ -469,9 +522,9 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
 ///            match regardless of the user's caps-lock state.
 ///
 ///          On match, the shortcut's `triggered` flag is set and its id is
-///          copied into `app->triggered_shortcut_id` for `Shortcuts.GetTriggered`
-///          to read on the same frame. The previous triggered id (if any) is
-///          freed first.
+///          appended to the app's per-frame triggered queue. `Shortcuts.GetTriggered`
+///          reads the first queued id for compatibility, while
+///          `Shortcuts.WasTriggered(id)` can observe every shortcut fired this frame.
 /// @param app App owning the shortcut table.
 /// @param key Key code from the event.
 /// @param mods Modifier bitmask (`VG_MOD_*`).
@@ -513,26 +566,27 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
         if (expected_ctrl == event_ctrl && expected_super == event_super &&
             app->shortcuts[i].parsed_shift == has_shift &&
             app->shortcuts[i].parsed_alt == has_alt && app->shortcuts[i].parsed_key == upper_key) {
-            char *new_triggered_id = app->shortcuts[i].id ? strdup(app->shortcuts[i].id) : NULL;
-            if (app->shortcuts[i].id && !new_triggered_id)
+            if (!rt_shortcuts_record_triggered(app, app->shortcuts[i].id))
                 return 0;
             app->shortcuts[i].triggered = 1;
-            free(app->triggered_shortcut_id);
-            app->triggered_shortcut_id = new_triggered_id;
             return 1;
         }
     }
     return 0;
 }
 
-/// @brief Return the id of the last shortcut triggered this frame, or an empty string.
-/// @details Reads `app->triggered_shortcut_id` which is set by `rt_shortcuts_check_key`
-///          when a key event matches a registered shortcut.  Valid only for the current
-///          frame; cleared at the start of the next poll by `rt_shortcuts_clear_triggered`.
+/// @brief Return the id of the first shortcut triggered this frame, or an empty string.
+/// @details Reads the per-frame triggered queue populated by `rt_shortcuts_check_key`.
+///          Valid only for the current frame; cleared at the start of the next poll by
+///          `rt_shortcuts_clear_triggered`.
 /// @return The shortcut id string, or an empty rt_string if no shortcut fired this frame.
 rt_string rt_shortcuts_get_triggered(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
+    if (app && app->triggered_shortcut_count > 0 && app->triggered_shortcut_ids[0]) {
+        const char *id = app->triggered_shortcut_ids[0];
+        return rt_string_from_bytes(id, strlen(id));
+    }
     if (app && app->triggered_shortcut_id) {
         return rt_string_from_bytes(app->triggered_shortcut_id, strlen(app->triggered_shortcut_id));
     }

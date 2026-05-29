@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-18
+last-verified: 2026-05-28
 ---
 
 # GUI Widgets
@@ -21,7 +21,7 @@ last-verified: 2026-05-18
 | [Containers & Advanced](containers.md) | ScrollView, SplitPane, TabBar, TreeView, CodeEditor, Minimap |
 | [Application Components](application.md) | MenuBar, Toolbar, StatusBar, Dialogs, Notifications, Utilities, Themes, IDE test/virtualization helpers |
 
-Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, focus rejection through hidden/disabled ancestors, edge-triggered tab close events, trailing-newline preservation in `CodeEditor`, safer list/dropdown/toolbar/statusbar/menu capacity handling, GUI text conversion that renders embedded NUL bytes as U+FFFD instead of truncating visible labels, drag/drop C-string payloads that reject embedded NUL bytes, concrete widget classes exposing the common `Widget` layout/state/tooltip/drag-drop methods directly, active menu shortcut dispatch on non-native menu bars, runtime-managed subobject handles that stay safe after owner destruction, and corrected edge reporting for ListBox/TreeView removals.
+Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, focus rejection through hidden/disabled ancestors, edge-triggered tab close events, trailing-newline preservation in `CodeEditor`, safer list/dropdown/toolbar/statusbar/menu capacity handling, GUI text conversion that renders embedded NUL bytes as U+FFFD instead of truncating visible labels, drag/drop and path/filter C-string payloads that reject embedded NUL bytes, concrete widget classes exposing the common `Widget` layout/state/tooltip/drag-drop methods directly, fallback layout for simple widgets that receive runtime children through `AddChild`, active menu shortcut dispatch on non-native menu bars, per-frame shortcut trigger retention, runtime-managed subobject handles that stay safe after owner destruction, and corrected edge reporting for ListBox/TreeView removals.
 
 ## Complete Example (Zia)
 
