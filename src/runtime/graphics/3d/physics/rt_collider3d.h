@@ -63,6 +63,8 @@ void *rt_collider3d_get_local_bounds_max(void *collider);
    solver to avoid boxing Vec3s on hot paths. */
 /// @brief Write the local-space AABB (min/max xyz) into the caller's buffers.
 void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double *max_out);
+/// @brief Monotonic revision that changes whenever cached collider bounds change.
+uint64_t rt_collider3d_get_bounds_revision_raw(void *collider);
 /// @brief Compute the world-space AABB for a collider placed at the given
 ///        position/rotation/scale; results written to @p min_out / @p max_out.
 void rt_collider3d_compute_world_aabb_raw(void *collider,

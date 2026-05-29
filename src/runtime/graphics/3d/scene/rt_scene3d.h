@@ -13,7 +13,7 @@
 // Key invariants:
 //   - Scene3D always has a root node (created in constructor).
 //   - SceneNode3D world_matrix is recomputed lazily when dirty.
-//   - Dirty flag propagates to all descendants on any transform change.
+//   - Descendants notice parent transform changes through cached world revisions.
 //   - Children are stored as a dynamic array (not GC-managed).
 //   - Nodes with both mesh and material are drawn; imported node lights contribute
 //     to scene draw snapshots after world-transform evaluation.
@@ -46,6 +46,8 @@ void *rt_scene3d_new(void);
 void *rt_scene3d_get_root(void *scene);
 /// @brief Convenience: attach @p node beneath the scene root.
 void rt_scene3d_add(void *scene, void *node);
+/// @brief Convenience: attach @p node beneath the scene root; returns 1 on success.
+int8_t rt_scene3d_try_add(void *scene, void *node);
 /// @brief Convenience: detach @p node from the scene root.
 void rt_scene3d_remove(void *scene, void *node);
 /// @brief Recursively search the scene for a node whose name matches @p name (NULL if none).
@@ -89,6 +91,8 @@ void *rt_scene_node3d_get_world_rotation(void *node);
 void *rt_scene_node3d_get_world_scale(void *node);
 /// @brief Attach @p child as a child of @p node (detaches from any prior parent).
 void rt_scene_node3d_add_child(void *node, void *child);
+/// @brief Attach @p child as a child of @p node, returning 1 when the child is parented there.
+int8_t rt_scene_node3d_try_add_child(void *node, void *child);
 /// @brief Detach @p child from @p node (no-op if not actually a child).
 void rt_scene_node3d_remove_child(void *node, void *child);
 /// @brief Number of direct children of @p node.

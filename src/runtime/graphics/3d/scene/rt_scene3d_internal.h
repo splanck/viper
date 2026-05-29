@@ -80,6 +80,8 @@ typedef struct rt_scene_node3d {
 
     double world_matrix[16];
     int8_t world_dirty;
+    uint32_t world_revision;
+    uint32_t parent_world_revision_seen;
 
     struct rt_scene_node3d *parent;
     struct rt_scene_node3d **children;

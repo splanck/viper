@@ -188,8 +188,9 @@ default water size.
 `Debug3D` uses the same final overlay path as user HUDs, so its text is drawn
 after post-FX rather than being bloomed, toned, or blurred.
 On GPU post-FX backends, recorded final overlays are replayed into the backend
-overlay target before `present_postfx`, so capture and presentation both
-composite crisp overlays over the post-FX scene.
+after `apply_postfx` and before `present` when the backend exposes the split
+path. Legacy backends still use `present_postfx` with the overlay target, so
+capture and presentation both composite crisp overlays over the post-FX scene.
 
 ```zia
 Game3D.Debug3D.ShowOverlay(world, true);

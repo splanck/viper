@@ -12,12 +12,14 @@
 //
 // Key invariants:
 //   - TRS order: world = parent_world * Translate * Rotate * Scale
-//   - Dirty flag propagates DOWN: changing a parent marks all descendants dirty.
+//   - Dirty state is lazy: changing a parent bumps its world revision, and
+//     descendants refresh when their cached parent revision no longer matches.
 //   - Children array is heap-allocated (not GC-managed); freed in finalizer.
 //   - Mesh/material/name and LOD meshes are retained by the node.
-//   - Iterative traversal stacks (mark_dirty etc.) avoid recursion stack overflow.
+//   - Iterative traversal stacks avoid recursion stack overflow for draw/count
+//     walks; transform invalidation itself is allocation-free.
 //   - LOD levels are kept sorted by distance ascending so the draw path picks
-//     the first matching threshold linearly.
+//     the highest threshold that does not exceed camera distance.
 //
 // Ownership/Lifetime:
 //   - Scene3D / SceneNode3D / NodeAnimation3D / NodeAnimator3D are GC-managed.
@@ -829,8 +831,8 @@ static void quat_from_world_matrix(const double *m, double *out) {
 }
 
 /// @brief Push @p node onto an iterative-traversal node stack, growing it geometrically.
-/// @details Used by `mark_dirty` and other walk functions that prefer iterative
-///   traversal over recursion (avoids stack overflow on deep scene graphs).
+/// @details Used by walk functions that prefer iterative traversal over recursion
+///   (avoids stack overflow on deep scene graphs).
 ///   Returns 1 on success or no-op (NULL node), 0 on overflow / OOM.
 static int scene_node_stack_push(rt_scene_node3d ***stack,
                                  size_t *count,
@@ -883,29 +885,15 @@ static int scene_node_const_stack_push(const rt_scene_node3d ***stack,
     return 1;
 }
 
-/// @brief Mark a node and all descendants as dirty without recursive stack growth.
+/// @brief Mark a node's local world transform dirty.
+///
+/// Descendants do not need eager dirty propagation. Each node tracks the parent
+/// world-matrix revision it last consumed, so a child lazily notices parent
+/// changes during `recompute_world_matrix` without allocating a traversal stack.
 static void mark_dirty(rt_scene_node3d *node) {
-    rt_scene_node3d **stack = NULL;
-    size_t count = 0;
-    size_t capacity = 0;
     if (!node)
         return;
-    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
-        node->world_dirty = 1;
-        return;
-    }
-    while (count > 0) {
-        rt_scene_node3d *current = stack[--count];
-        current->world_dirty = 1;
-        for (int32_t i = 0; i < current->child_count; i++) {
-            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
-                rt_trap("SceneNode3D: traversal stack allocation failed");
-                free(stack);
-                return;
-            }
-        }
-    }
-    free(stack);
+    node->world_dirty = 1;
 }
 
 /// @brief Forward declaration for the recursive node-name search used by the animation
@@ -1315,35 +1303,31 @@ static void node_animator_update(rt_node_animator3d *animator, double dt) {
         node_anim_apply_channel(animator->root, &clip->channels[i], animator->time);
 }
 
-/// @brief Recompute the world matrix if dirty, walking ancestors iteratively.
+/// @brief Recompute the world matrix if local or parent state changed.
 static void recompute_world_matrix(rt_scene_node3d *node) {
-    rt_scene_node3d **stack = NULL;
-    size_t count = 0;
-    size_t capacity = 0;
-    rt_scene_node3d *current = node;
-    if (!node || !node->world_dirty)
+    double local[16];
+    uint32_t parent_revision = 0;
+    if (!node)
         return;
 
-    while (current && current->world_dirty) {
-        if (!scene_node_stack_push(&stack, &count, &capacity, current)) {
-            rt_trap("SceneNode3D: traversal stack allocation failed");
-            free(stack);
-            return;
-        }
-        current = current->parent;
+    if (node->parent) {
+        recompute_world_matrix(node->parent);
+        parent_revision = node->parent->world_revision;
+        if (node->parent_world_revision_seen != parent_revision)
+            node->world_dirty = 1;
     }
 
-    while (count > 0) {
-        double local[16];
-        current = stack[--count];
-        build_trs_matrix(current->position, current->rotation, current->scale_xyz, local);
-        if (current->parent)
-            mat4d_mul(current->parent->world_matrix, local, current->world_matrix);
-        else
-            memcpy(current->world_matrix, local, sizeof(double) * 16);
-        current->world_dirty = 0;
-    }
-    free(stack);
+    if (!node->world_dirty)
+        return;
+
+    build_trs_matrix(node->position, node->rotation, node->scale_xyz, local);
+    if (node->parent)
+        mat4d_mul(node->parent->world_matrix, local, node->world_matrix);
+    else
+        memcpy(node->world_matrix, local, sizeof(double) * 16);
+    node->parent_world_revision_seen = parent_revision;
+    node->world_dirty = 0;
+    node->world_revision = node->world_revision == UINT32_MAX ? 1u : node->world_revision + 1u;
 }
 
 /// @brief Count nodes in a subtree (including the root).
@@ -2181,6 +2165,7 @@ void *rt_scene_node3d_new(void) {
         rt_trap("SceneNode3D.New: memory allocation failed");
         return NULL;
     }
+    memset(node, 0, sizeof(*node));
     node->vptr = NULL;
     node->position[0] = node->position[1] = node->position[2] = 0.0;
     node->rotation[0] = node->rotation[1] = node->rotation[2] = 0.0;
@@ -2192,6 +2177,8 @@ void *rt_scene_node3d_new(void) {
     node->world_matrix[0] = node->world_matrix[5] = 1.0;
     node->world_matrix[10] = node->world_matrix[15] = 1.0;
     node->world_dirty = 1;
+    node->world_revision = 1;
+    node->parent_world_revision_seen = 0;
 
     node->parent = NULL;
     node->children = NULL;
@@ -2348,35 +2335,35 @@ void *rt_scene_node3d_get_world_scale(void *obj) {
  *=========================================================================*/
 
 /// @brief Reparent `child` under `obj`. Detaches from previous parent first; rejects cycles.
-void rt_scene_node3d_add_child(void *obj, void *child_obj) {
+int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
     rt_scene_node3d *parent = scene_node3d_checked(obj);
     rt_scene_node3d *child = scene_node3d_checked(child_obj);
     if (!parent || !child || parent == child)
-        return;
+        return 0;
     if (child->parent == parent)
-        return;
+        return 1;
 
     /* Reject cycle formation: parent may not already be inside child's subtree. */
     if (node_contains(child, parent))
-        return;
+        return 0;
 
     /* Grow children array if needed */
     if (parent->child_count >= parent->child_capacity) {
         int32_t new_cap;
         if (parent->child_capacity < 0 || parent->child_capacity > INT32_MAX / 2) {
             rt_trap("SceneNode3D.AddChild: too many children");
-            return;
+            return 0;
         }
         new_cap = parent->child_capacity == 0 ? NODE_INIT_CHILDREN : parent->child_capacity * 2;
         if ((size_t)new_cap > SIZE_MAX / sizeof(rt_scene_node3d *)) {
             rt_trap("SceneNode3D.AddChild: too many children");
-            return;
+            return 0;
         }
         rt_scene_node3d **nc = (rt_scene_node3d **)realloc(
             parent->children, (size_t)new_cap * sizeof(rt_scene_node3d *));
         if (!nc) {
             rt_trap("SceneNode3D.AddChild: allocation failed");
-            return;
+            return 0;
         }
         parent->children = nc;
         parent->child_capacity = new_cap;
@@ -2391,6 +2378,11 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj) {
     parent->children[parent->child_count++] = child;
     child->parent = parent;
     mark_dirty(child);
+    return 1;
+}
+
+void rt_scene_node3d_add_child(void *obj, void *child_obj) {
+    (void)rt_scene_node3d_try_add_child(obj, child_obj);
 }
 
 /// @brief Detach `child` from `obj`. Decrements the GC refcount. No-op if not actually a child.
@@ -2763,13 +2755,19 @@ void *rt_scene3d_get_root(void *obj) {
 }
 
 /// @brief Convenience: add `node` as a direct child of the scene's root node.
-void rt_scene3d_add(void *obj, void *node) {
+int8_t rt_scene3d_try_add(void *obj, void *node) {
     rt_scene3d *s = scene3d_checked(obj);
     rt_scene_node3d *n = scene_node3d_checked(node);
     if (!s || !n)
-        return;
-    rt_scene_node3d_add_child(s->root, n);
+        return 0;
+    if (!rt_scene_node3d_try_add_child(s->root, n))
+        return 0;
     s->node_count = count_subtree(s->root);
+    return n->parent == s->root ? 1 : 0;
+}
+
+void rt_scene3d_add(void *obj, void *node) {
+    (void)rt_scene3d_try_add(obj, node);
 }
 
 /// @brief Convenience: remove `node` from the scene root's children.
@@ -2880,6 +2878,7 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     int8_t started_frame = 0;
     rt_light3d *scene_light_ptrs[VGFX3D_MAX_LIGHTS];
     rt_light3d *prev_scene_lights[VGFX3D_MAX_LIGHTS];
+    rt_light3d prev_scene_light_storage[VGFX3D_MAX_LIGHTS];
     int32_t scene_light_count = 0;
     int32_t prev_scene_light_count;
     float vp[16];
@@ -2907,6 +2906,7 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
                         scene3d_float_or_zero(cam->eye[2])};
     prev_scene_light_count = canvas->scene_light_count;
     memcpy(prev_scene_lights, canvas->scene_lights, sizeof(prev_scene_lights));
+    memcpy(prev_scene_light_storage, canvas->scene_light_storage, sizeof(prev_scene_light_storage));
     memset(scene_light_ptrs, 0, sizeof(scene_light_ptrs));
     scene_collect_node_lights(
         s->root, canvas->scene_light_storage, scene_light_ptrs, &scene_light_count);
@@ -2920,6 +2920,7 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
         rt_canvas3d_end(canvas3d);
     canvas->scene_light_count = prev_scene_light_count;
     memcpy(canvas->scene_lights, prev_scene_lights, sizeof(prev_scene_lights));
+    memcpy(canvas->scene_light_storage, prev_scene_light_storage, sizeof(prev_scene_light_storage));
     s->last_culled_count = culled;
 }
 
@@ -2981,8 +2982,9 @@ int64_t rt_scene3d_get_culled_count(void *obj) {
 
 /// @brief Register a mesh LOD to swap in at or beyond a given camera distance.
 /// @details Grows the LOD array on demand (doubling, min 4 slots) and keeps
-///   entries sorted ascending by `distance` so the draw path can linearly pick
-///   the first level whose threshold exceeds the current view distance. The
+///   entries sorted ascending by `distance` so the draw path can pick the
+///   highest threshold that does not exceed the current view distance. Duplicate
+///   thresholds replace the existing mesh instead of creating ambiguous ties. The
 ///   mesh is retained here and released by `rt_scene_node3d_clear_lod` so
 ///   callers may drop their local reference immediately after adding.
 void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
@@ -2994,6 +2996,15 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
     distance = scene3d_finite_or(distance, 0.0);
     if (distance < 0.0)
         distance = 0.0;
+
+    for (int32_t i = 0; i < node->lod_count; i++) {
+        if (node->lod_levels[i].distance == distance) {
+            rt_obj_retain_maybe(mesh);
+            scene3d_release_ref(&node->lod_levels[i].mesh);
+            node->lod_levels[i].mesh = mesh;
+            return;
+        }
+    }
 
     if (node->lod_count >= node->lod_capacity) {
         if (node->lod_capacity >= INT32_MAX / 2) {

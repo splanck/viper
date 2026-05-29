@@ -48,6 +48,7 @@ and joint integration.
 | `Add(body)`               | `Void(Object)`        | Add a `Physics3DBody` to the world |
 | `TryAdd(body)`            | `Boolean(Object)`     | Add a body and report allocation/validation failure without changing the world |
 | `Remove(body)`            | `Void(Object)`        | Remove a body from the world |
+| `ContainsBody(body)`      | `Boolean(Object)`     | Return whether the body is currently registered in the world |
 | `SetGravity(x, y, z)`     | `Void(Double, Double, Double)` | Change the gravity vector |
 | `AddJoint(joint, type)`   | `Void(Object, Integer)` | Add a joint (`0 = DistanceJoint3D`, `1 = SpringJoint3D`) |
 | `RemoveJoint(joint)`      | `Void(Object)`        | Remove a joint from the world |

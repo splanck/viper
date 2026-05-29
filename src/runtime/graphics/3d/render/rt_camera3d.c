@@ -462,6 +462,7 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
         rt_trap("Camera3D.New: memory allocation failed");
         return NULL;
     }
+    memset(cam, 0, sizeof(*cam));
     cam->vptr = NULL;
     cam->fov = sanitize_fov(fov);
     cam->aspect = sanitize_aspect(aspect);
@@ -534,6 +535,7 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
         rt_trap("Camera3D.NewOrtho: memory allocation failed");
         return NULL;
     }
+    memset(cam, 0, sizeof(*cam));
     cam->vptr = NULL;
     cam->fov = 0;
     cam->aspect = sanitize_aspect(aspect);
@@ -782,6 +784,14 @@ static int mat4d_invert(const double *m, double *out) {
     return 0;
 }
 
+static int camera_pick_cache_scalar_equal(double a, double b) {
+    double scale;
+    if (!isfinite(a) || !isfinite(b))
+        return 0;
+    scale = fmax(fmax(fabs(a), fabs(b)), 1.0);
+    return fabs(a - b) <= scale * 1e-12;
+}
+
 static int camera_get_pick_inv_vp(rt_camera3d *cam, double aspect, double *out_inv_vp) {
     double near_plane;
     double far_plane;
@@ -798,9 +808,11 @@ static int camera_get_pick_inv_vp(rt_camera3d *cam, double aspect, double *out_i
     fov = sanitize_fov(cam->fov);
     ortho_size = sanitize_ortho_size(cam->ortho_size);
     if (cam->pick_cache_valid && cam->pick_cache_is_ortho == cam->is_ortho &&
-        cam->pick_cache_aspect == aspect && cam->pick_cache_fov == fov &&
-        cam->pick_cache_near == near_plane && cam->pick_cache_far == far_plane &&
-        cam->pick_cache_ortho_size == ortho_size &&
+        camera_pick_cache_scalar_equal(cam->pick_cache_aspect, aspect) &&
+        camera_pick_cache_scalar_equal(cam->pick_cache_fov, fov) &&
+        camera_pick_cache_scalar_equal(cam->pick_cache_near, near_plane) &&
+        camera_pick_cache_scalar_equal(cam->pick_cache_far, far_plane) &&
+        camera_pick_cache_scalar_equal(cam->pick_cache_ortho_size, ortho_size) &&
         memcmp(cam->pick_cache_view, cam->view, sizeof(cam->view)) == 0) {
         memcpy(out_inv_vp, cam->pick_cache_inv_vp, sizeof(cam->pick_cache_inv_vp));
         return 1;

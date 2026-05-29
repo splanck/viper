@@ -246,6 +246,12 @@ typedef struct vgfx3d_backend {
      * composite for the supplied ordered effect chain. */
     void (*present_postfx)(void *ctx, const vgfx3d_postfx_chain_t *postfx);
 
+    /* Optional split GPU post-processing hook. When non-NULL, Canvas3D may ask
+     * the backend to composite post-FX into the current presentation target,
+     * replay final overlays on top, and then call present(). Backends without
+     * this hook keep the legacy present_postfx path. */
+    void (*apply_postfx)(void *ctx, const vgfx3d_postfx_chain_t *postfx);
+
     /* Optional per-frame hint for backends that need to know whether the
      * current window-backed frame will be presented through GPU postfx. */
     void (*set_gpu_postfx_enabled)(void *ctx, int8_t enabled);

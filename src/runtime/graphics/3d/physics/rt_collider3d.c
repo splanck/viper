@@ -81,6 +81,8 @@ typedef struct {
     int32_t child_capacity;
     double bounds_min[3];
     double bounds_max[3];
+    uint64_t bounds_revision;
+    uint32_t mesh_bounds_revision;
 } rt_collider3d;
 
 /// @brief Safe-cast an opaque handle to rt_collider3d, or NULL if not one.
@@ -391,6 +393,14 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
     if (!collider)
         return;
 
+    if ((collider->type == RT_COLLIDER3D_TYPE_CONVEX_HULL ||
+         collider->type == RT_COLLIDER3D_TYPE_MESH) &&
+        collider->mesh && collider->bounds_revision != 0 &&
+        collider->mesh_bounds_revision == collider->mesh->geometry_revision &&
+        !collider->mesh->bounds_dirty) {
+        return;
+    }
+
     switch (collider->type) {
         case RT_COLLIDER3D_TYPE_BOX:
             collider->bounds_min[0] = -collider->half_extents[0];
@@ -418,6 +428,7 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
         case RT_COLLIDER3D_TYPE_MESH:
             if (collider->mesh) {
                 rt_mesh3d_refresh_bounds(collider->mesh);
+                collider->mesh_bounds_revision = collider->mesh->geometry_revision;
                 collider->bounds_min[0] = collider->mesh->aabb_min[0];
                 collider->bounds_min[1] = collider->mesh->aabb_min[1];
                 collider->bounds_min[2] = collider->mesh->aabb_min[2];
@@ -425,6 +436,7 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
                 collider->bounds_max[1] = collider->mesh->aabb_max[1];
                 collider->bounds_max[2] = collider->mesh->aabb_max[2];
             } else {
+                collider->mesh_bounds_revision = 0;
                 vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
                 vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
             }
@@ -486,6 +498,7 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
             vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
             break;
     }
+    collider->bounds_revision = collider->bounds_revision == UINT64_MAX ? 1u : collider->bounds_revision + 1u;
 }
 
 /// @brief Construct an axis-aligned box collider with half-extents (hx, hy, hz). Negative
@@ -687,26 +700,26 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
             rt_trap("Collider3D.AddChild: allocation overflow");
             return;
         }
-        new_children = (void **)calloc((size_t)new_capacity, sizeof(void *));
-        new_transforms =
-            (rt_collider3d_child *)calloc((size_t)new_capacity, sizeof(rt_collider3d_child));
-        if (!new_children || !new_transforms) {
-            free(new_children);
-            free(new_transforms);
+        new_children = (void **)realloc(compound->children, (size_t)new_capacity * sizeof(void *));
+        if (!new_children) {
             rt_trap("Collider3D.AddChild: allocation failed");
             return;
         }
-        if (compound->child_count > 0) {
-            memcpy(
-                new_children, compound->children, (size_t)compound->child_count * sizeof(void *));
-            memcpy(new_transforms,
-                   compound->child_transforms,
-                   (size_t)compound->child_count * sizeof(rt_collider3d_child));
-        }
-        free(compound->children);
-        free(compound->child_transforms);
         compound->children = new_children;
+        new_transforms = (rt_collider3d_child *)realloc(
+            compound->child_transforms, (size_t)new_capacity * sizeof(rt_collider3d_child));
+        if (!new_transforms) {
+            rt_trap("Collider3D.AddChild: allocation failed");
+            return;
+        }
         compound->child_transforms = new_transforms;
+        memset(compound->children + compound->child_capacity,
+               0,
+               (size_t)(new_capacity - compound->child_capacity) * sizeof(*compound->children));
+        memset(compound->child_transforms + compound->child_capacity,
+               0,
+               (size_t)(new_capacity - compound->child_capacity) *
+                   sizeof(*compound->child_transforms));
         compound->child_capacity = new_capacity;
     }
     rt_obj_retain_maybe(child_obj);
@@ -757,6 +770,14 @@ void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double 
     collider3d_recompute_bounds(shape);
     vec3_copy(min_out, shape->bounds_min);
     vec3_copy(max_out, shape->bounds_max);
+}
+
+uint64_t rt_collider3d_get_bounds_revision_raw(void *collider) {
+    rt_collider3d *shape = collider3d_checked(collider);
+    if (!shape)
+        return 0;
+    collider3d_recompute_bounds(shape);
+    return shape->bounds_revision;
 }
 
 /// @brief Internal: transform the local AABB by (position, rotation quat, scale) and write the

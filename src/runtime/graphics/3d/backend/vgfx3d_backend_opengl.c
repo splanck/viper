@@ -4883,6 +4883,25 @@ static void gl_present_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx
     gl_present_impl((gl_context_t *)ctx_ptr, postfx);
 }
 
+/// @brief Backend `apply_postfx` — composite post-FX without swapping buffers.
+static void gl_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    int use_postfx;
+
+    if (!ctx || ctx->rtt_active)
+        return;
+    glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+    use_postfx = (postfx != NULL && postfx->enabled && postfx->effect_count > 0 &&
+                  ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
+                     ? 1
+                     : 0;
+    if (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
+        !ctx->scene_composited_to_backbuffer) {
+        if (draw_scene_texture(ctx, use_postfx ? postfx : NULL))
+            ctx->scene_composited_to_backbuffer = 1;
+    }
+}
+
 /// @brief Backend `set_gpu_postfx_enabled` — toggle the offscreen-scene path.
 ///
 /// When disabled, also clears any in-flight postfx state so the next
@@ -5142,6 +5161,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .present = gl_present,
     .readback_rgba = gl_readback_rgba,
     .present_postfx = gl_present_postfx,
+    .apply_postfx = gl_apply_postfx,
     .set_gpu_postfx_enabled = gl_set_gpu_postfx_enabled,
     .set_gpu_postfx_snapshot = gl_set_gpu_postfx_snapshot,
 };

@@ -214,6 +214,10 @@ static void test_mesh_empty() {
 static void test_mesh_add_vertex_triangle() {
     TEST("Mesh3D AddVertex/AddTriangle");
     void *m = rt_mesh3d_new();
+    EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_add_vertex(m, NAN, 0, 0, 0, 1, 0, 0, 0); },
+                                     "vertex attributes"),
+                "invalid AddVertex traps");
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 0);
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
     rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
     rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
@@ -260,6 +264,8 @@ static void test_mesh_reject_invalid_triangle_indices() {
                                      "vertex index must be non-negative"),
                 "negative triangle indices trap");
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 0);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
     rt_mesh3d_clear(m);
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
     rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
@@ -267,6 +273,8 @@ static void test_mesh_reject_invalid_triangle_indices() {
     EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 1, 9); },
                                      "vertex index out of range"),
                 "out-of-range triangle indices trap");
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
     rt_mesh3d_clear(m);
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
     rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
@@ -274,6 +282,8 @@ static void test_mesh_reject_invalid_triangle_indices() {
     EXPECT_TRUE(
         expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 1, 1); }, "degenerate triangle"),
         "degenerate triangle indices trap");
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
     rt_mesh3d_clear(m);
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
     rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);

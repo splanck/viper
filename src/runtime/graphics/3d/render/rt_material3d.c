@@ -376,8 +376,12 @@ void *rt_material3d_new_textured(void *pixels) {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new();
     if (!mat)
         return NULL;
-    (void)material_assign_pixels_ref_checked(
-        &mat->texture, pixels, "Material3D.SetTexture: texture must be Pixels");
+    if (!material_assign_pixels_ref_checked(
+            &mat->texture, pixels, "Material3D.SetTexture: texture must be Pixels")) {
+        if (rt_obj_release_check0(mat))
+            rt_obj_free(mat);
+        return NULL;
+    }
     return mat;
 }
 

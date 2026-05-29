@@ -399,6 +399,9 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
         caps |= RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX;
     if (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE)
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY;
+    if (backend->present_postfx && backend->apply_postfx && backend->present)
+        caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY |
+                RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY;
     if (caps & RT_CANVAS3D_BACKEND_CAP_WINDOW_READBACK)
         caps |= RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT;
 

@@ -114,6 +114,7 @@ typedef struct {
     int8_t is_sleeping;
     int8_t use_ccd;
     double ground_normal[3];
+    uint64_t broadphase_revision;
 } rt_body3d;
 
 /* The joint solver (rt_joints3d.c) reaches into a body's pose/velocity through
@@ -184,6 +185,14 @@ typedef struct {
     rt_contact3d *exit_events;
     int32_t exit_event_count;
     int32_t exit_event_capacity;
+    void **collision_event_objects;
+    int32_t collision_event_object_capacity;
+    void **enter_event_objects;
+    int32_t enter_event_object_capacity;
+    void **stay_event_objects;
+    int32_t stay_event_object_capacity;
+    void **exit_event_objects;
+    int32_t exit_event_object_capacity;
 /* Joint constraints */
 #define PH3D_INITIAL_JOINTS 128
     void **joints;
@@ -192,6 +201,9 @@ typedef struct {
     int32_t joint_capacity;
     ph3d_broadphase_entry *broadphase_entries;
     int32_t broadphase_capacity;
+    int32_t query_broadphase_count;
+    uint64_t query_broadphase_signature;
+    int8_t query_broadphase_valid;
     int32_t last_ccd_requested_substeps;
     int32_t last_ccd_substeps;
     int64_t ccd_substep_clamped_count;
@@ -211,6 +223,21 @@ static rt_world3d *world3d_checked(void *obj) {
 /// @brief Validate @p obj as a Body3D handle and return its typed pointer (NULL on mismatch).
 static rt_body3d *body3d_checked(void *obj) {
     return (rt_body3d *)rt_g3d_checked_or_null(obj, RT_G3D_BODY3D_CLASS_ID);
+}
+
+static void body3d_touch_broadphase(rt_body3d *body) {
+    if (!body)
+        return;
+    body->broadphase_revision =
+        body->broadphase_revision == UINT64_MAX ? 1u : body->broadphase_revision + 1u;
+}
+
+static void world3d_invalidate_query_broadphase(rt_world3d *world) {
+    if (!world)
+        return;
+    world->query_broadphase_valid = 0;
+    world->query_broadphase_count = 0;
+    world->query_broadphase_signature = 0;
 }
 
 /// @brief Verify that @p joint is a live joint of the kind named by @p joint_type.
@@ -3496,6 +3523,10 @@ static double resolve_collision(rt_body3d *a,
     b->position[0] += correction * b->inv_mass * n[0];
     b->position[1] += correction * b->inv_mass * n[1];
     b->position[2] += correction * b->inv_mass * n[2];
+    if (a->inv_mass > 0.0)
+        body3d_touch_broadphase(a);
+    if (b->inv_mass > 0.0)
+        body3d_touch_broadphase(b);
 
     if (fabs(j) > 1e-8 || woke) {
         body3d_wake_if_dynamic(a);
@@ -3862,6 +3893,67 @@ static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
     return event;
 }
 
+static void world3d_release_event_object_array(void ***array, int32_t *capacity) {
+    if (!array || !capacity || !*array)
+        return;
+    for (int32_t i = 0; i < *capacity; ++i) {
+        void *event = (*array)[i];
+        if (event && rt_obj_release_check0(event))
+            rt_obj_free(event);
+        (*array)[i] = NULL;
+    }
+}
+
+static void world3d_release_cached_event_objects(rt_world3d *w) {
+    if (!w)
+        return;
+    world3d_release_event_object_array(&w->collision_event_objects,
+                                       &w->collision_event_object_capacity);
+    world3d_release_event_object_array(&w->enter_event_objects, &w->enter_event_object_capacity);
+    world3d_release_event_object_array(&w->stay_event_objects, &w->stay_event_object_capacity);
+    world3d_release_event_object_array(&w->exit_event_objects, &w->exit_event_object_capacity);
+}
+
+static int world3d_reserve_event_object_array(void ***array, int32_t *capacity, int32_t needed) {
+    void **grown;
+    if (!array || !capacity)
+        return 0;
+    if (needed <= *capacity)
+        return 1;
+    int32_t new_capacity = ph3d_next_capacity(*capacity, needed, PH3D_INITIAL_CONTACTS);
+    if (new_capacity < 0 || (size_t)new_capacity > SIZE_MAX / sizeof(void *))
+        return 0;
+    grown = (void **)realloc(*array, (size_t)new_capacity * sizeof(void *));
+    if (!grown)
+        return 0;
+    memset(grown + *capacity, 0, (size_t)(new_capacity - *capacity) * sizeof(void *));
+    *array = grown;
+    *capacity = new_capacity;
+    return 1;
+}
+
+static void *world3d_cached_event_from_contact(void ***array,
+                                               int32_t *capacity,
+                                               int64_t index,
+                                               const rt_contact3d *contact) {
+    void *event;
+    if (!array || !capacity || index < 0 || index > INT32_MAX || !contact)
+        return NULL;
+    if (!world3d_reserve_event_object_array(array, capacity, (int32_t)index + 1))
+        return collision_event3d_new_from_contact(contact);
+    event = (*array)[index];
+    if (event) {
+        rt_obj_retain_maybe(event);
+        return event;
+    }
+    event = collision_event3d_new_from_contact(contact);
+    if (event) {
+        rt_obj_retain_maybe(event);
+        (*array)[index] = event;
+    }
+    return event;
+}
+
 /// @brief Diff this frame's contacts against the previous frame to fire enter/stay/exit events.
 ///
 /// For each contact that exists this frame:
@@ -4022,6 +4114,7 @@ static void world3d_finalizer(void *obj) {
     w->stay_event_count = 0;
     w->exit_event_count = 0;
     w->joint_count = 0;
+    world3d_release_cached_event_objects(w);
     free(w->bodies);
     free(w->contacts);
     free(w->frame_contacts);
@@ -4029,6 +4122,10 @@ static void world3d_finalizer(void *obj) {
     free(w->enter_events);
     free(w->stay_events);
     free(w->exit_events);
+    free(w->collision_event_objects);
+    free(w->enter_event_objects);
+    free(w->stay_event_objects);
+    free(w->exit_event_objects);
     free(w->joints);
     free(w->joint_types);
     free(w->broadphase_entries);
@@ -4039,9 +4136,16 @@ static void world3d_finalizer(void *obj) {
     w->enter_events = NULL;
     w->stay_events = NULL;
     w->exit_events = NULL;
+    w->collision_event_objects = NULL;
+    w->enter_event_objects = NULL;
+    w->stay_event_objects = NULL;
+    w->exit_event_objects = NULL;
     w->joints = NULL;
     w->joint_types = NULL;
     w->broadphase_entries = NULL;
+    w->query_broadphase_count = 0;
+    w->query_broadphase_signature = 0;
+    w->query_broadphase_valid = 0;
     w->last_ccd_requested_substeps = 1;
     w->last_ccd_substeps = 1;
     w->ccd_substep_clamped_count = 0;
@@ -4052,8 +4156,15 @@ static void world3d_finalizer(void *obj) {
     w->enter_event_capacity = 0;
     w->stay_event_capacity = 0;
     w->exit_event_capacity = 0;
+    w->collision_event_object_capacity = 0;
+    w->enter_event_object_capacity = 0;
+    w->stay_event_object_capacity = 0;
+    w->exit_event_object_capacity = 0;
     w->joint_capacity = 0;
     w->broadphase_capacity = 0;
+    w->query_broadphase_count = 0;
+    w->query_broadphase_signature = 0;
+    w->query_broadphase_valid = 0;
 }
 
 /// @brief `Physics3D.World.New(gx, gy, gz)` — construct an empty world with gravity.
@@ -4082,6 +4193,10 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->stay_event_count = 0;
     w->exit_event_count = 0;
     w->joint_count = 0;
+    w->collision_event_object_capacity = 0;
+    w->enter_event_object_capacity = 0;
+    w->stay_event_object_capacity = 0;
+    w->exit_event_object_capacity = 0;
     w->body_capacity = 0;
     w->contact_capacity = 0;
     w->frame_contact_capacity = 0;
@@ -4091,6 +4206,9 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->exit_event_capacity = 0;
     w->joint_capacity = 0;
     w->broadphase_capacity = 0;
+    w->query_broadphase_count = 0;
+    w->query_broadphase_signature = 0;
+    w->query_broadphase_valid = 0;
     w->bodies = NULL;
     w->contacts = NULL;
     w->frame_contacts = NULL;
@@ -4098,6 +4216,10 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->enter_events = NULL;
     w->stay_events = NULL;
     w->exit_events = NULL;
+    w->collision_event_objects = NULL;
+    w->enter_event_objects = NULL;
+    w->stay_event_objects = NULL;
+    w->exit_event_objects = NULL;
     w->joints = NULL;
     w->joint_types = NULL;
     w->broadphase_entries = NULL;
@@ -4215,7 +4337,16 @@ void rt_world3d_step(void *obj, double dt) {
         return;
     int substeps = world3d_compute_substeps(w, dt);
     double sub_dt = dt / (double)substeps;
+    world3d_invalidate_query_broadphase(w);
+    world3d_release_cached_event_objects(w);
     w->frame_contact_count = 0;
+    for (int32_t i = 0; i < w->body_count; i++) {
+        rt_body3d *b = w->bodies[i];
+        if (!b)
+            continue;
+        b->is_grounded = 0;
+        vec3_set(b->ground_normal, 0.0, 1.0, 0.0);
+    }
 
     for (int substep = 0; substep < substeps; substep++) {
         /* Phase 1: Integration */
@@ -4225,8 +4356,6 @@ void rt_world3d_step(void *obj, double dt) {
             double angular_scale;
             if (!b)
                 continue;
-
-            b->is_grounded = 0;
 
             if (b->motion_mode == PH3D_MODE_STATIC) {
                 continue;
@@ -4278,6 +4407,7 @@ void rt_world3d_step(void *obj, double dt) {
                                        b->velocity[1] * sub_dt,
                                        b->velocity[2] * sub_dt);
             quat_integrate(b->orientation, b->angular_velocity, sub_dt);
+            body3d_touch_broadphase(b);
         }
 
         /* Phase 2: Collision detection + response */
@@ -4302,6 +4432,7 @@ void rt_world3d_step(void *obj, double dt) {
         goto cleanup;
 
 cleanup:
+    world3d_invalidate_query_broadphase(w);
     world3d_clear_body_accumulators(w);
 }
 
@@ -4376,11 +4507,46 @@ int8_t rt_world3d_try_add(void *obj, void *body) {
     }
     rt_obj_retain_maybe(body);
     w->bodies[w->body_count++] = b;
+    world3d_invalidate_query_broadphase(w);
     return 1;
 }
 
 void rt_world3d_add(void *obj, void *body) {
     (void)rt_world3d_try_add(obj, body);
+}
+
+static int contact_mentions_body(const rt_contact3d *contact, const rt_body3d *body) {
+    return contact && body && (contact->body_a == body || contact->body_b == body);
+}
+
+static void world3d_purge_contact_array_for_body(rt_contact3d *contacts,
+                                                 int32_t *count,
+                                                 const rt_body3d *body) {
+    int32_t write = 0;
+    if (!contacts || !count || !body)
+        return;
+    for (int32_t read = 0; read < *count; ++read) {
+        if (contact_mentions_body(&contacts[read], body))
+            continue;
+        if (write != read)
+            contacts[write] = contacts[read];
+        write++;
+    }
+    for (int32_t i = write; i < *count; ++i)
+        memset(&contacts[i], 0, sizeof(contacts[i]));
+    *count = write;
+}
+
+static void world3d_purge_body_contacts(rt_world3d *w, const rt_body3d *body) {
+    if (!w || !body)
+        return;
+    world3d_release_cached_event_objects(w);
+    world3d_purge_contact_array_for_body(w->contacts, &w->contact_count, body);
+    world3d_purge_contact_array_for_body(w->frame_contacts, &w->frame_contact_count, body);
+    world3d_purge_contact_array_for_body(w->previous_contacts, &w->previous_contact_count, body);
+    world3d_purge_contact_array_for_body(w->enter_events, &w->enter_event_count, body);
+    world3d_purge_contact_array_for_body(w->stay_events, &w->stay_event_count, body);
+    world3d_purge_contact_array_for_body(w->exit_events, &w->exit_event_count, body);
 }
 
 /// @brief `World3D.Remove(body)` — unregister a body.
@@ -4395,8 +4561,10 @@ void rt_world3d_remove(void *obj, void *body) {
     for (int32_t i = 0; i < w->body_count; i++) {
         if (w->bodies[i] == b) {
             void *removed = w->bodies[i];
+            world3d_purge_body_contacts(w, b);
             w->bodies[i] = w->bodies[--w->body_count];
             w->bodies[w->body_count] = NULL;
+            world3d_invalidate_query_broadphase(w);
             if (removed && rt_obj_release_check0(removed))
                 rt_obj_free(removed);
             return;
@@ -4408,6 +4576,18 @@ void rt_world3d_remove(void *obj, void *body) {
 int64_t rt_world3d_body_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     return w ? w->body_count : 0;
+}
+
+int8_t rt_world3d_contains_body(void *obj, void *body) {
+    rt_world3d *w = world3d_checked(obj);
+    rt_body3d *b = body3d_checked(body);
+    if (!w || !b)
+        return 0;
+    for (int32_t i = 0; i < w->body_count; i++) {
+        if (w->bodies[i] == b)
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief `World3D.LastCCDRequestedSubsteps` — unclamped substep demand from the last Step.
@@ -4516,7 +4696,10 @@ void *rt_world3d_get_collision_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->contact_count)
         return NULL;
-    return collision_event3d_new_from_contact(&w->contacts[index]);
+    return world3d_cached_event_from_contact(&w->collision_event_objects,
+                                             &w->collision_event_object_capacity,
+                                             index,
+                                             &w->contacts[index]);
 }
 
 // Enter/Stay/Exit event accessors — populated by the contact-diff in
@@ -4535,7 +4718,10 @@ void *rt_world3d_get_enter_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->enter_event_count)
         return NULL;
-    return collision_event3d_new_from_contact(&w->enter_events[index]);
+    return world3d_cached_event_from_contact(&w->enter_event_objects,
+                                             &w->enter_event_object_capacity,
+                                             index,
+                                             &w->enter_events[index]);
 }
 
 /// @brief `World3D.StayEventCount` — contacts that persisted from the previous frame.
@@ -4549,7 +4735,10 @@ void *rt_world3d_get_stay_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->stay_event_count)
         return NULL;
-    return collision_event3d_new_from_contact(&w->stay_events[index]);
+    return world3d_cached_event_from_contact(&w->stay_event_objects,
+                                             &w->stay_event_object_capacity,
+                                             index,
+                                             &w->stay_events[index]);
 }
 
 /// @brief `World3D.ExitEventCount` — contacts that ended this frame.
@@ -4563,7 +4752,10 @@ void *rt_world3d_get_exit_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->exit_event_count)
         return NULL;
-    return collision_event3d_new_from_contact(&w->exit_events[index]);
+    return world3d_cached_event_from_contact(&w->exit_event_objects,
+                                             &w->exit_event_object_capacity,
+                                             index,
+                                             &w->exit_events[index]);
 }
 
 /// @brief Clear all collision buffers currently visible to event/query APIs.
@@ -4575,6 +4767,7 @@ void rt_world3d_clear_collision_events(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     if (!w)
         return;
+    world3d_release_cached_event_objects(w);
     w->contact_count = 0;
     w->previous_contact_count = 0;
     w->enter_event_count = 0;
@@ -4827,10 +5020,35 @@ static int query_hit_insert_sorted_bounded(rt_query_hit3d *hits,
 
 /// @brief Rebuild the world's broadphase scratch entries for one query.
 /// @return Entry count on success, -1 on allocation failure.
+static uint64_t world3d_query_broadphase_signature(rt_world3d *w) {
+    uint64_t hash = UINT64_C(1469598103934665603);
+    if (!w)
+        return 0;
+    hash ^= (uint64_t)(uint32_t)w->body_count;
+    hash *= UINT64_C(1099511628211);
+    for (int32_t i = 0; i < w->body_count; ++i) {
+        rt_body3d *body = w->bodies[i];
+        uint64_t collider_revision = body && body->collider
+                                          ? rt_collider3d_get_bounds_revision_raw(body->collider)
+                                          : 0;
+        hash ^= (uint64_t)(uintptr_t)body;
+        hash *= UINT64_C(1099511628211);
+        hash ^= body ? body->broadphase_revision : 0;
+        hash *= UINT64_C(1099511628211);
+        hash ^= collider_revision;
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash ? hash : 1;
+}
+
 static int32_t world3d_build_query_broadphase(rt_world3d *w) {
     int32_t entry_count = 0;
+    uint64_t signature;
     if (!w)
         return -1;
+    signature = world3d_query_broadphase_signature(w);
+    if (w->query_broadphase_valid && w->query_broadphase_signature == signature)
+        return w->query_broadphase_count;
     if (!world3d_reserve_broadphase_capacity(w, w->body_count))
         return -1;
     for (int32_t i = 0; i < w->body_count; ++i) {
@@ -4845,6 +5063,9 @@ static int32_t world3d_build_query_broadphase(rt_world3d *w) {
           (size_t)entry_count,
           sizeof(*w->broadphase_entries),
           ph3d_broadphase_compare_min_x);
+    w->query_broadphase_count = entry_count;
+    w->query_broadphase_signature = signature;
+    w->query_broadphase_valid = 1;
     return entry_count;
 }
 
@@ -6369,6 +6590,7 @@ static int body3d_assign_collider(rt_body3d *body, void *collider, const char *a
     body->collider = collider;
     body3d_update_shape_cache_from_collider(body);
     body3d_refresh_motion_mode(body);
+    body3d_touch_broadphase(body);
     body3d_wake_if_dynamic(body);
     return 1;
 }
@@ -6494,6 +6716,7 @@ void rt_body3d_set_position(void *o, double x, double y, double z) {
     if (b) {
         ph3d_vec3_set_finite(b->position, x, y, z);
         ph3d_vec3_sanitize_state(b->position);
+        body3d_touch_broadphase(b);
         body3d_wake_if_dynamic(b);
     }
 }
@@ -6522,6 +6745,7 @@ void rt_body3d_set_scale(void *o, double x, double y, double z) {
         b->scale[2] = 1.0;
     body3d_update_shape_cache_from_collider(b);
     body3d_refresh_motion_mode(b);
+    body3d_touch_broadphase(b);
     body3d_wake_if_dynamic(b);
 }
 
@@ -6553,6 +6777,7 @@ void rt_body3d_set_orientation(void *o, void *quat) {
         b->orientation[3] = rt_quat_w(quat);
         quat_normalize(b->orientation);
     }
+    body3d_touch_broadphase(b);
     body3d_wake_if_dynamic(b);
 }
 
@@ -6774,6 +6999,7 @@ void rt_body3d_set_collision_layer(void *o, int64_t l) {
         return;
     }
     b->collision_layer = l;
+    body3d_touch_broadphase(b);
 }
 
 /// @brief `Body3D.GetCollisionLayer` — read this body's layer bitmask.
@@ -6785,8 +7011,10 @@ int64_t rt_body3d_get_collision_layer(void *o) {
 /// @brief `Body3D.SetCollisionMask(m)` — bitmask of layers this body collides with.
 void rt_body3d_set_collision_mask(void *o, int64_t m) {
     rt_body3d *b = body3d_checked(o);
-    if (b)
+    if (b) {
         b->collision_mask = m;
+        body3d_touch_broadphase(b);
+    }
 }
 
 /// @brief `Body3D.GetCollisionMask` — read this body's collision mask.
@@ -6812,6 +7040,7 @@ void rt_body3d_set_static(void *o, int8_t s) {
             return;
         b->motion_mode = desired_mode;
         body3d_refresh_motion_mode(b);
+        body3d_touch_broadphase(b);
     }
 }
 
@@ -6838,6 +7067,7 @@ void rt_body3d_set_kinematic(void *o, int8_t k) {
             return;
         b->motion_mode = desired_mode;
         body3d_refresh_motion_mode(b);
+        body3d_touch_broadphase(b);
     }
 }
 

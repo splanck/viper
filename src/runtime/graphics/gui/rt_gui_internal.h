@@ -340,16 +340,14 @@ static inline int rt_gui_widget_type_accepts_runtime_children(vg_widget_type_t t
 
 /// @brief Resolve a parent handle only when it can own arbitrary runtime children.
 /// @details NULL is valid for detached widget creation and returns NULL. Non-NULL
-///          invalid handles return NULL. Structured containers are always accepted;
-///          simple widgets that do not own a custom arrange callback can also host
-///          runtime children through the base fallback layout path.
+///          invalid handles return NULL. Only explicit runtime-container widget
+///          types are accepted; leaf widgets are rejected even if their vtable
+///          lacks a custom arrange callback.
 static inline vg_widget_t *rt_gui_widget_parent_container_from_handle(void *handle) {
     vg_widget_t *parent = rt_gui_widget_parent_from_handle(handle);
     if (!parent)
         return NULL;
-    if (rt_gui_widget_type_accepts_runtime_children(parent->type))
-        return parent;
-    return parent->vtable && !parent->vtable->arrange ? parent : NULL;
+    return rt_gui_widget_type_accepts_runtime_children(parent->type) ? parent : NULL;
 }
 
 #define RT_GUI_MAX_LAYOUT_VALUE 1000000.0

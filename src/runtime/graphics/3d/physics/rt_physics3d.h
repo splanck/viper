@@ -65,6 +65,8 @@ int8_t rt_world3d_try_add(void *world, void *body);
 void rt_world3d_remove(void *world, void *body);
 /// @brief Total number of bodies currently in the world.
 int64_t rt_world3d_body_count(void *world);
+/// @brief Whether @p body is currently registered in @p world.
+int8_t rt_world3d_contains_body(void *world, void *body);
 /// @brief Unclamped CCD substep demand from the most recent Step.
 int64_t rt_world3d_get_last_ccd_requested_substeps(void *world);
 /// @brief Actual CCD substeps used by the most recent Step.

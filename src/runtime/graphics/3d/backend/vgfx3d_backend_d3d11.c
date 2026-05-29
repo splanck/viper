@@ -1298,6 +1298,7 @@ typedef struct {
     int8_t current_pass_is_overlay;
     int8_t current_load_existing_color;
     int8_t overlay_used_this_frame;
+    int8_t scene_composited_to_swapchain;
     vgfx3d_postfx_chain_t gpu_postfx_chain;
 } d3d11_context_t;
 
@@ -1621,6 +1622,7 @@ static void d3d11_reset_temporal_scene_state(d3d11_context_t *ctx) {
     ctx->current_pass_is_overlay = 0;
     ctx->current_load_existing_color = 0;
     ctx->overlay_used_this_frame = 0;
+    ctx->scene_composited_to_swapchain = 0;
 }
 
 /// @brief Return whether every scene color/motion/depth resource is complete.
@@ -4929,6 +4931,8 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     memcpy(ctx->fog_color, cam->fog_color, sizeof(ctx->fog_color));
     ctx->active_target_kind = vgfx3d_d3d11_choose_target_kind(
         ctx->rtt_active, ctx->gpu_postfx_enabled, cam->load_existing_color);
+    if (!ctx->rtt_active && cam->load_existing_color && ctx->scene_composited_to_swapchain)
+        ctx->active_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
 
     if (!ctx->rtt_active && ctx->active_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN) {
         hr = d3d11_ensure_scene_targets(ctx, ctx->width, ctx->height);
@@ -5523,6 +5527,11 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_cha
 
     if (!ctx || ctx->rtt_active)
         return;
+    if (!chain && ctx->scene_composited_to_swapchain) {
+        d3d11_present_swapchain(ctx);
+        ctx->scene_composited_to_swapchain = 0;
+        return;
+    }
     use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 &&
                   ctx->gpu_postfx_enabled && d3d11_has_scene_targets(ctx))
                      ? 1
@@ -5546,6 +5555,31 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_cha
         return;
     }
     d3d11_present_swapchain(ctx);
+}
+
+/// @brief Backend `apply_postfx` — composite scene/post-FX onto the swapchain without present.
+static void d3d11_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    int use_postfx;
+
+    if (!ctx || ctx->rtt_active)
+        return;
+    use_postfx = (postfx != NULL && postfx->enabled && postfx->effect_count > 0 &&
+                  ctx->gpu_postfx_enabled && d3d11_has_scene_targets(ctx))
+                     ? 1
+                     : 0;
+    if (!use_postfx) {
+        if (ctx->gpu_postfx_enabled && d3d11_has_scene_targets(ctx) &&
+            d3d11_resolve_scene_to_target(ctx, ctx->rtv, ctx->width, ctx->height, 0, NULL))
+            ctx->scene_composited_to_swapchain = 1;
+        return;
+    }
+    if (d3d11_apply_postfx_chain(ctx, postfx, ctx->rtv, ctx->width, ctx->height, 0, NULL)) {
+        ctx->scene_composited_to_swapchain = 1;
+        return;
+    }
+    if (d3d11_resolve_scene_to_target(ctx, ctx->rtv, ctx->width, ctx->height, 0, NULL))
+        ctx->scene_composited_to_swapchain = 1;
 }
 
 /// @brief Backend `present` (no post-FX) — direct swapchain present.
@@ -5859,6 +5893,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .present = d3d11_present,
     .readback_rgba = d3d11_readback_rgba,
     .present_postfx = d3d11_present_postfx,
+    .apply_postfx = d3d11_apply_postfx,
     .set_gpu_postfx_enabled = d3d11_set_gpu_postfx_enabled,
     .set_gpu_postfx_snapshot = d3d11_set_gpu_postfx_snapshot,
 };

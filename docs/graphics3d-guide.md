@@ -472,7 +472,7 @@ func start() {
 
 All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** winding for front faces. When constructing meshes programmatically, vertices must be ordered CCW when viewed from the front.
 
-**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `NewBox` takes full extents, while collider boxes use half-extents. `NewPlane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `Reserve()` can be called before many `AddVertex`/`AddTriangle` calls to avoid repeated reallocations; it changes capacity only, not counts or geometry revision. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles and marks the mesh build failed until `Clear()` resets it. `RecalcNormals` accumulates in double precision before normalizing back to renderer floats. `CalcTangents` skips degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats.
+**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `NewBox` takes full extents, while collider boxes use half-extents. `NewPlane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `Reserve()` can be called before many `AddVertex`/`AddTriangle` calls to avoid repeated reallocations; it changes capacity only, not counts or geometry revision. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles. These public append validation traps do not poison the mesh; valid later appends can continue without `Clear()`. Allocation failures and importer failures still mark the build failed until `Clear()` resets it. `RecalcNormals` accumulates in double precision before normalizing back to renderer floats. `CalcTangents` skips degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats.
 
 **Tangents:** `CalcTangents()` uses position/UV derivatives with Gram-Schmidt orthogonalization and `tangent.w` handedness for mirrored UVs. Degenerate UV islands get a normalized fallback tangent orthogonal to the vertex normal so normal maps never receive a tangent parallel to the normal.
 
@@ -885,6 +885,7 @@ Hierarchical scene graph with frustum culling and LOD support.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Add(node)` | `void(obj)` | Add node to root |
+| `TryAdd(node)` | `i1(obj)` | Add node to root and return whether the scene accepted it |
 | `Remove(node)` | `void(obj)` | Detach node from parent |
 | `Find(name)` | `obj(str)` | Recursive depth-first name search |
 | `Draw(canvas, cam)` | `void(obj, obj)` | Traverse + render (with frustum culling) |
@@ -934,6 +935,7 @@ Individual node in a Scene3D tree with transform, mesh, material, and child hier
 | `SetPosition(x, y, z)` | `void(f64, f64, f64)` | Set local position |
 | `SetScale(x, y, z)` | `void(f64, f64, f64)` | Set local scale |
 | `AddChild(child)` | `void(obj)` | Attach child (auto-detaches from previous parent) |
+| `TryAddChild(child)` | `i1(obj)` | Attach child and return whether the parent-child link was accepted |
 | `RemoveChild(child)` | `void(obj)` | Detach child node |
 | `GetChild(index)` | `obj(i64)` | Get child by index |
 | `Find(name)` | `obj(str)` | Recursive name search in subtree |
@@ -941,7 +943,7 @@ Individual node in a Scene3D tree with transform, mesh, material, and child hier
 | `ClearBodyBinding()` | `void()` | Remove the current body binding |
 | `BindAnimator(controller)` | `void(obj)` | Attach an `AnimController3D` for root motion and animated draw submission |
 | `ClearAnimatorBinding()` | `void()` | Remove the current animator binding |
-| `AddLOD(distance, mesh)` | `void(f64, obj)` | Add LOD mesh at distance threshold |
+| `AddLOD(distance, mesh)` | `void(f64, obj)` | Add or replace an LOD mesh at a distance threshold |
 | `ClearLOD()` | `void()` | Remove all LOD levels |
 
 ### Zia Example
@@ -996,7 +998,7 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty flags propagate to descendants automatically. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest threshold that does not exceed camera distance. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
 
 ### Binding Sync
 
@@ -1928,7 +1930,9 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 |--------|-----------|-------------|
 | `Step(dt)` | `void(f64)` | Advance simulation by dt seconds |
 | `Add(body)` | `void(obj)` | Add body to world |
+| `TryAdd(body)` | `i1(obj)` | Add body and return whether it is present afterward |
 | `Remove(body)` | `void(obj)` | Remove body from world |
+| `ContainsBody(body)` | `i1(obj)` | Return whether the body is currently registered in the world |
 | `SetGravity(x, y, z)` | `void(f64, f64, f64)` | Update gravity |
 | `AddJoint(joint, type)` | `void(obj, i64)` | Add joint (type: 0=distance, 1=spring) |
 | `RemoveJoint(joint)` | `void(obj)` | Remove joint |
@@ -3205,7 +3209,7 @@ The GPU backend is selected automatically at startup:
 
 If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically. Check `canvas.Backend` to see which renderer is active.
 
-For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, and `gpu_postfx`. The bitmask values are:
+For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, and `gpu-postfx-overlay`. The bitmask values are:
 
 | Bit | Capability |
 |-----|------------|
@@ -3218,6 +3222,9 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 | `0x0040` | Hardware instancing backend hook |
 | `0x0080` | PostFX support |
 | `0x0100` | GPU-owned PostFX presentation |
+| `0x0200` | Crisp final overlay composition |
+| `0x0400` | Final screenshot after overlay composition |
+| `0x0800` | Split GPU post-FX with final overlay after tonemap |
 
 **Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports nearest/bilinear material texture filtering with imported wrap modes, per-vertex colors, shadow mapping for up to two directional lights with 3x3 PCF filtering, specular maps, normal maps, and per-pixel terrain splatting.
 

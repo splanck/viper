@@ -2233,7 +2233,7 @@ void *rt_game3d_entity_set_name(void *obj, rt_string name) {
         if (entity->node)
             rt_scene_node3d_set_name(entity->node, name);
         if (entity->spawned && entity->world)
-            game3d_world_rebuild_name_index((rt_game3d_world *)entity->world);
+            ((rt_game3d_world *)entity->world)->name_index_valid = 0;
     }
     return obj;
 }
@@ -2326,8 +2326,13 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
                         rt_body3d_set_collision_mask(old_body, entity->collision_mask_bits);
                         if (entity->node)
                             rt_scene_node3d_bind_body(entity->node, old_body);
-                        (void)rt_world3d_try_add(world->physics, old_body);
-                        (void)game3d_world_body_index_add(world, entity);
+                        if (!rt_world3d_try_add(world->physics, old_body) ||
+                            !game3d_world_body_index_add(world, entity)) {
+                            rt_world3d_remove(world->physics, old_body);
+                            if (entity->node)
+                                rt_scene_node3d_clear_body_binding(entity->node);
+                            game3d_assign_ref(&entity->body, NULL);
+                        }
                     }
                     game3d_release_ref(&old_body);
                     game3d_release_ref(&created_body);
@@ -2346,8 +2351,13 @@ void *rt_game3d_entity_attach_body(void *obj, void *body_or_def) {
                         rt_body3d_set_collision_mask(old_body, entity->collision_mask_bits);
                         if (entity->node)
                             rt_scene_node3d_bind_body(entity->node, old_body);
-                        (void)rt_world3d_try_add(world->physics, old_body);
-                        (void)game3d_world_body_index_add(world, entity);
+                        if (!rt_world3d_try_add(world->physics, old_body) ||
+                            !game3d_world_body_index_add(world, entity)) {
+                            rt_world3d_remove(world->physics, old_body);
+                            if (entity->node)
+                                rt_scene_node3d_clear_body_binding(entity->node);
+                            game3d_assign_ref(&entity->body, NULL);
+                        }
                     }
                     game3d_release_ref(&old_body);
                     game3d_release_ref(&created_body);
@@ -5088,7 +5098,15 @@ static rt_game3d_entity *game3d_world_find_entity_by_body(rt_game3d_world *world
         return NULL;
     slot = game3d_world_body_index_find_slot(
         world->body_index_entries, world->body_index_capacity, body, &found);
-    return found && slot >= 0 ? world->body_index_entries[slot].entity : NULL;
+    if (!found || slot < 0)
+        return NULL;
+    rt_game3d_entity *entity = world->body_index_entries[slot].entity;
+    if (!entity || !entity->spawned || entity->world != world || entity->body != body ||
+        (world->physics && !rt_world3d_contains_body(world->physics, body))) {
+        game3d_world_body_index_remove(world, body);
+        return NULL;
+    }
+    return entity;
 }
 
 /// @brief Remove `entity` from the registry without rebuilding the name index.
@@ -5154,64 +5172,34 @@ static int game3d_entity_tree_push(game3d_entity_tree_item **items,
     return 1;
 }
 
-/// @brief Iteratively despawn an entity and its children: remove bodies from physics,
-///   detach the root node, clear spawned/world state, and drop registry references.
-///   Only the root detaches its node (`detach_root`); children stay parented under it.
+static void game3d_world_despawn_entity_recursive(rt_game3d_world *world,
+                                                  rt_game3d_entity *entity,
+                                                  int detach_root) {
+    if (!world || !entity)
+        return;
+    for (int32_t i = 0; i < entity->child_count; ++i)
+        game3d_world_despawn_entity_recursive(world, entity->children[i], 0);
+    if (!entity->spawned || entity->world != world)
+        return;
+    if (entity->body && world->physics) {
+        rt_world3d_remove(world->physics, entity->body);
+        game3d_world_body_index_remove(world, entity->body);
+    }
+    if (detach_root)
+        game3d_entity_detach_node(world, entity);
+    entity->spawned = 0;
+    entity->world = NULL;
+    game3d_world_registry_remove_no_rebuild(world, entity);
+}
+
+/// @brief Despawn an entity tree without allocating traversal memory.
 static void game3d_world_despawn_entity_tree(rt_game3d_world *world,
                                              rt_game3d_entity *entity,
                                              int detach_root) {
-    game3d_entity_tree_item *stack = NULL;
-    int32_t count = 0;
-    int32_t capacity = 0;
-    int failed = 0;
     if (!world || !entity || !entity->spawned)
         return;
-    if (!game3d_entity_tree_push(&stack, &count, &capacity, entity, detach_root, 0)) {
-        rt_trap("Game3D.World3D.despawn: traversal stack allocation failed");
-        return;
-    }
-    while (count > 0) {
-        game3d_entity_tree_item item = stack[--count];
-        rt_game3d_entity *current = item.entity;
-        if (!current)
-            continue;
-        if (!item.visited) {
-            if (!game3d_entity_tree_push(&stack,
-                                         &count,
-                                         &capacity,
-                                         current,
-                                         item.root_link,
-                                         1)) {
-                failed = 1;
-                break;
-            }
-            for (int32_t i = current->child_count - 1; i >= 0; --i) {
-                if (!game3d_entity_tree_push(
-                        &stack, &count, &capacity, current->children[i], 0, 0)) {
-                    failed = 1;
-                    break;
-                }
-            }
-            if (failed)
-                break;
-            continue;
-        }
-        if (!current->spawned || current->world != world)
-            continue;
-        if (current->body && world->physics) {
-            rt_world3d_remove(world->physics, current->body);
-            game3d_world_body_index_remove(world, current->body);
-        }
-        if (item.root_link)
-            game3d_entity_detach_node(world, current);
-        current->spawned = 0;
-        current->world = NULL;
-        game3d_world_registry_remove_no_rebuild(world, current);
-    }
-    free(stack);
+    game3d_world_despawn_entity_recursive(world, entity, detach_root);
     game3d_world_rebuild_name_index(world);
-    if (failed)
-        rt_trap("Game3D.World3D.despawn: traversal stack allocation failed");
 }
 
 /// @brief Spawn one entity in a tree walk; returns 1 when children should be visited,
@@ -5252,8 +5240,15 @@ static int game3d_world_spawn_entity_one(rt_game3d_world *world,
         return -1;
     }
 
-    if (attach_to_scene && world->scene && entity->node)
-        rt_scene3d_add(world->scene, entity->node);
+    if (attach_to_scene && world->scene && entity->node &&
+        !rt_scene3d_try_add(world->scene, entity->node)) {
+        entity->spawned = 0;
+        entity->world = NULL;
+        game3d_world_registry_remove_no_rebuild(world, entity);
+        game3d_world_rebuild_name_index(world);
+        rt_trap("Game3D.World3D.spawn: scene attach failed");
+        return -1;
+    }
     if (entity->body && world->physics) {
         rt_body3d_set_collision_layer(entity->body, entity->layer);
         rt_body3d_set_collision_mask(entity->body, entity->collision_mask_bits);
@@ -5580,9 +5575,13 @@ void *rt_game3d_world_find_entity(void *obj, rt_string name) {
     const char *needle = name ? rt_string_cstr(name) : "";
     if (!world || !needle)
         return NULL;
+    if (!world->name_index_valid)
+        game3d_world_rebuild_name_index(world);
     rt_game3d_entity *indexed = game3d_world_name_index_find(world, needle);
-    if (indexed)
+    if (indexed && indexed->spawned && indexed->world == world)
         return indexed;
+    if (indexed)
+        world->name_index_valid = 0;
     if (world->name_index_valid)
         return NULL;
     for (int32_t i = 0; i < world->entity_count; ++i) {
