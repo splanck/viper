@@ -218,6 +218,7 @@ static void test_mesh_add_vertex_triangle() {
                                      "vertex attributes"),
                 "invalid AddVertex traps");
     EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 0);
+    rt_mesh3d_clear(m);
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
     rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
     rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
@@ -264,6 +265,10 @@ static void test_mesh_reject_invalid_triangle_indices() {
                                      "vertex index must be non-negative"),
                 "negative triangle indices trap");
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 0);
+    rt_mesh3d_clear(m);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
     rt_mesh3d_add_triangle(m, 0, 1, 2);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
     rt_mesh3d_clear(m);
@@ -273,6 +278,10 @@ static void test_mesh_reject_invalid_triangle_indices() {
     EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 1, 9); },
                                      "vertex index out of range"),
                 "out-of-range triangle indices trap");
+    rt_mesh3d_clear(m);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
     rt_mesh3d_add_triangle(m, 0, 1, 2);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
     rt_mesh3d_clear(m);
@@ -282,6 +291,10 @@ static void test_mesh_reject_invalid_triangle_indices() {
     EXPECT_TRUE(
         expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 1, 1); }, "degenerate triangle"),
         "degenerate triangle indices trap");
+    rt_mesh3d_clear(m);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
     rt_mesh3d_add_triangle(m, 0, 1, 2);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 1);
     rt_mesh3d_clear(m);
@@ -1113,6 +1126,24 @@ static void test_camera_null_safety() {
     assert(rt_camera3d_get_position(NULL) == NULL);
     assert(rt_camera3d_get_forward(NULL) == NULL);
     assert(rt_camera3d_get_right(NULL) == NULL);
+    PASS();
+}
+
+static void test_camera_rejects_invalid_vec3_handles() {
+    TEST("Camera3D rejects invalid vector handles");
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0, 0, 5);
+    void *target = rt_vec3_new(0, 0, 0);
+    void *up = rt_vec3_new(0, 1, 0);
+    void *not_vec3 = rt_material3d_new();
+    assert(cam != NULL && eye != NULL && target != NULL && up != NULL && not_vec3 != NULL);
+
+    EXPECT_TRUE(expect_trap_contains([&] { rt_camera3d_look_at(cam, not_vec3, target, up); },
+                                     "must be Vec3"),
+                "Camera3D.LookAt traps on non-Vec3 eye");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_camera3d_orbit(cam, not_vec3, 5.0, 0.0, 0.0); },
+                                     "target must be Vec3"),
+                "Camera3D.Orbit traps on non-Vec3 target");
     PASS();
 }
 
@@ -2413,10 +2444,18 @@ static void test_canvas_dimensions_follow_active_render_target() {
 
     EXPECT_EQ(rt_canvas3d_get_width(&canvas), 800);
     EXPECT_EQ(rt_canvas3d_get_height(&canvas), 600);
+    EXPECT_EQ(rt_canvas3d_get_window_width(&canvas), 800);
+    EXPECT_EQ(rt_canvas3d_get_window_height(&canvas), 600);
+    EXPECT_EQ(rt_canvas3d_get_active_output_width(&canvas), 800);
+    EXPECT_EQ(rt_canvas3d_get_active_output_height(&canvas), 600);
 
     rt_canvas3d_set_render_target(&canvas, rt);
     EXPECT_EQ(rt_canvas3d_get_width(&canvas), 320);
     EXPECT_EQ(rt_canvas3d_get_height(&canvas), 180);
+    EXPECT_EQ(rt_canvas3d_get_window_width(&canvas), 800);
+    EXPECT_EQ(rt_canvas3d_get_window_height(&canvas), 600);
+    EXPECT_EQ(rt_canvas3d_get_active_output_width(&canvas), 320);
+    EXPECT_EQ(rt_canvas3d_get_active_output_height(&canvas), 180);
 
     rt_canvas3d_reset_render_target(&canvas);
     EXPECT_EQ(rt_canvas3d_get_width(&canvas), 800);
@@ -3121,6 +3160,33 @@ static void test_mesh_transform_updates_tangent_basis() {
     PASS();
 }
 
+static void test_mesh_transform_rejects_singular_normal_matrix() {
+    TEST("Mesh3D.Transform rejects singular normal matrices");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new_plane(1.0, 1.0);
+    void *scale = rt_mat4_scale(0.0, 1.0, 1.0);
+    assert(m != NULL && scale != NULL);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_transform(m, scale); }, "invertible"),
+                "Mesh3D.Transform traps on singular upper 3x3");
+    PASS();
+}
+
+static void test_mesh_validation_errors_mark_build_failed() {
+    TEST("Mesh3D validation errors mark build_failed");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    assert(m != NULL);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 0, 1, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 0, 1, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 0, 1, 0, 1);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 0, 1); },
+                                     "degenerate triangle"),
+                "Mesh3D.AddTriangle traps on degenerate triangle");
+    EXPECT_TRUE(m->build_failed != 0, "Mesh3D marks failed after validation trap");
+    uint32_t before = m->index_count;
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+    EXPECT_EQ(m->index_count, before);
+    PASS();
+}
+
 static void test_mesh_normals_recalc() {
     TEST("Mesh3D.RecalcNormals updates normals");
     void *m = rt_mesh3d_new();
@@ -3681,6 +3747,7 @@ int main() {
 
     /* Camera3D — extended */
     test_camera_null_safety();
+    test_camera_rejects_invalid_vec3_handles();
     test_camera_right_vector();
     test_camera_orbit_yaw();
     test_camera_orbit_pitch();
@@ -3808,6 +3875,8 @@ int main() {
     test_canvas_draw_auto_generates_missing_normal_map_tangents();
     test_canvas_draw_snapshots_heap_mesh_geometry();
     test_canvas_draw_rejects_public_raw_mesh_handles();
+    test_mesh_transform_rejects_singular_normal_matrix();
+    test_mesh_validation_errors_mark_build_failed();
     test_mesh_normals_recalc();
     test_mesh_recalc_normals_assigns_fallback_for_unreferenced_vertices();
     test_terrain_splat_layer_count();

@@ -229,11 +229,11 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
     px_view *pv = (px_view *)pixels;
 
     for (int32_t y = 0; y < h; y++) {
-        for (int32_t x = 0; x < w; x++) {
-            const uint8_t *src =
-                &rtd->target->color_buf[(size_t)y * (size_t)stride + (size_t)x * 4u];
-            pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
-                                      ((uint32_t)src[2] << 8) | (uint32_t)src[3];
+        const uint8_t *src = &rtd->target->color_buf[(size_t)y * (size_t)stride];
+        uint32_t *dst = &pv->data[(size_t)y * (size_t)pv->w];
+        for (int32_t x = 0; x < w; x++, src += 4) {
+            dst[x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
+                     ((uint32_t)src[2] << 8) | (uint32_t)src[3];
         }
     }
 

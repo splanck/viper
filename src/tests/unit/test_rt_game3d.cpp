@@ -527,8 +527,8 @@ static bool test_frame_loop_manual_frame_and_final_capture() {
     PASS();
 }
 
-static bool test_step_simulation_ignores_nonpositive_dt() {
-    TEST("World3D.stepSimulation ignores zero, negative, and non-finite dt");
+static bool test_step_simulation_clamps_invalid_dt() {
+    TEST("World3D.stepSimulation clamps zero, negative, and non-finite dt");
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Step DT Unit"), 64, 48);
     void *entity = rt_game3d_entity_new();
     rt_game3d_world_set_gravity(world, 0.0, -10.0, 0.0);
@@ -537,23 +537,26 @@ static bool test_step_simulation_ignores_nonpositive_dt() {
     rt_game3d_world_spawn(world, entity);
 
     rt_game3d_world_step_simulation(world, 0.0);
+    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 1, "zero dt clamps and advances frame");
+    EXPECT_NEAR(rt_game3d_world_get_dt(world), 1.0 / 60.0, 0.0001, "zero dt clamps to default");
     rt_game3d_world_step_simulation(world, -1.0);
+    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 2, "negative dt clamps and advances frame");
     rt_game3d_world_step_simulation(world, NAN);
+    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 3, "NaN dt clamps and advances frame");
     void *pos = rt_game3d_entity_position(entity);
-    EXPECT_NEAR(rt_vec3_y(pos), 10.0, 0.0001, "nonpositive dt leaves entity position unchanged");
-    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 0, "nonpositive dt leaves frame unchanged");
+    EXPECT_TRUE(rt_vec3_y(pos) < 10.0, "clamped invalid dt advances physics safely");
     EXPECT_NEAR(rt_game3d_world_get_elapsed(world),
-                0.0,
+                3.0 / 60.0,
                 0.0001,
-                "nonpositive dt leaves elapsed time unchanged");
+                "clamped invalid dt increments elapsed time");
 
     rt_game3d_world_step_simulation(world, 0.1);
     pos = rt_game3d_entity_position(entity);
     EXPECT_TRUE(rt_vec3_y(pos) < 10.0, "positive dt advances physics");
     EXPECT_NEAR(rt_game3d_world_get_dt(world), 0.1, 0.0001, "positive step stores world dt");
-    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 1, "direct stepSimulation increments frame");
+    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 4, "direct stepSimulation increments frame");
     EXPECT_NEAR(rt_game3d_world_get_elapsed(world),
-                0.1,
+                0.15,
                 0.0001,
                 "direct stepSimulation increments elapsed time");
 
@@ -585,6 +588,26 @@ static bool test_free_fly_controller_synthetic_input() {
     EXPECT_EQ_INT(
         rt_game3d_world_get_frame(world), 1, "controller frame increments with runFramesOnly");
     rt_canvas3d_clear_synthetic_input(canvas);
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static bool test_run_frames_only_preserves_synthetic_holds() {
+    TEST("World3D.runFramesOnly preserves held synthetic input across frames");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Synthetic Hold Unit"), 64, 48);
+    void *canvas = rt_game3d_world_get_canvas(world);
+    void *camera = rt_game3d_world_get_camera(world);
+    void *controller = rt_game3d_free_fly_controller_new(world);
+    rt_game3d_free_fly_controller_set_speed(controller, 10.0);
+    rt_game3d_world_set_camera_controller(world, controller);
+
+    void *before = rt_camera3d_get_position(camera);
+    rt_canvas3d_push_synthetic_key(canvas, rt_game3d_key_w(), 1);
+    rt_game3d_world_run_frames_only(world, 2, 0.1);
+    void *after = rt_camera3d_get_position(camera);
+
+    EXPECT_TRUE(rt_vec3_z(after) < rt_vec3_z(before) - 1.5,
+                "held W remains down for both deterministic frames");
     rt_game3d_world_destroy(world);
     PASS();
 }
@@ -1023,6 +1046,44 @@ static bool test_phase4_body_def_attach_body() {
     PASS();
 }
 
+static bool test_shared_body_attachment_rejected_without_state_leak() {
+    TEST("Game3D rejects sharing one Physics3DBody across spawned entities");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Shared Body Unit"), 80, 60);
+    void *owner = rt_game3d_entity_new();
+    rt_game3d_entity_attach_body(owner, rt_game3d_body_def_sphere(0.5, 1.0));
+    void *shared = rt_game3d_entity_get_body(owner);
+    EXPECT_TRUE(shared != nullptr, "owner has a body to share");
+    rt_game3d_world_spawn(world, owner);
+    EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
+                  1,
+                  "owner body is registered once");
+
+    void *pending = rt_game3d_entity_new();
+    rt_game3d_entity_attach_body(pending, shared);
+    EXPECT_TRUE(expect_trap_contains(
+                    [&]() { rt_game3d_world_spawn(world, pending); }, "already attached"),
+                "spawn rejects a body already owned by another entity");
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(pending) == 0,
+                "failed shared-body spawn rolls back spawned flag");
+    EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
+                  1,
+                  "failed shared-body spawn does not duplicate physics body");
+
+    void *spawned = rt_game3d_entity_new();
+    rt_game3d_world_spawn(world, spawned);
+    EXPECT_TRUE(expect_trap_contains(
+                    [&]() { rt_game3d_entity_attach_body(spawned, shared); }, "already attached"),
+                "attachBody rejects a body already owned by another spawned entity");
+    EXPECT_TRUE(rt_game3d_entity_get_body(spawned) == nullptr,
+                "failed attachBody leaves the spawned entity bodyless");
+    EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
+                  1,
+                  "failed attachBody preserves physics body count");
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 static bool test_entity_transform_sanitizes_and_respects_sync_mode() {
     TEST("Entity3D transform setters sanitize values and respect physics sync mode");
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Transform Sync Unit"), 80, 60);
@@ -1387,8 +1448,9 @@ int main() {
     ok = test_world_entity_registry_and_collision_clear() && ok;
     ok = test_entity_child_graph_reparents_and_rejects_cycles() && ok;
     ok = test_frame_loop_manual_frame_and_final_capture() && ok;
-    ok = test_step_simulation_ignores_nonpositive_dt() && ok;
+    ok = test_step_simulation_clamps_invalid_dt() && ok;
     ok = test_free_fly_controller_synthetic_input() && ok;
+    ok = test_run_frames_only_preserves_synthetic_holds() && ok;
     ok = test_character_controller_syncs_world_position_under_parent() && ok;
     ok = test_orbit_and_follow_controllers() && ok;
     ok = test_first_person_character_controller_same_frame_motion() && ok;
@@ -1396,6 +1458,7 @@ int main() {
     ok = test_phase3_world_presets_environment_and_debug() && ok;
     ok = test_phase4_assets3d_model_templates() && ok;
     ok = test_phase4_body_def_attach_body() && ok;
+    ok = test_shared_body_attachment_rejected_without_state_leak() && ok;
     ok = test_entity_transform_sanitizes_and_respects_sync_mode() && ok;
     ok = test_phase4_collision_events_wrapped_with_entities() && ok;
     ok = test_phase5_animator3d_events_and_root_motion() && ok;
