@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-27
+last-verified: 2026-05-29
 ---
 
 # Game3D
@@ -247,8 +247,8 @@ Manual code can use the same pieces directly:
 
 | Method | Purpose |
 |--------|---------|
-| `tick()` | Poll live input, sync canvas resize state, and advance world timing; returns false when the window should close |
-| `stepSimulation(step)` | Store `world.dt`, advance `frame`/`elapsed` when called directly, then step controllers, animation, physics, scene/audio bindings, effect expiry, and late camera/controller work |
+| `tick()` | Poll live input, sync backing-window resize state, and advance world timing; returns false when the window should close |
+| `stepSimulation(step)` | Clamp invalid, zero, negative, and overlarge steps into the safe dt range; store `world.dt`, advance `frame`/`elapsed` when called directly, then step controllers, animation, physics, scene/audio bindings, effect expiry, and late camera/controller work |
 | `beginFrame()` | Clear and begin drawing with the world camera |
 | `drawScene()` | Draw the world scene |
 | `drawEffects()` | Draw effect-registry particles/decals plus debug axes/physics wires |
@@ -260,10 +260,11 @@ For deterministic interpreted-Zia tests, use `runFramesOnly(frameCount, stepSec)
 or call the manual methods explicitly. `runFramesOnly` uses the synthetic clock
 path and leaves the final frame capturable. `runFrames` / `runFramesOnly`
 temporarily switch the backing canvas to synthetic input and fixed-clock timing
-for callback, simulation, and render work, then restore the previous canvas
-input source, clock source, and synthetic delta after each normally completed
-frame and at the end of the run. The built-in run loops avoid double-counting
-time because `tick()` / `runFrames()` own frame and elapsed-time accounting.
+for callback, simulation, and render work, keep synthetic-held keys/buttons down
+across the whole deterministic run, then restore the previous canvas input
+source, clock source, and synthetic delta after the run completes. The built-in
+run loops avoid double-counting time because `tick()` / `runFrames()` own frame
+and elapsed-time accounting.
 
 The raw `Canvas3D` finalization calls map to the Game3D frame helpers this way:
 
@@ -282,7 +283,8 @@ owned `Canvas3D`, including backend render targets, so window callbacks and
 manual resize paths keep the Game3D camera and Graphics3D output in sync.
 `World3D.tick()` also observes native canvas size changes after polling so
 platform window resizes update `world.Width`, `world.Height`, and the camera
-aspect even when the app does not call `onResize()` directly.
+aspect even when the app does not call `onResize()` directly. Game3D tracks the
+backing window size, not a temporary `RenderTarget3D` bound on the canvas.
 
 ---
 
@@ -343,7 +345,9 @@ binding, sync mode, and world registration consistently. The default
 `BodyDef` sync mode is `NodeFromBody`: spawn seeds the body from the node once,
 then simulation owns the body and writes the resulting pose back to the node.
 Use `BodyFromNode` for scripted/authoritative transforms that should push into
-physics on every transform setter.
+physics on every transform setter. A raw body can only belong to one spawned
+entity in a world; `spawn` and `attachBody` reject attempts to share it so
+collision events and physics ownership stay unambiguous.
 
 ---
 
@@ -657,7 +661,7 @@ The Game3D runtime is covered by:
 
 | Test | Coverage |
 |------|----------|
-| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
+| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, shared-body rejection, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
 | `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
 | `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |

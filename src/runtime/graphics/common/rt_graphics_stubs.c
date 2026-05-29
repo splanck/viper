@@ -2209,6 +2209,26 @@ int64_t rt_canvas3d_get_height(void *o) {
     return 0;
 }
 
+int64_t rt_canvas3d_get_window_width(void *o) {
+    (void)o;
+    return 0;
+}
+
+int64_t rt_canvas3d_get_window_height(void *o) {
+    (void)o;
+    return 0;
+}
+
+int64_t rt_canvas3d_get_active_output_width(void *o) {
+    (void)o;
+    return 0;
+}
+
+int64_t rt_canvas3d_get_active_output_height(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Get the fps of the canvas3d.
 int64_t rt_canvas3d_get_fps(void *o) {
     (void)o;

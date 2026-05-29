@@ -2305,6 +2305,14 @@ void *rt_scene_node3d_get_world_position(void *obj) {
     return rt_vec3_new(x, y, z);
 }
 
+int8_t rt_scene_node3d_get_world_position_components(void *obj, double *x, double *y, double *z) {
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!x || !y || !z)
+        return 0;
+    scene_node_get_world_position(n, x, y, z);
+    return n ? 1 : 0;
+}
+
 /// @brief Read the world-space orientation as a Quat.
 void *rt_scene_node3d_get_world_rotation(void *obj) {
     rt_scene_node3d *n = scene_node3d_checked(obj);

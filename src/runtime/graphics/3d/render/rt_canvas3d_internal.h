@@ -577,6 +577,8 @@ typedef struct {
     void **temp_objects;
     int32_t temp_obj_count;
     int32_t temp_obj_capacity;
+    void **temp_object_set;
+    int32_t temp_object_set_capacity;
 
     /* Reusable text rendering scratch buffers */
     vgfx3d_vertex_t *text_vertices;
@@ -615,6 +617,7 @@ typedef struct {
     int64_t delta_time_us;
     int64_t delta_time_ms;
     int64_t dt_max_ms;
+    int8_t frame_timing_updated_by_poll;
     int32_t input_source;
     int32_t clock_source;
     int64_t synthetic_dt_us;
@@ -638,6 +641,8 @@ typedef struct {
     void *motion_history;
     int32_t motion_history_count;
     int32_t motion_history_capacity;
+    int32_t *motion_history_hash;
+    int32_t motion_history_hash_capacity;
 } rt_canvas3d;
 
 /// @brief Validate a Canvas3D handle while optionally preserving internal stack fixtures.

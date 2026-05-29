@@ -475,11 +475,13 @@ void rt_mesh3d_add_vertex(
     if (!mesh_value_fits_float(x) || !mesh_value_fits_float(y) || !mesh_value_fits_float(z) ||
         !mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) || !mesh_value_fits_float(nz) ||
         !mesh_value_fits_float(u) || !mesh_value_fits_float(v)) {
+        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddVertex: vertex attributes must be finite and fit float range");
         return;
     }
 
     if (m->vertex_count == UINT32_MAX) {
+        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddVertex: vertex capacity overflow");
         return;
     }
@@ -539,24 +541,29 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
         return;
 
     if (v0 < 0 || v1 < 0 || v2 < 0) {
+        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: vertex index must be non-negative");
         return;
     }
     if ((uint64_t)v0 >= m->vertex_count || (uint64_t)v1 >= m->vertex_count ||
         (uint64_t)v2 >= m->vertex_count) {
+        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: vertex index out of range");
         return;
     }
     if (v0 == v1 || v1 == v2 || v0 == v2) {
+        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: degenerate triangle");
         return;
     }
     if (!mesh_indices_form_triangle(m, (uint32_t)v0, (uint32_t)v1, (uint32_t)v2)) {
+        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: degenerate triangle");
         return;
     }
 
     if (m->index_count > UINT32_MAX - 3u) {
+        mesh_mark_build_failed(m);
         rt_trap("Mesh3D.AddTriangle: index capacity overflow");
         return;
     }
@@ -793,6 +800,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     float model_matrix[16];
     float normal_matrix[16];
     float handedness_sign = 1.0f;
+    float det;
 
     for (int i = 0; i < 16; i++) {
         if (!mesh_value_fits_float(xform->m[i])) {
@@ -801,21 +809,23 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         }
         model_matrix[i] = (float)xform->m[i];
     }
+    det = model_matrix[0] *
+              (model_matrix[5] * model_matrix[10] - model_matrix[6] * model_matrix[9]) -
+          model_matrix[1] *
+              (model_matrix[4] * model_matrix[10] - model_matrix[6] * model_matrix[8]) +
+          model_matrix[2] *
+              (model_matrix[4] * model_matrix[9] - model_matrix[5] * model_matrix[8]);
+    if (!isfinite(det) || fabsf(det) <= 1e-12f) {
+        rt_trap("Mesh3D.Transform: matrix upper 3x3 must be invertible for normal transform");
+        return;
+    }
     vgfx3d_compute_normal_matrix4(model_matrix, normal_matrix);
     if (!mesh_matrix4f_is_finite(normal_matrix)) {
         rt_trap("Mesh3D.Transform: normal matrix must be finite");
         return;
     }
-    {
-        float det = model_matrix[0] *
-                        (model_matrix[5] * model_matrix[10] - model_matrix[6] * model_matrix[9]) -
-                    model_matrix[1] *
-                        (model_matrix[4] * model_matrix[10] - model_matrix[6] * model_matrix[8]) +
-                    model_matrix[2] *
-                        (model_matrix[4] * model_matrix[9] - model_matrix[5] * model_matrix[8]);
-        if (det < 0.0f)
-            handedness_sign = -1.0f;
-    }
+    if (det < 0.0f)
+        handedness_sign = -1.0f;
 
     for (uint32_t i = 0; i < m->vertex_count; i++) {
         const float *p = m->vertices[i].pos;

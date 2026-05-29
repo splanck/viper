@@ -357,9 +357,13 @@ void rt_camera3d_get_render_projection(void *obj, double aspect_override, float 
     }
 
     for (int i = 0; i < 16; i++) {
-        double identity = (i == 0 || i == 5 || i == 10 || i == 15) ? 1.0 : 0.0;
-        out_projection[i] =
-            (float)(camera_value_fits_float(projection[i]) ? projection[i] : identity);
+        if (!camera_value_fits_float(projection[i])) {
+            rt_trap("Camera3D: projection matrix contains values outside float range");
+            memset(out_projection, 0, sizeof(float) * 16);
+            out_projection[0] = out_projection[5] = out_projection[10] = out_projection[15] = 1.0f;
+            return;
+        }
+        out_projection[i] = (float)projection[i];
     }
 }
 
@@ -569,24 +573,20 @@ int8_t rt_camera3d_is_ortho(void *obj) {
     return cam ? cam->is_ortho : 0;
 }
 
-/// @brief Position the camera and orient it to look at a target point.
-/// @details Builds the view matrix using the standard look-at construction:
-///          forward = normalize(eye - target), right = cross(up, forward),
-///          true_up = cross(forward, right). Uses right-handed coordinates.
-void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
-    if (!obj || !rt_g3d_is_vec3(eye_v) || !rt_g3d_is_vec3(target_v) || !rt_g3d_is_vec3(up_v))
-        return;
-    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    if (!cam)
-        return;
-
+static void camera3d_look_at_values(rt_camera3d *cam,
+                                    const double eye_in[3],
+                                    const double target_in[3],
+                                    const double up_in[3]) {
     static const double fallback_eye[3] = {0.0, 0.0, 0.0};
     static const double fallback_target[3] = {0.0, 0.0, -1.0};
     static const double fallback_up[3] = {0.0, 1.0, 0.0};
-    double eye[3] = {rt_vec3_x(eye_v), rt_vec3_y(eye_v), rt_vec3_z(eye_v)};
-    double target[3] = {rt_vec3_x(target_v), rt_vec3_y(target_v), rt_vec3_z(target_v)};
-    double up[3] = {rt_vec3_x(up_v), rt_vec3_y(up_v), rt_vec3_z(up_v)};
+    double eye[3] = {eye_in ? eye_in[0] : 0.0, eye_in ? eye_in[1] : 0.0, eye_in ? eye_in[2] : 0.0};
+    double target[3] = {
+        target_in ? target_in[0] : 0.0, target_in ? target_in[1] : 0.0, target_in ? target_in[2] : -1.0};
+    double up[3] = {up_in ? up_in[0] : 0.0, up_in ? up_in[1] : 1.0, up_in ? up_in[2] : 0.0};
 
+    if (!cam)
+        return;
     sanitize_vec3(eye, fallback_eye);
     sanitize_vec3(target, fallback_target);
     sanitize_vec3(up, fallback_up);
@@ -600,24 +600,60 @@ void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
     camera_apply_shake_to_view(cam);
 }
 
-/// @brief Position the camera on a spherical orbit around a target point.
-/// @details Computes eye position from spherical coordinates (yaw, pitch, distance)
-///          relative to the target, then builds a look-at view matrix. Useful for
-///          third-person cameras and object inspection views.
-void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, double pitch) {
+/// @brief Position the camera and orient it to look at a target point.
+/// @details Builds the view matrix using the standard look-at construction:
+///          forward = normalize(eye - target), right = cross(up, forward),
+///          true_up = cross(forward, right). Uses right-handed coordinates.
+void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
+    if (!obj)
+        return;
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    if (!cam || !rt_g3d_is_vec3(target_v))
+    if (!cam)
+        return;
+    if (!rt_g3d_is_vec3(eye_v) || !rt_g3d_is_vec3(target_v) || !rt_g3d_is_vec3(up_v)) {
+        rt_trap("Camera3D.LookAt: eye, target, and up must be Vec3");
+        return;
+    }
+
+    double eye[3] = {rt_vec3_x(eye_v), rt_vec3_y(eye_v), rt_vec3_z(eye_v)};
+    double target[3] = {rt_vec3_x(target_v), rt_vec3_y(target_v), rt_vec3_z(target_v)};
+    double up[3] = {rt_vec3_x(up_v), rt_vec3_y(up_v), rt_vec3_z(up_v)};
+    camera3d_look_at_values(cam, eye, target, up);
+}
+
+void rt_camera3d_look_at_components(void *obj,
+                                    double eye_x,
+                                    double eye_y,
+                                    double eye_z,
+                                    double target_x,
+                                    double target_y,
+                                    double target_z,
+                                    double up_x,
+                                    double up_y,
+                                    double up_z) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    double eye[3] = {eye_x, eye_y, eye_z};
+    double target[3] = {target_x, target_y, target_z};
+    double up[3] = {up_x, up_y, up_z};
+    camera3d_look_at_values(cam, eye, target, up);
+}
+
+static void camera3d_orbit_values(rt_camera3d *cam,
+                                  double tx,
+                                  double ty,
+                                  double tz,
+                                  double distance,
+                                  double yaw,
+                                  double pitch) {
+    if (!cam)
         return;
 
-    double tx = clamp_abs_or(rt_vec3_x(target_v), 0.0, CAMERA3D_WORLD_ABS_MAX);
-    double ty = clamp_abs_or(rt_vec3_y(target_v), 0.0, CAMERA3D_WORLD_ABS_MAX);
-    double tz = clamp_abs_or(rt_vec3_z(target_v), 0.0, CAMERA3D_WORLD_ABS_MAX);
-
+    tx = clamp_abs_or(tx, 0.0, CAMERA3D_WORLD_ABS_MAX);
+    ty = clamp_abs_or(ty, 0.0, CAMERA3D_WORLD_ABS_MAX);
+    tz = clamp_abs_or(tz, 0.0, CAMERA3D_WORLD_ABS_MAX);
     distance = sanitize_nonnegative(distance, 0.0);
     yaw = finite_or(yaw, 0.0);
     pitch = finite_or(pitch, 0.0);
-
-    /* Clamp pitch to avoid gimbal lock */
     if (pitch > 89.0)
         pitch = 89.0;
     if (pitch < -89.0)
@@ -648,6 +684,39 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
     camera_apply_shake_to_view(cam);
 }
 
+/// @brief Position the camera on a spherical orbit around a target point.
+/// @details Computes eye position from spherical coordinates (yaw, pitch, distance)
+///          relative to the target, then builds a look-at view matrix. Useful for
+///          third-person cameras and object inspection views.
+void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, double pitch) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
+        return;
+    if (!rt_g3d_is_vec3(target_v)) {
+        rt_trap("Camera3D.Orbit: target must be Vec3");
+        return;
+    }
+
+    camera3d_orbit_values(cam,
+                          rt_vec3_x(target_v),
+                          rt_vec3_y(target_v),
+                          rt_vec3_z(target_v),
+                          distance,
+                          yaw,
+                          pitch);
+}
+
+void rt_camera3d_orbit_components(void *obj,
+                                  double target_x,
+                                  double target_y,
+                                  double target_z,
+                                  double distance,
+                                  double yaw,
+                                  double pitch) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    camera3d_orbit_values(cam, target_x, target_y, target_z, distance, yaw, pitch);
+}
+
 /// @brief Get the vertical field of view in degrees.
 double rt_camera3d_get_fov(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
@@ -676,6 +745,22 @@ void *rt_camera3d_get_position(void *obj) {
         return NULL;
     return rt_vec3_new(
         finite_or(cam->eye[0], 0.0), finite_or(cam->eye[1], 0.0), finite_or(cam->eye[2], 0.0));
+}
+
+int8_t rt_camera3d_get_position_components(void *obj, double *x, double *y, double *z) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (x)
+        *x = 0.0;
+    if (y)
+        *y = 0.0;
+    if (z)
+        *z = 0.0;
+    if (!cam || !x || !y || !z)
+        return 0;
+    *x = finite_or(cam->eye[0], 0.0);
+    *y = finite_or(cam->eye[1], 0.0);
+    *z = finite_or(cam->eye[2], 0.0);
+    return 1;
 }
 
 /// @brief Set the camera's eye position and rebuild the view matrix.

@@ -168,8 +168,12 @@ The rendering surface. Creates a window and manages the render loop.
 | `ShouldClose` | Boolean | read | True when user closes window |
 | `Width` | Integer | read | Active output width in pixels (window, or current RenderTarget3D when bound) |
 | `Height` | Integer | read | Active output height in pixels (window, or current RenderTarget3D when bound) |
+| `WindowWidth` | Integer | read | Backing window width, ignoring any bound RenderTarget3D |
+| `WindowHeight` | Integer | read | Backing window height, ignoring any bound RenderTarget3D |
+| `ActiveOutputWidth` | Integer | read | Explicit alias for the active output width |
+| `ActiveOutputHeight` | Integer | read | Explicit alias for the active output height |
 | `Fps` | Integer | read | Frames per second |
-| `DeltaTime` | Integer | read | Milliseconds since last Flip, or fixed synthetic dt when synthetic clock is selected (first live frame = 0, capped to 100ms by default) |
+| `DeltaTime` | Integer | read | Milliseconds since the last live `Poll()` or `Flip()`, or fixed synthetic dt when synthetic clock is selected (first live frame = 0, capped to 100ms by default) |
 | `DeltaTimeMs` | Integer | read | Explicit millisecond alias for `DeltaTime` |
 | `DeltaTimeSec` | Number | read | Seconds since last Flip or synthetic frame, using the same clamp as `DeltaTime` |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
@@ -283,9 +287,9 @@ bindings observe the same state shape as live input. `ClearSyntheticInput()`
 also releases keys/buttons held by the synthetic source so tests do not leak
 state into the next run.
 
-First-frame live timing can be zero because `DeltaTime` is measured after the
-first `Flip()`. Code-first loops should seed or clamp their first `dt` before
-moving gameplay. The synthetic clock reports the configured fixed dt after
+First-frame live timing can be zero because there is no previous live frame yet.
+Code-first loops should seed or clamp their first `dt` before moving gameplay.
+The synthetic clock reports the configured fixed dt after
 `AdvanceSyntheticFrame()`, `Poll()` in synthetic mode, or `Flip()`.
 
 `SetQuality()` currently configures the canvas post-FX chain. Performance and
@@ -807,7 +811,7 @@ func start() {
 
 **Note:** `AsPixels()` returns a fresh copy each call. The render target's CPU-side color/depth buffers are allocated lazily on first CPU access (or when the software backend binds the target), so GPU-only RTT passes do not pay the host-memory cost up front.
 HDR targets created with `NewHdr()` keep their GPU color attachment in `RGBA16F`, but `AsPixels()` still returns standard `Pixels`. GPU readback keeps both a tonemapped RGBA8 mirror and a linear RGBA32F CPU mirror; render-target postfx consumes the linear HDR mirror for Bloom, Tonemap, FXAA, ColorGrade, and Vignette before final 8-bit conversion so highlights are not clamped before the chain runs.
-When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's.
+When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `ActiveOutputWidth`, `ActiveOutputHeight`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's. Use `WindowWidth` / `WindowHeight` when gameplay or HUD layout must track the backing window regardless of the active render target.
 `Canvas3D.Begin()` also uses the target's aspect ratio for that frame's projection while the render target is bound, so switching between the window and RTT views does not stretch perspective or rewrite the camera's stored projection.
 `Canvas3D.SetRenderTarget()` accepts `RenderTarget3D` handles only and prepares the target's color/depth storage before handing it to the active backend, so a successful bind has a valid CPU mirror for software rendering and later readback.
 **PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current CPU-supported `PostFX3D` chain to that render target instead of the window backbuffer. SSAO, DOF, and motion blur require GPU window postfx because they need scene depth/history/velocity buffers; on a render target or software CPU path they trap with a clear error instead of silently no-oping.
