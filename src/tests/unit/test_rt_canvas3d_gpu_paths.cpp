@@ -78,6 +78,8 @@ typedef struct {
     int8_t wireframe;
     int8_t backface_cull;
     int8_t has_local_bounds;
+    int8_t visible;
+    int8_t requires_blend;
     float local_bounds_min[3];
     float local_bounds_max[3];
     float sort_key;

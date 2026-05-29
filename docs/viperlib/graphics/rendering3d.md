@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-27
+last-verified: 2026-05-29
 ---
 
 # 3D Rendering, Animation, and Environment
@@ -70,6 +70,8 @@ returns `1` while the canvas remains open and `0` when the backing window is
 closed or event pumping fails. Use `PollEvent()` when low-level integrations need
 raw window event types; gameplay should normally use the state APIs because they
 expose coherent `WasPressed`, `WasReleased`, held, and mouse-delta state.
+With the live clock selected, `Poll()` also advances `DeltaTime` so manual loops
+that tick simulation before presentation do not depend on `Flip()` for timing.
 
 Deterministic tests can switch a canvas to scripted input and fixed time:
 
@@ -86,9 +88,13 @@ Deterministic tests can switch a canvas to scripted input and fixed time:
 Synthetic events are applied through the same keyboard and mouse state update
 functions as live events. That means camera controllers and action bindings do
 not need a test-only input path. `DeltaTime`/`DeltaTimeSec` can be zero on the
-first live frame before the first `Flip()`; with the synthetic clock selected,
-they report the configured fixed dt after `AdvanceSyntheticFrame()`, synthetic
-`Poll()`, or `Flip()`.
+first live frame; with the synthetic clock selected, they report the configured
+fixed dt after `AdvanceSyntheticFrame()`, synthetic `Poll()`, or `Flip()`.
+
+`Canvas3D.Width` / `Height` report the active output. They follow the bound
+`RenderTarget3D` during RTT passes. `WindowWidth` / `WindowHeight` always report
+the backing window, and `ActiveOutputWidth` / `ActiveOutputHeight` are explicit
+aliases for the active-output behavior.
 
 `PollEvent()` drains the per-canvas event queue in FIFO order and returns `0`
 when no queued event remains.

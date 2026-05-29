@@ -74,6 +74,14 @@ void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled);
 int64_t rt_canvas3d_get_width(void *obj);
 /// @brief Get the canvas height in pixels.
 int64_t rt_canvas3d_get_height(void *obj);
+/// @brief Get the backing window width, ignoring any bound render target.
+int64_t rt_canvas3d_get_window_width(void *obj);
+/// @brief Get the backing window height, ignoring any bound render target.
+int64_t rt_canvas3d_get_window_height(void *obj);
+/// @brief Get the active output width (window, or current render target when bound).
+int64_t rt_canvas3d_get_active_output_width(void *obj);
+/// @brief Get the active output height (window, or current render target when bound).
+int64_t rt_canvas3d_get_active_output_height(void *obj);
 /// @brief Get the rolling-average FPS measured over recent frames.
 int64_t rt_canvas3d_get_fps(void *obj);
 /// @brief Get the wall-clock milliseconds since the previous Flip (first frame returns 0).
