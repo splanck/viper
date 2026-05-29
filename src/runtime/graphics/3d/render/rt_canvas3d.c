@@ -60,6 +60,42 @@ static void *g_canvas3d_synthetic_owner = NULL;
 static void canvas3d_release_synthetic_input(rt_canvas3d *c);
 static void canvas3d_release_synthetic_state(rt_canvas3d *c);
 
+static rt_canvas3d *canvas3d_synthetic_owner_exchange(rt_canvas3d *c) {
+#if RT_COMPILER_MSVC
+    return (rt_canvas3d *)rt_atomic_exchange_ptr(
+        &g_canvas3d_synthetic_owner, c, __ATOMIC_ACQ_REL);
+#else
+    return (rt_canvas3d *)__atomic_exchange_n(&g_canvas3d_synthetic_owner, c, __ATOMIC_ACQ_REL);
+#endif
+}
+
+static rt_canvas3d *canvas3d_synthetic_owner_load(void) {
+#if RT_COMPILER_MSVC
+    return (rt_canvas3d *)rt_atomic_load_ptr(&g_canvas3d_synthetic_owner, __ATOMIC_ACQUIRE);
+#else
+    return (rt_canvas3d *)__atomic_load_n(&g_canvas3d_synthetic_owner, __ATOMIC_ACQUIRE);
+#endif
+}
+
+static int canvas3d_synthetic_owner_compare_exchange(rt_canvas3d *expected_owner,
+                                                     rt_canvas3d *desired_owner) {
+    void *expected = expected_owner;
+#if RT_COMPILER_MSVC
+    return rt_atomic_compare_exchange_ptr(&g_canvas3d_synthetic_owner,
+                                          &expected,
+                                          desired_owner,
+                                          __ATOMIC_ACQ_REL,
+                                          __ATOMIC_ACQUIRE);
+#else
+    return __atomic_compare_exchange_n(&g_canvas3d_synthetic_owner,
+                                       &expected,
+                                       desired_owner,
+                                       0,
+                                       __ATOMIC_ACQ_REL,
+                                       __ATOMIC_ACQUIRE);
+#endif
+}
+
 /// @brief Sanitize an input-source mode (0 live, 1 synthetic, 2 live+synthetic); out of
 ///   range falls back to 0 (live).
 static int32_t canvas3d_input_source_from_mode(int64_t mode) {
@@ -131,8 +167,7 @@ static void canvas3d_set_synthetic_owner(rt_canvas3d *c) {
     rt_canvas3d *previous;
     if (c && rt_heap_is_payload(c))
         rt_obj_retain_maybe(c);
-    previous = (rt_canvas3d *)__atomic_exchange_n(
-        &g_canvas3d_synthetic_owner, c, __ATOMIC_ACQ_REL);
+    previous = canvas3d_synthetic_owner_exchange(c);
     if (previous == c) {
         canvas3d_release_global_owner_ref(c);
         return;
@@ -218,17 +253,10 @@ static void canvas3d_release_synthetic_state(rt_canvas3d *c) {
 }
 
 static void canvas3d_release_synthetic_input(rt_canvas3d *c) {
-    void *expected;
     if (!c)
         return;
     canvas3d_release_synthetic_state(c);
-    expected = c;
-    if (__atomic_compare_exchange_n(&g_canvas3d_synthetic_owner,
-                                    &expected,
-                                    NULL,
-                                    0,
-                                    __ATOMIC_ACQ_REL,
-                                    __ATOMIC_ACQUIRE))
+    if (canvas3d_synthetic_owner_compare_exchange(c, NULL))
         canvas3d_release_global_owner_ref(c);
 }
 
@@ -4500,8 +4528,7 @@ void rt_canvas3d_set_input_source(void *obj, int64_t mode) {
     if (next == 0 && c->input_source != 0)
         canvas3d_release_synthetic_input(c);
     else if (next != 0) {
-        rt_canvas3d *owner = (rt_canvas3d *)__atomic_load_n(&g_canvas3d_synthetic_owner,
-                                                            __ATOMIC_ACQUIRE);
+        rt_canvas3d *owner = canvas3d_synthetic_owner_load();
         if (owner && owner != c)
             canvas3d_set_synthetic_owner(c);
     }

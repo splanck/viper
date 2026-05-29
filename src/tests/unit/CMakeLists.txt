@@ -1215,7 +1215,7 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_network_highlevel PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_network_highlevel test_rt_network_highlevel)
     viper_add_test_labels(test_rt_network_highlevel requires_local_bind)
-    set_tests_properties(test_rt_network_highlevel PROPERTIES TIMEOUT 240)
+    set_tests_properties(test_rt_network_highlevel PROPERTIES RUN_SERIAL TRUE TIMEOUT 240)
     foreach (_local_bind_test
             test_rt_network
             test_rt_network_timeout

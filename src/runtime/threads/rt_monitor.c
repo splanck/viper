@@ -39,10 +39,30 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
+
+static void monitor_release_enter_ref(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void monitor_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    if (!buffer || buffer_size == 0)
+        return;
+    const char *err = rt_trap_get_error();
+    if (!err || !*err)
+        err = fallback ? fallback : "Monitor.Enter: failed";
+    snprintf(buffer, buffer_size, "%s", err);
+}
 
 #if defined(_WIN32)
 
@@ -470,10 +490,22 @@ void rt_monitor_enter(void *obj) {
         return;
     }
     EnterCriticalSection(&m->cs);
+    char saved_error[256];
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        monitor_save_trap_error(saved_error, sizeof(saved_error), "Monitor.Enter: failed");
+        rt_trap_clear_recovery();
+        LeaveCriticalSection(&m->cs);
+        monitor_release_enter_ref(obj);
+        rt_trap(saved_error);
+        return;
+    }
     int acquired = monitor_enter_blocking(m, GetCurrentThreadId(), 0, 0);
+    rt_trap_clear_recovery();
     LeaveCriticalSection(&m->cs);
-    if (!acquired && rt_obj_release_check0(obj))
-        rt_obj_free(obj);
+    if (!acquired)
+        monitor_release_enter_ref(obj);
 }
 
 /// @brief Try to acquire the monitor lock without blocking. Returns 1 if acquired, 0 if busy.
@@ -1417,10 +1449,22 @@ void rt_monitor_enter(void *obj) {
         return;
     }
     pthread_mutex_lock(&m->mu);
+    char saved_error[256];
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        monitor_save_trap_error(saved_error, sizeof(saved_error), "Monitor.Enter: failed");
+        rt_trap_clear_recovery();
+        pthread_mutex_unlock(&m->mu);
+        monitor_release_enter_ref(obj);
+        rt_trap(saved_error);
+        return;
+    }
     int acquired = monitor_enter_blocking(m, pthread_self(), /*timeout_ms=*/0, /*timed=*/0);
+    rt_trap_clear_recovery();
     pthread_mutex_unlock(&m->mu);
-    if (!acquired && rt_obj_release_check0(obj))
-        rt_obj_free(obj);
+    if (!acquired)
+        monitor_release_enter_ref(obj);
 }
 
 /// @brief Attempts to acquire a monitor without blocking.

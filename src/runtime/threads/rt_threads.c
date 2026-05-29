@@ -64,6 +64,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
+
 typedef void (*rt_thread_entry_fn)(void *);
 
 #define RT_THREAD_MAGIC 0x56545244u      /* "VTRD" */
@@ -114,6 +118,140 @@ static int is_regular_thread_handle(void *obj);
 static void thread_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void thread_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    if (!buffer || buffer_size == 0)
+        return;
+    const char *err = rt_trap_get_error();
+    if (!err || !*err)
+        err = fallback ? fallback : "Thread: operation failed";
+    snprintf(buffer, buffer_size, "%s", err);
+}
+
+static void thread_retain_owned_arg_or_release(void *arg,
+                                               void *cleanup_obj,
+                                               const char *fallback) {
+    if (!arg)
+        return;
+
+    char saved_error[256];
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        thread_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        thread_release_object(cleanup_obj);
+        rt_trap(saved_error);
+        return;
+    }
+
+    rt_obj_retain_maybe(arg);
+    rt_trap_clear_recovery();
+}
+
+static void thread_join_inner_or_release(void *inner) {
+    if (!inner)
+        return;
+
+    char saved_error[256];
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        thread_save_trap_error(saved_error, sizeof(saved_error), "Thread.Join: failed");
+        rt_trap_clear_recovery();
+        thread_release_object(inner);
+        rt_trap(saved_error);
+        return;
+    }
+
+    rt_thread_join(inner);
+    rt_trap_clear_recovery();
+    thread_release_object(inner);
+}
+
+static int8_t thread_try_join_inner_or_release(void *inner) {
+    if (!inner)
+        return 1;
+
+    char saved_error[256];
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        thread_save_trap_error(saved_error, sizeof(saved_error), "Thread.TryJoin: failed");
+        rt_trap_clear_recovery();
+        thread_release_object(inner);
+        rt_trap(saved_error);
+        return 0;
+    }
+
+    int8_t joined = rt_thread_try_join(inner);
+    rt_trap_clear_recovery();
+    thread_release_object(inner);
+    return joined;
+}
+
+static int8_t thread_join_for_inner_or_release(void *inner, int64_t ms) {
+    if (!inner)
+        return 1;
+
+    char saved_error[256];
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        thread_save_trap_error(saved_error, sizeof(saved_error), "Thread.JoinFor: failed");
+        rt_trap_clear_recovery();
+        thread_release_object(inner);
+        rt_trap(saved_error);
+        return 0;
+    }
+
+    int8_t joined = rt_thread_join_for(inner, ms);
+    rt_trap_clear_recovery();
+    thread_release_object(inner);
+    return joined;
+}
+
+static int64_t thread_get_id_inner_or_release(void *inner) {
+    if (!inner)
+        return 0;
+
+    char saved_error[256];
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        thread_save_trap_error(saved_error, sizeof(saved_error), "Thread.GetId: failed");
+        rt_trap_clear_recovery();
+        thread_release_object(inner);
+        rt_trap(saved_error);
+        return 0;
+    }
+
+    int64_t id = rt_thread_get_id(inner);
+    rt_trap_clear_recovery();
+    thread_release_object(inner);
+    return id;
+}
+
+static int8_t thread_is_alive_inner_or_release(void *inner) {
+    if (!inner)
+        return 0;
+
+    char saved_error[256];
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        thread_save_trap_error(saved_error, sizeof(saved_error), "Thread.IsAlive: failed");
+        rt_trap_clear_recovery();
+        thread_release_object(inner);
+        rt_trap(saved_error);
+        return 0;
+    }
+
+    int8_t alive = rt_thread_get_is_alive(inner);
+    rt_trap_clear_recovery();
+    thread_release_object(inner);
+    return alive;
 }
 
 #if defined(_WIN32)
@@ -270,11 +408,12 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     t->inherited_ctx = ctx;
     t->entry = (rt_thread_entry_fn)entry;
     t->arg = arg;
-    t->owns_arg = (retain_arg && arg) ? 1 : 0;
-    if (t->owns_arg)
-        rt_obj_retain_maybe(arg);
-
+    t->owns_arg = 0;
     rt_obj_set_finalizer(t, rt_thread_finalize_win);
+    if (retain_arg && arg) {
+        thread_retain_owned_arg_or_release(arg, t, "Thread.StartOwned: arg retain failed");
+        t->owns_arg = 1;
+    }
 
     // Hold a self-reference until the thread exits.
     rt_obj_retain_maybe(t);
@@ -335,9 +474,7 @@ int8_t rt_thread_try_join(void *thread) {
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
         void *inner = safe_thread_copy_inner_thread(ctx);
         thread_release_object(thread);
-        int8_t joined = inner ? rt_thread_try_join(inner) : 1;
-        thread_release_object(inner);
-        return joined;
+        return thread_try_join_inner_or_release(inner);
     }
     RtThread *t = require_thread_win(thread, "Thread.TryJoin: null thread");
     if (!t)
@@ -373,20 +510,18 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
         void *inner = safe_thread_copy_inner_thread(ctx);
         thread_release_object(thread);
-        int8_t joined = inner ? rt_thread_join_for(inner, ms) : 1;
-        thread_release_object(inner);
-        return joined;
+        return thread_join_for_inner_or_release(inner, ms);
     }
     RtThread *t = require_thread_win(thread, "Thread.JoinFor: null thread");
     if (!t)
         return 0;
-    rt_obj_retain_maybe(thread);
 
     if (ms < 0) {
         rt_thread_join(thread);
-        thread_release_object(thread);
         return 1;
     }
+
+    rt_obj_retain_maybe(thread);
 
     EnterCriticalSection(&t->cs);
     if (!t->finished && GetCurrentThreadId() == t->threadId) {
@@ -839,11 +974,12 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
     t->inherited_ctx = ctx;
     t->entry = (rt_thread_entry_fn)entry;
     t->arg = arg;
-    t->owns_arg = (retain_arg && arg) ? 1 : 0;
-    if (t->owns_arg)
-        rt_obj_retain_maybe(arg);
-
+    t->owns_arg = 0;
     rt_obj_set_finalizer(t, rt_thread_finalize);
+    if (retain_arg && arg) {
+        thread_retain_owned_arg_or_release(arg, t, "Thread.StartOwned: arg retain failed");
+        t->owns_arg = 1;
+    }
 
     // Hold a self-reference until the thread exits.
     rt_obj_retain_maybe(t);
@@ -953,9 +1089,7 @@ int8_t rt_thread_try_join(void *thread) {
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
         void *inner = safe_thread_copy_inner_thread(ctx);
         thread_release_object(thread);
-        int8_t joined = inner ? rt_thread_try_join(inner) : 1;
-        thread_release_object(inner);
-        return joined;
+        return thread_try_join_inner_or_release(inner);
     }
     RtThread *t = require_thread(thread, "Thread.TryJoin: null thread");
     if (!t)
@@ -1027,20 +1161,18 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         SafeThreadCtx *ctx = (SafeThreadCtx *)thread;
         void *inner = safe_thread_copy_inner_thread(ctx);
         thread_release_object(thread);
-        int8_t joined = inner ? rt_thread_join_for(inner, ms) : 1;
-        thread_release_object(inner);
-        return joined;
+        return thread_join_for_inner_or_release(inner, ms);
     }
     RtThread *t = require_thread(thread, "Thread.JoinFor: null thread");
     if (!t)
         return 0;
-    rt_obj_retain_maybe(thread);
 
     if (ms < 0) {
         rt_thread_join(thread);
-        thread_release_object(thread);
         return 1;
     }
+
+    rt_obj_retain_maybe(thread);
 
     pthread_mutex_lock(&t->mu);
     if (!t->finished && pthread_equal(pthread_self(), t->pthread)) {
@@ -1307,9 +1439,7 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
     ctx->magic = RT_SAFE_THREAD_MAGIC;
     ctx->entry = (rt_thread_entry_fn)entry;
     ctx->arg = arg;
-    ctx->owns_arg = (retain_arg && arg) ? 1 : 0;
-    if (ctx->owns_arg)
-        rt_obj_retain_maybe(arg);
+    ctx->owns_arg = 0;
     ctx->thread = NULL;
     ctx->monitor = rt_obj_new_i64(/*class_id=*/0, 1);
     if (!ctx->monitor) {
@@ -1320,10 +1450,28 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
     }
     ctx->trapped = 0;
     ctx->error[0] = '\0';
+    if (retain_arg && arg) {
+        thread_retain_owned_arg_or_release(arg, ctx, "Thread.StartSafeOwned: arg retain failed");
+        ctx->owns_arg = 1;
+    }
 
     rt_obj_retain_maybe(ctx); // Worker thread holds a self-reference until it exits.
 
+    char saved_error[256];
+    jmp_buf start_recovery;
+    rt_trap_set_recovery(&start_recovery);
+    if (setjmp(start_recovery) != 0) {
+        thread_save_trap_error(saved_error, sizeof(saved_error), "Thread.StartSafe: failed to start");
+        rt_trap_clear_recovery();
+        if (rt_obj_release_check0(ctx))
+            rt_obj_free(ctx);
+        if (rt_obj_release_check0(ctx))
+            rt_obj_free(ctx);
+        rt_trap(saved_error);
+        return NULL;
+    }
     ctx->thread = rt_thread_start((void *)safe_thread_entry, ctx);
+    rt_trap_clear_recovery();
     if (!ctx->thread) {
         if (rt_obj_release_check0(ctx))
             rt_obj_free(ctx);
@@ -1413,10 +1561,7 @@ void rt_thread_safe_join(void *obj) {
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     void *inner = safe_thread_copy_inner_thread(ctx);
     thread_release_object(obj);
-    if (inner) {
-        rt_thread_join(inner);
-        thread_release_object(inner);
-    }
+    thread_join_inner_or_release(inner);
 }
 
 /// @brief Get the thread ID of a safe-started thread.
@@ -1433,11 +1578,7 @@ int64_t rt_thread_safe_get_id(void *obj) {
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     void *inner = safe_thread_copy_inner_thread(ctx);
     thread_release_object(obj);
-    if (!inner)
-        return 0;
-    int64_t id = rt_thread_get_id(inner);
-    thread_release_object(inner);
-    return id;
+    return thread_get_id_inner_or_release(inner);
 }
 
 /// @brief Check if a safe-started thread is alive.
@@ -1454,9 +1595,5 @@ int8_t rt_thread_safe_is_alive(void *obj) {
     SafeThreadCtx *ctx = (SafeThreadCtx *)obj;
     void *inner = safe_thread_copy_inner_thread(ctx);
     thread_release_object(obj);
-    if (!inner)
-        return 0;
-    int8_t alive = rt_thread_get_is_alive(inner);
-    thread_release_object(inner);
-    return alive;
+    return thread_is_alive_inner_or_release(inner);
 }

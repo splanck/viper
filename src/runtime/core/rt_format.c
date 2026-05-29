@@ -286,15 +286,29 @@ rt_string rt_csv_quote_alloc(rt_string value) {
     size_t len = 0;
     if (value) {
         data = rt_string_cstr(value);
-        len = (size_t)rt_str_len(value);
+        int64_t raw_len = rt_str_len(value);
+        if (raw_len < 0) {
+            rt_trap("rt_csv_quote_alloc: invalid string length");
+            return rt_string_from_bytes("", 0);
+        }
+        len = (size_t)raw_len;
     }
 
     size_t extra = 0;
     for (size_t i = 0; i < len; ++i) {
-        if (data[i] == '"')
+        if (data[i] == '"') {
+            if (extra == SIZE_MAX) {
+                rt_trap("rt_csv_quote_alloc: string too large");
+                return rt_string_from_bytes("", 0);
+            }
             ++extra;
+        }
     }
 
+    if (len > SIZE_MAX - extra || len + extra > SIZE_MAX - 2) {
+        rt_trap("rt_csv_quote_alloc: string too large");
+        return rt_string_from_bytes("", 0);
+    }
     size_t total = len + extra + 2; // leading and trailing quotes
     char *buffer = (char *)malloc(total + 1);
     if (!buffer)

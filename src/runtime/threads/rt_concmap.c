@@ -42,6 +42,7 @@
 
 #include <setjmp.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -388,6 +389,12 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
 
+    if (key_len == SIZE_MAX) {
+        concmap_release_object(obj);
+        rt_trap("ConcurrentMap.Set: key too large");
+        return;
+    }
+
     cm_entry *new_entry = (cm_entry *)malloc(sizeof(cm_entry));
     if (!new_entry) {
         concmap_release_object(obj);
@@ -551,6 +558,12 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     size_t key_len = 0;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t h = rt_fnv1a(key_data, key_len);
+
+    if (key_len == SIZE_MAX) {
+        concmap_release_object(obj);
+        rt_trap("ConcurrentMap.SetIfMissing: key too large");
+        return 0;
+    }
 
     cm_entry *e = (cm_entry *)malloc(sizeof(cm_entry));
     if (!e) {

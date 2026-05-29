@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_object.h"
+#include "rt_heap.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_threads.h"
@@ -36,6 +37,18 @@ static void call_thread_join_null() {
 
 extern "C" void quick_entry(void *arg) {
     (void)arg;
+}
+
+static void call_thread_start_owned_retain_overflow() {
+    void *arg = rt_obj_new_i64(0, sizeof(int64_t));
+    rt_heap_hdr(arg)->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_thread_start_owned((void *)&quick_entry, arg);
+}
+
+static void call_thread_start_safe_owned_retain_overflow() {
+    void *arg = rt_obj_new_i64(0, sizeof(int64_t));
+    rt_heap_hdr(arg)->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+    (void)rt_thread_start_safe_owned((void *)&quick_entry, arg);
 }
 
 static void call_thread_join_twice() {
@@ -197,6 +210,8 @@ int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_thread_start_null);
     viper::tests::registerChildFunction(call_thread_join_null);
     viper::tests::registerChildFunction(call_thread_join_fake_magic_wrong_class);
+    viper::tests::registerChildFunction(call_thread_start_owned_retain_overflow);
+    viper::tests::registerChildFunction(call_thread_start_safe_owned_retain_overflow);
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -212,6 +227,12 @@ int main(int argc, char *argv[]) {
 
     result = viper::tests::runIsolated(call_thread_join_fake_magic_wrong_class);
     assert(result.stderrText.find("Thread: invalid thread handle") != std::string::npos);
+
+    result = viper::tests::runIsolated(call_thread_start_owned_retain_overflow);
+    assert(result.stderrText.find("refcount overflow") != std::string::npos);
+
+    result = viper::tests::runIsolated(call_thread_start_safe_owned_retain_overflow);
+    assert(result.stderrText.find("refcount overflow") != std::string::npos);
 
     test_thread_join_for_timeout();
     test_thread_join_for_timeout_releases_temporary_reference();
