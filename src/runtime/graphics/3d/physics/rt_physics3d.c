@@ -42,6 +42,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -114,6 +115,32 @@ typedef struct {
     int8_t use_ccd;
     double ground_normal[3];
 } rt_body3d;
+
+/* The joint solver (rt_joints3d.c) reaches into a body's pose/velocity through
+ * the shared rt_body3d_kinematics view declared in rt_physics3d.h. These asserts
+ * pin the contract: if any shared field is reordered or retyped in rt_body3d, the
+ * build fails here instead of silently corrupting joint solving at runtime. */
+_Static_assert(offsetof(rt_body3d, vptr) == offsetof(rt_body3d_kinematics, vptr),
+               "rt_body3d_kinematics.vptr offset drift");
+_Static_assert(offsetof(rt_body3d, position) == offsetof(rt_body3d_kinematics, position),
+               "rt_body3d_kinematics.position offset drift");
+_Static_assert(offsetof(rt_body3d, orientation) == offsetof(rt_body3d_kinematics, orientation),
+               "rt_body3d_kinematics.orientation offset drift");
+_Static_assert(offsetof(rt_body3d, scale) == offsetof(rt_body3d_kinematics, scale),
+               "rt_body3d_kinematics.scale offset drift");
+_Static_assert(offsetof(rt_body3d, velocity) == offsetof(rt_body3d_kinematics, velocity),
+               "rt_body3d_kinematics.velocity offset drift");
+_Static_assert(offsetof(rt_body3d, angular_velocity) ==
+                   offsetof(rt_body3d_kinematics, angular_velocity),
+               "rt_body3d_kinematics.angular_velocity offset drift");
+_Static_assert(offsetof(rt_body3d, force) == offsetof(rt_body3d_kinematics, force),
+               "rt_body3d_kinematics.force offset drift");
+_Static_assert(offsetof(rt_body3d, torque) == offsetof(rt_body3d_kinematics, torque),
+               "rt_body3d_kinematics.torque offset drift");
+_Static_assert(offsetof(rt_body3d, mass) == offsetof(rt_body3d_kinematics, mass),
+               "rt_body3d_kinematics.mass offset drift");
+_Static_assert(offsetof(rt_body3d, inv_mass) == offsetof(rt_body3d_kinematics, inv_mass),
+               "rt_body3d_kinematics.inv_mass offset drift");
 
 #define PH3D_INITIAL_CONTACTS 128
 #define PH3D_MAX_QUERY_HITS 256
@@ -996,11 +1023,15 @@ static int capsule_axis_sample_count(double axis_len, double radius) {
     spacing = (isfinite(radius) && radius > 1e-6) ? radius * 0.5 : 0.05;
     if (spacing < 1e-4)
         spacing = 1e-4;
-    samples = (int)ceil(axis_len / spacing) + 1;
-    if (samples < 1)
-        samples = 1;
-    if (samples > 256)
-        samples = 256;
+    /* Clamp in double space before the int cast: converting an out-of-range
+     * double to int is undefined behavior, and axis_len/spacing can be huge for
+     * extreme scales, so the [1,256] clamp must happen before narrowing. */
+    double sample_estimate = ceil(axis_len / spacing) + 1.0;
+    if (!isfinite(sample_estimate) || sample_estimate >= 256.0)
+        return 256;
+    if (sample_estimate < 1.0)
+        return 1;
+    samples = (int)sample_estimate;
     return samples;
 }
 

@@ -45,6 +45,7 @@ extern double rt_vec3_z(void *v);
 extern int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan);
 extern void rt_voice_set_volume(int64_t voice, int64_t volume);
 extern void rt_voice_set_pan(int64_t voice, int64_t pan);
+extern int64_t rt_voice_is_playing(int64_t voice);
 
 static rt_sound3d_listener_state s_fallback_listener = {
     {0.0, 0.0, 0.0},
@@ -324,14 +325,27 @@ void rt_sound3d_register_voice_ex(int64_t voice,
         s_voice_dist[s_voice_dist_count].base_volume = base_volume;
         s_voice_dist_count++;
     } else {
-        int32_t slot = s_voice_dist_next;
-        if (slot < 0 || slot >= MAX_3D_VOICES)
-            slot = 0;
+        /* Table full: first reclaim a slot whose voice has already finished
+         * (one-shot ended or mixer-culled) so we never silently evict a
+         * still-playing source's falloff params. Only if every tracked voice is
+         * still live do we fall back to round-robin eviction. */
+        int32_t slot = -1;
+        for (int32_t i = 0; i < MAX_3D_VOICES; i++) {
+            if (s_voice_dist[i].voice_id <= 0 || !rt_voice_is_playing(s_voice_dist[i].voice_id)) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0) {
+            slot = s_voice_dist_next;
+            if (slot < 0 || slot >= MAX_3D_VOICES)
+                slot = 0;
+            s_voice_dist_next = (slot + 1) % MAX_3D_VOICES;
+        }
         s_voice_dist[slot].voice_id = voice;
         s_voice_dist[slot].ref_distance = ref_dist;
         s_voice_dist[slot].max_distance = max_dist;
         s_voice_dist[slot].base_volume = base_volume;
-        s_voice_dist_next = (slot + 1) % MAX_3D_VOICES;
     }
 }
 
@@ -339,31 +353,28 @@ void rt_sound3d_register_voice(int64_t voice, double max_dist, int64_t base_volu
     rt_sound3d_register_voice_ex(voice, 0.0, max_dist, base_volume);
 }
 
-/// @brief Look up the recorded reference distance for a voice, or 0.0 for legacy falloff.
-static double lookup_voice_ref_distance(int64_t voice) {
+/// @brief Look up a voice's recorded 3D params in a single table scan.
+/// @details On a hit, writes the recorded reference distance, max distance, and
+///   base volume into whichever out-params are non-NULL and returns 1. On a miss
+///   the out-params are left untouched (so the caller's pre-seeded defaults —
+///   ref 0.0, max 50.0, base 100 — stand). Replaces three separate per-field
+///   scans of the voice table with one pass.
+static int lookup_voice_params(int64_t voice,
+                               double *out_ref_distance,
+                               double *out_max_distance,
+                               int64_t *out_base_volume) {
     for (int32_t i = 0; i < s_voice_dist_count; i++) {
-        if (s_voice_dist[i].voice_id == voice)
-            return s_voice_dist[i].ref_distance;
+        if (s_voice_dist[i].voice_id == voice) {
+            if (out_ref_distance)
+                *out_ref_distance = s_voice_dist[i].ref_distance;
+            if (out_max_distance)
+                *out_max_distance = s_voice_dist[i].max_distance;
+            if (out_base_volume)
+                *out_base_volume = s_voice_dist[i].base_volume;
+            return 1;
+        }
     }
-    return 0.0;
-}
-
-/// @brief Look up the recorded `max_distance` for a voice, or 50.0 if unknown.
-static double lookup_voice_distance(int64_t voice) {
-    for (int32_t i = 0; i < s_voice_dist_count; i++) {
-        if (s_voice_dist[i].voice_id == voice)
-            return s_voice_dist[i].max_distance;
-    }
-    return 50.0; /* default fallback */
-}
-
-/// @brief Look up the recorded base volume for a voice, or 100 (max) if unknown.
-static int64_t lookup_voice_base_volume(int64_t voice) {
-    for (int32_t i = 0; i < s_voice_dist_count; i++) {
-        if (s_voice_dist[i].voice_id == voice)
-            return s_voice_dist[i].base_volume;
-    }
-    return 100;
+    return 0;
 }
 
 /// @brief Compute distance-attenuated volume and stereo pan for a 3D source.
@@ -442,12 +453,22 @@ void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listene
         atten = 0.0;
     if (atten > 1.0)
         atten = 1.0;
-    *out_vol = clamp_i64((int64_t)(base_vol * atten), 0, 100);
+    /* Round rather than truncate: the product is non-negative, so +0.5 gives the
+     * nearest integer and avoids a consistent downward bias in attenuated volume. */
+    *out_vol = clamp_i64((int64_t)((double)base_vol * atten + 0.5), 0, 100);
 
     if (dist > 1e-8) {
-        double ndx = dx / dist;
-        double ndz = dz / dist;
-        double dot_right = ndx * effective->right[0] + ndz * effective->right[2];
+        double inv_dist = 1.0 / dist;
+        double ndx = dx * inv_dist;
+        double ndy = dy * inv_dist;
+        double ndz = dz * inv_dist;
+        /* Full 3D dot of the unit source direction with the listener's right
+         * axis. Including the y/right[1] term means a rolled (tilted) listener
+         * basis is reflected in stereo balance — as the file's invariant
+         * promises — and elevated sources are not wrongly pulled toward center
+         * by projecting onto x/z while still dividing by the 3D distance. */
+        double dot_right = ndx * effective->right[0] + ndy * effective->right[1] +
+                           ndz * effective->right[2];
         *out_pan = isfinite(dot_right) ? clamp_i64((int64_t)(dot_right * 100.0), -100, 100) : 0;
     } else {
         *out_pan = 0;
@@ -547,11 +568,15 @@ void rt_sound3d_update_voice_ex(int64_t voice,
     double source_pos[3];
     if (!position || voice <= 0)
         return;
+    /* One table scan for all three recorded params; defaults stand on a miss. */
+    double rec_ref_distance = 0.0;
+    double rec_max_distance = 50.0;
+    int64_t base_volume = 100;
+    lookup_voice_params(voice, &rec_ref_distance, &rec_max_distance, &base_volume);
     if (!isfinite(ref_distance) || ref_distance <= 0.0)
-        ref_distance = lookup_voice_ref_distance(voice);
+        ref_distance = rec_ref_distance;
     if (!isfinite(max_distance) || max_distance <= 0.0)
-        max_distance = lookup_voice_distance(voice); /* per-voice fallback */
-    int64_t base_volume = lookup_voice_base_volume(voice);
+        max_distance = rec_max_distance; /* per-voice fallback */
     sound3d_vec_from_obj(position, source_pos);
     rt_sound3d_get_effective_listener_state(&listener);
     int64_t vol = 0;

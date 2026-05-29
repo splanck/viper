@@ -332,6 +332,33 @@ static void test_compute_normal_matrix_singular_fallback(void) {
         normal[10], 1.0f, 1e-6f, "Non-finite normal matrix input avoids propagating NaN values");
 }
 
+/* Regression guard for the inverse-transpose property on a matrix with non-zero
+ * off-diagonals. The diagonal-scale test above cannot distinguish (M^-1) from
+ * (M^-1)^T because a diagonal matrix equals its own transpose. Here the model has
+ * rotation/shear, so the cofactors are asymmetric and the normal matrix must equal
+ * the transpose of the true inverse: normal[i][j] == inv[j][i]. */
+static void test_compute_normal_matrix_inverse_transpose_offdiagonal(void) {
+    const float model[16] = {
+        1.0f, 2.0f, 0.0f, 0.0f, 0.0f, 1.0f, 3.0f, 0.0f,
+        4.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    };
+    float normal[16];
+    float inv[16];
+
+    vgfx3d_compute_normal_matrix4(model, normal);
+    EXPECT_TRUE(vgfx3d_invert_matrix4(model, inv) == 0, "model with shear is invertible");
+
+    EXPECT_NEAR(normal[0], inv[0], 1e-5f, "normal[0][0] == inv[0][0]");
+    EXPECT_NEAR(normal[1], inv[4], 1e-5f, "normal[0][1] == inv[1][0] (inverse-transpose)");
+    EXPECT_NEAR(normal[2], inv[8], 1e-5f, "normal[0][2] == inv[2][0] (inverse-transpose)");
+    EXPECT_NEAR(normal[4], inv[1], 1e-5f, "normal[1][0] == inv[0][1] (inverse-transpose)");
+    EXPECT_NEAR(normal[5], inv[5], 1e-5f, "normal[1][1] == inv[1][1]");
+    EXPECT_NEAR(normal[6], inv[9], 1e-5f, "normal[1][2] == inv[2][1] (inverse-transpose)");
+    EXPECT_NEAR(normal[8], inv[2], 1e-5f, "normal[2][0] == inv[0][2] (inverse-transpose)");
+    EXPECT_NEAR(normal[9], inv[6], 1e-5f, "normal[2][1] == inv[1][2] (inverse-transpose)");
+    EXPECT_NEAR(normal[10], inv[10], 1e-5f, "normal[2][2] == inv[2][2]");
+}
+
 static void test_invert_matrix4_success(void) {
     const float matrix[16] = {
         2.0f,
@@ -683,6 +710,7 @@ int main(void) {
     test_hdr_readback_helpers();
     test_generation_helpers();
     test_compute_normal_matrix_inverse_transpose();
+    test_compute_normal_matrix_inverse_transpose_offdiagonal();
     test_compute_normal_matrix_singular_fallback();
     test_invert_matrix4_success();
     test_invert_matrix4_rejects_singular();

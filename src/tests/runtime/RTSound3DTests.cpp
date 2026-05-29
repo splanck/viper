@@ -69,6 +69,13 @@ extern "C" void rt_voice_set_pan(int64_t voice, int64_t pan) {
     g_last_update_pan = pan;
 }
 
+extern "C" int64_t rt_voice_is_playing(int64_t voice) {
+    // Stub: report every valid voice as still playing so the voice table's
+    // full-eviction path falls through to round-robin (its prior behavior)
+    // instead of reclaiming a "finished" slot during these unit tests.
+    return voice > 0 ? 1 : 0;
+}
+
 static void test_origin_has_full_volume_and_zero_pan() {
     Vec3 listener{0.0, 0.0, 0.0};
     Vec3 forward{0.0, 0.0, -1.0};

@@ -32,6 +32,26 @@
 extern "C" {
 #endif
 
+/// @brief Shared read/write view of a Body3D's kinematic prefix.
+/// @details The full `rt_body3d` struct is private to rt_physics3d.c, but the
+///   joint solver (rt_joints3d.c) needs direct access to a body's pose and
+///   velocity. Rather than hand-duplicating the field layout (which silently
+///   breaks if the private struct is reordered), both sides share this prefix
+///   type. rt_physics3d.c pins the contract with `_Static_assert`s that every
+///   field offset here matches the real `rt_body3d`.
+typedef struct {
+    void *vptr;
+    double position[3];
+    double orientation[4];
+    double scale[3];
+    double velocity[3];
+    double angular_velocity[3];
+    double force[3];
+    double torque[3];
+    double mass;
+    double inv_mass;
+} rt_body3d_kinematics;
+
 /* Physics3D World */
 /// @brief Create a 3D physics world with the given gravity vector (m/s² along each axis).
 void *rt_world3d_new(double gx, double gy, double gz);

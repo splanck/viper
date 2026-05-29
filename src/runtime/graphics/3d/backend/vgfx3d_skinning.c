@@ -78,7 +78,7 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
             if (idx >= bone_count)
                 continue;
 
-            const float *m = &palette[idx * 16];
+            const float *m = &palette[(size_t)idx * 16u];
             float nm_local[16];
             const float *nm;
             if (normal_palette) {
@@ -106,18 +106,20 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
             pos[0] *= inv_w;
             pos[1] *= inv_w;
             pos[2] *= inv_w;
-            nrm[0] *= inv_w;
-            nrm[1] *= inv_w;
-            nrm[2] *= inv_w;
             memcpy(dst[v].pos, pos, sizeof(float) * 3);
-            /* Normalize skinned normal */
+            /* Normalize the skinned normal. The weighted sum's magnitude is
+             * irrelevant once renormalized, so we skip the inv_w scale here. If
+             * opposing bone influences cancel to a near-zero vector there is no
+             * meaningful direction to keep — leave the source normal (already
+             * copied into dst above) rather than writing a degenerate zero
+             * normal that would black out shading on that vertex. */
             float len = sqrtf(nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]);
             if (len > 1e-8f) {
                 nrm[0] /= len;
                 nrm[1] /= len;
                 nrm[2] /= len;
+                memcpy(dst[v].normal, nrm, sizeof(float) * 3);
             }
-            memcpy(dst[v].normal, nrm, sizeof(float) * 3);
         }
     }
 

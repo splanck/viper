@@ -246,8 +246,10 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     double rz = up[0] * fy - up[1] * fx;
     double rlen = sqrt(rx * rx + ry * ry + rz * rz);
     if (!isfinite(rlen) || rlen <= 1e-12) {
+        /* When forward is near-vertical (|fy| > 0.99) the world-Y up hint is
+         * degenerate, so fall back to world +Z; otherwise use world +Y. */
         const double fallback_up[3] = {
-            fabs(fy) > 0.99 ? 0.0 : 0.0, fabs(fy) > 0.99 ? 0.0 : 1.0, fabs(fy) > 0.99 ? 1.0 : 0.0};
+            0.0, fabs(fy) > 0.99 ? 0.0 : 1.0, fabs(fy) > 0.99 ? 1.0 : 0.0};
         rx = fallback_up[1] * fz - fallback_up[2] * fy;
         ry = fallback_up[2] * fx - fallback_up[0] * fz;
         rz = fallback_up[0] * fy - fallback_up[1] * fx;

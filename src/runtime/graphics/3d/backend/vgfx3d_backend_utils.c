@@ -409,14 +409,20 @@ void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix)
         return;
     }
 
+    /* Normal matrix = (M^-1)^T = cofactor_matrix / det. The cofactor `cij` is the
+     * cofactor of element [i][j], so it is placed DIRECTLY at out[i][j] — no
+     * transpose. (The plain inverse M^-1 = adjugate/det = cofactor^T/det uses the
+     * transpose; the inverse-transpose un-does it. Placing cij at out[j][i] is the
+     * classic adjugate/cofactor mix-up and yields M^-1, which counter-rotates
+     * normals under any rotation/shear while looking correct for diagonal scales.) */
     out_matrix[0] = c00 * inv_det;
-    out_matrix[1] = c10 * inv_det;
-    out_matrix[2] = c20 * inv_det;
-    out_matrix[4] = c01 * inv_det;
+    out_matrix[1] = c01 * inv_det;
+    out_matrix[2] = c02 * inv_det;
+    out_matrix[4] = c10 * inv_det;
     out_matrix[5] = c11 * inv_det;
-    out_matrix[6] = c21 * inv_det;
-    out_matrix[8] = c02 * inv_det;
-    out_matrix[9] = c12 * inv_det;
+    out_matrix[6] = c12 * inv_det;
+    out_matrix[8] = c20 * inv_det;
+    out_matrix[9] = c21 * inv_det;
     out_matrix[10] = c22 * inv_det;
 }
 

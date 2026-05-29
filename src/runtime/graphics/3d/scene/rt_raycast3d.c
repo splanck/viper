@@ -514,11 +514,13 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
  *=========================================================================*/
 
 /// @brief Test ray–mesh intersection by iterating all triangles.
-/// @details Performs an AABB early-out test, then iterates each triangle in the
-///          mesh using the Möller–Trumbore algorithm. If a transform is provided,
-///          vertices are transformed to world space per-triangle (avoids computing
-///          the inverse model matrix). Returns a RayHit3D with distance, position,
-///          normal, and triangle index on hit, or NULL on miss.
+/// @details Performs an AABB early-out test, then iterates each triangle with the
+///          Möller–Trumbore algorithm. When a transform is provided and invertible,
+///          the ray is moved into the mesh's object space once (a single matrix
+///          inverse) and triangles are tested untransformed; only a singular
+///          transform falls back to transforming each triangle's vertices into
+///          world space. Returns a RayHit3D with distance, position, normal, and
+///          triangle index on hit, or NULL on miss.
 /// @param origin        Vec3 ray origin in world space.
 /// @param dir           Vec3 ray direction (need not be normalized).
 /// @param mesh_obj      Mesh handle to test against.

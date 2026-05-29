@@ -45,19 +45,8 @@ extern void rt_obj_free(void *obj);
 #define RT_JOINT3D_MAX_PARAM 1.0e9
 #define RT_JOINT3D_MAX_FORCE 1.0e9
 
-/* Access body internals — this prefix must stay aligned with rt_body3d in rt_physics3d.c. */
-typedef struct {
-    void *vptr;
-    double position[3];
-    double orientation[4];
-    double scale[3];
-    double velocity[3];
-    double angular_velocity[3];
-    double force[3];
-    double torque[3];
-    double mass;
-    double inv_mass;
-} rt_body3d_view;
+/* Body pose/velocity access uses the shared rt_body3d_kinematics view from
+ * rt_physics3d.h, whose layout is asserted to match the private rt_body3d there. */
 
 /// @brief Clamp a joint parameter to `[0, RT_JOINT3D_MAX_PARAM]`; non-finite maps to 0.
 static double joint3d_sanitize_nonnegative(double value) {
@@ -79,7 +68,7 @@ static double joint3d_clamp_force(double value) {
 
 /// @brief True if a body view is solvable: finite, non-negative inverse mass and
 ///        finite position/velocity. Guards the joint solver against NaN bodies.
-static int joint3d_body_is_finite(const rt_body3d_view *body) {
+static int joint3d_body_is_finite(const rt_body3d_kinematics *body) {
     if (!body || !isfinite(body->inv_mass) || body->inv_mass < 0.0)
         return 0;
     for (int i = 0; i < 3; i++) {
@@ -90,7 +79,7 @@ static int joint3d_body_is_finite(const rt_body3d_view *body) {
 }
 
 /// @brief Release the GC reference held in `*slot` (if any) and null the slot. Idempotent.
-static void joint3d_release_body_ref(rt_body3d_view **slot) {
+static void joint3d_release_body_ref(rt_body3d_kinematics **slot) {
     if (!slot || !*slot)
         return;
     if (rt_obj_release_check0(*slot))
@@ -104,8 +93,8 @@ static void joint3d_release_body_ref(rt_body3d_view **slot) {
 
 typedef struct {
     void *vptr;
-    rt_body3d_view *body_a;
-    rt_body3d_view *body_b;
+    rt_body3d_kinematics *body_a;
+    rt_body3d_kinematics *body_b;
     double target_distance;
 } rt_distance_joint3d;
 
@@ -139,8 +128,8 @@ void *rt_distance_joint3d_new(void *body_a, void *body_b, double distance) {
         return NULL;
     }
     j->vptr = NULL;
-    j->body_a = (rt_body3d_view *)body_a;
-    j->body_b = (rt_body3d_view *)body_b;
+    j->body_a = (rt_body3d_kinematics *)body_a;
+    j->body_b = (rt_body3d_kinematics *)body_b;
     rt_obj_retain_maybe(body_a);
     rt_obj_retain_maybe(body_b);
     j->target_distance = joint3d_sanitize_nonnegative(distance);
@@ -236,8 +225,8 @@ static void solve_distance(rt_distance_joint3d *j, double dt) {
 
 typedef struct {
     void *vptr;
-    rt_body3d_view *body_a;
-    rt_body3d_view *body_b;
+    rt_body3d_kinematics *body_a;
+    rt_body3d_kinematics *body_b;
     double rest_length;
     double stiffness;
     double damping;
@@ -276,8 +265,8 @@ void *rt_spring_joint3d_new(
         return NULL;
     }
     j->vptr = NULL;
-    j->body_a = (rt_body3d_view *)body_a;
-    j->body_b = (rt_body3d_view *)body_b;
+    j->body_a = (rt_body3d_kinematics *)body_a;
+    j->body_b = (rt_body3d_kinematics *)body_b;
     rt_obj_retain_maybe(body_a);
     rt_obj_retain_maybe(body_b);
     j->rest_length = joint3d_sanitize_nonnegative(rest_length);
