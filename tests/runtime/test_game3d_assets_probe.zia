@@ -25,6 +25,25 @@ func start() {
         fail("LoadModelAsset did not instantiate through asset resolver");
         return;
     }
+    Game3D.Entity3D.setName(assetEntity, "AssetProbeImport");
+    var world = Game3D.World3D.New("Game3D Asset Lifetime Probe", 64, 48);
+    var i = 0;
+    while (i < 4) {
+        Game3D.World3D.spawn(world, assetEntity);
+        if (Game3D.World3D.get_entityCount(world) != 1 ||
+            Game3D.World3D.findEntity(world, "AssetProbeImport") == null) {
+            fail("imported asset group did not spawn/index cleanly");
+            return;
+        }
+        Game3D.World3D.despawn(world, assetEntity);
+        if (Game3D.World3D.get_entityCount(world) != 0 ||
+            Game3D.World3D.findEntity(world, "AssetProbeImport") != null) {
+            fail("imported asset group despawn leaked world registry state");
+            return;
+        }
+        i = i + 1;
+    }
+    Game3D.World3D.destroy(world);
 
     var tpl1 = Game3D.Assets3D.LoadModelTemplate(path);
     var tpl2 = Game3D.Assets3D.LoadModelTemplate(path);
@@ -51,7 +70,22 @@ func start() {
         return;
     }
 
+    var missing = Game3D.Assets3D.LoadModelTemplateAssetAsync("viper/missing/co3_missing.gltf");
+    if (missing == null ||
+        Game3D.AssetHandle3D.get_ready(missing) == false ||
+        Game3D.AssetHandle3D.get_error(missing) != "asset not found" ||
+        Game3D.AssetHandle3D.getTemplate(missing) != null) {
+        fail("missing package asset did not produce a terminal diagnostic handle");
+        return;
+    }
+
     Game3D.Assets3D.Preload(path);
+    Game3D.Assets3D.ClearCache();
+    var tpl3 = Game3D.Assets3D.LoadModelTemplate(path);
+    if (tpl3 == null) {
+        fail("LoadModelTemplate failed after ClearCache");
+        return;
+    }
     Game3D.Assets3D.ClearCache();
     Terminal.Say("PASS");
 }

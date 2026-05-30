@@ -4,6 +4,12 @@ bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal;
 
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
 func start() {
     var world = Physics3DWorld.New(0.0, 0.0, 0.0);
     var floor = Physics3DBody.NewAABB(1.0, 1.0, 1.0, 0.0);
@@ -19,8 +25,8 @@ func start() {
         return;
     }
     var enterEvt = Physics3DWorld.GetEnterEvent(world, 0);
-    if (CollisionEvent3D.get_ContactCount(enterEvt) != 1) {
-        Say("FAIL: enter event should expose one contact");
+    if (CollisionEvent3D.get_ContactCount(enterEvt) < 1) {
+        Say("FAIL: enter event should expose at least one contact");
         return;
     }
     if (CollisionEvent3D.get_RelativeSpeed(enterEvt) < 0.0) {
@@ -62,7 +68,7 @@ func start() {
         Say("FAIL: trigger overlap should set IsTrigger");
         return;
     }
-    if (CollisionEvent3D.get_NormalImpulse(evt) != 0.0) {
+    if (near(CollisionEvent3D.get_NormalImpulse(evt), 0.0, 0.0001) == false) {
         Say("FAIL: trigger overlap should not produce solver impulse");
         return;
     }

@@ -64,10 +64,43 @@ func start() {
         return;
     }
 
+    var rawRoot = G3D.SceneNode3D.New();
+    var rawChild = G3D.SceneNode3D.New();
+    G3D.SceneNode3D.set_Name(rawRoot, "ImportedRoot");
+    G3D.SceneNode3D.set_Name(rawChild, "ImportedChild");
+    G3D.SceneNode3D.AddChild(rawRoot, rawChild);
+    var imported = Game3D.Entity3D.FromNode(rawRoot);
+    if (imported == null || Game3D.Entity3D.isGroup(imported) == false) {
+        fail("Entity3D.FromNode did not wrap a raw SceneNode3D subtree");
+        return;
+    }
+    Game3D.World3D.spawn(world, imported);
+    if (Game3D.World3D.findEntity(world, "ImportedRoot") == null ||
+        Game3D.World3D.findNode(world, "ImportedChild") == null) {
+        fail("World3D did not index a FromNode imported subtree");
+        return;
+    }
+
     Game3D.World3D.setAmbient(world, 0.18, 0.20, 0.24);
     Game3D.World3D.setQuality(world, Game3D.QualityLevel.get_Balanced());
     Game3D.World3D.lookAt(world, new Math.Vec3(0.0, 0.0, 0.0));
     Game3D.World3D.onResize(world, 64, 48);
+    var canvas = Game3D.World3D.get_canvas(world);
+    G3D.Canvas3D.SetInputSource(canvas, 1);
+    G3D.Canvas3D.SetClockSource(canvas, 1);
+    G3D.Canvas3D.SetSyntheticDeltaTimeSec(canvas, 0.020);
+    if (Game3D.World3D.tick(world) == false ||
+        Game3D.World3D.get_frame(world) != 1 ||
+        near(Game3D.World3D.get_dt(world), 0.020, 0.0001) == false) {
+        fail("World3D.tick did not advance synthetic timing");
+        return;
+    }
+    Game3D.World3D.stepSimulation(world, 0.0);
+    if (Game3D.World3D.get_frame(world) != 2 ||
+        near(Game3D.World3D.get_dt(world), 1.0 / 60.0, 0.0001) == false) {
+        fail("World3D.stepSimulation did not clamp and advance frame timing");
+        return;
+    }
     Game3D.World3D.beginFrame(world);
     Game3D.World3D.drawScene(world);
     Game3D.World3D.drawEffects(world);
@@ -83,6 +116,11 @@ func start() {
     }
     Game3D.World3D.present(world);
 
+    Game3D.World3D.despawn(world, imported);
+    if (Game3D.World3D.findNode(world, "ImportedChild") != null) {
+        fail("World3D.despawn did not detach the FromNode subtree");
+        return;
+    }
     Game3D.World3D.despawn(world, player);
     if (Game3D.Entity3D.isSpawned(player)) {
         fail("World3D.despawn did not clear spawned state");

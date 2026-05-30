@@ -1,0 +1,11 @@
+module test_game3d_double_despawn_reject;
+
+bind Viper.Game3D as Game3D;
+
+func start() {
+    var world = Game3D.World3D.New("Game3D Double Despawn Reject", 32, 24);
+    var entity = Game3D.Entity3D.New();
+    Game3D.World3D.spawn(world, entity);
+    Game3D.World3D.despawn(world, entity);
+    Game3D.World3D.despawn(world, entity);
+}
