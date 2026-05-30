@@ -39,6 +39,7 @@ and joint integration.
 | `LastCCDRequestedSubsteps` | Integer | Read | Unclamped CCD substep demand from the most recent `Step()` |
 | `LastCCDSubsteps` | Integer | Read | Actual CCD substeps used after applying the runtime cap |
 | `CCDSubstepClampedCount` | Integer | Read | Number of steps whose CCD demand exceeded the cap |
+| `SolverIterations` | Integer | Read | Iterative constraint-solver passes used by `Step()` |
 
 ### Methods
 
@@ -49,8 +50,9 @@ and joint integration.
 | `TryAdd(body)`            | `Boolean(Object)`     | Add a body and report allocation/validation failure without changing the world |
 | `Remove(body)`            | `Void(Object)`        | Remove a body from the world |
 | `ContainsBody(body)`      | `Boolean(Object)`     | Return whether the body is currently registered in the world |
+| `SetSolverIterations(iterations)` | `Void(Integer)` | Tune iterative solver passes, clamped to `1..64` |
 | `SetGravity(x, y, z)`     | `Void(Double, Double, Double)` | Change the gravity vector |
-| `AddJoint(joint, type)`   | `Void(Object, Integer)` | Add a joint (`0 = DistanceJoint3D`, `1 = SpringJoint3D`) |
+| `AddJoint(joint, type)`   | `Void(Object, Integer)` | Add a joint (`0 = DistanceJoint3D`, `1 = SpringJoint3D`, `2 = HingeJoint3D`, `3 = RopeJoint3D`, `4 = SixDofJoint3D`) |
 | `RemoveJoint(joint)`      | `Void(Object)`        | Remove a joint from the world |
 | `Raycast(origin, direction, maxDistance, mask)` | `Object(Object, Object, Double, Integer)` | Return the nearest `PhysicsHit3D` or `Nothing` |
 | `RaycastAll(origin, direction, maxDistance, mask)` | `Object(Object, Object, Double, Integer)` | Return a sorted `PhysicsHitList3D` or `Nothing` |
@@ -77,10 +79,20 @@ and joint integration.
 - `Add(body)` keeps the historical void API. `TryAdd(body)` returns `false` for invalid handles or allocation failure, returns `true` for already-present bodies, and leaves the body count stable on duplicates.
 - World storage for bodies, contacts, contact events, and joints grows on demand from production-sized initial capacities. Query result lists store a bounded nearest/result prefix for predictable allocation behavior, while `PhysicsHitList3D.TotalCount` and `Truncated` expose whether more matches existed.
 - Collision detection uses a sweep-and-prune broadphase before shape-specific narrow-phase tests. Box colliders honor body and compound-child orientation.
+- The unit lane includes a sparse 321-body step stress that exercises body
+  storage growth, broadphase scratch growth, and dynamic integration without
+  producing contacts.
 - World queries reuse the broadphase and honor each body's collision scale before running shape tests.
 - `Raycast` and `RaycastAll` test collider geometry, not only broadphase bounds: boxes, spheres, capsules, compound leaves, mesh/convex triangles, and heightfields report nearest shape hits. Mesh raycasts build and reuse a per-mesh BVH, and heightfield raycasts adapt their step to the heightfield cell spacing.
+- Mesh colliders use the per-mesh BVH to prune candidate triangles for sphere,
+  capsule, and box contacts, with a full triangle scan retained as a correctness
+  fallback. Convex hulls use support-point GJK/EPA for hull-vs-hull and
+  hull-vs-simple contacts.
 - Sphere sweeps use analytic tests against primitive spheres and boxes before falling back to adaptive sampling. Capsule sweeps use adaptive sampling, so small-radius sweeps and long capsules can hit thin geometry without a fixed world-unit step floor.
 - `LastCCDRequestedSubsteps`, `LastCCDSubsteps`, and `CCDSubstepClampedCount` are diagnostics for fast-body tuning; clamping is expected when very high velocity would require more substeps than the engine's safety cap.
+- `SolverIterations` defaults to `6` and drives both contact-resolution passes and joint
+  constraint passes. `SetSolverIterations()` clamps to `1..64`; higher values can reduce
+  penetration and make constraints stiffer at additional CPU cost.
 
 ---
 
@@ -142,7 +154,7 @@ Structured per-pair contact snapshot from the most recent world step.
 | `ColliderA` | Object | Read | Leaf collider for body A |
 | `ColliderB` | Object | Read | Leaf collider for body B |
 | `IsTrigger` | Boolean | Read | Pair includes a trigger body |
-| `ContactCount` | Integer | Read | Manifold point count (`1` in the current backend) |
+| `ContactCount` | Integer | Read | Manifold point count; AABB pairs can expose up to four points, other pairs currently expose one representative point |
 | `RelativeSpeed` | Double | Read | Relative speed along the contact normal before resolution |
 | `NormalImpulse` | Double | Read | Solver normal impulse (`0` for trigger pairs) |
 
@@ -212,7 +224,9 @@ content; bodies now own a collider instead of baking all shape state directly in
 - Primitive collider constructors substitute a positive unit extent/radius for zero, negative-zero,
   or non-finite inputs; capsule height is still clamped to at least its diameter.
 - `NewHeightfield()` requires a valid `Pixels` object, not just a matching class ID.
-- `NewConvexHull()` expects convex source geometry and uses the mesh surface as the hull shape.
+- `NewConvexHull()` treats the mesh vertex cloud as a convex support set.
+  Hull-vs-hull and hull-vs-simple pairs use the GJK/EPA simplex narrow phase,
+  including contained primitive contacts.
 - Compound colliders are the preferred way to build richer dynamic bodies from simple children.
 - Heightfield contacts account for signed and non-uniform Y scale when computing sphere penetration depth and normals.
 
@@ -297,6 +311,11 @@ sleeping, and optional CCD.
   diagnostics for requested-vs-applied substeps when that demand is clamped.
 - Rotational state is fully integrated for all body types. Non-trigger contacts apply impulses at
   the contact point, so off-center hits can generate angular velocity.
+- Contacts are solved by a warm-started sequential-impulse solver: per-manifold-point
+  normal and friction impulses are accumulated and carried across frames, so box stacks
+  settle and rest stably rather than jittering or sinking. Settled bodies auto-sleep and
+  freeze as an island; `SolverIterations` raises support quality for tall stacks. Resting
+  contacts apply no restitution (only genuine impacts bounce).
 - AABB primitives remain axis-aligned boxes. Capsule collision honors body orientation; use compound
   colliders or mesh/convex-hull colliders when you need rotated box geometry.
 
@@ -426,6 +445,67 @@ Hooke's-law spring constraint between two `Physics3DBody` instances.
 | `Stiffness` | Double | Read/Write | Spring constant |
 | `Damping` | Double | Read/Write | Velocity damping factor |
 | `RestLength` | Double | Read | Natural spring length |
+
+---
+
+## Viper.Graphics3D.HingeJoint3D
+
+Anchor constraint between two `Physics3DBody` instances that keeps authored
+anchor points together while allowing relative angular velocity around the
+given hinge axis.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Graphics3D.HingeJoint3D(bodyA, bodyB, anchor, axis)`
+
+### Notes
+
+- `anchor` and `axis` are `Vec3` values. The axis must be finite and non-zero.
+- Register with `Physics3DWorld.AddJoint(joint, 2)`.
+
+---
+
+## Viper.Graphics3D.RopeJoint3D
+
+Maximum-distance constraint between two `Physics3DBody` instances. Bodies can
+move closer than `MaxLength`; the solver only corrects separation beyond it.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Graphics3D.RopeJoint3D(bodyA, bodyB, maxLength)`
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `MaxLength` | Double | Read/Write | Maximum allowed separation |
+
+### Notes
+
+- Register with `Physics3DWorld.AddJoint(joint, 3)`.
+
+---
+
+## Viper.Graphics3D.SixDofJoint3D
+
+Configurable frame-anchor constraint between two `Physics3DBody` instances. By
+default it locks the two frame anchor translations together. `SetLinearLimits`
+allows bounded frame-anchor separation, and `SetAngularLimits` clamps relative
+angular velocity along each world axis.
+
+**Type:** Instance (obj)
+**Constructor:** `NEW Viper.Graphics3D.SixDofJoint3D(bodyA, bodyB, frameA, frameB)`
+
+### Notes
+
+- `frameA` and `frameB` are `Mat4` values. Their translation components define
+  the local anchor points.
+- Register with `Physics3DWorld.AddJoint(joint, 4)`.
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetLinearLimits(min, max)` | `Void(Object, Object)` | Set per-axis minimum and maximum anchor separation as `Vec3` values |
+| `SetAngularLimits(min, max)` | `Void(Object, Object)` | Set per-axis relative angular-velocity limits as `Vec3` values |
 
 ---
 

@@ -21,7 +21,7 @@
 The review reached a clear two-part verdict:
 
 1. Viper already has a **genuinely capable, broad, well-hardened mid-tier 3D
-   engine** — four real GPU backends (Metal/D3D11/OpenGL) plus a software
+   engine** — three real GPU backends (Metal/D3D11/OpenGL) plus a software
    rasterizer behind one vtable, PBR + Blinn-Phong, shadow mapping, a full
    post-FX chain, glTF/FBX/OBJ/VSCN import, skeletal animation with a state
    machine, terrain, water, vegetation, particles, navmesh A*, and spatial audio.
@@ -32,22 +32,30 @@ The review reached a clear two-part verdict:
    structural, not cosmetic. The review named **five walls**, and an open world
    hits all five:
 
+> **Source paths below reflect the current subsystem layout.** The 3D runtime
+> was refactored into per-domain subdirectories under `src/runtime/graphics/3d/`
+> (`scene/`, `physics/`, `nav/`, `anim/`, `render/`, `world/`, `assets/`,
+> `audio/`, `backend/`); only `rt_game3d.c` remains at the top level. Citations
+> were re-verified against this layout on 2026-05-29 (see `review.md`
+> §"Source-comparison pass").
+
 | # | Wall | Evidence (from review) |
 |---|---|---|
-| 1 | **No world streaming / partition** | Whole scene must fit in RAM; terrain is one heightmap hard-capped at 4096² (`rt_terrain3d.c:216`); all loaders are whole-file, all-or-nothing |
-| 2 | **Single-threaded + blocking loads** | Zero worker threads in `src/runtime/graphics/3d/`; `Assets3D.LoadModel`/`Preload` are synchronous; "All operations are main-thread-only" (`graphics3d-architecture.md:485`) |
-| 3 | **No scene spatial acceleration** | `draw_node` always walks every child (`rt_scene3d.c:2100`); cull is O(total nodes), not O(visible); no octree/BVH/grid |
-| 4 | **Physics scale & stability** | One contact point per pair (`physics3d.md:145` "ContactCount = 1"), un-iterated solver (crates won't stack), brute-force O(triangles) mesh narrow-phase, no GJK, hinge/rope joints documented but absent |
-| 5 | **No floating origin** | Node transforms are `double` (`rt_scene3d_internal.h:77`) but cull bounds + vertices + GPU pipeline are `float`; precision degrades a few km from origin |
+| 1 | **No world streaming / partition** | Whole scene must fit in RAM; terrain is one heightmap hard-capped at 4096² (`world/rt_terrain3d.c:216`); all loaders are whole-file, all-or-nothing |
+| 2 | **Single-threaded + blocking loads** | Zero worker threads in `src/runtime/graphics/3d/`; `Assets3D.LoadModel`/`Preload` are synchronous (`rt_game3d.c:4012`/`4048`); "All operations are main-thread-only" (`docs/graphics3d-architecture.md:485`) |
+| 3 | **No scene spatial acceleration** | `draw_node` always walks every child (`scene/rt_scene3d.c:2100`); cull is O(total nodes), not O(visible); no octree/BVH/grid |
+| 4 | **Physics scale & stability** | AABB pairs now expose bounded multi-point contact manifolds, but other shape pairs remain one representative point and there is no warm-starting yet; mesh narrow-phase still has brute-force fallback paths (`physics/rt_physics3d.c`); convex hulls now use support-point GJK/EPA for hull and simple primitive contacts; richer 6DOF pose-angle/stability coverage is still needed |
+| 5 | **No floating origin** | Node transforms are `double` (`scene/rt_scene3d_internal.h:77`) but cull bounds + vertices + GPU pipeline are `float` (`scene/rt_scene3d_internal.h:102`); precision degrades a few km from origin |
 
 The review also found secondary gaps that an open world needs: no occlusion
 culling, a forward renderer capped at 16 lights / 2 shadow casters, no inverse
 kinematics, no agent avoidance / navmesh auto-generation / off-mesh links, manual
-mesh LOD only, no GPU texture compression, and no glTF camera/multi-scene import.
-And it flagged a **proven-vs-theoretical** gap: the one substantial 3D sample
-(`3dbowling`, ~5.3K lines) is fully procedural and uses **zero**
-model-loading/skeleton/animation, so the asset→skinned-character pipeline is
-test-proven but not game-proven.
+mesh LOD only, no GPU texture compression, and no secondary glTF scene import.
+And it flagged a **proven-vs-theoretical** gap: the largest 3D sample
+(`examples/games/3dbowling`, ~2.9K lines of `.zia`) is fully procedural and uses
+**zero** model-loading/skeleton/animation (verified: no `LoadModel`/`Skeleton`/
+`Animator` calls), so the asset→skinned-character pipeline is test-proven but not
+game-proven.
 
 ## 2. The reframe: a scale tier on a correct foundation
 
@@ -73,9 +81,9 @@ not glue.
 | Visibility | Frustum cull + front-to-back sort | Occlusion culling + automatic mesh LOD + HLOD/impostors |
 | Lighting | Forward, 16 lights, 2 shadow casters | Clustered/forward+ many-light path + cascaded shadow maps |
 | Physics | Primitives, character controller, raycast BVH, single contact | Contact manifolds + iterated/warm-started solver + BVH mesh narrow-phase + GJK/EPA + hinge/rope/6DOF joints |
-| Navigation | Baked single-surface navmesh, A*, single-agent follow | Navmesh auto-gen + tiled/streamable mesh + dynamic carving + off-mesh links + local avoidance |
+| Navigation | Baked single-surface navmesh, scene-flatten bake baseline, A*, single-agent follow | Voxel/region navmesh auto-gen + real tiled/streamable mesh + dynamic carving/removal + off-mesh links + local avoidance |
 | Animation | 4-bone skinning, state machine, root motion | IK (foot/look-at), true additive layers, blend trees, retargeting, animation LOD |
-| Asset pipeline | Raw-RGBA textures; no camera import | GPU texture compression + KTX2/precompressed blocks + streaming mips + glTF camera/multi-scene; Basis/Draco/meshopt as stretch |
+| Asset pipeline | Raw-RGBA textures; scene-local glTF cameras + secondary scenes | GPU texture compression + KTX2/precompressed blocks + streaming mips; Basis/Draco/meshopt as stretch |
 
 ## 3. Ordering principle — "fundamental" = foundational dependency + breadth of impact
 
@@ -148,9 +156,10 @@ per-phase in `roadmap.md`. See §8 for the open sequencing decision.
   software/Metal/D3D11/OpenGL backends behind the existing vtable.
 - **No new IL/VM semantics unless forced.** Most work is C runtime. Any change
   that touches IL or VM determinism requires an ADR (Core Principle #1).
-- **No new asset *formats*.** Add decoders (KTX2, Draco, meshopt) to existing
-  formats; do not invent containers. VSCN remains the native scene format and may
-  gain a streamed/tiled variant.
+- **No Viper-invented asset containers.** Add KTX2 support and optional future
+  Draco/meshopt decoders for existing external formats, but do not invent a new
+  general scene container. VSCN remains the native scene format and may gain a
+  streamed/tiled manifest extension.
 - **Not guaranteeing AAA fidelity.** The target is a *shippable, performant*
   open-world adventure on the existing renderer, not photoreal rendering.
 - **Not building the ViperIDE level editor here.** This plan exposes the runtime
@@ -176,6 +185,10 @@ per-phase in `roadmap.md`. See §8 for the open sequencing decision.
   queryable (`Canvas3D.BackendSupports`, new `World3D` capability getters). A
   backend or platform that lacks a path degrades safely, exactly like the
   existing post-FX/instancing fallbacks.
+- **Runtime API names follow the current split.** Low-level `Viper.Graphics3D`
+  APIs keep PascalCase methods/properties. Stateful `Viper.Game3D` APIs keep the
+  existing lower/camel ergonomic style; only static helper namespaces such as
+  `Assets3D`, `Prefab`, and `Quality` use PascalCase factories/actions.
 - **Heavy work stays in C; Zia/BASIC consume.** Streaming, partition, solver,
   baker, transcoder, and the job system are C runtime, registered through
   `runtime.def`, with `#ifdef VIPER_ENABLE_GRAPHICS` real-impl + stub pairs and
@@ -200,8 +213,8 @@ Public API: Viper.Game3D  (World3D, Entity3D, controllers, Assets3D, ...)
 +----------------------- NEW: 3D scale tier (this plan) -----------------------+
 | Concurrency      Coordinates        Spatial index       Streaming           |
 | job/worker pool  floating origin    octree/BVH           async asset I/O     |
-| (deterministic   camera-relative    (cull + query +      world partition     |
-|  sim policy)     double precision    broadphase)         terrain tiles/cells |
+| (deterministic   camera-relative    (shared query        world partition     |
+|  sim policy)     double precision    contract)           terrain tiles/cells |
 |                                                                              |
 | Visibility            Lighting          Physics depth      Nav/AI depth      |
 | occlusion + auto-LOD  clustered + CSM    manifold+solver,   autogen+tiled     |
@@ -209,7 +222,7 @@ Public API: Viper.Game3D  (World3D, Entity3D, controllers, Assets3D, ...)
 |                                                                              |
 | Animation depth (IK, additive, blend trees, retarget)                       |
 | Asset pipeline depth (GPU tex compression, KTX2/precompressed blocks,       |
-|                       streaming mips, glTF camera/multi-scene; stretch      |
+|                       streaming mips, secondary glTF scenes; stretch        |
 |                       Basis/Draco/meshopt)                                  |
 +------------------------------------------------------------------------------+
       |
@@ -220,39 +233,36 @@ Existing renderer backends (software / Metal / D3D11 / OpenGL) behind vgfx3d vta
 Platform (rt_platform.h / PlatformCapabilities.hpp) — threads, fs, windows
 ```
 
-## 8. Open decisions before implementation
+## 8. Phase 0 decisions
 
-Resolved in Phase 0 spikes before broad work (tracked in
-`progress/02-decisions.md`):
+The Phase 0 decision set is closed in `progress/02-decisions.md`. The current
+outcomes are:
 
-1. **Determinism-under-threads contract.** *Recommended default:* simulation is
-   deterministically scheduled (single-threaded or fixed-fork-join with ordered
-   merge); workers handle only load/decode/cull/bake/transcode. Confirm this
-   keeps `runFrames` VM/native parity (the first plan's determinism gate).
-2. **Job-system shape.** Thread-pool + work-stealing deque vs. fixed per-domain
-   worker queues. Must sit on `rt_platform.h`; no raw `_WIN32`/`__APPLE__`.
-3. **Spatial index choice.** Loose octree vs. BVH vs. uniform grid — and the
-   shared query contract. Do **not** require one physical tree for scene culling
-   and physics; physics may keep a sibling broadphase if it wins on correctness
-   or performance.
-4. **Floating-origin strategy.** Periodic origin rebase of the active scene vs.
-   per-cell local origins + camera-relative upload. Interaction with the existing
-   `double` node transforms and `float` GPU path.
-5. **Streaming granularity & format.** Cell size, terrain tile size, and the
-   VSCN streaming-manifest shape. No new general-purpose scene format; binary
-   sidecars are allowed only as payload storage referenced by VSCN.
-6. **Lighting path.** Forward+ (clustered forward, keeps the existing forward
-   shaders) vs. deferred (larger rewrite). *Lean forward+* to honor "no renderer
-   rewrite".
-7. **Sequencing override.** Whether to pull Phase 8 (physics) or Phase 9 (nav)
-   ahead of streaming for a physics-/NPC-first game. Default keeps dependency
-   order.
+1. **Determinism-under-threads contract.** Simulation is deterministically
+   scheduled; worker results merge in fixed order before visible/runtime state
+   changes. `g3d_3dnext2_surface_probe` and `test_rt_game3d` guard the current
+   replay surface.
+2. **Job-system shape.** Reuse `Viper.Threads.Pool` /
+   `Viper.Threads.Parallel` on `rt_platform.h`; do not add a second public
+   3D-only job API.
+3. **Spatial index choice.** Scene3D's current indexed candidate store is the
+   scene cull/query contract. Physics keeps a sibling broadphase until a shared
+   tree wins on correctness and performance.
+4. **Floating-origin strategy.** Use periodic active-world rebase through
+   `World3D.floatingOrigin` and `Scene3D.RebaseOrigin`; per-cell or
+   camera-relative upload is a later backend refinement.
+5. **Streaming granularity & format.** Use VSCN streaming manifests for cells
+   and terrain tiles; sidecars are payload storage only.
+6. **Lighting path.** Keep forward shaders and add capability-gated
+   clustered/forward+ behavior; no deferred rewrite in this plan.
+7. **Sequencing override.** Keep dependency order; only isolated Phase 8/9
+   slices may land early.
 8. **Asset-pipeline core vs. stretch.** KTX2/precompressed blocks, streaming
-   mips, and glTF camera/multi-scene are core. Basis supercompression,
-   Draco, meshopt, and encoders need separate approval or Phase-11b scope.
-9. **Scope of v0.3.x.** Which phases are in the first open-world milestone vs.
-   later. Phases 0–5 are the minimum for "a small streamed world"; 6–12 raise
-   ceiling and fidelity.
+   mips, and glTF camera/multi-scene import are core. Basis supercompression,
+   Draco, meshopt, and encoders need separate Phase 11b approval.
+9. **Scope.** The tracker is capability-driven, not tied to a version label.
+   Phases 0–5 prove the small streamed-world base; 6–12 raise scale and
+   fidelity.
 
 ## 9. Package index
 
@@ -265,6 +275,7 @@ Resolved in Phase 0 spikes before broad work (tracked in
 | `runtime-changes.md` | C runtime contracts/subsystems per phase, validation points |
 | `api-spec.md` | New/changed public `Viper.Graphics3D` / `Viper.Game3D` surface |
 | `zia-feasibility.md` | Whether Zia/BASIC can consume the new surface; what stays internal C |
+| `metal.md` | Metal/macOS-specific implement + test checklist, per phase (incl. the Apple-Silicon BC↔ASTC compression split and Metal compute availability) |
 | `directx.md` | D3D11/Windows-specific implement + test checklist, per phase |
 | `opengl.md` | OpenGL/Linux-specific implement + test checklist, per phase (incl. the GL 3.3 ceiling) |
 | `progress/` | Gates, phase checklist, decisions, runtime/API/test trackers, waivers |

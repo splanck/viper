@@ -10,8 +10,9 @@ Two phases precede the new work:
 
 - **Phase C — Carryover.** Close out the unfinished tail of `3Dnextlevel`
   (verified 2026-05-29; see `carryover.md`). Several items are hard prerequisites
-  for the new work (cross-platform lane, performance lane, render-target
-  finalization, skinned-character proof).
+  for the new work (cross-platform lane, performance lane, skinned-character
+  proof). Render-target finalization now has a public contract; Phase C verifies
+  backend capability coverage.
 - **Phase 0 — Foundations spike.** Decide the determinism/threading contract,
   spatial-index choice, floating-origin strategy, and stand up the performance
   harness and big-world fixtures before broad implementation.
@@ -24,42 +25,47 @@ opt-in and must not regress the existing bounded-scene path.
 
 ## Phase C — Carry over and close out 3D Next Level
 
-Goal: finish the unfinished/​waived items from `3Dnextlevel` that this plan
+Goal: finish the unfinished/waived items from `3Dnextlevel` that this plan
 depends on, before extending the engine. Full enumeration with prior IDs and
-verified status is in `carryover.md`; the prerequisites are summarized here.
+verified status is in `carryover.md`; hard prerequisites are separated from
+ergonomic carryover so scale work does not block on callback sugar.
 
 - **CO-1 Cross-platform lane (prerequisite for everything).** Build and run
   `ctest -L graphics3d` green on macOS, Windows, and Linux via the platform build
-  scripts. The previous plan proved macOS only.
+  scripts. Current local evidence is macOS 71/71 green; Windows/Linux still need
+  real host runs.
 - **CO-11 Performance lane (prerequisite for Phase 0 harness).** A Release /
   reference-hardware software-backend FPS lane plus a GPU interactive-framerate
-  smoke lane (closes waived AC-004 / W-002 / W-005).
-- **CO-2 Managed Zia callback trampoline (VM).** Let interpreted Zia pass
+  smoke lane (closes waived AC-004 / W-002 / W-005). Current local evidence is
+  macOS Apple M4 Max Release software and Metal perf plus Release Metal smoke;
+  Windows/Linux reference-host runs remain tracked in `progress/06-waivers.md`.
+- **CO-2 Managed Zia callback trampoline (VM, ergonomic).** Let interpreted Zia pass
   closures to native callback loops so `run(update)`, `onCollision`, `onUpdate`
   sugar work (closes W-001 and the dependent `API-WORLD-*`/`API-ENT-*` rows). May
-  be delegated to a VM plan; tracked here as a dependency.
-- **CO-4 Render-target finalization contract.** Define/implement
-  `FinalizeFrame`/`ScreenshotFinal` for render-target-backed frames, or
-  capability-gate it (R-FRAME-016/018). Needed by streaming/portals/reflections.
-- **CO-3 Lifetime/diagnostics hardening.** Destroyed-handle, double-despawn,
-  missing-asset, and capability-fallback diagnostics; imported-group despawn and
-  cache-clear leak probes (GATE-006 / D-009 / R-LIFE-*).
-- **CO-9 Committed fixtures + skinned-character proof.** Commit small
-  redistributable GLB / glTF-with-deps / audio / skinned-character fixtures and
-  prove skinned play/crossfade in a sample (closes the review's
-  "proven-vs-theoretical" gap; W-003).
-- **CO-5 Implicit fallback lighting decision (D-007)**, **CO-6 optional getters**
-  (incl. `Light3D.CastsShadows`, synergy with Phase 7), **CO-7 Metal robustness
-  probe**, **CO-8 docs cleanups** (deprecate `SetOcclusionCulling` alias —
-  reconciled in Phase 6), **CO-10 determinism/resize probe completeness**, and
-  **CO-12 remaining Phase-1 exit partials**.
+  be delegated to a VM plan; manual loops and event-buffer polling remain the
+  authoritative API surface.
+- **CO-4 Render-target finalization contract.** Public contract exists through
+  `FinalizeFrame`/`ScreenshotFinal`; Phase C verifies backend support,
+  `BackendSupports("rt-finalize")`, and diagnostics for unsupported paths.
+- **CO-3 Lifetime/diagnostics hardening.** Closed locally: destroyed-handle,
+  double-despawn, missing-asset, capability-fallback, imported-group despawn,
+  and cache-clear probes are covered (GATE-006 / D-009 / R-LIFE-*).
+- **CO-9 Committed fixtures + skinned-character proof.** Closed locally:
+  `examples/3d/openworld_slice/` commits redistributable GLB, glTF-with-deps,
+  audio, and skinned-character fixtures and proves skinned play/crossfade,
+  LookAt IK, GLB load, and WAV load in `g3d_openworld_slice_probe` (closes the
+  review's "proven-vs-theoretical" gap; W-003).
+- CO-5 implicit fallback lighting, CO-6 optional getters, CO-7 Metal
+  robustness, CO-8 occlusion docs, CO-10 determinism/resize probes, and CO-12
+  remaining Phase-1 exit partials are closed. The broader job-system/VM
+  determinism gate remains Phase 1 work.
 
 Exit:
 
 - `ctest -L graphics3d` green on macOS, Windows, and Linux (CO-1).
 - A recorded software-backend FPS baseline on named hardware and a GPU smoke
   lane (CO-11).
-- Render-target finalization behavior defined and tested or capability-gated
+- Render-target finalization behavior tested and capability-gated where needed
   (CO-4).
 - A committed skinned character renders, plays, and crossfades in a sample
   ctest (CO-9).
@@ -82,9 +88,10 @@ on, before broad implementation.
 - **Job-system shape.** Choose thread-pool + work-stealing vs. per-domain queues;
   must sit on `rt_platform.h` / `PlatformCapabilities.hpp` (no raw
   `_WIN32`/`__APPLE__`/`__linux__`).
-- **Spatial-index choice.** Loose octree vs. BVH vs. grid; decide whether one
-  structure serves cull + scene query + physics broadphase or physics keeps a
-  sibling.
+- **Spatial-index choice.** Loose octree vs. BVH vs. grid; decide the shared
+  scene/physics query contract. One physical tree may serve cull + scene query +
+  physics broadphase only if Phase 0 proves it; a sibling physics broadphase is
+  acceptable.
 - **Floating-origin strategy.** Periodic active-scene rebase vs. per-cell local
   origins + camera-relative upload; define interaction with existing `double`
   node transforms and the `float` GPU path.
@@ -141,8 +148,8 @@ physics jitter.
 - Implement the chosen floating-origin strategy (Phase 0): origin rebase and/or
   per-cell local origins with camera-relative matrices on upload.
 - Promote cull bounds (currently `float` `aabb_min/max` in
-  `rt_scene3d_internal.h`) and physics body state to the precision policy decided
-  in Phase 0; keep GPU upload `float` but camera-relative.
+  `scene/rt_scene3d_internal.h:102`) and physics body state to the precision
+  policy decided in Phase 0; keep GPU upload `float` but camera-relative.
 - Add a rebase hook that updates scene nodes, physics bodies, audio sources,
   particles, and active queries atomically between frames.
 - Capability-gate: bounded scenes with floating origin off are byte-for-byte
@@ -161,17 +168,26 @@ Cannot precede: Phase 5 (streaming places cells far from origin) depends on this
 
 ## Phase 3 — Spatial acceleration substrate (octree/BVH)
 
-Goal: per-frame cost scales with *visible* content, not *total* content, and one
-structure serves cull + queries + broadphase.
+Goal: per-frame cost scales with *visible* content, not *total* content, with a
+shared query contract for cull, scene queries, and physics.
+
+Current implemented slice: `Scene3D` has an internal sweep-style index over
+visible drawable nodes. `Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes`
+use indexed candidates with a flat-walk parity fallback, and `test_rt_scene3d`
+includes a generated 10k-node grid that guards query and draw candidate
+reduction. A true tree/BVH refit, release-lane timing baseline, and physics
+broadphase sharing/parity remain.
 
 - Implement the chosen index over the scene graph; maintain it incrementally as
   nodes move (dirty/refit), respecting double-precision transforms.
-- Replace the full-tree `draw_node` walk (`rt_scene3d.c:2100`) with an index
-  query that yields only candidate-visible nodes; keep the old path behind the
-  flag for parity testing.
-- Route `Scene3D`/physics spatial queries (raycast, overlap, sweep) and the
-  physics broadphase (currently single-axis SAP, `rt_physics3d.c:3662`) through
-  the shared index where Phase 0 chose to unify them.
+- Replace the full-tree `draw_node` walk (`scene/rt_scene3d.c:2100`) with an
+  index query that yields only candidate-visible nodes; keep the old path behind
+  the flag for parity testing.
+- Route `Scene3D`/physics spatial queries (raycast, overlap, sweep) through the
+  shared query contract. Route the physics broadphase (currently single-axis
+  sweep-and-prune sorted by min-X, `physics/rt_physics3d.c:3691`) through the
+  same physical index only if Phase 0 proves that is better than a sibling
+  physics tree.
 - Optionally parallelize index queries via Phase 1 (deterministic merge).
 
 Exit:
@@ -191,8 +207,10 @@ Goal: load content without hitching the main thread.
 
 - Move file read + glTF/FBX/image decode onto Phase-1 workers; keep GPU resource
   creation/upload on the main-thread commit queue.
-- Add `Assets3D.LoadModelAsync` / handle-based residency; convert `Preload` to a
-  real background warm.
+- Add `Assets3D.LoadModelAsync`, `LoadModelAssetAsync`,
+  `LoadModelTemplateAsync`, `LoadModelTemplateAssetAsync`, and
+  `Viper.Game3D.AssetHandle3D` residency; convert `Preload` to a real background
+  warm.
 - Add per-resource residency + reference counting and an eviction policy
   (LRU/distance) so streamed assets unload.
 - Add streaming hooks for textures/meshes (mip/LOD residency) consumed by
@@ -213,12 +231,22 @@ Cannot precede: Phase 5 streams through this path.
 
 Goal: worlds larger than RAM and larger than one ≤4 km² heightmap.
 
+Current implemented slice: `WorldStream3D.mountCells` parses a VSCN streaming
+manifest with `cells[]` entries and loads/unloads resident `.vscn` scene
+subtrees around the stream center. The API and telemetry are stable; terrain
+tile sidecars, streamed terrain rendering, per-tile heightfield collider
+residency, terrain nav-bake binding, deterministic per-update load budgeting
+with `pendingRequestCount`, and large-world traversal proofs are in place;
+worker-backed async decode/upload remains.
+
 - Implement streamable terrain tiles (lift the single-heightmap 4096² cap at
-  `rt_terrain3d.c:216` into a tile grid) with seam stitching across tile LODs.
+  `world/rt_terrain3d.c:216` into a tile grid) with seam stitching across tile LODs.
 - Implement scene cells: load/unload scene-node subtrees and their physics/nav
   around the player using Phases 1/3/4.
-- Define the streamed scene container (extend VSCN or a tiled side-format; no new
-  top-level format) and an authoring/bake hook ViperIDE can target later.
+- Define the streamed scene container as a VSCN streaming manifest/extension.
+  Optional binary sidecars may hold payload data referenced by the manifest, but
+  do not create a new general scene format. Add an authoring/bake hook ViperIDE
+  can target later.
 - Wire terrain collision to the heightfield collider per active tile.
 
 Exit:
@@ -237,10 +265,12 @@ Cannot precede: this is the defining open-world milestone; Phase 12 exercises it
 Goal: keep dense scenes within frame budget by drawing less.
 
 - Implement occlusion culling (software rasterized depth / portal-PVS for
-  interiors) over the Phase-3 index; capability-gate per backend.
-- Implement automatic mesh LOD selection (extend the existing per-node discrete
-  LOD at `rt_scene3d.c:2012` with auto-generated/screen-error LOD) and
-  HLOD/impostor proxies for distant clusters/vegetation.
+  interiors) over the Phase-3 index; capability-gate per backend. GPU occlusion
+  queries are optional backend accelerators, not the baseline.
+- Implement automatic selection of authored mesh LODs (extend the existing
+  per-node discrete LOD at `scene/rt_scene3d.c:2012` with screen-error selection) and
+  HLOD/impostor proxies for distant clusters/vegetation. Auto-generating new
+  simplified meshes is stretch scope unless separately approved.
 - Reconcile the legacy `SetOcclusionCulling` alias (carryover CO-8): make it
   select real occlusion culling, keeping the frustum-only behavior available.
 
@@ -258,7 +288,7 @@ Cannot precede: Phase 12 needs this for a populated world to hit budget.
 ## Phase 7 — Lighting scaling (clustered/forward+ and cascaded shadows)
 
 Goal: many lights and large outdoor shadows beyond the forward 16-light /
-2-shadow cap (`rt_canvas3d_internal.h:308`).
+2-shadow cap (`render/rt_canvas3d_internal.h:308-309`).
 
 - Implement a clustered/forward+ light-culling path (keep existing forward
   shaders; cull lights per cluster) raising the effective light count; software
@@ -286,14 +316,19 @@ Goal: stable stacking, scalable mesh collision, real convex shapes, and the
 joints the docs already promise.
 
 - Implement multi-point contact manifolds (replace the single contact point;
-  `physics3d.md:145`) and an iterated, warm-started sequential-impulse solver so
-  bodies stack/rest stably.
-- Drive mesh narrow-phase through the existing per-mesh BVH (currently raycast-
-  only) and/or the Phase-3 index; remove the brute-force O(triangles) path.
-- Implement GJK/EPA convex-vs-convex (the current "convex hull" is triangle soup;
-  `rt_collider3d.c:569`).
-- Implement the missing joints the header advertises — hinge and rope — plus a
-  6DOF/configurable joint; close the doc overclaim (`rt_physics3d.h:80`).
+  `docs/viperlib/graphics/physics3d.md:145`, with the "reserved for future
+  multi-point manifolds" note at `physics/rt_physics3d.c:4814`) and an iterated,
+  warm-started sequential-impulse solver so bodies stack/rest stably.
+- Extend the existing per-mesh BVH narrow-phase path beyond the current
+  sphere/capsule/box mesh-like contacts, integrate it with the Phase-3 index
+  where useful, and keep brute-force O(triangles) scans only as correctness
+  fallbacks.
+- Broaden coverage and perf proof around the landed GJK/EPA convex path.
+  `NewConvexHull` treats the mesh vertex set as a convex support set and now
+  resolves hull-vs-hull plus hull-vs-simple primitive contacts through the
+  simplex/EPA solver without changing the public constructor.
+- Extend the new hinge/rope/SixDof joint slice with richer 6DOF pose-angle
+  semantics and broader stability coverage.
 - Add solver islands/sleeping at scale; integrate broadphase with Phase 3.
 
 Exit:
@@ -315,11 +350,13 @@ Goal: many NPCs navigating a large, changing world.
 
 - Implement navmesh auto-generation (voxelize scene geometry → walkable regions →
   contour → mesh; a from-scratch Recast-style baker), replacing bake-from-one-
-  mesh only.
+  mesh/scene-flatten baselines.
 - Implement tiled/streamable navmesh aligned to Phase-5 cells, with dynamic
-  obstacle carving (doors, placed objects) and runtime tile rebuild.
+  obstacle carving (doors, placed objects) and runtime tile rebuild. The current
+  `BakeTiled`/`RebuildTile` API entries are whole-mesh refilter baselines, not
+  tile-local ownership.
 - Implement off-mesh links (jumps/ladders/drop-downs) and apply `agent_radius`
-  corridor erosion (currently stored but ignored, `rt_navmesh3d.c:80`).
+  corridor erosion (currently stored but ignored, `nav/rt_navmesh3d.c:80`).
 - Implement local avoidance (ORCA/RVO-style) and pathfinding acceleration
   (spatialized find-tri, path caching, time-sliced/hierarchical A*), parallelized
   via Phase 1.
@@ -343,7 +380,8 @@ Goal: characters that plant on terrain, aim, and share animations.
 - Implement IK: two-bone foot placement, look-at/aim, and a general FABRIK chain
   solver, integrated with the bone palette before skinning.
 - Implement true additive layers (reference-pose subtraction) — the current
-  "additive" layers are replace-blends (`rt_animcontroller3d.c:823`).
+  "additive" layers are masked replace-blends (per-bone LERP/SLERP toward the
+  layer pose, `anim/rt_animcontroller3d.c:836-841`).
 - Implement parametric blend trees / 1D-2D blendspaces over the existing
   `AnimBlend3D` mixer.
 - Implement cross-skeleton animation retargeting (humanoid bone mapping).
@@ -361,26 +399,36 @@ Cannot precede: Phase 12 character fidelity.
 
 ---
 
-## Phase 11 — Asset pipeline depth (compression, KTX2/Basis, camera/multi-scene)
+## Phase 11 — Asset pipeline depth (compression, KTX2, camera/multi-scene)
 
 Goal: VRAM/RAM and import coverage for a large, content-rich world.
 
-- Implement GPU texture compression upload (BC/DXT on D3D11/desktop GL, ASTC/ETC2
-  where supported) with a software-decode reference path; capability-gate per
-  backend.
-- Implement KTX2 + Basis-universal transcode (from scratch) and streaming mip
-  residency via Phase 4.
-- Add glTF camera import and multi-scene selection (currently neither;
-  `rt_gltf.c`), and Draco/meshopt decode (currently unsupported).
-- Keep OBJ `.mtl` handling on the backlog (currently ignored,
-  `rt_mesh3d.c:2165`).
+- Implement GPU texture compression upload with a software-decode reference
+  path, capability-gated per backend. The supported formats split by hardware:
+  BC/DXT on D3D11 and desktop GL (S3TC/BPTC extensions); on Metal, **BC on
+  Intel/AMD Macs but ASTC/ETC2 (not BC) on Apple Silicon** — so the Metal path
+  must pick format by GPU family, see `metal.md`. ASTC/ETC2 elsewhere only where
+  supported.
+- Implement KTX2/precompressed block loading and streaming mip residency via
+  Phase 4. Support backend-native blocks first, with software RGBA fallback when
+  the backend cannot upload the format.
+- Add glTF camera import and explicit multi-scene queries/instantiation.
+  `assets/rt_gltf.c` now imports active-scene cameras plus
+  `KHR_lights_punctual` + material KHR extensions, but still only the active
+  scene root. Keep cached `Model3D` assets immutable:
+  use scene-indexed camera queries and `InstantiateSceneAt(index)`, not mutable
+  `SelectScene`.
+- Demote Basis-universal supercompression transcode, Draco decode, and meshopt
+  decode to Phase 11b/stretch import-depth work.
+- Keep OBJ `.mtl` handling on the backlog (currently geometry-only,
+  `render/rt_mesh3d.c:1172`; `mtllib`/`usemtl` skipped at `:2175`).
 
 Exit:
 
 - A compressed-texture model loads and renders correctly on each capable backend
   with the recorded VRAM reduction; software path matches within tolerance.
-- glTF cameras and a selected secondary scene import; a Draco/meshopt asset
-  loads.
+- A selected secondary glTF scene import. Optional Phase 11b tests
+  prove Basis/Draco/meshopt assets when those decoders land.
 
 Cannot precede: Phase 12 content scale.
 
@@ -394,13 +442,15 @@ open-world baselines (mirrors `3Dnextlevel` Phase 7 for this plan's scope).
 - Build `examples/3d/openworld_slice/`: a streamed >4 km² world with terrain
   tiles, scene cells, a rigged/animated character with IK, several avoiding NPCs
   on an auto-baked navmesh, occlusion + LOD, clustered lighting + CSM, physics
-  interactions, compressed-texture assets, and async streaming — all under
-  `runFixed` gameplay and `runFramesOnly` deterministic replay.
+  interactions, compressed-texture assets, and async streaming — under a manual
+  fixed-step loop (or native `runFixed` where CO-2 exists) plus `runFramesOnly`
+  deterministic replay.
 - Expose the runtime hooks the ViperIDE level editor will consume (cell/partition
   authoring, residency inspection, navmesh bake, perf counters). Build the editor
   itself under the ViperIDE roadmap, not here.
 - Add docs under `docs/viperlib/graphics/` and `docs/` for every new system, each
-  with a ctest-compiled snippet; update `graphics3d-architecture.md`.
+  with a ctest-compiled snippet; update `docs/graphics3d-architecture.md` (the
+  top-level architecture doc) and the `docs/viperlib/graphics/` API pages.
 - Record open-world perf baselines (frame time, streamed memory, draw calls,
   body/agent counts) on named hardware across all three platforms.
 
@@ -428,7 +478,7 @@ Exit:
 | Physics | Stacking/rest stability; manifold correctness; GJK vs. analytic; joint behavior; perf body-count fixture |
 | Navigation | Autogen vs. hand-baked equivalence; tile rebuild; avoidance interpenetration bounds; agent-count perf |
 | Animation | IK target error bounds; additive vs. replace correctness; retarget visual check; anim-LOD parity |
-| Asset pipeline | Compressed vs. raw within tolerance per backend; KTX2/Draco/meshopt load; glTF camera/scene import |
+| Asset pipeline | Compressed vs. raw within tolerance per backend; KTX2/precompressed load; glTF camera/scene import; optional Phase 11b Basis/Draco/meshopt |
 | Cross-platform | Build + `-L graphics3d` green on macOS/Windows/Linux every phase (carryover CO-1) |
 | Performance | Before/after numbers on committed fixtures from the Phase-0 harness; recorded per phase |
 | Software baseline | New visual features have a correct software path; GPU backends capability-gated + smoke |
@@ -453,7 +503,7 @@ correctness should not require a display.
 | 8 | Stacking/rest; manifold; GJK; hinge/rope/6DOF; body-count perf |
 | 9 | Autogen equivalence; tile rebuild; avoidance bounds; agent-count perf |
 | 10 | IK error bounds; additive correctness; retarget; anim-LOD |
-| 11 | Compressed-texture tolerance per backend; KTX2/Draco/meshopt; glTF camera/scene |
+| 11 | Compressed-texture tolerance per backend; KTX2/precompressed blocks; glTF camera/scene; optional Phase 11b Basis/Draco/meshopt |
 | 12 | Slice smoke; deterministic replay; software visual baseline; perf baselines |
 
 Coverage gaps are allowed only with a named waiver in `progress/06-waivers.md`.
@@ -481,7 +531,9 @@ Coverage gaps are allowed only with a named waiver in `progress/06-waivers.md`.
 10. **Characters on terrain.** IK foot-planting and look-at work; additive layers,
     blend trees, and retargeting work.
 11. **Asset scale.** Compressed textures load per capable backend with recorded
-    VRAM reduction; glTF camera/multi-scene/Draco/meshopt import.
+    VRAM reduction; glTF camera import and selected secondary scene import work.
+    Basis/Draco/meshopt are accepted only as Phase 11b/stretch gates unless
+    separately scoped.
 12. **Vertical slice.** `examples/3d/openworld_slice/` demonstrates streaming,
     visibility, lighting, physics, NPCs, animated characters, compressed assets,
     and deterministic replay in one playable sample.
@@ -501,16 +553,17 @@ Coverage gaps are allowed only with a named waiver in `progress/06-waivers.md`.
   ceiling.
 - **Cross-platform drift.** Mitigation: CO-1 lane first; everything on
   `rt_platform.h`; no raw platform macros outside adapters.
-- **No-dependency constraint on hard algorithms** (navmesh voxelizer, Basis
-  transcode, BC encoder). Mitigation: from-scratch, software-reference-first,
-  capability-gated; descope to decode-only where encode is out of budget.
+- **No-dependency constraint on hard algorithms** (navmesh voxelizer,
+  supercompression/transcode, BC encoder). Mitigation: from-scratch,
+  software-reference-first, capability-gated; descope to decode/upload-only where
+  encode or supercompression is out of budget.
 - **Backend divergence** (occlusion, clustered lighting, compressed textures).
   Mitigation: software is the baseline; GPU paths capability-gated + smoke-tested.
 - **Floating origin vs. existing float GPU path.** Mitigation: camera-relative
   upload; bounded-scene path unchanged with the flag off.
-- **VM callback trampoline (CO-2) is cross-cutting.** Mitigation: track as a
-  dependency; event-buffer polling remains the authoritative fallback (as in the
-  first plan).
+- **VM callback trampoline (CO-2) is cross-cutting ergonomics.** Mitigation:
+  track separately; event-buffer polling and manual loops remain the
+  authoritative fallback (as in the first plan).
 - **Sequencing.** Physics-/NPC-first teams may pull Phase 8/9 earlier; only the
   dependency edges noted per phase are hard (decision SEQ in
   `progress/02-decisions.md`).

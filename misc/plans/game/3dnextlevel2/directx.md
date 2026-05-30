@@ -1,7 +1,8 @@
 # Direct3D 11 (Windows) — platform-specific implementation & test checklist
 
-> Companion to `roadmap.md` / `runtime-changes.md`. This file lists only the work
-> that is **D3D11-/Windows-specific** and must be implemented and tested on a
+> Companion to `roadmap.md` / `runtime-changes.md`, sibling to `metal.md`
+> (macOS) and `opengl.md` (Linux). This file lists only the work that is
+> **D3D11-/Windows-specific** and must be implemented and tested on a
 > Windows dev machine. CPU/backend-neutral phases (3 spatial index, 8 physics,
 > 9 nav, 10 animation logic) carry **no D3D11-specific work** beyond confirming
 > render parity; they are listed at the end for completeness.
@@ -27,7 +28,7 @@
 
 - **HLSL parity.** Every new shader feature needs an `HLSL` path in
   `VSMain`/`PSMain` (plus the software reference). Preserve the existing
-  conventions documented in `graphics3d-architecture.md`: `row_major` matrix
+  conventions documented in `docs/graphics3d-architecture.md`: `row_major` matrix
   qualifier, `FrontCounterClockwise = FALSE` (Y-flip), depth remap
   `z = z*0.5 + w*0.5` (NDC→[0,1]), and clip/NDC→top-left texture-UV conversion
   for shadow/post-FX/motion sampling.
@@ -45,8 +46,8 @@
   resize paths; the backend already restores prior render/depth targets on resize
   failure — keep that contract.
 - **Capabilities.** Add D3D11 capability strings as features land
-  (`BackendSupports("rt-finalize"/"occlusion"/"clustered"/"bc7"/...)`); default
-  to `false` until the path exists.
+  (`BackendSupports("rt-finalize"/"occlusion"/"clustered-lighting"/"shadow-csm"/"bc7"/...)`);
+  default to `false` until the path exists.
 
 ## 3. Per-phase D3D11 implementation + test checklist
 
@@ -96,8 +97,8 @@
 | ID | Implement | Test |
 |---|---|---|
 | DX-11-1 | BC1–3/BC6H/**BC7** upload via `DXGI_FORMAT_BC*_UNORM` + `CreateTexture2D` (no CPU decode) | compressed vs raw within tolerance; recorded VRAM reduction |
-| DX-11-2 | KTX2/Basis transcode → **BC7** on desktop; ASTC/ETC2 capability `false` on D3D11 | KTX2/Basis asset loads and renders; capability query honest |
-| DX-11-3 | glTF camera/multi-scene + Draco/meshopt are loader-side (backend-neutral) | confirm imported camera/scene render under D3D11 |
+| DX-11-2 | KTX2/precompressed block upload → **BC7** on desktop; ASTC/ETC2 capability `false` on D3D11 | KTX2/precompressed asset loads and renders; capability query honest |
+| DX-11-3 | glTF camera/multi-scene are loader-side (backend-neutral); Basis/Draco/meshopt remain optional Phase 11b | confirm imported camera/scene render under D3D11 |
 
 ### Phase 12 — vertical slice
 | ID | Implement | Test |

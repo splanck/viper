@@ -1,10 +1,10 @@
 # Zia/BASIC consumer feasibility
 
 The scale tier is **runtime-first and mostly internal C**. The job system,
-spatial index, floating origin, streaming engine, solver, navmesh baker,
-IK solver, and texture transcoder are not Zia surface — they are C subsystems
-behind small control/capability getters. So the Zia-consumer risk is low and
-largely already settled by `3Dnextlevel`.
+spatial index, floating origin, streaming engine, solver, navmesh baker, IK
+solver, and texture upload/transcode pipeline are not Zia surface; they are C
+subsystems behind small control/capability getters. So the Zia-consumer risk is
+low and largely already settled by `3Dnextlevel`.
 
 ## Status legend
 
@@ -17,18 +17,19 @@ largely already settled by `3Dnextlevel`.
 |---|---|---|---|
 | Runtime namespace bind + alias | `Viper.Game3D` / `Viper.Graphics3D` calls | Inherited | `tests/runtime/game3d_surface_probe.zia` |
 | Enums → Integer coercion | streaming/quality/joint-type/LOD codes | Inherited | `tests/zia_runtime/33_enum_runtime.zia` |
-| Optional types + `?.` + `??` | `ModelHandle.get() -> Entity3D?`, `Model3D.GetCamera(i) -> Camera3D?` | Inherited | `tests/zia_runtime/48_optional_method_chain.zia` |
-| Fluent chaining | `WorldStream`/`BlendTree3D`/joint builders | Inherited | first-plan evidence |
-| `Seq[T]` returns | `Scene3D.queryAABB -> Seq[SceneNode3D]` | Inherited | existing `Seq` return APIs in runtime |
-| New classes via `runtime.def` | `WorldStream`, `IK3D`, `BlendTree3D`, `HingeJoint3D`, `RopeJoint3D`, `SixDOFJoint3D` | Confirmed-by-pattern | same registration path as existing Graphics3D classes |
-| Handle objects (`ModelHandle`) | async asset residency | Confirm-0 | confirm GC ownership/finalizer for async handles |
-| **Closure callbacks to native loops** | `world.run(update)`, `onCollision`, streaming callbacks | **Blocked (CO-2)** | W-001; managed Zia callbacks lack a VM trampoline. Manual loop / `runFramesOnly` is the proven fallback. |
+| Optional types + `?.` + `??` | `AssetHandle3D.getEntity() -> Entity3D?`, `Model3D.GetCamera(scene, i) -> Camera3D?` | Inherited | `tests/zia_runtime/48_optional_method_chain.zia` |
+| Fluent chaining | `WorldStream3D`/`BlendTree3D`/joint builders | Inherited | first-plan evidence |
+| `Seq[T]` returns | `Scene3D.QueryAABB -> Seq[SceneNode3D]` | Inherited | existing `Seq` return APIs in runtime |
+| New classes via `runtime.def` | `Viper.Game3D.WorldStream3D`, `Viper.Game3D.AssetHandle3D`, `Viper.Graphics3D.IKSolver3D`, `Viper.Graphics3D.TextureAsset3D`, `Viper.Graphics3D.BlendTree3D`, `Viper.Graphics3D.HingeJoint3D`, `Viper.Graphics3D.RopeJoint3D`, `Viper.Graphics3D.SixDofJoint3D` | Confirmed-by-pattern | same registration path as existing Graphics3D/Game3D classes, plus appended `RT_G3D_*_CLASS_ID` sentinels |
+| Handle objects (`AssetHandle3D`) | async asset residency | Confirm-0 | confirm GC ownership/finalizer for async handles |
+| **Closure callbacks to native loops** | `world.run(update)`, `onCollision`, streaming callbacks | **Waived ergonomic gap (CO-2)** | W-001; managed Zia callbacks lack a VM trampoline. Manual loop / `runFramesOnly` is the proven fallback and authoritative path. |
 
 ## Phase-0 confirmation scope
 
-1. **Async handle lifetime in Zia.** Confirm `ModelHandle` (and any future
+1. **Async handle lifetime in Zia.** Confirm `AssetHandle3D` (and any future
    streaming handle) is a normal GC-managed runtime object with a clean
-   finalizer, and that `get()` returning `Entity3D?` composes with `?.`/`??`.
+   finalizer, and that `getEntity()` returning `Entity3D?` composes with
+   `?.`/`??`.
 2. **Determinism visible to Zia tests.** Confirm `runFramesOnly` stays
    bit-reproducible with the job pool enabled (Phase 1 gate) so subsystem
    `*_probe.zia` tests remain deterministic.

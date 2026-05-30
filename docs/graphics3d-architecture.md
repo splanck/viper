@@ -87,6 +87,42 @@ These files are private implementation slices, not standalone compilation
 units; they preserve static helper scope while keeping the largest runtime files
 readable.
 
+## Game3D Streaming Vertical Slice
+
+`examples/3d/openworld_slice/` is the current architecture smoke for the
+Game3D layer above the raw renderer. It keeps the runtime boundaries explicit:
+`Viper.Game3D.WorldStream3D` owns cell and terrain residency telemetry,
+manifest loading, deterministic per-update load budgeting, and editor/debug
+inspection hooks, `Viper.Game3D.AssetHandle3D`
+owns deferred model completion, `World3D.bakeNavMesh` triggers a scene-derived
+editor bake, and lower-level `Viper.Graphics3D.NavMesh3D` / `NavAgent3D` remain
+the navigation primitives. The sample's CTest runs on the
+software backend, moves a stream center through all four far-apart quadrants of
+a >4 km² stand-in, checks one-cell/one-tile bounded residency plus
+rendered heightmapped `Terrain3D` payload access and matching static
+heightfield collider residency, validates
+entry names/centers/resident flags through the inspection hooks, checks staged
+stream requests through `pendingRequestCount`, steps
+character/physics/nav state, verifies the world-scoped nav bake includes the
+streamed terrain source, loads a synthetic skinned glTF agent through
+Game3D assets, crossfades its auto-bound animator, binds LookAt IK, validates a
+terrain-sampled TwoBone foot IK target, validates KTX2
+texture-asset material fallback and compressed-format residency telemetry, reads `World3D`
+entity/body/draw/visibility/stream telemetry counters, captures the final
+post-FX plus overlay frame, compares it to the committed software baseline, and
+repeats the same fixed-step sequence for deterministic replay. A companion
+`g3d_openworld_slice_perf_probe` CTest records deterministic software frame-loop
+metrics and validates that the telemetry counters remain populated; the current
+named local Release software and Metal measurements live under
+`examples/3d/openworld_slice/baselines/`; `g3d_openworld_slice_perf_harness`
+wraps the probe and validates the required counters for CI logs. A second companion,
+`g3d_openworld_slice_long_traversal`, repeats all-quadrant stream
+churn and replay checks without the final-frame readback cost. A third
+companion, `g3d_openworld_slice_gpu_smoke`, requests the platform GPU backend
+and reports a clean skip when that backend is unavailable; when it runs, it also
+submits a degenerate-normal/tangent normal-mapped mesh so GPU shader basis
+fallbacks stay exercised outside unit tests.
+
 ## Runtime Input Guards
 
 Graphics3D clamps public numeric state before it enters renderer-facing structs. `Canvas3D` clamps
@@ -296,6 +332,7 @@ float bone_weights[4];     // 76: blend weights
 
 - `begin_frame` forwards the camera forward vector plus an orthographic flag so every backend can reconstruct skybox directions, view vectors, and fog distances consistently
 - GPU skyboxes use a full-screen triangle path with inverse-projection and inverse-view-rotation reconstruction for perspective cameras, and a direct forward-vector sample for orthographic cameras
+- Degenerate camera-forward inputs are normalized to the engine's conventional `-Z` view direction before skybox sampling; the Metal shader source test also guards the backend-side zero-vector fallback.
 - cubemap caches key uploads by both a stable cubemap identity and per-face `Pixels` generations, preventing stale skyboxes or environment maps from surviving allocator address reuse
 - the CPU skybox fallback keeps a tight RGBA cache keyed by cubemap generation, output size, and camera state; stable fallback frames are row blits instead of full per-pixel cubemap resampling
 - D3D11 now prunes cubemap cache residency by age, matching the bounded-cache policy already used by OpenGL and Metal
@@ -482,7 +519,22 @@ later consumed by the backend.
 
 ## Threading Model
 
-All operations are main-thread-only. No concurrent access to Canvas3D, no nested Begin/End, no scene mutation during Draw traversal.
+Public Canvas3D, Scene3D, and Game3D handle mutation remains main-thread-only.
+No concurrent access to Canvas3D, no nested Begin/End, and no scene mutation
+during Draw traversal. Internal workers may use `Viper.Threads.Pool`,
+`Viper.Threads.Parallel`, plain copied data, and retained ordered-map results;
+they must not dereference or mutate renderer-facing handles directly.
+`World3D.workerCount` may enable internal throughput jobs; those jobs must merge
+results in deterministic order before they affect simulation or renderer state.
+`g3d_3dnext2_surface_probe` covers the ordered `Viper.Threads.Parallel` map
+surface plus `World3D.runFramesOnly` replay parity across worker counts.
+
+Worker paths that need to create renderer-facing resources enqueue callbacks
+through the internal Graphics3D main-thread commit queue. The queue accepts
+worker submissions, but only the main thread may drain and run those callbacks;
+`test_rt_g3d_commit_queue` guards FIFO budgeted drains, worker-enqueue/main-
+thread-commit behavior, and the negative case where a worker attempts to drain
+the queue directly.
 
 ## Integration with 2D
 

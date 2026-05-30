@@ -42,6 +42,8 @@ library.
 **Animation**
 - [Skeleton3D, Animation3D, AnimPlayer3D](#skeleton3d) — Skeletal animation
 - [AnimBlend3D](#animblend3d) — Animation blending
+- [BlendTree3D](#blendtree3d) — Parametric animation blendspaces
+- [IKSolver3D](#iksolver3d) — Two-bone, look-at, and FABRIK inverse kinematics
 - [AnimController3D](#animcontroller3d) — Stateful animation control, events, and root motion
 - [MorphTarget3D](#morphtarget3d) — Morph target (blend shape) animation
 
@@ -476,7 +478,7 @@ func start() {
 
 All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** winding for front faces. When constructing meshes programmatically, vertices must be ordered CCW when viewed from the front.
 
-**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `NewBox` takes full extents, while collider boxes use half-extents. `NewPlane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `Reserve()` can be called before many `AddVertex`/`AddTriangle` calls to avoid repeated reallocations; it changes capacity only, not counts or geometry revision. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles. These public append validation traps do not poison the mesh; valid later appends can continue without `Clear()`. Allocation failures and importer failures still mark the build failed until `Clear()` resets it. `RecalcNormals` accumulates in double precision before normalizing back to renderer floats. `CalcTangents` skips degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats.
+**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `NewBox` takes full extents, while collider boxes use half-extents. `NewPlane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `Reserve()` can be called before many `AddVertex`/`AddTriangle` calls to avoid repeated reallocations; it changes capacity only, not counts or geometry revision. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles. These public append validation traps do not poison the mesh; valid later appends can continue without `Clear()`. Allocation failures and importer failures still mark the build failed until `Clear()` resets it. `RecalcNormals` accumulates in double precision before normalizing back to renderer floats. `CalcTangents` skips degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats. Normal-mapped draws with missing or degenerate tangents generate finite tangents on the queued geometry snapshot; backend shaders still safe-normalize zero normals.
 
 **Tangents:** `CalcTangents()` uses position/UV derivatives with Gram-Schmidt orthogonalization and `tangent.w` handedness for mirrored UVs. Degenerate UV islands get a normalized fallback tangent orthogonal to the vertex normal so normal maps never receive a tangent parallel to the normal.
 
@@ -572,7 +574,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 |-------------|-----------|-------------|
 | `New()` | `obj()` | Default white material |
 | `NewColor(r, g, b)` | `obj(f64, f64, f64)` | Colored material (0.0-1.0 per channel) |
-| `NewTextured(pixels)` | `obj(obj)` | Material with Pixels texture |
+| `NewTextured(texture)` | `obj(obj)` | Material with `Pixels` or RGBA8-backed `TextureAsset3D` texture |
 | `NewPBR(r, g, b)` | `obj(f64, f64, f64)` | Metallic/roughness material with albedo color |
 
 ### Properties
@@ -599,19 +601,19 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 | `Clone()` | `obj()` | Duplicate the material state |
 | `MakeInstance()` | `obj()` | Duplicate the material for per-object overrides |
 | `SetColor(r, g, b)` | `void(f64, f64, f64)` | Change diffuse color |
-| `SetTexture(pixels)` | `void(obj)` | Set/change texture (Pixels) |
-| `SetAlbedoMap(pixels)` | `void(obj)` | Set/change the PBR albedo map |
+| `SetTexture(texture)` | `void(obj)` | Set/change texture (`Pixels` or RGBA8-backed `TextureAsset3D`) |
+| `SetAlbedoMap(texture)` | `void(obj)` | Set/change the PBR albedo map |
 | `SetShininess(s)` | `void(f64)` | Specular exponent (default 32.0, higher = sharper highlights) |
 | `SetUnlit(flag)` | `void(i1)` | Skip lighting (render flat color) |
 | `SetMetallic(value)` | `void(f64)` | Set the metallic factor |
 | `SetRoughness(value)` | `void(f64)` | Set the roughness factor |
 | `SetAO(value)` | `void(f64)` | Set the AO multiplier |
 | `SetEmissiveIntensity(value)` | `void(f64)` | Scale emissive output |
-| `SetNormalMap(pixels)` | `void(obj)` | Set tangent-space normal map (Pixels) |
-| `SetMetallicRoughnessMap(pixels)` | `void(obj)` | Set the glTF-style metallic/roughness map (`G=roughness`, `B=metallic`) |
-| `SetAOMap(pixels)` | `void(obj)` | Set the ambient-occlusion map (`R=occlusion`) |
-| `SetSpecularMap(pixels)` | `void(obj)` | Set specular intensity map (Pixels) |
-| `SetEmissiveMap(pixels)` | `void(obj)` | Set emissive color map (Pixels) |
+| `SetNormalMap(texture)` | `void(obj)` | Set tangent-space normal map (`Pixels` or RGBA8-backed `TextureAsset3D`) |
+| `SetMetallicRoughnessMap(texture)` | `void(obj)` | Set the glTF-style metallic/roughness map (`G=roughness`, `B=metallic`) |
+| `SetAOMap(texture)` | `void(obj)` | Set the ambient-occlusion map (`R=occlusion`) |
+| `SetSpecularMap(texture)` | `void(obj)` | Set specular intensity map (`Pixels` or RGBA8-backed `TextureAsset3D`) |
+| `SetEmissiveMap(texture)` | `void(obj)` | Set emissive color map (`Pixels` or RGBA8-backed `TextureAsset3D`) |
 | `SetEmissiveColor(r, g, b)` | `void(f64, f64, f64)` | Set emissive color multiplier (additive glow) |
 | `SetNormalScale(value)` | `void(f64)` | Scale tangent-space normal-map strength |
 | `SetShadingModel(model)` | `void(i64)` | Set shading model (see table below) |
@@ -624,7 +626,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
 - Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults. The draw path repeats finite/clamp validation before backend command submission.
-- `NewTextured` and texture map setters accept `Pixels` handles only and trap on invalid handle types before changing material state. `SetEnvMap` accepts `CubeMap3D` handles only; invalid cubemap handles are ignored rather than retained.
+- `NewTextured` and texture map setters accept `Pixels` handles or `TextureAsset3D` handles with an RGBA8 fallback. Compressed `TextureAsset3D` handles without a CPU fallback trap before changing material state. `SetEnvMap` accepts `CubeMap3D` handles only; invalid cubemap handles are ignored rather than retained.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
   - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage. Masked materials also cast alpha-tested shadows on the software, Metal, OpenGL, and D3D11 backends.
@@ -643,7 +645,39 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 
 See `examples/apiaudit/graphics3d/shading_demo.zia` for the legacy/custom-model path and `examples/apiaudit/graphics3d/material3d_pbr_demo.zia` / `examples/apiaudit/graphics3d/material3d_pbr_demo.bas` for the PBR workflow.
 
-**Ownership:** `Material3D` retains `Pixels` and `CubeMap3D` references internally. The user does not need to hold a second manual reference just to keep assigned textures/maps/cubemaps alive.
+**Ownership:** `Material3D` retains `Pixels` fallbacks and `CubeMap3D` references internally. When a `TextureAsset3D` is accepted, the material stores its decoded RGBA8 `Pixels` fallback so existing render backends keep the same upload path.
+
+## TextureAsset3D
+
+KTX2 texture asset metadata and material binding bridge.
+
+| Constructor / Method | Signature | Description |
+|----------------------|-----------|-------------|
+| `LoadKTX2(path)` | `obj(str)` | Load a KTX2 file from the filesystem |
+| `LoadKTX2Asset(assetPath)` | `obj(str)` | Load a KTX2 file through the asset manager |
+| `SetResidentMipRange(firstMip, mipCount)` | `void(i64,i64)` | Request/count the resident mip-level range; count clamps to available mips |
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Width` | Integer | Pixel width |
+| `Height` | Integer | Pixel height |
+| `MipCount` | Integer | Declared mip level count |
+| `Format` | String | `rgba8`, `bc3`, `bc7`, `astc`, `etc2`, or `unknown` |
+| `Compressed` | Bool | True for precompressed or supercompressed payloads |
+| `ResidentMipStart` | Integer | First resident/requested mip level |
+| `ResidentMipCount` | Integer | Number of resident/requested mip levels |
+| `ResidentBytes` | Integer | Declared byte size of resident/requested mip levels |
+
+The current runtime parses KTX2 headers, records declared mip payload byte
+ranges, and decodes each uncompressed RGBA8 mip into a `Pixels` fallback.
+`SetResidentMipRange` updates mip residency telemetry and selects the first
+resident RGBA8 mip as the active material fallback; negative arguments trap,
+`mipCount` clamps to the available range, and a zero count releases all resident
+telemetry/fallback binding. `Material3D.NewTextured`, `SetTexture`,
+`SetAlbedoMap`, `SetNormalMap`, `SetMetallicRoughnessMap`, `SetAOMap`,
+`SetSpecularMap`, and `SetEmissiveMap` accept RGBA8-backed texture assets
+directly. BC3/BC7/ASTC/ETC2 assets expose metadata and residency byte counts
+now; native compressed GPU upload remains backend-gated work.
 
 ### Zia Example
 
@@ -828,7 +862,7 @@ Six-face cube texture for skyboxes and environment reflections.
 
 CubeMap3D has no methods or properties — it is a data object used by `Canvas3D.SetSkybox` and `Material3D.SetEnvMap`.
 CubeMap faces use the same top-left pixel origin as `Pixels`; the GPU backends normalize upload orientation so skyboxes and reflections sample consistently across backends.
-Skyboxes honor the active camera projection across all backends. Perspective cameras reconstruct a per-pixel view ray; orthographic cameras sample the cubemap along the camera forward direction so the background stays stable instead of being distorted by perspective-only math. When a backend lacks a native skybox hook, the CPU fallback caches the generated RGBA skybox by cubemap generation, output size, and camera projection, then blits the cached image on stable frames instead of resampling the cubemap every frame.
+Skyboxes honor the active camera projection across all backends. Perspective cameras reconstruct a per-pixel view ray; orthographic cameras sample the cubemap along the camera forward direction so the background stays stable instead of being distorted by perspective-only math. Degenerate camera-forward vectors fall back to the engine's conventional `-Z` direction before sampling; Metal also carries a shader-side safe-normalize fallback for this case. When a backend lacks a native skybox hook, the CPU fallback caches the generated RGBA skybox by cubemap generation, output size, and camera projection, then blits the cached image on stable frames instead of resampling the cubemap every frame.
 Environment reflections are roughness-aware. Low-roughness materials keep a sharp cubemap reflection, while higher roughness values sample blurrier cubemap mips on GPU backends and a matching blur kernel in the software renderer.
 CubeMap uploads and CPU fallback skybox caches are keyed by a stable internal cubemap identity plus the six face `Pixels` generations, so recreating or mutating cubemaps cannot accidentally reuse stale GPU skybox, CPU fallback, or reflection textures after allocator address reuse.
 Seam handling is also more consistent now: the software sampler remaps bilinear taps across neighboring faces and OpenGL enables seamless cubemap filtering, which reduces visible face-edge seams when the artwork itself lines up.
@@ -892,7 +926,10 @@ Hierarchical scene graph with frustum culling and LOD support.
 | `TryAdd(node)` | `i1(obj)` | Add node to root and return whether the scene accepted it |
 | `Remove(node)` | `void(obj)` | Detach node from parent |
 | `Find(name)` | `obj(str)` | Recursive depth-first name search |
-| `Draw(canvas, cam)` | `void(obj, obj)` | Traverse + render (with frustum culling) |
+| `Draw(canvas, cam)` | `void(obj, obj)` | Traverse + render (with indexed frustum culling) |
+| `QueryAABB(min, max)` | `obj(obj, obj)` | Return visible mesh nodes whose world AABB intersects the query box |
+| `QuerySphere(center, radius)` | `obj(obj, f64)` | Return visible mesh nodes whose world AABB intersects the query sphere |
+| `RaycastNodes(origin, dir, maxDist)` | `obj(obj, obj, f64)` | Return the closest visible mesh node hit by a ray |
 | `Clear()` | `void()` | Remove all children from root |
 | `Save(path)` | `i64(str)` | Write JSON scene snapshot (returns 0 on success) |
 | `SyncBindings(dt)` | `void(f64)` | Apply scene-node body / animator bindings before draw |
@@ -1002,7 +1039,7 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest threshold that does not exceed camera distance. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest threshold that does not exceed camera distance. `Scene3D.Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use the internal Scene3D spatial index when it is clean, with an exact flat-walk fallback kept for parity. The normal runtime tests include a generated 10k drawable-node grid to guard isolated-query and frame-cull candidate reduction. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
 
 ### Binding Sync
 
@@ -1042,6 +1079,7 @@ Current scope:
 | `SkeletonCount` | Integer | read | Number of imported `Skeleton3D` objects |
 | `AnimationCount` | Integer | read | Number of imported `Animation3D` clips |
 | `NodeCount` | Integer | read | Number of imported logical scene nodes (excluding the synthetic template root) |
+| `SceneCount` | Integer | read | Number of immutable scenes addressable by scene-indexed APIs |
 
 ### Methods
 
@@ -1053,9 +1091,13 @@ Current scope:
 | `GetMaterial(index)` | `obj(i64)` | Get a shared `Material3D` by index |
 | `GetSkeleton(index)` | `obj(i64)` | Get a shared `Skeleton3D` by index |
 | `GetAnimation(index)` | `obj(i64)` | Get a shared `Animation3D` by index |
+| `GetCameraCount(sceneIndex)` | `i64(i64)` | Number of imported cameras in a scene |
+| `GetCamera(sceneIndex, index)` | `obj(i64, i64)` | Get an imported `Camera3D`, or `null` when absent/out of range |
+| `GetSceneName(index)` | `str(i64)` | Get the immutable scene name, or `""` when out of range |
 | `FindNode(name)` | `obj(str)` | Find a template `SceneNode3D` by name inside the imported hierarchy |
 | `Instantiate()` | `obj()` | Clone the template hierarchy into a fresh `SceneNode3D` subtree |
 | `InstantiateScene()` | `obj()` | Create a fresh `Scene3D` and attach cloned top-level imported nodes below its root |
+| `InstantiateSceneAt(index)` | `obj(i64)` | Create a fresh `Scene3D` for an immutable scene index |
 
 ### Ownership and Instancing
 
@@ -1064,6 +1106,9 @@ Current scope:
 - `Instantiate()` clones nodes and transforms only. The returned node is a synthetic root group that owns the imported top-level nodes.
 - Mutating an instantiated node does not mutate the template returned by `FindNode`.
 - `InstantiateScene()` is the easiest way to drop an imported asset into a fresh scene while preserving node names and hierarchy.
+- glTF imports order immutable scenes with the active/default scene at index `0` and secondary glTF scene roots after it. `GetSceneName(index)` preserves authored scene names where available and falls back to `"default"`/`"scene_N"`.
+- glTF cameras reachable from each imported scene populate `GetCameraCount(sceneIndex)` and `GetCamera(sceneIndex, index)` as standalone `Camera3D` handles with node world transforms applied.
+- Use `InstantiateSceneAt(index)` for scene-indexed code. Index `0` is equivalent to `InstantiateScene()`; invalid indices return `null` instead of mutating shared model state.
 
 ### Zia Example
 
@@ -1078,12 +1123,17 @@ func start() {
     var templateNode = Model3D.FindNode(model, "Trunk");
     var instanceRoot = Model3D.Instantiate(model);
     var scene = Model3D.InstantiateScene(model);
+    var indexedScene = Model3D.InstantiateSceneAt(model, 0);
 
     Say("Nodes = " + toString(Model3D.get_NodeCount(model)));
     Say("Meshes = " + toString(Model3D.get_MeshCount(model)));
+    Say("Scenes = " + toString(Model3D.get_SceneCount(model)));
+    Say("Default scene = " + Model3D.GetSceneName(model, 0));
+    Say("Default scene cameras = " + toString(Model3D.GetCameraCount(model, 0)));
     Say("Template trunk found = " + toString(templateNode != null));
     Say("Instance root children = " + toString(SceneNode3D.get_ChildCount(instanceRoot)));
     Say("Scene nodes = " + toString(Scene3D.get_NodeCount(scene)));
+    Say("Indexed scene nodes = " + toString(Scene3D.get_NodeCount(indexedScene)));
 }
 ```
 
@@ -1093,7 +1143,7 @@ Format note:
 - `.vscn`, FBX, and glTF imports can populate shared skeletons and animation clips when the source format contains supported skin/animation data.
 - FBX-backed `Model3D` assets preserve authored `Model` hierarchy, local TRS, and mesh/material attachments when the source file contains object connections, instead of always collapsing to synthetic `mesh_N` nodes.
 - OBJ-backed `Model3D` assets use the existing geometry-only OBJ loader and synthesize template nodes because OBJ has no scene hierarchy.
-- glTF imports populate meshes, materials, active-scene node hierarchy, skins, morph targets, punctual lights, skeletal clips, and node/morph animation clips.
+- glTF imports populate meshes, materials, active-scene and secondary scene hierarchies, scene-local cameras, skins, morph targets, punctual lights, skeletal clips, and node/morph animation clips.
 - glTF skeletal tracks map to `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` tracks are bound automatically on `Model3D.Instantiate()` and `InstantiateScene()`. Node animation channels reject non-finite sample data and non-increasing key times before playback; LINEAR rotation tracks use quaternion slerp, and CUBICSPLINE tracks use glTF Hermite tangents. Call `Scene3D.SyncBindings(dt)` each frame to advance those imported node clips.
 - glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT`, `JOINTS_0`/`WEIGHTS_0`, and `JOINTS_1`/`WEIGHTS_1`. Secondary joint sets are reduced to the four strongest supported influences and renormalized. Skins above the runtime 256-bone palette are rejected instead of silently dropping the rig.
 - glTF morph targets import `POSITION`, `NORMAL`, and `TANGENT` deltas. Position/normal morphs can use the GPU path; tangent morphs currently route through the CPU morph path so tangent-space normal mapping stays correct.
@@ -1159,11 +1209,17 @@ Keyframe animation clip with per-bone position, rotation, and scale tracks.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `AddKeyframe(boneIdx, time, pos, rot, scale)` | `void(i64, f64, obj, obj, obj)` | Add keyframe: bone index, time, position Vec3, rotation Quat, scale Vec3 |
+| `Retarget(srcSkeleton, dstSkeleton)` | `obj(obj, obj)` | Copy the animation onto matching bones in another skeleton |
 
 Keyframes are kept sorted by time within each bone channel. Rotation keyframes use normalized
 quaternions and SLERP; position/scale use linear interpolation. `pos`, `rot`, or `scale` may be
 `null`; omitted or non-finite/out-of-float-range components fall back to the bone bind pose instead
 of erasing that component to zero/identity.
+
+`Retarget` preserves the clip name, duration, looping flag, and keyframe data while remapping
+channels by source bone name first and by matching bone index as a fallback. Destination-only bones
+remain in bind pose. It is intended for rigs with compatible authored local-space motion; full
+humanoid/proportional retarget mapping remains deeper animation work.
 
 ---
 
@@ -1908,6 +1964,8 @@ orientation; the `NewAABB` name is kept as a compatibility factory for box bodie
 `Raycast` tests actual collider geometry for boxes, spheres, capsules, compound leaves, mesh/convex
 triangles, and heightfields. Sphere and capsule sweeps use adaptive sampling so small-radius sweeps
 and long capsules can hit thin geometry.
+Mesh/convex colliders reuse a per-mesh BVH to prune candidate triangles for sphere, capsule, and box
+contacts, falling back to a full triangle scan if the BVH path is unavailable.
 
 ### Physics3DWorld
 
@@ -2001,7 +2059,7 @@ Notes:
 | `ColliderA` | Object | read | Leaf collider for body A |
 | `ColliderB` | Object | read | Leaf collider for body B |
 | `IsTrigger` | Boolean | read | Pair includes at least one trigger body |
-| `ContactCount` | Integer | read | Number of contact points in the event (`1` in the current backend) |
+| `ContactCount` | Integer | read | Number of contact points in the event; AABB pairs can expose up to four manifold points, while other pairs currently expose one representative point |
 | `RelativeSpeed` | Float | read | Relative speed along the contact normal before resolution |
 | `NormalImpulse` | Float | read | Solver normal impulse from the last step (`0` for trigger pairs) |
 
@@ -2050,7 +2108,11 @@ wrappers for simple cases.
 
 Notes:
 - `NewMesh` and `NewHeightfield` are static-only in v1. Attach them only to static bodies.
-- `NewConvexHull` currently expects convex source geometry and uses the mesh surface as the hull.
+- `NewConvexHull` treats the mesh vertex cloud as a convex support set.
+  Hull contacts against spheres, capsules, boxes, and other hulls use GJK/EPA,
+  including contained primitive contacts. Triangle-mesh contacts against
+  spheres, capsules, and boxes use BVH candidate pruning before triangle-level
+  tests.
 - Compound colliders are the preferred way to build complex dynamic bodies from simple children.
 
 ---
@@ -2676,12 +2738,16 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
 | `Build(mesh, agentRadius, agentHeight)` | `obj(obj, f64, f64)` | Build navmesh from Mesh3D geometry |
+| `Bake(scene, agentRadius, agentHeight, maxSlope, cellSize)` | `obj(obj, f64, f64, f64, f64)` | Build navmesh from Mesh3D-bearing Scene3D nodes |
+| `BakeTiled(scene, tileSize, agentRadius, agentHeight, maxSlope, cellSize)` | `obj(obj, f64, f64, f64, f64, f64)` | Use the tiled bake API shape; currently returns a full-scene navmesh |
 
 ### Properties
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `TriangleCount` | Integer | read | Number of triangles in navmesh |
+| `OffMeshLinkCount` | Integer | read | Number of authored traversal links |
+| `ObstacleCount` | Integer | read | Number of authored coarse AABB obstacles |
 
 ### Methods
 
@@ -2690,10 +2756,17 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 | `FindPath(start, goal)` | `obj(obj, obj)` | A* pathfinding (Vec3 start/goal, returns waypoint list) |
 | `SamplePosition(position)` | `obj(obj)` | Snap position to nearest point on navmesh (Vec3) |
 | `IsWalkable(position)` | `i1(obj)` | Check if Vec3 position is on the navmesh |
+| `AddOffMeshLink(from, to, bidirectional)` | `i1(obj, obj, i1)` | Add a directed or bidirectional traversal edge between walkable points |
+| `AddObstacle(min, max)` | `i1(obj, obj)` | Add a coarse AABB obstacle and refilter walkable triangles |
+| `RemoveObstacle(index)` | `i1(i64)` | Remove a coarse obstacle and refilter walkable triangles |
+| `UpdateObstacle(index, min, max)` | `i1(i64, obj, obj)` | Move/resize a coarse obstacle and refilter walkable triangles |
+| `RebuildTile(tileX, tileZ)` | `i1(i64, i64)` | Refilter the current navmesh after tile-scoped edits |
 | `SetMaxSlope(degrees)` | `void(f64)` | Update walkability slope threshold |
 | `DebugDraw(canvas)` | `void(obj)` | Visualize navmesh wireframe on Canvas3D |
 
-`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `SetMaxSlope()` therefore immediately refilters the existing mesh and rebuilds adjacency instead of requiring a full rebuild. Slope tests use upward-facing triangle planes. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
+`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `Bake()` gathers every `Mesh3D` attached under a `Scene3D`, applies each node's world transform, and then routes through the same triangle build path. `BakeTiled()` currently accepts the final tiled API shape but returns a full-scene navmesh; physical tile ownership is still future work. `SetMaxSlope()` and `RebuildTile()` both refilter preserved source triangles and rebuild adjacency immediately instead of requiring callers to rebuild the mesh handle. Slope tests use upward-facing triangle planes. Shared-edge portals narrower than `agentRadius * 2` are not linked, so wider agents do not path through narrow authored passages. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
+
+`AddOffMeshLink()` stores authored endpoint pairs such as jumps, ladders, and drop-downs. Both endpoints must resolve to current walkable polygons; pathfinding treats the link as an extra graph edge and emits the link endpoints as waypoints. `AddObstacle()` stores a finite world-space AABB, removes overlapping triangles from the current walkable set, and rebuilds adjacency immediately. `RemoveObstacle()` and `UpdateObstacle()` edit the authored obstacle list by zero-based index and refilter immediately. This is a coarse carving baseline intended for tile-sized navmesh geometry; true voxel/region generation, tile-local storage, full polygon erosion for `agentRadius`, and pathfinding acceleration remain deeper navigation work.
 
 ### Zia Example
 
@@ -2708,9 +2781,13 @@ func start() {
     var level_mesh = Mesh3D.FromOBJ("level.obj");
     var nav = NavMesh3D.Build(level_mesh, 0.4, 1.8);
     NavMesh3D.SetMaxSlope(nav, 45.0);
+    NavMesh3D.AddObstacle(nav, Vec3.New(1.0, -0.1, 1.0), Vec3.New(2.0, 2.0, 2.0));
+    NavMesh3D.UpdateObstacle(nav, 0, Vec3.New(1.5, -0.1, 1.0), Vec3.New(2.5, 2.0, 2.0));
+    NavMesh3D.RebuildTile(nav, 0, 0);
 
     var start = Vec3.New(0.0, 0.0, 0.0);
     var goal = Vec3.New(20.0, 0.0, 15.0);
+    NavMesh3D.AddOffMeshLink(nav, Vec3.New(4.0, 0.0, 2.0), Vec3.New(8.0, 0.0, 2.0), true);
     var path = NavMesh3D.FindPath(nav, start, goal);
 
     // Snap a position to the navmesh
@@ -2745,6 +2822,8 @@ Goal-driven navigation agent built on top of `NavMesh3D`. `NavAgent3D` owns a ta
 | `StoppingDistance` | `Float` | read/write | Arrival radius around the final target |
 | `DesiredSpeed` | `Float` | read/write | Preferred movement speed in world units per second |
 | `AutoRepath` | `Boolean` | read/write | Periodically rebuild the path while a target is active |
+| `AvoidanceEnabled` | `Boolean` | read/write | Enable same-NavMesh local separation steering against other enabled agents |
+| `AvoidanceRadius` | `Float` | read/write | Radius used by local avoidance separation; defaults to the agent radius and clamps to `>= 0` |
 
 ### Methods
 
@@ -2767,6 +2846,8 @@ Goal-driven navigation agent built on top of `NavMesh3D`. `NavAgent3D` owns a ta
 
 When both a `Character3D` and a `SceneNode3D` are bound, the character controller is authoritative and the node is updated to match it.
 
+`AvoidanceEnabled` is opt-in. When enabled on nearby agents sharing the same `NavMesh3D`, the path follower biases `DesiredVelocity` away from overlapping or imminent head-on neighbors before moving the bound character or node. This is a lightweight local separation pass; tiled navmesh rebuilds, dynamic carving, off-mesh links, and full ORCA/RVO-style crowd planning remain separate navigation-depth work.
+
 ### Zia Example
 
 ```zia
@@ -2784,6 +2865,8 @@ func start() {
 
     NavAgent3D.BindNode(agent, node);
     NavAgent3D.set_DesiredSpeed(agent, 5.0);
+    NavAgent3D.set_AvoidanceEnabled(agent, true);
+    NavAgent3D.set_AvoidanceRadius(agent, 0.6);
     NavAgent3D.Warp(agent, Vec3.New(0.0, 0.0, 0.0));
     NavAgent3D.SetTarget(agent, Vec3.New(4.0, 0.0, 3.0));
 
@@ -2927,6 +3010,96 @@ func start() {
 
 ---
 
+## BlendTree3D
+
+Parametric 1D/2D animation blendspaces over `AnimBlend3D`. Use this when a character should move
+continuously across authored samples such as idle/walk/run speed or 2D locomotion/aim offsets.
+
+### Constructors
+
+| Constructor | Signature | Description |
+|-------------|-----------|-------------|
+| `New1D(skeleton)` | `obj(obj)` | Create a 1D blend tree bound to a `Skeleton3D` |
+| `New2D(skeleton)` | `obj(obj)` | Create a 2D blend tree bound to a `Skeleton3D` |
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `SampleCount` | Integer | read | Number of animation samples in the tree |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddSample(animation, x, y)` | `i64(obj, f64, f64)` | Register an `Animation3D` sample at a parameter coordinate |
+| `SetParam(x, y)` | `void(f64, f64)` | Set the current blend parameters and recompute weights |
+| `Update(dt)` | `void(f64)` | Recompute weights and advance the underlying animation blend |
+
+`New1D` uses the sample `x` coordinate and linearly interpolates between the closest lower/upper
+samples, clamping outside the authored range. `New2D` selects exact-coordinate matches directly and
+otherwise normalizes inverse-distance weights. Non-finite parameters are treated as zero.
+
+`Canvas3D.DrawMeshBlended(canvas, mesh, transform, material, tree)` accepts either an `AnimBlend3D`
+or a `BlendTree3D`; no separate extraction step is needed.
+
+### Zia Example
+
+```zia
+module BlendTreeDemo;
+
+bind Viper.Graphics3D.BlendTree3D;
+bind Viper.Graphics3D.Canvas3D;
+bind Viper.Math.Mat4;
+
+func makeLocomotionTree(skel, idleAnim, walkAnim, runAnim) {
+    var tree = BlendTree3D.New1D(skel);
+    BlendTree3D.AddSample(tree, idleAnim, 0.0, 0.0);
+    BlendTree3D.AddSample(tree, walkAnim, 1.5, 0.0);
+    BlendTree3D.AddSample(tree, runAnim, 5.0, 0.0);
+    return tree;
+}
+
+func render(canvas, mesh, mat, tree, speed, dt) {
+    BlendTree3D.SetParam(tree, speed, 0.0);
+    BlendTree3D.Update(tree, dt);
+    Canvas3D.DrawMeshBlended(canvas, mesh, Mat4.Identity(), mat, tree);
+}
+```
+
+---
+
+## IKSolver3D
+
+Inverse-kinematics solvers for final pose adjustment before skinning. Use these for simple
+foot/hand target placement, look-at/aim bones, and short articulated chains that need to follow a
+runtime target while still using authored animation as the base pose.
+
+### Constructors
+
+| Constructor | Signature | Description |
+|-------------|-----------|-------------|
+| `TwoBone(skeleton, root, mid, end)` | `obj(obj,i64,i64,i64)` | Create a parented three-bone chain solver |
+| `LookAt(skeleton, bone)` | `obj(obj,i64)` | Aim one bone's local +Z axis toward a target |
+| `FABRIK(skeleton, chain)` | `obj(obj,obj)` | Create a chain solver from a `Seq[Integer]` of parented bone indices |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetTarget(pos)` | `void(obj)` | Set the target as a `Vec3` |
+| `SetWeight(w)` | `void(f64)` | Blend solver output from `0.0` to `1.0`; non-finite values become zero |
+| `Solve()` | `void()` | Solve against the skeleton bind pose for standalone inspection |
+
+Attach a solver to an animation controller with `AnimController3D.SetIKSolver(solver)` or the
+Game3D wrapper `Animator3D.setIKSolver(solver)`. Controller-bound IK is applied after the base
+state/blend tree and overlay layers are composed, then before skinning palettes are generated.
+`TwoBone` and `FABRIK` use a positional FABRIK-style chain solve and preserve the chain root;
+`LookAt` aims the selected bone's local +Z axis. `Solve()` solves against bind pose, while a bound
+controller solves against that controller's current animated pose.
+
+---
+
 ## AnimController3D
 
 Stateful skeletal animation controller for gameplay code. `AnimController3D` builds on the same sampling path as `AnimPlayer3D` and `AnimBlend3D`, but adds named states, transition defaults, clip events, root-motion extraction, and simple masked overlay layers.
@@ -2959,33 +3132,51 @@ Stateful skeletal animation controller for gameplay code. `AnimController3D` bui
 | `Update(dt)` | `void(f64)` | Advance all active layers by `dt` seconds |
 | `SetStateSpeed(name, speed)` | `void(str,f64)` | Override playback speed for a named state |
 | `SetStateLooping(name, loop)` | `void(str,i1)` | Override looping behavior for a named state |
+| `SetAnimationLOD(distance, rateHz)` | `void(f64,f64)` | Enable deterministic batched updates at `rateHz` for distant/low-priority controllers; non-positive inputs disable it |
+| `SetBlendTree(tree)` | `i1(obj)` | Use a compatible `BlendTree3D` as the base pose source; pass `Nothing`/`NULL` to clear |
+| `SetIKSolver(solver)` | `i1(obj)` | Apply a compatible `IKSolver3D` after overlays and before skinning; pass `Nothing`/`NULL` to clear |
 | `AddEvent(stateName, timeSeconds, eventName)` | `void(str,f64,str)` | Queue an event when playback crosses the specified state-local time |
 | `PollEvent()` | `str()` | Dequeue the next event name, or `""` when none are pending |
 | `SetRootMotionBone(boneIdx)` | `void(i64)` | Choose which bone contributes root motion; `-1` disables it |
 | `ConsumeRootMotion()` | `obj()` | Return the accumulated `Vec3` delta and clear it |
 | `SetLayerWeight(layer, weight)` | `void(i64,f64)` | Set overlay weight for layers `1..3` |
 | `SetLayerMask(layer, rootBone)` | `void(i64,i64)` | Restrict an overlay layer to the subtree rooted at `rootBone` |
-| `PlayLayer(layer, stateName)` | `i1(i64,str)` | Start a named state on an overlay layer |
+| `PlayLayer(layer, stateName)` | `i1(i64,str)` | Start a named state as a masked replace overlay |
+| `PlayLayerAdditive(layer, stateName)` | `i1(i64,str)` | Start a named state as a true additive bind-pose delta overlay |
 | `CrossfadeLayer(layer, stateName, blendSeconds)` | `i1(i64,str,f64)` | Crossfade an overlay layer to a new state |
+| `CrossfadeLayerAdditive(layer, stateName, blendSeconds)` | `i1(i64,str,f64)` | Crossfade an overlay layer to a true additive bind-pose delta state |
 | `StopLayer(layer)` | `void(i64)` | Stop one overlay layer |
 | `GetBoneMatrix(boneIdx)` | `obj(i64)` | Read the controller's final global/world matrix for a bone |
 
 Event times are clamped into the owning clip's duration and are fired when playback crosses them in
 forward, reverse, exact-loop, or multi-loop updates. State speeds may be negative for reverse
-playback; non-finite speeds fall back to `1.0`. Overlay weights are finite and clamped, and overlay
-composition uses TRS/quaternion blending so masked layers do not introduce matrix skew. Root motion
+playback; non-finite speeds fall back to `1.0`. Overlay weights are finite and clamped. `PlayLayer`
+preserves the existing masked replace behavior, while `PlayLayerAdditive` composes
+`(overlayPose - bindPose) * weight` onto the current base pose for true additive layers.
+`CrossfadeLayerAdditive` keeps that additive composition while blending to another overlay state.
+Both paths use TRS/quaternion composition so masked layers do not introduce matrix skew. Root motion
 is disabled by default, preserves forward/reverse loop-wrap deltas, and can be reset with
-`SetRootMotionBone(-1)`. `Stop()` returns the output pose to bind pose.
+`SetRootMotionBone(-1)`. `SetAnimationLOD(distance, rateHz)` accumulates elapsed time and samples
+at the requested lower rate while preserving deterministic playback time; pass `0, 0` to restore
+per-update sampling. `SetBlendTree(tree)` updates the tree with the controller tick and uses its
+blended local pose as the base layer before overlays are applied; root-motion extraction remains
+state-player based. `SetIKSolver(solver)` applies the solver after overlays and before the final
+skin palette; it only accepts solvers bound to the same skeleton. `Stop()` returns the output pose
+to bind pose.
 
 ### When To Use Which API
 
 - Use `AnimPlayer3D` when you just need to play one clip or crossfade directly between clips.
 - Use `AnimBlend3D` when you want manual weight control over several simultaneously sampled clips.
+- Use `BlendTree3D` directly for manually drawn blended meshes, or attach one to an
+  `AnimController3D` with `SetBlendTree` when named overlay layers/events still need the controller.
+- Use `IKSolver3D` when the current animated pose needs a final procedural target adjustment before
+  skinning, such as a foot/hand target, aim bone, or short FABRIK chain.
 - Use `AnimController3D` when gameplay code needs named states, default transitions, root motion, queued events, or masked upper-body/lower-body style overlays.
 
 Current limitation:
 - `AnimController3D` can now drive `SceneNode3D` root motion and skinned scene-node draws through `Scene3D.SyncBindings` + `Scene3D.Draw`.
-- Direct standalone mesh submission still accepts `AnimPlayer3D` and `AnimBlend3D`; use scene-node binding when you want controller-driven scene composition.
+- Direct standalone mesh submission accepts `AnimPlayer3D`, `AnimBlend3D`, and `BlendTree3D`; use scene-node binding when you want controller-driven scene composition.
 
 ### Zia Example
 
@@ -3213,7 +3404,7 @@ The GPU backend is selected automatically at startup:
 
 If the GPU backend fails to initialize (no GPU, driver issue), the software rasterizer is used automatically. Check `canvas.Backend` to see which renderer is active.
 
-For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, and `gpu-postfx-overlay`. The bitmask values are:
+For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSupports(name)` over string comparisons against `canvas.Backend`. Capability names currently include `software`, `gpu`, `render_target`, `window_readback`, `shadows`, `skybox`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `clustered-lighting`, `shadow-csm`, `occlusion`, `hlod`, `bc7`, `astc`, and `etc2`. The bitmask values are:
 
 | Bit | Capability |
 |-----|------------|
@@ -3229,6 +3420,13 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 | `0x0200` | Crisp final overlay composition |
 | `0x0400` | Final screenshot after overlay composition |
 | `0x0800` | Split GPU post-FX with final overlay after tonemap |
+| `0x1000` | Clustered/forward+ lighting |
+| `0x2000` | Cascaded shadow maps |
+| `0x4000` | Occlusion culling |
+| `0x8000` | Runtime HLOD / impostor support |
+| `0x10000` | BC7 compressed texture upload |
+| `0x20000` | ASTC compressed texture upload |
+| `0x40000` | ETC2 compressed texture upload |
 
 **Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports nearest/bilinear material texture filtering with imported wrap modes, per-vertex colors, shadow mapping for up to two directional lights with 3x3 PCF filtering, specular maps, normal maps, and per-pixel terrain splatting.
 

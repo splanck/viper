@@ -113,7 +113,18 @@ Constant classes are runtime-backed too: `Layers`, `BodyShape`, `SyncMode`,
 | `input` | `Viper.Game3D.Input3D` |
 | `audio` | `Viper.Game3D.Sound3D` with a camera-aligned listener |
 | `effects` | `Viper.Game3D.EffectRegistry3D` with a `PostFX3D` chain and particle/decal registry |
+| `stream` | Lazily created `Viper.Game3D.WorldStream3D` owned by the world |
 | `droppedFixedSteps` | Integer counter for fixed-step updates discarded by the spiral-of-death guard |
+| `entityCount` | Spawned `Entity3D` objects currently owned by the world |
+| `bodyCount` | Physics bodies currently registered through spawned entities |
+| `drawCount` | Main 3D draw submissions queued by the latest ended frame |
+| `visibleNodeCount` | Drawable scene nodes submitted by the latest scene draw |
+| `occludedDrawCount` | Draw submissions skipped by latest visibility culling |
+| `streamResidentBytes` | Resident byte estimate from the world-owned stream controller |
+| `workerCount` | Internal deterministic job worker count, clamped to `1..64` |
+| `jobsEnabled` | True when `workerCount > 1`; false when the world runs single-threaded |
+| `floatingOrigin` | Enables camera-relative rebasing for large-coordinate scenes |
+| `worldOrigin` | Accumulated world-space offset applied by floating-origin rebases |
 
 The constructor installs explicit default lighting, balanced backend-safe
 quality, frustum culling, a readable camera, a neutral clear/ambient setup, and
@@ -123,6 +134,25 @@ setup code.
 `World3D.runFixed` caps the number of simulation steps processed by one rendered
 frame. If a long frame would require more work than the cap, the dropped step
 count is exposed through `World3D.droppedFixedSteps` for telemetry and tuning.
+The editor/perf counters (`entityCount`, `bodyCount`, `drawCount`,
+`visibleNodeCount`, `occludedDrawCount`, and `streamResidentBytes`) are
+read-only wrappers over the owned scene, canvas, physics world, and stream, so a
+tool can inspect one world handle without reaching through each subsystem.
+
+`World3D.setWorkerCount(count)` controls the worker budget reserved for internal
+3D jobs. `1` disables threaded jobs while preserving deterministic behavior;
+values above `1` allow systems that opt into ordered internal jobs to use
+workers. The runtime lazily creates a world-owned worker pool for eligible
+batches; animator updates already use this path and are covered by single-worker
+vs. multi-worker parity tests. User-authored job callbacks are not part of the
+Game3D surface.
+
+`World3D.setOriginRebaseThreshold(meters)` configures the floating-origin
+distance threshold. With `floatingOrigin` enabled, the world recenters around
+the active camera when it crosses that threshold, calls
+`Scene3D.RebaseOrigin()` for scene root subtrees, shifts physics bodies by the
+same delta, and accumulates the absolute offset in `worldOrigin`. With the flag
+off, bounded scenes are unchanged.
 
 `World3D.NewWithCamera(title, width, height, fov, near, far)` uses the same
 defaults with custom camera projection values.
@@ -266,6 +296,11 @@ source, clock source, and synthetic delta after the run completes. The built-in
 run loops avoid double-counting time because `tick()` / `runFrames()` own frame
 and elapsed-time accounting.
 
+For worker-parity probes, set `World3D.setWorkerCount(world, 1)` and a
+multi-worker value before separate `runFramesOnly` replays and compare the final
+state. Internal jobs must merge results deterministically, so worker count should
+not affect simulation results.
+
 The raw `Canvas3D` finalization calls map to the Game3D frame helpers this way:
 
 | Raw call | Meaning |
@@ -307,12 +342,19 @@ This boundary is covered by `g3d_test_game3d_runframes_callback_reject`.
 ## Entities, Layers, And Masks
 
 `Entity3D.Of(mesh, material)` creates a spawnable entity with a raw
-`SceneNode3D`. Transform helpers sanitize non-finite numbers before touching the
-node and update an attached body only when the node sync mode is
-`SyncMode.BodyFromNode`:
+`SceneNode3D`. `Entity3D.FromNode(rootNode)` wraps an existing `SceneNode3D`
+hierarchy, which is the preferred bridge for imported or procedurally assembled
+subtrees that should move through Game3D spawning without cloning. If the root
+node has a non-empty name, the wrapper entity inherits it so
+`World3D.findEntity(name)` and `World3D.findNode(name)` agree on the imported
+root. Raw child nodes stay raw scene nodes: they render and participate in scene
+lookup as part of the subtree, but they are not separate Game3D entities.
+Transform helpers sanitize non-finite numbers before touching the node and update
+an attached body only when the node sync mode is `SyncMode.BodyFromNode`:
 
 | Method | Purpose |
 |--------|---------|
+| `FromNode(rootNode)` | Wrap an existing `SceneNode3D` hierarchy as a spawnable group entity |
 | `setPosition(x, y, z)` / `setPositionV(vec3)` | Set node position |
 | `setScale(s)` / `setScaleXYZ(x, y, z)` | Set node scale |
 | `setRotationEuler(xDeg, yDeg, zDeg)` | Set node orientation in degrees |
@@ -372,6 +414,12 @@ Game3D.World3D.spawn(world, enemy);
 | `LoadModelAsset(assetPath)` | Load through the asset resolver first, with filesystem fallback for development |
 | `LoadModelTemplate(path)` | Load or reuse a cached filesystem `ModelTemplate` |
 | `LoadModelTemplateAsset(assetPath)` | Load or reuse a cached package-aware `ModelTemplate` |
+| `LoadModelAsync(path)` | Return an `AssetHandle3D` for a filesystem/development model entity |
+| `LoadModelAssetAsync(assetPath)` | Return an `AssetHandle3D` for a package-aware model entity |
+| `LoadModelTemplateAsync(path)` | Return an `AssetHandle3D` for a cached filesystem `ModelTemplate` |
+| `LoadModelTemplateAssetAsync(assetPath)` | Return an `AssetHandle3D` for a cached package-aware `ModelTemplate` |
+| `SetResidencyBudget(bytes)` | Bound the shared template cache by estimated resident bytes; negative means unlimited |
+| `Evict(handle)` | Drop the cached template entry backing a ready template `AssetHandle3D` |
 | `Preload(path)` | Warm the filesystem template cache |
 | `ClearCache()` | Release cached template entries and backing storage after in-flight loads finish |
 | `ModelTemplate.instantiate()` | Clone the template root subtree into a group `Entity3D` |
@@ -392,6 +440,132 @@ possible, and concurrent requests for the same key share the in-flight load
 instead of importing the same model more than once. Waiting threads sleep on the
 cache condition variable rather than polling while another thread finishes an
 import.
+
+`AssetHandle3D` exposes `ready`, `progress`, `error`, `cancel()`,
+`getEntity()`, and `getTemplate()`. The current runtime returns deferred handles:
+`progress == 0.0` until the request is first observed, then `ready`, `getEntity()`,
+or `getTemplate()` completes the same loader path used by the blocking methods.
+On success, progress becomes `1.0` and `error == ""`. Entity loaders return an
+entity from `getEntity()` and `null` from `getTemplate()`; template loaders do
+the inverse. Missing filesystem paths and missing asset-manager paths become
+terminal load-error handles on observation (`"cannot read file"` or
+`"asset not found"`) rather than trapping. Existing files with unsupported model
+extensions complete with `"unsupported file extension"`. Malformed glTF JSON
+or other importer failures that return no model complete with
+`"failed to load model"` or `"failed to load model asset"`. Calling `cancel()` before first
+observation makes the handle terminal with `error == "cancelled"` and no result.
+Calling `cancel()` on a completed handle is a no-op, which keeps retrieved
+results stable. The handle contract is the public surface that later
+worker-backed decode/upload and residency budgeting will fill in without
+changing call sites.
+
+`SetResidencyBudget(bytes)` applies to the shared `ModelTemplate` cache. The
+budget uses a conservative CPU/GPU-resource estimate, evicts least-recently-used
+non-loading entries, and treats a negative value as unlimited. A budget of `0`
+keeps returned templates alive for callers that hold them, but prevents them
+from remaining in the shared cache. `Evict(handle)` is explicit cache eviction
+for ready template handles; entity handles are accepted as a stable no-op.
+
+---
+
+## WorldStream3D
+
+`WorldStream3D` is the Game3D handle for world-partition and terrain-streaming
+state. `World3D.stream` lazily creates a stable world-owned stream handle for
+the common case; `WorldStream3D.New(world)` still creates a separate stream
+controller when tooling or tests need an isolated handle:
+
+```zia
+var stream = world.stream;
+Game3D.WorldStream3D.mountCells(stream, "assets/world/cells.vscn");
+Game3D.WorldStream3D.mountTiledTerrain(stream, "assets/world/terrain.vscn");
+Game3D.WorldStream3D.setRadii(stream, 256.0, 320.0);
+Game3D.WorldStream3D.setCenter(stream, player.worldPosition);
+Game3D.WorldStream3D.update(stream, world.dt);
+```
+
+`setCenter`, `setRadii`, `setResidencyBudget`, `mountCells`,
+`mountTiledTerrain`, and `update` are registered and tested. `mountCells`
+parses a VSCN streaming manifest with a `cells` array:
+
+```json
+{"cells":[{"name":"town_00","path":"cells/town_00.vscn","center":[0,0,0],"radius":64,"bytes":65536}]}
+```
+
+Cell paths are resolved relative to the manifest, each resident cell loads its
+`.vscn` subtree into the world scene, and `update` loads/unloads cells around
+the current center using load/unload radii. `mountTiledTerrain` parses a
+terrain manifest with a `tiles` array using the same `name`, `path`, `center`,
+`radius`, and `bytes` fields, plus optional `width`, `depth`, `scale`, and
+`heightmap` for the `Terrain3D` payload:
+
+```json
+{"tiles":[{"name":"terrain_00","path":"terrain/terrain_00.tile","heightmap":"terrain/terrain_00.height","center":[0,0,0],"radius":128,"bytes":262144,"width":129,"depth":129,"scale":[4,32,4]}]}
+```
+
+Terrain and heightmap paths are resolved relative to the manifest and terrain
+tile telemetry loads/unloads deterministically around the current center.
+Resident terrain tiles instantiate `Terrain3D` payloads using the manifest
+dimensions and scale; an optional `heightmap` sidecar uses a small text format,
+`viper-heightmap-v1 <width> <depth>` followed by normalized height values, and
+is applied through the existing 16-bit `Terrain3D.SetHeightmap` path. The
+world-owned stream renders resident terrain tiles during `World3D.drawScene`
+using their manifest-centered world positions. Each resident terrain tile also
+owns an invisible `*_heightfield_collider` entity
+with a static `Collider3D.NewHeightfield` body, so physics residency follows
+terrain residency and unloads with the tile. Resident tiles also spawn hidden
+mesh-only `*_navmesh_source` nodes so `World3D.bakeNavMesh` includes streamed
+terrain through the existing scene bake path.
+`getResidentTerrainTile(index)` returns the nth currently resident payload or
+`null`. The telemetry properties (`residentCellCount`,
+`residentTerrainTileCount`, `pendingRequestCount`, and `residentBytes`) reflect
+resident cell payloads plus manifest-backed terrain tile residency. `update(dt)`
+advances a deterministic per-frame load budget; when the stream center jumps
+across multiple desired cell/tile payloads, stale payloads unload immediately,
+one or more new payloads are admitted by the frame budget, and
+`pendingRequestCount` reports deferred desired payloads until later updates
+drain them. A budget of `0` unloads cells and reports no resident cells or
+tiles; a negative budget is unlimited. Worker-backed decode/upload and real
+tile-local nav ownership are the next streaming layers.
+
+Editor/debug inspection uses method-style lower/camel calls:
+`getCellCount()`, `getCellName(i)`, `getCellCenter(i)`,
+`getCellResident(i)`, `getCellBytes(i)`, `getTerrainTileCount()`,
+`getTerrainTileName(i)`, `getTerrainTileHeightmap(i)`, `getTerrainTileCenter(i)`,
+`getTerrainTileResident(i)`, and `getTerrainTileBytes(i)`. Invalid indexes
+return the usual safe defaults (`0`, `false`, `""`, or `null`).
+
+`examples/3d/openworld_slice/` is the current end-to-end streaming smoke
+project. Its CTest moves the stream through all four far-apart quadrants over
+budgeted stream ticks,
+asserts one resident cell/tile at a time, verifies bounded resident bytes,
+validates heightmapped terrain-payload swaps, rendered stream terrain, and
+inspection hooks, checks
+the async `AssetHandle3D` model path, loads RGBA8 and BC7 KTX2
+`TextureAsset3D` fixtures, loads a synthetic skinned glTF agent through
+`Assets3D.LoadModelAsset`, crossfades its auto-bound animator from `Idle` to
+`Wave`, binds `IKSolver3D.LookAt` through `Animator3D.setIKSolver`, loads a
+committed GLB through `Assets3D.LoadModelAsset`, loads a committed WAV through
+`Sound3D.loadAsset`, validates a terrain-sampled `IKSolver3D.TwoBone` foot
+target, reads the
+`World3D` runtime counters, runs physics/character/nav-agent simulation,
+compares the software final frame to the committed
+`assets/baselines/openworld_slice_software.png` baseline, and repeats the same
+fixed-step sequence to prove deterministic replay.
+
+---
+
+## World-Scoped NavMesh Baking
+
+`World3D.bakeNavMesh(agentRadius, agentHeight, maxSlope, cellSize)` and
+`World3D.bakeTiledNavMesh(tileSize, agentRadius, agentHeight, maxSlope,
+cellSize)` are Game3D editor hooks over the lower-level
+`Viper.Graphics3D.NavMesh3D.Bake*` APIs. They bake from the world's current
+`Scene3D`, including hidden streamed-terrain nav source nodes, preserve
+world-space transforms, and return a
+`Viper.Graphics3D.NavMesh3D` for `NavAgent3D` use. The tiled entry currently
+uses the same full-scene baseline as `NavMesh3D.BakeTiled`; real tile-local
+ownership remains tracked in the 3D next-level plan.
 
 ---
 
@@ -419,6 +593,10 @@ Game3D.Animator3D.play(anim, "run");
 | `controller` | Raw `AnimController3D` escape hatch |
 | `play(name)` | Play a named controller state |
 | `crossfade(name, seconds)` | Blend to another named state |
+| `playLayerAdditive(layer, name)` | Play a named controller state as a true additive overlay layer |
+| `crossfadeLayerAdditive(layer, name, seconds)` | Blend a named controller state as a true additive overlay layer |
+| `setBlendTree(tree)` | Use a compatible `BlendTree3D` as the wrapped controller's base pose source |
+| `setIKSolver(solver)` | Apply a compatible `IKSolver3D` after overlays and before skinning |
 | `setSpeed(name, speed)` | Change a state's playback speed |
 | `isPlaying(name)` | Check the active base-layer state |
 | `stateTime()` | Current base-layer playback time |
@@ -439,6 +617,15 @@ animation controller use the same wrapper path.
 `Animator3D.eventCount()` and `eventName(index)` are the supported
 interpreted-Zia event path. Optional callback sugar such as `onAnimEvent` is
 deferred until the VM has a callback trampoline for managed function objects.
+Layer entry events from `playLayerAdditive` are captured through the same event
+buffer; `crossfadeLayerAdditive` uses the same event capture path. Layer masks
+and weights remain controlled on the wrapped `AnimController3D` through the
+`controller` escape hatch. `setBlendTree(tree)`
+forwards to `AnimController3D.SetBlendTree`; it is useful when a movement
+blendspace should supply the base pose while the controller still owns overlay
+layers and event polling. `setIKSolver(solver)` forwards to
+`AnimController3D.SetIKSolver` for foot/hand targets, look-at bones, and short
+FABRIK chains driven from gameplay.
 
 ---
 
@@ -554,14 +741,22 @@ if (count > 0) {
     var evt = Game3D.World3D.collisionEvent(world, Game3D.CollisionPhase.get_Enter(), 0);
     var other = Game3D.Collision3DEvent.other(evt, ball);
     var point = Game3D.Collision3DEvent.point(evt);
+    var firstNormal = Game3D.Collision3DEvent.contactNormal(evt, 0);
 }
 ```
 
 The wrapper exposes `phase`, `a`, `b`, `raw`, `isTrigger`, `relativeSpeed`,
-`normalImpulse`, `point()`, `normal()`, and `other(entity)`. `CollisionPhase.Any`
-iterates enter, stay, and exit records. Optional world/entity collision callback
-sugar remains deferred until the VM callback trampoline policy is implemented;
-polling the event buffers is the supported interpreted-Zia path.
+`normalImpulse`, `contactCount`, `point()`, `normal()`, `contactPoint(i)`,
+`contactNormal(i)`, `contactSeparation(i)`, and `other(entity)`.
+`point()` and `normal()` are first-contact convenience methods. Raw physics
+events can expose multiple contact points for AABB pairs; other shapes currently
+carry one representative point. The indexed wrapper methods mirror the raw
+`Graphics3D.CollisionEvent3D` surface so broader manifolds can extend behavior
+without another Game3D API rename.
+`CollisionPhase.Any` iterates enter, stay, and exit records. Optional
+world/entity collision callback sugar remains deferred until the VM callback
+trampoline policy is implemented; polling the event buffers is the supported
+interpreted-Zia path.
 
 ---
 
@@ -651,7 +846,7 @@ smoothing.
 | Interpreted Zia callback loop traps | Use manual `tick`/`stepSimulation`/frame methods or `runFramesOnly`; native callback loops require C-callable function pointers. |
 | Software backend disables a requested quality feature | Inspect `Canvas3D.get_QualityActive()` and `get_QualityFallback()`; `Quality.Apply` avoids unsupported shadow/post-FX paths. |
 | A body does not collide with another body | Verify the entity layer, `BodyDef.withLayer`, and `BodyDef.withMask`; masks must include the other body layer. |
-| A handle fails after teardown | Destroy the `World3D` last. Spawned entities, effects, and audio source bindings are owned by the world. |
+| A handle fails after teardown | Destroy the `World3D` last. Spawned entities, effects, and audio source bindings are owned by the world. Destroyed-handle diagnostics use `Game3D.<Type>.<method>: <reason>` so the failing API call is visible. |
 
 ---
 
@@ -661,14 +856,17 @@ The Game3D runtime is covered by:
 
 | Test | Coverage |
 |------|----------|
-| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, shared-body rejection, collision-event clearing, native callback loops, overlay hooks, final capture, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
-| `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, resize/aspect, manual frame path, final capture, and destroy |
+| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, destroyed-handle diagnostics, shared-body rejection, collision-event clearing, native callback loops, fixed-loop accumulator/spiral-guard behavior, overlay hooks, final capture, packaged glTF hierarchy loading through `Assets3D.LoadModelAsset`, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
+| `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, direct `Entity3D.FromNode` subtree wrapping, synthetic `tick`, clamped `stepSimulation`, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
 | `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |
+| `g3d_test_game3d_destroyed_handle_reject` | Interpreted Zia destroyed-`World3D` diagnostic for post-teardown handle use |
+| `g3d_test_game3d_destroyed_entity_reject` | Interpreted Zia destroyed-`Entity3D` diagnostic for post-teardown handle use |
+| `g3d_test_game3d_double_despawn_reject` | Interpreted Zia double-despawn ownership diagnostic |
 | `g3d_test_game3d_camera_controllers_probe` | Zia free-fly synthetic input, orbit drag/zoom, and follow camera post-physics tracking |
 | `g3d_test_game3d_character_controller_probe` | Zia first-person character movement and late-update camera alignment |
 | `g3d_test_game3d_presets_probe` | Zia material/prefab presets, lighting, quality fallback, post-FX, environment chaining, physics body setup, and final-overlay debug capture |
-| `g3d_test_game3d_assets_probe` | Zia `Assets3D` filesystem/asset loading, cached templates, and model-template instantiation |
+| `g3d_test_game3d_assets_probe` | Zia `Assets3D` filesystem/asset loading, imported-group spawn/despawn churn without registry retention, cached templates, cache clear/reload, missing package-asset error handles, and model-template instantiation |
 | `g3d_test_game3d_physics_probe` | Zia `BodyDef` static/dynamic body attachment, CCD/filter flags, gravity, and collision production |
 | `g3d_test_game3d_collision_probe` | Zia entity-aware collision wrappers for enter/stay/exit and trigger events |
 | `g3d_test_game3d_anim_probe` | Zia Animator3D play/crossfade/state-time/events, entity attachment, raw controller wrapping, and root-motion world stepping |
@@ -677,8 +875,17 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_docs_snippets` | Copy-paste docs surfaces for setup, presets, assets, physics, audio/VFX, deterministic frame helpers, and manual final-frame capture |
 | `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
 | `g3d_game3d_hello` | <=20-line hello-world scene with lighting, walkable ground, first-person character, and no `Mat4` |
+| `g3d_game3d_common_no_mat4` | CMake guard that common Game3D samples/probes avoid direct `Mat4.` calls |
 | `g3d_game3d_starter_probe` | Starter project deterministic movement, package-aware model asset, final capture, and grounded character path |
 | `g3d_game3d_starter_package_dry_run` | Starter `viper.project` asset packaging layout |
+| `g3d_openworld_slice_probe` | Open-world slice stream in/out, rendered heightmapped terrain payload access, async asset handle completion, skinned glTF play/crossfade plus LookAt IK binding, committed GLB/WAV asset fixture loading, terrain-sampled TwoBone foot IK proof, character/physics/nav stepping, software final-frame baseline comparison, and deterministic replay |
+| `g3d_openworld_slice_perf_probe` | Open-world slice deterministic software frame-loop perf probe; emits setup, elapsed, average-frame, FPS, draw, visibility, entity, body, and stream residency metrics |
+| `g3d_openworld_slice_perf_harness` | Reusable CTest perf harness wrapper that runs `perf_probe.zia`, parses the `PERF:` metrics, validates required counters, and emits a stable `HARNESS:` summary |
+| `g3d_openworld_slice_long_traversal` | Open-world slice repeated all-quadrant stream churn with bounded residency, terrain collider checks, render telemetry, and deterministic replay |
+| `g3d_openworld_slice_gpu_smoke` | Capability-gated platform GPU backend smoke for the open-world slice, including a degenerate-basis normal-map robustness pass; reports `SKIP` when the requested GPU backend is unavailable |
+| `g3d_openworld_slice_package_dry_run` | Open-world slice `viper.project` asset packaging layout |
+| `g3d_3dnext2_surface_probe` | Phase-0 3D next-level surface probe covering worker-backed ordered `Viper.Threads.Parallel` map output and `World3D.runFramesOnly` worker-count replay parity |
+| `test_rt_g3d_commit_queue` | Internal Graphics3D main-thread commit queue FIFO/budgeted drain, worker-enqueue/main-thread-commit behavior, and worker-drain rejection |
 | `g3d_game3d_showcase` | Full-stack sample smoke, software final-frame structural/HUD assertion, asset/audio/VFX/camera/physics/animation integration, and deterministic replay |
 | `g3d_game3d_bowling_setup` | Bowling setup migration smoke and deterministic replay |
 
@@ -703,8 +910,9 @@ presets, prefabs, environment/debug helpers, `Assets3D`, `BodyDef`,
 entity-aware collision event wrappers, `Animator3D`, `Sound3D`, and `Effects3D`
 now live in the C runtime.
 `examples/3d/walk_min.zia`, `examples/3d/game3d_starter/`, and
-`examples/3d/game3d_showcase/` are the current code-first samples. The bowling
-setup migration lives at `examples/games/3dbowling/game3d/`.
+`examples/3d/game3d_showcase/` are the current code-first samples.
+`examples/3d/openworld_slice/` is the streaming vertical-slice smoke project.
+The bowling setup migration lives at `examples/games/3dbowling/game3d/`.
 
 Use the lower-level `Viper.Graphics3D` and `Viper.Sound` APIs as escape hatches
 when a sample needs behavior outside the Game3D convenience layer.

@@ -95,6 +95,9 @@ fixed dt after `AdvanceSyntheticFrame()`, synthetic `Poll()`, or `Flip()`.
 `RenderTarget3D` during RTT passes. `WindowWidth` / `WindowHeight` always report
 the backing window, and `ActiveOutputWidth` / `ActiveOutputHeight` are explicit
 aliases for the active-output behavior.
+`Canvas3D.Resize(width, height)` updates the backing window size and the backend
+framebuffer size together; the next `Begin(camera)` uses the resized active
+output aspect without mutating the camera's stored projection.
 
 `PollEvent()` drains the per-canvas event queue in FIFO order and returns `0`
 when no queued event remains.
@@ -135,7 +138,105 @@ lights.
 | `ClearLights()` | `Void()` | Clear every retained canvas light slot |
 | `SetDefaultLighting()` | `Void()` | Install conservative key/fill/ambient defaults |
 | `LightCount` | `Integer` | Count active enabled canvas-slot lights |
+| `MaxActiveLights` | `Integer` | Current active-light budget for the selected lighting path |
+| `SetClusteredLighting(enabled)` | `Void(Boolean)` | Enable clustered/forward+ lighting only when the backend advertises support |
 | `SetAmbient(r, g, b)` | `Void(Double, Double, Double)` | Set ambient color |
+| `SetShadowCascades(count)` | `Void(Integer)` | Request cascaded shadow maps; counts above `1` require backend CSM support |
+
+The default path remains fixed forward lighting with `MaxActiveLights == 16`.
+`BackendSupports("clustered-lighting")` gates the many-light path; enabling it
+without support traps before mutating the canvas so fallback behavior stays
+explicit. The software backend advertises this capability as the correctness
+baseline and raises the bounded active-light payload to 64. GPU backends keep
+the 16-light forward cap until their clustered upload/shader paths advertise
+support. `BackendSupports("shadow-csm")` similarly gates cascaded shadows;
+`SetShadowCascades(1)` preserves the current single-shadow-map path.
+`BackendSupports("bc7")`, `BackendSupports("astc")`, and
+`BackendSupports("etc2")` are reserved for native compressed texture upload;
+current backends report them false while `TextureAsset3D` exposes metadata and
+RGBA8 fallback material binding. For uncompressed RGBA8 KTX2 files, each
+declared mip is decoded into a CPU `Pixels` fallback and
+`TextureAsset3D.SetResidentMipRange` switches the active fallback to the first
+resident mip while updating byte telemetry; native compressed upload still stays
+behind backend capability gates.
+
+### Canvas3D Visibility Controls
+
+The current visibility controls are a coarse CPU path: frustum rejection for
+bounded draws, front-to-back ordering for opaque submissions, and a
+low-resolution screen-space coverage/depth grid for conservative occlusion
+skips. They are not GPU occlusion queries, Hi-Z, or portal/PVS culling.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetFrustumCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection only |
+| `SetOcclusionCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection plus conservative CPU occlusion skips |
+| `DrawCount` | `Integer` | Main 3D draw submissions queued by the latest ended frame |
+| `OccludedDrawCount` | `Integer` | Latest scene draw submissions skipped by visibility culling |
+
+Use `SetFrustumCulling` when you only want off-frustum rejection. Use
+`SetOcclusionCulling` for the stronger CPU visibility path; transparent draws
+are never used as occluders and are not rejected by the coarse coverage grid.
+`BackendSupports("hlod")` reports support for runtime-authored LOD/impostor
+proxies. `BackendSupports("occlusion")` reports the CPU occlusion baseline; GPU
+query/Hi-Z/portal acceleration can advertise the same capability once added.
+The unit lane includes a dense covered-draw fixture that queues 65 opaque draws,
+submits only the front occluder, and reports 64 occlusion skips.
+
+### Viper.Graphics3D.Scene3D
+
+Hierarchical scene graph with an implicit root node and lazily recomputed world
+transforms.
+
+| Method / Property | Signature | Description |
+|-------------------|-----------|-------------|
+| `Root` | `SceneNode3D` | Implicit scene root |
+| `NodeCount` | `Integer` | Total nodes including root |
+| `VisibleNodeCount` | `Integer` | Drawable mesh nodes submitted by the most recent `Draw` |
+| `Add(node)` / `Remove(node)` | `Void(Object)` | Attach or detach root-level nodes |
+| `TryAdd(node)` | `Boolean(Object)` | Add a node and report validation/allocation failure |
+| `Find(name)` | `SceneNode3D(String)` | Search the scene by node name |
+| `QueryAABB(min, max)` | `Seq(SceneNode3D)(Vec3, Vec3)` | Return visible mesh nodes whose world AABB intersects the box |
+| `QuerySphere(center, radius)` | `Seq(SceneNode3D)(Vec3, Double)` | Return visible mesh nodes whose world AABB intersects the sphere |
+| `RaycastNodes(origin, direction, maxDistance)` | `SceneNode3D(Vec3, Vec3, Double)` | Return the closest visible mesh node hit by the ray |
+| `Draw(canvas, camera)` | `Void(Object, Object)` | Draw visible node meshes |
+| `SyncBindings(dt)` | `Void(Double)` | Push physics, animation, and binding transforms |
+| `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift every root-level subtree by `-delta` while leaving the root unchanged |
+
+The query methods are backed by the Scene3D spatial index when it is clean, with
+the deterministic flat walk kept as the internal parity fallback. Results skip
+hidden subtrees and only return nodes with their own mesh bounds. Draw culling
+uses the same indexed candidate set, then runs the exact selected-LOD/impostor
+frustum test before submitting. Runtime tests keep a generated 10k drawable-node
+grid in the normal Scene3D ctest lane to guard isolated-query and frame-cull
+candidate reduction.
+
+`RebaseOrigin` is the low-level floating-origin primitive used by Game3D. It
+keeps child-local transforms stable by moving only root-level subtrees in world
+space; physics bodies, cameras, and audio listeners should be rebased through
+their owning world systems as well.
+
+### Viper.Graphics3D.SceneNode3D LOD
+
+`SceneNode3D` supports authored mesh LODs through `AddLOD(distance, mesh)`.
+Entries remain sorted by distance, duplicate distances replace the previous
+mesh, and `ClearLOD()` restores the base mesh at every distance.
+
+| Method / Property | Signature | Description |
+|-------------------|-----------|-------------|
+| `AddLOD(distance, mesh)` | `Void(Double, Object)` | Use `mesh` once camera distance reaches `distance` |
+| `SetAutoLOD(enabled, screenErrorPx)` | `Void(Boolean, Double)` | Select authored LODs by projected screen size instead of distance thresholds |
+| `SetImpostor(distance, pixels)` | `Void(Double, Object)` | Generate an unlit textured quad proxy used at or beyond `distance`; pass `null` pixels to clear |
+| `ClearLOD()` | `Void()` | Remove authored LOD entries |
+| `LodCount` | `Integer` | Number of registered LOD entries |
+| `GetLodMesh(index)` | `Object(Integer)` | Borrow the mesh for an LOD entry |
+| `GetLodDistance(index)` | `Double(Integer)` | Get the sorted distance threshold |
+
+`SetAutoLOD` does not synthesize new meshes; it selects among meshes already
+registered with `AddLOD`. A lower `screenErrorPx` keeps the base mesh longer,
+while a higher value switches to lower-detail meshes sooner. `SetImpostor`
+retains the supplied `Pixels` object and builds a regular textured `Mesh3D`
+proxy, so it works on the same draw path as other meshes.
 
 ### Viper.Graphics3D.Camera3D
 
@@ -219,10 +320,69 @@ backend sync callback, so later CPU readback cannot call into a stale GPU contex
 
 ### Viper.Graphics3D.CubeMap3D
 
-Cubemap texture resource for environment mapping and skyboxes. Use `Canvas3D.LoadCubeMap` to load six-face cubemaps from disk.
+Cubemap texture resource for environment mapping and skyboxes. Use `Canvas3D.LoadCubeMap` to load six-face cubemaps from disk. Skybox sampling uses the camera forward vector for orthographic cameras and falls back to the engine's `-Z` camera direction if that vector is degenerate; GPU smoke coverage also exercises a degenerate-basis normal-map draw.
 
 **Type:** Instance (obj)
 **Constructor:** `CubeMap3D.New(size)`
+
+---
+
+### Viper.Graphics3D.Material3D
+
+Surface material used by mesh, model, instanced, terrain, water, decal, and
+sprite draws.
+
+**Type:** Instance (obj)
+**Constructor:** `Material3D.New()`
+
+#### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `NewColor(r, g, b)` | `Object(Double, Double, Double)` | Create a diffuse-color material |
+| `NewTextured(texture)` | `Object(Object)` | Create a material with a base `Pixels` or RGBA8-backed `TextureAsset3D` texture |
+| `NewPBR(r, g, b)` | `Object(Double, Double, Double)` | Create a PBR material |
+| `SetColor(r, g, b)` | `Void(Double, Double, Double)` | Set diffuse/base color |
+| `SetTexture(texture)` / `SetAlbedoMap(texture)` | `Void(Object)` | Bind or clear the base-color texture slot |
+| `SetNormalMap(texture)` | `Void(Object)` | Bind or clear a tangent-space normal map |
+| `SetSpecularMap(texture)` | `Void(Object)` | Bind or clear a legacy specular map |
+| `SetEmissiveMap(texture)` | `Void(Object)` | Bind or clear an emissive texture |
+| `SetMetallicRoughnessMap(texture)` | `Void(Object)` | Bind or clear the packed PBR metallic-roughness map |
+| `SetAOMap(texture)` | `Void(Object)` | Bind or clear the ambient-occlusion map |
+| `SetEnvMap(cubemap)` | `Void(Object)` | Bind or clear an environment cubemap |
+
+Texture map methods accept `Pixels` or `TextureAsset3D` handles that have an
+active RGBA8 fallback. KTX2 BC3/BC7/ASTC/ETC2 texture assets can be loaded for
+metadata and mip residency byte telemetry today, but binding compressed-only
+assets traps until a backend advertises native upload support.
+
+#### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `Color` | Object | Read | Diffuse/base color as `Vec3` |
+| `Alpha` | Double | Read/Write | Material opacity |
+| `Metallic` | Double | Read/Write | PBR metallic factor |
+| `Roughness` | Double | Read/Write | PBR roughness factor |
+| `AO` | Double | Read/Write | Ambient-occlusion factor |
+| `EmissiveIntensity` | Double | Read/Write | Emissive multiplier |
+| `NormalScale` | Double | Read/Write | Normal-map strength |
+| `AlphaMode` | Integer | Read/Write | `0=opaque`, `1=mask`, `2=blend` |
+| `DoubleSided` | Boolean | Read/Write | Render both triangle sides |
+| `Unlit` | Boolean | Read | True when unlit shading is enabled |
+| `ShadingModel` | Integer | Read | Current shading model |
+| `HasTexture` | Boolean | Read | Base-color/albedo texture slot is bound |
+| `HasNormalMap` | Boolean | Read | Normal-map slot is bound |
+| `HasSpecularMap` | Boolean | Read | Specular-map slot is bound |
+| `HasEmissiveMap` | Boolean | Read | Emissive-map slot is bound |
+| `HasMetallicRoughnessMap` | Boolean | Read | PBR metallic-roughness map slot is bound |
+| `HasAOMap` | Boolean | Read | Ambient-occlusion map slot is bound |
+| `HasEnvMap` | Boolean | Read | Environment cubemap slot is bound |
+| `Reflectivity` | Double | Read/Write | Environment reflection strength |
+
+Texture setters accept `Pixels` handles, except `SetEnvMap`, which accepts a
+`CubeMap3D`. Passing `NULL` clears the slot and immediately updates the matching
+`Has*` property.
 
 ---
 
@@ -240,6 +400,7 @@ Scene light with configurable color, intensity, and enabled state.
 | `SetIntensity(value)` | `Void(Double)` | Set light intensity multiplier |
 | `SetColor(r, g, b)` | `Void(Double, Double, Double)` | Set light color using normalized RGB components |
 | `SetEnabled(enabled)` | `Void(Boolean)` | Toggle contribution without clearing the light slot |
+| `SetCastsShadows(enabled)` | `Void(Boolean)` | Toggle whether the light may be selected for shadow-map rendering |
 
 #### Properties
 
@@ -249,6 +410,7 @@ Scene light with configurable color, intensity, and enabled state.
 | `Color` | Object | Read | RGB `Vec3` |
 | `Intensity` | Double | Read | Brightness multiplier |
 | `Enabled` | Boolean | Read/Write | Disabled lights are skipped by rendering |
+| `CastsShadows` | Boolean | Read/Write | Only enabled, directional lights with this flag set are selected for current shadow passes; ambient lights default to false |
 | `Direction` | Object | Read | Direction `Vec3` |
 | `Position` | Object | Read | Position `Vec3` |
 
@@ -313,6 +475,26 @@ Ray queries normalize non-zero directions internally. Zero-length or non-finite 
 
 ---
 
+## Asset Loading
+
+### Viper.Graphics3D.Model3D
+
+High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, and geometry-only `.obj` assets.
+
+#### Scene and Camera Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `get_SceneCount(model)` | `Integer(Object)` | Number of immutable scenes addressable by indexed APIs |
+| `GetSceneName(model, index)` | `String(Object, Integer)` | Name for a scene index, or `""` when out of range |
+| `GetCameraCount(model, sceneIndex)` | `Integer(Object, Integer)` | Number of imported cameras for a scene |
+| `GetCamera(model, sceneIndex, index)` | `Object(Object, Integer, Integer)` | Imported `Camera3D`, or `null` when absent/out of range |
+| `InstantiateSceneAt(model, index)` | `Object(Object, Integer)` | Clone a scene by index as a fresh `Scene3D` |
+
+glTF cameras are imported as standalone `Camera3D` handles with the node's world transform applied. Cached `Model3D` assets remain immutable: index `0` is the active/default scene, secondary glTF scene roots follow it, and invalid scene indices return zero/null rather than changing shared loader state.
+
+---
+
 ## Skeletal Animation
 
 ### Viper.Graphics3D.Skeleton3D
@@ -350,7 +532,7 @@ from the current bone count.
 Single keyframe animation track referencing a `Skeleton3D`.
 
 **Type:** Instance (obj)
-**Constructor:** `Animation3D.New(name, skeleton)`
+**Constructor:** `Animation3D.New(name, durationSeconds)`
 
 #### Properties
 
@@ -365,6 +547,11 @@ Single keyframe animation track referencing a `Skeleton3D`.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `AddKeyframe(boneIndex, time, translation, rotation, scale)` | `Void(Integer, Double, Object, Object, Object)` | Add a keyframe for the given bone at `time` seconds; `null` TRS parts fall back to bind pose |
+| `Retarget(srcSkeleton, dstSkeleton)` | `Object(Object, Object)` | Copy channels onto matching destination bones |
+
+`Retarget` maps channels by source bone name first and by matching bone index as a fallback. It
+preserves clip name, duration, looping, and keyframe values; destination-only bones remain in bind
+pose.
 
 ---
 
@@ -445,6 +632,57 @@ looping flag unless overridden by speed/time control in code.
 
 ---
 
+### Viper.Graphics3D.BlendTree3D
+
+Parametric 1D/2D blendspaces over `AnimBlend3D`. `Canvas3D.DrawMeshBlended` accepts a
+`BlendTree3D` anywhere it accepts an `AnimBlend3D`.
+
+**Type:** Instance (obj)
+**Constructors:** `BlendTree3D.New1D(skeleton)`, `BlendTree3D.New2D(skeleton)`
+
+#### Properties
+
+| Property      | Type    | Access | Description |
+|---------------|---------|--------|-------------|
+| `SampleCount` | Integer | Read   | Number of animation samples in the tree |
+
+#### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddSample(animation, x, y)` | `Integer(Object, Double, Double)` | Add an `Animation3D` sample and return its index |
+| `SetParam(x, y)` | `Void(Double, Double)` | Set blend parameters and recompute weights |
+| `Update(deltaSeconds)` | `Void(Double)` | Recompute weights and advance the underlying blended pose |
+
+`New1D` linearly blends between neighboring `x` samples and clamps outside the sample range.
+`New2D` uses exact-coordinate selection when possible, otherwise normalized inverse-distance
+weights across registered samples.
+
+---
+
+### Viper.Graphics3D.IKSolver3D
+
+Inverse-kinematics solvers for final pose adjustment before skinning.
+
+**Type:** Instance (obj)
+**Constructors:** `IKSolver3D.TwoBone(skeleton, root, mid, end)`, `IKSolver3D.LookAt(skeleton, bone)`, `IKSolver3D.FABRIK(skeleton, chain)`
+
+#### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetTarget(pos)` | `Void(Object)` | Set the target as a `Vec3` |
+| `SetWeight(weight)` | `Void(Double)` | Blend solver output from `0.0` to `1.0`; non-finite values become zero |
+| `Solve()` | `Void()` | Solve against the skeleton bind pose for standalone inspection |
+
+Attach a solver through `AnimController3D.SetIKSolver(solver)` or the Game3D
+wrapper `Animator3D.setIKSolver(solver)`. Controller-bound IK runs after the
+base state/blend tree and overlays are composed, then before skinning palettes
+are generated. `TwoBone` and `FABRIK` use a positional chain solve and preserve
+the chain root; `LookAt` aims the selected bone's local +Z axis.
+
+---
+
 ### Viper.Graphics3D.AnimController3D
 
 Stateful animation controller with named states, triggered transitions, animation events, root motion, and multi-layer blending.
@@ -474,20 +712,33 @@ Stateful animation controller with named states, triggered transitions, animatio
 | `Update(deltaSeconds)` | `Void(Double)` | Advance the controller and produce the current pose |
 | `SetStateSpeed(state, speed)` | `Void(String, Double)` | Override playback speed for a state |
 | `SetStateLooping(state, loop)` | `Void(String, Boolean)` | Override loop setting for a state |
+| `SetAnimationLOD(distance, rateHz)` | `Void(Double, Double)` | Batch animation updates at a lower deterministic rate; non-positive inputs disable throttling |
+| `SetBlendTree(tree)` | `Boolean(Object)` | Use a compatible `BlendTree3D` as the base pose source; pass `Nothing` to clear |
+| `SetIKSolver(solver)` | `Boolean(Object)` | Apply a compatible `IKSolver3D` after overlays and before skinning; pass `Nothing` to clear |
 | `AddEvent(state, time, name)` | `Void(String, Double, String)` | Register a named event to fire at a playback time |
 | `PollEvent()` | `String()` | Dequeue the next fired event name, or empty string |
 | `SetRootMotionBone(index)` | `Void(Integer)` | Designate a bone to extract root motion from; `-1` disables it |
 | `ConsumeRootMotion()` | `Object()` | Read and clear the accumulated root motion `Vec3` |
-| `SetLayerWeight(layer, weight)` | `Void(Integer, Double)` | Set the blend weight for an additive layer |
+| `SetLayerWeight(layer, weight)` | `Void(Integer, Double)` | Set the blend weight for an overlay layer |
 | `SetLayerMask(layer, boneMask)` | `Void(Integer, Integer)` | Restrict a layer to a bone mask bitmask |
-| `PlayLayer(layer, state)` | `Boolean(Integer, String)` | Play a state on an additive layer |
-| `CrossfadeLayer(layer, state, duration)` | `Boolean(Integer, String, Double)` | Blend into a new state on an additive layer over `duration` seconds |
-| `StopLayer(layer)` | `Void(Integer)` | Stop the additive layer |
+| `PlayLayer(layer, state)` | `Boolean(Integer, String)` | Play a state as a masked replace overlay |
+| `PlayLayerAdditive(layer, state)` | `Boolean(Integer, String)` | Play a state as a true additive bind-pose delta overlay |
+| `CrossfadeLayer(layer, state, duration)` | `Boolean(Integer, String, Double)` | Blend into a new masked replace state on an overlay layer |
+| `CrossfadeLayerAdditive(layer, state, duration)` | `Boolean(Integer, String, Double)` | Blend into a true additive bind-pose delta state on an overlay layer |
+| `StopLayer(layer)` | `Void(Integer)` | Stop the overlay layer |
 | `GetBoneMatrix(boneIndex)` | `Object(Integer)` | Return the current global/world matrix for `boneIndex` |
 
 Root motion is disabled by default, preserves loop-wrap deltas, and resets its accumulated
 translation/rotation when disabled or switched to another bone. `Stop()` returns all layers to bind
-pose while keeping state metadata intact.
+pose while keeping state metadata intact. `PlayLayer` keeps the compatibility replace-overlay
+behavior; `PlayLayerAdditive` applies `(overlayPose - bindPose) * weight` over the current base pose.
+`CrossfadeLayerAdditive` uses the same additive composition while blending overlay states.
+`SetAnimationLOD(distance, rateHz)` accumulates elapsed time and samples only when the configured
+interval elapses, then applies the full accumulated delta so playback remains deterministic.
+`SetBlendTree(tree)` updates the tree with the controller tick and uses its blended local pose as
+the base layer before overlay layers are applied. Root-motion extraction still comes from the
+controller's state-player base layer. `SetIKSolver(solver)` requires a solver bound to the same
+skeleton and applies it after overlays, before the final skin palette.
 
 ```rust
 bind Viper.Graphics3D.AnimController3D as AnimController3D;
@@ -743,13 +994,15 @@ same undirected edge, because adjacency/pathfinding would otherwise be
 ambiguous.
 
 **Type:** Static (none)
-**Constructor:** `NavMesh3D.Build(mesh, agentRadius, agentHeight)`
+**Constructors:** `NavMesh3D.Build(mesh, agentRadius, agentHeight)`, `NavMesh3D.Bake(scene, agentRadius, agentHeight, maxSlope, cellSize)`, `NavMesh3D.BakeTiled(scene, tileSize, agentRadius, agentHeight, maxSlope, cellSize)`
 
 #### Properties
 
-| Property        | Type    | Access | Description |
-|-----------------|---------|--------|-------------|
-| `TriangleCount` | Integer | Read   | Number of walkable triangles in the mesh |
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `TriangleCount` | Integer | Read | Number of walkable triangles in the mesh |
+| `OffMeshLinkCount` | Integer | Read | Number of authored traversal links |
+| `ObstacleCount` | Integer | Read | Number of authored coarse AABB obstacles |
 
 #### Methods
 
@@ -758,8 +1011,32 @@ ambiguous.
 | `FindPath(start, end)` | `Object(Object, Object)` | Return a `Seq[Vec3]` of waypoints from `start` to `end`, or `Nothing` |
 | `SamplePosition(pos)` | `Object(Object)` | Snap `pos` to the nearest walkable position |
 | `IsWalkable(pos)` | `Boolean(Object)` | True when `pos` is on the walkable surface |
+| `AddOffMeshLink(from, to, bidirectional)` | `Boolean(Object, Object, Boolean)` | Add a directed or bidirectional link between walkable points |
+| `AddObstacle(min, max)` | `Boolean(Object, Object)` | Add a coarse AABB obstacle and refilter walkable triangles |
+| `RemoveObstacle(index)` | `Boolean(Integer)` | Remove a coarse obstacle and refilter walkable triangles |
+| `UpdateObstacle(index, min, max)` | `Boolean(Integer, Object, Object)` | Move/resize a coarse obstacle and refilter walkable triangles |
+| `RebuildTile(tileX, tileZ)` | `Boolean(Integer, Integer)` | Refilter the current navmesh after tile-scoped edits |
 | `SetMaxSlope(degrees)` | `Void(Double)` | Override the maximum walkable slope angle |
 | `DebugDraw(canvas3D)` | `Void(Object)` | Draw the navmesh wireframe for debugging |
+
+`Bake` flattens every `Mesh3D` attached under a `Scene3D` through each node's
+world transform and then uses the same triangle-build path as `Build`.
+`BakeTiled` accepts the final tiled API shape but currently returns a full-scene
+navmesh. `RebuildTile` likewise refilters the preserved full mesh rather than
+owning tile-local geometry; real tile storage remains future work.
+
+`AddOffMeshLink` is for authored traversal such as jumps, ladders, and
+drop-downs. Both endpoints must be on current walkable polygons. The pathfinder
+uses the link as an extra graph edge and includes the link endpoints in the
+returned waypoint list. Shared-edge portals narrower than `agentRadius * 2` are
+not linked when the mesh is built, so wider agents do not path through narrow
+authored passages. `AddObstacle` stores a finite world-space AABB, removes
+overlapping triangles from the current walkable set, and rebuilds adjacency
+immediately. `RemoveObstacle` and `UpdateObstacle` edit the authored obstacle list
+by zero-based index and refilter the preserved source geometry immediately. This
+is a coarse carving baseline for tile-sized navmesh geometry; voxel/region
+generation, tile-local rebuilds, fine polygon erosion, and pathfinding
+acceleration are still separate navigation-depth work.
 
 ---
 
@@ -782,6 +1059,8 @@ Pathfinding agent that moves along a `NavMesh3D` toward a target.
 | `StoppingDistance`  | Double  | Read/Write | Distance from goal at which to stop |
 | `DesiredSpeed`      | Double  | Read/Write | Maximum movement speed |
 | `AutoRepath`        | Boolean | Read/Write | Automatically repath when blocked |
+| `AvoidanceEnabled`  | Boolean | Read/Write | Enable same-NavMesh local separation against other enabled agents |
+| `AvoidanceRadius`   | Double  | Read/Write | Local separation radius; defaults to the agent radius and clamps to `>= 0` |
 
 #### Methods
 
@@ -794,6 +1073,8 @@ Pathfinding agent that moves along a `NavMesh3D` toward a target.
 | `BindCharacter(character3D)` | `Void(Object)` | Drive a `Character3D` from agent velocity |
 | `BindNode(sceneNode)` | `Void(Object)` | Drive a `SceneNode3D` position from agent |
 
+Avoidance is local and opt-in. Agents on the same `NavMesh3D` with `AvoidanceEnabled=true` bias their desired velocity away from overlapping or imminent head-on neighbors before the update drives a character or node. It is not a replacement for tiled navmesh rebuilds, dynamic obstacle carving, off-mesh links, or full crowd simulation.
+
 ```rust
 bind Viper.Graphics3D.NavMesh3D as NavMesh3D;
 bind Viper.Graphics3D.NavAgent3D as NavAgent3D;
@@ -802,6 +1083,8 @@ var nav  = NavMesh3D.Build(groundMesh, 0.5, 1.8)
 var agent = NavAgent3D.New(nav)
 agent.DesiredSpeed = 4.0
 agent.StoppingDistance = 0.3
+agent.AvoidanceEnabled = true
+agent.AvoidanceRadius = 0.6
 agent.SetTarget(Vec3.New(12.0, 0.0, 8.0))
 
 // per frame
@@ -1052,7 +1335,9 @@ Texture atlas for 3D rendering with named-region management.
 
 - `Transform3D` is distinct from `SceneNode3D` — use `Transform3D` for standalone matrix math and non-scene-graph transforms; attach nodes to the scene for scene-managed transform hierarchies.
 - `AnimController3D.PollEvent` returns events one at a time per call; poll it in a loop until an empty string is returned if multiple events fire in one update.
-- `NavMesh3D` is rebuilt by `NavMesh3D.Build`; the mesh is not dynamic. Rebuild when geometry changes, and keep baked meshes manifold at shared edges.
+- `NavMesh3D` is rebuilt by `NavMesh3D.Build`; `AddObstacle` provides coarse
+  AABB carving on the current mesh, but geometry changes still require a rebuild.
+  Keep baked meshes manifold at shared edges.
 - `Particles3D.Draw` should be called inside the `Canvas3D.Begin`/`End` scene pass after opaque geometry when you want particles over the main scene.
 - Deferred heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; public `DrawMesh` rejects raw stack mesh payloads, while internal skinned and morphed paths retain or snapshot the animation payloads needed for backend submission.
 - `Sound3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.

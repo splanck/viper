@@ -1,7 +1,8 @@
 # OpenGL (Linux) — platform-specific implementation & test checklist
 
-> Companion to `roadmap.md` / `runtime-changes.md`. This file lists only the work
-> that is **OpenGL-/Linux-specific** and must be implemented and tested on a Linux
+> Companion to `roadmap.md` / `runtime-changes.md`, sibling to `metal.md`
+> (macOS) and `directx.md` (Windows). This file lists only the work that is
+> **OpenGL-/Linux-specific** and must be implemented and tested on a Linux
 > dev machine. CPU/backend-neutral phases (3 spatial index, 8 physics, 9 nav,
 > 10 animation logic) carry **no OpenGL-specific work** beyond render parity and
 > are listed at the end.
@@ -68,7 +69,7 @@ compressed uploads; never assume.
 - **Sampler objects.** The backend uses sampler objects so one texture serves
   multiple material slots; keep that for compressed + array textures.
 - **Capabilities.** Add GL capability strings as features land
-  (`BackendSupports("rt-finalize"/"occlusion"/"clustered"/"bc7"/"s3tc"/...)`),
+  (`BackendSupports("rt-finalize"/"occlusion"/"clustered-lighting"/"shadow-csm"/"bc7"/"s3tc"/...)`),
   driven by runtime extension/version checks; default `false`.
 
 ## 3. Per-phase OpenGL implementation + test checklist
@@ -119,8 +120,8 @@ compressed uploads; never assume.
 | ID | Implement | Test |
 |---|---|---|
 | GL-11-1 | `glCompressedTexImage2D` for **S3TC (BC1–3)** + **BPTC (BC7/BC6H)** via runtime-checked extensions | compressed vs raw within tolerance; recorded VRAM reduction |
-| GL-11-2 | KTX2/Basis transcode → BC7/S3TC; **ETC2/ASTC capability `false`** on desktop, software-decode fallback | KTX2/Basis loads; capability query honest; extension check before use |
-| GL-11-3 | glTF camera/multi-scene + Draco/meshopt are loader-side (backend-neutral) | confirm imported camera/scene render under OpenGL |
+| GL-11-2 | KTX2/precompressed block upload → BC7/S3TC when extensions exist; **ETC2/ASTC capability `false`** on desktop, software-decode fallback | KTX2/precompressed asset loads; capability query honest; extension check before use |
+| GL-11-3 | glTF camera/multi-scene are loader-side (backend-neutral); Basis/Draco/meshopt remain optional Phase 11b | confirm imported camera/scene render under OpenGL |
 
 ### Phase 12 — vertical slice
 | ID | Implement | Test |

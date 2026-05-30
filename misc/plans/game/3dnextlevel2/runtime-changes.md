@@ -11,6 +11,15 @@ function follows the established pattern (as in `3Dnextlevel/runtime-changes.md`
    stub.
 4. `./scripts/check_runtime_completeness.sh` green.
 
+Every new public class also follows the 3D object ABI pattern:
+
+- Add `RT_CLASS_BEGIN("Viper.<...>", ...)` to `runtime.def`.
+- Append a permanent `RT_G3D_*_CLASS_ID` in `rt_graphics3d_ids.h`; never
+  renumber or reuse existing negative sentinel ids.
+- Validate handles through the existing `rt_g3d_checked_or_null` helpers.
+- Provide disabled-graphics stubs and class docs/tests before marking the API
+  complete.
+
 Hard constraints (Core Principles): zero external dependencies, cross-platform on
 day one via `rt_platform.h` / `PlatformCapabilities.hpp` (no raw
 `_WIN32`/`__APPLE__`/`__linux__` outside adapters), VM/native determinism for
@@ -18,23 +27,50 @@ simulation, and software-backend correctness baseline with capability-gated GPU
 parity. Every new system is **opt-in** and must not change bounded-scene behavior
 when its flag is off.
 
+**Current source layout (verified 2026-05-29).** The 3D runtime is organized
+into per-domain subdirectories under `src/runtime/graphics/3d/`: `scene/`
+(scene graph, transforms, raycast, VSCN), `physics/` (world, colliders, joints),
+`nav/` (navmesh, agents, paths), `anim/` (controller, skeleton, morph targets),
+`render/` (canvas, camera, mesh, material, light, post-FX, decals, sprites),
+`world/` (terrain, water, vegetation, particles), `assets/` (glTF/FBX loaders),
+`audio/`, and `backend/` (software + Metal/D3D11/OpenGL behind the `vgfx3d`
+vtable). Only `rt_game3d.c` (the `Viper.Game3D` ergonomics layer) sits at the top
+level. New subsystems land in the matching subdir (e.g. the spatial index in
+`scene/`, the solver work in `physics/`, the navmesh baker in `nav/`); a job
+runtime that is not 3D-specific belongs in `src/runtime/` proper, on
+`rt_platform.h`. All file:line citations below use this layout.
+
 ---
 
 ## 0. Carryover runtime items (Phase C)
 
 Close the prior plan's open runtime contracts first (see `carryover.md`).
 
-- **Render-target finalization (CO-4 / R-FRAME-016/018).** Define and implement
-  `FinalizeFrame`/`ScreenshotFinal`/`Flip` for render-target-backed frames, or
-  add an explicit capability string (`BackendSupports("rt-finalize")`) and trap
-  with a clear diagnostic when unsupported.
-- **Lifetime diagnostics (CO-3 / R-LIFE-*).** Add destroyed-world/entity,
-  double-despawn, missing-package-asset, and capability-fallback diagnostics in
-  the `Game3D.<Type>.<method>: <reason>` form; add leak/retention probes.
-- **Optional getters (CO-6).** `Light3D.get_CastsShadows`/`SetCastsShadows`
+- **Render-target finalization (CO-4 / R-FRAME-016/018).** Treat the existing
+  `FinalizeFrame`/`ScreenshotFinal` surface as the public contract. Phase C
+  verifies backend-specific behavior, keeps `BackendSupports("rt-finalize")`
+  honest, and traps with a clear diagnostic when unsupported.
+- **Lifetime diagnostics (CO-3 / R-LIFE-*).** Destroyed-world/entity and
+  double-despawn diagnostics use the `Game3D.<Type>.<method>: <reason>` form;
+  missing package assets produce terminal error handles; capability fallback
+  reasons remain inspectable; imported-group despawn and cache-clear/reload
+  churn are covered.
+- **Optional getters (CO-6).** `Light3D.get_CastsShadows`/
+  `Light3D.set_CastsShadows`
   (skip non-casters in shadow selection), material texture-presence getters.
-- **Determinism/resize (CO-10), implicit-lighting decision (CO-5), Metal probe
-  (CO-7), docs (CO-8)** as listed in `carryover.md`.
+- **Metal robustness probe (CO-7).** Metal skybox zero-vector fallback uses
+  Canvas3D's `-Z` convention; fake-Metal unit coverage and the platform GPU
+  smoke both exercise degenerate normals/tangents with a normal map.
+- **Determinism/resize probes (CO-10).** `World3D.runFramesOnly` has a
+  worker-count replay parity baseline; `Canvas3D.Resize` resizes the backend
+  framebuffer and the next frame's active-output projection aspect without
+  mutating the stored camera projection.
+- **Phase-1 exit partials (CO-12).** Fixed-loop accumulator and spiral-guard
+  behavior, common-sample no-`Mat4` guard, direct `Entity3D.FromNode` Zia
+  coverage, packaged glTF hierarchy loading through `Assets3D.LoadModelAsset`,
+  and destroyed-world diagnostics are covered.
+- **Implicit-lighting decision (CO-5) and docs (CO-8)** are closed as listed in
+  `carryover.md`.
 
 Tests: cross-platform `-L graphics3d` green (CO-1); perf lane (CO-11);
 render-target finalization unit + Zia probe; lifetime diagnostic probes.
@@ -43,24 +79,44 @@ render-target finalization unit + Zia probe; lifetime diagnostic probes.
 
 ## 1. Concurrency runtime (job/worker system)
 
-**Current facts.** No worker threads exist in `src/runtime/graphics/3d/` (grep:
-zero `pthread_create`/`std::thread`). The only sync primitive is a dormant
-model-cache mutex/condvar (`rt_game3d.c:439`). Everything is main-thread-only
-(`graphics3d-architecture.md:485`).
+**Current facts.** `World3D.workerCount` / `jobsEnabled` / `setWorkerCount`
+exist and `World3D` now owns a lazy internal `ThreadPool` when a multi-worker
+world has eligible work. `World3D.stepSimulation` uses that pool for animator
+batches, and `test_rt_game3d` verifies single-worker vs. multi-worker parity for
+root motion, state time, and animation events. The general worker substrate is
+the existing `Viper.Threads.Pool` / `Viper.Threads.Parallel` runtime on
+`rt_platform.h`; `g3d_3dnext2_surface_probe` verifies ordered parallel-map
+replay plus `World3D.runFramesOnly` worker-count replay. The process-wide
+model-cache mutex/condvar still only serializes the shared model cache;
+the internal Graphics3D commit queue now provides the deterministic
+worker-to-main-thread handoff for renderer-facing commits. The thread-safety
+audit for Phase 1 keeps public 3D handle mutation main-thread-only: workers may
+use `Viper.Threads.Pool` / `Viper.Threads.Parallel`, plain copied data, retained
+ordered-map outputs, and commit-queue enqueue, while commit draining and handle
+mutation stay on the main thread. `test_rt_g3d_commit_queue` covers the
+worker-drain rejection path so worker jobs cannot apply renderer-facing commits
+directly. Asset decode/upload paths still need to consume the queue.
 
 **Change.**
 
-- Add a runtime worker pool + job API on `rt_platform.h` threads:
-  `rt_job_submit`, `rt_job_wait`, a parallel-for, and futures/handles.
+- Reuse the existing internal runtime worker pool and parallel APIs on
+  `rt_platform.h` threads: `Viper.Threads.Pool`, `Viper.Threads.Parallel`, and
+  their C runtime entry points.
 - Add a **deterministic ordered-merge** primitive: results produced by workers
   are reduced into simulation state in a fixed, index-ordered sequence so output
   is independent of completion order.
 - Add a **main-thread commit queue** for GPU resource creation/upload (consumed
-  by §4).
-- Make worker-touched paths thread-safe: audit `rt_obj_new_i64`, pool allocators
-  (`rt_pool`), string interning, and Graphics3D handle validation.
-- Expose minimal control: `World3D.get_WorkerCount`, enable/disable; internal
-  first.
+  by §4). The internal queue is now present and covered by
+  `test_rt_g3d_commit_queue`; §4 still needs to route decoded asset payloads
+  through it.
+- Make worker-touched paths thread-safe: Phase 1 worker paths are limited to
+  the existing thread runtime, copied data, retained ordered-map results, and
+  commit-queue enqueue. Graphics3D/Game3D handle validation and commit draining
+  remain main-thread-only, with a negative CTest guarding worker-drain misuse.
+  Future worker-touched asset loaders/upload queues reopen this audit under §4.
+- Expose only small public controls (`World3D.workerCount`,
+  `World3D.jobsEnabled`, `World3D.setWorkerCount`); game code does not author
+  jobs in this milestone.
 
 **Determinism contract.** Simulation (physics step, animation sampling,
 gameplay) is deterministically scheduled. Workers do load/decode/cull/bake/
@@ -74,9 +130,10 @@ on/off `runFrames` parity; ADR if any VM/IL change is implied.
 
 ## 2. Floating origin and coordinate precision
 
-**Current facts.** Scene-node transforms are `double` (`rt_scene3d_internal.h:77`)
-but cull AABBs are `float` (line 102), mesh vertices and the GPU pipeline are
-`float`, and there is no origin rebasing. Precision degrades a few km from origin.
+**Current facts.** Scene-node transforms are `double`
+(`scene/rt_scene3d_internal.h:77`) but cull AABBs are `float` (same file, line
+102), mesh vertices and the GPU pipeline are `float`, and there is no origin
+rebasing. Precision degrades a few km from origin.
 
 **Change.**
 
@@ -86,7 +143,7 @@ but cull AABBs are `float` (line 102), mesh vertices and the GPU pipeline are
   keep GPU upload `float` but relative to the camera/cell origin.
 - Add an atomic `rt_scene3d_rebase_origin(delta)` that shifts nodes, physics
   bodies, audio sources, particles, and in-flight queries between frames.
-- Capability-gate via `World3D.set_FloatingOrigin(enabled)`; off ⇒ unchanged.
+- Capability-gate via `World3D.floatingOrigin`; off means unchanged.
 
 **Tests.** Far-origin (50 km) vs. near-origin render/physics within tolerance;
 rebase determinism under `runFrames`; bounded-scene byte-equality with flag off.
@@ -95,10 +152,20 @@ rebase determinism under `runFrames`; bounded-scene byte-equality with flag off.
 
 ## 3. Spatial acceleration index
 
-**Current facts.** `draw_node` walks every child every frame
-(`rt_scene3d.c:2100`); cull is O(total nodes). Physics broadphase is a separate
-single-axis SAP re-sorted each step (`rt_physics3d.c:3662`). Mesh BVH exists but
-is raycast-only.
+**Current facts.** `Scene3D` now maintains an internal sweep-style spatial index
+over visible drawable scene nodes. The index is dirtied by hierarchy, transform,
+mesh, visibility, LOD, and impostor changes; `QueryAABB`, `QuerySphere`,
+`RaycastNodes`, and `Draw` use indexed candidates with deterministic flat-walk
+fallback/parity coverage. Draw still performs the exact selected-LOD/impostor
+frustum test before submitting. `test_rt_scene3d` includes a generated 10k
+drawable-node grid that verifies isolated spatial queries narrow to one candidate
+and indexed draw culling considers less than 10% of total drawable nodes before
+falling back to the exact frustum test. Physics broadphase remains a separate
+single-axis sweep-and-prune sorted by min-X each step (`physics/rt_physics3d.c:3691`).
+A per-mesh physics BVH exists (`physics_bvh_*` fields built in `render/rt_mesh3d.c`)
+and now drives raycasts plus mesh/convex-vs-sphere/capsule/box narrow-phase
+candidate pruning. The narrow-phase keeps a full triangle scan fallback if BVH
+construction or traversal cannot complete.
 
 **Change.**
 
@@ -107,27 +174,45 @@ is raycast-only.
 - Add `rt_scene3d_query_visible(frustum, out)` and generic spatial queries
   (point/AABB/sphere/ray) the index serves.
 - Replace the draw walk with an index query (old path behind the flag for parity).
-- Where Phase 0 unified them, route physics broadphase + `Scene3D`/physics
-  raycast/overlap/sweep through the index; otherwise keep a sibling physics tree
-  built with the same code.
+- Publish a shared spatial-query contract. If Phase 0 proves one physical
+  structure fits rendering and physics, share it; otherwise keep a sibling
+  physics broadphase tuned for solver needs while matching query semantics.
 
-**Tests.** Cull/query equality vs. flat-walk reference (no popping); recorded
-scaling on the 10k-node fixture; broadphase parity within tolerance.
+**Tests.** Cull/query equality vs. flat-walk reference (no popping); generated
+10k-node candidate-scaling fixture plus release-lane wall-clock timing;
+broadphase parity within tolerance.
 
 ---
 
 ## 4. Async asset loading and GPU upload
 
-**Current facts.** `Assets3D.LoadModel`/`Preload` are synchronous
-(`rt_game3d.c:3733/3785`); file read + parse + GPU build run on the caller thread.
-Loading mid-gameplay hitches the main thread.
+**Current facts.** `Assets3D.LoadModel`/`Preload` are synchronous, and
+`Preload` still calls the synchronous template load. Phase 4 now has the
+public `Viper.Game3D.AssetHandle3D` class plus `LoadModelAsync`,
+`LoadModelAssetAsync`, `LoadModelTemplateAsync`, and
+`LoadModelTemplateAssetAsync`; these now return deferred handles that start
+pending, complete synchronously on first `ready`/result observation, and can be
+cancelled before completion. `SetResidencyBudget` and `Evict` now control the
+shared template cache with conservative byte estimates and LRU eviction. File
+and asset lookup failures, unsupported model extensions, and malformed glTF JSON
+now complete as terminal non-cancel error handles for deferred requests. File
+read + parse + GPU build still run on the observing caller thread, so loading
+mid-gameplay can hitch the main thread until the worker-backed path lands.
 
 **Change.**
 
 - Move file read + glTF/FBX/image decode onto §1 workers; create/upload GPU
   resources on the §1 main-thread commit queue with a per-frame budget.
-- Add `Assets3D.LoadModelAsync(path) -> handle`, residency state, and ref-counted
-  resources with an eviction policy (LRU/distance).
+- Add `Assets3D.LoadModelAsync(path) -> Viper.Game3D.AssetHandle3D`,
+  `LoadModelAssetAsync`, `LoadModelTemplateAsync`, and
+  `LoadModelTemplateAssetAsync`; the handle exposes lower/camel Game3D members
+  (`ready`, `progress`, `getEntity`, `getTemplate`, `cancel`, `error`).
+  The deferred-handle baseline, missing-path load-error handles, unsupported
+  extension errors, and malformed glTF JSON recovery are in place; next, back
+  these with real worker scheduling and worker-owned resource residency. The
+  first cache residency controls are in place using an LRU byte budget over
+  `ModelTemplate` entries;
+  distance-aware streaming eviction remains for §5.
 - Convert `Preload` to a real background warm.
 - Add texture/mesh mip/LOD residency hooks consumed by §5/§6/§11.
 
@@ -143,37 +228,79 @@ residency counters return to baseline after churn (no leak).
 ## 5. World partition and terrain streaming
 
 **Current facts.** Terrain is one heightmap hard-capped at 4096²
-(`rt_terrain3d.c:216`); chunks are interior subdivisions, not streamable tiles.
-Scene/`.vscn` loaders are whole-file (`rt_scene3d_vscn.c`). No load/unload path.
+(`world/rt_terrain3d.c:216`; `Terrain3D.New` traps outside `[2, 4096]`); chunks
+are interior subdivisions, not streamable tiles. Scene/`.vscn` loaders are
+whole-file (`scene/rt_scene3d_vscn.c`). `Viper.Game3D.WorldStream3D` now exists
+with center/radii/budget setters, manifest mount points, `update`, resident
+counters, and a lazy `World3D.stream` owned handle. `mountCells` now parses a
+VSCN streaming manifest with `cells[]` entries (`name`, `path`, `center`,
+`radius`, `bytes`), resolves payload paths relative to the manifest, and
+loads/unloads `.vscn` scene subtrees around the stream center through the
+deterministic `WorldStream3D.update(dt)` load budget.
+`mountTiledTerrain` now parses `tiles[]` manifests with the same metadata shape
+plus optional `width`, `depth`, `scale`, and `heightmap`, drives deterministic
+terrain tile residency around the stream center, instantiates `Terrain3D`
+payloads for resident tiles, applies `viper-heightmap-v1` normalized height
+sidecars through `Terrain3D.SetHeightmap`, and exposes them through
+`WorldStream3D.getResidentTerrainTile(index)`. Resident terrain tiles render
+through `World3D.drawScene` at their manifest-centered world positions using a
+default terrain material. Resident tiles also spawn invisible static
+heightfield-collider entities named
+`<tile>_heightfield_collider` into the owning `World3D`, and unload those
+bodies with tile residency. They also spawn hidden mesh-only
+`<tile>_navmesh_source` nodes so `World3D.bakeNavMesh` includes active streamed
+terrain. `WorldStream3D.update(dt)` now applies a deterministic per-update load
+budget and reports deferred desired payloads through `pendingRequestCount`;
+mount/radius/budget setters still recompute immediately for setup and editor
+inspection. Worker-backed decode/upload, richer authored metadata, and real
+tile-local nav ownership remain future layers.
 
 **Change.**
 
 - Add a terrain tile grid: many `Terrain3D` tiles with shared edges and LOD-seam
   stitching, streamed via §4; lift the single-heightmap ceiling.
-- Add scene cells: `rt_scene3d` subtree load/unload (with physics + nav) keyed to
-  player position via §1/§3/§4.
-- Define the streamed container: extend VSCN with tile/cell indexing or add a
-  tiled side-format (no new top-level format). Add a bake hook ViperIDE targets.
-- Wire per-tile heightfield colliders to terrain tiles.
+- Extend scene cells from current `.vscn` subtree load/unload to include nav
+  binding keyed to player position via §1/§3/§4.
+- Expand terrain streaming from manifest-driven heightmapped `Terrain3D`
+  payloads and deterministic staged update requests into worker-backed payload
+  decode/upload and LOD seam coordination.
+- Define the streamed container as a VSCN streaming manifest/extension with
+  tile/cell indexing. Optional binary sidecars may hold payload data referenced
+  by the VSCN manifest, but do not introduce a new general scene format. Add a
+  bake hook ViperIDE targets.
+- Expand per-tile collider/nav binding with authored material/physics/nav-area
+  metadata once the streaming manifest grows a bake/export path.
 
-**Tests.** Tile/cell stream in/out across boundaries within hitch budget; seam
-check; bounded-memory traversal of a >4 km² world; scripted-traversal determinism.
+**Tests.** Cell stream in/out across boundaries, manifest-driven terrain tile
+payload residency, height sidecar loading, heightfield collider body residency,
+rendered terrain-tile submission, and shared-edge seam sampling are covered in
+`test_rt_game3d`; the same unit lane now asserts staged stream updates and
+`pendingRequestCount` while a desired terrain tile waits behind the per-frame
+load budget; `g3d_openworld_slice_long_traversal` repeatedly churns all four
+quadrants with deterministic replay; `g3d_openworld_slice_probe` verifies the
+world-scoped nav bake includes streamed terrain. Remaining Phase 5 tests are
+worker-backed async traversal and richer payload metadata.
 
 ---
 
 ## 6. Visibility scaling (occlusion + auto-LOD/HLOD)
 
-**Current facts.** Only frustum cull + front-to-back sort; "not full
-occlusion-query or Hi-Z" (`rt_canvas3d.h:443`). Per-node discrete LOD exists
-(`rt_scene3d.c:2012`) but is manual; no HLOD/impostors. `SetOcclusionCulling` is
-a frustum-cull alias.
+**Current facts.** `SetFrustumCulling` is frustum-only. `SetOcclusionCulling`
+now enables frustum rejection plus a conservative CPU coverage/depth grid over
+front-to-back sorted opaque draws; GPU occlusion-query / Hi-Z / portal-PVS
+acceleration is still pending. Per-node discrete LOD exists, and now has
+screen-error authored-LOD selection plus generated textured impostor proxies via
+`SceneNode3D.SetAutoLOD` and `SetImpostor`. `Canvas3D.OccludedDrawCount`
+reports the latest visibility skip count.
 
 **Change.**
 
 - Implement occlusion culling: software-rasterized depth occluders (baseline) and
   portal/PVS for interiors, over the §3 index; capability-gate per backend.
-- Add automatic LOD selection (screen-space error / auto-generated LODs) and
-  HLOD/impostor proxies for distant clusters and vegetation.
+  GPU occlusion queries are optional backend accelerators, not the baseline.
+- Add automatic LOD selection for authored LODs (screen-space error) plus
+  HLOD/impostor proxies for distant clusters and vegetation. Auto-generating new
+  mesh simplification LODs is a later stretch item unless explicitly scoped.
 - Reconcile `SetOcclusionCulling` (CO-8) to select real occlusion culling while
   retaining frustum-only behavior under `SetFrustumCulling`.
 
@@ -184,8 +311,13 @@ vs. full-detail reference within tolerance.
 
 ## 7. Lighting scaling (clustered/forward+ and cascaded shadows)
 
-**Current facts.** Forward renderer, `VGFX3D_MAX_LIGHTS 16`,
-`VGFX3D_MAX_SHADOW_LIGHTS 2` (`rt_canvas3d_internal.h:308-309`).
+**Current facts.** Forward fallback budget is `VGFX3D_FORWARD_LIGHT_LIMIT 16`;
+the bounded many-light payload table is `VGFX3D_MAX_LIGHTS 64`; shadow caster
+slots remain `VGFX3D_MAX_SHADOW_LIGHTS 2`
+(`render/rt_canvas3d_internal.h:308-311`). The software backend advertises
+`BackendSupports("clustered-lighting")` as the correctness baseline and submits
+>16 active lights when `Canvas3D.SetClusteredLighting(true)` is enabled. GPU
+backends still report no clustered support until their upload/shader paths land.
 
 **Change.**
 
@@ -206,21 +338,44 @@ stability (no acne/peter-panning beyond tolerance); fallback path.
 
 ## 8. Physics depth
 
-**Current facts.** One contact point per pair (`physics3d.md:145`); un-iterated,
-non-warm-started solver (`rt_physics3d.c:4421` loop is joints only); brute-force
-O(triangles) mesh narrow-phase (BVH raycast-only); no GJK ("convex hull" is
-triangle soup, `rt_collider3d.c:569`); hinge/rope joints documented but absent
-(`rt_physics3d.h:80`; only distance/spring in `rt_joints3d.c`).
+**Current facts.** The contact solver is now a detect-once, warm-started
+sequential-impulse solver: per-manifold-point normal+friction impulses are
+accumulated and persisted across frames (via `previous_contacts`, matched by
+point index with a normal-agreement guard), seeded each step, friction-cone
+clamped, with restitution applied only on the first frame of contact, a split
+positional correction with a max-correction clamp, and post-solve sleep islands
+(wake propagation across contacts) that freeze settled stacks. A 5-box stack
+rests stably and bit-deterministically. AABB pairs expose bounded multi-point
+contact manifolds, while other (rotated/OBB) shape pairs still report one
+representative point. `SolverIterations` drives the contact and joint velocity
+passes. Mesh-like
+collider pairs against spheres, capsules, and boxes now traverse the per-mesh
+BVH for candidate triangles and fall back to the full scan if the BVH path is
+unavailable. `NewConvexHull` now uses a support-point GJK/EPA path for
+convex-hull-vs-convex-hull and convex-hull-vs-simple pairs, including contained
+primitive contacts. Hinge/rope joints and a `SixDofJoint3D` now
+exist as `Viper.Graphics3D.*` classes with
+`RT_JOINT_HINGE`, `RT_JOINT_ROPE`, and `RT_JOINT_SIXDOF` type codes. SixDof
+linear limits project frame-anchor separation and angular limits project
+relative angular velocity; richer pose-angle semantics remain future scope.
+Dynamic bodies expose manual sleep/wake and idle auto-sleep, and the unit lane
+now includes a sparse 321-body step stress plus contact/event storage growth
+coverage.
 
 **Change.**
 
-- Implement multi-point contact manifolds + an iterated, warm-started
-  sequential-impulse solver (configurable iterations) so bodies stack/rest.
-- Drive mesh narrow-phase through the per-mesh BVH and/or §3 index; remove the
-  brute-force triangle loop.
-- Implement GJK/EPA convex-vs-convex; make `NewConvexHull` real convex collision.
-- Implement hinge and rope joints (close the doc overclaim) and a 6DOF/
-  configurable joint; add solver islands + scaled sleeping.
+- Extend multi-point contact manifolds beyond AABB pairs and add a warm-started
+  sequential-impulse solver so bodies stack/rest.
+  Existing raw `Viper.Graphics3D.CollisionEvent3D` contact accessors
+  (`ContactCount`, `GetContact`, `GetContactPoint`, `GetContactNormal`,
+  `GetContactSeparation`) must return the full manifold; add matching
+  lower/camel `Viper.Game3D.Collision3DEvent` convenience accessors.
+- Drive all remaining mesh narrow-phase paths through the per-mesh BVH and/or
+  §3 index; keep the brute-force triangle loop only as a correctness fallback.
+- Add broader analytic/perf coverage around the GJK/EPA convex path, keeping
+  `NewConvexHull` collision shape-accurate without API changes.
+- Broaden SixDof pose-angle semantics/stability coverage; add solver islands +
+  scaled sleeping.
 
 **Tests.** Box-stack/pile rest stability; manifold correctness; GJK vs. analytic;
 hinge/rope/6DOF behavior; body-count perf fixture; `runFrames` determinism.
@@ -229,18 +384,32 @@ hinge/rope/6DOF behavior; body-count perf fixture; `runFrames` determinism.
 
 ## 9. Navigation and AI depth
 
-**Current facts.** Navmesh is baked from one provided mesh
-(`rt_navmesh3d.c:222`); A* + simplified string-pull (`:663`); `agent_radius`
-stored but never applied (`:80`); no autogen, off-mesh links, avoidance, or tiled
-mesh; O(triangles) find-tri (`:434`); per-agent 4 Hz repath.
+**Current facts.** Navmesh can still be baked from one provided mesh, and
+`NavMesh3D.Bake(scene, ...)` now flattens `Mesh3D`-bearing `Scene3D` nodes through
+their world transforms before using that same triangle build path. `BakeTiled`
+accepts the final API shape and returns a full-scene navmesh; `RebuildTile`
+currently refilters the whole preserved source mesh. There is no real voxel/region
+generation or tile-local ownership yet. `agent_radius` gates shared-edge portals
+conservatively at adjacency-build time, while full polygon erosion remains future
+work. A* still uses O(triangles) find-tri and a simplified string-pull, with
+per-agent 4 Hz repath. `NavMesh3D.AddOffMeshLink` stores authored endpoint pairs
+that resolve to walkable triangles and are used as directed/bidirectional graph
+edges during A*. `NavMesh3D.AddObstacle` stores finite AABB obstacles, removes
+overlapping walkable triangles, and rebuilds adjacency immediately. `RemoveObstacle`
+and `UpdateObstacle` edit that authored obstacle list and refilter the same preserved
+source geometry. This is coarse carving, not real tile-local navmesh rebuild
+ownership. `NavAgent3D` now has opt-in
+same-NavMesh local separation via `AvoidanceEnabled`/`AvoidanceRadius`; this is a
+working lightweight avoidance baseline, not the full ORCA/RVO crowd solver.
 
 **Change.**
 
 - Implement navmesh auto-generation from arbitrary geometry (voxelize → walkable
   regions → contour → mesh; from-scratch Recast-style).
-- Implement tiled/streamable navmesh aligned to §5 cells, runtime tile rebuild,
-  and dynamic obstacle carving.
-- Implement off-mesh links and apply `agent_radius` corridor erosion.
+- Implement tiled/streamable navmesh aligned to §5 cells, real tile ownership,
+  and finer polygon carving.
+- Extend off-mesh links to richer traversal metadata and replace the current
+  portal-width gate with full `agent_radius` polygon/corridor erosion.
 - Implement local avoidance (ORCA/RVO-style) and pathfinding acceleration
   (spatial find-tri, path cache, time-sliced/hierarchical A*), parallel via §1.
 
@@ -252,15 +421,32 @@ avoidance interpenetration bounds; agent-count perf fixture.
 ## 10. Animation depth (IK, additive, blend trees, retargeting)
 
 **Current facts.** 4-bone skinning, 256 bones; state machine + crossfade + root
-motion present; "additive" layers are actually masked replace-blends
-(`rt_animcontroller3d.c:823`); no IK, blend trees, or retargeting.
+motion present. Existing `PlayLayer` remains a masked replace-blend for
+compatibility, while `PlayLayerAdditive` and `CrossfadeLayerAdditive` now perform
+true reference-pose subtraction: `(overlayPose - bindPose) * weight` is composed
+over the current base pose for masked bones. `BlendTree3D` now provides 1D/2D parametric
+blendspaces over `AnimBlend3D`, and `Canvas3D.DrawMeshBlended` accepts the tree
+directly. `AnimController3D.SetBlendTree` and
+`Game3D.Animator3D.setBlendTree` now let a tree drive the controller base pose
+before overlays are composed. `SetAnimationLOD` now provides deterministic
+update-rate throttling for distant/low-priority controllers.
+`Animation3D.Retarget` now copies compatible local-space channels by bone name
+first and by index fallback. `IKSolver3D` now provides two-bone, look-at, and
+FABRIK baseline solvers with target/weight controls, controller binding through
+`AnimController3D.SetIKSolver`, and the `Game3D.Animator3D.setIKSolver` wrapper.
+The open-world slice now covers imported skinned glTF play/crossfade plus
+LookAt IK binding as a software visual sample, and validates a terrain-sampled
+two-bone foot target through the same CTest. The same slice also loads committed
+GLB and WAV package-asset fixtures through `Assets3D.LoadModelAsset` and
+`Sound3D.loadAsset`. Humanoid/proportional retarget
+mapping, pole-vector control, terrain-aware foot orientation, and a visible
+foot-planted skinned character sample remain.
 
 **Change.**
 
-- Implement IK: two-bone (foot placement), look-at/aim, and FABRIK chain, applied
-  to the bone palette before skinning.
-- Implement true additive layers (reference-pose subtraction) alongside the
-  existing overlay blend.
+- Extend IK beyond the baseline: pole vectors, terrain foot orientation, richer
+  aim constraints, and IK-specific character visual samples.
+- Extend true additive layers with authored additive samples and visual coverage.
 - Implement parametric blend trees / 1D-2D blendspaces over `AnimBlend3D`.
 - Implement cross-skeleton retargeting (humanoid bone mapping).
 - Add animation LOD (rate/bone-count reduction by §3 distance).
@@ -273,20 +459,43 @@ replace correctness; retarget visual check; anim-LOD parity within tolerance.
 ## 11. Asset pipeline depth
 
 **Current facts.** Textures decode to raw RGBA8 only (no BC/DXT/ASTC/ETC2/KTX2);
-glTF imports no cameras and only the active scene (`rt_gltf.c`); no Draco/meshopt;
-OBJ ignores `.mtl` (`rt_mesh3d.c:2165`).
+glTF imports the active scene, secondary scene roots, and scene-local camera
+nodes (`assets/rt_gltf.c`; it also imports `KHR_lights_punctual` and several
+material KHR extensions).
+`Model3D` now has immutable scene-indexed public APIs
+(`SceneCount`, `GetCameraCount`, `GetCamera`, `GetSceneName`,
+`InstantiateSceneAt`) with active/default and secondary glTF scene behavior
+pinned by ctests.
+No Draco/meshopt; OBJ ignores `.mtl` (geometry-only import,
+`render/rt_mesh3d.c:1172`; `mtllib`/`usemtl` skipped at `:2175`).
 
 **Change.**
 
 - Implement GPU texture compression upload (BC/DXT desktop, ASTC/ETC2 where
   supported) with a software-decode reference; capability-gate per backend.
-- Implement KTX2 + Basis-universal transcode (from scratch) and streaming mip
-  residency via §4.
-- Add glTF camera import + multi-scene selection; add Draco/meshopt decode.
+- Implement KTX2/precompressed block loading and streaming mip residency via §4.
+  Support files whose payload already matches backend-supported block formats
+  and fall back to software RGBA when needed.
+- Add glTF camera import + explicit multi-scene queries/instantiation. Keep
+  cached `Model3D` assets immutable: do not add a mutable `SelectScene`; add
+  scene-indexed camera access and `Model3D.InstantiateSceneAt(index)` instead.
+  Current slices import scene-local perspective/orthographic cameras and
+  secondary glTF scene roots.
+- Extend existing `Material3D.SetTexture` / `SetAlbedoMap` / `SetNormalMap` /
+  `SetSpecularMap` / `SetEmissiveMap` validation to accept
+  `Viper.Graphics3D.TextureAsset3D`; do not add duplicate `Set*Asset` methods.
+  Current slices are implemented for KTX2 metadata, declared mip-range byte
+  telemetry through `SetResidentMipRange`, and uncompressed RGBA8 per-mip
+  fallback binding; compressed-only assets expose format/resolution/mip metadata
+  and residency byte counts, and must wait for backend upload support before
+  material binding.
+- Treat Basis-universal supercompression transcode, Draco decode, and meshopt
+  decode as Phase 11b/stretch import-depth work, not Phase 12 blockers.
 - Backlog: OBJ `.mtl` handling.
 
-**Tests.** Compressed vs. raw within tolerance per backend; KTX2/Draco/meshopt
-load; glTF camera + secondary-scene import; recorded VRAM reduction.
+**Tests.** Compressed vs. raw within tolerance per backend; KTX2/precompressed
+load; glTF camera + secondary-scene import; recorded VRAM reduction. Optional
+Phase 11b tests cover Basis/Draco/meshopt when those decoders land.
 
 ---
 
@@ -298,7 +507,31 @@ load; glTF camera + secondary-scene import; recorded VRAM reduction.
 - Ensure the slice's systems all expose capability strings and degrade safely.
 
 **Tests.** Slice smoke + deterministic replay + software visual baseline; perf
-baselines recorded cross-platform.
+baselines recorded per reference platform.
+
+Implemented slice: `examples/3d/openworld_slice/` now provides a software-backed
+vertical-slice smoke project with `WorldStream3D` cell and heightmapped terrain
+manifests, resident `Terrain3D` tile access, `AssetHandle3D` async model completion,
+RGBA8/BC7 KTX2 `TextureAsset3D` fixture usage, character/physics/nav-agent
+stepping, imported skinned glTF play/crossfade plus LookAt IK binding,
+committed GLB/WAV fixture loading, terrain-sampled TwoBone foot IK proof, committed
+software final-frame baseline comparison, capability-gated GPU backend smoke,
+all-four-quadrant bounded-residency traversal, software frame-loop perf
+telemetry through `g3d_openworld_slice_perf_probe` and reusable
+`g3d_openworld_slice_perf_harness` metric parsing,
+package dry-run, and two-run deterministic replay through
+`g3d_openworld_slice_probe`. `examples/3d/openworld_slice/baselines/perf_macos_apple_m4_max.md`
+records the current named local Release software and Metal measurements. `WorldStream3D`
+also exposes editor/debug inspection hooks for parsed cell and terrain-tile
+counts, names, terrain heightmap sidecar paths, centers, resident flags, and
+byte estimates via lower/camel `getCell*` and `getTerrainTile*` methods.
+`World3D` now exposes lower/camel
+runtime counters for `entityCount`, `bodyCount`, `drawCount`,
+`visibleNodeCount`, `occludedDrawCount`, and `streamResidentBytes`, with
+`Canvas3D.DrawCount` providing the underlying draw-submission counter. The
+world-scoped `bakeNavMesh` and `bakeTiledNavMesh` hooks wrap the current
+`Scene3D` into the existing `NavMesh3D` bakers so editor workflows can trigger a
+navigation bake from one Game3D handle.
 
 ---
 
@@ -314,5 +547,6 @@ baselines recorded cross-platform.
 - `runFrames` VM/native determinism parity for any simulation-touching change.
 - A software-backend correctness path for any new visual feature; GPU parity
   capability-gated + smoke-tested.
-- Each new public runtime function has a success-path and a negative/capability
-  ctest, or a named waiver in `progress/06-waivers.md`.
+- Each new public runtime function/class has a success-path and a negative/
+  capability ctest, plus class-id/`runtime.def` completeness for new classes, or
+  a named waiver in `progress/06-waivers.md`.
