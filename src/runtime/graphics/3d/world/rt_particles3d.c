@@ -684,6 +684,41 @@ void rt_particles3d_burst(void *o, int64_t count) {
         spawn_particle(ps);
 }
 
+/// @brief Internal floating-origin hook: subtract the world rebase delta from
+///   the emitter origin and every live particle, preserving velocities/lifetimes.
+void rt_particles3d_rebase_origin(void *o, double dx, double dy, double dz) {
+    rt_particles3d *ps = particles3d_checked(o);
+    if (!ps)
+        return;
+    double delta[3] = {particles_finite_or(dx, 0.0),
+                       particles_finite_or(dy, 0.0),
+                       particles_finite_or(dz, 0.0)};
+    if (delta[0] == 0.0 && delta[1] == 0.0 && delta[2] == 0.0)
+        return;
+
+    ps->position[0] =
+        particles_clamp_abs_or(ps->position[0] - delta[0], 0.0, PARTICLES3D_WORLD_ABS_MAX);
+    ps->position[1] =
+        particles_clamp_abs_or(ps->position[1] - delta[1], 0.0, PARTICLES3D_WORLD_ABS_MAX);
+    ps->position[2] =
+        particles_clamp_abs_or(ps->position[2] - delta[2], 0.0, PARTICLES3D_WORLD_ABS_MAX);
+
+    for (int32_t i = 0; i < ps->count;) {
+        double x = (double)ps->particles[i].pos[0] - delta[0];
+        double y = (double)ps->particles[i].pos[1] - delta[1];
+        double z = (double)ps->particles[i].pos[2] - delta[2];
+        if (!isfinite(x) || !isfinite(y) || !isfinite(z) || fabs(x) > (double)FLT_MAX ||
+            fabs(y) > (double)FLT_MAX || fabs(z) > (double)FLT_MAX) {
+            ps->particles[i] = ps->particles[--ps->count];
+            continue;
+        }
+        ps->particles[i].pos[0] = (float)x;
+        ps->particles[i].pos[1] = (float)y;
+        ps->particles[i].pos[2] = (float)z;
+        i++;
+    }
+}
+
 /*==========================================================================
  * Update (Euler integration + lifetime + interpolation)
  *=========================================================================*/

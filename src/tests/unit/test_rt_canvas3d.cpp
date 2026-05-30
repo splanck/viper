@@ -1071,17 +1071,28 @@ static void test_textureasset3d_ktx2_material_bridge() {
         0x01, 0x02, 0x03, 0x04, 0x10, 0x20, 0x30, 0x40,
         0x55, 0x66, 0x77, 0x88, 0xA0, 0xB0, 0xC0, 0xD0,
     };
+    const uint8_t bc7_level0[] = {
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+        0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF0, 0x0F,
+    };
     rt_string rgba_path_s;
     rt_string bc7_path_s;
     void *rgba_asset;
     void *bc7_asset;
     void *fallback_pixels;
+    const uint8_t *native_payload = nullptr;
+    uint64_t native_payload_bytes = 0;
+    int32_t native_width = 0;
+    int32_t native_height = 0;
+    int32_t native_block_width = 0;
+    int32_t native_block_height = 0;
+    int32_t native_block_bytes = 0;
     void *mat;
     void *textured;
 
     EXPECT_TRUE(write_test_ktx2(rgba_path, 37u, 2u, 2u, rgba_level0, sizeof(rgba_level0)),
                 "test RGBA8 KTX2 fixture written");
-    EXPECT_TRUE(write_test_ktx2(bc7_path, 145u, 4u, 4u, nullptr, 0u),
+    EXPECT_TRUE(write_test_ktx2(bc7_path, 145u, 4u, 4u, bc7_level0, sizeof(bc7_level0)),
                 "test BC7 KTX2 fixture written");
 
     rgba_path_s = rt_string_from_bytes(rgba_path, std::strlen(rgba_path));
@@ -1131,6 +1142,27 @@ static void test_textureasset3d_ktx2_material_bridge() {
     EXPECT_EQ(rt_textureasset3d_get_compressed(bc7_asset), 1);
     EXPECT_TRUE(rt_textureasset3d_get_pixels(bc7_asset) == nullptr,
                 "compressed KTX2 has no CPU Pixels fallback yet");
+    EXPECT_TRUE(rt_textureasset3d_get_native_mip_info(bc7_asset,
+                                                      0,
+                                                      &native_payload,
+                                                      &native_payload_bytes,
+                                                      &native_width,
+                                                      &native_height,
+                                                      &native_block_width,
+                                                      &native_block_height,
+                                                      &native_block_bytes) == 1,
+                "compressed KTX2 retains native mip payload for backend upload");
+    EXPECT_TRUE(native_payload != nullptr, "native BC7 mip payload pointer is available");
+    EXPECT_EQ(native_payload_bytes, sizeof(bc7_level0));
+    EXPECT_EQ(native_width, 4);
+    EXPECT_EQ(native_height, 4);
+    EXPECT_EQ(native_block_width, 4);
+    EXPECT_EQ(native_block_height, 4);
+    EXPECT_EQ(native_block_bytes, 16);
+    EXPECT_EQ(native_payload[0], 0x11);
+    EXPECT_TRUE(rt_textureasset3d_get_native_mip_info(
+                    bc7_asset, 1, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr) == 0,
+                "native mip query rejects out-of-range mips");
     EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_texture(mat, bc7_asset); },
                                      "TextureAsset3D"),
                 "Material3D rejects compressed TextureAsset3D without RGBA8 fallback");
@@ -1150,6 +1182,8 @@ static void test_textureasset3d_mip_residency() {
     const uint64_t level_bytes[] = {sizeof(level0), sizeof(level1), sizeof(level2)};
     rt_string path_s;
     void *asset;
+    void *material;
+    rt_material3d *material_impl;
 
     for (size_t i = 0; i < sizeof(level0); i++)
         level0[i] = (uint8_t)(i + 1u);
@@ -1175,6 +1209,16 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_EQ(rt_pixels_height(mip_pixels), 4);
     EXPECT_EQ(rt_pixels_get_rgba(mip_pixels, 0, 0), 0x01020304);
 
+    material = rt_material3d_new();
+    assert(material != nullptr);
+    rt_material3d_set_texture(material, asset);
+    material_impl = (rt_material3d *)material;
+    EXPECT_TRUE(material_impl->texture == asset,
+                "Material3D retains TextureAsset3D source instead of a stale mip Pixels fallback");
+    EXPECT_EQ(rt_material3d_get_has_texture(material), 1);
+    EXPECT_TRUE(rt_material3d_resolve_texture_pixels(material_impl->texture) == mip_pixels,
+                "Material3D resolves TextureAsset3D to currently resident mip 0");
+
     rt_textureasset3d_set_resident_mip_range(asset, 1, 2);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 1);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 2);
@@ -1184,6 +1228,8 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_EQ(rt_pixels_width(mip_pixels), 2);
     EXPECT_EQ(rt_pixels_height(mip_pixels), 2);
     EXPECT_EQ(rt_pixels_get_rgba(mip_pixels, 0, 0), 0x80818283);
+    EXPECT_TRUE(rt_material3d_resolve_texture_pixels(material_impl->texture) == mip_pixels,
+                "Material3D follows TextureAsset3D residency changes after binding");
 
     rt_textureasset3d_set_resident_mip_range(asset, 2, 99);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 2);
@@ -1194,12 +1240,19 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_EQ(rt_pixels_width(mip_pixels), 1);
     EXPECT_EQ(rt_pixels_height(mip_pixels), 1);
     EXPECT_EQ(rt_pixels_get_rgba(mip_pixels, 0, 0), 0xC0C1C2C3);
+    EXPECT_TRUE(rt_material3d_resolve_texture_pixels(material_impl->texture) == mip_pixels,
+                "Material3D resolves to the finest currently resident TextureAsset3D mip");
 
     rt_textureasset3d_set_resident_mip_range(asset, 0, 0);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 0);
     EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 0);
     EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
                 "zero resident mip count clears the active Pixels fallback");
+    EXPECT_TRUE(material_impl->texture == asset,
+                "Material3D keeps the TextureAsset3D source while residency is temporarily empty");
+    EXPECT_TRUE(rt_material3d_resolve_texture_pixels(material_impl->texture) == nullptr,
+                "Material3D resolves empty TextureAsset3D residency to no drawable texture");
+    EXPECT_EQ(rt_material3d_get_has_texture(material), 0);
     EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_set_resident_mip_range(asset, -1, 1); },
                                      "negative mip range"),
                 "SetResidentMipRange rejects a negative first mip");
@@ -2367,6 +2420,9 @@ static vgfx3d_light_params_t g_last_draw_lights[VGFX3D_MAX_LIGHTS] = {};
 static int g_backend_resize_calls = 0;
 static int32_t g_backend_resize_w = 0;
 static int32_t g_backend_resize_h = 0;
+static uint64_t g_backend_texture_upload_bytes = 0;
+static uint64_t g_backend_texture_upload_budget = UINT64_MAX;
+static uint64_t g_backend_texture_upload_pending_bytes = 0;
 } // namespace
 
 typedef struct {
@@ -2415,6 +2471,18 @@ static void tracked_begin_frame(void *, const vgfx3d_camera_params_t *params) {
 
 static void tracked_end_frame(void *) {
     g_canvas_end_frame_calls++;
+}
+
+static uint64_t tracked_texture_upload_bytes(void *) {
+    return g_backend_texture_upload_bytes;
+}
+
+static void tracked_set_texture_upload_budget(void *, uint64_t bytes) {
+    g_backend_texture_upload_budget = bytes;
+}
+
+static uint64_t tracked_texture_upload_pending_bytes(void *) {
+    return g_backend_texture_upload_pending_bytes;
 }
 
 static void tracked_backend_resize(void *, int32_t w, int32_t h) {
@@ -3029,6 +3097,65 @@ static void test_canvas_begin_uses_active_output_aspect_without_mutating_camera(
     PASS();
 }
 
+static void test_canvas_camera_relative_upload_rebases_frame_payloads() {
+    TEST("Canvas3D camera-relative upload rebases frame payloads");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    constexpr double kBase = 1000000000.0;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 1000.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new();
+    void *light_pos = rt_vec3_new(kBase + 8.0, 2.0, -3.0);
+    void *light = rt_light3d_new_point(light_pos, 1.0, 1.0, 1.0, 2.0);
+    double model[16] = {
+        1.0, 0.0, 0.0, kBase + 4.0,
+        0.0, 1.0, 0.0, 1.0,
+        0.0, 0.0, 1.0, -10.0,
+        0.0, 0.0, 0.0, 1.0,
+    };
+
+    backend.name = "software";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 128;
+    canvas.height = 128;
+    rt_canvas3d_set_light(&canvas, 0, light);
+    rt_canvas3d_set_camera_relative_upload(&canvas, 1);
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(kBase, 0.0, 0.0),
+                        rt_vec3_new(kBase, 0.0, -1.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+
+    g_canvas_begin_frame_calls = 0;
+    g_canvas_submit_draw_calls = 0;
+    g_last_draw_light_count = 0;
+    memset(&g_canvas_begin_frame_params, 0, sizeof(g_canvas_begin_frame_params));
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    memset(g_last_draw_lights, 0, sizeof(g_last_draw_lights));
+
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, material);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_begin_frame_calls, 1);
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_NEAR(g_canvas_begin_frame_params.position[0], 0.0, 0.0001);
+    EXPECT_NEAR(g_canvas_begin_frame_params.view[3], 0.0, 0.0001);
+    EXPECT_NEAR(g_last_draw_cmd.model_matrix[3], 4.0, 0.0001);
+    EXPECT_EQ(g_last_draw_light_count, 1);
+    EXPECT_NEAR(g_last_draw_lights[0].position[0], 8.0, 0.0001);
+
+    rt_canvas3d_set_camera_relative_upload(&canvas, 0);
+    EXPECT_TRUE(canvas.camera_relative_upload == 0, "Canvas3D internal relative mode disables");
+    free_canvas3d_test_draw_state(&canvas);
+    PASS();
+}
+
 static void test_canvas_resize_updates_backend_and_projection_aspect() {
     TEST("Canvas3D.Resize updates backend size and next projection aspect");
     vgfx3d_backend_t backend = {};
@@ -3244,6 +3371,72 @@ static void test_canvas_postfx_rejects_advanced_cpu_rtt_effects() {
     PASS();
 }
 
+static void test_canvas_texture_upload_bytes_telemetry() {
+    TEST("Canvas3D.TextureUploadBytes reports backend upload telemetry");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.end_frame = tracked_end_frame;
+    backend.get_texture_upload_bytes = tracked_texture_upload_bytes;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    g_backend_texture_upload_bytes = 1536;
+    rt_canvas3d_begin(&canvas, cam);
+    EXPECT_EQ(rt_canvas3d_get_texture_upload_bytes(&canvas), 0);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_texture_upload_bytes(&canvas), 1536);
+
+    g_backend_texture_upload_bytes = (uint64_t)INT64_MAX + 1u;
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_texture_upload_bytes(&canvas), INT64_MAX);
+
+    backend.get_texture_upload_bytes = nullptr;
+    canvas.last_texture_upload_bytes = 77;
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(rt_canvas3d_get_texture_upload_bytes(&canvas), 0);
+    PASS();
+}
+
+static void test_canvas_texture_upload_budget_controls_backend() {
+    TEST("Canvas3D texture upload budget controls backend and pending telemetry");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+
+    backend.name = "metal";
+    backend.set_texture_upload_budget = tracked_set_texture_upload_budget;
+    backend.get_texture_upload_pending_bytes = tracked_texture_upload_pending_bytes;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+
+    g_backend_texture_upload_budget = 0;
+    rt_canvas3d_set_texture_upload_budget(&canvas, 4096);
+    EXPECT_EQ(g_backend_texture_upload_budget, 4096);
+
+    rt_canvas3d_set_texture_upload_budget(&canvas, -1);
+    EXPECT_EQ(g_backend_texture_upload_budget, UINT64_MAX);
+
+    g_backend_texture_upload_pending_bytes = 8192;
+    EXPECT_EQ(rt_canvas3d_get_texture_upload_pending_bytes(&canvas), 8192);
+
+    g_backend_texture_upload_pending_bytes = (uint64_t)INT64_MAX + 1u;
+    EXPECT_EQ(rt_canvas3d_get_texture_upload_pending_bytes(&canvas), INT64_MAX);
+
+    backend.get_texture_upload_pending_bytes = nullptr;
+    EXPECT_EQ(rt_canvas3d_get_texture_upload_pending_bytes(&canvas), 0);
+    PASS();
+}
+
 static void test_canvas_delta_time_preserves_first_zero() {
     TEST("Canvas3D.GetDeltaTime preserves the first zero frame");
     rt_canvas3d canvas;
@@ -3385,6 +3578,78 @@ static void test_canvas_material_shading_model_mapping() {
     rt_canvas3d_end(&canvas);
     EXPECT_EQ(g_last_draw_cmd.unlit, 1);
     EXPECT_EQ(g_last_draw_cmd.shading_model, 0);
+    PASS();
+}
+
+static void test_canvas_material_textureasset_resolves_resident_mip_on_draw() {
+    TEST("Canvas3D resolves TextureAsset3D material slots at draw time");
+    const char *path = "/tmp/viper_textureasset3d_draw_mips_test.ktx2";
+    uint8_t level0[64];
+    uint8_t level1[16];
+    const uint8_t *levels[] = {level0, level1};
+    const uint64_t level_bytes[] = {sizeof(level0), sizeof(level1)};
+    rt_string path_s;
+    void *asset;
+    void *mip0;
+    void *mip1;
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_plane(1.0, 1.0);
+    void *mat = rt_material3d_new();
+    void *xf = rt_mat4_identity();
+
+    for (size_t i = 0; i < sizeof(level0); i++)
+        level0[i] = (uint8_t)(i + 1u);
+    for (size_t i = 0; i < sizeof(level1); i++)
+        level1[i] = (uint8_t)(0x80u + i);
+
+    EXPECT_TRUE(write_test_ktx2_mips(path, 37u, 4u, 4u, levels, level_bytes, 2u),
+                "draw-time mip fixture written");
+    path_s = rt_string_from_bytes(path, std::strlen(path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+    assert(asset != nullptr && cam != nullptr && mesh != nullptr && mat != nullptr && xf != nullptr);
+
+    rt_material3d_set_texture(mat, asset);
+    mip0 = rt_textureasset3d_get_pixels(asset);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(g_last_draw_cmd.texture == mip0,
+                "Draw command binds the currently resident TextureAsset3D mip 0");
+
+    rt_textureasset3d_set_resident_mip_range(asset, 1, 1);
+    mip1 = rt_textureasset3d_get_pixels(asset);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(g_last_draw_cmd.texture == mip1,
+                "Draw command follows TextureAsset3D resident mip changes after binding");
+
+    rt_textureasset3d_set_resident_mip_range(asset, 0, 0);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(g_last_draw_cmd.texture == nullptr,
+                "Draw command omits texture when TextureAsset3D has no resident fallback");
+
+    std::remove(path);
     PASS();
 }
 
@@ -4380,6 +4645,7 @@ int main() {
     test_canvas_dimensions_follow_active_render_target();
     test_canvas_begin2d_uses_render_target_dimensions();
     test_canvas_begin_uses_active_output_aspect_without_mutating_camera();
+    test_canvas_camera_relative_upload_rebases_frame_payloads();
     test_canvas_resize_updates_backend_and_projection_aspect();
     test_canvas_fog_and_shadow_state_sanitize_inputs();
     test_canvas_begin_applies_camera_shake_without_follow();
@@ -4398,6 +4664,8 @@ int main() {
     test_canvas_software_clustered_lighting_submits_many_lights();
     test_canvas_shadow_cascades_capability_gate();
     test_canvas_occlusion_culling_skips_covered_opaque_draws();
+    test_canvas_texture_upload_bytes_telemetry();
+    test_canvas_texture_upload_budget_controls_backend();
     test_canvas_delta_time_preserves_first_zero();
     test_canvas_poll_event_queue_drains_in_order();
     test_canvas_delta_time_cap_and_disable();
@@ -4406,6 +4674,7 @@ int main() {
     test_canvas_fps_uses_microsecond_delta();
     test_canvas_boolean_setters_normalize();
     test_canvas_material_shading_model_mapping();
+    test_canvas_material_textureasset_resolves_resident_mip_on_draw();
     test_canvas_draw_mesh_clears_pending_splat_on_failed_draw();
     test_canvas_draw_terrain_rejects_2d_frame();
 

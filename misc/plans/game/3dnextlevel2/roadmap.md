@@ -205,12 +205,41 @@ Cannot precede: Phases 5, 6, 8, 9 all build on the index.
 
 Goal: load content without hitching the main thread.
 
+Current implemented slice: `AssetHandle3D` worker-stages glTF/GLB root bytes
+plus external, data URI, and bufferView-backed buffer/image payloads, decodes
+PNG, BMP, JPEG, and GIF image payloads into raw RGBA POD, decodes static,
+skinned, and morph-target glTF triangle-list, triangle-strip, and triangle-fan mesh primitives with
+positions, optional normals, sparse accessor overrides, and JOINTS/WEIGHTS
+attributes into raw `Mesh3D` POD, and publishes runtime results through the
+main-thread commit queue. Decoded RGBA POD now prepares `Pixels` objects across bounded commit slices.
+Missing normals are regenerated during commit, and skin
+joint remapping still runs after skeleton import; morph deltas are committed as
+attached `MorphTarget3D` objects.
+Required buffer payloads, accessor byte ranges, and corrupt required texture
+payloads are validated during worker preload; blocking glTF loads reject matching
+corrupt required data-URI texture payloads instead of dropping material maps.
+`Assets3D.Preload` and `Assets3D.PreloadAsset` now schedule filesystem and
+package-aware template async paths as background warms, with `World3D`
+frame/simulation ticks draining asset commits through an item budget and
+`Assets3D.SetUploadBudget` decoded-texture byte budget.
+The shared `ModelTemplate` cache budget now counts decoded material texture
+pixels when evicting least-recently-used templates, and
+`Assets3D.GetResidentBytes` exposes resident-byte telemetry used by the
+open-world streaming hitch probe to verify blocking/async cache churn returns to
+zero. Pixels-backed 2D material texture and cubemap uploads now row-slice under
+`Canvas3D.SetTextureUploadBudget` with pending-byte telemetry, and the shared
+backend helper proves queued row bytes return to zero after final slices drain.
+Native-compressed backend upload slicing remains.
+
 - Move file read + glTF/FBX/image decode onto Phase-1 workers; keep GPU resource
   creation/upload on the main-thread commit queue.
 - Add `Assets3D.LoadModelAsync`, `LoadModelAssetAsync`,
   `LoadModelTemplateAsync`, `LoadModelTemplateAssetAsync`, and
   `Viper.Game3D.AssetHandle3D` residency; convert `Preload` to a real background
-  warm.
+  warm. The filesystem `Preload` and package-aware `PreloadAsset` warm paths are
+  implemented, `SetUploadBudget` gates decoded-image commit cost, and
+  `streaming_hitch_probe.zia` records blocking-vs-async timing while proving
+  zero-budget pending behavior; native-compressed backend upload slicing remains.
 - Add per-resource residency + reference counting and an eviction policy
   (LRU/distance) so streamed assets unload.
 - Add streaming hooks for textures/meshes (mip/LOD residency) consumed by
@@ -237,7 +266,7 @@ subtrees around the stream center. The API and telemetry are stable; terrain
 tile sidecars, streamed terrain rendering, per-tile heightfield collider
 residency, terrain nav-bake binding, deterministic per-update load budgeting
 with `pendingRequestCount`, and large-world traversal proofs are in place;
-worker-backed async decode/upload remains.
+native-compressed backend upload slicing and named hitch proof remain.
 
 - Implement streamable terrain tiles (lift the single-heightmap 4096² cap at
   `world/rt_terrain3d.c:216` into a tile grid) with seam stitching across tile LODs.

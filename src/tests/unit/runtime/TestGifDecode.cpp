@@ -158,6 +158,33 @@ TEST(GifDecodeTest, Minimal1x1Gif87a) {
     remove(path);
 }
 
+TEST(GifDecodeTest, RawMemoryFirstFrameRgba32) {
+    uint8_t gif[] = {
+        'G',  'I',  'F',  '8',  '7',  'a',
+        0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00,
+        0xFF, 0x00, 0x00,
+        0x00, 0x00, 0x00,
+        0x2C,
+        0x00, 0x00, 0x00, 0x00,
+        0x01, 0x00, 0x01, 0x00,
+        0x00,
+        0x02,
+        0x02, 0x44, 0x01,
+        0x00,
+        0x3B};
+
+    uint32_t *pixels = nullptr;
+    int w = 0;
+    int h = 0;
+    int rc = rt_gif_decode_memory_first_rgba32(gif, sizeof(gif), &pixels, &w, &h);
+    EXPECT_EQ(rc, 1);
+    ASSERT_TRUE(pixels != nullptr);
+    EXPECT_EQ(w, 1);
+    EXPECT_EQ(h, 1);
+    EXPECT_EQ(pixels[0], 0xFF0000FFu);
+    free(pixels);
+}
+
 TEST(GifDecodeTest, MultiFramePreservesPerFrameDelays) {
     uint8_t gif[] = {'G',  'I',  'F',  '8',  '9',  'a',  0x01, 0x00,
                      0x01, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x00, 0x00, // color 0: red

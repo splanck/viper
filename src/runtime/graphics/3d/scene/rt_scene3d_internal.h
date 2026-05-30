@@ -72,8 +72,8 @@ struct rt_scene3d;
 
 typedef struct {
     struct rt_scene_node3d *node;
-    float world_min[3];
-    float world_max[3];
+    double world_min[3];
+    double world_max[3];
     int32_t traversal_order;
     int8_t cullable;
 } rt_scene3d_spatial_entry;

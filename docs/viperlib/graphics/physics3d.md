@@ -309,6 +309,8 @@ sleeping, and optional CCD.
   sanitized to finite values and saturated to the runtime state bounds, so
   extreme impulses or forces cannot create `NaN`/`Inf` body state. CCD keeps
   diagnostics for requested-vs-applied substeps when that demand is clamped.
+- Body position and velocity integration use double precision. The regression
+  lane covers a body at `1e9` world units retaining a `0.125` unit step delta.
 - Rotational state is fully integrated for all body types. Non-trigger contacts apply impulses at
   the contact point, so off-center hits can generate angular velocity.
 - Contacts are solved by a warm-started sequential-impulse solver: per-manifold-point

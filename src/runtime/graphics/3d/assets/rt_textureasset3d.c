@@ -44,6 +44,9 @@
 typedef struct {
     const char *name;
     int8_t compressed;
+    int32_t block_width;
+    int32_t block_height;
+    int32_t block_bytes;
 } textureasset3d_format_info;
 
 typedef struct {
@@ -58,6 +61,7 @@ typedef struct {
     void *vptr;
     void *pixels;
     void **mip_pixels;
+    uint8_t **mip_payloads;
     textureasset3d_mip *mips;
     int64_t width;
     int64_t height;
@@ -67,6 +71,9 @@ typedef struct {
     int64_t resident_bytes;
     const char *format;
     int8_t compressed;
+    int32_t block_width;
+    int32_t block_height;
+    int32_t block_bytes;
 } rt_textureasset3d;
 
 static const uint8_t ktx2_identifier[12] = {
@@ -96,6 +103,12 @@ static void textureasset3d_finalize(void *obj) {
         free(asset->mip_pixels);
         asset->mip_pixels = NULL;
     }
+    if (asset->mip_payloads) {
+        for (int64_t i = 0; i < asset->mip_count; i++)
+            free(asset->mip_payloads[i]);
+        free(asset->mip_payloads);
+        asset->mip_payloads = NULL;
+    }
     free(asset->mips);
     asset->mips = NULL;
 }
@@ -113,17 +126,31 @@ static uint64_t textureasset3d_read_u64le(const uint8_t *p) {
 
 static textureasset3d_format_info textureasset3d_format_from_vk(uint32_t vk_format) {
     if (vk_format == VK_FORMAT_R8G8B8A8_UNORM || vk_format == VK_FORMAT_R8G8B8A8_SRGB)
-        return (textureasset3d_format_info){"rgba8", 0};
+        return (textureasset3d_format_info){"rgba8", 0, 1, 1, 4};
     if (vk_format == VK_FORMAT_BC3_UNORM_BLOCK || vk_format == VK_FORMAT_BC3_SRGB_BLOCK)
-        return (textureasset3d_format_info){"bc3", 1};
+        return (textureasset3d_format_info){"bc3", 1, 4, 4, 16};
     if (vk_format == VK_FORMAT_BC7_UNORM_BLOCK || vk_format == VK_FORMAT_BC7_SRGB_BLOCK)
-        return (textureasset3d_format_info){"bc7", 1};
+        return (textureasset3d_format_info){"bc7", 1, 4, 4, 16};
     if (vk_format == VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK ||
         vk_format == VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK)
-        return (textureasset3d_format_info){"etc2", 1};
-    if (vk_format >= VK_FORMAT_ASTC_4X4_UNORM_BLOCK && vk_format <= VK_FORMAT_ASTC_12X12_SRGB_BLOCK)
-        return (textureasset3d_format_info){"astc", 1};
-    return (textureasset3d_format_info){"unknown", 1};
+        return (textureasset3d_format_info){"etc2", 1, 4, 4, 16};
+    if (vk_format >= VK_FORMAT_ASTC_4X4_UNORM_BLOCK && vk_format <= VK_FORMAT_ASTC_12X12_SRGB_BLOCK) {
+        static const int8_t astc_dims[][2] = {
+            {4, 4},  {4, 4},  {5, 4},  {5, 4},  {5, 5},   {5, 5},  {6, 5},
+            {6, 5},  {6, 6},  {6, 6},  {8, 5},  {8, 5},   {8, 6},  {8, 6},
+            {8, 8},  {8, 8},  {10, 5}, {10, 5}, {10, 6},  {10, 6}, {10, 8},
+            {10, 8}, {10, 10}, {10, 10}, {12, 10}, {12, 10}, {12, 12}, {12, 12},
+        };
+        uint32_t index = vk_format - VK_FORMAT_ASTC_4X4_UNORM_BLOCK;
+        if (index < (uint32_t)(sizeof(astc_dims) / sizeof(astc_dims[0]))) {
+            return (textureasset3d_format_info){"astc",
+                                                1,
+                                                astc_dims[index][0],
+                                                astc_dims[index][1],
+                                                16};
+        }
+    }
+    return (textureasset3d_format_info){"unknown", 1, 0, 0, 0};
 }
 
 static uint32_t textureasset3d_mip_dimension(uint32_t base, uint32_t level) {
@@ -265,6 +292,45 @@ static void textureasset3d_release_mip_pixels(void **mip_pixels, int64_t mip_cou
     free(mip_pixels);
 }
 
+static void textureasset3d_release_mip_payloads(uint8_t **mip_payloads, int64_t mip_count) {
+    if (!mip_payloads)
+        return;
+    for (int64_t i = 0; i < mip_count; i++)
+        free(mip_payloads[i]);
+    free(mip_payloads);
+}
+
+static uint8_t **textureasset3d_copy_native_mip_payloads(
+    const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
+    uint8_t **mip_payloads;
+
+    if (!data || !mips || mip_count <= 0)
+        return NULL;
+    mip_payloads = (uint8_t **)calloc((size_t)mip_count, sizeof(uint8_t *));
+    if (!mip_payloads)
+        return NULL;
+    for (int64_t i = 0; i < mip_count; i++) {
+        const textureasset3d_mip *mip = &mips[i];
+        if (mip->length == 0)
+            continue;
+        if (mip->offset > (uint64_t)size || mip->length > (uint64_t)size - mip->offset) {
+            textureasset3d_release_mip_payloads(mip_payloads, mip_count);
+            return NULL;
+        }
+        if (mip->length > SIZE_MAX) {
+            textureasset3d_release_mip_payloads(mip_payloads, mip_count);
+            return NULL;
+        }
+        mip_payloads[i] = (uint8_t *)malloc((size_t)mip->length);
+        if (!mip_payloads[i]) {
+            textureasset3d_release_mip_payloads(mip_payloads, mip_count);
+            return NULL;
+        }
+        memcpy(mip_payloads[i], data + mip->offset, (size_t)mip->length);
+    }
+    return mip_payloads;
+}
+
 static void **textureasset3d_decode_rgba8_mips(
     const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
     void **mip_pixels;
@@ -299,6 +365,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     textureasset3d_mip *mips = NULL;
     int64_t mip_count;
     void **mip_pixels = NULL;
+    uint8_t **mip_payloads = NULL;
     rt_textureasset3d *asset;
 
     if (!api_name)
@@ -367,11 +434,21 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     format = textureasset3d_format_from_vk(vk_format);
     if (strcmp(format.name, "rgba8") == 0 && supercompression_scheme == 0 && level_count > 0)
         mip_pixels = textureasset3d_decode_rgba8_mips(data, size, mips, mip_count);
+    if (format.compressed && supercompression_scheme == 0 && level_count > 0) {
+        mip_payloads = textureasset3d_copy_native_mip_payloads(data, size, mips, mip_count);
+        if (!mip_payloads) {
+            textureasset3d_release_mip_pixels(mip_pixels, mip_count);
+            free(mips);
+            rt_trap("TextureAsset3D.LoadKTX2: native mip payload allocation failed");
+            return NULL;
+        }
+    }
 
     asset = (rt_textureasset3d *)rt_obj_new_i64(RT_G3D_TEXTUREASSET3D_CLASS_ID,
                                                (int64_t)sizeof(rt_textureasset3d));
     if (!asset) {
         textureasset3d_release_mip_pixels(mip_pixels, mip_count);
+        textureasset3d_release_mip_payloads(mip_payloads, mip_count);
         free(mips);
         rt_trap("TextureAsset3D.LoadKTX2: allocation failed");
         return NULL;
@@ -379,12 +456,16 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     memset(asset, 0, sizeof(*asset));
     rt_obj_set_finalizer(asset, textureasset3d_finalize);
     asset->mip_pixels = mip_pixels;
+    asset->mip_payloads = mip_payloads;
     asset->mips = mips;
     asset->width = (int64_t)pixel_width;
     asset->height = (int64_t)pixel_height;
     asset->mip_count = mip_count;
     asset->format = format.name;
     asset->compressed = (format.compressed || supercompression_scheme != 0) ? 1 : 0;
+    asset->block_width = format.block_width;
+    asset->block_height = format.block_height;
+    asset->block_bytes = format.block_bytes;
     textureasset3d_set_resident_mip_range_internal(asset, 0, asset->mip_count, NULL);
     (void)api_name;
     return asset;
@@ -478,6 +559,53 @@ void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int6
 void *rt_textureasset3d_get_pixels(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return asset ? asset->pixels : NULL;
+}
+
+int rt_textureasset3d_get_native_mip_info(void *obj,
+                                          int64_t mip,
+                                          const uint8_t **out_data,
+                                          uint64_t *out_bytes,
+                                          int32_t *out_width,
+                                          int32_t *out_height,
+                                          int32_t *out_block_width,
+                                          int32_t *out_block_height,
+                                          int32_t *out_block_bytes) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+
+    if (out_data)
+        *out_data = NULL;
+    if (out_bytes)
+        *out_bytes = 0;
+    if (out_width)
+        *out_width = 0;
+    if (out_height)
+        *out_height = 0;
+    if (out_block_width)
+        *out_block_width = 0;
+    if (out_block_height)
+        *out_block_height = 0;
+    if (out_block_bytes)
+        *out_block_bytes = 0;
+    if (!asset || !asset->compressed || !asset->mip_payloads || mip < 0 || mip >= asset->mip_count ||
+        !asset->mip_payloads[mip] || asset->mips[mip].length == 0 || asset->block_width <= 0 ||
+        asset->block_height <= 0 || asset->block_bytes <= 0)
+        return 0;
+
+    if (out_data)
+        *out_data = asset->mip_payloads[mip];
+    if (out_bytes)
+        *out_bytes = asset->mips[mip].length;
+    if (out_width)
+        *out_width = (int32_t)asset->mips[mip].width;
+    if (out_height)
+        *out_height = (int32_t)asset->mips[mip].height;
+    if (out_block_width)
+        *out_block_width = asset->block_width;
+    if (out_block_height)
+        *out_block_height = asset->block_height;
+    if (out_block_bytes)
+        *out_block_bytes = asset->block_bytes;
+    return 1;
 }
 
 #endif

@@ -262,7 +262,24 @@ The rendering surface. Creates a window and manages the render loop.
 | `ResetRenderTarget()` | `void()` | Return to window rendering |
 | `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain applied during frame finalization to the window or active render target; SSAO/DOF/motion blur require GPU window postfx |
 | `SetFrustumCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
-| `SetOcclusionCulling(enabled)` | `void(i1)` | Compatibility alias for `SetFrustumCulling`; this is not hardware occlusion-query culling |
+| `SetOcclusionCulling(enabled)` | `void(i1)` | Toggle frustum rejection plus conservative CPU occlusion skips; this is not hardware occlusion-query culling |
+
+### Canvas Telemetry
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `DrawCount` | `i64` | Main 3D draw submissions queued by the latest ended frame |
+| `OccludedDrawCount` | `i64` | Latest scene draw submissions skipped by visibility culling |
+| `TextureUploadBytes` | `i64` | CPU image bytes uploaded into backend texture storage during the latest ended frame |
+| `TextureUploadPendingBytes` | `i64` | CPU image bytes still waiting for backend texture or cubemap upload budget |
+
+`TextureUploadBytes` reports real backend texture cache uploads/re-uploads for Metal, OpenGL, and
+D3D11. Pixels-backed 2D material textures and cubemaps are row-sliced by
+`Canvas3D.SetTextureUploadBudget(bytes)`; negative means unlimited, `0` pauses new upload rows, and
+positive values cap per-frame upload bytes while preserving progress for sub-row budgets. Cache hits
+and software/unsupported backends report `0`; non-overlay frame begin resets the counter.
+`TextureUploadPendingBytes` returns to `0` once all material and cubemap row slices drain. Use it
+to correlate async asset commits and streaming movement with GPU texture upload pressure.
 
 `Poll()` is the live-loop input boundary. It updates `Viper.Input.Keyboard`,
 `Viper.Input.Mouse`, gamepad state, and action mappings; most gameplay code
@@ -645,7 +662,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 
 See `examples/apiaudit/graphics3d/shading_demo.zia` for the legacy/custom-model path and `examples/apiaudit/graphics3d/material3d_pbr_demo.zia` / `examples/apiaudit/graphics3d/material3d_pbr_demo.bas` for the PBR workflow.
 
-**Ownership:** `Material3D` retains `Pixels` fallbacks and `CubeMap3D` references internally. When a `TextureAsset3D` is accepted, the material stores its decoded RGBA8 `Pixels` fallback so existing render backends keep the same upload path.
+**Ownership:** `Material3D` retains `Pixels`, `TextureAsset3D`, and `CubeMap3D` references internally. When a `TextureAsset3D` is accepted, the material keeps the asset handle and resolves the currently resident RGBA8 `Pixels` fallback when drawing, so later `SetResidentMipRange` calls change the texture used by already-bound materials.
 
 ## TextureAsset3D
 
@@ -671,13 +688,14 @@ KTX2 texture asset metadata and material binding bridge.
 The current runtime parses KTX2 headers, records declared mip payload byte
 ranges, and decodes each uncompressed RGBA8 mip into a `Pixels` fallback.
 `SetResidentMipRange` updates mip residency telemetry and selects the first
-resident RGBA8 mip as the active material fallback; negative arguments trap,
-`mipCount` clamps to the available range, and a zero count releases all resident
-telemetry/fallback binding. `Material3D.NewTextured`, `SetTexture`,
+resident RGBA8 mip as the active fallback resolved by materials at draw time;
+negative arguments trap, `mipCount` clamps to the available range, and a zero
+count releases all resident telemetry/fallback binding. `Material3D.NewTextured`, `SetTexture`,
 `SetAlbedoMap`, `SetNormalMap`, `SetMetallicRoughnessMap`, `SetAOMap`,
 `SetSpecularMap`, and `SetEmissiveMap` accept RGBA8-backed texture assets
 directly. BC3/BC7/ASTC/ETC2 assets expose metadata and residency byte counts
-now; native compressed GPU upload remains backend-gated work.
+now, and native mip block payloads are retained internally for backend upload
+wiring; native compressed GPU submission remains backend-gated work.
 
 ### Zia Example
 

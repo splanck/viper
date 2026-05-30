@@ -26,9 +26,11 @@
 #include "rt_asset.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_gif.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_quat.h"
 #include "rt_scene3d_internal.h"
 #include "rt_skeleton3d.h"
@@ -60,7 +62,6 @@ extern void rt_obj_retain_maybe(void *obj);
 #include "rt_trap.h"
 extern void rt_trap_set_recovery(jmp_buf *buf);
 extern void rt_trap_clear_recovery(void);
-extern int64_t rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
 extern void *rt_pixels_load(void *path);
@@ -175,6 +176,7 @@ static const char *jstr(void *obj, const char *key);
 static int64_t jarr_len(void *arr);
 static double jvalue_num(void *value, double def);
 static int64_t jvalue_int(void *value, int64_t def);
+static int gltf_ascii_ieq_n(const char *a, const char *b, size_t len);
 
 /// @brief GC finalizer for an `rt_gltf_asset` — release every owned mesh / material / scene root.
 static void gltf_asset_finalize(void *obj) {
@@ -1002,6 +1004,14 @@ static void gltf_apply_texture_slot(const gltf_sampler_info_t *texture_samplers,
                                           filter);
 }
 
+static int gltf_texture_index_missing_supported_payload(int64_t texture_index,
+                                                        int32_t texture_count,
+                                                        void **texture_images,
+                                                        const uint8_t *texture_supported) {
+    return texture_index >= 0 && texture_index < texture_count && texture_supported &&
+           texture_supported[texture_index] && (!texture_images || !texture_images[texture_index]);
+}
+
 //===----------------------------------------------------------------------===//
 // Buffer management
 //===----------------------------------------------------------------------===//
@@ -1010,6 +1020,78 @@ typedef struct {
     uint8_t *data;
     size_t len;
 } gltf_buffer_t;
+
+typedef enum {
+    GLTF_PRELOAD_DEP_BUFFER = 1,
+    GLTF_PRELOAD_DEP_IMAGE = 2,
+    GLTF_PRELOAD_DEP_IMAGE_RGBA = 3,
+    GLTF_PRELOAD_DEP_MESH_POD = 4,
+    GLTF_PRELOAD_DEP_MORPH_POD = 5,
+    GLTF_PRELOAD_DEP_IMAGE_PIXELS = 6
+} gltf_preload_dependency_kind_t;
+
+#define GLTF_PRELOAD_MESH_POD_MAGIC 0x504D4756u /* "VGMP" little-endian */
+#define GLTF_PRELOAD_MESH_POD_VERSION 1u
+#define GLTF_PRELOAD_MESH_POD_HEADER_SIZE 32u
+#define GLTF_PRELOAD_MESH_POD_HAS_NORMALS 0x1u
+#define GLTF_PRELOAD_MESH_POD_HAS_UV0 0x2u
+#define GLTF_PRELOAD_MESH_POD_HAS_TANGENTS 0x4u
+#define GLTF_PRELOAD_MESH_POD_HAS_SKINNING 0x8u
+
+#define GLTF_PRELOAD_MORPH_POD_MAGIC 0x544D4756u /* "VGMT" little-endian */
+#define GLTF_PRELOAD_MORPH_POD_VERSION 1u
+#define GLTF_PRELOAD_MORPH_POD_HEADER_SIZE 32u
+#define GLTF_PRELOAD_MORPH_POD_RECORD_SIZE 32u
+#define GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS 0x1u
+#define GLTF_PRELOAD_MORPH_POD_HAS_NORMALS 0x2u
+#define GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS 0x4u
+
+typedef struct {
+    char *path;
+    uint8_t *data;
+    void *object;
+    size_t len;
+    size_t prepared;
+    gltf_preload_dependency_kind_t kind;
+} gltf_preload_dependency_t;
+
+typedef struct {
+    const uint8_t *data;
+    size_t len;
+} gltf_preload_buffer_ref_t;
+
+typedef struct {
+    int buffer;
+    size_t byte_offset;
+    size_t byte_length;
+    size_t byte_stride;
+    int valid;
+} gltf_preload_buffer_view_ref_t;
+
+typedef struct {
+    int view;
+    size_t byte_offset;
+    int comp_type;
+    int comp_count;
+    int count;
+    int8_t normalized;
+    int8_t has_sparse;
+    int sparse_indices_view;
+    size_t sparse_indices_offset;
+    int sparse_values_view;
+    size_t sparse_values_offset;
+    int sparse_count;
+    int sparse_index_comp_type;
+    int valid;
+} gltf_preload_accessor_ref_t;
+
+struct rt_gltf_preload_bundle {
+    uint8_t *root_data;
+    size_t root_size;
+    gltf_preload_dependency_t *dependencies;
+    size_t dependency_count;
+    size_t dependency_capacity;
+};
 
 typedef struct {
     const uint8_t *data;
@@ -1025,6 +1107,313 @@ typedef struct {
     int32_t sparse_index_stride;
     int32_t sparse_value_stride;
 } gltf_accessor_view_t;
+
+static void gltf_preload_mesh_key(int mesh_index, int primitive_index, char *out, size_t out_cap);
+static void gltf_preload_morph_key(int mesh_index, int primitive_index, char *out, size_t out_cap);
+static uint32_t gltf_read_u32_le(const uint8_t *p);
+static int gltf_checked_mul_size(size_t a, size_t b, size_t *out);
+
+static char *gltf_strdup_cstr(const char *text) {
+    size_t len;
+    char *copy;
+    if (!text)
+        return NULL;
+    len = strlen(text);
+    copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, len + 1u);
+    return copy;
+}
+
+static void gltf_preload_release_object(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void gltf_preload_dependency_clear(gltf_preload_dependency_t *dep) {
+    if (!dep)
+        return;
+    free(dep->path);
+    free(dep->data);
+    gltf_preload_release_object(&dep->object);
+    memset(dep, 0, sizeof(*dep));
+}
+
+void rt_gltf_preload_bundle_free(rt_gltf_preload_bundle *bundle) {
+    if (!bundle)
+        return;
+    free(bundle->root_data);
+    bundle->root_data = NULL;
+    for (size_t i = 0; i < bundle->dependency_count; ++i)
+        gltf_preload_dependency_clear(&bundle->dependencies[i]);
+    free(bundle->dependencies);
+    free(bundle);
+}
+
+size_t rt_gltf_preload_bundle_dependency_count(const rt_gltf_preload_bundle *bundle) {
+    return bundle ? bundle->dependency_count : 0u;
+}
+
+size_t rt_gltf_preload_bundle_decoded_image_count(const rt_gltf_preload_bundle *bundle) {
+    size_t count = 0;
+    if (!bundle)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        if (bundle->dependencies[i].kind == GLTF_PRELOAD_DEP_IMAGE_RGBA)
+            count++;
+    }
+    return count;
+}
+
+size_t rt_gltf_preload_bundle_decoded_image_bytes(const rt_gltf_preload_bundle *bundle) {
+    size_t bytes = 0;
+    if (!bundle)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        if (bundle->dependencies[i].kind == GLTF_PRELOAD_DEP_IMAGE_RGBA) {
+            size_t len = bundle->dependencies[i].len;
+            size_t prepared = bundle->dependencies[i].prepared;
+            if (len > 12u)
+                len -= 12u;
+            else
+                len = 0u;
+            if (prepared < len)
+                len -= prepared;
+            else
+                len = 0u;
+            if (SIZE_MAX - bytes < len)
+                return SIZE_MAX;
+            bytes += len;
+        }
+    }
+    return bytes;
+}
+
+static int gltf_preload_rgba_blob_pixel_bytes(const uint8_t *blob,
+                                              size_t len,
+                                              uint32_t *out_width,
+                                              uint32_t *out_height,
+                                              size_t *out_pixel_bytes) {
+    uint32_t width;
+    uint32_t height;
+    size_t pixel_count;
+    size_t pixel_bytes;
+    if (out_width)
+        *out_width = 0;
+    if (out_height)
+        *out_height = 0;
+    if (out_pixel_bytes)
+        *out_pixel_bytes = 0;
+    if (!blob || len < 12u)
+        return 0;
+    if (blob[0] != 'V' || blob[1] != 'G' || blob[2] != 'R' || blob[3] != 'A')
+        return 0;
+    width = gltf_read_u32_le(blob + 4);
+    height = gltf_read_u32_le(blob + 8);
+    if (width == 0 || height == 0)
+        return 0;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)height, &pixel_count) ||
+        !gltf_checked_mul_size(pixel_count, 4u, &pixel_bytes) ||
+        pixel_bytes > len - 12u)
+        return 0;
+    if (out_width)
+        *out_width = width;
+    if (out_height)
+        *out_height = height;
+    if (out_pixel_bytes)
+        *out_pixel_bytes = pixel_bytes;
+    return 1;
+}
+
+size_t rt_gltf_preload_bundle_next_decoded_image_slice_bytes(const rt_gltf_preload_bundle *bundle,
+                                                             size_t max_bytes) {
+    if (!bundle || max_bytes == 0u)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        const gltf_preload_dependency_t *dep = &bundle->dependencies[i];
+        size_t pixel_bytes;
+        size_t remaining;
+        size_t slice;
+        if (dep->kind != GLTF_PRELOAD_DEP_IMAGE_RGBA)
+            continue;
+        if (!gltf_preload_rgba_blob_pixel_bytes(dep->data, dep->len, NULL, NULL, &pixel_bytes))
+            return 0u;
+        if (dep->prepared >= pixel_bytes)
+            continue;
+        remaining = pixel_bytes - dep->prepared;
+        slice = remaining < max_bytes ? remaining : max_bytes;
+        if (slice < 4u)
+            slice = remaining < 4u ? remaining : 4u;
+        return slice - (slice % 4u);
+    }
+    return 0u;
+}
+
+size_t rt_gltf_preload_bundle_prepare_decoded_image_slice(rt_gltf_preload_bundle *bundle,
+                                                          size_t max_bytes) {
+    if (!bundle || max_bytes == 0u)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        gltf_preload_dependency_t *dep = &bundle->dependencies[i];
+        uint32_t width;
+        uint32_t height;
+        size_t pixel_bytes;
+        size_t remaining;
+        size_t copy_bytes;
+        size_t first_pixel;
+        size_t copy_pixels;
+        rt_pixels_impl *pixels;
+        if (dep->kind != GLTF_PRELOAD_DEP_IMAGE_RGBA)
+            continue;
+        if (!gltf_preload_rgba_blob_pixel_bytes(dep->data,
+                                                dep->len,
+                                                &width,
+                                                &height,
+                                                &pixel_bytes))
+            return 0u;
+        if (dep->prepared >= pixel_bytes) {
+            dep->prepared = pixel_bytes;
+            continue;
+        }
+        if (!dep->object) {
+            dep->object = pixels_alloc((int64_t)width, (int64_t)height);
+            if (!dep->object)
+                return 0u;
+        }
+        remaining = pixel_bytes - dep->prepared;
+        copy_bytes = remaining < max_bytes ? remaining : max_bytes;
+        if (copy_bytes < 4u)
+            copy_bytes = remaining < 4u ? remaining : 4u;
+        copy_bytes -= copy_bytes % 4u;
+        if (copy_bytes == 0u)
+            return 0u;
+        first_pixel = dep->prepared / 4u;
+        copy_pixels = copy_bytes / 4u;
+        pixels = (rt_pixels_impl *)dep->object;
+        for (size_t pi = 0; pi < copy_pixels; ++pi) {
+            const uint8_t *sp = dep->data + 12u + dep->prepared + pi * 4u;
+            pixels->data[first_pixel + pi] = ((uint32_t)sp[0] << 24) |
+                                             ((uint32_t)sp[1] << 16) |
+                                             ((uint32_t)sp[2] << 8) | (uint32_t)sp[3];
+        }
+        dep->prepared += copy_bytes;
+        if (dep->prepared >= pixel_bytes) {
+            pixels_touch(pixels);
+            free(dep->data);
+            dep->data = NULL;
+            dep->len = 0u;
+            dep->prepared = 0u;
+            dep->kind = GLTF_PRELOAD_DEP_IMAGE_PIXELS;
+        }
+        return copy_bytes;
+    }
+    return 0u;
+}
+
+size_t rt_gltf_preload_bundle_decoded_mesh_count(const rt_gltf_preload_bundle *bundle) {
+    size_t count = 0;
+    if (!bundle)
+        return 0u;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        if (bundle->dependencies[i].kind == GLTF_PRELOAD_DEP_MESH_POD)
+            count++;
+    }
+    return count;
+}
+
+static int gltf_preload_bundle_add_dependency(rt_gltf_preload_bundle *bundle,
+                                              const char *path,
+                                              gltf_preload_dependency_kind_t kind,
+                                              uint8_t *data,
+                                              size_t len) {
+    gltf_preload_dependency_t *grown;
+    char *path_copy;
+    if (!bundle || !path || !data)
+        return 0;
+    if (bundle->dependency_count == bundle->dependency_capacity) {
+        size_t next_capacity = bundle->dependency_capacity ? bundle->dependency_capacity * 2u : 8u;
+        if (next_capacity < bundle->dependency_count)
+            return 0;
+        grown = (gltf_preload_dependency_t *)realloc(
+            bundle->dependencies, next_capacity * sizeof(*bundle->dependencies));
+        if (!grown)
+            return 0;
+        bundle->dependencies = grown;
+        bundle->dependency_capacity = next_capacity;
+    }
+    path_copy = gltf_strdup_cstr(path);
+    if (!path_copy)
+        return 0;
+    bundle->dependencies[bundle->dependency_count].path = path_copy;
+    bundle->dependencies[bundle->dependency_count].data = data;
+    bundle->dependencies[bundle->dependency_count].object = NULL;
+    bundle->dependencies[bundle->dependency_count].len = len;
+    bundle->dependencies[bundle->dependency_count].prepared = 0u;
+    bundle->dependencies[bundle->dependency_count].kind = kind;
+    bundle->dependency_count++;
+    return 1;
+}
+
+static uint8_t *gltf_preload_bundle_take_dependency(rt_gltf_preload_bundle *bundle,
+                                                    const char *path,
+                                                    gltf_preload_dependency_kind_t kind,
+                                                    size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
+    if (!bundle || !path)
+        return NULL;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        gltf_preload_dependency_t *dep = &bundle->dependencies[i];
+        if (dep->kind == kind && dep->path && strcmp(dep->path, path) == 0) {
+            uint8_t *data = dep->data;
+            if (out_len)
+                *out_len = dep->len;
+            free(dep->path);
+            if (i + 1u < bundle->dependency_count) {
+                memmove(dep,
+                        dep + 1u,
+                        (bundle->dependency_count - i - 1u) * sizeof(*bundle->dependencies));
+            }
+            bundle->dependency_count--;
+            memset(&bundle->dependencies[bundle->dependency_count],
+                   0,
+                   sizeof(*bundle->dependencies));
+            return data;
+        }
+    }
+    return NULL;
+}
+
+static void *gltf_preload_bundle_take_object_dependency(rt_gltf_preload_bundle *bundle,
+                                                        const char *path,
+                                                        gltf_preload_dependency_kind_t kind) {
+    if (!bundle || !path)
+        return NULL;
+    for (size_t i = 0; i < bundle->dependency_count; ++i) {
+        gltf_preload_dependency_t *dep = &bundle->dependencies[i];
+        if (dep->kind == kind && dep->path && strcmp(dep->path, path) == 0) {
+            void *object = dep->object;
+            free(dep->path);
+            free(dep->data);
+            dep->object = NULL;
+            if (i + 1u < bundle->dependency_count) {
+                memmove(dep,
+                        dep + 1u,
+                        (bundle->dependency_count - i - 1u) * sizeof(*bundle->dependencies));
+            }
+            bundle->dependency_count--;
+            memset(&bundle->dependencies[bundle->dependency_count],
+                   0,
+                   sizeof(*bundle->dependencies));
+            return object;
+        }
+    }
+    return NULL;
+}
 
 /// @brief Read a little-endian uint32 from an unaligned byte pointer.
 /// @details Uses individual byte loads and explicit shifts to avoid undefined behaviour
@@ -1057,6 +1446,320 @@ static int gltf_checked_mul_size(size_t a, size_t b, size_t *out) {
         return 0;
     *out = a * b;
     return 1;
+}
+
+static uint16_t gltf_read_u16_le(const uint8_t *p) {
+    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+}
+
+static int32_t gltf_read_i32_le(const uint8_t *p) {
+    return (int32_t)gltf_read_u32_le(p);
+}
+
+static void gltf_write_u32_le(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+    p[2] = (uint8_t)((v >> 16) & 0xFFu);
+    p[3] = (uint8_t)((v >> 24) & 0xFFu);
+}
+
+static float gltf_read_f32_le(const uint8_t *p) {
+    uint32_t bits = gltf_read_u32_le(p);
+    float value = 0.0f;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+static void gltf_write_f32_le(uint8_t *p, float value) {
+    uint32_t bits = 0u;
+    memcpy(&bits, &value, sizeof(bits));
+    gltf_write_u32_le(p, bits);
+}
+
+static int gltf_ascii_has_token_i(const char *text, const char *needle) {
+    size_t needle_len;
+    if (!text || !needle)
+        return 0;
+    needle_len = strlen(needle);
+    if (needle_len == 0)
+        return 1;
+    for (size_t i = 0; text[i] != '\0'; ++i) {
+        if (gltf_ascii_ieq_n(text + i, needle, needle_len))
+            return 1;
+    }
+    return 0;
+}
+
+static int gltf_preload_image_is_bmp(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/bmp") ||
+        gltf_ascii_has_token_i(mime_or_name, "image/x-ms-bmp"))
+        return 1;
+    len = strlen(mime_or_name);
+    return len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".bmp", 4u);
+}
+
+static int gltf_preload_image_is_png(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/png"))
+        return 1;
+    len = strlen(mime_or_name);
+    return len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".png", 4u);
+}
+
+static int gltf_preload_image_is_jpeg(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/jpeg") ||
+        gltf_ascii_has_token_i(mime_or_name, "image/jpg"))
+        return 1;
+    len = strlen(mime_or_name);
+    return (len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".jpg", 4u)) ||
+           (len >= 5u && gltf_ascii_ieq_n(mime_or_name + len - 5u, ".jpeg", 5u));
+}
+
+static int gltf_preload_image_is_gif(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/gif"))
+        return 1;
+    len = strlen(mime_or_name);
+    return len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".gif", 4u);
+}
+
+static int gltf_preload_image_is_supported_format(const char *mime_or_name) {
+    return gltf_preload_image_is_png(mime_or_name) ||
+           gltf_preload_image_is_bmp(mime_or_name) ||
+           gltf_preload_image_is_jpeg(mime_or_name) ||
+           gltf_preload_image_is_gif(mime_or_name);
+}
+
+static int gltf_decode_bmp_to_rgba_blob(const uint8_t *data,
+                                        size_t len,
+                                        uint8_t **out_blob,
+                                        size_t *out_len) {
+    uint32_t pixel_offset;
+    uint32_t dib_size;
+    int32_t width_i;
+    int32_t height_i;
+    uint16_t planes;
+    uint16_t bit_count;
+    uint32_t compression;
+    uint32_t width;
+    uint32_t height;
+    size_t row_stride;
+    size_t image_rows;
+    size_t pixel_bytes;
+    size_t blob_len;
+    uint8_t *blob;
+    int top_down = 0;
+
+    if (out_blob)
+        *out_blob = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!data || len < 54u || !out_blob || !out_len)
+        return 0;
+    if (data[0] != 'B' || data[1] != 'M')
+        return 0;
+
+    pixel_offset = gltf_read_u32_le(data + 10);
+    dib_size = gltf_read_u32_le(data + 14);
+    if (dib_size < 40u || pixel_offset >= len)
+        return 0;
+    width_i = gltf_read_i32_le(data + 18);
+    height_i = gltf_read_i32_le(data + 22);
+    planes = gltf_read_u16_le(data + 26);
+    bit_count = gltf_read_u16_le(data + 28);
+    compression = gltf_read_u32_le(data + 30);
+    if (width_i <= 0 || height_i == 0 || planes != 1 || compression != 0 ||
+        (bit_count != 24 && bit_count != 32))
+        return 0;
+    if (height_i < 0) {
+        if (height_i == INT32_MIN)
+            return 0;
+        top_down = 1;
+        height_i = -height_i;
+    }
+    width = (uint32_t)width_i;
+    height = (uint32_t)height_i;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)bit_count, &row_stride))
+        return 0;
+    if (!gltf_checked_add_size(row_stride, 31u, &row_stride))
+        return 0;
+    row_stride = (row_stride / 32u) * 4u;
+    if (!gltf_checked_mul_size(row_stride, (size_t)height, &image_rows))
+        return 0;
+    if ((size_t)pixel_offset > len || image_rows > len - (size_t)pixel_offset)
+        return 0;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)height, &pixel_bytes) ||
+        !gltf_checked_mul_size(pixel_bytes, 4u, &pixel_bytes) ||
+        !gltf_checked_add_size(12u, pixel_bytes, &blob_len))
+        return 0;
+    blob = (uint8_t *)malloc(blob_len);
+    if (!blob)
+        return 0;
+    blob[0] = 'V';
+    blob[1] = 'G';
+    blob[2] = 'R';
+    blob[3] = 'A';
+    gltf_write_u32_le(blob + 4, width);
+    gltf_write_u32_le(blob + 8, height);
+    for (uint32_t y = 0; y < height; ++y) {
+        uint32_t src_y = top_down ? y : (height - 1u - y);
+        const uint8_t *row = data + (size_t)pixel_offset + (size_t)src_y * row_stride;
+        uint8_t *dst = blob + 12u + (size_t)y * (size_t)width * 4u;
+        for (uint32_t x = 0; x < width; ++x) {
+            if (bit_count == 32) {
+                const uint8_t *sp = row + (size_t)x * 4u;
+                dst[x * 4u + 0u] = sp[2];
+                dst[x * 4u + 1u] = sp[1];
+                dst[x * 4u + 2u] = sp[0];
+                dst[x * 4u + 3u] = sp[3];
+            } else {
+                const uint8_t *sp = row + (size_t)x * 3u;
+                dst[x * 4u + 0u] = sp[2];
+                dst[x * 4u + 1u] = sp[1];
+                dst[x * 4u + 2u] = sp[0];
+                dst[x * 4u + 3u] = 0xFFu;
+            }
+        }
+    }
+    *out_blob = blob;
+    *out_len = blob_len;
+    return 1;
+}
+
+static int gltf_rgba32_to_rgba_blob(const uint32_t *pixels,
+                                    int64_t width_i,
+                                    int64_t height_i,
+                                    uint8_t **out_blob,
+                                    size_t *out_len) {
+    uint32_t width;
+    uint32_t height;
+    size_t pixel_count;
+    size_t pixel_bytes;
+    size_t blob_len;
+    uint8_t *blob;
+    if (out_blob)
+        *out_blob = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!pixels || !out_blob || !out_len || width_i <= 0 || height_i <= 0 ||
+        (uint64_t)width_i > UINT32_MAX || (uint64_t)height_i > UINT32_MAX)
+        return 0;
+    width = (uint32_t)width_i;
+    height = (uint32_t)height_i;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)height, &pixel_count) ||
+        !gltf_checked_mul_size(pixel_count, 4u, &pixel_bytes) ||
+        !gltf_checked_add_size(12u, pixel_bytes, &blob_len))
+        return 0;
+    blob = (uint8_t *)malloc(blob_len);
+    if (!blob)
+        return 0;
+    blob[0] = 'V';
+    blob[1] = 'G';
+    blob[2] = 'R';
+    blob[3] = 'A';
+    gltf_write_u32_le(blob + 4, width);
+    gltf_write_u32_le(blob + 8, height);
+    for (size_t i = 0; i < pixel_count; ++i) {
+        uint32_t rgba = pixels[i];
+        uint8_t *dst = blob + 12u + i * 4u;
+        dst[0] = (uint8_t)((rgba >> 24) & 0xFFu);
+        dst[1] = (uint8_t)((rgba >> 16) & 0xFFu);
+        dst[2] = (uint8_t)((rgba >> 8) & 0xFFu);
+        dst[3] = (uint8_t)(rgba & 0xFFu);
+    }
+    *out_blob = blob;
+    *out_len = blob_len;
+    return 1;
+}
+
+static int gltf_decode_image_payload_to_rgba_blob(const char *mime_or_name,
+                                                  const uint8_t *data,
+                                                  size_t data_len,
+                                                  uint8_t **out_blob,
+                                                  size_t *out_len) {
+    if (out_blob)
+        *out_blob = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!mime_or_name || !data || data_len == 0 || !out_blob || !out_len)
+        return 0;
+    if (gltf_preload_image_is_png(mime_or_name)) {
+        uint32_t *rgba32 = NULL;
+        int64_t width = 0;
+        int64_t height = 0;
+        int ok = 0;
+        if (rt_png_decode_buffer_rgba32(data, data_len, &rgba32, &width, &height))
+            ok = gltf_rgba32_to_rgba_blob(rgba32, width, height, out_blob, out_len);
+        free(rgba32);
+        return ok;
+    }
+    if (gltf_preload_image_is_bmp(mime_or_name))
+        return gltf_decode_bmp_to_rgba_blob(data, data_len, out_blob, out_len);
+    if (gltf_preload_image_is_jpeg(mime_or_name)) {
+        uint32_t *rgba32 = NULL;
+        int64_t width = 0;
+        int64_t height = 0;
+        int ok = 0;
+        if (rt_jpeg_decode_buffer_rgba32(data, data_len, &rgba32, &width, &height))
+            ok = gltf_rgba32_to_rgba_blob(rgba32, width, height, out_blob, out_len);
+        free(rgba32);
+        return ok;
+    }
+    if (gltf_preload_image_is_gif(mime_or_name)) {
+        uint32_t *rgba32 = NULL;
+        int width = 0;
+        int height = 0;
+        int ok = 0;
+        if (rt_gif_decode_memory_first_rgba32(data, data_len, &rgba32, &width, &height))
+            ok = gltf_rgba32_to_rgba_blob(
+                rgba32, (int64_t)width, (int64_t)height, out_blob, out_len);
+        free(rgba32);
+        return ok;
+    }
+    return 0;
+}
+
+static void *gltf_pixels_from_rgba_blob(uint8_t *blob, size_t len) {
+    uint32_t width;
+    uint32_t height;
+    size_t pixel_count;
+    size_t pixel_bytes;
+    rt_pixels_impl *pixels;
+    const uint8_t *src;
+    if (!blob || len < 12u)
+        return NULL;
+    if (blob[0] != 'V' || blob[1] != 'G' || blob[2] != 'R' || blob[3] != 'A')
+        return NULL;
+    width = gltf_read_u32_le(blob + 4);
+    height = gltf_read_u32_le(blob + 8);
+    if (width == 0 || height == 0)
+        return NULL;
+    if (!gltf_checked_mul_size((size_t)width, (size_t)height, &pixel_count) ||
+        !gltf_checked_mul_size(pixel_count, 4u, &pixel_bytes) ||
+        pixel_bytes > len - 12u)
+        return NULL;
+    pixels = pixels_alloc((int64_t)width, (int64_t)height);
+    if (!pixels)
+        return NULL;
+    src = blob + 12u;
+    for (size_t i = 0; i < pixel_count; ++i) {
+        const uint8_t *sp = src + i * 4u;
+        pixels->data[i] = ((uint32_t)sp[0] << 24) | ((uint32_t)sp[1] << 16) |
+                          ((uint32_t)sp[2] << 8) | (uint32_t)sp[3];
+    }
+    if (pixel_count > 0)
+        pixels_touch(pixels);
+    return pixels;
 }
 
 /// @brief Read a non-negative integer field from a JSON object as a `size_t`.
@@ -1333,6 +2036,31 @@ static int gltf_parse_data_uri(
     *out_data = decoded_payload;
     *out_len = decoded_payload_len;
     return 1;
+}
+
+static void gltf_data_uri_copy_mime(const char *uri, char *mime_buf, size_t mime_buf_cap) {
+    const char *comma;
+    const char *meta;
+    const char *semi;
+    size_t meta_len;
+    size_t mime_len;
+    if (mime_buf && mime_buf_cap > 0)
+        mime_buf[0] = '\0';
+    if (!uri || strncmp(uri, "data:", 5) != 0 || !mime_buf || mime_buf_cap == 0)
+        return;
+    comma = strchr(uri, ',');
+    if (!comma)
+        return;
+    meta = uri + 5;
+    meta_len = (size_t)(comma - meta);
+    semi = memchr(meta, ';', meta_len);
+    mime_len = semi ? (size_t)(semi - meta) : meta_len;
+    if (mime_len == 0)
+        return;
+    if (mime_len >= mime_buf_cap)
+        mime_len = mime_buf_cap - 1u;
+    memcpy(mime_buf, meta, mime_len);
+    mime_buf[mime_len] = '\0';
 }
 
 /// @brief Resolve a buffer-view index to its `(data, length)` slice into the underlying buffer.
@@ -1984,6 +2712,239 @@ static void gltf_release_ref(void **slot) {
 static void gltf_release_local(void *obj) {
     void *tmp = obj;
     gltf_release_ref(&tmp);
+}
+
+static void gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bundle,
+                                            int mesh_index,
+                                            int primitive_index,
+                                            void *mesh_obj,
+                                            uint32_t vertex_count) {
+    char key[96];
+    uint8_t *blob;
+    size_t blob_len = 0;
+    uint32_t magic;
+    uint32_t version;
+    uint32_t pod_vertex_count;
+    uint32_t shape_count;
+    uint32_t record_bytes_u32;
+    uint32_t names_bytes_u32;
+    uint32_t payload_bytes_u32;
+    size_t record_bytes;
+    size_t names_bytes;
+    size_t payload_bytes;
+    size_t records_offset;
+    size_t names_offset;
+    size_t payload_offset;
+    size_t required_len;
+    size_t channel_bytes;
+    void *morph = NULL;
+
+    if (!preload_bundle || !mesh_obj || vertex_count == 0 || vertex_count > INT32_MAX)
+        return;
+    gltf_preload_morph_key(mesh_index, primitive_index, key, sizeof(key));
+    blob = gltf_preload_bundle_take_dependency(
+        preload_bundle, key, GLTF_PRELOAD_DEP_MORPH_POD, &blob_len);
+    if (!blob)
+        return;
+    if (blob_len < GLTF_PRELOAD_MORPH_POD_HEADER_SIZE)
+        goto done;
+    magic = gltf_read_u32_le(blob + 0);
+    version = gltf_read_u32_le(blob + 4);
+    pod_vertex_count = gltf_read_u32_le(blob + 8);
+    shape_count = gltf_read_u32_le(blob + 12);
+    record_bytes_u32 = gltf_read_u32_le(blob + 16);
+    names_bytes_u32 = gltf_read_u32_le(blob + 20);
+    payload_bytes_u32 = gltf_read_u32_le(blob + 24);
+    if (magic != GLTF_PRELOAD_MORPH_POD_MAGIC || version != GLTF_PRELOAD_MORPH_POD_VERSION ||
+        pod_vertex_count != vertex_count || shape_count == 0 || shape_count > INT32_MAX)
+        goto done;
+    if (!gltf_checked_mul_size((size_t)shape_count,
+                               GLTF_PRELOAD_MORPH_POD_RECORD_SIZE,
+                               &record_bytes) ||
+        record_bytes != (size_t)record_bytes_u32)
+        goto done;
+    names_bytes = (size_t)names_bytes_u32;
+    payload_bytes = (size_t)payload_bytes_u32;
+    records_offset = GLTF_PRELOAD_MORPH_POD_HEADER_SIZE;
+    if (!gltf_checked_add_size(records_offset, record_bytes, &names_offset) ||
+        !gltf_checked_add_size(names_offset, names_bytes, &payload_offset) ||
+        !gltf_checked_add_size(payload_offset, payload_bytes, &required_len) ||
+        required_len > blob_len)
+        goto done;
+    if (!gltf_checked_mul_size((size_t)vertex_count, 3u * sizeof(float), &channel_bytes))
+        goto done;
+
+    morph = rt_morphtarget3d_new((int64_t)vertex_count);
+    if (!morph)
+        goto done;
+    for (uint32_t si = 0; si < shape_count; si++) {
+        const uint8_t *record =
+            blob + records_offset + (size_t)si * GLTF_PRELOAD_MORPH_POD_RECORD_SIZE;
+        uint32_t flags = gltf_read_u32_le(record + 0);
+        uint32_t name_offset = gltf_read_u32_le(record + 4);
+        uint32_t name_len = gltf_read_u32_le(record + 8);
+        float weight = gltf_read_f32_le(record + 12);
+        uint32_t pos_offset = gltf_read_u32_le(record + 16);
+        uint32_t norm_offset = gltf_read_u32_le(record + 20);
+        uint32_t tan_offset = gltf_read_u32_le(record + 24);
+        const char *name;
+        int64_t shape;
+        if (name_len == 0 || (size_t)name_offset + (size_t)name_len > names_bytes)
+            continue;
+        name = (const char *)(blob + names_offset + name_offset);
+        if (name[name_len - 1u] != '\0')
+            continue;
+        if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS) != 0 &&
+            ((size_t)pos_offset > payload_bytes ||
+             channel_bytes > payload_bytes - (size_t)pos_offset))
+            continue;
+        if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_NORMALS) != 0 &&
+            ((size_t)norm_offset > payload_bytes ||
+             channel_bytes > payload_bytes - (size_t)norm_offset))
+            continue;
+        if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS) != 0 &&
+            ((size_t)tan_offset > payload_bytes ||
+             channel_bytes > payload_bytes - (size_t)tan_offset))
+            continue;
+        shape = rt_morphtarget3d_add_shape(morph, rt_const_cstr(name));
+        if (shape < 0)
+            continue;
+        rt_morphtarget3d_set_weight(morph, shape, weight);
+        for (uint32_t vi = 0; vi < vertex_count; vi++) {
+            if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS) != 0) {
+                const uint8_t *src = blob + payload_offset + (size_t)pos_offset +
+                                     (size_t)vi * 3u * sizeof(float);
+                rt_morphtarget3d_set_delta(morph,
+                                           shape,
+                                           vi,
+                                           gltf_read_f32_le(src + 0),
+                                           gltf_read_f32_le(src + 4),
+                                           gltf_read_f32_le(src + 8));
+            }
+            if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_NORMALS) != 0) {
+                const uint8_t *src = blob + payload_offset + (size_t)norm_offset +
+                                     (size_t)vi * 3u * sizeof(float);
+                rt_morphtarget3d_set_normal_delta(morph,
+                                                  shape,
+                                                  vi,
+                                                  gltf_read_f32_le(src + 0),
+                                                  gltf_read_f32_le(src + 4),
+                                                  gltf_read_f32_le(src + 8));
+            }
+            if ((flags & GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS) != 0) {
+                const uint8_t *src = blob + payload_offset + (size_t)tan_offset +
+                                     (size_t)vi * 3u * sizeof(float);
+                rt_morphtarget3d_set_tangent_delta(morph,
+                                                   shape,
+                                                   vi,
+                                                   gltf_read_f32_le(src + 0),
+                                                   gltf_read_f32_le(src + 4),
+                                                   gltf_read_f32_le(src + 8));
+            }
+        }
+    }
+    if (rt_morphtarget3d_get_shape_count(morph) > 0)
+        rt_mesh3d_set_morph_targets(mesh_obj, morph);
+
+done:
+    gltf_release_local(morph);
+    free(blob);
+}
+
+static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bundle,
+                                            int mesh_index,
+                                            int primitive_index,
+                                            uint32_t *out_flags) {
+    char key[96];
+    uint8_t *blob;
+    size_t blob_len = 0;
+    uint32_t magic;
+    uint32_t version;
+    uint32_t vertex_count;
+    uint32_t index_count;
+    uint32_t flags;
+    uint32_t vertex_bytes_u32;
+    uint32_t index_bytes_u32;
+    uint32_t bone_count_u32;
+    size_t vertex_bytes;
+    size_t index_bytes;
+    size_t vertex_offset;
+    size_t index_offset;
+    size_t required_len;
+    vgfx3d_vertex_t *vertices;
+    uint32_t *indices;
+    void *mesh_obj;
+    rt_mesh3d *mesh;
+
+    if (out_flags)
+        *out_flags = 0u;
+    gltf_preload_mesh_key(mesh_index, primitive_index, key, sizeof(key));
+    blob = gltf_preload_bundle_take_dependency(
+        preload_bundle, key, GLTF_PRELOAD_DEP_MESH_POD, &blob_len);
+    if (!blob)
+        return NULL;
+    if (blob_len < GLTF_PRELOAD_MESH_POD_HEADER_SIZE)
+        goto malformed;
+    magic = gltf_read_u32_le(blob + 0);
+    version = gltf_read_u32_le(blob + 4);
+    vertex_count = gltf_read_u32_le(blob + 8);
+    index_count = gltf_read_u32_le(blob + 12);
+    flags = gltf_read_u32_le(blob + 16);
+    vertex_bytes_u32 = gltf_read_u32_le(blob + 20);
+    index_bytes_u32 = gltf_read_u32_le(blob + 24);
+    bone_count_u32 = gltf_read_u32_le(blob + 28);
+    if (magic != GLTF_PRELOAD_MESH_POD_MAGIC || version != GLTF_PRELOAD_MESH_POD_VERSION ||
+        vertex_count == 0 || index_count == 0)
+        goto malformed;
+    if (bone_count_u32 > VGFX3D_MAX_BONES)
+        goto malformed;
+    if (!gltf_checked_mul_size((size_t)vertex_count, sizeof(vgfx3d_vertex_t), &vertex_bytes) ||
+        !gltf_checked_mul_size((size_t)index_count, sizeof(uint32_t), &index_bytes) ||
+        vertex_bytes != (size_t)vertex_bytes_u32 || index_bytes != (size_t)index_bytes_u32)
+        goto malformed;
+    vertex_offset = GLTF_PRELOAD_MESH_POD_HEADER_SIZE;
+    if (!gltf_checked_add_size(vertex_offset, vertex_bytes, &index_offset) ||
+        !gltf_checked_add_size(index_offset, index_bytes, &required_len) ||
+        required_len > blob_len)
+        goto malformed;
+
+    vertices = (vgfx3d_vertex_t *)malloc(vertex_bytes);
+    indices = (uint32_t *)malloc(index_bytes);
+    if (!vertices || !indices) {
+        free(vertices);
+        free(indices);
+        goto malformed;
+    }
+    memcpy(vertices, blob + vertex_offset, vertex_bytes);
+    memcpy(indices, blob + index_offset, index_bytes);
+
+    mesh_obj = rt_mesh3d_new();
+    if (!mesh_obj) {
+        free(vertices);
+        free(indices);
+        goto malformed;
+    }
+    mesh = (rt_mesh3d *)mesh_obj;
+    free(mesh->vertices);
+    free(mesh->indices);
+    mesh->vertices = vertices;
+    mesh->vertex_count = vertex_count;
+    mesh->vertex_capacity = vertex_count;
+    mesh->indices = indices;
+    mesh->index_count = index_count;
+    mesh->index_capacity = index_count;
+    mesh->bone_count = (int32_t)bone_count_u32;
+    mesh->build_failed = 0;
+    rt_mesh3d_touch_geometry_now(mesh);
+    gltf_preload_take_decoded_morph(preload_bundle, mesh_index, primitive_index, mesh_obj, vertex_count);
+    if (out_flags)
+        *out_flags = flags;
+    free(blob);
+    return mesh_obj;
+
+malformed:
+    free(blob);
+    return NULL;
 }
 
 /// @brief Return @p value if it is finite, otherwise return @p fallback.
@@ -2831,6 +3792,7 @@ static uint8_t *gltf_load_root_bytes(rt_string path,
 static uint8_t *gltf_load_dependency_bytes(const char *resource_path,
                                            int load_assets,
                                            size_t required_len,
+                                           rt_gltf_preload_bundle *preload_bundle,
                                            size_t *out_size) {
     uint8_t *data = NULL;
     size_t len = 0;
@@ -2838,6 +3800,10 @@ static uint8_t *gltf_load_dependency_bytes(const char *resource_path,
         *out_size = 0;
     if (!resource_path)
         return NULL;
+    data = gltf_preload_bundle_take_dependency(
+        preload_bundle, resource_path, GLTF_PRELOAD_DEP_BUFFER, &len);
+    if (data)
+        goto done;
     if (load_assets) {
         data = rt_asset_load_raw(rt_const_cstr(resource_path), &len);
         if (data || gltf_is_asset_uri(resource_path))
@@ -2857,11 +3823,46 @@ done:
     return data;
 }
 
+static void *gltf_preload_take_decoded_image(rt_gltf_preload_bundle *preload_bundle,
+                                             const char *key) {
+    uint8_t *rgba_blob;
+    size_t rgba_len = 0;
+    void *pixels;
+    pixels = gltf_preload_bundle_take_object_dependency(
+        preload_bundle, key, GLTF_PRELOAD_DEP_IMAGE_PIXELS);
+    if (pixels)
+        return pixels;
+    rgba_blob = gltf_preload_bundle_take_dependency(
+        preload_bundle, key, GLTF_PRELOAD_DEP_IMAGE_RGBA, &rgba_len);
+    if (!rgba_blob)
+        return NULL;
+    pixels = gltf_pixels_from_rgba_blob(rgba_blob, rgba_len);
+    free(rgba_blob);
+    return pixels;
+}
+
 /// @brief Load and decode an external image dependency into a Pixels object: asset
 ///   manager (decoded by type) when @p load_assets, otherwise rt_pixels_load from disk.
-static void *gltf_load_dependency_image(const char *resource_path, int load_assets) {
+static void *gltf_load_dependency_image(const char *resource_path,
+                                        int load_assets,
+                                        rt_gltf_preload_bundle *preload_bundle) {
+    uint8_t *staged = NULL;
+    size_t staged_len = 0;
     if (!resource_path || resource_path[0] == '\0')
         return NULL;
+    {
+        void *decoded = gltf_preload_take_decoded_image(preload_bundle, resource_path);
+        if (decoded)
+            return decoded;
+    }
+    staged = gltf_preload_bundle_take_dependency(
+        preload_bundle, resource_path, GLTF_PRELOAD_DEP_IMAGE, &staged_len);
+    if (staged) {
+        void *decoded = rt_asset_decode_typed(resource_path, staged, staged_len);
+        free(staged);
+        if (decoded)
+            return decoded;
+    }
     if (load_assets) {
         size_t data_len = 0;
         uint8_t *data = rt_asset_load_raw(rt_const_cstr(resource_path), &data_len);
@@ -2875,6 +3876,2741 @@ static void *gltf_load_dependency_image(const char *resource_path, int load_asse
             return NULL;
     }
     return rt_pixels_load(rt_const_cstr(resource_path));
+}
+
+static void gltf_preload_set_error(char *error, size_t error_cap, const char *message) {
+    if (error && error_cap > 0) {
+        snprintf(error, error_cap, "%s", message ? message : "failed to stage glTF preload");
+    }
+}
+
+static size_t gltf_json_skip_ws(const char *json, size_t len, size_t pos) {
+    while (pos < len) {
+        char c = json[pos];
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
+            break;
+        pos++;
+    }
+    return pos;
+}
+
+static size_t gltf_json_skip_string_raw(const char *json, size_t len, size_t pos) {
+    if (!json || pos >= len || json[pos] != '"')
+        return SIZE_MAX;
+    pos++;
+    while (pos < len) {
+        char c = json[pos++];
+        if (c == '"')
+            return pos;
+        if (c == '\\') {
+            if (pos >= len)
+                return SIZE_MAX;
+            pos++;
+        }
+    }
+    return SIZE_MAX;
+}
+
+static char *gltf_json_read_string_alloc(const char *json,
+                                         size_t len,
+                                         size_t pos,
+                                         size_t *out_next) {
+    char *out;
+    size_t cap;
+    size_t count = 0;
+    if (out_next)
+        *out_next = SIZE_MAX;
+    if (!json || pos >= len || json[pos] != '"')
+        return NULL;
+    cap = len - pos + 1u;
+    out = (char *)malloc(cap);
+    if (!out)
+        return NULL;
+    pos++;
+    while (pos < len) {
+        char c = json[pos++];
+        if (c == '"') {
+            out[count] = '\0';
+            if (out_next)
+                *out_next = pos;
+            return out;
+        }
+        if (c == '\\') {
+            if (pos >= len)
+                break;
+            c = json[pos++];
+            switch (c) {
+            case '"':
+            case '\\':
+            case '/':
+                break;
+            case 'b':
+                c = '\b';
+                break;
+            case 'f':
+                c = '\f';
+                break;
+            case 'n':
+                c = '\n';
+                break;
+            case 'r':
+                c = '\r';
+                break;
+            case 't':
+                c = '\t';
+                break;
+            default:
+                free(out);
+                return NULL;
+            }
+        }
+        out[count++] = c;
+    }
+    free(out);
+    return NULL;
+}
+
+static int gltf_json_key_matches(const char *json,
+                                 size_t len,
+                                 size_t pos,
+                                 const char *key,
+                                 size_t *out_next) {
+    char *decoded = gltf_json_read_string_alloc(json, len, pos, out_next);
+    int matches = decoded && key && strcmp(decoded, key) == 0;
+    free(decoded);
+    return matches;
+}
+
+static size_t gltf_json_skip_value(const char *json, size_t len, size_t pos) {
+    int object_depth = 0;
+    int array_depth = 0;
+    pos = gltf_json_skip_ws(json, len, pos);
+    if (pos >= len)
+        return SIZE_MAX;
+    if (json[pos] == '"')
+        return gltf_json_skip_string_raw(json, len, pos);
+    if (json[pos] != '{' && json[pos] != '[') {
+        while (pos < len && json[pos] != ',' && json[pos] != '}' && json[pos] != ']')
+            pos++;
+        return pos;
+    }
+    do {
+        char c = json[pos];
+        if (c == '"') {
+            pos = gltf_json_skip_string_raw(json, len, pos);
+            if (pos == SIZE_MAX)
+                return SIZE_MAX;
+            continue;
+        }
+        if (c == '{')
+            object_depth++;
+        else if (c == '}')
+            object_depth--;
+        else if (c == '[')
+            array_depth++;
+        else if (c == ']')
+            array_depth--;
+        pos++;
+    } while (pos < len && (object_depth > 0 || array_depth > 0));
+    return object_depth == 0 && array_depth == 0 ? pos : SIZE_MAX;
+}
+
+static size_t gltf_json_find_matching(const char *json,
+                                      size_t len,
+                                      size_t pos,
+                                      char open_ch,
+                                      char close_ch) {
+    int depth = 0;
+    if (!json || pos >= len || json[pos] != open_ch)
+        return SIZE_MAX;
+    while (pos < len) {
+        char c = json[pos];
+        if (c == '"') {
+            pos = gltf_json_skip_string_raw(json, len, pos);
+            if (pos == SIZE_MAX)
+                return SIZE_MAX;
+            continue;
+        }
+        if (c == open_ch)
+            depth++;
+        else if (c == close_ch) {
+            depth--;
+            if (depth == 0)
+                return pos + 1u;
+        }
+        pos++;
+    }
+    return SIZE_MAX;
+}
+
+static int gltf_json_find_top_level_array(const char *json,
+                                          size_t len,
+                                          const char *key,
+                                          size_t *out_start,
+                                          size_t *out_end) {
+    int object_depth = 0;
+    int array_depth = 0;
+    size_t pos = 0;
+    if (out_start)
+        *out_start = SIZE_MAX;
+    if (out_end)
+        *out_end = SIZE_MAX;
+    while (pos < len) {
+        char c = json[pos];
+        if (c == '"') {
+            size_t next = gltf_json_skip_string_raw(json, len, pos);
+            int at_top_key = 0;
+            if (next == SIZE_MAX)
+                return 0;
+            if (object_depth == 1 && array_depth == 0)
+                at_top_key = gltf_json_key_matches(json, len, pos, key, NULL);
+            if (at_top_key) {
+                size_t colon = gltf_json_skip_ws(json, len, next);
+                size_t start;
+                size_t end;
+                if (colon < len && json[colon] == ':') {
+                    start = gltf_json_skip_ws(json, len, colon + 1u);
+                    if (start < len && json[start] == '[') {
+                        end = gltf_json_find_matching(json, len, start, '[', ']');
+                        if (end != SIZE_MAX) {
+                            if (out_start)
+                                *out_start = start;
+                            if (out_end)
+                                *out_end = end;
+                            return 1;
+                        }
+                    }
+                }
+            }
+            pos = next;
+            continue;
+        }
+        if (c == '{')
+            object_depth++;
+        else if (c == '}')
+            object_depth--;
+        else if (c == '[')
+            array_depth++;
+        else if (c == ']')
+            array_depth--;
+        pos++;
+    }
+    return 0;
+}
+
+static char *gltf_json_object_get_string(const char *json,
+                                         size_t len,
+                                         size_t obj_start,
+                                         size_t obj_end,
+                                         const char *key) {
+    int depth = 0;
+    size_t pos = obj_start;
+    while (pos < obj_end && pos < len) {
+        char c = json[pos];
+        if (c == '"') {
+            size_t next = gltf_json_skip_string_raw(json, len, pos);
+            int at_key = 0;
+            if (next == SIZE_MAX)
+                return NULL;
+            if (depth == 1)
+                at_key = gltf_json_key_matches(json, len, pos, key, NULL);
+            if (at_key) {
+                size_t colon = gltf_json_skip_ws(json, len, next);
+                size_t value;
+                if (colon < obj_end && json[colon] == ':') {
+                    value = gltf_json_skip_ws(json, len, colon + 1u);
+                    if (value < obj_end && json[value] == '"')
+                        return gltf_json_read_string_alloc(json, len, value, NULL);
+                }
+            }
+            pos = next;
+            continue;
+        }
+        if (c == '{')
+            depth++;
+        else if (c == '}') {
+            depth--;
+            if (depth == 0)
+                break;
+        } else if (depth == 1 && c == ':') {
+            pos = gltf_json_skip_value(json, len, pos + 1u);
+            if (pos == SIZE_MAX)
+                return NULL;
+            continue;
+        }
+        pos++;
+    }
+    return NULL;
+}
+
+static size_t gltf_json_object_get_size(const char *json,
+                                        size_t len,
+                                        size_t obj_start,
+                                        size_t obj_end,
+                                        const char *key,
+                                        size_t fallback) {
+    int depth = 0;
+    size_t pos = obj_start;
+    while (pos < obj_end && pos < len) {
+        char c = json[pos];
+        if (c == '"') {
+            size_t next = gltf_json_skip_string_raw(json, len, pos);
+            int at_key = 0;
+            if (next == SIZE_MAX)
+                return fallback;
+            if (depth == 1)
+                at_key = gltf_json_key_matches(json, len, pos, key, NULL);
+            if (at_key) {
+                size_t colon = gltf_json_skip_ws(json, len, next);
+                size_t value;
+                size_t result = 0;
+                if (colon < obj_end && json[colon] == ':') {
+                    value = gltf_json_skip_ws(json, len, colon + 1u);
+                    if (value < obj_end && json[value] >= '0' && json[value] <= '9') {
+                        while (value < obj_end && json[value] >= '0' && json[value] <= '9') {
+                            size_t digit = (size_t)(json[value] - '0');
+                            if (result > (SIZE_MAX - digit) / 10u)
+                                return fallback;
+                            result = result * 10u + digit;
+                            value++;
+                        }
+                        return result;
+                    }
+                }
+            }
+            pos = next;
+            continue;
+        }
+        if (c == '{')
+            depth++;
+        else if (c == '}') {
+            depth--;
+            if (depth == 0)
+                break;
+        } else if (depth == 1 && c == ':') {
+            pos = gltf_json_skip_value(json, len, pos + 1u);
+            if (pos == SIZE_MAX)
+                return fallback;
+            continue;
+        }
+        pos++;
+    }
+    return fallback;
+}
+
+static int gltf_json_object_get_int(const char *json,
+                                    size_t len,
+                                    size_t obj_start,
+                                    size_t obj_end,
+                                    const char *key,
+                                    int fallback) {
+    int depth = 0;
+    size_t pos = obj_start;
+    while (pos < obj_end && pos < len) {
+        char c = json[pos];
+        if (c == '"') {
+            size_t next = gltf_json_skip_string_raw(json, len, pos);
+            int at_key = 0;
+            if (next == SIZE_MAX)
+                return fallback;
+            if (depth == 1)
+                at_key = gltf_json_key_matches(json, len, pos, key, NULL);
+            if (at_key) {
+                size_t colon = gltf_json_skip_ws(json, len, next);
+                size_t value;
+                int sign = 1;
+                int result = 0;
+                if (colon < obj_end && json[colon] == ':') {
+                    value = gltf_json_skip_ws(json, len, colon + 1u);
+                    if (value < obj_end && json[value] == '-') {
+                        sign = -1;
+                        value++;
+                    }
+                    if (value < obj_end && json[value] >= '0' && json[value] <= '9') {
+                        while (value < obj_end && json[value] >= '0' && json[value] <= '9') {
+                            int digit = (int)(json[value] - '0');
+                            if (result > (INT_MAX - digit) / 10)
+                                return fallback;
+                            result = result * 10 + digit;
+                            value++;
+                        }
+                        return sign * result;
+                    }
+                }
+            }
+            pos = next;
+            continue;
+        }
+        if (c == '{')
+            depth++;
+        else if (c == '}') {
+            depth--;
+            if (depth == 0)
+                break;
+        } else if (depth == 1 && c == ':') {
+            pos = gltf_json_skip_value(json, len, pos + 1u);
+            if (pos == SIZE_MAX)
+                return fallback;
+            continue;
+        }
+        pos++;
+    }
+    return fallback;
+}
+
+static int gltf_json_object_find_value(const char *json,
+                                       size_t len,
+                                       size_t obj_start,
+                                       size_t obj_end,
+                                       const char *key,
+                                       size_t *out_start,
+                                       size_t *out_end) {
+    int depth = 0;
+    size_t pos = obj_start;
+    if (out_start)
+        *out_start = SIZE_MAX;
+    if (out_end)
+        *out_end = SIZE_MAX;
+    while (pos < obj_end && pos < len) {
+        char c = json[pos];
+        if (c == '"') {
+            size_t next = gltf_json_skip_string_raw(json, len, pos);
+            int at_key = 0;
+            if (next == SIZE_MAX)
+                return 0;
+            if (depth == 1)
+                at_key = gltf_json_key_matches(json, len, pos, key, NULL);
+            if (at_key) {
+                size_t colon = gltf_json_skip_ws(json, len, next);
+                if (colon < obj_end && json[colon] == ':') {
+                    size_t value = gltf_json_skip_ws(json, len, colon + 1u);
+                    size_t end = gltf_json_skip_value(json, len, value);
+                    if (end != SIZE_MAX && end <= obj_end) {
+                        if (out_start)
+                            *out_start = value;
+                        if (out_end)
+                            *out_end = end;
+                        return 1;
+                    }
+                }
+                return 0;
+            }
+            pos = next;
+            continue;
+        }
+        if (c == '{')
+            depth++;
+        else if (c == '}') {
+            depth--;
+            if (depth == 0)
+                break;
+        } else if (depth == 1 && c == ':') {
+            pos = gltf_json_skip_value(json, len, pos + 1u);
+            if (pos == SIZE_MAX)
+                return 0;
+            continue;
+        }
+        pos++;
+    }
+    return 0;
+}
+
+static int gltf_json_array_item_range(const char *json,
+                                      size_t len,
+                                      size_t array_start,
+                                      size_t array_end,
+                                      int item_index,
+                                      size_t *out_start,
+                                      size_t *out_end) {
+    size_t pos;
+    int index = 0;
+    if (out_start)
+        *out_start = SIZE_MAX;
+    if (out_end)
+        *out_end = SIZE_MAX;
+    if (!json || item_index < 0 || array_start >= array_end || array_end > len ||
+        json[array_start] != '[')
+        return 0;
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        size_t value_start;
+        size_t value_end;
+        pos = gltf_json_skip_ws(json, len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        value_start = pos;
+        value_end = gltf_json_skip_value(json, len, value_start);
+        if (value_end == SIZE_MAX || value_end > array_end)
+            return 0;
+        if (index == item_index) {
+            if (out_start)
+                *out_start = value_start;
+            if (out_end)
+                *out_end = value_end;
+            return 1;
+        }
+        index++;
+        pos = gltf_json_skip_ws(json, len, value_end);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    return 0;
+}
+
+static double gltf_json_array_get_number(const char *json,
+                                         size_t len,
+                                         size_t array_start,
+                                         size_t array_end,
+                                         int item_index,
+                                         double fallback) {
+    size_t value_start;
+    size_t value_end;
+    size_t text_len;
+    char *text;
+    char *endptr;
+    double value;
+    if (!gltf_json_array_item_range(
+            json, len, array_start, array_end, item_index, &value_start, &value_end))
+        return fallback;
+    value_start = gltf_json_skip_ws(json, len, value_start);
+    if (value_start >= value_end || json[value_start] == '"' || json[value_start] == '{' ||
+        json[value_start] == '[')
+        return fallback;
+    text_len = value_end - value_start;
+    text = (char *)malloc(text_len + 1u);
+    if (!text)
+        return fallback;
+    memcpy(text, json + value_start, text_len);
+    text[text_len] = '\0';
+    endptr = NULL;
+    value = strtod(text, &endptr);
+    if (endptr == text || !isfinite(value))
+        value = fallback;
+    free(text);
+    return value;
+}
+
+static char *gltf_json_array_get_string_alloc(const char *json,
+                                              size_t len,
+                                              size_t array_start,
+                                              size_t array_end,
+                                              int item_index) {
+    size_t value_start;
+    size_t value_end;
+    if (!gltf_json_array_item_range(
+            json, len, array_start, array_end, item_index, &value_start, &value_end))
+        return NULL;
+    value_start = gltf_json_skip_ws(json, len, value_start);
+    if (value_start >= value_end || json[value_start] != '"')
+        return NULL;
+    return gltf_json_read_string_alloc(json, len, value_start, NULL);
+}
+
+static int gltf_json_object_get_boolish(const char *json,
+                                        size_t len,
+                                        size_t obj_start,
+                                        size_t obj_end,
+                                        const char *key,
+                                        int fallback) {
+    size_t value_start;
+    size_t value_end;
+    size_t value;
+    if (!gltf_json_object_find_value(
+            json, len, obj_start, obj_end, key, &value_start, &value_end))
+        return fallback;
+    value = gltf_json_skip_ws(json, len, value_start);
+    if (value + 4u <= value_end && strncmp(json + value, "true", 4u) == 0)
+        return 1;
+    if (value + 5u <= value_end && strncmp(json + value, "false", 5u) == 0)
+        return 0;
+    return gltf_json_object_get_int(json, len, obj_start, obj_end, key, fallback) ? 1 : 0;
+}
+
+static char *gltf_json_copy_from_root_bytes(const uint8_t *data, size_t len, size_t *out_len) {
+    char *json_copy = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!data || len == 0)
+        return NULL;
+    if (len >= 12 && data[0] == 0x67 && data[1] == 0x6C && data[2] == 0x54 &&
+        data[3] == 0x46) {
+        uint32_t version = gltf_read_u32_le(data + 4);
+        uint32_t declared_len = gltf_read_u32_le(data + 8);
+        size_t pos = 12;
+        int chunk_index = 0;
+        if (version != 2 || declared_len != (uint32_t)len)
+            return NULL;
+        while (pos + 8u <= len) {
+            uint32_t chunk_len = gltf_read_u32_le(data + pos);
+            uint32_t chunk_type = gltf_read_u32_le(data + pos + 4u);
+            pos += 8u;
+            if ((chunk_len & 3u) != 0 || chunk_len > len - pos)
+                return NULL;
+            if (chunk_index == 0 && chunk_type != 0x4E4F534A)
+                return NULL;
+            if (chunk_type == 0x4E4F534A) {
+                json_copy = (char *)malloc((size_t)chunk_len + 1u);
+                if (!json_copy)
+                    return NULL;
+                memcpy(json_copy, data + pos, (size_t)chunk_len);
+                json_copy[chunk_len] = '\0';
+                if (out_len)
+                    *out_len = (size_t)chunk_len;
+                return json_copy;
+            }
+            pos += (size_t)chunk_len;
+            chunk_index++;
+        }
+        return NULL;
+    }
+    json_copy = (char *)malloc(len + 1u);
+    if (!json_copy)
+        return NULL;
+    memcpy(json_copy, data, len);
+    json_copy[len] = '\0';
+    if (out_len)
+        *out_len = len;
+    return json_copy;
+}
+
+static int gltf_preload_bundle_add_image_payload(rt_gltf_preload_bundle *bundle,
+                                                 const char *key,
+                                                 const char *mime_or_name,
+                                                 uint8_t *data,
+                                                 size_t data_len,
+                                                 int required,
+                                                 char *error,
+                                                 size_t error_cap) {
+    uint8_t *rgba_blob = NULL;
+    size_t rgba_len = 0;
+    gltf_preload_dependency_kind_t kind = GLTF_PRELOAD_DEP_IMAGE;
+    if (!data || data_len == 0)
+        return 1;
+    if (gltf_decode_image_payload_to_rgba_blob(
+            mime_or_name, data, data_len, &rgba_blob, &rgba_len)) {
+        free(data);
+        data = rgba_blob;
+        data_len = rgba_len;
+        kind = GLTF_PRELOAD_DEP_IMAGE_RGBA;
+    }
+    if (required && kind != GLTF_PRELOAD_DEP_IMAGE_RGBA &&
+        gltf_preload_image_is_supported_format(mime_or_name)) {
+        free(data);
+        gltf_preload_set_error(error, error_cap, "invalid glTF image payload");
+        return 0;
+    }
+    if (!gltf_preload_bundle_add_dependency(bundle, key, kind, data, data_len)) {
+        free(data);
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+        return 0;
+    }
+    return 1;
+}
+
+static int gltf_preload_stage_external_image(rt_gltf_preload_bundle *bundle,
+                                             const char *model_path,
+                                             const char *uri,
+                                             int load_assets,
+                                             int required,
+                                             char *error,
+                                             size_t error_cap) {
+    char resource_path[1024];
+    uint8_t *data;
+    size_t data_len = 0;
+    if (!uri || strncmp(uri, "data:", 5) == 0)
+        return 1;
+    gltf_resolve_relative_path(model_path, uri, resource_path, sizeof(resource_path));
+    if (resource_path[0] == '\0')
+        return 1;
+    data = gltf_load_dependency_bytes(resource_path, load_assets, 0u, NULL, &data_len);
+    if (!data) {
+        if (required && gltf_preload_image_is_supported_format(resource_path)) {
+            gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+            return 0;
+        }
+        return 1;
+    }
+    return gltf_preload_bundle_add_image_payload(
+        bundle, resource_path, resource_path, data, data_len, required, error, error_cap);
+}
+
+static void gltf_preload_buffer_key(int index, char *out, size_t out_cap) {
+    if (!out || out_cap == 0)
+        return;
+    snprintf(out, out_cap, "<gltf:inline-buffer:%d>", index);
+}
+
+static void gltf_preload_image_key(int index, const char *mime_type, char *out, size_t out_cap) {
+    const char *ext = ".bin";
+    if (!out || out_cap == 0)
+        return;
+    if (mime_type) {
+        if (strstr(mime_type, "png"))
+            ext = ".png";
+        else if (strstr(mime_type, "jpeg") || strstr(mime_type, "jpg"))
+            ext = ".jpg";
+        else if (strstr(mime_type, "bmp"))
+            ext = ".bmp";
+        else if (strstr(mime_type, "gif"))
+            ext = ".gif";
+    }
+    snprintf(out, out_cap, "inline-image-%d%s", index, ext);
+}
+
+static void gltf_preload_mesh_key(int mesh_index, int primitive_index, char *out, size_t out_cap) {
+    if (!out || out_cap == 0)
+        return;
+    snprintf(out, out_cap, "<gltf:mesh-pod:%d:%d>", mesh_index, primitive_index);
+}
+
+static void gltf_preload_morph_key(int mesh_index, int primitive_index, char *out, size_t out_cap) {
+    if (!out || out_cap == 0)
+        return;
+    snprintf(out, out_cap, "<gltf:morph-pod:%d:%d>", mesh_index, primitive_index);
+}
+
+static int gltf_root_find_glb_bin(const uint8_t *data,
+                                  size_t len,
+                                  const uint8_t **out_bin,
+                                  size_t *out_bin_len) {
+    size_t pos = 12;
+    int chunk_index = 0;
+    if (out_bin)
+        *out_bin = NULL;
+    if (out_bin_len)
+        *out_bin_len = 0;
+    if (!data || len < 12 || data[0] != 0x67 || data[1] != 0x6C || data[2] != 0x54 ||
+        data[3] != 0x46)
+        return 0;
+    if (gltf_read_u32_le(data + 4) != 2 || gltf_read_u32_le(data + 8) != (uint32_t)len)
+        return 0;
+    while (pos + 8u <= len) {
+        uint32_t chunk_len = gltf_read_u32_le(data + pos);
+        uint32_t chunk_type = gltf_read_u32_le(data + pos + 4u);
+        pos += 8u;
+        if ((chunk_len & 3u) != 0 || chunk_len > len - pos)
+            return 0;
+        if (chunk_index == 0 && chunk_type != 0x4E4F534A)
+            return 0;
+        if (chunk_type == 0x004E4942) {
+            if (out_bin)
+                *out_bin = data + pos;
+            if (out_bin_len)
+                *out_bin_len = (size_t)chunk_len;
+            return 1;
+        }
+        pos += (size_t)chunk_len;
+        chunk_index++;
+    }
+    return 0;
+}
+
+static int gltf_preload_grow_buffer_refs(gltf_preload_buffer_ref_t **refs,
+                                         int *capacity,
+                                         int required_count) {
+    gltf_preload_buffer_ref_t *grown;
+    int next_capacity;
+    if (!refs || !capacity || required_count <= 0)
+        return 0;
+    if (*capacity >= required_count)
+        return 1;
+    next_capacity = *capacity ? *capacity * 2 : 8;
+    while (next_capacity < required_count)
+        next_capacity *= 2;
+    grown = (gltf_preload_buffer_ref_t *)realloc(
+        *refs, (size_t)next_capacity * sizeof(**refs));
+    if (!grown)
+        return 0;
+    memset(grown + *capacity, 0, (size_t)(next_capacity - *capacity) * sizeof(*grown));
+    *refs = grown;
+    *capacity = next_capacity;
+    return 1;
+}
+
+static int gltf_preload_stage_buffers(rt_gltf_preload_bundle *bundle,
+                                      const char *model_path,
+                                      const char *json,
+                                      size_t json_len,
+                                      int load_assets,
+                                      gltf_preload_buffer_ref_t **out_refs,
+                                      int *out_count,
+                                      char *error,
+                                      size_t error_cap) {
+    size_t array_start;
+    size_t array_end;
+    size_t pos;
+    const uint8_t *glb_bin = NULL;
+    size_t glb_bin_len = 0;
+    gltf_preload_buffer_ref_t *refs = NULL;
+    int refs_capacity = 0;
+    int index = 0;
+    if (out_refs)
+        *out_refs = NULL;
+    if (out_count)
+        *out_count = 0;
+    gltf_root_find_glb_bin(bundle ? bundle->root_data : NULL,
+                           bundle ? bundle->root_size : 0,
+                           &glb_bin,
+                           &glb_bin_len);
+    if (!gltf_json_find_top_level_array(json, json_len, "buffers", &array_start, &array_end))
+        return 1;
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            char *uri;
+            size_t required_len = 0;
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            if (!gltf_preload_grow_buffer_refs(&refs, &refs_capacity, index + 1)) {
+                free(refs);
+                gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                return 0;
+            }
+            uri = gltf_json_object_get_string(json, json_len, pos, object_end, "uri");
+            required_len =
+                gltf_json_object_get_size(json, json_len, pos, object_end, "byteLength", 0u);
+            if (uri) {
+                int ok = 1;
+                if (strncmp(uri, "data:", 5) == 0) {
+                    char key[64];
+                    char mime_type[64];
+                    uint8_t *data = NULL;
+                    size_t data_len = 0;
+                    if (!gltf_parse_data_uri(
+                            uri, mime_type, sizeof(mime_type), &data, &data_len) ||
+                        data_len < required_len) {
+                        free(data);
+                        ok = required_len == 0u;
+                    } else {
+                        gltf_preload_buffer_key(index, key, sizeof(key));
+                        ok = gltf_preload_bundle_add_dependency(
+                            bundle, key, GLTF_PRELOAD_DEP_BUFFER, data, data_len);
+                        if (ok) {
+                            refs[index].data = data;
+                            refs[index].len = data_len;
+                        } else {
+                            free(data);
+                        }
+                    }
+                } else {
+                    char resource_path[1024];
+                    uint8_t *data = NULL;
+                    size_t data_len = 0;
+                    gltf_resolve_relative_path(model_path, uri, resource_path, sizeof(resource_path));
+                    if (resource_path[0] != '\0') {
+                        data = gltf_load_dependency_bytes(
+                            resource_path, load_assets, required_len, NULL, &data_len);
+                        if (data) {
+                            ok = gltf_preload_bundle_add_dependency(
+                                bundle, resource_path, GLTF_PRELOAD_DEP_BUFFER, data, data_len);
+                            if (ok) {
+                                refs[index].data = data;
+                                refs[index].len = data_len;
+                            } else {
+                                free(data);
+                            }
+                        }
+                    }
+                    if (!data && required_len > 0u)
+                        ok = 0;
+                }
+                free(uri);
+                if (!ok) {
+                    free(refs);
+                    gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                    return 0;
+                }
+            } else if (index == 0 && glb_bin && required_len <= glb_bin_len &&
+                       required_len <= SIZE_MAX - 3u && glb_bin_len <= required_len + 3u) {
+                refs[index].data = glb_bin;
+                refs[index].len = required_len;
+            }
+            index++;
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    if (out_refs)
+        *out_refs = refs;
+    else
+        free(refs);
+    if (out_count)
+        *out_count = index;
+    return 1;
+}
+
+static int gltf_preload_grow_view_refs(gltf_preload_buffer_view_ref_t **views,
+                                       int *capacity,
+                                       int required_count) {
+    gltf_preload_buffer_view_ref_t *grown;
+    int next_capacity;
+    if (!views || !capacity || required_count <= 0)
+        return 0;
+    if (*capacity >= required_count)
+        return 1;
+    next_capacity = *capacity ? *capacity * 2 : 8;
+    while (next_capacity < required_count)
+        next_capacity *= 2;
+    grown = (gltf_preload_buffer_view_ref_t *)realloc(
+        *views, (size_t)next_capacity * sizeof(**views));
+    if (!grown)
+        return 0;
+    memset(grown + *capacity, 0, (size_t)(next_capacity - *capacity) * sizeof(*grown));
+    *views = grown;
+    *capacity = next_capacity;
+    return 1;
+}
+
+static int gltf_preload_parse_buffer_views(const char *json,
+                                           size_t json_len,
+                                           gltf_preload_buffer_view_ref_t **out_views,
+                                           int *out_count,
+                                           char *error,
+                                           size_t error_cap) {
+    size_t array_start;
+    size_t array_end;
+    size_t pos;
+    gltf_preload_buffer_view_ref_t *views = NULL;
+    int views_capacity = 0;
+    int index = 0;
+    if (out_views)
+        *out_views = NULL;
+    if (out_count)
+        *out_count = 0;
+    if (!gltf_json_find_top_level_array(json, json_len, "bufferViews", &array_start, &array_end))
+        return 1;
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            if (!gltf_preload_grow_view_refs(&views, &views_capacity, index + 1)) {
+                free(views);
+                gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                return 0;
+            }
+            views[index].buffer =
+                gltf_json_object_get_int(json, json_len, pos, object_end, "buffer", -1);
+            views[index].byte_offset =
+                gltf_json_object_get_size(json, json_len, pos, object_end, "byteOffset", 0u);
+            views[index].byte_length =
+                gltf_json_object_get_size(json, json_len, pos, object_end, "byteLength", 0u);
+            views[index].byte_stride =
+                gltf_json_object_get_size(json, json_len, pos, object_end, "byteStride", 0u);
+            views[index].valid = views[index].buffer >= 0 && views[index].byte_length > 0;
+            index++;
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    if (out_views)
+        *out_views = views;
+    else
+        free(views);
+    if (out_count)
+        *out_count = index;
+    return 1;
+}
+
+static int gltf_preload_validate_accessor(const char *json,
+                                          size_t json_len,
+                                          size_t obj_start,
+                                          size_t obj_end,
+                                          const gltf_preload_buffer_ref_t *buffers,
+                                          int buffer_count,
+                                          const gltf_preload_buffer_view_ref_t *views,
+                                          int view_count) {
+    int view_index;
+    int component_type;
+    int component_size;
+    int component_count;
+    int count;
+    size_t accessor_offset;
+    size_t element_size;
+    size_t stride;
+    size_t last_offset;
+    size_t accessor_last;
+    size_t accessor_end;
+    size_t buffer_end;
+    char *type;
+    const gltf_preload_buffer_view_ref_t *view;
+
+    count = gltf_json_object_get_int(json, json_len, obj_start, obj_end, "count", -1);
+    if (count < 0)
+        return 0;
+    if (count == 0)
+        return 1;
+
+    component_type =
+        gltf_json_object_get_int(json, json_len, obj_start, obj_end, "componentType", 0);
+    component_size = gltf_component_size(component_type);
+    type = gltf_json_object_get_string(json, json_len, obj_start, obj_end, "type");
+    component_count = gltf_component_count(type);
+    free(type);
+    if (component_size <= 0 || component_count <= 0)
+        return 0;
+    if (!gltf_checked_mul_size((size_t)component_size, (size_t)component_count, &element_size))
+        return 0;
+
+    view_index = gltf_json_object_get_int(json, json_len, obj_start, obj_end, "bufferView", -1);
+    if (view_index < 0)
+        return 1;
+    if (!views || view_index >= view_count || !views[view_index].valid)
+        return 0;
+    view = &views[view_index];
+    if (view->buffer < 0 || view->buffer >= buffer_count || !buffers || !buffers[view->buffer].data)
+        return 0;
+
+    accessor_offset =
+        gltf_json_object_get_size(json, json_len, obj_start, obj_end, "byteOffset", 0u);
+    stride = view->byte_stride > 0u ? view->byte_stride : element_size;
+    if (stride < element_size)
+        return 0;
+    if (!gltf_checked_mul_size((size_t)(count - 1), stride, &last_offset) ||
+        !gltf_checked_add_size(accessor_offset, last_offset, &accessor_last) ||
+        !gltf_checked_add_size(accessor_last, element_size, &accessor_end))
+        return 0;
+    if (accessor_end > view->byte_length)
+        return 0;
+    if (!gltf_checked_add_size(view->byte_offset, accessor_end, &buffer_end))
+        return 0;
+    return buffer_end <= buffers[view->buffer].len;
+}
+
+static int gltf_preload_validate_accessors(const char *json,
+                                           size_t json_len,
+                                           const gltf_preload_buffer_ref_t *buffers,
+                                           int buffer_count,
+                                           const gltf_preload_buffer_view_ref_t *views,
+                                           int view_count,
+                                           char *error,
+                                           size_t error_cap) {
+    size_t array_start;
+    size_t array_end;
+    size_t pos;
+    if (!gltf_json_find_top_level_array(json, json_len, "accessors", &array_start, &array_end))
+        return 1;
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            if (!gltf_preload_validate_accessor(
+                    json, json_len, pos, object_end, buffers, buffer_count, views, view_count)) {
+                gltf_preload_set_error(error, error_cap, "invalid glTF accessor range");
+                return 0;
+            }
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    return 1;
+}
+
+static int gltf_preload_grow_accessor_refs(gltf_preload_accessor_ref_t **accessors,
+                                           int *capacity,
+                                           int required_count) {
+    gltf_preload_accessor_ref_t *grown;
+    int next_capacity;
+    if (!accessors || !capacity || required_count <= 0)
+        return 0;
+    if (*capacity >= required_count)
+        return 1;
+    next_capacity = *capacity ? *capacity * 2 : 8;
+    while (next_capacity < required_count)
+        next_capacity *= 2;
+    grown = (gltf_preload_accessor_ref_t *)realloc(
+        *accessors, (size_t)next_capacity * sizeof(**accessors));
+    if (!grown)
+        return 0;
+    memset(grown + *capacity, 0, (size_t)(next_capacity - *capacity) * sizeof(*grown));
+    *accessors = grown;
+    *capacity = next_capacity;
+    return 1;
+}
+
+static int gltf_preload_parse_accessors(const char *json,
+                                        size_t json_len,
+                                        gltf_preload_accessor_ref_t **out_accessors,
+                                        int *out_count,
+                                        char *error,
+                                        size_t error_cap) {
+    size_t array_start;
+    size_t array_end;
+    size_t pos;
+    gltf_preload_accessor_ref_t *accessors = NULL;
+    int accessors_capacity = 0;
+    int index = 0;
+    if (out_accessors)
+        *out_accessors = NULL;
+    if (out_count)
+        *out_count = 0;
+    if (!gltf_json_find_top_level_array(json, json_len, "accessors", &array_start, &array_end))
+        return 1;
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            char *type;
+            size_t sparse_start;
+            size_t sparse_end;
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            if (!gltf_preload_grow_accessor_refs(&accessors, &accessors_capacity, index + 1)) {
+                free(accessors);
+                gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                return 0;
+            }
+            type = gltf_json_object_get_string(json, json_len, pos, object_end, "type");
+            accessors[index].view =
+                gltf_json_object_get_int(json, json_len, pos, object_end, "bufferView", -1);
+            accessors[index].sparse_indices_view = -1;
+            accessors[index].sparse_values_view = -1;
+            accessors[index].byte_offset =
+                gltf_json_object_get_size(json, json_len, pos, object_end, "byteOffset", 0u);
+            accessors[index].comp_type =
+                gltf_json_object_get_int(json, json_len, pos, object_end, "componentType", 0);
+            accessors[index].comp_count = gltf_component_count(type);
+            accessors[index].count =
+                gltf_json_object_get_int(json, json_len, pos, object_end, "count", 0);
+            accessors[index].normalized = (int8_t)gltf_json_object_get_boolish(
+                json, json_len, pos, object_end, "normalized", 0);
+            if (gltf_json_object_find_value(
+                    json, json_len, pos, object_end, "sparse", &sparse_start, &sparse_end) &&
+                sparse_start < sparse_end && json[sparse_start] == '{') {
+                size_t indices_start;
+                size_t indices_end;
+                size_t values_start;
+                size_t values_end;
+                accessors[index].sparse_count =
+                    gltf_json_object_get_int(json, json_len, sparse_start, sparse_end, "count", 0);
+                if (accessors[index].sparse_count > 0 &&
+                    gltf_json_object_find_value(json,
+                                                json_len,
+                                                sparse_start,
+                                                sparse_end,
+                                                "indices",
+                                                &indices_start,
+                                                &indices_end) &&
+                    gltf_json_object_find_value(json,
+                                                json_len,
+                                                sparse_start,
+                                                sparse_end,
+                                                "values",
+                                                &values_start,
+                                                &values_end) &&
+                    indices_start < indices_end && values_start < values_end &&
+                    json[indices_start] == '{' && json[values_start] == '{') {
+                    accessors[index].has_sparse = 1;
+                    accessors[index].sparse_indices_view = gltf_json_object_get_int(
+                        json, json_len, indices_start, indices_end, "bufferView", -1);
+                    accessors[index].sparse_indices_offset = gltf_json_object_get_size(
+                        json, json_len, indices_start, indices_end, "byteOffset", 0u);
+                    accessors[index].sparse_index_comp_type = gltf_json_object_get_int(
+                        json, json_len, indices_start, indices_end, "componentType", 0);
+                    accessors[index].sparse_values_view = gltf_json_object_get_int(
+                        json, json_len, values_start, values_end, "bufferView", -1);
+                    accessors[index].sparse_values_offset = gltf_json_object_get_size(
+                        json, json_len, values_start, values_end, "byteOffset", 0u);
+                }
+            }
+            accessors[index].valid = accessors[index].count > 0 &&
+                                     gltf_component_size(accessors[index].comp_type) > 0 &&
+                                     accessors[index].comp_count > 0;
+            free(type);
+            index++;
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    if (out_accessors)
+        *out_accessors = accessors;
+    else
+        free(accessors);
+    if (out_count)
+        *out_count = index;
+    return 1;
+}
+
+static int gltf_preload_resolve_accessor_view(
+    const gltf_preload_accessor_ref_t *accessors,
+    int accessor_count,
+    int accessor_index,
+    const gltf_preload_buffer_ref_t *buffers,
+    int buffer_count,
+    const gltf_preload_buffer_view_ref_t *views,
+    int view_count,
+    gltf_accessor_view_t *out) {
+    const gltf_preload_accessor_ref_t *accessor;
+    const gltf_preload_buffer_view_ref_t *view;
+    size_t element_size;
+    size_t stride;
+    size_t last_offset;
+    size_t accessor_last;
+    size_t accessor_end;
+    size_t buffer_offset;
+    size_t buffer_end;
+    int comp_size;
+    if (!accessors || accessor_index < 0 || accessor_index >= accessor_count || !out)
+        return 0;
+    accessor = &accessors[accessor_index];
+    if (!accessor->valid)
+        return 0;
+    comp_size = gltf_component_size(accessor->comp_type);
+    if (comp_size <= 0 || accessor->comp_count <= 0 || accessor->count <= 0)
+        return 0;
+    if (!gltf_checked_mul_size((size_t)comp_size, (size_t)accessor->comp_count, &element_size))
+        return 0;
+    if (element_size > INT32_MAX)
+        return 0;
+    memset(out, 0, sizeof(*out));
+    out->count = (int32_t)accessor->count;
+    out->stride = (int32_t)element_size;
+    out->comp_type = accessor->comp_type;
+    out->comp_count = accessor->comp_count;
+    out->normalized = accessor->normalized;
+    if (accessor->view >= 0) {
+        if (accessor->view >= view_count)
+            return 0;
+        view = views ? &views[accessor->view] : NULL;
+        if (!view || !view->valid || view->buffer < 0 || view->buffer >= buffer_count ||
+            !buffers || !buffers[view->buffer].data)
+            return 0;
+        stride = view->byte_stride > 0u ? view->byte_stride : element_size;
+        if (stride < element_size || stride > INT32_MAX)
+            return 0;
+        if (!gltf_checked_mul_size((size_t)(accessor->count - 1), stride, &last_offset) ||
+            !gltf_checked_add_size(accessor->byte_offset, last_offset, &accessor_last) ||
+            !gltf_checked_add_size(accessor_last, element_size, &accessor_end))
+            return 0;
+        if (accessor_end > view->byte_length)
+            return 0;
+        if (!gltf_checked_add_size(view->byte_offset, accessor->byte_offset, &buffer_offset) ||
+            !gltf_checked_add_size(view->byte_offset, accessor_end, &buffer_end))
+            return 0;
+        if (buffer_end > buffers[view->buffer].len)
+            return 0;
+        out->data = buffers[view->buffer].data + buffer_offset;
+        out->stride = (int32_t)stride;
+    } else if (!accessor->has_sparse) {
+        return 0;
+    }
+    if (accessor->has_sparse) {
+        const gltf_preload_buffer_view_ref_t *indices_view;
+        const gltf_preload_buffer_view_ref_t *values_view;
+        int index_comp_size = gltf_component_size(accessor->sparse_index_comp_type);
+        size_t index_bytes;
+        size_t value_bytes;
+        size_t index_end;
+        size_t value_end;
+        size_t index_buffer_offset;
+        size_t value_buffer_offset;
+        uint32_t previous_sparse_index = 0;
+        if (accessor->sparse_count <= 0 ||
+            (accessor->sparse_index_comp_type != 5121 &&
+             accessor->sparse_index_comp_type != 5123 &&
+             accessor->sparse_index_comp_type != 5125) ||
+            index_comp_size <= 0 || accessor->sparse_indices_view < 0 ||
+            accessor->sparse_indices_view >= view_count || accessor->sparse_values_view < 0 ||
+            accessor->sparse_values_view >= view_count || !views || !buffers)
+            return 0;
+        indices_view = &views[accessor->sparse_indices_view];
+        values_view = &views[accessor->sparse_values_view];
+        if (!indices_view->valid || !values_view->valid || indices_view->buffer < 0 ||
+            values_view->buffer < 0 || indices_view->buffer >= buffer_count ||
+            values_view->buffer >= buffer_count || !buffers[indices_view->buffer].data ||
+            !buffers[values_view->buffer].data)
+            return 0;
+        if (!gltf_checked_mul_size(
+                (size_t)accessor->sparse_count, (size_t)index_comp_size, &index_bytes) ||
+            !gltf_checked_mul_size(
+                (size_t)accessor->sparse_count, element_size, &value_bytes) ||
+            !gltf_checked_add_size(accessor->sparse_indices_offset, index_bytes, &index_end) ||
+            !gltf_checked_add_size(accessor->sparse_values_offset, value_bytes, &value_end))
+            return 0;
+        if (index_end > indices_view->byte_length || value_end > values_view->byte_length)
+            return 0;
+        if (!gltf_checked_add_size(
+                indices_view->byte_offset, accessor->sparse_indices_offset, &index_buffer_offset) ||
+            !gltf_checked_add_size(
+                values_view->byte_offset, accessor->sparse_values_offset, &value_buffer_offset) ||
+            !gltf_checked_add_size(index_buffer_offset, index_bytes, &buffer_end) ||
+            buffer_end > buffers[indices_view->buffer].len ||
+            !gltf_checked_add_size(value_buffer_offset, value_bytes, &buffer_end) ||
+            buffer_end > buffers[values_view->buffer].len)
+            return 0;
+        out->sparse_indices = buffers[indices_view->buffer].data + index_buffer_offset;
+        out->sparse_values = buffers[values_view->buffer].data + value_buffer_offset;
+        out->sparse_count = (int32_t)accessor->sparse_count;
+        out->sparse_index_comp_type = accessor->sparse_index_comp_type;
+        out->sparse_index_stride = index_comp_size;
+        out->sparse_value_stride = (int32_t)element_size;
+        for (int32_t si = 0; si < out->sparse_count; si++) {
+            uint32_t sparse_index = gltf_decode_component_u32(
+                out->sparse_indices + (size_t)si * (size_t)out->sparse_index_stride,
+                out->sparse_index_comp_type);
+            if (sparse_index >= (uint32_t)out->count ||
+                (si > 0 && sparse_index <= previous_sparse_index))
+                return 0;
+            previous_sparse_index = sparse_index;
+        }
+    }
+    return 1;
+}
+
+static int gltf_preload_floats_are_finite(const float *values, int count) {
+    if (!values || count <= 0)
+        return 0;
+    for (int i = 0; i < count; i++) {
+        if (!isfinite(values[i]))
+            return 0;
+    }
+    return 1;
+}
+
+static int gltf_preload_pod_positions_form_triangle(const vgfx3d_vertex_t *vertices,
+                                                    uint32_t vertex_count,
+                                                    uint32_t i0,
+                                                    uint32_t i1,
+                                                    uint32_t i2) {
+    const float *p0;
+    const float *p1;
+    const float *p2;
+    double e1[3];
+    double e2[3];
+    double nx;
+    double ny;
+    double nz;
+    double area_sq;
+    if (!vertices || i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
+        return 0;
+    p0 = vertices[i0].pos;
+    p1 = vertices[i1].pos;
+    p2 = vertices[i2].pos;
+    e1[0] = (double)p1[0] - (double)p0[0];
+    e1[1] = (double)p1[1] - (double)p0[1];
+    e1[2] = (double)p1[2] - (double)p0[2];
+    e2[0] = (double)p2[0] - (double)p0[0];
+    e2[1] = (double)p2[1] - (double)p0[1];
+    e2[2] = (double)p2[2] - (double)p0[2];
+    nx = e1[1] * e2[2] - e1[2] * e2[1];
+    ny = e1[2] * e2[0] - e1[0] * e2[2];
+    nz = e1[0] * e2[1] - e1[1] * e2[0];
+    area_sq = nx * nx + ny * ny + nz * nz;
+    return isfinite(area_sq) && area_sq > 1e-20;
+}
+
+static int gltf_preload_emit_pod_triangle(const vgfx3d_vertex_t *vertices,
+                                          uint32_t vertex_count,
+                                          uint32_t i0,
+                                          uint32_t i1,
+                                          uint32_t i2,
+                                          uint32_t *indices,
+                                          uint32_t *index_count) {
+    if (!indices || !index_count || i0 == i1 || i1 == i2 || i0 == i2)
+        return 0;
+    if (!gltf_preload_pod_positions_form_triangle(vertices, vertex_count, i0, i1, i2))
+        return 0;
+    indices[(*index_count)++] = i0;
+    indices[(*index_count)++] = i1;
+    indices[(*index_count)++] = i2;
+    return 1;
+}
+
+static uint32_t gltf_preload_read_index_or_vertex(const gltf_accessor_view_t *view,
+                                                  int32_t element_index) {
+    uint32_t value = (uint32_t)element_index;
+    if (view)
+        gltf_accessor_read_u32(view, element_index, &value, 1);
+    return value;
+}
+
+static int gltf_preload_topology_index_capacity(int mode,
+                                                int32_t source_index_count,
+                                                uint32_t *out_capacity) {
+    size_t tri_count;
+    size_t index_capacity;
+    if (out_capacity)
+        *out_capacity = 0;
+    if (source_index_count < 3 || !out_capacity)
+        return 1;
+    if (mode == 4)
+        tri_count = (size_t)(source_index_count / 3);
+    else if (mode == 5 || mode == 6)
+        tri_count = (size_t)(source_index_count - 2);
+    else
+        return 0;
+    if (!gltf_checked_mul_size(tri_count, 3u, &index_capacity) ||
+        index_capacity > UINT32_MAX) {
+        return 0;
+    }
+    *out_capacity = (uint32_t)index_capacity;
+    return 1;
+}
+
+static uint32_t gltf_preload_write_vertex_bone_weights(vgfx3d_vertex_t *vertex,
+                                                       const uint32_t joints[4],
+                                                       const float weights[4]) {
+    double sum = 0.0;
+    int32_t max_bone_index = -1;
+    if (!vertex || !joints || !weights)
+        return 0u;
+    for (int i = 0; i < 4; i++) {
+        if (joints[i] >= VGFX3D_MAX_BONES) {
+            vertex->bone_indices[i] = 0u;
+            vertex->bone_weights[i] = 0.0f;
+            continue;
+        }
+        vertex->bone_indices[i] = (uint8_t)joints[i];
+        if (isfinite(weights[i]) && weights[i] > 0.0f) {
+            vertex->bone_weights[i] = weights[i];
+            sum += (double)weights[i];
+        } else {
+            vertex->bone_weights[i] = 0.0f;
+        }
+        if ((int32_t)joints[i] > max_bone_index)
+            max_bone_index = (int32_t)joints[i];
+    }
+    if (sum > 1e-12) {
+        for (int i = 0; i < 4; i++)
+            vertex->bone_weights[i] = (float)((double)vertex->bone_weights[i] / sum);
+    } else {
+        for (int i = 0; i < 4; i++)
+            vertex->bone_weights[i] = 0.0f;
+    }
+    return max_bone_index >= 0 ? (uint32_t)(max_bone_index + 1) : 0u;
+}
+
+static int gltf_preload_pack_mesh_pod(rt_gltf_preload_bundle *bundle,
+                                      int mesh_index,
+                                      int primitive_index,
+                                      uint32_t flags,
+                                      vgfx3d_vertex_t *vertices,
+                                      uint32_t vertex_count,
+                                      uint32_t *indices,
+                                      uint32_t index_count,
+                                      uint32_t bone_count,
+                                      char *error,
+                                      size_t error_cap) {
+    uint8_t *blob;
+    size_t vertex_bytes;
+    size_t index_bytes;
+    size_t payload_offset;
+    size_t blob_len;
+    char key[96];
+    if (!vertices || !indices || vertex_count == 0 || index_count == 0)
+        return 1;
+    if (bone_count > VGFX3D_MAX_BONES)
+        return 1;
+    if (!gltf_checked_mul_size((size_t)vertex_count, sizeof(vgfx3d_vertex_t), &vertex_bytes) ||
+        !gltf_checked_mul_size((size_t)index_count, sizeof(uint32_t), &index_bytes) ||
+        !gltf_checked_add_size(
+            GLTF_PRELOAD_MESH_POD_HEADER_SIZE, vertex_bytes, &payload_offset) ||
+        !gltf_checked_add_size(payload_offset, index_bytes, &blob_len) ||
+        vertex_bytes > UINT32_MAX || index_bytes > UINT32_MAX) {
+        return 1;
+    }
+    blob = (uint8_t *)malloc(blob_len);
+    if (!blob) {
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+        return 0;
+    }
+    memset(blob, 0, GLTF_PRELOAD_MESH_POD_HEADER_SIZE);
+    gltf_write_u32_le(blob + 0, GLTF_PRELOAD_MESH_POD_MAGIC);
+    gltf_write_u32_le(blob + 4, GLTF_PRELOAD_MESH_POD_VERSION);
+    gltf_write_u32_le(blob + 8, vertex_count);
+    gltf_write_u32_le(blob + 12, index_count);
+    gltf_write_u32_le(blob + 16, flags);
+    gltf_write_u32_le(blob + 20, (uint32_t)vertex_bytes);
+    gltf_write_u32_le(blob + 24, (uint32_t)index_bytes);
+    gltf_write_u32_le(blob + 28, bone_count);
+    memcpy(blob + GLTF_PRELOAD_MESH_POD_HEADER_SIZE, vertices, vertex_bytes);
+    memcpy(blob + payload_offset, indices, index_bytes);
+    gltf_preload_mesh_key(mesh_index, primitive_index, key, sizeof(key));
+    if (!gltf_preload_bundle_add_dependency(bundle, key, GLTF_PRELOAD_DEP_MESH_POD, blob, blob_len)) {
+        free(blob);
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+        return 0;
+    }
+    return 1;
+}
+
+typedef struct {
+    char *name;
+    float weight;
+    uint32_t flags;
+    float *pos_deltas;
+    float *normal_deltas;
+    float *tangent_deltas;
+} gltf_preload_morph_shape_t;
+
+static void gltf_preload_free_morph_shapes(gltf_preload_morph_shape_t *shapes,
+                                           size_t shape_count) {
+    if (!shapes)
+        return;
+    for (size_t i = 0; i < shape_count; i++) {
+        free(shapes[i].name);
+        free(shapes[i].pos_deltas);
+        free(shapes[i].normal_deltas);
+        free(shapes[i].tangent_deltas);
+    }
+    free(shapes);
+}
+
+static char *gltf_preload_target_name_alloc(const char *json,
+                                            size_t json_len,
+                                            size_t mesh_start,
+                                            size_t mesh_end,
+                                            int target_index) {
+    size_t extras_start;
+    size_t extras_end;
+    size_t names_start;
+    size_t names_end;
+    char fallback[64];
+    char *name = NULL;
+    if (gltf_json_object_find_value(
+            json, json_len, mesh_start, mesh_end, "extras", &extras_start, &extras_end) &&
+        extras_start < extras_end && json[extras_start] == '{' &&
+        gltf_json_object_find_value(json,
+                                    json_len,
+                                    extras_start,
+                                    extras_end,
+                                    "targetNames",
+                                    &names_start,
+                                    &names_end) &&
+        names_start < names_end && json[names_start] == '[') {
+        name = gltf_json_array_get_string_alloc(json, json_len, names_start, names_end, target_index);
+    }
+    if (name && name[0] != '\0')
+        return name;
+    free(name);
+    snprintf(fallback, sizeof(fallback), "target_%d", target_index);
+    return gltf_strdup_cstr(fallback);
+}
+
+static double gltf_preload_target_weight(const char *json,
+                                         size_t json_len,
+                                         size_t mesh_start,
+                                         size_t mesh_end,
+                                         int target_index) {
+    size_t weights_start;
+    size_t weights_end;
+    if (!gltf_json_object_find_value(
+            json, json_len, mesh_start, mesh_end, "weights", &weights_start, &weights_end) ||
+        weights_start >= weights_end || json[weights_start] != '[')
+        return 0.0;
+    return gltf_json_array_get_number(json, json_len, weights_start, weights_end, target_index, 0.0);
+}
+
+static int gltf_preload_copy_morph_channel(const gltf_accessor_view_t *view,
+                                           int32_t vertex_count,
+                                           float **out_deltas) {
+    size_t bytes;
+    float *deltas;
+    int32_t limit;
+    if (out_deltas)
+        *out_deltas = NULL;
+    if (!view || !out_deltas || vertex_count <= 0)
+        return 1;
+    if (!gltf_checked_mul_size((size_t)vertex_count, 3u * sizeof(float), &bytes))
+        return 0;
+    deltas = (float *)calloc(1, bytes);
+    if (!deltas)
+        return 0;
+    limit = view->count < vertex_count ? view->count : vertex_count;
+    for (int32_t vi = 0; vi < limit; vi++) {
+        float sample[3] = {0.0f, 0.0f, 0.0f};
+        gltf_accessor_read_f32(view, vi, sample, 3);
+        for (int c = 0; c < 3; c++)
+            deltas[(size_t)vi * 3u + (size_t)c] = isfinite(sample[c]) ? sample[c] : 0.0f;
+    }
+    *out_deltas = deltas;
+    return 1;
+}
+
+static int gltf_preload_pack_morph_pod(rt_gltf_preload_bundle *bundle,
+                                       int mesh_index,
+                                       int primitive_index,
+                                       const gltf_preload_morph_shape_t *shapes,
+                                       size_t shape_count,
+                                       uint32_t vertex_count,
+                                       char *error,
+                                       size_t error_cap) {
+    size_t channel_bytes;
+    size_t record_bytes;
+    size_t names_bytes = 0;
+    size_t payload_bytes = 0;
+    size_t names_offset;
+    size_t payload_offset;
+    size_t blob_len;
+    size_t name_cursor = 0;
+    size_t payload_cursor = 0;
+    uint8_t *blob;
+    char key[96];
+    if (!bundle || !shapes || shape_count == 0 || vertex_count == 0)
+        return 1;
+    if (shape_count > INT32_MAX || vertex_count > INT32_MAX)
+        return 1;
+    if (!gltf_checked_mul_size((size_t)vertex_count, 3u * sizeof(float), &channel_bytes) ||
+        !gltf_checked_mul_size(shape_count, GLTF_PRELOAD_MORPH_POD_RECORD_SIZE, &record_bytes))
+        return 1;
+    for (size_t i = 0; i < shape_count; i++) {
+        size_t name_len = shapes[i].name ? strlen(shapes[i].name) + 1u : 1u;
+        if (!gltf_checked_add_size(names_bytes, name_len, &names_bytes))
+            return 1;
+        if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS) != 0 &&
+            !gltf_checked_add_size(payload_bytes, channel_bytes, &payload_bytes))
+            return 1;
+        if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_NORMALS) != 0 &&
+            !gltf_checked_add_size(payload_bytes, channel_bytes, &payload_bytes))
+            return 1;
+        if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS) != 0 &&
+            !gltf_checked_add_size(payload_bytes, channel_bytes, &payload_bytes))
+            return 1;
+    }
+    if (!gltf_checked_add_size(GLTF_PRELOAD_MORPH_POD_HEADER_SIZE, record_bytes, &names_offset) ||
+        !gltf_checked_add_size(names_offset, names_bytes, &payload_offset) ||
+        !gltf_checked_add_size(payload_offset, payload_bytes, &blob_len) ||
+        record_bytes > UINT32_MAX || names_bytes > UINT32_MAX || payload_bytes > UINT32_MAX)
+        return 1;
+    blob = (uint8_t *)calloc(1, blob_len);
+    if (!blob) {
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+        return 0;
+    }
+    gltf_write_u32_le(blob + 0, GLTF_PRELOAD_MORPH_POD_MAGIC);
+    gltf_write_u32_le(blob + 4, GLTF_PRELOAD_MORPH_POD_VERSION);
+    gltf_write_u32_le(blob + 8, vertex_count);
+    gltf_write_u32_le(blob + 12, (uint32_t)shape_count);
+    gltf_write_u32_le(blob + 16, (uint32_t)record_bytes);
+    gltf_write_u32_le(blob + 20, (uint32_t)names_bytes);
+    gltf_write_u32_le(blob + 24, (uint32_t)payload_bytes);
+    gltf_write_u32_le(blob + 28, 0u);
+
+    for (size_t i = 0; i < shape_count; i++) {
+        uint8_t *record = blob + GLTF_PRELOAD_MORPH_POD_HEADER_SIZE +
+                          i * GLTF_PRELOAD_MORPH_POD_RECORD_SIZE;
+        const char *name = shapes[i].name ? shapes[i].name : "";
+        size_t name_len = strlen(name) + 1u;
+        uint32_t pos_offset = 0u;
+        uint32_t norm_offset = 0u;
+        uint32_t tan_offset = 0u;
+        if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS) != 0) {
+            pos_offset = (uint32_t)payload_cursor;
+            memcpy(blob + payload_offset + payload_cursor, shapes[i].pos_deltas, channel_bytes);
+            payload_cursor += channel_bytes;
+        }
+        if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_NORMALS) != 0) {
+            norm_offset = (uint32_t)payload_cursor;
+            memcpy(blob + payload_offset + payload_cursor, shapes[i].normal_deltas, channel_bytes);
+            payload_cursor += channel_bytes;
+        }
+        if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS) != 0) {
+            tan_offset = (uint32_t)payload_cursor;
+            memcpy(blob + payload_offset + payload_cursor, shapes[i].tangent_deltas, channel_bytes);
+            payload_cursor += channel_bytes;
+        }
+        memcpy(blob + names_offset + name_cursor, name, name_len);
+        gltf_write_u32_le(record + 0, shapes[i].flags);
+        gltf_write_u32_le(record + 4, (uint32_t)name_cursor);
+        gltf_write_u32_le(record + 8, (uint32_t)name_len);
+        gltf_write_f32_le(record + 12, shapes[i].weight);
+        gltf_write_u32_le(record + 16, pos_offset);
+        gltf_write_u32_le(record + 20, norm_offset);
+        gltf_write_u32_le(record + 24, tan_offset);
+        gltf_write_u32_le(record + 28, 0u);
+        name_cursor += name_len;
+    }
+
+    gltf_preload_morph_key(mesh_index, primitive_index, key, sizeof(key));
+    if (!gltf_preload_bundle_add_dependency(
+            bundle, key, GLTF_PRELOAD_DEP_MORPH_POD, blob, blob_len)) {
+        free(blob);
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+        return 0;
+    }
+    return 1;
+}
+
+static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
+                                            const char *json,
+                                            size_t json_len,
+                                            int mesh_index,
+                                            int primitive_index,
+                                            size_t mesh_start,
+                                            size_t mesh_end,
+                                            size_t prim_start,
+                                            size_t prim_end,
+                                            const gltf_preload_buffer_ref_t *buffers,
+                                            int buffer_count,
+                                            const gltf_preload_buffer_view_ref_t *views,
+                                            int view_count,
+                                            const gltf_preload_accessor_ref_t *accessors,
+                                            int accessor_count,
+                                            int32_t vertex_count,
+                                            char *error,
+                                            size_t error_cap) {
+    size_t targets_start;
+    size_t targets_end;
+    size_t target_pos;
+    gltf_preload_morph_shape_t *shapes = NULL;
+    size_t shape_count = 0;
+    int target_index = 0;
+    int ok = 1;
+    if (!bundle || !json || vertex_count <= 0)
+        return 1;
+    if (!gltf_json_object_find_value(
+            json, json_len, prim_start, prim_end, "targets", &targets_start, &targets_end) ||
+        targets_start >= targets_end || json[targets_start] != '[')
+        return 1;
+    target_pos = targets_start + 1u;
+    while (target_pos < targets_end) {
+        target_pos = gltf_json_skip_ws(json, json_len, target_pos);
+        if (target_pos >= targets_end || json[target_pos] == ']')
+            break;
+        if (json[target_pos] == '{') {
+            size_t target_end = gltf_json_find_matching(json, json_len, target_pos, '{', '}');
+            int pos_acc;
+            int norm_acc;
+            int tangent_acc;
+            int has_pos;
+            int has_norm;
+            int has_tangent;
+            gltf_accessor_view_t pos_view;
+            gltf_accessor_view_t norm_view;
+            gltf_accessor_view_t tangent_view;
+            if (target_end == SIZE_MAX || target_end > targets_end)
+                break;
+            pos_acc = gltf_json_object_get_int(
+                json, json_len, target_pos, target_end, "POSITION", -1);
+            norm_acc =
+                gltf_json_object_get_int(json, json_len, target_pos, target_end, "NORMAL", -1);
+            tangent_acc =
+                gltf_json_object_get_int(json, json_len, target_pos, target_end, "TANGENT", -1);
+            has_pos = gltf_preload_resolve_accessor_view(accessors,
+                                                         accessor_count,
+                                                         pos_acc,
+                                                         buffers,
+                                                         buffer_count,
+                                                         views,
+                                                         view_count,
+                                                         &pos_view) &&
+                      pos_view.comp_count >= 3;
+            has_norm = gltf_preload_resolve_accessor_view(accessors,
+                                                          accessor_count,
+                                                          norm_acc,
+                                                          buffers,
+                                                          buffer_count,
+                                                          views,
+                                                          view_count,
+                                                          &norm_view) &&
+                       norm_view.comp_count >= 3;
+            has_tangent = gltf_preload_resolve_accessor_view(accessors,
+                                                             accessor_count,
+                                                             tangent_acc,
+                                                             buffers,
+                                                             buffer_count,
+                                                             views,
+                                                             view_count,
+                                                             &tangent_view) &&
+                          tangent_view.comp_count >= 3;
+            if (has_pos || has_norm || has_tangent) {
+                gltf_preload_morph_shape_t *grown =
+                    (gltf_preload_morph_shape_t *)realloc(
+                        shapes, (shape_count + 1u) * sizeof(*shapes));
+                if (!grown) {
+                    gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                    ok = 0;
+                    goto done;
+                }
+                shapes = grown;
+                memset(&shapes[shape_count], 0, sizeof(shapes[shape_count]));
+                shapes[shape_count].name =
+                    gltf_preload_target_name_alloc(json, json_len, mesh_start, mesh_end, target_index);
+                if (!shapes[shape_count].name) {
+                    gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                    ok = 0;
+                    goto done;
+                }
+                shapes[shape_count].weight = (float)gltf_preload_target_weight(
+                    json, json_len, mesh_start, mesh_end, target_index);
+                if (has_pos) {
+                    if (!gltf_preload_copy_morph_channel(
+                            &pos_view, vertex_count, &shapes[shape_count].pos_deltas)) {
+                        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                        ok = 0;
+                        goto done;
+                    }
+                    shapes[shape_count].flags |= GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS;
+                }
+                if (has_norm) {
+                    if (!gltf_preload_copy_morph_channel(
+                            &norm_view, vertex_count, &shapes[shape_count].normal_deltas)) {
+                        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                        ok = 0;
+                        goto done;
+                    }
+                    shapes[shape_count].flags |= GLTF_PRELOAD_MORPH_POD_HAS_NORMALS;
+                }
+                if (has_tangent) {
+                    if (!gltf_preload_copy_morph_channel(
+                            &tangent_view, vertex_count, &shapes[shape_count].tangent_deltas)) {
+                        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                        ok = 0;
+                        goto done;
+                    }
+                    shapes[shape_count].flags |= GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS;
+                }
+                shape_count++;
+            }
+            target_index++;
+            target_pos = target_end;
+        } else {
+            target_pos = gltf_json_skip_value(json, json_len, target_pos);
+            if (target_pos == SIZE_MAX)
+                break;
+        }
+        target_pos = gltf_json_skip_ws(json, json_len, target_pos);
+        if (target_pos < targets_end && json[target_pos] == ',')
+            target_pos++;
+    }
+    ok = gltf_preload_pack_morph_pod(bundle,
+                                     mesh_index,
+                                     primitive_index,
+                                     shapes,
+                                     shape_count,
+                                     (uint32_t)vertex_count,
+                                     error,
+                                     error_cap);
+
+done:
+    gltf_preload_free_morph_shapes(shapes, shape_count);
+    return ok;
+}
+
+static int gltf_preload_stage_mesh_primitive(
+    rt_gltf_preload_bundle *bundle,
+    const char *json,
+    size_t json_len,
+    int mesh_index,
+    int primitive_index,
+    size_t mesh_start,
+    size_t mesh_end,
+    size_t prim_start,
+    size_t prim_end,
+    const gltf_preload_buffer_ref_t *buffers,
+    int buffer_count,
+    const gltf_preload_buffer_view_ref_t *views,
+    int view_count,
+    const gltf_preload_accessor_ref_t *accessors,
+    int accessor_count,
+    char *error,
+    size_t error_cap) {
+    size_t attrs_start;
+    size_t attrs_end;
+    int pos_acc;
+    int norm_acc;
+    int uv0_acc;
+    int uv1_acc;
+    int color_acc;
+    int tangent_acc;
+    int joints_acc;
+    int weights_acc;
+    int joints1_acc;
+    int weights1_acc;
+    int idx_acc;
+    int mode;
+    int has_normals = 0;
+    int has_uv0 = 0;
+    int has_uv1 = 0;
+    int has_colors = 0;
+    int has_tangents = 0;
+    int has_joints = 0;
+    int has_weights = 0;
+    int has_joints1 = 0;
+    int has_weights1 = 0;
+    int has_skinning_attrs = 0;
+    uint32_t flags = 0u;
+    uint32_t bone_count = 0u;
+    gltf_accessor_view_t pos_view;
+    gltf_accessor_view_t norm_view;
+    gltf_accessor_view_t uv0_view;
+    gltf_accessor_view_t uv1_view;
+    gltf_accessor_view_t color_view;
+    gltf_accessor_view_t tangent_view;
+    gltf_accessor_view_t joints_view;
+    gltf_accessor_view_t weights_view;
+    gltf_accessor_view_t joints1_view;
+    gltf_accessor_view_t weights1_view;
+    gltf_accessor_view_t idx_view;
+    int has_indices = 0;
+    int32_t vertex_count_i;
+    int32_t source_index_count;
+    vgfx3d_vertex_t *vertices = NULL;
+    uint32_t *indices = NULL;
+    uint32_t index_count = 0;
+    uint32_t index_capacity_count = 0;
+    size_t vertex_bytes;
+    size_t index_bytes;
+    int ok = 1;
+
+    if (!bundle || !json || !accessors)
+        return 1;
+    if (!gltf_json_object_find_value(
+            json, json_len, prim_start, prim_end, "attributes", &attrs_start, &attrs_end) ||
+        attrs_start >= attrs_end || json[attrs_start] != '{')
+        return 1;
+    mode = gltf_json_object_get_int(json, json_len, prim_start, prim_end, "mode", 4);
+    if (mode != 4 && mode != 5 && mode != 6)
+        return 1;
+
+    pos_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "POSITION", -1);
+    norm_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "NORMAL", -1);
+    if (pos_acc < 0)
+        return 1;
+
+    if (!gltf_preload_resolve_accessor_view(accessors,
+                                            accessor_count,
+                                            pos_acc,
+                                            buffers,
+                                            buffer_count,
+                                            views,
+                                            view_count,
+                                            &pos_view))
+        return 1;
+    has_normals = gltf_preload_resolve_accessor_view(accessors,
+                                                     accessor_count,
+                                                     norm_acc,
+                                                     buffers,
+                                                     buffer_count,
+                                                     views,
+                                                     view_count,
+                                                     &norm_view) &&
+                  norm_view.comp_count >= 3 && norm_view.count >= pos_view.count;
+    if (pos_view.comp_count < 3 || pos_view.count <= 0)
+        return 1;
+
+    uv0_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "TEXCOORD_0", -1);
+    uv1_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "TEXCOORD_1", -1);
+    color_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "COLOR_0", -1);
+    tangent_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "TANGENT", -1);
+    joints_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "JOINTS_0", -1);
+    weights_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "WEIGHTS_0", -1);
+    joints1_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "JOINTS_1", -1);
+    weights1_acc = gltf_json_object_get_int(json, json_len, attrs_start, attrs_end, "WEIGHTS_1", -1);
+    idx_acc = gltf_json_object_get_int(json, json_len, prim_start, prim_end, "indices", -1);
+
+    has_uv0 = gltf_preload_resolve_accessor_view(accessors,
+                                                 accessor_count,
+                                                 uv0_acc,
+                                                 buffers,
+                                                 buffer_count,
+                                                 views,
+                                                 view_count,
+                                                 &uv0_view) &&
+              uv0_view.comp_count >= 2 && uv0_view.count >= pos_view.count;
+    has_uv1 = gltf_preload_resolve_accessor_view(accessors,
+                                                 accessor_count,
+                                                 uv1_acc,
+                                                 buffers,
+                                                 buffer_count,
+                                                 views,
+                                                 view_count,
+                                                 &uv1_view) &&
+              uv1_view.comp_count >= 2 && uv1_view.count >= pos_view.count;
+    has_colors = gltf_preload_resolve_accessor_view(accessors,
+                                                   accessor_count,
+                                                   color_acc,
+                                                   buffers,
+                                                   buffer_count,
+                                                   views,
+                                                   view_count,
+                                                   &color_view) &&
+                 color_view.comp_count >= 3 && color_view.count >= pos_view.count;
+    has_tangents = gltf_preload_resolve_accessor_view(accessors,
+                                                     accessor_count,
+                                                     tangent_acc,
+                                                     buffers,
+                                                     buffer_count,
+                                                     views,
+                                                     view_count,
+                                                     &tangent_view) &&
+                   tangent_view.comp_count >= 3 && tangent_view.count >= pos_view.count;
+    has_joints = gltf_preload_resolve_accessor_view(accessors,
+                                                    accessor_count,
+                                                    joints_acc,
+                                                    buffers,
+                                                    buffer_count,
+                                                    views,
+                                                    view_count,
+                                                    &joints_view) &&
+                 joints_view.comp_count >= 4 && joints_view.count >= pos_view.count;
+    has_weights = gltf_preload_resolve_accessor_view(accessors,
+                                                     accessor_count,
+                                                     weights_acc,
+                                                     buffers,
+                                                     buffer_count,
+                                                     views,
+                                                     view_count,
+                                                     &weights_view) &&
+                  weights_view.comp_count >= 4 && weights_view.count >= pos_view.count;
+    has_joints1 = gltf_preload_resolve_accessor_view(accessors,
+                                                     accessor_count,
+                                                     joints1_acc,
+                                                     buffers,
+                                                     buffer_count,
+                                                     views,
+                                                     view_count,
+                                                     &joints1_view) &&
+                  joints1_view.comp_count >= 4 && joints1_view.count >= pos_view.count;
+    has_weights1 = gltf_preload_resolve_accessor_view(accessors,
+                                                      accessor_count,
+                                                      weights1_acc,
+                                                      buffers,
+                                                      buffer_count,
+                                                      views,
+                                                      view_count,
+                                                      &weights1_view) &&
+                   weights1_view.comp_count >= 4 && weights1_view.count >= pos_view.count;
+    has_skinning_attrs = has_joints || has_weights || has_joints1 || has_weights1;
+    has_indices = gltf_preload_resolve_accessor_view(accessors,
+                                                    accessor_count,
+                                                    idx_acc,
+                                                    buffers,
+                                                    buffer_count,
+                                                    views,
+                                                    view_count,
+                                                    &idx_view) &&
+                  idx_view.comp_count == 1 &&
+                  (idx_view.comp_type == 5121 || idx_view.comp_type == 5123 ||
+                   idx_view.comp_type == 5125);
+    vertex_count_i = pos_view.count;
+    source_index_count = has_indices ? idx_view.count : vertex_count_i;
+    if (vertex_count_i < 3 || source_index_count < 3)
+        return 1;
+    if (!gltf_preload_topology_index_capacity(mode, source_index_count, &index_capacity_count) ||
+        index_capacity_count == 0)
+        return 1;
+    if (!gltf_checked_mul_size((size_t)vertex_count_i, sizeof(vgfx3d_vertex_t), &vertex_bytes) ||
+        !gltf_checked_mul_size((size_t)index_capacity_count, sizeof(uint32_t), &index_bytes))
+        return 1;
+    if (vertex_bytes == 0 || index_bytes == 0)
+        return 1;
+
+    vertices = (vgfx3d_vertex_t *)calloc((size_t)vertex_count_i, sizeof(*vertices));
+    indices = (uint32_t *)malloc(index_bytes);
+    if (!vertices || !indices) {
+        free(vertices);
+        free(indices);
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+        return 0;
+    }
+
+    for (int32_t vi = 0; vi < vertex_count_i; vi++) {
+        float pos[3] = {0.0f, 0.0f, 0.0f};
+        float nrm[3] = {0.0f, 0.0f, 0.0f};
+        float uv[2] = {0.0f, 0.0f};
+        float uv1[2] = {0.0f, 0.0f};
+        float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+        float tangent[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        float weights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        uint32_t joints[4] = {0u, 0u, 0u, 0u};
+        float weights1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        uint32_t joints1[4] = {0u, 0u, 0u, 0u};
+        gltf_accessor_read_f32(&pos_view, vi, pos, 3);
+        if (has_normals)
+            gltf_accessor_read_f32(&norm_view, vi, nrm, 3);
+        if (!gltf_preload_floats_are_finite(pos, 3) ||
+            (has_normals && !gltf_preload_floats_are_finite(nrm, 3))) {
+            ok = 1;
+            goto done;
+        }
+        if (has_uv0) {
+            gltf_accessor_read_f32(&uv0_view, vi, uv, 2);
+            if (!gltf_preload_floats_are_finite(uv, 2)) {
+                ok = 1;
+                goto done;
+            }
+        }
+        if (has_uv1) {
+            gltf_accessor_read_f32(&uv1_view, vi, uv1, 2);
+            if (!gltf_preload_floats_are_finite(uv1, 2)) {
+                ok = 1;
+                goto done;
+            }
+        } else {
+            uv1[0] = uv[0];
+            uv1[1] = uv[1];
+        }
+        if (has_colors) {
+            gltf_accessor_read_f32(&color_view, vi, color, 4);
+            if (color_view.comp_count < 4)
+                color[3] = 1.0f;
+            if (!gltf_preload_floats_are_finite(color, 4)) {
+                ok = 1;
+                goto done;
+            }
+        }
+        if (has_tangents) {
+            gltf_accessor_read_f32(&tangent_view, vi, tangent, 4);
+            if (tangent_view.comp_count < 4)
+                tangent[3] = 1.0f;
+            if (!gltf_preload_floats_are_finite(tangent, 4)) {
+                ok = 1;
+                goto done;
+            }
+        }
+        memcpy(vertices[vi].pos, pos, sizeof(vertices[vi].pos));
+        memcpy(vertices[vi].normal, nrm, sizeof(vertices[vi].normal));
+        memcpy(vertices[vi].uv, uv, sizeof(vertices[vi].uv));
+        memcpy(vertices[vi].uv1, uv1, sizeof(vertices[vi].uv1));
+        memcpy(vertices[vi].color, color, sizeof(vertices[vi].color));
+        memcpy(vertices[vi].tangent, tangent, sizeof(vertices[vi].tangent));
+        if (has_skinning_attrs) {
+            uint32_t vertex_bone_count;
+            if (has_joints)
+                gltf_accessor_read_u32(&joints_view, vi, joints, 4);
+            if (has_weights)
+                gltf_accessor_read_f32(&weights_view, vi, weights, 4);
+            if (has_joints1)
+                gltf_accessor_read_u32(&joints1_view, vi, joints1, 4);
+            if (has_weights1)
+                gltf_accessor_read_f32(&weights1_view, vi, weights1, 4);
+            if (has_joints1 && has_weights1) {
+                uint32_t merged_joints[4] = {0u, 0u, 0u, 0u};
+                float merged_weights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                if (has_joints && has_weights) {
+                    for (int j = 0; j < 4; j++)
+                        gltf_add_top_joint_influence(
+                            joints[j], weights[j], merged_joints, merged_weights);
+                }
+                for (int j = 0; j < 4; j++)
+                    gltf_add_top_joint_influence(
+                        joints1[j], weights1[j], merged_joints, merged_weights);
+                gltf_normalize_joint_influences(merged_weights);
+                memcpy(joints, merged_joints, sizeof(joints));
+                memcpy(weights, merged_weights, sizeof(weights));
+            } else {
+                for (int j = 0; j < 4; j++) {
+                    if (joints[j] >= VGFX3D_MAX_BONES)
+                        weights[j] = 0.0f;
+                }
+            }
+            vertex_bone_count =
+                gltf_preload_write_vertex_bone_weights(&vertices[vi], joints, weights);
+            if (vertex_bone_count > bone_count)
+                bone_count = vertex_bone_count;
+        }
+    }
+
+    if (mode == 4) {
+        for (int32_t ii = 0; ii + 2 < source_index_count; ii += 3) {
+            gltf_preload_emit_pod_triangle(
+                vertices,
+                (uint32_t)vertex_count_i,
+                gltf_preload_read_index_or_vertex(has_indices ? &idx_view : NULL, ii),
+                gltf_preload_read_index_or_vertex(has_indices ? &idx_view : NULL, ii + 1),
+                gltf_preload_read_index_or_vertex(has_indices ? &idx_view : NULL, ii + 2),
+                indices,
+                &index_count);
+        }
+    } else if (mode == 5) {
+        for (int32_t ii = 0; ii + 2 < source_index_count; ii++) {
+            uint32_t i0 =
+                gltf_preload_read_index_or_vertex(has_indices ? &idx_view : NULL, ii);
+            uint32_t i1 =
+                gltf_preload_read_index_or_vertex(has_indices ? &idx_view : NULL, ii + 1);
+            uint32_t i2 =
+                gltf_preload_read_index_or_vertex(has_indices ? &idx_view : NULL, ii + 2);
+            if ((ii & 1) != 0) {
+                uint32_t tmp = i0;
+                i0 = i1;
+                i1 = tmp;
+            }
+            gltf_preload_emit_pod_triangle(
+                vertices, (uint32_t)vertex_count_i, i0, i1, i2, indices, &index_count);
+        }
+    } else {
+        uint32_t base = gltf_preload_read_index_or_vertex(has_indices ? &idx_view : NULL, 0);
+        for (int32_t ii = 1; ii + 1 < source_index_count; ii++) {
+            gltf_preload_emit_pod_triangle(
+                vertices,
+                (uint32_t)vertex_count_i,
+                base,
+                gltf_preload_read_index_or_vertex(has_indices ? &idx_view : NULL, ii),
+                gltf_preload_read_index_or_vertex(has_indices ? &idx_view : NULL, ii + 1),
+                indices,
+                &index_count);
+        }
+    }
+    if (index_count == 0)
+        goto done;
+    if (has_normals)
+        flags |= GLTF_PRELOAD_MESH_POD_HAS_NORMALS;
+    if (has_uv0)
+        flags |= GLTF_PRELOAD_MESH_POD_HAS_UV0;
+    if (has_tangents)
+        flags |= GLTF_PRELOAD_MESH_POD_HAS_TANGENTS;
+    if (has_skinning_attrs)
+        flags |= GLTF_PRELOAD_MESH_POD_HAS_SKINNING;
+    ok = gltf_preload_pack_mesh_pod(bundle,
+                                    mesh_index,
+                                    primitive_index,
+                                    flags,
+                                    vertices,
+                                    (uint32_t)vertex_count_i,
+                                    indices,
+                                    index_count,
+                                    bone_count,
+                                    error,
+                                    error_cap);
+    if (ok) {
+        ok = gltf_preload_stage_morph_targets(bundle,
+                                              json,
+                                              json_len,
+                                              mesh_index,
+                                              primitive_index,
+                                              mesh_start,
+                                              mesh_end,
+                                              prim_start,
+                                              prim_end,
+                                              buffers,
+                                              buffer_count,
+                                              views,
+                                              view_count,
+                                              accessors,
+                                              accessor_count,
+                                              vertex_count_i,
+                                              error,
+                                              error_cap);
+    }
+
+done:
+    free(vertices);
+    free(indices);
+    return ok;
+}
+
+static int gltf_preload_stage_meshes(rt_gltf_preload_bundle *bundle,
+                                     const char *json,
+                                     size_t json_len,
+                                     const gltf_preload_buffer_ref_t *buffers,
+                                     int buffer_count,
+                                     const gltf_preload_buffer_view_ref_t *views,
+                                     int view_count,
+                                     char *error,
+                                     size_t error_cap) {
+    size_t array_start;
+    size_t array_end;
+    size_t pos;
+    gltf_preload_accessor_ref_t *accessors = NULL;
+    int accessor_count = 0;
+    int mesh_index = 0;
+    if (!gltf_json_find_top_level_array(json, json_len, "meshes", &array_start, &array_end))
+        return 1;
+    if (!gltf_preload_parse_accessors(
+            json, json_len, &accessors, &accessor_count, error, error_cap))
+        return 0;
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            size_t prims_start;
+            size_t prims_end;
+            int primitive_index = 0;
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            if (gltf_json_object_find_value(
+                    json, json_len, pos, object_end, "primitives", &prims_start, &prims_end) &&
+                prims_start < prims_end && json[prims_start] == '[') {
+                size_t prim_pos = prims_start + 1u;
+                while (prim_pos < prims_end) {
+                    prim_pos = gltf_json_skip_ws(json, json_len, prim_pos);
+                    if (prim_pos >= prims_end || json[prim_pos] == ']')
+                        break;
+                    if (json[prim_pos] == '{') {
+                        size_t prim_end = gltf_json_find_matching(
+                            json, json_len, prim_pos, '{', '}');
+                        if (prim_end == SIZE_MAX || prim_end > prims_end)
+                            break;
+                        if (!gltf_preload_stage_mesh_primitive(bundle,
+                                                               json,
+                                                               json_len,
+                                                               mesh_index,
+                                                               primitive_index,
+                                                               pos,
+                                                               object_end,
+                                                               prim_pos,
+                                                               prim_end,
+                                                               buffers,
+                                                               buffer_count,
+                                                               views,
+                                                               view_count,
+                                                               accessors,
+                                                               accessor_count,
+                                                               error,
+                                                               error_cap)) {
+                            free(accessors);
+                            return 0;
+                        }
+                        primitive_index++;
+                        prim_pos = prim_end;
+                    } else {
+                        prim_pos = gltf_json_skip_value(json, json_len, prim_pos);
+                        if (prim_pos == SIZE_MAX)
+                            break;
+                    }
+                    prim_pos = gltf_json_skip_ws(json, json_len, prim_pos);
+                    if (prim_pos < prims_end && json[prim_pos] == ',')
+                        prim_pos++;
+                }
+            }
+            mesh_index++;
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    free(accessors);
+    return 1;
+}
+
+static int gltf_preload_stage_image_bytes(rt_gltf_preload_bundle *bundle,
+                                          int image_index,
+                                          const char *mime_type,
+                                          uint8_t *data,
+                                          size_t data_len,
+                                          int required,
+                                          char *error,
+                                          size_t error_cap) {
+    char key[96];
+    if (!data || data_len == 0)
+        return 1;
+    gltf_preload_image_key(image_index, mime_type, key, sizeof(key));
+    return gltf_preload_bundle_add_image_payload(
+        bundle, key, mime_type ? mime_type : key, data, data_len, required, error, error_cap);
+}
+
+static void gltf_preload_mark_required_images(const char *json,
+                                              size_t json_len,
+                                              uint8_t *required,
+                                              int required_count) {
+    size_t array_start;
+    size_t array_end;
+    size_t pos;
+    if (!json || !required || required_count <= 0)
+        return;
+    if (!gltf_json_find_top_level_array(json, json_len, "textures", &array_start, &array_end))
+        return;
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            int source;
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            source = gltf_json_object_get_int(json, json_len, pos, object_end, "source", -1);
+            if (source >= 0 && source < required_count)
+                required[source] = 1u;
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+}
+
+static int gltf_validate_required_data_uri_images(const char *json, size_t json_len) {
+    size_t array_start;
+    size_t array_end;
+    size_t pos;
+    int image_count = 0;
+    int index = 0;
+    uint8_t *required = NULL;
+    if (!gltf_json_find_top_level_array(json, json_len, "images", &array_start, &array_end))
+        return 1;
+
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            image_count++;
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    if (image_count <= 0)
+        return 1;
+
+    required = (uint8_t *)calloc((size_t)image_count, sizeof(uint8_t));
+    if (!required)
+        return 0;
+    gltf_preload_mark_required_images(json, json_len, required, image_count);
+
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            char *uri;
+            char *mime_type;
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            uri = gltf_json_object_get_string(json, json_len, pos, object_end, "uri");
+            mime_type = gltf_json_object_get_string(json, json_len, pos, object_end, "mimeType");
+            if (required[index] && uri && strncmp(uri, "data:", 5) == 0) {
+                char parsed_mime[64];
+                const char *image_type;
+                uint8_t *data = NULL;
+                uint8_t *rgba_blob = NULL;
+                size_t data_len = 0;
+                size_t rgba_len = 0;
+                int ok = 1;
+                gltf_data_uri_copy_mime(uri, parsed_mime, sizeof(parsed_mime));
+                image_type = mime_type ? mime_type : parsed_mime;
+                if (gltf_preload_image_is_supported_format(image_type)) {
+                    ok = gltf_parse_data_uri(
+                             uri, parsed_mime, sizeof(parsed_mime), &data, &data_len) &&
+                         gltf_decode_image_payload_to_rgba_blob(
+                             image_type, data, data_len, &rgba_blob, &rgba_len);
+                    free(data);
+                    free(rgba_blob);
+                }
+                if (!ok) {
+                    free(uri);
+                    free(mime_type);
+                    free(required);
+                    return 0;
+                }
+            }
+            free(uri);
+            free(mime_type);
+            index++;
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    free(required);
+    return 1;
+}
+
+static int gltf_preload_stage_images(rt_gltf_preload_bundle *bundle,
+                                     const char *model_path,
+                                     const char *json,
+                                     size_t json_len,
+                                     int load_assets,
+                                     const gltf_preload_buffer_ref_t *buffers,
+                                     int buffer_count,
+                                     const gltf_preload_buffer_view_ref_t *views,
+                                     int view_count,
+                                     char *error,
+                                     size_t error_cap) {
+    size_t array_start;
+    size_t array_end;
+    size_t pos;
+    int image_count = 0;
+    int index = 0;
+    uint8_t *required = NULL;
+    if (!gltf_json_find_top_level_array(json, json_len, "images", &array_start, &array_end))
+        return 1;
+
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            image_count++;
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    if (image_count > 0) {
+        required = (uint8_t *)calloc((size_t)image_count, sizeof(uint8_t));
+        if (required)
+            gltf_preload_mark_required_images(json, json_len, required, image_count);
+    }
+
+    pos = array_start + 1u;
+    while (pos < array_end) {
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos >= array_end || json[pos] == ']')
+            break;
+        if (json[pos] == '{') {
+            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
+            char *uri;
+            char *mime_type;
+            int required_image = required ? required[index] != 0 : 0;
+            if (object_end == SIZE_MAX || object_end > array_end)
+                break;
+            uri = gltf_json_object_get_string(json, json_len, pos, object_end, "uri");
+            mime_type = gltf_json_object_get_string(json, json_len, pos, object_end, "mimeType");
+            if (uri) {
+                int ok = 1;
+                if (strncmp(uri, "data:", 5) == 0) {
+                    char parsed_mime[64];
+                    uint8_t *data = NULL;
+                    size_t data_len = 0;
+                    parsed_mime[0] = '\0';
+                    if (gltf_parse_data_uri(uri, parsed_mime, sizeof(parsed_mime), &data, &data_len)) {
+                        ok = gltf_preload_stage_image_bytes(bundle,
+                                                            index,
+                                                            mime_type ? mime_type : parsed_mime,
+                                                            data,
+                                                            data_len,
+                                                            required_image,
+                                                            error,
+                                                            error_cap);
+                    } else if (required_image &&
+                               gltf_preload_image_is_supported_format(mime_type)) {
+                        gltf_preload_set_error(error, error_cap, "invalid glTF image payload");
+                        ok = 0;
+                    }
+                } else {
+                    ok = gltf_preload_stage_external_image(bundle,
+                                                           model_path,
+                                                           uri,
+                                                           load_assets,
+                                                           required_image,
+                                                           error,
+                                                           error_cap);
+                }
+                free(uri);
+                free(mime_type);
+                if (!ok) {
+                    free(required);
+                    return 0;
+                }
+            } else {
+                int view_index =
+                    gltf_json_object_get_int(json, json_len, pos, object_end, "bufferView", -1);
+                int staged = 0;
+                if (view_index >= 0 && view_index < view_count && views && views[view_index].valid) {
+                    const gltf_preload_buffer_view_ref_t *view = &views[view_index];
+                    if (view->buffer >= 0 && view->buffer < buffer_count && buffers &&
+                        buffers[view->buffer].data) {
+                        size_t end;
+                        if (gltf_checked_add_size(view->byte_offset, view->byte_length, &end) &&
+                            end <= buffers[view->buffer].len) {
+                            uint8_t *copy = (uint8_t *)malloc(view->byte_length);
+                            if (!copy) {
+                                free(mime_type);
+                                free(required);
+                                gltf_preload_set_error(
+                                    error, error_cap, "failed to stage glTF dependency");
+                                return 0;
+                            }
+                            memcpy(copy,
+                                   buffers[view->buffer].data + view->byte_offset,
+                                   view->byte_length);
+                            staged = 1;
+                            if (!gltf_preload_stage_image_bytes(bundle,
+                                                                 index,
+                                                                 mime_type,
+                                                                 copy,
+                                                                 view->byte_length,
+                                                                 required_image,
+                                                                 error,
+                                                                 error_cap)) {
+                                free(mime_type);
+                                free(required);
+                                return 0;
+                            }
+                        }
+                    }
+                }
+                if (!staged && required_image) {
+                    free(mime_type);
+                    free(required);
+                    gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                    return 0;
+                }
+                free(mime_type);
+            }
+            index++;
+            pos = object_end;
+        } else {
+            pos = gltf_json_skip_value(json, json_len, pos);
+            if (pos == SIZE_MAX)
+                break;
+        }
+        pos = gltf_json_skip_ws(json, json_len, pos);
+        if (pos < array_end && json[pos] == ',')
+            pos++;
+    }
+    free(required);
+    return 1;
+}
+
+rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
+                                                      uint8_t *root_data,
+                                                      size_t root_size,
+                                                      int load_assets,
+                                                      char *error,
+                                                      size_t error_cap) {
+    const char *model_path = path ? rt_string_cstr(path) : NULL;
+    rt_gltf_preload_bundle *bundle;
+    char *json = NULL;
+    size_t json_len = 0;
+    gltf_preload_buffer_ref_t *buffer_refs = NULL;
+    int buffer_ref_count = 0;
+    gltf_preload_buffer_view_ref_t *view_refs = NULL;
+    int view_ref_count = 0;
+    if (error && error_cap > 0)
+        error[0] = '\0';
+    if (!root_data || root_size == 0 || !model_path) {
+        free(root_data);
+        gltf_preload_set_error(error, error_cap, "failed to load model");
+        return NULL;
+    }
+    bundle = (rt_gltf_preload_bundle *)calloc(1, sizeof(*bundle));
+    if (!bundle) {
+        free(root_data);
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF preload");
+        return NULL;
+    }
+    bundle->root_data = root_data;
+    bundle->root_size = root_size;
+    json = gltf_json_copy_from_root_bytes(root_data, root_size, &json_len);
+    if (json) {
+        int ok = gltf_preload_stage_buffers(bundle,
+                                            model_path,
+                                            json,
+                                            json_len,
+                                            load_assets,
+                                            &buffer_refs,
+                                            &buffer_ref_count,
+                                            error,
+                                            error_cap);
+        if (ok) {
+            ok = gltf_preload_parse_buffer_views(
+                json, json_len, &view_refs, &view_ref_count, error, error_cap);
+        }
+        if (ok) {
+            ok = gltf_preload_validate_accessors(json,
+                                                 json_len,
+                                                 buffer_refs,
+                                                 buffer_ref_count,
+                                                 view_refs,
+                                                 view_ref_count,
+                                                 error,
+                                                 error_cap);
+        }
+        if (ok) {
+            ok = gltf_preload_stage_meshes(bundle,
+                                           json,
+                                           json_len,
+                                           buffer_refs,
+                                           buffer_ref_count,
+                                           view_refs,
+                                           view_ref_count,
+                                           error,
+                                           error_cap);
+        }
+        if (ok) {
+            ok = gltf_preload_stage_images(bundle,
+                                           model_path,
+                                           json,
+                                           json_len,
+                                           load_assets,
+                                           buffer_refs,
+                                           buffer_ref_count,
+                                           view_refs,
+                                           view_ref_count,
+                                           error,
+                                           error_cap);
+        }
+        free(buffer_refs);
+        free(view_refs);
+        free(json);
+        if (!ok) {
+            rt_gltf_preload_bundle_free(bundle);
+            return NULL;
+        }
+    }
+    return bundle;
 }
 
 /// @brief Synthesize a name for an embedded resource (e.g. `inline-image-3.png`).
@@ -3977,15 +7713,28 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
 ///          the caller never sees a half-built asset.
 /// @param path File path to `.gltf` or `.glb`.
 /// @return Opaque rt_gltf_asset*, or NULL on failure.
-static void *rt_gltf_load_impl(rt_string path, int load_assets) {
-    if (!path)
+static void *rt_gltf_load_impl(rt_string path,
+                               int load_assets,
+                               uint8_t *preloaded_data,
+                               size_t preloaded_size,
+                               rt_gltf_preload_bundle *preload_bundle) {
+    if (!path) {
+        free(preloaded_data);
         return NULL;
+    }
     const char *filepath = rt_string_cstr(path);
-    if (!filepath)
+    if (!filepath) {
+        free(preloaded_data);
         return NULL;
+    }
 
     size_t file_size = 0;
-    uint8_t *file_data = gltf_load_root_bytes(path, filepath, load_assets, &file_size);
+    uint8_t *file_data = preloaded_data;
+    if (file_data) {
+        file_size = preloaded_size;
+    } else {
+        file_data = gltf_load_root_bytes(path, filepath, load_assets, &file_size);
+    }
     if (!file_data) {
         if (load_assets)
             gltf_trap_asset_dependency(filepath, filepath, "model");
@@ -4070,6 +7819,11 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
         free(file_data);
         return NULL;
     }
+    if (!gltf_validate_required_data_uri_images(json_str, strlen(json_str))) {
+        free(json_str);
+        free(file_data);
+        return NULL;
+    }
 
     // Parse JSON
     rt_string json_rts = rt_const_cstr(json_str);
@@ -4146,7 +7900,12 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                 char mime_type[64];
                 uint8_t *decoded = NULL;
                 size_t decoded_len = 0;
-                if (gltf_parse_data_uri(
+                char preload_key[64];
+                gltf_preload_buffer_key(i, preload_key, sizeof(preload_key));
+                decoded = gltf_preload_bundle_take_dependency(
+                    preload_bundle, preload_key, GLTF_PRELOAD_DEP_BUFFER, &decoded_len);
+                if (decoded ||
+                    gltf_parse_data_uri(
                         uri, mime_type, sizeof(mime_type), &decoded, &decoded_len)) {
                     if (decoded_len < byte_length) {
                         free(decoded);
@@ -4168,7 +7927,8 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     break;
                 }
                 buffers[i].data =
-                    gltf_load_dependency_bytes(buf_path, load_assets, byte_length, NULL);
+                    gltf_load_dependency_bytes(
+                        buf_path, load_assets, byte_length, preload_bundle, NULL);
                 if (buffers[i].data)
                     buffers[i].len = byte_length;
                 if (byte_length > 0 && (!buffers[i].data || buffers[i].len < byte_length)) {
@@ -4233,11 +7993,26 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
 
     void **images = NULL;
     void **texture_images = NULL;
+    uint8_t *texture_supported = NULL;
     gltf_sampler_info_t *texture_samplers = NULL;
     void *images_arr = jarr(root, "images");
     int image_count = (int)jarr_len(images_arr);
+    void *textures_arr = jarr(root, "textures");
+    int texture_count = (int)jarr_len(textures_arr);
+    uint8_t *image_required = NULL;
     if (image_count > 0)
         images = (void **)calloc((size_t)image_count, sizeof(void *));
+    if (image_count > 0 && texture_count > 0) {
+        image_required = (uint8_t *)calloc((size_t)image_count, sizeof(uint8_t));
+        if (image_required) {
+            for (int i = 0; i < texture_count; i++) {
+                void *texture_json = rt_seq_get(textures_arr, (int64_t)i);
+                int64_t source_idx = jint(texture_json, "source", -1);
+                if (source_idx >= 0 && source_idx < image_count)
+                    image_required[source_idx] = 1u;
+            }
+        }
+    }
 
     for (int i = 0; i < image_count && images; i++) {
         void *image_json = rt_seq_get(images_arr, (int64_t)i);
@@ -4247,41 +8022,100 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
         const uint8_t *image_data = NULL;
         size_t image_len = 0;
         char image_name[64];
+        char parsed_mime[64];
+        int required_image = image_required ? image_required[i] != 0 : 0;
+        parsed_mime[0] = '\0';
 
         if (uri && strncmp(uri, "data:", 5) == 0) {
-            char parsed_mime[64];
-            if (gltf_parse_data_uri(
-                    uri, parsed_mime, sizeof(parsed_mime), &owned_data, &image_len)) {
-                image_data = owned_data;
-                if (!mime_type && parsed_mime[0] != '\0')
-                    mime_type = parsed_mime;
+            char preload_key[96];
+            gltf_data_uri_copy_mime(uri, parsed_mime, sizeof(parsed_mime));
+            gltf_preload_image_key(
+                i, mime_type ? mime_type : parsed_mime, preload_key, sizeof(preload_key));
+            images[i] = gltf_preload_take_decoded_image(preload_bundle, preload_key);
+            if (!images[i]) {
+                owned_data = gltf_preload_bundle_take_dependency(
+                    preload_bundle, preload_key, GLTF_PRELOAD_DEP_IMAGE, &image_len);
+                if (owned_data) {
+                    image_data = owned_data;
+                    if (!mime_type && parsed_mime[0] != '\0')
+                        mime_type = parsed_mime;
+                } else if (gltf_parse_data_uri(
+                               uri, parsed_mime, sizeof(parsed_mime), &owned_data, &image_len)) {
+                    image_data = owned_data;
+                    if (!mime_type && parsed_mime[0] != '\0')
+                        mime_type = parsed_mime;
+                } else if (required_image &&
+                           gltf_preload_image_is_supported_format(mime_type ? mime_type
+                                                                            : parsed_mime)) {
+                    load_failed = 1;
+                    break;
+                }
             }
         } else if (uri) {
             char image_path[1024];
             gltf_resolve_relative_path(filepath, uri, image_path, sizeof(image_path));
             if (image_path[0] != '\0')
-                images[i] = gltf_load_dependency_image(image_path, load_assets);
-            if (!images[i] && load_assets) {
-                gltf_trap_asset_dependency(filepath, image_path, "image");
+                images[i] = gltf_load_dependency_image(image_path, load_assets, preload_bundle);
+            if (!images[i] && required_image &&
+                gltf_preload_image_is_supported_format(image_path)) {
+                if (load_assets)
+                    gltf_trap_asset_dependency(filepath, image_path, "image");
                 load_failed = 1;
                 break;
             }
         } else {
             int64_t view_idx = jint(image_json, "bufferView", -1);
-            image_data = gltf_get_buffer_view_data(root, view_idx, buffers, buf_count, &image_len);
+            char preload_key[96];
+            gltf_preload_image_key(i, mime_type, preload_key, sizeof(preload_key));
+            images[i] = gltf_preload_take_decoded_image(preload_bundle, preload_key);
+            if (!images[i]) {
+                owned_data = gltf_preload_bundle_take_dependency(
+                    preload_bundle, preload_key, GLTF_PRELOAD_DEP_IMAGE, &image_len);
+                if (owned_data)
+                    image_data = owned_data;
+                else
+                    image_data =
+                        gltf_get_buffer_view_data(root, view_idx, buffers, buf_count, &image_len);
+            }
+            if (!images[i] && (!image_data || image_len == 0) && required_image &&
+                gltf_preload_image_is_supported_format(mime_type)) {
+                load_failed = 1;
+                break;
+            }
         }
 
         if (!images[i] && image_data && image_len > 0) {
+            const char *image_type;
             gltf_build_embedded_name(mime_type, ".bin", image_name, sizeof(image_name));
-            images[i] = rt_asset_decode_typed(image_name, image_data, image_len);
+            image_type = mime_type ? mime_type : image_name;
+            if (gltf_preload_image_is_supported_format(image_type)) {
+                uint8_t *rgba_blob = NULL;
+                size_t rgba_len = 0;
+                if (gltf_decode_image_payload_to_rgba_blob(
+                        image_type, image_data, image_len, &rgba_blob, &rgba_len)) {
+                    images[i] = gltf_pixels_from_rgba_blob(rgba_blob, rgba_len);
+                    free(rgba_blob);
+                    if (!images[i] && required_image) {
+                        free(owned_data);
+                        load_failed = 1;
+                        break;
+                    }
+                } else if (required_image) {
+                    free(owned_data);
+                    load_failed = 1;
+                    break;
+                }
+            } else {
+                images[i] = rt_asset_decode_typed(image_name, image_data, image_len);
+            }
         }
         free(owned_data);
     }
 
-    void *textures_arr = jarr(root, "textures");
-    int texture_count = (int)jarr_len(textures_arr);
     if (texture_count > 0)
         texture_images = (void **)calloc((size_t)texture_count, sizeof(void *));
+    if (texture_count > 0)
+        texture_supported = (uint8_t *)calloc((size_t)texture_count, sizeof(uint8_t));
     if (texture_count > 0)
         texture_samplers =
             (gltf_sampler_info_t *)calloc((size_t)texture_count, sizeof(*texture_samplers));
@@ -4296,8 +8130,22 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                                      : NULL;
             gltf_read_sampler_info(sampler_json, &texture_samplers[i]);
         }
-        if (source_idx >= 0 && source_idx < image_count)
+        if (source_idx >= 0 && source_idx < image_count) {
+            void *image_json = rt_seq_get(images_arr, source_idx);
+            const char *image_uri = jstr(image_json, "uri");
+            const char *image_mime = jstr(image_json, "mimeType");
+            char parsed_mime[64];
+            parsed_mime[0] = '\0';
+            if (image_uri && strncmp(image_uri, "data:", 5) == 0)
+                gltf_data_uri_copy_mime(image_uri, parsed_mime, sizeof(parsed_mime));
+            if (texture_supported &&
+                gltf_preload_image_is_supported_format(image_mime
+                                                           ? image_mime
+                                                           : (parsed_mime[0] != '\0' ? parsed_mime
+                                                                                      : image_uri)))
+                texture_supported[i] = 1u;
             texture_images[i] = images[source_idx];
+        }
     }
 
     // Extract materials
@@ -4357,6 +8205,9 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                         texture_images[tex_idx])
                         rt_material3d_set_texture(mat, texture_images[tex_idx]);
+                    else if (gltf_texture_index_missing_supported_payload(
+                                 tex_idx, texture_count, texture_images, texture_supported))
+                        load_failed = 1;
                     gltf_apply_texture_slot(
                         texture_samplers,
                         texture_count,
@@ -4379,6 +8230,9 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                         texture_images[tex_idx])
                         rt_material3d_set_metallic_roughness_map(mat, texture_images[tex_idx]);
+                    else if (gltf_texture_index_missing_supported_payload(
+                                 tex_idx, texture_count, texture_images, texture_supported))
+                        load_failed = 1;
                     gltf_apply_texture_slot(
                         texture_samplers,
                         texture_count,
@@ -4443,6 +8297,9 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                         texture_images[tex_idx])
                         rt_material3d_set_specular_map(mat, texture_images[tex_idx]);
+                    else if (gltf_texture_index_missing_supported_payload(
+                                 tex_idx, texture_count, texture_images, texture_supported))
+                        load_failed = 1;
                     gltf_apply_texture_slot(
                         texture_samplers,
                         texture_count,
@@ -4478,6 +8335,9 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                 if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                     texture_images[tex_idx])
                     rt_material3d_set_normal_map(mat, texture_images[tex_idx]);
+                else if (gltf_texture_index_missing_supported_payload(
+                             tex_idx, texture_count, texture_images, texture_supported))
+                    load_failed = 1;
                 gltf_apply_texture_slot(
                     texture_samplers,
                     texture_count,
@@ -4499,6 +8359,9 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                 if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                     texture_images[tex_idx])
                     rt_material3d_set_ao_map(mat, texture_images[tex_idx]);
+                else if (gltf_texture_index_missing_supported_payload(
+                             tex_idx, texture_count, texture_images, texture_supported))
+                    load_failed = 1;
                 gltf_apply_texture_slot(
                     texture_samplers,
                     texture_count,
@@ -4521,6 +8384,9 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                 if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
                     texture_images[tex_idx])
                     rt_material3d_set_emissive_map(mat, texture_images[tex_idx]);
+                else if (gltf_texture_index_missing_supported_payload(
+                             tex_idx, texture_count, texture_images, texture_supported))
+                    load_failed = 1;
                 gltf_apply_texture_slot(
                     texture_samplers,
                     texture_count,
@@ -4543,6 +8409,10 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
             }
             rt_material3d_set_double_sided(mat, (int8_t)jint(mat_json, "doubleSided", 0));
 
+            if (load_failed) {
+                gltf_release_local(mat);
+                break;
+            }
             asset->materials[i] = mat;
             asset->material_count = i + 1;
         }
@@ -4615,6 +8485,27 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                             }
                         }
                         prim_material = default_material;
+                    }
+
+                    {
+                        uint32_t decoded_mesh_flags = 0u;
+                        void *decoded_mesh =
+                            gltf_preload_take_decoded_mesh(preload_bundle, mi, pi, &decoded_mesh_flags);
+                        if (decoded_mesh) {
+                            if ((decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_NORMALS) == 0)
+                                rt_mesh3d_recalc_normals(decoded_mesh);
+                            if ((decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_TANGENTS) == 0 &&
+                                (decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_UV0) != 0) {
+                                rt_material3d *tangent_material = (rt_material3d *)prim_material;
+                                if (tangent_material && tangent_material->normal_map)
+                                    rt_mesh3d_calc_tangents(decoded_mesh);
+                            }
+                            asset->meshes[mesh_idx++] = decoded_mesh;
+                            asset->mesh_count = mesh_idx;
+                            if (primitive_materials)
+                                primitive_materials[mesh_idx - 1] = prim_material;
+                            continue;
+                        }
                     }
 
                     gltf_accessor_view_t pos_view;
@@ -5127,7 +9018,9 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
             gltf_release_ref(&images[i]);
     }
     free(images);
+    free(image_required);
     free(texture_images);
+    free(texture_supported);
     free(texture_samplers);
     free(mesh_prim_start);
     free(mesh_prim_count);
@@ -5164,12 +9057,38 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
 
 /// @brief Load a glTF/GLB from the filesystem (no asset-manager resolution). See header.
 void *rt_gltf_load(rt_string path) {
-    return rt_gltf_load_impl(path, 0);
+    return rt_gltf_load_impl(path, 0, NULL, 0, NULL);
 }
 
 /// @brief Load a glTF/GLB through the asset manager (mounted/embedded + dev fallback). See header.
 void *rt_gltf_load_asset(rt_string path) {
-    return rt_gltf_load_impl(path, 1);
+    return rt_gltf_load_impl(path, 1, NULL, 0, NULL);
+}
+
+/// @brief Internal async path: build a glTF/GLB asset from worker-staged root bytes.
+/// @details Takes ownership of @p preloaded_data and frees it on all paths.
+void *rt_gltf_load_preloaded(rt_string path,
+                             uint8_t *preloaded_data,
+                             size_t preloaded_size,
+                             int load_assets) {
+    return rt_gltf_load_impl(path, load_assets ? 1 : 0, preloaded_data, preloaded_size, NULL);
+}
+
+void *rt_gltf_load_preloaded_bundle(rt_string path,
+                                    rt_gltf_preload_bundle *bundle,
+                                    int load_assets) {
+    uint8_t *root_data;
+    size_t root_size;
+    void *asset;
+    if (!bundle)
+        return load_assets ? rt_gltf_load_asset(path) : rt_gltf_load(path);
+    root_data = bundle->root_data;
+    root_size = bundle->root_size;
+    bundle->root_data = NULL;
+    bundle->root_size = 0;
+    asset = rt_gltf_load_impl(path, load_assets ? 1 : 0, root_data, root_size, bundle);
+    rt_gltf_preload_bundle_free(bundle);
+    return asset;
 }
 
 /// @brief Get the number of meshes extracted from the GLTF file.

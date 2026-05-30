@@ -22,6 +22,7 @@
 #pragma once
 
 #include "rt_string.h"
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -34,6 +35,43 @@ void *rt_gltf_load(rt_string path);
 /// @details Supports mounted/embedded assets plus dev filesystem fallback. External
 ///          .gltf buffers/images resolve relative to the parent model asset.
 void *rt_gltf_load_asset(rt_string path);
+/// @brief Internal async path: load glTF/GLB from preloaded root bytes.
+/// @details Takes ownership of @p preloaded_data; callers must not reuse it.
+void *rt_gltf_load_preloaded(rt_string path,
+                             uint8_t *preloaded_data,
+                             size_t preloaded_size,
+                             int load_assets);
+typedef struct rt_gltf_preload_bundle rt_gltf_preload_bundle;
+/// @brief Internal async path: stage a glTF/GLB root plus dependency bytes.
+/// @details Takes ownership of @p root_data on both success and failure. The returned
+///          bundle contains only malloc-owned POD bytes and may be built on a worker.
+rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
+                                                      uint8_t *root_data,
+                                                      size_t root_size,
+                                                      int load_assets,
+                                                      char *error,
+                                                      size_t error_cap);
+/// @brief Free a bundle returned by rt_gltf_preload_bundle_create.
+void rt_gltf_preload_bundle_free(rt_gltf_preload_bundle *bundle);
+/// @brief Number of dependency payloads staged into @p bundle.
+size_t rt_gltf_preload_bundle_dependency_count(const rt_gltf_preload_bundle *bundle);
+/// @brief Number of staged image payloads that were worker-decoded to raw RGBA POD.
+size_t rt_gltf_preload_bundle_decoded_image_count(const rt_gltf_preload_bundle *bundle);
+/// @brief Estimated decoded RGBA bytes staged in @p bundle for upload budgeting.
+size_t rt_gltf_preload_bundle_decoded_image_bytes(const rt_gltf_preload_bundle *bundle);
+/// @brief Estimated bytes in the next decoded image slice that still needs main-thread prep.
+size_t rt_gltf_preload_bundle_next_decoded_image_slice_bytes(const rt_gltf_preload_bundle *bundle,
+                                                             size_t max_bytes);
+/// @brief Convert one decoded RGBA image slice into its commit-side Pixels object.
+size_t rt_gltf_preload_bundle_prepare_decoded_image_slice(rt_gltf_preload_bundle *bundle,
+                                                          size_t max_bytes);
+/// @brief Number of static mesh primitives worker-decoded to raw Mesh3D POD.
+size_t rt_gltf_preload_bundle_decoded_mesh_count(const rt_gltf_preload_bundle *bundle);
+/// @brief Internal async path: load glTF/GLB from a staged preload bundle.
+/// @details Takes ownership of @p bundle.
+void *rt_gltf_load_preloaded_bundle(rt_string path,
+                                    rt_gltf_preload_bundle *bundle,
+                                    int load_assets);
 /// @brief Number of meshes in the asset.
 int64_t rt_gltf_mesh_count(void *asset);
 /// @brief Get the mesh at @p index (NULL if out of range).

@@ -675,10 +675,16 @@ void *rt_game3d_assets_load_model_template_async(rt_string path);
 void *rt_game3d_assets_load_model_template_asset_async(rt_string path);
 /// @brief Set the process-wide cached-template residency budget; negative means unlimited.
 void rt_game3d_assets_set_residency_budget(int64_t bytes);
+/// @brief Return estimated bytes currently resident in the shared cached-template store.
+int64_t rt_game3d_assets_get_resident_bytes(void);
+/// @brief Set the per-drain async asset upload budget in decoded bytes; negative means unlimited.
+void rt_game3d_assets_set_upload_budget(int64_t bytes);
 /// @brief Evict the cached template backing a ready template AssetHandle3D.
 void rt_game3d_assets_evict(void *asset_handle);
-/// @brief Warm the asset cache by preloading the model at the given path.
+/// @brief Warm the filesystem template cache through the background async load path.
 void rt_game3d_assets_preload(rt_string path);
+/// @brief Warm the packed-asset template cache through the background async load path.
+void rt_game3d_assets_preload_asset(rt_string path);
 /// @brief Drop all cached loaded models, freeing their memory.
 void rt_game3d_assets_clear_cache(void);
 

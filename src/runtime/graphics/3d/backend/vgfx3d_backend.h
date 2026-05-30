@@ -267,6 +267,14 @@ typedef struct vgfx3d_backend {
      * NULL = no-op (software backend has no GPU layer). */
     void (*show_gpu_layer)(void *ctx);
     void (*hide_gpu_layer)(void *ctx);
+
+    /* Optional streaming/upload controls. Budget is in CPU image bytes uploaded
+     * to backend texture storage per frame; UINT64_MAX means unlimited. */
+    void (*set_texture_upload_budget)(void *ctx, uint64_t bytes);
+    uint64_t (*get_texture_upload_pending_bytes)(void *ctx);
+    /* Optional streaming/upload telemetry. Returns the CPU image bytes uploaded
+     * to backend texture storage during the current frame. NULL = unsupported. */
+    uint64_t (*get_texture_upload_bytes)(void *ctx);
 } vgfx3d_backend_t;
 
 /*==========================================================================

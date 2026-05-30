@@ -33,6 +33,48 @@ int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
                               int32_t *out_w,
                               int32_t *out_h,
                               uint8_t **out_rgba);
+/// @brief Return the valid extent of a Pixels object without allocating.
+int vgfx3d_get_pixels_extent(const void *pixels_ptr, int32_t *out_w, int32_t *out_h);
+/// @brief Decode a row slice from a Pixels object into a freshly malloc'd RGBA8 array.
+int vgfx3d_unpack_pixels_rgba_rows(const void *pixels_ptr,
+                                   int32_t start_row,
+                                   int32_t row_count,
+                                   int flip_y,
+                                   int32_t *out_w,
+                                   int32_t *out_rows,
+                                   uint8_t **out_rgba);
+/// @brief Compute the RGBA8 byte count uploaded for one Pixels texture.
+int vgfx3d_estimate_pixels_rgba_upload_bytes(const void *pixels_ptr, uint64_t *out_bytes);
+/// @brief Return how many texture rows may be uploaded under a per-frame byte budget.
+int32_t vgfx3d_upload_rows_for_budget(
+    int32_t width, int32_t height, int32_t next_row, uint64_t budget, uint64_t used);
+/// @brief Compute remaining RGBA8 row bytes for one in-progress 2D texture upload.
+uint64_t vgfx3d_pending_rgba_upload_bytes(int32_t width,
+                                          int32_t height,
+                                          int32_t next_row,
+                                          int upload_in_progress);
+/// @brief Compute remaining RGBA8 row bytes for one in-progress six-face cubemap upload.
+uint64_t vgfx3d_pending_cubemap_rgba_upload_bytes(int32_t face_size,
+                                                  int32_t upload_face,
+                                                  int32_t upload_next_row,
+                                                  int upload_in_progress);
+/// @brief Return how many compressed block rows may upload under a per-frame byte budget.
+int32_t vgfx3d_upload_block_rows_for_budget(int32_t width,
+                                            int32_t height,
+                                            int32_t block_width,
+                                            int32_t block_height,
+                                            int32_t block_bytes,
+                                            int32_t next_block_row,
+                                            uint64_t budget,
+                                            uint64_t used);
+/// @brief Compute remaining compressed block-row bytes for one in-progress texture upload.
+uint64_t vgfx3d_pending_block_upload_bytes(int32_t width,
+                                           int32_t height,
+                                           int32_t block_width,
+                                           int32_t block_height,
+                                           int32_t block_bytes,
+                                           int32_t next_block_row,
+                                           int upload_in_progress);
 /// @brief Read the Pixels generation counter (used to detect when a GPU upload is required).
 uint64_t vgfx3d_get_pixels_generation(const void *pixels_ptr);
 /// @brief Stable cache signature for a Pixels object (identity + generation).
@@ -41,6 +83,19 @@ uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr);
 int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
                                      int32_t *out_face_size,
                                      uint8_t *out_faces[6]);
+/// @brief Return the valid square face size for a cubemap without allocating.
+int vgfx3d_get_cubemap_face_size(const void *cubemap_ptr, int32_t *out_face_size);
+/// @brief Decode a cubemap face row slice into a freshly malloc'd RGBA8 array.
+int vgfx3d_unpack_cubemap_rgba_rows(const void *cubemap_ptr,
+                                    int32_t face_index,
+                                    int32_t start_row,
+                                    int32_t row_count,
+                                    int flip_y,
+                                    int32_t *out_face_size,
+                                    int32_t *out_rows,
+                                    uint8_t **out_rgba);
+/// @brief Compute the RGBA8 byte count uploaded for one six-face cubemap.
+int vgfx3d_estimate_cubemap_rgba_upload_bytes(const void *cubemap_ptr, uint64_t *out_bytes);
 /// @brief Combined generation hash across all six cubemap faces.
 uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr);
 /// @brief Flip an RGBA8 image vertically in place (top<->bottom row swap, OpenGL Y-flip).

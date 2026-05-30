@@ -81,6 +81,118 @@ static void test_unpack_pixels_rgba_rejects_invalid(void) {
                 "Pixels unpack rejects invalid input");
 }
 
+static void test_estimate_pixels_rgba_upload_bytes(void) {
+    uint32_t data[6] = {0};
+    fake_pixels_t px = {3, 2, data, 9, 43};
+    fake_pixels_t invalid = {3, 0, data, 0, 0};
+    uint64_t bytes = 99;
+
+    EXPECT_TRUE(vgfx3d_estimate_pixels_rgba_upload_bytes(&px, &bytes) == 1,
+                "Pixels upload byte estimate accepts valid Pixels");
+    EXPECT_TRUE(bytes == 24, "Pixels upload byte estimate is width*height*RGBA8");
+    EXPECT_TRUE(vgfx3d_estimate_pixels_rgba_upload_bytes(&invalid, &bytes) == 0,
+                "Pixels upload byte estimate rejects invalid dimensions");
+    EXPECT_TRUE(bytes == 0, "Pixels upload byte estimate clears output on failure");
+    EXPECT_TRUE(vgfx3d_estimate_pixels_rgba_upload_bytes(&px, NULL) == 0,
+                "Pixels upload byte estimate rejects null output");
+}
+
+static void test_unpack_pixels_rgba_rows_and_extent(void) {
+    uint32_t data[6] = {
+        0x01020304u,
+        0x11121314u,
+        0x21222324u,
+        0x31323334u,
+        0x41424344u,
+        0x51525354u,
+    };
+    fake_pixels_t px = {2, 3, data, 9, 43};
+    int32_t w = 0;
+    int32_t h = 0;
+    int32_t rows = 0;
+    uint8_t *rgba = NULL;
+
+    EXPECT_TRUE(vgfx3d_get_pixels_extent(&px, &w, &h) == 1, "Pixels extent accepts valid input");
+    EXPECT_TRUE(w == 2 && h == 3, "Pixels extent preserves dimensions");
+
+    EXPECT_TRUE(vgfx3d_unpack_pixels_rgba_rows(&px, 1, 1, 0, &w, &rows, &rgba) == 0,
+                "Pixels row-slice unpack succeeds");
+    EXPECT_TRUE(w == 2 && rows == 1, "Pixels row-slice reports width and row count");
+    if (rgba) {
+        EXPECT_TRUE(rgba[0] == 0x21 && rgba[1] == 0x22 && rgba[2] == 0x23 && rgba[3] == 0x24,
+                    "Pixels row-slice starts at the requested source row");
+    }
+    free(rgba);
+    rgba = NULL;
+
+    EXPECT_TRUE(vgfx3d_unpack_pixels_rgba_rows(&px, 0, 1, 1, &w, &rows, &rgba) == 0,
+                "Pixels flipped row-slice unpack succeeds");
+    if (rgba) {
+        EXPECT_TRUE(rgba[0] == 0x41 && rgba[1] == 0x42 && rgba[2] == 0x43 && rgba[3] == 0x44,
+                    "Pixels flipped row-slice reads from the bottom source row");
+    }
+    free(rgba);
+}
+
+static void test_upload_rows_for_budget(void) {
+    EXPECT_TRUE(vgfx3d_upload_rows_for_budget(8, 10, 0, UINT64_MAX, 0) == 10,
+                "Unlimited texture upload budget permits all remaining rows");
+    EXPECT_TRUE(vgfx3d_upload_rows_for_budget(8, 10, 2, 96, 0) == 3,
+                "Texture upload budget converts bytes to row count");
+    EXPECT_TRUE(vgfx3d_upload_rows_for_budget(8, 10, 2, 96, 64) == 1,
+                "Texture upload budget uses remaining frame bytes");
+    EXPECT_TRUE(vgfx3d_upload_rows_for_budget(8, 10, 2, 16, 0) == 1,
+                "Positive sub-row texture upload budget still permits one row for liveness");
+    EXPECT_TRUE(vgfx3d_upload_rows_for_budget(8, 10, 2, 0, 0) == 0,
+                "Zero texture upload budget pauses uploads");
+    EXPECT_TRUE(vgfx3d_upload_rows_for_budget(8, 10, 10, UINT64_MAX, 0) == 0,
+                "Texture upload budget rejects completed row ranges");
+}
+
+static void test_pending_upload_bytes_return_to_baseline(void) {
+    EXPECT_TRUE(vgfx3d_pending_rgba_upload_bytes(8, 4, 0, 1) == 128,
+                "2D texture pending bytes include every queued row");
+    EXPECT_TRUE(vgfx3d_pending_rgba_upload_bytes(8, 4, 3, 1) == 32,
+                "2D texture pending bytes shrink as row slices upload");
+    EXPECT_TRUE(vgfx3d_pending_rgba_upload_bytes(8, 4, 4, 1) == 0,
+                "2D texture pending bytes return to baseline after the final row");
+    EXPECT_TRUE(vgfx3d_pending_rgba_upload_bytes(8, 4, 0, 0) == 0,
+                "2D texture pending bytes stay at baseline when no upload is in progress");
+
+    EXPECT_TRUE(vgfx3d_pending_cubemap_rgba_upload_bytes(4, 0, 0, 1) == 384,
+                "Cubemap pending bytes include all six queued faces");
+    EXPECT_TRUE(vgfx3d_pending_cubemap_rgba_upload_bytes(4, 3, 2, 1) == 160,
+                "Cubemap pending bytes count the current face slice plus later faces");
+    EXPECT_TRUE(vgfx3d_pending_cubemap_rgba_upload_bytes(4, 5, 4, 1) == 0,
+                "Cubemap pending bytes return to baseline after the final face row");
+    EXPECT_TRUE(vgfx3d_pending_cubemap_rgba_upload_bytes(4, 0, 0, 0) == 0,
+                "Cubemap pending bytes stay at baseline when no upload is in progress");
+}
+
+static void test_compressed_block_upload_budget_and_pending_bytes(void) {
+    EXPECT_TRUE(vgfx3d_upload_block_rows_for_budget(10, 9, 4, 4, 16, 0, UINT64_MAX, 0) == 3,
+                "Unlimited compressed upload budget permits all block rows");
+    EXPECT_TRUE(vgfx3d_upload_block_rows_for_budget(10, 9, 4, 4, 16, 0, 48, 0) == 1,
+                "Compressed upload budget converts bytes to block-row count");
+    EXPECT_TRUE(vgfx3d_upload_block_rows_for_budget(10, 9, 4, 4, 16, 1, 96, 48) == 1,
+                "Compressed upload budget accounts for current-frame bytes");
+    EXPECT_TRUE(vgfx3d_upload_block_rows_for_budget(10, 9, 4, 4, 16, 1, 16, 0) == 1,
+                "Positive sub-row compressed upload budget still permits one block row");
+    EXPECT_TRUE(vgfx3d_upload_block_rows_for_budget(10, 9, 4, 4, 16, 0, 0, 0) == 0,
+                "Zero compressed upload budget pauses block-row uploads");
+    EXPECT_TRUE(vgfx3d_upload_block_rows_for_budget(10, 9, 4, 4, 16, 3, UINT64_MAX, 0) == 0,
+                "Compressed upload budget rejects completed block-row ranges");
+
+    EXPECT_TRUE(vgfx3d_pending_block_upload_bytes(10, 9, 4, 4, 16, 0, 1) == 144,
+                "Compressed pending bytes include all queued block rows");
+    EXPECT_TRUE(vgfx3d_pending_block_upload_bytes(10, 9, 4, 4, 16, 2, 1) == 48,
+                "Compressed pending bytes shrink as block rows upload");
+    EXPECT_TRUE(vgfx3d_pending_block_upload_bytes(10, 9, 4, 4, 16, 3, 1) == 0,
+                "Compressed pending bytes return to baseline after final block row");
+    EXPECT_TRUE(vgfx3d_pending_block_upload_bytes(10, 9, 4, 4, 16, 0, 0) == 0,
+                "Compressed pending bytes stay at baseline when no upload is in progress");
+}
+
 static void test_unpack_cubemap_faces_rgba_success(void) {
     uint32_t face_data[6] = {
         0x11223344u,
@@ -137,6 +249,87 @@ static void test_unpack_cubemap_faces_rgba_rejects_invalid(void) {
 
     EXPECT_TRUE(vgfx3d_unpack_cubemap_faces_rgba(&cubemap, &face_size, rgba_faces) != 0,
                 "Cubemap unpack rejects mismatched face dimensions");
+}
+
+static void test_estimate_cubemap_rgba_upload_bytes(void) {
+    uint32_t face_data[6][4] = {{0}};
+    fake_pixels_t faces[6];
+    fake_cubemap_t cubemap = {0};
+    uint64_t bytes = 99;
+
+    for (int i = 0; i < 6; i++) {
+        faces[i].w = 2;
+        faces[i].h = 2;
+        faces[i].data = face_data[i];
+        cubemap.faces[i] = &faces[i];
+    }
+    cubemap.face_size = 2;
+
+    EXPECT_TRUE(vgfx3d_estimate_cubemap_rgba_upload_bytes(&cubemap, &bytes) == 1,
+                "Cubemap upload byte estimate accepts valid faces");
+    EXPECT_TRUE(bytes == 96, "Cubemap upload byte estimate is six RGBA8 faces");
+    faces[4].h = 1;
+    EXPECT_TRUE(vgfx3d_estimate_cubemap_rgba_upload_bytes(&cubemap, &bytes) == 0,
+                "Cubemap upload byte estimate rejects mismatched faces");
+    EXPECT_TRUE(bytes == 0, "Cubemap upload byte estimate clears output on failure");
+    faces[4].h = 2;
+    EXPECT_TRUE(vgfx3d_estimate_cubemap_rgba_upload_bytes(&cubemap, NULL) == 0,
+                "Cubemap upload byte estimate rejects null output");
+}
+
+static void test_unpack_cubemap_rows_and_extent(void) {
+    uint32_t face_data[6][4] = {
+        {0x01020304u, 0x11121314u, 0x21222324u, 0x31323334u},
+        {0x41424344u, 0x51525354u, 0x61626364u, 0x71727374u},
+        {0x81828384u, 0x91929394u, 0xA1A2A3A4u, 0xB1B2B3B4u},
+        {0xC1C2C3C4u, 0xD1D2D3D4u, 0xE1E2E3E4u, 0xF1F2F3F4u},
+        {0x10203040u, 0x20304050u, 0x30405060u, 0x40506070u},
+        {0x50607080u, 0x60708090u, 0x708090A0u, 0x8090A0B0u},
+    };
+    fake_pixels_t faces[6];
+    fake_cubemap_t cubemap = {0};
+    int32_t face_size = 0;
+    int32_t rows = 0;
+    uint8_t *rgba = NULL;
+
+    for (int i = 0; i < 6; i++) {
+        faces[i].w = 2;
+        faces[i].h = 2;
+        faces[i].data = face_data[i];
+        cubemap.faces[i] = &faces[i];
+    }
+    cubemap.face_size = 2;
+
+    EXPECT_TRUE(vgfx3d_get_cubemap_face_size(&cubemap, &face_size) == 1,
+                "Cubemap face-size helper accepts matching square faces");
+    EXPECT_TRUE(face_size == 2, "Cubemap face-size helper reports the square extent");
+
+    EXPECT_TRUE(vgfx3d_unpack_cubemap_rgba_rows(&cubemap, 2, 1, 1, 0, &face_size, &rows, &rgba) ==
+                    0,
+                "Cubemap row-slice unpack succeeds");
+    EXPECT_TRUE(face_size == 2 && rows == 1,
+                "Cubemap row-slice reports face size and row count");
+    if (rgba) {
+        EXPECT_TRUE(rgba[0] == 0xA1 && rgba[1] == 0xA2 && rgba[2] == 0xA3 &&
+                        rgba[3] == 0xA4,
+                    "Cubemap row-slice starts at the requested face row");
+    }
+    free(rgba);
+    rgba = NULL;
+
+    EXPECT_TRUE(vgfx3d_unpack_cubemap_rgba_rows(&cubemap, 5, 0, 1, 1, &face_size, &rows, &rgba) ==
+                    0,
+                "Cubemap flipped row-slice unpack succeeds");
+    if (rgba) {
+        EXPECT_TRUE(rgba[0] == 0x70 && rgba[1] == 0x80 && rgba[2] == 0x90 &&
+                        rgba[3] == 0xA0,
+                    "Cubemap flipped row-slice reads from the bottom source row");
+    }
+    free(rgba);
+
+    faces[4].h = 1;
+    EXPECT_TRUE(vgfx3d_get_cubemap_face_size(&cubemap, &face_size) == 0,
+                "Cubemap face-size helper rejects mismatched faces");
 }
 
 static void test_flip_rgba_rows(void) {
@@ -704,8 +897,15 @@ static void test_compute_normal_matrix_small_scale(void) {
 int main(void) {
     test_unpack_pixels_rgba_success();
     test_unpack_pixels_rgba_rejects_invalid();
+    test_estimate_pixels_rgba_upload_bytes();
+    test_unpack_pixels_rgba_rows_and_extent();
+    test_upload_rows_for_budget();
+    test_pending_upload_bytes_return_to_baseline();
+    test_compressed_block_upload_budget_and_pending_bytes();
     test_unpack_cubemap_faces_rgba_success();
     test_unpack_cubemap_faces_rgba_rejects_invalid();
+    test_estimate_cubemap_rgba_upload_bytes();
+    test_unpack_cubemap_rows_and_extent();
     test_flip_rgba_rows();
     test_hdr_readback_helpers();
     test_generation_helpers();

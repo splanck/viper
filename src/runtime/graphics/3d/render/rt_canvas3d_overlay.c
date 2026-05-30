@@ -42,6 +42,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -491,6 +492,29 @@ int64_t rt_canvas3d_get_draw_count(void *obj) {
 int64_t rt_canvas3d_get_occluded_draw_count(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return c ? c->last_occluded_draw_count : 0;
+}
+
+/// @brief CPU image bytes uploaded to backend texture storage in the latest ended frame.
+int64_t rt_canvas3d_get_texture_upload_bytes(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_texture_upload_bytes : 0;
+}
+
+/// @brief Set the active backend's per-frame texture upload budget.
+void rt_canvas3d_set_texture_upload_budget(void *obj, int64_t bytes) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    uint64_t budget = bytes < 0 ? UINT64_MAX : (uint64_t)bytes;
+    if (c && c->backend && c->backend->set_texture_upload_budget)
+        c->backend->set_texture_upload_budget(c->backend_ctx, budget);
+}
+
+/// @brief CPU image bytes still waiting for backend texture upload budget.
+int64_t rt_canvas3d_get_texture_upload_pending_bytes(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    uint64_t bytes = 0;
+    if (c && c->backend && c->backend->get_texture_upload_pending_bytes)
+        bytes = c->backend->get_texture_upload_pending_bytes(c->backend_ctx);
+    return bytes > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)bytes;
 }
 
 /// @brief Capture the current canvas contents into a freshly allocated Pixels object.

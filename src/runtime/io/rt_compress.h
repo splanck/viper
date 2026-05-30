@@ -25,6 +25,7 @@
 #pragma once
 
 #include "rt_string.h"
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -62,6 +63,16 @@ void *rt_compress_inflate(void *data);
 /// @note Traps if data is NULL, max_output is negative, corrupted, truncated, or exceeds
 /// max_output.
 void *rt_compress_inflate_limit(void *data, int64_t max_output);
+
+/// @brief Internal helper: decompress raw DEFLATE data into malloc-owned bytes.
+/// @details Worker-safe path for decoders that must not allocate runtime Bytes. The returned
+///          buffer is owned by the caller and must be freed with free().
+/// @return 1 on success, 0 on invalid input, corrupt data, or allocation failure.
+int rt_compress_inflate_raw(const uint8_t *data,
+                            size_t len,
+                            size_t max_output,
+                            uint8_t **out_data,
+                            size_t *out_len);
 
 //=========================================================================
 // GZIP Compression/Decompression (RFC 1952)

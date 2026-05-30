@@ -349,6 +349,55 @@ static int canvas3d_mat4_d2f_checked(const double *src, float *dst) {
     return 1;
 }
 
+static int canvas3d_uses_camera_relative_upload(const rt_canvas3d *c) {
+    return c && c->camera_relative_upload && c->in_frame && !c->frame_is_2d;
+}
+
+static void canvas3d_reset_camera_relative_origin(rt_canvas3d *c) {
+    if (!c)
+        return;
+    c->camera_relative_origin[0] = 0.0;
+    c->camera_relative_origin[1] = 0.0;
+    c->camera_relative_origin[2] = 0.0;
+}
+
+/// @brief Narrow a model matrix after subtracting the active frame origin from translation.
+static int canvas3d_model_mat4_d2f_checked(const rt_canvas3d *c, const double *src, float *dst) {
+    if (!src || !dst)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        double value = src[i];
+        if (canvas3d_uses_camera_relative_upload(c)) {
+            if (i == 3)
+                value -= c->camera_relative_origin[0];
+            else if (i == 7)
+                value -= c->camera_relative_origin[1];
+            else if (i == 11)
+                value -= c->camera_relative_origin[2];
+        }
+        if (!canvas3d_double_fits_float(value))
+            return 0;
+        dst[i] = (float)value;
+    }
+    return 1;
+}
+
+static void canvas3d_copy_mat4_f32_for_frame(const rt_canvas3d *c,
+                                             const float *src,
+                                             float *dst) {
+    if (!src || !dst)
+        return;
+    memcpy(dst, src, sizeof(float) * 16);
+    if (canvas3d_uses_camera_relative_upload(c)) {
+        double tx = (double)src[3] - c->camera_relative_origin[0];
+        double ty = (double)src[7] - c->camera_relative_origin[1];
+        double tz = (double)src[11] - c->camera_relative_origin[2];
+        dst[3] = canvas3d_double_fits_float(tx) ? (float)tx : 0.0f;
+        dst[7] = canvas3d_double_fits_float(ty) ? (float)ty : 0.0f;
+        dst[11] = canvas3d_double_fits_float(tz) ? (float)tz : 0.0f;
+    }
+}
+
 /// @brief Verify every entry across an array of @p count Mat4s is finite.
 /// @details Used to validate instanced draw matrix arrays before submission.
 static int canvas3d_matrices_f32_are_finite(const float *matrices, int32_t count) {
@@ -819,7 +868,7 @@ static int canvas3d_mesh_has_complete_tangents(const rt_mesh3d *mesh) {
 ///   are already present, mark the source mesh cache state. If tangents must be
 ///   generated, callers snapshot the geometry and generate them on that copy.
 static int canvas3d_prepare_normal_map_tangent_state(rt_mesh3d *mesh, const rt_material3d *mat) {
-    if (!mesh || !mat || !mat->normal_map)
+    if (!mesh || !mat || !rt_material3d_resolve_texture_pixels(mat->normal_map))
         return 0;
     if (mesh->tangents_ready && mesh->tangent_revision == mesh->geometry_revision)
         return 0;
@@ -874,12 +923,13 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->shininess = canvas3d_sanitize_nonnegative_f64(mat->shininess, 32.0f);
     cmd->alpha = canvas3d_clamp01_f64(mat->alpha);
     cmd->unlit = (int8_t)(mat->unlit || mat->shading_model == 3);
-    cmd->texture = mat->texture;
-    cmd->normal_map = mat->normal_map;
-    cmd->specular_map = mat->specular_map;
-    cmd->emissive_map = mat->emissive_map;
-    cmd->metallic_roughness_map = mat->metallic_roughness_map;
-    cmd->ao_map = mat->ao_map;
+    cmd->texture = rt_material3d_resolve_texture_pixels(mat->texture);
+    cmd->normal_map = rt_material3d_resolve_texture_pixels(mat->normal_map);
+    cmd->specular_map = rt_material3d_resolve_texture_pixels(mat->specular_map);
+    cmd->emissive_map = rt_material3d_resolve_texture_pixels(mat->emissive_map);
+    cmd->metallic_roughness_map =
+        rt_material3d_resolve_texture_pixels(mat->metallic_roughness_map);
+    cmd->ao_map = rt_material3d_resolve_texture_pixels(mat->ao_map);
     cmd->emissive_color[0] = canvas3d_clamp01_f64(mat->emissive[0]);
     cmd->emissive_color[1] = canvas3d_clamp01_f64(mat->emissive[1]);
     cmd->emissive_color[2] = canvas3d_clamp01_f64(mat->emissive[2]);
@@ -1173,9 +1223,19 @@ static uintptr_t canvas3d_instance_motion_key(const void *mesh_obj,
 /// Canvas lights live in a fixed array with NULL-able slots (so removal
 /// doesn't shift indices). This packs the non-NULL slots into a dense
 /// array the backend draw path consumes, returning the count.
-static void canvas3d_copy_light_params(const rt_light3d *l, vgfx3d_light_params_t *out) {
+static void canvas3d_copy_light_params(const rt_canvas3d *c,
+                                       const rt_light3d *l,
+                                       vgfx3d_light_params_t *out) {
+    double origin_x = 0.0;
+    double origin_y = 0.0;
+    double origin_z = 0.0;
     if (!l || !out)
         return;
+    if (canvas3d_uses_camera_relative_upload(c)) {
+        origin_x = c->camera_relative_origin[0];
+        origin_y = c->camera_relative_origin[1];
+        origin_z = c->camera_relative_origin[2];
+    }
     memset(out, 0, sizeof(*out));
     out->type = l->type;
     out->shadow_index = -1;
@@ -1183,9 +1243,9 @@ static void canvas3d_copy_light_params(const rt_light3d *l, vgfx3d_light_params_
     out->direction[0] = canvas3d_sanitize_f64_to_float(l->direction[0], 0.0f);
     out->direction[1] = canvas3d_sanitize_f64_to_float(l->direction[1], -1.0f);
     out->direction[2] = canvas3d_sanitize_f64_to_float(l->direction[2], 0.0f);
-    out->position[0] = canvas3d_sanitize_f64_to_float(l->position[0], 0.0f);
-    out->position[1] = canvas3d_sanitize_f64_to_float(l->position[1], 0.0f);
-    out->position[2] = canvas3d_sanitize_f64_to_float(l->position[2], 0.0f);
+    out->position[0] = canvas3d_sanitize_f64_to_float(l->position[0] - origin_x, 0.0f);
+    out->position[1] = canvas3d_sanitize_f64_to_float(l->position[1] - origin_y, 0.0f);
+    out->position[2] = canvas3d_sanitize_f64_to_float(l->position[2] - origin_z, 0.0f);
     out->color[0] = canvas3d_clamp01_f64(l->color[0]);
     out->color[1] = canvas3d_clamp01_f64(l->color[1]);
     out->color[2] = canvas3d_clamp01_f64(l->color[2]);
@@ -1233,14 +1293,14 @@ static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *o
         const rt_light3d *l = c->lights[i];
         if (!l || !l->enabled)
             continue;
-        canvas3d_copy_light_params(l, &out[count]);
+        canvas3d_copy_light_params(c, l, &out[count]);
         count++;
     }
     for (int i = 0; i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS && count < max; i++) {
         const rt_light3d *l = c->scene_lights[i];
         if (!l || !l->enabled)
             continue;
-        canvas3d_copy_light_params(l, &out[count]);
+        canvas3d_copy_light_params(c, l, &out[count]);
         count++;
     }
     return count;
@@ -2025,6 +2085,7 @@ int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color)
     c->cached_cam_pos[0] = 0.0f;
     c->cached_cam_pos[1] = 0.0f;
     c->cached_cam_pos[2] = 1.0f;
+    canvas3d_reset_camera_relative_origin(c);
     c->cached_cam_forward[0] = params.forward[0];
     c->cached_cam_forward[1] = params.forward[1];
     c->cached_cam_forward[2] = params.forward[2];
@@ -3565,6 +3626,7 @@ void rt_canvas3d_begin_2d(void *obj) {
     c->cached_cam_pos[0] = 0.0f;
     c->cached_cam_pos[1] = 0.0f;
     c->cached_cam_pos[2] = 1.0f;
+    canvas3d_reset_camera_relative_origin(c);
     c->cached_cam_forward[0] = params.forward[0];
     c->cached_cam_forward[1] = params.forward[1];
     c->cached_cam_forward[2] = params.forward[2];
@@ -3573,6 +3635,7 @@ void rt_canvas3d_begin_2d(void *obj) {
     canvas3d_prune_motion_history(c);
     c->draw_count = 0;
     c->frame_is_2d = 1;
+    c->last_texture_upload_bytes = 0;
     // Cache the full VP product so cached_vp has consistent semantics between
     // Begin2D and Begin3D. Previously 2D mode stored only the projection —
     // overlay code that unprojected via cached_vp got inconsistent results
@@ -3616,6 +3679,7 @@ void rt_canvas3d_begin_overlay(void *obj) {
     c->cached_cam_pos[0] = 0.0f;
     c->cached_cam_pos[1] = 0.0f;
     c->cached_cam_pos[2] = 1.0f;
+    canvas3d_reset_camera_relative_origin(c);
     c->cached_cam_forward[0] = params.forward[0];
     c->cached_cam_forward[1] = params.forward[1];
     c->cached_cam_forward[2] = params.forward[2];
@@ -3863,7 +3927,28 @@ void rt_canvas3d_begin(void *obj, void *camera) {
             rt_camera3d_update_shake_for_frame(cam, frame_dt);
     }
 
-    if (!canvas3d_mat4_d2f_checked(cam->view, params.view)) {
+    double cam_x = cam->eye[0] + cam->shake_offset[0];
+    double cam_y = cam->eye[1] + cam->shake_offset[1];
+    double cam_z = cam->eye[2] + cam->shake_offset[2];
+    double upload_view[16];
+
+    memcpy(upload_view, cam->view, sizeof(upload_view));
+    if (c->camera_relative_upload) {
+        if (!isfinite(cam_x) || !isfinite(cam_y) || !isfinite(cam_z)) {
+            rt_trap("Canvas3D.Begin: camera position must contain finite values");
+            return;
+        }
+        c->camera_relative_origin[0] = cam_x;
+        c->camera_relative_origin[1] = cam_y;
+        c->camera_relative_origin[2] = cam_z;
+        upload_view[3] = 0.0;
+        upload_view[7] = 0.0;
+        upload_view[11] = 0.0;
+    } else {
+        canvas3d_reset_camera_relative_origin(c);
+    }
+
+    if (!canvas3d_mat4_d2f_checked(upload_view, params.view)) {
         rt_trap("Canvas3D.Begin: camera view matrix must contain finite float-range values");
         return;
     }
@@ -3872,17 +3957,20 @@ void rt_canvas3d_begin(void *obj, void *camera) {
         rt_trap("Canvas3D.Begin: camera projection matrix must contain finite values");
         return;
     }
-    double cam_x = cam->eye[0] + cam->shake_offset[0];
-    double cam_y = cam->eye[1] + cam->shake_offset[1];
-    double cam_z = cam->eye[2] + cam->shake_offset[2];
     if (!canvas3d_double_fits_float(cam_x) || !canvas3d_double_fits_float(cam_y) ||
         !canvas3d_double_fits_float(cam_z)) {
         rt_trap("Canvas3D.Begin: camera position must contain finite float-range values");
         return;
     }
-    params.position[0] = (float)cam_x;
-    params.position[1] = (float)cam_y;
-    params.position[2] = (float)cam_z;
+    if (c->camera_relative_upload) {
+        params.position[0] = 0.0f;
+        params.position[1] = 0.0f;
+        params.position[2] = 0.0f;
+    } else {
+        params.position[0] = (float)cam_x;
+        params.position[1] = (float)cam_y;
+        params.position[2] = (float)cam_z;
+    }
     canvas3d_extract_view_forward(cam->view, params.forward);
     params.is_ortho = cam->is_ortho;
     params.fog_enabled = c->fog_enabled;
@@ -3910,6 +3998,7 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     c->frame_is_2d = 0;
     c->last_draw_count = 0;
     c->last_occluded_draw_count = 0;
+    c->last_texture_upload_bytes = 0;
 
     /* Cache VP matrix for debug drawing (backend-agnostic) */
     {
@@ -3938,6 +4027,16 @@ void rt_canvas3d_begin(void *obj, void *camera) {
 int64_t rt_canvas3d_get_frame_serial(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return c ? c->frame_serial : 0;
+}
+
+/// @brief Internal opt-in used by Game3D floating origin to keep backend floats near the camera.
+void rt_canvas3d_set_camera_relative_upload(void *obj, int8_t enabled) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->camera_relative_upload = enabled ? 1 : 0;
+    if (!c->camera_relative_upload)
+        canvas3d_reset_camera_relative_origin(c);
 }
 
 /// @brief Queue a 3D mesh draw with a model matrix and a sort key for transparency ordering.
@@ -3977,7 +4076,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
         canvas3d_clear_pending_splat(c);
         return;
     }
-    if (!canvas3d_mat4_d2f_checked(model_matrix, validated_model_matrix)) {
+    if (!canvas3d_model_mat4_d2f_checked(c, model_matrix, validated_model_matrix)) {
         canvas3d_clear_pending_splat(c);
         rt_trap("Canvas3D.DrawMesh: model matrix must contain finite float-range values");
         return;
@@ -4255,13 +4354,13 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     if (use_fallback_instances) {
         for (int32_t i = 0; i < instance_count; i++) {
             vgfx3d_draw_cmd_t per_instance = base_cmd;
-            memcpy(per_instance.model_matrix,
-                   &instance_matrices[(size_t)i * 16u],
-                   sizeof(per_instance.model_matrix));
+            canvas3d_copy_mat4_f32_for_frame(c,
+                                              &instance_matrices[(size_t)i * 16u],
+                                              per_instance.model_matrix);
             if (has_prev_instance_matrices && prev_instance_matrices) {
-                memcpy(per_instance.prev_model_matrix,
-                       &prev_instance_matrices[(size_t)i * 16u],
-                       sizeof(per_instance.prev_model_matrix));
+                canvas3d_copy_mat4_f32_for_frame(c,
+                                                  &prev_instance_matrices[(size_t)i * 16u],
+                                                  per_instance.prev_model_matrix);
                 per_instance.has_prev_model_matrix = 1;
             } else {
                 canvas3d_resolve_previous_model(
@@ -4322,7 +4421,11 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         rt_trap("Canvas3D.DrawMeshInstanced: instance matrix allocation failed");
         return;
     }
-    memcpy(queued_instance_matrices, instance_matrices, matrix_float_count * sizeof(float));
+    for (int32_t i = 0; i < instance_count; ++i) {
+        canvas3d_copy_mat4_f32_for_frame(c,
+                                          &instance_matrices[(size_t)i * 16u],
+                                          &queued_instance_matrices[(size_t)i * 16u]);
+    }
     if (!canvas3d_track_temp_buffer(c, queued_instance_matrices)) {
         free(queued_instance_matrices);
         if (material_obj_tracked)
@@ -4347,9 +4450,12 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
             return;
         }
         if (has_prev_instance_matrices && prev_instance_matrices) {
-            memcpy(queued_prev_instance_matrices,
-                   prev_instance_matrices,
-                   matrix_float_count * sizeof(float));
+            for (int32_t i = 0; i < instance_count; ++i) {
+                canvas3d_copy_mat4_f32_for_frame(
+                    c,
+                    &prev_instance_matrices[(size_t)i * 16u],
+                    &queued_prev_instance_matrices[(size_t)i * 16u]);
+            }
         }
         if (!canvas3d_track_temp_buffer(c, queued_prev_instance_matrices)) {
             canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
@@ -4366,7 +4472,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         float ignored_prev[16];
         float *dst_prev =
             needs_motion_vectors ? &queued_prev_instance_matrices[(size_t)i * 16u] : ignored_prev;
-        const float *current = &instance_matrices[(size_t)i * 16u];
+        const float *current = &queued_instance_matrices[(size_t)i * 16u];
         if (needs_motion_vectors && has_prev_instance_matrices && prev_instance_matrices) {
             canvas3d_resolve_previous_model(
                 c,
@@ -4422,6 +4528,15 @@ fail_after_refs:
         canvas3d_release_tracked_temp_object(c, mesh_obj);
 }
 
+static void canvas3d_refresh_texture_upload_bytes(rt_canvas3d *c) {
+    uint64_t bytes = 0;
+
+    if (c && c->backend && c->backend->get_texture_upload_bytes)
+        bytes = c->backend->get_texture_upload_bytes(c->backend_ctx);
+    if (c)
+        c->last_texture_upload_bytes = bytes > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)bytes;
+}
+
 /// @brief End drawing for the current scene or 2D pass and flush deferred draws.
 /// @details Processes the deferred queue built during Begin/DrawMesh calls
 ///          in this strict pass order:
@@ -4453,6 +4568,7 @@ void rt_canvas3d_end(void *obj) {
         c->in_frame = 0;
         c->frame_is_2d = 0;
         c->last_draw_count = 0;
+        c->last_texture_upload_bytes = 0;
         c->draw_count = 0;
         canvas3d_clear_temp_buffers(c);
         canvas3d_clear_temp_objects(c);
@@ -4509,6 +4625,7 @@ void rt_canvas3d_end(void *obj) {
 
     if (main_count == 0 && overlay_count == 0) {
         c->backend->end_frame(c->backend_ctx);
+        canvas3d_refresh_texture_upload_bytes(c);
         c->in_frame = 0;
         c->frame_is_2d = 0;
         c->draw_count = 0;
@@ -4666,6 +4783,7 @@ void rt_canvas3d_end(void *obj) {
     }
 
     c->backend->end_frame(c->backend_ctx);
+    canvas3d_refresh_texture_upload_bytes(c);
     c->in_frame = 0;
 
     if (!c->frame_is_2d && overlay_count > 0) {
@@ -4676,6 +4794,7 @@ void rt_canvas3d_end(void *obj) {
                 canvas3d_submit_screen_overlay_deferred(c, &cmds[i]);
             }
             c->backend->end_frame(c->backend_ctx);
+            canvas3d_refresh_texture_upload_bytes(c);
         }
     }
 

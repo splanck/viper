@@ -41,11 +41,13 @@
 #include "rt_string.h"
 #include "rt_synth.h"
 #include "rt_terrain3d.h"
+#include "rt_threads.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
 
 extern "C" {
 #include "rt_canvas3d_internal.h"
+#include "vgfx3d_backend.h"
 }
 
 #include <cmath>
@@ -140,6 +142,15 @@ static rt_string test_fixture_path(const char *relative) {
 #endif
 }
 
+static bool wait_asset_ready(void *handle, int attempts = 200) {
+    for (int i = 0; i < attempts; ++i) {
+        if (rt_game3d_asset_handle_get_ready(handle) != 0)
+            return true;
+        rt_thread_sleep(10);
+    }
+    return rt_game3d_asset_handle_get_ready(handle) != 0;
+}
+
 static bool write_text_file(const char *path, const char *text) {
     FILE *file = std::fopen(path, "wb");
     if (!file)
@@ -167,6 +178,52 @@ static void set_software_backend_env() {
 #else
     setenv("VIPER_3D_BACKEND", "software", 1);
 #endif
+}
+
+static int g_game3d_effect_draw_count = 0;
+static double g_game3d_effect_draw_centers[8][3] = {};
+
+static void game3d_effect_capture_reset() {
+    g_game3d_effect_draw_count = 0;
+    std::memset(g_game3d_effect_draw_centers, 0, sizeof(g_game3d_effect_draw_centers));
+}
+
+static void game3d_effect_tracked_submit_draw(void *,
+                                              vgfx_window_t,
+                                              const vgfx3d_draw_cmd_t *cmd,
+                                              const vgfx3d_light_params_t *,
+                                              int32_t,
+                                              const float *,
+                                              int8_t,
+                                              int8_t) {
+    if (!cmd || !cmd->vertices || cmd->vertex_count == 0)
+        return;
+    if (g_game3d_effect_draw_count >=
+        (int)(sizeof(g_game3d_effect_draw_centers) / sizeof(g_game3d_effect_draw_centers[0])))
+        return;
+    double center[3] = {0.0, 0.0, 0.0};
+    for (uint32_t i = 0; i < cmd->vertex_count; ++i) {
+        center[0] += cmd->vertices[i].pos[0];
+        center[1] += cmd->vertices[i].pos[1];
+        center[2] += cmd->vertices[i].pos[2];
+    }
+    center[0] /= (double)cmd->vertex_count;
+    center[1] /= (double)cmd->vertex_count;
+    center[2] /= (double)cmd->vertex_count;
+    g_game3d_effect_draw_centers[g_game3d_effect_draw_count][0] = center[0];
+    g_game3d_effect_draw_centers[g_game3d_effect_draw_count][1] = center[1];
+    g_game3d_effect_draw_centers[g_game3d_effect_draw_count][2] = center[2];
+    g_game3d_effect_draw_count++;
+}
+
+static bool game3d_effect_saw_center_near(double x, double y, double z, double tol) {
+    for (int i = 0; i < g_game3d_effect_draw_count; ++i) {
+        if (std::fabs(g_game3d_effect_draw_centers[i][0] - x) <= tol &&
+            std::fabs(g_game3d_effect_draw_centers[i][1] - y) <= tol &&
+            std::fabs(g_game3d_effect_draw_centers[i][2] - z) <= tol)
+            return true;
+    }
+    return false;
 }
 
 extern "C" void game3d_test_update(double dt) {
@@ -232,6 +289,46 @@ static void game3d_test_align(std::vector<uint8_t> &out, size_t alignment) {
     size_t rem = out.size() % alignment;
     if (rem != 0)
         out.insert(out.end(), alignment - rem, 0);
+}
+
+static bool game3d_test_read_file_bytes(const char *path, std::vector<uint8_t> &out) {
+    out.clear();
+    FILE *file = std::fopen(path, "rb");
+    if (!file)
+        return false;
+    if (std::fseek(file, 0, SEEK_END) != 0) {
+        std::fclose(file);
+        return false;
+    }
+    long size = std::ftell(file);
+    if (size < 0 || std::fseek(file, 0, SEEK_SET) != 0) {
+        std::fclose(file);
+        return false;
+    }
+    out.resize((size_t)size);
+    bool ok = size == 0 || std::fread(out.data(), 1, (size_t)size, file) == (size_t)size;
+    std::fclose(file);
+    return ok;
+}
+
+static std::string game3d_test_base64_encode(const uint8_t *data, size_t len) {
+    static const char table[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve(((len + 2u) / 3u) * 4u);
+    for (size_t i = 0; i < len; i += 3u) {
+        uint32_t value = ((uint32_t)data[i]) << 16;
+        int remaining = (int)(len - i);
+        if (remaining > 1)
+            value |= ((uint32_t)data[i + 1]) << 8;
+        if (remaining > 2)
+            value |= (uint32_t)data[i + 2];
+        out.push_back(table[(value >> 18) & 0x3Fu]);
+        out.push_back(table[(value >> 12) & 0x3Fu]);
+        out.push_back(remaining > 1 ? table[(value >> 6) & 0x3Fu] : '=');
+        out.push_back(remaining > 2 ? table[value & 0x3Fu] : '=');
+    }
+    return out;
 }
 
 struct Game3DTestVpaEntry {
@@ -1017,6 +1114,40 @@ static bool test_world_floating_origin_controls_and_rebase() {
                                       rt_vec3_new(0.0, 0.0, -1.0),
                                       rt_vec3_new(0.0, 1.0, 0.0));
 
+    void *effects = rt_game3d_world_get_effects(world);
+    EXPECT_TRUE(effects != nullptr, "floatingOrigin world has an effect registry");
+    void *far_particles = rt_particles3d_new(4);
+    rt_particles3d_set_position(far_particles, 50003.0, -4.0, 7002.0);
+    rt_particles3d_set_speed(far_particles, 0.0, 0.0);
+    rt_particles3d_set_lifetime(far_particles, 10.0, 10.0);
+    rt_particles3d_set_size(far_particles, 1.0, 1.0);
+    rt_particles3d_burst(far_particles, 1);
+    rt_game3d_effects_add_particles(effects, far_particles, -1.0);
+    void *far_decal = rt_decal3d_new(rt_vec3_new(50006.0, -4.0, 6999.0),
+                                     rt_vec3_new(0.0, 1.0, 0.0),
+                                     1.0,
+                                     nullptr);
+    rt_game3d_effects_add_decal(effects, far_decal);
+
+    rt_canvas3d *canvas_state = (rt_canvas3d *)rt_game3d_world_get_canvas(world);
+    const vgfx3d_backend_t *saved_backend = canvas_state ? canvas_state->backend : nullptr;
+    void *saved_backend_ctx = canvas_state ? canvas_state->backend_ctx : nullptr;
+    EXPECT_TRUE(canvas_state != nullptr && saved_backend != nullptr,
+                "floatingOrigin effect capture has a live Canvas3D backend");
+    vgfx3d_backend_t effect_backend = saved_backend ? *saved_backend : vgfx3d_backend_t{};
+    effect_backend.name = "tracked-effects-capture";
+    effect_backend.submit_draw = game3d_effect_tracked_submit_draw;
+    canvas_state->backend = &effect_backend;
+    canvas_state->backend_ctx = saved_backend_ctx;
+    game3d_effect_capture_reset();
+    rt_game3d_world_begin_frame(world);
+    rt_game3d_world_draw_effects(world);
+    rt_game3d_world_end_scene(world);
+    EXPECT_TRUE(game3d_effect_saw_center_near(50003.0, -4.0, 7002.0, 0.25),
+                "pre-rebase effect draw captures far particle center");
+    EXPECT_TRUE(game3d_effect_saw_center_near(50006.0, -4.0, 6999.0, 0.25),
+                "pre-rebase effect draw builds far decal mesh");
+
     rt_game3d_world_step_simulation(world, 1.0 / 60.0);
     EXPECT_NEAR(rt_vec3_x(rt_camera3d_get_position(camera)), 0.0, 0.000001, "50km camera X rebased");
     EXPECT_NEAR(rt_vec3_y(rt_camera3d_get_position(camera)), 0.0, 0.000001, "50km camera Y rebased");
@@ -1044,6 +1175,28 @@ static bool test_world_floating_origin_controls_and_rebase() {
                 7000.0,
                 0.000001,
                 "worldOrigin accumulates 50km Z delta");
+    game3d_effect_capture_reset();
+    rt_game3d_world_begin_frame(world);
+    rt_game3d_world_draw_effects(world);
+    rt_game3d_world_end_scene(world);
+    EXPECT_TRUE(game3d_effect_saw_center_near(3.0, 1.0, 2.0, 0.25),
+                "50km rebase shifts live particle vertices near the camera");
+    EXPECT_TRUE(game3d_effect_saw_center_near(6.0, 1.0, -1.0, 0.25),
+                "50km rebase shifts cached decal geometry near the camera");
+    if (canvas_state) {
+        canvas_state->backend = saved_backend;
+        canvas_state->backend_ctx = saved_backend_ctx;
+    }
+
+    rt_game3d_world_begin_frame(world);
+    EXPECT_TRUE(canvas_state && canvas_state->camera_relative_upload == 1,
+                "floatingOrigin enables camera-relative upload for the frame");
+    rt_game3d_world_end_scene(world);
+    rt_game3d_world_set_floating_origin(world, 0);
+    rt_game3d_world_begin_frame(world);
+    EXPECT_TRUE(canvas_state && canvas_state->camera_relative_upload == 0,
+                "floatingOrigin off keeps bounded-scene upload path unchanged");
+    rt_game3d_world_end_scene(world);
 
     rt_game3d_world_destroy(world);
     PASS();
@@ -1457,10 +1610,10 @@ static bool test_phase4_assets3d_model_templates() {
 
     void *model_handle = rt_game3d_assets_load_model_async(path);
     EXPECT_TRUE(model_handle != nullptr, "LoadModelAsync returns an AssetHandle3D");
-    EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(model_handle) - 0.0) < 0.000001,
-                "new entity AssetHandle3D starts pending");
-    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(model_handle) != 0,
-                "entity AssetHandle3D completes on first ready observation");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(model_handle) == 0,
+                "entity AssetHandle3D schedules work on first ready observation");
+    EXPECT_TRUE(wait_asset_ready(model_handle),
+                "entity AssetHandle3D completes after worker commit");
     EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(model_handle) - 1.0) < 0.000001,
                 "entity AssetHandle3D reports complete progress");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(model_handle)), "") ==
@@ -1478,12 +1631,9 @@ static bool test_phase4_assets3d_model_templates() {
 
     void *cancelled_handle = rt_game3d_assets_load_model_async(path);
     EXPECT_TRUE(cancelled_handle != nullptr, "LoadModelAsync returns a cancellable handle");
-    EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(cancelled_handle) - 0.0) <
-                    0.000001,
-                "cancellable AssetHandle3D remains pending before observation");
     rt_game3d_asset_handle_cancel(cancelled_handle);
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(cancelled_handle) != 0,
-                "cancelled AssetHandle3D becomes terminal");
+                "pre-observation cancelled AssetHandle3D becomes terminal");
     EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(cancelled_handle) - 1.0) <
                     0.000001,
                 "cancelled AssetHandle3D reports terminal progress");
@@ -1499,11 +1649,8 @@ static bool test_phase4_assets3d_model_templates() {
     void *missing_entity_handle = rt_game3d_assets_load_model_async(missing_path_s);
     EXPECT_TRUE(missing_entity_handle != nullptr,
                 "LoadModelAsync returns a handle for a missing filesystem path");
-    EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(missing_entity_handle) - 0.0) <
-                    0.000001,
-                "missing-path AssetHandle3D starts pending before observation");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(missing_entity_handle) != 0,
-                "missing-path AssetHandle3D becomes terminal on observation");
+                "missing-path AssetHandle3D fails preflight on first observation");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(missing_entity_handle)),
                             "cannot read file") == 0,
                 "missing-path AssetHandle3D exposes a load error");
@@ -1535,11 +1682,10 @@ static bool test_phase4_assets3d_model_templates() {
     void *corrupt_handle = rt_game3d_assets_load_model_async(corrupt_path_s);
     EXPECT_TRUE(corrupt_handle != nullptr,
                 "LoadModelAsync returns a handle for a corrupt filesystem payload");
-    EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(corrupt_handle) - 0.0) <
-                    0.000001,
-                "corrupt AssetHandle3D starts pending before observation");
-    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(corrupt_handle) != 0,
-                "corrupt AssetHandle3D becomes terminal on observation");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(corrupt_handle) == 0,
+                "corrupt AssetHandle3D schedules worker validation");
+    EXPECT_TRUE(wait_asset_ready(corrupt_handle),
+                "corrupt AssetHandle3D becomes terminal after worker commit");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(corrupt_handle)),
                             "failed to load model") == 0,
                 "corrupt AssetHandle3D exposes a load error without trapping");
@@ -1547,6 +1693,34 @@ static bool test_phase4_assets3d_model_templates() {
                 "corrupt AssetHandle3D has no entity result");
     rt_string_unref(corrupt_path_s);
     std::remove(corrupt_path);
+
+    const char *corrupt_texture_path = "/tmp/viper_game3d_corrupt_async_texture_model.gltf";
+    std::string corrupt_texture_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"images\":[{\"uri\":\"data:image/png;base64,AAAA\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]"
+        "}";
+    EXPECT_TRUE(write_text_file(corrupt_texture_path, corrupt_texture_json.c_str()),
+                "test can write corrupt async texture fixture");
+    rt_string corrupt_texture_s =
+        rt_string_from_bytes(corrupt_texture_path, std::strlen(corrupt_texture_path));
+    void *corrupt_texture_handle = rt_game3d_assets_load_model_async(corrupt_texture_s);
+    EXPECT_TRUE(corrupt_texture_handle != nullptr,
+                "LoadModelAsync returns a handle for a corrupt required texture payload");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(corrupt_texture_handle) == 0,
+                "corrupt texture AssetHandle3D schedules worker validation");
+    EXPECT_TRUE(wait_asset_ready(corrupt_texture_handle),
+                "corrupt texture AssetHandle3D becomes terminal after worker preload");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(
+                                rt_game3d_asset_handle_get_error(corrupt_texture_handle)),
+                            "invalid glTF image payload") == 0,
+                "corrupt texture AssetHandle3D exposes the worker image error");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_entity(corrupt_texture_handle) == nullptr,
+                "corrupt texture AssetHandle3D has no entity result");
+    rt_string_unref(corrupt_texture_s);
+    std::remove(corrupt_texture_path);
 
     const char *unsupported_path = "/tmp/viper_game3d_unsupported_async_model.txt";
     EXPECT_TRUE(write_text_file(unsupported_path, "not a model"),
@@ -1568,18 +1742,17 @@ static bool test_phase4_assets3d_model_templates() {
 
     void *asset_model_handle = rt_game3d_assets_load_model_asset_async(path);
     EXPECT_TRUE(asset_model_handle != nullptr, "LoadModelAssetAsync returns an AssetHandle3D");
-    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(asset_model_handle) != 0,
-                "asset entity AssetHandle3D is ready");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(asset_model_handle) == 0,
+                "asset entity AssetHandle3D schedules work on first ready observation");
+    EXPECT_TRUE(wait_asset_ready(asset_model_handle),
+                "asset entity AssetHandle3D completes after worker commit");
     EXPECT_TRUE(rt_game3d_asset_handle_get_entity(asset_model_handle) != nullptr,
                 "asset entity AssetHandle3D exposes the loaded entity");
 
     void *template_handle = rt_game3d_assets_load_model_template_async(path);
     EXPECT_TRUE(template_handle != nullptr, "LoadModelTemplateAsync returns an AssetHandle3D");
-    EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(template_handle) - 0.0) <
-                    0.000001,
-                "new template AssetHandle3D starts pending");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(template_handle) != 0,
-                "template AssetHandle3D completes on first ready observation");
+                "cached template AssetHandle3D completes on first ready observation");
     EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(template_handle) - 1.0) < 0.000001,
                 "template AssetHandle3D reports complete progress");
     EXPECT_TRUE(rt_game3d_asset_handle_get_template(template_handle) == tpl1,
@@ -1614,8 +1787,198 @@ static bool test_phase4_assets3d_model_templates() {
                 "zero residency budget evicts cached templates after each load");
     rt_game3d_assets_set_residency_budget(-1);
 
+    rt_game3d_assets_clear_cache();
+    void *preload_world = rt_game3d_world_new(rt_const_cstr("Game3D Async Preload Unit"), 64, 48);
+    EXPECT_TRUE(preload_world != nullptr, "World3D.New supports async preload commit draining");
+    rt_game3d_assets_preload(path);
+    for (int i = 0; i < 100; ++i) {
+        rt_game3d_world_step_simulation(preload_world, 1.0 / 60.0);
+        rt_thread_sleep(5);
+    }
+    void *preloaded_handle = rt_game3d_assets_load_model_template_async(path);
+    EXPECT_TRUE(preloaded_handle != nullptr, "LoadModelTemplateAsync returns a handle after Preload");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(preloaded_handle) != 0,
+                "Assets3D.Preload warms the template cache through world commit draining");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_template(preloaded_handle) != nullptr,
+                "Assets3D.Preload publishes a cached ModelTemplate");
+
+    const char *corrupt_preload_path = "/tmp/viper_game3d_corrupt_preload_model.gltf";
+    EXPECT_TRUE(write_text_file(corrupt_preload_path, "not valid json"),
+                "test can write corrupt preload fixture");
+    rt_string corrupt_preload_s =
+        rt_string_from_bytes(corrupt_preload_path, std::strlen(corrupt_preload_path));
+    rt_game3d_assets_preload(corrupt_preload_s);
+    for (int i = 0; i < 20; ++i) {
+        rt_game3d_world_step_simulation(preload_world, 1.0 / 60.0);
+        rt_thread_sleep(5);
+    }
+    rt_string_unref(corrupt_preload_s);
+    std::remove(corrupt_preload_path);
+
+    rt_game3d_assets_clear_cache();
     rt_game3d_assets_preload(path);
     rt_game3d_assets_clear_cache();
+    for (int i = 0; i < 160; ++i) {
+        rt_game3d_world_step_simulation(preload_world, 1.0 / 60.0);
+        rt_thread_sleep(5);
+    }
+    void *stale_preload_handle = rt_game3d_assets_load_model_template_async(path);
+    EXPECT_TRUE(stale_preload_handle != nullptr,
+                "LoadModelTemplateAsync returns a handle after stale preload clear");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(stale_preload_handle) == 0,
+                "Assets3D.ClearCache prevents pre-clear Preload from repopulating cache");
+    EXPECT_TRUE(wait_asset_ready(stale_preload_handle),
+                "post-clear template handle can still load normally");
+
+    rt_game3d_world_destroy(preload_world);
+    rt_game3d_assets_clear_cache();
+    PASS();
+}
+
+static bool test_phase4_assets3d_resident_bytes_returns_to_baseline() {
+    TEST("Assets3D resident byte telemetry returns to baseline after churn");
+    rt_string path = test_fixture_path("tests/runtime/assets/gltf/load_asset_triangle.gltf");
+
+    rt_game3d_assets_set_residency_budget(-1);
+    rt_game3d_assets_clear_cache();
+    EXPECT_EQ_INT(rt_game3d_assets_get_resident_bytes(),
+                  0,
+                  "resident byte telemetry starts at baseline after clear");
+
+    for (int i = 0; i < 3; ++i) {
+        void *blocking_template = rt_game3d_assets_load_model_template(path);
+        EXPECT_TRUE(blocking_template != nullptr, "blocking template load succeeds during churn");
+        EXPECT_TRUE(rt_game3d_assets_get_resident_bytes() > 0,
+                    "blocking template load increments resident byte telemetry");
+        rt_game3d_assets_clear_cache();
+        EXPECT_EQ_INT(rt_game3d_assets_get_resident_bytes(),
+                      0,
+                      "clearing after blocking load returns resident bytes to baseline");
+
+        void *async_handle = rt_game3d_assets_load_model_template_async(path);
+        EXPECT_TRUE(async_handle != nullptr, "async template load returns a handle during churn");
+        EXPECT_TRUE(rt_game3d_asset_handle_get_ready(async_handle) == 0,
+                    "async template load is scheduled instead of completed synchronously");
+        EXPECT_TRUE(wait_asset_ready(async_handle),
+                    "async template load completes during churn");
+        EXPECT_TRUE(rt_game3d_asset_handle_get_template(async_handle) != nullptr,
+                    "async template handle exposes a cached ModelTemplate");
+        EXPECT_TRUE(rt_game3d_assets_get_resident_bytes() > 0,
+                    "async template load increments resident byte telemetry");
+        rt_game3d_assets_clear_cache();
+        EXPECT_EQ_INT(rt_game3d_assets_get_resident_bytes(),
+                      0,
+                      "clearing after async load returns resident bytes to baseline");
+    }
+
+    PASS();
+}
+
+static bool test_phase4_assets3d_texture_residency_budget() {
+    TEST("Assets3D residency budget accounts for texture payloads");
+    const char *png_path = "/tmp/viper_game3d_budget_texture.png";
+    const char *gltf_path = "/tmp/viper_game3d_budget_texture.gltf";
+    void *pixels = rt_pixels_new(256, 256);
+    EXPECT_TRUE(pixels != nullptr, "budget texture Pixels can be allocated");
+    for (int64_t y = 0; y < 256; ++y) {
+        for (int64_t x = 0; x < 256; ++x)
+            rt_pixels_set(pixels, x, y, 0x66AA44FFll);
+    }
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "budget texture PNG can be written");
+
+    std::vector<uint8_t> png_bytes;
+    EXPECT_TRUE(game3d_test_read_file_bytes(png_path, png_bytes),
+                "budget texture PNG can be read");
+    if (png_bytes.empty())
+        FAIL("budget texture PNG is empty");
+
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_game3d_test_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_game3d_test_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = game3d_test_base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string image_b64 = game3d_test_base64_encode(png_bytes.data(), png_bytes.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"images\":[{\"uri\":\"data:image/png;base64," +
+        image_b64 +
+        "\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"material\":0}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json.c_str()),
+                "budgeted textured glTF fixture can be written");
+
+    rt_game3d_assets_clear_cache();
+    rt_game3d_assets_set_upload_budget(0);
+    void *paused_handle = rt_game3d_assets_load_model_template_async(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(paused_handle != nullptr,
+                "LoadModelTemplateAsync returns a handle under a paused upload budget");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(paused_handle) == 0,
+                "paused upload budget schedules textured async work");
+    for (int i = 0; i < 40; ++i) {
+        EXPECT_TRUE(rt_game3d_asset_handle_get_ready(paused_handle) == 0,
+                    "zero upload budget keeps positive-cost texture commit pending");
+        rt_thread_sleep(5);
+    }
+    rt_game3d_assets_set_upload_budget(1);
+    bool saw_partial_upload_progress = false;
+    for (int i = 0; i < 8; ++i) {
+        int8_t ready = rt_game3d_asset_handle_get_ready(paused_handle);
+        double progress = rt_game3d_asset_handle_get_progress(paused_handle);
+        if (progress > 0.0 && progress < 1.0)
+            saw_partial_upload_progress = true;
+        if (ready != 0)
+            break;
+        rt_thread_sleep(5);
+    }
+    EXPECT_TRUE(saw_partial_upload_progress,
+                "positive upload budget advances a large texture through partial slices");
+    EXPECT_TRUE(wait_asset_ready(paused_handle),
+                "positive upload budget drains all texture slices and publishes the template");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_template(paused_handle) != nullptr,
+                "upload-budgeted async handle exposes the loaded textured template");
+    rt_game3d_assets_set_upload_budget(-1);
+    rt_game3d_assets_clear_cache();
+
+    rt_game3d_assets_set_residency_budget(4096);
+    void *tpl1 = rt_game3d_assets_load_model_template(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(tpl1 != nullptr, "first textured template load succeeds");
+    void *model1 = rt_game3d_model_template_get_model(tpl1);
+    auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model1, 0));
+    EXPECT_TRUE(mat != nullptr && mat->texture != nullptr, "textured template keeps material map");
+    EXPECT_EQ_INT(rt_pixels_width(mat->texture), 256, "budget texture width is decoded");
+    EXPECT_EQ_INT(rt_pixels_height(mat->texture), 256, "budget texture height is decoded");
+
+    void *tpl2 = rt_game3d_assets_load_model_template(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(tpl2 != nullptr, "second textured template load succeeds");
+    EXPECT_TRUE(tpl1 != tpl2,
+                "texture resident bytes force zero-headroom budget eviction between loads");
+
+    rt_game3d_assets_set_residency_budget(-1);
+    rt_game3d_assets_clear_cache();
+    std::remove(gltf_path);
+    std::remove(png_path);
     PASS();
 }
 
@@ -1657,6 +2020,28 @@ static bool test_assets3d_loads_packaged_gltf_hierarchy() {
                 "Game3D hierarchy asset pack can mount");
 
     rt_game3d_assets_clear_cache();
+    void *preload_world =
+        rt_game3d_world_new(rt_const_cstr("Game3D Packaged Preload Unit"), 64, 48);
+    EXPECT_TRUE(preload_world != nullptr,
+                "World3D.New supports package-aware preload commit draining");
+    rt_game3d_assets_preload_asset(rt_const_cstr("assets/models/hierarchy.gltf"));
+    for (int i = 0; i < 100; ++i) {
+        rt_game3d_world_step_simulation(preload_world, 1.0 / 60.0);
+        rt_thread_sleep(5);
+    }
+    void *preloaded_asset_handle =
+        rt_game3d_assets_load_model_template_asset_async(rt_const_cstr("assets/models/hierarchy.gltf"));
+    EXPECT_TRUE(preloaded_asset_handle != nullptr,
+                "LoadModelTemplateAssetAsync returns a handle after PreloadAsset");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(preloaded_asset_handle) != 0,
+                "Assets3D.PreloadAsset warms the package-aware template cache");
+    void *preloaded_asset_template = rt_game3d_asset_handle_get_template(preloaded_asset_handle);
+    EXPECT_TRUE(preloaded_asset_template != nullptr,
+                "PreloadAsset publishes a cached package-aware ModelTemplate");
+    EXPECT_TRUE(rt_game3d_model_template_get_is_asset(preloaded_asset_template) != 0,
+                "PreloadAsset cache entries preserve asset-path identity");
+    rt_game3d_world_destroy(preload_world);
+
     void *entity =
         rt_game3d_assets_load_model_asset(rt_const_cstr("assets/models/hierarchy.gltf"));
     EXPECT_TRUE(entity != nullptr, "LoadModelAsset loads a packaged glTF hierarchy");
@@ -1881,6 +2266,36 @@ static bool write_stream_cell_scene(const char *path, const char *marker_name) {
     return rt_scene3d_save(scene, rt_const_cstr(path)) == 1;
 }
 
+static void *make_stream_lod_mesh(void) {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_reserve(mesh, 192, 64);
+    for (int64_t i = 0; i < 64; ++i) {
+        double x = (double)(i % 8) * 2.0;
+        double y = (double)(i / 8) * 2.0;
+        int64_t base = i * 3;
+        rt_mesh3d_add_vertex(mesh, x, y, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        rt_mesh3d_add_vertex(mesh, x + 1.0, y, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+        rt_mesh3d_add_vertex(mesh, x, y + 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0);
+        rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
+    }
+    return mesh;
+}
+
+static bool write_stream_lod_cell_scene(const char *path) {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *base_mesh = rt_mesh3d_new_box(0.25, 0.25, 0.25);
+    void *lod_mesh = make_stream_lod_mesh();
+    void *material = rt_material3d_new_color(0.2, 0.3, 0.4);
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("stream_lod_residency_marker"));
+    rt_scene_node3d_set_mesh(node, base_mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene_node3d_add_lod(node, 16.0, lod_mesh);
+    rt_scene3d_add(scene, node);
+    return rt_scene3d_save(scene, rt_const_cstr(path)) == 1;
+}
+
 static bool test_phase5_world_stream3d_manifest_cells() {
     TEST("WorldStream3D mounts and unloads VSCN scene cells from a manifest");
 
@@ -1921,7 +2336,9 @@ static bool test_phase5_world_stream3d_manifest_cells() {
     EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("stream_far_marker")) == nullptr,
                 "far cell remains unloaded outside the load radius");
     int64_t near_bytes = rt_game3d_world_stream_get_resident_bytes(stream);
-    EXPECT_TRUE(near_bytes >= 65536, "manifest stream accounts loaded cell bytes");
+    EXPECT_TRUE(near_bytes > 0, "manifest stream accounts measured loaded cell bytes");
+    EXPECT_TRUE(rt_game3d_world_stream_get_cell_bytes(stream, 0) != 65536,
+                "loaded simple cell replaces manifest bytes with measured residency");
 
     rt_game3d_world_stream_set_center(stream, rt_vec3_new(1000.0, 0.0, 0.0));
     rt_game3d_world_stream_update(stream, 1.0 / 60.0);
@@ -1945,6 +2362,73 @@ static bool test_phase5_world_stream3d_manifest_cells() {
                   "zero manifest stream budget clears resident bytes");
 
     rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static bool test_phase5_world_stream3d_measures_lod_residency() {
+    TEST("WorldStream3D measures loaded VSCN mesh and LOD residency");
+
+    const char *cell_path = "/tmp/viper_game3d_stream_lod_residency.vscn";
+    const char *manifest_path = "/tmp/viper_game3d_stream_lod_residency_manifest.vscn";
+    EXPECT_TRUE(write_stream_lod_cell_scene(cell_path), "LOD stream cell fixture saves");
+
+    char manifest[2048];
+    std::snprintf(manifest,
+                  sizeof(manifest),
+                  "{"
+                  "\"cells\":["
+                  "{\"name\":\"lod_cell\",\"path\":\"%s\",\"center\":[0,0,0],"
+                  "\"radius\":8,\"bytes\":4096}"
+                  "]"
+                  "}",
+                  cell_path);
+    EXPECT_TRUE(write_text_file(manifest_path, manifest), "LOD stream manifest fixture writes");
+
+    void *world =
+        rt_game3d_world_new(rt_const_cstr("Game3D WorldStream LOD Residency Unit"), 80, 60);
+    void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_game3d_world_stream_set_radii(stream, 64.0, 96.0);
+    rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(manifest_path));
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  1,
+                  "LOD stream loads the authored cell");
+    EXPECT_TRUE(rt_game3d_world_find_node(world,
+                                          rt_const_cstr("stream_lod_residency_marker")) != nullptr,
+                "LOD cell scene subtree is attached to the world scene");
+    int64_t measured_cell_bytes = rt_game3d_world_stream_get_cell_bytes(stream, 0);
+    EXPECT_TRUE(measured_cell_bytes > 4096,
+                "resident cell bytes measure authored mesh and LOD payloads");
+    int64_t measured_total = rt_game3d_world_stream_get_resident_bytes(stream);
+    EXPECT_TRUE(measured_total >= measured_cell_bytes,
+                "resident stream bytes include measured cell residency");
+
+    rt_game3d_world_stream_set_residency_budget(stream, measured_total - 1);
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  0,
+                  "undersized budget evicts measured-over-manifest cell");
+    EXPECT_TRUE(rt_game3d_world_find_node(world,
+                                          rt_const_cstr("stream_lod_residency_marker")) == nullptr,
+                "measured residency eviction detaches the authored cell subtree");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_bytes(stream, 0),
+                  4096,
+                  "unloaded cell reports the manifest planning estimate");
+    int64_t after_eviction_bytes = rt_game3d_world_stream_get_resident_bytes(stream);
+    EXPECT_TRUE(after_eviction_bytes > 0 && after_eviction_bytes < measured_total,
+                "evicted measured cell leaves only stream metadata residency");
+
+    rt_game3d_world_stream_set_residency_budget(stream, 0);
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_bytes(stream),
+                  0,
+                  "zero budget clears stream metadata and resident bytes");
+
+    rt_game3d_world_destroy(world);
+    std::remove(cell_path);
+    std::remove(manifest_path);
     PASS();
 }
 
@@ -2108,9 +2592,12 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
                 512.0,
                 0.000001,
                 "inspection hook returns terrain tile center x");
-    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_bytes(stream, 0),
-                  1111,
-                  "inspection hooks expose cell byte estimates");
+    int64_t resident_cell_bytes = rt_game3d_world_stream_get_cell_bytes(stream, 0);
+    EXPECT_TRUE(resident_cell_bytes > 0 && resident_cell_bytes != 1111,
+                "inspection hooks expose measured resident cell bytes");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_bytes(stream, 1),
+                  2222,
+                  "inspection hooks expose manifest estimates for unloaded cells");
     EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_bytes(stream, 1),
                   4444,
                   "inspection hooks expose terrain tile byte estimates");
@@ -2829,10 +3316,13 @@ int main() {
     ok = test_phase3_material_presets_and_prefabs() && ok;
     ok = test_phase3_world_presets_environment_and_debug() && ok;
     ok = test_phase4_assets3d_model_templates() && ok;
+    ok = test_phase4_assets3d_resident_bytes_returns_to_baseline() && ok;
+    ok = test_phase4_assets3d_texture_residency_budget() && ok;
     ok = test_assets3d_loads_packaged_gltf_hierarchy() && ok;
     ok = test_phase5_world_stream3d_baseline() && ok;
     ok = test_phase5_world_stream3d_terrain_manifest() && ok;
     ok = test_phase5_world_stream3d_manifest_cells() && ok;
+    ok = test_phase5_world_stream3d_measures_lod_residency() && ok;
     ok = test_phase5_world_stream3d_hitch_budgeted_update() && ok;
     ok = test_phase12_world_stream3d_inspection_hooks() && ok;
     ok = test_phase4_body_def_attach_body() && ok;

@@ -16,6 +16,7 @@ Run from this directory:
 ../../../build/src/tools/viper/viper run main.zia
 VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run test.zia
 VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run perf_probe.zia
+../../../build/src/tools/viper/viper run streaming_hitch_probe.zia
 VIPER_3D_BACKEND=metal ../../../build/src/tools/viper/viper run gpu_smoke.zia
 ../../../build/src/tools/viper/viper package . --target tarball --dry-run
 ```
@@ -44,7 +45,11 @@ through streamed terrain collider/source nodes. Scripted quadrant visits settle
 the deterministic `WorldStream3D.update` load budget across a few ticks, and
 the runtime unit tests assert `pendingRequestCount` while a terrain request is
 deferred. `long_traversal.zia` churns all four streamed quadrants repeatedly and
-replays the same route to verify deterministic residency churn. Native
+replays the same route to verify deterministic residency churn.
+`streaming_hitch_probe.zia` records blocking-vs-async model-template timing,
+proves zero upload budget keeps positive-cost async commit work pending, then
+checks the shared `Assets3D.GetResidentBytes` counter returns to zero after
+clear. Native
 compressed texture upload and a visible foot-planted skinned character
 remain tracked in the 3D next-level plan.
 `gpu_smoke.zia` also runs under CTest with the platform GPU

@@ -824,19 +824,28 @@ static void model_build_synth_mesh_nodes(rt_model3d *model) {
 /// the scene-node template tree from the source asset, retaining each component for the model's
 /// lifetime. Returns NULL (with a trap message) for invalid path / unsupported extension /
 /// underlying loader failure. Use `_instantiate` to spawn a clone in a live scene.
-static void *rt_model3d_load_impl(rt_string path, int load_assets) {
+static void *rt_model3d_load_impl(rt_string path,
+                                  int load_assets,
+                                  uint8_t *preloaded_gltf_data,
+                                  size_t preloaded_gltf_size,
+                                  struct rt_gltf_preload_bundle *preloaded_gltf_bundle) {
     const char *path_cstr = path ? rt_string_cstr(path) : NULL;
     const char *api_name = load_assets ? "Model3D.LoadAsset" : "Model3D.Load";
     rt_model3d *model;
 
     if (!path || !path_cstr) {
+        free(preloaded_gltf_data);
+        rt_gltf_preload_bundle_free(preloaded_gltf_bundle);
         rt_trap(load_assets ? "Model3D.LoadAsset: invalid path" : "Model3D.Load: invalid path");
         return NULL;
     }
 
     model = model_new();
-    if (!model)
+    if (!model) {
+        free(preloaded_gltf_data);
+        rt_gltf_preload_bundle_free(preloaded_gltf_bundle);
         return NULL;
+    }
     model_set_root_name(model->template_root, path_cstr);
 
     if (model_has_ext(path_cstr, ".vscn")) {
@@ -852,7 +861,7 @@ static void *rt_model3d_load_impl(rt_string path, int load_assets) {
         }
         model_release_local(scene);
     } else if (model_has_ext(path_cstr, ".gltf") || model_has_ext(path_cstr, ".glb")) {
-        void *asset = load_assets ? rt_gltf_load_asset(path) : rt_gltf_load(path);
+        void *asset = NULL;
         int64_t mesh_count;
         int64_t material_count;
         int64_t skeleton_count;
@@ -861,6 +870,18 @@ static void *rt_model3d_load_impl(rt_string path, int load_assets) {
         int64_t camera_count;
         int64_t gltf_scene_count;
         void *scene_root;
+        if (preloaded_gltf_bundle) {
+            asset = rt_gltf_load_preloaded_bundle(path, preloaded_gltf_bundle, load_assets);
+            preloaded_gltf_bundle = NULL;
+        } else if (preloaded_gltf_data) {
+            asset = rt_gltf_load_preloaded(path,
+                                           preloaded_gltf_data,
+                                           preloaded_gltf_size,
+                                           load_assets);
+            preloaded_gltf_data = NULL;
+        } else {
+            asset = load_assets ? rt_gltf_load_asset(path) : rt_gltf_load(path);
+        }
         if (!asset)
             goto fail;
         mesh_count = rt_gltf_mesh_count(asset);
@@ -1095,18 +1116,46 @@ static void *rt_model3d_load_impl(rt_string path, int load_assets) {
     return model;
 
 fail:
+    free(preloaded_gltf_data);
+    rt_gltf_preload_bundle_free(preloaded_gltf_bundle);
     model_release_local(model);
     return NULL;
 }
 
 /// @brief Load a model from the filesystem (no asset-manager resolution). See header.
 void *rt_model3d_load(rt_string path) {
-    return rt_model3d_load_impl(path, 0);
+    return rt_model3d_load_impl(path, 0, NULL, 0, NULL);
 }
 
 /// @brief Load a model through the asset manager (mounted/embedded + dev fallback). See header.
 void *rt_model3d_load_asset(rt_string path) {
-    return rt_model3d_load_impl(path, 1);
+    return rt_model3d_load_impl(path, 1, NULL, 0, NULL);
+}
+
+/// @brief Internal async path: build a glTF/GLB Model3D from worker-staged root bytes.
+/// @details Takes ownership of @p preloaded_data. Non-glTF paths free it and use the normal
+///   loader so conservative async callers do not leak when falling back to main-thread loading.
+void *rt_model3d_load_preloaded_gltf(rt_string path,
+                                     uint8_t *preloaded_data,
+                                     size_t preloaded_size,
+                                     int load_assets) {
+    const char *path_cstr = path ? rt_string_cstr(path) : NULL;
+    if (!path_cstr || !(model_has_ext(path_cstr, ".gltf") || model_has_ext(path_cstr, ".glb"))) {
+        free(preloaded_data);
+        return load_assets ? rt_model3d_load_asset(path) : rt_model3d_load(path);
+    }
+    return rt_model3d_load_impl(path, load_assets ? 1 : 0, preloaded_data, preloaded_size, NULL);
+}
+
+void *rt_model3d_load_preloaded_gltf_bundle(rt_string path,
+                                            struct rt_gltf_preload_bundle *bundle,
+                                            int load_assets) {
+    const char *path_cstr = path ? rt_string_cstr(path) : NULL;
+    if (!path_cstr || !(model_has_ext(path_cstr, ".gltf") || model_has_ext(path_cstr, ".glb"))) {
+        rt_gltf_preload_bundle_free(bundle);
+        return load_assets ? rt_model3d_load_asset(path) : rt_model3d_load(path);
+    }
+    return rt_model3d_load_impl(path, load_assets ? 1 : 0, NULL, 0, bundle);
 }
 
 /// @brief Number of meshes loaded into this model.

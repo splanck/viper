@@ -5,6 +5,7 @@ bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
+bind Viper.Threads.Thread as Thread;
 bind "./main";
 
 func near(a: Float, b: Float, eps: Float) -> Boolean {
@@ -203,6 +204,19 @@ func validateTraversal(game: OpenWorldSlice) -> Boolean {
     return true;
 }
 
+func waitForAsyncAsset(game: OpenWorldSlice) -> Boolean {
+    var spawned = false;
+    var i = 0;
+    while (i < 100) {
+        if (game.asyncAssetSpawned()) {
+            spawned = true;
+        }
+        Thread.Sleep(10);
+        i = i + 1;
+    }
+    return spawned;
+}
+
 func runSliceReplay() -> Float {
     var game = new OpenWorldSlice();
     game.setup("Open World Slice Probe", 128, 96);
@@ -211,7 +225,7 @@ func runSliceReplay() -> Float {
         game.destroy();
         return -99999.0;
     }
-    if (game.asyncAssetSpawned() == false) {
+    if (waitForAsyncAsset(game) == false) {
         game.destroy();
         return fail("async model handle did not spawn the packaged prop");
     }

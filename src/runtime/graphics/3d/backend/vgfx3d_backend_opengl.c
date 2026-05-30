@@ -360,14 +360,24 @@ static struct {
 typedef struct {
     const void *pixels;
     uint64_t generation;
+    uint64_t pending_generation;
     GLuint tex;
+    int32_t width;
+    int32_t height;
+    int32_t upload_next_row;
+    int8_t upload_in_progress;
     uint64_t last_used_frame;
 } gl_texture_cache_entry_t;
 
 typedef struct {
     const void *cubemap;
     uint64_t generation;
+    uint64_t pending_generation;
     GLuint tex;
+    int32_t face_size;
+    int32_t upload_face;
+    int32_t upload_next_row;
+    int8_t upload_in_progress;
     uint64_t last_used_frame;
 } gl_cubemap_cache_entry_t;
 
@@ -477,6 +487,8 @@ typedef struct {
     int32_t morph_cache_capacity;
     gl_mesh_cache_entry_t mesh_cache[GL_MESH_CACHE_CAPACITY];
     uint64_t frame_serial;
+    uint64_t texture_upload_bytes;
+    uint64_t texture_upload_budget_bytes;
 
     int32_t width;
     int32_t height;
@@ -1911,6 +1923,140 @@ static void texture_cache_destroy(gl_context_t *ctx) {
     ctx->morph_cache_capacity = 0;
 }
 
+static void gl_record_texture_upload_bytes(gl_context_t *ctx, uint64_t bytes) {
+    if (!ctx || bytes == 0)
+        return;
+    if (ctx->texture_upload_bytes > UINT64_MAX - bytes) {
+        ctx->texture_upload_bytes = UINT64_MAX;
+        return;
+    }
+    ctx->texture_upload_bytes += bytes;
+}
+
+static uint64_t gl_texture_pending_bytes(const gl_texture_cache_entry_t *entry) {
+    if (!entry)
+        return 0;
+    return vgfx3d_pending_rgba_upload_bytes(
+        entry->width, entry->height, entry->upload_next_row, entry->upload_in_progress);
+}
+
+static uint64_t gl_cubemap_pending_bytes(const gl_cubemap_cache_entry_t *entry) {
+    if (!entry)
+        return 0;
+    return vgfx3d_pending_cubemap_rgba_upload_bytes(
+        entry->face_size, entry->upload_face, entry->upload_next_row, entry->upload_in_progress);
+}
+
+static uint64_t gl_get_texture_upload_pending_bytes(void *ctx_ptr) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    uint64_t total = 0;
+
+    if (!ctx)
+        return 0;
+    for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
+        uint64_t bytes = gl_texture_pending_bytes(&ctx->texture_cache[i]);
+        if (total > UINT64_MAX - bytes)
+            return UINT64_MAX;
+        total += bytes;
+    }
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        uint64_t bytes = gl_cubemap_pending_bytes(&ctx->cubemap_cache[i]);
+        if (total > UINT64_MAX - bytes)
+            return UINT64_MAX;
+        total += bytes;
+    }
+    return total;
+}
+
+static void gl_set_texture_upload_budget(void *ctx_ptr, uint64_t bytes) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    if (ctx)
+        ctx->texture_upload_budget_bytes = bytes;
+}
+
+static int gl_continue_texture_upload(
+    gl_context_t *ctx, gl_texture_cache_entry_t *entry, const void *pixels_ptr) {
+    int32_t rows;
+    int32_t slice_w = 0;
+    int32_t slice_rows = 0;
+    uint8_t *rgba = NULL;
+    uint64_t bytes;
+
+    if (!ctx || !entry || !pixels_ptr || !entry->upload_in_progress || !entry->tex)
+        return 0;
+    rows = vgfx3d_upload_rows_for_budget(entry->width,
+                                         entry->height,
+                                         entry->upload_next_row,
+                                         ctx->texture_upload_budget_bytes,
+                                         ctx->texture_upload_bytes);
+    if (rows <= 0)
+        return 0;
+    if (vgfx3d_unpack_pixels_rgba_rows(
+            pixels_ptr, entry->upload_next_row, rows, 1, &slice_w, &slice_rows, &rgba) != 0 ||
+        !rgba || slice_w != entry->width || slice_rows <= 0) {
+        free(rgba);
+        return 0;
+    }
+
+    gl.BindTexture(GL_TEXTURE_2D, entry->tex);
+    gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    gl.TexSubImage2D(GL_TEXTURE_2D,
+                     0,
+                     0,
+                     entry->upload_next_row,
+                     slice_w,
+                     slice_rows,
+                     GL_RGBA,
+                     GL_UNSIGNED_BYTE,
+                     rgba);
+    bytes = (uint64_t)(uint32_t)slice_w * (uint64_t)(uint32_t)slice_rows * 4u;
+    gl_record_texture_upload_bytes(ctx, bytes);
+    free(rgba);
+
+    entry->upload_next_row += slice_rows;
+    entry->last_used_frame = ctx->frame_serial;
+    if (entry->upload_next_row >= entry->height) {
+        gl.GenerateMipmap(GL_TEXTURE_2D);
+        entry->generation = entry->pending_generation;
+        entry->pending_generation = 0;
+        entry->upload_in_progress = 0;
+        return 1;
+    }
+    return 0;
+}
+
+static int gl_start_texture_upload(
+    gl_context_t *ctx, gl_texture_cache_entry_t *entry, const void *pixels_ptr, uint64_t cache_key) {
+    int32_t w = 0;
+    int32_t h = 0;
+
+    if (!ctx || !entry || !pixels_ptr || !vgfx3d_get_pixels_extent(pixels_ptr, &w, &h))
+        return 0;
+    if (!entry->tex) {
+        gl.GenTextures(1, &entry->tex);
+        if (!entry->tex)
+            return 0;
+    }
+
+    entry->pixels = pixels_ptr;
+    entry->pending_generation = cache_key;
+    entry->generation = 0;
+    entry->width = w;
+    entry->height = h;
+    entry->upload_next_row = 0;
+    entry->upload_in_progress = 1;
+    entry->last_used_frame = ctx->frame_serial;
+
+    gl.BindTexture(GL_TEXTURE_2D, entry->tex);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl_continue_texture_upload(ctx, entry, pixels_ptr);
+    return 1;
+}
+
 /// @brief Texture-cache lookup with auto-create.
 ///
 /// Three-way:
@@ -1932,61 +2078,47 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
             ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
             return ctx->texture_cache[i].tex;
         }
+        if (ctx->texture_cache[i].pixels == pixels_ptr &&
+            ctx->texture_cache[i].pending_generation == cache_key &&
+            ctx->texture_cache[i].upload_in_progress) {
+            return gl_continue_texture_upload(ctx, &ctx->texture_cache[i], pixels_ptr)
+                       ? ctx->texture_cache[i].tex
+                       : 0;
+        }
     }
 
     for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
         if (ctx->texture_cache[i].pixels == pixels_ptr) {
-            int32_t w = 0, h = 0;
-            uint8_t *rgba = NULL;
-            if (vgfx3d_unpack_pixels_rgba(pixels_ptr, &w, &h, &rgba) != 0)
+            if (!gl_start_texture_upload(ctx, &ctx->texture_cache[i], pixels_ptr, cache_key))
                 return 0;
-            vgfx3d_flip_rgba_rows(rgba, w, h);
-            gl.BindTexture(GL_TEXTURE_2D, ctx->texture_cache[i].tex);
-            gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-            gl.GenerateMipmap(GL_TEXTURE_2D);
-            free(rgba);
-            ctx->texture_cache[i].generation = cache_key;
-            ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
-            return ctx->texture_cache[i].tex;
+            return ctx->texture_cache[i].upload_in_progress ? 0 : ctx->texture_cache[i].tex;
         }
     }
-
-    int32_t w = 0, h = 0;
-    uint8_t *rgba = NULL;
-    if (vgfx3d_unpack_pixels_rgba(pixels_ptr, &w, &h, &rgba) != 0)
-        return 0;
-    vgfx3d_flip_rgba_rows(rgba, w, h);
-
-    GLuint tex = 0;
-    gl.GenTextures(1, &tex);
-    gl.BindTexture(GL_TEXTURE_2D, tex);
-    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    gl.GenerateMipmap(GL_TEXTURE_2D);
-    free(rgba);
 
     if (ctx->texture_cache_count >= ctx->texture_cache_capacity) {
         int32_t new_cap = vgfx3d_opengl_next_capacity(
             ctx->texture_cache_capacity, ctx->texture_cache_count + 1, 16);
         gl_texture_cache_entry_t *nv = (gl_texture_cache_entry_t *)realloc(
             ctx->texture_cache, (size_t)new_cap * sizeof(gl_texture_cache_entry_t));
-        if (!nv) {
-            gl.DeleteTextures(1, &tex);
+        if (!nv)
             return 0;
-        }
         ctx->texture_cache = nv;
+        memset(ctx->texture_cache + ctx->texture_cache_capacity,
+               0,
+               (size_t)(new_cap - ctx->texture_cache_capacity) * sizeof(*ctx->texture_cache));
         ctx->texture_cache_capacity = new_cap;
     }
 
-    ctx->texture_cache[ctx->texture_cache_count].pixels = pixels_ptr;
-    ctx->texture_cache[ctx->texture_cache_count].generation = cache_key;
-    ctx->texture_cache[ctx->texture_cache_count].tex = tex;
-    ctx->texture_cache[ctx->texture_cache_count].last_used_frame = ctx->frame_serial;
-    ctx->texture_cache_count++;
-    return tex;
+    gl_texture_cache_entry_t *entry = &ctx->texture_cache[ctx->texture_cache_count++];
+    memset(entry, 0, sizeof(*entry));
+    if (!gl_start_texture_upload(ctx, entry, pixels_ptr, cache_key)) {
+        if (entry->tex)
+            gl.DeleteTextures(1, &entry->tex);
+        memset(entry, 0, sizeof(*entry));
+        ctx->texture_cache_count--;
+        return 0;
+    }
+    return entry->upload_in_progress ? 0 : entry->tex;
 }
 
 /// @brief Float max-LOD index for a cubemap's mip pyramid (parity with D3D11 version).
@@ -2008,96 +2140,98 @@ static float gl_cubemap_max_lod(const rt_cubemap3d *cubemap) {
     return lod;
 }
 
-/// @brief Cubemap-cache lookup with auto-create — analogous to `gl_get_cached_texture`.
-///
-/// Iterates over six faces and uploads each to its `GL_TEXTURE_CUBE_MAP_POSITIVE_X + n`
-/// slot. Mipmaps generated from the top mip of each face. Edge-clamp
-/// to avoid seams at face boundaries.
-static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
-    uint64_t generation;
-    if (!ctx || !cubemap)
+static int gl_continue_cubemap_upload(
+    gl_context_t *ctx, gl_cubemap_cache_entry_t *entry, const rt_cubemap3d *cubemap) {
+    if (!ctx || !entry || !cubemap || !entry->upload_in_progress || !entry->tex ||
+        entry->face_size <= 0)
         return 0;
-    generation = vgfx3d_get_cubemap_generation(cubemap);
 
-    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
-        if (ctx->cubemap_cache[i].cubemap == cubemap &&
-            ctx->cubemap_cache[i].generation == generation) {
-            ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
-            return ctx->cubemap_cache[i].tex;
+    while (entry->upload_face < 6) {
+        int32_t rows = vgfx3d_upload_rows_for_budget(entry->face_size,
+                                                     entry->face_size,
+                                                     entry->upload_next_row,
+                                                     ctx->texture_upload_budget_bytes,
+                                                     ctx->texture_upload_bytes);
+        int32_t slice_size = 0;
+        int32_t slice_rows = 0;
+        uint8_t *rgba = NULL;
+        uint64_t bytes;
+
+        if (rows <= 0)
+            return 0;
+        if (vgfx3d_unpack_cubemap_rgba_rows(cubemap,
+                                            entry->upload_face,
+                                            entry->upload_next_row,
+                                            rows,
+                                            1,
+                                            &slice_size,
+                                            &slice_rows,
+                                            &rgba) != 0 ||
+            !rgba || slice_size != entry->face_size || slice_rows <= 0) {
+            free(rgba);
+            return 0;
         }
+
+        gl.BindTexture(GL_TEXTURE_CUBE_MAP, entry->tex);
+        gl.PixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        gl.TexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)entry->upload_face,
+                         0,
+                         0,
+                         entry->upload_next_row,
+                         slice_size,
+                         slice_rows,
+                         GL_RGBA,
+                         GL_UNSIGNED_BYTE,
+                         rgba);
+        bytes = (uint64_t)(uint32_t)slice_size * (uint64_t)(uint32_t)slice_rows * 4u;
+        gl_record_texture_upload_bytes(ctx, bytes);
+        free(rgba);
+
+        entry->upload_next_row += slice_rows;
+        entry->last_used_frame = ctx->frame_serial;
+        if (entry->upload_next_row < entry->face_size)
+            return 0;
+        entry->upload_face++;
+        entry->upload_next_row = 0;
     }
 
-    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
-        if (ctx->cubemap_cache[i].cubemap == cubemap) {
-            int32_t face_size = 0;
-            uint8_t *rgba_faces[6] = {0};
-            if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, rgba_faces) != 0) {
-                if (ctx->cubemap_cache[i].tex)
-                    gl.DeleteTextures(1, &ctx->cubemap_cache[i].tex);
-                ctx->cubemap_cache[i].tex = 0;
-                ctx->cubemap_cache[i].generation = 0;
-                ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
-                return 0;
-            }
-            if (!ctx->cubemap_cache[i].tex) {
-                gl.GenTextures(1, &ctx->cubemap_cache[i].tex);
-                if (!ctx->cubemap_cache[i].tex) {
-                    for (int face = 0; face < 6; face++)
-                        free(rgba_faces[face]);
-                    return 0;
-                }
-                gl.BindTexture(GL_TEXTURE_CUBE_MAP, ctx->cubemap_cache[i].tex);
-                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-                gl.TexParameteri(
-                    GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            }
-            gl.BindTexture(GL_TEXTURE_CUBE_MAP, ctx->cubemap_cache[i].tex);
-            for (int face = 0; face < 6; face++) {
-                uint8_t *rgba = rgba_faces[face];
-                vgfx3d_flip_rgba_rows(rgba, face_size, face_size);
-                gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
-                              0,
-                              GL_RGBA8,
-                              face_size,
-                              face_size,
-                              0,
-                              GL_RGBA,
-                              GL_UNSIGNED_BYTE,
-                              rgba);
-            }
-            for (int face = 0; face < 6; face++)
-                free(rgba_faces[face]);
-            gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
-            ctx->cubemap_cache[i].generation = generation;
-            ctx->cubemap_cache[i].last_used_frame = ctx->frame_serial;
-            return ctx->cubemap_cache[i].tex;
-        }
-    }
+    gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    entry->generation = entry->pending_generation;
+    entry->pending_generation = 0;
+    entry->upload_in_progress = 0;
+    return 1;
+}
 
-    GLuint tex = 0;
+static int gl_start_cubemap_upload(gl_context_t *ctx,
+                                   gl_cubemap_cache_entry_t *entry,
+                                   const rt_cubemap3d *cubemap,
+                                   uint64_t generation) {
     int32_t face_size = 0;
-    uint8_t *rgba_faces[6] = {0};
-    if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, rgba_faces) != 0)
+
+    if (!ctx || !entry || !cubemap || !vgfx3d_get_cubemap_face_size(cubemap, &face_size))
         return 0;
-    gl.GenTextures(1, &tex);
-    if (!tex) {
-        for (int face = 0; face < 6; face++)
-            free(rgba_faces[face]);
-        return 0;
+    if (!entry->tex) {
+        gl.GenTextures(1, &entry->tex);
+        if (!entry->tex)
+            return 0;
     }
-    gl.BindTexture(GL_TEXTURE_CUBE_MAP, tex);
+
+    entry->cubemap = cubemap;
+    entry->pending_generation = generation;
+    entry->generation = 0;
+    entry->face_size = face_size;
+    entry->upload_face = 0;
+    entry->upload_next_row = 0;
+    entry->upload_in_progress = 1;
+    entry->last_used_frame = ctx->frame_serial;
+
+    gl.BindTexture(GL_TEXTURE_CUBE_MAP, entry->tex);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
     for (int face = 0; face < 6; face++) {
-        uint8_t *rgba = rgba_faces[face];
-        vgfx3d_flip_rgba_rows(rgba, face_size, face_size);
         gl.TexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)face,
                       0,
                       GL_RGBA8,
@@ -2106,31 +2240,64 @@ static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubem
                       0,
                       GL_RGBA,
                       GL_UNSIGNED_BYTE,
-                      rgba);
+                      NULL);
     }
-    for (int face = 0; face < 6; face++)
-        free(rgba_faces[face]);
-    gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    gl_continue_cubemap_upload(ctx, entry, cubemap);
+    return 1;
+}
+
+/// @brief Cubemap-cache lookup with budgeted face-row upload.
+static GLuint gl_get_cached_cubemap(gl_context_t *ctx, const rt_cubemap3d *cubemap) {
+    uint64_t generation;
+    if (!ctx || !cubemap)
+        return 0;
+    generation = vgfx3d_get_cubemap_generation(cubemap);
+
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        gl_cubemap_cache_entry_t *entry = &ctx->cubemap_cache[i];
+        if (entry->cubemap == cubemap && entry->generation == generation && entry->tex) {
+            entry->last_used_frame = ctx->frame_serial;
+            return entry->tex;
+        }
+        if (entry->cubemap == cubemap && entry->pending_generation == generation &&
+            entry->upload_in_progress) {
+            entry->last_used_frame = ctx->frame_serial;
+            return gl_continue_cubemap_upload(ctx, entry, cubemap) ? entry->tex : 0;
+        }
+    }
+
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        if (ctx->cubemap_cache[i].cubemap == cubemap) {
+            if (!gl_start_cubemap_upload(ctx, &ctx->cubemap_cache[i], cubemap, generation))
+                return 0;
+            return ctx->cubemap_cache[i].upload_in_progress ? 0 : ctx->cubemap_cache[i].tex;
+        }
+    }
 
     if (ctx->cubemap_cache_count >= ctx->cubemap_cache_capacity) {
         int32_t new_cap = vgfx3d_opengl_next_capacity(
             ctx->cubemap_cache_capacity, ctx->cubemap_cache_count + 1, 8);
         gl_cubemap_cache_entry_t *nv = (gl_cubemap_cache_entry_t *)realloc(
             ctx->cubemap_cache, (size_t)new_cap * sizeof(gl_cubemap_cache_entry_t));
-        if (!nv) {
-            gl.DeleteTextures(1, &tex);
+        if (!nv)
             return 0;
-        }
         ctx->cubemap_cache = nv;
+        memset(ctx->cubemap_cache + ctx->cubemap_cache_capacity,
+               0,
+               (size_t)(new_cap - ctx->cubemap_cache_capacity) * sizeof(*ctx->cubemap_cache));
         ctx->cubemap_cache_capacity = new_cap;
     }
 
-    ctx->cubemap_cache[ctx->cubemap_cache_count].cubemap = cubemap;
-    ctx->cubemap_cache[ctx->cubemap_cache_count].generation = generation;
-    ctx->cubemap_cache[ctx->cubemap_cache_count].tex = tex;
-    ctx->cubemap_cache[ctx->cubemap_cache_count].last_used_frame = ctx->frame_serial;
-    ctx->cubemap_cache_count++;
-    return tex;
+    gl_cubemap_cache_entry_t *entry = &ctx->cubemap_cache[ctx->cubemap_cache_count++];
+    memset(entry, 0, sizeof(*entry));
+    if (!gl_start_cubemap_upload(ctx, entry, cubemap, generation)) {
+        if (entry->tex)
+            gl.DeleteTextures(1, &entry->tex);
+        memset(entry, 0, sizeof(*entry));
+        ctx->cubemap_cache_count--;
+        return 0;
+    }
+    return entry->upload_in_progress ? 0 : entry->tex;
 }
 
 static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt);
@@ -4260,6 +4427,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     memcpy(ctx->scene_prev_vp, kIdentity4x4, sizeof(ctx->scene_prev_vp));
     memcpy(ctx->scene_inv_vp, kIdentity4x4, sizeof(ctx->scene_inv_vp));
     ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
+    ctx->texture_upload_budget_bytes = UINT64_MAX;
 
     GLuint vs =
         compile_shader_parts(GL_VERTEX_SHADER,
@@ -4574,6 +4742,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     ctx->shadow_count = 0;
     memset(ctx->shadow_complete, 0, sizeof(ctx->shadow_complete));
     ctx->current_pass_is_overlay = (!ctx->rtt_active && cam->load_existing_color) ? 1 : 0;
+    if (!ctx->current_pass_is_overlay)
+        ctx->texture_upload_bytes = 0;
     if (!ctx->current_pass_is_overlay) {
         ctx->scene_composited_to_backbuffer = 0;
         ctx->scene_postfx_pending = 0;
@@ -4748,6 +4918,11 @@ static void gl_end_frame(void *ctx_ptr) {
         ctx->rtt_target->color_dirty = 1;
         ctx->rtt_target->hdr_color_valid = 0;
     }
+}
+
+static uint64_t gl_get_texture_upload_bytes(void *ctx_ptr) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    return ctx ? ctx->texture_upload_bytes : 0;
 }
 
 /// @brief Backend `resize` op — handle window-size changes.
@@ -5164,6 +5339,9 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .apply_postfx = gl_apply_postfx,
     .set_gpu_postfx_enabled = gl_set_gpu_postfx_enabled,
     .set_gpu_postfx_snapshot = gl_set_gpu_postfx_snapshot,
+    .set_texture_upload_budget = gl_set_texture_upload_budget,
+    .get_texture_upload_pending_bytes = gl_get_texture_upload_pending_bytes,
+    .get_texture_upload_bytes = gl_get_texture_upload_bytes,
 };
 
 #endif /* __linux__ && VIPER_ENABLE_GRAPHICS */
