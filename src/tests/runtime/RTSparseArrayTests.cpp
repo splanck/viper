@@ -22,6 +22,13 @@ static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 static int g_finalizer_calls = 0;
+
+struct SparseProbe {
+    void *vptr;
+    int64_t count;
+    int64_t capacity;
+    void *slots;
+};
 } // namespace
 
 extern "C" void vm_trap(const char *msg) {
@@ -200,6 +207,25 @@ static void test_set_null_releases_value() {
     release_obj(sa);
 }
 
+static void test_set_null_missing_does_not_grow() {
+    void *sa = rt_sparse_new();
+    for (int64_t i = 0; i < 12; ++i) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "v%lld", (long long)i);
+        rt_sparse_set(sa, i, make_str(buf));
+    }
+
+    SparseProbe *probe = static_cast<SparseProbe *>(sa);
+    int64_t capacity_before = probe->capacity;
+    assert(rt_sparse_len(sa) == 12);
+
+    rt_sparse_set(sa, 123456789, NULL);
+    assert(rt_sparse_len(sa) == 12);
+    assert(probe->capacity == capacity_before);
+
+    release_obj(sa);
+}
+
 static void test_set_retain_overflow_leaves_slot_empty() {
     void *sa = rt_sparse_new();
     void *value = new_obj();
@@ -254,6 +280,7 @@ int main() {
     test_clear();
     test_set_null_removes_entry();
     test_set_null_releases_value();
+    test_set_null_missing_does_not_grow();
     test_set_retain_overflow_leaves_slot_empty();
     test_grow();
     test_null_safety();

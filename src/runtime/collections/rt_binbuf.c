@@ -61,7 +61,7 @@ typedef struct rt_binbuf_impl {
 /// @brief Checked cast of an opaque handle to the BinaryBuffer impl;
 ///        traps if @p obj is NULL or not a BinaryBuffer.
 static rt_binbuf_impl *binbuf_require(void *obj) {
-    if (!obj || rt_obj_class_id(obj) != RT_BINBUF_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_BINBUF_CLASS_ID, sizeof(rt_binbuf_impl))) {
         rt_trap("BinaryBuffer: invalid buffer");
         return NULL;
     }

@@ -162,7 +162,7 @@ void *rt_list_new(void) {
 /// @param p Raw pointer to cast.
 /// @return Pointer cast to rt_list_impl*.
 static inline rt_list_impl *as_list(void *p) {
-    if (!p || rt_obj_class_id(p) != RT_LIST_CLASS_ID) {
+    if (!rt_obj_is_instance(p, RT_LIST_CLASS_ID, sizeof(rt_list_impl))) {
         rt_trap("List: invalid List object");
         return NULL;
     }

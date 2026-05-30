@@ -68,7 +68,7 @@ typedef struct rt_countmap_impl {
 /// @brief Checked cast of an opaque handle to the CountMap implementation.
 /// @details Traps with @p what if @p obj is NULL or not a CountMap.
 static rt_countmap_impl *as_countmap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_COUNTMAP_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_COUNTMAP_CLASS_ID, sizeof(rt_countmap_impl))) {
         rt_trap(what);
         return NULL;
     }

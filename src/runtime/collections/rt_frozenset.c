@@ -80,7 +80,7 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the FrozenSet implementation.
 /// @details Traps with @p what if @p obj is NULL or not a FrozenSet.
 static rt_frozenset_impl *as_frozenset(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_FROZENSET_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_FROZENSET_CLASS_ID, sizeof(rt_frozenset_impl))) {
         rt_trap(what);
         return NULL;
     }

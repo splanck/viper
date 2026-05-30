@@ -75,7 +75,7 @@ static int find_free(const rt_soundbank_impl *bank) {
 /// @brief Safe-cast an opaque handle to rt_soundbank_impl.
 /// @return The soundbank, or NULL if @p bank_ptr is not a SoundBank object.
 static rt_soundbank_impl *as_soundbank(void *bank_ptr) {
-    if (rt_obj_class_id(bank_ptr) != RT_SOUNDBANK_CLASS_ID)
+    if (!rt_obj_is_instance(bank_ptr, RT_SOUNDBANK_CLASS_ID, sizeof(rt_soundbank_impl)))
         return NULL;
     return (rt_soundbank_impl *)bank_ptr;
 }

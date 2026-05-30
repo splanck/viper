@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -23,6 +24,9 @@ extern "C" {
 #include "rt_set.h"
 #include "rt_stack.h"
 #include "rt_string.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
 
 /// @brief Vm_trap.
 void vm_trap(const char *msg) {
@@ -46,6 +50,11 @@ static int tests_passed = 0;
 
 static void *make_obj() {
     return rt_obj_new_i64(0, 8);
+}
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 //=============================================================================
@@ -329,6 +338,48 @@ static void test_iter_from_stack_snapshots_without_mutating() {
     ASSERT(rt_stack_pop(stack) == a, "stack bottom preserved after snapshot");
 }
 
+static void test_iter_from_stack_trap_preserves_source() {
+    void *stack = rt_stack_new();
+    void *a = make_obj();
+    void *b = make_obj();
+    void *c = make_obj();
+    rt_stack_push(stack, a);
+    rt_stack_push(stack, b);
+    rt_stack_push(stack, c);
+
+    rt_heap_hdr_t *hdr = rt_heap_hdr(c);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    jmp_buf recovery;
+    volatile int trapped = 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_iter_from_stack(stack);
+    } else {
+        trapped = 1;
+    }
+    rt_trap_clear_recovery();
+
+    ASSERT(trapped == 1, "stack iterator snapshot traps on retain overflow");
+    ASSERT(rt_stack_len(stack) == 3, "stack length preserved after snapshot trap");
+
+    hdr->refcnt = 1;
+    void *pc = rt_stack_pop(stack);
+    void *pb = rt_stack_pop(stack);
+    void *pa = rt_stack_pop(stack);
+    ASSERT(pc == c, "stack top preserved after snapshot trap");
+    ASSERT(pb == b, "stack middle preserved after snapshot trap");
+    ASSERT(pa == a, "stack bottom preserved after snapshot trap");
+
+    release_obj(pc);
+    release_obj(pb);
+    release_obj(pa);
+    release_obj(c);
+    release_obj(b);
+    release_obj(a);
+    release_obj(stack);
+}
+
 //=============================================================================
 // Empty collection tests
 //=============================================================================
@@ -358,6 +409,7 @@ int main() {
     test_iter_from_set();
     test_iter_from_ring();
     test_iter_from_stack_snapshots_without_mutating();
+    test_iter_from_stack_trap_preserves_source();
     test_iter_empty_seq();
 
     printf("Iterator tests: %d/%d passed\n", tests_passed, tests_run);

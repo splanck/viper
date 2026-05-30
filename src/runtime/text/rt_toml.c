@@ -43,6 +43,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// Minimum payload bytes read by Seq/Map public APIs when formatting TOML values.
+#define TOML_SEQ_MIN_PAYLOAD (sizeof(int64_t) * 2 + sizeof(void *) + sizeof(int8_t))
+#define TOML_MAP_MIN_PAYLOAD (sizeof(void *) * 2 + sizeof(size_t) * 2)
+
 // --- Helper: create string from substring ---
 
 /// @brief One-line wrapper that builds an `rt_string` from a (ptr, len) substring.
@@ -186,11 +190,13 @@ static void release_obj_maybe(void *obj) {
 }
 
 static int is_map_obj(void *obj) {
-    return obj && !rt_string_is_handle(obj) && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
+    return obj && !rt_string_is_handle(obj) &&
+           rt_obj_is_instance(obj, RT_MAP_CLASS_ID, TOML_MAP_MIN_PAYLOAD);
 }
 
 static int is_seq_obj(void *obj) {
-    return obj && !rt_string_is_handle(obj) && rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
+    return obj && !rt_string_is_handle(obj) &&
+           rt_obj_is_instance(obj, RT_SEQ_CLASS_ID, TOML_SEQ_MIN_PAYLOAD);
 }
 
 static void *ensure_table_path(void *root, const char *name, size_t len) {

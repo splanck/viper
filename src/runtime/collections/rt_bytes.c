@@ -153,7 +153,7 @@ static rt_bytes_impl *rt_bytes_alloc(int64_t len) {
 static rt_bytes_impl *rt_bytes_require(void *obj, const char *what) {
     if (!obj)
         return NULL;
-    if (rt_obj_class_id(obj) != RT_BYTES_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_BYTES_CLASS_ID, sizeof(rt_bytes_impl))) {
         rt_bytes_trap_invalid_operation(what);
         return NULL;
     }
@@ -349,7 +349,7 @@ int64_t rt_bytes_len(void *obj) {
 }
 
 int8_t rt_bytes_is_bytes(void *obj) {
-    return obj && rt_obj_class_id(obj) == RT_BYTES_CLASS_ID ? 1 : 0;
+    return rt_obj_is_instance(obj, RT_BYTES_CLASS_ID, sizeof(rt_bytes_impl)) ? 1 : 0;
 }
 
 uint8_t *rt_bytes_data(void *obj) {

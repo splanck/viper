@@ -56,7 +56,7 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the BloomFilter implementation.
 /// @details Traps with @p what if @p obj is NULL or not a BloomFilter.
 static rt_bloomfilter_impl *as_bloomfilter(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_BLOOMFILTER_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_BLOOMFILTER_CLASS_ID, sizeof(rt_bloomfilter_impl))) {
         rt_trap(what);
         return NULL;
     }

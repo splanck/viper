@@ -57,6 +57,10 @@
 
 #include "rt_trap.h"
 
+/// Minimum payload bytes read by Seq/Map public APIs during generic projection.
+#define SERIALIZE_SEQ_MIN_PAYLOAD (sizeof(int64_t) * 2 + sizeof(void *) + sizeof(int8_t))
+#define SERIALIZE_MAP_MIN_PAYLOAD (sizeof(void *) * 2 + sizeof(size_t) * 2)
+
 /// Thread-local error message.
 static _Thread_local rt_string g_last_error = NULL;
 
@@ -102,12 +106,12 @@ static void release_obj(void *obj) {
 
 /// @brief Return 1 if `obj` is a runtime Seq container.
 static int is_seq_obj(void *obj) {
-    return obj && rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
+    return rt_obj_is_instance(obj, RT_SEQ_CLASS_ID, SERIALIZE_SEQ_MIN_PAYLOAD);
 }
 
 /// @brief Return 1 if `obj` is a runtime Map container.
 static int is_map_obj(void *obj) {
-    return obj && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
+    return rt_obj_is_instance(obj, RT_MAP_CLASS_ID, SERIALIZE_MAP_MIN_PAYLOAD);
 }
 
 /// @brief Allocate a fresh `rt_string` from the null-terminated C string `s`.

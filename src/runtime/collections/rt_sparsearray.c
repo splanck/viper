@@ -64,7 +64,7 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the SparseArray implementation;
 ///        traps with @p what if @p obj is NULL or not a SparseArray.
 static rt_sparse_impl *as_sparse(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_SPARSEARRAY_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_SPARSEARRAY_CLASS_ID, sizeof(rt_sparse_impl))) {
         rt_trap(what);
         return NULL;
     }
@@ -272,14 +272,15 @@ void rt_sparse_set(void *obj, int64_t index, void *value) {
     if (!sa)
         return;
 
-    // Check load factor (> 70%)
-    if ((long double)sa->count * 10.0L >= (long double)sa->capacity * 7.0L && !sa_grow(sa))
-        return;
-
     if (!value) {
         rt_sparse_remove(obj, index);
         return;
     }
+
+    // Check load factor (> 70%)
+    if ((long double)sa->count * 10.0L >= (long double)sa->capacity * 7.0L && !sa_grow(sa))
+        return;
+
     sa_insert_internal(sa, index, value);
 }
 

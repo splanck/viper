@@ -48,6 +48,7 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int8_t rt_obj_is_instance(void *obj, int64_t class_id, size_t min_size);
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
@@ -98,12 +99,16 @@ static rt_soundlistener3d *s_active_listener_obj = NULL;
 
 /// @brief Checked cast of an opaque handle to SoundListener3D; NULL on class mismatch.
 static rt_soundlistener3d *sound3d_listener_checked(void *obj) {
-    return (rt_soundlistener3d *)rt_g3d_checked_or_null(obj, RT_G3D_SOUNDLISTENER3D_CLASS_ID);
+    if (!rt_obj_is_instance(obj, RT_G3D_SOUNDLISTENER3D_CLASS_ID, sizeof(rt_soundlistener3d)))
+        return NULL;
+    return (rt_soundlistener3d *)obj;
 }
 
 /// @brief Checked cast of an opaque handle to SoundSource3D; NULL on class mismatch.
 static rt_soundsource3d *sound3d_source_checked(void *obj) {
-    return (rt_soundsource3d *)rt_g3d_checked_or_null(obj, RT_G3D_SOUNDSOURCE3D_CLASS_ID);
+    if (!rt_obj_is_instance(obj, RT_G3D_SOUNDSOURCE3D_CLASS_ID, sizeof(rt_soundsource3d)))
+        return NULL;
+    return (rt_soundsource3d *)obj;
 }
 
 /// @brief Drop a GC-managed reference stored in `**slot` and null the slot.

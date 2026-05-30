@@ -82,7 +82,7 @@ typedef struct rt_pqueue_impl {
 /// @brief Checked cast of an opaque handle to the priority-queue impl;
 ///        traps with @p what if @p obj is NULL or not a PriorityQueue/Heap.
 static rt_pqueue_impl *as_pqueue(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_PQUEUE_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_PQUEUE_CLASS_ID, sizeof(rt_pqueue_impl))) {
         rt_trap(what);
         return NULL;
     }

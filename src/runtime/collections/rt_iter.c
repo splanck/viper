@@ -71,8 +71,10 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the Iterator implementation.
 /// @details Traps with @p what if @p obj is NULL or not an Iterator.
 static rt_iter_impl *as_iter(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_ITERATOR_CLASS_ID)
+    if (!rt_obj_is_instance(obj, RT_ITERATOR_CLASS_ID, sizeof(rt_iter_impl))) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_iter_impl *)obj;
 }
 
@@ -224,6 +226,7 @@ void *rt_iter_from_set(void *set) {
 /// @brief Snapshot a Stack into bottom-to-top iteration order without changing the source.
 void *rt_iter_from_stack(void *stack) {
     void *snapshot;
+    void *clone;
     void **items;
     int64_t len;
     int64_t count = 0;
@@ -239,7 +242,15 @@ void *rt_iter_from_stack(void *stack) {
     rt_seq_set_owns_elements(snapshot, 1);
     if (len <= 0)
         return make_iter_snapshot(snapshot, 0);
+    clone = rt_stack_clone(stack);
+    if (!clone) {
+        if (rt_obj_release_check0(snapshot))
+            rt_obj_free(snapshot);
+        return NULL;
+    }
     if ((uint64_t)len > SIZE_MAX / sizeof(void *)) {
+        if (rt_obj_release_check0(clone))
+            rt_obj_free(clone);
         if (rt_obj_release_check0(snapshot))
             rt_obj_free(snapshot);
         rt_trap("Iterator: stack snapshot too large");
@@ -247,21 +258,24 @@ void *rt_iter_from_stack(void *stack) {
     }
     items = (void **)malloc((size_t)len * sizeof(void *));
     if (!items) {
+        if (rt_obj_release_check0(clone))
+            rt_obj_free(clone);
         if (rt_obj_release_check0(snapshot))
             rt_obj_free(snapshot);
         rt_trap("Iterator: allocation failed");
         return NULL;
     }
 
-    while (!rt_stack_is_empty(stack) && count < len)
-        items[count++] = rt_stack_pop(stack);
+    while (!rt_stack_is_empty(clone) && count < len)
+        items[count++] = rt_stack_pop(clone);
 
     for (int64_t i = count; i > 0; --i) {
         void *item = items[i - 1];
         rt_seq_push(snapshot, item);
-        rt_stack_push(stack, item);
         release_temp_obj(item);
     }
+    if (rt_obj_release_check0(clone))
+        rt_obj_free(clone);
     free(items);
     return make_iter_snapshot(snapshot, rt_seq_len(snapshot));
 }

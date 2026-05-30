@@ -59,7 +59,7 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the UnionFind implementation;
 ///        traps with @p what if @p obj is NULL or not a UnionFind.
 static rt_unionfind_impl *as_unionfind(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_UNIONFIND_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_UNIONFIND_CLASS_ID, sizeof(rt_unionfind_impl))) {
         rt_trap(what);
         return NULL;
     }

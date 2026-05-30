@@ -176,7 +176,8 @@ static void *xml_node_new(rt_xml_node_type_t type) {
     if (type == XML_NODE_ELEMENT || type == XML_NODE_DOCUMENT) {
         node->children = rt_seq_new();
         if (!node->children) {
-            rt_obj_free(node);
+            if (rt_obj_release_check0(node))
+                rt_obj_free(node);
             return NULL;
         }
     }
@@ -185,11 +186,8 @@ static void *xml_node_new(rt_xml_node_type_t type) {
     if (type == XML_NODE_ELEMENT) {
         node->attributes = rt_map_new();
         if (!node->attributes) {
-            if (node->children) {
-                rt_obj_release_check0(node->children);
-                rt_obj_free(node->children);
-            }
-            rt_obj_free(node);
+            if (rt_obj_release_check0(node))
+                rt_obj_free(node);
             return NULL;
         }
     }
@@ -1175,7 +1173,7 @@ rt_string rt_xml_error(void) {
 
 /// @brief Return 1 if `node` is a live Viper.Data.Xml node handle; 0 otherwise.
 int8_t rt_xml_is_node(void *node) {
-    return node && rt_obj_class_id(node) == RT_XML_NODE_CLASS_ID ? 1 : 0;
+    return rt_obj_is_instance(node, RT_XML_NODE_CLASS_ID, sizeof(xml_node)) ? 1 : 0;
 }
 
 /// @brief `Xml.IsValid(text)` — boolean parse-success probe.

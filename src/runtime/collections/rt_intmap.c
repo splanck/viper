@@ -70,7 +70,7 @@ typedef struct rt_intmap_impl {
 /// @brief Checked cast of an opaque handle to the IntMap implementation.
 /// @details Traps with @p what if @p obj is NULL or not an IntMap.
 static rt_intmap_impl *as_intmap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_INTMAP_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_INTMAP_CLASS_ID, sizeof(rt_intmap_impl))) {
         rt_trap(what);
         return NULL;
     }

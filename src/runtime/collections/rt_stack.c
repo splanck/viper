@@ -75,7 +75,7 @@ typedef struct rt_stack_impl {
 /// @brief Checked cast of an opaque handle to the Stack implementation;
 ///        traps with @p what if @p obj is NULL or not a Stack.
 static rt_stack_impl *as_stack(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_STACK_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_STACK_CLASS_ID, sizeof(rt_stack_impl))) {
         rt_trap(what);
         return NULL;
     }

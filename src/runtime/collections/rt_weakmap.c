@@ -59,7 +59,7 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the WeakMap implementation;
 ///        traps with @p what if @p obj is NULL or not a WeakMap.
 static rt_weakmap_data *as_weakmap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_WEAKMAP_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_WEAKMAP_CLASS_ID, sizeof(rt_weakmap_data))) {
         rt_trap(what);
         return NULL;
     }

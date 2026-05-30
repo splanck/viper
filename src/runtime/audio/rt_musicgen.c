@@ -158,7 +158,7 @@ static int mg_centbeats_to_frames(int64_t centbeats,
 /// @brief Safe-cast an opaque handle to mg_song_t.
 /// @return The song, or NULL if @p song_ptr is not a MusicGen song object.
 static mg_song_t *mg_as_song(void *song_ptr) {
-    if (rt_obj_class_id(song_ptr) != MG_CLASS_ID)
+    if (!rt_obj_is_instance(song_ptr, MG_CLASS_ID, sizeof(mg_song_t)))
         return NULL;
     return (mg_song_t *)song_ptr;
 }

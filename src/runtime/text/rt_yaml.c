@@ -49,6 +49,10 @@
 
 #include "rt_trap.h"
 
+/// Minimum payload bytes read by Seq/Map public APIs when formatting YAML values.
+#define YAML_SEQ_MIN_PAYLOAD (sizeof(int64_t) * 2 + sizeof(void *) + sizeof(int8_t))
+#define YAML_MAP_MIN_PAYLOAD (sizeof(void *) * 2 + sizeof(size_t) * 2)
+
 //=============================================================================
 // Type Constants
 //=============================================================================
@@ -280,14 +284,14 @@ static bool yaml_is_boxed(void *obj) {
 static bool yaml_is_sequence(void *obj) {
     if (!obj || rt_string_is_handle(obj) || yaml_is_boxed(obj))
         return false;
-    return rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
+    return rt_obj_is_instance(obj, RT_SEQ_CLASS_ID, YAML_SEQ_MIN_PAYLOAD);
 }
 
 /// @brief True if `obj` is a Viper Mapping (`Map`) container.
 static bool yaml_is_mapping(void *obj) {
     if (!obj || rt_string_is_handle(obj) || yaml_is_boxed(obj))
         return false;
-    return rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
+    return rt_obj_is_instance(obj, RT_MAP_CLASS_ID, YAML_MAP_MIN_PAYLOAD);
 }
 
 //=============================================================================

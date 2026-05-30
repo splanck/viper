@@ -67,7 +67,7 @@ typedef struct {
 //=============================================================================
 
 static playlist_impl *as_playlist(void *obj) {
-    if (rt_obj_class_id(obj) != RT_PLAYLIST_CLASS_ID)
+    if (!rt_obj_is_instance(obj, RT_PLAYLIST_CLASS_ID, sizeof(playlist_impl)))
         return NULL;
     return (playlist_impl *)obj;
 }
@@ -75,35 +75,41 @@ static playlist_impl *as_playlist(void *obj) {
 /// @brief Build a fresh Fisher-Yates shuffle order for the current track list.
 /// @details Reuses the global runtime RNG so callers can pre-seed for
 ///          deterministic playback. Releases any previously-built order
-///          before producing a new one and traps on OOM (allocating the
-///          temporary indices array or `rt_seq_new()` failing). The
+///          and swaps it in only after the replacement is complete. Traps on
+///          OOM (allocating the temporary indices array or Seq failing). The
 ///          shuffle sequence stores `actual_index` values that
 ///          @ref get_track_index translates into track positions.
 /// @param pl Playlist instance (not NULL).
 static void generate_shuffle_order(playlist_impl *pl) {
-    if (pl->shuffle_order) {
-        if (rt_obj_release_check0(pl->shuffle_order))
-            rt_obj_free(pl->shuffle_order);
-        pl->shuffle_order = NULL;
+    void *new_order = NULL;
+    int64_t *indices = NULL;
+    int64_t count = rt_seq_len(pl->tracks);
+    if (count == 0) {
+        if (pl->shuffle_order) {
+            if (rt_obj_release_check0(pl->shuffle_order))
+                rt_obj_free(pl->shuffle_order);
+            pl->shuffle_order = NULL;
+        }
+        return;
     }
 
-    int64_t count = rt_seq_len(pl->tracks);
-    if (count == 0)
-        return;
-
-    pl->shuffle_order = rt_seq_new();
-    if (!pl->shuffle_order) {
+    new_order = rt_seq_with_capacity(count);
+    if (!new_order) {
         rt_trap("rt_playlist: memory allocation failed");
         return;
     }
 
     // Create sequential order first
     if ((uint64_t)count > SIZE_MAX / sizeof(int64_t)) {
+        if (rt_obj_release_check0(new_order))
+            rt_obj_free(new_order);
         rt_trap("rt_playlist: shuffle order allocation overflow");
         return;
     }
-    int64_t *indices = (int64_t *)malloc(count * sizeof(int64_t));
+    indices = (int64_t *)malloc(count * sizeof(int64_t));
     if (!indices) {
+        if (rt_obj_release_check0(new_order))
+            rt_obj_free(new_order);
         rt_trap("rt_playlist: memory allocation failed");
         return;
     }
@@ -121,10 +127,15 @@ static void generate_shuffle_order(playlist_impl *pl) {
 
     // Store in shuffle_order seq
     for (int64_t i = 0; i < count; i++) {
-        rt_seq_push(pl->shuffle_order, (void *)indices[i]);
+        rt_seq_push(new_order, (void *)indices[i]);
     }
 
     free(indices);
+    if (pl->shuffle_order) {
+        if (rt_obj_release_check0(pl->shuffle_order))
+            rt_obj_free(pl->shuffle_order);
+    }
+    pl->shuffle_order = new_order;
 }
 
 /// @brief Translate a playback position into an "actual" track index.
@@ -354,7 +365,8 @@ void *rt_playlist_new(void) {
 
     pl->tracks = rt_seq_new();
     if (!pl->tracks) {
-        rt_obj_free(pl);
+        if (rt_obj_release_check0(pl))
+            rt_obj_free(pl);
         rt_trap("rt_playlist: memory allocation failed");
         return NULL;
     }

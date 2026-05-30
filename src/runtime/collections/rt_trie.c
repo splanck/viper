@@ -84,7 +84,7 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the Trie implementation;
 ///        traps with @p what if @p obj is NULL or not a Trie.
 static rt_trie_impl *as_trie(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_TRIE_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_TRIE_CLASS_ID, sizeof(rt_trie_impl))) {
         rt_trap(what);
         return NULL;
     }

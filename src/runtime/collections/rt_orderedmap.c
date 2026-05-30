@@ -71,7 +71,7 @@ typedef struct {
 /// @details Raises a runtime-error trap with @p what if @p obj is NULL or
 ///          not an OrderedMap.
 static rt_orderedmap_impl *as_orderedmap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_ORDEREDMAP_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_ORDEREDMAP_CLASS_ID, sizeof(rt_orderedmap_impl))) {
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, what);
         return NULL;
     }

@@ -79,7 +79,7 @@ typedef struct rt_lrucache_impl {
 /// @brief Checked cast of an opaque handle to the LruCache implementation.
 /// @details Traps with @p what if @p obj is NULL or not an LruCache.
 static rt_lrucache_impl *as_lrucache(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_LRUCACHE_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_LRUCACHE_CLASS_ID, sizeof(rt_lrucache_impl))) {
         rt_trap(what);
         return NULL;
     }

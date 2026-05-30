@@ -79,7 +79,7 @@ typedef struct rt_bm_inv_link rt_bm_inv_link;
 /// @brief Checked cast of an opaque handle to the BiMap implementation.
 /// @details Traps with the @p what message if @p obj is NULL or not a BiMap.
 static rt_bimap_impl *as_bimap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_BIMAP_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_BIMAP_CLASS_ID, sizeof(rt_bimap_impl))) {
         rt_trap(what);
         return NULL;
     }

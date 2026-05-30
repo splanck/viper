@@ -55,7 +55,7 @@ typedef struct rt_ring_impl {
 /// @brief Checked cast of an opaque handle to the RingBuffer implementation;
 ///        traps with @p what if @p obj is NULL or not a RingBuffer.
 static rt_ring_impl *as_ring(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_RING_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_RING_CLASS_ID, sizeof(rt_ring_impl))) {
         rt_trap(what);
         return NULL;
     }

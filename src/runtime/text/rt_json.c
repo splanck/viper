@@ -57,6 +57,10 @@
 #define JSON_TYPE_BOOL 101
 #define JSON_TYPE_NUMBER 102
 
+/// Minimum payload bytes read by Seq/Map public APIs during JSON formatting.
+#define JSON_SEQ_MIN_PAYLOAD (sizeof(int64_t) * 2 + sizeof(void *) + sizeof(int8_t))
+#define JSON_MAP_MIN_PAYLOAD (sizeof(void *) * 2 + sizeof(size_t) * 2)
+
 //=============================================================================
 // Parser State
 //=============================================================================
@@ -1067,12 +1071,12 @@ static void format_value(
     rt_heap_hdr_t *hdr = NULL;
     if (rt_heap_try_get_header(obj, &hdr)) {
         // Check collection types by class_id first
-        if (hdr->class_id == RT_SEQ_CLASS_ID) {
+        if (rt_obj_is_instance(obj, RT_SEQ_CLASS_ID, JSON_SEQ_MIN_PAYLOAD)) {
             format_array(sb, obj, indent, level, ctx);
             return;
         }
 
-        if (hdr->class_id == RT_MAP_CLASS_ID) {
+        if (rt_obj_is_instance(obj, RT_MAP_CLASS_ID, JSON_MAP_MIN_PAYLOAD)) {
             format_object(sb, obj, indent, level, ctx);
             return;
         }
@@ -1730,10 +1734,10 @@ rt_string rt_json_type_of(void *obj) {
     // Use class_id to distinguish between collections and boxes
     rt_heap_hdr_t *hdr = NULL;
     if (rt_heap_try_get_header(obj, &hdr)) {
-        if (hdr->class_id == RT_SEQ_CLASS_ID)
+        if (rt_obj_is_instance(obj, RT_SEQ_CLASS_ID, JSON_SEQ_MIN_PAYLOAD))
             return rt_string_from_bytes("array", 5);
 
-        if (hdr->class_id == RT_MAP_CLASS_ID)
+        if (rt_obj_is_instance(obj, RT_MAP_CLASS_ID, JSON_MAP_MIN_PAYLOAD))
             return rt_string_from_bytes("object", 6);
 
         // Box (class_id == 0) - check type tag

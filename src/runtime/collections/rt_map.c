@@ -102,7 +102,7 @@ typedef struct rt_map_impl {
 /// @brief Checked cast of an opaque handle to the Map implementation.
 /// @details Traps with @p what if @p obj is NULL or not a Map.
 static rt_map_impl *as_map(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_MAP_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_MAP_CLASS_ID, sizeof(rt_map_impl))) {
         rt_trap(what);
         return NULL;
     }

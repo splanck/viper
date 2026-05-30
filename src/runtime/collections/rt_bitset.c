@@ -62,8 +62,10 @@ typedef struct rt_bitset_impl {
 /// @brief Checked cast of an opaque handle to the BitSet implementation.
 /// @details Traps with the @p what message if @p obj is NULL or not a BitSet.
 static rt_bitset_impl *as_bitset(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_BITSET_CLASS_ID)
+    if (!rt_obj_is_instance(obj, RT_BITSET_CLASS_ID, sizeof(rt_bitset_impl))) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_bitset_impl *)obj;
 }
 

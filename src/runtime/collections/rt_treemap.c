@@ -85,7 +85,7 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the TreeMap implementation;
 ///        traps with @p what if @p obj is NULL or not a TreeMap.
 static treemap_impl *as_treemap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_TREEMAP_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_TREEMAP_CLASS_ID, sizeof(treemap_impl))) {
         rt_trap(what);
         return NULL;
     }
