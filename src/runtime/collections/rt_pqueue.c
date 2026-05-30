@@ -82,8 +82,10 @@ typedef struct rt_pqueue_impl {
 /// @brief Checked cast of an opaque handle to the priority-queue impl;
 ///        traps with @p what if @p obj is NULL or not a PriorityQueue/Heap.
 static rt_pqueue_impl *as_pqueue(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_PQUEUE_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_PQUEUE_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_pqueue_impl *)obj;
 }
 
@@ -98,6 +100,8 @@ static void rt_pqueue_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h)
+        return;
     if (!h->items)
         return;
     for (int64_t i = 0; i < h->len; i++)
@@ -109,6 +113,8 @@ static void rt_pqueue_finalize(void *obj) {
     if (!obj)
         return;
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h)
+        return;
     for (int64_t i = 0; i < h->len; i++)
         heap_release_value(h->items[i].value);
     free(h->items);
@@ -118,16 +124,26 @@ static void rt_pqueue_finalize(void *obj) {
 }
 
 /// @brief Grows the heap capacity.
-static void heap_grow(rt_pqueue_impl *h) {
-    if (h->cap > INT64_MAX / HEAP_GROWTH_FACTOR)
+static int heap_grow(rt_pqueue_impl *h) {
+    if (h->cap > INT64_MAX / HEAP_GROWTH_FACTOR) {
         rt_trap("Heap: capacity overflow");
+        return 0;
+    }
     int64_t new_cap = h->cap * HEAP_GROWTH_FACTOR;
-    if ((uint64_t)new_cap > SIZE_MAX / sizeof(heap_entry))
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(heap_entry)) {
         rt_trap("Heap: allocation size overflow");
+        return 0;
+    }
     heap_entry *new_items = malloc((size_t)new_cap * sizeof(heap_entry));
 
     if (!new_items) {
         rt_trap("Heap: memory allocation failed");
+        return 0;
+    }
+    if (h->len > new_cap) {
+        free(new_items);
+        rt_trap("Heap: corrupted length exceeds capacity");
+        return 0;
     }
 
     if (h->len > 0) {
@@ -137,6 +153,7 @@ static void heap_grow(rt_pqueue_impl *h) {
     free(h->items);
     h->items = new_items;
     h->cap = new_cap;
+    return 1;
 }
 
 /// @brief Compare two priorities based on heap type.
@@ -196,6 +213,7 @@ void *rt_pqueue_new_max(int8_t is_max) {
         (rt_pqueue_impl *)rt_obj_new_i64(RT_PQUEUE_CLASS_ID, (int64_t)sizeof(rt_pqueue_impl));
     if (!h) {
         rt_trap("Heap: memory allocation failed");
+        return NULL;
     }
 
     h->len = 0;
@@ -209,6 +227,7 @@ void *rt_pqueue_new_max(int8_t is_max) {
         if (rt_obj_release_check0(h))
             rt_obj_free(h);
         rt_trap("Heap: memory allocation failed");
+        return NULL;
     }
 
     return h;
@@ -218,35 +237,45 @@ void *rt_pqueue_new_max(int8_t is_max) {
 int64_t rt_pqueue_len(void *obj) {
     if (!obj)
         return 0;
-    return as_pqueue(obj, "Heap: invalid Heap object")->len;
+    rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    return h ? h->len : 0;
 }
 
 /// @brief Returns 1 if the queue has no items.
 int8_t rt_pqueue_is_empty(void *obj) {
     if (!obj)
         return 1;
-    return as_pqueue(obj, "Heap: invalid Heap object")->len == 0 ? 1 : 0;
+    rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    return !h || h->len == 0 ? 1 : 0;
 }
 
 /// @brief Returns 1 if the queue is a max-heap, 0 if min-heap.
 int8_t rt_pqueue_is_max(void *obj) {
     if (!obj)
         return 0;
-    return as_pqueue(obj, "Heap: invalid Heap object")->is_max;
+    rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    return h ? h->is_max : 0;
 }
 
 /// @brief Insert `val` with the given `priority`. O(log n) — sift-up to restore heap order.
 /// Auto-grows internal storage when capacity is reached.
 void rt_pqueue_push(void *obj, int64_t priority, void *val) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Heap.Push: null heap");
+        return;
+    }
 
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h)
+        return;
 
-    if (h->len >= INT64_MAX)
+    if (h->len >= INT64_MAX) {
         rt_trap("Heap: maximum length reached");
+        return;
+    }
     if (h->len >= h->cap) {
-        heap_grow(h);
+        if (!heap_grow(h))
+            return;
     }
 
     rt_obj_retain_maybe(val);
@@ -262,13 +291,18 @@ void rt_pqueue_push(void *obj, int64_t priority, void *val) {
 /// @brief Remove and return the highest-priority item. O(log n) — replace root with last
 /// element then sift-down. Traps if the queue is empty (use `_try_pop` for safe variant).
 void *rt_pqueue_pop(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Heap.Pop: null heap");
+        return NULL;
+    }
 
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h)
+        return NULL;
 
     if (h->len == 0) {
         rt_trap("Heap.Pop: heap is empty");
+        return NULL;
     }
 
     void *val = h->items[0].value;
@@ -286,13 +320,18 @@ void *rt_pqueue_pop(void *obj) {
 
 /// @brief Look at the highest-priority item without removing it. Traps on empty queue.
 void *rt_pqueue_peek(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Heap.Peek: null heap");
+        return NULL;
+    }
 
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h)
+        return NULL;
 
     if (h->len == 0) {
         rt_trap("Heap.Peek: heap is empty");
+        return NULL;
     }
 
     void *val = h->items[0].value;
@@ -306,6 +345,8 @@ void *rt_pqueue_try_pop(void *obj) {
         return NULL;
 
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h)
+        return NULL;
 
     if (h->len == 0)
         return NULL;
@@ -328,6 +369,8 @@ void *rt_pqueue_try_peek(void *obj) {
         return NULL;
 
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h)
+        return NULL;
 
     if (h->len == 0)
         return NULL;
@@ -343,6 +386,8 @@ void rt_pqueue_clear(void *obj) {
         return;
 
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h)
+        return;
     for (int64_t i = 0; i < h->len; i++) {
         heap_release_value(h->items[i].value);
         h->items[i].value = NULL;
@@ -354,18 +399,26 @@ void rt_pqueue_clear(void *obj) {
 /// @brief Drain a copy of the queue into a Seq, ordered by priority. The original queue is
 /// preserved (operates on a temporary clone).
 void *rt_pqueue_to_seq(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Heap.ToSeq: null heap");
+        return NULL;
+    }
 
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
+    if (!h)
+        return NULL;
 
     // Create a new Seq
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
 
     // Pop all elements in priority order and add to Seq
     // We need to work on a copy to avoid destroying the original
     rt_pqueue_impl *copy = (rt_pqueue_impl *)rt_pqueue_new_max(h->is_max);
+    if (!copy)
+        return seq;
 
     // Copy all entries
     for (int64_t i = 0; i < h->len; i++) {

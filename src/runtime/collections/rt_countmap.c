@@ -68,8 +68,10 @@ typedef struct rt_countmap_impl {
 /// @brief Checked cast of an opaque handle to the CountMap implementation.
 /// @details Traps with @p what if @p obj is NULL or not a CountMap.
 static rt_countmap_impl *as_countmap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_COUNTMAP_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_COUNTMAP_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_countmap_impl *)obj;
 }
 
@@ -115,6 +117,8 @@ static void countmap_finalizer(void *obj) {
     if (!obj)
         return;
     rt_countmap_impl *cm = as_countmap(obj, "CountMap: invalid CountMap object");
+    if (!cm)
+        return;
 
     if (cm->buckets) {
         for (size_t i = 0; i < cm->capacity; ++i) {
@@ -135,15 +139,19 @@ static void countmap_finalizer(void *obj) {
 
 /// @brief Double the bucket array and rehash all entries into it.
 /// @details No-op past the SIZE_MAX/2 cap; traps on allocation overflow/OOM.
-static void resize(rt_countmap_impl *cm) {
+static int resize(rt_countmap_impl *cm) {
     if (cm->capacity > SIZE_MAX / 2)
-        return;
+        return 0;
     size_t new_cap = cm->capacity * 2;
-    if (new_cap > SIZE_MAX / sizeof(rt_cm_entry *))
+    if (new_cap > SIZE_MAX / sizeof(rt_cm_entry *)) {
         rt_trap("CountMap: allocation size overflow");
+        return 0;
+    }
     rt_cm_entry **new_buckets = (rt_cm_entry **)calloc(new_cap, sizeof(rt_cm_entry *));
-    if (!new_buckets)
+    if (!new_buckets) {
         rt_trap("CountMap: memory allocation failed");
+        return 0;
+    }
 
     for (size_t i = 0; i < cm->capacity; ++i) {
         rt_cm_entry *e = cm->buckets[i];
@@ -160,6 +168,7 @@ static void resize(rt_countmap_impl *cm) {
     free(cm->buckets);
     cm->buckets = new_buckets;
     cm->capacity = new_cap;
+    return 1;
 }
 
 /// @brief True when the load factor (count/capacity) reaches the grow
@@ -174,8 +183,10 @@ static int should_resize(rt_countmap_impl *cm) {
 void *rt_countmap_new(void) {
     rt_countmap_impl *cm =
         (rt_countmap_impl *)rt_obj_new_i64(RT_COUNTMAP_CLASS_ID, sizeof(rt_countmap_impl));
-    if (!cm)
+    if (!cm) {
         rt_trap("CountMap: memory allocation failed");
+        return NULL;
+    }
 
     cm->vptr = NULL;
     cm->capacity = CM_INITIAL_CAPACITY;
@@ -186,6 +197,7 @@ void *rt_countmap_new(void) {
         if (rt_obj_release_check0(cm))
             rt_obj_free(cm);
         rt_trap("CountMap: memory allocation failed");
+        return NULL;
     }
 
     rt_obj_set_finalizer(cm, countmap_finalizer);
@@ -225,8 +237,12 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n) {
     if (!obj || n <= 0)
         return 0;
     rt_countmap_impl *cm = as_countmap(obj, "CountMap.IncBy: invalid CountMap object");
-    if (cm->capacity == 0)
+    if (!cm)
+        return 0;
+    if (cm->capacity == 0) {
         rt_trap("CountMap: finalized CountMap object");
+        return 0;
+    }
 
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
@@ -236,8 +252,10 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n) {
 
     rt_cm_entry *e = find_entry(cm->buckets[idx], kdata, klen);
     if (e) {
-        if (n > INT64_MAX - e->count || n > INT64_MAX - cm->total)
+        if (n > INT64_MAX - e->count || n > INT64_MAX - cm->total) {
             rt_trap("CountMap: count overflow");
+            return e->count;
+        }
         e->count += n;
         cm->total += n;
         return e->count;
@@ -245,25 +263,34 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n) {
 
     // New entry
     if (should_resize(cm)) {
-        resize(cm);
+        if (!resize(cm))
+            return 0;
         idx = (size_t)(h % cm->capacity);
     }
 
-    if (n > INT64_MAX - cm->total)
+    if (n > INT64_MAX - cm->total) {
         rt_trap("CountMap: total overflow");
-    if (cm->count >= (size_t)INT64_MAX)
+        return 0;
+    }
+    if (cm->count >= (size_t)INT64_MAX) {
         rt_trap("CountMap: length overflow");
+        return 0;
+    }
     e = (rt_cm_entry *)malloc(sizeof(rt_cm_entry));
-    if (!e)
+    if (!e) {
         rt_trap("CountMap: memory allocation failed");
+        return 0;
+    }
     if (klen == SIZE_MAX) {
         free(e);
         rt_trap("CountMap: key allocation overflow");
+        return 0;
     }
     e->key = (char *)malloc(klen + 1);
     if (!e->key) {
         free(e);
         rt_trap("CountMap: key allocation failed");
+        return 0;
     }
     memcpy(e->key, kdata, klen);
     e->key[klen] = '\0';
@@ -284,6 +311,8 @@ int64_t rt_countmap_dec(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_countmap_impl *cm = as_countmap(obj, "CountMap.Dec: invalid CountMap object");
+    if (!cm)
+        return 0;
     if (cm->capacity == 0)
         return 0;
 
@@ -297,8 +326,10 @@ int64_t rt_countmap_dec(void *obj, rt_string key) {
     while (*pp) {
         rt_cm_entry *e = *pp;
         if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0) {
-            if (e->count <= 0 || cm->total <= 0)
+            if (e->count <= 0 || cm->total <= 0) {
                 rt_trap("CountMap: total invariant violation");
+                return 0;
+            }
             e->count--;
             cm->total--;
             if (e->count <= 0) {
@@ -322,6 +353,8 @@ int64_t rt_countmap_get(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_countmap_impl *cm = as_countmap(obj, "CountMap.Get: invalid CountMap object");
+    if (!cm)
+        return 0;
     if (cm->capacity == 0)
         return 0;
 
@@ -343,8 +376,12 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count) {
     if (!obj)
         return;
     rt_countmap_impl *cm = as_countmap(obj, "CountMap.Set: invalid CountMap object");
-    if (cm->capacity == 0)
+    if (!cm)
+        return;
+    if (cm->capacity == 0) {
         rt_trap("CountMap: finalized CountMap object");
+        return;
+    }
 
     size_t klen;
     const char *kdata = get_str_data(key, &klen);
@@ -373,8 +410,10 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count) {
     if (e) {
         if (count > e->count) {
             int64_t delta = count - e->count;
-            if (delta > INT64_MAX - cm->total)
+            if (delta > INT64_MAX - cm->total) {
                 rt_trap("CountMap: total overflow");
+                return;
+            }
             cm->total += delta;
         } else {
             cm->total -= (e->count - count);
@@ -385,25 +424,34 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count) {
 
     // New entry
     if (should_resize(cm)) {
-        resize(cm);
+        if (!resize(cm))
+            return;
         idx = (size_t)(h % cm->capacity);
     }
 
-    if (count > INT64_MAX - cm->total)
+    if (count > INT64_MAX - cm->total) {
         rt_trap("CountMap: total overflow");
-    if (cm->count >= (size_t)INT64_MAX)
+        return;
+    }
+    if (cm->count >= (size_t)INT64_MAX) {
         rt_trap("CountMap: length overflow");
+        return;
+    }
     e = (rt_cm_entry *)malloc(sizeof(rt_cm_entry));
-    if (!e)
+    if (!e) {
         rt_trap("CountMap: memory allocation failed");
+        return;
+    }
     if (klen == SIZE_MAX) {
         free(e);
         rt_trap("CountMap: key allocation overflow");
+        return;
     }
     e->key = (char *)malloc(klen + 1);
     if (!e->key) {
         free(e);
         rt_trap("CountMap: key allocation failed");
+        return;
     }
     memcpy(e->key, kdata, klen);
     e->key[klen] = '\0';
@@ -429,16 +477,21 @@ int8_t rt_countmap_has(void *obj, rt_string key) {
 int64_t rt_countmap_total(void *obj) {
     if (!obj)
         return 0;
-    return as_countmap(obj, "CountMap.Total: invalid CountMap object")->total;
+    rt_countmap_impl *cm = as_countmap(obj, "CountMap.Total: invalid CountMap object");
+    return cm ? cm->total : 0;
 }
 
 /// @brief Return a Seq of every key currently stored. Snapshot, not a live view.
 void *rt_countmap_keys(void *obj) {
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_countmap_impl *cm = as_countmap(obj, "CountMap.Keys: invalid CountMap object");
+    if (!cm)
+        return seq;
 
     for (size_t i = 0; i < cm->capacity; ++i) {
         for (rt_cm_entry *e = cm->buckets[i]; e; e = e->next) {
@@ -466,20 +519,28 @@ static int cmp_entries_desc(const void *a, const void *b) {
 /// every key if `n` exceeds the map size. Useful for top-N reports / leaderboards.
 void *rt_countmap_most_common(void *obj, int64_t n) {
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     if (!obj || n <= 0)
         return seq;
     rt_countmap_impl *cm = as_countmap(obj, "CountMap.MostCommon: invalid CountMap object");
+    if (!cm)
+        return seq;
 
     if (cm->count == 0)
         return seq;
 
     // Collect all entries into a flat array
-    if (cm->count > SIZE_MAX / sizeof(rt_cm_entry *))
+    if (cm->count > SIZE_MAX / sizeof(rt_cm_entry *)) {
         rt_trap("CountMap.MostCommon: allocation size overflow");
+        return seq;
+    }
     rt_cm_entry **entries = (rt_cm_entry **)malloc(cm->count * sizeof(rt_cm_entry *));
-    if (!entries)
+    if (!entries) {
         rt_trap("CountMap.MostCommon: memory allocation failed");
+        return seq;
+    }
 
     size_t idx = 0;
     for (size_t i = 0; i < cm->capacity; ++i) {

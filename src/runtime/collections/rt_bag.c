@@ -94,8 +94,10 @@ typedef struct rt_bag_impl {
 /// @brief Checked cast of an opaque handle to the Bag implementation.
 /// @details Traps with the @p what message if @p obj is NULL or not a Bag.
 static rt_bag_impl *as_bag(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_BAG_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_BAG_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_bag_impl *)obj;
 }
 
@@ -110,8 +112,10 @@ static rt_bag_impl *as_bag(void *obj, const char *what) {
 /// @return Pointer to the string's character data (not owned by caller).
 ///         Returns "" with length 0 if key is NULL.
 static const char *get_key_data(rt_string key, size_t *out_len) {
-    if (!out_len)
+    if (!out_len) {
         rt_trap("Bag: null length output");
+        return "";
+    }
     if (!key) {
         *out_len = 0;
         return "";
@@ -198,8 +202,10 @@ static void rt_bag_finalize(void *obj) {
 /// @note On allocation failure, the old buckets are kept (silent failure).
 /// @note O(n) time complexity where n is the number of entries.
 static void bag_resize(rt_bag_impl *bag, size_t new_capacity) {
-    if (new_capacity > SIZE_MAX / sizeof(rt_bag_entry *))
+    if (new_capacity > SIZE_MAX / sizeof(rt_bag_entry *)) {
         rt_trap("Bag: allocation size overflow");
+        return;
+    }
     rt_bag_entry **new_buckets = (rt_bag_entry **)calloc(new_capacity, sizeof(rt_bag_entry *));
     if (!new_buckets)
         return; // Keep old buckets on allocation failure
@@ -276,8 +282,10 @@ static void maybe_resize(rt_bag_impl *bag) {
 /// @see rt_bag_finalize For cleanup behavior
 void *rt_bag_new(void) {
     rt_bag_impl *bag = (rt_bag_impl *)rt_obj_new_i64(RT_BAG_CLASS_ID, (int64_t)sizeof(rt_bag_impl));
-    if (!bag)
+    if (!bag) {
         rt_trap("Bag: memory allocation failed");
+        return NULL;
+    }
 
     bag->vptr = NULL;
     bag->buckets = (rt_bag_entry **)calloc(BAG_INITIAL_CAPACITY, sizeof(rt_bag_entry *));
@@ -285,6 +293,7 @@ void *rt_bag_new(void) {
         if (rt_obj_release_check0(bag))
             rt_obj_free(bag);
         rt_trap("Bag: memory allocation failed");
+        return NULL;
     }
     bag->capacity = BAG_INITIAL_CAPACITY;
     bag->count = 0;
@@ -396,6 +405,7 @@ int8_t rt_bag_add(void *obj, rt_string str) {
     if (key_len == SIZE_MAX) {
         free(entry);
         rt_trap("Bag.Add: key allocation overflow");
+        return 0;
     }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {

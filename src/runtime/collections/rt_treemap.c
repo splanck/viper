@@ -85,8 +85,10 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the TreeMap implementation;
 ///        traps with @p what if @p obj is NULL or not a TreeMap.
 static treemap_impl *as_treemap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_TREEMAP_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_TREEMAP_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (treemap_impl *)obj;
 }
 
@@ -191,23 +193,28 @@ static size_t binary_search(treemap_impl *tm, const char *key, size_t keylen, bo
 /// @param tm The TreeMap to grow if needed.
 ///
 /// @note Traps with "TreeMap: memory allocation failed" if realloc fails.
-static void ensure_capacity(treemap_impl *tm) {
+static int ensure_capacity(treemap_impl *tm) {
     if (tm->count < tm->capacity)
-        return;
+        return 1;
 
-    if (tm->capacity > SIZE_MAX / 2)
+    if (tm->capacity > SIZE_MAX / 2) {
         rt_trap("TreeMap: capacity overflow");
+        return 0;
+    }
     size_t new_cap = tm->capacity == 0 ? TREEMAP_INITIAL_CAPACITY : tm->capacity * 2;
-    if (new_cap > SIZE_MAX / sizeof(treemap_entry))
+    if (new_cap > SIZE_MAX / sizeof(treemap_entry)) {
         rt_trap("TreeMap: allocation size overflow");
+        return 0;
+    }
     treemap_entry *new_entries =
         (treemap_entry *)realloc(tm->entries, new_cap * sizeof(treemap_entry));
     if (!new_entries) {
         rt_trap("TreeMap: memory allocation failed");
-        return;
+        return 0;
     }
     tm->entries = new_entries;
     tm->capacity = new_cap;
+    return 1;
 }
 
 /// @brief Frees an entry's key and releases its value.
@@ -256,6 +263,8 @@ static void treemap_finalizer(void *obj) {
     if (!obj)
         return;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return;
     if (tm->entries) {
         for (size_t i = 0; i < tm->count; i++)
             free_entry_contents(&tm->entries[i]);
@@ -271,6 +280,8 @@ static void treemap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return;
     for (size_t i = 0; i < tm->count; i++)
         visitor(tm->entries[i].value, ctx);
 }
@@ -304,6 +315,8 @@ int64_t rt_treemap_len(void *obj) {
     if (!obj)
         return 0;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return 0;
     return (int64_t)tm->count;
 }
 
@@ -318,6 +331,8 @@ int8_t rt_treemap_is_empty(void *obj) {
     if (!obj)
         return 1;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return 1;
     return tm->count == 0 ? 1 : 0;
 }
 
@@ -365,7 +380,8 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
         e->value = value;
     } else {
         // Insert new entry
-        ensure_capacity(tm);
+        if (!ensure_capacity(tm))
+            return;
 
         if (value)
             rt_obj_retain_maybe(value);
@@ -374,6 +390,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
             if (value && rt_obj_release_check0(value))
                 rt_obj_free(value);
             rt_trap("TreeMap: key allocation overflow");
+            return;
         }
         char *key_copy = (char *)malloc(keylen + 1);
         if (!key_copy) {
@@ -419,6 +436,8 @@ void *rt_treemap_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return NULL;
 
     size_t keylen;
     const char *keydata = get_key_data(key, &keylen);
@@ -443,6 +462,8 @@ int8_t rt_treemap_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return 0;
 
     size_t keylen;
     const char *keydata = get_key_data(key, &keylen);
@@ -468,6 +489,8 @@ int8_t rt_treemap_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return 0;
 
     size_t keylen;
     const char *keydata = get_key_data(key, &keylen);
@@ -504,6 +527,8 @@ void rt_treemap_clear(void *obj) {
     if (!obj)
         return;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return;
 
     for (size_t i = 0; i < tm->count; i++) {
         free_entry_contents(&tm->entries[i]);
@@ -536,13 +561,21 @@ void rt_treemap_clear(void *obj) {
 /// @see rt_treemap_values For retrieving values
 void *rt_treemap_keys(void *obj) {
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return seq;
 
     for (size_t i = 0; i < tm->count; i++) {
         rt_string str = rt_string_from_bytes(tm->entries[i].key, tm->entries[i].keylen);
+        if (!str) {
+            rt_trap("TreeMap.Keys: string allocation failed");
+            return seq;
+        }
         rt_seq_push(seq, (void *)str);
         rt_str_release_maybe(str);
     }
@@ -564,10 +597,14 @@ void *rt_treemap_keys(void *obj) {
 /// @see rt_treemap_keys For retrieving keys
 void *rt_treemap_values(void *obj) {
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return seq;
 
     for (size_t i = 0; i < tm->count; i++) {
         rt_seq_push(seq, tm->entries[i].value);
@@ -601,6 +638,8 @@ rt_string rt_treemap_first(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return rt_const_cstr("");
 
     if (tm->count == 0)
         return rt_const_cstr("");
@@ -633,6 +672,8 @@ rt_string rt_treemap_last(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return rt_const_cstr("");
 
     if (tm->count == 0)
         return rt_const_cstr("");
@@ -670,6 +711,8 @@ rt_string rt_treemap_floor(void *obj, rt_string key) {
     if (!obj)
         return rt_const_cstr("");
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return rt_const_cstr("");
 
     if (tm->count == 0)
         return rt_const_cstr("");
@@ -721,6 +764,8 @@ rt_string rt_treemap_ceil(void *obj, rt_string key) {
     if (!obj)
         return rt_const_cstr("");
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm)
+        return rt_const_cstr("");
 
     if (tm->count == 0)
         return rt_const_cstr("");

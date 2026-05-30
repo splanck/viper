@@ -122,8 +122,10 @@ typedef struct rt_watcher_impl {
 } rt_watcher_impl;
 
 static rt_watcher_impl *watcher_require(void *obj, const char *context) {
-    if (!obj || rt_obj_class_id(obj) != RT_WATCHER_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_WATCHER_CLASS_ID) {
         rt_trap(context ? context : "Watcher: invalid watcher");
+        return NULL;
+    }
     return (rt_watcher_impl *)obj;
 }
 
@@ -460,34 +462,46 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
 /// front and traps if it doesn't exist. Distinguishes file vs directory mode (different OS
 /// primitives needed). Returns a GC-managed handle; user must call `_start` to begin watching.
 void *rt_watcher_new(rt_string path) {
-    if (!path)
+    if (!path) {
         rt_trap("Watcher.New: null path");
+        return NULL;
+    }
 
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || cpath[0] == '\0')
+    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || cpath[0] == '\0') {
         rt_trap("Watcher.New: empty path");
+        return NULL;
+    }
 
     // Check if path exists
 #ifdef _WIN32
     wchar_t *wide_path = rt_file_path_utf8_to_wide(cpath);
-    if (!wide_path)
+    if (!wide_path) {
         rt_trap("Watcher.New: invalid path");
+        return NULL;
+    }
     DWORD attrs = GetFileAttributesW(wide_path);
     free(wide_path);
-    if (attrs == INVALID_FILE_ATTRIBUTES)
+    if (attrs == INVALID_FILE_ATTRIBUTES) {
         rt_trap("Watcher.New: path does not exist");
+        return NULL;
+    }
     int8_t is_directory = (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0 ? 1 : 0;
 #else
     struct stat st;
-    if (stat(cpath, &st) != 0)
+    if (stat(cpath, &st) != 0) {
         rt_trap("Watcher.New: path does not exist");
+        return NULL;
+    }
     int8_t is_directory = S_ISDIR(st.st_mode) ? 1 : 0;
 #endif
 
     rt_watcher_impl *w =
         (rt_watcher_impl *)rt_obj_new_i64(RT_WATCHER_CLASS_ID, (int64_t)sizeof(rt_watcher_impl));
-    if (!w)
+    if (!w) {
         rt_trap("Watcher.New: alloc failed");
+        return NULL;
+    }
 
     memset(w, 0, sizeof(rt_watcher_impl));
     w->watch_path = str_from_cstr(cpath);
@@ -543,12 +557,18 @@ int8_t rt_watcher_get_is_watching(void *obj) {
 ///     at event-decode time via `watch_leaf_name`).
 /// Traps if already watching, on syscall failure, or on unsupported platform.
 void rt_watcher_start(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Watcher.Start: null watcher");
+        return;
+    }
 
     rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
-    if (w->is_watching)
+    if (!w)
+        return;
+    if (w->is_watching) {
         rt_trap("Watcher.Start: already watching");
+        return;
+    }
 
 #if defined(__linux__)
     w->inotify_fd = inotify_init1(IN_NONBLOCK
@@ -626,8 +646,10 @@ void rt_watcher_start(void *obj) {
     const char *watch_dir =
         rt_string_cstr(w->is_directory ? (rt_string)w->watch_path : (rt_string)w->watch_dir_path);
     wchar_t *wide_watch_dir = rt_file_path_utf8_to_wide(watch_dir);
-    if (!wide_watch_dir)
+    if (!wide_watch_dir) {
         rt_trap("Watcher.Start: invalid watch path");
+        return;
+    }
 
     w->dir_handle = CreateFileW(wide_watch_dir,
                                 FILE_LIST_DIRECTORY,
@@ -637,8 +659,10 @@ void rt_watcher_start(void *obj) {
                                 FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
                                 NULL);
     free(wide_watch_dir);
-    if (w->dir_handle == INVALID_HANDLE_VALUE)
+    if (w->dir_handle == INVALID_HANDLE_VALUE) {
         rt_trap("Watcher.Start: failed to open directory for watching");
+        return;
+    }
 
     memset(&w->overlapped, 0, sizeof(w->overlapped));
     w->overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
@@ -646,6 +670,7 @@ void rt_watcher_start(void *obj) {
         CloseHandle(w->dir_handle);
         w->dir_handle = INVALID_HANDLE_VALUE;
         rt_trap("Watcher.Start: failed to create event");
+        return;
     }
 
     if (!watcher_start_windows_read(w)) {
@@ -653,6 +678,7 @@ void rt_watcher_start(void *obj) {
         CloseHandle(w->dir_handle);
         w->dir_handle = INVALID_HANDLE_VALUE;
         rt_trap("Watcher.Start: failed to start watching");
+        return;
     }
 
 #else
@@ -775,12 +801,18 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
 /// @brief Read the absolute path of the most recently polled event. **Traps** if no `_poll` call
 /// has succeeded yet — the contract is "poll then ask"; not safe to call out of order.
 rt_string rt_watcher_event_path(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Watcher.EventPath: null watcher");
+        return str_from_cstr("");
+    }
 
     rt_watcher_impl *w = watcher_require(obj, "Watcher: invalid watcher");
-    if (!w->has_last_event)
+    if (!w)
+        return str_from_cstr("");
+    if (!w->has_last_event) {
         rt_trap("Watcher.EventPath: no event polled yet");
+        return str_from_cstr("");
+    }
 
     if (w->last_event_path)
         rt_string_ref(w->last_event_path);

@@ -243,12 +243,14 @@ void *rt_iter_from_stack(void *stack) {
         if (rt_obj_release_check0(snapshot))
             rt_obj_free(snapshot);
         rt_trap("Iterator: stack snapshot too large");
+        return NULL;
     }
     items = (void **)malloc((size_t)len * sizeof(void *));
     if (!items) {
         if (rt_obj_release_check0(snapshot))
             rt_obj_free(snapshot);
         rt_trap("Iterator: allocation failed");
+        return NULL;
     }
 
     while (!rt_stack_is_empty(stack) && count < len)

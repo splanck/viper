@@ -158,6 +158,10 @@ static char *rt_fileext_make_parent_temp_path(const char *path,
     char *tmp = (char *)malloc(cap);
     if (!tmp)
         return NULL;
+    if (parent_len >= cap) {
+        free(tmp);
+        return NULL;
+    }
     if (parent_len > 0)
         memcpy(tmp, path, parent_len);
 #if RT_PLATFORM_WINDOWS
@@ -661,21 +665,26 @@ rt_string rt_io_file_read_all_text(rt_string path) {
         rt_io_file_require_path(path, "Viper.IO.File.ReadAllText: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
-    if (fd < 0)
+    if (fd < 0) {
         rt_trap("Viper.IO.File.ReadAllText: failed to open file");
+        return rt_str_empty();
+    }
 
     rt_fileext_stat_t st;
     if (rt_fileext_fstat(fd, &st) != 0) {
         close(fd);
         rt_trap("Viper.IO.File.ReadAllText: failed to stat file");
+        return rt_str_empty();
     }
     if (!rt_fileext_is_regular_mode(st.st_mode)) {
         close(fd);
         rt_trap("Viper.IO.File.ReadAllText: path is not a regular file");
+        return rt_str_empty();
     }
     if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         close(fd);
         rt_trap("Viper.IO.File.ReadAllText: file too large");
+        return rt_str_empty();
     }
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
     // Handle empty files
@@ -688,6 +697,7 @@ rt_string rt_io_file_read_all_text(rt_string path) {
     if (!buf) {
         close(fd);
         rt_trap("Viper.IO.File.ReadAllText: allocation failed");
+        return rt_str_empty();
     }
 
     size_t off = 0;
@@ -699,22 +709,27 @@ rt_string rt_io_file_read_all_text(rt_string path) {
             free(buf);
             close(fd);
             rt_trap("Viper.IO.File.ReadAllText: failed to read file");
+            return rt_str_empty();
         }
         if (n == 0) {
             free(buf);
             close(fd);
             rt_trap("Viper.IO.File.ReadAllText: file changed while reading");
+            return rt_str_empty();
         }
         off += (size_t)n;
     }
     if (close(fd) != 0) {
         free(buf);
         rt_trap("Viper.IO.File.ReadAllText: failed to close file");
+        return rt_str_empty();
     }
     rt_string s = rt_string_from_bytes(buf, size);
     free(buf);
-    if (!s)
+    if (!s) {
         rt_trap("Viper.IO.File.ReadAllText: allocation failed");
+        return rt_str_empty();
+    }
     return s;
 }
 
@@ -746,8 +761,10 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
         rt_io_file_require_path(path, "Viper.IO.File.AppendLine: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | O_APPEND | RT_FILE_O_BINARY, 0666);
-    if (fd < 0)
+    if (fd < 0) {
         rt_trap("Viper.IO.File.AppendLine: failed to open file");
+        return;
+    }
 
     const uint8_t *data = NULL;
     size_t len = rt_file_string_require_view(text, &data, "Viper.IO.File.AppendLine: invalid text");
@@ -759,10 +776,12 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
                 continue;
             (void)close(fd);
             rt_trap("Viper.IO.File.AppendLine: failed to write file");
+            return;
         }
         if (n == 0) {
             (void)close(fd);
             rt_trap("Viper.IO.File.AppendLine: failed to write file");
+            return;
         }
         written += (size_t)n;
     }
@@ -775,6 +794,7 @@ void rt_io_file_append_line(rt_string path, rt_string text) {
     if (n != 1) {
         (void)close(fd);
         rt_trap("Viper.IO.File.AppendLine: failed to write newline");
+        return;
     }
 
     rt_fileext_close_or_trap(fd, "Viper.IO.File.AppendLine: failed to close file");
@@ -790,21 +810,26 @@ void *rt_io_file_read_all_bytes(rt_string path) {
         rt_io_file_require_path(path, "Viper.IO.File.ReadAllBytes: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
-    if (fd < 0)
+    if (fd < 0) {
         rt_trap("Viper.IO.File.ReadAllBytes: failed to open file");
+        return NULL;
+    }
 
     rt_fileext_stat_t st;
     if (rt_fileext_fstat(fd, &st) != 0) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllBytes: failed to stat file");
+        return NULL;
     }
     if (!rt_fileext_is_regular_mode(st.st_mode)) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllBytes: path is not a regular file");
+        return NULL;
     }
     if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllBytes: file too large");
+        return NULL;
     }
 
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
@@ -817,6 +842,7 @@ void *rt_io_file_read_all_bytes(rt_string path) {
     if (!buf) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllBytes: allocation failed");
+        return NULL;
     }
 
     size_t off = 0;
@@ -828,17 +854,20 @@ void *rt_io_file_read_all_bytes(rt_string path) {
             free(buf);
             (void)close(fd);
             rt_trap("Viper.IO.File.ReadAllBytes: failed to read file");
+            return NULL;
         }
         if (n == 0) {
             free(buf);
             (void)close(fd);
             rt_trap("Viper.IO.File.ReadAllBytes: file changed while reading");
+            return NULL;
         }
         off += (size_t)n;
     }
     if (close(fd) != 0) {
         free(buf);
         rt_trap("Viper.IO.File.ReadAllBytes: failed to close file");
+        return NULL;
     }
 
     /* O-02: Use memcpy into the raw bytes buffer instead of per-byte rt_bytes_set */
@@ -873,8 +902,10 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes) {
     /* IO-H-1: use raw data pointer instead of per-byte rt_bytes_get() —
        eliminates O(n) function calls in favour of a single write() */
     int64_t len = rt_bytes_len(bytes);
-    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
+    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX) {
         rt_trap("Viper.IO.File.WriteAllBytes: invalid Bytes length");
+        return;
+    }
     const uint8_t *src = rt_bytes_data_const(bytes);
     if (!rt_fileext_write_atomic_utf8(cpath, src, (size_t)len, 1))
         rt_trap("Viper.IO.File.WriteAllBytes: failed to write file");
@@ -891,35 +922,48 @@ void *rt_io_file_read_all_lines(rt_string path) {
         rt_io_file_require_path(path, "Viper.IO.File.ReadAllLines: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_RDONLY | RT_FILE_O_BINARY, 0);
-    if (fd < 0)
+    if (fd < 0) {
         rt_trap("Viper.IO.File.ReadAllLines: failed to open file");
+        return rt_seq_new();
+    }
 
     rt_fileext_stat_t st;
     if (rt_fileext_fstat(fd, &st) != 0) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllLines: failed to stat file");
+        return rt_seq_new();
     }
     if (!rt_fileext_is_regular_mode(st.st_mode)) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllLines: path is not a regular file");
+        return rt_seq_new();
     }
     if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllLines: file too large");
+        return rt_seq_new();
     }
 
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
     if (size == 0) {
         rt_fileext_close_or_trap(fd, "Viper.IO.File.ReadAllLines: failed to close file");
         void *empty = rt_seq_new();
+        if (!empty)
+            return NULL;
         rt_seq_set_owns_elements(empty, 1);
         return empty;
     }
 
-    char *buf = (char *)malloc(size);
+    if (size > SIZE_MAX - 3) {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.ReadAllLines: file too large");
+        return rt_seq_new();
+    }
+    char *buf = (char *)malloc(size + 3);
     if (!buf) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllLines: allocation failed");
+        return rt_seq_new();
     }
 
     size_t off = 0;
@@ -931,20 +975,35 @@ void *rt_io_file_read_all_lines(rt_string path) {
             free(buf);
             (void)close(fd);
             rt_trap("Viper.IO.File.ReadAllLines: failed to read file");
+            return rt_seq_new();
         }
         if (n == 0) {
             free(buf);
             (void)close(fd);
             rt_trap("Viper.IO.File.ReadAllLines: file changed while reading");
+            return rt_seq_new();
         }
         off += (size_t)n;
     }
     if (close(fd) != 0) {
         free(buf);
         rt_trap("Viper.IO.File.ReadAllLines: failed to close file");
+        return rt_seq_new();
     }
+    if (off > size) {
+        free(buf);
+        rt_trap("Viper.IO.File.ReadAllLines: file changed while reading");
+        return rt_seq_new();
+    }
+    buf[off] = '\0';
+    buf[off + 1] = '\0';
+    buf[off + 2] = '\0';
 
     void *seq = rt_seq_new();
+    if (!seq) {
+        free(buf);
+        return NULL;
+    }
     rt_seq_set_owns_elements(seq, 1);
     size_t i = 0;
     while (i < off) {
@@ -1143,8 +1202,10 @@ static void rt_file_move_impl(rt_string src, rt_string dst, int replace) {
     const char *dst_path =
         rt_io_file_require_path(dst, "Viper.IO.File.Move: invalid destination path");
 
-    if (rt_fileext_same_existing_file(src_path, dst_path))
+    if (rt_fileext_same_existing_file(src_path, dst_path)) {
         rt_trap("File.Move: source and destination are the same file");
+        return;
+    }
 
     if (rt_fileext_commit_utf8(src_path, dst_path, replace))
         return;
@@ -1301,14 +1362,17 @@ void rt_file_append(rt_string path, rt_string text) {
     const char *cpath = rt_io_file_require_path(path, "Viper.IO.File.Append: invalid file path");
 
     int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | O_APPEND | RT_FILE_O_BINARY, 0666);
-    if (fd < 0)
+    if (fd < 0) {
         rt_trap("Viper.IO.File.Append: failed to open file");
+        return;
+    }
 
     const uint8_t *data = NULL;
     size_t len = rt_file_string_require_view(text, &data, "Viper.IO.File.Append: invalid text");
     if (!rt_fileext_write_all_fd(fd, data, len)) {
         close(fd);
         rt_trap("Viper.IO.File.Append: failed to write file");
+        return;
     }
 
     rt_fileext_close_or_trap(fd, "Viper.IO.File.Append: failed to close file");
@@ -1343,12 +1407,16 @@ void rt_file_touch(rt_string path) {
     // Try to update mtime (works if file exists)
     if (rt_fileext_utime(cpath, NULL) == 0)
         return;
-    if (errno != ENOENT)
+    if (errno != ENOENT) {
         rt_trap("Viper.IO.File.Touch: failed to update file time");
+        return;
+    }
 
     // File doesn't exist, create it
     int fd = rt_fileext_open(cpath, O_WRONLY | O_CREAT | RT_FILE_O_BINARY, 0666);
-    if (fd < 0)
+    if (fd < 0) {
         rt_trap("Viper.IO.File.Touch: failed to create file");
+        return;
+    }
     rt_fileext_close_or_trap(fd, "Viper.IO.File.Touch: failed to close file");
 }

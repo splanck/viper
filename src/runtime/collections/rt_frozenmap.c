@@ -90,8 +90,10 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the FrozenMap implementation.
 /// @details Traps with @p what if @p obj is NULL or not a FrozenMap.
 static rt_frozenmap_impl *as_frozenmap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_FROZENMAP_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_FROZENMAP_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_frozenmap_impl *)obj;
 }
 
@@ -187,6 +189,8 @@ static void fm_finalizer(void *obj) {
     if (!obj)
         return;
     rt_frozenmap_impl *fm = as_frozenmap(obj, "FrozenMap: invalid FrozenMap object");
+    if (!fm)
+        return;
     if (fm->slots) {
         for (int64_t i = 0; i < fm->capacity; i++) {
             if (fm->slots[i].key) {
@@ -204,6 +208,8 @@ static void fm_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
     rt_frozenmap_impl *fm = as_frozenmap(obj, "FrozenMap: invalid FrozenMap object");
+    if (!fm)
+        return;
     if (!fm->slots)
         return;
     for (int64_t i = 0; i < fm->capacity; i++) {
@@ -218,8 +224,10 @@ static void fm_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 static int64_t fm_next_pow2(int64_t n) {
     int64_t p = 16;
     while (p < n) {
-        if (p > INT64_MAX / 2)
+        if (p > INT64_MAX / 2) {
             rt_trap("FrozenMap: capacity overflow");
+            return 0;
+        }
         p *= 2;
     }
     return p;
@@ -231,17 +239,25 @@ static int64_t fm_next_pow2(int64_t n) {
 static rt_frozenmap_impl *fm_alloc(int64_t count) {
     int64_t needed = 8;
     if (count >= 4) {
-        if (count > INT64_MAX / 2)
+        if (count > INT64_MAX / 2) {
             rt_trap("FrozenMap: capacity overflow");
+            return NULL;
+        }
         needed = count * 2;
     }
     int64_t cap = fm_next_pow2(needed);
-    if ((uint64_t)cap > SIZE_MAX / sizeof(fm_slot))
+    if (cap <= 0)
+        return NULL;
+    if ((uint64_t)cap > SIZE_MAX / sizeof(fm_slot)) {
         rt_trap("FrozenMap: allocation size overflow");
+        return NULL;
+    }
     rt_frozenmap_impl *fm =
         (rt_frozenmap_impl *)rt_obj_new_i64(RT_FROZENMAP_CLASS_ID, sizeof(rt_frozenmap_impl));
-    if (!fm)
+    if (!fm) {
         rt_trap("FrozenMap: memory allocation failed");
+        return NULL;
+    }
     fm->count = 0;
     fm->capacity = cap;
     fm->slots = (fm_slot *)calloc((size_t)cap, sizeof(fm_slot));
@@ -249,6 +265,7 @@ static rt_frozenmap_impl *fm_alloc(int64_t count) {
         if (rt_obj_release_check0(fm))
             rt_obj_free(fm);
         rt_trap("rt_frozenmap: memory allocation failed");
+        return NULL;
     }
     rt_obj_set_finalizer(fm, fm_finalizer);
     rt_gc_track(fm, fm_traverse);
@@ -409,13 +426,19 @@ void *rt_frozenmap_get_or(void *obj, rt_string key, void *default_value) {
 void *rt_frozenmap_merge(void *obj, void *other) {
     int64_t la = rt_frozenmap_len(obj);
     int64_t lb = rt_frozenmap_len(other);
-    if (la > INT64_MAX - lb)
+    if (la > INT64_MAX - lb) {
         rt_trap("FrozenMap: merge size overflow");
+        return NULL;
+    }
     rt_frozenmap_impl *fm = fm_alloc(la + lb);
+    if (!fm)
+        return NULL;
 
     // Insert from first map
     if (obj) {
         rt_frozenmap_impl *a = as_frozenmap(obj, "FrozenMap: invalid FrozenMap object");
+        if (!a)
+            return (void *)fm;
         for (int64_t i = 0; i < a->capacity; i++) {
             if (a->slots[i].key)
                 fm_insert(fm, a->slots[i].key, a->slots[i].value);
@@ -424,6 +447,8 @@ void *rt_frozenmap_merge(void *obj, void *other) {
     // Insert from second map (overwrites on conflict)
     if (other) {
         rt_frozenmap_impl *b = as_frozenmap(other, "FrozenMap: invalid FrozenMap object");
+        if (!b)
+            return (void *)fm;
         for (int64_t i = 0; i < b->capacity; i++) {
             if (b->slots[i].key)
                 fm_insert(fm, b->slots[i].key, b->slots[i].value);

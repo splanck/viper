@@ -42,6 +42,7 @@
 #include "rt_trap.h"
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -69,14 +70,20 @@
 /// separator characters ('/', '\', ':'). Returns the raw C string pointer on success.
 static const char *tempfile_require_fragment(rt_string fragment, const char *what) {
     const char *cstr = rt_string_cstr(fragment);
-    if (!cstr)
+    if (!cstr) {
         rt_trap(what);
+        return "";
+    }
     int64_t len = rt_str_len(fragment);
-    if (len < 0)
+    if (len < 0) {
         rt_trap(what);
+        return "";
+    }
     for (int64_t i = 0; i < len; ++i) {
-        if (cstr[i] == '\0' || cstr[i] == '/' || cstr[i] == '\\' || cstr[i] == ':')
+        if (cstr[i] == '\0' || cstr[i] == '/' || cstr[i] == '\\' || cstr[i] == ':') {
             rt_trap(what);
+            return "";
+        }
     }
     return cstr;
 }
@@ -155,8 +162,10 @@ static int tempfile_dir_is_usable(const char *path) {
 static int tempfile_try_create_path(const char *cpath) {
 #ifdef _WIN32
     wchar_t *wide_path = rt_file_path_utf8_to_wide(cpath);
-    if (!wide_path)
+    if (!wide_path) {
         rt_trap("TempFile.Create: invalid temporary file path");
+        return -1;
+    }
     HANDLE h =
         CreateFileW(wide_path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
     free(wide_path);
@@ -200,8 +209,10 @@ static int tempfile_try_create_path(const char *cpath) {
 static int tempfile_try_create_dir(const char *cpath) {
 #ifdef _WIN32
     wchar_t *wide_path = rt_file_path_utf8_to_wide(cpath);
-    if (!wide_path)
+    if (!wide_path) {
         rt_trap("TempFile.CreateDir: invalid temporary directory path");
+        return -1;
+    }
     if (_wmkdir(wide_path) == 0) {
         free(wide_path);
         return 1;
@@ -229,11 +240,18 @@ rt_string rt_tempfile_dir(void) {
 #ifdef _WIN32
     DWORD len = GetTempPathW(0, NULL);
     if (len > 0) {
-        wchar_t *buffer = (wchar_t *)malloc((size_t)len * sizeof(wchar_t));
-        if (!buffer)
+        if (len == UINT32_MAX) {
+            rt_trap("TempFile.Dir: temporary path too long");
+            return rt_string_from_bytes("C:\\Temp", 7);
+        }
+        DWORD cap = len + 1;
+        wchar_t *buffer = (wchar_t *)malloc((size_t)cap * sizeof(wchar_t));
+        if (!buffer) {
             rt_trap("TempFile.Dir: memory allocation failed");
-        DWORD got = GetTempPathW(len, buffer);
-        if (got > 0 && got < len) {
+            return rt_string_from_bytes("C:\\Temp", 7);
+        }
+        DWORD got = GetTempPathW(cap, buffer);
+        if (got > 0 && got < cap) {
             while (got > 1 && (buffer[got - 1] == L'\\' || buffer[got - 1] == L'/')) {
                 buffer[got - 1] = L'\0';
                 got--;
@@ -254,8 +272,10 @@ rt_string rt_tempfile_dir(void) {
         // Remove trailing slash if present
         if (len > 1 && tmp[len - 1] == '/') {
             char *copy = (char *)malloc(len);
-            if (!copy)
+            if (!copy) {
                 rt_trap("rt_tempfile: memory allocation failed");
+                return rt_const_cstr("/tmp");
+            }
             memcpy(copy, tmp, len - 1);
             copy[len - 1] = '\0';
             rt_string result = rt_string_from_bytes(copy, len - 1);
@@ -293,12 +313,16 @@ rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension) {
     size_t prefix_len = strlen(prefix_cstr);
     size_t unique_len = strlen(unique_id);
     size_t ext_len = strlen(ext_cstr);
-    if (prefix_len > SIZE_MAX - unique_len - ext_len - 1)
+    if (prefix_len > SIZE_MAX - unique_len - ext_len - 1) {
         rt_trap("TempFile: path length overflow");
+        return rt_str_empty();
+    }
     size_t filename_len = prefix_len + unique_len + ext_len + 1;
     char *filename = (char *)malloc(filename_len);
-    if (!filename)
+    if (!filename) {
         rt_trap("TempFile: memory allocation failed");
+        return rt_str_empty();
+    }
     snprintf(filename, filename_len, "%s%s%s", prefix_cstr, unique_id, ext_cstr);
 
     rt_string temp_dir = rt_tempfile_dir();

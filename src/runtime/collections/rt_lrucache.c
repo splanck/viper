@@ -79,8 +79,10 @@ typedef struct rt_lrucache_impl {
 /// @brief Checked cast of an opaque handle to the LruCache implementation.
 /// @details Traps with @p what if @p obj is NULL or not an LruCache.
 static rt_lrucache_impl *as_lrucache(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_LRUCACHE_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_LRUCACHE_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_lrucache_impl *)obj;
 }
 
@@ -194,11 +196,15 @@ static void maybe_resize(rt_lrucache_impl *cache) {
     if (cache->bucket_count > SIZE_MAX / 2)
         return; // Can't grow further
     size_t new_bucket_count = cache->bucket_count * 2;
-    if (new_bucket_count > SIZE_MAX / sizeof(rt_lru_node *))
+    if (new_bucket_count > SIZE_MAX / sizeof(rt_lru_node *)) {
         rt_trap("LRUCache: allocation size overflow");
+        return;
+    }
     rt_lru_node **new_buckets = (rt_lru_node **)calloc(new_bucket_count, sizeof(rt_lru_node *));
-    if (!new_buckets)
+    if (!new_buckets) {
         rt_trap("LRUCache: memory allocation failed");
+        return;
+    }
 
     // Rehash all nodes
     for (size_t i = 0; i < cache->bucket_count; ++i) {
@@ -285,8 +291,10 @@ static void rt_lrucache_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) 
 // ---------------------------------------------------------------------------
 
 void *rt_lrucache_new(int64_t capacity) {
-    if (capacity < 0)
+    if (capacity < 0) {
         rt_trap("LRUCache: negative capacity");
+        return NULL;
+    }
 
     size_t bucket_count = LRU_INITIAL_BUCKETS;
     // If requested capacity is large, start with more buckets to avoid
@@ -299,13 +307,17 @@ void *rt_lrucache_new(int64_t capacity) {
         bucket_count *= 2;
     }
 
-    if (bucket_count > SIZE_MAX / sizeof(rt_lru_node *))
+    if (bucket_count > SIZE_MAX / sizeof(rt_lru_node *)) {
         rt_trap("LRUCache: allocation size overflow");
+        return NULL;
+    }
 
     rt_lrucache_impl *cache =
         (rt_lrucache_impl *)rt_obj_new_i64(RT_LRUCACHE_CLASS_ID, (int64_t)sizeof(rt_lrucache_impl));
-    if (!cache)
+    if (!cache) {
         rt_trap("LRUCache: memory allocation failed");
+        return NULL;
+    }
 
     cache->vptr = NULL;
     cache->bucket_count = bucket_count;
@@ -314,6 +326,7 @@ void *rt_lrucache_new(int64_t capacity) {
         if (rt_obj_release_check0(cache))
             rt_obj_free(cache);
         rt_trap("LRUCache: memory allocation failed");
+        return NULL;
     }
 
     cache->count = 0;
@@ -352,6 +365,8 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
         return;
 
     rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Put: invalid LRUCache object");
+    if (!cache)
+        return;
     if (cache->bucket_count == 0)
         return;
 
@@ -382,6 +397,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
         rt_trap("LRUCache: memory allocation failed");
+        return;
     }
 
     if (key_len == SIZE_MAX) {
@@ -389,6 +405,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
             rt_obj_free(value);
         free(node);
         rt_trap("LRUCache: key allocation overflow");
+        return;
     }
     node->key = (char *)malloc(key_len + 1);
     if (!node->key) {
@@ -396,6 +413,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
             rt_obj_free(value);
         free(node);
         rt_trap("LRUCache: key allocation failed");
+        return;
     }
     memcpy(node->key, key_data, key_len);
     node->key[key_len] = '\0';

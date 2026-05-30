@@ -109,6 +109,7 @@ static vpa_entry_t *parse_toc(const uint8_t *toc_data,
     const uint8_t *p = toc_data;
     const uint8_t *end = toc_data + toc_size;
     uint32_t i = 0;
+    uint32_t initialized = 0;
 
     while (i < expected_count) {
         if ((size_t)(end - p) < 2)
@@ -124,6 +125,7 @@ static vpa_entry_t *parse_toc(const uint8_t *toc_data,
         entries[i].name = (char *)malloc(name_len + 1);
         if (!entries[i].name)
             goto fail;
+        initialized = i + 1;
         memcpy(entries[i].name, p, name_len);
         entries[i].name[name_len] = '\0';
         for (uint32_t prior = 0; prior < i; ++prior) {
@@ -162,8 +164,13 @@ static vpa_entry_t *parse_toc(const uint8_t *toc_data,
     return entries;
 
 fail:
-    for (uint32_t j = 0; j <= i && j < expected_count; ++j)
-        free(entries[j].name);
+    for (uint32_t j = 0; j < initialized; ++j) {
+#ifdef _MSC_VER
+#pragma warning(suppress : 6001)
+#endif
+        if (entries[j].name)
+            free(entries[j].name);
+    }
     free(entries);
     *out_count = 0;
     return NULL;
@@ -521,8 +528,13 @@ void vpa_close(vpa_archive_t *archive) {
         return;
 
     if (archive->entries) {
-        for (uint32_t i = 0; i < archive->count; i++)
-            free(archive->entries[i].name);
+        for (uint32_t i = 0; i < archive->count; i++) {
+#ifdef _MSC_VER
+#pragma warning(suppress : 6001)
+#endif
+            if (archive->entries[i].name)
+                free(archive->entries[i].name);
+        }
         free(archive->entries);
     }
 

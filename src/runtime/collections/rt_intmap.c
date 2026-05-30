@@ -70,8 +70,10 @@ typedef struct rt_intmap_impl {
 /// @brief Checked cast of an opaque handle to the IntMap implementation.
 /// @details Traps with @p what if @p obj is NULL or not an IntMap.
 static rt_intmap_impl *as_intmap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_INTMAP_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_INTMAP_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_intmap_impl *)obj;
 }
 
@@ -102,6 +104,8 @@ static void rt_intmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
     rt_intmap_impl *map = as_intmap(obj, "IntMap: invalid IntMap object");
+    if (!map)
+        return;
     if (!map->buckets || map->capacity == 0)
         return;
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -116,6 +120,8 @@ static void rt_intmap_finalize(void *obj) {
     if (!obj)
         return;
     rt_intmap_impl *map = as_intmap(obj, "IntMap: invalid IntMap object");
+    if (!map)
+        return;
     if (!map->buckets || map->capacity == 0)
         return;
     rt_intmap_clear(map);
@@ -129,12 +135,16 @@ static void rt_intmap_finalize(void *obj) {
 /// @param map IntMap to resize.
 /// @param new_capacity New number of buckets.
 static void map_resize(rt_intmap_impl *map, size_t new_capacity) {
-    if (new_capacity > SIZE_MAX / sizeof(rt_intmap_entry *))
+    if (new_capacity > SIZE_MAX / sizeof(rt_intmap_entry *)) {
         rt_trap("IntMap: allocation size overflow");
+        return;
+    }
     rt_intmap_entry **new_buckets =
         (rt_intmap_entry **)calloc(new_capacity, sizeof(rt_intmap_entry *));
-    if (!new_buckets)
+    if (!new_buckets) {
         rt_trap("IntMap: memory allocation failed");
+        return;
+    }
 
     // Rehash all entries
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -171,8 +181,10 @@ static void maybe_resize(rt_intmap_impl *map) {
 void *rt_intmap_new(void) {
     rt_intmap_impl *map =
         (rt_intmap_impl *)rt_obj_new_i64(RT_INTMAP_CLASS_ID, (int64_t)sizeof(rt_intmap_impl));
-    if (!map)
+    if (!map) {
         rt_trap("IntMap: memory allocation failed");
+        return NULL;
+    }
 
     map->vptr = NULL;
     map->buckets = (rt_intmap_entry **)calloc(MAP_INITIAL_CAPACITY, sizeof(rt_intmap_entry *));
@@ -180,6 +192,7 @@ void *rt_intmap_new(void) {
         if (rt_obj_release_check0(map))
             rt_obj_free(map);
         rt_trap("IntMap: memory allocation failed");
+        return NULL;
     }
     map->capacity = MAP_INITIAL_CAPACITY;
     map->count = 0;
@@ -213,6 +226,8 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
         return;
 
     rt_intmap_impl *map = as_intmap(obj, "IntMap.Set: invalid IntMap object");
+    if (!map)
+        return;
     if (map->capacity == 0)
         return; // Bucket allocation failed
 
@@ -240,6 +255,7 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
         rt_trap("IntMap: memory allocation failed");
+        return;
     }
 
     entry->key = key;

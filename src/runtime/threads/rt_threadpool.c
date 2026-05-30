@@ -472,6 +472,9 @@ static void worker_entry(void *arg) {
         // Dequeue a task
         pool_task *task = pool->queue_head;
         if (task) {
+#ifdef _MSC_VER
+#pragma warning(suppress : 6001)
+#endif
             pool->queue_head = task->next;
             if (pool->queue_head == NULL)
                 pool->queue_tail = NULL;
@@ -556,7 +559,7 @@ int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
     }
 
     // Allocate task
-    pool_task *task = (pool_task *)malloc(sizeof(pool_task));
+    pool_task *task = (pool_task *)calloc(1, sizeof(pool_task));
     if (!task) {
         rt_monitor_exit(pool->monitor);
         pool_release_object(pool);

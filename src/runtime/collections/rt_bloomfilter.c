@@ -56,8 +56,10 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the BloomFilter implementation.
 /// @details Traps with @p what if @p obj is NULL or not a BloomFilter.
 static rt_bloomfilter_impl *as_bloomfilter(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_BLOOMFILTER_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_BLOOMFILTER_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_bloomfilter_impl *)obj;
 }
 
@@ -110,8 +112,10 @@ static void bloomfilter_finalizer(void *obj) {
 // ---------------------------------------------------------------------------
 
 void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
-    if (expected_items < 0)
+    if (expected_items < 0) {
         rt_trap("BloomFilter: negative expected item count");
+        return NULL;
+    }
     if (expected_items == 0)
         expected_items = 1;
     if (!isfinite(false_positive_rate) || false_positive_rate <= 0.0)
@@ -122,8 +126,10 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
     // Optimal bit count: m = -n * ln(p) / (ln(2)^2)
     double n = (double)expected_items;
     double m = -n * log(false_positive_rate) / (log(2.0) * log(2.0));
-    if (!isfinite(m) || m > (double)INT64_MAX)
+    if (!isfinite(m) || m > (double)INT64_MAX) {
         rt_trap("BloomFilter: size overflow");
+        return NULL;
+    }
     int64_t bit_count = (int64_t)ceil(m);
     if (bit_count < 64)
         bit_count = 64;
@@ -136,21 +142,28 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
     if (hash_count > 30)
         hash_count = 30;
 
-    if (bit_count > INT64_MAX - 7)
+    if (bit_count > INT64_MAX - 7) {
         rt_trap("BloomFilter: size overflow");
+        return NULL;
+    }
     int64_t byte_count = (bit_count + 7) / 8;
-    if ((uint64_t)byte_count > SIZE_MAX)
+    if ((uint64_t)byte_count > SIZE_MAX) {
         rt_trap("BloomFilter: allocation size overflow");
+        return NULL;
+    }
 
     rt_bloomfilter_impl *bf =
         (rt_bloomfilter_impl *)rt_obj_new_i64(RT_BLOOMFILTER_CLASS_ID, sizeof(rt_bloomfilter_impl));
-    if (!bf)
+    if (!bf) {
         rt_trap("BloomFilter: memory allocation failed");
+        return NULL;
+    }
     bf->bits = (uint8_t *)calloc((size_t)byte_count, 1);
     if (!bf->bits) {
         if (rt_obj_release_check0(bf))
             rt_obj_free(bf);
         rt_trap("BloomFilter: memory allocation failed");
+        return NULL;
     }
     bf->bit_count = bit_count;
     bf->hash_count = hash_count;
@@ -172,14 +185,18 @@ void rt_bloomfilter_add(void *filter, rt_string item) {
     if (!filter || !item)
         return;
     rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.Add: invalid BloomFilter object");
+    if (!bf)
+        return;
 
     size_t len = (size_t)rt_str_len(item);
     const char *data = item->data;
     if (!data)
         return;
 
-    if (bf->item_count == INT64_MAX)
+    if (bf->item_count == INT64_MAX) {
         rt_trap("BloomFilter: item count overflow");
+        return;
+    }
     for (int64_t i = 0; i < bf->hash_count; i++) {
         uint64_t h = bloom_hash(data, len, (uint64_t)i);
         int64_t pos = (int64_t)(h % (uint64_t)bf->bit_count);
@@ -196,6 +213,8 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
         return 0;
     rt_bloomfilter_impl *bf =
         as_bloomfilter(filter, "BloomFilter.MightContain: invalid BloomFilter object");
+    if (!bf)
+        return 0;
 
     size_t len = (size_t)rt_str_len(item);
     const char *data = item->data;
@@ -221,7 +240,8 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
 int64_t rt_bloomfilter_count(void *filter) {
     if (!filter)
         return 0;
-    return as_bloomfilter(filter, "BloomFilter.Count: invalid BloomFilter object")->item_count;
+    rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.Count: invalid BloomFilter object");
+    return bf ? bf->item_count : 0;
 }
 
 /// @brief Estimate the current false positive rate of the Bloom filter.
@@ -231,6 +251,8 @@ double rt_bloomfilter_fpr(void *filter) {
     if (!filter)
         return 0.0;
     rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.Fpr: invalid BloomFilter object");
+    if (!bf)
+        return 0.0;
 
     int64_t set_bits = 0;
     int64_t byte_count = (bf->bit_count + 7) / 8;
@@ -252,6 +274,8 @@ void rt_bloomfilter_clear(void *filter) {
         return;
     rt_bloomfilter_impl *bf =
         as_bloomfilter(filter, "BloomFilter.Clear: invalid BloomFilter object");
+    if (!bf)
+        return;
     int64_t byte_count = (bf->bit_count + 7) / 8;
     memset(bf->bits, 0, (size_t)byte_count);
     bf->item_count = 0;
@@ -266,13 +290,17 @@ int64_t rt_bloomfilter_merge(void *filter, void *other) {
     rt_bloomfilter_impl *a =
         as_bloomfilter(filter, "BloomFilter.Merge: invalid BloomFilter object");
     rt_bloomfilter_impl *b = as_bloomfilter(other, "BloomFilter.Merge: invalid BloomFilter object");
+    if (!a || !b)
+        return 0;
     if (filter == other)
         return 1;
 
     if (a->bit_count != b->bit_count || a->hash_count != b->hash_count)
         return 0;
-    if (b->item_count > INT64_MAX - a->item_count)
+    if (b->item_count > INT64_MAX - a->item_count) {
         rt_trap("BloomFilter: item count overflow");
+        return 0;
+    }
 
     int64_t byte_count = (a->bit_count + 7) / 8;
     for (int64_t i = 0; i < byte_count; i++)

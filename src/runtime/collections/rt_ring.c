@@ -55,8 +55,10 @@ typedef struct rt_ring_impl {
 /// @brief Checked cast of an opaque handle to the RingBuffer implementation;
 ///        traps with @p what if @p obj is NULL or not a RingBuffer.
 static rt_ring_impl *as_ring(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_RING_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_RING_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_ring_impl *)obj;
 }
 
@@ -77,6 +79,8 @@ static void rt_ring_finalize(void *obj) {
     if (!obj)
         return;
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return;
     if (ring->owns_elements && ring->items) {
         for (size_t i = 0; i < ring->count; i++) {
             size_t idx = (ring->head + i) % ring->capacity;
@@ -128,13 +132,17 @@ static void rt_ring_finalize(void *obj) {
 /// @see rt_ring_pop For removing elements from the Ring
 /// @see rt_ring_finalize For cleanup behavior
 void *rt_ring_new(int64_t capacity) {
-    if (capacity < 0)
+    if (capacity < 0) {
         rt_trap("Ring: negative capacity");
+        return NULL;
+    }
     if (capacity == 0)
         capacity = 1; // Minimum capacity of 1
 
-    if ((uint64_t)capacity > SIZE_MAX / sizeof(void *))
+    if ((uint64_t)capacity > SIZE_MAX / sizeof(void *)) {
         rt_trap("Ring: allocation size overflow");
+        return NULL;
+    }
 
     rt_ring_impl *ring =
         (rt_ring_impl *)rt_obj_new_i64(RT_RING_CLASS_ID, (int64_t)sizeof(rt_ring_impl));
@@ -147,6 +155,7 @@ void *rt_ring_new(int64_t capacity) {
         if (rt_obj_release_check0(ring))
             rt_obj_free(ring);
         rt_trap("Ring: memory allocation failed");
+        return NULL;
     }
     ring->capacity = (size_t)capacity;
     ring->head = 0;
@@ -183,7 +192,8 @@ void *rt_ring_new_default(void) {
 int64_t rt_ring_len(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)as_ring(obj, "Ring: invalid Ring object")->count;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    return ring ? (int64_t)ring->count : 0;
 }
 
 /// @brief Returns the maximum capacity of the Ring.
@@ -205,7 +215,8 @@ int64_t rt_ring_len(void *obj) {
 int64_t rt_ring_cap(void *obj) {
     if (!obj)
         return 0;
-    return (int64_t)as_ring(obj, "Ring: invalid Ring object")->capacity;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    return ring ? (int64_t)ring->capacity : 0;
 }
 
 /// @brief Checks whether the Ring contains no elements.
@@ -254,21 +265,28 @@ int8_t rt_ring_is_full(void *obj) {
     if (!obj)
         return 0;
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return 0;
     return ring->count == ring->capacity;
 }
 
 void rt_ring_set_owns_elements(void *obj, int8_t owns) {
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return;
     owns = owns ? 1 : 0;
-    if (ring->count != 0 && ring->owns_elements != owns)
+    if (ring->count != 0 && ring->owns_elements != owns) {
         rt_trap("Ring: cannot change ownership mode while non-empty");
+        return;
+    }
     ring->owns_elements = owns;
 }
 
 int8_t rt_ring_owns_elements(void *obj) {
     if (!obj)
         return 0;
-    return as_ring(obj, "Ring: invalid Ring object")->owns_elements ? 1 : 0;
+    rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    return ring && ring->owns_elements ? 1 : 0;
 }
 
 /// @brief Adds an element to the Ring buffer.
@@ -315,6 +333,8 @@ void rt_ring_push(void *obj, void *elem) {
         return;
 
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return;
     if (ring->capacity == 0 || !ring->items)
         return;
 
@@ -380,6 +400,8 @@ void *rt_ring_pop(void *obj) {
         return NULL;
 
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return NULL;
     if (ring->count == 0 || !ring->items)
         return NULL;
 
@@ -430,6 +452,8 @@ void *rt_ring_peek(void *obj) {
         return NULL;
 
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return NULL;
     if (ring->count == 0 || !ring->items)
         return NULL;
 
@@ -483,6 +507,8 @@ void *rt_ring_get(void *obj, int64_t index) {
         return NULL;
 
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return NULL;
     if (index < 0 || (size_t)index >= ring->count || !ring->items)
         return NULL;
 
@@ -526,6 +552,8 @@ void rt_ring_clear(void *obj) {
         return;
 
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return;
     if (!ring->items)
         return;
 
@@ -545,6 +573,8 @@ int8_t rt_ring_has(void *obj, void *elem) {
         return 0;
 
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return 0;
     if (!ring->items)
         return 0;
 
@@ -565,6 +595,8 @@ void *rt_ring_last(void *obj) {
         return NULL;
 
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return NULL;
     if (ring->count == 0 || !ring->items)
         return NULL;
 
@@ -577,6 +609,8 @@ void rt_ring_reverse(void *obj) {
         return;
 
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return;
     if (ring->count < 2 || !ring->items)
         return;
 
@@ -595,6 +629,8 @@ void *rt_ring_clone(void *obj) {
         return rt_ring_new(1);
 
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
+    if (!ring)
+        return NULL;
 
     void *new_ring = rt_ring_new((int64_t)ring->capacity);
     if (!new_ring)

@@ -84,8 +84,10 @@ typedef struct rt_queue_impl {
 /// @brief Checked cast of an opaque handle to the Queue implementation;
 ///        traps with @p what if @p obj is NULL or not a Queue.
 static rt_queue_impl *as_queue(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_QUEUE_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_QUEUE_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_queue_impl *)obj;
 }
 
@@ -156,16 +158,21 @@ static void rt_queue_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 /// @note Capacity doubles each time (QUEUE_GROWTH_FACTOR = 2).
 /// @note Traps on memory allocation failure.
 /// @note O(n) time complexity where n is the number of elements.
-static void queue_grow(rt_queue_impl *q) {
-    if (q->cap > INT64_MAX / QUEUE_GROWTH_FACTOR)
+static int queue_grow(rt_queue_impl *q) {
+    if (q->cap > INT64_MAX / QUEUE_GROWTH_FACTOR) {
         rt_trap("Queue: capacity overflow");
+        return 0;
+    }
     int64_t new_cap = q->cap * QUEUE_GROWTH_FACTOR;
-    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *))
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *)) {
         rt_trap("Queue: allocation size overflow");
+        return 0;
+    }
     void **new_items = malloc((size_t)new_cap * sizeof(void *));
 
     if (!new_items) {
         rt_trap("Queue: memory allocation failed");
+        return 0;
     }
 
     // Linearize the circular buffer into the new array
@@ -186,6 +193,7 @@ static void queue_grow(rt_queue_impl *q) {
     q->head = 0;
     q->tail = q->len;
     q->cap = new_cap;
+    return 1;
 }
 
 /// @brief Creates a new empty Queue with default capacity.
@@ -223,6 +231,7 @@ void *rt_queue_new(void) {
         (rt_queue_impl *)rt_obj_new_i64(RT_QUEUE_CLASS_ID, (int64_t)sizeof(rt_queue_impl));
     if (!q) {
         rt_trap("Queue: memory allocation failed");
+        return NULL;
     }
 
     q->len = 0;
@@ -238,6 +247,7 @@ void *rt_queue_new(void) {
         if (rt_obj_release_check0(q))
             rt_obj_free(q);
         rt_trap("Queue: memory allocation failed");
+        return NULL;
     }
 
     return q;
@@ -247,9 +257,13 @@ void rt_queue_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
+    if (!q)
+        return;
     owns = owns ? 1 : 0;
-    if (q->len != 0 && q->owns_elements != owns)
+    if (q->len != 0 && q->owns_elements != owns) {
         rt_trap("Queue.SetOwnsElements: cannot change ownership mode on non-empty queue");
+        return;
+    }
     q->owns_elements = owns;
 }
 
@@ -329,15 +343,22 @@ int8_t rt_queue_is_empty(void *obj) {
 /// @see rt_queue_pop For the removal operation
 /// @see rt_queue_peek For viewing without removing
 void rt_queue_push(void *obj, void *elem) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Queue.Add: null queue");
+        return;
+    }
 
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
+    if (!q)
+        return;
 
-    if (q->len >= INT64_MAX)
+    if (q->len >= INT64_MAX) {
         rt_trap("Queue: maximum length reached");
+        return;
+    }
     if (q->len >= q->cap) {
-        queue_grow(q);
+        if (!queue_grow(q))
+            return;
     }
 
     if (q->owns_elements)
@@ -377,13 +398,18 @@ void rt_queue_push(void *obj, void *elem) {
 /// @see rt_queue_peek For viewing without removing
 /// @see rt_queue_is_empty For checking before take
 void *rt_queue_pop(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Queue.Take: null queue");
+        return NULL;
+    }
 
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
+    if (!q)
+        return NULL;
 
     if (q->len == 0) {
         rt_trap("Queue.Take: queue is empty");
+        return NULL;
     }
 
     void *val = q->items[q->head];
@@ -429,13 +455,18 @@ void *rt_queue_pop(void *obj) {
 /// @see rt_queue_pop For removing while retrieving
 /// @see rt_queue_is_empty For checking before peek
 void *rt_queue_peek(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Queue.Peek: null queue");
+        return NULL;
+    }
 
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
+    if (!q)
+        return NULL;
 
     if (q->len == 0) {
         rt_trap("Queue.Peek: queue is empty");
+        return NULL;
     }
 
     return q->items[q->head];

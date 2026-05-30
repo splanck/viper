@@ -75,8 +75,10 @@ typedef struct rt_stack_impl {
 /// @brief Checked cast of an opaque handle to the Stack implementation;
 ///        traps with @p what if @p obj is NULL or not a Stack.
 static rt_stack_impl *as_stack(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_STACK_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_STACK_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_stack_impl *)obj;
 }
 
@@ -144,26 +146,32 @@ static void rt_stack_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 /// @note Never shrinks the capacity - only grows when needed.
 ///
 /// @see rt_stack_push For the primary user of this function
-static void stack_ensure_capacity(rt_stack_impl *stack, int64_t needed) {
+static int stack_ensure_capacity(rt_stack_impl *stack, int64_t needed) {
     if (needed <= stack->cap)
-        return;
+        return 1;
 
     int64_t new_cap = stack->cap;
     while (new_cap < needed) {
-        if (new_cap > INT64_MAX / STACK_GROWTH_FACTOR)
+        if (new_cap > INT64_MAX / STACK_GROWTH_FACTOR) {
             rt_trap("Stack: capacity overflow");
+            return 0;
+        }
         new_cap *= STACK_GROWTH_FACTOR;
     }
 
-    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *))
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *)) {
         rt_trap("Stack: allocation size overflow");
+        return 0;
+    }
     void **new_items = realloc(stack->items, (size_t)new_cap * sizeof(void *));
     if (!new_items) {
         rt_trap("Stack: memory allocation failed");
+        return 0;
     }
 
     stack->items = new_items;
     stack->cap = new_cap;
+    return 1;
 }
 
 /// @brief Creates a new empty Stack with default capacity.
@@ -204,6 +212,7 @@ void *rt_stack_new(void) {
         (rt_stack_impl *)rt_obj_new_i64(RT_STACK_CLASS_ID, (int64_t)sizeof(rt_stack_impl));
     if (!stack) {
         rt_trap("Stack: memory allocation failed");
+        return NULL;
     }
 
     stack->len = 0;
@@ -217,6 +226,7 @@ void *rt_stack_new(void) {
         if (rt_obj_release_check0(stack))
             rt_obj_free(stack);
         rt_trap("Stack: memory allocation failed");
+        return NULL;
     }
 
     return stack;
@@ -226,9 +236,13 @@ void rt_stack_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
+    if (!stack)
+        return;
     owns = owns ? 1 : 0;
-    if (stack->len != 0 && stack->owns_elements != owns)
+    if (stack->len != 0 && stack->owns_elements != owns) {
         rt_trap("Stack.SetOwnsElements: cannot change ownership mode on non-empty stack");
+        return;
+    }
     stack->owns_elements = owns;
 }
 
@@ -308,14 +322,21 @@ int8_t rt_stack_is_empty(void *obj) {
 /// @see rt_stack_pop For the inverse operation
 /// @see rt_stack_peek For viewing without removing
 void rt_stack_push(void *obj, void *elem) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Stack.Push: null stack");
+        return;
+    }
 
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
+    if (!stack)
+        return;
 
-    if (stack->len >= INT64_MAX)
+    if (stack->len >= INT64_MAX) {
         rt_trap("Stack: maximum length reached");
-    stack_ensure_capacity(stack, stack->len + 1);
+        return;
+    }
+    if (!stack_ensure_capacity(stack, stack->len + 1))
+        return;
     if (stack->owns_elements)
         rt_obj_retain_maybe(elem);
     stack->items[stack->len] = elem;
@@ -353,13 +374,18 @@ void rt_stack_push(void *obj, void *elem) {
 /// @see rt_stack_peek For viewing without removing
 /// @see rt_stack_is_empty For checking before pop
 void *rt_stack_pop(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Stack.Pop: null stack");
+        return NULL;
+    }
 
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
+    if (!stack)
+        return NULL;
 
     if (stack->len == 0) {
         rt_trap("Stack.Pop: stack is empty");
+        return NULL;
     }
 
     void *value = stack->items[stack->len - 1];
@@ -403,13 +429,18 @@ void *rt_stack_pop(void *obj) {
 /// @see rt_stack_pop For removing while retrieving
 /// @see rt_stack_is_empty For checking before peek
 void *rt_stack_peek(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Stack.Peek: null stack");
+        return NULL;
+    }
 
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
+    if (!stack)
+        return NULL;
 
     if (stack->len == 0) {
         rt_trap("Stack.Peek: stack is empty");
+        return NULL;
     }
 
     return stack->items[stack->len - 1];

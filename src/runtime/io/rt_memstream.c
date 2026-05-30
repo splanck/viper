@@ -63,8 +63,10 @@ int8_t rt_memstream_is_handle(void *obj) {
 }
 
 static rt_memstream_impl *memstream_require(void *obj, const char *context) {
-    if (!rt_memstream_is_handle(obj))
+    if (!rt_memstream_is_handle(obj)) {
         rt_trap(context ? context : "MemStream: invalid stream");
+        return NULL;
+    }
     return (rt_memstream_impl *)obj;
 }
 
@@ -123,7 +125,7 @@ static void memstream_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
-static void memstream_ensure_capacity_or_release(rt_memstream_impl *ms,
+static int memstream_ensure_capacity_or_release(rt_memstream_impl *ms,
                                                  int64_t required,
                                                  const char *fallback) {
     jmp_buf recovery;
@@ -134,16 +136,17 @@ static void memstream_ensure_capacity_or_release(rt_memstream_impl *ms,
         rt_trap_clear_recovery();
         memstream_release_object(ms);
         rt_trap(saved_error);
-        return;
+        return 0;
     }
 
     if (!ensure_capacity(ms, required)) {
         rt_trap_clear_recovery();
         memstream_release_object(ms);
         rt_trap(fallback);
-        return;
+        return 0;
     }
     rt_trap_clear_recovery();
+    return 1;
 }
 
 /// @brief Ensure we can write 'count' bytes at current position.
@@ -202,8 +205,10 @@ void *rt_memstream_new(void) {
 /// @brief Construct a stream pre-allocated to `capacity` bytes — useful when the final size is
 /// known up front to avoid mid-write reallocations.
 void *rt_memstream_new_capacity(int64_t capacity) {
-    if (capacity < 0)
+    if (capacity < 0) {
         rt_trap("MemStream.NewCapacity: negative capacity");
+        return NULL;
+    }
 
     rt_memstream_impl *ms = (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
                                                                 (int64_t)sizeof(rt_memstream_impl));
@@ -218,9 +223,10 @@ void *rt_memstream_new_capacity(int64_t capacity) {
     ms->pos = 0;
     rt_obj_set_finalizer(ms, rt_memstream_finalize);
 
-    if (capacity > 0)
-        memstream_ensure_capacity_or_release(
-            ms, capacity, "MemStream.NewCapacity: memory allocation failed");
+    if (capacity > 0 &&
+        !memstream_ensure_capacity_or_release(
+            ms, capacity, "MemStream.NewCapacity: memory allocation failed"))
+        return NULL;
 
     return ms;
 }
@@ -235,6 +241,10 @@ void *rt_memstream_from_bytes(void *bytes) {
 
     int64_t bytes_len = rt_bytes_len(bytes);
     const uint8_t *bytes_data = rt_bytes_data_const(bytes);
+    if (bytes_len > 0 && !bytes_data) {
+        rt_trap("MemStream.FromBytes: invalid bytes");
+        return NULL;
+    }
 
     rt_memstream_impl *ms = (rt_memstream_impl *)rt_obj_new_i64(RT_MEMSTREAM_CLASS_ID,
                                                                 (int64_t)sizeof(rt_memstream_impl));
@@ -250,8 +260,13 @@ void *rt_memstream_from_bytes(void *bytes) {
     rt_obj_set_finalizer(ms, rt_memstream_finalize);
 
     if (bytes_len > 0) {
-        memstream_ensure_capacity_or_release(
-            ms, bytes_len, "MemStream.FromBytes: memory allocation failed");
+        if (!memstream_ensure_capacity_or_release(
+                ms, bytes_len, "MemStream.FromBytes: memory allocation failed"))
+            return NULL;
+        if (!ms->data) {
+            rt_trap("MemStream.FromBytes: memory allocation failed");
+            return NULL;
+        }
         memcpy(ms->data, bytes_data, (size_t)bytes_len);
         ms->len = bytes_len;
     }

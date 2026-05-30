@@ -71,8 +71,10 @@ typedef struct {
 /// @details Raises a runtime-error trap with @p what if @p obj is NULL or
 ///          not an OrderedMap.
 static rt_orderedmap_impl *as_orderedmap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_ORDEREDMAP_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_ORDEREDMAP_CLASS_ID) {
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, what);
+        return NULL;
+    }
     return (rt_orderedmap_impl *)obj;
 }
 
@@ -134,24 +136,30 @@ static rt_om_entry *om_find(rt_orderedmap_impl *m, const char *key, size_t len) 
 
 /// @brief Double the bucket array and rehash entries, preserving insertion
 ///        order by re-linking via the head→next list. Traps on overflow/OOM.
-static void om_resize(rt_orderedmap_impl *m) {
+static int om_resize(rt_orderedmap_impl *m) {
     // Guard against integer overflow before doubling.
-    if (m->capacity > INT64_MAX / 2)
+    if (m->capacity > INT64_MAX / 2) {
         rt_trap_raise_kind(
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "OrderedMap: capacity overflow during resize");
+        return 0;
+    }
 
     int64_t new_cap = m->capacity * 2;
-    if ((uint64_t)new_cap > SIZE_MAX / sizeof(rt_om_entry *))
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(rt_om_entry *)) {
         rt_trap_raise_kind(RT_TRAP_KIND_OVERFLOW,
                            Err_Overflow,
                            -1,
                            "OrderedMap: allocation size overflow during resize");
+        return 0;
+    }
     rt_om_entry **new_buckets = (rt_om_entry **)calloc((size_t)new_cap, sizeof(rt_om_entry *));
-    if (!new_buckets)
+    if (!new_buckets) {
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
                            -1,
                            "OrderedMap: memory allocation failed during resize");
+        return 0;
+    }
 
     // Re-hash all entries via insertion-order list
     rt_om_entry *e = m->head;
@@ -165,6 +173,7 @@ static void om_resize(rt_orderedmap_impl *m) {
     free(m->buckets);
     m->buckets = new_buckets;
     m->capacity = new_cap;
+    return 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +186,8 @@ static void orderedmap_finalizer(void *obj) {
     if (!obj)
         return;
     rt_orderedmap_impl *m = as_orderedmap(obj, "OrderedMap: invalid OrderedMap object");
+    if (!m)
+        return;
     rt_om_entry *e = m->head;
     while (e) {
         rt_om_entry *next = e->next;
@@ -197,6 +208,8 @@ static void orderedmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
     rt_orderedmap_impl *m = as_orderedmap(obj, "OrderedMap: invalid OrderedMap object");
+    if (!m)
+        return;
     for (rt_om_entry *e = m->head; e; e = e->next)
         visitor(e->value, ctx);
 }
@@ -208,11 +221,13 @@ static void orderedmap_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 void *rt_orderedmap_new(void) {
     rt_orderedmap_impl *m =
         (rt_orderedmap_impl *)rt_obj_new_i64(RT_ORDEREDMAP_CLASS_ID, sizeof(rt_orderedmap_impl));
-    if (!m)
+    if (!m) {
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
                            -1,
                            "OrderedMap: memory allocation failed");
+        return NULL;
+    }
     m->capacity = 16;
     m->count = 0;
     m->buckets = (rt_om_entry **)calloc(16, sizeof(rt_om_entry *));
@@ -223,6 +238,7 @@ void *rt_orderedmap_new(void) {
                            Err_RuntimeError,
                            -1,
                            "OrderedMap: memory allocation failed");
+        return NULL;
     }
     m->head = m->tail = NULL;
     rt_obj_set_finalizer(m, orderedmap_finalizer);
@@ -259,6 +275,8 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
     if (!map)
         return;
     rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Set: invalid OrderedMap object");
+    if (!m)
+        return;
 
     size_t klen;
     const char *kstr = om_key_data(key, &klen);
@@ -275,8 +293,8 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
     }
 
     // Resize if needed
-    if ((long double)m->count * 4.0L >= (long double)m->capacity * 3.0L)
-        om_resize(m);
+    if ((long double)m->count * 4.0L >= (long double)m->capacity * 3.0L && !om_resize(m))
+        return;
 
     if (value)
         rt_obj_retain_maybe(value);
@@ -289,12 +307,14 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
                            Err_RuntimeError,
                            -1,
                            "OrderedMap: entry allocation failed");
+        return;
     }
     if (klen == SIZE_MAX) {
         om_release_value(value);
         free(e);
         rt_trap_raise_kind(
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "OrderedMap: key allocation overflow");
+        return;
     }
     e->key = (char *)malloc(klen + 1);
     if (!e->key) {
@@ -302,6 +322,7 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
         free(e);
         rt_trap_raise_kind(
             RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, "OrderedMap: key allocation failed");
+        return;
     }
     memcpy(e->key, kstr, klen);
     e->key[klen] = '\0';

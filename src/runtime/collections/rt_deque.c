@@ -67,8 +67,10 @@ static void trap_with_message(const char *msg) {
 /// @brief Checked cast of an opaque handle to the Deque struct;
 ///        traps with @p what if @p obj is NULL or not a Deque.
 static Deque *as_deque(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_DEQUE_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_DEQUE_CLASS_ID) {
         trap_with_message(what);
+        return NULL;
+    }
     return (Deque *)obj;
 }
 
@@ -81,21 +83,32 @@ static void deque_release_value(void *value) {
 /// @brief Grow the ring buffer to hold at least @p required elements.
 /// @details Doubles capacity (or jumps to @p required), then linearizes the
 ///          wrapped contents so @c front becomes 0. Traps on overflow/OOM.
-static void ensure_capacity(Deque *d, int64_t required) {
+static int ensure_capacity(Deque *d, int64_t required) {
     if (required <= d->cap)
-        return;
+        return 1;
 
-    if (d->cap > INT64_MAX / 2)
+    if (d->cap > INT64_MAX / 2) {
         trap_with_message("Deque: capacity overflow");
+        return 0;
+    }
     int64_t new_cap = d->cap * 2;
     if (new_cap < required)
         new_cap = required;
 
-    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *))
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *)) {
         trap_with_message("Deque: allocation size overflow");
+        return 0;
+    }
     void **new_data = (void **)malloc((size_t)new_cap * sizeof(void *));
-    if (!new_data)
+    if (!new_data) {
         trap_with_message("Failed to allocate memory for deque");
+        return 0;
+    }
+    if (d->len > new_cap) {
+        free(new_data);
+        trap_with_message("Deque: corrupted length exceeds capacity");
+        return 0;
+    }
 
     // Copy elements to new array, starting at index 0
     for (int64_t i = 0; i < d->len; i++) {
@@ -107,6 +120,7 @@ static void ensure_capacity(Deque *d, int64_t required) {
     d->data = new_data;
     d->cap = new_cap;
     d->front = 0;
+    return 1;
 }
 
 //=============================================================================
@@ -139,6 +153,8 @@ static void deque_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return;
     if (!d->data || d->cap <= 0)
         return;
     for (int64_t i = 0; i < d->len; i++) {
@@ -150,18 +166,23 @@ static void deque_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 void *rt_deque_with_capacity(int64_t cap) {
     if (cap < 1)
         cap = 1;
-    if ((uint64_t)cap > SIZE_MAX / sizeof(void *))
+    if ((uint64_t)cap > SIZE_MAX / sizeof(void *)) {
         trap_with_message("Deque: allocation size overflow");
+        return NULL;
+    }
 
     Deque *d = (Deque *)rt_obj_new_i64(RT_DEQUE_CLASS_ID, (int64_t)sizeof(Deque));
-    if (!d)
+    if (!d) {
         trap_with_message("Deque: memory allocation failed");
+        return NULL;
+    }
 
     d->data = (void **)malloc((size_t)cap * sizeof(void *));
     if (!d->data) {
         if (rt_obj_release_check0(d))
             rt_obj_free(d);
         trap_with_message("Deque: memory allocation failed");
+        return NULL;
     }
 
     d->cap = cap;
@@ -183,6 +204,8 @@ int64_t rt_deque_len(void *obj) {
     if (!obj)
         return 0;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return 0;
     return d->len;
 }
 
@@ -193,6 +216,8 @@ int64_t rt_deque_cap(void *obj) {
     if (!obj)
         return 0;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return 0;
     return d->cap;
 }
 
@@ -203,6 +228,8 @@ int8_t rt_deque_is_empty(void *obj) {
     if (!obj)
         return 1;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return 1;
     return d->len == 0 ? 1 : 0;
 }
 
@@ -219,9 +246,15 @@ void rt_deque_push_front(void *obj, void *elem) {
         return;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
 
-    if (d->len >= INT64_MAX)
+    if (!d)
+        return;
+
+    if (d->len >= INT64_MAX) {
         trap_with_message("Deque: maximum capacity reached");
-    ensure_capacity(d, d->len + 1);
+        return;
+    }
+    if (!ensure_capacity(d, d->len + 1))
+        return;
 
     rt_obj_retain_maybe(elem);
     // Move front pointer backward (with wrap-around)
@@ -235,11 +268,17 @@ void rt_deque_push_front(void *obj, void *elem) {
 /// @return The removed element.
 /// @note Traps if the deque is NULL or empty.
 void *rt_deque_pop_front(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("PopFront called on NULL deque");
+        return NULL;
+    }
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (d->len == 0)
+    if (!d)
+        return NULL;
+    if (d->len == 0) {
         trap_with_message("PopFront called on empty deque");
+        return NULL;
+    }
 
     void *val = d->data[d->front];
     rt_obj_retain_maybe(val);
@@ -255,11 +294,17 @@ void *rt_deque_pop_front(void *obj) {
 /// @return The front element.
 /// @note Traps if the deque is NULL or empty.
 void *rt_deque_peek_front(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("PeekFront called on NULL deque");
+        return NULL;
+    }
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (d->len == 0)
+    if (!d)
+        return NULL;
+    if (d->len == 0) {
         trap_with_message("PeekFront called on empty deque");
+        return NULL;
+    }
 
     void *val = d->data[d->front];
     rt_obj_retain_maybe(val);
@@ -279,9 +324,15 @@ void rt_deque_push_back(void *obj, void *elem) {
         return;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
 
-    if (d->len >= INT64_MAX)
+    if (!d)
+        return;
+
+    if (d->len >= INT64_MAX) {
         trap_with_message("Deque: maximum capacity reached");
-    ensure_capacity(d, d->len + 1);
+        return;
+    }
+    if (!ensure_capacity(d, d->len + 1))
+        return;
 
     int64_t back = (d->front + d->len) % d->cap;
     rt_obj_retain_maybe(elem);
@@ -294,11 +345,17 @@ void rt_deque_push_back(void *obj, void *elem) {
 /// @return The removed element.
 /// @note Traps if the deque is NULL or empty.
 void *rt_deque_pop_back(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("PopBack called on NULL deque");
+        return NULL;
+    }
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (d->len == 0)
+    if (!d)
+        return NULL;
+    if (d->len == 0) {
         trap_with_message("PopBack called on empty deque");
+        return NULL;
+    }
 
     int64_t back = (d->front + d->len - 1) % d->cap;
     void *val = d->data[back];
@@ -314,11 +371,17 @@ void *rt_deque_pop_back(void *obj) {
 /// @return The back element.
 /// @note Traps if the deque is NULL or empty.
 void *rt_deque_peek_back(void *obj) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("PeekBack called on NULL deque");
+        return NULL;
+    }
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (d->len == 0)
+    if (!d)
+        return NULL;
+    if (d->len == 0) {
         trap_with_message("PeekBack called on empty deque");
+        return NULL;
+    }
 
     int64_t back = (d->front + d->len - 1) % d->cap;
     void *val = d->data[back];
@@ -336,11 +399,17 @@ void *rt_deque_peek_back(void *obj) {
 /// @return The element at the index.
 /// @note Traps if obj is NULL or idx is out of bounds.
 void *rt_deque_get(void *obj, int64_t idx) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Get called on NULL deque");
+        return NULL;
+    }
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (idx < 0 || idx >= d->len)
+    if (!d)
+        return NULL;
+    if (idx < 0 || idx >= d->len) {
         trap_with_message("Index out of bounds");
+        return NULL;
+    }
 
     int64_t actual = (d->front + idx) % d->cap;
     void *val = d->data[actual];
@@ -354,11 +423,17 @@ void *rt_deque_get(void *obj, int64_t idx) {
 /// @param elem New value to store. May be NULL.
 /// @note Traps if obj is NULL or idx is out of bounds.
 void rt_deque_set(void *obj, int64_t idx, void *elem) {
-    if (!obj)
+    if (!obj) {
         trap_with_message("Set called on NULL deque");
+        return;
+    }
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (idx < 0 || idx >= d->len)
+    if (!d)
+        return;
+    if (idx < 0 || idx >= d->len) {
         trap_with_message("Index out of bounds");
+        return;
+    }
 
     int64_t actual = (d->front + idx) % d->cap;
     rt_obj_retain_maybe(elem);
@@ -377,6 +452,8 @@ void rt_deque_clear(void *obj) {
     if (!obj)
         return;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return;
     for (int64_t i = 0; i < d->len; i++) {
         int64_t idx = (d->front + i) % d->cap;
         deque_release_value(d->data[idx]);
@@ -395,6 +472,8 @@ int8_t rt_deque_has(void *obj, void *elem) {
     if (!obj)
         return 0;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return 0;
 
     for (int64_t i = 0; i < d->len; i++) {
         int64_t idx = (d->front + i) % d->cap;
@@ -411,6 +490,8 @@ void rt_deque_reverse(void *obj) {
     if (!obj)
         return;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return;
     if (d->len < 2)
         return;
 
@@ -433,6 +514,8 @@ void *rt_deque_clone(void *obj) {
     if (!obj)
         return rt_deque_new();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return NULL;
 
     void *new_d = rt_deque_with_capacity(d->cap);
     if (!new_d)
@@ -453,6 +536,8 @@ void *rt_deque_try_pop_front(void *obj) {
     if (!obj)
         return NULL;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return NULL;
     if (d->len == 0)
         return NULL;
 
@@ -472,6 +557,8 @@ void *rt_deque_try_pop_back(void *obj) {
     if (!obj)
         return NULL;
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
+    if (!d)
+        return NULL;
     if (d->len == 0)
         return NULL;
 

@@ -90,8 +90,10 @@ static void binfile_prepare_read(rt_binfile_impl *bf) {
     if (!bf || !bf->fp)
         return;
     if (bf->last_op == BINFILE_OP_WRITE) {
-        if (fflush(bf->fp) != 0)
+        if (fflush(bf->fp) != 0) {
             rt_trap("BinFile: failed to switch from write to read");
+            return;
+        }
     }
     bf->last_op = BINFILE_OP_READ;
 }
@@ -107,8 +109,10 @@ static void binfile_prepare_write(rt_binfile_impl *bf) {
     if (!bf || !bf->fp)
         return;
     if (bf->last_op == BINFILE_OP_READ) {
-        if (binfile_fseek(bf->fp, 0, SEEK_CUR) != 0)
+        if (binfile_fseek(bf->fp, 0, SEEK_CUR) != 0) {
             rt_trap("BinFile: failed to switch from read to write");
+            return;
+        }
         clearerr(bf->fp);
     }
     bf->last_op = BINFILE_OP_WRITE;

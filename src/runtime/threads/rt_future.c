@@ -459,8 +459,10 @@ static void promise_finalizer(void *obj) {
 void *rt_promise_new(void) {
     promise_impl *p =
         (promise_impl *)rt_obj_new_i64(RT_PROMISE_CLASS_ID, (int64_t)sizeof(promise_impl));
-    if (!p)
+    if (!p) {
         rt_trap("Promise: memory allocation failed");
+        return NULL;
+    }
 
 #ifdef _WIN32
     InitializeCriticalSection(&p->mutex);
@@ -525,8 +527,12 @@ void *rt_promise_get_future(void *obj) {
         }
 
         candidate = (future_impl *)rt_obj_new_i64(RT_FUTURE_CLASS_ID, (int64_t)sizeof(future_impl));
-        if (!candidate)
+        if (!candidate) {
             rt_trap("Future: memory allocation failed");
+            rt_trap_clear_recovery();
+            future_release_object(obj);
+            return NULL;
+        }
         candidate->promise = p;
         rt_obj_retain_maybe(p); // Future holds a reference to prevent premature GC of promise
         rt_obj_set_finalizer(candidate, future_finalizer);

@@ -219,11 +219,19 @@ static int savedata_is_valid_utf8(const char *data, size_t len) {
 static const char *savedata_require_key(rt_string key, size_t *len_out, const char *context) {
     const char *kcstr = rt_string_cstr(key);
     int64_t klen_i64 = key ? rt_str_len(key) : -1;
-    if (!kcstr || klen_i64 <= 0)
+    if (!kcstr || klen_i64 <= 0) {
         rt_trap(context);
+        if (len_out)
+            *len_out = 0;
+        return "";
+    }
     size_t klen = (size_t)klen_i64;
-    if (memchr(kcstr, '\0', klen) || !savedata_is_valid_utf8(kcstr, klen))
+    if (memchr(kcstr, '\0', klen) || !savedata_is_valid_utf8(kcstr, klen)) {
         rt_trap(context);
+        if (len_out)
+            *len_out = 0;
+        return "";
+    }
     if (len_out)
         *len_out = klen;
     return kcstr;
@@ -245,10 +253,14 @@ static int savedata_is_valid_key(rt_string key, size_t *len_out) {
 static void savedata_require_string_value(rt_string value, const char *context) {
     const char *data = rt_string_cstr(value);
     int64_t len_i64 = value ? rt_str_len(value) : -1;
-    if (!data || len_i64 < 0)
+    if (!data || len_i64 < 0) {
         rt_trap(context);
-    if (!savedata_is_valid_utf8(data, (size_t)len_i64))
+        return;
+    }
+    if (!savedata_is_valid_utf8(data, (size_t)len_i64)) {
         rt_trap(context);
+        return;
+    }
 }
 
 static int savedata_is_valid_string_value(rt_string value) {

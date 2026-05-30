@@ -57,8 +57,10 @@ typedef struct rt_sortedset_impl *rt_sortedset;
 /// @brief Checked cast of an opaque handle to the SortedSet implementation;
 ///        traps with @p what if @p obj is NULL or not a SortedSet.
 static rt_sortedset as_sortedset(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_SORTEDSET_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_SORTEDSET_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_sortedset)obj;
 }
 
@@ -86,6 +88,10 @@ static rt_string retain_result_string(rt_string s) {
 ///        reference so the seq holds the only owning ref).
 static void seq_push_string_copy(void *seq, rt_string s) {
     rt_string copy = copy_string(s);
+    if (!copy) {
+        rt_trap("SortedSet: string allocation failed");
+        return;
+    }
     rt_seq_push(seq, copy);
     rt_str_release_maybe(copy);
 }
@@ -144,24 +150,31 @@ static int64_t binary_search(rt_sortedset set, rt_string str, int8_t *found) {
 
 /// @brief Grow the sorted-element array to hold at least @p needed entries
 ///        (geometric growth; traps on overflow/OOM).
-static void ensure_capacity(rt_sortedset set, int64_t needed) {
+static int ensure_capacity(rt_sortedset set, int64_t needed) {
     if (set->cap >= needed)
-        return;
+        return 1;
 
     int64_t new_cap = set->cap == 0 ? 8 : set->cap * 2;
     while (new_cap < needed) {
-        if (new_cap > INT64_MAX / 2)
+        if (new_cap > INT64_MAX / 2) {
             rt_trap("SortedSet: capacity overflow");
+            return 0;
+        }
         new_cap *= 2;
     }
 
-    if ((uint64_t)new_cap > SIZE_MAX / sizeof(rt_string))
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(rt_string)) {
         rt_trap("SortedSet: allocation size overflow");
+        return 0;
+    }
     rt_string *new_data = realloc(set->data, sizeof(rt_string) * new_cap);
-    if (!new_data)
+    if (!new_data) {
         rt_trap("rt_sortedset: memory allocation failed");
+        return 0;
+    }
     set->data = new_data;
     set->cap = new_cap;
+    return 1;
 }
 
 //=============================================================================
@@ -173,6 +186,8 @@ static void sortedset_finalizer(void *obj) {
     if (!obj)
         return;
     rt_sortedset set = as_sortedset(obj, "SortedSet: invalid SortedSet object");
+    if (!set)
+        return;
     for (int64_t i = 0; i < set->len; i++)
         rt_str_release_maybe(set->data[i]);
     free(set->data);
@@ -217,6 +232,8 @@ int8_t rt_sortedset_add(void *obj, rt_string str) {
     if (!obj)
         return 0;
     rt_sortedset set = as_sortedset(obj, "SortedSet.Add: invalid SortedSet object");
+    if (!set)
+        return 0;
 
     int8_t found;
     int64_t idx = binary_search(set, str, &found);
@@ -224,8 +241,13 @@ int8_t rt_sortedset_add(void *obj, rt_string str) {
     if (found)
         return 0; // Already present
 
-    ensure_capacity(set, set->len + 1);
+    if (!ensure_capacity(set, set->len + 1))
+        return 0;
     rt_string copy = copy_string(str);
+    if (!copy) {
+        rt_trap("SortedSet.Add: string allocation failed");
+        return 0;
+    }
 
     // Shift elements to make room
     for (int64_t i = set->len; i > idx; i--) {
@@ -246,6 +268,8 @@ int8_t rt_sortedset_remove(void *obj, rt_string str) {
     if (!obj)
         return 0;
     rt_sortedset set = as_sortedset(obj, "SortedSet.Remove: invalid SortedSet object");
+    if (!set)
+        return 0;
 
     int8_t found;
     int64_t idx = binary_search(set, str, &found);
@@ -272,6 +296,8 @@ int8_t rt_sortedset_has(void *obj, rt_string str) {
     if (!obj)
         return 0;
     rt_sortedset set = as_sortedset(obj, "SortedSet.Has: invalid SortedSet object");
+    if (!set)
+        return 0;
 
     int8_t found;
     binary_search(set, str, &found);
@@ -285,6 +311,8 @@ void rt_sortedset_clear(void *obj) {
     if (!obj)
         return;
     rt_sortedset set = as_sortedset(obj, "SortedSet.Clear: invalid SortedSet object");
+    if (!set)
+        return;
 
     for (int64_t i = 0; i < set->len; i++) {
         rt_str_release_maybe(set->data[i]);
@@ -408,6 +436,8 @@ int64_t rt_sortedset_index_of(void *obj, rt_string str) {
     if (!obj)
         return -1;
     rt_sortedset set = as_sortedset(obj, "SortedSet.IndexOf: invalid SortedSet object");
+    if (!set)
+        return -1;
 
     int8_t found;
     int64_t idx = binary_search(set, str, &found);
@@ -422,10 +452,14 @@ int64_t rt_sortedset_index_of(void *obj, rt_string str) {
 /// either may be NULL to mean "open end". Useful for range queries on ordered keys.
 void *rt_sortedset_range(void *obj, rt_string from, rt_string to) {
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_sortedset set = as_sortedset(obj, "SortedSet.Range: invalid SortedSet object");
+    if (!set)
+        return seq;
 
     int8_t found;
     int64_t start = from ? binary_search(set, from, &found) : 0;
@@ -443,10 +477,14 @@ void *rt_sortedset_range(void *obj, rt_string from, rt_string to) {
 /// future mutations.
 void *rt_sortedset_items(void *obj) {
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_sortedset set = as_sortedset(obj, "SortedSet.Items: invalid SortedSet object");
+    if (!set)
+        return seq;
 
     for (int64_t i = 0; i < set->len; i++) {
         seq_push_string_copy(seq, set->data[i]);
@@ -458,10 +496,14 @@ void *rt_sortedset_items(void *obj) {
 /// @brief Return a Seq of the first `n` elements in sorted order (the smallest values).
 void *rt_sortedset_take(void *obj, int64_t n) {
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     if (!obj || n <= 0)
         return seq;
     rt_sortedset set = as_sortedset(obj, "SortedSet.Take: invalid SortedSet object");
+    if (!set)
+        return seq;
 
     int64_t count = n < set->len ? n : set->len;
     for (int64_t i = 0; i < count; i++) {
@@ -474,10 +516,14 @@ void *rt_sortedset_take(void *obj, int64_t n) {
 /// @brief Return a Seq containing all but the first `n` elements (in sorted order).
 void *rt_sortedset_skip(void *obj, int64_t n) {
     void *seq = rt_seq_new();
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_sortedset set = as_sortedset(obj, "SortedSet.Skip: invalid SortedSet object");
+    if (!set)
+        return seq;
     if (n >= set->len)
         return seq;
 
@@ -496,6 +542,8 @@ void *rt_sortedset_skip(void *obj, int64_t n) {
 /// @brief Return a fresh sorted set containing every element from either operand.
 void *rt_sortedset_union(void *obj, void *other) {
     void *result = rt_sortedset_new();
+    if (!result)
+        return NULL;
     rt_sortedset a = obj ? as_sortedset(obj, "SortedSet.Union: invalid SortedSet object") : NULL;
     rt_sortedset b =
         other ? as_sortedset(other, "SortedSet.Union: invalid SortedSet object") : NULL;
@@ -519,6 +567,8 @@ void *rt_sortedset_union(void *obj, void *other) {
 /// merge-style two-pointer walk over the sorted arrays for O(|a| + |b|) time.
 void *rt_sortedset_intersect(void *obj, void *other) {
     void *result = rt_sortedset_new();
+    if (!result)
+        return NULL;
     rt_sortedset a =
         obj ? as_sortedset(obj, "SortedSet.Intersect: invalid SortedSet object") : NULL;
     rt_sortedset b =
@@ -548,6 +598,8 @@ void *rt_sortedset_intersect(void *obj, void *other) {
 /// @brief Return a fresh sorted set containing elements present in `obj` but not in `other`.
 void *rt_sortedset_diff(void *obj, void *other) {
     void *result = rt_sortedset_new();
+    if (!result)
+        return NULL;
     rt_sortedset a = obj ? as_sortedset(obj, "SortedSet.Diff: invalid SortedSet object") : NULL;
     rt_sortedset b = other ? as_sortedset(other, "SortedSet.Diff: invalid SortedSet object") : NULL;
 
@@ -590,11 +642,15 @@ int8_t rt_sortedset_is_subset(void *obj, void *other) {
     if (!obj)
         return 1; // Empty is subset of everything
     rt_sortedset a = as_sortedset(obj, "SortedSet.IsSubset: invalid SortedSet object");
+    if (!a)
+        return 0;
     if (a->len == 0)
         return 1;
     if (!other)
         return 0; // Non-empty can't be subset of empty
     rt_sortedset b = as_sortedset(other, "SortedSet.IsSubset: invalid SortedSet object");
+    if (!b)
+        return 0;
 
     // Check all elements of a are in b
     int64_t j = 0;

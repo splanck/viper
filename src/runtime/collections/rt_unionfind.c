@@ -59,8 +59,10 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the UnionFind implementation;
 ///        traps with @p what if @p obj is NULL or not a UnionFind.
 static rt_unionfind_impl *as_unionfind(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_UNIONFIND_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_UNIONFIND_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_unionfind_impl *)obj;
 }
 
@@ -86,17 +88,23 @@ static void unionfind_finalizer(void *obj) {
 // ---------------------------------------------------------------------------
 
 void *rt_unionfind_new(int64_t n) {
-    if (n < 0)
+    if (n < 0) {
         rt_trap("UnionFind: negative element count");
+        return NULL;
+    }
     if (n == 0)
         n = 1;
-    if ((uint64_t)n > SIZE_MAX / sizeof(int64_t))
+    if ((uint64_t)n > SIZE_MAX / sizeof(int64_t)) {
         rt_trap("UnionFind: allocation size overflow");
+        return NULL;
+    }
 
     rt_unionfind_impl *uf =
         (rt_unionfind_impl *)rt_obj_new_i64(RT_UNIONFIND_CLASS_ID, sizeof(rt_unionfind_impl));
-    if (!uf)
+    if (!uf) {
         rt_trap("UnionFind: memory allocation failed");
+        return NULL;
+    }
     uf->parent = (int64_t *)malloc((size_t)n * sizeof(int64_t));
     uf->rank = (int64_t *)calloc((size_t)n, sizeof(int64_t));
     uf->size = (int64_t *)malloc((size_t)n * sizeof(int64_t));
@@ -107,6 +115,7 @@ void *rt_unionfind_new(int64_t n) {
         if (rt_obj_release_check0(uf))
             rt_obj_free(uf);
         rt_trap("UnionFind: memory allocation failed");
+        return NULL;
     }
     uf->n = n;
     uf->sets = n;

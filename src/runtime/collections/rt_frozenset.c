@@ -80,8 +80,10 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the FrozenSet implementation.
 /// @details Traps with @p what if @p obj is NULL or not a FrozenSet.
 static rt_frozenset_impl *as_frozenset(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_FROZENSET_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_FROZENSET_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_frozenset_impl *)obj;
 }
 
@@ -140,6 +142,8 @@ static void fs_finalizer(void *obj) {
     if (!obj)
         return;
     rt_frozenset_impl *fs = as_frozenset(obj, "FrozenSet: invalid FrozenSet object");
+    if (!fs)
+        return;
     if (fs->slots) {
         for (int64_t i = 0; i < fs->capacity; i++) {
             if (fs->slots[i].key)
@@ -157,8 +161,10 @@ static void fs_finalizer(void *obj) {
 static int64_t fs_next_pow2(int64_t n) {
     int64_t p = 16;
     while (p < n) {
-        if (p > INT64_MAX / 2)
+        if (p > INT64_MAX / 2) {
             rt_trap("FrozenSet: capacity overflow");
+            return 0;
+        }
         p *= 2;
     }
     return p;
@@ -171,17 +177,25 @@ static rt_frozenset_impl *fs_alloc(int64_t count) {
     // Use ~50% load factor for good probe performance
     int64_t needed = 8;
     if (count >= 4) {
-        if (count > INT64_MAX / 2)
+        if (count > INT64_MAX / 2) {
             rt_trap("FrozenSet: capacity overflow");
+            return NULL;
+        }
         needed = count * 2;
     }
     int64_t cap = fs_next_pow2(needed);
-    if ((uint64_t)cap > SIZE_MAX / sizeof(fs_slot))
+    if (cap <= 0)
+        return NULL;
+    if ((uint64_t)cap > SIZE_MAX / sizeof(fs_slot)) {
         rt_trap("FrozenSet: allocation size overflow");
+        return NULL;
+    }
     rt_frozenset_impl *fs =
         (rt_frozenset_impl *)rt_obj_new_i64(RT_FROZENSET_CLASS_ID, sizeof(rt_frozenset_impl));
-    if (!fs)
+    if (!fs) {
         rt_trap("FrozenSet: memory allocation failed");
+        return NULL;
+    }
     fs->vptr = NULL;
     fs->count = 0;
     fs->capacity = cap;
@@ -190,6 +204,7 @@ static rt_frozenset_impl *fs_alloc(int64_t count) {
         if (rt_obj_release_check0(fs))
             rt_obj_free(fs);
         rt_trap("rt_frozenset: memory allocation failed");
+        return NULL;
     }
     rt_obj_set_finalizer(fs, fs_finalizer);
     return fs;

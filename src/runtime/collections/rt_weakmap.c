@@ -59,8 +59,10 @@ typedef struct {
 /// @brief Checked cast of an opaque handle to the WeakMap implementation;
 ///        traps with @p what if @p obj is NULL or not a WeakMap.
 static rt_weakmap_data *as_weakmap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_WEAKMAP_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_WEAKMAP_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_weakmap_data *)obj;
 }
 
@@ -124,11 +126,15 @@ static void wm_release_entry(wm_entry *entry) {
 /// @brief Allocate a zeroed entry table of @p capacity slots; traps on
 ///        overflow/OOM.
 static wm_entry *wm_alloc_entries(int64_t capacity) {
-    if (capacity <= 0 || (uint64_t)capacity > SIZE_MAX / sizeof(wm_entry))
+    if (capacity <= 0 || (uint64_t)capacity > SIZE_MAX / sizeof(wm_entry)) {
         rt_trap("WeakMap: allocation size overflow");
+        return NULL;
+    }
     wm_entry *entries = (wm_entry *)calloc((size_t)capacity, sizeof(wm_entry));
-    if (!entries)
+    if (!entries) {
         rt_trap("WeakMap: memory allocation failed");
+        return NULL;
+    }
     return entries;
 }
 
@@ -153,22 +159,28 @@ static void wm_move_live_entry(rt_weakmap_data *data, wm_entry entry) {
     size_t key_len = 0;
     const char *key = wm_key_data(entry.key, &key_len);
     int64_t slot = wm_find_slot(data, key, key_len);
-    if (slot < 0)
+    if (slot < 0) {
         rt_trap("WeakMap: rehash failed");
+        return;
+    }
     data->entries[slot] = entry;
     data->count++;
 }
 
 /// @brief Double the table; live entries are carried over and dead (collected)
 ///        weak entries are dropped during the rehash. Traps on overflow/OOM.
-static void wm_grow(rt_weakmap_data *data) {
+static int wm_grow(rt_weakmap_data *data) {
     int64_t old_cap = data->capacity;
     wm_entry *old_entries = data->entries;
 
-    if (old_cap > INT64_MAX / 2)
+    if (old_cap > INT64_MAX / 2) {
         rt_trap("WeakMap: capacity overflow");
+        return 0;
+    }
     int64_t new_cap = old_cap * 2;
     wm_entry *new_entries = wm_alloc_entries(new_cap);
+    if (!new_entries)
+        return 0;
 
     data->entries = new_entries;
     data->capacity = new_cap;
@@ -184,6 +196,7 @@ static void wm_grow(rt_weakmap_data *data) {
         }
     }
     free(old_entries);
+    return 1;
 }
 
 /// @brief GC finalizer: release every occupied entry (key + weakref) and
@@ -204,10 +217,17 @@ static void weakmap_finalizer(void *obj) {
 
 void *rt_weakmap_new(void) {
     void *obj = rt_obj_new_i64(RT_WEAKMAP_CLASS_ID, sizeof(rt_weakmap_data));
-    if (!obj)
+    if (!obj) {
         rt_trap("WeakMap: memory allocation failed");
+        return NULL;
+    }
     rt_weakmap_data *data = (rt_weakmap_data *)obj;
     data->entries = wm_alloc_entries(WM_INITIAL_CAP);
+    if (!data->entries) {
+        if (rt_obj_release_check0(obj))
+            rt_obj_free(obj);
+        return NULL;
+    }
     data->capacity = WM_INITIAL_CAP;
     data->count = 0;
     rt_obj_set_finalizer(obj, weakmap_finalizer);
@@ -234,15 +254,20 @@ void rt_weakmap_set(void *map, rt_string key, void *value) {
     if (!map)
         return;
     rt_weakmap_data *data = as_weakmap(map, "WeakMap.Set: invalid WeakMap object");
+    if (!data)
+        return;
 
     if ((long double)data->count * 10.0L >= (long double)data->capacity * 7.0L)
-        wm_grow(data);
+        if (!wm_grow(data))
+            return;
 
     size_t key_len = 0;
     const char *key_data = wm_key_data(key, &key_len);
     int64_t slot = wm_find_slot(data, key_data, key_len);
-    if (slot < 0)
+    if (slot < 0) {
         rt_trap("WeakMap: insertion failed");
+        return;
+    }
 
     if (data->entries[slot].occupied) {
         rt_weakref *new_ref = rt_weakref_new(value);

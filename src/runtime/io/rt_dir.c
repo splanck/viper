@@ -1448,12 +1448,16 @@ void *rt_dir_entries_seq(rt_string path) {
 #endif
 
     void *result = rt_seq_new();
+    if (!result)
+        return NULL;
     rt_seq_set_owns_elements(result, 1);
 
 #ifdef _WIN32
     wchar_t *pattern = rt_dir_win_make_pattern(cpath);
-    if (!pattern)
+    if (!pattern) {
         rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
+        return result;
+    }
 
     WIN32_FIND_DATAW fd;
     HANDLE h = FindFirstFileW(pattern, &fd);
@@ -1465,6 +1469,7 @@ void *rt_dir_entries_seq(rt_string path) {
         }
         free(pattern);
         rt_dir_trap_io("Viper.IO.Dir.Entries: failed to open directory");
+        return result;
     }
 
     do {
@@ -1479,6 +1484,7 @@ void *rt_dir_entries_seq(rt_string path) {
         FindClose(h);
         free(pattern);
         rt_dir_trap_io("Viper.IO.Dir.Entries: failed to read directory");
+        return result;
     }
     FindClose(h);
     free(pattern);

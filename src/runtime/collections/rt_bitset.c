@@ -81,14 +81,16 @@ static int popcount64(uint64_t x) {
 }
 
 /// Grow the bitset to accommodate at least `min_bits` bits.
-static void bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
-    if (min_bits > SIZE_MAX - (BITS_PER_WORD - 1))
+static int bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
+    if (min_bits > SIZE_MAX - (BITS_PER_WORD - 1)) {
         rt_trap("BitSet: bit capacity overflow");
+        return 0;
+    }
     size_t new_word_count = WORDS_FOR_BITS(min_bits);
     if (new_word_count <= bs->word_count) {
         if (min_bits > bs->bit_count)
             bs->bit_count = min_bits;
-        return;
+        return 1;
     }
 
     // Double or use min, whichever is larger (with overflow guards)
@@ -99,12 +101,16 @@ static void bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
         grow = bs->word_count * 2;
     if (grow < new_word_count)
         grow = new_word_count;
-    if (grow > SIZE_MAX / sizeof(uint64_t))
+    if (grow > SIZE_MAX / sizeof(uint64_t)) {
         rt_trap("BitSet: allocation size overflow");
+        return 0;
+    }
 
     uint64_t *new_words = (uint64_t *)realloc(bs->words, grow * sizeof(uint64_t));
-    if (!new_words)
+    if (!new_words) {
         rt_trap("BitSet: memory allocation failed");
+        return 0;
+    }
 
     // Zero new words
     memset(new_words + bs->word_count, 0, (grow - bs->word_count) * sizeof(uint64_t));
@@ -112,6 +118,7 @@ static void bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
     bs->words = new_words;
     bs->word_count = grow;
     bs->bit_count = min_bits;
+    return 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,16 +141,22 @@ static void rt_bitset_finalize(void *obj) {
 // ---------------------------------------------------------------------------
 
 void *rt_bitset_new(int64_t nbits) {
-    if (nbits < 0)
+    if (nbits < 0) {
         rt_trap("BitSet: negative length");
+        return NULL;
+    }
     if (nbits == 0)
         nbits = 64; // Default to 64 bits
 
-    if ((uint64_t)nbits > SIZE_MAX - (BITS_PER_WORD - 1))
+    if ((uint64_t)nbits > SIZE_MAX - (BITS_PER_WORD - 1)) {
         rt_trap("BitSet: bit capacity overflow");
+        return NULL;
+    }
     size_t wc = WORDS_FOR_BITS((size_t)nbits);
-    if (wc > SIZE_MAX / sizeof(uint64_t))
+    if (wc > SIZE_MAX / sizeof(uint64_t)) {
         rt_trap("BitSet: allocation size overflow");
+        return NULL;
+    }
 
     rt_bitset_impl *bs =
         (rt_bitset_impl *)rt_obj_new_i64(RT_BITSET_CLASS_ID, (int64_t)sizeof(rt_bitset_impl));
@@ -156,6 +169,7 @@ void *rt_bitset_new(int64_t nbits) {
         if (rt_obj_release_check0(bs))
             rt_obj_free(bs);
         rt_trap("BitSet: memory allocation failed");
+        return NULL;
     }
     bs->word_count = wc;
     bs->bit_count = (size_t)nbits;
@@ -204,8 +218,8 @@ void rt_bitset_set(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
     rt_bitset_impl *bs = as_bitset(obj, "BitSet.Set: invalid BitSet object");
-    if ((size_t)idx >= bs->bit_count)
-        bitset_grow(bs, (size_t)idx + 1);
+    if ((size_t)idx >= bs->bit_count && !bitset_grow(bs, (size_t)idx + 1))
+        return;
     size_t w = (size_t)idx / BITS_PER_WORD;
     size_t b = (size_t)idx % BITS_PER_WORD;
     if (w < bs->word_count)
@@ -229,8 +243,8 @@ void rt_bitset_toggle(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
     rt_bitset_impl *bs = as_bitset(obj, "BitSet.Toggle: invalid BitSet object");
-    if ((size_t)idx >= bs->bit_count)
-        bitset_grow(bs, (size_t)idx + 1);
+    if ((size_t)idx >= bs->bit_count && !bitset_grow(bs, (size_t)idx + 1))
+        return;
     size_t w = (size_t)idx / BITS_PER_WORD;
     size_t b = (size_t)idx % BITS_PER_WORD;
     if (w < bs->word_count)

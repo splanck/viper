@@ -162,8 +162,10 @@ void *rt_list_new(void) {
 /// @param p Raw pointer to cast.
 /// @return Pointer cast to rt_list_impl*.
 static inline rt_list_impl *as_list(void *p) {
-    if (!p || rt_obj_class_id(p) != RT_LIST_CLASS_ID)
+    if (!p || rt_obj_class_id(p) != RT_LIST_CLASS_ID) {
         rt_trap("List: invalid List object");
+        return NULL;
+    }
     return (rt_list_impl *)p;
 }
 
@@ -263,6 +265,8 @@ void rt_list_push(void *list, void *elem) {
     if (!list)
         return;
     rt_list_impl *L = as_list(list);
+    if (!L)
+        return;
     size_t len = rt_arr_obj_len(L->arr);
 
     rt_obj_retain_maybe(elem);
@@ -270,6 +274,7 @@ void rt_list_push(void *list, void *elem) {
     if (!arr2) {
         release_temp_obj(elem);
         rt_trap("List.Push: memory allocation failed");
+        return;
     }
     L->arr = arr2;
     L->arr[len] = elem;
@@ -305,11 +310,17 @@ void rt_list_push(void *list, void *elem) {
 /// @see rt_list_set For modifying an element
 /// @see rt_list_len For getting the valid index range
 void *rt_list_get(void *list, int64_t index) {
-    if (!list)
+    if (!list) {
         rt_trap("rt_list_get: null list");
-    if (index < 0)
+        return NULL;
+    }
+    if (index < 0) {
         rt_trap("rt_list_get: negative index");
+        return NULL;
+    }
     rt_list_impl *L = as_list(list);
+    if (!L)
+        return NULL;
     size_t len = rt_arr_obj_len(L->arr);
     if ((uint64_t)index >= (uint64_t)len) {
         char msg[128];
@@ -319,6 +330,7 @@ void *rt_list_get(void *list, int64_t index) {
                  (long long)index,
                  (unsigned long long)len);
         rt_trap(msg);
+        return NULL;
     }
     return rt_arr_obj_get(L->arr, (size_t)index);
 }
@@ -353,14 +365,22 @@ void *rt_list_get(void *list, int64_t index) {
 /// @see rt_list_get For reading an element
 /// @see rt_list_push For adding new elements
 void rt_list_set(void *list, int64_t index, void *elem) {
-    if (!list)
+    if (!list) {
         rt_trap("rt_list_set: null list");
-    if (index < 0)
+        return;
+    }
+    if (index < 0) {
         rt_trap("rt_list_set: negative index");
+        return;
+    }
     rt_list_impl *L = as_list(list);
+    if (!L)
+        return;
     size_t len = rt_arr_obj_len(L->arr);
-    if ((uint64_t)index >= (uint64_t)len)
+    if ((uint64_t)index >= (uint64_t)len) {
         rt_trap("rt_list_set: index out of bounds");
+        return;
+    }
     rt_arr_obj_put(L->arr, (size_t)index, elem);
 }
 
@@ -400,14 +420,22 @@ void rt_list_set(void *list, int64_t index, void *elem) {
 /// @see rt_list_remove For removing by element value
 /// @see rt_list_push For adding elements
 void rt_list_remove_at(void *list, int64_t index) {
-    if (!list)
+    if (!list) {
         rt_trap("rt_list_remove_at: null list");
-    if (index < 0)
+        return;
+    }
+    if (index < 0) {
         rt_trap("rt_list_remove_at: negative index");
+        return;
+    }
     rt_list_impl *L = as_list(list);
+    if (!L)
+        return;
     size_t len = rt_arr_obj_len(L->arr);
-    if ((uint64_t)index >= (uint64_t)len)
+    if ((uint64_t)index >= (uint64_t)len) {
         rt_trap("rt_list_remove_at: index out of bounds");
+        return;
+    }
     if (len == 0)
         return;
 
@@ -421,8 +449,10 @@ void rt_list_remove_at(void *list, int64_t index) {
     // Shrink storage. Resize-to-zero releases the backing array and returns
     // NULL, which is the empty-list state.
     void **shrunk = rt_arr_obj_resize(L->arr, len - 1);
-    if (len - 1 > 0 && !shrunk)
+    if (len - 1 > 0 && !shrunk) {
         rt_trap("List.RemoveAt: memory allocation failed");
+        return;
+    }
     L->arr = shrunk;
 }
 
@@ -540,21 +570,30 @@ int8_t rt_list_has(void *list, void *elem) {
 /// @see rt_list_push For appending to the end (O(1))
 /// @see rt_list_remove_at For removing at an index
 void rt_list_insert(void *list, int64_t index, void *elem) {
-    if (!list)
+    if (!list) {
         rt_trap("List.Insert: null list");
-    if (index < 0)
+        return;
+    }
+    if (index < 0) {
         rt_trap("List.Insert: negative index");
+        return;
+    }
 
     rt_list_impl *L = as_list(list);
+    if (!L)
+        return;
     size_t len = rt_arr_obj_len(L->arr);
-    if ((uint64_t)index > (uint64_t)len)
+    if ((uint64_t)index > (uint64_t)len) {
         rt_trap("List.Insert: index out of bounds");
+        return;
+    }
 
     rt_obj_retain_maybe(elem);
     void **arr2 = rt_arr_obj_resize(L->arr, len + 1);
     if (!arr2) {
         release_temp_obj(elem);
         rt_trap("List.Insert: memory allocation failed");
+        return;
     }
     L->arr = arr2;
 
@@ -760,19 +799,27 @@ int8_t rt_list_is_empty(void *list) {
 }
 
 void *rt_list_pop(void *list) {
-    if (!list)
+    if (!list) {
         rt_trap("List.Pop: null list");
+        return NULL;
+    }
 
     rt_list_impl *L = as_list(list);
+    if (!L)
+        return NULL;
     size_t len = rt_arr_obj_len(L->arr);
-    if (len == 0)
+    if (len == 0) {
         rt_trap("List.Pop: list is empty");
+        return NULL;
+    }
 
     void *elem = rt_arr_obj_get(L->arr, len - 1);
     rt_arr_obj_put(L->arr, len - 1, NULL);
     void **shrunk = rt_arr_obj_resize(L->arr, len - 1);
-    if (len - 1 > 0 && !shrunk)
+    if (len - 1 > 0 && !shrunk) {
         rt_trap("List.Pop: memory allocation failed");
+        return elem;
+    }
     L->arr = shrunk;
     return elem;
 }

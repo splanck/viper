@@ -57,8 +57,10 @@ const char *rt_trap_get_error(void);
 /// @brief Checked cast of an opaque handle to the Seq implementation;
 ///        traps with @p what if @p obj is NULL or not a Seq.
 static rt_seq_impl *as_seq(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_SEQ_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_SEQ_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_seq_impl *)obj;
 }
 
@@ -133,26 +135,32 @@ static void rt_seq_finalize(void *obj) {
 /// @note Never shrinks the capacity - only grows when needed.
 ///
 /// @see rt_seq_push For the primary user of this function
-static void seq_ensure_capacity(rt_seq_impl *seq, int64_t needed) {
+static int seq_ensure_capacity(rt_seq_impl *seq, int64_t needed) {
     if (needed <= seq->cap)
-        return;
+        return 1;
 
     int64_t new_cap = seq->cap;
     while (new_cap < needed) {
-        if (new_cap > INT64_MAX / SEQ_GROWTH_FACTOR)
+        if (new_cap > INT64_MAX / SEQ_GROWTH_FACTOR) {
             rt_trap("Seq: capacity overflow");
+            return 0;
+        }
         new_cap *= SEQ_GROWTH_FACTOR;
     }
 
-    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *))
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *)) {
         rt_trap("Seq: allocation size overflow");
+        return 0;
+    }
     void **new_items = realloc(seq->items, (size_t)new_cap * sizeof(void *));
     if (!new_items) {
         rt_trap("Seq: memory allocation failed");
+        return 0;
     }
 
     seq->items = new_items;
     seq->cap = new_cap;
+    return 1;
 }
 
 static void seq_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
@@ -160,7 +168,7 @@ static void seq_save_trap_error(char *buffer, size_t buffer_size, const char *fa
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
-static void seq_ensure_capacity_or_release(rt_seq_impl *seq,
+static int seq_ensure_capacity_or_release(rt_seq_impl *seq,
                                            int64_t needed,
                                            void *retained_value,
                                            int retained,
@@ -174,11 +182,14 @@ static void seq_ensure_capacity_or_release(rt_seq_impl *seq,
         if (retained)
             seq_release_element(retained_value);
         rt_trap(saved_error);
-        return;
+        return 0;
     }
 
-    seq_ensure_capacity(seq, needed);
+    int ok = seq_ensure_capacity(seq, needed);
     rt_trap_clear_recovery();
+    if (!ok && retained)
+        seq_release_element(retained_value);
+    return ok;
 }
 
 /// @brief Creates a new empty Seq (sequence) with default capacity.
@@ -219,6 +230,7 @@ void *rt_seq_new(void) {
     rt_seq_impl *seq = (rt_seq_impl *)rt_obj_new_i64(RT_SEQ_CLASS_ID, (int64_t)sizeof(rt_seq_impl));
     if (!seq) {
         rt_trap("Seq: memory allocation failed");
+        return NULL;
     }
 
     seq->len = 0;
@@ -232,6 +244,7 @@ void *rt_seq_new(void) {
         if (rt_obj_release_check0(seq))
             rt_obj_free(seq);
         rt_trap("Seq: memory allocation failed");
+        return NULL;
     }
 
     return seq;
@@ -255,11 +268,15 @@ static void *seq_new_empty_like(rt_seq_impl *source) {
 
 /// @brief Creates a public Seq with a fixed initial length.
 void *rt_seq_new_sized(int64_t len) {
-    if (len < 0)
+    if (len < 0) {
         rt_trap("Seq.NewSized: negative length");
+        return NULL;
+    }
 
     void *obj = rt_seq_with_capacity_owned(len > 0 ? len : 1);
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return NULL;
     for (int64_t i = 0; i < len; i++)
         seq->items[i] = NULL;
     seq->len = len;
@@ -300,12 +317,15 @@ void *rt_seq_new_sized(int64_t len) {
 void *rt_seq_with_capacity(int64_t cap) {
     if (cap < 1)
         cap = 1;
-    if ((uint64_t)cap > SIZE_MAX / sizeof(void *))
+    if ((uint64_t)cap > SIZE_MAX / sizeof(void *)) {
         rt_trap("Seq: allocation size overflow");
+        return NULL;
+    }
 
     rt_seq_impl *seq = (rt_seq_impl *)rt_obj_new_i64(RT_SEQ_CLASS_ID, (int64_t)sizeof(rt_seq_impl));
     if (!seq) {
         rt_trap("Seq: memory allocation failed");
+        return NULL;
     }
 
     seq->len = 0;
@@ -319,6 +339,7 @@ void *rt_seq_with_capacity(int64_t cap) {
         if (rt_obj_release_check0(seq))
             rt_obj_free(seq);
         rt_trap("Seq: memory allocation failed");
+        return NULL;
     }
 
     return seq;
@@ -327,6 +348,8 @@ void *rt_seq_with_capacity(int64_t cap) {
 /// @brief Creates a public capacity-reserved Seq that retains pushed elements.
 void *rt_seq_with_capacity_owned(int64_t cap) {
     void *seq = rt_seq_with_capacity(cap);
+    if (!seq)
+        return NULL;
     rt_seq_set_owns_elements(seq, 1);
     return seq;
 }
@@ -346,9 +369,13 @@ void rt_seq_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return;
     owns = owns ? 1 : 0;
-    if (seq->len != 0 && seq->owns_elements != owns)
+    if (seq->len != 0 && seq->owns_elements != owns) {
         rt_trap("Seq.SetOwnsElements: cannot change ownership mode on non-empty sequence");
+        return;
+    }
     seq->owns_elements = owns;
 }
 
@@ -448,13 +475,18 @@ int8_t rt_seq_is_empty(void *obj) {
 /// @see rt_seq_first For getting the first element
 /// @see rt_seq_last For getting the last element
 void *rt_seq_get(void *obj, int64_t idx) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Get: null sequence");
+        return NULL;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return NULL;
 
     if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Get: index out of bounds");
+        return NULL;
     }
 
     return seq->items[idx];
@@ -507,13 +539,18 @@ struct rt_string_impl *rt_seq_get_str(void *obj, int64_t idx) {
 /// @see rt_seq_get For reading an element
 /// @see rt_seq_push For adding new elements
 void rt_seq_set(void *obj, int64_t idx, void *val) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Set: null sequence");
+        return;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return;
 
     if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Set: index out of bounds");
+        return;
     }
 
     if (seq->owns_elements) {
@@ -525,13 +562,18 @@ void rt_seq_set(void *obj, int64_t idx, void *val) {
 }
 
 void rt_seq_set_raw(void *obj, int64_t idx, void *val) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Set: null sequence");
+        return;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return;
 
     if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Set: index out of bounds");
+        return;
     }
 
     if (seq->owns_elements)
@@ -572,19 +614,26 @@ void rt_seq_set_raw(void *obj, int64_t idx, void *val) {
 /// @see rt_seq_insert For inserting at arbitrary positions
 /// @see rt_seq_push_all For appending multiple elements
 void rt_seq_push(void *obj, void *val) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Push: null sequence");
+        return;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return;
 
-    if (seq->len >= INT64_MAX)
+    if (seq->len >= INT64_MAX) {
         rt_trap("Seq: maximum length reached");
+        return;
+    }
     int retained = 0;
     if (seq->owns_elements && val) {
         rt_obj_retain_maybe(val);
         retained = 1;
     }
-    seq_ensure_capacity_or_release(seq, seq->len + 1, val, retained, "Seq.Push: capacity failed");
+    if (!seq_ensure_capacity_or_release(seq, seq->len + 1, val, retained, "Seq.Push: capacity failed"))
+        return;
     seq->items[seq->len] = val;
     seq->len++;
 }
@@ -595,14 +644,21 @@ void rt_seq_push(void *obj, void *val) {
 /// array) where the underlying storage is not GC-managed and a
 /// retain would be a noop. Public-facing code should use `rt_seq_push`.
 void rt_seq_push_raw(void *obj, void *val) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Push: null sequence");
+        return;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return;
 
-    if (seq->len >= INT64_MAX)
+    if (seq->len >= INT64_MAX) {
         rt_trap("Seq: maximum length reached");
-    seq_ensure_capacity(seq, seq->len + 1);
+        return;
+    }
+    if (!seq_ensure_capacity(seq, seq->len + 1))
+        return;
     seq->items[seq->len] = val;
     seq->len++;
 }
@@ -648,40 +704,50 @@ void rt_seq_push_raw(void *obj, void *val) {
 /// @see rt_seq_push For adding single elements
 /// @see rt_seq_clone For creating a copy of a Seq
 void rt_seq_push_all(void *obj, void *other) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.PushAll: null sequence");
+        return;
+    }
     if (!other)
         return;
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     rt_seq_impl *src = as_seq(other, "Seq: invalid Seq object");
+    if (!seq || !src)
+        return;
 
     if (src->len <= 0)
         return;
 
     if (seq == src) {
         int64_t original_len = seq->len;
-        if (original_len > INT64_MAX - original_len)
+        if (original_len > INT64_MAX - original_len) {
             rt_trap("Seq.PushAll: length overflow");
+            return;
+        }
         if (seq->owns_elements) {
             for (int64_t i = 0; i < original_len; i++)
                 rt_seq_push(seq, seq->items[i]);
             return;
         }
-        seq_ensure_capacity(seq, original_len + original_len);
+        if (!seq_ensure_capacity(seq, original_len + original_len))
+            return;
         memmove(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
         seq->len = original_len + original_len;
         return;
     }
 
-    if (src->len > INT64_MAX - seq->len)
+    if (src->len > INT64_MAX - seq->len) {
         rt_trap("Seq.PushAll: length overflow");
+        return;
+    }
     if (seq->owns_elements) {
         for (int64_t i = 0; i < src->len; i++)
             rt_seq_push(seq, src->items[i]);
         return;
     }
-    seq_ensure_capacity(seq, seq->len + src->len);
+    if (!seq_ensure_capacity(seq, seq->len + src->len))
+        return;
     memcpy(&seq->items[seq->len], src->items, (size_t)src->len * sizeof(void *));
     seq->len += src->len;
 }
@@ -723,13 +789,18 @@ void rt_seq_push_all(void *obj, void *other) {
 /// @see rt_seq_peek For viewing without removing
 /// @see rt_seq_is_empty For checking before pop
 void *rt_seq_pop(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Pop: null sequence");
+        return NULL;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return NULL;
 
     if (seq->len == 0) {
         rt_trap("Seq.Pop: sequence is empty");
+        return NULL;
     }
 
     void *val = seq->items[seq->len - 1];
@@ -772,13 +843,18 @@ void *rt_seq_pop(void *obj) {
 /// @see rt_seq_last Alias for this function
 /// @see rt_seq_first For viewing the first element
 void *rt_seq_peek(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Peek: null sequence");
+        return NULL;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return NULL;
 
     if (seq->len == 0) {
         rt_trap("Seq.Peek: sequence is empty");
+        return NULL;
     }
 
     return seq->items[seq->len - 1];
@@ -813,13 +889,18 @@ void *rt_seq_peek(void *obj) {
 /// @see rt_seq_last For viewing the last element
 /// @see rt_seq_get For accessing by arbitrary index
 void *rt_seq_first(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.First: null sequence");
+        return NULL;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return NULL;
 
     if (seq->len == 0) {
         rt_trap("Seq.First: sequence is empty");
+        return NULL;
     }
 
     return seq->items[0];
@@ -855,13 +936,18 @@ void *rt_seq_first(void *obj) {
 /// @see rt_seq_peek Alias for this function
 /// @see rt_seq_get For accessing by arbitrary index
 void *rt_seq_last(void *obj) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Last: null sequence");
+        return NULL;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return NULL;
 
     if (seq->len == 0) {
         rt_trap("Seq.Last: sequence is empty");
+        return NULL;
     }
 
     return seq->items[seq->len - 1];
@@ -907,23 +993,32 @@ void *rt_seq_last(void *obj) {
 /// @see rt_seq_push For appending to the end (O(1))
 /// @see rt_seq_remove For removing at an index
 void rt_seq_insert(void *obj, int64_t idx, void *val) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Insert: null sequence");
+        return;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return;
 
     if (idx < 0 || idx > seq->len) {
         rt_trap("Seq.Insert: index out of bounds");
+        return;
     }
-    if (seq->len >= INT64_MAX)
+    if (seq->len >= INT64_MAX) {
         rt_trap("Seq: maximum length reached");
+        return;
+    }
 
     int retained = 0;
     if (seq->owns_elements && val) {
         rt_obj_retain_maybe(val);
         retained = 1;
     }
-    seq_ensure_capacity_or_release(seq, seq->len + 1, val, retained, "Seq.Insert: capacity failed");
+    if (!seq_ensure_capacity_or_release(
+            seq, seq->len + 1, val, retained, "Seq.Insert: capacity failed"))
+        return;
 
     // Shift elements to the right
     if (idx < seq->len) {
@@ -972,13 +1067,18 @@ void rt_seq_insert(void *obj, int64_t idx, void *val) {
 /// @see rt_seq_pop For removing from the end (O(1))
 /// @see rt_seq_insert For inserting at an index
 void *rt_seq_remove(void *obj, int64_t idx) {
-    if (!obj)
+    if (!obj) {
         rt_trap("Seq.Remove: null sequence");
+        return NULL;
+    }
 
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq)
+        return NULL;
 
     if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Remove: index out of bounds");
+        return NULL;
     }
 
     void *val = seq->items[idx];

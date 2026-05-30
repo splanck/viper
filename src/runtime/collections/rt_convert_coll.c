@@ -252,8 +252,10 @@ void *rt_stack_to_seq(void *stack) {
     int64_t len = rt_stack_len(stack);
     if (len <= 0)
         return seq;
-    if ((uint64_t)len > SIZE_MAX / sizeof(void *))
+    if ((uint64_t)len > SIZE_MAX / sizeof(void *)) {
         rt_trap("stack_to_seq: size overflow");
+        return seq;
+    }
 
     void *clone = rt_stack_clone(stack);
     if (!clone)
@@ -304,8 +306,10 @@ void *rt_queue_to_seq(void *queue) {
     int64_t len = rt_queue_len(queue);
     if (len <= 0)
         return seq;
-    if ((uint64_t)len > SIZE_MAX / sizeof(void *))
+    if ((uint64_t)len > SIZE_MAX / sizeof(void *)) {
         rt_trap("queue_to_seq: size overflow");
+        return seq;
+    }
 
     void *clone = rt_queue_clone(queue);
     if (!clone)

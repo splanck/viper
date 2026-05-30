@@ -92,13 +92,21 @@ static void generate_shuffle_order(playlist_impl *pl) {
         return;
 
     pl->shuffle_order = rt_seq_new();
-    if (!pl->shuffle_order)
+    if (!pl->shuffle_order) {
         rt_trap("rt_playlist: memory allocation failed");
+        return;
+    }
 
     // Create sequential order first
+    if ((uint64_t)count > SIZE_MAX / sizeof(int64_t)) {
+        rt_trap("rt_playlist: shuffle order allocation overflow");
+        return;
+    }
     int64_t *indices = (int64_t *)malloc(count * sizeof(int64_t));
-    if (!indices)
+    if (!indices) {
         rt_trap("rt_playlist: memory allocation failed");
+        return;
+    }
     for (int64_t i = 0; i < count; i++) {
         indices[i] = i;
     }
@@ -338,14 +346,17 @@ static void playlist_finalize(void *obj) {
 void *rt_playlist_new(void) {
     playlist_impl *pl =
         (playlist_impl *)rt_obj_new_i64(RT_PLAYLIST_CLASS_ID, (int64_t)sizeof(playlist_impl));
-    if (!pl)
+    if (!pl) {
         rt_trap("rt_playlist: memory allocation failed");
+        return NULL;
+    }
     memset(pl, 0, sizeof(playlist_impl));
 
     pl->tracks = rt_seq_new();
     if (!pl->tracks) {
         rt_obj_free(pl);
         rt_trap("rt_playlist: memory allocation failed");
+        return NULL;
     }
     rt_seq_set_owns_elements(pl->tracks, 1);
     pl->current = -1;

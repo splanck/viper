@@ -102,8 +102,10 @@ typedef struct rt_map_impl {
 /// @brief Checked cast of an opaque handle to the Map implementation.
 /// @details Traps with @p what if @p obj is NULL or not a Map.
 static rt_map_impl *as_map(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_MAP_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_MAP_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_map_impl *)obj;
 }
 
@@ -178,6 +180,8 @@ static void rt_map_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
     rt_map_impl *map = as_map(obj, "Map: invalid Map object");
+    if (!map)
+        return;
     if (!map->buckets || map->capacity == 0)
         return;
     for (size_t i = 0; i < map->capacity; ++i) {
@@ -199,6 +203,8 @@ static void rt_map_finalize(void *obj) {
     if (!obj)
         return;
     rt_map_impl *map = as_map(obj, "Map: invalid Map object");
+    if (!map)
+        return;
     if (!map->buckets || map->capacity == 0)
         return;
     rt_map_clear(map);
@@ -219,8 +225,10 @@ static void rt_map_finalize(void *obj) {
 /// @note On allocation failure, the old buckets are kept (silent failure).
 /// @note O(n) time complexity where n is the number of entries.
 static void map_resize(rt_map_impl *map, size_t new_capacity) {
-    if (new_capacity > SIZE_MAX / sizeof(rt_map_entry *))
+    if (new_capacity > SIZE_MAX / sizeof(rt_map_entry *)) {
         rt_trap("Map: allocation size overflow");
+        return;
+    }
     rt_map_entry **new_buckets = (rt_map_entry **)calloc(new_capacity, sizeof(rt_map_entry *));
     if (!new_buckets)
         return; // Keep old buckets on allocation failure
@@ -301,6 +309,7 @@ void *rt_map_new(void) {
         if (rt_obj_release_check0(map))
             rt_obj_free(map);
         rt_trap("Map: memory allocation failed");
+        return NULL;
     }
     map->capacity = MAP_INITIAL_CAPACITY;
     map->count = 0;
@@ -386,6 +395,8 @@ void rt_map_set(void *obj, rt_string key, void *value) {
         return;
 
     rt_map_impl *map = as_map(obj, "Map: invalid Map object");
+    if (!map)
+        return;
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -413,6 +424,7 @@ void rt_map_set(void *obj, rt_string key, void *value) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
         rt_trap("Map.Set: memory allocation failed");
+        return;
     }
 
     if (key_len == SIZE_MAX) {
@@ -420,6 +432,7 @@ void rt_map_set(void *obj, rt_string key, void *value) {
             rt_obj_free(value);
         free(entry);
         rt_trap("Map.Set: key allocation overflow");
+        return;
     }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
@@ -427,6 +440,7 @@ void rt_map_set(void *obj, rt_string key, void *value) {
             rt_obj_free(value);
         free(entry);
         rt_trap("Map.Set: key allocation failed");
+        return;
     }
     memcpy(entry->key, key_data, key_len);
     entry->key[key_len] = '\0';
@@ -559,6 +573,8 @@ int8_t rt_map_has(void *obj, rt_string key) {
         return 0;
 
     rt_map_impl *map = as_map(obj, "Map: invalid Map object");
+    if (!map)
+        return 0;
     if (map->capacity == 0)
         return 0;
 
@@ -625,6 +641,7 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
         rt_trap("Map.SetIfMissing: memory allocation failed");
+        return 0;
     }
 
     if (key_len == SIZE_MAX) {
@@ -632,6 +649,7 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
             rt_obj_free(value);
         free(entry);
         rt_trap("Map.SetIfMissing: key allocation overflow");
+        return 0;
     }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
@@ -639,6 +657,7 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
             rt_obj_free(value);
         free(entry);
         rt_trap("Map.SetIfMissing: key allocation failed");
+        return 0;
     }
 
     memcpy(entry->key, key_data, key_len);

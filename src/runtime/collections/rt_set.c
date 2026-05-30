@@ -69,8 +69,10 @@ typedef struct rt_set_impl {
 /// @brief Checked cast of an opaque handle to the Set implementation;
 ///        traps with @p what if @p obj is NULL or not a Set.
 static rt_set_impl *as_set(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_SET_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_SET_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_set_impl *)obj;
 }
 
@@ -97,15 +99,17 @@ static void rt_set_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 }
 
 /// @brief Resize the hash table when load factor is exceeded.
-static void resize_set(rt_set_impl *set) {
+static int resize_set(rt_set_impl *set) {
     if (set->capacity > SIZE_MAX / 2)
-        return;
+        return 0;
     size_t new_capacity = set->capacity * 2;
-    if (new_capacity > SIZE_MAX / sizeof(rt_set_entry *))
+    if (new_capacity > SIZE_MAX / sizeof(rt_set_entry *)) {
         rt_trap("Set: allocation size overflow");
+        return 0;
+    }
     rt_set_entry **new_buckets = calloc(new_capacity, sizeof(rt_set_entry *));
     if (!new_buckets)
-        return; // Allocation failed, keep old table
+        return 0; // Allocation failed, keep old table
 
     // Rehash all entries
     for (size_t i = 0; i < set->capacity; ++i) {
@@ -122,6 +126,7 @@ static void resize_set(rt_set_impl *set) {
     free(set->buckets);
     set->buckets = new_buckets;
     set->capacity = new_capacity;
+    return 1;
 }
 
 /// @brief Finalizer callback invoked when a Set is garbage collected.
@@ -129,6 +134,8 @@ static void rt_set_finalize(void *obj) {
     if (!obj)
         return;
     rt_set_impl *set = as_set(obj, "Set: invalid Set object");
+    if (!set)
+        return;
     if (!set->buckets || set->capacity == 0)
         return;
     rt_set_clear(obj);
@@ -183,11 +190,13 @@ int8_t rt_set_add(void *obj, void *elem) {
     if (!obj)
         return 0;
     rt_set_impl *set = as_set(obj, "Set.Add: invalid Set object");
+    if (!set || set->capacity == 0)
+        return 0;
 
     // Check load factor and resize if needed
     if ((long double)set->count * (long double)SET_LOAD_FACTOR_DEN >=
         (long double)set->capacity * (long double)SET_LOAD_FACTOR_NUM) {
-        resize_set(set);
+        (void)resize_set(set);
     }
 
     size_t idx = rt_box_hash(elem) % set->capacity;
@@ -204,6 +213,7 @@ int8_t rt_set_add(void *obj, void *elem) {
         if (elem && rt_obj_release_check0(elem))
             rt_obj_free(elem);
         rt_trap("Set.Add: memory allocation failed");
+        return 0;
     }
 
     entry->elem = elem;

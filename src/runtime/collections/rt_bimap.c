@@ -79,8 +79,10 @@ typedef struct rt_bm_inv_link rt_bm_inv_link;
 /// @brief Checked cast of an opaque handle to the BiMap implementation.
 /// @details Traps with the @p what message if @p obj is NULL or not a BiMap.
 static rt_bimap_impl *as_bimap(void *obj, const char *what) {
-    if (!obj || rt_obj_class_id(obj) != RT_BIMAP_CLASS_ID)
+    if (!obj || rt_obj_class_id(obj) != RT_BIMAP_CLASS_ID) {
         rt_trap(what);
+        return NULL;
+    }
     return (rt_bimap_impl *)obj;
 }
 
@@ -193,15 +195,19 @@ static void bimap_finalizer(void *obj) {
 
 /// @brief Double the forward bucket array and rehash all entries into it.
 /// @details No-op past the SIZE_MAX/2 cap; traps on allocation overflow/OOM.
-static void resize_fwd(rt_bimap_impl *bm) {
+static int resize_fwd(rt_bimap_impl *bm) {
     if (bm->fwd_capacity > SIZE_MAX / 2)
-        return;
+        return 0;
     size_t new_cap = bm->fwd_capacity * 2;
-    if (new_cap > SIZE_MAX / sizeof(rt_bm_entry *))
+    if (new_cap > SIZE_MAX / sizeof(rt_bm_entry *)) {
         rt_trap("BiMap: allocation size overflow");
+        return 0;
+    }
     rt_bm_entry **new_buckets = (rt_bm_entry **)calloc(new_cap, sizeof(rt_bm_entry *));
-    if (!new_buckets)
+    if (!new_buckets) {
         rt_trap("BiMap: memory allocation failed");
+        return 0;
+    }
 
     for (size_t i = 0; i < bm->fwd_capacity; ++i) {
         rt_bm_entry *e = bm->fwd_buckets[i];
@@ -218,19 +224,24 @@ static void resize_fwd(rt_bimap_impl *bm) {
     free(bm->fwd_buckets);
     bm->fwd_buckets = new_buckets;
     bm->fwd_capacity = new_cap;
+    return 1;
 }
 
 /// @brief Double the inverse chain array and rehash all links into it.
 /// @details No-op past the SIZE_MAX/2 cap; traps on allocation overflow/OOM.
-static void resize_inv(rt_bimap_impl *bm) {
+static int resize_inv(rt_bimap_impl *bm) {
     if (bm->inv_capacity > SIZE_MAX / 2)
-        return;
+        return 0;
     size_t new_cap = bm->inv_capacity * 2;
-    if (new_cap > SIZE_MAX / sizeof(rt_bm_inv_link *))
+    if (new_cap > SIZE_MAX / sizeof(rt_bm_inv_link *)) {
         rt_trap("BiMap: allocation size overflow");
+        return 0;
+    }
     rt_bm_inv_link **new_chains = (rt_bm_inv_link **)calloc(new_cap, sizeof(rt_bm_inv_link *));
-    if (!new_chains)
+    if (!new_chains) {
         rt_trap("BiMap: memory allocation failed");
+        return 0;
+    }
 
     for (size_t i = 0; i < bm->inv_capacity; ++i) {
         rt_bm_inv_link *l = bm->inv_chains[i];
@@ -247,6 +258,7 @@ static void resize_inv(rt_bimap_impl *bm) {
     free(bm->inv_chains);
     bm->inv_chains = new_chains;
     bm->inv_capacity = new_cap;
+    return 1;
 }
 
 /// @brief Construct an empty bidirectional map (string ↔ string). Maintains forward and inverse
@@ -254,8 +266,10 @@ static void resize_inv(rt_bimap_impl *bm) {
 /// lookups (e.g., name ↔ id) that would otherwise need two parallel maps.
 void *rt_bimap_new(void) {
     rt_bimap_impl *bm = (rt_bimap_impl *)rt_obj_new_i64(RT_BIMAP_CLASS_ID, sizeof(rt_bimap_impl));
-    if (!bm)
+    if (!bm) {
         rt_trap("BiMap: memory allocation failed");
+        return NULL;
+    }
 
     bm->vptr = NULL;
     bm->fwd_capacity = BM_INITIAL_CAPACITY;
@@ -269,6 +283,7 @@ void *rt_bimap_new(void) {
         if (rt_obj_release_check0(bm))
             rt_obj_free(bm);
         rt_trap("BiMap: memory allocation failed");
+        return NULL;
     }
 
     rt_obj_set_finalizer(bm, bimap_finalizer);
@@ -295,6 +310,8 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     if (!obj)
         return;
     rt_bimap_impl *bm = as_bimap(obj, "BiMap.Put: invalid BiMap object");
+    if (!bm)
+        return;
 
     size_t klen, vlen;
     const char *kdata = get_str_data(key, &klen);
@@ -302,19 +319,24 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
 
     // Check load factor on forward table
     if ((long double)bm->count * (long double)BM_LOAD_FACTOR_DEN >=
-        (long double)bm->fwd_capacity * (long double)BM_LOAD_FACTOR_NUM)
-        resize_fwd(bm);
+        (long double)bm->fwd_capacity * (long double)BM_LOAD_FACTOR_NUM &&
+        !resize_fwd(bm))
+        return;
     if ((long double)bm->count * (long double)BM_LOAD_FACTOR_DEN >=
-        (long double)bm->inv_capacity * (long double)BM_LOAD_FACTOR_NUM)
-        resize_inv(bm);
+        (long double)bm->inv_capacity * (long double)BM_LOAD_FACTOR_NUM &&
+        !resize_inv(bm))
+        return;
 
     // Create entry
     rt_bm_entry *entry = (rt_bm_entry *)malloc(sizeof(rt_bm_entry));
-    if (!entry)
+    if (!entry) {
         rt_trap("BiMap: memory allocation failed");
+        return;
+    }
     if (klen == SIZE_MAX || vlen == SIZE_MAX) {
         free(entry);
         rt_trap("BiMap: string allocation overflow");
+        return;
     }
     entry->key = (char *)malloc(klen + 1);
     entry->value = (char *)malloc(vlen + 1);
@@ -323,6 +345,7 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
         free(entry->value);
         free(entry);
         rt_trap("BiMap: memory allocation failed");
+        return;
     }
     memcpy(entry->key, kdata, klen);
     entry->key[klen] = '\0';
@@ -335,6 +358,7 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     if (!inv_link) {
         free_entry(entry);
         rt_trap("BiMap: memory allocation failed");
+        return;
     }
     inv_link->entry = entry;
     inv_link->next = NULL;
