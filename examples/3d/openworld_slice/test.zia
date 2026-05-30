@@ -1,0 +1,304 @@
+module openworld_slice_test;
+
+bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind "./main";
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func absInt(value: Integer) -> Integer {
+    if (value < 0) { return 0 - value; }
+    return value;
+}
+
+func red(px: Integer) -> Integer {
+    return Bits.And(px >> 24, 0xFF);
+}
+
+func green(px: Integer) -> Integer {
+    return Bits.And(px >> 16, 0xFF);
+}
+
+func blue(px: Integer) -> Integer {
+    return Bits.And(px >> 8, 0xFF);
+}
+
+func colorDiff(a: Integer, b: Integer) -> Integer {
+    return absInt(red(a) - red(b)) + absInt(green(a) - green(b)) + absInt(blue(a) - blue(b));
+}
+
+func inFinalOverlayRegion(x: Integer, y: Integer, width: Integer, height: Integer) -> Boolean {
+    var margin = 1;
+    if (x >= 10 - margin && x < width && y >= 10 - margin && y < 53 + margin) {
+        return true;
+    }
+    if (x >= width - 48 - margin && x < width - 16 + margin &&
+        y >= height - 48 - margin && y < height - 16 + margin) {
+        return true;
+    }
+    return false;
+}
+
+func assertFinalOverlayCrisp(img: Pixels, width: Integer, height: Integer) -> Boolean {
+    var accent = Pixels.Get(img, 12, 11);
+    if (red(accent) > 24 || green(accent) < 190 || blue(accent) < 210) {
+        return false;
+    }
+
+    var cornerAccent = Pixels.Get(img, width - 45, height - 45);
+    if (red(cornerAccent) > 24 || green(cornerAccent) < 190 || blue(cornerAccent) < 210) {
+        return false;
+    }
+
+    return true;
+}
+
+func assertNearBaseline(img: Pixels, baseline: Pixels, width: Integer, height: Integer) -> Boolean {
+    var maxDiff = 0;
+    var totalDiff = 0;
+    var count = 0;
+
+    var y = 4;
+    while (y < height) {
+        var x = 4;
+        while (x < width) {
+            if (inFinalOverlayRegion(x, y, width, height) == false) {
+                var diff = colorDiff(Pixels.Get(img, x, y), Pixels.Get(baseline, x, y));
+                if (diff > maxDiff) { maxDiff = diff; }
+                totalDiff = totalDiff + diff;
+                count = count + 1;
+            }
+            x = x + 7;
+        }
+        y = y + 9;
+    }
+
+    if (count <= 0) { return false; }
+    var avgDiff = totalDiff / count;
+    return maxDiff <= 72 && avgDiff <= 8;
+}
+
+func fail(message: String) -> Float {
+    Terminal.Say("FAIL: " + message);
+    return -99999.0;
+}
+
+func validateOnlyCellMarker(game: OpenWorldSlice, marker: String, label: String) -> Boolean {
+    if (game.hasNode("slice_cell_nw_marker") != (marker == "slice_cell_nw_marker") ||
+        game.hasNode("slice_cell_ne_marker") != (marker == "slice_cell_ne_marker") ||
+        game.hasNode("slice_cell_sw_marker") != (marker == "slice_cell_sw_marker") ||
+        game.hasNode("slice_cell_se_marker") != (marker == "slice_cell_se_marker")) {
+        Terminal.Say("FAIL: " + label + " cell marker residency mismatch");
+        return false;
+    }
+    return true;
+}
+
+func validateOnlyTerrainCollider(game: OpenWorldSlice, collider: String, label: String) -> Boolean {
+    if (game.hasNode("terrain_nw_heightfield_collider") !=
+            (collider == "terrain_nw_heightfield_collider") ||
+        game.hasNode("terrain_ne_heightfield_collider") !=
+            (collider == "terrain_ne_heightfield_collider") ||
+        game.hasNode("terrain_sw_heightfield_collider") !=
+            (collider == "terrain_sw_heightfield_collider") ||
+        game.hasNode("terrain_se_heightfield_collider") !=
+            (collider == "terrain_se_heightfield_collider")) {
+        Terminal.Say("FAIL: " + label + " terrain collider residency mismatch");
+        return false;
+    }
+    return true;
+}
+
+func validateQuadrant(game: OpenWorldSlice, label: String,
+                      x: Float, z: Float, index: Integer,
+                      cellName: String, tileName: String,
+                      heightmapPath: String,
+                      markerName: String, firstHeight: Float) -> Boolean {
+    game.setStreamCenter(x, z);
+    var stream = game.getStream();
+    if (WorldStream3D.getCellCount(stream) != 4 ||
+        WorldStream3D.getTerrainTileCount(stream) != 4) {
+        Terminal.Say("FAIL: stream inspection counts mismatch");
+        return false;
+    }
+    if (WorldStream3D.getCellName(stream, index) != cellName ||
+        WorldStream3D.getTerrainTileName(stream, index) != tileName) {
+        Terminal.Say("FAIL: " + label + " stream inspection names mismatch");
+        return false;
+    }
+    if (WorldStream3D.getTerrainTileHeightmap(stream, index) != heightmapPath) {
+        Terminal.Say("FAIL: " + label + " terrain heightmap inspection mismatch");
+        return false;
+    }
+    var cellCenter = WorldStream3D.getCellCenter(stream, index);
+    var tileCenter = WorldStream3D.getTerrainTileCenter(stream, index);
+    if (cellCenter == null || tileCenter == null ||
+        near(Vec3.get_X(cellCenter), x, 0.0001) == false ||
+        near(Vec3.get_Z(cellCenter), z, 0.0001) == false ||
+        near(Vec3.get_X(tileCenter), x, 0.0001) == false ||
+        near(Vec3.get_Z(tileCenter), z, 0.0001) == false) {
+        Terminal.Say("FAIL: " + label + " stream inspection centers mismatch");
+        return false;
+    }
+    if (WorldStream3D.getCellResident(stream, index) == false ||
+        WorldStream3D.getTerrainTileResident(stream, index) == false ||
+        WorldStream3D.getCellBytes(stream, index) <= 0 ||
+        WorldStream3D.getTerrainTileBytes(stream, index) <= 0) {
+        Terminal.Say("FAIL: " + label + " stream inspection resident metadata mismatch");
+        return false;
+    }
+    if (game.getResidentCellCount() != 1 || game.getResidentTerrainTileCount() != 1) {
+        Terminal.Say("FAIL: " + label + " stream residency mismatch");
+        return false;
+    }
+    if (validateOnlyCellMarker(game, markerName, label) == false) {
+        return false;
+    }
+    if (validateOnlyTerrainCollider(game, tileName + "_heightfield_collider", label) == false) {
+        return false;
+    }
+    if (near(game.getResidentTileHeight(), firstHeight, 0.01) == false) {
+        Terminal.Say("FAIL: " + label + " terrain height sidecar mismatch");
+        return false;
+    }
+    if (game.getResidentBytes() <= 0 || game.getResidentBytes() > 400000) {
+        Terminal.Say("FAIL: " + label + " resident bytes out of bounded range");
+        return false;
+    }
+    return true;
+}
+
+func validateTraversal(game: OpenWorldSlice) -> Boolean {
+    if (validateQuadrant(game, "northwest", -1100.0, -1100.0, 0,
+                         "slice_cell_nw", "terrain_nw",
+                         "assets/world/terrain/nw.height",
+                         "slice_cell_nw_marker", 3.0) == false) {
+        return false;
+    }
+    if (validateQuadrant(game, "northeast", 1100.0, -1100.0, 1,
+                         "slice_cell_ne", "terrain_ne",
+                         "assets/world/terrain/ne.height",
+                         "slice_cell_ne_marker", 4.2) == false) {
+        return false;
+    }
+    if (validateQuadrant(game, "southwest", -1100.0, 1100.0, 2,
+                         "slice_cell_sw", "terrain_sw",
+                         "assets/world/terrain/sw.height",
+                         "slice_cell_sw_marker", 4.2) == false) {
+        return false;
+    }
+    if (validateQuadrant(game, "southeast", 1100.0, 1100.0, 3,
+                         "slice_cell_se", "terrain_se",
+                         "assets/world/terrain/se.height",
+                         "slice_cell_se_marker", 5.4) == false) {
+        return false;
+    }
+    return true;
+}
+
+func runSliceReplay() -> Float {
+    var game = new OpenWorldSlice();
+    game.setup("Open World Slice Probe", 128, 96);
+
+    if (validateTraversal(game) == false) {
+        game.destroy();
+        return -99999.0;
+    }
+    if (game.asyncAssetSpawned() == false) {
+        game.destroy();
+        return fail("async model handle did not spawn the packaged prop");
+    }
+    if (game.textureAssetsReady() == false) {
+        game.destroy();
+        return fail("texture asset residency did not initialize");
+    }
+
+    var i = 0;
+    while (i < 12) {
+        game.stepFixed(1.0 / 60.0);
+        i = i + 1;
+    }
+    if (game.skinnedCharacterReady() == false) {
+        game.destroy();
+        return fail("skinned glTF character did not load, crossfade, and bind IK");
+    }
+    if (game.fixtureAssetsReady() == false) {
+        game.destroy();
+        return fail("committed GLB/audio fixtures did not load through package-aware paths");
+    }
+    if (game.terrainFootIkReady() == false) {
+        game.destroy();
+        return fail("terrain-foot IK proof did not land the foot on the sampled tile height");
+    }
+    if (game.navmeshIncludesStreamedTerrain() == false) {
+        game.destroy();
+        return fail("navmesh bake did not include streamed terrain");
+    }
+
+    game.renderFrame();
+    var snap = World3D.captureFinalFrame(game.getWorld());
+    if (snap == null || Pixels.get_Width(snap) != 128 || Pixels.get_Height(snap) != 96) {
+        game.destroy();
+        return fail("final-frame capture failed");
+    }
+    Pixels.SavePng(snap, "/tmp/openworld_slice_software_current.png");
+    var baseline = Pixels.LoadPng("assets/baselines/openworld_slice_software.png");
+    if (baseline == null || Pixels.get_Width(baseline) != 128 || Pixels.get_Height(baseline) != 96) {
+        game.destroy();
+        return fail("software visual baseline missing or invalid");
+    }
+    if (assertFinalOverlayCrisp(snap, 128, 96) == false) {
+        game.destroy();
+        return fail("final overlay visual sample drifted");
+    }
+    if (assertNearBaseline(snap, baseline, 128, 96) == false) {
+        game.destroy();
+        return fail("software visual baseline drifted");
+    }
+    if (World3D.get_entityCount(game.getWorld()) < 5 ||
+        World3D.get_bodyCount(game.getWorld()) < 2 ||
+        World3D.get_streamResidentBytes(game.getWorld()) <= 0) {
+        game.destroy();
+        return fail("world telemetry counters did not observe the slice");
+    }
+    if (World3D.get_drawCount(game.getWorld()) <= 0 ||
+        World3D.get_visibleNodeCount(game.getWorld()) <= 0 ||
+        Canvas3D.get_DrawCount(game.getCanvas()) != World3D.get_drawCount(game.getWorld())) {
+        game.destroy();
+        return fail("world render telemetry counters did not observe the slice");
+    }
+    if (World3D.get_occludedDrawCount(game.getWorld()) < 0) {
+        game.destroy();
+        return fail("world occlusion telemetry was invalid");
+    }
+    if (Canvas3D.get_FrameFinalized(game.getCanvas()) == false) {
+        game.destroy();
+        return fail("frame was not finalized");
+    }
+    if (CharacterController3D.grounded(game.getCharacter()) == false) {
+        game.destroy();
+        return fail("character did not remain grounded");
+    }
+
+    var metric = game.replayMetric();
+    game.destroy();
+    return metric;
+}
+
+func start() {
+    var a = runSliceReplay();
+    if (a < -90000.0) { return; }
+    var b = runSliceReplay();
+    if (near(a, b, 0.0001) == false) {
+        Terminal.Say("FAIL: openworld slice replay diverged");
+        return;
+    }
+    Terminal.Say("PASS");
+}

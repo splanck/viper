@@ -4,7 +4,9 @@
 
 `game3d_hello.zia` is the smallest code-first Game3D starting point: a lit
 world, walkable ground, first-person character, and one deterministic frame in
-under 20 source lines without `Mat4`.
+under 20 source lines without `Mat4`. The `g3d_game3d_common_no_mat4` CTest
+keeps this sample and the starter/common probes on the Game3D transform-helper
+path instead of direct matrix composition.
 
 ```sh
 VIPER_3D_BACKEND=software build/src/tools/viper/viper run examples/3d/game3d_hello.zia
@@ -61,4 +63,36 @@ and deterministic replay.
 
 ```sh
 VIPER_3D_BACKEND=software build/src/tools/viper/viper run examples/3d/game3d_showcase/showcase.zia
+```
+
+## openworld_slice/
+
+`openworld_slice/` is the Phase 12 streaming vertical-slice project. It mounts
+cell and terrain manifests for a >4 km² world stand-in, swaps resident quadrants
+by stream center across all four cells, keeps the resident set bounded, exposes
+rendered heightmapped `Terrain3D` tile payloads, completes an async model load through
+`AssetHandle3D`, loads KTX2 texture assets, runs a
+first-person character, physics, a synthetic skinned glTF agent with
+`Idle`→`Wave` crossfade plus `IKSolver3D.LookAt`, a terrain-sampled
+`IKSolver3D.TwoBone` foot-plant proof, committed GLB and WAV package-asset
+fixture loads, and local-avoidance nav agents
+from a world-scoped navmesh bake that includes streamed terrain, reads `World3D` runtime counters, compares the
+final frame against a committed software baseline, then verifies deterministic
+replay in `test.zia`. Stream-center teleports settle the deterministic
+`WorldStream3D.update` load budget over a few ticks while unit coverage checks
+`pendingRequestCount` between staged loads. `gpu_smoke.zia` requests the platform GPU backend and
+reports a clean skip when it is unavailable; when a GPU backend is active it
+also renders a degenerate-basis normal-mapped mesh to keep backend shader
+fallbacks covered. `perf_probe.zia` records the
+software frame loop metrics used by the named local perf baseline, and
+`long_traversal.zia` repeats all-quadrant stream churn with deterministic replay
+checks.
+
+```sh
+cd examples/3d/openworld_slice
+VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run test.zia
+VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run perf_probe.zia
+VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run long_traversal.zia
+VIPER_3D_BACKEND=metal ../../../build/src/tools/viper/viper run gpu_smoke.zia
+../../../build/src/tools/viper/viper package . --target tarball --dry-run
 ```

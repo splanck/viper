@@ -478,6 +478,15 @@ static void *make_test_mesh(void) {
     return mesh;
 }
 
+static void *make_degenerate_basis_mesh(void) {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, -0.5, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.5, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    return mesh;
+}
+
 static void *make_depth_test_mesh(float z0, float z1, float z2) {
     void *mesh = rt_mesh3d_new();
     rt_mesh3d_add_vertex(mesh, 0.0, 0.0, z0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -1132,6 +1141,92 @@ static void test_backend_skybox_hook_used(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_metal_robustness_probe_accepts_degenerate_basis_and_skybox_forward(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.begin_frame = record_begin_frame;
+    backend.submit_draw = record_draw_with_lights;
+    backend.draw_skybox = record_draw_skybox;
+    backend.end_frame = noop_end_frame;
+
+    rt_canvas3d canvas;
+    rt_camera3d camera = {};
+    init_fake_canvas(&canvas, &backend);
+    canvas.backend_ctx = &canvas;
+    canvas.in_frame = 0;
+    canvas.width = 64;
+    canvas.height = 64;
+    camera.fov = 60.0;
+    camera.aspect = 1.0;
+    camera.near_plane = 0.1;
+    camera.far_plane = 20.0;
+    camera.is_ortho = 1;
+    camera.ortho_size = 2.0;
+
+    void *face = rt_pixels_new(1, 1);
+    rt_pixels_set(face, 0, 0, 0x202080FF);
+    canvas.skybox = (rt_cubemap3d *)rt_cubemap3d_new(face, face, face, face, face, face);
+
+    void *normal_map = rt_pixels_new(1, 1);
+    rt_pixels_set(normal_map, 0, 0, 0x8080FFFF);
+    void *mesh = make_degenerate_basis_mesh();
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    void *material = rt_material3d_new();
+    rt_material3d_set_normal_map(material, normal_map);
+    void *transform = rt_mat4_identity();
+
+    reset_postfx_records();
+    reset_shadow_counts();
+    skybox_draw_calls = 0;
+
+    rt_canvas3d_begin(&canvas, &camera);
+
+    EXPECT_TRUE(begin_frame_calls == 1, "Metal robustness probe begins one frame");
+    EXPECT_TRUE(begin_frame_params[0].is_ortho == 1,
+                "Metal robustness probe forwards the orthographic skybox flag");
+    EXPECT_TRUE(fabsf(begin_frame_params[0].forward[0]) < 0.0001f &&
+                    fabsf(begin_frame_params[0].forward[1]) < 0.0001f &&
+                    fabsf(begin_frame_params[0].forward[2] + 1.0f) < 0.0001f,
+                "Canvas3D sanitizes a zero-length camera forward vector to -Z");
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1,
+                "Metal robustness probe queues a degenerate-basis normal-mapped draw");
+    EXPECT_TRUE(draws[0].cmd.normal_map == normal_map,
+                "Metal robustness probe forwards the normal-map payload");
+    EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
+                "Normal-mapped degenerate tangents are repaired on a queued snapshot");
+    if (draws[0].cmd.vertices) {
+        const vgfx3d_vertex_t *v = &draws[0].cmd.vertices[0];
+        float tangent_len2 =
+            v->tangent[0] * v->tangent[0] + v->tangent[1] * v->tangent[1] +
+            v->tangent[2] * v->tangent[2];
+        EXPECT_TRUE(v->normal[0] == 0.0f && v->normal[1] == 0.0f && v->normal[2] == 0.0f,
+                    "Degenerate authored normals remain a shader-guard responsibility");
+        EXPECT_TRUE(std::isfinite(tangent_len2) && tangent_len2 > 0.5f &&
+                        tangent_len2 < 1.5f && std::isfinite(v->tangent[3]),
+                    "Queued tangent fallback is finite and non-zero");
+    }
+    EXPECT_TRUE(mesh_view->vertices[0].tangent[0] == 0.0f &&
+                    mesh_view->vertices[0].tangent[1] == 0.0f &&
+                    mesh_view->vertices[0].tangent[2] == 0.0f,
+                "Degenerate-basis probe does not mutate caller-owned mesh geometry");
+
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(skybox_draw_calls == 1,
+                "Metal robustness probe delegates skybox rendering to the backend hook");
+    EXPECT_TRUE(draw_submit_calls == 1,
+                "Metal robustness probe submits the degenerate-basis mesh draw");
+    EXPECT_TRUE(canvas.last_draw_count == 1,
+                "Metal robustness probe records one visible main draw");
+    EXPECT_TRUE(canvas.in_frame == 0, "Metal robustness probe ends cleanly");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_static_mesh_geometry_identity_forwarded(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kOpenGLBackend);
@@ -1722,6 +1817,7 @@ static void test_instanced_shadow_pass_includes_instances(void) {
     light.color[2] = 1.0;
     light.intensity = 1.0;
     light.enabled = 1;
+    light.casts_shadows = 1;
     canvas.lights[0] = &light;
 
     void *mesh = make_test_mesh();
@@ -1840,12 +1936,14 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
     dim_light.color[0] = dim_light.color[1] = dim_light.color[2] = 1.0;
     dim_light.intensity = 0.25;
     dim_light.enabled = 1;
+    dim_light.casts_shadows = 1;
 
     mid_light.type = 0;
     mid_light.direction[2] = -1.0;
     mid_light.color[0] = mid_light.color[1] = mid_light.color[2] = 1.0;
     mid_light.intensity = 1.5;
     mid_light.enabled = 1;
+    mid_light.casts_shadows = 1;
 
     bright_light.type = 0;
     bright_light.direction[0] = 1.0 / 1.41421356237;
@@ -1853,6 +1951,7 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
     bright_light.color[0] = bright_light.color[1] = bright_light.color[2] = 1.0;
     bright_light.intensity = 3.0;
     bright_light.enabled = 1;
+    bright_light.casts_shadows = 1;
 
     void *mesh = make_test_mesh();
     void *material = rt_material3d_new();
@@ -1920,6 +2019,7 @@ static void test_shadow_selection_uses_queued_scene_light_snapshots(void) {
     imported_light.color[0] = imported_light.color[1] = imported_light.color[2] = 1.0;
     imported_light.intensity = 2.0;
     imported_light.enabled = 1;
+    imported_light.casts_shadows = 1;
 
     void *mesh = make_test_mesh();
     void *material = rt_material3d_new();
@@ -1972,14 +2072,72 @@ static void test_occlusion_mode_rejects_off_frustum_draws_before_submission(void
     cleanup_fake_canvas(&canvas);
 }
 
-static void test_draw_mesh_preserves_full_light_capacity(void) {
+static void test_casts_shadows_false_skips_shadow_selection(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+    backend.shadow_begin = record_shadow_begin;
+    backend.shadow_draw = record_shadow_draw;
+    backend.shadow_end = record_shadow_end;
+
+    rt_canvas3d canvas;
+    vgfx3d_rendertarget_t shadow_rt = {};
+    float shadow_depth[16] = {};
+    rt_light3d noncaster = {};
+    rt_light3d caster = {};
+    init_fake_canvas(&canvas, &backend);
+
+    shadow_rt.depth_buf = shadow_depth;
+    shadow_rt.width = 4;
+    shadow_rt.height = 4;
+    canvas.shadow_rts[0] = &shadow_rt;
+    canvas.shadows_enabled = 1;
+    canvas.shadow_bias = 0.0025f;
+
+    noncaster.type = 0;
+    noncaster.direction[1] = -1.0;
+    noncaster.color[0] = noncaster.color[1] = noncaster.color[2] = 1.0;
+    noncaster.intensity = 10.0;
+    noncaster.enabled = 1;
+    noncaster.casts_shadows = 0;
+
+    caster.type = 0;
+    caster.direction[2] = -1.0;
+    caster.color[0] = caster.color[1] = caster.color[2] = 1.0;
+    caster.intensity = 0.5;
+    caster.enabled = 1;
+    caster.casts_shadows = 1;
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    ((mat4_impl *)transform)->m[11] = -2.0;
+
+    canvas.lights[0] = &noncaster;
+    canvas.lights[1] = &caster;
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(shadow_begin_calls == 1 && shadow_draw_calls == 1 && shadow_end_calls == 1,
+                "CastsShadows=false excludes a stronger directional light from shadow passes");
+    EXPECT_TRUE(last_draw_light_count == 2 && last_draw_lights[0].shadow_index == -1 &&
+                    last_draw_lights[1].shadow_index == 0,
+                "Only lights with CastsShadows=true receive shadow indices");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_draw_mesh_preserves_forward_light_capacity(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kOpenGLBackend);
     reset_canvas_frame(&canvas, 1);
 
-    rt_light3d lights[VGFX3D_MAX_LIGHTS];
+    rt_light3d lights[VGFX3D_FORWARD_LIGHT_LIMIT];
     std::memset(lights, 0, sizeof(lights));
-    for (int32_t i = 0; i < VGFX3D_MAX_LIGHTS; i++) {
+    for (int32_t i = 0; i < VGFX3D_FORWARD_LIGHT_LIMIT; i++) {
         lights[i].type = 1;
         lights[i].position[0] = (double)i;
         lights[i].color[0] = 0.1 + 0.01 * (double)i;
@@ -1997,14 +2155,15 @@ static void test_draw_mesh_preserves_full_light_capacity(void) {
 
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "Full-light-capacity test enqueues one draw");
-    EXPECT_TRUE(draws[0].light_count == VGFX3D_MAX_LIGHTS,
-                "Deferred draw preserves every configured light slot");
-    EXPECT_TRUE(std::fabs(draws[0].lights[VGFX3D_MAX_LIGHTS - 1].position[0] -
-                          (float)(VGFX3D_MAX_LIGHTS - 1)) < 0.001f,
-                "Deferred draw includes the last light slot position");
-    EXPECT_TRUE(std::fabs(draws[0].lights[VGFX3D_MAX_LIGHTS - 1].intensity -
-                          (float)(1.0 + 0.25 * (double)(VGFX3D_MAX_LIGHTS - 1))) < 0.001f,
-                "Deferred draw includes the last light slot intensity");
+    EXPECT_TRUE(draws[0].light_count == VGFX3D_FORWARD_LIGHT_LIMIT,
+                "Deferred draw preserves every configured forward light slot");
+    EXPECT_TRUE(std::fabs(draws[0].lights[VGFX3D_FORWARD_LIGHT_LIMIT - 1].position[0] -
+                          (float)(VGFX3D_FORWARD_LIGHT_LIMIT - 1)) < 0.001f,
+                "Deferred draw includes the last forward light slot position");
+    EXPECT_TRUE(std::fabs(draws[0].lights[VGFX3D_FORWARD_LIGHT_LIMIT - 1].intensity -
+                          (float)(1.0 + 0.25 * (double)(VGFX3D_FORWARD_LIGHT_LIMIT - 1))) <
+                    0.001f,
+                "Deferred draw includes the last forward light slot intensity");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -2037,6 +2196,34 @@ static void test_disabled_lights_are_not_submitted(void) {
     EXPECT_TRUE(draws[0].light_count == 1, "Disabled lights are skipped before backend submission");
     EXPECT_TRUE(std::fabs(draws[0].lights[0].intensity - 1.0f) < 0.001f,
                 "Enabled light remains in the submitted light payload");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_clear_lights_keeps_scene_explicitly_dark(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+    reset_canvas_frame(&canvas, 1);
+
+    rt_canvas3d_set_default_lighting(&canvas);
+    EXPECT_TRUE(rt_canvas3d_get_light_count(&canvas) == 2,
+                "SetDefaultLighting remains explicit opt-in setup");
+    rt_canvas3d_clear_lights(&canvas);
+    rt_canvas3d_set_ambient(&canvas, 0.0, 0.0, 0.0);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Explicit-dark lighting test enqueues one draw");
+    EXPECT_TRUE(draws[0].light_count == 0,
+                "ClearLights does not trigger implicit fallback lights during draw");
+    EXPECT_TRUE(std::fabs(draws[0].ambient[0]) < 0.001f &&
+                    std::fabs(draws[0].ambient[1]) < 0.001f &&
+                    std::fabs(draws[0].ambient[2]) < 0.001f,
+                "Zero ambient remains zero without fallback lighting");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -2523,6 +2710,7 @@ int main() {
     test_morph_tangent_deltas_fall_back_to_cpu_for_metal();
     test_env_map_payload_forwarded();
     test_backend_skybox_hook_used();
+    test_metal_robustness_probe_accepts_degenerate_basis_and_skybox_forward();
     test_static_mesh_geometry_identity_forwarded();
     test_deferred_draw_retains_mesh_and_material_until_end();
     test_mesh_draw_traps_when_deferred_queue_cannot_grow();
@@ -2542,9 +2730,11 @@ int main() {
     test_instanced_batch_sort_key_uses_aggregate_bounds_center();
     test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot();
     test_shadow_selection_uses_queued_scene_light_snapshots();
+    test_casts_shadows_false_skips_shadow_selection();
     test_occlusion_mode_rejects_off_frustum_draws_before_submission();
-    test_draw_mesh_preserves_full_light_capacity();
+    test_draw_mesh_preserves_forward_light_capacity();
     test_disabled_lights_are_not_submitted();
+    test_clear_lights_keeps_scene_explicitly_dark();
     test_screenshot_prefers_backend_readback();
     test_screenshot_reads_physical_framebuffer_to_logical_pixels();
     test_final_overlay_replays_after_finalize();

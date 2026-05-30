@@ -178,6 +178,7 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
     light->intensity = 1.0;
     light->attenuation = 0.0;
     light->enabled = 1;
+    light->casts_shadows = 1;
     return light;
 }
 
@@ -215,6 +216,7 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
     light->intensity = 1.0;
     light->attenuation = clamp_min0(attenuation);
     light->enabled = 1;
+    light->casts_shadows = 1;
     return light;
 }
 
@@ -244,6 +246,7 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
     light->intensity = 1.0;
     light->attenuation = 0.0;
     light->enabled = 1;
+    light->casts_shadows = 0;
     return light;
 }
 
@@ -301,6 +304,7 @@ void *rt_light3d_new_spot(void *position,
     light->inner_cos = cos(inner_angle * pi / 180.0);
     light->outer_cos = cos(outer_angle * pi / 180.0);
     light->enabled = 1;
+    light->casts_shadows = 1;
     return light;
 }
 
@@ -371,6 +375,22 @@ int8_t rt_light3d_get_enabled(void *obj) {
     return light->enabled ? 1 : 0;
 }
 
+/// @brief Toggle whether this light can be selected for shadow-map rendering.
+void rt_light3d_set_casts_shadows(void *obj, int8_t enabled) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return;
+    light->casts_shadows = enabled ? 1 : 0;
+}
+
+/// @brief Return whether this light is eligible for shadow-map slots.
+int8_t rt_light3d_get_casts_shadows(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return 0;
+    return light->casts_shadows ? 1 : 0;
+}
+
 /// @brief Read the light direction as a fresh Vec3.
 void *rt_light3d_get_direction(void *obj) {
     rt_light3d *light = light3d_checked(obj);
@@ -385,6 +405,27 @@ void *rt_light3d_get_position(void *obj) {
     if (!light)
         return rt_vec3_new(0.0, 0.0, 0.0);
     return rt_vec3_new(light->position[0], light->position[1], light->position[2]);
+}
+
+/// @brief Move the light to a new world position. Non-Vec3 input is ignored.
+void rt_light3d_set_position(void *obj, void *position) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light || !rt_g3d_is_vec3(position))
+        return;
+    light->position[0] = finite_or_zero(rt_vec3_x(position));
+    light->position[1] = finite_or_zero(rt_vec3_y(position));
+    light->position[2] = finite_or_zero(rt_vec3_z(position));
+}
+
+/// @brief Re-aim the light. The direction is normalized; non-Vec3 input is ignored.
+void rt_light3d_set_direction(void *obj, void *direction) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light || !rt_g3d_is_vec3(direction))
+        return;
+    light->direction[0] = rt_vec3_x(direction);
+    light->direction[1] = rt_vec3_y(direction);
+    light->direction[2] = rt_vec3_z(direction);
+    normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
 }
 
 #else

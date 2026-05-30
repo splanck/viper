@@ -481,6 +481,9 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_Trigger3D,
     RTCLS_DistanceJoint3D,
     RTCLS_SpringJoint3D,
+    RTCLS_HingeJoint3D,
+    RTCLS_RopeJoint3D,
+    RTCLS_SixDofJoint3D,
     RTCLS_Game3DLayers,
     RTCLS_Game3DBodyShape,
     RTCLS_Game3DSyncMode,
@@ -564,6 +567,11 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_DebugProtocolSession,
     RTCLS_FuzzyMatch,
     RTCLS_GameScene,
+    RTCLS_Game3DAssetHandle3D,
+    RTCLS_Game3DWorldStream3D,
+    RTCLS_TextureAsset3D,
+    RTCLS_BlendTree3D,
+    RTCLS_IKSolver3D,
 };
 
 /// @brief Describes a property on a runtime class.

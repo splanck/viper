@@ -1,0 +1,429 @@
+module openworld_slice;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+class OpenWorldSlice {
+    hide World3D world;
+    hide Canvas3D canvas;
+    hide Camera3D camera;
+    hide WorldStream3D stream;
+    hide Entity3D player;
+    hide CharacterController3D character;
+    hide FirstPersonController fps;
+    hide Entity3D scoutA;
+    hide Entity3D scoutB;
+    hide Entity3D beacon;
+    hide ModelTemplate skinnedTemplate;
+    hide Entity3D skinnedAgent;
+    hide Boolean skinnedIkBound;
+    hide Entity3D glbFixtureProp;
+    hide Boolean glbFixtureLoaded;
+    hide Boolean audioFixtureLoaded;
+    hide Entity3D asyncProp;
+    hide AssetHandle3D asyncHandle;
+    hide TextureAsset3D groundTexture;
+    hide TextureAsset3D compressedTexture;
+    hide Boolean asyncSpawned;
+    hide NavMesh3D navmesh;
+    hide NavAgent3D agentA;
+    hide NavAgent3D agentB;
+    hide Skeleton3D footIkSkeleton;
+    hide AnimController3D footIkController;
+    hide IKSolver3D footIkSolver;
+    hide Integer footIkFootBone;
+    hide Float footIkTargetX;
+    hide Float footIkTargetY;
+    hide Float footIkTargetZ;
+    hide Boolean footIkBound;
+    hide Float sceneTime;
+
+    expose func setup(title: String, width: Integer, height: Integer) {
+        world = World3D.New(title, width, height);
+        canvas = World3D.get_canvas(world);
+        camera = World3D.get_camera(world);
+        Canvas3D.SetDTMax(canvas, 50);
+
+        Quality.Apply(world, QualityLevel.get_Balanced());
+        Lighting.Outdoor(world, Vec3.New(-0.35, -1.0, -0.25));
+        PostFX.Crisp(world);
+        var env = Environment.Outdoor(world);
+        EnvHandle.withFog(env, 28.0, 420.0);
+        EnvHandle.withWater(env, -0.08);
+        World3D.setAmbient(world, 0.22, 0.25, 0.29);
+        World3D.setFog(world, 0.025, 0.035, 0.045, 48.0, 520.0);
+        Camera3D.set_Yaw(camera, -30.0);
+        Camera3D.set_Pitch(camera, -12.0);
+
+        stream = World3D.get_stream(world);
+        WorldStream3D.setRadii(stream, 360.0, 520.0);
+        WorldStream3D.setCenter(stream, Vec3.New(-1100.0, 0.0, -1100.0));
+        WorldStream3D.mountCells(stream, "assets/world/cells.vscn");
+        WorldStream3D.mountTiledTerrain(stream, "assets/world/terrain.vscn");
+        settleStream(2);
+
+        setupTextureAssets();
+        spawnBaseScene();
+        setupTerrainFootIkProof();
+        setupPlayer();
+        setupNavAgents();
+        setupSkinnedAgent();
+        setupFixtureAssets();
+        asyncHandle = Assets3D.LoadModelAssetAsync("assets/models/triangle.gltf");
+        asyncSpawned = false;
+        completeAsyncAsset();
+        sceneTime = 0.0;
+    }
+
+    expose func getWorld() -> World3D {
+        return world;
+    }
+
+    expose func getCanvas() -> Canvas3D {
+        return canvas;
+    }
+
+    expose func getCharacter() -> CharacterController3D {
+        return character;
+    }
+
+    expose func getStream() -> WorldStream3D {
+        return stream;
+    }
+
+    expose func getResidentCellCount() -> Integer {
+        return WorldStream3D.get_residentCellCount(stream);
+    }
+
+    expose func getResidentTerrainTileCount() -> Integer {
+        return WorldStream3D.get_residentTerrainTileCount(stream);
+    }
+
+    expose func getResidentBytes() -> Integer {
+        return WorldStream3D.get_residentBytes(stream);
+    }
+
+    expose func getResidentTileHeight() -> Float {
+        var tile = WorldStream3D.getResidentTerrainTile(stream, 0);
+        if (tile == null) { return -99999.0; }
+        return Terrain3D.GetHeightAt(tile, 0.0, 0.0);
+    }
+
+    expose func asyncAssetSpawned() -> Boolean {
+        completeAsyncAsset();
+        return asyncSpawned;
+    }
+
+    expose func textureAssetsReady() -> Boolean {
+        return TextureAsset3D.get_Width(groundTexture) == 2 &&
+               TextureAsset3D.get_Height(groundTexture) == 2 &&
+               TextureAsset3D.get_ResidentBytes(groundTexture) == 16 &&
+               TextureAsset3D.get_Compressed(compressedTexture) &&
+               TextureAsset3D.get_Format(compressedTexture) == "bc7" &&
+               TextureAsset3D.get_ResidentBytes(compressedTexture) == 16;
+    }
+
+    expose func skinnedCharacterReady() -> Boolean {
+        if (skinnedAgent == null) { return false; }
+        var anim = Entity3D.get_anim(skinnedAgent);
+        if (anim == null) { return false; }
+        return Animator3D.isPlaying(anim, "Wave") &&
+               Animator3D.stateTime(anim) > 0.0 &&
+               skinnedIkBound &&
+               hasNode("SkinnedAgentMeshNode");
+    }
+
+    expose func fixtureAssetsReady() -> Boolean {
+        return glbFixtureLoaded &&
+               audioFixtureLoaded &&
+               glbFixtureProp != null &&
+               World3D.findEntity(world, "FixtureGLBTriangle") != null &&
+               hasNode("GlbTriangle");
+    }
+
+    expose func terrainFootIkReady() -> Boolean {
+        if (footIkBound == false || footIkController == null || footIkFootBone < 0) {
+            return false;
+        }
+        var footMat = AnimController3D.GetBoneMatrix(footIkController, footIkFootBone);
+        if (footMat == null) { return false; }
+        return nearFloat(Mat4.Get(footMat, 0, 3), footIkTargetX, 0.06) &&
+               nearFloat(Mat4.Get(footMat, 1, 3), footIkTargetY, 0.06) &&
+               nearFloat(Mat4.Get(footMat, 2, 3), footIkTargetZ, 0.06);
+    }
+
+    expose func navmeshIncludesStreamedTerrain() -> Boolean {
+        if (navmesh == null || NavMesh3D.get_TriangleCount(navmesh) <= 32) {
+            return false;
+        }
+        var snapped = NavMesh3D.SamplePosition(navmesh, Vec3.New(-1500.0, 8.0, -1500.0));
+        if (snapped == null) { return false; }
+        return nearFloat(Vec3.get_X(snapped), -1500.0, 1.0) &&
+               nearFloat(Vec3.get_Z(snapped), -1500.0, 1.0);
+    }
+
+    expose func hasNode(name: String) -> Boolean {
+        return World3D.findNode(world, name) != null;
+    }
+
+    expose func setStreamCenter(x: Float, z: Float) {
+        WorldStream3D.setCenter(stream, Vec3.New(x, 0.0, z));
+        settleStream(4);
+    }
+
+    expose func stepFixed(dt: Float) {
+        sceneTime = sceneTime + dt;
+        completeAsyncAsset();
+        NavAgent3D.Update(agentA, dt);
+        NavAgent3D.Update(agentB, dt);
+        WorldStream3D.setCenter(stream, Entity3D.position(player));
+        WorldStream3D.update(stream, dt);
+        World3D.runFramesOnly(world, 1, dt);
+    }
+
+    expose func renderFrame() {
+        Entity3D.setRotationEuler(beacon, 0.0, sceneTime * 38.0, 0.0);
+
+        World3D.beginFrame(world);
+        World3D.drawScene(world);
+        World3D.drawEffects(world);
+        World3D.endScene(world);
+
+        Canvas3D.BeginOverlay(canvas);
+        Canvas3D.DrawRect2D(canvas, 10, 10, 214, 42, 0x111821);
+        Canvas3D.DrawRect2D(canvas, 10, 10, 214, 3, 0x00E8FF);
+        Canvas3D.DrawText2D(canvas, 22, 24, "OPEN_WORLD_SLICE", 0xFFFFFF);
+        Canvas3D.DrawRect2D(canvas, Canvas3D.get_Width(canvas) - 48, Canvas3D.get_Height(canvas) - 48,
+                            32, 32, 0x00E8FF);
+        Canvas3D.DrawRect2D(canvas, Canvas3D.get_Width(canvas) - 40, Canvas3D.get_Height(canvas) - 40,
+                            16, 16, 0x101722);
+        Canvas3D.EndOverlay(canvas);
+    }
+
+    expose func replayMetric() -> Float {
+        var a = Entity3D.position(scoutA);
+        var b = Entity3D.position(scoutB);
+        var p = Entity3D.position(player);
+        return Vec3.get_X(a) + Vec3.get_Z(a) + Vec3.get_X(b) + Vec3.get_Z(b) +
+               Vec3.get_X(p) + Vec3.get_Z(p);
+    }
+
+    expose func run() {
+        FirstPersonController.captureMouse(fps);
+        while (World3D.tick(world)) {
+            var dt = World3D.get_dt(world);
+            if (dt <= 0.0) { dt = 0.016; }
+            if (dt > 0.050) { dt = 0.050; }
+            stepFixed(dt);
+            renderFrame();
+            World3D.present(world);
+        }
+        FirstPersonController.releaseMouse(fps);
+    }
+
+    expose func destroy() {
+        World3D.destroy(world);
+    }
+
+    hide func setupTextureAssets() {
+        groundTexture = TextureAsset3D.LoadKTX2Asset("assets/textures/checker_rgba8.ktx2");
+        TextureAsset3D.SetResidentMipRange(groundTexture, 0, 1);
+        compressedTexture = TextureAsset3D.LoadKTX2Asset("assets/textures/marker_bc7.ktx2");
+        TextureAsset3D.SetResidentMipRange(compressedTexture, 0, 1);
+    }
+
+    hide func settleStream(frames: Integer) {
+        var i = 0;
+        while (i < frames) {
+            WorldStream3D.update(stream, 1.0 / 60.0);
+            i = i + 1;
+        }
+    }
+
+    hide func spawnBaseScene() {
+        var groundMat = Materials.Rubber(0.22, 0.34, 0.25);
+        Material3D.SetAlbedoMap(groundMat, groundTexture);
+        var ground = Prefab.Ground(48.0, groundMat);
+        Entity3D.setName(ground, "SliceGround");
+        Entity3D.setPosition(ground, -1100.0, 0.0, -1100.0);
+        Entity3D.attachBody(ground, BodyDef.StaticPlane(48.0));
+        World3D.spawn(world, ground);
+
+        var crate = Prefab.BoxXYZ(1.2, 0.9, 1.2, Materials.Metal(0.58, 0.61, 0.63));
+        Entity3D.setName(crate, "SliceCrate");
+        Entity3D.setPosition(crate, -1101.6, 0.45, -1100.8);
+        Entity3D.attachBody(crate, BodyDef.StaticBox(0.6, 0.45, 0.6));
+        World3D.spawn(world, crate);
+
+        beacon = Prefab.BoxXYZ(0.42, 0.42, 0.42, Materials.Emissive(0.12, 0.72, 1.0, 1.6));
+        Entity3D.setName(beacon, "SliceBeacon");
+        Entity3D.setPosition(beacon, -1098.3, 1.1, -1101.2);
+        World3D.spawn(world, beacon);
+
+        var ball = Prefab.Sphere(0.42, 18, Materials.Plastic(0.92, 0.24, 0.16));
+        Entity3D.setName(ball, "SlicePhysicsBall");
+        Entity3D.setPosition(ball, -1099.7, 0.55, -1099.9);
+        var ballBody = BodyDef.Sphere(0.42, 1.0);
+        BodyDef.set_restitution(ballBody, 0.25);
+        BodyDef.withMask(ballBody, LayerMask.Of(Layers.get_World()));
+        Entity3D.attachBody(ball, ballBody);
+        World3D.spawn(world, ball);
+        Entity3D.applyImpulse(ball, 0.8, 1.6, 0.2);
+    }
+
+    hide func setupTerrainFootIkProof() {
+        footIkBound = false;
+        footIkFootBone = -1;
+        var tile = WorldStream3D.getResidentTerrainTile(stream, 0);
+        if (tile == null) { return; }
+        var groundY = Terrain3D.GetHeightAt(tile, 0.0, 0.0);
+        footIkTargetX = 0.65;
+        footIkTargetY = groundY + 0.05;
+        footIkTargetZ = 0.0;
+
+        footIkSkeleton = Skeleton3D.New();
+        var hip = Skeleton3D.AddBone(footIkSkeleton, "FootIkHip", -1,
+                                     Mat4.Translate(0.0, groundY + 1.20, 0.0));
+        var knee = Skeleton3D.AddBone(footIkSkeleton, "FootIkKnee", hip,
+                                      Mat4.Translate(0.45, -0.65, 0.0));
+        footIkFootBone = Skeleton3D.AddBone(footIkSkeleton, "FootIkFoot", knee,
+                                            Mat4.Translate(0.45, -0.65, 0.0));
+        Skeleton3D.ComputeInverseBind(footIkSkeleton);
+
+        footIkController = AnimController3D.New(footIkSkeleton);
+        footIkSolver = IKSolver3D.TwoBone(footIkSkeleton, hip, knee, footIkFootBone);
+        if (footIkSolver == null) { return; }
+        IKSolver3D.SetTarget(footIkSolver, Vec3.New(footIkTargetX, footIkTargetY, footIkTargetZ));
+        IKSolver3D.SetWeight(footIkSolver, 1.0);
+        IKSolver3D.Solve(footIkSolver);
+        footIkBound = AnimController3D.SetIKSolver(footIkController, footIkSolver);
+    }
+
+    hide func setupPlayer() {
+        player = Entity3D.New();
+        Entity3D.setName(player, "SlicePlayer");
+        Entity3D.setLayer(player, Layers.get_Player());
+        Entity3D.setPosition(player, -1100.0, 1.0, -1094.5);
+        World3D.spawn(world, player);
+
+        character = CharacterController3D.New(world, player, 0.32, 1.8, 70.0);
+        CharacterController3D.set_speed(character, 3.0);
+
+        fps = FirstPersonController.New(world);
+        FirstPersonController.set_character(fps, character);
+        FirstPersonController.set_speed(fps, 3.0);
+        FirstPersonController.releaseMouse(fps);
+        World3D.setCameraController(world, fps);
+    }
+
+    hide func setupNavAgents() {
+        navmesh = World3D.bakeNavMesh(world, 0.35, 1.8, 45.0, 0.3);
+
+        scoutA = Prefab.BoxXYZ(0.35, 0.70, 0.35, Materials.Plastic(0.12, 0.42, 0.92));
+        Entity3D.setName(scoutA, "ScoutA");
+        Entity3D.setPosition(scoutA, -1101.6, 0.35, -1098.6);
+        World3D.spawn(world, scoutA);
+
+        scoutB = Prefab.BoxXYZ(0.35, 0.70, 0.35, Materials.Plastic(0.92, 0.64, 0.18));
+        Entity3D.setName(scoutB, "ScoutB");
+        Entity3D.setPosition(scoutB, -1098.4, 0.35, -1098.6);
+        World3D.spawn(world, scoutB);
+
+        agentA = NavAgent3D.New(navmesh, 0.35, 1.8);
+        agentB = NavAgent3D.New(navmesh, 0.35, 1.8);
+        NavAgent3D.BindNode(agentA, Entity3D.get_node(scoutA));
+        NavAgent3D.BindNode(agentB, Entity3D.get_node(scoutB));
+        NavAgent3D.set_DesiredSpeed(agentA, 1.7);
+        NavAgent3D.set_DesiredSpeed(agentB, 1.5);
+        NavAgent3D.set_StoppingDistance(agentA, 0.05);
+        NavAgent3D.set_StoppingDistance(agentB, 0.05);
+        NavAgent3D.set_AvoidanceEnabled(agentA, true);
+        NavAgent3D.set_AvoidanceEnabled(agentB, true);
+        NavAgent3D.set_AvoidanceRadius(agentA, 0.75);
+        NavAgent3D.set_AvoidanceRadius(agentB, 0.75);
+        NavAgent3D.Warp(agentA, Vec3.New(-1101.6, 0.0, -1098.6));
+        NavAgent3D.Warp(agentB, Vec3.New(-1098.4, 0.0, -1098.6));
+        NavAgent3D.SetTarget(agentA, Vec3.New(-1098.4, 0.0, -1101.4));
+        NavAgent3D.SetTarget(agentB, Vec3.New(-1101.6, 0.0, -1101.4));
+    }
+
+    hide func setupSkinnedAgent() {
+        skinnedIkBound = false;
+        skinnedTemplate = Assets3D.LoadModelTemplateAsset("assets/models/skinned_agent.gltf");
+        if (skinnedTemplate == null) { return; }
+        skinnedAgent = ModelTemplate.instantiate(skinnedTemplate);
+        if (skinnedAgent == null) { return; }
+        Entity3D.setName(skinnedAgent, "SkinnedAgent");
+        Entity3D.setPosition(skinnedAgent, -1099.2, 0.32, -1098.0);
+        Entity3D.setScale(skinnedAgent, 0.85);
+        World3D.spawn(world, skinnedAgent);
+
+        var anim = Entity3D.get_anim(skinnedAgent);
+        if (anim != null) {
+            Animator3D.crossfade(anim, "Wave", 0.08);
+            var model = ModelTemplate.get_model(skinnedTemplate);
+            if (model != null) {
+                var skeleton = Model3D.GetSkeleton(model, 0);
+                var solver = IKSolver3D.LookAt(skeleton, 0);
+                if (solver != null) {
+                    IKSolver3D.SetTarget(solver, Vec3.New(0.35, 0.65, 1.0));
+                    IKSolver3D.SetWeight(solver, 0.35);
+                    skinnedIkBound = Animator3D.setIKSolver(anim, solver);
+                }
+            }
+        }
+    }
+
+    hide func setupFixtureAssets() {
+        glbFixtureLoaded = false;
+        audioFixtureLoaded = false;
+
+        glbFixtureProp = Assets3D.LoadModelAsset("assets/models/triangle.glb");
+        if (glbFixtureProp != null) {
+            Entity3D.setName(glbFixtureProp, "FixtureGLBTriangle");
+            Entity3D.setPosition(glbFixtureProp, -1097.0, 0.12, -1100.6);
+            Entity3D.setScale(glbFixtureProp, 0.75);
+            World3D.spawn(world, glbFixtureProp);
+            glbFixtureLoaded = hasNode("GlbTriangle");
+        }
+
+        var audio = World3D.get_audio(world);
+        if (audio == null) { return; }
+        var clip = Sound3D.loadAsset(audio, "assets/audio/jump.wav");
+        audioFixtureLoaded = clip != null;
+        if (clip != null) {
+            var source = Sound3D.playAt(audio, clip, Vec3.New(-1097.0, 0.6, -1100.6));
+            if (source != null) {
+                Sound3D.clearSources(audio);
+            }
+        }
+    }
+
+    hide func completeAsyncAsset() {
+        if (asyncSpawned || asyncHandle == null) { return; }
+        if (AssetHandle3D.get_ready(asyncHandle) == false) { return; }
+        asyncProp = AssetHandle3D.getEntity(asyncHandle);
+        if (asyncProp == null) { return; }
+        Entity3D.setName(asyncProp, "AsyncTriangle");
+        Entity3D.setPosition(asyncProp, -1097.5, 0.08, -1098.8);
+        Entity3D.setScale(asyncProp, 0.85);
+        World3D.spawn(world, asyncProp);
+        asyncSpawned = true;
+    }
+
+    hide func nearFloat(a: Float, b: Float, eps: Float) -> Boolean {
+        var d = a - b;
+        if (d < 0.0) { d = 0.0 - d; }
+        return d <= eps;
+    }
+}
+
+func start() {
+    var game = new OpenWorldSlice();
+    game.setup("Viper Open World Slice", 960, 540);
+    game.run();
+    game.destroy();
+    Terminal.Say("RESULT: ok");
+}

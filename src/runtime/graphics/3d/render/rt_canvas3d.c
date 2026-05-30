@@ -634,6 +634,16 @@ typedef struct {
     float sort_key; /* bounds-aware view-depth key for deferred draw sorting */
 } deferred_draw_t;
 
+#define CANVAS3D_OCCLUSION_GRID_W 64
+#define CANVAS3D_OCCLUSION_GRID_H 64
+#define CANVAS3D_OCCLUSION_GRID_CELLS                                                           \
+    (CANVAS3D_OCCLUSION_GRID_W * CANVAS3D_OCCLUSION_GRID_H)
+
+typedef struct {
+    float depth[CANVAS3D_OCCLUSION_GRID_CELLS];
+    uint8_t covered[CANVAS3D_OCCLUSION_GRID_CELLS];
+} canvas3d_occlusion_grid_t;
+
 typedef struct {
     uintptr_t key;
     float current_model[16];
@@ -1169,6 +1179,7 @@ static void canvas3d_copy_light_params(const rt_light3d *l, vgfx3d_light_params_
     memset(out, 0, sizeof(*out));
     out->type = l->type;
     out->shadow_index = -1;
+    out->casts_shadows = l->casts_shadows ? 1 : 0;
     out->direction[0] = canvas3d_sanitize_f64_to_float(l->direction[0], 0.0f);
     out->direction[1] = canvas3d_sanitize_f64_to_float(l->direction[1], -1.0f);
     out->direction[2] = canvas3d_sanitize_f64_to_float(l->direction[2], 0.0f);
@@ -1184,6 +1195,14 @@ static void canvas3d_copy_light_params(const rt_light3d *l, vgfx3d_light_params_
     out->outer_cos = canvas3d_clamp_f64_to_float(l->outer_cos, -1.0, 1.0, 0.0f);
 }
 
+/// @brief Return the active light payload limit for the selected lighting path.
+static int32_t canvas3d_active_light_limit(rt_canvas3d *c) {
+    if (c && c->clustered_lighting &&
+        rt_canvas3d_backend_supports(c, rt_const_cstr("clustered-lighting")))
+        return VGFX3D_MAX_LIGHTS;
+    return VGFX3D_FORWARD_LIGHT_LIMIT;
+}
+
 /// @brief Score a directional light by luminance-weighted intensity.
 /// @details Used to rank shadow-caster candidates: only type 0 (directional)
 ///   lights score above zero, and their score uses the Rec. 709 luminance
@@ -1193,7 +1212,7 @@ static void canvas3d_copy_light_params(const rt_light3d *l, vgfx3d_light_params_
 static float canvas3d_shadow_light_param_score(const vgfx3d_light_params_t *l) {
     float luminance;
 
-    if (!l || l->type != 0)
+    if (!l || l->type != 0 || !l->casts_shadows)
         return -1.0f;
     luminance = (float)(0.2126 * l->color[0] + 0.7152 * l->color[1] + 0.0722 * l->color[2]);
     return (float)l->intensity * luminance;
@@ -1249,7 +1268,7 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
                                               const vgfx3d_light_params_t *b) {
     if (!a || !b || a->type != b->type)
         return 0;
-    if (a->type != 0)
+    if (a->type != 0 || !a->casts_shadows || !b->casts_shadows)
         return 0;
     for (int i = 0; i < 3; i++) {
         if (!canvas3d_light_param_close(a->direction[i], b->direction[i]) ||
@@ -2133,7 +2152,8 @@ static void canvas3d_fill_deferred_draw(rt_canvas3d *c,
     dd->ambient[0] = c->ambient[0];
     dd->ambient[1] = c->ambient[1];
     dd->ambient[2] = c->ambient[2];
-    dd->light_count = include_lights ? build_light_params(c, dd->lights, VGFX3D_MAX_LIGHTS) : 0;
+    dd->light_count =
+        include_lights ? build_light_params(c, dd->lights, canvas3d_active_light_limit(c)) : 0;
     if (local_bounds_min && local_bounds_max) {
         dd->has_local_bounds = 1;
         memcpy(dd->local_bounds_min, local_bounds_min, sizeof(dd->local_bounds_min));
@@ -2363,6 +2383,169 @@ static int canvas3d_deferred_intersects_frustum(const deferred_draw_t *dd,
     if (!has_bounds)
         return 1;
     return vgfx3d_frustum_test_aabb(frustum, world_min, world_max) != 0;
+}
+
+static void canvas3d_occlusion_grid_clear(canvas3d_occlusion_grid_t *grid) {
+    if (!grid)
+        return;
+    for (int32_t i = 0; i < CANVAS3D_OCCLUSION_GRID_CELLS; ++i) {
+        grid->depth[i] = FLT_MAX;
+        grid->covered[i] = 0;
+    }
+}
+
+static int canvas3d_project_world_point_to_occlusion_grid(const rt_canvas3d *c,
+                                                          const float point[3],
+                                                          float *out_x,
+                                                          float *out_y) {
+    float clip[4];
+    float w;
+    float ndc_x;
+    float ndc_y;
+
+    if (!c || !point || !out_x || !out_y)
+        return 0;
+    clip[0] = c->cached_vp[0] * point[0] + c->cached_vp[1] * point[1] +
+              c->cached_vp[2] * point[2] + c->cached_vp[3];
+    clip[1] = c->cached_vp[4] * point[0] + c->cached_vp[5] * point[1] +
+              c->cached_vp[6] * point[2] + c->cached_vp[7];
+    clip[2] = c->cached_vp[8] * point[0] + c->cached_vp[9] * point[1] +
+              c->cached_vp[10] * point[2] + c->cached_vp[11];
+    clip[3] = c->cached_vp[12] * point[0] + c->cached_vp[13] * point[1] +
+              c->cached_vp[14] * point[2] + c->cached_vp[15];
+    w = clip[3];
+    if (!isfinite(w) || fabsf(w) <= 1e-6f)
+        return 0;
+    ndc_x = clip[0] / w;
+    ndc_y = clip[1] / w;
+    if (!isfinite(ndc_x) || !isfinite(ndc_y))
+        return 0;
+    *out_x = (ndc_x * 0.5f + 0.5f) * (float)(CANVAS3D_OCCLUSION_GRID_W - 1);
+    *out_y = (0.5f - ndc_y * 0.5f) * (float)(CANVAS3D_OCCLUSION_GRID_H - 1);
+    return 1;
+}
+
+static int canvas3d_deferred_occlusion_rect(const rt_canvas3d *c,
+                                            const deferred_draw_t *dd,
+                                            int32_t *out_min_x,
+                                            int32_t *out_min_y,
+                                            int32_t *out_max_x,
+                                            int32_t *out_max_y,
+                                            float *out_depth) {
+    float world_min[3] = {0.0f, 0.0f, 0.0f};
+    float world_max[3] = {0.0f, 0.0f, 0.0f};
+    int8_t has_bounds = 0;
+    float min_x = FLT_MAX;
+    float min_y = FLT_MAX;
+    float max_x = -FLT_MAX;
+    float max_y = -FLT_MAX;
+
+    if (!c || !dd || !out_min_x || !out_min_y || !out_max_x || !out_max_y || !out_depth)
+        return 0;
+    if (!isfinite(dd->sort_key))
+        return 0;
+    canvas3d_accumulate_deferred_world_bounds(dd, world_min, world_max, &has_bounds);
+    if (!has_bounds)
+        return 0;
+
+    for (int xi = 0; xi < 2; ++xi) {
+        for (int yi = 0; yi < 2; ++yi) {
+            for (int zi = 0; zi < 2; ++zi) {
+                float point[3];
+                float sx;
+                float sy;
+                point[0] = xi ? world_max[0] : world_min[0];
+                point[1] = yi ? world_max[1] : world_min[1];
+                point[2] = zi ? world_max[2] : world_min[2];
+                if (!canvas3d_project_world_point_to_occlusion_grid(c, point, &sx, &sy))
+                    return 0;
+                if (sx < min_x)
+                    min_x = sx;
+                if (sy < min_y)
+                    min_y = sy;
+                if (sx > max_x)
+                    max_x = sx;
+                if (sy > max_y)
+                    max_y = sy;
+            }
+        }
+    }
+    if (!isfinite(min_x) || !isfinite(min_y) || !isfinite(max_x) || !isfinite(max_y))
+        return 0;
+    if (max_x < 0.0f || max_y < 0.0f || min_x > (float)(CANVAS3D_OCCLUSION_GRID_W - 1) ||
+        min_y > (float)(CANVAS3D_OCCLUSION_GRID_H - 1))
+        return 0;
+    if (min_x < 0.0f)
+        min_x = 0.0f;
+    if (min_y < 0.0f)
+        min_y = 0.0f;
+    if (max_x > (float)(CANVAS3D_OCCLUSION_GRID_W - 1))
+        max_x = (float)(CANVAS3D_OCCLUSION_GRID_W - 1);
+    if (max_y > (float)(CANVAS3D_OCCLUSION_GRID_H - 1))
+        max_y = (float)(CANVAS3D_OCCLUSION_GRID_H - 1);
+
+    *out_min_x = (int32_t)floorf(min_x);
+    *out_min_y = (int32_t)floorf(min_y);
+    *out_max_x = (int32_t)ceilf(max_x);
+    *out_max_y = (int32_t)ceilf(max_y);
+    if (*out_max_x < *out_min_x || *out_max_y < *out_min_y)
+        return 0;
+    *out_depth = dd->sort_key;
+    return 1;
+}
+
+static int canvas3d_occlusion_grid_covers(const canvas3d_occlusion_grid_t *grid,
+                                          int32_t min_x,
+                                          int32_t min_y,
+                                          int32_t max_x,
+                                          int32_t max_y,
+                                          float depth) {
+    if (!grid || !isfinite(depth))
+        return 0;
+    for (int32_t y = min_y; y <= max_y; ++y) {
+        for (int32_t x = min_x; x <= max_x; ++x) {
+            int32_t index = y * CANVAS3D_OCCLUSION_GRID_W + x;
+            if (!grid->covered[index] || grid->depth[index] > depth - 1e-3f)
+                return 0;
+        }
+    }
+    return 1;
+}
+
+static void canvas3d_occlusion_grid_write(canvas3d_occlusion_grid_t *grid,
+                                          int32_t min_x,
+                                          int32_t min_y,
+                                          int32_t max_x,
+                                          int32_t max_y,
+                                          float depth) {
+    if (!grid || !isfinite(depth))
+        return;
+    for (int32_t y = min_y; y <= max_y; ++y) {
+        for (int32_t x = min_x; x <= max_x; ++x) {
+            int32_t index = y * CANVAS3D_OCCLUSION_GRID_W + x;
+            if (!grid->covered[index] || depth < grid->depth[index])
+                grid->depth[index] = depth;
+            grid->covered[index] = 1;
+        }
+    }
+}
+
+static int canvas3d_occlusion_test_and_write(rt_canvas3d *c,
+                                             canvas3d_occlusion_grid_t *grid,
+                                             const deferred_draw_t *dd) {
+    int32_t min_x;
+    int32_t min_y;
+    int32_t max_x;
+    int32_t max_y;
+    float depth;
+    if (!c || !grid || !dd)
+        return 0;
+    if (!canvas3d_deferred_occlusion_rect(c, dd, &min_x, &min_y, &max_x, &max_y, &depth))
+        return 0;
+    if (canvas3d_occlusion_grid_covers(grid, min_x, min_y, max_x, max_y, depth))
+        return 1;
+    canvas3d_occlusion_grid_write(grid, min_x, min_y, max_x, max_y, depth);
+    return 0;
 }
 
 /// @brief Build a tight orthographic shadow-map VP that bounds every opaque draw.
@@ -3098,6 +3281,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->shadow_resolution = 1024;
     c->shadow_bias = 0.005f;
     c->shadow_count = 0;
+    c->shadow_cascade_count = 1;
     memset(c->shadow_rts, 0, sizeof(c->shadow_rts));
     memset(c->shadow_light_vps, 0, sizeof(c->shadow_light_vps));
     c->frame_serial = 0;
@@ -3724,6 +3908,8 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     canvas3d_prune_motion_history(c);
     c->draw_count = 0;
     c->frame_is_2d = 0;
+    c->last_draw_count = 0;
+    c->last_occluded_draw_count = 0;
 
     /* Cache VP matrix for debug drawing (backend-agnostic) */
     {
@@ -3893,7 +4079,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                  : 0;
 
     /* Build light params */
-    dd->light_count = build_light_params(c, dd->lights, VGFX3D_MAX_LIGHTS);
+    dd->light_count = build_light_params(c, dd->lights, canvas3d_active_light_limit(c));
     dd->ambient[0] = c->ambient[0];
     dd->ambient[1] = c->ambient[1];
     dd->ambient[2] = c->ambient[2];
@@ -4266,6 +4452,7 @@ void rt_canvas3d_end(void *obj) {
     if (!c->backend) {
         c->in_frame = 0;
         c->frame_is_2d = 0;
+        c->last_draw_count = 0;
         c->draw_count = 0;
         canvas3d_clear_temp_buffers(c);
         canvas3d_clear_temp_objects(c);
@@ -4318,6 +4505,7 @@ void rt_canvas3d_end(void *obj) {
         else if (cmds[i].pass_kind == DEFERRED_PASS_SCREEN_OVERLAY)
             overlay_count++;
     }
+    c->last_draw_count = main_count;
 
     if (main_count == 0 && overlay_count == 0) {
         c->backend->end_frame(c->backend_ctx);
@@ -4383,13 +4571,21 @@ void rt_canvas3d_end(void *obj) {
 
     if (main_count > 0) {
         vgfx3d_frustum_t visibility_frustum;
+        canvas3d_occlusion_grid_t occlusion_grid;
+        int use_occlusion_grid = c->occlusion_culling ? 1 : 0;
 
-        if (c->occlusion_culling) {
+        if (use_occlusion_grid)
+            canvas3d_occlusion_grid_clear(&occlusion_grid);
+
+        if (c->frustum_culling || c->occlusion_culling) {
             vgfx3d_frustum_extract(&visibility_frustum, c->cached_vp);
             for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN)
+                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN) {
                     cmds[i].visible =
                         (int8_t)canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum);
+                    if (!cmds[i].visible)
+                        c->last_occluded_draw_count++;
+                }
             }
         } else {
             for (int32_t i = 0; i < c->draw_count; i++) {
@@ -4415,13 +4611,25 @@ void rt_canvas3d_end(void *obj) {
                             opaque[oi++] = cmds[i];
                     }
                     qsort(opaque, (size_t)opaque_count, sizeof(deferred_draw_t), cmp_front_to_back);
-                    for (int32_t i = 0; i < opaque_count; i++)
+                    for (int32_t i = 0; i < opaque_count; i++) {
+                        if (use_occlusion_grid &&
+                            canvas3d_occlusion_test_and_write(c, &occlusion_grid, &opaque[i])) {
+                            c->last_occluded_draw_count++;
+                            continue;
+                        }
                         canvas3d_submit_deferred(c, &opaque[i]);
+                    }
                 } else {
                     for (int32_t i = 0; i < c->draw_count; i++) {
                         if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                            !cmds[i].requires_blend && cmds[i].visible)
+                            !cmds[i].requires_blend && cmds[i].visible) {
+                            if (use_occlusion_grid &&
+                                canvas3d_occlusion_test_and_write(c, &occlusion_grid, &cmds[i])) {
+                                c->last_occluded_draw_count++;
+                                continue;
+                            }
                             canvas3d_submit_deferred(c, &cmds[i]);
+                        }
                     }
                 }
             }
@@ -5011,6 +5219,30 @@ int64_t rt_canvas3d_get_light_count(void *obj) {
     return count;
 }
 
+/// @brief Enable the clustered-lighting path only when advertised by the backend.
+void rt_canvas3d_set_clustered_lighting(void *obj, int8_t enabled) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (!enabled) {
+        c->clustered_lighting = 0;
+        return;
+    }
+    if (!rt_canvas3d_backend_supports(c, rt_const_cstr("clustered-lighting"))) {
+        c->clustered_lighting = 0;
+        rt_trap("Canvas3D.SetClusteredLighting: clustered lighting is not supported by this "
+                "backend");
+        return;
+    }
+    c->clustered_lighting = 1;
+}
+
+/// @brief Report the active lighting budget; current non-clustered path is fixed at 16.
+int64_t rt_canvas3d_get_max_active_lights(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return canvas3d_active_light_limit(c);
+}
+
 /// @brief Install a readable key/fill/ambient setup without enabling implicit fallback lighting.
 void rt_canvas3d_set_default_lighting(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
@@ -5138,17 +5370,39 @@ void rt_canvas3d_set_shadow_bias(void *obj, double bias) {
     c->shadow_bias = canvas3d_sanitize_nonnegative_f64(bias, 0.005f);
 }
 
+/// @brief Configure cascaded shadow-map count, preserving current single-map fallback.
+void rt_canvas3d_set_shadow_cascades(void *obj, int64_t count) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    if (count < 1)
+        count = 1;
+    if (count > 4)
+        count = 4;
+    if (count > 1 && !rt_canvas3d_backend_supports(c, rt_const_cstr("shadow-csm"))) {
+        rt_trap("Canvas3D.SetShadowCascades: cascaded shadows are not supported by this backend");
+        return;
+    }
+    c->shadow_cascade_count = (int32_t)count;
+}
+
 /// @brief Enable or disable coarse CPU frustum culling for draw submission.
 void rt_canvas3d_set_frustum_culling(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
-    c->occlusion_culling = enabled ? 1 : 0;
+    c->frustum_culling = enabled ? 1 : 0;
+    if (!enabled)
+        c->occlusion_culling = 0;
 }
 
-/// @brief Backwards-compatible alias for rt_canvas3d_set_frustum_culling().
+/// @brief Enable coarse CPU occlusion culling; includes frustum rejection.
 void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled) {
-    rt_canvas3d_set_frustum_culling(obj, enabled);
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->frustum_culling = enabled ? 1 : 0;
+    c->occlusion_culling = enabled ? 1 : 0;
 }
 
 #else

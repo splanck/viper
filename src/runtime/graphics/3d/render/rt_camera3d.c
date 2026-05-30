@@ -734,6 +734,37 @@ void rt_camera3d_set_fov(void *obj, double fov) {
     rebuild_projection(cam);
 }
 
+/// @brief Read the near clip-plane distance.
+double rt_camera3d_get_near_plane(void *obj) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    return cam ? cam->near_plane : 0.0;
+}
+
+/// @brief Set the near clip-plane distance; planes are re-sanitized on rebuild.
+void rt_camera3d_set_near_plane(void *obj, double near_plane) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
+        return;
+    cam->near_plane = near_plane;
+    rebuild_projection(cam);
+}
+
+/// @brief Read the far clip-plane distance.
+double rt_camera3d_get_far_plane(void *obj) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    return cam ? cam->far_plane : 0.0;
+}
+
+/// @brief Set the far clip-plane distance (e.g. to extend draw distance for a
+///   large scene); planes are re-sanitized on rebuild.
+void rt_camera3d_set_far_plane(void *obj, double far_plane) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
+        return;
+    cam->far_plane = far_plane;
+    rebuild_projection(cam);
+}
+
 /// @brief Return the camera's eye position as a freshly allocated Vec3.
 /// @details The eye is the *unshaken* position — shake offset is applied
 ///          per-frame to the view matrix but never mutates `cam->eye`,

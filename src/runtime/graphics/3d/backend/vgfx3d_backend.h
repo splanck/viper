@@ -163,6 +163,7 @@ typedef struct {
 typedef struct {
     int32_t type;         /* 0=directional, 1=point, 2=ambient, 3=spot */
     int32_t shadow_index; /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
+    int32_t casts_shadows;
     float direction[3];
     float position[3];
     float color[3];

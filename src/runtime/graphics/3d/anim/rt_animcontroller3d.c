@@ -32,7 +32,9 @@
 
 #include "rt_animcontroller3d.h"
 
+#include "rt_blendtree3d.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_iksolver3d.h"
 #include "rt_mat4.h"
 #include "rt_object.h"
 #include "rt_quat.h"
@@ -79,6 +81,7 @@ typedef struct {
     float transition_time;
     float transition_duration;
     int8_t transitioning;
+    int8_t additive;
     float weight;
     int32_t mask_root_bone;
     uint8_t mask_bits[VGFX3D_MAX_BONES];
@@ -101,6 +104,8 @@ typedef struct {
     int32_t event_capacity;
 
     anim_controller3d_layer_t layers[RT_ANIM_CONTROLLER3D_MAX_LAYERS];
+    void *blend_tree;
+    void *ik_solver;
 
     float *final_palette;
     float *final_globals;
@@ -108,6 +113,9 @@ typedef struct {
     int8_t has_prev_final_palette;
     double root_motion_delta[3];
     double root_motion_rotation[4];
+    double animation_lod_distance;
+    double animation_lod_rate_hz;
+    double animation_lod_accum;
     int32_t root_motion_bone;
 
     char event_queue[RT_ANIM_CONTROLLER3D_EVENT_QUEUE_MAX][RT_ANIM_CONTROLLER3D_EVENT_NAME_MAX];
@@ -546,6 +554,41 @@ static void controller_quat_slerp_float(const float *a, const float *b, float t,
         out[i] /= len;
 }
 
+static void controller_quat_conjugate_float(const float *q, float *out) {
+    if (!q || !out)
+        return;
+    out[0] = -q[0];
+    out[1] = -q[1];
+    out[2] = -q[2];
+    out[3] = q[3];
+}
+
+static void controller_quat_mul_float(const float *a, const float *b, float *out) {
+    float w;
+    float x;
+    float y;
+    float z;
+    float len;
+    if (!a || !b || !out)
+        return;
+    w = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+    x = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+    y = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+    z = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    out[3] = w;
+    len = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3]);
+    if (!isfinite(len) || len <= 1e-8f) {
+        out[0] = out[1] = out[2] = 0.0f;
+        out[3] = 1.0f;
+        return;
+    }
+    for (int32_t i = 0; i < 4; i++)
+        out[i] /= len;
+}
+
 /// @brief Compose a row-major 4x4 TRS matrix from translation, rotation
 ///        (quaternion) and scale (all float lanes).
 /// @details Standard quaternion-to-basis expansion with each basis column
@@ -787,7 +830,20 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
     if (bone_count > VGFX3D_MAX_BONES)
         bone_count = VGFX3D_MAX_BONES;
 
-    if (controller->layers[0].player && controller->layers[0].player->local_transforms) {
+    if (controller->blend_tree) {
+        void *blend = rt_blend_tree3d_get_blend(controller->blend_tree);
+        int32_t blend_bone_count = 0;
+        const float *blend_locals = rt_anim_blend3d_get_local_transform_data(blend, &blend_bone_count);
+        if (blend_locals && blend_bone_count >= bone_count) {
+            memcpy(final_locals, blend_locals, (size_t)bone_count * 16 * sizeof(float));
+        } else {
+            for (int32_t bone = 0; bone < bone_count; bone++) {
+                memcpy(&final_locals[bone * 16],
+                       controller->skeleton->bones[bone].bind_pose_local,
+                       16 * sizeof(float));
+            }
+        }
+    } else if (controller->layers[0].player && controller->layers[0].player->local_transforms) {
         memcpy(final_locals,
                controller->layers[0].player->local_transforms,
                (size_t)bone_count * 16 * sizeof(float));
@@ -833,11 +889,29 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
                 float blend_pos[3], blend_rot[4], blend_scl[3];
                 controller_decompose_trs_float(dst, dst_pos, dst_rot, dst_scl);
                 controller_decompose_trs_float(src, src_pos, src_rot, src_scl);
-                for (int32_t i = 0; i < 3; i++) {
-                    blend_pos[i] = dst_pos[i] + (src_pos[i] - dst_pos[i]) * weight;
-                    blend_scl[i] = dst_scl[i] + (src_scl[i] - dst_scl[i]) * weight;
+                if (layer->additive) {
+                    const float *bind = controller->skeleton->bones[bone].bind_pose_local;
+                    float bind_pos[3], bind_rot[4], bind_scl[3];
+                    float inv_bind_rot[4], delta_rot[4], weighted_delta[4];
+                    const float identity_rot[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+                    controller_decompose_trs_float(bind, bind_pos, bind_rot, bind_scl);
+                    for (int32_t i = 0; i < 3; i++) {
+                        blend_pos[i] = dst_pos[i] + (src_pos[i] - bind_pos[i]) * weight;
+                        blend_scl[i] = dst_scl[i] + (src_scl[i] - bind_scl[i]) * weight;
+                        if (!isfinite(blend_scl[i]) || fabsf(blend_scl[i]) <= 1e-6f)
+                            blend_scl[i] = 1.0f;
+                    }
+                    controller_quat_conjugate_float(bind_rot, inv_bind_rot);
+                    controller_quat_mul_float(src_rot, inv_bind_rot, delta_rot);
+                    controller_quat_slerp_float(identity_rot, delta_rot, weight, weighted_delta);
+                    controller_quat_mul_float(weighted_delta, dst_rot, blend_rot);
+                } else {
+                    for (int32_t i = 0; i < 3; i++) {
+                        blend_pos[i] = dst_pos[i] + (src_pos[i] - dst_pos[i]) * weight;
+                        blend_scl[i] = dst_scl[i] + (src_scl[i] - dst_scl[i]) * weight;
+                    }
+                    controller_quat_slerp_float(dst_rot, src_rot, weight, blend_rot);
                 }
-                controller_quat_slerp_float(dst_rot, src_rot, weight, blend_rot);
                 controller_build_trs_float(blend_pos, blend_rot, blend_scl, dst);
             }
         }
@@ -853,6 +927,13 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
                        16 * sizeof(float));
             }
         }
+    }
+
+    if (controller->ik_solver) {
+        (void)rt_ik_solver3d_apply_to_pose(controller->ik_solver,
+                                           final_locals,
+                                           controller->final_globals,
+                                           bone_count);
     }
 
     for (int32_t bone = 0; bone < bone_count; bone++) {
@@ -1075,6 +1156,8 @@ static void controller_finalize(void *obj) {
     controller->events = NULL;
     for (int32_t i = 0; i < RT_ANIM_CONTROLLER3D_MAX_LAYERS; i++)
         controller_release_ref((void **)&controller->layers[i].player);
+    controller_release_ref(&controller->blend_tree);
+    controller_release_ref(&controller->ik_solver);
     free(controller->final_palette);
     controller->final_palette = NULL;
     free(controller->final_globals);
@@ -1291,6 +1374,15 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
     if (!controller || !controller->skeleton || !isfinite(delta_time) || delta_time < 0.0)
         return;
 
+    if (controller->animation_lod_rate_hz > 0.0 && delta_time > 0.0) {
+        double interval = 1.0 / controller->animation_lod_rate_hz;
+        controller->animation_lod_accum += delta_time;
+        if (controller->animation_lod_accum + 1e-12 < interval)
+            return;
+        delta_time = controller->animation_lod_accum;
+        controller->animation_lod_accum = 0.0;
+    }
+
     if (controller->final_palette && controller->prev_final_palette && controller->skeleton &&
         controller->skeleton->bone_count > 0) {
         memcpy(controller->prev_final_palette,
@@ -1339,6 +1431,8 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
         }
     }
 
+    if (controller->blend_tree)
+        rt_blend_tree3d_update(controller->blend_tree, delta_time);
     controller_compute_final_palette(controller);
     controller_get_layer_translation(
         &controller->layers[0], controller->root_motion_bone, &after_x, &after_y, &after_z);
@@ -1512,6 +1606,78 @@ void rt_anim_controller3d_set_state_looping(void *obj, rt_string state_name, int
     }
 }
 
+/// @brief Configure deterministic animation update-rate LOD.
+/// @details Positive `distance` and `rate_hz` enable throttling; elapsed time is accumulated
+/// and applied in batches at `rate_hz`. Non-positive or non-finite inputs disable the throttle.
+void rt_anim_controller3d_set_animation_lod(void *obj, double distance, double rate_hz) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    if (!controller)
+        return;
+    if (!isfinite(distance) || distance <= 0.0 || !isfinite(rate_hz) || rate_hz <= 0.0) {
+        controller->animation_lod_distance = 0.0;
+        controller->animation_lod_rate_hz = 0.0;
+        controller->animation_lod_accum = 0.0;
+        return;
+    }
+    controller->animation_lod_distance = distance;
+    controller->animation_lod_rate_hz = rate_hz;
+    controller->animation_lod_accum = 0.0;
+}
+
+/// @brief Use a BlendTree3D as the base pose source. Passing NULL clears it.
+int8_t rt_anim_controller3d_set_blend_tree(void *obj, void *blend_tree) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    if (!controller)
+        return 0;
+    if (!blend_tree) {
+        controller_release_ref(&controller->blend_tree);
+        controller_compute_final_palette(controller);
+        return 1;
+    }
+    if (!rt_g3d_has_class(blend_tree, RT_G3D_BLENDTREE3D_CLASS_ID))
+        return 0;
+    {
+        void *blend = rt_blend_tree3d_get_blend(blend_tree);
+        int32_t blend_bone_count = 0;
+        const float *locals = rt_anim_blend3d_get_local_transform_data(blend, &blend_bone_count);
+        if (!locals || !controller->skeleton || blend_bone_count != controller->skeleton->bone_count)
+            return 0;
+    }
+    if (controller->blend_tree != blend_tree) {
+        rt_obj_retain_maybe(blend_tree);
+        controller_release_ref(&controller->blend_tree);
+        controller->blend_tree = blend_tree;
+    }
+    rt_blend_tree3d_update(controller->blend_tree, 0.0);
+    controller_compute_final_palette(controller);
+    return 1;
+}
+
+/// @brief Attach an IKSolver3D to the final controller pose; NULL clears it.
+int8_t rt_anim_controller3d_set_ik_solver(void *obj, void *ik_solver) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    void *solver_skeleton;
+    if (!controller)
+        return 0;
+    if (!ik_solver) {
+        controller_release_ref(&controller->ik_solver);
+        controller_compute_final_palette(controller);
+        return 1;
+    }
+    if (!rt_g3d_has_class(ik_solver, RT_G3D_IKSOLVER3D_CLASS_ID))
+        return 0;
+    solver_skeleton = rt_ik_solver3d_get_skeleton(ik_solver);
+    if (!solver_skeleton || solver_skeleton != controller->skeleton)
+        return 0;
+    if (controller->ik_solver != ik_solver) {
+        rt_obj_retain_maybe(ik_solver);
+        controller_release_ref(&controller->ik_solver);
+        controller->ik_solver = ik_solver;
+    }
+    controller_compute_final_palette(controller);
+    return 1;
+}
+
 /// @brief Register a time-stamped event on a state. When `_update` advances playback past
 /// `time_seconds`, `event_name` is enqueued for `_poll_event`. Useful for footstep sounds,
 /// hit-frame triggers, attack windows. Multiple events per state are allowed.
@@ -1681,6 +1847,24 @@ int8_t rt_anim_controller3d_play_layer(void *obj, int64_t layer_index, rt_string
     state_index = controller_find_state(controller, state_name);
     if (state_index < 0)
         return 0;
+    controller->layers[layer_index].additive = 0;
+    return controller_set_layer_state(controller, (int32_t)layer_index, state_index, 0.0);
+}
+
+/// @brief Play a state on a layer as a true additive delta from the bind pose.
+/// @details Unlike `PlayLayer`, which replaces toward the overlay pose, this composes
+/// `(overlay - bind_pose) * layer_weight` onto the current base pose for masked bones.
+int8_t rt_anim_controller3d_play_layer_additive(void *obj,
+                                                int64_t layer_index,
+                                                rt_string state_name) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    int32_t state_index;
+    if (!controller || layer_index <= 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
+        return 0;
+    state_index = controller_find_state(controller, state_name);
+    if (state_index < 0)
+        return 0;
+    controller->layers[layer_index].additive = 1;
     return controller_set_layer_state(controller, (int32_t)layer_index, state_index, 0.0);
 }
 
@@ -1697,6 +1881,23 @@ int8_t rt_anim_controller3d_crossfade_layer(void *obj,
     state_index = controller_find_state(controller, state_name);
     if (state_index < 0)
         return 0;
+    controller->layers[layer_index].additive = 0;
+    return controller_set_layer_state(controller, (int32_t)layer_index, state_index, blend_seconds);
+}
+
+/// @brief Cross-fade an overlay layer as a true additive bind-pose delta.
+int8_t rt_anim_controller3d_crossfade_layer_additive(void *obj,
+                                                     int64_t layer_index,
+                                                     rt_string state_name,
+                                                     double blend_seconds) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    int32_t state_index;
+    if (!controller || layer_index <= 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
+        return 0;
+    state_index = controller_find_state(controller, state_name);
+    if (state_index < 0)
+        return 0;
+    controller->layers[layer_index].additive = 1;
     return controller_set_layer_state(controller, (int32_t)layer_index, state_index, blend_seconds);
 }
 
@@ -1712,6 +1913,7 @@ void rt_anim_controller3d_stop_layer(void *obj, int64_t layer_index) {
         rt_anim_player3d_stop(layer->player);
     if (layer_index != 0)
         layer->current_state = -1;
+    layer->additive = 0;
     layer->transitioning = 0;
     layer->transition_time = 0.0f;
     layer->transition_duration = 0.0f;

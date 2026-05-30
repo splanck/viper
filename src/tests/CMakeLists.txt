@@ -1433,6 +1433,42 @@ if (EXISTS "${GAME3D_RUNFRAMES_CALLBACK_REJECT_PROBE}")
             TIMEOUT 30)
 endif ()
 
+set(GAME3D_DESTROYED_HANDLE_REJECT_PROBE "${G3D_TESTS_DIR}/test_game3d_destroyed_handle_reject.zia")
+if (EXISTS "${GAME3D_DESTROYED_HANDLE_REJECT_PROBE}")
+    add_test(NAME g3d_test_game3d_destroyed_handle_reject
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_DESTROYED_HANDLE_REJECT_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_destroyed_handle_reject PROPERTIES
+            PASS_REGULAR_EXPRESSION "Game3D.World3D.get_Frame: world is destroyed"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_DESTROYED_ENTITY_REJECT_PROBE "${G3D_TESTS_DIR}/test_game3d_destroyed_entity_reject.zia")
+if (EXISTS "${GAME3D_DESTROYED_ENTITY_REJECT_PROBE}")
+    add_test(NAME g3d_test_game3d_destroyed_entity_reject
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_DESTROYED_ENTITY_REJECT_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_destroyed_entity_reject PROPERTIES
+            PASS_REGULAR_EXPRESSION "Game3D.Entity3D.position: entity is destroyed"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_DOUBLE_DESPAWN_REJECT_PROBE "${G3D_TESTS_DIR}/test_game3d_double_despawn_reject.zia")
+if (EXISTS "${GAME3D_DOUBLE_DESPAWN_REJECT_PROBE}")
+    add_test(NAME g3d_test_game3d_double_despawn_reject
+            COMMAND $<TARGET_FILE:viper> run "${GAME3D_DOUBLE_DESPAWN_REJECT_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_game3d_double_despawn_reject PROPERTIES
+            PASS_REGULAR_EXPRESSION "Game3D.World3D.despawn: entity is not spawned in this world"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
 set(CANVAS3D_SYNTHETIC_INPUT_PROBE "${G3D_TESTS_DIR}/test_canvas3d_synthetic_input.zia")
 if (EXISTS "${CANVAS3D_SYNTHETIC_INPUT_PROBE}")
     add_test(NAME g3d_test_canvas3d_synthetic_input
@@ -1613,6 +1649,15 @@ if (EXISTS "${GAME3D_HELLO_PROBE}")
             TIMEOUT 30)
 endif ()
 
+add_test(NAME g3d_game3d_common_no_mat4
+        COMMAND ${CMAKE_COMMAND}
+        -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_SOURCE_DIR}/src/tests/tools/CheckGame3DCommonNoMat4.cmake)
+set_tests_properties(g3d_game3d_common_no_mat4 PROPERTIES
+        PASS_REGULAR_EXPRESSION "PASS"
+        LABELS "runtime;graphics3d;zia"
+        TIMEOUT 10)
+
 set(GAME3D_STARTER_DIR "${CMAKE_SOURCE_DIR}/examples/3d/game3d_starter")
 set(GAME3D_STARTER_PROBE "${GAME3D_STARTER_DIR}/test.zia")
 if (EXISTS "${GAME3D_STARTER_PROBE}")
@@ -1632,6 +1677,78 @@ if (EXISTS "${GAME3D_STARTER_PROBE}")
             PASS_REGULAR_EXPRESSION "Asset: assets -> assets"
             LABELS "runtime;graphics3d;zia"
             TIMEOUT 30)
+endif ()
+
+set(GAME3D_OPENWORLD_SLICE_DIR "${CMAKE_SOURCE_DIR}/examples/3d/openworld_slice")
+set(GAME3D_OPENWORLD_SLICE_PROBE "${GAME3D_OPENWORLD_SLICE_DIR}/test.zia")
+if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
+    add_test(NAME g3d_openworld_slice_probe
+            COMMAND $<TARGET_FILE:viper> run "test.zia"
+            WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
+    set_tests_properties(g3d_openworld_slice_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 45)
+
+    add_test(NAME g3d_openworld_slice_perf_probe
+            COMMAND $<TARGET_FILE:viper> run "perf_probe.zia"
+            WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
+    set_tests_properties(g3d_openworld_slice_perf_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS: openworld_slice_perf_probe"
+            LABELS "runtime;graphics3d;zia;requires_display;perf"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 45)
+
+    add_test(NAME g3d_openworld_slice_perf_harness
+            COMMAND "${CMAKE_COMMAND}"
+                    -D "VIPER_EXE=$<TARGET_FILE:viper>"
+                    -D "WORKING_DIR=${GAME3D_OPENWORLD_SLICE_DIR}"
+                    -D "SCRIPT=perf_probe.zia"
+                    -D "BACKEND=software"
+                    -D "NAME=openworld_slice"
+                    -P "${CMAKE_SOURCE_DIR}/src/tests/tools/Graphics3DPerfHarness.cmake")
+    set_tests_properties(g3d_openworld_slice_perf_harness PROPERTIES
+            PASS_REGULAR_EXPRESSION "HARNESS: name=openworld_slice"
+            LABELS "runtime;graphics3d;zia;requires_display;perf"
+            TIMEOUT 45)
+
+    add_test(NAME g3d_openworld_slice_long_traversal
+            COMMAND $<TARGET_FILE:viper> run "long_traversal.zia"
+            WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
+    set_tests_properties(g3d_openworld_slice_long_traversal PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS: openworld_slice_long_traversal"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 60)
+
+    add_test(NAME g3d_openworld_slice_package_dry_run
+            COMMAND $<TARGET_FILE:viper> package "." --target tarball --dry-run
+            WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
+    set_tests_properties(g3d_openworld_slice_package_dry_run PROPERTIES
+            PASS_REGULAR_EXPRESSION "Asset: assets -> assets"
+            LABELS "runtime;graphics3d;zia"
+            TIMEOUT 30)
+endif ()
+
+set(GAME3D_OPENWORLD_SLICE_GPU_SMOKE "${GAME3D_OPENWORLD_SLICE_DIR}/gpu_smoke.zia")
+if (EXISTS "${GAME3D_OPENWORLD_SLICE_GPU_SMOKE}")
+    if (APPLE)
+        set(GAME3D_OPENWORLD_SLICE_GPU_BACKEND "metal")
+    elseif (WIN32)
+        set(GAME3D_OPENWORLD_SLICE_GPU_BACKEND "d3d11")
+    else ()
+        set(GAME3D_OPENWORLD_SLICE_GPU_BACKEND "opengl")
+    endif ()
+
+    add_test(NAME g3d_openworld_slice_gpu_smoke
+            COMMAND $<TARGET_FILE:viper> run "gpu_smoke.zia"
+            WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
+    set_tests_properties(g3d_openworld_slice_gpu_smoke PROPERTIES
+            PASS_REGULAR_EXPRESSION "^(PASS|SKIP):"
+            LABELS "runtime;graphics3d;zia;requires_display;gpu_smoke"
+            ENVIRONMENT "VIPER_3D_BACKEND=${GAME3D_OPENWORLD_SLICE_GPU_BACKEND}"
+            TIMEOUT 45)
 endif ()
 
 set(GAME3D_BOWLING_SETUP_PROBE "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/game3d/game3d_setup.zia")

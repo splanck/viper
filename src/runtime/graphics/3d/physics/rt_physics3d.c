@@ -74,8 +74,11 @@ extern double rt_quat_w(void *q);
 #define PH3D_SLEEP_LINEAR_THRESHOLD 0.05
 #define PH3D_SLEEP_ANGULAR_THRESHOLD 0.05
 #define PH3D_SLEEP_DELAY 0.5
+#define PH3D_DEFAULT_SOLVER_ITERATIONS 6
+#define PH3D_MAX_SOLVER_ITERATIONS 64
 #define PH3D_MAX_CCD_SUBSTEPS 64
 #define PH3D_MAX_SWEEP_STEPS 512
+#define PH3D_MAX_MANIFOLD_POINTS 4
 
 /*==========================================================================
  * Body3D
@@ -154,8 +157,18 @@ typedef struct {
     double point[3];
     double normal[3];
     double separation;
+    int32_t contact_count;
+    double points[PH3D_MAX_MANIFOLD_POINTS][3];
+    double normals[PH3D_MAX_MANIFOLD_POINTS][3];
+    double separations[PH3D_MAX_MANIFOLD_POINTS];
     double relative_speed;
     double normal_impulse;
+    /* Warm-start state: accumulated per-manifold-point impulses persisted across
+     * frames (via previous_contacts) so the sequential-impulse solver starts near
+     * the converged answer instead of re-deriving it from zero every step. */
+    double normal_impulse_acc[PH3D_MAX_MANIFOLD_POINTS];
+    double tangent_impulse_acc[PH3D_MAX_MANIFOLD_POINTS][2];
+    double restitution_bias[PH3D_MAX_MANIFOLD_POINTS];
     int8_t is_trigger;
 } rt_contact3d;
 
@@ -207,6 +220,7 @@ typedef struct {
     int32_t last_ccd_requested_substeps;
     int32_t last_ccd_substeps;
     int64_t ccd_substep_clamped_count;
+    int32_t solver_iterations;
 } rt_world3d;
 
 struct ph3d_broadphase_entry {
@@ -250,6 +264,12 @@ static int joint3d_matches_type(void *joint, int64_t joint_type) {
         return rt_g3d_has_class(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID);
     if (joint_type == RT_JOINT_SPRING)
         return rt_g3d_has_class(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
+    if (joint_type == RT_JOINT_HINGE)
+        return rt_g3d_has_class(joint, RT_G3D_HINGEJOINT3D_CLASS_ID);
+    if (joint_type == RT_JOINT_ROPE)
+        return rt_g3d_has_class(joint, RT_G3D_ROPEJOINT3D_CLASS_ID);
+    if (joint_type == RT_JOINT_SIXDOF)
+        return rt_g3d_has_class(joint, RT_G3D_SIXDOFJOINT3D_CLASS_ID);
     return 0;
 }
 
@@ -443,6 +463,15 @@ static double ph3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp user-facing solver iterations to the runtime-supported range.
+static int32_t ph3d_clamp_solver_iterations(int64_t value) {
+    if (value < 1)
+        return 1;
+    if (value > PH3D_MAX_SOLVER_ITERATIONS)
+        return PH3D_MAX_SOLVER_ITERATIONS;
+    return (int32_t)value;
+}
+
 /// @brief Write a sanitized 3D vector to @p dst, replacing each NaN/Inf component with 0.
 /// @details Used when accepting Vec3 arguments from Zia to populate force, velocity, and
 ///   position arrays — ensures that a single bad component cannot contaminate the solver.
@@ -536,6 +565,10 @@ typedef struct {
     double point[3];
     double normal[3];
     double separation;
+    int32_t contact_count;
+    double points[PH3D_MAX_MANIFOLD_POINTS][3];
+    double normals[PH3D_MAX_MANIFOLD_POINTS][3];
+    double separations[PH3D_MAX_MANIFOLD_POINTS];
     double relative_speed;
     double normal_impulse;
     int8_t is_trigger;
@@ -1644,6 +1677,111 @@ static void contact_snapshot_copy(rt_contact3d *dst, const rt_contact3d *src) {
     memcpy(dst, src, sizeof(*dst));
 }
 
+static int body3d_orientation_is_identity(const rt_body3d *body) {
+    if (!body)
+        return 0;
+    return fabs(body->orientation[0]) < 1e-9 && fabs(body->orientation[1]) < 1e-9 &&
+           fabs(body->orientation[2]) < 1e-9 && fabs(body->orientation[3] - 1.0) < 1e-9;
+}
+
+static void contact3d_set_manifold_point(rt_contact3d *contact,
+                                         int32_t index,
+                                         const double *point,
+                                         const double *normal,
+                                         double separation) {
+    if (!contact || !point || !normal || index < 0 || index >= PH3D_MAX_MANIFOLD_POINTS)
+        return;
+    vec3_copy(contact->points[index], point);
+    vec3_copy(contact->normals[index], normal);
+    contact->separations[index] = separation;
+}
+
+static int contact3d_point_exists(const rt_contact3d *contact, const double *point) {
+    if (!contact || !point)
+        return 1;
+    for (int32_t i = 0; i < contact->contact_count; i++) {
+        double dx = contact->points[i][0] - point[0];
+        double dy = contact->points[i][1] - point[1];
+        double dz = contact->points[i][2] - point[2];
+        if (dx * dx + dy * dy + dz * dz < 1e-12)
+            return 1;
+    }
+    return 0;
+}
+
+static void contact3d_init_single_point(rt_contact3d *contact,
+                                        const double *point,
+                                        const double *normal,
+                                        double separation) {
+    if (!contact || !point || !normal)
+        return;
+    contact->contact_count = 1;
+    contact3d_set_manifold_point(contact, 0, point, normal, separation);
+}
+
+static void contact3d_try_add_manifold_point(rt_contact3d *contact,
+                                             const double *point,
+                                             const double *normal,
+                                             double separation) {
+    if (!contact || !point || !normal || !ph3d_vec3_all_finite(point) ||
+        !ph3d_vec3_all_finite(normal))
+        return;
+    if (contact->contact_count >= PH3D_MAX_MANIFOLD_POINTS)
+        return;
+    if (contact3d_point_exists(contact, point))
+        return;
+    contact3d_set_manifold_point(contact, contact->contact_count++, point, normal, separation);
+}
+
+static void contact3d_expand_aabb_manifold(rt_contact3d *contact, const rt_body3d *a, const rt_body3d *b) {
+    double a_min[3];
+    double a_max[3];
+    double b_min[3];
+    double b_max[3];
+    double overlap_min[3];
+    double overlap_max[3];
+    int axis = 0;
+    int u;
+    int v;
+    if (!contact || !a || !b)
+        return;
+    if (a->shape != PH3D_SHAPE_AABB || b->shape != PH3D_SHAPE_AABB)
+        return;
+    if (!body3d_orientation_is_identity(a) || !body3d_orientation_is_identity(b))
+        return;
+    if (fabs(contact->normal[1]) > fabs(contact->normal[axis]))
+        axis = 1;
+    if (fabs(contact->normal[2]) > fabs(contact->normal[axis]))
+        axis = 2;
+    u = (axis + 1) % 3;
+    v = (axis + 2) % 3;
+    for (int i = 0; i < 3; i++) {
+        a_min[i] = a->position[i] - a->half_extents[i];
+        a_max[i] = a->position[i] + a->half_extents[i];
+        b_min[i] = b->position[i] - b->half_extents[i];
+        b_max[i] = b->position[i] + b->half_extents[i];
+        overlap_min[i] = a_min[i] > b_min[i] ? a_min[i] : b_min[i];
+        overlap_max[i] = a_max[i] < b_max[i] ? a_max[i] : b_max[i];
+        if (!isfinite(overlap_min[i]) || !isfinite(overlap_max[i]) || overlap_min[i] > overlap_max[i])
+            return;
+    }
+
+    double p[3] = {contact->point[0], contact->point[1], contact->point[2]};
+    p[axis] = contact->point[axis];
+    p[u] = overlap_min[u];
+    p[v] = overlap_min[v];
+    contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
+    p[u] = overlap_max[u];
+    p[v] = overlap_min[v];
+    contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
+    p[u] = overlap_min[u];
+    p[v] = overlap_max[v];
+    contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
+    p[u] = overlap_max[u];
+    p[v] = overlap_max[v];
+    contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
+}
+
 /// @brief Identity test for contacts: same body pair AND same collider pair.
 ///
 /// The collider check matters for compound bodies — same body pair but
@@ -1825,6 +1963,20 @@ static void collider_support_point(void *collider,
     type = rt_collider3d_get_type(collider);
 
     switch (type) {
+        case RT_COLLIDER3D_TYPE_BOX: {
+            double half_extents[3];
+            double inv_rotation[4];
+            double local_dir[3];
+            double local[3];
+            rt_collider3d_get_box_half_extents_raw(collider, half_extents);
+            quat_conjugate(pose->rotation, inv_rotation);
+            quat_rotate_vec3(inv_rotation, dir, local_dir);
+            local[0] = local_dir[0] * pose->scale[0] >= 0.0 ? half_extents[0] : -half_extents[0];
+            local[1] = local_dir[1] * pose->scale[1] >= 0.0 ? half_extents[1] : -half_extents[1];
+            local[2] = local_dir[2] * pose->scale[2] >= 0.0 ? half_extents[2] : -half_extents[2];
+            transform_point_from_pose(pose, local, out_point);
+            return;
+        }
         case RT_COLLIDER3D_TYPE_SPHERE: {
             double radius = rt_collider3d_get_radius_raw(collider);
             double max_scale = fabs(pose->scale[0]);
@@ -1857,6 +2009,29 @@ static void collider_support_point(void *collider,
             out_point[2] = pose->position[2] + axis_dir[2] * half_axis * sy * side +
                            dir[2] * radius * max_radial_scale;
             return;
+        }
+        case RT_COLLIDER3D_TYPE_CONVEX_HULL: {
+            rt_mesh3d *mesh = (rt_mesh3d *)rt_collider3d_get_mesh_raw(collider);
+            double best_dot = -DBL_MAX;
+            if (mesh && mesh->vertex_count > 0) {
+                rt_mesh3d_refresh_bounds(mesh);
+                for (uint32_t i = 0; i < mesh->vertex_count; ++i) {
+                    double local[3] = {mesh->vertices[i].pos[0],
+                                       mesh->vertices[i].pos[1],
+                                       mesh->vertices[i].pos[2]};
+                    double world[3];
+                    double d;
+                    transform_point_from_pose(pose, local, world);
+                    d = vec3_dot(world, dir);
+                    if (d > best_dot) {
+                        best_dot = d;
+                        vec3_copy(out_point, world);
+                    }
+                }
+                if (best_dot > -DBL_MAX)
+                    return;
+            }
+            break;
         }
         case RT_COLLIDER3D_TYPE_COMPOUND: {
             int64_t child_count = rt_collider3d_get_child_count_raw(collider);
@@ -2646,14 +2821,42 @@ static void triangle_normal(const double *a, const double *b, const double *c, d
     }
 }
 
+typedef struct rt_physics_mesh_bvh_node {
+    float min[3];
+    float max[3];
+    int32_t left;
+    int32_t right;
+    int32_t start;
+    int32_t count;
+} rt_physics_mesh_bvh_node;
+
+static int mesh_physics_bvh_rebuild(rt_mesh3d *mesh);
+static void transform_local_aabb_to_world(
+    const rt_collider_pose *pose, const float *mn, const float *mx, double *out_min, double *out_max);
+
+static int aabb_intersects_sphere_raw(const double *mn,
+                                      const double *mx,
+                                      const double *center,
+                                      double radius) {
+    double dist_sq = 0.0;
+    for (int axis = 0; axis < 3; ++axis) {
+        double v = center[axis];
+        if (v < mn[axis]) {
+            double d = mn[axis] - v;
+            dist_sq += d * d;
+        } else if (v > mx[axis]) {
+            double d = v - mx[axis];
+            dist_sq += d * d;
+        }
+    }
+    return dist_sq <= radius * radius;
+}
+
 /// @brief Sphere-vs-mesh narrow phase by per-triangle closest-point test.
 ///
-/// Iterates every triangle of `mesh`, transforms its vertices into world
-/// space (TODO: this could be cached), and uses
-/// `closest_point_on_triangle` + sphere distance. Picks the deepest
-/// penetration as the contact. O(n) in triangle count — fine for the
-/// kind of low-poly collision meshes typical in games; for higher-poly
-/// meshes a BVH would be a future addition.
+/// Traverses the mesh's local-space BVH in world-space bounds and tests only
+/// candidate leaf triangles, falling back to a full scan if BVH traversal cannot
+/// complete.
 static int test_meshlike_sphere(rt_mesh3d *mesh,
                                 const rt_collider_pose *mesh_pose,
                                 const rt_body3d *sphere,
@@ -2664,6 +2867,100 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
     if (!mesh || !mesh_pose || !sphere || mesh->index_count < 3)
         return 0;
     rt_mesh3d_refresh_bounds(mesh);
+    if (mesh_physics_bvh_rebuild(mesh)) {
+        const rt_physics_mesh_bvh_node *nodes =
+            (const rt_physics_mesh_bvh_node *)mesh->physics_bvh_nodes;
+        const uint32_t *tri_indices = mesh->physics_bvh_tri_indices;
+        int32_t stack[128];
+        int32_t top = 0;
+        int overflow = 0;
+        stack[top++] = 0;
+        while (top > 0) {
+            int32_t node_index = stack[--top];
+            const rt_physics_mesh_bvh_node *node;
+            double node_min[3], node_max[3];
+            if (node_index < 0 || node_index >= mesh->physics_bvh_node_count)
+                continue;
+            node = &nodes[node_index];
+            transform_local_aabb_to_world(mesh_pose, node->min, node->max, node_min, node_max);
+            if (!aabb_intersects_sphere_raw(node_min, node_max, sphere->position, sphere->radius))
+                continue;
+            if (node->left >= 0 || node->right >= 0) {
+                if (top + 2 > (int32_t)(sizeof(stack) / sizeof(stack[0]))) {
+                    overflow = 1;
+                    break;
+                }
+                if (node->right >= 0)
+                    stack[top++] = node->right;
+                if (node->left >= 0)
+                    stack[top++] = node->left;
+                continue;
+            }
+            for (int32_t item = node->start; item < node->start + node->count; ++item) {
+                uint32_t tri = tri_indices[item];
+                uint32_t i0 = mesh->indices[tri * 3u + 0u];
+                uint32_t i1 = mesh->indices[tri * 3u + 1u];
+                uint32_t i2 = mesh->indices[tri * 3u + 2u];
+                double a[3], b[3], c[3], closest[3];
+                double dx, dy, dz, dist_sq;
+                if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+                    continue;
+                {
+                    double local[3];
+                    local[0] = mesh->vertices[i0].pos[0];
+                    local[1] = mesh->vertices[i0].pos[1];
+                    local[2] = mesh->vertices[i0].pos[2];
+                    transform_point_from_pose(mesh_pose, local, a);
+                    local[0] = mesh->vertices[i1].pos[0];
+                    local[1] = mesh->vertices[i1].pos[1];
+                    local[2] = mesh->vertices[i1].pos[2];
+                    transform_point_from_pose(mesh_pose, local, b);
+                    local[0] = mesh->vertices[i2].pos[0];
+                    local[1] = mesh->vertices[i2].pos[1];
+                    local[2] = mesh->vertices[i2].pos[2];
+                    transform_point_from_pose(mesh_pose, local, c);
+                }
+                closest_point_on_triangle(sphere->position, a, b, c, closest);
+                dx = sphere->position[0] - closest[0];
+                dy = sphere->position[1] - closest[1];
+                dz = sphere->position[2] - closest[2];
+                dist_sq = dx * dx + dy * dy + dz * dz;
+                if (dist_sq >= sphere->radius * sphere->radius)
+                    continue;
+                {
+                    double dist = sqrt(dist_sq);
+                    double cur_depth = sphere->radius - dist;
+                    double cur_normal[3];
+                    if (dist > 1e-12) {
+                        cur_normal[0] = dx / dist;
+                        cur_normal[1] = dy / dist;
+                        cur_normal[2] = dz / dist;
+                    } else {
+                        double centroid[3] = {(a[0] + b[0] + c[0]) / 3.0,
+                                              (a[1] + b[1] + c[1]) / 3.0,
+                                              (a[2] + b[2] + c[2]) / 3.0};
+                        triangle_normal(a, b, c, cur_normal);
+                        if ((sphere->position[0] - centroid[0]) * cur_normal[0] +
+                                (sphere->position[1] - centroid[1]) * cur_normal[1] +
+                                (sphere->position[2] - centroid[2]) * cur_normal[2] <
+                            0.0) {
+                            cur_normal[0] = -cur_normal[0];
+                            cur_normal[1] = -cur_normal[1];
+                            cur_normal[2] = -cur_normal[2];
+                        }
+                    }
+                    if (cur_depth > best_depth) {
+                        best_depth = cur_depth;
+                        vec3_copy(best_normal, cur_normal);
+                    }
+                }
+            }
+        }
+        if (!overflow)
+            goto mesh_sphere_done;
+        best_depth = 0.0;
+        vec3_set(best_normal, 0.0, 1.0, 0.0);
+    }
     for (uint32_t i = 0; i + 2 < mesh->index_count; i += 3) {
         uint32_t i0 = mesh->indices[i];
         uint32_t i1 = mesh->indices[i + 1];
@@ -2722,6 +3019,7 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
             }
         }
     }
+mesh_sphere_done:
     if (best_depth <= 0.0)
         return 0;
     *depth = best_depth;
@@ -2889,9 +3187,9 @@ static int test_triangle_box_obb(const double *world_a,
     return 1;
 }
 
-/// @brief Test a posed triangle mesh against a box body by running the triangle-vs-OBB
-///   SAT test over every mesh triangle and keeping the deepest contact. Returns 1 on any
-///   overlap with @p normal/@p depth from the deepest triangle, else 0.
+/// @brief Test a posed triangle mesh against a box body by traversing mesh BVH
+///   candidates before the triangle-vs-OBB SAT test. Falls back to a full scan if
+///   BVH traversal cannot complete.
 static int test_meshlike_box(rt_mesh3d *mesh,
                              const rt_collider_pose *mesh_pose,
                              const rt_body3d *box,
@@ -2903,6 +3201,71 @@ static int test_meshlike_box(rt_mesh3d *mesh,
     if (!mesh || !mesh_pose || !box)
         return 0;
     rt_mesh3d_refresh_bounds(mesh);
+    if (mesh_physics_bvh_rebuild(mesh)) {
+        const rt_physics_mesh_bvh_node *nodes =
+            (const rt_physics_mesh_bvh_node *)mesh->physics_bvh_nodes;
+        const uint32_t *tri_indices = mesh->physics_bvh_tri_indices;
+        double box_min[3], box_max[3];
+        int32_t stack[128];
+        int32_t top = 0;
+        int overflow = 0;
+        body_aabb(box, box_min, box_max);
+        stack[top++] = 0;
+        while (top > 0) {
+            int32_t node_index = stack[--top];
+            const rt_physics_mesh_bvh_node *node;
+            double node_min[3], node_max[3];
+            if (node_index < 0 || node_index >= mesh->physics_bvh_node_count)
+                continue;
+            node = &nodes[node_index];
+            transform_local_aabb_to_world(mesh_pose, node->min, node->max, node_min, node_max);
+            if (!aabb_overlap_raw(node_min, node_max, box_min, box_max))
+                continue;
+            if (node->left >= 0 || node->right >= 0) {
+                if (top + 2 > (int32_t)(sizeof(stack) / sizeof(stack[0]))) {
+                    overflow = 1;
+                    break;
+                }
+                if (node->right >= 0)
+                    stack[top++] = node->right;
+                if (node->left >= 0)
+                    stack[top++] = node->left;
+                continue;
+            }
+            for (int32_t item = node->start; item < node->start + node->count; ++item) {
+                uint32_t tri = tri_indices[item];
+                uint32_t i0 = mesh->indices[tri * 3u + 0u];
+                uint32_t i1 = mesh->indices[tri * 3u + 1u];
+                uint32_t i2 = mesh->indices[tri * 3u + 2u];
+                double a[3], b[3], c[3], local[3], cur_normal[3], cur_depth;
+                if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+                    continue;
+                local[0] = mesh->vertices[i0].pos[0];
+                local[1] = mesh->vertices[i0].pos[1];
+                local[2] = mesh->vertices[i0].pos[2];
+                transform_point_from_pose(mesh_pose, local, a);
+                local[0] = mesh->vertices[i1].pos[0];
+                local[1] = mesh->vertices[i1].pos[1];
+                local[2] = mesh->vertices[i1].pos[2];
+                transform_point_from_pose(mesh_pose, local, b);
+                local[0] = mesh->vertices[i2].pos[0];
+                local[1] = mesh->vertices[i2].pos[1];
+                local[2] = mesh->vertices[i2].pos[2];
+                transform_point_from_pose(mesh_pose, local, c);
+                if (test_triangle_box_obb(a, b, c, box, cur_normal, &cur_depth) &&
+                    (!hit || cur_depth > best_depth)) {
+                    best_depth = cur_depth;
+                    vec3_copy(best_normal, cur_normal);
+                    hit = 1;
+                }
+            }
+        }
+        if (!overflow)
+            goto mesh_box_done;
+        best_depth = 0.0;
+        vec3_set(best_normal, 0.0, 1.0, 0.0);
+        hit = 0;
+    }
     for (uint32_t i = 0; i + 2 < mesh->index_count; i += 3) {
         uint32_t i0 = mesh->indices[i];
         uint32_t i1 = mesh->indices[i + 1];
@@ -2929,11 +3292,405 @@ static int test_meshlike_box(rt_mesh3d *mesh,
             hit = 1;
         }
     }
+mesh_box_done:
     if (!hit)
         return 0;
     vec3_copy(normal, best_normal);
     *depth = best_depth;
     return 1;
+}
+
+typedef struct {
+    double v[3];
+} gjk_support_point;
+
+typedef struct {
+    gjk_support_point p[4];
+    int32_t count;
+} gjk_simplex;
+
+typedef struct {
+    int32_t a;
+    int32_t b;
+    int32_t c;
+    double normal[3];
+    double distance;
+    int8_t active;
+} epa_face;
+
+typedef struct {
+    int32_t a;
+    int32_t b;
+} epa_edge;
+
+static void vec3_triple_cross(const double *a, const double *b, const double *c, double *out) {
+    double tmp[3];
+    vec3_cross(a, b, tmp);
+    vec3_cross(tmp, c, out);
+    if (vec3_len_sq(out) <= 1e-18) {
+        double fallback[3] = {fabs(a[0]) < 0.9 ? 1.0 : 0.0, fabs(a[0]) < 0.9 ? 0.0 : 1.0, 0.0};
+        vec3_cross(a, fallback, out);
+        if (vec3_normalize_in_place(out) <= 1e-12)
+            vec3_set(out, 0.0, 1.0, 0.0);
+    }
+}
+
+static void gjk_support(void *a_collider,
+                        const rt_collider_pose *a_pose,
+                        void *b_collider,
+                        const rt_collider_pose *b_pose,
+                        const double *direction,
+                        gjk_support_point *out) {
+    double pa[3];
+    double pb[3];
+    double inv_dir[3];
+    vec3_negate(direction, inv_dir);
+    collider_support_point(a_collider, a_pose, direction, pa);
+    collider_support_point(b_collider, b_pose, inv_dir, pb);
+    vec3_sub(pa, pb, out->v);
+}
+
+static void gjk_simplex_set1(gjk_simplex *simplex, const gjk_support_point *a) {
+    simplex->p[0] = *a;
+    simplex->count = 1;
+}
+
+static void gjk_simplex_set2(gjk_simplex *simplex,
+                             const gjk_support_point *b,
+                             const gjk_support_point *a) {
+    simplex->p[0] = *b;
+    simplex->p[1] = *a;
+    simplex->count = 2;
+}
+
+static void gjk_simplex_set3(gjk_simplex *simplex,
+                             const gjk_support_point *c,
+                             const gjk_support_point *b,
+                             const gjk_support_point *a) {
+    simplex->p[0] = *c;
+    simplex->p[1] = *b;
+    simplex->p[2] = *a;
+    simplex->count = 3;
+}
+
+static int gjk_update_line(gjk_simplex *simplex, double *direction) {
+    gjk_support_point a = simplex->p[simplex->count - 1];
+    gjk_support_point b = simplex->p[simplex->count - 2];
+    double ao[3];
+    double ab[3];
+    vec3_negate(a.v, ao);
+    vec3_sub(b.v, a.v, ab);
+    if (vec3_dot(ab, ao) > 0.0) {
+        vec3_triple_cross(ab, ao, ab, direction);
+    } else {
+        gjk_simplex_set1(simplex, &a);
+        vec3_copy(direction, ao);
+    }
+    return 0;
+}
+
+static int gjk_update_triangle(gjk_simplex *simplex, double *direction) {
+    gjk_support_point a = simplex->p[2];
+    gjk_support_point b = simplex->p[1];
+    gjk_support_point c = simplex->p[0];
+    double ao[3];
+    double ab[3];
+    double ac[3];
+    double abc[3];
+    double edge_perp[3];
+
+    vec3_negate(a.v, ao);
+    vec3_sub(b.v, a.v, ab);
+    vec3_sub(c.v, a.v, ac);
+    vec3_cross(ab, ac, abc);
+
+    vec3_cross(abc, ac, edge_perp);
+    if (vec3_dot(edge_perp, ao) > 0.0) {
+        if (vec3_dot(ac, ao) > 0.0) {
+            gjk_simplex_set2(simplex, &c, &a);
+            vec3_triple_cross(ac, ao, ac, direction);
+        } else {
+            gjk_simplex_set2(simplex, &b, &a);
+            return gjk_update_line(simplex, direction);
+        }
+        return 0;
+    }
+
+    vec3_cross(ab, abc, edge_perp);
+    if (vec3_dot(edge_perp, ao) > 0.0) {
+        gjk_simplex_set2(simplex, &b, &a);
+        return gjk_update_line(simplex, direction);
+    }
+
+    if (vec3_dot(abc, ao) > 0.0) {
+        vec3_copy(direction, abc);
+    } else {
+        gjk_simplex_set3(simplex, &b, &c, &a);
+        vec3_negate(abc, direction);
+    }
+    return 0;
+}
+
+static void gjk_face_normal_away_from_point(const gjk_support_point *a,
+                                            const gjk_support_point *b,
+                                            const gjk_support_point *c,
+                                            const gjk_support_point *opposite,
+                                            double *normal) {
+    double ab[3];
+    double ac[3];
+    double ao[3];
+    vec3_sub(b->v, a->v, ab);
+    vec3_sub(c->v, a->v, ac);
+    vec3_cross(ab, ac, normal);
+    if (vec3_normalize_in_place(normal) <= 1e-12) {
+        vec3_set(normal, 0.0, 1.0, 0.0);
+        return;
+    }
+    vec3_sub(opposite->v, a->v, ao);
+    if (vec3_dot(normal, ao) > 0.0)
+        vec3_negate(normal, normal);
+}
+
+static int gjk_update_tetrahedron(gjk_simplex *simplex, double *direction) {
+    gjk_support_point a = simplex->p[3];
+    gjk_support_point b = simplex->p[2];
+    gjk_support_point c = simplex->p[1];
+    gjk_support_point d = simplex->p[0];
+    double ao[3];
+    double normal[3];
+    vec3_negate(a.v, ao);
+
+    gjk_face_normal_away_from_point(&a, &b, &c, &d, normal);
+    if (vec3_dot(normal, ao) > 0.0) {
+        gjk_simplex_set3(simplex, &c, &b, &a);
+        vec3_copy(direction, normal);
+        return 0;
+    }
+
+    gjk_face_normal_away_from_point(&a, &c, &d, &b, normal);
+    if (vec3_dot(normal, ao) > 0.0) {
+        gjk_simplex_set3(simplex, &d, &c, &a);
+        vec3_copy(direction, normal);
+        return 0;
+    }
+
+    gjk_face_normal_away_from_point(&a, &d, &b, &c, normal);
+    if (vec3_dot(normal, ao) > 0.0) {
+        gjk_simplex_set3(simplex, &b, &d, &a);
+        vec3_copy(direction, normal);
+        return 0;
+    }
+
+    return 1;
+}
+
+static int gjk_update_simplex(gjk_simplex *simplex, double *direction) {
+    if (!simplex || !direction)
+        return 0;
+    if (simplex->count == 2)
+        return gjk_update_line(simplex, direction);
+    if (simplex->count == 3)
+        return gjk_update_triangle(simplex, direction);
+    if (simplex->count == 4)
+        return gjk_update_tetrahedron(simplex, direction);
+    if (simplex->count == 1)
+        vec3_negate(simplex->p[0].v, direction);
+    return 0;
+}
+
+static int epa_make_face(const gjk_support_point *vertices,
+                         int32_t a,
+                         int32_t b,
+                         int32_t c,
+                         epa_face *face) {
+    double ab[3];
+    double ac[3];
+    if (!vertices || !face)
+        return 0;
+    face->a = a;
+    face->b = b;
+    face->c = c;
+    face->active = 1;
+    vec3_sub(vertices[b].v, vertices[a].v, ab);
+    vec3_sub(vertices[c].v, vertices[a].v, ac);
+    vec3_cross(ab, ac, face->normal);
+    if (vec3_normalize_in_place(face->normal) <= 1e-12)
+        return 0;
+    face->distance = vec3_dot(face->normal, vertices[a].v);
+    if (face->distance < 0.0) {
+        int32_t tmp = face->b;
+        face->b = face->c;
+        face->c = tmp;
+        vec3_negate(face->normal, face->normal);
+        face->distance = -face->distance;
+    }
+    return 1;
+}
+
+static int epa_add_edge(epa_edge *edges, int32_t *edge_count, int32_t a, int32_t b) {
+    if (!edges || !edge_count)
+        return 0;
+    for (int32_t i = 0; i < *edge_count; ++i) {
+        if (edges[i].a == b && edges[i].b == a) {
+            edges[i] = edges[--(*edge_count)];
+            return 1;
+        }
+    }
+    if (*edge_count >= 192)
+        return 0;
+    edges[*edge_count].a = a;
+    edges[*edge_count].b = b;
+    (*edge_count)++;
+    return 1;
+}
+
+static int epa_add_face(const gjk_support_point *vertices,
+                        epa_face *faces,
+                        int32_t *face_count,
+                        int32_t a,
+                        int32_t b,
+                        int32_t c) {
+    if (!faces || !face_count || *face_count >= 128)
+        return 0;
+    if (!epa_make_face(vertices, a, b, c, &faces[*face_count]))
+        return 1;
+    (*face_count)++;
+    return 1;
+}
+
+static int epa_solve(void *a_collider,
+                     const rt_collider_pose *a_pose,
+                     void *b_collider,
+                     const rt_collider_pose *b_pose,
+                     const gjk_simplex *simplex,
+                     double *normal,
+                     double *depth) {
+    gjk_support_point vertices[64];
+    epa_face faces[128];
+    int32_t vertex_count = 4;
+    int32_t face_count = 0;
+    const double tolerance = 1e-6;
+    if (!simplex || simplex->count < 4 || !normal || !depth)
+        return 0;
+    for (int32_t i = 0; i < 4; ++i)
+        vertices[i] = simplex->p[i];
+    if (!epa_add_face(vertices, faces, &face_count, 0, 1, 2) ||
+        !epa_add_face(vertices, faces, &face_count, 0, 3, 1) ||
+        !epa_add_face(vertices, faces, &face_count, 0, 2, 3) ||
+        !epa_add_face(vertices, faces, &face_count, 1, 3, 2))
+        return 0;
+
+    for (int32_t iter = 0; iter < 48; ++iter) {
+        int32_t best = -1;
+        double best_distance = DBL_MAX;
+        for (int32_t i = 0; i < face_count; ++i) {
+            if (faces[i].active && faces[i].distance < best_distance) {
+                best_distance = faces[i].distance;
+                best = i;
+            }
+        }
+        if (best < 0)
+            return 0;
+
+        gjk_support_point support;
+        gjk_support(a_collider, a_pose, b_collider, b_pose, faces[best].normal, &support);
+        double support_distance = vec3_dot(support.v, faces[best].normal);
+        if (support_distance - faces[best].distance <= tolerance) {
+            vec3_copy(normal, faces[best].normal);
+            if (vec3_normalize_in_place(normal) <= 1e-12)
+                vec3_set(normal, 0.0, 1.0, 0.0);
+            *depth = faces[best].distance;
+            if (*depth < 0.0)
+                *depth = 0.0;
+            return 1;
+        }
+
+        if (vertex_count >= 64)
+            break;
+        int32_t new_vertex = vertex_count++;
+        vertices[new_vertex] = support;
+
+        epa_edge edges[192];
+        int32_t edge_count = 0;
+        for (int32_t i = 0; i < face_count; ++i) {
+            double to_support[3];
+            if (!faces[i].active)
+                continue;
+            vec3_sub(support.v, vertices[faces[i].a].v, to_support);
+            if (vec3_dot(faces[i].normal, to_support) > tolerance) {
+                faces[i].active = 0;
+                if (!epa_add_edge(edges, &edge_count, faces[i].a, faces[i].b) ||
+                    !epa_add_edge(edges, &edge_count, faces[i].b, faces[i].c) ||
+                    !epa_add_edge(edges, &edge_count, faces[i].c, faces[i].a))
+                    return 0;
+            }
+        }
+        for (int32_t i = 0; i < edge_count; ++i) {
+            if (!epa_add_face(vertices, faces, &face_count, edges[i].a, edges[i].b, new_vertex))
+                return 0;
+        }
+    }
+    return 0;
+}
+
+static int test_convex_hull_gjk_epa(void *a_collider,
+                                    const rt_collider_pose *a_pose,
+                                    void *b_collider,
+                                    const rt_collider_pose *b_pose,
+                                    const double *a_center,
+                                    const double *b_center,
+                                    double *normal,
+                                    double *depth) {
+    gjk_simplex simplex;
+    double direction[3];
+    gjk_support_point support;
+    if (!a_collider || !a_pose || !b_collider || !b_pose || !normal || !depth)
+        return 0;
+    memset(&simplex, 0, sizeof(simplex));
+    if (a_center && b_center)
+        vec3_sub(b_center, a_center, direction);
+    else
+        vec3_set(direction, 1.0, 0.0, 0.0);
+    if (vec3_normalize_in_place(direction) <= 1e-12)
+        vec3_set(direction, 1.0, 0.0, 0.0);
+
+    gjk_support(a_collider, a_pose, b_collider, b_pose, direction, &support);
+    gjk_simplex_set1(&simplex, &support);
+    vec3_negate(support.v, direction);
+    if (vec3_normalize_in_place(direction) <= 1e-12)
+        vec3_set(direction, 0.0, 1.0, 0.0);
+
+    for (int32_t iter = 0; iter < 32; ++iter) {
+        gjk_support(a_collider, a_pose, b_collider, b_pose, direction, &support);
+        if (vec3_dot(support.v, direction) < 1e-9)
+            return 0;
+        if (simplex.count >= 4)
+            return 0;
+        simplex.p[simplex.count++] = support;
+        if (gjk_update_simplex(&simplex, direction)) {
+            if (epa_solve(a_collider, a_pose, b_collider, b_pose, &simplex, normal, depth)) {
+                if (a_center && b_center) {
+                    double center_delta[3];
+                    vec3_sub(b_center, a_center, center_delta);
+                    if (vec3_dot(normal, center_delta) < 0.0)
+                        vec3_negate(normal, normal);
+                }
+                return 1;
+            }
+            if (a_center && b_center) {
+                vec3_sub(b_center, a_center, normal);
+                if (vec3_normalize_in_place(normal) <= 1e-12)
+                    vec3_set(normal, 0.0, 1.0, 0.0);
+            } else {
+                vec3_set(normal, 0.0, 1.0, 0.0);
+            }
+            *depth = 0.0;
+            return 1;
+        }
+        if (vec3_normalize_in_place(direction) <= 1e-12)
+            vec3_set(direction, 1.0, 0.0, 0.0);
+    }
+    return 0;
 }
 
 /// @brief Sphere-vs-heightfield narrow phase.
@@ -3238,8 +3995,22 @@ static int test_collider_pair(const rt_body3d *a_body,
         return 1;
     }
 
-    if ((a_type == RT_COLLIDER3D_TYPE_CONVEX_HULL || a_type == RT_COLLIDER3D_TYPE_MESH) &&
-        collider_type_is_simple(b_type)) {
+    if (a_type == RT_COLLIDER3D_TYPE_CONVEX_HULL && collider_type_is_simple(b_type)) {
+        if (!test_convex_hull_gjk_epa(
+                a_collider, a_pose, b_collider, b_pose, a_center, b_center, normal, depth))
+            return 0;
+        if (leaf_a_out)
+            *leaf_a_out = a_collider;
+        if (leaf_a_pose_out)
+            *leaf_a_pose_out = *a_pose;
+        if (leaf_b_out)
+            *leaf_b_out = b_collider;
+        if (leaf_b_pose_out)
+            *leaf_b_pose_out = *b_pose;
+        return 1;
+    }
+
+    if (a_type == RT_COLLIDER3D_TYPE_MESH && collider_type_is_simple(b_type)) {
         rt_body3d proxy_b;
         rt_mesh3d *mesh = (rt_mesh3d *)rt_collider3d_get_mesh_raw(a_collider);
         if (!build_simple_proxy(b_pose, b_collider, &proxy_b) || !mesh)
@@ -3287,6 +4058,22 @@ static int test_collider_pair(const rt_body3d *a_body,
             normal[2] = -normal[2];
         }
         return hit;
+    }
+
+    if (a_type == RT_COLLIDER3D_TYPE_CONVEX_HULL &&
+        b_type == RT_COLLIDER3D_TYPE_CONVEX_HULL) {
+        if (!test_convex_hull_gjk_epa(
+                a_collider, a_pose, b_collider, b_pose, a_center, b_center, normal, depth))
+            return 0;
+        if (leaf_a_out)
+            *leaf_a_out = a_collider;
+        if (leaf_a_pose_out)
+            *leaf_a_pose_out = *a_pose;
+        if (leaf_b_out)
+            *leaf_b_out = b_collider;
+        if (leaf_b_pose_out)
+            *leaf_b_pose_out = *b_pose;
+        return 1;
     }
 
     if (a_type == RT_COLLIDER3D_TYPE_HEIGHTFIELD && collider_type_is_simple(b_type)) {
@@ -3392,147 +4179,343 @@ static int test_collision(const rt_body3d *a,
     return 1;
 }
 
-/// @brief Apply impulse-based collision response between two bodies.
-///
-/// Standard rigid-body impulse: `j = -(1+e)·rv·(1/(m_a+m_b))` along the
-/// contact normal, plus a tangential Coulomb friction impulse capped at
-/// `μ·j_normal`. Then a Baumgarte positional correction (40% of excess
-/// penetration past 1% slop) bleeds drift back to zero. Wakes both
-/// bodies if either impulse component is significant. Returns the
-/// magnitude of the normal impulse (used by `relative_speed_out` and
-/// the impulse-as-event payload).
-static double resolve_collision(rt_body3d *a,
-                                rt_body3d *b,
-                                const double *n,
-                                const double *point,
-                                double depth,
-                                double *relative_speed_out) {
-    double r_a[3];
-    double r_b[3];
+/* ====================================================================== *
+ * Warm-started sequential-impulse contact solver (Phase 8).
+ *
+ * Replaces the prior per-iteration re-detect-and-resolve loop. The step now
+ * detects contacts once per substep, seeds each manifold point's accumulated
+ * normal/friction impulse from the matching previous-frame contact (warm
+ * starting), iterates a Gauss-Seidel velocity solve with non-negative
+ * accumulated-impulse clamping, then applies a split positional correction so
+ * recovery never injects energy into the velocity state. This is what lets
+ * box stacks and piles rest stably instead of jittering and sinking.
+ * ====================================================================== */
+
+#define PH3D_RESTITUTION_THRESHOLD 0.5 /* min approach speed (m/s) to bounce */
+#define PH3D_PENETRATION_SLOP 0.005
+#define PH3D_BAUMGARTE_BETA 0.8 /* positional recovery fraction per step */
+#define PH3D_MAX_POSITION_CORRECTION 0.2 /* clamp on per-step positional push (m) */
+/* Carry <100% of the prior impulse so an uneven manifold (Gauss-Seidel tends to
+ * load the first-solved point) cannot compound its torque frame-over-frame into
+ * a slow tip-over. The solver rebuilds the remainder each step. */
+#define PH3D_WARMSTART_FACTOR 0.8
+#define PH3D_CONTACT_WAKE_SPEED 0.1 /* approach speed (m/s) that wakes a sleeper */
+
+/// @brief Build two orthonormal tangents spanning the plane perpendicular to
+///   unit normal @p n (deterministic basis so warm-started friction impulses
+///   stay aligned frame to frame while the normal is stable).
+static void ph3d_contact_tangents(const double *n, double *t1, double *t2) {
+    if (fabs(n[0]) >= 0.57735) {
+        vec3_set(t1, n[1], -n[0], 0.0);
+    } else {
+        vec3_set(t1, 0.0, n[2], -n[1]);
+    }
+    if (vec3_normalize_in_place(t1) < 1e-12)
+        vec3_set(t1, 1.0, 0.0, 0.0);
+    vec3_cross(n, t1, t2);
+    vec3_normalize_in_place(t2);
+}
+
+/// @brief Effective mass (1 / scalar inverse-mass) for a unit constraint @p axis
+///   at the given per-body contact arms, including the angular term.
+static double ph3d_contact_effective_mass(const rt_body3d *a, const double *r_a,
+                                          const rt_body3d *b, const double *r_b,
+                                          const double *axis) {
+    double denom = body3d_contact_impulse_denominator(a, r_a, axis) +
+                   body3d_contact_impulse_denominator(b, r_b, axis);
+    return denom > 1e-12 ? 1.0 / denom : 0.0;
+}
+
+/// @brief Relative velocity at a contact arm pair projected onto @p axis.
+static double ph3d_contact_relative_velocity(const rt_body3d *a, const double *r_a,
+                                             const rt_body3d *b, const double *r_b,
+                                             const double *axis) {
     double vel_a[3];
     double vel_b[3];
-    double rv_vec[3];
-    double rv;
-    double denom;
-    double e;
-    double j;
-    double impulse[3];
-    int woke = 0;
-
-    if (point) {
-        vec3_sub(point, a->position, r_a);
-        vec3_sub(point, b->position, r_b);
-    } else {
-        vec3_set(r_a, 0.0, 0.0, 0.0);
-        vec3_set(r_b, 0.0, 0.0, 0.0);
-    }
-
+    double rel[3];
     body3d_contact_velocity(a, r_a, vel_a);
     body3d_contact_velocity(b, r_b, vel_b);
-    vec3_sub(vel_b, vel_a, rv_vec);
-    rv = vec3_dot(rv_vec, n);
-    if (relative_speed_out)
-        *relative_speed_out = fabs(rv);
-    if (rv > 0) {
-        double inv_sum = a->inv_mass + b->inv_mass;
-        if (inv_sum > 1e-12) {
-            double slop = 0.01;
-            double correction = fmax(depth - slop, 0.0) * 0.4 / inv_sum;
-            a->position[0] -= correction * a->inv_mass * n[0];
-            a->position[1] -= correction * a->inv_mass * n[1];
-            a->position[2] -= correction * a->inv_mass * n[2];
-            b->position[0] += correction * b->inv_mass * n[0];
-            b->position[1] += correction * b->inv_mass * n[1];
-            b->position[2] += correction * b->inv_mass * n[2];
-        }
-        return 0.0; /* separating */
-    }
+    vec3_sub(vel_b, vel_a, rel);
+    return vec3_dot(rel, axis);
+}
 
-    e = (a->restitution < b->restitution) ? a->restitution : b->restitution;
-    denom = body3d_contact_impulse_denominator(a, r_a, n) +
-            body3d_contact_impulse_denominator(b, r_b, n);
-    if (denom < 1e-12)
-        return 0.0;
+/// @brief Apply impulse @p magnitude along @p dir at the contact arms (b gets +,
+///   a gets -, matching the a→b normal convention).
+static void ph3d_apply_contact_axis_impulse(rt_body3d *a, const double *r_a,
+                                            rt_body3d *b, const double *r_b,
+                                            const double *dir, double magnitude) {
+    double p[3];
+    double neg[3];
+    if (magnitude == 0.0)
+        return;
+    p[0] = magnitude * dir[0];
+    p[1] = magnitude * dir[1];
+    p[2] = magnitude * dir[2];
+    vec3_negate(p, neg);
+    body3d_apply_contact_impulse(a, neg, r_a);
+    body3d_apply_contact_impulse(b, p, r_b);
+}
 
-    j = -(1.0 + e) * rv / denom;
-    impulse[0] = j * n[0];
-    impulse[1] = j * n[1];
-    impulse[2] = j * n[2];
-    {
-        double neg_impulse[3] = {-impulse[0], -impulse[1], -impulse[2]};
-        body3d_apply_contact_impulse(a, neg_impulse, r_a);
-        body3d_apply_contact_impulse(b, impulse, r_b);
-    }
+/// @brief A body actively participates in the solve when it is dynamic and awake.
+static int ph3d_body_is_active(const rt_body3d *b) {
+    return b && b->motion_mode == PH3D_MODE_DYNAMIC && !b->is_sleeping;
+}
 
-    /* Coulomb friction — tangential impulse capped by mu * normal impulse */
-    {
-        double fa = ph3d_clamp_nonnegative_finite(a->friction, 0.0);
-        double fb = ph3d_clamp_nonnegative_finite(b->friction, 0.0);
-        double mu = sqrt(fa * fb);
-        double rv_n;
-        double tx;
-        double ty;
-        double tz;
-        double tlen;
-        body3d_contact_velocity(a, r_a, vel_a);
-        body3d_contact_velocity(b, r_b, vel_b);
-        vec3_sub(vel_b, vel_a, rv_vec);
-        rv_n = vec3_dot(rv_vec, n);
-        tx = rv_vec[0] - rv_n * n[0];
-        ty = rv_vec[1] - rv_n * n[1];
-        tz = rv_vec[2] - rv_n * n[2];
-        tlen = sqrt(tx * tx + ty * ty + tz * tz);
-        if (tlen > 1e-8) {
-            double tangent[3];
-            double tangent_denom;
-            double jt;
-            double friction_impulse[3];
-            tx /= tlen;
-            ty /= tlen;
-            tz /= tlen;
-            vec3_set(tangent, tx, ty, tz);
-            tangent_denom = body3d_contact_impulse_denominator(a, r_a, tangent) +
-                            body3d_contact_impulse_denominator(b, r_b, tangent);
-            if (tangent_denom < 1e-12)
-                tangent_denom = denom;
-            jt = -vec3_dot(rv_vec, tangent) / tangent_denom;
-            if (fabs(jt) > mu * j)
-                jt = (jt > 0 ? 1.0 : -1.0) * mu * j;
-            friction_impulse[0] = jt * tx;
-            friction_impulse[1] = jt * ty;
-            friction_impulse[2] = jt * tz;
-            {
-                double neg_friction_impulse[3] = {
-                    -friction_impulse[0], -friction_impulse[1], -friction_impulse[2]};
-                body3d_apply_contact_impulse(a, neg_friction_impulse, r_a);
-                body3d_apply_contact_impulse(b, friction_impulse, r_b);
-            }
-            if (fabs(jt) > 1e-8) {
-                woke = 1;
-            }
-        }
-    }
-
-    /* Baumgarte positional correction (40%, 1% slop) */
-    double slop = 0.01;
-    double inv_sum = a->inv_mass + b->inv_mass;
-    double correction = inv_sum > 1e-12 ? fmax(depth - slop, 0.0) * 0.4 / inv_sum : 0.0;
-    a->position[0] -= correction * a->inv_mass * n[0];
-    a->position[1] -= correction * a->inv_mass * n[1];
-    a->position[2] -= correction * a->inv_mass * n[2];
-    b->position[0] += correction * b->inv_mass * n[0];
-    b->position[1] += correction * b->inv_mass * n[1];
-    b->position[2] += correction * b->inv_mass * n[2];
-    if (a->inv_mass > 0.0)
-        body3d_touch_broadphase(a);
-    if (b->inv_mass > 0.0)
-        body3d_touch_broadphase(b);
-
-    if (fabs(j) > 1e-8 || woke) {
-        body3d_wake_if_dynamic(a);
+/// @brief Whether a contact needs solving this step; also propagates wake-up.
+/// @details A contact is solved when at least one body is an active (awake,
+///   dynamic) body. If one side is active and the other is a *sleeping* dynamic
+///   body, the sleeper is woken so the pair solves correctly (wake spreads one
+///   contact layer per step). A contact between two non-active bodies (both
+///   sleeping, or sleeping-vs-static) is skipped — this is what freezes a fully
+///   settled island so a resting stack stays put instead of being re-solved
+///   (and slowly drifting) every frame.
+static int ph3d_contact_should_solve(rt_body3d *a, rt_body3d *b) {
+    int active_a = ph3d_body_is_active(a);
+    int active_b = ph3d_body_is_active(b);
+    if (!active_a && !active_b)
+        return 0;
+    if (active_a && !active_b && b && b->motion_mode == PH3D_MODE_DYNAMIC)
         body3d_wake_if_dynamic(b);
+    else if (active_b && !active_a && a && a->motion_mode == PH3D_MODE_DYNAMIC)
+        body3d_wake_if_dynamic(a);
+    return 1;
+}
+
+/// @brief Match this frame's contacts to the previous frame, seed accumulated
+///   impulses (warm starting), capture per-point restitution bias, and re-apply
+///   the seeded impulse so the velocity solver starts near the converged answer.
+static void world3d_warm_start_contacts(rt_world3d *w) {
+    if (!w)
+        return;
+    for (int32_t i = 0; i < w->contact_count; ++i) {
+        rt_contact3d *c = &w->contacts[i];
+        rt_body3d *a = c->body_a;
+        rt_body3d *b = c->body_b;
+        const rt_contact3d *prev = NULL;
+        double e;
+        if (!a || !b || c->is_trigger || !ph3d_contact_should_solve(a, b))
+            continue;
+        e = (a->restitution < b->restitution) ? a->restitution : b->restitution;
+
+        /* Identical body/collider ordering keeps stored impulse directions valid. */
+        for (int32_t p = 0; p < w->previous_contact_count; ++p) {
+            const rt_contact3d *q = &w->previous_contacts[p];
+            if (q->body_a == c->body_a && q->body_b == c->body_b &&
+                q->collider_a == c->collider_a && q->collider_b == c->collider_b) {
+                prev = q;
+                break;
+            }
+        }
+
+        for (int32_t k = 0; k < c->contact_count; ++k) {
+            double n[3];
+            double t1[3];
+            double t2[3];
+            double r_a[3];
+            double r_b[3];
+            double seed_n = 0.0;
+            double seed_t0 = 0.0;
+            double seed_t1 = 0.0;
+            double vn0;
+            vec3_copy(n, c->normals[k]);
+            ph3d_contact_tangents(n, t1, t2);
+
+            /* Index-based match: the manifold builder emits points in a stable
+             * order for a persistent pair, so current point k maps to previous
+             * point k. This survives fast motion (unlike a position-proximity
+             * match), which is what keeps multi-box stacks converged while they
+             * settle. The normal-agreement guard prevents carrying impulse
+             * across a normal flip (e.g. a deep-penetration axis change). */
+            if (prev && k < prev->contact_count &&
+                vec3_dot(n, prev->normals[k]) > 0.9) {
+                seed_n = prev->normal_impulse_acc[k] * PH3D_WARMSTART_FACTOR;
+                seed_t0 = prev->tangent_impulse_acc[k][0] * PH3D_WARMSTART_FACTOR;
+                seed_t1 = prev->tangent_impulse_acc[k][1] * PH3D_WARMSTART_FACTOR;
+            }
+            c->normal_impulse_acc[k] = seed_n;
+            c->tangent_impulse_acc[k][0] = seed_t0;
+            c->tangent_impulse_acc[k][1] = seed_t1;
+
+            vec3_sub(c->points[k], a->position, r_a);
+            vec3_sub(c->points[k], b->position, r_b);
+            vn0 = ph3d_contact_relative_velocity(a, r_a, b, r_b, n);
+            /* Restitution is an impact phenomenon: apply it only on the first
+             * frame of a contact (no warm-start seed). A persistent/resting
+             * contact gets zero restitution bias, so a stack cannot bounce
+             * itself apart if a body momentarily speeds up. */
+            c->restitution_bias[k] =
+                (seed_n == 0.0 && vn0 < -PH3D_RESTITUTION_THRESHOLD) ? -e * vn0 : 0.0;
+
+            ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, n, seed_n);
+            ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, t1, seed_t0);
+            ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, t2, seed_t1);
+        }
     }
-    return fabs(j);
+}
+
+/// @brief One Gauss-Seidel velocity sweep over all manifolds: Coulomb friction
+///   on two tangents (cone-clamped to μ·normalImpulse), then the non-penetration
+///   normal constraint, both via accumulated-impulse clamping.
+static void world3d_solve_velocity_contacts(rt_world3d *w) {
+    if (!w)
+        return;
+    for (int32_t i = 0; i < w->contact_count; ++i) {
+        rt_contact3d *c = &w->contacts[i];
+        rt_body3d *a = c->body_a;
+        rt_body3d *b = c->body_b;
+        double mu;
+        if (!a || !b || c->is_trigger || (!ph3d_body_is_active(a) && !ph3d_body_is_active(b)))
+            continue;
+        {
+            double fa = ph3d_clamp_nonnegative_finite(a->friction, 0.0);
+            double fb = ph3d_clamp_nonnegative_finite(b->friction, 0.0);
+            mu = sqrt(fa * fb);
+        }
+        for (int32_t k = 0; k < c->contact_count; ++k) {
+            double n[3];
+            double t1[3];
+            double t2[3];
+            double r_a[3];
+            double r_b[3];
+            const double *tan_axes[2];
+            int axis;
+            vec3_copy(n, c->normals[k]);
+            ph3d_contact_tangents(n, t1, t2);
+            vec3_sub(c->points[k], a->position, r_a);
+            vec3_sub(c->points[k], b->position, r_b);
+            tan_axes[0] = t1;
+            tan_axes[1] = t2;
+
+            for (axis = 0; axis < 2; ++axis) {
+                double eff = ph3d_contact_effective_mass(a, r_a, b, r_b, tan_axes[axis]);
+                double vt = ph3d_contact_relative_velocity(a, r_a, b, r_b, tan_axes[axis]);
+                double max_f = mu * c->normal_impulse_acc[k];
+                double old = c->tangent_impulse_acc[k][axis];
+                double next = old - eff * vt;
+                if (next > max_f)
+                    next = max_f;
+                else if (next < -max_f)
+                    next = -max_f;
+                c->tangent_impulse_acc[k][axis] = next;
+                ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, tan_axes[axis], next - old);
+            }
+
+            {
+                double eff = ph3d_contact_effective_mass(a, r_a, b, r_b, n);
+                double vn = ph3d_contact_relative_velocity(a, r_a, b, r_b, n);
+                double old = c->normal_impulse_acc[k];
+                double next = old - eff * (vn - c->restitution_bias[k]);
+                if (next < 0.0)
+                    next = 0.0;
+                c->normal_impulse_acc[k] = next;
+                ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, n, next - old);
+            }
+        }
+    }
+}
+
+/// @brief Split positional (Baumgarte) correction using each manifold's deepest
+///   point, weighted by inverse mass. Runs after the velocity solve so it never
+///   injects energy into the velocity state.
+static void world3d_solve_position_contacts(rt_world3d *w) {
+    if (!w)
+        return;
+    for (int32_t i = 0; i < w->contact_count; ++i) {
+        rt_contact3d *c = &w->contacts[i];
+        rt_body3d *a = c->body_a;
+        rt_body3d *b = c->body_b;
+        const double *n;
+        double inv_sum;
+        double pen;
+        double corr;
+        int32_t deepest = 0;
+        if (!a || !b || c->is_trigger || c->contact_count <= 0 ||
+            (!ph3d_body_is_active(a) && !ph3d_body_is_active(b)))
+            continue;
+        for (int32_t k = 1; k < c->contact_count; ++k) {
+            if (c->separations[k] < c->separations[deepest])
+                deepest = k;
+        }
+        pen = -c->separations[deepest] - PH3D_PENETRATION_SLOP;
+        if (pen <= 0.0)
+            continue;
+        inv_sum = a->inv_mass + b->inv_mass;
+        if (inv_sum <= 1e-12)
+            continue;
+        /* Clamp the positional projection so a deep penetration cannot teleport
+         * a body (which would otherwise inject huge separation and explode a
+         * stack). Mirrors Box2D's b2_maxLinearCorrection. */
+        pen = fmin(pen, PH3D_MAX_POSITION_CORRECTION);
+        corr = PH3D_BAUMGARTE_BETA * pen / inv_sum;
+        n = c->normals[deepest];
+        a->position[0] -= corr * a->inv_mass * n[0];
+        a->position[1] -= corr * a->inv_mass * n[1];
+        a->position[2] -= corr * a->inv_mass * n[2];
+        b->position[0] += corr * b->inv_mass * n[0];
+        b->position[1] += corr * b->inv_mass * n[1];
+        b->position[2] += corr * b->inv_mass * n[2];
+        if (a->inv_mass > 0.0)
+            body3d_touch_broadphase(a);
+        if (b->inv_mass > 0.0)
+            body3d_touch_broadphase(b);
+    }
+}
+
+/// @brief Publish the per-contact scalar normal impulse (summed over manifold
+///   points) for collision-event payloads and wake bodies that took a load.
+static void world3d_finalize_contacts(rt_world3d *w) {
+    if (!w)
+        return;
+    for (int32_t i = 0; i < w->contact_count; ++i) {
+        rt_contact3d *c = &w->contacts[i];
+        double total = 0.0;
+        if (c->is_trigger) {
+            c->normal_impulse = 0.0;
+            continue;
+        }
+        for (int32_t k = 0; k < c->contact_count; ++k)
+            total += c->normal_impulse_acc[k];
+        c->normal_impulse = total;
+        /* Wake on genuine impact only (approach speed), never on the sustained
+         * support impulse of a resting contact — otherwise a settled stack can
+         * never sleep, and a perpetually-re-solved stack slowly drifts. */
+        if (c->relative_speed > PH3D_CONTACT_WAKE_SPEED && c->body_a && c->body_b) {
+            body3d_wake_if_dynamic(c->body_a);
+            body3d_wake_if_dynamic(c->body_b);
+        }
+    }
+}
+
+/// @brief Post-solve sleep update: a dynamic body whose *resolved* velocity stays
+///   below the sleep thresholds for PH3D_SLEEP_DELAY goes to sleep (and is then
+///   frozen by the contact gate). Run after the contact solve so a body resting
+///   under gravity — momentarily fast mid-integration, ~0 once supported —
+///   actually settles. Wake propagation across contacts keeps a body awake while
+///   any neighbour it touches is still moving.
+static void world3d_update_sleep(rt_world3d *w, double sub_dt) {
+    if (!w)
+        return;
+    for (int32_t i = 0; i < w->body_count; i++) {
+        rt_body3d *b = w->bodies[i];
+        double linear_sq;
+        double angular_sq;
+        double linear_thresh = PH3D_SLEEP_LINEAR_THRESHOLD * PH3D_SLEEP_LINEAR_THRESHOLD;
+        double angular_thresh = PH3D_SLEEP_ANGULAR_THRESHOLD * PH3D_SLEEP_ANGULAR_THRESHOLD;
+        if (!b || b->motion_mode != PH3D_MODE_DYNAMIC || b->is_sleeping || !b->can_sleep)
+            continue;
+        linear_sq = vec3_len_sq(b->velocity);
+        angular_sq = vec3_len_sq(b->angular_velocity);
+        if (linear_sq <= linear_thresh && angular_sq <= angular_thresh) {
+            b->sleep_time += sub_dt;
+            if (b->sleep_time >= PH3D_SLEEP_DELAY) {
+                b->is_sleeping = 1;
+                vec3_set(b->velocity, 0.0, 0.0, 0.0);
+                vec3_set(b->angular_velocity, 0.0, 0.0, 0.0);
+            }
+        } else {
+            b->sleep_time = 0.0;
+        }
+    }
 }
 
 /// @brief qsort comparator for sweep-and-prune broad-phase — sorts entries by min-X.
@@ -3559,13 +4542,14 @@ static int ph3d_bounds_overlap(const double *a_min,
            a_max[1] >= b_min[1] && a_min[2] <= b_max[2] && a_max[2] >= b_min[2];
 }
 
-/// @brief Run narrow-phase collision detection and impulse response for one body pair.
+/// @brief Run narrow-phase collision detection for one body pair (no resolution).
 /// @details Skips static-static pairs or pairs that fail the bidirectional
 ///   layer/mask filter.  On a detected overlap, appends a new rt_contact3d to the
-///   world's contact array (reallocating if needed), then either calls resolve_collision
-///   for non-trigger pairs (applying impulse + Baumgarte correction) or just records
-///   the relative speed for trigger pairs.  Updates is_grounded on whichever body has
-///   a contact normal pointing more than ~45° upward (|normal.y| > 0.7).
+///   world's contact array (reallocating if needed) with its full manifold and a
+///   zeroed warm-start state; the warm-started sequential-impulse solver resolves
+///   the assembled contact list afterwards. Records the pre-solve approach speed
+///   and updates is_grounded on whichever body has a contact normal pointing more
+///   than ~45° upward (|normal.y| > 0.7).
 /// @param w  World containing the bodies.
 /// @param a  First body of the candidate pair.
 /// @param b  Second body of the candidate pair.
@@ -3574,7 +4558,6 @@ static int ph3d_bounds_overlap(const double *a_min,
 static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d *b) {
     double normal[3], depth, point[3];
     double relative_speed = 0.0;
-    double normal_impulse = 0.0;
     void *leaf_a = NULL;
     void *leaf_b = NULL;
 
@@ -3608,16 +4591,21 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     c->normal[1] = normal[1];
     c->normal[2] = normal[2];
     c->separation = -depth;
+    contact3d_init_single_point(c, point, normal, c->separation);
+    contact3d_expand_aabb_manifold(c, a, b);
     c->is_trigger = (a->is_trigger || b->is_trigger) ? 1 : 0;
-    if (c->is_trigger) {
-        relative_speed = fabs((b->velocity[0] - a->velocity[0]) * normal[0] +
-                              (b->velocity[1] - a->velocity[1]) * normal[1] +
-                              (b->velocity[2] - a->velocity[2]) * normal[2]);
-    } else {
-        normal_impulse = resolve_collision(a, b, normal, point, depth, &relative_speed);
-    }
+    /* Detection only: the warm-started sequential-impulse solver runs after the
+     * whole manifold is built (see world3d_solve_velocity_contacts). Record the
+     * pre-solve approach speed for collision-event payloads and reset the
+     * per-point accumulated impulses; warm starting seeds them next step. */
+    relative_speed = fabs((b->velocity[0] - a->velocity[0]) * normal[0] +
+                          (b->velocity[1] - a->velocity[1]) * normal[1] +
+                          (b->velocity[2] - a->velocity[2]) * normal[2]);
     c->relative_speed = relative_speed;
-    c->normal_impulse = normal_impulse;
+    c->normal_impulse = 0.0;
+    memset(c->normal_impulse_acc, 0, sizeof(c->normal_impulse_acc));
+    memset(c->tangent_impulse_acc, 0, sizeof(c->tangent_impulse_acc));
+    memset(c->restitution_bias, 0, sizeof(c->restitution_bias));
 
     if (normal[1] > 0.7) {
         b->is_grounded = 1;
@@ -3656,10 +4644,11 @@ static int world3d_pair_can_collide_cheap(const rt_body3d *a, const rt_body3d *b
 ///      only tests pairs whose X intervals overlap, short-circuiting the inner loop
 ///      when the X-axis gap guarantees no overlap.
 ///   Each surviving pair is processed by world3d_process_collision_pair, which
-///   handles narrow-phase detection, impulse resolution, and contact recording.
+///   records the contact and its manifold. Resolution happens afterwards in the
+///   warm-started sequential-impulse solve, not here.
 /// @param w  World to process.
 /// @return   1 on success, 0 if any contact could not be allocated.
-static int world3d_detect_and_resolve_contacts(rt_world3d *w) {
+static int world3d_detect_contacts(rt_world3d *w) {
     if (!w)
         return 0;
     w->contact_count = 0;
@@ -3878,6 +4867,14 @@ static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
     vec3_copy(event->point, contact->point);
     vec3_copy(event->normal, contact->normal);
     event->separation = contact->separation;
+    event->contact_count = contact->contact_count;
+    if (event->contact_count < 1)
+        event->contact_count = 1;
+    if (event->contact_count > PH3D_MAX_MANIFOLD_POINTS)
+        event->contact_count = PH3D_MAX_MANIFOLD_POINTS;
+    memcpy(event->points, contact->points, sizeof(event->points));
+    memcpy(event->normals, contact->normals, sizeof(event->normals));
+    memcpy(event->separations, contact->separations, sizeof(event->separations));
     event->relative_speed = contact->relative_speed;
     event->normal_impulse = contact->normal_impulse;
     event->is_trigger = contact->is_trigger;
@@ -4223,6 +5220,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->joints = NULL;
     w->joint_types = NULL;
     w->broadphase_entries = NULL;
+    w->solver_iterations = PH3D_DEFAULT_SOLVER_ITERATIONS;
     if (!world3d_reserve_body_capacity(w, PH3D_INITIAL_BODIES) ||
         !world3d_reserve_contacts(w, PH3D_INITIAL_CONTACTS) ||
         !world3d_reserve_frame_contacts(w, PH3D_INITIAL_CONTACTS) ||
@@ -4381,25 +5379,9 @@ void rt_world3d_step(void *obj, double dt) {
                 vec3_scale_in_place(b->angular_velocity, angular_scale);
                 ph3d_vec3_sanitize_state(b->velocity);
                 ph3d_vec3_sanitize_state(b->angular_velocity);
-
-                if (b->can_sleep) {
-                    double linear_sq = vec3_len_sq(b->velocity);
-                    double angular_sq = vec3_len_sq(b->angular_velocity);
-                    double linear_thresh =
-                        PH3D_SLEEP_LINEAR_THRESHOLD * PH3D_SLEEP_LINEAR_THRESHOLD;
-                    double angular_thresh =
-                        PH3D_SLEEP_ANGULAR_THRESHOLD * PH3D_SLEEP_ANGULAR_THRESHOLD;
-                    if (linear_sq <= linear_thresh && angular_sq <= angular_thresh) {
-                        b->sleep_time += sub_dt;
-                        if (b->sleep_time >= PH3D_SLEEP_DELAY) {
-                            b->is_sleeping = 1;
-                            vec3_set(b->velocity, 0.0, 0.0, 0.0);
-                            vec3_set(b->angular_velocity, 0.0, 0.0, 0.0);
-                        }
-                    } else {
-                        b->sleep_time = 0.0;
-                    }
-                }
+                /* Sleep is decided post-solve (world3d_update_sleep), not here:
+                 * a body resting under gravity carries -g*dt velocity at this
+                 * point and only returns to ~0 once contacts are resolved. */
             }
 
             ph3d_vec3_accumulate_state(b->position,
@@ -4410,19 +5392,27 @@ void rt_world3d_step(void *obj, double dt) {
             body3d_touch_broadphase(b);
         }
 
-        /* Phase 2: Collision detection + response */
-        if (!world3d_detect_and_resolve_contacts(w))
+        /* Phase 2: detect contacts once, then warm-started sequential-impulse solve.
+         * Detecting once (rather than re-detecting per iteration) lets per-point
+         * impulses accumulate and warm-start across frames, which is what makes
+         * stacks rest stably. Joints are interleaved with the velocity iterations. */
+        int32_t solver_iterations = ph3d_clamp_solver_iterations(w->solver_iterations);
+        if (!world3d_detect_contacts(w))
             goto cleanup;
-        for (int32_t i = 0; i < w->contact_count; ++i) {
-            if (!world3d_append_frame_contact_unique(w, &w->contacts[i]))
-                goto cleanup;
-        }
-
-        for (int32_t iter = 0; iter < 6; iter++) {
+        world3d_warm_start_contacts(w);
+        for (int32_t iter = 0; iter < solver_iterations; iter++) {
+            world3d_solve_velocity_contacts(w);
             for (int32_t j = 0; j < w->joint_count; j++) {
                 if (w->joints[j])
                     rt_joint3d_solve(w->joints[j], w->joint_types[j], sub_dt);
             }
+        }
+        world3d_solve_position_contacts(w);
+        world3d_finalize_contacts(w);
+        world3d_update_sleep(w, sub_dt);
+        for (int32_t i = 0; i < w->contact_count; ++i) {
+            if (!world3d_append_frame_contact_unique(w, &w->contacts[i]))
+                goto cleanup;
         }
     }
 
@@ -4487,6 +5477,19 @@ void rt_world3d_remove_joint(void *obj, void *joint) {
 int64_t rt_world3d_joint_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     return w ? w->joint_count : 0;
+}
+
+/// @brief `World3D.SolverIterations` — iterative constraint-solver pass count.
+int64_t rt_world3d_get_solver_iterations(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return w ? ph3d_clamp_solver_iterations(w->solver_iterations) : 0;
+}
+
+/// @brief `World3D.SetSolverIterations(iterations)` — tune iterative solver passes.
+void rt_world3d_set_solver_iterations(void *obj, int64_t iterations) {
+    rt_world3d *w = world3d_checked(obj);
+    if (w)
+        w->solver_iterations = ph3d_clamp_solver_iterations(iterations);
 }
 
 /// @brief `World3D.Add(body)` — register a body.
@@ -4809,12 +5812,10 @@ int8_t rt_collision_event3d_get_is_trigger(void *obj) {
     return event ? event->is_trigger : 0;
 }
 
-/// @brief `CollisionEvent3D.ContactCount` — currently 1 per event (single-point contacts).
-///
-/// Reserved for future multi-point contact manifolds; today every event
-/// carries exactly one representative contact point.
+/// @brief `CollisionEvent3D.ContactCount` — number of points in this contact manifold.
 int64_t rt_collision_event3d_get_contact_count(void *obj) {
-    return collision_event3d_checked(obj) ? 1 : 0;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event ? event->contact_count : 0;
 }
 
 /// @brief `CollisionEvent3D.RelativeSpeed` — closing speed along the contact normal.
@@ -4834,39 +5835,39 @@ double rt_collision_event3d_get_normal_impulse(void *obj) {
 
 /// @brief `CollisionEvent3D.Contact(i)` — boxed contact-point sub-object.
 ///
-/// Currently only `i == 0` is valid (single-point contacts). Reconstructs
-/// a transient `rt_contact3d` from the event's stored fields and boxes
-/// it via `contact_point3d_new_from_contact`.
+/// Reconstructs a transient `rt_contact3d` from the event's stored manifold
+/// point and boxes it via `contact_point3d_new_from_contact`.
 void *rt_collision_event3d_get_contact(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     rt_contact3d contact;
-    if (!event || index != 0)
+    if (!event || index < 0 || index >= event->contact_count)
         return NULL;
     memset(&contact, 0, sizeof(contact));
     contact.body_a = event->body_a;
     contact.body_b = event->body_b;
     contact.collider_a = event->collider_a;
     contact.collider_b = event->collider_b;
-    vec3_copy(contact.point, event->point);
-    vec3_copy(contact.normal, event->normal);
-    contact.separation = event->separation;
+    vec3_copy(contact.point, event->points[index]);
+    vec3_copy(contact.normal, event->normals[index]);
+    contact.separation = event->separations[index];
+    contact3d_init_single_point(&contact, contact.point, contact.normal, contact.separation);
     return contact_point3d_new_from_contact(&contact);
 }
 
 /// @brief `CollisionEvent3D.ContactPoint(i)` — fresh `Vec3` for the contact point.
 void *rt_collision_event3d_get_contact_point(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    if (!event || index != 0)
+    if (!event || index < 0 || index >= event->contact_count)
         return rt_vec3_new(0.0, 0.0, 0.0);
-    return rt_vec3_new(event->point[0], event->point[1], event->point[2]);
+    return rt_vec3_new(event->points[index][0], event->points[index][1], event->points[index][2]);
 }
 
 /// @brief `CollisionEvent3D.ContactNormal(i)` — fresh `Vec3` for the contact normal.
 void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    if (!event || index != 0)
+    if (!event || index < 0 || index >= event->contact_count)
         return rt_vec3_new(0.0, 1.0, 0.0);
-    return rt_vec3_new(event->normal[0], event->normal[1], event->normal[2]);
+    return rt_vec3_new(event->normals[index][0], event->normals[index][1], event->normals[index][2]);
 }
 
 /// @brief `CollisionEvent3D.ContactSeparation(i)` — signed separation distance.
@@ -4874,9 +5875,9 @@ void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
 /// Negative means penetration; zero or positive means touching/just-separated.
 double rt_collision_event3d_get_contact_separation(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    if (!event || index != 0)
+    if (!event || index < 0 || index >= event->contact_count)
         return 0.0;
-    return event->separation;
+    return event->separations[index];
 }
 
 /// @brief `ContactPoint3D.Point` — world-space contact location.
@@ -5893,15 +6894,6 @@ static int raycast_triangle_world(const double *origin,
     return 1;
 }
 
-typedef struct {
-    float min[3];
-    float max[3];
-    int32_t left;
-    int32_t right;
-    int32_t start;
-    int32_t count;
-} rt_physics_mesh_bvh_node;
-
 static void mesh_bvh_expand(float *mn, float *mx, const float *p) {
     for (int axis = 0; axis < 3; axis++) {
         if (p[axis] < mn[axis])
@@ -6870,6 +7862,35 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     }
 }
 
+/// @brief Apply a continuous force at a world-space point this step, adding both
+///   force and torque (r x force) — e.g. a thruster or off-center wind. Like
+///   ApplyForce, it is cleared at the end of the step. Dynamic bodies only.
+void rt_body3d_apply_force_at_point(void *o,
+                                    double fx,
+                                    double fy,
+                                    double fz,
+                                    double px,
+                                    double py,
+                                    double pz) {
+    rt_body3d *b = body3d_checked(o);
+    double force[3];
+    double r[3];
+    double torque[3];
+    if (!b || b->motion_mode != PH3D_MODE_DYNAMIC)
+        return;
+    force[0] = ph3d_finite_or(fx, 0.0);
+    force[1] = ph3d_finite_or(fy, 0.0);
+    force[2] = ph3d_finite_or(fz, 0.0);
+    r[0] = ph3d_finite_or(px, 0.0) - b->position[0];
+    r[1] = ph3d_finite_or(py, 0.0) - b->position[1];
+    r[2] = ph3d_finite_or(pz, 0.0) - b->position[2];
+    vec3_cross(r, force, torque);
+    ph3d_vec3_accumulate_state(b->force, force[0], force[1], force[2]);
+    ph3d_vec3_accumulate_state(b->torque, torque[0], torque[1], torque[2]);
+    if (force[0] != 0.0 || force[1] != 0.0 || force[2] != 0.0)
+        body3d_wake_if_dynamic(b);
+}
+
 /// @brief `Body3D.ApplyImpulse(ix, iy, iz)` — instantaneous velocity change.
 ///
 /// Equivalent to `Δv = impulse / mass`. Applied immediately, not at
@@ -6887,6 +7908,32 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
         if (ix != 0.0 || iy != 0.0 || iz != 0.0)
             body3d_wake_if_dynamic(b);
     }
+}
+
+/// @brief Apply a linear impulse at a world-space point, producing both linear
+///   and angular velocity via the lever arm from the center of mass — e.g. a hit
+///   at a box corner makes it spin. Dynamic bodies only.
+void rt_body3d_apply_impulse_at_point(void *o,
+                                      double ix,
+                                      double iy,
+                                      double iz,
+                                      double px,
+                                      double py,
+                                      double pz) {
+    rt_body3d *b = body3d_checked(o);
+    double impulse[3];
+    double r[3];
+    if (!b || b->motion_mode != PH3D_MODE_DYNAMIC)
+        return;
+    impulse[0] = ph3d_finite_or(ix, 0.0);
+    impulse[1] = ph3d_finite_or(iy, 0.0);
+    impulse[2] = ph3d_finite_or(iz, 0.0);
+    r[0] = ph3d_finite_or(px, 0.0) - b->position[0];
+    r[1] = ph3d_finite_or(py, 0.0) - b->position[1];
+    r[2] = ph3d_finite_or(pz, 0.0) - b->position[2];
+    body3d_apply_contact_impulse(b, impulse, r);
+    if (impulse[0] != 0.0 || impulse[1] != 0.0 || impulse[2] != 0.0)
+        body3d_wake_if_dynamic(b);
 }
 
 /// @brief `Body3D.ApplyTorque(tx, ty, tz)` — accumulate a continuous torque (N·m).

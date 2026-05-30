@@ -404,6 +404,9 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
                 RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY;
     if (caps & RT_CANVAS3D_BACKEND_CAP_WINDOW_READBACK)
         caps |= RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT;
+    if (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE)
+        caps |= RT_CANVAS3D_BACKEND_CAP_CLUSTERED_LIGHTING;
+    caps |= RT_CANVAS3D_BACKEND_CAP_OCCLUSION | RT_CANVAS3D_BACKEND_CAP_HLOD;
 
     return caps;
 }
@@ -444,6 +447,25 @@ static int64_t canvas3d_capability_from_name(const char *name) {
     if (strcmp(name, "gpu-postfx-overlay") == 0 || strcmp(name, "gpu_postfx_overlay") == 0 ||
         strcmp(name, "gpu_post_fx_overlay") == 0)
         return RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY;
+    if (strcmp(name, "clustered-lighting") == 0 || strcmp(name, "clustered_lighting") == 0 ||
+        strcmp(name, "forward_plus") == 0 || strcmp(name, "forward+") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_CLUSTERED_LIGHTING;
+    if (strcmp(name, "shadow-csm") == 0 || strcmp(name, "shadow_csm") == 0 ||
+        strcmp(name, "cascaded-shadows") == 0 || strcmp(name, "cascaded_shadows") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_SHADOW_CSM;
+    if (strcmp(name, "occlusion") == 0 || strcmp(name, "occlusion-culling") == 0 ||
+        strcmp(name, "occlusion_culling") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_OCCLUSION;
+    if (strcmp(name, "hlod") == 0 || strcmp(name, "impostor") == 0 ||
+        strcmp(name, "impostors") == 0 || strcmp(name, "auto-lod") == 0 ||
+        strcmp(name, "auto_lod") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_HLOD;
+    if (strcmp(name, "bc7") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_BC7;
+    if (strcmp(name, "astc") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_ASTC;
+    if (strcmp(name, "etc2") == 0)
+        return RT_CANVAS3D_BACKEND_CAP_ETC2;
     return 0;
 }
 
@@ -457,6 +479,18 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability) {
     if (!flag)
         return 0;
     return (rt_canvas3d_get_backend_capabilities(obj) & flag) ? 1 : 0;
+}
+
+/// @brief Number of main 3D draw submissions queued by the latest ended frame.
+int64_t rt_canvas3d_get_draw_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_draw_count : 0;
+}
+
+/// @brief Number of latest Scene3D draw submissions skipped by visibility culling.
+int64_t rt_canvas3d_get_occluded_draw_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_occluded_draw_count : 0;
 }
 
 /// @brief Capture the current canvas contents into a freshly allocated Pixels object.

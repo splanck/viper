@@ -52,13 +52,14 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
-typedef struct {
+typedef struct rt_navagent3d {
     void *vptr;
     void *navmesh;
     void *bound_character;
     void *bound_node;
     double radius;
     double height;
+    double avoidance_radius;
     double position[3];
     double velocity[3];
     double desired_velocity[3];
@@ -74,11 +75,36 @@ typedef struct {
     int8_t has_target;
     int8_t has_path;
     int8_t auto_repath;
+    int8_t avoidance_enabled;
+    struct rt_navagent3d *registry_next;
 } rt_navagent3d;
+
+static rt_navagent3d *g_navagent3d_registry = NULL;
 
 /// @brief Validate @p obj as a NavAgent3D handle and return its typed pointer (NULL on mismatch).
 static rt_navagent3d *navagent3d_checked(void *obj) {
     return (rt_navagent3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVAGENT3D_CLASS_ID);
+}
+
+static void navagent_register(rt_navagent3d *agent) {
+    if (!agent)
+        return;
+    agent->registry_next = g_navagent3d_registry;
+    g_navagent3d_registry = agent;
+}
+
+static void navagent_unregister(rt_navagent3d *agent) {
+    rt_navagent3d **link = &g_navagent3d_registry;
+    if (!agent)
+        return;
+    while (*link) {
+        if (*link == agent) {
+            *link = agent->registry_next;
+            agent->registry_next = NULL;
+            return;
+        }
+        link = &(*link)->registry_next;
+    }
 }
 
 /// @brief Squared length of a 3-vector; avoids a sqrt when only ordering/thresholding matters.
@@ -89,6 +115,10 @@ static double navagent_len_sq(const double v[3]) {
 /// @brief Euclidean length of a 3-vector (`sqrt` of the squared length).
 static double navagent_len(const double v[3]) {
     return sqrt(navagent_len_sq(v));
+}
+
+static double navagent_clamp_nonnegative(double value) {
+    return (isfinite(value) && value >= 0.0) ? value : 0.0;
 }
 
 /// @brief Squared Euclidean distance between two points — cheaper when only compared to another
@@ -175,6 +205,121 @@ static void navagent_zero_motion(rt_navagent3d *agent) {
         return;
     navagent_vec_set(agent->velocity, 0.0, 0.0, 0.0);
     navagent_vec_set(agent->desired_velocity, 0.0, 0.0, 0.0);
+}
+
+static double navagent_effective_avoidance_radius(const rt_navagent3d *agent) {
+    if (!agent || !isfinite(agent->avoidance_radius) || agent->avoidance_radius <= 0.0)
+        return 0.0;
+    return agent->avoidance_radius;
+}
+
+static void navagent_apply_local_avoidance(rt_navagent3d *agent, double dt) {
+    double agent_radius;
+    double max_speed;
+    double lookahead;
+    double adjust_x = 0.0;
+    double adjust_z = 0.0;
+    if (!agent || !agent->avoidance_enabled)
+        return;
+    agent_radius = navagent_effective_avoidance_radius(agent);
+    max_speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
+                    ? agent->desired_speed
+                    : 0.0;
+    if (agent_radius <= 0.0 || max_speed <= 0.0)
+        return;
+
+    lookahead = (isfinite(dt) && dt > 0.0) ? dt * 4.0 : 0.5;
+    if (lookahead < 0.25)
+        lookahead = 0.25;
+    if (lookahead > 1.0)
+        lookahead = 1.0;
+
+    for (rt_navagent3d *other = g_navagent3d_registry; other; other = other->registry_next) {
+        double other_radius;
+        double combined;
+        double dx;
+        double dz;
+        double dist_sq;
+        double dist;
+        double nx;
+        double nz;
+        double influence = 0.0;
+        if (other == agent || !other->avoidance_enabled || other->navmesh != agent->navmesh)
+            continue;
+        other_radius = navagent_effective_avoidance_radius(other);
+        combined = agent_radius + other_radius;
+        if (combined <= 0.0)
+            continue;
+
+        dx = agent->position[0] - other->position[0];
+        dz = agent->position[2] - other->position[2];
+        dist_sq = dx * dx + dz * dz;
+        if (dist_sq <= 1e-10) {
+            if (fabs(agent->desired_velocity[0]) > fabs(agent->desired_velocity[2])) {
+                dx = -agent->desired_velocity[0];
+                dz = 0.0;
+            } else {
+                dx = 0.0;
+                dz = -agent->desired_velocity[2];
+            }
+            if (fabs(dx) + fabs(dz) <= 1e-10)
+                dx = 1.0;
+            dist_sq = dx * dx + dz * dz;
+        }
+        dist = sqrt(dist_sq);
+        nx = dx / dist;
+        nz = dz / dist;
+
+        if (dist < combined) {
+            influence = ((combined - dist) / combined) + 0.5;
+        } else {
+            double rel_px = other->position[0] - agent->position[0];
+            double rel_pz = other->position[2] - agent->position[2];
+            double rel_vx = agent->desired_velocity[0] - other->desired_velocity[0];
+            double rel_vz = agent->desired_velocity[2] - other->desired_velocity[2];
+            double rel_v_sq = rel_vx * rel_vx + rel_vz * rel_vz;
+            double closing = rel_px * rel_vx + rel_pz * rel_vz;
+            if (closing > 0.0 && rel_v_sq > 1e-10) {
+                double t = closing / rel_v_sq;
+                if (t > 0.0 && t <= lookahead) {
+                    double closest_x = rel_px - rel_vx * t;
+                    double closest_z = rel_pz - rel_vz * t;
+                    double closest_sq = closest_x * closest_x + closest_z * closest_z;
+                    if (closest_sq < combined * combined) {
+                        double closest_dist = sqrt(closest_sq);
+                        double predictive =
+                            ((combined - closest_dist) / combined) * (1.0 - (t / lookahead));
+                        if (closest_sq > 1e-10) {
+                            double inv = 1.0 / sqrt(closest_sq);
+                            nx = -closest_x * inv;
+                            nz = -closest_z * inv;
+                        }
+                        influence = predictive * 0.75;
+                    }
+                }
+            }
+        }
+
+        if (influence > 0.0) {
+            adjust_x += nx * influence;
+            adjust_z += nz * influence;
+        }
+    }
+
+    if (fabs(adjust_x) + fabs(adjust_z) <= 1e-10)
+        return;
+    agent->desired_velocity[0] += adjust_x * max_speed;
+    agent->desired_velocity[2] += adjust_z * max_speed;
+    {
+        double speed_sq = navagent_len_sq(agent->desired_velocity);
+        double max_speed_sq = max_speed * max_speed;
+        if (speed_sq > max_speed_sq && speed_sq > 1e-10) {
+            double scale = max_speed / sqrt(speed_sq);
+            agent->desired_velocity[0] *= scale;
+            agent->desired_velocity[1] *= scale;
+            agent->desired_velocity[2] *= scale;
+        }
+    }
 }
 
 /// @brief Derive "close enough to this corner" distance from the agent's radius. Half
@@ -413,6 +558,7 @@ static void navagent_finalize(void *obj) {
     rt_navagent3d *agent = (rt_navagent3d *)obj;
     if (!agent)
         return;
+    navagent_unregister(agent);
     free(agent->path_points_xyz);
     agent->path_points_xyz = NULL;
     navagent_release_ref(&agent->navmesh);
@@ -435,6 +581,7 @@ void *rt_navagent3d_new(void *navmesh, double radius, double height) {
     agent->vptr = NULL;
     agent->radius = (isfinite(radius) && radius > 0.0) ? radius : 0.4;
     agent->height = (isfinite(height) && height > 0.0) ? height : 1.8;
+    agent->avoidance_radius = agent->radius;
     agent->stopping_distance = agent->radius > 0.0 ? agent->radius : 0.25;
     agent->desired_speed = 4.0;
     agent->repath_interval = 0.25;
@@ -447,6 +594,7 @@ void *rt_navagent3d_new(void *navmesh, double radius, double height) {
     if (agent->navmesh)
         navagent_sample_point(agent, agent->position, agent->position);
     rt_obj_set_finalizer(agent, navagent_finalize);
+    navagent_register(agent);
     return agent;
 }
 
@@ -537,6 +685,8 @@ void rt_navagent3d_update(void *obj, double dt) {
         agent->desired_velocity[1] = delta[1] / dist * speed;
         agent->desired_velocity[2] = delta[2] / dist * speed;
     }
+
+    navagent_apply_local_avoidance(agent, dt);
 
     if (agent->bound_character) {
         void *move_vec = rt_vec3_new(
@@ -671,6 +821,34 @@ void rt_navagent3d_set_auto_repath(void *obj, int8_t enabled) {
     if (!agent)
         return;
     agent->auto_repath = enabled ? 1 : 0;
+}
+
+/// @brief Returns 1 when same-NavMesh local separation steering is enabled.
+int8_t rt_navagent3d_get_avoidance_enabled(void *obj) {
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    return agent ? agent->avoidance_enabled : 0;
+}
+
+/// @brief Toggle opt-in same-NavMesh local separation steering.
+void rt_navagent3d_set_avoidance_enabled(void *obj, int8_t enabled) {
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    if (!agent)
+        return;
+    agent->avoidance_enabled = enabled ? 1 : 0;
+}
+
+/// @brief Radius used by local avoidance neighbor separation (defaults to the agent radius).
+double rt_navagent3d_get_avoidance_radius(void *obj) {
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    return agent ? agent->avoidance_radius : 0.0;
+}
+
+/// @brief Set local avoidance radius (clamped to >= 0). A zero radius disables separation force.
+void rt_navagent3d_set_avoidance_radius(void *obj, double radius) {
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    if (!agent)
+        return;
+    agent->avoidance_radius = navagent_clamp_nonnegative(radius);
 }
 
 /// @brief Bind the agent to a CharacterController3D — `_update` will call `_move` on the

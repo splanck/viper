@@ -242,12 +242,12 @@ typedef struct {
     double specular[3];
     double shininess;
     int32_t workflow;             /* 0=legacy/Blinn-Phong surface, 1=PBR metallic-roughness */
-    void *texture;                /* Pixels (diffuse, slot 0) or NULL */
-    void *normal_map;             /* Pixels (normal map, slot 1) or NULL */
-    void *specular_map;           /* Pixels (specular map, slot 2) or NULL */
-    void *emissive_map;           /* Pixels (emissive map, slot 3) or NULL */
-    void *metallic_roughness_map; /* Pixels (glTF metallic/roughness map) or NULL */
-    void *ao_map;                 /* Pixels (ambient occlusion map) or NULL */
+    void *texture;                /* Pixels fallback (diffuse, slot 0) or NULL */
+    void *normal_map;             /* Pixels fallback (normal map, slot 1) or NULL */
+    void *specular_map;           /* Pixels fallback (specular map, slot 2) or NULL */
+    void *emissive_map;           /* Pixels fallback (emissive map, slot 3) or NULL */
+    void *metallic_roughness_map; /* Pixels fallback (glTF metallic/roughness map) or NULL */
+    void *ao_map;                 /* Pixels fallback (ambient occlusion map) or NULL */
     double emissive[3];           /* emissive color multiplier */
     double metallic;              /* [0,1] dielectric->metal */
     double roughness;             /* [0,1] smooth->rough */
@@ -287,7 +287,7 @@ typedef struct {
 //=============================================================================
 
 /// @brief Light3D payload: light kind, direction/position, color/intensity/attenuation,
-///   spot cone cosines, and an enabled flag.
+///   spot cone cosines, an enabled flag, and whether it may claim shadow-map slots.
 typedef struct {
     void *vptr;
     int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot */
@@ -299,13 +299,15 @@ typedef struct {
     double inner_cos; /* spot light inner cone cosine (full brightness inside) */
     double outer_cos; /* spot light outer cone cosine (zero brightness outside) */
     int8_t enabled;
+    int8_t casts_shadows;
 } rt_light3d;
 
 //=============================================================================
 // Canvas3D
 //=============================================================================
 
-#define VGFX3D_MAX_LIGHTS 16
+#define VGFX3D_FORWARD_LIGHT_LIMIT 16
+#define VGFX3D_MAX_LIGHTS 64
 #define VGFX3D_MAX_SHADOW_LIGHTS 2
 #define RT_CANVAS3D_EVENT_QUEUE_CAPACITY 128
 
@@ -597,6 +599,7 @@ typedef struct {
     int32_t shadow_resolution;
     float shadow_bias;
     int32_t shadow_count;
+    int32_t shadow_cascade_count;
     vgfx3d_rendertarget_t *shadow_rts[VGFX3D_MAX_SHADOW_LIGHTS];
     float shadow_light_vps[VGFX3D_MAX_SHADOW_LIGHTS][16];
 
@@ -609,7 +612,11 @@ typedef struct {
     /* Rendering options */
     int8_t wireframe;
     int8_t backface_cull;
+    int8_t frustum_culling;
     int8_t occlusion_culling;
+    int8_t clustered_lighting;
+    int32_t last_draw_count;
+    int32_t last_occluded_draw_count;
 
     /* Timing */
     int64_t frame_serial;

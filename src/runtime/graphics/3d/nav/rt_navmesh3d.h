@@ -31,6 +31,19 @@ extern "C" {
 /// @brief Bake a navigation mesh from a source @p mesh for an agent of the
 ///        given radius/height. @return a navmesh handle, or NULL.
 void *rt_navmesh3d_build(void *mesh, double agent_radius, double agent_height);
+/// @brief Bake a navigation mesh from all Mesh3D nodes in a Scene3D.
+void *rt_navmesh3d_bake(void *scene,
+                        double agent_radius,
+                        double agent_height,
+                        double max_slope,
+                        double cell_size);
+/// @brief Bake a scene navmesh using the tiled API shape. Current baseline bakes the full scene.
+void *rt_navmesh3d_bake_tiled(void *scene,
+                              double tile_size,
+                              double agent_radius,
+                              double agent_height,
+                              double max_slope,
+                              double cell_size);
 /// @brief Find a path between Vec3 @p from and @p to. @return a path handle
 ///        (point list), or NULL if unreachable.
 void *rt_navmesh3d_find_path(void *navmesh, void *from, void *to);
@@ -40,6 +53,20 @@ void *rt_navmesh3d_sample_position(void *navmesh, void *point);
 int8_t rt_navmesh3d_is_walkable(void *navmesh, void *point);
 /// @brief Number of triangles in the baked navmesh.
 int64_t rt_navmesh3d_get_triangle_count(void *navmesh);
+/// @brief Add an authored off-mesh traversal link between two walkable points.
+int8_t rt_navmesh3d_add_offmesh_link(void *navmesh, void *from, void *to, int8_t bidirectional);
+/// @brief Number of authored off-mesh traversal links.
+int64_t rt_navmesh3d_get_offmesh_link_count(void *navmesh);
+/// @brief Add a coarse AABB obstacle that removes overlapping walkable triangles.
+int8_t rt_navmesh3d_add_obstacle(void *navmesh, void *min, void *max);
+/// @brief Remove an authored coarse AABB obstacle by index and refilter.
+int8_t rt_navmesh3d_remove_obstacle(void *navmesh, int64_t index);
+/// @brief Update an authored coarse AABB obstacle by index and refilter.
+int8_t rt_navmesh3d_update_obstacle(void *navmesh, int64_t index, void *min, void *max);
+/// @brief Number of authored coarse AABB obstacles.
+int64_t rt_navmesh3d_get_obstacle_count(void *navmesh);
+/// @brief Rebuild one tile. Current baseline refilters the whole navmesh.
+int8_t rt_navmesh3d_rebuild_tile(void *navmesh, int64_t tile_x, int64_t tile_z);
 /// @brief Set the maximum walkable slope (degrees) used when baking.
 void rt_navmesh3d_set_max_slope(void *navmesh, double degrees);
 /// @brief Draw the navmesh polygons as a debug overlay onto @p canvas.

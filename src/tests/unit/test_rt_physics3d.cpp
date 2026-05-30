@@ -13,11 +13,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
 #include "rt.hpp"
 #include "rt_canvas3d.h"
+#include "rt_canvas3d_internal.h"
 #include "rt_collider3d.h"
 #include "rt_internal.h"
 #include "rt_joints3d.h"
+#include "rt_mat4.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
 #include "rt_quat.h"
@@ -25,6 +31,7 @@
 #include <cassert>
 #include <cmath>
 #include <csetjmp>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -34,6 +41,10 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern int rt_obj_release_check0(void *obj);
+extern void *rt_mesh3d_new(void);
+extern void rt_mesh3d_add_vertex(
+    void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);
+extern void rt_mesh3d_add_triangle(void *obj, int64_t i0, int64_t i1, int64_t i2);
 }
 
 static int tests_passed = 0;
@@ -87,6 +98,20 @@ template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *nee
 
 static int64_t encode_height16(uint16_t value) {
     return ((int64_t)((value >> 8) & 0xFF) << 24) | ((int64_t)(value & 0xFF) << 16) | 0xFF;
+}
+
+static void *make_tetra_mesh(int sign) {
+    void *mesh = rt_mesh3d_new();
+    double s = sign >= 0 ? 1.0 : -1.0;
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, s, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, s, 0.0, 1.0, 0.0, 1.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 2, 1);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 3);
+    rt_mesh3d_add_triangle(mesh, 0, 3, 2);
+    rt_mesh3d_add_triangle(mesh, 1, 2, 3);
+    return mesh;
 }
 
 /*==========================================================================
@@ -521,6 +546,33 @@ static void test_world_body_storage_grows_past_initial_capacity() {
     EXPECT_TRUE(rt_world3d_body_count(w) == 300, "World body storage grows past 256 bodies");
 }
 
+static void test_world_sparse_body_count_step_stress() {
+    void *w = rt_world3d_new(0, 0, 0);
+    for (int i = 0; i < 320; i++) {
+        void *b = rt_body3d_new_sphere(0.25, 0.0);
+        double x = (double)(i % 40) * 3.0;
+        double z = (double)(i / 40) * 3.0;
+        rt_body3d_set_position(b, x, 0.0, z);
+        rt_world3d_add(w, b);
+    }
+
+    void *mover = rt_body3d_new_sphere(0.2, 1.0);
+    rt_body3d_set_can_sleep(mover, 0);
+    rt_body3d_set_position(mover, -10.0, 0.0, -10.0);
+    rt_body3d_set_velocity(mover, 2.0, 0.0, 0.0);
+    rt_world3d_add(w, mover);
+
+    for (int i = 0; i < 16; i++)
+        rt_world3d_step(w, 1.0 / 60.0);
+
+    void *pos = rt_body3d_get_position(mover);
+    EXPECT_TRUE(rt_world3d_body_count(w) == 321,
+                "World step stress keeps every sparse body registered");
+    EXPECT_TRUE(rt_world3d_get_collision_count(w) == 0,
+                "World step stress keeps sparse bodies non-overlapping");
+    EXPECT_TRUE(rt_vec3_x(pos) > -9.5, "World step stress integrates the dynamic body");
+}
+
 static void test_world_contact_storage_grows_past_initial_capacity() {
     void *w = rt_world3d_new(0, 0, 0);
     void *volume = rt_body3d_new_aabb(1000.0, 1000.0, 1000.0, 0.0);
@@ -591,6 +643,40 @@ static void test_impulse_application() {
     void *vel = rt_body3d_get_velocity(b);
     /* impulse changes velocity by impulse * inv_mass = 10 * 0.5 = 5 */
     EXPECT_NEAR(rt_vec3_x(vel), 5.0, 0.01, "Impulse: velocity X = impulse/mass = 5");
+}
+
+static void test_impulse_at_point_adds_spin() {
+    void *b = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    rt_body3d_set_position(b, 0.0, 0.0, 0.0);
+    /* +X impulse applied at a point offset +Z from the center: linear +X plus a
+     * torque about Y (r x impulse) — an off-center hit spins the body. */
+    rt_body3d_apply_impulse_at_point(b, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5);
+    void *vel = rt_body3d_get_velocity(b);
+    void *ang = rt_body3d_get_angular_velocity(b);
+    EXPECT_NEAR(rt_vec3_x(vel), 1.0, 0.05, "Off-center impulse still adds linear velocity");
+    EXPECT_TRUE(fabs(rt_vec3_y(ang)) > 0.2, "Off-center impulse adds angular velocity (spin)");
+    /* A central impulse adds no spin, by contrast. */
+    void *b2 = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    rt_body3d_apply_impulse_at_point(b2, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    void *ang2 = rt_body3d_get_angular_velocity(b2);
+    EXPECT_NEAR(rt_vec3_y(ang2), 0.0, 0.001, "Central impulse adds no spin");
+}
+
+static void test_force_at_point_adds_spin() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    rt_body3d_set_position(box, 0.0, 0.0, 0.0);
+    rt_world3d_add(w, box);
+    /* Force is cleared each step, so re-apply before each. +X force at a +Z point
+     * builds linear +X velocity plus a spin about Y. */
+    for (int i = 0; i < 5; i++) {
+        rt_body3d_apply_force_at_point(box, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5);
+        rt_world3d_step(w, 1.0 / 60.0);
+    }
+    void *vel = rt_body3d_get_velocity(box);
+    void *ang = rt_body3d_get_angular_velocity(box);
+    EXPECT_TRUE(rt_vec3_x(vel) > 0.01, "Off-center force builds linear velocity");
+    EXPECT_TRUE(fabs(rt_vec3_y(ang)) > 0.01, "Off-center force builds angular velocity (spin)");
 }
 
 /*==========================================================================
@@ -675,6 +761,67 @@ static void test_ground_detection() {
         rt_world3d_step(w, 0.016);
 
     EXPECT_TRUE(rt_body3d_is_grounded(box) != 0, "Box on floor is grounded");
+}
+
+/* Drop a stack of unit boxes onto a static floor and settle it for 600 fixed
+ * steps. Writes each box's final center Y into out_y[] and its position drift
+ * over the last 20 steps into out_drift[]. Exercises the warm-started
+ * sequential-impulse solver's resting stability (AC-008). */
+static void run_box_stack(int count, double *out_y, double *out_drift) {
+    void *w = rt_world3d_new(0.0, -9.8, 0.0);
+    /* Stacking is the canonical hard case for sequential-impulse solvers:
+     * support must propagate up the stack, one contact per Gauss-Seidel sweep.
+     * Games tune SolverIterations for stacks; use a realistic stacking budget. */
+    rt_world3d_set_solver_iterations(w, 20);
+    void *floor = rt_body3d_new_aabb(20.0, 0.5, 20.0, 0.0);
+    rt_body3d_set_position(floor, 0.0, -0.5, 0.0); /* top surface at y=0 */
+    rt_world3d_add(w, floor);
+
+    void *boxes[16];
+    for (int i = 0; i < count; ++i) {
+        boxes[i] = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0); /* unit cube, mass 1 */
+        /* Spawn the stack in resting contact (box i bottom on box i-1 top). */
+        rt_body3d_set_position(boxes[i], 0.0, 0.5 + (double)i, 0.0);
+        rt_world3d_add(w, boxes[i]);
+    }
+
+    double mid_y[16];
+    for (int step = 0; step < 600; ++step) {
+        rt_world3d_step(w, 1.0 / 60.0);
+        if (step == 579) {
+            for (int i = 0; i < count; ++i)
+                mid_y[i] = rt_vec3_y(rt_body3d_get_position(boxes[i]));
+        }
+    }
+    for (int i = 0; i < count; ++i) {
+        out_y[i] = rt_vec3_y(rt_body3d_get_position(boxes[i]));
+        out_drift[i] = fabs(out_y[i] - mid_y[i]);
+    }
+}
+
+static void test_box_stack_rests_stably() {
+    const int count = 5;
+    double y1[5];
+    double drift1[5];
+    double y2[5];
+    double drift2[5];
+    run_box_stack(count, y1, drift1);
+    run_box_stack(count, y2, drift2); /* identical second run for determinism */
+
+    for (int i = 0; i < count; ++i) {
+        double expected = 0.5 + (double)i; /* touching rest heights: 0.5, 1.5, ... */
+        /* Rests near the ideal touching height — not fallen through, not
+         * exploded. The tolerance absorbs the small per-contact penetration slop
+         * accumulating down the loaded stack. */
+        EXPECT_NEAR(y1[i], expected, 0.15, "Box stack: box rests near its touching height");
+        /* Settled: negligible drift over the final 20 steps (no sink / no jitter). */
+        EXPECT_TRUE(drift1[i] < 0.01, "Box stack: box has settled to rest (no drift)");
+        /* Determinism: an identical run reproduces the resting state exactly. */
+        EXPECT_NEAR(y1[i], y2[i], 1e-9, "Box stack: resting state is deterministic");
+    }
+    /* Stack stays ordered and separated (no box sinks through its neighbour). */
+    for (int i = 1; i < count; ++i)
+        EXPECT_TRUE(y1[i] > y1[i - 1] + 0.85, "Box stack: boxes stay separated and ordered");
 }
 
 /*==========================================================================
@@ -931,6 +1078,69 @@ static void test_convex_hull_collider_blocks_sphere() {
                 "convex hull: collision detected against sphere");
 }
 
+static void test_convex_hull_gjk_detects_contained_sphere() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *mesh = make_tetra_mesh(1);
+    void *collider = rt_collider3d_new_convex_hull(mesh);
+    void *hull_body = rt_body3d_new(0.0);
+    void *sphere = rt_body3d_new_sphere(0.05, 1.0);
+    rt_body3d_set_collider(hull_body, collider);
+    rt_body3d_set_position(hull_body, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(sphere, 0.25, 0.25, 0.25);
+    rt_world3d_add(world, hull_body);
+    rt_world3d_add(world, sphere);
+
+    rt_world3d_step(world, 0.016);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "convex hull GJK detects a simple collider fully contained by the hull");
+}
+
+static void test_convex_hull_gjk_rejects_aabb_false_positive() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *mesh_a = make_tetra_mesh(1);
+    void *mesh_b = make_tetra_mesh(-1);
+    void *collider_a = rt_collider3d_new_convex_hull(mesh_a);
+    void *collider_b = rt_collider3d_new_convex_hull(mesh_b);
+    void *body_a = rt_body3d_new(0.0);
+    void *body_b = rt_body3d_new(1.0);
+    rt_body3d_set_collider(body_a, collider_a);
+    rt_body3d_set_collider(body_b, collider_b);
+    rt_body3d_set_position(body_a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(body_b, 0.8, 0.8, 0.8);
+    rt_world3d_add(world, body_a);
+    rt_world3d_add(world, body_b);
+
+    rt_world3d_step(world, 0.016);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 0,
+                "convex hull GJK rejects separated hulls with overlapping AABBs");
+}
+
+static void test_convex_hull_gjk_detects_overlapping_hulls() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *mesh_a = make_tetra_mesh(1);
+    void *mesh_b = make_tetra_mesh(-1);
+    void *collider_a = rt_collider3d_new_convex_hull(mesh_a);
+    void *collider_b = rt_collider3d_new_convex_hull(mesh_b);
+    void *body_a = rt_body3d_new(0.0);
+    void *body_b = rt_body3d_new(1.0);
+    rt_body3d_set_collider(body_a, collider_a);
+    rt_body3d_set_collider(body_b, collider_b);
+    rt_body3d_set_position(body_a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(body_b, 0.4, 0.4, 0.4);
+    rt_world3d_add(world, body_a);
+    rt_world3d_add(world, body_b);
+
+    rt_world3d_step(world, 0.016);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "convex hull GJK/EPA detects overlapping hulls");
+    if (rt_world3d_get_collision_count(world) > 0) {
+        void *normal = rt_world3d_get_collision_normal(world, 0);
+        EXPECT_TRUE(normal != nullptr, "convex hull GJK/EPA reports a contact normal");
+        EXPECT_TRUE(rt_world3d_get_collision_depth(world, 0) >= 0.0,
+                    "convex hull GJK/EPA reports finite penetration depth");
+    }
+}
+
 static void test_mesh_collider_blocks_falling_sphere() {
     void *world = rt_world3d_new(0, -9.81, 0);
     void *mesh = rt_mesh3d_new_box(8.0, 1.0, 8.0);
@@ -947,6 +1157,50 @@ static void test_mesh_collider_blocks_falling_sphere() {
     {
         void *pos = rt_body3d_get_position(sphere);
         EXPECT_TRUE(rt_vec3_y(pos) > -0.2, "mesh collider: sphere stays above floor");
+    }
+}
+
+static void test_mesh_collider_narrowphase_builds_bvh_for_sphere_and_box() {
+    {
+        void *world = rt_world3d_new(0, 0, 0);
+        void *mesh = rt_mesh3d_new_box(8.0, 1.0, 8.0);
+        rt_mesh3d *mesh_impl = (rt_mesh3d *)mesh;
+        void *collider = rt_collider3d_new_mesh(mesh);
+        void *floor_body = rt_body3d_new(0.0);
+        void *sphere = rt_body3d_new_sphere(0.75, 1.0);
+        rt_body3d_set_collider(floor_body, collider);
+        rt_body3d_set_position(floor_body, 0.0, -0.5, 0.0);
+        rt_body3d_set_position(sphere, 0.0, 0.25, 0.0);
+        rt_world3d_add(world, floor_body);
+        rt_world3d_add(world, sphere);
+        rt_world3d_step(world, 0.016);
+        EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
+                    "mesh narrow phase: sphere overlap reports contact");
+        EXPECT_TRUE(mesh_impl->physics_bvh_node_count > 0,
+                    "mesh narrow phase: sphere path builds physics BVH");
+        EXPECT_TRUE(mesh_impl->physics_bvh_revision == mesh_impl->geometry_revision,
+                    "mesh narrow phase: sphere path marks BVH revision current");
+    }
+
+    {
+        void *world = rt_world3d_new(0, 0, 0);
+        void *mesh = rt_mesh3d_new_box(8.0, 1.0, 8.0);
+        rt_mesh3d *mesh_impl = (rt_mesh3d *)mesh;
+        void *collider = rt_collider3d_new_mesh(mesh);
+        void *floor_body = rt_body3d_new(0.0);
+        void *box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+        rt_body3d_set_collider(floor_body, collider);
+        rt_body3d_set_position(floor_body, 0.0, -0.5, 0.0);
+        rt_body3d_set_position(box, 0.0, 0.25, 0.0);
+        rt_world3d_add(world, floor_body);
+        rt_world3d_add(world, box);
+        rt_world3d_step(world, 0.016);
+        EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
+                    "mesh narrow phase: box overlap reports contact");
+        EXPECT_TRUE(mesh_impl->physics_bvh_node_count > 0,
+                    "mesh narrow phase: box path builds physics BVH");
+        EXPECT_TRUE(mesh_impl->physics_bvh_revision == mesh_impl->geometry_revision,
+                    "mesh narrow phase: box path marks BVH revision current");
     }
 }
 
@@ -1349,15 +1603,17 @@ static void test_collision_event_surface_and_trigger_flag() {
         EXPECT_TRUE(event != nullptr, "collision event: event object returned");
         EXPECT_TRUE(rt_collision_event3d_get_is_trigger(event) != 0,
                     "collision event: trigger flag propagated");
-        EXPECT_TRUE(rt_collision_event3d_get_contact_count(event) == 1,
-                    "collision event: one contact point");
+        EXPECT_TRUE(rt_collision_event3d_get_contact_count(event) > 1,
+                    "collision event: AABB pair exposes manifold points");
         EXPECT_NEAR(rt_collision_event3d_get_normal_impulse(event),
                     0.0,
                     1e-9,
                     "collision event: trigger has zero impulse");
         {
             void *contact = rt_collision_event3d_get_contact(event, 0);
+            void *contact1 = rt_collision_event3d_get_contact(event, 1);
             EXPECT_TRUE(contact != nullptr, "collision event: contact object returned");
+            EXPECT_TRUE(contact1 != nullptr, "collision event: second manifold contact returned");
             EXPECT_TRUE(rt_contact_point3d_get_point(contact) != nullptr,
                         "collision event: contact point object returned");
             EXPECT_TRUE(rt_collision_event3d_get_contact_separation(event, 0) < 0.0,
@@ -1516,6 +1772,23 @@ static void test_joints_retain_bodies_and_sanitize_parameters() {
         rt_spring_joint3d_get_stiffness(spring), 1.0e9, 1.0, "SpringJoint3D clamps huge stiffness");
     EXPECT_NEAR(
         rt_spring_joint3d_get_damping(spring), 1.0e9, 1.0, "SpringJoint3D clamps huge damping");
+
+    void *e = rt_body3d_new_sphere(1.0, 1.0);
+    void *f = rt_body3d_new_sphere(1.0, 1.0);
+    void *rope = rt_rope_joint3d_new(e, f, INFINITY);
+    int e_reached_zero = rt_obj_release_check0(e);
+    int f_reached_zero = rt_obj_release_check0(f);
+    EXPECT_TRUE(e_reached_zero == 0, "RopeJoint3D retains body A");
+    EXPECT_TRUE(f_reached_zero == 0, "RopeJoint3D retains body B");
+    EXPECT_NEAR(rt_rope_joint3d_get_max_length(rope),
+                0.0,
+                0.01,
+                "RopeJoint3D converts infinite max length to zero");
+    rt_rope_joint3d_set_max_length(rope, 1.0e100);
+    EXPECT_NEAR(rt_rope_joint3d_get_max_length(rope),
+                1.0e9,
+                1.0,
+                "RopeJoint3D clamps huge max length");
 }
 
 static void test_distance_joint_constraint() {
@@ -1568,6 +1841,299 @@ static void test_spring_joint_force() {
     EXPECT_TRUE(rt_vec3_x(pos_b) < 10.0, "SpringJoint: body B pulled toward A by spring");
 }
 
+static void test_hinge_joint_motor_drives_rotation() {
+    void *world = rt_world3d_new(0, 0, 0); /* no gravity */
+    void *base = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);  /* static anchor */
+    void *wheel = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0); /* dynamic */
+    rt_body3d_set_position(base, 0, 0, 0);
+    rt_body3d_set_position(wheel, 0, 0, 0);
+    /* Keep them off each other's collision masks so only the hinge acts. */
+    rt_body3d_set_collision_layer(base, 1);
+    rt_body3d_set_collision_mask(base, 1);
+    rt_body3d_set_collision_layer(wheel, 2);
+    rt_body3d_set_collision_mask(wheel, 2);
+    rt_world3d_add(world, base);
+    rt_world3d_add(world, wheel);
+
+    void *hinge = rt_hinge_joint3d_new(base, wheel, rt_vec3_new(0, 0, 0), rt_vec3_new(0, 1, 0));
+    rt_hinge_joint3d_set_motor(hinge, 1, 2.0, 10.0); /* drive +Y at 2 rad/s */
+    rt_world3d_add_joint(world, hinge, RT_JOINT_HINGE);
+
+    for (int i = 0; i < 10; i++)
+        rt_world3d_step(world, 1.0 / 60.0);
+    void *av = rt_body3d_get_angular_velocity(wheel);
+    EXPECT_NEAR(rt_vec3_y(av), 2.0, 0.1, "Hinge motor drives the wheel to target angular velocity");
+
+    /* Re-target the motor to zero — it should brake the wheel to a stop. */
+    rt_hinge_joint3d_set_motor(hinge, 1, 0.0, 10.0);
+    for (int i = 0; i < 10; i++)
+        rt_world3d_step(world, 1.0 / 60.0);
+    av = rt_body3d_get_angular_velocity(wheel);
+    EXPECT_NEAR(rt_vec3_y(av), 0.0, 0.1, "Hinge motor brakes the wheel toward zero");
+}
+
+static void test_hinge_joint_get_angle() {
+    void *base = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *arm = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    void *hinge = rt_hinge_joint3d_new(base, arm, rt_vec3_new(0, 0, 0), rt_vec3_new(0, 1, 0));
+    EXPECT_NEAR(rt_hinge_joint3d_get_angle(hinge), 0.0, 0.01, "Fresh hinge reads a zero angle");
+    /* Rotate the arm 0.5 rad about the hinge axis; the measured angle follows. */
+    rt_body3d_set_orientation(arm, rt_quat_from_axis_angle(rt_vec3_new(0, 1, 0), 0.5));
+    EXPECT_NEAR(fabs(rt_hinge_joint3d_get_angle(hinge)), 0.5, 0.02,
+                "Hinge angle tracks rotation about the axis");
+}
+
+static void test_hinge_joint_angle_limit() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *base = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *arm = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    rt_body3d_set_position(base, 0, 0, 0);
+    rt_body3d_set_position(arm, 0, 0, 0);
+    rt_body3d_set_collision_layer(base, 1);
+    rt_body3d_set_collision_mask(base, 1);
+    rt_body3d_set_collision_layer(arm, 2);
+    rt_body3d_set_collision_mask(arm, 2);
+    rt_world3d_add(world, base);
+    rt_world3d_add(world, arm);
+
+    void *hinge = rt_hinge_joint3d_new(base, arm, rt_vec3_new(0, 0, 0), rt_vec3_new(0, 1, 0));
+    rt_hinge_joint3d_set_motor(hinge, 1, 2.0, 10.0); /* drive toward +angle */
+    rt_hinge_joint3d_set_limits(hinge, -0.5, 0.5);   /* but stop at 0.5 rad */
+    rt_world3d_add_joint(world, hinge, RT_JOINT_HINGE);
+
+    for (int i = 0; i < 120; i++)
+        rt_world3d_step(world, 1.0 / 60.0);
+
+    double angle = rt_hinge_joint3d_get_angle(hinge);
+    /* The motor would spin freely, but the upper limit stops it near +0.5 rad. */
+    EXPECT_TRUE(angle <= 0.55, "Hinge angle limit stops rotation at the upper bound");
+    EXPECT_TRUE(angle >= 0.45, "Hinge reaches the upper limit");
+    void *av = rt_body3d_get_angular_velocity(arm);
+    EXPECT_TRUE(fabs(rt_vec3_y(av)) < 0.2, "Hinge is held still at the limit");
+}
+
+static void test_hinge_joint_anchor_constraint() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.25, 0.0);
+    void *b = rt_body3d_new_sphere(0.25, 1.0);
+    void *anchor = rt_vec3_new(0.0, 0.0, 0.0);
+    void *axis = rt_vec3_new(0.0, 1.0, 0.0);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 2.0, 0.0, 0.0);
+    rt_body3d_set_velocity(b, 0.0, 10.0, 0.0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_add_joint(world, rt_hinge_joint3d_new(a, b, anchor, axis), RT_JOINT_HINGE);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    void *pos_b = rt_body3d_get_position(b);
+    EXPECT_NEAR(rt_vec3_x(pos_b), 2.0, 0.05, "HingeJoint3D keeps authored anchor length");
+    EXPECT_NEAR(rt_vec3_y(pos_b), 0.0, 0.05, "HingeJoint3D corrects anchor drift");
+}
+
+static void test_rope_joint_max_length_constraint() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.25, 0.0);
+    void *b = rt_body3d_new_sphere(0.25, 1.0);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 5.0, 0.0, 0.0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_add_joint(world, rt_rope_joint3d_new(a, b, 2.0), RT_JOINT_ROPE);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    void *pos_b = rt_body3d_get_position(b);
+    EXPECT_NEAR(rt_vec3_x(pos_b), 2.0, 0.05, "RopeJoint3D enforces MaxLength");
+
+    void *world2 = rt_world3d_new(0, 0, 0);
+    void *c = rt_body3d_new_sphere(0.25, 0.0);
+    void *d = rt_body3d_new_sphere(0.25, 1.0);
+    rt_body3d_set_position(c, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(d, 1.0, 0.0, 0.0);
+    rt_world3d_add(world2, c);
+    rt_world3d_add(world2, d);
+    rt_world3d_add_joint(world2, rt_rope_joint3d_new(c, d, 2.0), RT_JOINT_ROPE);
+    rt_world3d_step(world2, 1.0 / 60.0);
+
+    void *pos_d = rt_body3d_get_position(d);
+    EXPECT_NEAR(rt_vec3_x(pos_d), 1.0, 0.05, "RopeJoint3D does not pull inside MaxLength");
+}
+
+static void test_sixdof_joint_linear_motor() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *base = rt_body3d_new_sphere(0.25, 0.0);   /* static anchor */
+    void *slider = rt_body3d_new_sphere(0.25, 1.0); /* dynamic */
+    /* Off each other's collision masks so only the joint acts. */
+    rt_body3d_set_collision_layer(base, 1);
+    rt_body3d_set_collision_mask(base, 1);
+    rt_body3d_set_collision_layer(slider, 2);
+    rt_body3d_set_collision_mask(slider, 2);
+    void *joint = rt_sixdof_joint3d_new(base, slider, rt_mat4_identity(), rt_mat4_identity());
+    /* X free (slider rail), Y/Z locked. */
+    rt_sixdof_joint3d_set_linear_limits(
+        joint, rt_vec3_new(-10.0, 0.0, 0.0), rt_vec3_new(10.0, 0.0, 0.0));
+    rt_sixdof_joint3d_set_linear_motor(joint, 1, rt_vec3_new(2.0, 0.0, 0.0), 10.0);
+    rt_body3d_set_position(base, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(slider, 0.0, 0.0, 0.0);
+    rt_world3d_add(world, base);
+    rt_world3d_add(world, slider);
+    rt_world3d_add_joint(world, joint, RT_JOINT_SIXDOF);
+
+    for (int i = 0; i < 5; i++)
+        rt_world3d_step(world, 1.0 / 60.0);
+
+    void *vel = rt_body3d_get_velocity(slider);
+    EXPECT_NEAR(rt_vec3_x(vel), 2.0, 0.1, "SixDof linear motor drives the slider along the free axis");
+    EXPECT_TRUE(fabs(rt_vec3_y(vel)) < 0.1, "SixDof keeps the locked axis still");
+}
+
+static void test_sixdof_joint_frame_anchor_constraint() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.25, 0.0);
+    void *b = rt_body3d_new_sphere(0.25, 1.0);
+    void *frame_a = rt_mat4_identity();
+    void *frame_b = rt_mat4_identity();
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 3.0, 0.0, 0.0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_add_joint(world, rt_sixdof_joint3d_new(a, b, frame_a, frame_b), RT_JOINT_SIXDOF);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    void *pos_b = rt_body3d_get_position(b);
+    EXPECT_NEAR(rt_vec3_x(pos_b), 0.0, 0.05, "SixDofJoint3D locks frame anchors");
+}
+
+static void test_sixdof_joint_limits() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.25, 0.0);
+    void *b = rt_body3d_new_sphere(0.25, 1.0);
+    void *joint = rt_sixdof_joint3d_new(a, b, rt_mat4_identity(), rt_mat4_identity());
+    rt_sixdof_joint3d_set_linear_limits(
+        joint, rt_vec3_new(-1.0, 0.0, 0.0), rt_vec3_new(1.0, 0.0, 0.0));
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 3.0, 0.0, 0.0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_add_joint(world, joint, RT_JOINT_SIXDOF);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    void *pos_b = rt_body3d_get_position(b);
+    EXPECT_NEAR(rt_vec3_x(pos_b), 1.0, 0.05, "SixDofJoint3D SetLinearLimits clamps separation");
+
+    void *world2 = rt_world3d_new(0, 0, 0);
+    void *c = rt_body3d_new_sphere(0.25, 0.0);
+    void *d = rt_body3d_new_sphere(0.25, 1.0);
+    void *angular_joint = rt_sixdof_joint3d_new(c, d, rt_mat4_identity(), rt_mat4_identity());
+    rt_sixdof_joint3d_set_linear_limits(
+        angular_joint, rt_vec3_new(-10.0, -10.0, -10.0), rt_vec3_new(10.0, 10.0, 10.0));
+    rt_sixdof_joint3d_set_angular_limits(
+        angular_joint, rt_vec3_new(-1.0, -1.0, -1.0), rt_vec3_new(1.0, 1.0, 1.0));
+    rt_body3d_set_position(c, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(d, 3.0, 0.0, 0.0);
+    rt_body3d_set_angular_velocity(d, 5.0, 0.0, 0.0);
+    rt_world3d_add(world2, c);
+    rt_world3d_add(world2, d);
+    rt_world3d_add_joint(world2, angular_joint, RT_JOINT_SIXDOF);
+    rt_world3d_step(world2, 1.0 / 60.0);
+
+    void *ang_d = rt_body3d_get_angular_velocity(d);
+    EXPECT_TRUE(fabs(rt_vec3_x(ang_d)) <= 1.05,
+                "SixDofJoint3D SetAngularLimits clamps relative angular velocity");
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [&]() { rt_sixdof_joint3d_set_linear_limits(angular_joint, nullptr, nullptr); },
+                    "min and max must be finite Vec3 values"),
+                "SixDofJoint3D.SetLinearLimits rejects invalid Vec3 handles");
+}
+
+static void test_joint_type_validation_for_new_joint_classes() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.25, 1.0);
+    void *b = rt_body3d_new_sphere(0.25, 1.0);
+    void *anchor = rt_vec3_new(0.0, 0.0, 0.0);
+    void *axis = rt_vec3_new(0.0, 1.0, 0.0);
+    void *hinge = rt_hinge_joint3d_new(a, b, anchor, axis);
+    EXPECT_TRUE(expect_trap_contains(
+                    [&]() { rt_world3d_add_joint(world, hinge, RT_JOINT_ROPE); },
+                    "joint object does not match joint type"),
+                "World.AddJoint rejects mismatched new joint type tags");
+    EXPECT_TRUE(expect_trap_contains(
+                    [&]() {
+                        rt_hinge_joint3d_new(a, b, anchor, rt_vec3_new(0.0, 0.0, 0.0));
+                    },
+                    "axis must be a non-zero finite Vec3"),
+                "HingeJoint3D rejects zero axes");
+}
+
+static double spring_velocity_after_solver_iterations(int64_t iterations) {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_sphere(0.5, 1.0);
+    void *b = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(a, 0, 0, 0);
+    rt_body3d_set_position(b, 10, 0, 0);
+    rt_world3d_set_solver_iterations(world, iterations);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_add_joint(world, rt_spring_joint3d_new(a, b, 3.0, 10.0, 0.0), RT_JOINT_SPRING);
+    rt_world3d_step(world, 1.0 / 60.0);
+    void *velocity = rt_body3d_get_velocity(b);
+    return fabs(rt_vec3_x(velocity));
+}
+
+/* Top-box height of a 3-box stack after a short awake settling window. In a
+ * sequential-impulse solver support propagates up a stack one contact per
+ * Gauss-Seidel sweep, so more iterations let the stack carry its own weight with
+ * less compression: the top box settles higher. (The warm-started solver
+ * decouples positional correction from iteration count, so this measures the
+ * iterative support of a coupled stack, not the old per-iteration Baumgarte
+ * push.) */
+static double stack_top_height_after_solver_iterations(int64_t iterations) {
+    void *world = rt_world3d_new(0.0, -9.8, 0.0);
+    rt_world3d_set_solver_iterations(world, iterations);
+    void *floor = rt_body3d_new_aabb(20.0, 0.5, 20.0, 0.0);
+    rt_body3d_set_position(floor, 0.0, -0.5, 0.0);
+    rt_world3d_add(world, floor);
+    void *boxes[3];
+    for (int i = 0; i < 3; ++i) {
+        boxes[i] = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+        rt_body3d_set_restitution(boxes[i], 0.0);
+        rt_body3d_set_position(boxes[i], 0.0, 0.5 + (double)i, 0.0);
+        rt_world3d_add(world, boxes[i]);
+    }
+    for (int step = 0; step < 8; ++step) /* awake settling window (pre-sleep) */
+        rt_world3d_step(world, 1.0 / 60.0);
+    return rt_vec3_y(rt_body3d_get_position(boxes[2])); /* top box */
+}
+
+static void test_world_solver_iteration_controls() {
+    void *world = rt_world3d_new(0, 0, 0);
+    EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 6,
+                "World: SolverIterations defaults to historical six passes");
+    rt_world3d_set_solver_iterations(world, 0);
+    EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 1,
+                "World: SetSolverIterations clamps low values to one");
+    rt_world3d_set_solver_iterations(world, 999);
+    EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 64,
+                "World: SetSolverIterations clamps high values to max");
+    rt_world3d_set_solver_iterations(world, 4);
+    EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 4,
+                "World: SetSolverIterations stores valid values");
+
+    double one_iter_velocity = spring_velocity_after_solver_iterations(1);
+    double four_iter_velocity = spring_velocity_after_solver_iterations(4);
+    EXPECT_TRUE(four_iter_velocity > one_iter_velocity * 2.0,
+                "World: SolverIterations changes iterative spring solving");
+
+    double one_iter_top = stack_top_height_after_solver_iterations(1);
+    double eight_iter_top = stack_top_height_after_solver_iterations(8);
+    EXPECT_TRUE(eight_iter_top > one_iter_top + 0.001,
+                "World: more SolverIterations support a stack with less compression");
+}
+
 static void test_world_joint_management() {
     void *world = rt_world3d_new(0, 0, 0);
     void *a = rt_body3d_new_sphere(1.0, 1.0);
@@ -1615,17 +2181,21 @@ int main() {
     test_world_remove_purges_contacts_for_body();
     test_world_rejects_duplicate_body_adds();
     test_world_body_storage_grows_past_initial_capacity();
+    test_world_sparse_body_count_step_stress();
     test_world_contact_storage_grows_past_initial_capacity();
     test_world_broadphase_rejects_separated_bodies();
     test_gravity_integration();
     test_force_application();
     test_impulse_application();
+    test_impulse_at_point_adds_spin();
+    test_force_at_point_adds_spin();
 
     /* Collision */
     test_collision_aabb_overlap();
     test_collision_layer_filtering();
     test_trigger_no_push();
     test_ground_detection();
+    test_box_stack_rests_stably();
 
     /* Character controller */
     test_character_create();
@@ -1656,7 +2226,11 @@ int main() {
     test_offcenter_contact_generates_angular_velocity();
     test_large_floor_contact_point_stays_near_dynamic_body();
     test_convex_hull_collider_blocks_sphere();
+    test_convex_hull_gjk_detects_contained_sphere();
+    test_convex_hull_gjk_rejects_aabb_false_positive();
+    test_convex_hull_gjk_detects_overlapping_hulls();
     test_mesh_collider_blocks_falling_sphere();
+    test_mesh_collider_narrowphase_builds_bvh_for_sphere_and_box();
     test_compound_collider_child_transform_affects_contact();
     test_compound_collider_rejects_transitive_cycle();
     test_heightfield_collider_supports_ground_contact();
@@ -1685,6 +2259,16 @@ int main() {
     test_distance_joint_constraint();
     test_spring_joint_create();
     test_spring_joint_force();
+    test_hinge_joint_anchor_constraint();
+    test_hinge_joint_motor_drives_rotation();
+    test_hinge_joint_get_angle();
+    test_hinge_joint_angle_limit();
+    test_rope_joint_max_length_constraint();
+    test_sixdof_joint_frame_anchor_constraint();
+    test_sixdof_joint_limits();
+    test_sixdof_joint_linear_motor();
+    test_joint_type_validation_for_new_joint_classes();
+    test_world_solver_iteration_controls();
     test_world_joint_management();
 
     printf("Physics3D tests: %d/%d passed\n", tests_passed, tests_run);

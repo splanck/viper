@@ -52,6 +52,12 @@ int8_t rt_scene3d_try_add(void *scene, void *node);
 void rt_scene3d_remove(void *scene, void *node);
 /// @brief Recursively search the scene for a node whose name matches @p name (NULL if none).
 void *rt_scene3d_find(void *scene, rt_string name);
+/// @brief Return visible mesh nodes whose world-space AABB intersects @p min/@p max.
+void *rt_scene3d_query_aabb(void *scene, void *min, void *max);
+/// @brief Return visible mesh nodes whose world-space AABB intersects @p center/@p radius.
+void *rt_scene3d_query_sphere(void *scene, void *center, double radius);
+/// @brief Return the closest visible mesh node hit by the world-space ray, or NULL.
+void *rt_scene3d_raycast_nodes(void *scene, void *origin, void *direction, double max_distance);
 /// @brief Render every visible drawable node in the scene from @p camera onto @p canvas3d.
 void rt_scene3d_draw(void *scene, void *canvas3d, void *camera);
 /// @brief Detach all children of the root (does not delete the root itself).
@@ -65,6 +71,8 @@ void *rt_scene3d_load(rt_string path);
 /// @brief Push physics body, animator root-motion, and other bindings into node transforms.
 /// Call once per frame after physics step but before draw.
 void rt_scene3d_sync_bindings(void *scene, double dt);
+/// @brief Shift every root-level scene subtree by -delta for floating-origin rebasing.
+void rt_scene3d_rebase_origin(void *scene, double dx, double dy, double dz);
 
 /* SceneNode3D */
 /// @brief Create a SceneNode3D at the origin with identity rotation, unit scale, no mesh.
@@ -143,6 +151,10 @@ void *rt_scene_node3d_get_animator(void *node);
 /* LOD — Level of Detail */
 /// @brief Add a level-of-detail mesh swap: when camera distance exceeds @p distance, use @p mesh.
 void rt_scene_node3d_add_lod(void *node, double distance, void *mesh);
+/// @brief Enable screen-size-driven selection across authored LOD meshes.
+void rt_scene_node3d_set_auto_lod(void *node, int8_t enabled, double screen_error_px);
+/// @brief Bind a generated textured impostor proxy used at or beyond @p distance.
+void rt_scene_node3d_set_impostor(void *node, double distance, void *pixels);
 /// @brief Remove all LOD entries (revert to the base mesh at all distances).
 void rt_scene_node3d_clear_lod(void *node);
 /// @brief Number of LOD entries registered on this node.
@@ -155,6 +167,8 @@ void *rt_scene_node3d_get_lod_mesh(void *node, int64_t index);
 /* Scene3D — frustum culling stats */
 /// @brief Number of nodes culled by the frustum during the most recent Draw (perf metric).
 int64_t rt_scene3d_get_culled_count(void *scene);
+/// @brief Number of drawable nodes submitted by the most recent Draw.
+int64_t rt_scene3d_get_visible_node_count(void *scene);
 /// @brief Total number of nodes in the scene graph.
 int64_t rt_scene3d_get_node_count(void *scene);
 

@@ -1,0 +1,48 @@
+{
+  "tiles": [
+    {
+      "name": "terrain_nw",
+      "path": "terrain/nw.tile",
+      "heightmap": "terrain/nw.height",
+      "center": [-1100, 0, -1100],
+      "radius": 160,
+      "bytes": 262144,
+      "width": 65,
+      "depth": 65,
+      "scale": [34, 24, 34]
+    },
+    {
+      "name": "terrain_ne",
+      "path": "terrain/ne.tile",
+      "heightmap": "terrain/ne.height",
+      "center": [1100, 0, -1100],
+      "radius": 160,
+      "bytes": 262144,
+      "width": 65,
+      "depth": 65,
+      "scale": [34, 24, 34]
+    },
+    {
+      "name": "terrain_sw",
+      "path": "terrain/sw.tile",
+      "heightmap": "terrain/sw.height",
+      "center": [-1100, 0, 1100],
+      "radius": 160,
+      "bytes": 262144,
+      "width": 65,
+      "depth": 65,
+      "scale": [34, 24, 34]
+    },
+    {
+      "name": "terrain_se",
+      "path": "terrain/se.tile",
+      "heightmap": "terrain/se.height",
+      "center": [1100, 0, 1100],
+      "radius": 160,
+      "bytes": 262144,
+      "width": 65,
+      "depth": 65,
+      "scale": [34, 24, 34]
+    }
+  ]
+}

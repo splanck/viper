@@ -13,7 +13,7 @@
 //
 // Key invariants:
 //   - All entry points take opaque GC-managed controller handles (void *).
-//   - Layer 0 is the base layer; higher layers are additive masked overlays.
+//   - Layer 0 is the base layer; higher layers are masked replace or additive overlays.
 //   - Times are in seconds, blend weights in 0..1; bone_index -1 disables
 //     root motion.
 //
@@ -69,6 +69,12 @@ int8_t rt_anim_controller3d_is_state_playing(void *controller, rt_string state_n
 void rt_anim_controller3d_set_state_speed(void *controller, rt_string state_name, double speed);
 /// @brief Override whether a state loops at the end of its clip duration.
 void rt_anim_controller3d_set_state_looping(void *controller, rt_string state_name, int8_t loop);
+/// @brief Configure deterministic update-rate LOD for distant / low-priority controllers.
+void rt_anim_controller3d_set_animation_lod(void *controller, double distance, double rate_hz);
+/// @brief Use a BlendTree3D as the base pose source; pass NULL to clear it.
+int8_t rt_anim_controller3d_set_blend_tree(void *controller, void *blend_tree);
+/// @brief Apply an IKSolver3D after controller layers and before skinning; pass NULL to clear it.
+int8_t rt_anim_controller3d_set_ik_solver(void *controller, void *ik_solver);
 
 /// @brief Schedule an event to fire when @p state_name reaches @p time_seconds during playback.
 void rt_anim_controller3d_add_event(void *controller,
@@ -91,11 +97,20 @@ void rt_anim_controller3d_set_layer_weight(void *controller, int64_t layer, doub
 void rt_anim_controller3d_set_layer_mask(void *controller, int64_t layer, int64_t root_bone);
 /// @brief Hard-cut a specific layer to the named state.
 int8_t rt_anim_controller3d_play_layer(void *controller, int64_t layer, rt_string state_name);
+/// @brief Hard-cut a specific overlay layer to a true additive bind-pose delta state.
+int8_t rt_anim_controller3d_play_layer_additive(void *controller,
+                                                int64_t layer,
+                                                rt_string state_name);
 /// @brief Crossfade a specific layer to the named state over @p blend_seconds.
 int8_t rt_anim_controller3d_crossfade_layer(void *controller,
                                             int64_t layer,
                                             rt_string state_name,
                                             double blend_seconds);
+/// @brief Crossfade a specific overlay layer to a true additive bind-pose delta state.
+int8_t rt_anim_controller3d_crossfade_layer_additive(void *controller,
+                                                     int64_t layer,
+                                                     rt_string state_name,
+                                                     double blend_seconds);
 /// @brief Stop the named layer (its weight will fall to 0 if not currently blending).
 void rt_anim_controller3d_stop_layer(void *controller, int64_t layer);
 

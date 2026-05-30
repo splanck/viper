@@ -1,0 +1,111 @@
+module openworld_slice_gpu_smoke;
+
+bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind "./main";
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func solidPixel(color: Integer) -> Pixels {
+    var px = Pixels.New(1, 1);
+    Pixels.Set(px, 0, 0, color);
+    return px;
+}
+
+func runGpuRobustnessProbe(canvas: Canvas3D) -> Boolean {
+    var mesh = Mesh3D.New();
+    Mesh3D.AddVertex(mesh, -0.5, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    Mesh3D.AddVertex(mesh, 0.5, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    Mesh3D.AddVertex(mesh, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    Mesh3D.AddTriangle(mesh, 0, 1, 2);
+
+    var normalMap = solidPixel(0x8080FFFF);
+    var mat = Material3D.NewPBR(0.75, 0.68, 0.45);
+    Material3D.SetNormalMap(mat, normalMap);
+
+    var face = solidPixel(0x202080FF);
+    var sky = CubeMap3D.New(face, face, face, face, face, face);
+    Canvas3D.SetSkybox(canvas, sky);
+
+    var cam = Camera3D.NewOrtho(2.0, 1.0, 0.1, 20.0);
+    Camera3D.LookAt(cam,
+        Vec3.New(0.0, 0.0, 2.0),
+        Vec3.New(0.0, 0.0, 0.0),
+        Vec3.New(0.0, 1.0, 0.0));
+
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, cam);
+    Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), mat);
+    Canvas3D.End(canvas);
+
+    if (Canvas3D.get_DrawCount(canvas) <= 0) {
+        fail("GPU robustness probe submitted no draw");
+        return false;
+    }
+
+    if (Canvas3D.BackendSupports(canvas, "final-screenshot")) {
+        var snap = Canvas3D.ScreenshotFinal(canvas);
+        if (snap == null || Pixels.get_Width(snap) != 160 || Pixels.get_Height(snap) != 120) {
+            fail("GPU robustness final-frame readback failed");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+func start() {
+    var game = new OpenWorldSlice();
+    game.setup("Open World Slice GPU Smoke", 160, 120);
+
+    var canvas = game.getCanvas();
+    var backend = Canvas3D.get_Backend(canvas);
+    if (backend == "software" || Canvas3D.BackendSupports(canvas, "gpu") == false) {
+        game.destroy();
+        Terminal.Say("SKIP: requested GPU backend unavailable");
+        return;
+    }
+
+    var i = 0;
+    while (i < 12) {
+        game.stepFixed(1.0 / 60.0);
+        i = i + 1;
+    }
+
+    if (game.skinnedCharacterReady() == false) {
+        game.destroy();
+        fail("skinned glTF/IK path did not initialize on GPU backend");
+        return;
+    }
+
+    game.renderFrame();
+    if (World3D.get_drawCount(game.getWorld()) <= 0 ||
+        World3D.get_visibleNodeCount(game.getWorld()) <= 0) {
+        game.destroy();
+        fail("GPU backend produced no visible draw telemetry");
+        return;
+    }
+
+    if (Canvas3D.BackendSupports(canvas, "final-screenshot")) {
+        var snap = World3D.captureFinalFrame(game.getWorld());
+        if (snap == null || Pixels.get_Width(snap) != 160 || Pixels.get_Height(snap) != 120) {
+            game.destroy();
+            fail("GPU final-frame readback failed");
+            return;
+        }
+    }
+
+    if (runGpuRobustnessProbe(canvas) == false) {
+        game.destroy();
+        return;
+    }
+
+    World3D.present(game.getWorld());
+    game.destroy();
+    Terminal.Say("PASS: " + backend);
+}

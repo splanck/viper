@@ -54,6 +54,20 @@ void *rt_gltf_get_animation(void *asset, int64_t index);
 int64_t rt_gltf_node_animation_count(void *asset);
 /// @brief Get the node animation at @p index (NULL if out of range).
 void *rt_gltf_get_node_animation(void *asset, int64_t index);
+/// @brief Number of imported cameras in the active scene.
+int64_t rt_gltf_camera_count(void *asset);
+/// @brief Get the imported camera at @p index (NULL if out of range).
+void *rt_gltf_get_camera(void *asset, int64_t index);
+/// @brief Number of immutable scenes in the asset. Index 0 is the active/default scene.
+int64_t rt_gltf_scene_count(void *asset);
+/// @brief Get the immutable scene name at @p index (empty string if out of range).
+rt_string rt_gltf_get_scene_name(void *asset, int64_t index);
+/// @brief Get the scene-graph root for immutable scene @p index (NULL if out of range).
+void *rt_gltf_get_scene_root_at(void *asset, int64_t index);
+/// @brief Number of imported cameras reachable from immutable scene @p scene_index.
+int64_t rt_gltf_scene_camera_count(void *asset, int64_t scene_index);
+/// @brief Get an imported camera from immutable scene @p scene_index (NULL if out of range).
+void *rt_gltf_get_scene_camera(void *asset, int64_t scene_index, int64_t index);
 /// @brief Number of nodes in the asset's scene graph.
 int64_t rt_gltf_node_count(void *asset);
 /// @brief Get the asset's scene-graph root node (NULL if none).

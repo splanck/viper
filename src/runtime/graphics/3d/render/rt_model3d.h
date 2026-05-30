@@ -47,6 +47,10 @@ int64_t rt_model3d_get_skeleton_count(void *obj);
 int64_t rt_model3d_get_animation_count(void *obj);
 /// @brief Number of scene-graph nodes contained in the model.
 int64_t rt_model3d_get_node_count(void *obj);
+/// @brief Number of immutable scenes contained in the model.
+int64_t rt_model3d_get_scene_count(void *obj);
+/// @brief Number of imported cameras in @p scene_index.
+int64_t rt_model3d_get_camera_count(void *obj, int64_t scene_index);
 
 /// @brief Get the mesh at @p index (NULL if out of range).
 void *rt_model3d_get_mesh(void *obj, int64_t index);
@@ -56,6 +60,10 @@ void *rt_model3d_get_material(void *obj, int64_t index);
 void *rt_model3d_get_skeleton(void *obj, int64_t index);
 /// @brief Get the animation at @p index (NULL if out of range).
 void *rt_model3d_get_animation(void *obj, int64_t index);
+/// @brief Get the imported camera at @p index in @p scene_index (NULL if out of range).
+void *rt_model3d_get_camera(void *obj, int64_t scene_index, int64_t index);
+/// @brief Get the immutable scene name at @p index (empty string if out of range).
+rt_string rt_model3d_get_scene_name(void *obj, int64_t index);
 
 /// @brief Find a scene-graph node by name (NULL if not found).
 void *rt_model3d_find_node(void *obj, rt_string name);
@@ -63,6 +71,8 @@ void *rt_model3d_find_node(void *obj, rt_string name);
 void *rt_model3d_instantiate(void *obj);
 /// @brief Instantiate the model as a complete standalone Scene3D.
 void *rt_model3d_instantiate_scene(void *obj);
+/// @brief Instantiate the immutable scene at @p index as a complete standalone Scene3D.
+void *rt_model3d_instantiate_scene_at(void *obj, int64_t index);
 
 #ifdef __cplusplus
 }

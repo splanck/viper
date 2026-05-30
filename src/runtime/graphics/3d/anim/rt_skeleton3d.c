@@ -28,6 +28,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_skeleton3d.h"
+#include "rt_blendtree3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics3d_ids.h"
@@ -849,6 +850,123 @@ double rt_animation3d_get_duration(void *obj) {
 rt_string rt_animation3d_get_name(void *obj) {
     rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
     return a ? rt_const_cstr(a->name) : rt_const_cstr("");
+}
+
+static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
+                                              const rt_skeleton3d *dst,
+                                              int32_t src_bone) {
+    if (!src || !dst || src_bone < 0 || src_bone >= src->bone_count)
+        return -1;
+    const char *name = src->bones[src_bone].name;
+    if (name && name[0] != '\0') {
+        for (int32_t i = 0; i < dst->bone_count; ++i)
+            if (strcmp(dst->bones[i].name, name) == 0)
+                return i;
+    }
+    return src_bone < dst->bone_count ? src_bone : -1;
+}
+
+static int animation3d_has_channel_for_bone(const rt_animation3d *anim, int32_t bone) {
+    if (!anim)
+        return 0;
+    for (int32_t i = 0; i < anim->channel_count; ++i)
+        if (anim->channels[i].bone_index == bone)
+            return 1;
+    return 0;
+}
+
+/// @brief Bone length = magnitude of the bind-pose local translation (offset
+///   from its parent). Used to scale retargeted translations between skeletons
+///   of different proportions. Row-major translation lives at m[3]/m[7]/m[11].
+static float animation3d_bone_bind_length(const rt_skeleton3d *skel, int32_t bone) {
+    const float *m;
+    if (!skel || bone < 0 || bone >= skel->bone_count)
+        return 0.0f;
+    m = skel->bones[bone].bind_pose_local;
+    return sqrtf(m[3] * m[3] + m[7] * m[7] + m[11] * m[11]);
+}
+
+static int animation3d_retarget_copy_channel(rt_animation3d *dst,
+                                             const vgfx3d_anim_channel_t *src,
+                                             int32_t dst_bone,
+                                             float pos_scale) {
+    if (!dst || !src || src->keyframe_count < 0)
+        return 0;
+    if (dst->channel_count >= dst->channel_capacity)
+        return 0;
+    vgfx3d_anim_channel_t *out = &dst->channels[dst->channel_count++];
+    memset(out, 0, sizeof(*out));
+    out->bone_index = dst_bone;
+    out->keyframe_count = src->keyframe_count;
+    out->keyframe_capacity = src->keyframe_count;
+    if (src->keyframe_count == 0)
+        return 1;
+    if (!src->keyframes)
+        return 0;
+    out->keyframes = (vgfx3d_keyframe_t *)malloc((size_t)src->keyframe_count *
+                                                 sizeof(vgfx3d_keyframe_t));
+    if (!out->keyframes) {
+        out->keyframe_count = 0;
+        out->keyframe_capacity = 0;
+        return 0;
+    }
+    memcpy(out->keyframes, src->keyframes, (size_t)src->keyframe_count * sizeof(*out->keyframes));
+    /* Proportional retarget: scale translation keys by the bone-length ratio so a
+     * clip authored on one skeleton fits a differently-proportioned one.
+     * Rotations and scales transfer unchanged. */
+    if (pos_scale != 1.0f && isfinite(pos_scale)) {
+        for (int32_t k = 0; k < out->keyframe_count; ++k) {
+            out->keyframes[k].position[0] *= pos_scale;
+            out->keyframes[k].position[1] *= pos_scale;
+            out->keyframes[k].position[2] *= pos_scale;
+        }
+    }
+    return 1;
+}
+
+void *rt_animation3d_retarget(void *animation, void *src_skeleton, void *dst_skeleton) {
+    rt_animation3d *src_anim = animation3d_checked(animation);
+    rt_skeleton3d *src_skel =
+        (rt_skeleton3d *)rt_g3d_checked_or_null(src_skeleton, RT_G3D_SKELETON3D_CLASS_ID);
+    rt_skeleton3d *dst_skel =
+        (rt_skeleton3d *)rt_g3d_checked_or_null(dst_skeleton, RT_G3D_SKELETON3D_CLASS_ID);
+    void *out_obj;
+    rt_animation3d *out;
+    if (!src_anim || !src_skel || !dst_skel)
+        return NULL;
+    out_obj = rt_animation3d_new(rt_const_cstr(src_anim->name), src_anim->duration);
+    out = animation3d_checked(out_obj);
+    if (!out)
+        return NULL;
+    out->looping = src_anim->looping ? 1 : 0;
+    if (src_anim->channel_count <= 0)
+        return out_obj;
+    if ((size_t)src_anim->channel_count > SIZE_MAX / sizeof(vgfx3d_anim_channel_t)) {
+        animation3d_release_ref(&out_obj);
+        return NULL;
+    }
+    out->channels =
+        (vgfx3d_anim_channel_t *)calloc((size_t)src_anim->channel_count, sizeof(*out->channels));
+    if (!out->channels) {
+        animation3d_release_ref(&out_obj);
+        return NULL;
+    }
+    out->channel_capacity = src_anim->channel_count;
+    for (int32_t i = 0; i < src_anim->channel_count; ++i) {
+        const vgfx3d_anim_channel_t *src_ch = &src_anim->channels[i];
+        int32_t dst_bone = animation3d_retarget_find_bone(src_skel, dst_skel, src_ch->bone_index);
+        float src_len, dst_len, pos_scale;
+        if (dst_bone < 0 || animation3d_has_channel_for_bone(out, dst_bone))
+            continue;
+        src_len = animation3d_bone_bind_length(src_skel, src_ch->bone_index);
+        dst_len = animation3d_bone_bind_length(dst_skel, dst_bone);
+        pos_scale = (src_len > 1e-6f && dst_len > 1e-6f) ? (dst_len / src_len) : 1.0f;
+        if (!animation3d_retarget_copy_channel(out, src_ch, dst_bone, pos_scale)) {
+            animation3d_release_ref(&out_obj);
+            return NULL;
+        }
+    }
+    return out_obj;
 }
 
 /*==========================================================================
@@ -1860,6 +1978,18 @@ int64_t rt_anim_blend3d_state_count(void *obj) {
     return b ? b->state_count : 0;
 }
 
+/// @brief Borrow the current blended local transform buffer for controller integration.
+const float *rt_anim_blend3d_get_local_transform_data(void *obj, int32_t *bone_count) {
+    rt_anim_blend3d *b = anim_blend3d_checked(obj);
+    if (bone_count)
+        *bone_count = 0;
+    if (!b || !b->skeleton || !b->local_transforms)
+        return NULL;
+    if (bone_count)
+        *bone_count = b->skeleton->bone_count;
+    return b->local_transforms;
+}
+
 /// @brief Same role as `anim_player_prepare_prev_palette` but for the blender — see that function.
 static const float *anim_blend_prepare_prev_palette(rt_anim_blend3d *b, int64_t frame_serial) {
     if (!b || !b->bone_palette)
@@ -1896,6 +2026,8 @@ void rt_canvas3d_draw_mesh_blended(
         return;
     rt_anim_blend3d *b =
         (rt_anim_blend3d *)rt_g3d_checked_or_null(blend_obj, RT_G3D_ANIMBLEND3D_CLASS_ID);
+    if (!b)
+        b = (rt_anim_blend3d *)rt_blend_tree3d_get_blend(blend_obj);
     if (!b)
         return;
     rt_skeleton3d *skel = b->skeleton;

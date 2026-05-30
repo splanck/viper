@@ -1,0 +1,19 @@
+{
+  "format": "vscn",
+  "version": 2,
+  "textures": [],
+  "cubemaps": [],
+  "materials": [],
+  "meshes": [],
+  "nodes": [
+    {
+      "name": "slice_cell_se_marker",
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
+      "visible": true,
+      "hasMesh": false,
+      "hasMaterial": false
+    }
+  ]
+}

@@ -77,12 +77,16 @@ int64_t rt_world3d_get_ccd_substep_clamped_count(void *world);
 void rt_world3d_set_gravity(void *world, double gx, double gy, double gz);
 
 /* Joint management */
-/// @brief Register a joint (distance/spring/hinge/rope) — @p joint_type matches RT_JOINT3D_*.
+/// @brief Register a joint; @p joint_type matches the RT_JOINT_* constants.
 void rt_world3d_add_joint(void *world, void *joint, int64_t joint_type);
 /// @brief Unregister a joint.
 void rt_world3d_remove_joint(void *world, void *joint);
 /// @brief Number of joints currently in the world.
 int64_t rt_world3d_joint_count(void *world);
+/// @brief Number of iterative solver passes used for constraints.
+int64_t rt_world3d_get_solver_iterations(void *world);
+/// @brief Set iterative solver passes; clamped to the runtime-supported range.
+void rt_world3d_set_solver_iterations(void *world, int64_t iterations);
 
 /* Collision event queries (populated after each Step) */
 /// @brief Number of contact pairs from the most recent Step.
@@ -230,8 +234,16 @@ void rt_body3d_set_angular_velocity(void *body, double wx, double wy, double wz)
 void *rt_body3d_get_angular_velocity(void *body);
 /// @brief Apply a continuous force in Newtons (integrated over the next Step).
 void rt_body3d_apply_force(void *body, double fx, double fy, double fz);
+/// @brief Apply a continuous force at a world point — adds force and torque
+///   (r x force), e.g. a thruster. Cleared each step like ApplyForce.
+void rt_body3d_apply_force_at_point(void *body, double fx, double fy, double fz,
+                                    double px, double py, double pz);
 /// @brief Apply an instantaneous impulse (kg·m/s) — changes velocity immediately.
 void rt_body3d_apply_impulse(void *body, double ix, double iy, double iz);
+/// @brief Apply a linear impulse at a world point — adds linear and (via the lever
+///   arm) angular velocity, so off-center hits spin the body.
+void rt_body3d_apply_impulse_at_point(void *body, double ix, double iy, double iz,
+                                      double px, double py, double pz);
 /// @brief Apply a continuous torque (N·m) about each axis.
 void rt_body3d_apply_torque(void *body, double tx, double ty, double tz);
 /// @brief Apply an instantaneous angular impulse — changes angular velocity immediately.

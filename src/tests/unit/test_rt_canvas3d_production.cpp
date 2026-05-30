@@ -162,11 +162,31 @@ static void test_software_backend_reports_canvas_fallback_features() {
                 "software backend does not advertise GPU postfx overlay composition");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_HARDWARE_INSTANCING) == 0,
                 "software backend does not advertise hardware instancing");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_HLOD) != 0,
+                "software backend advertises runtime HLOD/impostor proxies");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_OCCLUSION) != 0,
+                "software backend advertises CPU occlusion culling");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC7) == 0,
+                "software backend does not advertise BC7 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ASTC) == 0,
+                "software backend does not advertise ASTC compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ETC2) == 0,
+                "software backend does not advertise ETC2 compressed upload");
 
     EXPECT_TRUE(backend_supports(&canvas, "postfx-overlay"),
                 "BackendSupports accepts postfx-overlay alias");
     EXPECT_TRUE(backend_supports(&canvas, "final_screenshot"),
                 "BackendSupports accepts final_screenshot alias");
+    EXPECT_TRUE(backend_supports(&canvas, "hlod"),
+                "BackendSupports accepts hlod capability alias");
+    EXPECT_TRUE(backend_supports(&canvas, "occlusion"),
+                "BackendSupports accepts occlusion capability alias");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc7"),
+                "BackendSupports reports bc7 unsupported until backend upload exists");
+    EXPECT_TRUE(!backend_supports(&canvas, "astc"),
+                "BackendSupports reports astc unsupported until backend upload exists");
+    EXPECT_TRUE(!backend_supports(&canvas, "etc2"),
+                "BackendSupports reports etc2 unsupported until backend upload exists");
 }
 
 static void test_gpu_backend_capability_bits_and_names() {
@@ -198,6 +218,14 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "GPU backend advertises final screenshots when readback hook exists");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY) != 0,
                 "GPU backend advertises GPU postfx overlay composition when split apply/present exists");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_HLOD) != 0,
+                "GPU backend advertises runtime HLOD/impostor proxies");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC7) == 0,
+                "generic GPU backend does not imply BC7 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ASTC) == 0,
+                "generic GPU backend does not imply ASTC compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ETC2) == 0,
+                "generic GPU backend does not imply ETC2 compressed upload");
 
     EXPECT_TRUE(backend_supports(&canvas, "hardware_instancing"),
                 "BackendSupports accepts hardware_instancing");
@@ -210,6 +238,14 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "BackendSupports accepts final-screenshot alias");
     EXPECT_TRUE(backend_supports(&canvas, "gpu-postfx-overlay"),
                 "BackendSupports reports GPU postfx overlay support when split apply/present exists");
+    EXPECT_TRUE(backend_supports(&canvas, "impostor"),
+                "BackendSupports accepts impostor alias for HLOD proxies");
+    EXPECT_TRUE(!backend_supports(&canvas, "bc7"),
+                "BackendSupports accepts bc7 as a false capability name");
+    EXPECT_TRUE(!backend_supports(&canvas, "astc"),
+                "BackendSupports accepts astc as a false capability name");
+    EXPECT_TRUE(!backend_supports(&canvas, "etc2"),
+                "BackendSupports accepts etc2 as a false capability name");
     EXPECT_TRUE(!backend_supports(&canvas, "missing_feature"),
                 "BackendSupports rejects unknown capability names");
 }
@@ -218,13 +254,20 @@ static void test_frustum_culling_aliases_share_state() {
     rt_canvas3d canvas = {};
 
     rt_canvas3d_set_frustum_culling(&canvas, 1);
-    EXPECT_EQ_I64(canvas.occlusion_culling, 1, "SetFrustumCulling enables culling state");
+    EXPECT_EQ_I64(canvas.frustum_culling, 1, "SetFrustumCulling enables frustum culling state");
+    EXPECT_EQ_I64(canvas.occlusion_culling, 0, "SetFrustumCulling does not enable occlusion");
 
     rt_canvas3d_set_occlusion_culling(&canvas, 0);
-    EXPECT_EQ_I64(canvas.occlusion_culling, 0, "SetOcclusionCulling alias disables same state");
+    EXPECT_EQ_I64(canvas.frustum_culling, 0, "SetOcclusionCulling(false) disables frustum culling");
+    EXPECT_EQ_I64(canvas.occlusion_culling, 0, "SetOcclusionCulling(false) disables occlusion");
 
     rt_canvas3d_set_occlusion_culling(&canvas, -1);
-    EXPECT_EQ_I64(canvas.occlusion_culling, 1, "culling setters normalize nonzero values");
+    EXPECT_EQ_I64(canvas.frustum_culling, 1, "SetOcclusionCulling enables frustum rejection");
+    EXPECT_EQ_I64(canvas.occlusion_culling, 1, "SetOcclusionCulling enables occlusion");
+
+    rt_canvas3d_set_frustum_culling(&canvas, 0);
+    EXPECT_EQ_I64(canvas.frustum_culling, 0, "SetFrustumCulling(false) disables frustum state");
+    EXPECT_EQ_I64(canvas.occlusion_culling, 0, "SetFrustumCulling(false) disables dependent occlusion");
 
     rt_canvas3d_set_frustum_culling(nullptr, 1);
     rt_canvas3d_set_occlusion_culling(nullptr, 1);

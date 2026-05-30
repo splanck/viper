@@ -68,9 +68,31 @@ typedef struct rt_node_animator3d {
     struct rt_scene_node3d *root;
 } rt_node_animator3d;
 
+struct rt_scene3d;
+
+typedef struct {
+    struct rt_scene_node3d *node;
+    float world_min[3];
+    float world_max[3];
+    int32_t traversal_order;
+    int8_t cullable;
+} rt_scene3d_spatial_entry;
+
+typedef struct {
+    rt_scene3d_spatial_entry *entries;
+    int32_t count;
+    int32_t capacity;
+    int8_t dirty;
+    int8_t valid;
+    uint32_t build_count;
+    int32_t last_candidate_count;
+    int32_t last_prefiltered_count;
+} rt_scene3d_spatial_index;
+
 /// @brief SceneNode3D payload: local TRS, lazily-recomputed world matrix with dirty flag,
 ///   parent/children links, bound mesh/material/light/body/animator(s) and sync mode,
-///   visibility, name, cached subtree AABB/bounding-sphere, and LOD mesh levels.
+///   visibility, name, cached subtree AABB/bounding-sphere, LOD mesh levels,
+///   optional screen-error LOD selection, and generated impostor proxy assets.
 typedef struct rt_scene_node3d {
     void *vptr;
 
@@ -84,6 +106,7 @@ typedef struct rt_scene_node3d {
     uint32_t parent_world_revision_seen;
 
     struct rt_scene_node3d *parent;
+    struct rt_scene3d *owner_scene;
     struct rt_scene_node3d **children;
     int32_t child_count;
     int32_t child_capacity;
@@ -110,15 +133,27 @@ typedef struct rt_scene_node3d {
 
     int32_t lod_count;
     int32_t lod_capacity;
+
+    int8_t auto_lod_enabled;
+    double auto_lod_screen_error_px;
+
+    int8_t has_impostor;
+    double impostor_distance;
+    void *impostor_pixels;
+    void *impostor_mesh;
+    void *impostor_material;
 } rt_scene_node3d;
 
 /// @brief Scene3D payload: the implicit root node, total node count, and the
 ///   frustum-culled count from the most recent draw (a perf metric).
-typedef struct {
+typedef struct rt_scene3d {
     void *vptr;
     rt_scene_node3d *root;
     int32_t node_count;
     int32_t last_culled_count;
+    int32_t last_visible_node_count;
+    int8_t use_spatial_index;
+    rt_scene3d_spatial_index spatial_index;
 } rt_scene3d;
 
 #ifdef __cplusplus

@@ -123,6 +123,10 @@ void rt_canvas3d_clear_lights(void *obj);
 void rt_canvas3d_set_default_lighting(void *obj);
 /// @brief Count currently assigned canvas light slots.
 int64_t rt_canvas3d_get_light_count(void *obj);
+/// @brief Enable clustered/forward+ lighting when the backend advertises support.
+void rt_canvas3d_set_clustered_lighting(void *obj, int8_t enabled);
+/// @brief Current maximum active light count for the selected lighting path.
+int64_t rt_canvas3d_get_max_active_lights(void *obj);
 /// @brief Set the ambient light color applied to all lit materials.
 void rt_canvas3d_set_ambient(void *obj, double r, double g, double b);
 /// @brief Draw a debug 3D line between two Vec3 points.
@@ -145,11 +149,22 @@ rt_string rt_canvas3d_get_backend(void *obj);
 #define RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY 0x0200LL
 #define RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT 0x0400LL
 #define RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY 0x0800LL
+#define RT_CANVAS3D_BACKEND_CAP_CLUSTERED_LIGHTING 0x1000LL
+#define RT_CANVAS3D_BACKEND_CAP_SHADOW_CSM 0x2000LL
+#define RT_CANVAS3D_BACKEND_CAP_OCCLUSION 0x4000LL
+#define RT_CANVAS3D_BACKEND_CAP_HLOD 0x8000LL
+#define RT_CANVAS3D_BACKEND_CAP_BC7 0x10000LL
+#define RT_CANVAS3D_BACKEND_CAP_ASTC 0x20000LL
+#define RT_CANVAS3D_BACKEND_CAP_ETC2 0x40000LL
 
 /// @brief Return an RT_CANVAS3D_BACKEND_CAP_* bitmask for the active backend.
 int64_t rt_canvas3d_get_backend_capabilities(void *obj);
 /// @brief Return whether the active backend supports a named capability.
 int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability);
+/// @brief Number of main 3D draw submissions queued by the latest ended frame.
+int64_t rt_canvas3d_get_draw_count(void *obj);
+/// @brief Number of draw submissions rejected by visibility culling in the latest scene draw.
+int64_t rt_canvas3d_get_occluded_draw_count(void *obj);
 /// @brief Capture the current back-buffer contents into a fresh Pixels object.
 void *rt_canvas3d_screenshot(void *obj);
 /// @brief Begin recording a final overlay pass composited after post-FX during finalization.
@@ -263,6 +278,12 @@ void rt_camera3d_orbit(void *obj, void *target, double distance, double yaw, dou
 double rt_camera3d_get_fov(void *obj);
 /// @brief Set the field of view in degrees.
 void rt_camera3d_set_fov(void *obj, double fov);
+/// @brief Get/set the near clip-plane distance.
+double rt_camera3d_get_near_plane(void *obj);
+void rt_camera3d_set_near_plane(void *obj, double near_plane);
+/// @brief Get/set the far clip-plane distance.
+double rt_camera3d_get_far_plane(void *obj);
+void rt_camera3d_set_far_plane(void *obj, double far_plane);
 /// @brief Get the camera world-space position as a Vec3.
 void *rt_camera3d_get_position(void *obj);
 /// @brief Move the camera to the given world-space position (Vec3).
@@ -293,7 +314,7 @@ void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_
 void *rt_material3d_new(void);
 /// @brief Create a flat-color legacy material with the given diffuse color.
 void *rt_material3d_new_color(double r, double g, double b);
-/// @brief Create a textured legacy material from a Pixels object (used as albedo).
+/// @brief Create a textured legacy material from Pixels or an RGBA8-backed TextureAsset3D.
 void *rt_material3d_new_textured(void *pixels);
 /// @brief Create a PBR-workflow material with the given base color (default metallic=0,
 /// roughness=0.5).
@@ -344,14 +365,28 @@ void rt_material3d_set_emissive_intensity(void *obj, double value);
 double rt_material3d_get_emissive_intensity(void *obj);
 /// @brief Bind a tangent-space normal map texture (requires `_calc_tangents` on the mesh).
 void rt_material3d_set_normal_map(void *obj, void *pixels);
+/// @brief True when a base-color/albedo texture is bound.
+int8_t rt_material3d_get_has_texture(void *obj);
+/// @brief True when a normal map texture is bound.
+int8_t rt_material3d_get_has_normal_map(void *obj);
 /// @brief Bind a packed metallic-roughness map (R = AO, G = roughness, B = metallic per glTF).
 void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels);
+/// @brief True when a packed metallic-roughness texture is bound.
+int8_t rt_material3d_get_has_metallic_roughness_map(void *obj);
 /// @brief Bind a separate ambient-occlusion texture.
 void rt_material3d_set_ao_map(void *obj, void *pixels);
+/// @brief True when a separate ambient-occlusion texture is bound.
+int8_t rt_material3d_get_has_ao_map(void *obj);
 /// @brief Bind a legacy specular highlight texture.
 void rt_material3d_set_specular_map(void *obj, void *pixels);
+/// @brief True when a specular map texture is bound.
+int8_t rt_material3d_get_has_specular_map(void *obj);
 /// @brief Bind an emissive texture (multiplied by emissive_intensity).
 void rt_material3d_set_emissive_map(void *obj, void *pixels);
+/// @brief True when an emissive map texture is bound.
+int8_t rt_material3d_get_has_emissive_map(void *obj);
+/// @brief True when an environment cubemap is bound.
+int8_t rt_material3d_get_has_env_map(void *obj);
 /// @brief Set the base emissive tint color.
 void rt_material3d_set_emissive_color(void *obj, double r, double g, double b);
 /// @brief Scale the normal-map effect (0 = flat, 1 = full strength, >1 = exaggerated).
@@ -400,10 +435,18 @@ double rt_light3d_get_intensity(void *obj);
 void rt_light3d_set_enabled(void *obj, int8_t enabled);
 /// @brief True if the light contributes to backend light params.
 int8_t rt_light3d_get_enabled(void *obj);
+/// @brief Toggle whether this light is eligible for shadow-map selection.
+void rt_light3d_set_casts_shadows(void *obj, int8_t enabled);
+/// @brief True if this light may claim shadow-map slots.
+int8_t rt_light3d_get_casts_shadows(void *obj);
 /// @brief Get the normalized light direction as a Vec3.
 void *rt_light3d_get_direction(void *obj);
 /// @brief Get the light position as a Vec3.
 void *rt_light3d_get_position(void *obj);
+/// @brief Move the light to a new world position (Vec3).
+void rt_light3d_set_position(void *obj, void *position);
+/// @brief Re-aim the light; the direction (Vec3) is normalized.
+void rt_light3d_set_direction(void *obj, void *direction);
 
 /// @brief Register a temporary buffer to be freed at the end of the current frame.
 /// @return 1 when ownership transfers to the canvas, 0 when the caller still owns `buffer`.
@@ -446,12 +489,14 @@ void rt_canvas3d_enable_shadows(void *canvas, int64_t resolution);
 void rt_canvas3d_disable_shadows(void *canvas);
 /// @brief Set the shadow depth bias to combat shadow acne (typical: 0.001–0.005).
 void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
+/// @brief Request cascaded shadow maps; counts > 1 require backend support.
+void rt_canvas3d_set_shadow_cascades(void *canvas, int64_t count);
 
-/* Coarse CPU visibility hint: enables frustum rejection and front-to-back
- * sorting for opaque draws. This is not full occlusion-query or Hi-Z culling. */
+/* Coarse CPU visibility: frustum rejection plus optional low-resolution
+ * screen-space occlusion over front-to-back sorted opaque draws. */
 /// @brief Toggle coarse CPU frustum rejection plus front-to-back opaque ordering.
 void rt_canvas3d_set_frustum_culling(void *canvas, int8_t enabled);
-/// @brief Backwards-compatible alias for rt_canvas3d_set_frustum_culling().
+/// @brief Toggle frustum rejection plus conservative CPU occlusion skips.
 void rt_canvas3d_set_occlusion_culling(void *canvas, int8_t enabled);
 
 /* Instanced rendering + Terrain */

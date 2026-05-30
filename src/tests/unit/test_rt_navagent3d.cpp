@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
@@ -178,6 +179,95 @@ static void test_navagent_character_binding_updates_bound_node() {
                 "NavAgent3D mirrors bound Character3D Z into the bound SceneNode3D");
 }
 
+static void test_navagent_avoidance_properties() {
+    void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
+    void *navmesh = rt_navmesh3d_build(mesh, 0.5, 1.8);
+    void *agent = rt_navagent3d_new(navmesh, 0.5, 1.8);
+
+    EXPECT_TRUE(rt_navagent3d_get_avoidance_enabled(agent) == 0,
+                "NavAgent3D.AvoidanceEnabled defaults to false");
+    EXPECT_NEAR(rt_navagent3d_get_avoidance_radius(agent),
+                0.5,
+                0.001,
+                "NavAgent3D.AvoidanceRadius defaults to the agent radius");
+
+    rt_navagent3d_set_avoidance_enabled(agent, 1);
+    EXPECT_TRUE(rt_navagent3d_get_avoidance_enabled(agent) == 1,
+                "NavAgent3D.AvoidanceEnabled can be enabled");
+
+    rt_navagent3d_set_avoidance_radius(agent, 1.25);
+    EXPECT_NEAR(rt_navagent3d_get_avoidance_radius(agent),
+                1.25,
+                0.001,
+                "NavAgent3D.AvoidanceRadius stores positive values");
+
+    rt_navagent3d_set_avoidance_radius(agent, -2.0);
+    EXPECT_NEAR(rt_navagent3d_get_avoidance_radius(agent),
+                0.0,
+                0.001,
+                "NavAgent3D.AvoidanceRadius clamps negative values to zero");
+
+    rt_navagent3d_set_avoidance_radius(agent, std::numeric_limits<double>::infinity());
+    EXPECT_NEAR(rt_navagent3d_get_avoidance_radius(agent),
+                0.0,
+                0.001,
+                "NavAgent3D.AvoidanceRadius clamps non-finite values to zero");
+
+    rt_navagent3d_set_avoidance_enabled(agent, 0);
+    EXPECT_TRUE(rt_navagent3d_get_avoidance_enabled(agent) == 0,
+                "NavAgent3D.AvoidanceEnabled can be disabled");
+}
+
+static void test_navagent_local_avoidance_reduces_head_on_velocity() {
+    void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
+    void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
+    void *plain_a = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    void *plain_b = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    void *avoid_a = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    void *avoid_b = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    double plain_ax;
+    double plain_bx;
+    double avoid_ax;
+    double avoid_bx;
+
+    rt_navagent3d_set_desired_speed(plain_a, 2.0);
+    rt_navagent3d_set_desired_speed(plain_b, 2.0);
+    rt_navagent3d_set_stopping_distance(plain_a, 0.05);
+    rt_navagent3d_set_stopping_distance(plain_b, 0.05);
+    rt_navagent3d_warp(plain_a, rt_vec3_new(-0.4, 0.0, 0.0));
+    rt_navagent3d_warp(plain_b, rt_vec3_new(0.4, 0.0, 0.0));
+    rt_navagent3d_set_target(plain_a, rt_vec3_new(4.0, 0.0, 0.0));
+    rt_navagent3d_set_target(plain_b, rt_vec3_new(-4.0, 0.0, 0.0));
+    rt_navagent3d_update(plain_a, 0.1);
+    rt_navagent3d_update(plain_b, 0.1);
+    plain_ax = rt_vec3_x(rt_navagent3d_get_desired_velocity(plain_a));
+    plain_bx = rt_vec3_x(rt_navagent3d_get_desired_velocity(plain_b));
+
+    rt_navagent3d_set_desired_speed(avoid_a, 2.0);
+    rt_navagent3d_set_desired_speed(avoid_b, 2.0);
+    rt_navagent3d_set_stopping_distance(avoid_a, 0.05);
+    rt_navagent3d_set_stopping_distance(avoid_b, 0.05);
+    rt_navagent3d_set_avoidance_enabled(avoid_a, 1);
+    rt_navagent3d_set_avoidance_enabled(avoid_b, 1);
+    rt_navagent3d_set_avoidance_radius(avoid_a, 0.8);
+    rt_navagent3d_set_avoidance_radius(avoid_b, 0.8);
+    rt_navagent3d_warp(avoid_a, rt_vec3_new(-0.4, 0.0, 0.0));
+    rt_navagent3d_warp(avoid_b, rt_vec3_new(0.4, 0.0, 0.0));
+    rt_navagent3d_set_target(avoid_a, rt_vec3_new(4.0, 0.0, 0.0));
+    rt_navagent3d_set_target(avoid_b, rt_vec3_new(-4.0, 0.0, 0.0));
+    rt_navagent3d_update(avoid_a, 0.1);
+    rt_navagent3d_update(avoid_b, 0.1);
+    avoid_ax = rt_vec3_x(rt_navagent3d_get_desired_velocity(avoid_a));
+    avoid_bx = rt_vec3_x(rt_navagent3d_get_desired_velocity(avoid_b));
+
+    EXPECT_TRUE(plain_ax > 1.0, "NavAgent3D baseline agent steers toward its target");
+    EXPECT_TRUE(plain_bx < -1.0, "NavAgent3D baseline peer steers toward its target");
+    EXPECT_TRUE(std::fabs(avoid_ax) < std::fabs(plain_ax) - 0.25,
+                "NavAgent3D avoidance reduces head-on desired velocity");
+    EXPECT_TRUE(std::fabs(avoid_bx) < std::fabs(plain_bx) - 0.25,
+                "NavAgent3D avoidance reduces peer head-on desired velocity");
+}
+
 static void test_navagent_rejects_wrong_handle_types() {
     void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
     void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
@@ -204,6 +294,8 @@ int main() {
     test_navagent_bound_character_moves_controller();
     test_navagent_warp_resets_motion_and_rebuilds_path();
     test_navagent_character_binding_updates_bound_node();
+    test_navagent_avoidance_properties();
+    test_navagent_local_avoidance_reduces_head_on_velocity();
     test_navagent_rejects_wrong_handle_types();
 
     std::printf("NavAgent3D tests: %d/%d passed\n", tests_passed, tests_run);

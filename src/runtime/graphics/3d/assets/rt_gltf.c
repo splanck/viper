@@ -37,6 +37,7 @@
 #include "rt_vec3.h"
 
 #include <float.h>
+#include <setjmp.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -57,10 +58,22 @@ extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 #include "rt_trap.h"
+extern void rt_trap_set_recovery(jmp_buf *buf);
+extern void rt_trap_clear_recovery(void);
 extern int64_t rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
 extern void *rt_pixels_load(void *path);
+extern void rt_camera3d_look_at_components(void *obj,
+                                           double eye_x,
+                                           double eye_y,
+                                           double eye_z,
+                                           double target_x,
+                                           double target_y,
+                                           double target_z,
+                                           double up_x,
+                                           double up_y,
+                                           double up_z);
 extern void *rt_material3d_new_pbr(double r, double g, double b);
 extern void rt_material3d_set_texture(void *obj, void *pixels);
 extern void rt_material3d_set_normal_map(void *obj, void *pixels);
@@ -96,6 +109,15 @@ extern void rt_material3d_set_import_texture_slot(void *obj,
 //===----------------------------------------------------------------------===//
 
 typedef struct {
+    void *root;
+    char *name;
+    int32_t node_count;
+    void **cameras;
+    int32_t camera_count;
+    int32_t camera_capacity;
+} gltf_scene_info_t;
+
+typedef struct {
     void *vptr;
     void **meshes;
     int32_t mesh_count;
@@ -107,6 +129,12 @@ typedef struct {
     int32_t animation_count;
     void **node_animations;
     int32_t node_animation_count;
+    void **cameras;
+    int32_t camera_count;
+    int32_t camera_capacity;
+    gltf_scene_info_t *scenes;
+    int32_t scene_count;
+    int32_t scene_capacity;
     void *scene_root;
     int32_t node_count;
 } rt_gltf_asset;
@@ -191,6 +219,40 @@ static void gltf_asset_finalize(void *obj) {
     }
     free(a->node_animations);
     a->node_animations = NULL;
+    if (a->cameras) {
+        for (int32_t i = 0; i < a->camera_count; i++) {
+            if (a->cameras[i] && rt_obj_release_check0(a->cameras[i]))
+                rt_obj_free(a->cameras[i]);
+        }
+    }
+    free(a->cameras);
+    a->cameras = NULL;
+    a->camera_count = 0;
+    a->camera_capacity = 0;
+    if (a->scenes) {
+        for (int32_t i = 0; i < a->scene_count; i++) {
+            gltf_scene_info_t *scene = &a->scenes[i];
+            if (scene->root && rt_obj_release_check0(scene->root))
+                rt_obj_free(scene->root);
+            scene->root = NULL;
+            free(scene->name);
+            scene->name = NULL;
+            if (scene->cameras) {
+                for (int32_t ci = 0; ci < scene->camera_count; ci++) {
+                    if (scene->cameras[ci] && rt_obj_release_check0(scene->cameras[ci]))
+                        rt_obj_free(scene->cameras[ci]);
+                }
+            }
+            free(scene->cameras);
+            scene->cameras = NULL;
+            scene->camera_count = 0;
+            scene->camera_capacity = 0;
+        }
+    }
+    free(a->scenes);
+    a->scenes = NULL;
+    a->scene_count = 0;
+    a->scene_capacity = 0;
     if (a->scene_root && rt_obj_release_check0(a->scene_root))
         rt_obj_free(a->scene_root);
     a->scene_root = NULL;
@@ -1944,6 +2006,26 @@ static double gltf_clamp_double(double value, double lo, double hi, double fallb
     return value;
 }
 
+/// @brief Normalize @p v, or replace it with @p fallback when it is degenerate.
+static void gltf_normalize_vec3_or(double *v, double fx, double fy, double fz) {
+    double len;
+    if (!v)
+        return;
+    v[0] = gltf_finite_or(v[0], fx);
+    v[1] = gltf_finite_or(v[1], fy);
+    v[2] = gltf_finite_or(v[2], fz);
+    len = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (!isfinite(len) || len <= 1e-12) {
+        v[0] = fx;
+        v[1] = fy;
+        v[2] = fz;
+        return;
+    }
+    v[0] /= len;
+    v[1] /= len;
+    v[2] /= len;
+}
+
 /// @brief Read one numeric element from a JSON array by index, with bounds-check and default.
 /// @details Combines `jarr_len` bounds-check, `rt_seq_get`, and `jvalue_num` into a single call
 ///   for safely reading glTF array fields like `"color"` and `"translation"` that may have
@@ -1952,6 +2034,403 @@ static double gltf_arr_num(void *arr, int64_t index, double fallback) {
     if (!arr || index < 0 || index >= jarr_len(arr))
         return fallback;
     return jvalue_num(rt_seq_get(arr, index), fallback);
+}
+
+static char *gltf_strdup_or(const char *value, const char *fallback) {
+    const char *src = (value && value[0] != '\0') ? value : fallback;
+    size_t len;
+    char *copy;
+    if (!src)
+        src = "";
+    len = strlen(src);
+    if (len == SIZE_MAX) {
+        rt_trap("glTF: scene name too long");
+        return NULL;
+    }
+    copy = (char *)malloc(len + 1);
+    if (!copy) {
+        rt_trap("glTF: scene name allocation failed");
+        return NULL;
+    }
+    memcpy(copy, src, len + 1);
+    return copy;
+}
+
+/// @brief Append a newly-created Camera3D to the asset-owned active-scene camera list.
+/// @details Takes ownership of @p camera on success. On allocation failure the caller still owns
+///   the camera and should release it.
+static int gltf_append_camera(rt_gltf_asset *asset, void *camera) {
+    void **grown;
+    int32_t next_capacity;
+    if (!asset || !camera)
+        return 1;
+    if (asset->camera_count >= asset->camera_capacity) {
+        if (asset->camera_capacity > INT32_MAX / 2) {
+            rt_trap("glTF: too many cameras");
+            return 0;
+        }
+        next_capacity = asset->camera_capacity > 0 ? asset->camera_capacity * 2 : 4;
+        grown = (void **)realloc(asset->cameras, (size_t)next_capacity * sizeof(void *));
+        if (!grown) {
+            rt_trap("glTF: camera list allocation failed");
+            return 0;
+        }
+        asset->cameras = grown;
+        asset->camera_capacity = next_capacity;
+    }
+    asset->cameras[asset->camera_count++] = camera;
+    return 1;
+}
+
+static int gltf_append_scene_camera(gltf_scene_info_t *scene, void *camera) {
+    void **grown;
+    int32_t next_capacity;
+    if (!scene || !camera)
+        return 1;
+    if (scene->camera_count >= scene->camera_capacity) {
+        if (scene->camera_capacity > INT32_MAX / 2) {
+            rt_trap("glTF: too many scene cameras");
+            return 0;
+        }
+        next_capacity = scene->camera_capacity > 0 ? scene->camera_capacity * 2 : 4;
+        grown = (void **)realloc(scene->cameras, (size_t)next_capacity * sizeof(void *));
+        if (!grown) {
+            rt_trap("glTF: scene camera list allocation failed");
+            return 0;
+        }
+        scene->cameras = grown;
+        scene->camera_capacity = next_capacity;
+    }
+    scene->cameras[scene->camera_count++] = camera;
+    return 1;
+}
+
+static int gltf_append_scene(rt_gltf_asset *asset, void *root, const char *name) {
+    gltf_scene_info_t *grown;
+    gltf_scene_info_t *scene;
+    int32_t next_capacity;
+    char fallback[64];
+    if (!asset || !root)
+        return 0;
+    if (asset->scene_count >= asset->scene_capacity) {
+        if (asset->scene_capacity > INT32_MAX / 2) {
+            rt_trap("glTF: too many scenes");
+            return 0;
+        }
+        next_capacity = asset->scene_capacity > 0 ? asset->scene_capacity * 2 : 4;
+        grown = (gltf_scene_info_t *)realloc(asset->scenes,
+                                             (size_t)next_capacity * sizeof(*asset->scenes));
+        if (!grown) {
+            rt_trap("glTF: scene list allocation failed");
+            return 0;
+        }
+        memset(grown + asset->scene_capacity,
+               0,
+               (size_t)(next_capacity - asset->scene_capacity) * sizeof(*grown));
+        asset->scenes = grown;
+        asset->scene_capacity = next_capacity;
+    }
+    snprintf(fallback, sizeof(fallback), asset->scene_count == 0 ? "default" : "scene_%d",
+             (int)asset->scene_count);
+    scene = &asset->scenes[asset->scene_count];
+    memset(scene, 0, sizeof(*scene));
+    scene->root = root;
+    scene->node_count = gltf_count_subtree((rt_scene_node3d *)root) - 1;
+    scene->name = gltf_strdup_or(name, fallback);
+    if (!scene->name) {
+        memset(scene, 0, sizeof(*scene));
+        return 0;
+    }
+    asset->scene_count++;
+    return 1;
+}
+
+static rt_scene_node3d *gltf_clone_scene_node_shallow(const rt_scene_node3d *src) {
+    rt_scene_node3d *dst;
+    if (!src)
+        return NULL;
+    dst = (rt_scene_node3d *)rt_scene_node3d_new();
+    if (!dst)
+        return NULL;
+    memcpy(dst->position, src->position, sizeof(dst->position));
+    memcpy(dst->rotation, src->rotation, sizeof(dst->rotation));
+    memcpy(dst->scale_xyz, src->scale_xyz, sizeof(dst->scale_xyz));
+    memcpy(dst->aabb_min, src->aabb_min, sizeof(dst->aabb_min));
+    memcpy(dst->aabb_max, src->aabb_max, sizeof(dst->aabb_max));
+    dst->bsphere_radius = src->bsphere_radius;
+    dst->world_dirty = 1;
+    dst->visible = src->visible;
+    if (src->mesh) {
+        rt_obj_retain_maybe(src->mesh);
+        dst->mesh = src->mesh;
+    }
+    if (src->material) {
+        rt_obj_retain_maybe(src->material);
+        dst->material = src->material;
+    }
+    if (src->light) {
+        rt_obj_retain_maybe(src->light);
+        dst->light = src->light;
+    }
+    if (src->name) {
+        rt_obj_retain_maybe(src->name);
+        dst->name = src->name;
+    }
+    return dst;
+}
+
+typedef struct {
+    const rt_scene_node3d *src;
+    rt_scene_node3d *dst;
+    int32_t next_child;
+} gltf_clone_frame_t;
+
+static rt_scene_node3d *gltf_clone_scene_node(const rt_scene_node3d *src) {
+    rt_scene_node3d *root;
+    gltf_clone_frame_t *stack;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 32;
+    if (!src)
+        return NULL;
+    root = gltf_clone_scene_node_shallow(src);
+    if (!root)
+        return NULL;
+    stack = (gltf_clone_frame_t *)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack) {
+        rt_trap("glTF: scene clone stack allocation failed");
+        gltf_release_local(root);
+        return NULL;
+    }
+    stack[stack_count++] = (gltf_clone_frame_t){src, root, 0};
+    while (stack_count > 0) {
+        gltf_clone_frame_t *frame = &stack[stack_count - 1];
+        const rt_scene_node3d *src_child;
+        rt_scene_node3d *dst_child;
+        if (!frame->src || frame->next_child >= frame->src->child_count) {
+            stack_count--;
+            continue;
+        }
+        src_child = frame->src->children[frame->next_child++];
+        dst_child = gltf_clone_scene_node_shallow(src_child);
+        if (!dst_child) {
+            free(stack);
+            gltf_release_local(root);
+            return NULL;
+        }
+        rt_scene_node3d_add_child(frame->dst, dst_child);
+        gltf_release_local(dst_child);
+        if (stack_count >= stack_capacity) {
+            gltf_clone_frame_t *grown;
+            int32_t next_capacity;
+            if (stack_capacity > INT32_MAX / 2) {
+                free(stack);
+                gltf_release_local(root);
+                rt_trap("glTF: too many scene nodes to clone");
+                return NULL;
+            }
+            next_capacity = stack_capacity * 2;
+            grown = (gltf_clone_frame_t *)realloc(stack, (size_t)next_capacity * sizeof(*stack));
+            if (!grown) {
+                free(stack);
+                gltf_release_local(root);
+                rt_trap("glTF: scene clone stack allocation failed");
+                return NULL;
+            }
+            stack = grown;
+            stack_capacity = next_capacity;
+        }
+        stack[stack_count++] = (gltf_clone_frame_t){src_child, dst_child, 0};
+    }
+    free(stack);
+    return root;
+}
+
+/// @brief Build a Camera3D from one glTF `cameras[]` JSON entry.
+/// @details glTF perspective `yfov` is radians; Viper stores vertical FOV in degrees. glTF
+///   orthographic `xmag`/`ymag` are view half-extents, matching Camera3D.NewOrtho's half-height
+///   size parameter and aspect ratio.
+static void *gltf_make_camera(void *camera_json) {
+    static const double pi = 3.14159265358979323846;
+    const char *type = jstr(camera_json, "type");
+    if (!camera_json || !type)
+        return NULL;
+    if (strcmp(type, "perspective") == 0) {
+        void *persp = jget(camera_json, "perspective");
+        double znear = jvalue_num(jget(persp, "znear"), 0.1);
+        double zfar = jvalue_num(jget(persp, "zfar"), znear + 1000.0);
+        double yfov = jvalue_num(jget(persp, "yfov"), pi / 3.0);
+        double aspect = jvalue_num(jget(persp, "aspectRatio"), 1.0);
+        return rt_camera3d_new(yfov * (180.0 / pi), aspect, znear, zfar);
+    }
+    if (strcmp(type, "orthographic") == 0) {
+        void *ortho = jget(camera_json, "orthographic");
+        double xmag = fabs(jvalue_num(jget(ortho, "xmag"), 1.0));
+        double ymag = fabs(jvalue_num(jget(ortho, "ymag"), 1.0));
+        double znear = jvalue_num(jget(ortho, "znear"), 0.1);
+        double zfar = jvalue_num(jget(ortho, "zfar"), znear + 1000.0);
+        double aspect;
+        if (!isfinite(xmag) || xmag <= 1e-9)
+            xmag = 1.0;
+        if (!isfinite(ymag) || ymag <= 1e-9)
+            ymag = 1.0;
+        aspect = xmag / ymag;
+        return rt_camera3d_new_ortho(ymag, aspect, znear, zfar);
+    }
+    return NULL;
+}
+
+/// @brief Apply a glTF camera node's world transform to a standalone Camera3D object.
+/// @details glTF cameras look down local -Z with +Y as up. SceneNode3D matrices are row-major,
+///   so the local -Z and +Y axes are read from the third and second rotation columns.
+static void gltf_apply_camera_node_transform(void *camera, rt_scene_node3d *node) {
+    void *world_obj;
+    double m[16];
+    double eye[3];
+    double forward[3];
+    double up[3];
+    double target[3];
+    if (!camera || !node)
+        return;
+    world_obj = rt_scene_node3d_get_world_matrix(node);
+    if (!world_obj)
+        return;
+    for (int r = 0; r < 4; r++)
+        for (int c = 0; c < 4; c++)
+            m[r * 4 + c] = rt_mat4_get(world_obj, r, c);
+    gltf_release_ref(&world_obj);
+
+    eye[0] = m[3];
+    eye[1] = m[7];
+    eye[2] = m[11];
+    forward[0] = -m[2];
+    forward[1] = -m[6];
+    forward[2] = -m[10];
+    up[0] = m[1];
+    up[1] = m[5];
+    up[2] = m[9];
+    gltf_normalize_vec3_or(forward, 0.0, 0.0, -1.0);
+    gltf_normalize_vec3_or(up, 0.0, 1.0, 0.0);
+    target[0] = eye[0] + forward[0];
+    target[1] = eye[1] + forward[1];
+    target[2] = eye[2] + forward[2];
+    rt_camera3d_look_at_components(camera,
+                                   eye[0],
+                                   eye[1],
+                                   eye[2],
+                                   target[0],
+                                   target[1],
+                                   target[2],
+                                   up[0],
+                                   up[1],
+                                   up[2]);
+}
+
+/// @brief Mark @p root_idx and its descendants as members of the active scene.
+static int gltf_mark_active_node_subtree(void *nodes_arr,
+                                         int32_t node_count,
+                                         int32_t root_idx,
+                                         uint8_t *active_nodes) {
+    int32_t *stack = NULL;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 32;
+    if (!nodes_arr || !active_nodes || root_idx < 0 || root_idx >= node_count)
+        return 0;
+    stack = (int32_t *)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack)
+        return 0;
+    stack[stack_count++] = root_idx;
+    while (stack_count > 0) {
+        int32_t node_idx = stack[--stack_count];
+        void *node_json;
+        void *children;
+        if (node_idx < 0 || node_idx >= node_count)
+            continue;
+        if (active_nodes[node_idx])
+            continue;
+        active_nodes[node_idx] = 1;
+        node_json = rt_seq_get(nodes_arr, node_idx);
+        children = jarr(node_json, "children");
+        for (int64_t ci = 0; ci < jarr_len(children); ci++) {
+            int64_t child_idx = jvalue_int(rt_seq_get(children, ci), -1);
+            if (child_idx < 0 || child_idx >= node_count)
+                continue;
+            if (stack_count >= stack_capacity) {
+                int32_t next_capacity;
+                int32_t *grown;
+                if (stack_capacity > INT32_MAX / 2) {
+                    free(stack);
+                    return 0;
+                }
+                next_capacity = stack_capacity * 2;
+                grown = (int32_t *)realloc(stack, (size_t)next_capacity * sizeof(*stack));
+                if (!grown) {
+                    free(stack);
+                    return 0;
+                }
+                stack = grown;
+                stack_capacity = next_capacity;
+            }
+            stack[stack_count++] = (int32_t)child_idx;
+        }
+    }
+    free(stack);
+    return 1;
+}
+
+/// @brief Create Camera3D objects for camera nodes that are reachable from one immutable scene.
+static int gltf_import_scene_cameras(gltf_scene_info_t *scene,
+                                     void *root,
+                                     void *nodes_arr,
+                                     rt_scene_node3d **nodes,
+                                     int32_t node_count,
+                                     const uint8_t *active_nodes) {
+    void *cameras_arr = jarr(root, "cameras");
+    int64_t camera_def_count = jarr_len(cameras_arr);
+    if (!scene || !nodes_arr || !nodes || !active_nodes || camera_def_count <= 0)
+        return 1;
+    for (int32_t ni = 0; ni < node_count; ni++) {
+        void *node_json;
+        int64_t camera_ref;
+        void *camera;
+        if (!active_nodes[ni] || !nodes[ni])
+            continue;
+        node_json = rt_seq_get(nodes_arr, ni);
+        camera_ref = jvalue_int(jget(node_json, "camera"), -1);
+        if (camera_ref < 0 || camera_ref >= camera_def_count)
+            continue;
+        camera = gltf_make_camera(rt_seq_get(cameras_arr, camera_ref));
+        if (!camera)
+            continue;
+        gltf_apply_camera_node_transform(camera, nodes[ni]);
+        if (!gltf_append_scene_camera(scene, camera)) {
+            gltf_release_ref(&camera);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int gltf_install_active_scene_compat(rt_gltf_asset *asset) {
+    gltf_scene_info_t *scene;
+    if (!asset || asset->scene_count <= 0)
+        return 1;
+    scene = &asset->scenes[0];
+    if (scene->root) {
+        rt_obj_retain_maybe(scene->root);
+        asset->scene_root = scene->root;
+        asset->node_count = scene->node_count;
+    }
+    for (int32_t i = 0; i < scene->camera_count; i++) {
+        void *camera = scene->cameras[i];
+        if (!camera)
+            continue;
+        rt_obj_retain_maybe(camera);
+        if (!gltf_append_camera(asset, camera)) {
+            gltf_release_ref(&camera);
+            return 0;
+        }
+    }
+    return 1;
 }
 
 /// @brief Construct a `rt_light3d` from a `KHR_lights_punctual` extension light JSON object.
@@ -1990,6 +2469,7 @@ static void *gltf_new_punctual_light(void *light_json) {
     light->direction[1] = 0.0;
     light->direction[2] = -1.0;
     light->enabled = 1;
+    light->casts_shadows = 1;
 
     if (strcmp(type, "directional") == 0) {
         light->type = 0;
@@ -3593,7 +4073,12 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
 
     // Parse JSON
     rt_string json_rts = rt_const_cstr(json_str);
-    void *root = rt_json_parse_object(json_rts);
+    void *root = NULL;
+    jmp_buf json_recovery;
+    rt_trap_set_recovery(&json_recovery);
+    if (setjmp(json_recovery) == 0)
+        root = rt_json_parse_object(json_rts);
+    rt_trap_clear_recovery();
     free(json_str);
     if (!root) {
         free(file_data);
@@ -3736,6 +4221,12 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
     asset->animation_count = 0;
     asset->node_animations = NULL;
     asset->node_animation_count = 0;
+    asset->cameras = NULL;
+    asset->camera_count = 0;
+    asset->camera_capacity = 0;
+    asset->scenes = NULL;
+    asset->scene_count = 0;
+    asset->scene_capacity = 0;
     asset->scene_root = NULL;
     asset->node_count = 0;
     rt_obj_set_finalizer(asset, gltf_asset_finalize);
@@ -4327,9 +4818,6 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     graph_valid
                         ? (rt_scene_node3d **)calloc((size_t)node_json_count, sizeof(*nodes))
                         : NULL;
-                if (graph_valid)
-                    asset->scene_root = rt_scene_node3d_new();
-
                 for (int ni = 0; ni < node_json_count && nodes; ni++) {
                     void *node_json = rt_seq_get(nodes_arr, (int64_t)ni);
                     rt_scene_node3d *node = (rt_scene_node3d *)rt_scene_node3d_new();
@@ -4479,51 +4967,155 @@ static void *rt_gltf_load_impl(rt_string path, int load_assets) {
                     }
                 }
 
-                if (asset->scene_root) {
+                if (graph_valid && nodes) {
                     void *scenes_arr = jarr(root, "scenes");
                     int64_t active_scene = jint(root, "scene", 0);
-                    int attached_any = 0;
-                    if (scenes_arr && jarr_len(scenes_arr) > 0 && active_scene >= 0 &&
-                        active_scene < jarr_len(scenes_arr)) {
-                        void *scene_json = rt_seq_get(scenes_arr, active_scene);
-                        void *scene_nodes = jarr(scene_json, "nodes");
-                        int *scene_seen = (int *)calloc((size_t)node_json_count, sizeof(int));
-                        int scene_roots_valid = scene_seen != NULL;
-                        for (int i = 0; scene_roots_valid && i < jarr_len(scene_nodes); i++) {
-                            int64_t node_idx = jvalue_int(rt_seq_get(scene_nodes, (int64_t)i), -1);
-                            if (node_idx < 0 || node_idx >= node_json_count ||
-                                scene_seen[node_idx] ||
-                                (node_parent && node_parent[node_idx] >= 0)) {
-                                scene_roots_valid = 0;
-                                break;
-                            }
-                            scene_seen[node_idx] = 1;
-                        }
-                        if (scene_roots_valid) {
-                            for (int i = 0; i < jarr_len(scene_nodes); i++) {
+                    int64_t scene_count = jarr_len(scenes_arr);
+                    int built_any = 0;
+                    int active_valid = scenes_arr && scene_count > 0 && active_scene >= 0 &&
+                                       active_scene < scene_count;
+                    if (scenes_arr && scene_count > 0) {
+                        for (int64_t order = 0; order < scene_count && !load_failed; order++) {
+                            int64_t scene_index =
+                                active_valid ? (order == 0 ? active_scene
+                                                           : (order <= active_scene ? order - 1
+                                                                                    : order))
+                                             : order;
+                            void *scene_json = rt_seq_get(scenes_arr, scene_index);
+                            void *scene_nodes = jarr(scene_json, "nodes");
+                            int *scene_seen =
+                                (int *)calloc((size_t)node_json_count, sizeof(int));
+                            uint8_t *scene_active =
+                                (uint8_t *)calloc((size_t)node_json_count, sizeof(*scene_active));
+                            rt_scene_node3d *scene_root = NULL;
+                            int scene_roots_valid = scene_seen != NULL && scene_active != NULL;
+                            int attached_any = 0;
+                            char fallback_scene_name[64];
+                            const char *scene_name = jstr(scene_json, "name");
+                            for (int i = 0; scene_roots_valid && i < jarr_len(scene_nodes); i++) {
                                 int64_t node_idx =
                                     jvalue_int(rt_seq_get(scene_nodes, (int64_t)i), -1);
-                                if (node_idx >= 0 && node_idx < node_json_count &&
-                                    nodes[node_idx]) {
-                                    rt_scene_node3d_add_child(asset->scene_root, nodes[node_idx]);
+                                if (node_idx < 0 || node_idx >= node_json_count ||
+                                    scene_seen[node_idx] ||
+                                    (node_parent && node_parent[node_idx] >= 0)) {
+                                    scene_roots_valid = 0;
+                                    break;
+                                }
+                                scene_seen[node_idx] = 1;
+                            }
+                            if (scene_roots_valid) {
+                                scene_root = (rt_scene_node3d *)rt_scene_node3d_new();
+                                if (!scene_root) {
+                                    load_failed = 1;
+                                } else {
+                                    for (int i = 0; i < jarr_len(scene_nodes); i++) {
+                                        int64_t node_idx =
+                                            jvalue_int(rt_seq_get(scene_nodes, (int64_t)i), -1);
+                                        if (node_idx >= 0 && node_idx < node_json_count &&
+                                            nodes[node_idx]) {
+                                            rt_scene_node3d *clone =
+                                                gltf_clone_scene_node(nodes[node_idx]);
+                                            if (!clone) {
+                                                load_failed = 1;
+                                                break;
+                                            }
+                                            rt_scene_node3d_add_child(scene_root, clone);
+                                            gltf_release_local(clone);
+                                            if (!gltf_mark_active_node_subtree(nodes_arr,
+                                                                               node_json_count,
+                                                                               (int32_t)node_idx,
+                                                                               scene_active)) {
+                                                load_failed = 1;
+                                                break;
+                                            }
+                                            attached_any = 1;
+                                        }
+                                    }
+                                }
+                            }
+                            if (!load_failed && scene_root && attached_any) {
+                                snprintf(fallback_scene_name,
+                                         sizeof(fallback_scene_name),
+                                         order == 0 ? "default" : "scene_%d",
+                                         (int)scene_index);
+                                if (!gltf_append_scene(asset,
+                                                       scene_root,
+                                                       (scene_name && scene_name[0] != '\0')
+                                                           ? scene_name
+                                                           : fallback_scene_name)) {
+                                    load_failed = 1;
+                                } else {
+                                    gltf_scene_info_t *scene = &asset->scenes[asset->scene_count - 1];
+                                    if (!gltf_import_scene_cameras(scene,
+                                                                   root,
+                                                                   nodes_arr,
+                                                                   nodes,
+                                                                   node_json_count,
+                                                                   scene_active))
+                                        load_failed = 1;
+                                    scene_root = NULL;
+                                    built_any = 1;
+                                }
+                            }
+                            if (scene_root)
+                                gltf_release_local(scene_root);
+                            free(scene_active);
+                            free(scene_seen);
+                        }
+                    }
+                    if (!built_any && !load_failed) {
+                        rt_scene_node3d *scene_root = (rt_scene_node3d *)rt_scene_node3d_new();
+                        uint8_t *scene_active =
+                            (uint8_t *)calloc((size_t)node_json_count, sizeof(*scene_active));
+                        int attached_any = 0;
+                        if (!scene_root || !scene_active) {
+                            if (scene_root)
+                                gltf_release_local(scene_root);
+                            free(scene_active);
+                            load_failed = 1;
+                        } else {
+                            for (int i = 0; i < node_json_count; i++) {
+                                if (node_parent && node_parent[i] < 0 && nodes[i]) {
+                                    rt_scene_node3d *clone = gltf_clone_scene_node(nodes[i]);
+                                    if (!clone) {
+                                        load_failed = 1;
+                                        break;
+                                    }
+                                    rt_scene_node3d_add_child(scene_root, clone);
+                                    gltf_release_local(clone);
+                                    if (!gltf_mark_active_node_subtree(
+                                            nodes_arr, node_json_count, i, scene_active)) {
+                                        load_failed = 1;
+                                        break;
+                                    }
                                     attached_any = 1;
                                 }
                             }
+                            if (!load_failed && attached_any &&
+                                gltf_append_scene(asset, scene_root, "default")) {
+                                gltf_scene_info_t *scene = &asset->scenes[asset->scene_count - 1];
+                                if (!gltf_import_scene_cameras(scene,
+                                                               root,
+                                                               nodes_arr,
+                                                               nodes,
+                                                               node_json_count,
+                                                               scene_active))
+                                    load_failed = 1;
+                                scene_root = NULL;
+                            } else if (!load_failed) {
+                                load_failed = 1;
+                            }
+                            if (scene_root)
+                                gltf_release_local(scene_root);
+                            free(scene_active);
                         }
-                        free(scene_seen);
                     }
-                    if (!attached_any) {
-                        for (int i = 0; i < node_json_count; i++) {
-                            if (node_parent && node_parent[i] < 0 && nodes[i])
-                                rt_scene_node3d_add_child(asset->scene_root, nodes[i]);
-                        }
-                    }
-                    if (asset->scene_root)
-                        asset->node_count = gltf_count_subtree(asset->scene_root) - 1;
-                    for (int i = 0; i < node_json_count; i++)
-                        gltf_release_ref((void **)&nodes[i]);
+                    if (!load_failed && !gltf_install_active_scene_compat(asset))
+                        load_failed = 1;
                 }
 
+                for (int i = 0; i < node_json_count && nodes; i++)
+                    gltf_release_ref((void **)&nodes[i]);
                 free(nodes);
                 free(node_parent);
             }
@@ -4658,6 +5250,64 @@ void *rt_gltf_get_node_animation(void *obj, int64_t index) {
     if (index < 0 || index >= a->node_animation_count)
         return NULL;
     return a->node_animations[index];
+}
+
+/// @brief Return the number of cameras imported from the active scene.
+int64_t rt_gltf_camera_count(void *obj) {
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    return a ? a->camera_count : 0;
+}
+
+/// @brief Borrow the i-th active-scene Camera3D imported from glTF.
+void *rt_gltf_get_camera(void *obj, int64_t index) {
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a)
+        return NULL;
+    if (index < 0 || index >= a->camera_count)
+        return NULL;
+    return a->cameras[index];
+}
+
+/// @brief Number of immutable scenes in the glTF asset.
+int64_t rt_gltf_scene_count(void *obj) {
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    return a ? a->scene_count : 0;
+}
+
+/// @brief Return the imported scene name, or an empty string for invalid indices.
+rt_string rt_gltf_get_scene_name(void *obj, int64_t index) {
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a || index < 0 || index >= a->scene_count || !a->scenes[index].name)
+        return rt_const_cstr("");
+    return rt_const_cstr(a->scenes[index].name);
+}
+
+/// @brief Borrow the root SceneNode3D for immutable scene @p index.
+void *rt_gltf_get_scene_root_at(void *obj, int64_t index) {
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a || index < 0 || index >= a->scene_count)
+        return NULL;
+    return a->scenes[index].root;
+}
+
+/// @brief Number of cameras reachable from immutable scene @p scene_index.
+int64_t rt_gltf_scene_camera_count(void *obj, int64_t scene_index) {
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    if (!a || scene_index < 0 || scene_index >= a->scene_count)
+        return 0;
+    return a->scenes[scene_index].camera_count;
+}
+
+/// @brief Borrow a Camera3D from immutable scene @p scene_index.
+void *rt_gltf_get_scene_camera(void *obj, int64_t scene_index, int64_t index) {
+    rt_gltf_asset *a = gltf_asset_checked(obj);
+    gltf_scene_info_t *scene;
+    if (!a || scene_index < 0 || scene_index >= a->scene_count)
+        return NULL;
+    scene = &a->scenes[scene_index];
+    if (index < 0 || index >= scene->camera_count)
+        return NULL;
+    return scene->cameras[index];
 }
 
 /// @brief Number of nodes in the loaded glTF scene tree (0 for NULL).

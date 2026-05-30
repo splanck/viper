@@ -6,16 +6,18 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_rt_navmesh_blend.cpp
-// Purpose: Unit tests for NavMesh3D and AnimBlend3D.
+// Purpose: Unit tests for NavMesh3D, AnimBlend3D, and BlendTree3D.
 //
-// Links: rt_navmesh3d.h, rt_skeleton3d.h
+// Links: rt_navmesh3d.h, rt_skeleton3d.h, rt_blendtree3d.h
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_blendtree3d.h"
 #include "rt_internal.h"
 #include "rt_navmesh3d.h"
 #include "rt_path3d.h"
+#include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include <cassert>
 #include <cmath>
@@ -209,6 +211,232 @@ static void test_navmesh_large_mesh() {
     EXPECT_TRUE(tc > 0, "NavMesh large: has walkable triangles");
 }
 
+static void *make_narrow_corridor_navmesh(double agent_radius) {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, -3.0, 0.0, -0.3, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, -0.3, 0.0, 1.0, 0.0, 0.5, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.3, 0.0, 1.0, 0.0, 0.5, 1.0);
+    rt_mesh3d_add_vertex(mesh, -3.0, 0.0, 0.3, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, 3.0, 0.0, -0.3, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 3.0, 0.0, 0.3, 0.0, 1.0, 0.0, 1.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 2, 1);
+    rt_mesh3d_add_triangle(mesh, 0, 3, 2);
+    rt_mesh3d_add_triangle(mesh, 1, 5, 4);
+    rt_mesh3d_add_triangle(mesh, 1, 2, 5);
+    return rt_navmesh3d_build(mesh, agent_radius, 1.8);
+}
+
+static void test_navmesh_agent_radius_blocks_narrow_portals() {
+    void *small_agent = make_narrow_corridor_navmesh(0.2);
+    void *wide_agent = make_narrow_corridor_navmesh(0.4);
+    void *from = rt_vec3_new(-2.0, 0.0, 0.0);
+    void *to = rt_vec3_new(2.0, 0.0, 0.0);
+
+    EXPECT_TRUE(small_agent != nullptr && wide_agent != nullptr,
+                "NavMesh radius corridors: meshes build");
+    EXPECT_TRUE(rt_navmesh3d_find_path(small_agent, from, to) != nullptr,
+                "NavMesh radius corridors: small agent traverses a wide-enough portal");
+    EXPECT_TRUE(rt_navmesh3d_find_path(wide_agent, from, to) == nullptr,
+                "NavMesh radius corridors: wide agent cannot traverse a narrow portal");
+}
+
+static void *make_two_island_navmesh() {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, -4.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, -2.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, -2.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, -4.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, 2.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 4.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 4.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, 2.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 2, 1);
+    rt_mesh3d_add_triangle(mesh, 0, 3, 2);
+    rt_mesh3d_add_triangle(mesh, 4, 6, 5);
+    rt_mesh3d_add_triangle(mesh, 4, 7, 6);
+    return rt_navmesh3d_build(mesh, 0.4, 1.8);
+}
+
+static void test_navmesh_offmesh_links_bridge_islands() {
+    void *nm = make_two_island_navmesh();
+    void *from = rt_vec3_new(-3.0, 0.0, 0.0);
+    void *to = rt_vec3_new(3.0, 0.0, 0.0);
+    void *link_from = rt_vec3_new(-2.5, 0.0, 0.0);
+    void *link_to = rt_vec3_new(2.5, 0.0, 0.0);
+
+    EXPECT_TRUE(nm != nullptr, "NavMesh off-mesh: island mesh builds");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 4, "NavMesh off-mesh: islands are walkable");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) == nullptr,
+                "NavMesh off-mesh: disconnected islands have no path before link");
+    EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_count(nm) == 0,
+                "NavMesh off-mesh: new mesh starts with no links");
+    EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nm, link_from, link_to, 1) != 0,
+                "NavMesh off-mesh: AddOffMeshLink accepts endpoints on walkable islands");
+    EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_count(nm) == 1,
+                "NavMesh off-mesh: OffMeshLinkCount tracks authored links");
+
+    void *path = rt_navmesh3d_find_path(nm, from, to);
+    EXPECT_TRUE(path != nullptr, "NavMesh off-mesh: bidirectional link bridges islands");
+    if (path)
+        EXPECT_TRUE(rt_path3d_get_point_count(path) >= 4,
+                    "NavMesh off-mesh: path includes endpoint and link waypoints");
+}
+
+static void test_navmesh_offmesh_links_validate_and_direct() {
+    void *nm = make_two_island_navmesh();
+    void *left = rt_vec3_new(-3.0, 0.0, 0.0);
+    void *right = rt_vec3_new(3.0, 0.0, 0.0);
+    void *bad = rt_vec3_new(100.0, 0.0, 0.0);
+
+    EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nm, left, bad, 1) == 0,
+                "NavMesh off-mesh: rejects endpoints outside walkable polygons");
+    EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nullptr, left, right, 1) == 0,
+                "NavMesh off-mesh: rejects NULL navmesh");
+    EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_count(left) == 0,
+                "NavMesh off-mesh: accessors reject non-navmesh handles");
+    EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nm, left, right, 0) != 0,
+                "NavMesh off-mesh: one-way link can be authored");
+
+    void *forward = rt_navmesh3d_find_path(nm, left, right);
+    void *reverse = rt_navmesh3d_find_path(nm, right, left);
+    EXPECT_TRUE(forward != nullptr, "NavMesh off-mesh: one-way link traverses forward");
+    EXPECT_TRUE(reverse == nullptr, "NavMesh off-mesh: one-way link blocks reverse traversal");
+}
+
+static void *make_navmesh_obstacle_strip() {
+    void *mesh = rt_mesh3d_new();
+    for (int i = 0; i <= 4; i++) {
+        double x = -4.0 + (double)i * 2.0;
+        rt_mesh3d_add_vertex(mesh, x, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+        rt_mesh3d_add_vertex(mesh, x, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    }
+    for (int i = 0; i < 4; i++) {
+        int64_t bl = i * 2;
+        int64_t tl = i * 2 + 1;
+        int64_t br = (i + 1) * 2;
+        int64_t tr = (i + 1) * 2 + 1;
+        rt_mesh3d_add_triangle(mesh, bl, tr, br);
+        rt_mesh3d_add_triangle(mesh, bl, tl, tr);
+    }
+    return rt_navmesh3d_build(mesh, 0.25, 1.8);
+}
+
+static void test_navmesh_add_obstacle_carves_walkable_triangles() {
+    void *nm = make_navmesh_obstacle_strip();
+    void *from = rt_vec3_new(-3.0, 0.0, 0.0);
+    void *to = rt_vec3_new(3.0, 0.0, 0.0);
+    void *blocked = rt_vec3_new(0.0, 0.0, 0.0);
+    void *min_v = rt_vec3_new(-0.8, -0.2, -1.2);
+    void *max_v = rt_vec3_new(0.8, 1.0, 1.2);
+    void *far_min = rt_vec3_new(10.0, -0.2, 10.0);
+    void *far_max = rt_vec3_new(12.0, 1.0, 12.0);
+    void *bad_min = rt_vec3_new(NAN, 0.0, 0.0);
+    int64_t before_count = rt_navmesh3d_get_triangle_count(nm);
+
+    EXPECT_TRUE(nm != nullptr, "NavMesh obstacle: strip mesh builds");
+    EXPECT_TRUE(before_count == 8, "NavMesh obstacle: strip starts with eight walkable triangles");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr,
+                "NavMesh obstacle: strip paths before carving");
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(nm) == 0,
+                "NavMesh obstacle: new mesh starts with no obstacles");
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(nm, bad_min, max_v) == 0,
+                "NavMesh obstacle: rejects non-finite obstacle bounds");
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(nm) == 0,
+                "NavMesh obstacle: rejected obstacle does not increment telemetry");
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(nm, min_v, max_v) != 0,
+                "NavMesh obstacle: AddObstacle accepts finite AABB bounds");
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(nm) == 1,
+                "NavMesh obstacle: ObstacleCount tracks authored obstacles");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) < before_count,
+                "NavMesh obstacle: obstacle removes overlapping walkable triangles");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, blocked) == 0,
+                "NavMesh obstacle: carved obstacle center is not walkable");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) == nullptr,
+                "NavMesh obstacle: carved strip no longer has a corridor path");
+    EXPECT_TRUE(rt_navmesh3d_update_obstacle(nm, 0, bad_min, far_max) == 0,
+                "NavMesh obstacle: UpdateObstacle rejects non-finite bounds");
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(nm) == 1,
+                "NavMesh obstacle: rejected update keeps authored obstacle");
+    EXPECT_TRUE(rt_navmesh3d_update_obstacle(nm, 0, far_min, far_max) != 0,
+                "NavMesh obstacle: UpdateObstacle moves a carved obstacle");
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(nm) == 1,
+                "NavMesh obstacle: UpdateObstacle preserves obstacle count");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == before_count,
+                "NavMesh obstacle: moving obstacle out of bounds restores triangles");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, blocked) != 0,
+                "NavMesh obstacle: moved obstacle restores walkability");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr,
+                "NavMesh obstacle: moved obstacle restores path corridor");
+    EXPECT_TRUE(rt_navmesh3d_update_obstacle(nm, 0, min_v, max_v) != 0,
+                "NavMesh obstacle: UpdateObstacle can carve again");
+    EXPECT_TRUE(rt_navmesh3d_remove_obstacle(nm, -1) == 0,
+                "NavMesh obstacle: RemoveObstacle rejects negative indices");
+    EXPECT_TRUE(rt_navmesh3d_remove_obstacle(nm, 1) == 0,
+                "NavMesh obstacle: RemoveObstacle rejects out-of-range indices");
+    EXPECT_TRUE(rt_navmesh3d_remove_obstacle(nm, 0) != 0,
+                "NavMesh obstacle: RemoveObstacle removes authored obstacles");
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(nm) == 0,
+                "NavMesh obstacle: RemoveObstacle updates obstacle count");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == before_count,
+                "NavMesh obstacle: removing obstacle restores walkable triangles");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr,
+                "NavMesh obstacle: removing obstacle restores path corridor");
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(from, min_v, max_v) == 0,
+                "NavMesh obstacle: rejects non-navmesh handles");
+}
+
+static void *make_scene_bake_fixture() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *floor = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_plane(6.0, 6.0);
+
+    rt_scene_node3d_set_position(parent, 2.0, 0.0, -3.0);
+    rt_scene_node3d_set_position(floor, 1.0, 0.0, 2.0);
+    rt_scene_node3d_set_mesh(floor, mesh);
+    rt_scene_node3d_add_child(parent, floor);
+    rt_scene3d_add(scene, parent);
+    return scene;
+}
+
+static void test_navmesh_bake_scene_flattens_transformed_nodes() {
+    void *scene = make_scene_bake_fixture();
+    void *nm = rt_navmesh3d_bake(scene, 0.4, 1.8, 45.0, 0.3);
+    void *center = rt_vec3_new(3.0, 0.0, -1.0);
+    void *outside = rt_vec3_new(-1.0, 0.0, 3.0);
+    void *from = rt_vec3_new(1.0, 0.0, -3.0);
+    void *to = rt_vec3_new(5.0, 0.0, 1.0);
+
+    EXPECT_TRUE(nm != nullptr, "NavMesh Bake: scene with transformed mesh bakes");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 2,
+                "NavMesh Bake: transformed plane contributes two walkable triangles");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, center) != 0,
+                "NavMesh Bake: world-space transformed center is walkable");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, outside) == 0,
+                "NavMesh Bake: points outside transformed world bounds are not walkable");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr,
+                "NavMesh Bake: pathfinding works across baked scene geometry");
+    EXPECT_TRUE(rt_navmesh3d_bake(rt_mesh3d_new_plane(2.0, 2.0), 0.4, 1.8, 45.0, 0.3) ==
+                    nullptr,
+                "NavMesh Bake: rejects non-Scene3D handles");
+}
+
+static void test_navmesh_bake_tiled_and_rebuild_tile_baseline() {
+    void *scene = make_scene_bake_fixture();
+    void *nm = rt_navmesh3d_bake_tiled(scene, 8.0, 0.4, 1.8, 45.0, 0.3);
+    void *center = rt_vec3_new(3.0, 0.0, -1.0);
+
+    EXPECT_TRUE(nm != nullptr, "NavMesh BakeTiled: scene bakes through tiled API");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 2,
+                "NavMesh BakeTiled: baseline preserves full-scene geometry");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, center) != 0,
+                "NavMesh BakeTiled: transformed geometry is walkable");
+    EXPECT_TRUE(rt_navmesh3d_rebuild_tile(nm, 0, 0) != 0,
+                "NavMesh RebuildTile: refilters whole-mesh baseline");
+    EXPECT_TRUE(rt_navmesh3d_rebuild_tile(scene, 0, 0) == 0,
+                "NavMesh RebuildTile: rejects non-navmesh handles");
+}
+
 /*==========================================================================
  * AnimBlend3D tests
  *=========================================================================*/
@@ -296,6 +524,101 @@ static void test_blend_update_no_crash() {
     EXPECT_TRUE(1, "AnimBlend3D update runs without crash");
 }
 
+/*==========================================================================
+ * BlendTree3D tests
+ *=========================================================================*/
+
+static void *make_blendtree_test_skeleton() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    return skel;
+}
+
+static void *make_blendtree_test_animation(const char *name) {
+    return rt_animation3d_new(rt_const_cstr(name), 1.0);
+}
+
+static void test_blendtree_1d_weights() {
+    void *skel = make_blendtree_test_skeleton();
+    void *tree = rt_blend_tree3d_new_1d(skel);
+    void *blend = rt_blend_tree3d_get_blend(tree);
+
+    EXPECT_TRUE(tree != nullptr, "BlendTree3D.New1D creates a tree");
+    EXPECT_TRUE(blend != nullptr, "BlendTree3D exposes an internal AnimBlend3D");
+    EXPECT_TRUE(rt_blend_tree3d_add_sample(tree, make_blendtree_test_animation("idle"), 0.0, 0.0) ==
+                    0,
+                "BlendTree3D.AddSample returns first sample index");
+    EXPECT_TRUE(rt_blend_tree3d_add_sample(tree, make_blendtree_test_animation("run"), 1.0, 0.0) ==
+                    1,
+                "BlendTree3D.AddSample returns second sample index");
+    EXPECT_TRUE(rt_blend_tree3d_get_sample_count(tree) == 2, "BlendTree3D.SampleCount tracks samples");
+
+    rt_blend_tree3d_set_param(tree, 0.25, 0.0);
+    rt_blend_tree3d_update(tree, 0.0);
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0),
+                0.75,
+                0.001,
+                "BlendTree3D 1D lower sample weight is linear");
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 1),
+                0.25,
+                0.001,
+                "BlendTree3D 1D upper sample weight is linear");
+
+    rt_blend_tree3d_set_param(tree, -2.0, 0.0);
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0),
+                1.0,
+                0.001,
+                "BlendTree3D 1D clamps below range to first sample");
+    rt_blend_tree3d_set_param(tree, 2.0, 0.0);
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 1),
+                1.0,
+                0.001,
+                "BlendTree3D 1D clamps above range to last sample");
+}
+
+static void test_blendtree_2d_weights() {
+    void *skel = make_blendtree_test_skeleton();
+    void *tree = rt_blend_tree3d_new_2d(skel);
+    void *blend = rt_blend_tree3d_get_blend(tree);
+
+    EXPECT_TRUE(tree != nullptr, "BlendTree3D.New2D creates a tree");
+    rt_blend_tree3d_add_sample(tree, make_blendtree_test_animation("center"), 0.0, 0.0);
+    rt_blend_tree3d_add_sample(tree, make_blendtree_test_animation("right"), 1.0, 0.0);
+    rt_blend_tree3d_add_sample(tree, make_blendtree_test_animation("up"), 0.0, 1.0);
+    EXPECT_TRUE(rt_blend_tree3d_get_sample_count(tree) == 3, "BlendTree3D 2D stores all samples");
+
+    rt_blend_tree3d_set_param(tree, 1.0, 0.0);
+    rt_blend_tree3d_update(tree, 0.0);
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 0),
+                0.0,
+                0.001,
+                "BlendTree3D 2D exact coordinate clears other samples");
+    EXPECT_NEAR(rt_anim_blend3d_get_weight(blend, 1),
+                1.0,
+                0.001,
+                "BlendTree3D 2D exact coordinate selects matching sample");
+
+    rt_blend_tree3d_set_param(tree, 0.5, 0.0);
+    rt_blend_tree3d_update(tree, 0.0);
+    double w0 = rt_anim_blend3d_get_weight(blend, 0);
+    double w1 = rt_anim_blend3d_get_weight(blend, 1);
+    double w2 = rt_anim_blend3d_get_weight(blend, 2);
+    EXPECT_NEAR(w0 + w1 + w2, 1.0, 0.001, "BlendTree3D 2D weights stay normalized");
+    EXPECT_TRUE(w0 > w2 && w1 > w2, "BlendTree3D 2D weights favor nearer samples");
+}
+
+static void test_blendtree_rejects_bad_handles() {
+    void *skel = make_blendtree_test_skeleton();
+    void *tree = rt_blend_tree3d_new_1d(skel);
+
+    EXPECT_TRUE(rt_blend_tree3d_new_1d(nullptr) == nullptr, "BlendTree3D rejects NULL skeletons");
+    EXPECT_TRUE(rt_blend_tree3d_add_sample(tree, skel, 0.0, 0.0) == -1,
+                "BlendTree3D rejects non-animation samples");
+    EXPECT_TRUE(rt_blend_tree3d_get_sample_count(skel) == 0,
+                "BlendTree3D accessors reject non-tree handles");
+}
+
 int main() {
     /* NavMesh3D */
     test_navmesh_build_plane();
@@ -308,6 +631,12 @@ int main() {
     test_navmesh_adjacency_edge_hash();
     test_navmesh_rejects_non_manifold_edges();
     test_navmesh_large_mesh();
+    test_navmesh_agent_radius_blocks_narrow_portals();
+    test_navmesh_offmesh_links_bridge_islands();
+    test_navmesh_offmesh_links_validate_and_direct();
+    test_navmesh_add_obstacle_carves_walkable_triangles();
+    test_navmesh_bake_scene_flattens_transformed_nodes();
+    test_navmesh_bake_tiled_and_rebuild_tile_baseline();
 
     /* AnimBlend3D */
     test_blend_create();
@@ -316,6 +645,11 @@ int main() {
     test_blend_weight_sanitizes_inputs();
     test_blend_update_no_crash();
 
-    printf("NavMesh3D+AnimBlend3D tests: %d/%d passed\n", tests_passed, tests_run);
+    /* BlendTree3D */
+    test_blendtree_1d_weights();
+    test_blendtree_2d_weights();
+    test_blendtree_rejects_bad_handles();
+
+    printf("NavMesh3D+AnimBlend3D+BlendTree3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

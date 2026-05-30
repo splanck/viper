@@ -33,7 +33,10 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_mat4.h"
 #include "rt_path3d.h"
+#include "rt_scene3d.h"
+#include "rt_scene3d_internal.h"
 
 #include <float.h>
 #include <math.h>
@@ -70,6 +73,19 @@ typedef struct {
 } nav_triangle_t;
 
 typedef struct {
+    float from[3];
+    float to[3];
+    int32_t from_tri;
+    int32_t to_tri;
+    int8_t bidirectional;
+} nav_offmesh_link_t;
+
+typedef struct {
+    float min[3];
+    float max[3];
+} nav_obstacle_t;
+
+typedef struct {
     void *vptr;
     nav_vertex_t *vertices;
     int32_t vertex_count;
@@ -77,10 +93,18 @@ typedef struct {
     int32_t source_triangle_count;
     nav_triangle_t *triangles;
     int32_t triangle_count;
+    nav_offmesh_link_t *offmesh_links;
+    int32_t offmesh_link_count;
+    int32_t offmesh_link_capacity;
+    nav_obstacle_t *obstacles;
+    int32_t obstacle_count;
+    int32_t obstacle_capacity;
     double agent_radius;
     double agent_height;
     double max_slope; /* degrees */
 } rt_navmesh3d;
+
+static void navmesh3d_refresh_offmesh_links(rt_navmesh3d *nm);
 
 /// @brief GC finalizer for NavMesh3D. Frees the baked vertex and triangle arrays
 /// (heap-allocated during `Build`) and nulls the slots so a stale handle would crash
@@ -91,9 +115,13 @@ static void navmesh3d_finalizer(void *obj) {
     free(nm->vertices);
     free(nm->source_triangles);
     free(nm->triangles);
+    free(nm->offmesh_links);
+    free(nm->obstacles);
     nm->vertices = NULL;
     nm->source_triangles = NULL;
     nm->triangles = NULL;
+    nm->offmesh_links = NULL;
+    nm->obstacles = NULL;
 }
 
 /// @brief Release a partially-constructed navmesh on allocation failure, freeing if refcount hits
@@ -123,6 +151,50 @@ static double navmesh3d_sanitize_slope(double degrees) {
     return degrees;
 }
 
+/// @brief Whether the shared edge is wide enough for the configured agent radius.
+static int navmesh3d_portal_allows_agent(const rt_navmesh3d *nm, int32_t va, int32_t vb) {
+    if (!nm || !nm->vertices || va < 0 || vb < 0 || va >= nm->vertex_count || vb >= nm->vertex_count)
+        return 0;
+    if (!isfinite(nm->agent_radius) || nm->agent_radius <= 0.0)
+        return 1;
+    const float *a = nm->vertices[va].position;
+    const float *b = nm->vertices[vb].position;
+    double dx = (double)b[0] - (double)a[0];
+    double dz = (double)b[2] - (double)a[2];
+    double width = sqrt(dx * dx + dz * dz);
+    return width + 1e-5 >= nm->agent_radius * 2.0 ? 1 : 0;
+}
+
+/// @brief Whether a triangle overlaps any authored obstacle AABB.
+/// @details This is a conservative coarse-carving baseline: triangles whose world AABB overlaps an
+/// obstacle AABB are removed from the walkable set when the navmesh is refiltered.
+static int navmesh3d_triangle_blocked_by_obstacle(const rt_navmesh3d *nm,
+                                                  const nav_triangle_t *tri) {
+    if (!nm || !tri || !nm->obstacles || nm->obstacle_count <= 0 || !nm->vertices)
+        return 0;
+    const float *p0 = nm->vertices[tri->v[0]].position;
+    const float *p1 = nm->vertices[tri->v[1]].position;
+    const float *p2 = nm->vertices[tri->v[2]].position;
+    float tri_min[3] = {
+        fminf(p0[0], fminf(p1[0], p2[0])),
+        fminf(p0[1], fminf(p1[1], p2[1])),
+        fminf(p0[2], fminf(p1[2], p2[2])),
+    };
+    float tri_max[3] = {
+        fmaxf(p0[0], fmaxf(p1[0], p2[0])),
+        fmaxf(p0[1], fmaxf(p1[1], p2[1])),
+        fmaxf(p0[2], fmaxf(p1[2], p2[2])),
+    };
+    for (int32_t i = 0; i < nm->obstacle_count; i++) {
+        const nav_obstacle_t *ob = &nm->obstacles[i];
+        if (tri_max[0] < ob->min[0] || tri_min[0] > ob->max[0] || tri_max[1] < ob->min[1] ||
+            tri_min[1] > ob->max[1] || tri_max[2] < ob->min[2] || tri_min[2] > ob->max[2])
+            continue;
+        return 1;
+    }
+    return 0;
+}
+
 /// @brief Compute triangle-edge adjacency, populating each triangle's `neighbors[3]` slots.
 /// @details Hash table keyed on `(min_vertex << 32) | max_vertex` matches each shared edge to
 ///          the two triangles that own it; first hit records the triangle, second hit cross-
@@ -149,6 +221,7 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
         int32_t tri_idx;
         int32_t edge_idx;
         int8_t used;
+        int8_t matched;
     } edge_entry_t;
 
     if ((size_t)map_cap > SIZE_MAX / sizeof(edge_entry_t))
@@ -177,12 +250,19 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
                 if (emap[idx].key == key) {
                     int32_t j = emap[idx].tri_idx;
                     int32_t je = emap[idx].edge_idx;
+                    if (emap[idx].matched) {
+                        free(emap);
+                        return 0;
+                    }
+                    emap[idx].matched = 1;
                     if (nm->triangles[i].neighbors[e] >= 0 || nm->triangles[j].neighbors[je] >= 0) {
                         free(emap);
                         return 0;
                     }
-                    nm->triangles[i].neighbors[e] = j;
-                    nm->triangles[j].neighbors[je] = i;
+                    if (navmesh3d_portal_allows_agent(nm, lo, hi)) {
+                        nm->triangles[i].neighbors[e] = j;
+                        nm->triangles[j].neighbors[je] = i;
+                    }
                     break;
                 }
             }
@@ -205,6 +285,8 @@ static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
         nav_triangle_t tri = nm->source_triangles[i];
         if (tri.normal[1] < (float)max_slope_cos)
             continue;
+        if (navmesh3d_triangle_blocked_by_obstacle(nm, &tri))
+            continue;
         tri.neighbors[0] = tri.neighbors[1] = tri.neighbors[2] = -1;
         nm->triangles[nm->triangle_count++] = tri;
     }
@@ -212,7 +294,152 @@ static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
         rt_trap("NavMesh3D: adjacency build failed (non-manifold edge or allocation failure)");
         return 0;
     }
+    navmesh3d_refresh_offmesh_links(nm);
     return 1;
+}
+
+/// @brief Transform a point by a row-major Mat4.
+static void navmesh3d_transform_point(const double *m, const float *p, double *out) {
+    out[0] = m[0] * (double)p[0] + m[1] * (double)p[1] + m[2] * (double)p[2] + m[3];
+    out[1] = m[4] * (double)p[0] + m[5] * (double)p[1] + m[6] * (double)p[2] + m[7];
+    out[2] = m[8] * (double)p[0] + m[9] * (double)p[1] + m[10] * (double)p[2] + m[11];
+}
+
+/// @brief Transform and normalize a normal by the row-major matrix's linear basis.
+static void navmesh3d_transform_normal(const double *m, const float *n, double *out) {
+    double len;
+    out[0] = m[0] * (double)n[0] + m[1] * (double)n[1] + m[2] * (double)n[2];
+    out[1] = m[4] * (double)n[0] + m[5] * (double)n[1] + m[6] * (double)n[2];
+    out[2] = m[8] * (double)n[0] + m[9] * (double)n[1] + m[10] * (double)n[2];
+    len = sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+    if (!isfinite(len) || len <= 1e-12) {
+        out[0] = 0.0;
+        out[1] = 1.0;
+        out[2] = 0.0;
+        return;
+    }
+    out[0] /= len;
+    out[1] /= len;
+    out[2] /= len;
+}
+
+/// @brief Append one SceneNode3D mesh into a temporary world-space Mesh3D.
+static int navmesh3d_append_scene_node_mesh(rt_mesh3d *dst, rt_scene_node3d *node) {
+    rt_mesh3d *src;
+    void *world_obj;
+    double world[16];
+    uint32_t base_vertex;
+    if (!dst || !node || !node->mesh)
+        return 1;
+    src = (rt_mesh3d *)rt_g3d_checked_or_null(node->mesh, RT_G3D_MESH3D_CLASS_ID);
+    if (!src || src->vertex_count == 0 || src->index_count < 3)
+        return 1;
+    if (dst->vertex_count > UINT32_MAX - src->vertex_count)
+        return 0;
+    world_obj = rt_scene_node3d_get_world_matrix(node);
+    if (!world_obj)
+        return 0;
+    for (int r = 0; r < 4; r++)
+        for (int c = 0; c < 4; c++)
+            world[r * 4 + c] = rt_mat4_get(world_obj, r, c);
+    navmesh3d_release_local(world_obj);
+
+    base_vertex = dst->vertex_count;
+    for (uint32_t i = 0; i < src->vertex_count; i++) {
+        double pos[3];
+        double normal[3];
+        navmesh3d_transform_point(world, src->vertices[i].pos, pos);
+        navmesh3d_transform_normal(world, src->vertices[i].normal, normal);
+        rt_mesh3d_add_vertex(dst,
+                             pos[0],
+                             pos[1],
+                             pos[2],
+                             normal[0],
+                             normal[1],
+                             normal[2],
+                             (double)src->vertices[i].uv[0],
+                             (double)src->vertices[i].uv[1]);
+        if (dst->build_failed)
+            return 0;
+    }
+    for (uint32_t i = 0; i + 2 < src->index_count; i += 3) {
+        uint32_t i0 = src->indices[i];
+        uint32_t i1 = src->indices[i + 1];
+        uint32_t i2 = src->indices[i + 2];
+        if (i0 >= src->vertex_count || i1 >= src->vertex_count || i2 >= src->vertex_count)
+            continue;
+        rt_mesh3d_add_triangle(dst,
+                               (int64_t)base_vertex + (int64_t)i0,
+                               (int64_t)base_vertex + (int64_t)i1,
+                               (int64_t)base_vertex + (int64_t)i2);
+        if (dst->build_failed)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Gather all Mesh3D-bearing scene nodes into a temporary world-space Mesh3D.
+static void *navmesh3d_build_scene_source_mesh(void *scene_obj) {
+    rt_scene3d *scene = (rt_scene3d *)rt_g3d_checked_or_null(scene_obj, RT_G3D_SCENE3D_CLASS_ID);
+    rt_mesh3d *mesh;
+    rt_scene_node3d **stack = NULL;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 64;
+    int32_t appended = 0;
+    if (!scene || !scene->root)
+        return NULL;
+    mesh = (rt_mesh3d *)rt_mesh3d_new();
+    if (!mesh)
+        return NULL;
+    stack = (rt_scene_node3d **)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack) {
+        navmesh3d_release_local(mesh);
+        return NULL;
+    }
+    stack[stack_count++] = scene->root;
+    while (stack_count > 0) {
+        rt_scene_node3d *node = stack[--stack_count];
+        if (!node)
+            continue;
+        if (node->mesh) {
+            uint32_t before = mesh->index_count;
+            if (!navmesh3d_append_scene_node_mesh(mesh, node)) {
+                free(stack);
+                navmesh3d_release_local(mesh);
+                return NULL;
+            }
+            if (mesh->index_count > before)
+                appended = 1;
+        }
+        for (int32_t i = 0; i < node->child_count; i++) {
+            if (stack_count >= stack_capacity) {
+                int32_t next_capacity;
+                rt_scene_node3d **grown;
+                if (stack_capacity > INT32_MAX / 2) {
+                    free(stack);
+                    navmesh3d_release_local(mesh);
+                    return NULL;
+                }
+                next_capacity = stack_capacity * 2;
+                grown =
+                    (rt_scene_node3d **)realloc(stack, (size_t)next_capacity * sizeof(*stack));
+                if (!grown) {
+                    free(stack);
+                    navmesh3d_release_local(mesh);
+                    return NULL;
+                }
+                stack = grown;
+                stack_capacity = next_capacity;
+            }
+            stack[stack_count++] = node->children[i];
+        }
+    }
+    free(stack);
+    if (!appended || mesh->vertex_count == 0 || mesh->index_count < 3) {
+        navmesh3d_release_local(mesh);
+        return NULL;
+    }
+    return mesh;
 }
 
 /// @brief Bake a navigation mesh from a triangle mesh. Filters out triangles whose normal
@@ -322,6 +549,45 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
     }
 
     return nm;
+}
+
+/// @brief Bake a navmesh from all Mesh3D-bearing nodes in a Scene3D.
+/// @details This baseline flattens scene node meshes through their world transforms into a
+/// temporary Mesh3D, then routes through the existing triangle Build path. @p cell_size is
+/// accepted for API compatibility with the planned voxel/tiled baker but is not used yet.
+void *rt_navmesh3d_bake(void *scene,
+                        double agent_radius,
+                        double agent_height,
+                        double max_slope,
+                        double cell_size) {
+    (void)cell_size;
+    void *source_mesh = navmesh3d_build_scene_source_mesh(scene);
+    rt_navmesh3d *nm;
+    if (!source_mesh)
+        return NULL;
+    nm = (rt_navmesh3d *)rt_navmesh3d_build(source_mesh, agent_radius, agent_height);
+    navmesh3d_release_local(source_mesh);
+    if (!nm)
+        return NULL;
+    nm->max_slope = navmesh3d_sanitize_slope(max_slope);
+    if (!navmesh3d_apply_slope_filter(nm)) {
+        navmesh3d_free_partial(nm);
+        return NULL;
+    }
+    return nm;
+}
+
+/// @brief Bake through the tiled API shape.
+/// @details Tile ownership is not materialized yet; this returns a full-scene navmesh so callers
+/// can use the final API while `RebuildTile` remains a whole-mesh refilter baseline.
+void *rt_navmesh3d_bake_tiled(void *scene,
+                              double tile_size,
+                              double agent_radius,
+                              double agent_height,
+                              double max_slope,
+                              double cell_size) {
+    (void)tile_size;
+    return rt_navmesh3d_bake(scene, agent_radius, agent_height, max_slope, cell_size);
 }
 
 /// @brief Point-in-triangle test on XZ plane (2D barycentric).
@@ -459,6 +725,41 @@ static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz) {
     return find_tri_with_max_dy(nm, px, py, pz, -1.0f);
 }
 
+/// @brief Re-resolve authored off-mesh link endpoints against the current walkable triangle set.
+static void navmesh3d_refresh_offmesh_links(rt_navmesh3d *nm) {
+    if (!nm || !nm->offmesh_links)
+        return;
+    float max_dy = navmesh3d_vertical_tolerance(nm);
+    for (int32_t i = 0; i < nm->offmesh_link_count; i++) {
+        nav_offmesh_link_t *link = &nm->offmesh_links[i];
+        link->from_tri =
+            find_tri_with_max_dy(nm, link->from[0], link->from[1], link->from[2], max_dy);
+        link->to_tri = find_tri_with_max_dy(nm, link->to[0], link->to[1], link->to[2], max_dy);
+    }
+}
+
+/// @brief Return the authored link connecting two triangles, if any. Sets @p reverse for to->from.
+static const nav_offmesh_link_t *navmesh3d_find_offmesh_link(const rt_navmesh3d *nm,
+                                                             int32_t from_tri,
+                                                             int32_t to_tri,
+                                                             int *reverse) {
+    if (reverse)
+        *reverse = 0;
+    if (!nm || !nm->offmesh_links)
+        return NULL;
+    for (int32_t i = 0; i < nm->offmesh_link_count; i++) {
+        const nav_offmesh_link_t *link = &nm->offmesh_links[i];
+        if (link->from_tri == from_tri && link->to_tri == to_tri)
+            return link;
+        if (link->bidirectional && link->to_tri == from_tri && link->from_tri == to_tri) {
+            if (reverse)
+                *reverse = 1;
+            return link;
+        }
+    }
+    return NULL;
+}
+
 /*==========================================================================
  * A* pathfinding
  *=========================================================================*/
@@ -577,7 +878,10 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
     int32_t tc = nm->triangle_count;
     if (tc <= 0 || tc > INT32_MAX / 3)
         return 0;
-    int32_t heap_cap = tc * 3;
+    int64_t heap_cap64 = (int64_t)tc * 3 + (int64_t)nm->offmesh_link_count * 2 + 8;
+    if (heap_cap64 <= 0 || heap_cap64 > INT32_MAX)
+        return 0;
+    int32_t heap_cap = (int32_t)heap_cap64;
     if ((size_t)tc > SIZE_MAX / sizeof(float) || (size_t)tc > SIZE_MAX / sizeof(int32_t) ||
         (size_t)tc > SIZE_MAX / sizeof(int8_t) ||
         (size_t)heap_cap > SIZE_MAX / sizeof(heap_entry_t))
@@ -625,6 +929,24 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
                 heap_push(heap, &heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
             }
         }
+
+        for (int32_t li = 0; li < nm->offmesh_link_count; li++) {
+            const nav_offmesh_link_t *link = &nm->offmesh_links[li];
+            int32_t next = -1;
+            if (link->from_tri == cur)
+                next = link->to_tri;
+            else if (link->bidirectional && link->to_tri == cur)
+                next = link->from_tri;
+            if (next < 0 || next >= tc || closed[next])
+                continue;
+
+            float new_g = g_cost[cur] + centroid_dist(nm, cur, next);
+            if (new_g < g_cost[next]) {
+                g_cost[next] = new_g;
+                parent[next] = cur;
+                heap_push(heap, &heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
+            }
+        }
     }
 
     if (found) {
@@ -645,7 +967,15 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
         for (int32_t c = goal; c != -1; c = parent[c])
             seq[idx--] = c;
 
-        int32_t max_points = count + 2;
+        if (count > (INT32_MAX - 2) / 3) {
+            free(seq);
+            free(g_cost);
+            free(parent);
+            free(closed);
+            free(heap);
+            return 0;
+        }
+        int32_t max_points = count * 3 + 2;
         points = (double *)malloc((size_t)max_points * 3u * sizeof(double));
         if (!points) {
             free(seq);
@@ -706,15 +1036,38 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
                     }
                 }
                 if (!portal_found) {
-                    /* Fallback to centroid if shared edge not found */
-                    float *cen = nm->triangles[tn].centroid;
-                    points[point_count * 3 + 0] = cen[0];
-                    points[point_count * 3 + 1] = cen[1];
-                    points[point_count * 3 + 2] = cen[2];
-                    point_count++;
-                    apex[0] = cen[0];
-                    apex[1] = cen[1];
-                    apex[2] = cen[2];
+                    int reverse = 0;
+                    const nav_offmesh_link_t *link = navmesh3d_find_offmesh_link(nm, ti, tn, &reverse);
+                    if (link) {
+                        const float *a = reverse ? link->to : link->from;
+                        const float *b = reverse ? link->from : link->to;
+                        float dax = a[0] - apex[0];
+                        float day = a[1] - apex[1];
+                        float daz = a[2] - apex[2];
+                        if (dax * dax + day * day + daz * daz > 0.01f) {
+                            points[point_count * 3 + 0] = a[0];
+                            points[point_count * 3 + 1] = a[1];
+                            points[point_count * 3 + 2] = a[2];
+                            point_count++;
+                        }
+                        points[point_count * 3 + 0] = b[0];
+                        points[point_count * 3 + 1] = b[1];
+                        points[point_count * 3 + 2] = b[2];
+                        point_count++;
+                        apex[0] = b[0];
+                        apex[1] = b[1];
+                        apex[2] = b[2];
+                    } else {
+                        /* Fallback to centroid if shared edge not found */
+                        float *cen = nm->triangles[tn].centroid;
+                        points[point_count * 3 + 0] = cen[0];
+                        points[point_count * 3 + 1] = cen[1];
+                        points[point_count * 3 + 2] = cen[2];
+                        point_count++;
+                        apex[0] = cen[0];
+                        apex[1] = cen[1];
+                        apex[2] = cen[2];
+                    }
                 }
             }
         } else if (count == 1) {
@@ -844,6 +1197,196 @@ int8_t rt_navmesh3d_is_walkable(void *obj, void *point) {
 int64_t rt_navmesh3d_get_triangle_count(void *obj) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     return nm ? nm->triangle_count : 0;
+}
+
+/// @brief Add an authored off-mesh traversal link between two walkable points.
+int8_t rt_navmesh3d_add_offmesh_link(void *obj, void *from, void *to, int8_t bidirectional) {
+    if (!obj || !rt_g3d_is_vec3(from) || !rt_g3d_is_vec3(to))
+        return 0;
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm || nm->triangle_count <= 0 || !nm->triangles || !nm->vertices)
+        return 0;
+
+    double fdx = rt_vec3_x(from), fdy = rt_vec3_y(from), fdz = rt_vec3_z(from);
+    double tdx = rt_vec3_x(to), tdy = rt_vec3_y(to), tdz = rt_vec3_z(to);
+    float fx = (float)fdx, fy = (float)fdy, fz = (float)fdz;
+    float tx = (float)tdx, ty = (float)tdy, tz = (float)tdz;
+    if (!isfinite(fx) || !isfinite(fy) || !isfinite(fz) || !isfinite(tx) || !isfinite(ty) ||
+        !isfinite(tz))
+        return 0;
+
+    float max_dy = navmesh3d_vertical_tolerance(nm);
+    int32_t from_tri = find_tri_with_max_dy(nm, fx, fy, fz, max_dy);
+    int32_t to_tri = find_tri_with_max_dy(nm, tx, ty, tz, max_dy);
+    if (from_tri < 0 || to_tri < 0)
+        return 0;
+
+    if (nm->offmesh_link_count >= nm->offmesh_link_capacity) {
+        int32_t new_cap = 4;
+        if (nm->offmesh_link_capacity > 0) {
+            if (nm->offmesh_link_capacity > INT32_MAX / 2)
+                return 0;
+            new_cap = nm->offmesh_link_capacity * 2;
+        }
+        if ((size_t)new_cap > SIZE_MAX / sizeof(nav_offmesh_link_t))
+            return 0;
+        nav_offmesh_link_t *links = (nav_offmesh_link_t *)realloc(
+            nm->offmesh_links, (size_t)new_cap * sizeof(nav_offmesh_link_t));
+        if (!links)
+            return 0;
+        nm->offmesh_links = links;
+        nm->offmesh_link_capacity = new_cap;
+    }
+
+    nav_offmesh_link_t *link = &nm->offmesh_links[nm->offmesh_link_count++];
+    link->from[0] = fx;
+    link->from[1] = fy;
+    link->from[2] = fz;
+    link->to[0] = tx;
+    link->to[1] = ty;
+    link->to[2] = tz;
+    link->from_tri = from_tri;
+    link->to_tri = to_tri;
+    link->bidirectional = bidirectional != 0 ? 1 : 0;
+    return 1;
+}
+
+static int navmesh3d_read_obstacle_bounds(void *min_v,
+                                          void *max_v,
+                                          float *out_min,
+                                          float *out_max) {
+    if (!rt_g3d_is_vec3(min_v) || !rt_g3d_is_vec3(max_v) || !out_min || !out_max)
+        return 0;
+    double min_d[3] = {rt_vec3_x(min_v), rt_vec3_y(min_v), rt_vec3_z(min_v)};
+    double max_d[3] = {rt_vec3_x(max_v), rt_vec3_y(max_v), rt_vec3_z(max_v)};
+    for (int32_t i = 0; i < 3; i++) {
+        if (!isfinite(min_d[i]) || !isfinite(max_d[i]))
+            return 0;
+        double lo = min_d[i] < max_d[i] ? min_d[i] : max_d[i];
+        double hi = min_d[i] < max_d[i] ? max_d[i] : min_d[i];
+        if (lo > (double)FLT_MAX || hi < -(double)FLT_MAX)
+            return 0;
+        if (lo < -(double)FLT_MAX)
+            lo = -(double)FLT_MAX;
+        if (hi > (double)FLT_MAX)
+            hi = (double)FLT_MAX;
+        out_min[i] = (float)lo;
+        out_max[i] = (float)hi;
+    }
+    return 1;
+}
+
+static int navmesh3d_can_edit_obstacles(const rt_navmesh3d *nm) {
+    return nm && nm->source_triangles && nm->triangles && nm->source_triangle_count > 0;
+}
+
+/// @brief Add a coarse AABB obstacle and immediately refilter the walkable triangle set.
+int8_t rt_navmesh3d_add_obstacle(void *obj, void *min_v, void *max_v) {
+    if (!obj)
+        return 0;
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!navmesh3d_can_edit_obstacles(nm))
+        return 0;
+
+    float omin[3];
+    float omax[3];
+    if (!navmesh3d_read_obstacle_bounds(min_v, max_v, omin, omax))
+        return 0;
+
+    if (nm->obstacle_count >= nm->obstacle_capacity) {
+        int32_t new_cap = 4;
+        if (nm->obstacle_capacity > 0) {
+            if (nm->obstacle_capacity > INT32_MAX / 2)
+                return 0;
+            new_cap = nm->obstacle_capacity * 2;
+        }
+        if ((size_t)new_cap > SIZE_MAX / sizeof(nav_obstacle_t))
+            return 0;
+        nav_obstacle_t *obstacles =
+            (nav_obstacle_t *)realloc(nm->obstacles, (size_t)new_cap * sizeof(nav_obstacle_t));
+        if (!obstacles)
+            return 0;
+        nm->obstacles = obstacles;
+        nm->obstacle_capacity = new_cap;
+    }
+
+    nav_obstacle_t *obstacle = &nm->obstacles[nm->obstacle_count++];
+    memcpy(obstacle->min, omin, sizeof(omin));
+    memcpy(obstacle->max, omax, sizeof(omax));
+    if (!navmesh3d_apply_slope_filter(nm)) {
+        nm->obstacle_count--;
+        (void)navmesh3d_apply_slope_filter(nm);
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Remove a coarse AABB obstacle and immediately refilter the walkable triangle set.
+int8_t rt_navmesh3d_remove_obstacle(void *obj, int64_t index) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!navmesh3d_can_edit_obstacles(nm) || index < 0 || index >= nm->obstacle_count)
+        return 0;
+    int32_t remove_at = (int32_t)index;
+    nav_obstacle_t removed = nm->obstacles[remove_at];
+    for (int32_t i = remove_at; i < nm->obstacle_count - 1; ++i)
+        nm->obstacles[i] = nm->obstacles[i + 1];
+    nm->obstacle_count--;
+    if (!navmesh3d_apply_slope_filter(nm)) {
+        for (int32_t i = nm->obstacle_count; i > remove_at; --i)
+            nm->obstacles[i] = nm->obstacles[i - 1];
+        nm->obstacles[remove_at] = removed;
+        nm->obstacle_count++;
+        (void)navmesh3d_apply_slope_filter(nm);
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Update a coarse AABB obstacle and immediately refilter the walkable triangle set.
+int8_t rt_navmesh3d_update_obstacle(void *obj, int64_t index, void *min_v, void *max_v) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    float omin[3];
+    float omax[3];
+    nav_obstacle_t old_obstacle;
+    if (!navmesh3d_can_edit_obstacles(nm) || index < 0 || index >= nm->obstacle_count)
+        return 0;
+    if (!navmesh3d_read_obstacle_bounds(min_v, max_v, omin, omax))
+        return 0;
+    int32_t edit_at = (int32_t)index;
+    old_obstacle = nm->obstacles[edit_at];
+    memcpy(nm->obstacles[edit_at].min, omin, sizeof(omin));
+    memcpy(nm->obstacles[edit_at].max, omax, sizeof(omax));
+    if (!navmesh3d_apply_slope_filter(nm)) {
+        nm->obstacles[edit_at] = old_obstacle;
+        (void)navmesh3d_apply_slope_filter(nm);
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Number of authored coarse AABB obstacles.
+int64_t rt_navmesh3d_get_obstacle_count(void *obj) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    return nm ? nm->obstacle_count : 0;
+}
+
+/// @brief Number of authored off-mesh traversal links.
+int64_t rt_navmesh3d_get_offmesh_link_count(void *obj) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    return nm ? nm->offmesh_link_count : 0;
+}
+
+/// @brief Rebuild one tile after dynamic changes.
+/// @details Real tiled data ownership is future work; this conservative baseline refilters the
+/// preserved source triangles and rebuilds adjacency/off-mesh endpoint resolution for the whole
+/// navmesh. The tile coordinates are accepted for API stability.
+int8_t rt_navmesh3d_rebuild_tile(void *obj, int64_t tile_x, int64_t tile_z) {
+    (void)tile_x;
+    (void)tile_z;
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm || !nm->source_triangles || !nm->triangles || nm->source_triangle_count <= 0)
+        return 0;
+    return navmesh3d_apply_slope_filter(nm) ? 1 : 0;
 }
 
 /// @brief Set the maximum slope angle (in degrees) considered walkable.

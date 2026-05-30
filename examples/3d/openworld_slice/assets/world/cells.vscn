@@ -1,0 +1,32 @@
+{
+  "cells": [
+    {
+      "name": "slice_cell_nw",
+      "path": "cells/nw.vscn",
+      "center": [-1100, 0, -1100],
+      "radius": 160,
+      "bytes": 65536
+    },
+    {
+      "name": "slice_cell_ne",
+      "path": "cells/ne.vscn",
+      "center": [1100, 0, -1100],
+      "radius": 160,
+      "bytes": 65536
+    },
+    {
+      "name": "slice_cell_sw",
+      "path": "cells/sw.vscn",
+      "center": [-1100, 0, 1100],
+      "radius": 160,
+      "bytes": 65536
+    },
+    {
+      "name": "slice_cell_se",
+      "path": "cells/se.vscn",
+      "center": [1100, 0, 1100],
+      "radius": 160,
+      "bytes": 65536
+    }
+  ]
+}

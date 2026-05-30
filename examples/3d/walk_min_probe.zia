@@ -32,6 +32,18 @@ func colorDiff(a: Integer, b: Integer) -> Integer {
     return absInt(red(a) - red(b)) + absInt(green(a) - green(b)) + absInt(blue(a) - blue(b));
 }
 
+func inFinalOverlayRegion(x: Integer, y: Integer, width: Integer, height: Integer) -> Boolean {
+    var margin = 1;
+    if (x >= 12 - margin && x < 292 + margin && y >= 12 - margin && y < 66 + margin) {
+        return true;
+    }
+    if (x >= width - 54 - margin && x < width - 16 + margin &&
+        y >= height - 54 - margin && y < height - 16 + margin) {
+        return true;
+    }
+    return false;
+}
+
 func near(a: Float, b: Float, eps: Float) -> Boolean {
     var d = a - b;
     if (d < 0.0) { d = 0.0 - d; }
@@ -85,10 +97,12 @@ func assertNearBaseline(img: Pixels, baseline: Pixels, width: Integer, height: I
     while (y < height) {
         var x = 4;
         while (x < width) {
-            var diff = colorDiff(Pixels.Get(img, x, y), Pixels.Get(baseline, x, y));
-            if (diff > maxDiff) { maxDiff = diff; }
-            totalDiff = totalDiff + diff;
-            count = count + 1;
+            if (inFinalOverlayRegion(x, y, width, height) == false) {
+                var diff = colorDiff(Pixels.Get(img, x, y), Pixels.Get(baseline, x, y));
+                if (diff > maxDiff) { maxDiff = diff; }
+                totalDiff = totalDiff + diff;
+                count = count + 1;
+            }
             x = x + 13;
         }
         y = y + 11;

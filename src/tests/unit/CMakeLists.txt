@@ -737,6 +737,11 @@ function(viper_add_runtime_tests)
     viper_add_test_labels(test_rt_canvas3d graphics3d unit)
     set_tests_properties(test_rt_canvas3d PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+    viper_add_test(test_graphics3d_abi_surface ${VIPER_TESTS_DIR}/unit/test_graphics3d_abi_surface.cpp)
+    target_compile_definitions(test_graphics3d_abi_surface PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    viper_add_ctest(test_graphics3d_abi_surface test_graphics3d_abi_surface)
+    viper_add_test_labels(test_graphics3d_abi_surface graphics3d unit contract)
+
     viper_add_test(test_rt_canvas3d_production ${VIPER_TESTS_DIR}/unit/test_rt_canvas3d_production.cpp)
     target_link_libraries(test_rt_canvas3d_production PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_canvas3d_production test_rt_canvas3d_production)
@@ -762,6 +767,16 @@ function(viper_add_runtime_tests)
     target_compile_definitions(test_rt_game3d PRIVATE VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     viper_add_ctest(test_rt_game3d test_rt_game3d)
     viper_add_test_labels(test_rt_game3d graphics3d unit)
+
+    viper_add_test(g3d_3dnext2_surface_probe ${VIPER_TESTS_DIR}/unit/test_3dnext2_surface_probe.cpp)
+    target_link_libraries(g3d_3dnext2_surface_probe PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(g3d_3dnext2_surface_probe g3d_3dnext2_surface_probe)
+    viper_add_test_labels(g3d_3dnext2_surface_probe graphics3d unit contract)
+
+    viper_add_test(test_rt_g3d_commit_queue ${VIPER_TESTS_DIR}/unit/test_rt_g3d_commit_queue.cpp)
+    target_link_libraries(test_rt_g3d_commit_queue PRIVATE ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+    viper_add_ctest(test_rt_g3d_commit_queue test_rt_g3d_commit_queue)
+    viper_add_test_labels(test_rt_g3d_commit_queue graphics3d unit runtime)
 
     viper_add_test(test_rt_gltf ${VIPER_TESTS_DIR}/unit/test_rt_gltf.cpp)
     target_link_libraries(test_rt_gltf PRIVATE ${VIPER_RUNTIME_TEST_LIBS} viper_packaging)

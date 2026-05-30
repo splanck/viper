@@ -60,6 +60,8 @@ int8_t rt_animation3d_get_looping(void *anim);
 double rt_animation3d_get_duration(void *anim);
 /// @brief Get the animation's name.
 rt_string rt_animation3d_get_name(void *anim);
+/// @brief Copy animation channels from @p src_skeleton to matching bones in @p dst_skeleton.
+void *rt_animation3d_retarget(void *anim, void *src_skeleton, void *dst_skeleton);
 
 /* AnimPlayer3D */
 /// @brief Create an animation player bound to a skeleton (drives bone palette during draw).
@@ -125,6 +127,8 @@ void rt_anim_blend3d_set_speed(void *blend, int64_t state, double speed);
 void rt_anim_blend3d_update(void *blend, double dt);
 /// @brief Number of registered blend states.
 int64_t rt_anim_blend3d_state_count(void *blend);
+/* Internal integration helper: borrowed local-transform buffer for controller composition. */
+const float *rt_anim_blend3d_get_local_transform_data(void *blend, int32_t *bone_count);
 
 #ifdef __cplusplus
 }

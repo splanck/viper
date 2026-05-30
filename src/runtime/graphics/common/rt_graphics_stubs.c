@@ -25,6 +25,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_blendtree3d.h"
 #include "rt_canvas3d.h"
 #include "rt_collider3d.h"
 #include "rt_decal3d.h"
@@ -49,6 +50,7 @@
 #include "rt_sprite3d.h"
 #include "rt_terrain3d.h"
 #include "rt_texatlas3d.h"
+#include "rt_textureasset3d.h"
 #include "rt_transform3d.h"
 #include "rt_water3d.h"
 
@@ -2350,6 +2352,16 @@ int64_t rt_canvas3d_get_light_count(void *o) {
     return 0;
 }
 
+void rt_canvas3d_set_clustered_lighting(void *o, int8_t enabled) {
+    (void)o;
+    (void)enabled;
+}
+
+int64_t rt_canvas3d_get_max_active_lights(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Canvas3D.SetAmbient` — would normally set the global
 ///        ambient illumination color used in the lighting equation.
 ///
@@ -2445,6 +2457,30 @@ int64_t rt_canvas3d_get_backend_capabilities(void *o) {
 int8_t rt_canvas3d_backend_supports(void *o, rt_string capability) {
     (void)o;
     (void)capability;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.DrawCount` — latest main 3D draw-submission telemetry.
+///
+/// Silent stub returning 0.
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_canvas3d_get_draw_count(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.OccludedDrawCount` — latest visibility skip telemetry.
+///
+/// Silent stub returning 0.
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_canvas3d_get_occluded_draw_count(void *o) {
+    (void)o;
     return 0;
 }
 
@@ -2792,6 +2828,26 @@ double rt_camera3d_get_fov(void *o) {
 /// @param o Camera3D handle (ignored).
 /// @param f Vertical FOV in radians (ignored).
 void rt_camera3d_set_fov(void *o, double f) {
+    (void)o;
+    (void)f;
+}
+
+double rt_camera3d_get_near_plane(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_camera3d_set_near_plane(void *o, double n) {
+    (void)o;
+    (void)n;
+}
+
+double rt_camera3d_get_far_plane(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_camera3d_set_far_plane(void *o, double f) {
     (void)o;
     (void)f;
 }
@@ -3228,6 +3284,22 @@ void rt_material3d_set_normal_map(void *o, void *p) {
     (void)p;
 }
 
+/// @brief Stub for `Material3D.HasTexture` — whether the base-color/albedo slot is bound.
+///
+/// Silent stub returning `0`.
+int8_t rt_material3d_get_has_texture(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Material3D.HasNormalMap` — whether the normal-map slot is bound.
+///
+/// Silent stub returning `0`.
+int8_t rt_material3d_get_has_normal_map(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Material3D.SetMetallicRoughnessMap` — bind a packed
 ///        PBR map where R = metallic, G = roughness (slots 4/5 in the
 ///        unified PBR shader).
@@ -3241,6 +3313,14 @@ void rt_material3d_set_metallic_roughness_map(void *o, void *p) {
     (void)p;
 }
 
+/// @brief Stub for `Material3D.HasMetallicRoughnessMap`.
+///
+/// Silent stub returning `0`.
+int8_t rt_material3d_get_has_metallic_roughness_map(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Material3D.SetAOMap` — bind an ambient-occlusion
 ///        map. Modulates the ambient lighting term per-fragment.
 ///
@@ -3251,6 +3331,14 @@ void rt_material3d_set_metallic_roughness_map(void *o, void *p) {
 void rt_material3d_set_ao_map(void *o, void *p) {
     (void)o;
     (void)p;
+}
+
+/// @brief Stub for `Material3D.HasAOMap`.
+///
+/// Silent stub returning `0`.
+int8_t rt_material3d_get_has_ao_map(void *o) {
+    (void)o;
+    return 0;
 }
 
 /// @brief Stub for `Material3D.SetSpecularMap` — bind a per-texel
@@ -3266,6 +3354,14 @@ void rt_material3d_set_specular_map(void *o, void *p) {
     (void)p;
 }
 
+/// @brief Stub for `Material3D.HasSpecularMap`.
+///
+/// Silent stub returning `0`.
+int8_t rt_material3d_get_has_specular_map(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Material3D.SetEmissiveMap` — bind a per-texel
 ///        emissive color map (slot 3). Sampled and added on top of the lit
 ///        result.
@@ -3277,6 +3373,22 @@ void rt_material3d_set_specular_map(void *o, void *p) {
 void rt_material3d_set_emissive_map(void *o, void *p) {
     (void)o;
     (void)p;
+}
+
+/// @brief Stub for `Material3D.HasEmissiveMap`.
+///
+/// Silent stub returning `0`.
+int8_t rt_material3d_get_has_emissive_map(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Material3D.HasEnvMap`.
+///
+/// Silent stub returning `0`.
+int8_t rt_material3d_get_has_env_map(void *o) {
+    (void)o;
+    return 0;
 }
 
 /// @brief Set the emissive color of the material3d.
@@ -3519,6 +3631,16 @@ int8_t rt_light3d_get_enabled(void *o) {
     return 0;
 }
 
+void rt_light3d_set_casts_shadows(void *o, int8_t enabled) {
+    (void)o;
+    (void)enabled;
+}
+
+int8_t rt_light3d_get_casts_shadows(void *o) {
+    (void)o;
+    return 0;
+}
+
 void *rt_light3d_get_direction(void *o) {
     (void)o;
     return NULL;
@@ -3527,6 +3649,16 @@ void *rt_light3d_get_direction(void *o) {
 void *rt_light3d_get_position(void *o) {
     (void)o;
     return NULL;
+}
+
+void rt_light3d_set_position(void *o, void *position) {
+    (void)o;
+    (void)position;
+}
+
+void rt_light3d_set_direction(void *o, void *direction) {
+    (void)o;
+    (void)direction;
 }
 
 /* Scene3D / SceneNode3D stubs */
@@ -3567,6 +3699,12 @@ void rt_scene3d_add(void *s, void *n) {
     (void)n;
 }
 
+int8_t rt_scene3d_try_add(void *s, void *n) {
+    (void)s;
+    (void)n;
+    return 0;
+}
+
 /// @brief Stub for `Scene3D.Remove` — would normally detach a SceneNode3D
 ///        from its parent, leaving subtree intact for re-attachment.
 ///
@@ -3591,6 +3729,28 @@ void rt_scene3d_remove(void *s, void *n) {
 void *rt_scene3d_find(void *s, rt_string n) {
     (void)s;
     (void)n;
+    return NULL;
+}
+
+void *rt_scene3d_query_aabb(void *s, void *min, void *max) {
+    (void)s;
+    (void)min;
+    (void)max;
+    return NULL;
+}
+
+void *rt_scene3d_query_sphere(void *s, void *center, double radius) {
+    (void)s;
+    (void)center;
+    (void)radius;
+    return NULL;
+}
+
+void *rt_scene3d_raycast_nodes(void *s, void *origin, void *direction, double max_distance) {
+    (void)s;
+    (void)origin;
+    (void)direction;
+    (void)max_distance;
     return NULL;
 }
 
@@ -4126,6 +4286,11 @@ int64_t rt_scene3d_get_culled_count(void *s) {
     return 0;
 }
 
+int64_t rt_scene3d_get_visible_node_count(void *s) {
+    (void)s;
+    return 0;
+}
+
 /* LOD stubs */
 
 /// @brief Stub for `SceneNode3D.AddLOD` — add a level-of-detail entry:
@@ -4142,6 +4307,33 @@ void rt_scene_node3d_add_lod(void *n, double d, void *m) {
     (void)n;
     (void)d;
     (void)m;
+}
+
+/// @brief Stub for `SceneNode3D.SetAutoLOD` — enable screen-error selection
+///        over authored LOD entries.
+///
+/// Silent no-op stub.
+///
+/// @param n SceneNode3D handle (ignored).
+/// @param e Non-zero to enable (ignored).
+/// @param p Screen-error threshold in pixels (ignored).
+void rt_scene_node3d_set_auto_lod(void *n, int8_t e, double p) {
+    (void)n;
+    (void)e;
+    (void)p;
+}
+
+/// @brief Stub for `SceneNode3D.SetImpostor` — bind a distant textured proxy.
+///
+/// Silent no-op stub.
+///
+/// @param n SceneNode3D handle (ignored).
+/// @param d Distance threshold (ignored).
+/// @param p Pixels handle (ignored).
+void rt_scene_node3d_set_impostor(void *n, double d, void *p) {
+    (void)n;
+    (void)d;
+    (void)p;
 }
 
 /// @brief Stub for `SceneNode3D.ClearLOD` — remove all LOD entries.
@@ -4386,6 +4578,16 @@ double rt_animation3d_get_duration(void *a) {
 /// @return `NULL`.
 rt_string rt_animation3d_get_name(void *a) {
     (void)a;
+    return NULL;
+}
+
+/// @brief Stub for `Animation3D.Retarget`.
+///
+/// Silent stub returning NULL.
+void *rt_animation3d_retarget(void *a, void *src, void *dst) {
+    (void)a;
+    (void)src;
+    (void)dst;
     return NULL;
 }
 
@@ -4753,6 +4955,71 @@ void *rt_fbx_get_morph_target(void *f, int64_t i) {
     return NULL;
 }
 
+/* TextureAsset3D stubs */
+
+void *rt_textureasset3d_load_ktx2(rt_string path) {
+    (void)path;
+    rt_graphics_unavailable_("TextureAsset3D.LoadKTX2: graphics support not compiled in");
+    return NULL;
+}
+
+void *rt_textureasset3d_load_ktx2_asset(rt_string path) {
+    (void)path;
+    rt_graphics_unavailable_("TextureAsset3D.LoadKTX2Asset: graphics support not compiled in");
+    return NULL;
+}
+
+int64_t rt_textureasset3d_get_width(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+int64_t rt_textureasset3d_get_height(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+int64_t rt_textureasset3d_get_mip_count(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+rt_string rt_textureasset3d_get_format(void *obj) {
+    (void)obj;
+    return rt_const_cstr("");
+}
+
+int8_t rt_textureasset3d_get_compressed(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+int64_t rt_textureasset3d_get_resident_mip_start(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+int64_t rt_textureasset3d_get_resident_mip_count(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+int64_t rt_textureasset3d_get_resident_bytes(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int64_t mip_count) {
+    (void)obj;
+    (void)first_mip;
+    (void)mip_count;
+}
+
+void *rt_textureasset3d_get_pixels(void *obj) {
+    (void)obj;
+    return NULL;
+}
+
 /* GLTF Loader stubs */
 
 /// @brief Stub for `glTF.Load` — would normally parse a `.gltf` (JSON +
@@ -4843,6 +5110,62 @@ void *rt_gltf_get_material(void *g, int64_t i) {
 int64_t rt_gltf_node_count(void *g) {
     (void)g;
     return 0;
+}
+
+/// @brief Stub for `glTF.CameraCount` — number of imported active-scene cameras.
+///
+/// Silent stub returning `0`.
+///
+/// @param g glTF document handle (ignored).
+///
+/// @return `0`.
+int64_t rt_gltf_camera_count(void *g) {
+    (void)g;
+    return 0;
+}
+
+/// @brief Stub for `glTF.Camera(i)` — get the `i`th imported Camera3D.
+///
+/// Silent stub returning NULL.
+///
+/// @param g glTF document handle (ignored).
+/// @param i Camera index, 0..CameraCount-1 (ignored).
+///
+/// @return `NULL`.
+void *rt_gltf_get_camera(void *g, int64_t i) {
+    (void)g;
+    (void)i;
+    return NULL;
+}
+
+int64_t rt_gltf_scene_count(void *g) {
+    (void)g;
+    return 0;
+}
+
+rt_string rt_gltf_get_scene_name(void *g, int64_t i) {
+    (void)g;
+    (void)i;
+    return rt_const_cstr("");
+}
+
+void *rt_gltf_get_scene_root_at(void *g, int64_t i) {
+    (void)g;
+    (void)i;
+    return NULL;
+}
+
+int64_t rt_gltf_scene_camera_count(void *g, int64_t scene_index) {
+    (void)g;
+    (void)scene_index;
+    return 0;
+}
+
+void *rt_gltf_get_scene_camera(void *g, int64_t scene_index, int64_t i) {
+    (void)g;
+    (void)scene_index;
+    (void)i;
+    return NULL;
 }
 
 /// @brief Stub for `glTF.SceneRoot` — get the document's default-scene
@@ -6265,6 +6588,11 @@ void rt_canvas3d_disable_shadows(void *c) {
 void rt_canvas3d_set_shadow_bias(void *c, double b) {
     (void)c;
     (void)b;
+}
+
+void rt_canvas3d_set_shadow_cascades(void *c, int64_t count) {
+    (void)c;
+    (void)count;
 }
 
 /* Sound3D stubs */
@@ -7818,6 +8146,95 @@ double rt_spring_joint3d_get_rest_length(void *j) {
     return 0.0;
 }
 
+/// @brief Stub for `HingeJoint3D.New` — would normally create an anchor
+///        constraint that allows relative angular motion around `axis`.
+///
+/// Trapping stub.
+void *rt_hinge_joint3d_new(void *a, void *b, void *anchor, void *axis) {
+    (void)a;
+    (void)b;
+    (void)anchor;
+    (void)axis;
+    rt_graphics_unavailable_("HingeJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+void rt_hinge_joint3d_set_motor(void *joint, int8_t enabled, double target_velocity, double max_impulse) {
+    (void)joint;
+    (void)enabled;
+    (void)target_velocity;
+    (void)max_impulse;
+}
+
+double rt_hinge_joint3d_get_angle(void *joint) {
+    (void)joint;
+    return 0.0;
+}
+
+void rt_hinge_joint3d_set_limits(void *joint, double min_angle, double max_angle) {
+    (void)joint;
+    (void)min_angle;
+    (void)max_angle;
+}
+
+/// @brief Stub for `RopeJoint3D.New` — would normally create a maximum-distance
+///        constraint between bodies `a` and `b`.
+///
+/// Trapping stub.
+void *rt_rope_joint3d_new(void *a, void *b, double max_length) {
+    (void)a;
+    (void)b;
+    (void)max_length;
+    rt_graphics_unavailable_("RopeJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `RopeJoint3D.MaxLength`.
+double rt_rope_joint3d_get_max_length(void *j) {
+    (void)j;
+    return 0.0;
+}
+
+/// @brief Stub for `RopeJoint3D.MaxLength` setter.
+void rt_rope_joint3d_set_max_length(void *j, double max_length) {
+    (void)j;
+    (void)max_length;
+}
+
+/// @brief Stub for `SixDofJoint3D.New` — would normally create a configurable
+///        frame constraint between two bodies.
+///
+/// Trapping stub.
+void *rt_sixdof_joint3d_new(void *a, void *b, void *frame_a, void *frame_b) {
+    (void)a;
+    (void)b;
+    (void)frame_a;
+    (void)frame_b;
+    rt_graphics_unavailable_("SixDofJoint3D.New: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Stub for `SixDofJoint3D.SetLinearLimits`.
+void rt_sixdof_joint3d_set_linear_limits(void *j, void *min, void *max) {
+    (void)j;
+    (void)min;
+    (void)max;
+}
+
+/// @brief Stub for `SixDofJoint3D.SetAngularLimits`.
+void rt_sixdof_joint3d_set_angular_limits(void *j, void *min, void *max) {
+    (void)j;
+    (void)min;
+    (void)max;
+}
+
+void rt_sixdof_joint3d_set_linear_motor(void *j, int8_t enabled, void *velocity, double max_impulse) {
+    (void)j;
+    (void)enabled;
+    (void)velocity;
+    (void)max_impulse;
+}
+
 /* Collider3D stubs */
 
 /// @brief Stub for `Collider3D.NewBox` — would normally allocate an
@@ -8459,6 +8876,17 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     (void)fz;
 }
 
+void rt_body3d_apply_force_at_point(void *o, double fx, double fy, double fz,
+                                    double px, double py, double pz) {
+    (void)o;
+    (void)fx;
+    (void)fy;
+    (void)fz;
+    (void)px;
+    (void)py;
+    (void)pz;
+}
+
 /// @brief Stub for `Body3D.ApplyImpulse` — apply an instantaneous
 ///        velocity change (no `dt` integration). Use for one-shot events:
 ///        jumps, knockbacks, recoil.
@@ -8474,6 +8902,17 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
     (void)ix;
     (void)iy;
     (void)iz;
+}
+
+void rt_body3d_apply_impulse_at_point(void *o, double ix, double iy, double iz,
+                                      double px, double py, double pz) {
+    (void)o;
+    (void)ix;
+    (void)iy;
+    (void)iz;
+    (void)px;
+    (void)py;
+    (void)pz;
 }
 
 /// @brief Stub for `Body3D.ApplyTorque` — apply a continuous torque this
@@ -9783,6 +10222,32 @@ void *rt_navmesh3d_build(void *m, double r, double h) {
     return NULL;
 }
 
+/// @brief Stub for `NavMesh3D.Bake` — would normally gather Scene3D mesh geometry.
+///
+/// Silent stub returning NULL.
+void *rt_navmesh3d_bake(void *s, double r, double h, double slope, double cell) {
+    (void)s;
+    (void)r;
+    (void)h;
+    (void)slope;
+    (void)cell;
+    return NULL;
+}
+
+/// @brief Stub for `NavMesh3D.BakeTiled` — tiled scene bake entry point.
+///
+/// Silent stub returning NULL.
+void *rt_navmesh3d_bake_tiled(
+    void *s, double tile, double r, double h, double slope, double cell) {
+    (void)s;
+    (void)tile;
+    (void)r;
+    (void)h;
+    (void)slope;
+    (void)cell;
+    return NULL;
+}
+
 /// @brief Stub for `NavMesh3D.FindPath` — would normally run an A*
 ///        path query from world position `f` to world position `t`,
 ///        returning a Path3D-like object representing the corridor.
@@ -9843,6 +10308,86 @@ int8_t rt_navmesh3d_is_walkable(void *n, void *p) {
 /// @return `0`.
 int64_t rt_navmesh3d_get_triangle_count(void *n) {
     (void)n;
+    return 0;
+}
+
+/// @brief Stub for `NavMesh3D.AddOffMeshLink` — would normally add an
+///        authored traversal edge such as a jump, ladder, or drop-down between
+///        two walkable navmesh points.
+///
+/// Silent stub returning `0`.
+///
+/// @param n NavMesh3D handle (ignored).
+/// @param f Vec3 link start (ignored).
+/// @param t Vec3 link end (ignored).
+/// @param b Whether traversal is bidirectional (ignored).
+///
+/// @return `0`.
+int8_t rt_navmesh3d_add_offmesh_link(void *n, void *f, void *t, int8_t b) {
+    (void)n;
+    (void)f;
+    (void)t;
+    (void)b;
+    return 0;
+}
+
+/// @brief Stub for `NavMesh3D.OffMeshLinkCount` — number of authored traversal links.
+///
+/// Silent stub returning `0`.
+///
+/// @param n NavMesh3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_navmesh3d_get_offmesh_link_count(void *n) {
+    (void)n;
+    return 0;
+}
+
+/// @brief Stub for `NavMesh3D.AddObstacle` — would normally add an AABB carving obstacle.
+///
+/// Silent stub returning `0`.
+int8_t rt_navmesh3d_add_obstacle(void *n, void *min, void *max) {
+    (void)n;
+    (void)min;
+    (void)max;
+    return 0;
+}
+
+/// @brief Stub for `NavMesh3D.RemoveObstacle` — would normally remove an authored obstacle.
+///
+/// Silent stub returning `0`.
+int8_t rt_navmesh3d_remove_obstacle(void *n, int64_t index) {
+    (void)n;
+    (void)index;
+    return 0;
+}
+
+/// @brief Stub for `NavMesh3D.UpdateObstacle` — would normally edit an authored obstacle.
+///
+/// Silent stub returning `0`.
+int8_t rt_navmesh3d_update_obstacle(void *n, int64_t index, void *min, void *max) {
+    (void)n;
+    (void)index;
+    (void)min;
+    (void)max;
+    return 0;
+}
+
+/// @brief Stub for `NavMesh3D.ObstacleCount` — number of authored coarse obstacles.
+///
+/// Silent stub returning `0`.
+int64_t rt_navmesh3d_get_obstacle_count(void *n) {
+    (void)n;
+    return 0;
+}
+
+/// @brief Stub for `NavMesh3D.RebuildTile` — tile rebuild entry point.
+///
+/// Silent stub returning `0`.
+int8_t rt_navmesh3d_rebuild_tile(void *n, int64_t tile_x, int64_t tile_z) {
+    (void)n;
+    (void)tile_x;
+    (void)tile_z;
     return 0;
 }
 
@@ -10105,6 +10650,56 @@ void rt_navagent3d_set_auto_repath(void *a, int8_t e) {
     (void)e;
 }
 
+/// @brief Stub for `NavAgent3D.AvoidanceEnabled` — get the local
+///        same-NavMesh separation steering flag.
+///
+/// Silent stub returning `0`.
+///
+/// @param a NavAgent3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_navagent3d_get_avoidance_enabled(void *a) {
+    (void)a;
+    return 0;
+}
+
+/// @brief Stub for `NavAgent3D.SetAvoidanceEnabled` — enable or disable
+///        local same-NavMesh separation steering.
+///
+/// Silent no-op stub.
+///
+/// @param a NavAgent3D handle (ignored).
+/// @param e Non-zero to enable avoidance (ignored).
+void rt_navagent3d_set_avoidance_enabled(void *a, int8_t e) {
+    (void)a;
+    (void)e;
+}
+
+/// @brief Stub for `NavAgent3D.AvoidanceRadius` — get the local
+///        separation radius.
+///
+/// Silent stub returning `0.0`.
+///
+/// @param a NavAgent3D handle (ignored).
+///
+/// @return `0.0`.
+double rt_navagent3d_get_avoidance_radius(void *a) {
+    (void)a;
+    return 0.0;
+}
+
+/// @brief Stub for `NavAgent3D.SetAvoidanceRadius` — adjust the local
+///        separation radius.
+///
+/// Silent no-op stub.
+///
+/// @param a NavAgent3D handle (ignored).
+/// @param r Radius in world units (ignored).
+void rt_navagent3d_set_avoidance_radius(void *a, double r) {
+    (void)a;
+    (void)r;
+}
+
 /// @brief Stub for `NavAgent3D.BindCharacter` — attach a CharacterController
 ///        so the agent's steering output drives the character's locomotion
 ///        (recommended for production over raw `Update` polling).
@@ -10251,6 +10846,101 @@ void rt_anim_blend3d_update(void *b, double dt) {
 /// @return `0`.
 int64_t rt_anim_blend3d_state_count(void *b) {
     (void)b;
+    return 0;
+}
+
+/* BlendTree3D stubs */
+
+void *rt_blend_tree3d_new_1d(void *skeleton) {
+    (void)skeleton;
+    return NULL;
+}
+
+void *rt_blend_tree3d_new_2d(void *skeleton) {
+    (void)skeleton;
+    return NULL;
+}
+
+int64_t rt_blend_tree3d_add_sample(void *tree, void *animation, double x, double y) {
+    (void)tree;
+    (void)animation;
+    (void)x;
+    (void)y;
+    return -1;
+}
+
+void rt_blend_tree3d_set_param(void *tree, double x, double y) {
+    (void)tree;
+    (void)x;
+    (void)y;
+}
+
+void rt_blend_tree3d_update(void *tree, double dt) {
+    (void)tree;
+    (void)dt;
+}
+
+int64_t rt_blend_tree3d_get_sample_count(void *tree) {
+    (void)tree;
+    return 0;
+}
+
+void *rt_blend_tree3d_get_blend(void *tree) {
+    (void)tree;
+    return NULL;
+}
+
+/* IKSolver3D stubs */
+
+void *rt_ik_solver3d_two_bone(void *skeleton, int64_t root, int64_t mid, int64_t end) {
+    (void)skeleton;
+    (void)root;
+    (void)mid;
+    (void)end;
+    return NULL;
+}
+
+void *rt_ik_solver3d_look_at(void *skeleton, int64_t bone) {
+    (void)skeleton;
+    (void)bone;
+    return NULL;
+}
+
+void *rt_ik_solver3d_fabrik(void *skeleton, void *chain) {
+    (void)skeleton;
+    (void)chain;
+    return NULL;
+}
+
+void rt_ik_solver3d_set_target(void *solver, void *target) {
+    (void)solver;
+    (void)target;
+}
+
+void rt_ik_solver3d_set_weight(void *solver, double weight) {
+    (void)solver;
+    (void)weight;
+}
+
+void rt_ik_solver3d_set_pole(void *solver, void *pole) {
+    (void)solver;
+    (void)pole;
+}
+
+void rt_ik_solver3d_solve(void *solver) {
+    (void)solver;
+}
+
+void *rt_ik_solver3d_get_skeleton(void *solver) {
+    (void)solver;
+    return NULL;
+}
+
+int8_t rt_ik_solver3d_apply_to_pose(void *solver, float *locals, float *globals, int32_t bone_count) {
+    (void)solver;
+    (void)locals;
+    (void)globals;
+    (void)bone_count;
     return 0;
 }
 
@@ -10472,6 +11162,43 @@ void rt_anim_controller3d_set_state_looping(void *c, rt_string n, int8_t l) {
     (void)l;
 }
 
+/// @brief Stub for `AnimController3D.SetAnimationLOD` — configure a
+///        lower update rate for distant or low-priority controllers.
+///
+/// Silent no-op stub.
+///
+/// @param c AnimController3D handle (ignored).
+/// @param d Distance marker in world units (ignored).
+/// @param r Update rate in Hz (ignored).
+void rt_anim_controller3d_set_animation_lod(void *c, double d, double r) {
+    (void)c;
+    (void)d;
+    (void)r;
+}
+
+/// @brief Stub for `AnimController3D.SetBlendTree` — would normally use a
+///        BlendTree3D as the controller's base pose source.
+///
+/// Silent stub returning `0`.
+///
+/// @param c AnimController3D handle (ignored).
+/// @param t BlendTree3D handle (ignored).
+///
+/// @return `0`.
+int8_t rt_anim_controller3d_set_blend_tree(void *c, void *t) {
+    (void)c;
+    (void)t;
+    return 0;
+}
+
+/// @brief Stub for `AnimController3D.SetIKSolver` — would normally apply an
+///        IKSolver3D after controller layers and before skinning.
+int8_t rt_anim_controller3d_set_ik_solver(void *c, void *s) {
+    (void)c;
+    (void)s;
+    return 0;
+}
+
 /// @brief Stub for `AnimController3D.AddEvent` — register a tagged
 ///        event frame `e` at time `t` within state `s`. When playback
 ///        crosses time `t`, the event is queued for `PollEvent`.
@@ -10596,6 +11323,23 @@ int8_t rt_anim_controller3d_play_layer(void *c, int64_t l, rt_string s) {
     return 0;
 }
 
+/// @brief Stub for `AnimController3D.PlayLayerAdditive` — instantly switch
+///        layer `l` to state `s` and compose it as a bind-pose delta.
+///
+/// Silent stub returning `0` (failure).
+///
+/// @param c AnimController3D handle (ignored).
+/// @param l Layer index (ignored).
+/// @param s State name (ignored).
+///
+/// @return `0`.
+int8_t rt_anim_controller3d_play_layer_additive(void *c, int64_t l, rt_string s) {
+    (void)c;
+    (void)l;
+    (void)s;
+    return 0;
+}
+
 /// @brief Stub for `AnimController3D.CrossfadeLayer` — blend layer `l`
 ///        toward state `s` over `d` seconds. Each layer maintains its
 ///        own crossfade clock independent of other layers.
@@ -10609,6 +11353,21 @@ int8_t rt_anim_controller3d_play_layer(void *c, int64_t l, rt_string s) {
 ///
 /// @return `0`.
 int8_t rt_anim_controller3d_crossfade_layer(void *c, int64_t l, rt_string s, double d) {
+    (void)c;
+    (void)l;
+    (void)s;
+    (void)d;
+    return 0;
+}
+
+/// @brief Stub for `AnimController3D.CrossfadeLayerAdditive` — blend layer `l`
+///        toward state `s` over `d` seconds and compose it as a bind-pose delta.
+///
+/// Silent stub returning `0`.
+int8_t rt_anim_controller3d_crossfade_layer_additive(void *c,
+                                                     int64_t l,
+                                                     rt_string s,
+                                                     double d) {
     (void)c;
     (void)l;
     (void)s;
@@ -11622,8 +12381,8 @@ void rt_canvas3d_set_frustum_culling(void *c, int8_t e) {
     (void)e;
 }
 
-/// @brief Stub for `Canvas3D.SetOcclusionCulling` — compatibility alias
-///        for `SetFrustumCulling`.
+/// @brief Stub for `Canvas3D.SetOcclusionCulling` — enable frustum rejection
+///        plus conservative CPU occlusion skips.
 ///
 /// Silent no-op stub.
 ///

@@ -1208,7 +1208,8 @@ static int vscn_serialize_node(rt_scene_node3d *node,
                          "\"position\": [%.17g, %.17g, %.17g], "
                          "\"color\": [%.17g, %.17g, %.17g], "
                          "\"intensity\": %.17g, \"attenuation\": %.17g, "
-                         "\"innerCos\": %.17g, \"outerCos\": %.17g}",
+                         "\"innerCos\": %.17g, \"outerCos\": %.17g, "
+                         "\"castsShadows\": %s}",
                          indent,
                          (light->type >= 0 && light->type <= 3) ? light->type : 1,
                          light_dir[0],
@@ -1223,7 +1224,8 @@ static int vscn_serialize_node(rt_scene_node3d *node,
                          vscn_nonnegative_or(light->intensity, 1.0),
                          vscn_nonnegative_or(light->attenuation, 0.0),
                          vscn_clamp_or(light->inner_cos, 1.0, 0.0, 1.0),
-                         vscn_clamp_or(light->outer_cos, 0.7071067811865476, 0.0, 1.0))) {
+                         vscn_clamp_or(light->outer_cos, 0.7071067811865476, 0.0, 1.0),
+                         light->casts_shadows ? "true" : "false")) {
             return 0;
         }
     }
@@ -1252,6 +1254,17 @@ static int vscn_serialize_node(rt_scene_node3d *node,
         }
         if (!vscn_append(buf, len, cap, "%s  ]", indent))
             return 0;
+    }
+
+    if (node->auto_lod_enabled) {
+        if (!vscn_append(buf,
+                         len,
+                         cap,
+                         ",\n%s  \"autoLOD\": {\"enabled\": true, \"screenErrorPx\": %.17g}",
+                         indent,
+                         vscn_nonnegative_or(node->auto_lod_screen_error_px, 8.0))) {
+            return 0;
+        }
     }
 
     if (node->child_count > 0) {
@@ -1719,6 +1732,7 @@ static rt_light3d *vscn_parse_light(void *light_obj) {
     light->direction[2] = -1.0;
     light->color[0] = light->color[1] = light->color[2] = 1.0;
     light->enabled = 1;
+    light->casts_shadows = vjson_bool(light_obj, "castsShadows", light->type != 2);
     light->intensity = vscn_nonnegative_or(vjson_f64(light_obj, "intensity", 1.0), 1.0);
     light->attenuation = vscn_nonnegative_or(vjson_f64(light_obj, "attenuation", 0.0), 0.0);
     light->inner_cos = vjson_f64(light_obj, "innerCos", 1.0);
@@ -1880,6 +1894,16 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
                     vscn_nonnegative_or(vjson_f64(lod_obj, "distance", 0.0), 0.0),
                     meshes[mesh_index]);
             }
+        }
+    }
+
+    {
+        void *auto_lod = vjson_get(node_obj, "autoLOD");
+        if (auto_lod && vjson_is_map(auto_lod)) {
+            rt_scene_node3d_set_auto_lod(
+                node,
+                vjson_bool(auto_lod, "enabled", 0),
+                vscn_nonnegative_or(vjson_f64(auto_lod, "screenErrorPx", 8.0), 8.0));
         }
     }
 

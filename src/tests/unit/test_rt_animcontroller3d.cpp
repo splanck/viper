@@ -12,6 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_animcontroller3d.h"
+#include "rt_blendtree3d.h"
+#include "rt_box.h"
+#include "rt_iksolver3d.h"
+#include "rt_seq.h"
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include <cmath>
@@ -25,6 +29,7 @@ extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_quat_new(double x, double y, double z, double w);
 extern void *rt_mat4_identity(void);
+extern void *rt_mat4_translate(double tx, double ty, double tz);
 extern double rt_mat4_get(void *m, int64_t row, int64_t col);
 extern rt_string rt_const_cstr(const char *s);
 extern const char *rt_string_cstr(rt_string s);
@@ -236,6 +241,275 @@ static void test_controller_masked_layer() {
                 "CrossfadeLayer succeeds");
 }
 
+static void test_controller_true_additive_layer_uses_bind_pose_delta() {
+    void *skel_replace = rt_skeleton3d_new();
+    void *skel_additive = rt_skeleton3d_new();
+    int64_t replace_arm;
+    int64_t additive_arm;
+    void *replace_controller;
+    void *additive_controller;
+    void *base_replace;
+    void *raise_replace;
+    void *base_additive;
+    void *raise_additive;
+    void *reach_additive;
+    void *replace_arm_mat;
+    void *additive_arm_mat;
+
+    rt_skeleton3d_add_bone(skel_replace, rt_const_cstr("root"), -1, rt_mat4_identity());
+    replace_arm =
+        rt_skeleton3d_add_bone(skel_replace, rt_const_cstr("arm"), 0, rt_mat4_translate(0.0, 1.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel_replace);
+
+    rt_skeleton3d_add_bone(skel_additive, rt_const_cstr("root"), -1, rt_mat4_identity());
+    additive_arm =
+        rt_skeleton3d_add_bone(skel_additive, rt_const_cstr("arm"), 0, rt_mat4_translate(0.0, 1.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel_additive);
+
+    base_replace = make_anim("base", replace_arm, 0.0, 2.0, 0.0, 0.0, 2.0, 0.0);
+    raise_replace = make_anim("raise", replace_arm, 0.0, 3.0, 0.0, 0.0, 3.0, 0.0);
+    base_additive = make_anim("base", additive_arm, 0.0, 2.0, 0.0, 0.0, 2.0, 0.0);
+    raise_additive = make_anim("raise", additive_arm, 0.0, 3.0, 0.0, 0.0, 3.0, 0.0);
+    reach_additive = make_anim("reach", additive_arm, 0.0, 5.0, 0.0, 0.0, 5.0, 0.0);
+
+    replace_controller = rt_anim_controller3d_new(skel_replace);
+    rt_anim_controller3d_add_state(replace_controller, rt_const_cstr("base"), base_replace);
+    rt_anim_controller3d_add_state(replace_controller, rt_const_cstr("raise"), raise_replace);
+    rt_anim_controller3d_play(replace_controller, rt_const_cstr("base"));
+    rt_anim_controller3d_set_layer_mask(replace_controller, 1, replace_arm);
+    rt_anim_controller3d_set_layer_weight(replace_controller, 1, 1.0);
+    EXPECT_TRUE(rt_anim_controller3d_play_layer(replace_controller, 1, rt_const_cstr("raise")) == 1,
+                "PlayLayer remains a masked replace overlay");
+    rt_anim_controller3d_update(replace_controller, 0.0);
+    replace_arm_mat = rt_anim_controller3d_get_bone_matrix(replace_controller, replace_arm);
+
+    additive_controller = rt_anim_controller3d_new(skel_additive);
+    rt_anim_controller3d_add_state(additive_controller, rt_const_cstr("base"), base_additive);
+    rt_anim_controller3d_add_state(additive_controller, rt_const_cstr("raise"), raise_additive);
+    rt_anim_controller3d_add_state(additive_controller, rt_const_cstr("reach"), reach_additive);
+    rt_anim_controller3d_play(additive_controller, rt_const_cstr("base"));
+    rt_anim_controller3d_set_layer_mask(additive_controller, 1, additive_arm);
+    rt_anim_controller3d_set_layer_weight(additive_controller, 1, 1.0);
+    EXPECT_TRUE(rt_anim_controller3d_play_layer_additive(
+                    additive_controller, 1, rt_const_cstr("raise")) == 1,
+                "PlayLayerAdditive enables true bind-pose delta composition");
+    EXPECT_TRUE(rt_anim_controller3d_play_layer_additive(
+                    additive_controller, 0, rt_const_cstr("raise")) == 0,
+                "PlayLayerAdditive rejects the base layer");
+    rt_anim_controller3d_update(additive_controller, 0.0);
+    additive_arm_mat = rt_anim_controller3d_get_bone_matrix(additive_controller, additive_arm);
+
+    EXPECT_NEAR(rt_mat4_get(replace_arm_mat, 1, 3),
+                3.0,
+                0.1,
+                "PlayLayer replaces the masked local pose");
+    EXPECT_NEAR(rt_mat4_get(additive_arm_mat, 1, 3),
+                4.0,
+                0.1,
+                "PlayLayerAdditive adds overlay minus bind pose onto the base pose");
+    EXPECT_TRUE(rt_anim_controller3d_crossfade_layer_additive(
+                    additive_controller, 0, rt_const_cstr("reach"), 1.0) == 0,
+                "CrossfadeLayerAdditive rejects the base layer");
+    EXPECT_TRUE(rt_anim_controller3d_crossfade_layer_additive(
+                    additive_controller, 1, rt_const_cstr("reach"), 1.0) == 1,
+                "CrossfadeLayerAdditive blends true additive overlay layers");
+    rt_anim_controller3d_update(additive_controller, 0.5);
+    additive_arm_mat = rt_anim_controller3d_get_bone_matrix(additive_controller, additive_arm);
+    EXPECT_NEAR(rt_mat4_get(additive_arm_mat, 1, 3),
+                5.0,
+                0.15,
+                "CrossfadeLayerAdditive blends halfway between additive deltas");
+    rt_anim_controller3d_update(additive_controller, 0.5);
+    additive_arm_mat = rt_anim_controller3d_get_bone_matrix(additive_controller, additive_arm);
+    EXPECT_NEAR(rt_mat4_get(additive_arm_mat, 1, 3),
+                6.0,
+                0.15,
+                "CrossfadeLayerAdditive reaches the target additive delta");
+}
+
+static void test_controller_blend_tree_drives_base_pose() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *idle = make_anim("idle", 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    void *lean = make_anim("lean", 0, 10.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+    void *tree = rt_blend_tree3d_new_1d(skel);
+    rt_blend_tree3d_add_sample(tree, idle, 0.0, 0.0);
+    rt_blend_tree3d_add_sample(tree, lean, 1.0, 0.0);
+    rt_blend_tree3d_set_param(tree, 0.5, 0.0);
+
+    void *controller = rt_anim_controller3d_new(skel);
+    EXPECT_TRUE(rt_anim_controller3d_set_blend_tree(controller, tree) != 0,
+                "AnimController3D.SetBlendTree accepts a compatible tree");
+    rt_anim_controller3d_update(controller, 0.0);
+    void *root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3),
+                5.0,
+                0.1,
+                "AnimController3D.SetBlendTree drives the base pose from blend weights");
+
+    EXPECT_TRUE(rt_anim_controller3d_set_blend_tree(controller, skel) == 0,
+                "AnimController3D.SetBlendTree rejects non-tree handles");
+    EXPECT_TRUE(rt_anim_controller3d_set_blend_tree(controller, nullptr) != 0,
+                "AnimController3D.SetBlendTree clears on NULL");
+    rt_anim_controller3d_update(controller, 0.0);
+    root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3), 0.0, 0.1, "Clearing BlendTree restores bind pose");
+}
+
+static void test_two_bone_ik_pole_vector() {
+    void *skel = rt_skeleton3d_new();
+    int64_t root = rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t knee = rt_skeleton3d_add_bone(skel, rt_const_cstr("knee"), root, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t foot = rt_skeleton3d_add_bone(skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *controller = rt_anim_controller3d_new(skel);
+    void *solver = rt_ik_solver3d_two_bone(skel, root, knee, foot);
+    rt_ik_solver3d_set_target(solver, rt_vec3_new(1.0, 1.0, 0.0));
+    rt_ik_solver3d_set_weight(solver, 1.0);
+
+    /* Pole toward +Z swings the bent knee toward +Z. */
+    rt_ik_solver3d_set_pole(solver, rt_vec3_new(0.0, 0.0, 1.0));
+    rt_ik_solver3d_solve(solver);
+    rt_anim_controller3d_set_ik_solver(controller, solver);
+    double knee_z_pos = rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, knee), 2, 3);
+    EXPECT_TRUE(knee_z_pos > 0.1, "TwoBone IK pole +Z bends the knee toward +Z");
+
+    /* Flipping the pole to -Z mirrors the bend. */
+    rt_ik_solver3d_set_pole(solver, rt_vec3_new(0.0, 0.0, -1.0));
+    rt_ik_solver3d_solve(solver);
+    rt_anim_controller3d_set_ik_solver(controller, solver);
+    double knee_z_neg = rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, knee), 2, 3);
+    EXPECT_TRUE(knee_z_neg < -0.1, "TwoBone IK pole -Z bends the knee toward -Z");
+
+    /* The pole only changes the bend plane — the foot still reaches the target. */
+    void *foot_mat = rt_anim_controller3d_get_bone_matrix(controller, foot);
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 0, 3), 1.0, 0.05, "Pole keeps the foot on target x");
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 1, 3), 1.0, 0.05, "Pole keeps the foot on target y");
+}
+
+static void test_controller_ik_solver_drives_end_effector() {
+    void *skel = rt_skeleton3d_new();
+    int64_t root = rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t knee = rt_skeleton3d_add_bone(skel, rt_const_cstr("knee"), root, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t foot = rt_skeleton3d_add_bone(skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *controller = rt_anim_controller3d_new(skel);
+    void *solver = rt_ik_solver3d_two_bone(skel, root, knee, foot);
+    EXPECT_TRUE(solver != nullptr, "IKSolver3D.TwoBone creates a parented solver");
+    rt_ik_solver3d_set_target(solver, rt_vec3_new(1.0, 1.0, 0.0));
+    rt_ik_solver3d_set_weight(solver, 1.0);
+    rt_ik_solver3d_solve(solver);
+
+    EXPECT_TRUE(rt_anim_controller3d_set_ik_solver(controller, solver) == 1,
+                "AnimController3D.SetIKSolver accepts a compatible solver");
+    void *foot_mat = rt_anim_controller3d_get_bone_matrix(controller, foot);
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 0, 3), 1.0, 0.03, "TwoBone IK reaches target x");
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 1, 3), 1.0, 0.03, "TwoBone IK reaches target y");
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 2, 3), 0.0, 0.03, "TwoBone IK preserves target z");
+
+    rt_ik_solver3d_set_weight(solver, 0.5);
+    EXPECT_TRUE(rt_anim_controller3d_set_ik_solver(controller, solver) == 1,
+                "AnimController3D.SetIKSolver accepts weight changes on the same solver");
+    foot_mat = rt_anim_controller3d_get_bone_matrix(controller, foot);
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 0, 3), 1.5, 0.05, "IK weight blends end-effector x");
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 1, 3), 0.5, 0.05, "IK weight blends end-effector y");
+
+    EXPECT_TRUE(rt_anim_controller3d_set_ik_solver(controller, skel) == 0,
+                "AnimController3D.SetIKSolver rejects non-solver handles");
+    EXPECT_TRUE(rt_anim_controller3d_set_ik_solver(controller, nullptr) == 1,
+                "AnimController3D.SetIKSolver clears with NULL");
+    foot_mat = rt_anim_controller3d_get_bone_matrix(controller, foot);
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 0, 3), 2.0, 0.01, "Clearing IK restores bind-pose foot x");
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 1, 3), 0.0, 0.01, "Clearing IK restores bind-pose foot y");
+}
+
+static void test_ik_solver_look_at_and_fabrik_factories() {
+    void *look_skel = rt_skeleton3d_new();
+    int64_t look_bone = rt_skeleton3d_add_bone(look_skel, rt_const_cstr("head"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(look_skel);
+    void *look_controller = rt_anim_controller3d_new(look_skel);
+    void *look_solver = rt_ik_solver3d_look_at(look_skel, look_bone);
+    EXPECT_TRUE(look_solver != nullptr, "IKSolver3D.LookAt creates a solver");
+    rt_ik_solver3d_set_target(look_solver, rt_vec3_new(1.0, 0.0, 0.0));
+    rt_ik_solver3d_set_weight(look_solver, 1.0);
+    EXPECT_TRUE(rt_anim_controller3d_set_ik_solver(look_controller, look_solver) == 1,
+                "AnimController3D.SetIKSolver accepts LookAt solvers");
+    void *head_mat = rt_anim_controller3d_get_bone_matrix(look_controller, look_bone);
+    EXPECT_NEAR(rt_mat4_get(head_mat, 0, 2), 1.0, 0.03, "LookAt rotates local +Z toward target x");
+    EXPECT_NEAR(rt_mat4_get(head_mat, 1, 2), 0.0, 0.03, "LookAt keeps target y near zero");
+
+    void *skel = rt_skeleton3d_new();
+    int64_t b0 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b0"), -1, rt_mat4_identity());
+    int64_t b1 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b1"), b0, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t b2 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b2"), b1, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t b3 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b3"), b2, rt_mat4_translate(1.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel);
+    void *chain = rt_seq_new_owned();
+    rt_seq_push(chain, rt_box_i64(b0));
+    rt_seq_push(chain, rt_box_i64(b1));
+    rt_seq_push(chain, rt_box_i64(b2));
+    rt_seq_push(chain, rt_box_i64(b3));
+    void *fabrik = rt_ik_solver3d_fabrik(skel, chain);
+    EXPECT_TRUE(fabrik != nullptr, "IKSolver3D.FABRIK creates a chain solver");
+    rt_ik_solver3d_set_target(fabrik, rt_vec3_new(0.0, 2.0, 0.0));
+    void *controller = rt_anim_controller3d_new(skel);
+    EXPECT_TRUE(rt_anim_controller3d_set_ik_solver(controller, fabrik) == 1,
+                "AnimController3D.SetIKSolver accepts FABRIK solvers");
+    void *end_mat = rt_anim_controller3d_get_bone_matrix(controller, b3);
+    EXPECT_NEAR(rt_mat4_get(end_mat, 0, 3), 0.0, 0.08, "FABRIK reaches target x");
+    EXPECT_NEAR(rt_mat4_get(end_mat, 1, 3), 2.0, 0.08, "FABRIK reaches target y");
+
+    EXPECT_TRUE(rt_ik_solver3d_two_bone(skel, b0, b2, b1) == nullptr,
+                "IKSolver3D.TwoBone rejects non-parented chains");
+}
+
+static void test_controller_animation_lod_throttles_updates_deterministically() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *walk = make_anim("walk", 0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("walk"), walk);
+    rt_anim_controller3d_play(controller, rt_const_cstr("walk"));
+    rt_anim_controller3d_set_animation_lod(controller, 50.0, 2.0);
+
+    for (int i = 0; i < 4; i++)
+        rt_anim_controller3d_update(controller, 0.1);
+    void *root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3),
+                0.0,
+                0.01,
+                "SetAnimationLOD holds pose until the configured update interval elapses");
+    EXPECT_NEAR(rt_anim_controller3d_get_state_time(controller),
+                0.0,
+                0.01,
+                "SetAnimationLOD defers state time while accumulating sub-interval deltas");
+
+    rt_anim_controller3d_update(controller, 0.1);
+    root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3),
+                5.0,
+                0.1,
+                "SetAnimationLOD applies accumulated time at the target update rate");
+    EXPECT_NEAR(rt_anim_controller3d_get_state_time(controller),
+                0.5,
+                0.01,
+                "SetAnimationLOD advances state time by the accumulated delta");
+
+    rt_anim_controller3d_set_animation_lod(controller, 0.0, 0.0);
+    rt_anim_controller3d_update(controller, 0.1);
+    root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3),
+                6.0,
+                0.1,
+                "SetAnimationLOD disables throttling for non-positive inputs");
+}
+
 static void test_controller_events_cover_full_loops_and_reverse() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -291,6 +565,12 @@ int main() {
     test_controller_root_motion_disabled_and_loop_wrap();
     test_controller_crossfade_preserves_source_speed();
     test_controller_masked_layer();
+    test_controller_true_additive_layer_uses_bind_pose_delta();
+    test_controller_blend_tree_drives_base_pose();
+    test_two_bone_ik_pole_vector();
+    test_controller_ik_solver_drives_end_effector();
+    test_ik_solver_look_at_and_fabrik_factories();
+    test_controller_animation_lod_throttles_updates_deterministically();
     test_controller_events_cover_full_loops_and_reverse();
     test_controller_rejects_wrong_animation_handles();
 

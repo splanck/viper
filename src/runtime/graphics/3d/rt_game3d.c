@@ -45,15 +45,20 @@
 #include "rt_game3d.h"
 
 #include "rt_animcontroller3d.h"
+#include "rt_asset.h"
 #include "rt_audio.h"
+#include "rt_box.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_collider3d.h"
 #include "rt_decal3d.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_input.h"
+#include "rt_json.h"
+#include "rt_map.h"
 #include "rt_mat4.h"
 #include "rt_model3d.h"
+#include "rt_navmesh3d.h"
 #include "rt_object.h"
 #include "rt_particles3d.h"
 #include "rt_physics3d.h"
@@ -61,14 +66,19 @@
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
+#include "rt_seq.h"
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
 #include "rt_soundsource3d.h"
 #include "rt_string.h"
+#include "rt_terrain3d.h"
+#include "rt_parallel.h"
+#include "rt_threadpool.h"
 #include "rt_trap.h"
 #include "rt_vec2.h"
 #include "rt_vec3.h"
 
+#include <ctype.h>
 #include <limits.h>
 #include <math.h>
 #include <stdarg.h>
@@ -102,6 +112,9 @@
 #define RT_GAME3D_DEFAULT_FAR 1000.0      ///< Default far clip plane (world units).
 #define RT_GAME3D_DEFAULT_DT (1.0 / 60.0) ///< Fallback frame delta when timing is invalid.
 #define RT_GAME3D_MAX_DT 0.25             ///< Per-frame delta cap (smooths post-stall spikes).
+#define RT_GAME3D_MAX_WORKERS 64          ///< Public WorkerCount clamp for internal jobs.
+#define RT_GAME3D_DEFAULT_REBASE_THRESHOLD 10000.0 ///< Floating-origin threshold.
+#define RT_GAME3D_MIN_REBASE_THRESHOLD 1.0          ///< Avoid constant tiny rebases.
 #define RT_GAME3D_DEFAULT_MOVE_SPEED 6.0  ///< Default controller move speed (units/sec).
 #define RT_GAME3D_DEFAULT_LOOK_SENSITIVITY 0.01   ///< Default mouse-look degrees per pixel.
 #define RT_GAME3D_DEFAULT_JUMP_SPEED 5.5          ///< Default jump launch speed (units/sec).
@@ -287,6 +300,75 @@ typedef struct rt_game3d_model_template {
     void *model;
 } rt_game3d_model_template;
 
+/// @brief AssetHandle3D payload: request state plus either an entity result or
+///   a reusable ModelTemplate result. Deferred handles currently complete on
+///   first result observation; failures are terminal handle errors instead of
+///   escaping through the blocking loader's trap path.
+typedef struct rt_game3d_asset_handle {
+    int8_t ready;
+    int8_t cancelled;
+    int8_t deferred;
+    int8_t asset_path;
+    int8_t template_request;
+    double progress;
+    rt_string error;
+    rt_string path;
+    void *entity;
+    void *model_template;
+} rt_game3d_asset_handle;
+
+typedef struct rt_game3d_stream_cell {
+    rt_string name;
+    rt_string path;
+    double center[3];
+    double radius;
+    int64_t resident_bytes;
+    void *scene;
+    void *entity;
+    int8_t resident;
+} rt_game3d_stream_cell;
+
+typedef struct rt_game3d_stream_terrain_tile {
+    rt_string name;
+    rt_string path;
+    rt_string heightmap_path;
+    double center[3];
+    double scale[3];
+    double radius;
+    int64_t width;
+    int64_t depth;
+    int64_t resident_bytes;
+    void *terrain;
+    void *collider_entity;
+    void *nav_entity;
+    int8_t resident;
+} rt_game3d_stream_terrain_tile;
+
+/// @brief WorldStream3D payload: streaming focus/radii, mounted manifest paths,
+///   parsed scene-cell manifests, and deterministic resident telemetry.
+typedef struct rt_game3d_world_stream {
+    void *world;
+    double center[3];
+    double load_radius;
+    double unload_radius;
+    int64_t residency_budget_bytes;
+    int64_t resident_cell_count;
+    int64_t resident_terrain_tile_count;
+    int64_t pending_request_count;
+    int64_t resident_bytes;
+    rt_string terrain_manifest;
+    rt_string cells_manifest;
+    rt_game3d_stream_cell *cells;
+    rt_game3d_stream_terrain_tile *terrain_tiles;
+    int32_t cell_count;
+    int32_t cell_capacity;
+    int32_t terrain_tile_count;
+    int32_t terrain_tile_capacity;
+    int8_t cells_manifest_loaded;
+    int8_t terrain_manifest_loaded;
+    int8_t retains_world;
+} rt_game3d_world_stream;
+
 /// @brief One entry in the process-wide model cache, keyed by path + asset flag
 ///   and mapping to its shared ModelTemplate.
 typedef struct rt_game3d_model_cache_entry {
@@ -294,6 +376,7 @@ typedef struct rt_game3d_model_cache_entry {
     int8_t asset_path;
     int8_t loading;
     void *model_template;
+    uint64_t resident_bytes;
     uint64_t last_used;
 } rt_game3d_model_cache_entry;
 
@@ -369,6 +452,7 @@ typedef struct rt_game3d_world {
     void *input;
     void *audio;
     void *effects;
+    void *stream;
     void *camera_controller;
     rt_game3d_entity **entities;
     int32_t entity_count;
@@ -386,6 +470,12 @@ typedef struct rt_game3d_world {
     double elapsed;
     int64_t frame;
     int64_t dropped_fixed_steps;
+    int64_t worker_count;
+    void *job_pool;
+    int8_t jobs_enabled;
+    int8_t floating_origin;
+    double origin_rebase_threshold;
+    double world_origin[3];
     int64_t width;
     int64_t height;
     double clear_r;
@@ -419,6 +509,8 @@ static rt_game3d_model_cache_entry *g_game3d_model_cache = NULL;
 static int32_t g_game3d_model_cache_count = 0;
 static int32_t g_game3d_model_cache_capacity = 0;
 static uint64_t g_game3d_model_cache_tick = 0;
+static uint64_t g_game3d_model_resident_bytes = 0;
+static uint64_t g_game3d_model_residency_budget_bytes = UINT64_MAX;
 #define RT_GAME3D_MODEL_CACHE_MAX_ENTRIES 64
 
 #if defined(_WIN32)
@@ -561,6 +653,18 @@ static rt_game3d_overlay_fn game3d_overlay_callback_checked(void *callback, cons
     return (rt_game3d_overlay_fn)callback;
 }
 
+static int64_t game3d_clamp_worker_count(int64_t worker_count) {
+    if (worker_count < 1)
+        return 1;
+    if (worker_count > RT_GAME3D_MAX_WORKERS)
+        return RT_GAME3D_MAX_WORKERS;
+    return worker_count;
+}
+
+static int64_t game3d_default_worker_count(void) {
+    return game3d_clamp_worker_count(rt_parallel_default_workers());
+}
+
 /// @brief Release the object held in `*slot`, free it if its refcount hits zero,
 ///   and clear the slot to NULL. Safe on NULL slot or empty slot.
 static void game3d_release_ref(void **slot) {
@@ -581,6 +685,41 @@ static void game3d_assign_ref(void **slot, void *value) {
     rt_obj_retain_maybe(value);
     game3d_release_ref(slot);
     *slot = value;
+}
+
+static void *game3d_task_fnptr(void (*fn)(void *)) {
+    void *ptr;
+    _Static_assert(sizeof(ptr) == sizeof(fn),
+                   "Game3D task callback bridge requires equal function/data pointer sizes");
+    memcpy(&ptr, &fn, sizeof(ptr));
+    return ptr;
+}
+
+static void game3d_world_release_job_pool(rt_game3d_world *world) {
+    if (!world || !world->job_pool)
+        return;
+    void *pool = world->job_pool;
+    world->job_pool = NULL;
+    rt_threadpool_shutdown(pool);
+    game3d_release_ref(&pool);
+}
+
+static int game3d_world_ensure_job_pool(rt_game3d_world *world) {
+    if (!world || world->worker_count <= 1)
+        return 0;
+    if (world->job_pool) {
+        if (!rt_threadpool_get_is_shutdown(world->job_pool) &&
+            rt_threadpool_get_size(world->job_pool) == world->worker_count)
+            return 1;
+        game3d_world_release_job_pool(world);
+    }
+    world->job_pool = rt_threadpool_new(world->worker_count);
+    if (!world->job_pool) {
+        world->jobs_enabled = 0;
+        return 0;
+    }
+    world->jobs_enabled = 1;
+    return 1;
 }
 
 /// @brief True if `layer` is a single power-of-two bit (a valid individual layer).
@@ -613,6 +752,78 @@ static double game3d_clamp_dt(double dt) {
 static double game3d_nonnegative_or(double value, double fallback) {
     value = game3d_finite_or(value, fallback);
     return value < 0.0 ? fallback : value;
+}
+
+static double game3d_rebase_threshold_or_default(double meters) {
+    meters = game3d_finite_or(meters, RT_GAME3D_DEFAULT_REBASE_THRESHOLD);
+    if (meters < RT_GAME3D_MIN_REBASE_THRESHOLD)
+        return RT_GAME3D_MIN_REBASE_THRESHOLD;
+    return meters;
+}
+
+static void game3d_shift_body_position(void *body, const double delta[3]) {
+    if (!body)
+        return;
+    void *pos = rt_body3d_get_position(body);
+    rt_body3d_set_position(
+        body, rt_vec3_x(pos) - delta[0], rt_vec3_y(pos) - delta[1], rt_vec3_z(pos) - delta[2]);
+}
+
+static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const double delta[3]) {
+    if (!world)
+        return;
+    const int scene_rebased = world->scene != NULL;
+    world->world_origin[0] += delta[0];
+    world->world_origin[1] += delta[1];
+    world->world_origin[2] += delta[2];
+
+    if (scene_rebased)
+        rt_scene3d_rebase_origin(world->scene, delta[0], delta[1], delta[2]);
+
+    for (int32_t i = 0; i < world->entity_count; ++i) {
+        rt_game3d_entity *entity = world->entities[i];
+        if (!entity || entity->destroyed)
+            continue;
+        if (!scene_rebased && !entity->parent && entity->node) {
+            void *pos = rt_scene_node3d_get_position(entity->node);
+            rt_scene_node3d_set_position(entity->node,
+                                         rt_vec3_x(pos) - delta[0],
+                                         rt_vec3_y(pos) - delta[1],
+                                         rt_vec3_z(pos) - delta[2]);
+        }
+        game3d_shift_body_position(entity->body, delta);
+    }
+
+    if (world->camera) {
+        void *camera_pos = rt_camera3d_get_position(world->camera);
+        void *shifted = rt_vec3_new(rt_vec3_x(camera_pos) - delta[0],
+                                    rt_vec3_y(camera_pos) - delta[1],
+                                    rt_vec3_z(camera_pos) - delta[2]);
+        rt_camera3d_set_position(world->camera, shifted);
+    }
+    if (world->audio) {
+        rt_game3d_audio *audio = (rt_game3d_audio *)world->audio;
+        if (audio->listener) {
+            void *listener_pos = rt_soundlistener3d_get_position(audio->listener);
+            rt_soundlistener3d_set_position_vec(audio->listener,
+                                                rt_vec3_x(listener_pos) - delta[0],
+                                                rt_vec3_y(listener_pos) - delta[1],
+                                                rt_vec3_z(listener_pos) - delta[2]);
+        }
+    }
+}
+
+static void game3d_world_rebase_if_needed(rt_game3d_world *world) {
+    if (!world || !world->floating_origin || !world->camera)
+        return;
+    double eye[3] = {0.0, 0.0, 0.0};
+    if (!rt_camera3d_get_position_components(world->camera, &eye[0], &eye[1], &eye[2]))
+        return;
+    const double threshold = game3d_rebase_threshold_or_default(world->origin_rebase_threshold);
+    const double dist_sq = eye[0] * eye[0] + eye[1] * eye[1] + eye[2] * eye[2];
+    if (dist_sq < threshold * threshold)
+        return;
+    game3d_world_apply_origin_rebase(world, eye);
 }
 
 /// @brief Normalize a 3D input axis so combined directions do not move faster.
@@ -821,6 +1032,30 @@ static void game3d_normalize_xz(double *x, double *z, double fallback_x, double 
         *z = vz;
 }
 
+#if defined(_MSC_VER)
+#define RT_GAME3D_THREAD_LOCAL __declspec(thread)
+#else
+#define RT_GAME3D_THREAD_LOCAL _Thread_local
+#endif
+
+/// @brief Build a stable lifetime diagnostic in the public `Game3D.Type.method: reason` form.
+/// @details `method` strings often include an invalid-handle suffix; lifetime traps replace that
+///          suffix with the actual destroyed-handle reason while keeping the qualified API name.
+static const char *game3d_lifetime_diag(const char *method, const char *reason) {
+    static RT_GAME3D_THREAD_LOCAL char message[256];
+    const char *fallback_method = "Game3D";
+    const char *fallback_reason = "invalid lifetime";
+    const char *qualified = method && method[0] ? method : fallback_method;
+    const char *why = reason && reason[0] ? reason : fallback_reason;
+    const char *suffix = strchr(qualified, ':');
+    int method_len = suffix ? (int)(suffix - qualified) : (int)strlen(qualified);
+    if (method_len < 0)
+        method_len = 0;
+    snprintf(message, sizeof(message), "%.*s: %s", method_len, qualified, why);
+    message[sizeof(message) - 1] = '\0';
+    return message;
+}
+
 //=========================================================================
 // Handle validators — each downcasts an opaque handle to its typed payload,
 // trapping `method` (the caller's qualified API name) on a class-id mismatch
@@ -861,7 +1096,7 @@ static rt_game3d_entity *game3d_entity_checked_allow_destroyed(void *obj, const 
 static rt_game3d_entity *game3d_entity_checked(void *obj, const char *method) {
     rt_game3d_entity *entity = game3d_entity_checked_allow_destroyed(obj, method);
     if (entity && entity->destroyed)
-        rt_trap("Game3D.Entity3D: entity is destroyed");
+        rt_trap(game3d_lifetime_diag(method, "entity is destroyed"));
     return entity;
 }
 
@@ -928,6 +1163,24 @@ static rt_game3d_model_template *game3d_model_template_checked(void *obj, const 
     return model_template;
 }
 
+/// @brief Validate `obj` as an AssetHandle3D handle, trapping `method` on mismatch.
+static rt_game3d_asset_handle *game3d_asset_handle_checked(void *obj, const char *method) {
+    rt_game3d_asset_handle *handle = (rt_game3d_asset_handle *)rt_g3d_checked_or_null(
+        obj, RT_G3D_GAME3D_ASSET_HANDLE3D_CLASS_ID);
+    if (!handle)
+        rt_trap(method);
+    return handle;
+}
+
+/// @brief Validate `obj` as a WorldStream3D handle, trapping `method` on mismatch.
+static rt_game3d_world_stream *game3d_world_stream_checked(void *obj, const char *method) {
+    rt_game3d_world_stream *stream = (rt_game3d_world_stream *)rt_g3d_checked_or_null(
+        obj, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID);
+    if (!stream)
+        rt_trap(method);
+    return stream;
+}
+
 /// @brief Validate `obj` as a World3D handle (allowing a destroyed one), trapping
 ///   `method` on class mismatch.
 static rt_game3d_world *game3d_world_checked_allow_destroyed(void *obj, const char *method) {
@@ -943,7 +1196,7 @@ static rt_game3d_world *game3d_world_checked_allow_destroyed(void *obj, const ch
 static rt_game3d_world *game3d_world_checked(void *obj, const char *method) {
     rt_game3d_world *world = game3d_world_checked_allow_destroyed(obj, method);
     if (world && world->destroyed)
-        rt_trap("Game3D.World3D: world is destroyed");
+        rt_trap(game3d_lifetime_diag(method, "world is destroyed"));
     return world;
 }
 
@@ -1996,6 +2249,12 @@ void *rt_game3d_entity_from_node(void *root) {
     entity->collision_mask_bits = ~(int64_t)0;
     entity->name = rt_const_cstr("");
     rt_obj_retain_maybe(entity->name);
+    {
+        rt_string root_name = rt_scene_node3d_get_name(root);
+        const char *root_name_cstr = root_name ? rt_string_cstr(root_name) : NULL;
+        if (root_name_cstr && root_name_cstr[0] != '\0')
+            game3d_assign_ref((void **)&entity->name, root_name);
+    }
     entity->group = 1;
     return entity;
 }
@@ -2588,6 +2847,55 @@ int8_t rt_game3d_animator_crossfade(void *obj, rt_string name, double seconds) {
     if (ok)
         game3d_animator_drain_events(animator);
     return ok;
+}
+
+/// @brief Play `name` as a true additive overlay on `layer`, refreshing events on success.
+int8_t rt_game3d_animator_play_layer_additive(void *obj, int64_t layer, rt_string name) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.playLayerAdditive: invalid animator");
+    int8_t ok;
+    if (!animator || !animator->controller)
+        return 0;
+    game3d_animator_clear_events(animator);
+    ok = rt_anim_controller3d_play_layer_additive(animator->controller, layer, name);
+    if (ok)
+        game3d_animator_drain_events(animator);
+    return ok;
+}
+
+/// @brief Cross-fade `name` as a true additive overlay on `layer`, refreshing events on success.
+int8_t rt_game3d_animator_crossfade_layer_additive(void *obj,
+                                                   int64_t layer,
+                                                   rt_string name,
+                                                   double seconds) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.crossfadeLayerAdditive: invalid animator");
+    int8_t ok;
+    if (!animator || !animator->controller)
+        return 0;
+    game3d_animator_clear_events(animator);
+    ok = rt_anim_controller3d_crossfade_layer_additive(animator->controller, layer, name, seconds);
+    if (ok)
+        game3d_animator_drain_events(animator);
+    return ok;
+}
+
+/// @brief Set a BlendTree3D as the wrapped controller's base pose source.
+int8_t rt_game3d_animator_set_blend_tree(void *obj, void *blend_tree) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.setBlendTree: invalid animator");
+    if (!animator || !animator->controller)
+        return 0;
+    return rt_anim_controller3d_set_blend_tree(animator->controller, blend_tree);
+}
+
+/// @brief Set an IKSolver3D as the wrapped controller's final-pose constraint.
+int8_t rt_game3d_animator_set_ik_solver(void *obj, void *ik_solver) {
+    rt_game3d_animator *animator =
+        game3d_animator_checked(obj, "Game3D.Animator3D.setIKSolver: invalid animator");
+    if (!animator || !animator->controller)
+        return 0;
+    return rt_anim_controller3d_set_ik_solver(animator->controller, ik_solver);
 }
 
 /// @brief Set the playback speed multiplier for the named state/clip.
@@ -3660,6 +3968,17 @@ static void game3d_model_template_finalize(void *obj) {
     game3d_release_ref((void **)&model_template->path);
 }
 
+/// @brief GC finalizer for AssetHandle3D: release terminal result and error text.
+static void game3d_asset_handle_finalize(void *obj) {
+    rt_game3d_asset_handle *handle = (rt_game3d_asset_handle *)obj;
+    if (!handle)
+        return;
+    game3d_release_ref(&handle->entity);
+    game3d_release_ref(&handle->model_template);
+    game3d_release_ref((void **)&handle->error);
+    game3d_release_ref((void **)&handle->path);
+}
+
 /// @brief Ensure the global model cache can hold `need` entries, doubling and zeroing
 ///   new slots; returns 0 on allocation failure.
 static int game3d_model_cache_grow(int32_t need) {
@@ -3686,6 +4005,89 @@ static int game3d_string_equals(rt_string a, rt_string b) {
     const char *as = a ? rt_string_cstr(a) : "";
     const char *bs = b ? rt_string_cstr(b) : "";
     return as && bs && strcmp(as, bs) == 0;
+}
+
+/// @brief True when the runtime string contains at least one byte.
+static int game3d_string_has_bytes(rt_string value) {
+    const char *bytes = value ? rt_string_cstr(value) : "";
+    return bytes && bytes[0] != '\0';
+}
+
+static int game3d_path_has_model_extension(const char *path) {
+    static const char *const exts[] = {".vscn", ".gltf", ".glb", ".fbx", ".obj"};
+    if (!path)
+        return 0;
+    const char *dot = strrchr(path, '.');
+    if (!dot || !dot[1])
+        return 0;
+    for (size_t i = 0; i < sizeof(exts) / sizeof(exts[0]); ++i) {
+        const char *a = dot;
+        const char *b = exts[i];
+        while (*a && *b) {
+            if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+                break;
+            ++a;
+            ++b;
+        }
+        if (*a == '\0' && *b == '\0')
+            return 1;
+    }
+    return 0;
+}
+
+static uint64_t game3d_u64_saturating_add(uint64_t a, uint64_t b) {
+    if (UINT64_MAX - a < b)
+        return UINT64_MAX;
+    return a + b;
+}
+
+static uint64_t game3d_u64_saturating_mul_u64(uint64_t a, uint64_t b) {
+    if (a != 0 && b > UINT64_MAX / a)
+        return UINT64_MAX;
+    return a * b;
+}
+
+static uint64_t game3d_u64_from_i64_nonnegative(int64_t value) {
+    return value > 0 ? (uint64_t)value : 0;
+}
+
+/// @brief Conservative resident-byte estimate for cache policy decisions.
+static uint64_t game3d_model_template_estimate_resident_bytes(rt_game3d_model_template *model_template) {
+    uint64_t total = sizeof(*model_template);
+    if (!model_template)
+        return 1;
+    if (model_template->path) {
+        const char *path = rt_string_cstr(model_template->path);
+        if (path)
+            total = game3d_u64_saturating_add(total, (uint64_t)strlen(path) + 1u);
+    }
+    if (model_template->model) {
+        int64_t mesh_count = rt_model3d_get_mesh_count(model_template->model);
+        int64_t material_count = rt_model3d_get_material_count(model_template->model);
+        int64_t skeleton_count = rt_model3d_get_skeleton_count(model_template->model);
+        int64_t animation_count = rt_model3d_get_animation_count(model_template->model);
+        int64_t node_count = rt_model3d_get_node_count(model_template->model);
+        total = game3d_u64_saturating_add(total, 256u);
+        total = game3d_u64_saturating_add(
+            total, game3d_u64_saturating_mul_u64(game3d_u64_from_i64_nonnegative(material_count), 256u));
+        total = game3d_u64_saturating_add(
+            total, game3d_u64_saturating_mul_u64(game3d_u64_from_i64_nonnegative(skeleton_count), 1024u));
+        total = game3d_u64_saturating_add(
+            total, game3d_u64_saturating_mul_u64(game3d_u64_from_i64_nonnegative(animation_count), 2048u));
+        total = game3d_u64_saturating_add(
+            total, game3d_u64_saturating_mul_u64(game3d_u64_from_i64_nonnegative(node_count), 256u));
+        for (int64_t i = 0; i < mesh_count; ++i) {
+            void *mesh = rt_model3d_get_mesh(model_template->model, i);
+            uint64_t vertices = game3d_u64_from_i64_nonnegative(rt_mesh3d_get_vertex_count(mesh));
+            uint64_t triangles = game3d_u64_from_i64_nonnegative(rt_mesh3d_get_triangle_count(mesh));
+            uint64_t indices = game3d_u64_saturating_mul_u64(triangles, 3u);
+            total = game3d_u64_saturating_add(
+                total, game3d_u64_saturating_mul_u64(vertices, (uint64_t)sizeof(vgfx3d_vertex_t)));
+            total = game3d_u64_saturating_add(
+                total, game3d_u64_saturating_mul_u64(indices, (uint64_t)sizeof(uint32_t)));
+        }
+    }
+    return total > 0 ? total : 1;
 }
 
 static uint64_t game3d_model_cache_next_tick(void) {
@@ -3800,6 +4202,10 @@ static int32_t game3d_model_cache_find_index(rt_string path, int8_t asset_path) 
 static void game3d_model_cache_remove_at(int32_t index) {
     if (index < 0 || index >= g_game3d_model_cache_count)
         return;
+    if (g_game3d_model_cache[index].resident_bytes > g_game3d_model_resident_bytes)
+        g_game3d_model_resident_bytes = 0;
+    else
+        g_game3d_model_resident_bytes -= g_game3d_model_cache[index].resident_bytes;
     game3d_release_ref((void **)&g_game3d_model_cache[index].path);
     game3d_release_ref(&g_game3d_model_cache[index].model_template);
     for (int32_t i = index; i < g_game3d_model_cache_count - 1; ++i)
@@ -3826,6 +4232,38 @@ static void game3d_model_cache_evict_if_full(void) {
         game3d_model_cache_remove_at(victim);
 }
 
+/// @brief Evict least-recently-used non-loading entries until the byte budget is met.
+static void game3d_model_cache_evict_to_budget(void) {
+    while (g_game3d_model_resident_bytes > g_game3d_model_residency_budget_bytes) {
+        int32_t victim = -1;
+        uint64_t oldest = UINT64_MAX;
+        for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
+            rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[i];
+            if (!entry->loading && entry->last_used < oldest) {
+                oldest = entry->last_used;
+                victim = i;
+            }
+        }
+        if (victim < 0)
+            break;
+        game3d_model_cache_remove_at(victim);
+    }
+}
+
+/// @brief Remove a cached template by object identity, preserving external refs.
+static int game3d_model_cache_evict_template(void *model_template) {
+    if (!model_template)
+        return 0;
+    for (int32_t i = 0; i < g_game3d_model_cache_count; ++i) {
+        rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[i];
+        if (!entry->loading && entry->model_template == model_template) {
+            game3d_model_cache_remove_at(i);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /// @brief Allocate a ModelTemplate retaining the path and loaded model; traps on OOM.
 static rt_game3d_model_template *game3d_model_template_new(rt_string path,
                                                            int8_t asset_path,
@@ -3844,15 +4282,88 @@ static rt_game3d_model_template *game3d_model_template_new(rt_string path,
     return model_template;
 }
 
+/// @brief Allocate a terminal AssetHandle3D retaining its result object.
+static rt_game3d_asset_handle *game3d_asset_handle_new(int8_t ready,
+                                                       double progress,
+                                                       rt_string error,
+                                                       void *entity,
+                                                       void *model_template) {
+    rt_game3d_asset_handle *handle = (rt_game3d_asset_handle *)rt_obj_new_i64(
+        RT_G3D_GAME3D_ASSET_HANDLE3D_CLASS_ID, (int64_t)sizeof(*handle));
+    if (!handle) {
+        rt_trap("Game3D.AssetHandle3D: allocation failed");
+        return NULL;
+    }
+    memset(handle, 0, sizeof(*handle));
+    rt_obj_set_finalizer(handle, game3d_asset_handle_finalize);
+    handle->ready = ready ? 1 : 0;
+    handle->progress = game3d_finite_or(progress, 0.0);
+    if (handle->progress < 0.0)
+        handle->progress = 0.0;
+    if (handle->progress > 1.0)
+        handle->progress = 1.0;
+    game3d_assign_ref((void **)&handle->error, error ? error : rt_const_cstr(""));
+    game3d_assign_ref(&handle->entity, entity);
+    game3d_assign_ref(&handle->model_template, model_template);
+    return handle;
+}
+
+/// @brief Create a deferred AssetHandle3D request that completes on first observation.
+static rt_game3d_asset_handle *game3d_asset_handle_pending(rt_string path,
+                                                           int8_t asset_path,
+                                                           int8_t template_request) {
+    rt_game3d_asset_handle *handle =
+        game3d_asset_handle_new(0, 0.0, rt_const_cstr(""), NULL, NULL);
+    if (!handle)
+        return NULL;
+    handle->deferred = 1;
+    handle->asset_path = asset_path ? 1 : 0;
+    handle->template_request = template_request ? 1 : 0;
+    game3d_assign_ref((void **)&handle->path, path ? path : rt_const_cstr(""));
+    return handle;
+}
+
+static rt_string game3d_asset_handle_preflight_error(rt_game3d_asset_handle *handle) {
+    const char *path = handle && handle->path ? rt_string_cstr(handle->path) : NULL;
+    if (!path || !*path)
+        return rt_const_cstr("invalid path");
+    if (handle->asset_path) {
+        if (!rt_asset_exists(handle->path)) {
+            if (strncmp(path, "asset://", 8) == 0)
+                return rt_const_cstr("asset not found");
+            FILE *asset_file = fopen(path, "rb");
+            if (!asset_file)
+                return rt_const_cstr("asset not found");
+            fclose(asset_file);
+        }
+        return game3d_path_has_model_extension(path) ? rt_const_cstr("")
+                                                     : rt_const_cstr("unsupported file extension");
+    }
+    FILE *file = fopen(path, "rb");
+    if (!file)
+        return rt_const_cstr("cannot read file");
+    fclose(file);
+    return game3d_path_has_model_extension(path) ? rt_const_cstr("")
+                                                 : rt_const_cstr("unsupported file extension");
+}
+
+static rt_string game3d_asset_handle_load_error(rt_game3d_asset_handle *handle) {
+    if (handle && handle->asset_path)
+        return rt_const_cstr("failed to load model asset");
+    return rt_const_cstr("failed to load model");
+}
+
 /// @brief Load a model from disk/asset and wrap it in a new ModelTemplate, bypassing the
 ///   cache; traps `method` if the model fails to load.
-static rt_game3d_model_template *game3d_assets_load_template_uncached(rt_string path,
-                                                                      int8_t asset_path,
-                                                                      const char *method) {
+static rt_game3d_model_template *game3d_assets_load_template_uncached_impl(rt_string path,
+                                                                           int8_t asset_path,
+                                                                           const char *method,
+                                                                           int trap_on_fail) {
     void *model = asset_path ? rt_model3d_load_asset(path) : rt_model3d_load(path);
     rt_game3d_model_template *model_template;
     if (!model) {
-        rt_trap(method);
+        if (trap_on_fail)
+            rt_trap(method);
         return NULL;
     }
     model_template = game3d_model_template_new(path, asset_path, model);
@@ -3860,11 +4371,18 @@ static rt_game3d_model_template *game3d_assets_load_template_uncached(rt_string 
     return model_template;
 }
 
+static rt_game3d_model_template *game3d_assets_load_template_uncached(rt_string path,
+                                                                      int8_t asset_path,
+                                                                      const char *method) {
+    return game3d_assets_load_template_uncached_impl(path, asset_path, method, 1);
+}
+
 /// @brief Return the cached ModelTemplate for (path, asset_path), loading and inserting
 ///   it on a miss; returns a retained template. Traps on load or cache-grow failure.
-static rt_game3d_model_template *game3d_assets_load_template_cached(rt_string path,
-                                                                    int8_t asset_path,
-                                                                    const char *method) {
+static rt_game3d_model_template *game3d_assets_load_template_cached_impl(rt_string path,
+                                                                         int8_t asset_path,
+                                                                         const char *method,
+                                                                         int trap_on_fail) {
     rt_game3d_model_template *model_template;
     rt_string cache_path = game3d_model_cache_key_path(path, asset_path);
     int32_t pending_index = -1;
@@ -3922,7 +4440,8 @@ static rt_game3d_model_template *game3d_assets_load_template_cached(rt_string pa
         }
         game3d_model_cache_unlock();
         game3d_release_ref((void **)&cache_path);
-        rt_trap(method);
+        if (trap_on_fail)
+            rt_trap(method);
         return NULL;
     }
     model_template = game3d_model_template_new(cache_path, asset_path, loaded_model);
@@ -3951,12 +4470,22 @@ static rt_game3d_model_template *game3d_assets_load_template_cached(rt_string pa
     }
     rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[pending_index];
     game3d_assign_ref(&entry->model_template, model_template);
+    entry->resident_bytes = game3d_model_template_estimate_resident_bytes(model_template);
+    g_game3d_model_resident_bytes =
+        game3d_u64_saturating_add(g_game3d_model_resident_bytes, entry->resident_bytes);
     entry->loading = 0;
     entry->last_used = game3d_model_cache_next_tick();
+    game3d_model_cache_evict_to_budget();
     game3d_model_cache_notify_all();
     game3d_model_cache_unlock();
     game3d_release_ref((void **)&cache_path);
     return model_template;
+}
+
+static rt_game3d_model_template *game3d_assets_load_template_cached(rt_string path,
+                                                                    int8_t asset_path,
+                                                                    const char *method) {
+    return game3d_assets_load_template_cached_impl(path, asset_path, method, 1);
 }
 
 /// @brief Wrap a loaded model's root node as an entity, attaching its animator if the
@@ -4044,6 +4573,151 @@ void *rt_game3d_assets_load_model_template_asset(rt_string path) {
         path, 1, "Game3D.Assets3D.LoadModelTemplateAsset: failed to load model asset");
 }
 
+static void game3d_asset_handle_complete_if_deferred(rt_game3d_asset_handle *handle) {
+    if (!handle || !handle->deferred || handle->ready || handle->cancelled)
+        return;
+    handle->deferred = 0;
+    rt_string preflight_error = game3d_asset_handle_preflight_error(handle);
+    if (game3d_string_has_bytes(preflight_error)) {
+        game3d_assign_ref((void **)&handle->error, preflight_error);
+        handle->ready = 1;
+        handle->progress = 1.0;
+        return;
+    }
+    if (handle->template_request) {
+        void *model_template = game3d_assets_load_template_cached_impl(
+            handle->path,
+            handle->asset_path,
+            handle->asset_path ? "Game3D.Assets3D.LoadModelTemplateAssetAsync: failed to load model asset"
+                               : "Game3D.Assets3D.LoadModelTemplateAsync: failed to load model",
+            0);
+        if (model_template) {
+            game3d_assign_ref(&handle->model_template, model_template);
+            game3d_release_ref(&model_template);
+        } else {
+            game3d_assign_ref((void **)&handle->error, game3d_asset_handle_load_error(handle));
+        }
+    } else {
+        rt_game3d_model_template *model_template = game3d_assets_load_template_uncached_impl(
+            handle->path,
+            handle->asset_path,
+            handle->asset_path ? "Game3D.Assets3D.LoadModelAssetAsync: failed to load model asset"
+                               : "Game3D.Assets3D.LoadModelAsync: failed to load model",
+            0);
+        void *entity = model_template ? rt_game3d_model_template_instantiate(model_template) : NULL;
+        if (entity) {
+            game3d_assign_ref(&handle->entity, entity);
+            game3d_release_ref(&entity);
+        } else {
+            game3d_assign_ref((void **)&handle->error, game3d_asset_handle_load_error(handle));
+        }
+        if (model_template && rt_obj_release_check0(model_template))
+            rt_obj_free(model_template);
+    }
+    handle->ready = 1;
+    handle->progress = 1.0;
+}
+
+/// @brief Load a filesystem model and expose the terminal result through AssetHandle3D.
+void *rt_game3d_assets_load_model_async(rt_string path) {
+    return game3d_asset_handle_pending(path, 0, 0);
+}
+
+/// @brief Load a packed-asset model and expose the terminal result through AssetHandle3D.
+void *rt_game3d_assets_load_model_asset_async(rt_string path) {
+    return game3d_asset_handle_pending(path, 1, 0);
+}
+
+/// @brief Load a filesystem ModelTemplate and expose it through AssetHandle3D.
+void *rt_game3d_assets_load_model_template_async(rt_string path) {
+    return game3d_asset_handle_pending(path, 0, 1);
+}
+
+/// @brief Load a packed-asset ModelTemplate and expose it through AssetHandle3D.
+void *rt_game3d_assets_load_model_template_asset_async(rt_string path) {
+    return game3d_asset_handle_pending(path, 1, 1);
+}
+
+/// @brief Set the process-wide ModelTemplate cache budget. Negative means unlimited.
+void rt_game3d_assets_set_residency_budget(int64_t bytes) {
+    uint64_t budget = bytes < 0 ? UINT64_MAX : (uint64_t)bytes;
+    game3d_model_cache_lock();
+    g_game3d_model_residency_budget_bytes = budget;
+    game3d_model_cache_evict_to_budget();
+    game3d_model_cache_notify_all();
+    game3d_model_cache_unlock();
+}
+
+/// @brief Evict the cached template backing a ready template AssetHandle3D.
+void rt_game3d_assets_evict(void *asset_handle) {
+    rt_game3d_asset_handle *handle =
+        game3d_asset_handle_checked(asset_handle, "Game3D.Assets3D.Evict: invalid handle");
+    if (!handle || !handle->ready || handle->cancelled || game3d_string_has_bytes(handle->error) ||
+        !handle->model_template)
+        return;
+    game3d_model_cache_lock();
+    if (game3d_model_cache_evict_template(handle->model_template))
+        game3d_model_cache_notify_all();
+    game3d_model_cache_unlock();
+}
+
+/// @brief True once the request has completed or been cancelled. See header.
+int8_t rt_game3d_asset_handle_get_ready(void *obj) {
+    rt_game3d_asset_handle *handle =
+        game3d_asset_handle_checked(obj, "Game3D.AssetHandle3D.ready: invalid handle");
+    game3d_asset_handle_complete_if_deferred(handle);
+    return handle && handle->ready ? 1 : 0;
+}
+
+/// @brief Terminal or in-flight loading progress. See header.
+double rt_game3d_asset_handle_get_progress(void *obj) {
+    rt_game3d_asset_handle *handle =
+        game3d_asset_handle_checked(obj, "Game3D.AssetHandle3D.progress: invalid handle");
+    return handle ? handle->progress : 0.0;
+}
+
+/// @brief Return terminal error text, or "" on success / pending work. See header.
+rt_string rt_game3d_asset_handle_get_error(void *obj) {
+    rt_game3d_asset_handle *handle =
+        game3d_asset_handle_checked(obj, "Game3D.AssetHandle3D.error: invalid handle");
+    return handle && handle->error ? handle->error : rt_const_cstr("");
+}
+
+/// @brief Cancel a pending request. Current completed handles intentionally no-op.
+void rt_game3d_asset_handle_cancel(void *obj) {
+    rt_game3d_asset_handle *handle =
+        game3d_asset_handle_checked(obj, "Game3D.AssetHandle3D.cancel: invalid handle");
+    if (!handle || handle->ready)
+        return;
+    handle->cancelled = 1;
+    handle->deferred = 0;
+    handle->ready = 1;
+    handle->progress = 1.0;
+    game3d_assign_ref((void **)&handle->error, rt_const_cstr("cancelled"));
+    game3d_release_ref(&handle->entity);
+    game3d_release_ref(&handle->model_template);
+}
+
+/// @brief Return the entity result for entity-mode requests, or NULL. See header.
+void *rt_game3d_asset_handle_get_entity(void *obj) {
+    rt_game3d_asset_handle *handle =
+        game3d_asset_handle_checked(obj, "Game3D.AssetHandle3D.getEntity: invalid handle");
+    game3d_asset_handle_complete_if_deferred(handle);
+    if (!handle || !handle->ready || handle->cancelled || game3d_string_has_bytes(handle->error))
+        return NULL;
+    return handle->entity;
+}
+
+/// @brief Return the template result for template-mode requests, or NULL. See header.
+void *rt_game3d_asset_handle_get_template(void *obj) {
+    rt_game3d_asset_handle *handle =
+        game3d_asset_handle_checked(obj, "Game3D.AssetHandle3D.getTemplate: invalid handle");
+    game3d_asset_handle_complete_if_deferred(handle);
+    if (!handle || !handle->ready || handle->cancelled || game3d_string_has_bytes(handle->error))
+        return NULL;
+    return handle->model_template;
+}
+
 /// @brief Warm the cache by loading `path` and dropping the local reference. See header.
 void rt_game3d_assets_preload(rt_string path) {
     void *model_template = rt_game3d_assets_load_model_template(path);
@@ -4074,6 +4748,7 @@ void rt_game3d_assets_clear_cache(void) {
     g_game3d_model_cache_count = 0;
     g_game3d_model_cache_capacity = 0;
     g_game3d_model_cache_tick = 0;
+    g_game3d_model_resident_bytes = 0;
     game3d_model_cache_notify_all();
     game3d_model_cache_unlock();
 
@@ -5204,16 +5879,118 @@ static void game3d_world_update_controller(rt_game3d_world *world, double dt) {
 }
 
 /// @brief Advance every live, non-destroyed entity's animator by `dt`.
+typedef struct {
+    void **animators;
+    int32_t start;
+    int32_t end;
+    double dt;
+} rt_game3d_animation_job;
+
+static void game3d_animation_job_run(void *arg) {
+    rt_game3d_animation_job *job = (rt_game3d_animation_job *)arg;
+    if (!job || !job->animators)
+        return;
+    for (int32_t i = job->start; i < job->end; ++i) {
+        void *anim = job->animators[i];
+        if (anim)
+            rt_game3d_animator_update(anim, job->dt);
+    }
+}
+
+static int32_t game3d_animation_job_count(int64_t worker_count, int32_t animator_count) {
+    if (worker_count <= 1 || animator_count <= 1)
+        return 1;
+    int64_t target = worker_count * 4;
+    if (target < 1)
+        target = 1;
+    if (target > animator_count)
+        target = animator_count;
+    return target > INT32_MAX ? INT32_MAX : (int32_t)target;
+}
+
+static void game3d_update_animator_list_serial(void **animators, int32_t count, double dt) {
+    if (!animators)
+        return;
+    for (int32_t i = 0; i < count; ++i) {
+        if (animators[i])
+            rt_game3d_animator_update(animators[i], dt);
+    }
+}
+
 static void game3d_world_update_animations(rt_game3d_world *world, double dt) {
     if (!world)
         return;
+    int32_t animator_count = 0;
     for (int32_t i = 0; i < world->entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
         if (!entity || entity->destroyed || !entity->anim)
             continue;
         if (rt_g3d_has_class(entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID))
-            rt_game3d_animator_update(entity->anim, dt);
+            animator_count++;
     }
+    if (animator_count <= 0)
+        return;
+    if (!world->jobs_enabled || world->worker_count <= 1 || animator_count <= 1 ||
+        !game3d_world_ensure_job_pool(world)) {
+        for (int32_t i = 0; i < world->entity_count; ++i) {
+            rt_game3d_entity *entity = world->entities[i];
+            if (!entity || entity->destroyed || !entity->anim)
+                continue;
+            if (rt_g3d_has_class(entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID))
+                rt_game3d_animator_update(entity->anim, dt);
+        }
+        return;
+    }
+
+    void **animators = (void **)malloc((size_t)animator_count * sizeof(*animators));
+    if (!animators) {
+        for (int32_t i = 0; i < world->entity_count; ++i) {
+            rt_game3d_entity *entity = world->entities[i];
+            if (!entity || entity->destroyed || !entity->anim)
+                continue;
+            if (rt_g3d_has_class(entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID))
+                rt_game3d_animator_update(entity->anim, dt);
+        }
+        return;
+    }
+    int32_t write = 0;
+    for (int32_t i = 0; i < world->entity_count && write < animator_count; ++i) {
+        rt_game3d_entity *entity = world->entities[i];
+        if (!entity || entity->destroyed || !entity->anim)
+            continue;
+        if (rt_g3d_has_class(entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID))
+            animators[write++] = entity->anim;
+    }
+    animator_count = write;
+    int32_t task_count = game3d_animation_job_count(world->worker_count, animator_count);
+    rt_game3d_animation_job *tasks =
+        (rt_game3d_animation_job *)calloc((size_t)task_count, sizeof(*tasks));
+    if (!tasks || task_count <= 1) {
+        game3d_update_animator_list_serial(animators, animator_count, dt);
+        free(tasks);
+        free(animators);
+        return;
+    }
+
+    int submit_failed = 0;
+    for (int32_t i = 0; i < task_count; ++i) {
+        int32_t start = (int32_t)(((int64_t)i * animator_count) / task_count);
+        int32_t end = (int32_t)(((int64_t)(i + 1) * animator_count) / task_count);
+        tasks[i].animators = animators;
+        tasks[i].start = start;
+        tasks[i].end = end;
+        tasks[i].dt = dt;
+        if (!rt_threadpool_submit(
+                world->job_pool, game3d_task_fnptr(game3d_animation_job_run), &tasks[i])) {
+            submit_failed = 1;
+            game3d_animation_job_run(&tasks[i]);
+        }
+    }
+    rt_threadpool_wait(world->job_pool);
+    if (submit_failed)
+        world->jobs_enabled = 0;
+    free(tasks);
+    free(animators);
 }
 
 /// @brief Dispatch the post-physics late update to the world's camera controller by
@@ -5567,6 +6344,14 @@ static void game3d_world_release_runtime(rt_game3d_world *world, int mark_entiti
     game3d_camera_controller_clear_world_ref(world->camera_controller);
     game3d_release_ref(&world->camera_controller);
     game3d_release_ref(&world->debug_axis_origin);
+    if (world->stream) {
+        rt_game3d_world_stream *stream =
+            (rt_game3d_world_stream *)rt_g3d_checked_or_null(
+                world->stream, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID);
+        if (stream && !stream->retains_world)
+            stream->world = NULL;
+    }
+    game3d_release_ref(&world->stream);
     game3d_release_ref(&world->effects);
     game3d_release_ref(&world->audio);
     game3d_release_ref(&world->input);
@@ -5574,6 +6359,7 @@ static void game3d_world_release_runtime(rt_game3d_world *world, int mark_entiti
     game3d_release_ref(&world->scene);
     game3d_release_ref(&world->camera);
     game3d_release_ref(&world->canvas);
+    game3d_world_release_job_pool(world);
 }
 
 static void game3d_world_free_registries(rt_game3d_world *world) {
@@ -5603,6 +6389,976 @@ static void game3d_world_finalize(void *obj) {
         return;
     game3d_world_release_runtime(world, 1);
     game3d_world_free_registries(world);
+}
+
+static int64_t game3d_stream_manifest_bytes(rt_string value);
+static int64_t game3d_i64_saturating_add(int64_t a, int64_t b);
+
+static int game3d_json_is_map(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
+}
+
+static int game3d_json_is_seq(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
+}
+
+static void *game3d_json_get(void *map, const char *key) {
+    if (!game3d_json_is_map(map) || !key)
+        return NULL;
+    rt_string k = rt_string_from_bytes(key, strlen(key));
+    if (!k)
+        return NULL;
+    void *value = rt_map_get(map, k);
+    rt_string_unref(k);
+    return value;
+}
+
+static int game3d_json_number(void *obj, double *out) {
+    if (!out)
+        return 0;
+    double f = 0.0;
+    if (rt_box_try_to_f64(obj, &f)) {
+        *out = f;
+        return 1;
+    }
+    int64_t i = 0;
+    if (rt_box_try_to_i64(obj, &i)) {
+        *out = (double)i;
+        return 1;
+    }
+    return 0;
+}
+
+static int64_t game3d_json_i64_or(void *map, const char *key, int64_t fallback) {
+    void *value = game3d_json_get(map, key);
+    int64_t i = 0;
+    if (rt_box_try_to_i64(value, &i))
+        return i;
+    double f = 0.0;
+    if (rt_box_try_to_f64(value, &f) && isfinite(f)) {
+        if (f <= (double)INT64_MIN)
+            return INT64_MIN;
+        if (f >= (double)INT64_MAX)
+            return INT64_MAX;
+        return (int64_t)f;
+    }
+    return fallback;
+}
+
+static double game3d_json_f64_or(void *map, const char *key, double fallback) {
+    double v = 0.0;
+    if (game3d_json_number(game3d_json_get(map, key), &v) && isfinite(v))
+        return v;
+    return fallback;
+}
+
+static rt_string game3d_json_string_ref(void *map, const char *key) {
+    void *value = game3d_json_get(map, key);
+    if (!value || !rt_string_is_handle(value))
+        return NULL;
+    return rt_string_ref((rt_string)value);
+}
+
+static int game3d_json_vec3_or(void *map, const char *key, double out[3], const double fallback[3]) {
+    if (!out)
+        return 0;
+    out[0] = fallback ? fallback[0] : 0.0;
+    out[1] = fallback ? fallback[1] : 0.0;
+    out[2] = fallback ? fallback[2] : 0.0;
+    void *seq = game3d_json_get(map, key);
+    if (!game3d_json_is_seq(seq) || rt_seq_len(seq) < 3)
+        return 0;
+    double v[3];
+    for (int i = 0; i < 3; ++i) {
+        if (!game3d_json_number(rt_seq_get(seq, i), &v[i]) || !isfinite(v[i]))
+            return 0;
+    }
+    out[0] = v[0];
+    out[1] = v[1];
+    out[2] = v[2];
+    return 1;
+}
+
+static rt_string game3d_read_text_file_no_trap(rt_string path) {
+    const char *cpath = path ? rt_string_cstr(path) : NULL;
+    if (!cpath || cpath[0] == '\0')
+        return NULL;
+    FILE *file = fopen(cpath, "rb");
+    if (!file)
+        return NULL;
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return NULL;
+    }
+    long size = ftell(file);
+    if (size < 0 || size > 16 * 1024 * 1024 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return NULL;
+    }
+    char *bytes = (char *)malloc((size_t)size + 1u);
+    if (!bytes) {
+        fclose(file);
+        return NULL;
+    }
+    if (size > 0 && fread(bytes, 1u, (size_t)size, file) != (size_t)size) {
+        free(bytes);
+        fclose(file);
+        return NULL;
+    }
+    fclose(file);
+    bytes[size] = '\0';
+    rt_string result = rt_string_from_bytes(bytes, (size_t)size);
+    free(bytes);
+    return result;
+}
+
+static int game3d_path_is_absolute(const char *path) {
+    if (!path || path[0] == '\0')
+        return 0;
+    if (path[0] == '/' || path[0] == '\\')
+        return 1;
+#if defined(_WIN32)
+    if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
+        path[1] == ':')
+        return 1;
+#endif
+    return 0;
+}
+
+static rt_string game3d_stream_resolve_manifest_path(rt_string manifest_path, rt_string payload) {
+    const char *raw = payload ? rt_string_cstr(payload) : NULL;
+    const char *manifest = manifest_path ? rt_string_cstr(manifest_path) : NULL;
+    if (!raw || raw[0] == '\0')
+        return rt_string_ref(rt_const_cstr(""));
+    if (game3d_path_is_absolute(raw) || !manifest || manifest[0] == '\0')
+        return rt_string_ref(payload);
+    const char *slash = strrchr(manifest, '/');
+    const char *backslash = strrchr(manifest, '\\');
+    const char *sep = slash && backslash ? (slash > backslash ? slash : backslash)
+                                         : (slash ? slash : backslash);
+    if (!sep)
+        return rt_string_ref(payload);
+    size_t dir_len = (size_t)(sep - manifest + 1);
+    size_t raw_len = strlen(raw);
+    if (dir_len > SIZE_MAX - raw_len)
+        return rt_string_ref(payload);
+    char *joined = (char *)malloc(dir_len + raw_len + 1u);
+    if (!joined)
+        return rt_string_ref(payload);
+    memcpy(joined, manifest, dir_len);
+    memcpy(joined + dir_len, raw, raw_len + 1u);
+    rt_string result = rt_string_from_bytes(joined, dir_len + raw_len);
+    free(joined);
+    return result;
+}
+
+static int64_t game3d_stream_cell_bytes(const rt_game3d_stream_cell *cell) {
+    if (!cell || cell->resident_bytes <= 0)
+        return 64 * 1024;
+    return cell->resident_bytes;
+}
+
+static int64_t game3d_stream_terrain_tile_bytes(const rt_game3d_stream_terrain_tile *tile) {
+    if (!tile || tile->resident_bytes <= 0)
+        return 256 * 1024;
+    return tile->resident_bytes;
+}
+
+static double game3d_stream_cell_distance_sq(const rt_game3d_world_stream *stream,
+                                             const rt_game3d_stream_cell *cell) {
+    double dx = stream->center[0] - cell->center[0];
+    double dz = stream->center[2] - cell->center[2];
+    return dx * dx + dz * dz;
+}
+
+static double game3d_stream_terrain_tile_distance_sq(
+    const rt_game3d_world_stream *stream,
+    const rt_game3d_stream_terrain_tile *tile) {
+    double dx = stream->center[0] - tile->center[0];
+    double dz = stream->center[2] - tile->center[2];
+    return dx * dx + dz * dz;
+}
+
+static double game3d_stream_terrain_axis_scale(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 1.0;
+    if (value > 1000000.0)
+        return 1000000.0;
+    return value;
+}
+
+static int64_t game3d_world_stream_resident_cell_bytes(const rt_game3d_world_stream *stream) {
+    int64_t bytes = game3d_stream_manifest_bytes(stream ? stream->cells_manifest : NULL);
+    if (!stream)
+        return 0;
+    for (int32_t i = 0; i < stream->cell_count; ++i) {
+        if (stream->cells[i].resident)
+            bytes = game3d_i64_saturating_add(bytes, game3d_stream_cell_bytes(&stream->cells[i]));
+    }
+    return bytes;
+}
+
+static void game3d_world_stream_unload_terrain_tile(rt_game3d_world_stream *stream,
+                                                    rt_game3d_stream_terrain_tile *tile);
+
+static void game3d_world_stream_clear_terrain_tiles(rt_game3d_world_stream *stream) {
+    if (!stream)
+        return;
+    for (int32_t i = 0; i < stream->terrain_tile_count; ++i) {
+        rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
+        game3d_world_stream_unload_terrain_tile(stream, tile);
+        game3d_release_ref((void **)&tile->name);
+        game3d_release_ref((void **)&tile->path);
+        game3d_release_ref((void **)&tile->heightmap_path);
+    }
+    free(stream->terrain_tiles);
+    stream->terrain_tiles = NULL;
+    stream->terrain_tile_count = 0;
+    stream->terrain_tile_capacity = 0;
+    stream->terrain_manifest_loaded = 0;
+}
+
+static void game3d_world_stream_unload_terrain_tile(rt_game3d_world_stream *stream,
+                                                    rt_game3d_stream_terrain_tile *tile) {
+    if (!tile)
+        return;
+    if (tile->nav_entity && stream && stream->world) {
+        rt_game3d_entity *entity =
+            (rt_game3d_entity *)rt_g3d_checked_or_null(tile->nav_entity,
+                                                       RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        if (entity && entity->spawned && entity->world == stream->world)
+            rt_game3d_world_despawn(stream->world, tile->nav_entity);
+    }
+    game3d_release_ref(&tile->nav_entity);
+    if (tile->collider_entity && stream && stream->world) {
+        rt_game3d_entity *entity =
+            (rt_game3d_entity *)rt_g3d_checked_or_null(tile->collider_entity,
+                                                       RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        if (entity && entity->spawned && entity->world == stream->world)
+            rt_game3d_world_despawn(stream->world, tile->collider_entity);
+    }
+    game3d_release_ref(&tile->collider_entity);
+    game3d_release_ref(&tile->terrain);
+    tile->resident = 0;
+}
+
+static const char *game3d_heightmap_skip_space(const char *p) {
+    while (p && *p && isspace((unsigned char)*p))
+        ++p;
+    return p;
+}
+
+static int game3d_heightmap_read_word(const char **cursor, char *out, size_t out_size) {
+    if (!cursor || !*cursor || !out || out_size == 0)
+        return 0;
+    const char *p = game3d_heightmap_skip_space(*cursor);
+    if (!p || *p == '\0')
+        return 0;
+    size_t len = 0;
+    while (p[len] && !isspace((unsigned char)p[len]))
+        ++len;
+    if (len == 0 || len >= out_size)
+        return 0;
+    memcpy(out, p, len);
+    out[len] = '\0';
+    *cursor = p + len;
+    return 1;
+}
+
+static int game3d_heightmap_read_i64(const char **cursor, int64_t *out) {
+    if (!cursor || !*cursor || !out)
+        return 0;
+    char *end = NULL;
+    const char *p = game3d_heightmap_skip_space(*cursor);
+    long long value = strtoll(p, &end, 10);
+    if (!end || end == p)
+        return 0;
+    *cursor = end;
+    *out = (int64_t)value;
+    return 1;
+}
+
+static int game3d_heightmap_read_f64(const char **cursor, double *out) {
+    if (!cursor || !*cursor || !out)
+        return 0;
+    char *end = NULL;
+    const char *p = game3d_heightmap_skip_space(*cursor);
+    double value = strtod(p, &end);
+    if (!end || end == p || !isfinite(value))
+        return 0;
+    *cursor = end;
+    *out = value;
+    return 1;
+}
+
+static uint32_t game3d_heightmap_sample_rgba(double h) {
+    if (h < 0.0)
+        h = 0.0;
+    else if (h > 1.0)
+        h = 1.0;
+    uint32_t sample = (uint32_t)llround(h * 65535.0);
+    if (sample > 65535u)
+        sample = 65535u;
+    return ((sample >> 8) & 0xFFu) << 24 |
+           (sample & 0xFFu) << 16 |
+           0x000000FFu;
+}
+
+static void *game3d_load_heightmap_sidecar(rt_string path,
+                                           int64_t target_width,
+                                           int64_t target_depth) {
+    if (!game3d_string_has_bytes(path))
+        return NULL;
+    rt_string text = game3d_read_text_file_no_trap(path);
+    if (!text)
+        return NULL;
+
+    const char *cursor = rt_string_cstr(text);
+    char magic[32];
+    int64_t width = 0;
+    int64_t depth = 0;
+    if (!game3d_heightmap_read_word(&cursor, magic, sizeof(magic)) ||
+        strcmp(magic, "viper-heightmap-v1") != 0 ||
+        !game3d_heightmap_read_i64(&cursor, &width) ||
+        !game3d_heightmap_read_i64(&cursor, &depth) ||
+        width < 1 || depth < 1 || width > 4096 || depth > 4096) {
+        rt_string_unref(text);
+        return NULL;
+    }
+
+    size_t sample_count = (size_t)width * (size_t)depth;
+    if (sample_count > SIZE_MAX / sizeof(double)) {
+        rt_string_unref(text);
+        return NULL;
+    }
+    double *samples = (double *)calloc(sample_count, sizeof(double));
+    if (!samples) {
+        rt_string_unref(text);
+        return NULL;
+    }
+
+    for (int64_t z = 0; z < depth; ++z) {
+        for (int64_t x = 0; x < width; ++x) {
+            double h = 0.0;
+            if (!game3d_heightmap_read_f64(&cursor, &h)) {
+                free(samples);
+                rt_string_unref(text);
+                return NULL;
+            }
+            if (h < 0.0)
+                h = 0.0;
+            else if (h > 1.0)
+                h = 1.0;
+            samples[(size_t)z * (size_t)width + (size_t)x] = h;
+        }
+    }
+
+    if (target_width < 1 || target_width > 4096)
+        target_width = width;
+    if (target_depth < 1 || target_depth > 4096)
+        target_depth = depth;
+    void *pixels = rt_pixels_new(target_width, target_depth);
+    if (!pixels) {
+        free(samples);
+        rt_string_unref(text);
+        return NULL;
+    }
+
+    for (int64_t z = 0; z < target_depth; ++z) {
+        int64_t src_z = z * depth / target_depth;
+        if (src_z >= depth)
+            src_z = depth - 1;
+        for (int64_t x = 0; x < target_width; ++x) {
+            int64_t src_x = x * width / target_width;
+            if (src_x >= width)
+                src_x = width - 1;
+            double h = samples[(size_t)src_z * (size_t)width + (size_t)src_x];
+            rt_pixels_set(pixels, x, z, (int64_t)game3d_heightmap_sample_rgba(h));
+        }
+    }
+
+    free(samples);
+    rt_string_unref(text);
+    return pixels;
+}
+
+static rt_string game3d_terrain_collider_name(const rt_game3d_stream_terrain_tile *tile) {
+    const char *base = tile && tile->name ? rt_string_cstr(tile->name) : "terrain_tile";
+    const char *suffix = "_heightfield_collider";
+    size_t base_len = strlen(base);
+    size_t suffix_len = strlen(suffix);
+    if (base_len > SIZE_MAX - suffix_len - 1u)
+        return rt_string_ref(rt_const_cstr("terrain_tile_heightfield_collider"));
+    char *name = (char *)malloc(base_len + suffix_len + 1u);
+    if (!name)
+        return rt_string_ref(rt_const_cstr("terrain_tile_heightfield_collider"));
+    memcpy(name, base, base_len);
+    memcpy(name + base_len, suffix, suffix_len + 1u);
+    rt_string result = rt_string_from_bytes(name, base_len + suffix_len);
+    free(name);
+    return result;
+}
+
+static void game3d_world_stream_attach_terrain_collider(rt_game3d_world_stream *stream,
+                                                        rt_game3d_stream_terrain_tile *tile,
+                                                        void *heightmap) {
+    if (!stream || !tile || !heightmap || tile->collider_entity)
+        return;
+    rt_game3d_world *world =
+        (rt_game3d_world *)rt_g3d_checked_or_null(stream->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    if (!world || world->destroyed || !world->physics)
+        return;
+
+    void *collider = rt_collider3d_new_heightfield(
+        heightmap, tile->scale[0], tile->scale[1], tile->scale[2]);
+    if (!collider)
+        return;
+    void *body = rt_body3d_new(0.0);
+    if (!body) {
+        game3d_release_ref(&collider);
+        return;
+    }
+    rt_body3d_set_static(body, 1);
+    rt_body3d_set_collision_layer(body, RT_GAME3D_LAYER_WORLD);
+    rt_body3d_set_collision_mask(body, ~(int64_t)0);
+    rt_body3d_set_collider(body, collider);
+
+    void *entity = rt_game3d_entity_new();
+    if (entity) {
+        rt_string name = game3d_terrain_collider_name(tile);
+        rt_game3d_entity_set_name(entity, name);
+        rt_string_unref(name);
+        rt_game3d_entity_set_position(entity, tile->center[0], tile->center[1], tile->center[2]);
+        rt_game3d_entity_attach_body(entity, body);
+        rt_game3d_world_spawn(stream->world, entity);
+        game3d_assign_ref(&tile->collider_entity, entity);
+    }
+
+    game3d_release_ref(&entity);
+    game3d_release_ref(&body);
+    game3d_release_ref(&collider);
+}
+
+static rt_string game3d_terrain_nav_source_name(const rt_game3d_stream_terrain_tile *tile) {
+    const char *base = tile && tile->name ? rt_string_cstr(tile->name) : "terrain_tile";
+    const char *suffix = "_navmesh_source";
+    size_t base_len = strlen(base);
+    size_t suffix_len = strlen(suffix);
+    if (base_len > SIZE_MAX - suffix_len - 1u)
+        return rt_string_ref(rt_const_cstr("terrain_tile_navmesh_source"));
+    char *name = (char *)malloc(base_len + suffix_len + 1u);
+    if (!name)
+        return rt_string_ref(rt_const_cstr("terrain_tile_navmesh_source"));
+    memcpy(name, base, base_len);
+    memcpy(name + base_len, suffix, suffix_len + 1u);
+    rt_string result = rt_string_from_bytes(name, base_len + suffix_len);
+    free(name);
+    return result;
+}
+
+static void game3d_world_stream_attach_terrain_nav_source(rt_game3d_world_stream *stream,
+                                                          rt_game3d_stream_terrain_tile *tile) {
+    if (!stream || !tile || !tile->terrain || tile->nav_entity)
+        return;
+    rt_game3d_world *world =
+        (rt_game3d_world *)rt_g3d_checked_or_null(stream->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    if (!world || world->destroyed || !world->scene)
+        return;
+
+    void *mesh = rt_terrain3d_build_nav_mesh(tile->terrain, 4);
+    if (!mesh)
+        return;
+    void *entity = rt_game3d_entity_new();
+    if (entity) {
+        rt_game3d_entity_set_mesh(entity, mesh);
+        rt_string name = game3d_terrain_nav_source_name(tile);
+        rt_game3d_entity_set_name(entity, name);
+        rt_string_unref(name);
+        double sx = game3d_stream_terrain_axis_scale(tile->scale[0]);
+        double sz = game3d_stream_terrain_axis_scale(tile->scale[2]);
+        double tx = tile->center[0] - ((double)(tile->width - 1) * sx) * 0.5;
+        double tz = tile->center[2] - ((double)(tile->depth - 1) * sz) * 0.5;
+        rt_game3d_entity_set_position(entity, tx, tile->center[1], tz);
+        rt_game3d_entity *impl = (rt_game3d_entity *)entity;
+        if (impl->node)
+            rt_scene_node3d_set_visible(impl->node, 0);
+        rt_game3d_world_spawn(stream->world, entity);
+        game3d_assign_ref(&tile->nav_entity, entity);
+    }
+    game3d_release_ref(&entity);
+    game3d_release_ref(&mesh);
+}
+
+static int game3d_world_stream_load_terrain_tile(rt_game3d_world_stream *stream,
+                                                 rt_game3d_stream_terrain_tile *tile) {
+    if (!tile)
+        return 0;
+    if (tile->resident && tile->terrain)
+        return 1;
+    game3d_release_ref(&tile->terrain);
+    if (tile->collider_entity || tile->nav_entity)
+        game3d_world_stream_unload_terrain_tile(stream, tile);
+    int64_t width = tile->width;
+    int64_t depth = tile->depth;
+    if (width < 2)
+        width = 2;
+    if (depth < 2)
+        depth = 2;
+    if (width > 4096)
+        width = 4096;
+    if (depth > 4096)
+        depth = 4096;
+    void *terrain = rt_terrain3d_new(width, depth);
+    if (!terrain)
+        return 0;
+    void *heightmap = game3d_load_heightmap_sidecar(tile->heightmap_path, width, depth);
+    if (!heightmap)
+        heightmap = rt_pixels_new(width, depth);
+    if (heightmap)
+        rt_terrain3d_set_heightmap(terrain, heightmap);
+    rt_terrain3d_set_scale(terrain, tile->scale[0], tile->scale[1], tile->scale[2]);
+    void *material = rt_material3d_new_color(0.20, 0.34, 0.22);
+    if (material) {
+        rt_material3d_set_shading_model(material, RT_GAME3D_SHADING_PBR);
+        rt_material3d_set_metallic(material, 0.0);
+        rt_material3d_set_roughness(material, 0.88);
+        rt_material3d_set_ao(material, 1.0);
+        rt_terrain3d_set_material(terrain, material);
+        game3d_release_ref(&material);
+    }
+    tile->terrain = terrain;
+    tile->resident = 1;
+    if (heightmap) {
+        game3d_world_stream_attach_terrain_collider(stream, tile, heightmap);
+        game3d_release_ref(&heightmap);
+    }
+    game3d_world_stream_attach_terrain_nav_source(stream, tile);
+    return 1;
+}
+
+static void game3d_world_stream_unload_cell(rt_game3d_world_stream *stream,
+                                            rt_game3d_stream_cell *cell) {
+    if (!cell)
+        return;
+    if (cell->resident && cell->entity && stream && stream->world) {
+        rt_game3d_entity *entity =
+            (rt_game3d_entity *)rt_g3d_checked_or_null(cell->entity,
+                                                       RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        if (entity && entity->spawned && entity->world == stream->world)
+            game3d_world_despawn_entity_tree((rt_game3d_world *)stream->world, entity, 1);
+    }
+    game3d_release_ref(&cell->entity);
+    game3d_release_ref(&cell->scene);
+    cell->resident = 0;
+}
+
+static int game3d_world_stream_load_cell(rt_game3d_world_stream *stream,
+                                         rt_game3d_stream_cell *cell) {
+    if (!stream || !cell)
+        return 0;
+    if (cell->resident)
+        return 1;
+    rt_game3d_world *world =
+        (rt_game3d_world *)rt_g3d_checked_or_null(stream->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    if (!world || world->destroyed || !cell->path)
+        return 0;
+    void *scene = rt_scene3d_load(cell->path);
+    if (!scene)
+        return 0;
+    void *root = rt_scene3d_get_root(scene);
+    void *entity = rt_game3d_entity_from_node(root);
+    if (entity && cell->name)
+        rt_game3d_entity_set_name(entity, cell->name);
+    if (entity) {
+        rt_game3d_entity_set_position(entity, cell->center[0], cell->center[1], cell->center[2]);
+        int64_t next_id = world->next_entity_id;
+        if (game3d_world_spawn_entity_tree(world, (rt_game3d_entity *)entity, 1, &next_id)) {
+            world->next_entity_id = next_id;
+            cell->scene = scene;
+            cell->entity = entity;
+            cell->resident = 1;
+            scene = NULL;
+        } else {
+            game3d_release_ref(&entity);
+        }
+    }
+    game3d_release_ref(&scene);
+    return cell->resident ? 1 : 0;
+}
+
+static void game3d_world_stream_clear_cells(rt_game3d_world_stream *stream) {
+    if (!stream)
+        return;
+    for (int32_t i = 0; i < stream->cell_count; ++i) {
+        rt_game3d_stream_cell *cell = &stream->cells[i];
+        game3d_world_stream_unload_cell(stream, cell);
+        game3d_release_ref((void **)&cell->name);
+        game3d_release_ref((void **)&cell->path);
+    }
+    free(stream->cells);
+    stream->cells = NULL;
+    stream->cell_count = 0;
+    stream->cell_capacity = 0;
+    stream->cells_manifest_loaded = 0;
+}
+
+static int game3d_world_stream_parse_cells_manifest(rt_game3d_world_stream *stream) {
+    if (!stream || !game3d_string_has_bytes(stream->cells_manifest))
+        return 0;
+    rt_string text = game3d_read_text_file_no_trap(stream->cells_manifest);
+    if (!text)
+        return 0;
+    void *root = NULL;
+    if (!rt_json_try_parse(text, &root, NULL, NULL, NULL) || !game3d_json_is_map(root)) {
+        rt_string_unref(text);
+        game3d_release_ref(&root);
+        return 0;
+    }
+    void *cells = game3d_json_get(root, "cells");
+    if (!game3d_json_is_seq(cells)) {
+        rt_string_unref(text);
+        game3d_release_ref(&root);
+        return 0;
+    }
+    int64_t count64 = rt_seq_len(cells);
+    if (count64 < 0 || count64 > INT32_MAX) {
+        rt_string_unref(text);
+        game3d_release_ref(&root);
+        return 0;
+    }
+    rt_game3d_stream_cell *parsed = NULL;
+    int32_t parsed_count = 0;
+    if (count64 > 0) {
+        parsed = (rt_game3d_stream_cell *)calloc((size_t)count64, sizeof(*parsed));
+        if (!parsed) {
+            rt_string_unref(text);
+            game3d_release_ref(&root);
+            return 0;
+        }
+    }
+    for (int64_t i = 0; i < count64; ++i) {
+        void *entry = rt_seq_get(cells, i);
+        if (!game3d_json_is_map(entry))
+            continue;
+        rt_string raw_path = game3d_json_string_ref(entry, "path");
+        if (!raw_path)
+            continue;
+        rt_game3d_stream_cell *cell = &parsed[parsed_count++];
+        cell->path = game3d_stream_resolve_manifest_path(stream->cells_manifest, raw_path);
+        rt_string_unref(raw_path);
+        cell->name = game3d_json_string_ref(entry, "name");
+        double zero[3] = {0.0, 0.0, 0.0};
+        (void)game3d_json_vec3_or(entry, "center", cell->center, zero);
+        cell->radius = game3d_json_f64_or(entry, "radius", 0.0);
+        if (!isfinite(cell->radius) || cell->radius < 0.0)
+            cell->radius = 0.0;
+        cell->resident_bytes = game3d_json_i64_or(entry, "bytes", 64 * 1024);
+        if (cell->resident_bytes < 0)
+            cell->resident_bytes = 0;
+    }
+    game3d_world_stream_clear_cells(stream);
+    stream->cells = parsed;
+    stream->cell_count = parsed_count;
+    stream->cell_capacity = (int32_t)count64;
+    stream->cells_manifest_loaded = 1;
+    rt_string_unref(text);
+    game3d_release_ref(&root);
+    return 1;
+}
+
+static int game3d_world_stream_parse_terrain_manifest(rt_game3d_world_stream *stream) {
+    if (!stream || !game3d_string_has_bytes(stream->terrain_manifest))
+        return 0;
+    rt_string text = game3d_read_text_file_no_trap(stream->terrain_manifest);
+    if (!text)
+        return 0;
+    void *root = NULL;
+    if (!rt_json_try_parse(text, &root, NULL, NULL, NULL) || !game3d_json_is_map(root)) {
+        rt_string_unref(text);
+        game3d_release_ref(&root);
+        return 0;
+    }
+    void *tiles = game3d_json_get(root, "tiles");
+    if (!game3d_json_is_seq(tiles)) {
+        rt_string_unref(text);
+        game3d_release_ref(&root);
+        return 0;
+    }
+    int64_t count64 = rt_seq_len(tiles);
+    if (count64 < 0 || count64 > INT32_MAX) {
+        rt_string_unref(text);
+        game3d_release_ref(&root);
+        return 0;
+    }
+    rt_game3d_stream_terrain_tile *parsed = NULL;
+    int32_t parsed_count = 0;
+    if (count64 > 0) {
+        parsed = (rt_game3d_stream_terrain_tile *)calloc((size_t)count64, sizeof(*parsed));
+        if (!parsed) {
+            rt_string_unref(text);
+            game3d_release_ref(&root);
+            return 0;
+        }
+    }
+    for (int64_t i = 0; i < count64; ++i) {
+        void *entry = rt_seq_get(tiles, i);
+        if (!game3d_json_is_map(entry))
+            continue;
+        rt_string raw_path = game3d_json_string_ref(entry, "path");
+        if (!raw_path)
+            continue;
+        rt_game3d_stream_terrain_tile *tile = &parsed[parsed_count++];
+        tile->path = game3d_stream_resolve_manifest_path(stream->terrain_manifest, raw_path);
+        rt_string_unref(raw_path);
+        rt_string raw_heightmap = game3d_json_string_ref(entry, "heightmap");
+        tile->heightmap_path = raw_heightmap
+                                   ? game3d_stream_resolve_manifest_path(stream->terrain_manifest,
+                                                                         raw_heightmap)
+                                   : rt_string_ref(rt_const_cstr(""));
+        rt_string_unref(raw_heightmap);
+        tile->name = game3d_json_string_ref(entry, "name");
+        double zero[3] = {0.0, 0.0, 0.0};
+        (void)game3d_json_vec3_or(entry, "center", tile->center, zero);
+        double unit[3] = {1.0, 1.0, 1.0};
+        (void)game3d_json_vec3_or(entry, "scale", tile->scale, unit);
+        tile->width = game3d_json_i64_or(entry, "width", 2);
+        tile->depth = game3d_json_i64_or(entry, "depth", tile->width);
+        if (tile->width < 2)
+            tile->width = 2;
+        if (tile->depth < 2)
+            tile->depth = 2;
+        if (tile->width > 4096)
+            tile->width = 4096;
+        if (tile->depth > 4096)
+            tile->depth = 4096;
+        tile->radius = game3d_json_f64_or(entry, "radius", 0.0);
+        if (!isfinite(tile->radius) || tile->radius < 0.0)
+            tile->radius = 0.0;
+        tile->resident_bytes = game3d_json_i64_or(entry, "bytes", 256 * 1024);
+        if (tile->resident_bytes < 0)
+            tile->resident_bytes = 0;
+    }
+    game3d_world_stream_clear_terrain_tiles(stream);
+    stream->terrain_tiles = parsed;
+    stream->terrain_tile_count = parsed_count;
+    stream->terrain_tile_capacity = (int32_t)count64;
+    stream->terrain_manifest_loaded = 1;
+    rt_string_unref(text);
+    game3d_release_ref(&root);
+    return 1;
+}
+
+/// @brief GC finalizer for WorldStream3D: release world and manifest references.
+static void game3d_world_stream_finalize(void *obj) {
+    rt_game3d_world_stream *stream = (rt_game3d_world_stream *)obj;
+    if (!stream)
+        return;
+    game3d_world_stream_clear_cells(stream);
+    game3d_world_stream_clear_terrain_tiles(stream);
+    if (stream->retains_world)
+        game3d_release_ref(&stream->world);
+    else
+        stream->world = NULL;
+    game3d_release_ref((void **)&stream->terrain_manifest);
+    game3d_release_ref((void **)&stream->cells_manifest);
+}
+
+static int64_t game3d_stream_radius_slots(double radius, double cell_size) {
+    if (!isfinite(radius) || radius <= 0.0)
+        return 1;
+    double slots = ceil(radius / cell_size);
+    if (slots < 0.0)
+        slots = 0.0;
+    if (slots > 32767.0)
+        slots = 32767.0;
+    int64_t r = (int64_t)slots;
+    int64_t side = r * 2 + 1;
+    if (side > INT64_MAX / side)
+        return INT64_MAX;
+    return side * side;
+}
+
+static int64_t game3d_stream_manifest_bytes(rt_string value) {
+    const char *bytes = value ? rt_string_cstr(value) : "";
+    if (!bytes || bytes[0] == '\0')
+        return 0;
+    size_t len = bytes ? strlen(bytes) : 0;
+    if (len > (size_t)INT64_MAX - 1u)
+        return INT64_MAX;
+    return (int64_t)len + 1;
+}
+
+static int64_t game3d_i64_saturating_add(int64_t a, int64_t b) {
+    if (a > INT64_MAX - b)
+        return INT64_MAX;
+    return a + b;
+}
+
+static int64_t game3d_i64_saturating_mul(int64_t a, int64_t b) {
+    if (a <= 0 || b <= 0)
+        return 0;
+    if (a > INT64_MAX / b)
+        return INT64_MAX;
+    return a * b;
+}
+
+static int64_t game3d_world_stream_update_load_budget(double dt) {
+    if (!isfinite(dt) || dt <= 0.0)
+        return 1;
+    double budget = ceil(dt * 60.0);
+    if (budget < 1.0)
+        budget = 1.0;
+    if (budget > 8.0)
+        budget = 8.0;
+    return (int64_t)budget;
+}
+
+static void game3d_world_stream_recompute(rt_game3d_world_stream *stream, int64_t load_budget) {
+    if (!stream)
+        return;
+    int64_t pending = 0;
+    int64_t cells = 0;
+    int64_t cell_bytes = 0;
+    if (stream->cells_manifest_loaded) {
+        int64_t manifest_bytes = game3d_stream_manifest_bytes(stream->cells_manifest);
+        int64_t budget = stream->residency_budget_bytes;
+        if (budget < 0 || manifest_bytes <= budget) {
+            cell_bytes = manifest_bytes;
+            for (int32_t i = 0; i < stream->cell_count; ++i) {
+                rt_game3d_stream_cell *cell = &stream->cells[i];
+                double radius = cell->radius;
+                double threshold =
+                    (cell->resident ? stream->unload_radius : stream->load_radius) + radius;
+                if (!isfinite(threshold) || threshold < 0.0)
+                    threshold = radius;
+                int desired = game3d_stream_cell_distance_sq(stream, cell) <= threshold * threshold;
+                int64_t bytes = game3d_stream_cell_bytes(cell);
+                if (!desired ||
+                    (budget >= 0 && cell_bytes > budget - bytes)) {
+                    game3d_world_stream_unload_cell(stream, cell);
+                    continue;
+                }
+                if (cell->resident) {
+                    cells++;
+                    cell_bytes = game3d_i64_saturating_add(cell_bytes, bytes);
+                    continue;
+                }
+                if (load_budget == 0) {
+                    pending++;
+                    continue;
+                }
+                if (load_budget > 0)
+                    load_budget--;
+                if (game3d_world_stream_load_cell(stream, cell)) {
+                    cells++;
+                    cell_bytes = game3d_i64_saturating_add(cell_bytes, bytes);
+                }
+            }
+        } else {
+            for (int32_t i = 0; i < stream->cell_count; ++i)
+                game3d_world_stream_unload_cell(stream, &stream->cells[i]);
+            cell_bytes = 0;
+        }
+    } else {
+        cells = game3d_string_has_bytes(stream->cells_manifest)
+                    ? game3d_stream_radius_slots(stream->load_radius, 128.0)
+                    : 0;
+        cell_bytes =
+            game3d_i64_saturating_add(game3d_stream_manifest_bytes(stream->cells_manifest),
+                                      game3d_i64_saturating_mul(cells, 64 * 1024));
+    }
+    int64_t budget = stream->residency_budget_bytes;
+    int64_t terrain = 0;
+    int64_t terrain_bytes = 0;
+    if (stream->terrain_manifest_loaded) {
+        int64_t manifest_bytes = game3d_stream_manifest_bytes(stream->terrain_manifest);
+        int terrain_unlimited = budget < 0;
+        int64_t remaining_budget =
+            terrain_unlimited ? INT64_MAX : (budget >= cell_bytes ? budget - cell_bytes : -1);
+        if (terrain_unlimited || (remaining_budget >= 0 && manifest_bytes <= remaining_budget)) {
+            terrain_bytes = manifest_bytes;
+            for (int32_t i = 0; i < stream->terrain_tile_count; ++i) {
+                rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
+                double radius = tile->radius;
+                double threshold =
+                    (tile->resident ? stream->unload_radius : stream->load_radius) + radius;
+                if (!isfinite(threshold) || threshold < 0.0)
+                    threshold = radius;
+                int desired =
+                    game3d_stream_terrain_tile_distance_sq(stream, tile) <= threshold * threshold;
+                int64_t tile_bytes = game3d_stream_terrain_tile_bytes(tile);
+                if (!desired ||
+                    (!terrain_unlimited && terrain_bytes > remaining_budget - tile_bytes)) {
+                    game3d_world_stream_unload_terrain_tile(stream, tile);
+                    continue;
+                }
+                if (tile->resident && tile->terrain) {
+                    terrain++;
+                    terrain_bytes = game3d_i64_saturating_add(terrain_bytes, tile_bytes);
+                    continue;
+                }
+                if (load_budget == 0) {
+                    pending++;
+                    continue;
+                }
+                if (load_budget > 0)
+                    load_budget--;
+                if (game3d_world_stream_load_terrain_tile(stream, tile)) {
+                    terrain++;
+                    terrain_bytes = game3d_i64_saturating_add(terrain_bytes, tile_bytes);
+                }
+            }
+        } else {
+            for (int32_t i = 0; i < stream->terrain_tile_count; ++i)
+                game3d_world_stream_unload_terrain_tile(stream, &stream->terrain_tiles[i]);
+            terrain_bytes = 0;
+        }
+    } else {
+        terrain = game3d_string_has_bytes(stream->terrain_manifest)
+                      ? game3d_stream_radius_slots(stream->load_radius, 256.0)
+                      : 0;
+        terrain_bytes = game3d_i64_saturating_add(
+            game3d_stream_manifest_bytes(stream->terrain_manifest),
+            game3d_i64_saturating_mul(terrain, 256 * 1024));
+        int64_t bytes = game3d_i64_saturating_add(cell_bytes, terrain_bytes);
+        while (budget >= 0 && bytes > budget && (cells > 0 || terrain > 0)) {
+            if (!stream->cells_manifest_loaded && cells >= terrain && cells > 0)
+                cells--;
+            else if (terrain > 0)
+                terrain--;
+            else if (stream->cells_manifest_loaded)
+                break;
+            if (stream->cells_manifest_loaded)
+                cell_bytes = game3d_world_stream_resident_cell_bytes(stream);
+            else
+                cell_bytes = game3d_i64_saturating_add(
+                    game3d_stream_manifest_bytes(stream->cells_manifest),
+                    game3d_i64_saturating_mul(cells, 64 * 1024));
+            terrain_bytes = game3d_i64_saturating_add(
+                game3d_stream_manifest_bytes(stream->terrain_manifest),
+                game3d_i64_saturating_mul(terrain, 256 * 1024));
+            bytes = game3d_i64_saturating_add(cell_bytes, terrain_bytes);
+        }
+    }
+
+    int64_t bytes = game3d_i64_saturating_add(cell_bytes, terrain_bytes);
+    if (budget >= 0 && bytes > budget) {
+        if (stream->cells_manifest_loaded) {
+            for (int32_t i = 0; i < stream->cell_count; ++i)
+                game3d_world_stream_unload_cell(stream, &stream->cells[i]);
+        }
+        if (stream->terrain_manifest_loaded) {
+            for (int32_t i = 0; i < stream->terrain_tile_count; ++i)
+                game3d_world_stream_unload_terrain_tile(stream, &stream->terrain_tiles[i]);
+        }
+        cells = 0;
+        terrain = 0;
+        bytes = 0;
+    }
+    stream->resident_cell_count = cells;
+    stream->resident_terrain_tile_count = terrain;
+    stream->resident_bytes = bytes;
+    stream->pending_request_count = pending;
 }
 
 /// @brief Point the world's camera at the origin from a default over-the-shoulder pose.
@@ -5646,6 +7402,9 @@ void *rt_game3d_world_new_with_camera(rt_string title,
     world->height = height;
     world->next_entity_id = 1;
     world->dt = RT_GAME3D_DEFAULT_DT;
+    world->worker_count = game3d_default_worker_count();
+    world->jobs_enabled = world->worker_count > 1 ? 1 : 0;
+    world->origin_rebase_threshold = RT_GAME3D_DEFAULT_REBASE_THRESHOLD;
     world->clear_r = 0.04;
     world->clear_g = 0.055;
     world->clear_b = 0.065;
@@ -5673,6 +7432,248 @@ void *rt_game3d_world_new_with_camera(rt_string title,
     rt_canvas3d_set_frustum_culling(world->canvas, 1);
     rt_canvas3d_set_ambient(world->canvas, 0.28, 0.30, 0.34);
     return world;
+}
+
+static rt_game3d_world_stream *game3d_world_stream_create(rt_game3d_world *world,
+                                                          int8_t retain_world,
+                                                          const char *method) {
+    if (!world) {
+        rt_trap(method ? method : "Game3D.WorldStream3D.New: invalid world");
+        return NULL;
+    }
+    rt_game3d_world_stream *stream = (rt_game3d_world_stream *)rt_obj_new_i64(
+        RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID, (int64_t)sizeof(*stream));
+    if (!stream) {
+        rt_trap(method ? method : "Game3D.WorldStream3D.New: allocation failed");
+        return NULL;
+    }
+    memset(stream, 0, sizeof(*stream));
+    rt_obj_set_finalizer(stream, game3d_world_stream_finalize);
+    stream->load_radius = 0.0;
+    stream->unload_radius = 0.0;
+    stream->residency_budget_bytes = -1;
+    stream->retains_world = retain_world ? 1 : 0;
+    if (stream->retains_world)
+        game3d_assign_ref(&stream->world, world);
+    else
+        stream->world = world;
+    game3d_world_stream_recompute(stream, -1);
+    return stream;
+}
+
+/// @brief Create a WorldStream3D handle bound to a live World3D. See header.
+void *rt_game3d_world_stream_new(void *world_obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(world_obj, "Game3D.WorldStream3D.New: invalid world");
+    if (!world)
+        return NULL;
+    return game3d_world_stream_create(world, 1, "Game3D.WorldStream3D.New: allocation failed");
+}
+
+int64_t rt_game3d_world_stream_get_resident_cell_count(void *obj) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.get_residentCellCount: invalid stream");
+    return stream ? stream->resident_cell_count : 0;
+}
+
+int64_t rt_game3d_world_stream_get_resident_terrain_tile_count(void *obj) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.get_residentTerrainTileCount: invalid stream");
+    return stream ? stream->resident_terrain_tile_count : 0;
+}
+
+static rt_game3d_stream_cell *game3d_world_stream_cell_at(rt_game3d_world_stream *stream,
+                                                          int64_t index) {
+    if (!stream || index < 0 || index >= stream->cell_count)
+        return NULL;
+    return &stream->cells[index];
+}
+
+static rt_game3d_stream_terrain_tile *game3d_world_stream_terrain_tile_at(
+    rt_game3d_world_stream *stream,
+    int64_t index) {
+    if (!stream || index < 0 || index >= stream->terrain_tile_count)
+        return NULL;
+    return &stream->terrain_tiles[index];
+}
+
+void *rt_game3d_world_stream_get_resident_terrain_tile(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.getResidentTerrainTile: invalid stream");
+    if (!stream || index < 0)
+        return NULL;
+    int64_t resident_index = 0;
+    for (int32_t i = 0; i < stream->terrain_tile_count; ++i) {
+        rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
+        if (!tile->resident || !tile->terrain)
+            continue;
+        if (resident_index == index)
+            return tile->terrain;
+        resident_index++;
+    }
+    return NULL;
+}
+
+int64_t rt_game3d_world_stream_get_cell_count(void *obj) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellCount: invalid stream");
+    return stream ? stream->cell_count : 0;
+}
+
+rt_string rt_game3d_world_stream_get_cell_name(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellName: invalid stream");
+    rt_game3d_stream_cell *cell = game3d_world_stream_cell_at(stream, index);
+    return rt_string_ref(cell && cell->name ? cell->name : rt_const_cstr(""));
+}
+
+void *rt_game3d_world_stream_get_cell_center(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellCenter: invalid stream");
+    rt_game3d_stream_cell *cell = game3d_world_stream_cell_at(stream, index);
+    if (!cell)
+        return NULL;
+    return rt_vec3_new(cell->center[0], cell->center[1], cell->center[2]);
+}
+
+int8_t rt_game3d_world_stream_get_cell_resident(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellResident: invalid stream");
+    rt_game3d_stream_cell *cell = game3d_world_stream_cell_at(stream, index);
+    return cell && cell->resident ? 1 : 0;
+}
+
+int64_t rt_game3d_world_stream_get_cell_bytes(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellBytes: invalid stream");
+    rt_game3d_stream_cell *cell = game3d_world_stream_cell_at(stream, index);
+    return cell ? game3d_stream_cell_bytes(cell) : 0;
+}
+
+int64_t rt_game3d_world_stream_get_terrain_tile_count(void *obj) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.getTerrainTileCount: invalid stream");
+    return stream ? stream->terrain_tile_count : 0;
+}
+
+rt_string rt_game3d_world_stream_get_terrain_tile_name(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.getTerrainTileName: invalid stream");
+    rt_game3d_stream_terrain_tile *tile = game3d_world_stream_terrain_tile_at(stream, index);
+    return rt_string_ref(tile && tile->name ? tile->name : rt_const_cstr(""));
+}
+
+rt_string rt_game3d_world_stream_get_terrain_tile_heightmap(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.getTerrainTileHeightmap: invalid stream");
+    rt_game3d_stream_terrain_tile *tile = game3d_world_stream_terrain_tile_at(stream, index);
+    return rt_string_ref(tile && tile->heightmap_path ? tile->heightmap_path : rt_const_cstr(""));
+}
+
+void *rt_game3d_world_stream_get_terrain_tile_center(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.getTerrainTileCenter: invalid stream");
+    rt_game3d_stream_terrain_tile *tile = game3d_world_stream_terrain_tile_at(stream, index);
+    if (!tile)
+        return NULL;
+    return rt_vec3_new(tile->center[0], tile->center[1], tile->center[2]);
+}
+
+int8_t rt_game3d_world_stream_get_terrain_tile_resident(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.getTerrainTileResident: invalid stream");
+    rt_game3d_stream_terrain_tile *tile = game3d_world_stream_terrain_tile_at(stream, index);
+    return tile && tile->resident ? 1 : 0;
+}
+
+int64_t rt_game3d_world_stream_get_terrain_tile_bytes(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.getTerrainTileBytes: invalid stream");
+    rt_game3d_stream_terrain_tile *tile = game3d_world_stream_terrain_tile_at(stream, index);
+    return tile ? game3d_stream_terrain_tile_bytes(tile) : 0;
+}
+
+int64_t rt_game3d_world_stream_get_pending_request_count(void *obj) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.get_pendingRequestCount: invalid stream");
+    return stream ? stream->pending_request_count : 0;
+}
+
+int64_t rt_game3d_world_stream_get_resident_bytes(void *obj) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.get_residentBytes: invalid stream");
+    return stream ? stream->resident_bytes : 0;
+}
+
+void rt_game3d_world_stream_set_center(void *obj, void *position) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.setCenter: invalid stream");
+    double pos[3];
+    if (!stream)
+        return;
+    if (!game3d_read_vec3(position, pos, "Game3D.WorldStream3D.setCenter: center must be Vec3"))
+        return;
+    stream->center[0] = pos[0];
+    stream->center[1] = pos[1];
+    stream->center[2] = pos[2];
+}
+
+void rt_game3d_world_stream_set_radii(void *obj, double load_radius, double unload_radius) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.setRadii: invalid stream");
+    if (!stream)
+        return;
+    load_radius = game3d_finite_or(load_radius, 0.0);
+    unload_radius = game3d_finite_or(unload_radius, load_radius);
+    if (load_radius < 0.0)
+        load_radius = 0.0;
+    if (unload_radius < load_radius)
+        unload_radius = load_radius;
+    stream->load_radius = load_radius;
+    stream->unload_radius = unload_radius;
+    game3d_world_stream_recompute(stream, -1);
+}
+
+void rt_game3d_world_stream_set_residency_budget(void *obj, int64_t bytes) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.setResidencyBudget: invalid stream");
+    if (!stream)
+        return;
+    stream->residency_budget_bytes = bytes < 0 ? -1 : bytes;
+    game3d_world_stream_recompute(stream, -1);
+}
+
+void rt_game3d_world_stream_mount_tiled_terrain(void *obj, rt_string manifest_path) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.mountTiledTerrain: invalid stream");
+    if (!stream)
+        return;
+    game3d_world_stream_clear_terrain_tiles(stream);
+    game3d_assign_ref(
+        (void **)&stream->terrain_manifest, manifest_path ? manifest_path : rt_const_cstr(""));
+    (void)game3d_world_stream_parse_terrain_manifest(stream);
+    game3d_world_stream_recompute(stream, -1);
+}
+
+void rt_game3d_world_stream_mount_cells(void *obj, rt_string manifest_path) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.mountCells: invalid stream");
+    if (!stream)
+        return;
+    game3d_world_stream_clear_cells(stream);
+    game3d_assign_ref(
+        (void **)&stream->cells_manifest, manifest_path ? manifest_path : rt_const_cstr(""));
+    (void)game3d_world_stream_parse_cells_manifest(stream);
+    game3d_world_stream_recompute(stream, -1);
+}
+
+void rt_game3d_world_stream_update(void *obj, double dt) {
+    rt_game3d_world_stream *stream =
+        game3d_world_stream_checked(obj, "Game3D.WorldStream3D.update: invalid stream");
+    if (!stream)
+        return;
+    dt = game3d_finite_or(dt, 0.0);
+    game3d_world_stream_recompute(stream, game3d_world_stream_update_load_budget(dt));
 }
 
 /// @brief Tear down the world's runtime (despawn entities, release subsystems) and mark
@@ -5736,6 +7737,23 @@ void *rt_game3d_world_get_effects(void *obj) {
     return world ? world->effects : NULL;
 }
 
+/// @brief Get the world's owned stream controller, creating it on first access.
+void *rt_game3d_world_get_stream(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_stream: invalid world");
+    if (!world)
+        return NULL;
+    if (!world->stream) {
+        rt_game3d_world_stream *stream =
+            game3d_world_stream_create(world, 0, "Game3D.World3D.get_stream: allocation failed");
+        if (!stream)
+            return NULL;
+        game3d_assign_ref(&world->stream, stream);
+        game3d_release_ref((void **)&stream);
+    }
+    return world->stream;
+}
+
 /// @brief Get the most recent frame delta in seconds (0 if invalid).
 double rt_game3d_world_get_dt(void *obj) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.get_Dt: invalid world");
@@ -5759,6 +7777,110 @@ int64_t rt_game3d_world_get_dropped_fixed_steps(void *obj) {
     rt_game3d_world *world =
         game3d_world_checked(obj, "Game3D.World3D.get_DroppedFixedSteps: invalid world");
     return world ? world->dropped_fixed_steps : 0;
+}
+
+/// @brief Count spawned Entity3D objects currently owned by the world.
+int64_t rt_game3d_world_get_entity_count(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_entityCount: invalid world");
+    return world ? world->entity_count : 0;
+}
+
+/// @brief Count physics bodies currently registered through spawned entities.
+int64_t rt_game3d_world_get_body_count(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_bodyCount: invalid world");
+    return (world && world->physics) ? rt_world3d_body_count(world->physics) : 0;
+}
+
+/// @brief Count main 3D draw submissions queued by the latest ended frame.
+int64_t rt_game3d_world_get_draw_count(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_drawCount: invalid world");
+    return (world && world->canvas) ? rt_canvas3d_get_draw_count(world->canvas) : 0;
+}
+
+/// @brief Count drawable scene nodes submitted by the latest scene draw.
+int64_t rt_game3d_world_get_visible_node_count(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_visibleNodeCount: invalid world");
+    return (world && world->scene) ? rt_scene3d_get_visible_node_count(world->scene) : 0;
+}
+
+/// @brief Count draw submissions skipped by latest visibility culling.
+int64_t rt_game3d_world_get_occluded_draw_count(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_occludedDrawCount: invalid world");
+    return (world && world->canvas) ? rt_canvas3d_get_occluded_draw_count(world->canvas) : 0;
+}
+
+/// @brief Count bytes resident in the world-owned stream controller, if any.
+int64_t rt_game3d_world_get_stream_resident_bytes(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_streamResidentBytes: invalid world");
+    return (world && world->stream) ? rt_game3d_world_stream_get_resident_bytes(world->stream) : 0;
+}
+
+/// @brief Get the configured worker count for internal deterministic jobs.
+int64_t rt_game3d_world_get_worker_count(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_workerCount: invalid world");
+    return world ? world->worker_count : 1;
+}
+
+/// @brief True when internal jobs are allowed to use worker threads.
+int8_t rt_game3d_world_get_jobs_enabled(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_jobsEnabled: invalid world");
+    return world ? world->jobs_enabled : 0;
+}
+
+/// @brief Set the internal worker count; values <= 1 keep jobs disabled.
+void rt_game3d_world_set_worker_count(void *obj, int64_t worker_count) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.setWorkerCount: invalid world");
+    if (!world)
+        return;
+    world->worker_count = game3d_clamp_worker_count(worker_count);
+    world->jobs_enabled = world->worker_count > 1 ? 1 : 0;
+    if (world->worker_count <= 1) {
+        game3d_world_release_job_pool(world);
+    } else if (world->job_pool &&
+               rt_threadpool_get_size(world->job_pool) != world->worker_count) {
+        game3d_world_release_job_pool(world);
+    }
+}
+
+/// @brief True when floating-origin rebasing is enabled.
+int8_t rt_game3d_world_get_floating_origin(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_floatingOrigin: invalid world");
+    return world ? world->floating_origin : 0;
+}
+
+/// @brief Enable or disable camera-relative floating-origin rebasing.
+void rt_game3d_world_set_floating_origin(void *obj, int8_t enabled) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.set_floatingOrigin: invalid world");
+    if (world)
+        world->floating_origin = enabled ? 1 : 0;
+}
+
+/// @brief Get the accumulated world-origin offset as a Vec3.
+void *rt_game3d_world_get_world_origin(void *obj) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.get_worldOrigin: invalid world");
+    if (!world)
+        return rt_vec3_new(0.0, 0.0, 0.0);
+    return rt_vec3_new(world->world_origin[0], world->world_origin[1], world->world_origin[2]);
+}
+
+/// @brief Set the camera-distance threshold that triggers a floating-origin rebase.
+void rt_game3d_world_set_origin_rebase_threshold(void *obj, double meters) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.setOriginRebaseThreshold: invalid world");
+    if (world)
+        world->origin_rebase_threshold = game3d_rebase_threshold_or_default(meters);
 }
 
 /// @brief Spawn an entity (and its child tree) into the world; returns the entity. See header.
@@ -5950,6 +8072,34 @@ void rt_game3d_world_set_quality(void *obj, int64_t quality) {
     }
 }
 
+/// @brief Bake a NavMesh3D from the world's current scene.
+void *rt_game3d_world_bake_nav_mesh(void *obj,
+                                    double agent_radius,
+                                    double agent_height,
+                                    double max_slope,
+                                    double cell_size) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.bakeNavMesh: invalid world");
+    if (!world || !world->scene)
+        return NULL;
+    return rt_navmesh3d_bake(world->scene, agent_radius, agent_height, max_slope, cell_size);
+}
+
+/// @brief Bake a tiled NavMesh3D from the world's current scene.
+void *rt_game3d_world_bake_tiled_nav_mesh(void *obj,
+                                          double tile_size,
+                                          double agent_radius,
+                                          double agent_height,
+                                          double max_slope,
+                                          double cell_size) {
+    rt_game3d_world *world =
+        game3d_world_checked(obj, "Game3D.World3D.bakeTiledNavMesh: invalid world");
+    if (!world || !world->scene)
+        return NULL;
+    return rt_navmesh3d_bake_tiled(
+        world->scene, tile_size, agent_radius, agent_height, max_slope, cell_size);
+}
+
 /// @brief Count collision events for the given phase (ANY sums enter+stay+exit). See header.
 int64_t rt_game3d_world_collision_event_count(void *obj, int64_t phase) {
     rt_game3d_world *world =
@@ -6113,20 +8263,45 @@ double rt_game3d_collision_event_get_normal_impulse(void *obj) {
     return event && event->raw ? rt_collision_event3d_get_normal_impulse(event->raw) : 0.0;
 }
 
+/// @brief Get the number of contacts on the wrapped raw event. See header.
+int64_t rt_game3d_collision_event_get_contact_count(void *obj) {
+    rt_game3d_collision_event *event = game3d_collision_event_checked(
+        obj, "Game3D.Collision3DEvent.get_contactCount: invalid event");
+    return event && event->raw ? rt_collision_event3d_get_contact_count(event->raw) : 0;
+}
+
 /// @brief Get the first contact point as a Vec3 (origin fallback). See header.
 void *rt_game3d_collision_event_point(void *obj) {
-    rt_game3d_collision_event *event =
-        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.point: invalid event");
-    return event && event->raw ? rt_collision_event3d_get_contact_point(event->raw, 0)
-                               : rt_vec3_new(0.0, 0.0, 0.0);
+    return rt_game3d_collision_event_contact_point(obj, 0);
 }
 
 /// @brief Get the first contact normal as a Vec3 (+Y fallback). See header.
 void *rt_game3d_collision_event_normal(void *obj) {
+    return rt_game3d_collision_event_contact_normal(obj, 0);
+}
+
+/// @brief Get indexed contact point as a Vec3 (origin fallback). See header.
+void *rt_game3d_collision_event_contact_point(void *obj, int64_t index) {
     rt_game3d_collision_event *event =
-        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.normal: invalid event");
-    return event && event->raw ? rt_collision_event3d_get_contact_normal(event->raw, 0)
+        game3d_collision_event_checked(obj, "Game3D.Collision3DEvent.contactPoint: invalid event");
+    return event && event->raw ? rt_collision_event3d_get_contact_point(event->raw, index)
+                               : rt_vec3_new(0.0, 0.0, 0.0);
+}
+
+/// @brief Get indexed contact normal as a Vec3 (+Y fallback). See header.
+void *rt_game3d_collision_event_contact_normal(void *obj, int64_t index) {
+    rt_game3d_collision_event *event = game3d_collision_event_checked(
+        obj, "Game3D.Collision3DEvent.contactNormal: invalid event");
+    return event && event->raw ? rt_collision_event3d_get_contact_normal(event->raw, index)
                                : rt_vec3_new(0.0, 1.0, 0.0);
+}
+
+/// @brief Get indexed contact separation (0 fallback). See header.
+double rt_game3d_collision_event_contact_separation(void *obj, int64_t index) {
+    rt_game3d_collision_event *event = game3d_collision_event_checked(
+        obj, "Game3D.Collision3DEvent.contactSeparation: invalid event");
+    return event && event->raw ? rt_collision_event3d_get_contact_separation(event->raw, index)
+                               : 0.0;
 }
 
 /// @brief Given one participant, return the other entity in the contact (NULL if `entity`
@@ -6196,6 +8371,7 @@ static void game3d_world_step_simulation_impl(rt_game3d_world *world,
     if (world->effects)
         rt_game3d_effects_update(world->effects, dt);
     game3d_world_late_update_controller(world, dt);
+    game3d_world_rebase_if_needed(world);
 }
 
 /// @brief Advance one simulation step by `step_sec`: camera-controller update, animator
@@ -6346,10 +8522,35 @@ void rt_game3d_world_begin_frame(void *obj) {
 }
 
 /// @brief Draw the scene graph through the canvas with the active camera. See header.
+static void game3d_world_draw_stream_terrain(rt_game3d_world *world) {
+    rt_game3d_world_stream *stream;
+    if (!world || !world->canvas || !world->stream)
+        return;
+    stream = (rt_game3d_world_stream *)rt_g3d_checked_or_null(
+        world->stream, RT_G3D_GAME3D_WORLD_STREAM3D_CLASS_ID);
+    if (!stream || !stream->terrain_manifest_loaded)
+        return;
+    for (int32_t i = 0; i < stream->terrain_tile_count; ++i) {
+        rt_game3d_stream_terrain_tile *tile = &stream->terrain_tiles[i];
+        if (!tile->resident || !tile->terrain)
+            continue;
+        double sx = game3d_stream_terrain_axis_scale(tile->scale[0]);
+        double sz = game3d_stream_terrain_axis_scale(tile->scale[2]);
+        double tx = tile->center[0] - ((double)(tile->width - 1) * sx) * 0.5;
+        double ty = tile->center[1];
+        double tz = tile->center[2] - ((double)(tile->depth - 1) * sz) * 0.5;
+        rt_canvas3d_draw_terrain_at(world->canvas, tile->terrain, tx, ty, tz);
+    }
+}
+
+/// @brief Draw the scene graph and any resident stream terrain through the active camera.
+/// See header.
 void rt_game3d_world_draw_scene(void *obj) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.drawScene: invalid world");
-    if (world && world->scene && world->canvas && world->camera)
+    if (world && world->scene && world->canvas && world->camera) {
         rt_scene3d_draw(world->scene, world->canvas, world->camera);
+        game3d_world_draw_stream_terrain(world);
+    }
 }
 
 /// @brief Draw registered effects plus any enabled debug axis/physics gizmos. See header.

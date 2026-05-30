@@ -1,0 +1,94 @@
+module openworld_slice_perf_probe;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Terminal as Terminal;
+bind Viper.Text.Fmt as Fmt;
+bind Viper.Time.Clock as Clock;
+bind "./main";
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func ms(us: Integer) -> Float {
+    return us / 1000.0;
+}
+
+func avgFrameMs(us: Integer, frames: Integer) -> Float {
+    return ms(us) / frames;
+}
+
+func fps(us: Integer, frames: Integer) -> Float {
+    if (us <= 0) { return 0.0; }
+    return (frames * 1000000.0) / us;
+}
+
+func fmt(value: Float) -> String {
+    return Fmt.NumFixed(value, 3);
+}
+
+func start() {
+    var setupStart = Clock.TicksUs();
+    var game = new OpenWorldSlice();
+    game.setup("Open World Slice Perf Probe", 192, 108);
+    var setupUs = Clock.TicksUs() - setupStart;
+
+    var canvas = game.getCanvas();
+    var backend = Canvas3D.get_Backend(canvas);
+
+    var warmupFrames = 24;
+    var i = 0;
+    while (i < warmupFrames) {
+        game.stepFixed(1.0 / 60.0);
+        game.renderFrame();
+        i = i + 1;
+    }
+
+    if (game.skinnedCharacterReady() == false) {
+        game.destroy();
+        fail("skinned character was not ready during perf warmup");
+        return;
+    }
+
+    var frames = 120;
+    var frameStart = Clock.TicksUs();
+    i = 0;
+    while (i < frames) {
+        game.stepFixed(1.0 / 60.0);
+        game.renderFrame();
+        i = i + 1;
+    }
+    var frameUs = Clock.TicksUs() - frameStart;
+
+    var world = game.getWorld();
+    if (frameUs <= 0 ||
+        World3D.get_drawCount(world) <= 0 ||
+        World3D.get_visibleNodeCount(world) <= 0 ||
+        World3D.get_entityCount(world) < 5 ||
+        World3D.get_bodyCount(world) < 2 ||
+        World3D.get_streamResidentBytes(world) <= 0 ||
+        game.getResidentCellCount() <= 0 ||
+        game.getResidentTerrainTileCount() <= 0) {
+        game.destroy();
+        fail("perf probe did not produce valid frame metrics");
+        return;
+    }
+
+    Terminal.Say("PERF: backend=" + backend +
+                 " setup_ms=" + fmt(ms(setupUs)) +
+                 " frames=" + Fmt.Int(frames) +
+                 " elapsed_ms=" + fmt(ms(frameUs)) +
+                 " avg_ms=" + fmt(avgFrameMs(frameUs, frames)) +
+                 " fps=" + fmt(fps(frameUs, frames)) +
+                 " draw_count=" + Fmt.Int(World3D.get_drawCount(world)) +
+                 " visible_nodes=" + Fmt.Int(World3D.get_visibleNodeCount(world)) +
+                 " entities=" + Fmt.Int(World3D.get_entityCount(world)) +
+                 " bodies=" + Fmt.Int(World3D.get_bodyCount(world)) +
+                 " stream_bytes=" + Fmt.Int(World3D.get_streamResidentBytes(world)) +
+                 " resident_cells=" + Fmt.Int(game.getResidentCellCount()) +
+                 " resident_tiles=" + Fmt.Int(game.getResidentTerrainTileCount()));
+
+    game.destroy();
+    Terminal.Say("PASS: openworld_slice_perf_probe");
+}

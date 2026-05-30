@@ -384,6 +384,8 @@ static void test_metal_shader_source_uses_safe_normalization(void) {
                 "Metal skybox camera-forward path uses safe normalization");
     EXPECT_TRUE(strstr(source, "float3 viewDir = skybox_safe_normalize3") != NULL,
                 "Metal skybox inverse-projection path uses safe normalization");
+    EXPECT_TRUE(strstr(source, "float3(0.0, 0.0, -1.0)") != NULL,
+                "Metal skybox zero-vector fallback follows the Canvas3D camera -Z convention");
     EXPECT_TRUE(strstr(source, " normalize(") == NULL,
                 "Metal shader source avoids raw normalize calls");
 

@@ -242,6 +242,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_pixels_draw.c
         graphics/media/rt_gif.c
         graphics/3d/assets/rt_gltf.c
+        graphics/3d/assets/rt_textureasset3d.c
         graphics/2d/rt_sprite.c
         graphics/2d/rt_spritesheet.c
         graphics/2d/rt_camera.c
@@ -256,6 +257,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/render/rt_canvas3d.c
         graphics/3d/render/rt_canvas3d_overlay.c
         graphics/3d/backend/vgfx3d_backend_sw.c
+        graphics/3d/rt_g3d_commit_queue.c
         graphics/3d/rt_game3d.c
         graphics/3d/render/rt_mesh3d.c
         graphics/3d/render/rt_camera3d.c
@@ -266,6 +268,8 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/scene/rt_scene3d.c
         graphics/3d/scene/rt_scene3d_vscn.c
         graphics/3d/anim/rt_animcontroller3d.c
+        graphics/3d/anim/rt_blendtree3d.c
+        graphics/3d/anim/rt_iksolver3d.c
         graphics/3d/render/rt_model3d.c
         graphics/3d/anim/rt_skeleton3d.c
         graphics/3d/assets/rt_fbx_loader.c
@@ -344,6 +348,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/text/rt_bitmapfont.c
         graphics/2d/rt_graphics2d.c
         graphics/text/fonts/embedded_font.c
+        graphics/3d/rt_g3d_commit_queue.c
         graphics/3d/rt_game3d.c
         graphics/media/rt_avi.c
         graphics/media/rt_theora.c

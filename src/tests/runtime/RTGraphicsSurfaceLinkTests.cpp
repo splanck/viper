@@ -12,21 +12,27 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_animcontroller3d.h"
+#include "rt_blendtree3d.h"
 #include "rt_audio.h"
 #include "rt_canvas3d.h"
 #include "rt_collider3d.h"
 #include "rt_fbx_loader.h"
 #include "rt_gltf.h"
 #include "rt_graphics.h"
+#include "rt_game3d.h"
+#include "rt_iksolver3d.h"
 #include "rt_joints3d.h"
 #include "rt_model3d.h"
 #include "rt_navagent3d.h"
+#include "rt_navmesh3d.h"
 #include "rt_physics3d.h"
 #include "rt_scene3d.h"
+#include "rt_skeleton3d.h"
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
 #include "rt_soundsource3d.h"
 #include "rt_terrain3d.h"
+#include "rt_textureasset3d.h"
 
 #include <cassert>
 #include <cstdint>
@@ -47,6 +53,8 @@ int main() {
     volatile std::uintptr_t surface[] = {
         fn_bits(&rt_canvas_is_available),
         fn_bits(&rt_audio_is_available),
+        fn_bits(&rt_canvas3d_get_draw_count),
+        fn_bits(&rt_canvas3d_get_occluded_draw_count),
         fn_bits(&rt_mesh3d_clear),
         fn_bits(&rt_mesh3d_from_stl),
         fn_bits(&rt_camera3d_new_ortho),
@@ -69,6 +77,13 @@ int main() {
         fn_bits(&rt_gltf_get_mesh),
         fn_bits(&rt_gltf_material_count),
         fn_bits(&rt_gltf_get_material),
+        fn_bits(&rt_gltf_camera_count),
+        fn_bits(&rt_gltf_get_camera),
+        fn_bits(&rt_gltf_scene_count),
+        fn_bits(&rt_gltf_get_scene_name),
+        fn_bits(&rt_gltf_get_scene_root_at),
+        fn_bits(&rt_gltf_scene_camera_count),
+        fn_bits(&rt_gltf_get_scene_camera),
         fn_bits(&rt_gltf_node_count),
         fn_bits(&rt_gltf_get_scene_root),
         fn_bits(&rt_anim_controller3d_new),
@@ -84,6 +99,9 @@ int main() {
         fn_bits(&rt_anim_controller3d_get_state_count),
         fn_bits(&rt_anim_controller3d_set_state_speed),
         fn_bits(&rt_anim_controller3d_set_state_looping),
+        fn_bits(&rt_anim_controller3d_set_animation_lod),
+        fn_bits(&rt_anim_controller3d_set_blend_tree),
+        fn_bits(&rt_anim_controller3d_set_ik_solver),
         fn_bits(&rt_anim_controller3d_add_event),
         fn_bits(&rt_anim_controller3d_poll_event),
         fn_bits(&rt_anim_controller3d_set_root_motion_bone),
@@ -92,11 +110,52 @@ int main() {
         fn_bits(&rt_anim_controller3d_set_layer_weight),
         fn_bits(&rt_anim_controller3d_set_layer_mask),
         fn_bits(&rt_anim_controller3d_play_layer),
+        fn_bits(&rt_anim_controller3d_play_layer_additive),
         fn_bits(&rt_anim_controller3d_crossfade_layer),
+        fn_bits(&rt_anim_controller3d_crossfade_layer_additive),
         fn_bits(&rt_anim_controller3d_stop_layer),
         fn_bits(&rt_anim_controller3d_get_bone_matrix),
         fn_bits(&rt_anim_controller3d_get_final_palette_data),
         fn_bits(&rt_anim_controller3d_get_previous_palette_data),
+        fn_bits(&rt_game3d_animator_set_blend_tree),
+        fn_bits(&rt_game3d_animator_set_ik_solver),
+        fn_bits(&rt_game3d_animator_crossfade_layer_additive),
+        fn_bits(&rt_game3d_world_get_entity_count),
+        fn_bits(&rt_game3d_world_get_body_count),
+        fn_bits(&rt_game3d_world_get_draw_count),
+        fn_bits(&rt_game3d_world_get_visible_node_count),
+        fn_bits(&rt_game3d_world_get_occluded_draw_count),
+        fn_bits(&rt_game3d_world_get_stream_resident_bytes),
+        fn_bits(&rt_game3d_world_bake_nav_mesh),
+        fn_bits(&rt_game3d_world_bake_tiled_nav_mesh),
+        fn_bits(&rt_game3d_world_stream_get_resident_terrain_tile),
+        fn_bits(&rt_game3d_world_stream_get_cell_count),
+        fn_bits(&rt_game3d_world_stream_get_cell_name),
+        fn_bits(&rt_game3d_world_stream_get_cell_center),
+        fn_bits(&rt_game3d_world_stream_get_cell_resident),
+        fn_bits(&rt_game3d_world_stream_get_cell_bytes),
+        fn_bits(&rt_game3d_world_stream_get_terrain_tile_count),
+        fn_bits(&rt_game3d_world_stream_get_terrain_tile_name),
+        fn_bits(&rt_game3d_world_stream_get_terrain_tile_heightmap),
+        fn_bits(&rt_game3d_world_stream_get_terrain_tile_center),
+        fn_bits(&rt_game3d_world_stream_get_terrain_tile_resident),
+        fn_bits(&rt_game3d_world_stream_get_terrain_tile_bytes),
+        fn_bits(&rt_animation3d_retarget),
+        fn_bits(&rt_ik_solver3d_two_bone),
+        fn_bits(&rt_ik_solver3d_look_at),
+        fn_bits(&rt_ik_solver3d_fabrik),
+        fn_bits(&rt_ik_solver3d_set_target),
+        fn_bits(&rt_ik_solver3d_set_weight),
+        fn_bits(&rt_ik_solver3d_solve),
+        fn_bits(&rt_ik_solver3d_get_skeleton),
+        fn_bits(&rt_ik_solver3d_apply_to_pose),
+        fn_bits(&rt_blend_tree3d_new_1d),
+        fn_bits(&rt_blend_tree3d_new_2d),
+        fn_bits(&rt_blend_tree3d_add_sample),
+        fn_bits(&rt_blend_tree3d_set_param),
+        fn_bits(&rt_blend_tree3d_update),
+        fn_bits(&rt_blend_tree3d_get_sample_count),
+        fn_bits(&rt_blend_tree3d_get_blend),
         fn_bits(&rt_model3d_load),
         fn_bits(&rt_model3d_load_asset),
         fn_bits(&rt_model3d_get_mesh_count),
@@ -220,9 +279,27 @@ int main() {
         fn_bits(&rt_body3d_sleep),
         fn_bits(&rt_body3d_set_use_ccd),
         fn_bits(&rt_body3d_get_use_ccd),
+        fn_bits(&rt_textureasset3d_load_ktx2),
+        fn_bits(&rt_textureasset3d_load_ktx2_asset),
+        fn_bits(&rt_textureasset3d_get_width),
+        fn_bits(&rt_textureasset3d_get_height),
+        fn_bits(&rt_textureasset3d_get_mip_count),
+        fn_bits(&rt_textureasset3d_get_format),
+        fn_bits(&rt_textureasset3d_get_compressed),
+        fn_bits(&rt_textureasset3d_get_resident_mip_start),
+        fn_bits(&rt_textureasset3d_get_resident_mip_count),
+        fn_bits(&rt_textureasset3d_get_resident_bytes),
+        fn_bits(&rt_textureasset3d_set_resident_mip_range),
         fn_bits(&rt_terrain3d_set_splat_map),
         fn_bits(&rt_terrain3d_set_layer_texture),
         fn_bits(&rt_terrain3d_set_layer_scale),
+        fn_bits(&rt_navmesh3d_bake),
+        fn_bits(&rt_navmesh3d_bake_tiled),
+        fn_bits(&rt_navmesh3d_add_offmesh_link),
+        fn_bits(&rt_navmesh3d_get_offmesh_link_count),
+        fn_bits(&rt_navmesh3d_add_obstacle),
+        fn_bits(&rt_navmesh3d_get_obstacle_count),
+        fn_bits(&rt_navmesh3d_rebuild_tile),
         fn_bits(&rt_navagent3d_new),
         fn_bits(&rt_navagent3d_set_target),
         fn_bits(&rt_navagent3d_clear_target),
@@ -239,6 +316,10 @@ int main() {
         fn_bits(&rt_navagent3d_set_desired_speed),
         fn_bits(&rt_navagent3d_get_auto_repath),
         fn_bits(&rt_navagent3d_set_auto_repath),
+        fn_bits(&rt_navagent3d_get_avoidance_enabled),
+        fn_bits(&rt_navagent3d_set_avoidance_enabled),
+        fn_bits(&rt_navagent3d_get_avoidance_radius),
+        fn_bits(&rt_navagent3d_set_avoidance_radius),
         fn_bits(&rt_navagent3d_bind_character),
         fn_bits(&rt_navagent3d_bind_node),
         fn_bits(&rt_sound3d_sync_bindings),

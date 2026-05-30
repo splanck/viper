@@ -11,6 +11,7 @@
 
 #include "rt_animcontroller3d.h"
 #include "rt_asset.h"
+#include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_model3d.h"
 #include "rt_morphtarget3d.h"
@@ -608,9 +609,18 @@ static bool write_gltf_fixture(const char *path) {
         "  \"nodes\": [\n"
         "    {\"name\": \"GltfParent\", \"translation\": [1.0, 0.0, 0.0], \"mesh\": 0, "
         "\"children\": [1]},\n"
-        "    {\"name\": \"GltfChild\", \"scale\": [2.0, 2.0, 2.0]}\n"
+        "    {\"name\": \"GltfChild\", \"scale\": [2.0, 2.0, 2.0], \"camera\": 0},\n"
+        "    {\"name\": \"GltfOrthoCamera\", \"translation\": [0.0, 2.0, 0.0], "
+        "\"camera\": 1},\n"
+        "    {\"name\": \"GltfSecondary\", \"translation\": [-3.0, 0.0, 0.0], \"mesh\": 0}\n"
         "  ],\n"
-        "  \"scenes\": [{\"nodes\": [0]}],\n"
+        "  \"cameras\": [\n"
+        "    {\"type\": \"perspective\", \"perspective\": {\"yfov\": 1.0471975512, "
+        "\"aspectRatio\": 1.7777777778, \"znear\": 0.2, \"zfar\": 250.0}},\n"
+        "    {\"type\": \"orthographic\", \"orthographic\": {\"xmag\": 8.0, \"ymag\": 4.0, "
+        "\"znear\": 0.5, \"zfar\": 80.0}}\n"
+        "  ],\n"
+        "  \"scenes\": [{\"nodes\": [0, 2]}, {\"name\": \"SecondaryScene\", \"nodes\": [3]}],\n"
         "  \"scene\": 0\n"
         "}\n";
 
@@ -751,8 +761,56 @@ static void test_model3d_adapts_gltf_scene_graphs() {
 
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Model3D exposes glTF meshes");
     EXPECT_TRUE(rt_model3d_get_material_count(model) == 1, "Model3D exposes glTF materials");
-    EXPECT_TRUE(rt_model3d_get_node_count(model) == 2,
+    EXPECT_TRUE(rt_model3d_get_node_count(model) == 3,
                 "Model3D preserves logical glTF scene-node counts");
+    EXPECT_TRUE(rt_model3d_get_scene_count(model) == 2,
+                "Model3D exposes glTF active and secondary immutable scenes");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 0)), "default") == 0,
+                "Model3D.GetSceneName names the default scene");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 1)), "SecondaryScene") ==
+                    0,
+                "Model3D.GetSceneName preserves secondary glTF scene names");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 2)), "") == 0,
+                "Model3D.GetSceneName returns empty for invalid scene indices");
+    EXPECT_TRUE(rt_model3d_get_camera_count(model, 0) == 2,
+                "Model3D.GetCameraCount reports active-scene glTF cameras");
+    EXPECT_TRUE(rt_model3d_get_camera_count(model, 1) == 0,
+                "Model3D.GetCameraCount reports no cameras for the secondary scene");
+    EXPECT_TRUE(rt_model3d_get_camera_count(model, 2) == 0,
+                "Model3D.GetCameraCount returns zero for invalid scene indices");
+    void *perspective_camera = rt_model3d_get_camera(model, 0, 0);
+    void *ortho_camera = rt_model3d_get_camera(model, 0, 1);
+    EXPECT_TRUE(perspective_camera != nullptr, "Model3D.GetCamera returns glTF perspective cameras");
+    EXPECT_TRUE(ortho_camera != nullptr, "Model3D.GetCamera returns glTF orthographic cameras");
+    EXPECT_TRUE(rt_model3d_get_camera(model, 0, 2) == nullptr,
+                "Model3D.GetCamera rejects out-of-range camera indices");
+    EXPECT_TRUE(rt_model3d_get_camera(model, 1, 0) == nullptr,
+                "Model3D.GetCamera returns null for secondary scenes without cameras");
+    EXPECT_TRUE(rt_model3d_get_camera(model, 2, 0) == nullptr,
+                "Model3D.GetCamera rejects invalid scene indices");
+    EXPECT_TRUE(rt_camera3d_is_ortho(perspective_camera) == 0,
+                "glTF perspective cameras import as perspective Camera3D handles");
+    EXPECT_TRUE(rt_camera3d_is_ortho(ortho_camera) == 1,
+                "glTF orthographic cameras import as orthographic Camera3D handles");
+    EXPECT_NEAR(rt_camera3d_get_fov(perspective_camera),
+                60.0,
+                0.001,
+                "glTF perspective yfov is converted from radians to degrees");
+    void *perspective_pos = rt_camera3d_get_position(perspective_camera);
+    void *perspective_forward = rt_camera3d_get_forward(perspective_camera);
+    void *ortho_pos = rt_camera3d_get_position(ortho_camera);
+    EXPECT_NEAR(rt_vec3_x(perspective_pos),
+                1.0,
+                0.001,
+                "glTF camera inherits parent world translation");
+    EXPECT_NEAR(rt_vec3_z(perspective_forward),
+                -1.0,
+                0.001,
+                "glTF camera uses local -Z as world forward");
+    EXPECT_NEAR(rt_vec3_y(ortho_pos),
+                2.0,
+                0.001,
+                "glTF orthographic camera preserves node translation");
 
     void *parent = rt_model3d_find_node(model, rt_const_cstr("GltfParent"));
     void *child = rt_model3d_find_node(model, rt_const_cstr("GltfChild"));
@@ -775,10 +833,33 @@ static void test_model3d_adapts_gltf_scene_graphs() {
     if (!inst_scene)
         return;
 
-    EXPECT_TRUE(rt_scene3d_get_node_count(inst_scene) == 3,
+    EXPECT_TRUE(rt_scene3d_get_node_count(inst_scene) == 4,
                 "glTF-backed Model3D instances attach below a new scene root");
     EXPECT_TRUE(rt_scene3d_find(inst_scene, rt_const_cstr("GltfChild")) != nullptr,
                 "glTF-backed Model3D instances preserve child names");
+
+    void *indexed_scene = rt_model3d_instantiate_scene_at(model, 0);
+    EXPECT_TRUE(indexed_scene != nullptr, "Model3D.InstantiateSceneAt clones the default scene");
+    void *secondary_scene = rt_model3d_instantiate_scene_at(model, 1);
+    EXPECT_TRUE(secondary_scene != nullptr, "Model3D.InstantiateSceneAt clones secondary glTF scenes");
+    EXPECT_TRUE(rt_model3d_instantiate_scene_at(model, 2) == nullptr,
+                "Model3D.InstantiateSceneAt rejects invalid scene indices");
+    if (!indexed_scene)
+        return;
+    EXPECT_TRUE(rt_scene3d_get_node_count(indexed_scene) == 4,
+                "Model3D.InstantiateSceneAt preserves default-scene nodes");
+    EXPECT_TRUE(rt_scene3d_find(indexed_scene, rt_const_cstr("GltfParent")) != nullptr,
+                "Model3D.InstantiateSceneAt preserves indexed-scene searchability");
+    EXPECT_TRUE(rt_scene3d_find(indexed_scene, rt_const_cstr("GltfSecondary")) == nullptr,
+                "Model3D.InstantiateSceneAt keeps secondary roots out of the default scene");
+    if (!secondary_scene)
+        return;
+    EXPECT_TRUE(rt_scene3d_get_node_count(secondary_scene) == 2,
+                "Model3D.InstantiateSceneAt builds secondary scene roots");
+    EXPECT_TRUE(rt_scene3d_find(secondary_scene, rt_const_cstr("GltfSecondary")) != nullptr,
+                "Model3D.InstantiateSceneAt preserves secondary scene searchability");
+    EXPECT_TRUE(rt_scene3d_find(secondary_scene, rt_const_cstr("GltfParent")) == nullptr,
+                "Model3D.InstantiateSceneAt keeps default roots out of the secondary scene");
 }
 
 static void test_model3d_load_asset_resolves_mounted_gltf_dependencies() {
@@ -1234,12 +1315,22 @@ static void test_model3d_rejects_wrong_handle_types() {
     void *node = rt_scene_node3d_new();
     EXPECT_TRUE(rt_model3d_get_mesh_count(node) == 0,
                 "Model3D.GetMeshCount rejects non-Model3D handles");
+    EXPECT_TRUE(rt_model3d_get_scene_count(node) == 0,
+                "Model3D.SceneCount rejects non-Model3D handles");
+    EXPECT_TRUE(rt_model3d_get_camera_count(node, 0) == 0,
+                "Model3D.GetCameraCount rejects non-Model3D handles");
+    EXPECT_TRUE(rt_model3d_get_camera(node, 0, 0) == nullptr,
+                "Model3D.GetCamera rejects non-Model3D handles");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(node, 0)), "") == 0,
+                "Model3D.GetSceneName rejects non-Model3D handles");
     EXPECT_TRUE(rt_model3d_get_mesh(node, 0) == nullptr,
                 "Model3D.GetMesh rejects non-Model3D handles");
     EXPECT_TRUE(rt_model3d_instantiate(node) == nullptr,
                 "Model3D.Instantiate rejects non-Model3D handles");
     EXPECT_TRUE(rt_model3d_instantiate_scene(node) == nullptr,
                 "Model3D.InstantiateScene rejects non-Model3D handles");
+    EXPECT_TRUE(rt_model3d_instantiate_scene_at(node, 0) == nullptr,
+                "Model3D.InstantiateSceneAt rejects non-Model3D handles");
 }
 
 int main() {

@@ -583,6 +583,86 @@ static void test_anim_blend_dt_zero_and_looping_defaults() {
                 "AnimBlend3D state inherits non-looping animation default");
 }
 
+static void test_animation_retarget_scales_by_proportion() {
+    /* Source skeleton: arm offset 1 unit from root (bone length 1). */
+    void *src = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(src, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t src_arm = rt_skeleton3d_add_bone(src, rt_const_cstr("arm"), 0, rt_mat4_translate(1.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(src);
+
+    /* Target skeleton: arm twice as long (bone length 2). */
+    void *dst = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(dst, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t dst_arm = rt_skeleton3d_add_bone(dst, rt_const_cstr("arm"), 0, rt_mat4_translate(2.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(dst);
+
+    void *anim = rt_animation3d_new(rt_const_cstr("reach"), 2.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, src_arm, 0.0, rt_vec3_new(0.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, src_arm, 2.0, rt_vec3_new(2.0, 0.0, 0.0), rot, scl);
+
+    void *retargeted = rt_animation3d_retarget(anim, src, dst);
+    EXPECT_TRUE(retargeted != nullptr, "Proportional retarget returns an animation");
+
+    void *player = rt_anim_player3d_new(dst);
+    rt_anim_player3d_play(player, retargeted);
+    rt_anim_player3d_update(player, 1.0); /* sample at t=1 -> source mid pos (1,0,0) */
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *arm_mat = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, dst_arm);
+    /* Source mid-translation is 1.0; the 2x-longer target scales it to 2.0. */
+    EXPECT_NEAR(arm_mat->m[3], 2.0, 0.05, "Retarget scales translation by bone-length ratio");
+}
+
+static void test_animation_retarget_matches_bone_names() {
+    void *src = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(src, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t src_arm = rt_skeleton3d_add_bone(src, rt_const_cstr("arm"), 0, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(src);
+
+    void *dst = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(dst, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t dst_unused = rt_skeleton3d_add_bone(dst, rt_const_cstr("unused"), 0, rt_mat4_identity());
+    int64_t dst_arm = rt_skeleton3d_add_bone(dst, rt_const_cstr("arm"), 0, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(dst);
+
+    void *anim = rt_animation3d_new(rt_const_cstr("reach"), 2.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, src_arm, 0.0, rt_vec3_new(0.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, src_arm, 2.0, rt_vec3_new(8.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_set_looping(anim, 1);
+
+    void *retargeted = rt_animation3d_retarget(anim, src, dst);
+    EXPECT_TRUE(retargeted != nullptr, "Animation3D.Retarget returns an animation");
+    EXPECT_NEAR(rt_animation3d_get_duration(retargeted),
+                2.0,
+                0.001,
+                "Animation3D.Retarget preserves duration");
+    EXPECT_TRUE(rt_animation3d_get_looping(retargeted) != 0,
+                "Animation3D.Retarget preserves looping");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_animation3d_get_name(retargeted)), "reach") == 0,
+                "Animation3D.Retarget preserves the clip name");
+
+    void *player = rt_anim_player3d_new(dst);
+    rt_anim_player3d_play(player, retargeted);
+    rt_anim_player3d_update(player, 1.0);
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *arm_mat = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, dst_arm);
+    mat4_view *unused_mat = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, dst_unused);
+    EXPECT_NEAR(arm_mat->m[3], 4.0, 0.1, "Animation3D.Retarget maps keyed bone by name");
+    EXPECT_NEAR(unused_mat->m[3], 0.0, 0.1, "Animation3D.Retarget does not animate wrong index");
+
+    EXPECT_TRUE(rt_animation3d_retarget(nullptr, src, dst) == nullptr,
+                "Animation3D.Retarget rejects NULL animations");
+    EXPECT_TRUE(rt_animation3d_retarget(anim, anim, dst) == nullptr,
+                "Animation3D.Retarget rejects non-skeleton source handles");
+}
+
 static void test_crossfade_preserves_structure() {
     EXPECT_TRUE(1, "crossfade: TRS blend preserves matrix orthogonality (compile check)");
     /* This test ensures the crossfade code path compiles and runs
@@ -616,6 +696,8 @@ int main() {
     test_crossfade_falls_back_to_bind_pose_translation();
     test_crossfade_blends_target_only_channels();
     test_anim_blend_dt_zero_and_looping_defaults();
+    test_animation_retarget_matches_bone_names();
+    test_animation_retarget_scales_by_proportion();
     test_crossfade_preserves_structure();
 
     printf("Skeleton3D tests: %d/%d passed\n", tests_passed, tests_run);

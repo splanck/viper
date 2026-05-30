@@ -946,11 +946,86 @@ void rt_terrain3d_set_skirt_depth(void *obj, double depth) {
     invalidate_all_chunks(t);
 }
 
-/// @brief Render the terrain via the Canvas3D. Lazily builds chunk meshes on first draw, bakes
-/// the splat texture if needed, then for each chunk: (Phase A) frustum-cull against the cached
-/// view-projection AABB; (Phase B) pick LOD by distance to camera (XZ); finally enqueue the
-/// chosen mesh with the terrain material. No-op outside a frame or with no material set.
+static int32_t terrain_nav_sample_count(int32_t max_index, int32_t step) {
+    int32_t count;
+    if (max_index <= 0)
+        return 1;
+    if (step <= 0)
+        step = 1;
+    count = max_index / step + 1;
+    if (max_index % step != 0)
+        count++;
+    if (count < 2)
+        count = 2;
+    return count;
+}
+
+static int32_t terrain_nav_sample_coord(int32_t index, int32_t count, int32_t max_index, int32_t step) {
+    if (index <= 0)
+        return 0;
+    if (index >= count - 1)
+        return max_index;
+    int32_t value = index * step;
+    return value > max_index ? max_index : value;
+}
+
+/// @brief Build a Mesh3D approximation of the whole terrain for scene/nav baking.
+/// @details This is intentionally separate from the render chunk cache: nav only needs a
+///   stable triangle source that follows the terrain's heightmap and scale, while rendering
+///   keeps its own LOD/skirt chunk meshes. `step` decimates grid samples but always includes
+///   the final row/column so the nav source keeps the streamed tile footprint.
+void *rt_terrain3d_build_nav_mesh(void *terrain_obj, int64_t step64) {
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(terrain_obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return NULL;
+    int32_t step = (int32_t)step64;
+    if (step < 1)
+        step = 1;
+    if (step > 16)
+        step = 16;
+    int32_t cols = terrain_nav_sample_count(t->width - 1, step);
+    int32_t rows = terrain_nav_sample_count(t->depth - 1, step);
+    void *mesh = rt_mesh3d_new();
+    if (!mesh)
+        return NULL;
+
+    for (int32_t rz = 0; rz < rows; ++rz) {
+        int32_t iz = terrain_nav_sample_coord(rz, rows, t->depth - 1, step);
+        for (int32_t rx = 0; rx < cols; ++rx) {
+            int32_t ix = terrain_nav_sample_coord(rx, cols, t->width - 1, step);
+            double wx, wy, wz, nx, ny, nz_n, u, v;
+            terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
+            rt_mesh3d_add_vertex(mesh, wx, wy, wz, nx, ny, nz_n, u, v);
+        }
+    }
+
+    for (int32_t rz = 0; rz < rows - 1; ++rz) {
+        for (int32_t rx = 0; rx < cols - 1; ++rx) {
+            int64_t base = (int64_t)(rz * cols + rx);
+            rt_mesh3d_add_triangle(mesh, base, base + cols, base + 1);
+            rt_mesh3d_add_triangle(mesh, base + 1, base + cols, base + cols + 1);
+        }
+    }
+
+    if (((rt_mesh3d *)mesh)->build_failed) {
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return NULL;
+    }
+    return mesh;
+}
+
+/// @brief Render the terrain at the origin via the Canvas3D.
 void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
+    rt_canvas3d_draw_terrain_at(canvas_obj, terrain_obj, 0.0, 0.0, 0.0);
+}
+
+/// @brief Render the terrain via the Canvas3D at a world-space translation.
+/// @details Lazily builds chunk meshes on first draw, bakes the splat texture if needed, then
+///   for each chunk: frustum-cull the translated AABB, pick LOD by translated chunk distance
+///   to camera (XZ), and enqueue the chosen mesh with a translated model matrix.
+void rt_canvas3d_draw_terrain_at(void *canvas_obj, void *terrain_obj, double tx, double ty, double tz) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas_obj);
     rt_terrain3d *t =
         (rt_terrain3d *)rt_g3d_checked_or_null(terrain_obj, RT_G3D_TERRAIN3D_CLASS_ID);
@@ -977,19 +1052,26 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
     vgfx3d_frustum_t frustum;
     vgfx3d_frustum_extract(&frustum, c->cached_vp);
 
-    static const double identity[16] = {
+    if (!isfinite(tx))
+        tx = 0.0;
+    if (!isfinite(ty))
+        ty = 0.0;
+    if (!isfinite(tz))
+        tz = 0.0;
+
+    double model[16] = {
         1.0,
         0.0,
         0.0,
-        0.0,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-        0.0,
+        tx,
         0.0,
         1.0,
         0.0,
+        ty,
+        0.0,
+        0.0,
+        1.0,
+        tz,
         0.0,
         0.0,
         0.0,
@@ -1006,12 +1088,22 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
 
             /* Phase A: Frustum culling */
             float *aabb = &t->chunk_aabbs[idx * 6];
-            if (vgfx3d_frustum_test_aabb(&frustum, aabb, aabb + 3) == 0)
+            float world_min[3] = {
+                aabb[0] + (float)tx,
+                aabb[1] + (float)ty,
+                aabb[2] + (float)tz,
+            };
+            float world_max[3] = {
+                aabb[3] + (float)tx,
+                aabb[4] + (float)ty,
+                aabb[5] + (float)tz,
+            };
+            if (vgfx3d_frustum_test_aabb(&frustum, world_min, world_max) == 0)
                 continue;
 
             /* Phase B: LOD selection based on distance to camera */
-            float chunk_cx = (aabb[0] + aabb[3]) * 0.5f;
-            float chunk_cz = (aabb[2] + aabb[5]) * 0.5f;
+            float chunk_cx = (world_min[0] + world_max[0]) * 0.5f;
+            float chunk_cz = (world_min[2] + world_max[2]) * 0.5f;
             float dx = chunk_cx - c->cached_cam_pos[0];
             float dz = chunk_cz - c->cached_cam_pos[2];
             float dist = sqrtf(dx * dx + dz * dz);
@@ -1042,7 +1134,7 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
                         c->pending_splat_layer_scales[si] = (float)t->layer_scales[si];
                     }
                 }
-                rt_canvas3d_draw_mesh_matrix(canvas_obj, draw_mesh, identity, t->material);
+                rt_canvas3d_draw_mesh_matrix(canvas_obj, draw_mesh, model, t->material);
             }
         }
     }

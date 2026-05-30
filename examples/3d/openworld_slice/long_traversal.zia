@@ -1,0 +1,145 @@
+module openworld_slice_long_traversal;
+
+bind Viper.Game3D;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind "./main";
+
+func near(a: Float, b: Float, eps: Float) -> Boolean {
+    var d = a - b;
+    if (d < 0.0) { d = 0.0 - d; }
+    return d <= eps;
+}
+
+func fail(message: String) -> Float {
+    Terminal.Say("FAIL: " + message);
+    return -99999.0;
+}
+
+func validateOnlyCellMarker(game: OpenWorldSlice, marker: String, label: String) -> Boolean {
+    if (game.hasNode("slice_cell_nw_marker") != (marker == "slice_cell_nw_marker") ||
+        game.hasNode("slice_cell_ne_marker") != (marker == "slice_cell_ne_marker") ||
+        game.hasNode("slice_cell_sw_marker") != (marker == "slice_cell_sw_marker") ||
+        game.hasNode("slice_cell_se_marker") != (marker == "slice_cell_se_marker")) {
+        Terminal.Say("FAIL: " + label + " cell marker residency mismatch");
+        return false;
+    }
+    return true;
+}
+
+func validateOnlyTerrainCollider(game: OpenWorldSlice, collider: String, label: String) -> Boolean {
+    if (game.hasNode("terrain_nw_heightfield_collider") !=
+            (collider == "terrain_nw_heightfield_collider") ||
+        game.hasNode("terrain_ne_heightfield_collider") !=
+            (collider == "terrain_ne_heightfield_collider") ||
+        game.hasNode("terrain_sw_heightfield_collider") !=
+            (collider == "terrain_sw_heightfield_collider") ||
+        game.hasNode("terrain_se_heightfield_collider") !=
+            (collider == "terrain_se_heightfield_collider")) {
+        Terminal.Say("FAIL: " + label + " terrain collider residency mismatch");
+        return false;
+    }
+    return true;
+}
+
+func visit(game: OpenWorldSlice,
+           label: String,
+           x: Float,
+           z: Float,
+           index: Integer,
+           cellName: String,
+           tileName: String,
+           markerName: String,
+           firstHeight: Float) -> Float {
+    game.setStreamCenter(x, z);
+    game.renderFrame();
+
+    var stream = game.getStream();
+    if (WorldStream3D.getCellCount(stream) != 4 ||
+        WorldStream3D.getTerrainTileCount(stream) != 4 ||
+        WorldStream3D.getCellName(stream, index) != cellName ||
+        WorldStream3D.getTerrainTileName(stream, index) != tileName) {
+        return fail(label + " stream inspection mismatch");
+    }
+
+    if (game.getResidentCellCount() != 1 ||
+        game.getResidentTerrainTileCount() != 1 ||
+        WorldStream3D.getCellResident(stream, index) == false ||
+        WorldStream3D.getTerrainTileResident(stream, index) == false) {
+        return fail(label + " resident count mismatch");
+    }
+
+    if (validateOnlyCellMarker(game, markerName, label) == false ||
+        validateOnlyTerrainCollider(game, tileName + "_heightfield_collider", label) == false) {
+        return -99999.0;
+    }
+
+    if (near(game.getResidentTileHeight(), firstHeight, 0.01) == false) {
+        return fail(label + " terrain height mismatch");
+    }
+
+    var world = game.getWorld();
+    if (World3D.get_streamResidentBytes(world) <= 0 ||
+        World3D.get_streamResidentBytes(world) > 400000) {
+        return fail(label + " resident bytes mismatch");
+    }
+    if (World3D.get_bodyCount(world) < 2 || World3D.get_entityCount(world) < 5) {
+        return fail(label + " entity/body telemetry mismatch");
+    }
+    if (World3D.get_drawCount(world) <= 0) {
+        return fail(label + " render telemetry mismatch");
+    }
+
+    return (World3D.get_streamResidentBytes(world) / 1000.0) +
+           World3D.get_bodyCount(world) +
+           World3D.get_entityCount(world) +
+           World3D.get_drawCount(world) +
+           firstHeight;
+}
+
+func runTraversal() -> Float {
+    var game = new OpenWorldSlice();
+    game.setup("Open World Slice Long Traversal", 160, 120);
+
+    var total = 0.0;
+    var round = 0;
+    while (round < 8) {
+        var v = visit(game, "northwest", -1100.0, -1100.0, 0,
+                      "slice_cell_nw", "terrain_nw", "slice_cell_nw_marker", 3.0);
+        if (v < -90000.0) { game.destroy(); return v; }
+        total = total + v;
+
+        v = visit(game, "northeast", 1100.0, -1100.0, 1,
+                  "slice_cell_ne", "terrain_ne", "slice_cell_ne_marker", 4.2);
+        if (v < -90000.0) { game.destroy(); return v; }
+        total = total + v;
+
+        v = visit(game, "southeast", 1100.0, 1100.0, 3,
+                  "slice_cell_se", "terrain_se", "slice_cell_se_marker", 5.4);
+        if (v < -90000.0) { game.destroy(); return v; }
+        total = total + v;
+
+        v = visit(game, "southwest", -1100.0, 1100.0, 2,
+                  "slice_cell_sw", "terrain_sw", "slice_cell_sw_marker", 4.2);
+        if (v < -90000.0) { game.destroy(); return v; }
+        total = total + v;
+
+        round = round + 1;
+    }
+
+    game.destroy();
+    return total;
+}
+
+func start() {
+    var a = runTraversal();
+    if (a < -90000.0) { return; }
+    var b = runTraversal();
+    if (b < -90000.0) { return; }
+    if (near(a, b, 0.0001) == false) {
+        Terminal.Say("FAIL: openworld long traversal replay diverged");
+        return;
+    }
+    Terminal.Say("PASS: openworld_slice_long_traversal");
+}

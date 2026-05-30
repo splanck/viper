@@ -343,10 +343,18 @@ int8_t rt_game3d_collision_event_get_is_trigger(void *event);
 double rt_game3d_collision_event_get_relative_speed(void *event);
 /// @brief Get the normal impulse magnitude applied to resolve the contact.
 double rt_game3d_collision_event_get_normal_impulse(void *event);
+/// @brief Get the number of contact points carried by the wrapped raw event.
+int64_t rt_game3d_collision_event_get_contact_count(void *event);
 /// @brief Get the world-space contact point as a Vec3.
 void *rt_game3d_collision_event_point(void *event);
 /// @brief Get the world-space contact normal as a Vec3.
 void *rt_game3d_collision_event_normal(void *event);
+/// @brief Get indexed world-space contact point as a Vec3.
+void *rt_game3d_collision_event_contact_point(void *event, int64_t index);
+/// @brief Get indexed world-space contact normal as a Vec3.
+void *rt_game3d_collision_event_contact_normal(void *event, int64_t index);
+/// @brief Get indexed signed contact separation.
+double rt_game3d_collision_event_contact_separation(void *event, int64_t index);
 /// @brief Given one participating entity, return the other entity in the contact.
 void *rt_game3d_collision_event_other(void *event, void *entity);
 
@@ -477,6 +485,17 @@ void *rt_game3d_animator_get_controller(void *animator);
 int8_t rt_game3d_animator_play(void *animator, rt_string name);
 /// @brief Cross-fade to the named clip over `seconds`; returns false if unknown.
 int8_t rt_game3d_animator_crossfade(void *animator, rt_string name, double seconds);
+/// @brief Play a named clip as a true additive overlay layer.
+int8_t rt_game3d_animator_play_layer_additive(void *animator, int64_t layer, rt_string name);
+/// @brief Cross-fade a named clip as a true additive overlay layer.
+int8_t rt_game3d_animator_crossfade_layer_additive(void *animator,
+                                                   int64_t layer,
+                                                   rt_string name,
+                                                   double seconds);
+/// @brief Set a BlendTree3D as the wrapped controller's base pose source.
+int8_t rt_game3d_animator_set_blend_tree(void *animator, void *blend_tree);
+/// @brief Set an IKSolver3D as the wrapped controller's final-pose constraint.
+int8_t rt_game3d_animator_set_ik_solver(void *animator, void *ik_solver);
 /// @brief Set the playback speed multiplier for the named clip.
 void rt_game3d_animator_set_speed(void *animator, rt_string name, double speed);
 /// @brief True if the named clip is currently the active state.
@@ -646,10 +665,39 @@ void *rt_game3d_assets_load_model_asset(rt_string path);
 void *rt_game3d_assets_load_model_template(rt_string path);
 /// @brief Load a model from a packed asset path as a reusable instancing template.
 void *rt_game3d_assets_load_model_template_asset(rt_string path);
+/// @brief Load a filesystem model through the AssetHandle3D contract.
+void *rt_game3d_assets_load_model_async(rt_string path);
+/// @brief Load a packed-asset model through the AssetHandle3D contract.
+void *rt_game3d_assets_load_model_asset_async(rt_string path);
+/// @brief Load a filesystem model template through the AssetHandle3D contract.
+void *rt_game3d_assets_load_model_template_async(rt_string path);
+/// @brief Load a packed-asset model template through the AssetHandle3D contract.
+void *rt_game3d_assets_load_model_template_asset_async(rt_string path);
+/// @brief Set the process-wide cached-template residency budget; negative means unlimited.
+void rt_game3d_assets_set_residency_budget(int64_t bytes);
+/// @brief Evict the cached template backing a ready template AssetHandle3D.
+void rt_game3d_assets_evict(void *asset_handle);
 /// @brief Warm the asset cache by preloading the model at the given path.
 void rt_game3d_assets_preload(rt_string path);
 /// @brief Drop all cached loaded models, freeing their memory.
 void rt_game3d_assets_clear_cache(void);
+
+//=========================================================================
+// AssetHandle3D — asset-loading status/result handle (Viper.Game3D.AssetHandle3D)
+//=========================================================================
+
+/// @brief True once the asset request has reached a terminal state.
+int8_t rt_game3d_asset_handle_get_ready(void *asset_handle);
+/// @brief Loading progress in the inclusive range [0, 1].
+double rt_game3d_asset_handle_get_progress(void *asset_handle);
+/// @brief Terminal error text, or an empty string on success / pending work.
+rt_string rt_game3d_asset_handle_get_error(void *asset_handle);
+/// @brief Cancel a pending request; completed requests are left unchanged.
+void rt_game3d_asset_handle_cancel(void *asset_handle);
+/// @brief Return the loaded entity for entity-mode requests, or NULL.
+void *rt_game3d_asset_handle_get_entity(void *asset_handle);
+/// @brief Return the loaded model template for template-mode requests, or NULL.
+void *rt_game3d_asset_handle_get_template(void *asset_handle);
 
 //=========================================================================
 // ModelTemplate — cached model for instancing (Viper.Game3D.ModelTemplate)
@@ -859,6 +907,8 @@ void *rt_game3d_world_get_input(void *world);
 void *rt_game3d_world_get_audio(void *world);
 /// @brief Get the world's effects registry.
 void *rt_game3d_world_get_effects(void *world);
+/// @brief Get the world's owned streaming controller, creating it on first access.
+void *rt_game3d_world_get_stream(void *world);
 /// @brief Get the most recent frame's delta time in seconds.
 double rt_game3d_world_get_dt(void *world);
 /// @brief Get total elapsed wall-clock time since the world started, in seconds.
@@ -867,6 +917,32 @@ double rt_game3d_world_get_elapsed(void *world);
 int64_t rt_game3d_world_get_frame(void *world);
 /// @brief Count fixed-timestep updates discarded by the spiral-of-death guard.
 int64_t rt_game3d_world_get_dropped_fixed_steps(void *world);
+/// @brief Count spawned Entity3D objects currently owned by the world.
+int64_t rt_game3d_world_get_entity_count(void *world);
+/// @brief Count physics bodies currently registered through spawned entities.
+int64_t rt_game3d_world_get_body_count(void *world);
+/// @brief Count main 3D draw submissions queued by the latest ended frame.
+int64_t rt_game3d_world_get_draw_count(void *world);
+/// @brief Count drawable scene nodes submitted by the latest scene draw.
+int64_t rt_game3d_world_get_visible_node_count(void *world);
+/// @brief Count draw submissions skipped by latest visibility culling.
+int64_t rt_game3d_world_get_occluded_draw_count(void *world);
+/// @brief Count bytes resident in the world-owned stream controller, if any.
+int64_t rt_game3d_world_get_stream_resident_bytes(void *world);
+/// @brief Get the configured worker count for internal deterministic jobs.
+int64_t rt_game3d_world_get_worker_count(void *world);
+/// @brief True when internal jobs are allowed to use worker threads.
+int8_t rt_game3d_world_get_jobs_enabled(void *world);
+/// @brief Set the internal worker count; values <= 1 keep jobs disabled.
+void rt_game3d_world_set_worker_count(void *world, int64_t worker_count);
+/// @brief True when camera-relative floating-origin rebasing is enabled.
+int8_t rt_game3d_world_get_floating_origin(void *world);
+/// @brief Enable or disable camera-relative floating-origin rebasing.
+void rt_game3d_world_set_floating_origin(void *world, int8_t enabled);
+/// @brief Get the accumulated world-origin offset as a Vec3.
+void *rt_game3d_world_get_world_origin(void *world);
+/// @brief Set the camera-distance threshold that triggers a floating-origin rebase.
+void rt_game3d_world_set_origin_rebase_threshold(void *world, double meters);
 /// @brief Spawn an entity into the world (adds it to scene + physics); returns the entity.
 void *rt_game3d_world_spawn(void *world, void *entity);
 /// @brief Despawn an entity, removing it from scene and physics.
@@ -894,6 +970,19 @@ void rt_game3d_world_set_fog(
     void *world, double r, double g, double b, double near_plane, double far_plane);
 /// @brief Apply a render quality preset (RT_GAME3D_QUALITY_*) to the world.
 void rt_game3d_world_set_quality(void *world, int64_t quality);
+/// @brief Bake a NavMesh3D from the world's current Scene3D.
+void *rt_game3d_world_bake_nav_mesh(void *world,
+                                    double agent_radius,
+                                    double agent_height,
+                                    double max_slope,
+                                    double cell_size);
+/// @brief Bake a tiled NavMesh3D from the world's current Scene3D.
+void *rt_game3d_world_bake_tiled_nav_mesh(void *world,
+                                          double tile_size,
+                                          double agent_radius,
+                                          double agent_height,
+                                          double max_slope,
+                                          double cell_size);
 /// @brief Count collision events recorded this frame for the given phase.
 int64_t rt_game3d_world_collision_event_count(void *world, int64_t phase);
 /// @brief Get the i-th collision event for the given phase.
@@ -935,6 +1024,57 @@ void rt_game3d_world_draw_overlay(void *world, void *overlay);
 void *rt_game3d_world_capture_final_frame(void *world);
 /// @brief Present the finished frame to the window (flip buffers).
 void rt_game3d_world_present(void *world);
+
+//=========================================================================
+// WorldStream3D — deterministic streaming state (Viper.Game3D.WorldStream3D)
+//=========================================================================
+
+/// @brief Create a stream controller bound to a live World3D.
+void *rt_game3d_world_stream_new(void *world);
+/// @brief Get resident scene-cell count.
+int64_t rt_game3d_world_stream_get_resident_cell_count(void *stream);
+/// @brief Get resident terrain-tile count.
+int64_t rt_game3d_world_stream_get_resident_terrain_tile_count(void *stream);
+/// @brief Return the nth currently resident Terrain3D tile, or NULL.
+void *rt_game3d_world_stream_get_resident_terrain_tile(void *stream, int64_t index);
+/// @brief Get parsed scene-cell entry count.
+int64_t rt_game3d_world_stream_get_cell_count(void *stream);
+/// @brief Get a parsed scene-cell name, or "" for an invalid index.
+rt_string rt_game3d_world_stream_get_cell_name(void *stream, int64_t index);
+/// @brief Get a parsed scene-cell center, or NULL for an invalid index.
+void *rt_game3d_world_stream_get_cell_center(void *stream, int64_t index);
+/// @brief Return whether a parsed scene-cell entry is currently resident.
+int8_t rt_game3d_world_stream_get_cell_resident(void *stream, int64_t index);
+/// @brief Get the byte estimate for a parsed scene-cell entry.
+int64_t rt_game3d_world_stream_get_cell_bytes(void *stream, int64_t index);
+/// @brief Get parsed terrain-tile entry count.
+int64_t rt_game3d_world_stream_get_terrain_tile_count(void *stream);
+/// @brief Get a parsed terrain-tile name, or "" for an invalid index.
+rt_string rt_game3d_world_stream_get_terrain_tile_name(void *stream, int64_t index);
+/// @brief Get a parsed terrain-tile heightmap sidecar path, or "" for an invalid index/missing path.
+rt_string rt_game3d_world_stream_get_terrain_tile_heightmap(void *stream, int64_t index);
+/// @brief Get a parsed terrain-tile center, or NULL for an invalid index.
+void *rt_game3d_world_stream_get_terrain_tile_center(void *stream, int64_t index);
+/// @brief Return whether a parsed terrain-tile entry is currently resident.
+int8_t rt_game3d_world_stream_get_terrain_tile_resident(void *stream, int64_t index);
+/// @brief Get the byte estimate for a parsed terrain-tile entry.
+int64_t rt_game3d_world_stream_get_terrain_tile_bytes(void *stream, int64_t index);
+/// @brief Get pending stream request count.
+int64_t rt_game3d_world_stream_get_pending_request_count(void *stream);
+/// @brief Get estimated resident stream bytes.
+int64_t rt_game3d_world_stream_get_resident_bytes(void *stream);
+/// @brief Set the streaming focus point.
+void rt_game3d_world_stream_set_center(void *stream, void *position);
+/// @brief Set load/unload radii in world units.
+void rt_game3d_world_stream_set_radii(void *stream, double load_radius, double unload_radius);
+/// @brief Bound resident stream bytes; negative means unlimited.
+void rt_game3d_world_stream_set_residency_budget(void *stream, int64_t bytes);
+/// @brief Mount a tiled terrain streaming manifest.
+void rt_game3d_world_stream_mount_tiled_terrain(void *stream, rt_string manifest_path);
+/// @brief Mount a scene-cell streaming manifest.
+void rt_game3d_world_stream_mount_cells(void *stream, rt_string manifest_path);
+/// @brief Advance stream scheduling/telemetry.
+void rt_game3d_world_stream_update(void *stream, double dt);
 
 #ifdef __cplusplus
 }

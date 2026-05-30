@@ -50,9 +50,13 @@ void *rt_terrain3d_get_normal_at(void *terrain, double x, double z);
 void rt_terrain3d_set_lod_distances(void *terrain, double near_dist, double far_dist);
 /// @brief Set the depth of skirts dropped from chunk edges (hides cracks between LOD seams).
 void rt_terrain3d_set_skirt_depth(void *terrain, double depth);
+/// @brief Internal helper: build a Mesh3D approximation of the terrain for nav baking.
+void *rt_terrain3d_build_nav_mesh(void *terrain, int64_t step);
 /// @brief Render @p terrain (LOD-selected, frustum-culled chunks) onto the
 ///        3D canvas.
 void rt_canvas3d_draw_terrain(void *canvas, void *terrain);
+/// @brief Internal helper: render @p terrain translated into world space.
+void rt_canvas3d_draw_terrain_at(void *canvas, void *terrain, double x, double y, double z);
 
 #ifdef __cplusplus
 }

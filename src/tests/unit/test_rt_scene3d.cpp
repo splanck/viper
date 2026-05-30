@@ -27,6 +27,7 @@
 #include "rt_morphtarget3d.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
+#include "rt_seq.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
 #include "rt_skeleton3d.h"
@@ -228,6 +229,40 @@ static void test_world_position_and_scale_getters() {
     EXPECT_NEAR(rt_vec3_x(world_scale), 1.0, 0.001, "WorldScale X composes parent/child");
     EXPECT_NEAR(rt_vec3_y(world_scale), 6.0, 0.001, "WorldScale Y composes parent/child");
     EXPECT_NEAR(rt_vec3_z(world_scale), 1.0, 0.001, "WorldScale Z composes parent/child");
+}
+
+static void test_scene_rebase_origin_shifts_root_subtrees() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    rt_scene_node3d_set_position(parent, 20.0, 3.0, -5.0);
+    rt_scene_node3d_set_position(child, 2.0, 0.0, 1.0);
+    rt_scene_node3d_add_child(parent, child);
+    rt_scene3d_add(scene, parent);
+
+    rt_scene3d_rebase_origin(scene, 10.0, 1.0, -4.0);
+
+    void *root_pos = rt_scene_node3d_get_position(rt_scene3d_get_root(scene));
+    void *parent_world = rt_scene_node3d_get_world_position(parent);
+    void *child_world = rt_scene_node3d_get_world_position(child);
+    void *child_local = rt_scene_node3d_get_position(child);
+    EXPECT_NEAR(rt_vec3_x(root_pos), 0.0, 0.001, "RebaseOrigin leaves scene root X unchanged");
+    EXPECT_NEAR(rt_vec3_y(root_pos), 0.0, 0.001, "RebaseOrigin leaves scene root Y unchanged");
+    EXPECT_NEAR(rt_vec3_z(root_pos), 0.0, 0.001, "RebaseOrigin leaves scene root Z unchanged");
+    EXPECT_NEAR(rt_vec3_x(parent_world), 10.0, 0.001, "RebaseOrigin shifts parent world X");
+    EXPECT_NEAR(rt_vec3_y(parent_world), 2.0, 0.001, "RebaseOrigin shifts parent world Y");
+    EXPECT_NEAR(rt_vec3_z(parent_world), -1.0, 0.001, "RebaseOrigin shifts parent world Z");
+    EXPECT_NEAR(rt_vec3_x(child_world), 12.0, 0.001, "RebaseOrigin shifts child world X");
+    EXPECT_NEAR(rt_vec3_y(child_world), 2.0, 0.001, "RebaseOrigin shifts child world Y");
+    EXPECT_NEAR(rt_vec3_z(child_world), 0.0, 0.001, "RebaseOrigin shifts child world Z");
+    EXPECT_NEAR(rt_vec3_x(child_local), 2.0, 0.001, "RebaseOrigin preserves child local X");
+    EXPECT_NEAR(rt_vec3_y(child_local), 0.0, 0.001, "RebaseOrigin preserves child local Y");
+    EXPECT_NEAR(rt_vec3_z(child_local), 1.0, 0.001, "RebaseOrigin preserves child local Z");
+
+    rt_scene3d_rebase_origin(scene, NAN, 0.0, INFINITY);
+    void *after_nonfinite = rt_scene_node3d_get_world_position(child);
+    EXPECT_NEAR(rt_vec3_x(after_nonfinite), 12.0, 0.001, "RebaseOrigin ignores non-finite X");
+    EXPECT_NEAR(rt_vec3_z(after_nonfinite), 0.0, 0.001, "RebaseOrigin ignores non-finite Z");
 }
 
 static void test_rotation_propagation() {
@@ -572,6 +607,9 @@ static int g_scene_submit_count = 0;
 static int g_scene_begin_count = 0;
 static int g_scene_end_count = 0;
 static const void *g_scene_last_vertices = nullptr;
+static uint32_t g_scene_last_vertex_count = 0;
+static const void *g_scene_last_texture = nullptr;
+static int8_t g_scene_last_unlit = 0;
 static int32_t g_scene_last_bone_count = 0;
 static vgfx3d_light_params_t g_scene_last_lights[VGFX3D_MAX_LIGHTS];
 static int32_t g_scene_last_light_count = 0;
@@ -594,6 +632,9 @@ static void scene_test_submit_draw(void *,
                                    int8_t) {
     g_scene_submit_count++;
     g_scene_last_vertices = cmd ? cmd->vertices : nullptr;
+    g_scene_last_vertex_count = cmd ? cmd->vertex_count : 0;
+    g_scene_last_texture = cmd ? cmd->texture : nullptr;
+    g_scene_last_unlit = cmd ? cmd->unlit : 0;
     g_scene_last_bone_count = cmd ? cmd->bone_count : 0;
     g_scene_last_light_count = light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count;
     if (lights && g_scene_last_light_count > 0)
@@ -613,9 +654,258 @@ static void reset_scene_capture(void) {
     g_scene_begin_count = 0;
     g_scene_end_count = 0;
     g_scene_last_vertices = nullptr;
+    g_scene_last_vertex_count = 0;
+    g_scene_last_texture = nullptr;
+    g_scene_last_unlit = 0;
     g_scene_last_bone_count = 0;
     std::memset(g_scene_last_lights, 0, sizeof(g_scene_last_lights));
     g_scene_last_light_count = 0;
+}
+
+static void test_scene_spatial_queries_flat_walk_reference() {
+    void *scene = rt_scene3d_new();
+    void *near_node = rt_scene_node3d_new();
+    void *far_node = rt_scene_node3d_new();
+    void *hidden_node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+
+    rt_scene_node3d_set_name(near_node, rt_const_cstr("near"));
+    rt_scene_node3d_set_position(near_node, 0.0, 0.0, -4.0);
+    rt_scene_node3d_set_mesh(near_node, mesh);
+    rt_scene_node3d_set_material(near_node, material);
+    rt_scene3d_add(scene, near_node);
+
+    rt_scene_node3d_set_name(far_node, rt_const_cstr("far"));
+    rt_scene_node3d_set_position(far_node, 0.0, 0.0, -6.0);
+    rt_scene_node3d_set_mesh(far_node, mesh);
+    rt_scene_node3d_set_material(far_node, material);
+    rt_scene3d_add(scene, far_node);
+
+    rt_scene_node3d_set_name(hidden_node, rt_const_cstr("hidden"));
+    rt_scene_node3d_set_position(hidden_node, 3.0, 0.0, -4.0);
+    rt_scene_node3d_set_mesh(hidden_node, mesh);
+    rt_scene_node3d_set_material(hidden_node, material);
+    rt_scene_node3d_set_visible(hidden_node, 0);
+    rt_scene3d_add(scene, hidden_node);
+
+    void *aabb_hits = rt_scene3d_query_aabb(
+        scene, rt_vec3_new(-0.75, -0.75, -4.75), rt_vec3_new(0.75, 0.75, -3.25));
+    EXPECT_TRUE(rt_seq_len(aabb_hits) == 1, "QueryAABB returns one matching visible mesh node");
+    EXPECT_TRUE(rt_seq_get(aabb_hits, 0) == near_node, "QueryAABB returns the near node");
+
+    void *sphere_hits = rt_scene3d_query_sphere(scene, rt_vec3_new(0.0, 0.0, -6.0), 0.75);
+    EXPECT_TRUE(rt_seq_len(sphere_hits) == 1, "QuerySphere returns one matching visible node");
+    EXPECT_TRUE(rt_seq_get(sphere_hits, 0) == far_node, "QuerySphere returns the far node");
+
+    void *hidden_hits = rt_scene3d_query_aabb(
+        scene, rt_vec3_new(2.0, -1.0, -5.0), rt_vec3_new(4.0, 1.0, -3.0));
+    EXPECT_TRUE(rt_seq_len(hidden_hits) == 0, "Scene queries skip hidden subtrees");
+
+    void *hit = rt_scene3d_raycast_nodes(
+        scene, rt_vec3_new(0.0, 0.0, 0.0), rt_vec3_new(0.0, 0.0, -1.0), 20.0);
+    EXPECT_TRUE(hit == near_node, "RaycastNodes returns the closest visible mesh node");
+
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    reset_scene_capture();
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(0.0, 0.0, 2.0),
+                        rt_vec3_new(0.0, 0.0, -5.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(rt_scene3d_get_visible_node_count(scene) == 2,
+                "VisibleNodeCount tracks submitted drawable nodes from the last draw");
+}
+
+static void test_scene_spatial_index_rebuilds_on_dirty_node() {
+    void *scene = rt_scene3d_new();
+    auto *scene_impl = (rt_scene3d *)scene;
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+
+    rt_scene_node3d_set_position(node, 0.0, 0.0, -4.0);
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene3d_add(scene, node);
+
+    void *first_hits = rt_scene3d_query_aabb(
+        scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
+    EXPECT_TRUE(rt_seq_len(first_hits) == 1, "Indexed QueryAABB returns the initial node");
+    EXPECT_TRUE(scene_impl->spatial_index.valid == 1, "Scene3D spatial index is valid after query");
+    EXPECT_TRUE(scene_impl->spatial_index.count == 1, "Scene3D spatial index tracks drawable nodes");
+    uint32_t first_build_count = scene_impl->spatial_index.build_count;
+
+    void *second_hits = rt_scene3d_query_aabb(
+        scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
+    EXPECT_TRUE(rt_seq_len(second_hits) == 1, "Indexed QueryAABB remains stable across reuse");
+    EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count,
+                "Scene3D spatial index reuses a clean build");
+
+    rt_scene_node3d_set_position(node, 10.0, 0.0, -4.0);
+    void *old_hits = rt_scene3d_query_aabb(
+        scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
+    EXPECT_TRUE(rt_seq_len(old_hits) == 0, "Dirty spatial index drops the moved node from old bounds");
+    EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count + 1,
+                "Scene3D spatial index rebuilds after a node transform changes");
+
+    void *new_hits = rt_scene3d_query_aabb(
+        scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
+    EXPECT_TRUE(rt_seq_len(new_hits) == 1, "Dirty spatial index returns the moved node");
+}
+
+static void test_scene_draw_spatial_index_matches_flat_reference() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+
+    void *scene = rt_scene3d_new();
+    auto *scene_impl = (rt_scene3d *)scene;
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(0.0, 0.0, 2.0),
+                        rt_vec3_new(0.0, 0.0, -5.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+
+    void *visible_node = rt_scene_node3d_new();
+    rt_scene_node3d_set_position(visible_node, 0.0, 0.0, -5.0);
+    rt_scene_node3d_set_mesh(visible_node, mesh);
+    rt_scene_node3d_set_material(visible_node, material);
+    rt_scene3d_add(scene, visible_node);
+
+    for (int i = 0; i < 6; ++i) {
+        void *offscreen = rt_scene_node3d_new();
+        rt_scene_node3d_set_position(offscreen, 200.0 + (double)i * 3.0, 0.0, -5.0);
+        rt_scene_node3d_set_mesh(offscreen, mesh);
+        rt_scene_node3d_set_material(offscreen, material);
+        rt_scene3d_add(scene, offscreen);
+    }
+
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
+    int indexed_submit_count = g_scene_submit_count;
+    int64_t indexed_culled_count = rt_scene3d_get_culled_count(scene);
+    int64_t indexed_visible_count = rt_scene3d_get_visible_node_count(scene);
+    int32_t indexed_candidates = scene_impl->spatial_index.last_candidate_count;
+    int32_t indexed_prefiltered = scene_impl->spatial_index.last_prefiltered_count;
+    int32_t indexed_entries = scene_impl->spatial_index.count;
+
+    scene_impl->use_spatial_index = 0;
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(indexed_submit_count == g_scene_submit_count,
+                "Indexed Scene3D.Draw submits the same nodes as the flat path");
+    EXPECT_TRUE(indexed_culled_count == rt_scene3d_get_culled_count(scene),
+                "Indexed Scene3D.Draw preserves flat-path culled count");
+    EXPECT_TRUE(indexed_visible_count == rt_scene3d_get_visible_node_count(scene),
+                "Indexed Scene3D.Draw preserves flat-path visible node count");
+    EXPECT_TRUE(indexed_prefiltered > 0, "Scene3D spatial draw prefilters off-frustum nodes");
+    EXPECT_TRUE(indexed_candidates < indexed_entries,
+                "Scene3D spatial draw yields fewer candidates than indexed drawables");
+}
+
+static void test_scene_spatial_index_10k_scaling_fixture() {
+    constexpr int kColumns = 100;
+    constexpr int kRows = 100;
+    constexpr int kNodeCount = kColumns * kRows;
+    constexpr double kSpacing = 8.0;
+
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+
+    void *scene = rt_scene3d_new();
+    auto *scene_impl = (rt_scene3d *)scene;
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+
+    void *target_node = nullptr;
+    const int target_col = 37;
+    const int target_row = 41;
+    const double target_x = (double)target_col * kSpacing;
+    const double target_z = -10.0 - (double)target_row * kSpacing;
+
+    for (int row = 0; row < kRows; ++row) {
+        for (int col = 0; col < kColumns; ++col) {
+            void *node = rt_scene_node3d_new();
+            rt_scene_node3d_set_position(node,
+                                         (double)col * kSpacing,
+                                         0.0,
+                                         -10.0 - (double)row * kSpacing);
+            rt_scene_node3d_set_mesh(node, mesh);
+            rt_scene_node3d_set_material(node, material);
+            rt_scene3d_add(scene, node);
+            if (col == target_col && row == target_row)
+                target_node = node;
+        }
+    }
+
+    void *hits = rt_scene3d_query_aabb(scene,
+                                       rt_vec3_new(target_x - 0.75, -1.0, target_z - 0.75),
+                                       rt_vec3_new(target_x + 0.75, 1.0, target_z + 0.75));
+    EXPECT_TRUE(rt_seq_len(hits) == 1, "10k QueryAABB fixture returns the isolated target node");
+    EXPECT_TRUE(rt_seq_get(hits, 0) == target_node, "10k QueryAABB fixture preserves node identity");
+    EXPECT_TRUE(scene_impl->spatial_index.valid == 1, "10k fixture builds a valid spatial index");
+    EXPECT_TRUE(scene_impl->spatial_index.count == kNodeCount,
+                "10k fixture indexes every visible drawable node");
+    EXPECT_TRUE(scene_impl->spatial_index.last_candidate_count == 1,
+                "10k fixture narrows an isolated query to one spatial candidate");
+    EXPECT_TRUE(scene_impl->spatial_index.last_prefiltered_count >= kNodeCount - 1,
+                "10k fixture records broad prefiltering for isolated spatial queries");
+
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 120.0);
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(0.0, 5.0, 5.0),
+                        rt_vec3_new(0.0, 0.0, -40.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
+    int indexed_submit_count = g_scene_submit_count;
+    int64_t indexed_culled_count = rt_scene3d_get_culled_count(scene);
+    int64_t indexed_visible_count = rt_scene3d_get_visible_node_count(scene);
+    int32_t indexed_candidates = scene_impl->spatial_index.last_candidate_count;
+    int32_t indexed_prefiltered = scene_impl->spatial_index.last_prefiltered_count;
+
+    EXPECT_TRUE(indexed_submit_count > 0, "10k draw fixture submits visible nodes");
+    EXPECT_TRUE(indexed_visible_count == indexed_submit_count,
+                "10k draw fixture visible-node counter matches submissions");
+    EXPECT_TRUE(indexed_candidates < 1000,
+                "10k draw fixture keeps indexed draw candidates below 10 percent of total nodes");
+    EXPECT_TRUE(indexed_prefiltered > 9000,
+                "10k draw fixture prefilters most off-frustum drawable nodes");
+
+    scene_impl->use_spatial_index = 0;
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(indexed_submit_count == g_scene_submit_count,
+                "10k indexed Scene3D.Draw submits the same nodes as the flat path");
+    EXPECT_TRUE(indexed_culled_count == rt_scene3d_get_culled_count(scene),
+                "10k indexed Scene3D.Draw preserves flat-path culled count");
+    EXPECT_TRUE(indexed_visible_count == rt_scene3d_get_visible_node_count(scene),
+                "10k indexed Scene3D.Draw preserves flat-path visible node count");
 }
 
 static void test_scene_draw_reuses_active_frame() {
@@ -725,6 +1015,7 @@ static void test_scene_save_serializes_visibility_and_lod_metadata() {
     rt_scene_node3d_set_mesh(node, rt_mesh3d_new_box(1.0, 1.0, 1.0));
     rt_scene_node3d_set_material(node, rt_material3d_new_color(1.0, 0.0, 0.0));
     rt_scene_node3d_add_lod(node, 10.0, rt_mesh3d_new_box(0.5, 0.5, 0.5));
+    rt_scene_node3d_set_auto_lod(node, 1, 12.5);
     rt_scene3d_add(scene, node);
 
     EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
@@ -745,6 +1036,10 @@ static void test_scene_save_serializes_visibility_and_lod_metadata() {
                 "Scene3D.Save serializes LOD metadata");
     EXPECT_TRUE(text.find("\"distance\": 10") != std::string::npos,
                 "Scene3D.Save serializes LOD distances");
+    EXPECT_TRUE(text.find("\"autoLOD\": {") != std::string::npos,
+                "Scene3D.Save serializes auto-LOD metadata");
+    EXPECT_TRUE(text.find("\"screenErrorPx\": 12.5") != std::string::npos,
+                "Scene3D.Save serializes auto-LOD screen error");
 }
 
 static void test_scene_roundtrip_loads_shared_assets() {
@@ -849,6 +1144,7 @@ static void test_scene_roundtrip_loads_shared_assets() {
     rt_scene_node3d_set_mesh(parent, mesh);
     rt_scene_node3d_set_material(parent, material);
     rt_scene_node3d_add_lod(parent, 10.0, lod_mesh);
+    rt_scene_node3d_set_auto_lod(parent, 1, 18.0);
     rt_scene_node3d_set_mesh(child, mesh);
     rt_scene_node3d_set_material(child, material);
     rt_scene_node3d_add_child(parent, child);
@@ -895,6 +1191,12 @@ static void test_scene_roundtrip_loads_shared_assets() {
     EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(loaded_parent, 0) !=
                     rt_scene_node3d_get_mesh(loaded_parent),
                 "Scene3D.Load restores LOD mesh references");
+    EXPECT_TRUE(((rt_scene_node3d *)loaded_parent)->auto_lod_enabled == 1,
+                "Scene3D.Load restores auto-LOD enable state");
+    EXPECT_NEAR(((rt_scene_node3d *)loaded_parent)->auto_lod_screen_error_px,
+                18.0,
+                0.001,
+                "Scene3D.Load restores auto-LOD screen error");
 
     rt_mesh3d *loaded_mesh = (rt_mesh3d *)rt_scene_node3d_get_mesh(loaded_parent);
     EXPECT_TRUE(loaded_mesh != nullptr && loaded_mesh->vertex_count == 3 &&
@@ -1344,6 +1646,96 @@ static void test_lod_culling_uses_selected_mesh_bounds() {
     EXPECT_TRUE(
         rt_scene3d_get_culled_count(scene) == 1,
         "Scene3D increments culled count when the selected LOD mesh is outside the frustum");
+    EXPECT_TRUE(rt_canvas3d_get_occluded_draw_count(&canvas) == 1,
+                "Canvas3D.OccludedDrawCount mirrors the latest scene visibility skip count");
+}
+
+static void test_auto_lod_uses_screen_error_selection() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    canvas.width = 100;
+    canvas.height = 100;
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *base_mesh = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    void *lod_mesh = rt_mesh3d_new();
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 25.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    rt_mesh3d_add_vertex(lod_mesh, -0.25, -0.25, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(lod_mesh, 0.25, -0.25, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(lod_mesh, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0, 0.5, 1.0);
+    rt_mesh3d_add_triangle(lod_mesh, 0, 1, 2);
+
+    rt_scene_node3d_set_mesh(node, base_mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene_node3d_add_lod(node, 1000.0, lod_mesh);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene_node3d_set_auto_lod(node, 1, 16.0);
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D draws the auto-LOD fixture");
+    EXPECT_TRUE(g_scene_last_vertex_count == 3,
+                "SceneNode3D.SetAutoLOD can select a projected small LOD before distance LOD");
+
+    reset_scene_capture();
+    rt_scene_node3d_set_auto_lod(node, 0, 16.0);
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D redraws after disabling auto LOD");
+    EXPECT_TRUE(g_scene_last_vertex_count != 3,
+                "SceneNode3D.SetAutoLOD(false) restores authored distance thresholds");
+}
+
+static void test_impostor_proxy_draws_textured_quad() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    canvas.width = 128;
+    canvas.height = 128;
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *pixels = rt_pixels_new(4, 2);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    rt_pixels_set(pixels, 0, 0, 0xFF0000FFll);
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene_node3d_set_impostor(node, 0.0, pixels);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D draws the impostor fixture");
+    EXPECT_TRUE(g_scene_last_vertex_count == 4,
+                "SceneNode3D.SetImpostor swaps to a generated quad mesh");
+    EXPECT_TRUE(g_scene_last_texture == pixels,
+                "SceneNode3D.SetImpostor binds the supplied Pixels texture");
+    EXPECT_TRUE(g_scene_last_unlit == 1, "SceneNode3D.SetImpostor uses an unlit proxy material");
 }
 
 static void test_dynamic_deformation_uses_conservative_frustum_culling() {
@@ -1492,6 +1884,7 @@ static void test_scene_roundtrip_preserves_node_lights() {
     void *light = rt_light3d_new_spot(pos, dir, 0.3, 0.6, 0.9, 0.25, 10.0, 30.0);
 
     rt_light3d_set_intensity(light, 4.0);
+    rt_light3d_set_casts_shadows(light, 0);
     rt_scene_node3d_set_name(node, rt_const_cstr("lamp"));
     rt_scene_node3d_set_position(node, 1.0, 2.0, 3.0);
     rt_scene_node3d_set_light(node, light);
@@ -1512,6 +1905,8 @@ static void test_scene_roundtrip_preserves_node_lights() {
     EXPECT_NEAR(loaded_light->color[2], 0.9, 0.001, "Scene3D.Load restores light color");
     EXPECT_NEAR(loaded_light->intensity, 4.0, 0.001, "Scene3D.Load restores light intensity");
     EXPECT_NEAR(loaded_light->attenuation, 0.25, 0.001, "Scene3D.Load restores light attenuation");
+    EXPECT_TRUE(loaded_light->casts_shadows == 0,
+                "Scene3D.Load restores light shadow-caster flag");
     EXPECT_TRUE(loaded_light->inner_cos > loaded_light->outer_cos,
                 "Scene3D.Load restores spot cone cosines");
 }
@@ -1605,6 +2000,7 @@ int main() {
     test_scene_remove_ignores_nodes_from_other_scenes();
     test_translation_propagation();
     test_world_position_and_scale_getters();
+    test_scene_rebase_origin_shifts_root_subtrees();
     test_rotation_propagation();
     test_scale_propagation();
     test_deep_hierarchy();
@@ -1630,8 +2026,14 @@ int main() {
     test_node_aabb_refreshes_after_mesh_mutation();
     test_frustum_culled_count_initial();
     test_lod_culling_uses_selected_mesh_bounds();
+    test_auto_lod_uses_screen_error_selection();
+    test_impostor_proxy_draws_textured_quad();
     test_dynamic_deformation_uses_conservative_frustum_culling();
     test_parent_animator_drives_child_skinned_meshes();
+    test_scene_spatial_queries_flat_walk_reference();
+    test_scene_spatial_index_rebuilds_on_dirty_node();
+    test_scene_draw_spatial_index_matches_flat_reference();
+    test_scene_spatial_index_10k_scaling_fixture();
     test_scene_draw_reuses_active_frame();
     test_scene_draw_culling_uses_canvas_output_aspect();
     test_scene_save_escapes_json_names();

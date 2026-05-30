@@ -60,6 +60,14 @@ void rt_navagent3d_set_desired_speed(void *agent, double speed);
 int8_t rt_navagent3d_get_auto_repath(void *agent);
 /// @brief Toggle auto-repath behavior.
 void rt_navagent3d_set_auto_repath(void *agent, int8_t enabled);
+/// @brief True if same-NavMesh local separation steering is enabled.
+int8_t rt_navagent3d_get_avoidance_enabled(void *agent);
+/// @brief Toggle same-NavMesh local separation steering.
+void rt_navagent3d_set_avoidance_enabled(void *agent, int8_t enabled);
+/// @brief Get the radius used for local avoidance separation.
+double rt_navagent3d_get_avoidance_radius(void *agent);
+/// @brief Set the radius used for local avoidance separation (clamped to >=0).
+void rt_navagent3d_set_avoidance_radius(void *agent, double radius);
 
 /// @brief Bind a Character3D — Update will call its Move() with desired velocity.
 void rt_navagent3d_bind_character(void *agent, void *controller);
