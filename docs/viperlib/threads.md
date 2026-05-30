@@ -883,8 +883,8 @@ END IF
 - Calling `Get()` on an error-resolved Future will trap
 - `WaitFor()` returns false on timeout without trapping
 - Multiple threads can wait on the same Future
-- Completion listeners run outside the Promise lock. If a listener traps, the Future releases all listener references and invokes remaining listeners before rethrowing the first listener trap.
-- Cancelling a pending completion listener runs its cleanup hook after removing it. If the cleanup hook traps, the listener and retained Future reference are still released before the trap is rethrown.
+- Completion listeners run outside the Promise lock. Listener traps are isolated after cleanup so remaining listeners still run and promise completion is not converted into a listener trap.
+- Cancelling a pending completion listener runs its cleanup hook after removing it. Cleanup-hook traps are isolated after the listener and retained Future reference are released.
 
 ---
 

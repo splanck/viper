@@ -38,12 +38,18 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 // External trap function (defined in rt_io.c)
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 //=============================================================================
 // Internal Stream Structure
@@ -68,6 +74,31 @@ static void stream_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
+static void stream_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static int stream_retain_wrapped_or_cleanup(stream_impl *s, void *wrapped, const char *fallback) {
+    if (!wrapped)
+        return 1;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        stream_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        stream_release_object(s);
+        rt_trap(saved_error);
+        return 0;
+    }
+
+    rt_obj_retain_maybe(wrapped);
+    rt_trap_clear_recovery();
+    return 1;
+}
+
 /// @brief Tear down the stream's reference to its underlying BinFile/MemStream.
 ///
 /// Clears `wrapped` and marks the stream closed *before* releasing,
@@ -85,8 +116,25 @@ static void stream_release_wrapped(stream_impl *s) {
     s->wrapped = NULL;
     s->closed = 1;
     s->closes_wrapped = 0;
-    if (s->owns && closes_wrapped && type == RT_STREAM_TYPE_BINFILE && wrapped)
-        rt_binfile_close(wrapped);
+    if (s->owns && closes_wrapped && type == RT_STREAM_TYPE_BINFILE && wrapped) {
+        char saved_error[256];
+        int close_trapped = 0;
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            stream_save_trap_error(
+                saved_error, sizeof(saved_error), "Stream.Close: wrapped close failed");
+            close_trapped = 1;
+        } else {
+            rt_binfile_close(wrapped);
+        }
+        rt_trap_clear_recovery();
+        if (s->owns)
+            stream_release_object(wrapped);
+        if (close_trapped)
+            rt_trap(saved_error);
+        return;
+    }
     if (s->owns)
         stream_release_object(wrapped);
 }
@@ -241,7 +289,8 @@ void *rt_stream_from_binfile(void *binfile) {
     if (!s)
         return NULL;
     s->type = RT_STREAM_TYPE_BINFILE;
-    rt_obj_retain_maybe(binfile);
+    if (!stream_retain_wrapped_or_cleanup(s, binfile, "Stream.FromBinFile: retain failed"))
+        return NULL;
     s->wrapped = binfile;
     s->owns = 1;
     s->closes_wrapped = 0;
@@ -262,7 +311,8 @@ void *rt_stream_from_memstream(void *memstream) {
     if (!s)
         return NULL;
     s->type = RT_STREAM_TYPE_MEMSTREAM;
-    rt_obj_retain_maybe(memstream);
+    if (!stream_retain_wrapped_or_cleanup(s, memstream, "Stream.FromMemStream: retain failed"))
+        return NULL;
     s->wrapped = memstream;
     s->owns = 1;
     s->closes_wrapped = 0;

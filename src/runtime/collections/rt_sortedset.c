@@ -225,6 +225,7 @@ int8_t rt_sortedset_add(void *obj, rt_string str) {
         return 0; // Already present
 
     ensure_capacity(set, set->len + 1);
+    rt_string copy = copy_string(str);
 
     // Shift elements to make room
     for (int64_t i = set->len; i > idx; i--) {
@@ -232,7 +233,7 @@ int8_t rt_sortedset_add(void *obj, rt_string str) {
     }
 
     // Insert copy of string
-    set->data[idx] = copy_string(str);
+    set->data[idx] = copy;
     set->len++;
     return 1;
 }

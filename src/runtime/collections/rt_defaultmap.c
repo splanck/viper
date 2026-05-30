@@ -42,10 +42,16 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 // ---------------------------------------------------------------------------
 // Internal structure
@@ -112,6 +118,32 @@ static const char *dm_key_data(rt_string key, size_t *out_len) {
 static void dm_release_value(void *value) {
     if (value && rt_obj_release_check0(value))
         rt_obj_free(value);
+}
+
+static void defaultmap_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void defaultmap_retain_default_or_release(rt_defaultmap_impl *m, void *default_value) {
+    if (!default_value)
+        return;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        defaultmap_save_trap_error(
+            saved_error, sizeof(saved_error), "DefaultMap: default retain failed");
+        rt_trap_clear_recovery();
+        if (rt_obj_release_check0(m))
+            rt_obj_free(m);
+        rt_trap(saved_error);
+        return;
+    }
+
+    rt_obj_retain_maybe(default_value);
+    rt_trap_clear_recovery();
 }
 
 // ---------------------------------------------------------------------------
@@ -214,10 +246,9 @@ void *rt_defaultmap_new(void *default_value) {
             rt_obj_free(m);
         rt_trap("DefaultMap: memory allocation failed");
     }
-    m->default_value = default_value;
-    if (default_value)
-        rt_obj_retain_maybe(default_value);
     rt_obj_set_finalizer(m, defaultmap_finalizer);
+    defaultmap_retain_default_or_release(m, default_value);
+    m->default_value = default_value;
     rt_gc_track(m, defaultmap_traverse);
     return m;
 }
@@ -289,24 +320,29 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
         idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     }
 
+    if (value)
+        rt_obj_retain_maybe(value);
+
     // New entry
     rt_dm_entry *ne = (rt_dm_entry *)calloc(1, sizeof(rt_dm_entry));
-    if (!ne)
+    if (!ne) {
+        dm_release_value(value);
         rt_trap("rt_defaultmap: memory allocation failed");
+    }
     if (klen == SIZE_MAX) {
+        dm_release_value(value);
         free(ne);
         rt_trap("rt_defaultmap: key allocation overflow");
     }
     ne->key = (char *)malloc(klen + 1);
     if (!ne->key) {
+        dm_release_value(value);
         free(ne);
         rt_trap("rt_defaultmap: memory allocation failed");
     }
     memcpy(ne->key, kstr, klen);
     ne->key[klen] = '\0';
     ne->key_len = klen;
-    if (value)
-        rt_obj_retain_maybe(value);
     ne->value = value;
     ne->next = m->buckets[idx];
     m->buckets[idx] = ne;

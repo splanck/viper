@@ -176,6 +176,8 @@ static rt_frozenset_impl *fs_alloc(int64_t count) {
         needed = count * 2;
     }
     int64_t cap = fs_next_pow2(needed);
+    if ((uint64_t)cap > SIZE_MAX / sizeof(fs_slot))
+        rt_trap("FrozenSet: allocation size overflow");
     rt_frozenset_impl *fs =
         (rt_frozenset_impl *)rt_obj_new_i64(RT_FROZENSET_CLASS_ID, sizeof(rt_frozenset_impl));
     if (!fs)
@@ -183,8 +185,6 @@ static rt_frozenset_impl *fs_alloc(int64_t count) {
     fs->vptr = NULL;
     fs->count = 0;
     fs->capacity = cap;
-    if ((uint64_t)cap > SIZE_MAX / sizeof(fs_slot))
-        rt_trap("FrozenSet: allocation size overflow");
     fs->slots = (fs_slot *)calloc((size_t)cap, sizeof(fs_slot));
     if (!fs->slots) {
         if (rt_obj_release_check0(fs))
@@ -207,8 +207,8 @@ static int8_t fs_insert(rt_frozenset_impl *fs, rt_string key) {
     for (int64_t i = 0; i < fs->capacity; i++) {
         int64_t slot = (idx + i) & mask;
         if (!fs->slots[slot].key) {
-            fs->slots[slot].key = key;
             rt_obj_retain_maybe(key);
+            fs->slots[slot].key = key;
             fs->count++;
             return 1;
         }

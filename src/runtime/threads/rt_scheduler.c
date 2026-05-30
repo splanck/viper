@@ -267,6 +267,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     rt_obj_retain_maybe(sched);
 
     int64_t due = due_time_from_now(delay_ms);
+    rt_string retained_name = rt_string_ref(name);
 
     SCHED_LOCK(data);
 
@@ -276,6 +277,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
         if (scheduler_name_equals(e->name, name)) {
             e->due_time_ms = due;
             SCHED_UNLOCK(data);
+            rt_string_unref(retained_name);
             scheduler_release_object(sched);
             return;
         }
@@ -286,11 +288,12 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     sched_entry *entry = (sched_entry *)malloc(sizeof(sched_entry));
     if (!entry) {
         SCHED_UNLOCK(data);
+        rt_string_unref(retained_name);
         scheduler_release_object(sched);
         rt_trap("Scheduler.Schedule: memory allocation failed");
         return;
     }
-    entry->name = rt_string_ref(name);
+    entry->name = retained_name;
     entry->due_time_ms = due;
     entry->next = data->head;
     data->head = entry;

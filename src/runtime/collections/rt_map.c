@@ -404,17 +404,27 @@ void rt_map_set(void *obj, rt_string key, void *value) {
         return;
     }
 
+    if (value)
+        rt_obj_retain_maybe(value);
+
     // Create new entry
     rt_map_entry *entry = (rt_map_entry *)malloc(sizeof(rt_map_entry));
-    if (!entry)
+    if (!entry) {
+        if (value && rt_obj_release_check0(value))
+            rt_obj_free(value);
         rt_trap("Map.Set: memory allocation failed");
+    }
 
     if (key_len == SIZE_MAX) {
+        if (value && rt_obj_release_check0(value))
+            rt_obj_free(value);
         free(entry);
         rt_trap("Map.Set: key allocation overflow");
     }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
+        if (value && rt_obj_release_check0(value))
+            rt_obj_free(value);
         free(entry);
         rt_trap("Map.Set: key allocation failed");
     }
@@ -422,7 +432,6 @@ void rt_map_set(void *obj, rt_string key, void *value) {
     entry->key[key_len] = '\0';
     entry->key_len = key_len;
 
-    rt_obj_retain_maybe(value);
     entry->value = value;
 
     // Insert at head of bucket chain
@@ -608,16 +617,26 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
     if (find_entry(map->buckets[idx], key_data, key_len))
         return 0;
 
+    if (value)
+        rt_obj_retain_maybe(value);
+
     rt_map_entry *entry = (rt_map_entry *)malloc(sizeof(rt_map_entry));
-    if (!entry)
+    if (!entry) {
+        if (value && rt_obj_release_check0(value))
+            rt_obj_free(value);
         rt_trap("Map.SetIfMissing: memory allocation failed");
+    }
 
     if (key_len == SIZE_MAX) {
+        if (value && rt_obj_release_check0(value))
+            rt_obj_free(value);
         free(entry);
         rt_trap("Map.SetIfMissing: key allocation overflow");
     }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
+        if (value && rt_obj_release_check0(value))
+            rt_obj_free(value);
         free(entry);
         rt_trap("Map.SetIfMissing: key allocation failed");
     }
@@ -626,7 +645,6 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
     entry->key[key_len] = '\0';
     entry->key_len = key_len;
 
-    rt_obj_retain_maybe(value);
     entry->value = value;
 
     entry->next = map->buckets[idx];

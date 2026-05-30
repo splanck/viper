@@ -42,6 +42,7 @@
 #endif
 
 #include <errno.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +63,10 @@
 #endif
 
 #include "rt_trap.h"
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 /* JSON stream parser (from rt_json_stream.h / text module) */
 extern void *rt_json_stream_new(rt_string json);
@@ -100,6 +105,39 @@ typedef struct {
     char *file_path;    ///< Absolute path to the save JSON file.
     SaveEntry *entries; ///< Head of the singly-linked entry list.
 } rt_savedata_impl;
+
+static void savedata_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void savedata_retain_pair_or_trap(rt_string key,
+                                         rt_string value,
+                                         rt_string *out_key,
+                                         rt_string *out_value) {
+    volatile int key_retained = 0;
+    volatile int value_retained = 0;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        savedata_save_trap_error(saved_error, sizeof(saved_error), "SaveData: string retain failed");
+        rt_trap_clear_recovery();
+        if (value_retained)
+            rt_string_unref(value);
+        if (key_retained)
+            rt_string_unref(key);
+        rt_trap(saved_error);
+        return;
+    }
+
+    *out_key = rt_string_ref(key);
+    key_retained = 1;
+    *out_value = rt_string_ref(value);
+    value_retained = 1;
+    rt_trap_clear_recovery();
+}
 
 static rt_savedata_impl *savedata_require(void *obj, const char *context) {
     if (!obj || rt_obj_class_id(obj) != RT_SAVEDATA_CLASS_ID)
@@ -818,11 +856,14 @@ static int savedata_set_int_entry(SaveEntry **head, rt_string key, int64_t value
         return 1;
     }
 
+    rt_string retained_key = rt_string_ref(key);
     e = (SaveEntry *)malloc(sizeof(SaveEntry));
-    if (!e)
+    if (!e) {
+        rt_string_unref(retained_key);
         return 0;
+    }
 
-    e->key = rt_string_ref(key);
+    e->key = retained_key;
     e->key_len = (int64_t)key_len;
     e->type = SAVE_INT;
     e->int_val = value;
@@ -851,23 +892,31 @@ static int savedata_set_string_entry(SaveEntry **head, rt_string key, rt_string 
 
     rt_string stored_value = value ? value : rt_str_empty();
     if (e) {
+        rt_string retained_value = rt_string_ref(stored_value);
         if (e->str_val)
             rt_string_unref(e->str_val);
         e->type = SAVE_STR;
-        e->str_val = rt_string_ref(stored_value);
+        e->str_val = retained_value;
         e->int_val = 0;
         return 1;
     }
 
-    e = (SaveEntry *)malloc(sizeof(SaveEntry));
-    if (!e)
-        return 0;
+    rt_string retained_key = NULL;
+    rt_string retained_value = NULL;
+    savedata_retain_pair_or_trap(key, stored_value, &retained_key, &retained_value);
 
-    e->key = rt_string_ref(key);
+    e = (SaveEntry *)malloc(sizeof(SaveEntry));
+    if (!e) {
+        rt_string_unref(retained_value);
+        rt_string_unref(retained_key);
+        return 0;
+    }
+
+    e->key = retained_key;
     e->key_len = (int64_t)key_len;
     e->type = SAVE_STR;
     e->int_val = 0;
-    e->str_val = rt_string_ref(stored_value);
+    e->str_val = retained_value;
     e->next = *head;
     *head = e;
     return 1;

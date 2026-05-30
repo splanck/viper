@@ -102,8 +102,9 @@ long long rt_sgn_i64(long long x);
 double rt_sgn_f64(double x);
 
 /// @brief Compute the absolute value of an integer.
-/// @details Implements BASIC's ABS for integer values. Note that the result
-///          is undefined for the most-negative two's-complement value.
+/// @details Implements BASIC's ABS for integer values. Traps for the
+///          most-negative two's-complement value because its magnitude cannot
+///          be represented as a signed 64-bit integer.
 /// @param x Input integer.
 /// @return |x|.
 long long rt_abs_i64(long long x);
@@ -116,14 +117,18 @@ long long rt_abs_i64(long long x);
 double rt_abs_f64(double x);
 
 /// @brief Return the minimum of two doubles.
-/// @details Implements BASIC's MIN for floating-point values.
+/// @details Implements BASIC's MIN for floating-point values. NaN inputs
+///          propagate, and signed zero is preserved so Min(-0.0, +0.0)
+///          returns -0.0.
 /// @param a First value.
 /// @param b Second value.
 /// @return The smaller of @p a and @p b.
 double rt_min_f64(double a, double b);
 
 /// @brief Return the maximum of two doubles.
-/// @details Implements BASIC's MAX for floating-point values.
+/// @details Implements BASIC's MAX for floating-point values. NaN inputs
+///          propagate, and signed zero is preserved so Max(-0.0, +0.0)
+///          returns +0.0.
 /// @param a First value.
 /// @param b Second value.
 /// @return The larger of @p a and @p b.
@@ -240,7 +245,9 @@ long long rt_clamp_i64(long long val, long long lo, long long hi);
 
 /// @brief Compute linear interpolation between two values.
 /// @details Returns a + t * (b - a). When t is 0.0 the result is a;
-///          when t is 1.0 the result is b.
+///          when t is 1.0 the result is b. The implementation preserves exact
+///          endpoints and avoids intermediate overflow for opposite-sign
+///          finite endpoints.
 /// @param a Start value.
 /// @param b End value.
 /// @param t Interpolation parameter (typically in [0, 1]).
@@ -258,7 +265,8 @@ double rt_wrap_f64(double val, double lo, double hi);
 
 /// @brief Wrap an integer value to the range [lo, hi).
 /// @details Computes val modulo the range width so the result lies
-///          within [lo, hi). Useful for cyclic integer quantities.
+///          within [lo, hi). The arithmetic is overflow-safe across the full
+///          signed 64-bit domain.
 /// @param val Value to wrap.
 /// @param lo  Lower bound (inclusive).
 /// @param hi  Upper bound (exclusive).

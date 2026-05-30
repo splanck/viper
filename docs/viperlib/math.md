@@ -219,9 +219,9 @@ Mathematical functions and constants.
 | Method                 | Signature                            | Description                       |
 |------------------------|--------------------------------------|-----------------------------------|
 | `FMod(x, y)`           | `Double(Double, Double)`             | Floating-point remainder of x/y   |
-| `Lerp(a, b, t)`        | `Double(Double, Double, Double)`     | Linear interpolation: a + t*(b-a) |
+| `Lerp(a, b, t)`        | `Double(Double, Double, Double)`     | Linear interpolation; exact at t=0/t=1 and overflow-safe for opposite-sign endpoints |
 | `Wrap(val, lo, hi)`    | `Double(Double, Double, Double)`     | Wrap value to range [lo, hi)      |
-| `WrapInt(val, lo, hi)` | `Integer(Integer, Integer, Integer)` | Wrap integer to range [lo, hi)    |
+| `WrapInt(val, lo, hi)` | `Integer(Integer, Integer, Integer)` | Wrap integer to range [lo, hi), including full i64 ranges |
 | `Hypot(x, y)`          | `Double(Double, Double)`             | Hypotenuse: sqrt(x² + y²)         |
 
 ### Angle Conversion

@@ -376,13 +376,11 @@ void rt_trie_set(void *obj, rt_string key, void *value) {
         node = node->children[c];
     }
 
-    if (!node->is_terminal)
-        trie->count++;
-
-    // Replace old value
     void *old = node->value;
     rt_obj_retain_maybe(value);
     node->value = value;
+    if (!node->is_terminal)
+        trie->count++;
     node->is_terminal = 1;
     if (old && rt_obj_release_check0(old))
         rt_obj_free(old);

@@ -520,8 +520,12 @@ static bool test_frame_loop_manual_frame_and_final_capture() {
 
     void *pixels = rt_game3d_world_capture_final_frame(world);
     EXPECT_TRUE(pixels != nullptr, "captureFinalFrame returns Pixels");
-    EXPECT_EQ_INT(rt_pixels_width(pixels), 64, "captured final frame width");
-    EXPECT_EQ_INT(rt_pixels_height(pixels), 48, "captured final frame height");
+    EXPECT_EQ_INT(rt_pixels_width(pixels),
+                  rt_canvas3d_get_window_width(canvas_state),
+                  "captured final frame width");
+    EXPECT_EQ_INT(rt_pixels_height(pixels),
+                  rt_canvas3d_get_window_height(canvas_state),
+                  "captured final frame height");
     rt_game3d_world_present(world);
     rt_game3d_world_destroy(world);
     PASS();
@@ -878,8 +882,12 @@ static bool test_phase3_world_presets_environment_and_debug() {
     rt_game3d_world_end_scene(world);
     void *final_pixels = rt_game3d_world_capture_final_frame(world);
     EXPECT_TRUE(final_pixels != nullptr, "debug overlay finalizes into captured Pixels");
-    EXPECT_EQ_INT(rt_pixels_width(final_pixels), 96, "debug final frame width");
-    EXPECT_EQ_INT(rt_pixels_height(final_pixels), 72, "debug final frame height");
+    EXPECT_EQ_INT(rt_pixels_width(final_pixels),
+                  rt_canvas3d_get_window_width(canvas),
+                  "debug final frame width");
+    EXPECT_EQ_INT(rt_pixels_height(final_pixels),
+                  rt_canvas3d_get_window_height(canvas),
+                  "debug final frame height");
 
     rt_game3d_world_destroy(world);
     PASS();

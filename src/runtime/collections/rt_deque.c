@@ -150,13 +150,13 @@ static void deque_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 void *rt_deque_with_capacity(int64_t cap) {
     if (cap < 1)
         cap = 1;
+    if ((uint64_t)cap > SIZE_MAX / sizeof(void *))
+        trap_with_message("Deque: allocation size overflow");
 
     Deque *d = (Deque *)rt_obj_new_i64(RT_DEQUE_CLASS_ID, (int64_t)sizeof(Deque));
     if (!d)
         trap_with_message("Deque: memory allocation failed");
 
-    if ((uint64_t)cap > SIZE_MAX / sizeof(void *))
-        trap_with_message("Deque: allocation size overflow");
     d->data = (void **)malloc((size_t)cap * sizeof(void *));
     if (!d->data) {
         if (rt_obj_release_check0(d))

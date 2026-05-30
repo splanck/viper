@@ -362,10 +362,10 @@ void *rt_stack_pop(void *obj) {
         rt_trap("Stack.Pop: stack is empty");
     }
 
-    stack->len--;
-    void *value = stack->items[stack->len];
-    stack->items[stack->len] = NULL;
+    void *value = stack->items[stack->len - 1];
     rt_obj_retain_maybe(value);
+    stack->len--;
+    stack->items[stack->len] = NULL;
     if (stack->owns_elements) {
         stack_release_value(value);
     }
@@ -481,10 +481,10 @@ void *rt_stack_try_pop(void *obj) {
     if (stack->len == 0)
         return NULL;
 
-    stack->len--;
-    void *value = stack->items[stack->len];
-    stack->items[stack->len] = NULL;
+    void *value = stack->items[stack->len - 1];
     rt_obj_retain_maybe(value);
+    stack->len--;
+    stack->items[stack->len] = NULL;
     if (stack->owns_elements) {
         stack_release_value(value);
     }

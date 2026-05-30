@@ -33,6 +33,8 @@
 #include "rt.hpp"
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
+#include <string.h>
 
 // Ensure functions are visible with C linkage when included in C++ builds
 #ifdef __cplusplus
@@ -186,6 +188,12 @@ double rt_abs_f64(double v) {
 /// @param b Second input value.
 /// @return The smaller of @p a and @p b.
 double rt_min_f64(double a, double b) {
+    if (isnan(a))
+        return a;
+    if (isnan(b))
+        return b;
+    if (a == b)
+        return signbit(a) ? a : b;
     return a < b ? a : b;
 }
 
@@ -195,6 +203,12 @@ double rt_min_f64(double a, double b) {
 /// @param b Second input value.
 /// @return The larger of @p a and @p b.
 double rt_max_f64(double a, double b) {
+    if (isnan(a))
+        return a;
+    if (isnan(b))
+        return b;
+    if (a == b)
+        return signbit(a) ? b : a;
     return a > b ? a : b;
 }
 
@@ -359,6 +373,18 @@ long long rt_clamp_i64(long long val, long long lo, long long hi) {
 /// @param t Interpolation factor (0 = a, 1 = b).
 /// @return Interpolated value.
 double rt_lerp(double a, double b, double t) {
+    if (isnan(a))
+        return a;
+    if (isnan(b))
+        return b;
+    if (isnan(t))
+        return t;
+    if (t == 0.0)
+        return a;
+    if (t == 1.0)
+        return b;
+    if ((a <= 0.0 && b >= 0.0) || (a >= 0.0 && b <= 0.0))
+        return (1.0 - t) * a + t * b;
     return a + t * (b - a);
 }
 
@@ -384,14 +410,23 @@ double rt_wrap_f64(double val, double lo, double hi) {
 /// @param hi Upper bound (exclusive).
 /// @return Wrapped value.
 long long rt_wrap_i64(long long val, long long lo, long long hi) {
-    long long range = hi - lo;
-    if (range <= 0)
+    if (hi <= lo)
         return lo;
 
-    long long result = (val - lo) % range;
-    if (result < 0)
-        result += range;
-    return result + lo;
+    uint64_t range = (uint64_t)hi - (uint64_t)lo;
+    uint64_t wrapped = 0;
+    if (val >= lo) {
+        wrapped = ((uint64_t)val - (uint64_t)lo) % range;
+    } else {
+        uint64_t distance = (uint64_t)lo - (uint64_t)val;
+        uint64_t rem = distance % range;
+        wrapped = rem == 0 ? 0 : range - rem;
+    }
+
+    uint64_t result_bits = (uint64_t)lo + wrapped;
+    long long result;
+    memcpy(&result, &result_bits, sizeof(result));
+    return result;
 }
 
 /// @brief Return the constant Pi.

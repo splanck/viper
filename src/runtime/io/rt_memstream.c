@@ -37,9 +37,15 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 /// @brief Initial buffer capacity for new streams.
 #define MEMSTREAM_INITIAL_CAPACITY 64
@@ -105,6 +111,39 @@ static int ensure_capacity(rt_memstream_impl *ms, int64_t required) {
     ms->data = new_data;
     ms->capacity = new_cap;
     return 1;
+}
+
+static void memstream_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void memstream_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void memstream_ensure_capacity_or_release(rt_memstream_impl *ms,
+                                                 int64_t required,
+                                                 const char *fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        memstream_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        memstream_release_object(ms);
+        rt_trap(saved_error);
+        return;
+    }
+
+    if (!ensure_capacity(ms, required)) {
+        rt_trap_clear_recovery();
+        memstream_release_object(ms);
+        rt_trap(fallback);
+        return;
+    }
+    rt_trap_clear_recovery();
 }
 
 /// @brief Ensure we can write 'count' bytes at current position.
@@ -179,11 +218,9 @@ void *rt_memstream_new_capacity(int64_t capacity) {
     ms->pos = 0;
     rt_obj_set_finalizer(ms, rt_memstream_finalize);
 
-    if (capacity > 0 && !ensure_capacity(ms, capacity)) {
-        if (rt_obj_release_check0(ms))
-            rt_obj_free(ms);
-        return NULL;
-    }
+    if (capacity > 0)
+        memstream_ensure_capacity_or_release(
+            ms, capacity, "MemStream.NewCapacity: memory allocation failed");
 
     return ms;
 }
@@ -213,11 +250,8 @@ void *rt_memstream_from_bytes(void *bytes) {
     rt_obj_set_finalizer(ms, rt_memstream_finalize);
 
     if (bytes_len > 0) {
-        if (!ensure_capacity(ms, bytes_len)) {
-            if (rt_obj_release_check0(ms))
-                rt_obj_free(ms);
-            return NULL;
-        }
+        memstream_ensure_capacity_or_release(
+            ms, bytes_len, "MemStream.FromBytes: memory allocation failed");
         memcpy(ms->data, bytes_data, (size_t)bytes_len);
         ms->len = bytes_len;
     }

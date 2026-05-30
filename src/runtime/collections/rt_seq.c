@@ -42,11 +42,17 @@
 #include "rt_seq_internal.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define SEQ_DEFAULT_CAP 16
 #define SEQ_GROWTH_FACTOR 2
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 /// @brief Checked cast of an opaque handle to the Seq implementation;
 ///        traps with @p what if @p obj is NULL or not a Seq.
@@ -147,6 +153,32 @@ static void seq_ensure_capacity(rt_seq_impl *seq, int64_t needed) {
 
     seq->items = new_items;
     seq->cap = new_cap;
+}
+
+static void seq_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void seq_ensure_capacity_or_release(rt_seq_impl *seq,
+                                           int64_t needed,
+                                           void *retained_value,
+                                           int retained,
+                                           const char *fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        seq_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        if (retained)
+            seq_release_element(retained_value);
+        rt_trap(saved_error);
+        return;
+    }
+
+    seq_ensure_capacity(seq, needed);
+    rt_trap_clear_recovery();
 }
 
 /// @brief Creates a new empty Seq (sequence) with default capacity.
@@ -547,9 +579,12 @@ void rt_seq_push(void *obj, void *val) {
 
     if (seq->len >= INT64_MAX)
         rt_trap("Seq: maximum length reached");
-    seq_ensure_capacity(seq, seq->len + 1);
-    if (seq->owns_elements && val)
+    int retained = 0;
+    if (seq->owns_elements && val) {
         rt_obj_retain_maybe(val);
+        retained = 1;
+    }
+    seq_ensure_capacity_or_release(seq, seq->len + 1, val, retained, "Seq.Push: capacity failed");
     seq->items[seq->len] = val;
     seq->len++;
 }
@@ -628,26 +663,26 @@ void rt_seq_push_all(void *obj, void *other) {
         int64_t original_len = seq->len;
         if (original_len > INT64_MAX - original_len)
             rt_trap("Seq.PushAll: length overflow");
-        seq_ensure_capacity(seq, original_len + original_len);
-        memcpy(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
         if (seq->owns_elements) {
             for (int64_t i = 0; i < original_len; i++)
-                if (seq->items[i])
-                    rt_obj_retain_maybe(seq->items[i]);
+                rt_seq_push(seq, seq->items[i]);
+            return;
         }
+        seq_ensure_capacity(seq, original_len + original_len);
+        memmove(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
         seq->len = original_len + original_len;
         return;
     }
 
     if (src->len > INT64_MAX - seq->len)
         rt_trap("Seq.PushAll: length overflow");
-    seq_ensure_capacity(seq, seq->len + src->len);
-    memcpy(&seq->items[seq->len], src->items, (size_t)src->len * sizeof(void *));
     if (seq->owns_elements) {
         for (int64_t i = 0; i < src->len; i++)
-            if (src->items[i])
-                rt_obj_retain_maybe(src->items[i]);
+            rt_seq_push(seq, src->items[i]);
+        return;
     }
+    seq_ensure_capacity(seq, seq->len + src->len);
+    memcpy(&seq->items[seq->len], src->items, (size_t)src->len * sizeof(void *));
     seq->len += src->len;
 }
 
@@ -697,10 +732,10 @@ void *rt_seq_pop(void *obj) {
         rt_trap("Seq.Pop: sequence is empty");
     }
 
-    seq->len--;
-    void *val = seq->items[seq->len];
-    seq->items[seq->len] = NULL; // Clear slot to prevent stale pointer access
+    void *val = seq->items[seq->len - 1];
     rt_obj_retain_maybe(val);
+    seq->len--;
+    seq->items[seq->len] = NULL; // Clear slot to prevent stale pointer access
     if (seq->owns_elements)
         seq_release_element(val);
     return val;
@@ -880,16 +915,21 @@ void rt_seq_insert(void *obj, int64_t idx, void *val) {
     if (idx < 0 || idx > seq->len) {
         rt_trap("Seq.Insert: index out of bounds");
     }
+    if (seq->len >= INT64_MAX)
+        rt_trap("Seq: maximum length reached");
 
-    seq_ensure_capacity(seq, seq->len + 1);
+    int retained = 0;
+    if (seq->owns_elements && val) {
+        rt_obj_retain_maybe(val);
+        retained = 1;
+    }
+    seq_ensure_capacity_or_release(seq, seq->len + 1, val, retained, "Seq.Insert: capacity failed");
 
     // Shift elements to the right
     if (idx < seq->len) {
         memmove(&seq->items[idx + 1], &seq->items[idx], (size_t)(seq->len - idx) * sizeof(void *));
     }
 
-    if (seq->owns_elements && val)
-        rt_obj_retain_maybe(val);
     seq->items[idx] = val;
     seq->len++;
 }

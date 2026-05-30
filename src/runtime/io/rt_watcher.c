@@ -239,10 +239,11 @@ static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_strin
     if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
         int64_t overflow_slot =
             (w->event_tail + WATCHER_EVENT_QUEUE_SIZE - 1) % WATCHER_EVENT_QUEUE_SIZE;
+        rt_string overflow_path = rt_string_ref((rt_string)w->watch_path);
         if (w->events[overflow_slot].path)
             rt_string_unref(w->events[overflow_slot].path);
         w->events[overflow_slot].type = RT_WATCH_EVENT_OVERFLOW;
-        w->events[overflow_slot].path = rt_string_ref((rt_string)w->watch_path);
+        w->events[overflow_slot].path = overflow_path;
         if (path)
             rt_string_unref(path);
         return;

@@ -264,11 +264,15 @@ void rt_list_push(void *list, void *elem) {
         return;
     rt_list_impl *L = as_list(list);
     size_t len = rt_arr_obj_len(L->arr);
+
+    rt_obj_retain_maybe(elem);
     void **arr2 = rt_arr_obj_resize(L->arr, len + 1);
-    if (!arr2)
+    if (!arr2) {
+        release_temp_obj(elem);
         rt_trap("List.Push: memory allocation failed");
+    }
     L->arr = arr2;
-    rt_arr_obj_put(L->arr, len, elem);
+    L->arr[len] = elem;
 }
 
 /// @brief Returns the element at the specified index.
@@ -404,24 +408,22 @@ void rt_list_remove_at(void *list, int64_t index) {
     size_t len = rt_arr_obj_len(L->arr);
     if ((uint64_t)index >= (uint64_t)len)
         rt_trap("rt_list_remove_at: index out of bounds");
-    // Shift elements left from index
-    if (len > 0) {
-        // Shift elements left. Direct array read (L->arr[i+1]) is intentional:
-        // rt_arr_obj_put handles retain/release for the destination slot, while
-        // the source is just a raw read (no extra retain needed for shifting).
-        for (size_t i = (size_t)index; i + 1 < len; ++i) {
-            void *next = L->arr[i + 1];
-            rt_arr_obj_put(L->arr, i, next);
-        }
-        // Clear last slot
-        rt_arr_obj_put(L->arr, len - 1, NULL);
-        // Shrink storage. Resize-to-zero releases the backing array and
-        // returns NULL, which is the empty-list state.
-        void **shrunk = rt_arr_obj_resize(L->arr, len - 1);
-        if (len - 1 > 0 && !shrunk)
-            rt_trap("List.RemoveAt: memory allocation failed");
-        L->arr = shrunk;
+    if (len == 0)
+        return;
+
+    void *removed = L->arr[index];
+    if ((size_t)index + 1 < len) {
+        memmove(&L->arr[index], &L->arr[(size_t)index + 1], (len - (size_t)index - 1) * sizeof(void *));
     }
+    L->arr[len - 1] = NULL;
+    release_temp_obj(removed);
+
+    // Shrink storage. Resize-to-zero releases the backing array and returns
+    // NULL, which is the empty-list state.
+    void **shrunk = rt_arr_obj_resize(L->arr, len - 1);
+    if (len - 1 > 0 && !shrunk)
+        rt_trap("List.RemoveAt: memory allocation failed");
+    L->arr = shrunk;
 }
 
 /// @brief Finds the first occurrence of an element in the List.
@@ -548,18 +550,20 @@ void rt_list_insert(void *list, int64_t index, void *elem) {
     if ((uint64_t)index > (uint64_t)len)
         rt_trap("List.Insert: index out of bounds");
 
+    rt_obj_retain_maybe(elem);
     void **arr2 = rt_arr_obj_resize(L->arr, len + 1);
-    if (!arr2)
+    if (!arr2) {
+        release_temp_obj(elem);
         rt_trap("List.Insert: memory allocation failed");
+    }
     L->arr = arr2;
 
-    // Shift elements right from the end to index.
-    for (size_t i = len; i > (size_t)index; --i) {
-        void *prev = L->arr[i - 1];
-        rt_arr_obj_put(L->arr, i, prev);
+    if ((size_t)index < len) {
+        memmove(&L->arr[(size_t)index + 1],
+                &L->arr[(size_t)index],
+                (len - (size_t)index) * sizeof(void *));
     }
-
-    rt_arr_obj_put(L->arr, (size_t)index, elem);
+    L->arr[(size_t)index] = elem;
 }
 
 /// @brief Removes the first occurrence of an element from the List.

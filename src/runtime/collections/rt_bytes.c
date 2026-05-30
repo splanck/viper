@@ -305,14 +305,18 @@ void *rt_bytes_from_hex(rt_string hex) {
         rt_bytes_trap_domain("Bytes.FromHex: hex string length must be even");
 
     int64_t len = hex_len_i64 / 2;
-    rt_bytes_impl *bytes = rt_bytes_alloc(len);
     for (int64_t i = 0; i < len; i++) {
         int hi = rt_hex_digit_value(hex_str[i * 2]);
         int lo = rt_hex_digit_value(hex_str[i * 2 + 1]);
 
         if (hi < 0 || lo < 0)
             rt_bytes_trap_domain("Bytes.FromHex: invalid hex character");
+    }
 
+    rt_bytes_impl *bytes = rt_bytes_alloc(len);
+    for (int64_t i = 0; i < len; i++) {
+        int hi = rt_hex_digit_value(hex_str[i * 2]);
+        int lo = rt_hex_digit_value(hex_str[i * 2 + 1]);
         bytes->data[i] = (uint8_t)((hi << 4) | lo);
     }
 
@@ -760,6 +764,37 @@ void *rt_bytes_from_base64(rt_string b64) {
 
     if (out_len > (size_t)INT64_MAX)
         rt_bytes_trap_overflow("Bytes.FromBase64: decoded data too large");
+
+    for (size_t i = 0; i < b64_len; i += 4) {
+        int v0 = b64_digit_value(b64_str[i]);
+        int v1 = b64_digit_value(b64_str[i + 1]);
+        int v2 = b64_digit_value(b64_str[i + 2]);
+        int v3 = b64_digit_value(b64_str[i + 3]);
+
+        if (v0 < 0 || v1 < 0) {
+            if (v0 == -2 || v1 == -2)
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
+            rt_bytes_trap_domain("Bytes.FromBase64: invalid base64 character");
+        }
+
+        if (v2 == -1 || v3 == -1)
+            rt_bytes_trap_domain("Bytes.FromBase64: invalid base64 character");
+
+        if (v2 == -2) {
+            if (v3 != -2 || i + 4 != b64_len)
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
+            if ((v1 & 0x0F) != 0)
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
+            continue;
+        }
+
+        if (v3 == -2) {
+            if (i + 4 != b64_len)
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
+            if ((v2 & 0x03) != 0)
+                rt_bytes_trap_domain("Bytes.FromBase64: invalid padding");
+        }
+    }
 
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)out_len);
 

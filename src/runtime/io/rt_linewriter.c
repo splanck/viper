@@ -127,12 +127,19 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
         return NULL;
     }
 
+    rt_string newline = rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
+    if (!newline) {
+        rt_trap("LineWriter: memory allocation failed");
+        return NULL;
+    }
+
     FILE *fp = rt_file_stdio_open_utf8(path_str, mode);
     if (!fp) {
         // IO-H-7: include filename and OS error for actionable diagnostics
         char msg[512];
         snprintf(
             msg, sizeof(msg), "LineWriter: failed to open '%s': %s", path_str, strerror(errno));
+        rt_string_unref(newline);
         rt_trap(msg);
         return NULL;
     }
@@ -141,20 +148,14 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
         RT_LINEWRITER_CLASS_ID, (int64_t)sizeof(rt_linewriter_impl));
     if (!lw) {
         fclose(fp);
+        rt_string_unref(newline);
         rt_trap("LineWriter: memory allocation failed");
         return NULL;
     }
 
     lw->fp = fp;
     lw->closed = 0;
-    lw->newline = rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
-    if (!lw->newline) {
-        fclose(fp);
-        if (rt_obj_release_check0(lw))
-            rt_obj_free(lw);
-        rt_trap("LineWriter: memory allocation failed");
-        return NULL;
-    }
+    lw->newline = newline;
     rt_obj_set_finalizer(lw, rt_linewriter_finalize);
 
     return lw;

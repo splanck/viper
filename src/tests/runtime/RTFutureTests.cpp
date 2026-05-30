@@ -461,6 +461,29 @@ static void release_runtime_object(void *obj) {
         rt_obj_free(obj);
 }
 
+static int g_rejected_transferred_finalizer_count = 0;
+
+static void rejected_transferred_finalizer(void *obj) {
+    (void)obj;
+    ++g_rejected_transferred_finalizer_count;
+}
+
+static void test_transferred_value_released_when_promise_already_done() {
+    g_rejected_transferred_finalizer_count = 0;
+    void *promise = rt_promise_new();
+    rt_promise_set(promise, nullptr);
+
+    void *rejected = rt_obj_new_i64(0x7F001234, 1);
+    rt_obj_set_finalizer(rejected, rejected_transferred_finalizer);
+
+    test_result(expect_trap([&]() { rt_promise_set_transferred(promise, rejected); }),
+                "transferred_rejected: completed promise should trap");
+    test_result(g_rejected_transferred_finalizer_count == 1,
+                "transferred_rejected: rejected transferred value should be released");
+
+    release_runtime_object(promise);
+}
+
 static void test_promise_set_retain_overflow_does_not_lock_promise() {
     void *promise = rt_promise_new();
     void *value = rt_seq_new();
@@ -745,6 +768,7 @@ int main() {
     test_owned_get_for_val_survives_future_release();
     test_transferred_value_survives_future_release();
     test_set_value_survives_producer_release();
+    test_transferred_value_released_when_promise_already_done();
     test_promise_set_retain_overflow_does_not_lock_promise();
     test_promise_set_owned_retain_overflow_does_not_lock_promise();
     test_get_future_cached_retain_overflow_does_not_lock_promise();

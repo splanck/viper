@@ -132,10 +132,10 @@ static void sa_insert_internal(rt_sparse_impl *sa, int64_t key, void *value) {
     for (int64_t i = 0; i < sa->capacity; i++) {
         int64_t slot = (idx + i) & mask;
         if (!sa->slots[slot].occupied) {
+            rt_obj_retain_maybe(value);
             sa->slots[slot].key = key;
             sa->slots[slot].value = value;
             sa->slots[slot].occupied = 1;
-            rt_obj_retain_maybe(value);
             sa->count++;
             return;
         }

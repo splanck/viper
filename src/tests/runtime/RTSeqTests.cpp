@@ -236,6 +236,79 @@ static void test_pop() {
     assert(rt_seq_is_empty(seq) == 1);
 }
 
+static void test_owned_pop_retain_overflow_keeps_sequence_unchanged() {
+    void *seq = rt_seq_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_seq_set_owns_elements(seq, 1);
+    rt_seq_push(seq, value);
+    release_obj(value); // Seq now owns the only reference.
+
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    EXPECT_TRAP(rt_seq_pop(seq));
+    assert(rt_seq_len(seq) == 1);
+    assert(rt_seq_peek(seq) == value);
+
+    hdr->refcnt = 1;
+    rt_seq_clear(seq);
+    assert(g_finalizer_calls == 1);
+    release_obj(seq);
+}
+
+static void test_owned_push_retain_overflow_keeps_capacity_and_length() {
+    void *seq = rt_seq_with_capacity(1);
+    rt_seq_set_owns_elements(seq, 1);
+
+    int64_t cap_before = rt_seq_cap(seq);
+    for (int64_t i = 0; i < cap_before; ++i) {
+        void *filler = new_obj();
+        rt_seq_push(seq, filler);
+        release_obj(filler);
+    }
+
+    void *value = new_obj();
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    EXPECT_TRAP(rt_seq_push(seq, value));
+    assert(rt_seq_len(seq) == cap_before);
+    assert(rt_seq_cap(seq) == cap_before);
+
+    hdr->refcnt = 1;
+    release_obj(value);
+    rt_seq_clear(seq);
+    release_obj(seq);
+}
+
+static void test_owned_insert_retain_overflow_keeps_capacity_and_order() {
+    void *seq = rt_seq_with_capacity(1);
+    rt_seq_set_owns_elements(seq, 1);
+
+    void *existing = new_obj();
+    rt_seq_push(seq, existing);
+    release_obj(existing);
+    int64_t cap_before = rt_seq_cap(seq);
+
+    void *value = new_obj();
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    EXPECT_TRAP(rt_seq_insert(seq, 0, value));
+    assert(rt_seq_len(seq) == 1);
+    assert(rt_seq_cap(seq) == cap_before);
+    assert(rt_seq_get(seq, 0) == existing);
+
+    hdr->refcnt = 1;
+    release_obj(value);
+    rt_seq_clear(seq);
+    release_obj(seq);
+}
+
 static void test_peek() {
     void *seq = rt_seq_new();
 
@@ -981,6 +1054,9 @@ int main() {
     test_owned_seq_slices_and_filters_retain_elements();
     test_set();
     test_pop();
+    test_owned_pop_retain_overflow_keeps_sequence_unchanged();
+    test_owned_push_retain_overflow_keeps_capacity_and_length();
+    test_owned_insert_retain_overflow_keeps_capacity_and_order();
     test_peek();
     test_first_and_last();
     test_insert();

@@ -231,13 +231,18 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
         return;
     }
 
+    if (value)
+        rt_obj_retain_maybe(value);
+
     // Create new entry
     rt_intmap_entry *entry = (rt_intmap_entry *)malloc(sizeof(rt_intmap_entry));
-    if (!entry)
+    if (!entry) {
+        if (value && rt_obj_release_check0(value))
+            rt_obj_free(value);
         rt_trap("IntMap: memory allocation failed");
+    }
 
     entry->key = key;
-    rt_obj_retain_maybe(value);
     entry->value = value;
 
     // Insert at head of bucket chain

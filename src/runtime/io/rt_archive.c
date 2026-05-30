@@ -54,6 +54,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -69,6 +70,10 @@
 #include <unistd.h>
 #define PATH_SEP '/'
 #endif
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
 
 //=============================================================================
 // ZIP Constants
@@ -115,6 +120,11 @@ static inline int64_t bytes_len(void *obj) {
 static void archive_release_temp_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void archive_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
 /// @brief Extract a UTF-8 C path from an `rt_string`, trapping on failure.
@@ -199,6 +209,65 @@ static void archive_read_exact_win(HANDLE h, uint8_t *dst, size_t total, const c
     }
 }
 
+static void archive_read_exact_win_or_free(HANDLE h,
+                                           uint8_t *dst,
+                                           size_t total,
+                                           const char *trap_msg) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), trap_msg);
+        rt_trap_clear_recovery();
+        CloseHandle(h);
+        free(dst);
+        rt_trap(saved_error);
+        return;
+    }
+
+    archive_read_exact_win(h, dst, total, trap_msg);
+    rt_trap_clear_recovery();
+    CloseHandle(h);
+}
+
+static void archive_read_exact_win_or_release_object(HANDLE h,
+                                                     void *bytes,
+                                                     size_t total,
+                                                     const char *trap_msg) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), trap_msg);
+        rt_trap_clear_recovery();
+        CloseHandle(h);
+        archive_release_temp_object(bytes);
+        rt_trap(saved_error);
+        return;
+    }
+
+    archive_read_exact_win(h, bytes_data(bytes), total, trap_msg);
+    rt_trap_clear_recovery();
+    CloseHandle(h);
+}
+
+static void *archive_bytes_new_win_or_close(HANDLE h, int64_t len, const char *fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        CloseHandle(h);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    void *data = rt_bytes_new(len);
+    rt_trap_clear_recovery();
+    return data;
+}
+
 /// @brief Write exactly `total` bytes to a Windows handle or trap.
 ///
 /// Mirror of `archive_read_exact_win` for the write path. Loops over
@@ -252,6 +321,65 @@ static void archive_read_exact_posix(int fd, uint8_t *dst, size_t total, const c
             rt_trap(trap_msg);
         read_total += (size_t)n;
     }
+}
+
+static void archive_read_exact_posix_or_free(int fd,
+                                             uint8_t *dst,
+                                             size_t total,
+                                             const char *trap_msg) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), trap_msg);
+        rt_trap_clear_recovery();
+        close(fd);
+        free(dst);
+        rt_trap(saved_error);
+        return;
+    }
+
+    archive_read_exact_posix(fd, dst, total, trap_msg);
+    rt_trap_clear_recovery();
+    close(fd);
+}
+
+static void archive_read_exact_posix_or_release_object(int fd,
+                                                       void *bytes,
+                                                       size_t total,
+                                                       const char *trap_msg) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), trap_msg);
+        rt_trap_clear_recovery();
+        close(fd);
+        archive_release_temp_object(bytes);
+        rt_trap(saved_error);
+        return;
+    }
+
+    archive_read_exact_posix(fd, bytes_data(bytes), total, trap_msg);
+    rt_trap_clear_recovery();
+    close(fd);
+}
+
+static void *archive_bytes_new_posix_or_close(int fd, int64_t len, const char *fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        close(fd);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    void *data = rt_bytes_new(len);
+    rt_trap_clear_recovery();
+    return data;
 }
 
 /// @brief Write exactly `total` bytes to a POSIX fd or trap.
@@ -974,6 +1102,39 @@ static rt_archive_t *archive_alloc(void) {
     return ar;
 }
 
+static rt_archive_t *archive_alloc_or_free_data(uint8_t *data, const char *fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        free(data);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    rt_archive_t *ar = archive_alloc();
+    rt_trap_clear_recovery();
+    return ar;
+}
+
+static void archive_retain_path_or_release(rt_archive_t *ar, rt_string path, const char *fallback) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        archive_release_temp_object(ar);
+        rt_trap(saved_error);
+        return;
+    }
+
+    ar->path = rt_string_ref(path);
+    rt_trap_clear_recovery();
+}
+
 /// @brief Free both read-side and write-side entry arrays.
 ///
 /// Walks each entry releasing its `name` allocation, then frees the
@@ -1650,8 +1811,7 @@ void *rt_archive_open(rt_string path) {
         CloseHandle(h);
         rt_trap("Archive: memory allocation failed");
     }
-    archive_read_exact_win(h, data, data_len, "Archive: failed to read file");
-    CloseHandle(h);
+    archive_read_exact_win_or_free(h, data, data_len, "Archive: failed to read file");
 #else
     int fd = archive_open_posix(cpath, O_RDONLY, 0);
     if (fd < 0) {
@@ -1680,16 +1840,15 @@ void *rt_archive_open(rt_string path) {
         close(fd);
         rt_trap("Archive: memory allocation failed");
     }
-    archive_read_exact_posix(fd, data, data_len, "Archive: failed to read file");
-    close(fd);
+    archive_read_exact_posix_or_free(fd, data, data_len, "Archive: failed to read file");
 #endif
 
-    rt_archive_t *ar = archive_alloc();
-    ar->path = rt_string_ref(path);
+    rt_archive_t *ar = archive_alloc_or_free_data(data, "Archive: memory allocation failed");
     ar->data = data;
     ar->data_len = data_len;
     ar->owns_data = true;
     ar->is_writing = false;
+    archive_retain_path_or_release(ar, path, "Archive: path retain failed");
 
     if (!parse_central_directory(ar)) {
         archive_release_temp_object(ar);
@@ -1767,7 +1926,7 @@ void *rt_archive_create(rt_string path) {
 #endif
 
     rt_archive_t *ar = archive_alloc();
-    ar->path = rt_string_ref(path);
+    archive_retain_path_or_release(ar, path, "Archive: path retain failed");
     ar->is_writing = true;
     ar->write_cap = 4096;
     ar->write_buf = (uint8_t *)malloc(ar->write_cap);
@@ -1809,7 +1968,7 @@ void *rt_archive_from_bytes(void *data) {
     if (len > 0)
         memcpy(copy, src, (size_t)len);
 
-    rt_archive_t *ar = archive_alloc();
+    rt_archive_t *ar = archive_alloc_or_free_data(copy, "Archive: memory allocation failed");
     ar->path = NULL;
     ar->data = copy;
     ar->data_len = (size_t)len;
@@ -2386,10 +2545,10 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
         rt_trap("Archive: source file too large");
     }
 
-    void *data = rt_bytes_new((int64_t)size.QuadPart);
-    archive_read_exact_win(
-        h, bytes_data(data), (size_t)size.QuadPart, "Archive: failed to read source file");
-    CloseHandle(h);
+    void *data = archive_bytes_new_win_or_close(
+        h, (int64_t)size.QuadPart, "Archive: memory allocation failed");
+    archive_read_exact_win_or_release_object(
+        h, data, (size_t)size.QuadPart, "Archive: failed to read source file");
 #else
     int fd = archive_open_posix(cpath, O_RDONLY, 0);
     if (fd < 0)
@@ -2411,10 +2570,10 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
         rt_trap("Archive: source file too large");
     }
 
-    void *data = rt_bytes_new((int64_t)st.st_size);
-    archive_read_exact_posix(
-        fd, bytes_data(data), (size_t)st.st_size, "Archive: failed to read source file");
-    close(fd);
+    void *data =
+        archive_bytes_new_posix_or_close(fd, (int64_t)st.st_size, "Archive: memory allocation failed");
+    archive_read_exact_posix_or_release_object(
+        fd, data, (size_t)st.st_size, "Archive: failed to read source file");
 #endif
 
     rt_archive_add(obj, name, data);
