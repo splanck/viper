@@ -1154,6 +1154,7 @@ typedef struct {
     ID3D11BlendState *blend_state_opaque;
     ID3D11BlendState *blend_state_alpha;
     ID3D11BlendState *blend_state_additive;
+    ID3D11BlendState *blend_state_premultiplied_alpha;
     ID3D11DepthStencilState *depth_state;
     ID3D11DepthStencilState *depth_state_no_write;
     ID3D11DepthStencilState *depth_state_disabled;
@@ -1226,6 +1227,9 @@ typedef struct {
     ID3D11Texture2D *postfx_color_tex;
     ID3D11RenderTargetView *postfx_color_rtv;
     ID3D11ShaderResourceView *postfx_color_srv;
+    ID3D11Texture2D *postfx_scratch_tex;
+    ID3D11RenderTargetView *postfx_scratch_rtv;
+    ID3D11ShaderResourceView *postfx_scratch_srv;
     ID3D11Texture2D *presented_color_tex;
     int32_t scene_width;
     int32_t scene_height;
@@ -1233,6 +1237,8 @@ typedef struct {
     int32_t overlay_height;
     int32_t postfx_width;
     int32_t postfx_height;
+    int32_t postfx_scratch_width;
+    int32_t postfx_scratch_height;
     int32_t presented_width;
     int32_t presented_height;
 
@@ -1326,6 +1332,11 @@ static void d3d11_present_swapchain(d3d11_context_t *ctx);
 static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx);
 static void d3d11_bind_render_targets(d3d11_context_t *ctx);
 static void d3d11_unbind_draw_resources(d3d11_context_t *ctx);
+static void d3d11_release_swapchain_main_targets(d3d11_context_t *ctx);
+static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
+                                                     int32_t width,
+                                                     int32_t height,
+                                                     const char *log_context);
 
 /// @brief Multiply two row-major 4×4 matrices: `out = a * b`.
 ///
@@ -1685,10 +1696,14 @@ static HRESULT d3d11_update_constant_buffer(d3d11_context_t *ctx,
                                             ID3D11Buffer *buffer,
                                             const void *data,
                                             size_t size) {
+    D3D11_BUFFER_DESC desc;
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr;
 
-    if (!ctx || !buffer || !data || size == 0)
+    if (!ctx || !ctx->ctx || !buffer || !data || size == 0)
+        return E_INVALIDARG;
+    ID3D11Buffer_GetDesc(buffer, &desc);
+    if (size > desc.ByteWidth)
         return E_INVALIDARG;
     hr = ID3D11DeviceContext_Map(
         ctx->ctx, (ID3D11Resource *)buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
@@ -1706,9 +1721,10 @@ static HRESULT d3d11_update_constant_buffer(d3d11_context_t *ctx,
 /// @brief Geometric-growth pattern for dynamic VB/IB resize.
 ///
 /// If the current buffer can hold `needed` bytes, no-op. Otherwise
-/// release the old buffer and create a new dynamic buffer at the
+/// create a new dynamic buffer at the
 /// next power-of-two ≥ needed. Caller passes `initial_size` for the
-/// first allocation. Traps via `E_OUTOFMEMORY` on size overflow.
+/// first allocation. The old buffer is kept alive until replacement
+/// succeeds. Traps via `E_OUTOFMEMORY` on size overflow.
 static HRESULT d3d11_ensure_dynamic_buffer(d3d11_context_t *ctx,
                                            ID3D11Buffer **buffer,
                                            size_t *capacity,
@@ -1717,6 +1733,7 @@ static HRESULT d3d11_ensure_dynamic_buffer(d3d11_context_t *ctx,
                                            size_t initial_size) {
     D3D11_BUFFER_DESC desc;
     size_t new_capacity;
+    ID3D11Buffer *new_buffer = NULL;
     HRESULT hr;
 
     if (!ctx || !buffer || !capacity)
@@ -1737,16 +1754,17 @@ static HRESULT d3d11_ensure_dynamic_buffer(d3d11_context_t *ctx,
     if (new_capacity > UINT_MAX)
         return E_OUTOFMEMORY;
 
-    SAFE_RELEASE(*buffer);
-    *capacity = 0;
     memset(&desc, 0, sizeof(desc));
     desc.Usage = D3D11_USAGE_DYNAMIC;
     desc.ByteWidth = (UINT)new_capacity;
     desc.BindFlags = bind_flags;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, buffer);
-    if (SUCCEEDED(hr))
+    hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, &new_buffer);
+    if (SUCCEEDED(hr)) {
+        SAFE_RELEASE(*buffer);
+        *buffer = new_buffer;
         *capacity = new_capacity;
+    }
     return hr;
 }
 
@@ -1964,9 +1982,9 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
 
 /// @brief Resize a Buffer + SRV pair to hold `element_count` floats.
 ///
-/// Releases the old buffer/SRV and creates new ones at `element_count`
-/// elements. Used for the morph-delta SRV buffers (one for positions,
-/// one for normals).
+/// Creates a replacement buffer/SRV at `element_count` elements and swaps it
+/// in only after both objects exist. Used for the morph-delta SRV buffers
+/// (one for positions, one for normals).
 static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
                                              ID3D11Buffer **buffer,
                                              ID3D11ShaderResourceView **srv,
@@ -1974,6 +1992,8 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
                                              size_t element_count) {
     D3D11_BUFFER_DESC desc;
     D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
+    ID3D11Buffer *new_buffer = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
     size_t bytes;
     HRESULT hr;
 
@@ -1991,16 +2011,11 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     if (element_count > UINT_MAX)
         return E_OUTOFMEMORY;
 
-    d3d11_unbind_draw_resources(ctx);
-    SAFE_RELEASE(*srv);
-    SAFE_RELEASE(*buffer);
-    *capacity = 0;
-
     memset(&desc, 0, sizeof(desc));
     desc.ByteWidth = (UINT)bytes;
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, buffer);
+    hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, &new_buffer);
     if (FAILED(hr))
         return hr;
 
@@ -2010,13 +2025,16 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     srv_desc.Buffer.FirstElement = 0;
     srv_desc.Buffer.NumElements = (UINT)element_count;
     hr = ID3D11Device_CreateShaderResourceView(
-        ctx->device, (ID3D11Resource *)*buffer, &srv_desc, srv);
+        ctx->device, (ID3D11Resource *)new_buffer, &srv_desc, &new_srv);
     if (FAILED(hr)) {
-        SAFE_RELEASE(*buffer);
-        SAFE_RELEASE(*srv);
-        *capacity = 0;
+        SAFE_RELEASE(new_buffer);
         return hr;
     }
+    d3d11_unbind_draw_resources(ctx);
+    SAFE_RELEASE(*srv);
+    SAFE_RELEASE(*buffer);
+    *buffer = new_buffer;
+    *srv = new_srv;
     *capacity = element_count;
     return S_OK;
 }
@@ -2761,6 +2779,7 @@ static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx) {
 
     if (!ctx || !ctx->swap_chain || !ctx->ctx)
         return 0;
+    ctx->presented_color_valid = 0;
     hr = d3d11_ensure_presented_snapshot_texture(ctx, ctx->width, ctx->height);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D(presentedSnapshot)", hr);
@@ -2777,6 +2796,7 @@ static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx) {
                                      (ID3D11Resource *)ctx->presented_color_tex,
                                      (ID3D11Resource *)back_buffer);
     SAFE_RELEASE(back_buffer);
+    d3d11_restore_current_target_bindings(ctx);
     ctx->presented_color_valid = 1;
     return 1;
 }
@@ -2796,6 +2816,9 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
         ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
         d3d11_clear_current_target_bindings(ctx);
     }
+    SAFE_RELEASE(ctx->postfx_scratch_srv);
+    SAFE_RELEASE(ctx->postfx_scratch_rtv);
+    SAFE_RELEASE(ctx->postfx_scratch_tex);
     SAFE_RELEASE(ctx->postfx_color_srv);
     SAFE_RELEASE(ctx->postfx_color_rtv);
     SAFE_RELEASE(ctx->postfx_color_tex);
@@ -2818,6 +2841,8 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     ctx->overlay_height = 0;
     ctx->postfx_width = 0;
     ctx->postfx_height = 0;
+    ctx->postfx_scratch_width = 0;
+    ctx->postfx_scratch_height = 0;
     ctx->presented_width = 0;
     ctx->presented_height = 0;
     ctx->presented_color_valid = 0;
@@ -2955,6 +2980,43 @@ static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, i
     }
     ctx->postfx_width = width;
     ctx->postfx_height = height;
+    return S_OK;
+}
+
+/// @brief Ensure the secondary post-FX scratch target used for non-destructive ping-pong.
+static HRESULT d3d11_ensure_postfx_scratch_target(d3d11_context_t *ctx,
+                                                  int32_t width,
+                                                  int32_t height) {
+    HRESULT hr;
+
+    if (!ctx || width <= 0 || height <= 0)
+        return E_INVALIDARG;
+    if (ctx->postfx_scratch_tex && ctx->postfx_scratch_rtv && ctx->postfx_scratch_srv &&
+        ctx->postfx_scratch_width == width && ctx->postfx_scratch_height == height)
+        return S_OK;
+
+    d3d11_unbind_postfx_resources(ctx);
+    d3d11_unbind_output_targets(ctx);
+    SAFE_RELEASE(ctx->postfx_scratch_srv);
+    SAFE_RELEASE(ctx->postfx_scratch_rtv);
+    SAFE_RELEASE(ctx->postfx_scratch_tex);
+    ctx->postfx_scratch_width = 0;
+    ctx->postfx_scratch_height = 0;
+    hr = d3d11_create_color_target(ctx,
+                                   width,
+                                   height,
+                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
+                                   &ctx->postfx_scratch_tex,
+                                   &ctx->postfx_scratch_rtv,
+                                   &ctx->postfx_scratch_srv);
+    if (FAILED(hr)) {
+        SAFE_RELEASE(ctx->postfx_scratch_srv);
+        SAFE_RELEASE(ctx->postfx_scratch_rtv);
+        SAFE_RELEASE(ctx->postfx_scratch_tex);
+        return hr;
+    }
+    ctx->postfx_scratch_width = width;
+    ctx->postfx_scratch_height = height;
     return S_OK;
 }
 
@@ -3731,7 +3793,7 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
 
         for (int32_t i = 0; i < D3D11_MORPH_CACHE_CAPACITY; i++) {
             d3d11_morph_cache_entry_t *entry = &ctx->morph_cache[i];
-            if (entry->key == cmd->morph_key && entry->generation == cmd->morph_revision) {
+            if (entry->key == cmd->morph_key) {
                 slot = entry;
                 break;
             }
@@ -4467,6 +4529,24 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
         d3d11_log_hresult("CreateBlendState(additive)", hr);
         goto fail;
     }
+    memset(&blend_desc, 0, sizeof(blend_desc));
+    blend_desc.IndependentBlendEnable = TRUE;
+    blend_desc.RenderTarget[0].BlendEnable = TRUE;
+    blend_desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+    blend_desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    blend_desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    blend_desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    blend_desc.RenderTarget[1].BlendEnable = FALSE;
+    blend_desc.RenderTarget[1].RenderTargetWriteMask = 0;
+    hr = ID3D11Device_CreateBlendState(
+        ctx->device, &blend_desc, &ctx->blend_state_premultiplied_alpha);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateBlendState(premultiplied alpha)", hr);
+        goto fail;
+    }
 
     hr = d3d11_create_rasterizer_state(ctx, D3D11_FILL_SOLID, D3D11_CULL_BACK, &ctx->rs_solid_cull);
     if (FAILED(hr)) {
@@ -4947,6 +5027,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->depth_state_disabled);
     SAFE_RELEASE(ctx->depth_state_no_write);
     SAFE_RELEASE(ctx->depth_state);
+    SAFE_RELEASE(ctx->blend_state_premultiplied_alpha);
     SAFE_RELEASE(ctx->blend_state_additive);
     SAFE_RELEASE(ctx->blend_state_alpha);
     SAFE_RELEASE(ctx->blend_state_opaque);
@@ -5013,6 +5094,17 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         ctx->rtt_active, ctx->gpu_postfx_enabled, cam->load_existing_color);
     if (!ctx->rtt_active && cam->load_existing_color && ctx->scene_composited_to_swapchain)
         ctx->active_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
+
+    if ((!ctx->rtv || !ctx->depth_tex || !ctx->dsv) &&
+        vgfx3d_d3d11_is_valid_texture2d_extent(ctx->width, ctx->height)) {
+        d3d11_release_swapchain_main_targets(ctx);
+        hr = d3d11_recreate_swapchain_main_targets(ctx,
+                                                   ctx->width,
+                                                   ctx->height,
+                                                   "Recreate missing swapchain targets");
+        if (FAILED(hr))
+            d3d11_log_hresult("Recreate missing swapchain targets", hr);
+    }
 
     if (!ctx->rtt_active && ctx->active_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN) {
         hr = d3d11_ensure_scene_targets(ctx, ctx->width, ctx->height);
@@ -5093,6 +5185,18 @@ static void d3d11_end_frame(void *ctx_ptr) {
     ctx->rtt_target->hdr_color_valid = 0;
 }
 
+/// @brief Release swapchain-owned color/depth targets and clear stale CPU binding mirrors.
+static void d3d11_release_swapchain_main_targets(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    d3d11_unbind_output_targets(ctx);
+    if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_SWAPCHAIN)
+        d3d11_clear_current_target_bindings(ctx);
+    SAFE_RELEASE(ctx->dsv);
+    SAFE_RELEASE(ctx->depth_tex);
+    SAFE_RELEASE(ctx->rtv);
+}
+
 /// @brief Rebuild the swapchain-derived main render targets (back-buffer RTV, scene/depth
 ///   textures) at @p width × @p height after a resize or device reset; @p log_context
 ///   tags any failure log. Returns the first failing HRESULT, or S_OK on success.
@@ -5147,13 +5251,10 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     old_w = ctx->width;
     old_h = ctx->height;
 
-    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, NULL);
     d3d11_unbind_draw_resources(ctx);
-    d3d11_clear_current_target_bindings(ctx);
     d3d11_destroy_scene_targets(ctx);
-    SAFE_RELEASE(ctx->rtv);
-    SAFE_RELEASE(ctx->dsv);
-    SAFE_RELEASE(ctx->depth_tex);
+    d3d11_release_swapchain_main_targets(ctx);
+    d3d11_clear_current_target_bindings(ctx);
 
     hr = IDXGISwapChain_ResizeBuffers(ctx->swap_chain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, 0);
     if (FAILED(hr)) {
@@ -5165,14 +5266,13 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
         return;
     }
 
+    ctx->width = w;
+    ctx->height = h;
+    d3d11_reset_temporal_scene_state(ctx);
     hr =
         d3d11_recreate_swapchain_main_targets(ctx, w, h, "Recreate swapchain targets after resize");
     if (FAILED(hr))
         return;
-
-    ctx->width = w;
-    ctx->height = h;
-    d3d11_reset_temporal_scene_state(ctx);
 }
 
 /// @brief Copy a mapped texture's rows to an RGBA8 destination, format-aware.
@@ -5376,7 +5476,7 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
 /// @brief Composite the 2D GUI overlay texture on top of the 3D scene using alpha blending.
 /// @details After all post-FX passes have resolved the scene colour, the 2D overlay
 ///   (rendered earlier into `ctx->overlay_color_srv`) is blended over @p dest_rtv
-///   using `ps_overlay_composite` and the alpha blend state. The overlay SRV is bound
+///   using `ps_overlay_composite` and a premultiplied-alpha blend state. The overlay SRV is bound
 ///   at PS slot 3 (matching the shader's expected binding), and the same
 ///   no-input-layout fullscreen-triangle technique used by `d3d11_draw_postfx_pass`
 ///   is re-used here for consistency. The function is a no-op (returns 1) when no
@@ -5394,6 +5494,7 @@ static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
                                         int32_t width,
                                         int32_t height) {
     ID3D11ShaderResourceView *overlay_srv;
+    ID3D11BlendState *blend_state;
     ID3D11ShaderResourceView *null_srvs[4] = {NULL, NULL, NULL, NULL};
     float blend_factor[4] = {0, 0, 0, 0};
 
@@ -5403,6 +5504,8 @@ static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
     }
 
     overlay_srv = ctx->overlay_color_srv;
+    blend_state = ctx->blend_state_premultiplied_alpha ? ctx->blend_state_premultiplied_alpha
+                                                       : ctx->blend_state_alpha;
     d3d11_bind_postfx_target(ctx, dest_rtv, width, height);
     ID3D11DeviceContext_IASetInputLayout(ctx->ctx, NULL);
     ID3D11DeviceContext_IASetPrimitiveTopology(ctx->ctx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -5413,7 +5516,7 @@ static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 3, 1, &overlay_srv);
     ID3D11DeviceContext_RSSetState(ctx->ctx, ctx->rs_solid_no_cull);
     ID3D11DeviceContext_OMSetDepthStencilState(ctx->ctx, NULL, 0);
-    ID3D11DeviceContext_OMSetBlendState(ctx->ctx, ctx->blend_state_alpha, blend_factor, 0xFFFFFFFF);
+    ID3D11DeviceContext_OMSetBlendState(ctx->ctx, blend_state, blend_factor, 0xFFFFFFFF);
     ID3D11DeviceContext_Draw(ctx->ctx, 3, 0);
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 4, null_srvs);
     return 1;
@@ -5460,8 +5563,9 @@ static int d3d11_resolve_scene_to_target(d3d11_context_t *ctx,
 /// @brief Apply a full chain of post-FX effects to the rendered scene using ping-pong buffers.
 /// @details Iterates `chain->effects[0..effect_count-1]`, drawing each via
 ///   `d3d11_draw_postfx_pass`. Passes alternate between `scene_color_srv/rtv` and
-///   `postfx_color_srv/rtv` as source and destination so no pass reads and writes the
-///   same texture simultaneously (the classic GPU ping-pong pattern). For the final
+///   `postfx_color_srv/rtv` and `postfx_scratch_srv/rtv` as intermediate destinations so
+///   no pass reads and writes the same texture simultaneously and screenshot readback does
+///   not overwrite the live scene color. For the final
 ///   pass, unless @p force_offscreen_final is set, the output goes directly into
 ///   @p final_rtv (usually the swapchain back buffer) at @p final_width × @p
 ///   final_height so no extra blit is needed.
@@ -5496,6 +5600,8 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
     ID3D11ShaderResourceView *source_srv;
     ID3D11RenderTargetView *dest_rtv;
     ID3D11Texture2D *result_tex = NULL;
+    int need_postfx_target;
+    int need_scratch_target;
     int32_t width;
     int32_t height;
 
@@ -5507,8 +5613,15 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
         return 0;
     }
 
-    if ((force_offscreen_final || chain->effect_count > 1) &&
+    need_postfx_target = force_offscreen_final || chain->effect_count > 1;
+    need_scratch_target = (force_offscreen_final && chain->effect_count > 1) ||
+                          (!force_offscreen_final && chain->effect_count > 2);
+    if (need_postfx_target &&
         FAILED(d3d11_ensure_postfx_target(ctx, ctx->scene_width, ctx->scene_height))) {
+        return 0;
+    }
+    if (need_scratch_target &&
+        FAILED(d3d11_ensure_postfx_scratch_target(ctx, ctx->scene_width, ctx->scene_height))) {
         return 0;
     }
 
@@ -5521,29 +5634,31 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
             width = final_width;
             height = final_height;
             result_tex = NULL;
-        } else if (source_srv == ctx->scene_color_srv) {
+        } else if (source_srv == ctx->postfx_color_srv) {
+            dest_rtv = ctx->postfx_scratch_rtv;
+            width = ctx->scene_width;
+            height = ctx->scene_height;
+            result_tex = ctx->postfx_scratch_tex;
+        } else {
             dest_rtv = ctx->postfx_color_rtv;
             width = ctx->scene_width;
             height = ctx->scene_height;
             result_tex = ctx->postfx_color_tex;
-        } else {
-            dest_rtv = ctx->scene_color_rtv;
-            width = ctx->scene_width;
-            height = ctx->scene_height;
-            result_tex = ctx->scene_color_tex;
         }
+        if (!dest_rtv || width <= 0 || height <= 0)
+            return 0;
         if (!d3d11_draw_postfx_pass(
                 ctx, source_srv, dest_rtv, width, height, &chain->effects[i].snapshot))
             return 0;
         if (!is_last || force_offscreen_final) {
-            source_srv =
-                (dest_rtv == ctx->postfx_color_rtv) ? ctx->postfx_color_srv : ctx->scene_color_srv;
+            source_srv = result_tex == ctx->postfx_scratch_tex ? ctx->postfx_scratch_srv
+                                                               : ctx->postfx_color_srv;
         }
     }
 
     if (force_offscreen_final) {
-        dest_rtv =
-            (result_tex == ctx->postfx_color_tex) ? ctx->postfx_color_rtv : ctx->scene_color_rtv;
+        dest_rtv = result_tex == ctx->postfx_scratch_tex ? ctx->postfx_scratch_rtv
+                                                         : ctx->postfx_color_rtv;
         width = ctx->scene_width;
         height = ctx->scene_height;
         if (!d3d11_draw_overlay_composite(ctx, dest_rtv, width, height))

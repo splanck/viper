@@ -541,6 +541,9 @@ static void test_postfx_readback_policy_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
                     VGFX3D_D3D11_TARGET_SWAPCHAIN, 1) == 1,
                 "Final overlays after apply_postfx preserve scene temporal history");
+    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
+                    VGFX3D_D3D11_TARGET_RTT, 1) == 0,
+                "RTT load-existing passes do not preserve scene temporal history");
     EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(VGFX3D_D3D11_TARGET_SCENE,
                                                                  0) == 0,
                 "Main scene passes refresh scene temporal history");

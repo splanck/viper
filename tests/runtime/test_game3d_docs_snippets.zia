@@ -35,6 +35,7 @@ func start() {
     }
 
     var world = Game3D.World3D.New("Game3D Docs Snippets", 96, 64);
+    Game3D.World3D.onResize(world, 96, 64);
     var canvas = Game3D.World3D.get_canvas(world);
     Canvas3D.SetDTMax(canvas, 50);
 

@@ -572,7 +572,8 @@ int vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(
 /// @brief Decide whether a begin-frame should preserve scene temporal history.
 int vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
     vgfx3d_d3d11_target_kind_t resolved_target_kind, int8_t requested_load_existing_color) {
-    return resolved_target_kind == VGFX3D_D3D11_TARGET_OVERLAY || requested_load_existing_color;
+    return resolved_target_kind == VGFX3D_D3D11_TARGET_OVERLAY ||
+           (requested_load_existing_color && resolved_target_kind != VGFX3D_D3D11_TARGET_RTT);
 }
 
 /// @brief Decide whether overlay contents are in the separate overlay target.

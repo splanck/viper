@@ -12,6 +12,7 @@ func fail(message: String) {
 
 func start() {
     var world = Game3D.World3D.New("Game3D Presets Probe", 96, 72);
+    Game3D.World3D.onResize(world, 96, 72);
     var canvas = Game3D.World3D.get_canvas(world);
     var scene = Game3D.World3D.get_scene(world);
     var physics = Game3D.World3D.get_physics(world);
