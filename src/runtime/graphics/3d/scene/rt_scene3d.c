@@ -1855,6 +1855,19 @@ static void scene_bounds_reset(float out_min[3], float out_max[3]) {
     }
 }
 
+static void scene_bounds_reset_d(double out_min[3], double out_max[3]) {
+    if (out_min) {
+        out_min[0] = DBL_MAX;
+        out_min[1] = DBL_MAX;
+        out_min[2] = DBL_MAX;
+    }
+    if (out_max) {
+        out_max[0] = -DBL_MAX;
+        out_max[1] = -DBL_MAX;
+        out_max[2] = -DBL_MAX;
+    }
+}
+
 /// @brief Expand @p bounds_min/@p bounds_max to include @p point.
 static void scene_bounds_include_point(float bounds_min[3],
                                        float bounds_max[3],
@@ -1867,6 +1880,78 @@ static void scene_bounds_include_point(float bounds_min[3],
         if (point[i] > bounds_max[i])
             bounds_max[i] = point[i];
     }
+}
+
+static void scene_bounds_include_point_d(double bounds_min[3],
+                                         double bounds_max[3],
+                                         const double point[3]) {
+    if (!bounds_min || !bounds_max || !point)
+        return;
+    for (int i = 0; i < 3; i++) {
+        if (point[i] < bounds_min[i])
+            bounds_min[i] = point[i];
+        if (point[i] > bounds_max[i])
+            bounds_max[i] = point[i];
+    }
+}
+
+static int scene3d_transform_aabb_d(const float obj_min[3],
+                                    const float obj_max[3],
+                                    const double world_matrix[16],
+                                    double out_min[3],
+                                    double out_max[3]) {
+    if (!out_min || !out_max)
+        return 0;
+    scene_bounds_reset_d(out_min, out_max);
+    if (!obj_min || !obj_max || !world_matrix) {
+        out_min[0] = out_min[1] = out_min[2] = 0.0;
+        out_max[0] = out_max[1] = out_max[2] = 0.0;
+        return 0;
+    }
+    for (int i = 0; i < 3; i++) {
+        if (!isfinite(obj_min[i]) || !isfinite(obj_max[i])) {
+            out_min[0] = out_min[1] = out_min[2] = 0.0;
+            out_max[0] = out_max[1] = out_max[2] = 0.0;
+            return 0;
+        }
+    }
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(world_matrix[i])) {
+            out_min[0] = out_min[1] = out_min[2] = 0.0;
+            out_max[0] = out_max[1] = out_max[2] = 0.0;
+            return 0;
+        }
+    }
+    float safe_min[3];
+    float safe_max[3];
+    for (int axis = 0; axis < 3; axis++) {
+        if (obj_min[axis] <= obj_max[axis]) {
+            safe_min[axis] = obj_min[axis];
+            safe_max[axis] = obj_max[axis];
+        } else {
+            safe_min[axis] = obj_max[axis];
+            safe_max[axis] = obj_min[axis];
+        }
+    }
+    for (int corner = 0; corner < 8; corner++) {
+        double cx = (corner & 1) ? (double)safe_max[0] : (double)safe_min[0];
+        double cy = (corner & 2) ? (double)safe_max[1] : (double)safe_min[1];
+        double cz = (corner & 4) ? (double)safe_max[2] : (double)safe_min[2];
+        double p[3];
+        p[0] = world_matrix[0] * cx + world_matrix[1] * cy + world_matrix[2] * cz +
+               world_matrix[3];
+        p[1] = world_matrix[4] * cx + world_matrix[5] * cy + world_matrix[6] * cz +
+               world_matrix[7];
+        p[2] = world_matrix[8] * cx + world_matrix[9] * cy + world_matrix[10] * cz +
+               world_matrix[11];
+        if (!isfinite(p[0]) || !isfinite(p[1]) || !isfinite(p[2])) {
+            out_min[0] = out_min[1] = out_min[2] = 0.0;
+            out_max[0] = out_max[1] = out_max[2] = 0.0;
+            return 0;
+        }
+        scene_bounds_include_point_d(out_min, out_max, p);
+    }
+    return 1;
 }
 
 /// @brief Transform the 8 corners of a local AABB and union them into @p bounds_min/max.
@@ -2010,54 +2095,52 @@ static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target) 
     return NULL;
 }
 
-/// @brief Validate and copy a public Vec3 into a finite float triplet.
-static int scene3d_read_vec3f(void *obj, float out[3], const char *trap_message) {
+static int scene3d_read_vec3d(void *obj, double out[3], const char *trap_message) {
     if (!out)
         return 0;
     if (!rt_g3d_is_vec3(obj)) {
         rt_trap(trap_message);
         return 0;
     }
-    out[0] = scene3d_float_or_zero(rt_vec3_x(obj));
-    out[1] = scene3d_float_or_zero(rt_vec3_y(obj));
-    out[2] = scene3d_float_or_zero(rt_vec3_z(obj));
+    out[0] = scene3d_clamp_abs_or(rt_vec3_x(obj), 0.0);
+    out[1] = scene3d_clamp_abs_or(rt_vec3_y(obj), 0.0);
+    out[2] = scene3d_clamp_abs_or(rt_vec3_z(obj), 0.0);
     return 1;
 }
 
 /// @brief Get a node's own mesh AABB in world space. Transform-only nodes return false.
 static int scene3d_node_world_mesh_aabb(rt_scene_node3d *node,
-                                        float world_min[3],
-                                        float world_max[3]) {
+                                        double world_min[3],
+                                        double world_max[3]) {
     float local_min[3];
     float local_max[3];
     if (!node || !node->mesh || !world_min || !world_max)
         return 0;
     recompute_world_matrix(node);
     scene_mesh_bounds((rt_mesh3d *)node->mesh, local_min, local_max, NULL);
-    vgfx3d_transform_aabb(local_min, local_max, node->world_matrix, world_min, world_max);
-    return 1;
+    return scene3d_transform_aabb_d(local_min, local_max, node->world_matrix, world_min, world_max);
 }
 
-static int scene3d_aabb_intersects_aabb(const float a_min[3],
-                                        const float a_max[3],
-                                        const float b_min[3],
-                                        const float b_max[3]) {
+static int scene3d_aabb_intersects_aabb(const double a_min[3],
+                                        const double a_max[3],
+                                        const double b_min[3],
+                                        const double b_max[3]) {
     return a_min[0] <= b_max[0] && a_max[0] >= b_min[0] && a_min[1] <= b_max[1] &&
            a_max[1] >= b_min[1] && a_min[2] <= b_max[2] && a_max[2] >= b_min[2];
 }
 
-static int scene3d_aabb_intersects_sphere(const float aabb_min[3],
-                                          const float aabb_max[3],
-                                          const float center[3],
-                                          float radius) {
-    float dist2 = 0.0f;
+static int scene3d_aabb_intersects_sphere(const double aabb_min[3],
+                                          const double aabb_max[3],
+                                          const double center[3],
+                                          double radius) {
+    double dist2 = 0.0;
     for (int i = 0; i < 3; ++i) {
-        float v = center[i];
+        double v = center[i];
         if (v < aabb_min[i]) {
-            float d = aabb_min[i] - v;
+            double d = aabb_min[i] - v;
             dist2 += d * d;
         } else if (v > aabb_max[i]) {
-            float d = v - aabb_max[i];
+            double d = v - aabb_max[i];
             dist2 += d * d;
         }
     }
@@ -2065,10 +2148,10 @@ static int scene3d_aabb_intersects_sphere(const float aabb_min[3],
 }
 
 /// @brief Ray-vs-AABB slab test with a normalized direction and finite max distance.
-static int scene3d_ray_intersects_aabb(const float origin[3],
-                                       const float direction[3],
-                                       const float aabb_min[3],
-                                       const float aabb_max[3],
+static int scene3d_ray_intersects_aabb(const double origin[3],
+                                       const double direction[3],
+                                       const double aabb_min[3],
+                                       const double aabb_max[3],
                                        double max_distance,
                                        double *out_t) {
     double tmin = 0.0;
@@ -2215,41 +2298,44 @@ static int scene3d_mesh_has_dynamic_deformation(rt_mesh3d *mesh, void *effective
             mesh->morph_shape_count > 0);
 }
 
-static void scene3d_bounds_include_world_aabb(float out_min[3],
-                                              float out_max[3],
-                                              const float in_min[3],
-                                              const float in_max[3]) {
+static void scene3d_bounds_include_world_aabb(double out_min[3],
+                                              double out_max[3],
+                                              const double in_min[3],
+                                              const double in_max[3]) {
     if (!out_min || !out_max || !in_min || !in_max)
         return;
-    scene_bounds_include_point(out_min, out_max, in_min);
-    scene_bounds_include_point(out_min, out_max, in_max);
+    scene_bounds_include_point_d(out_min, out_max, in_min);
+    scene_bounds_include_point_d(out_min, out_max, in_max);
 }
 
 static int scene3d_include_mesh_world_bounds(rt_scene_node3d *node,
                                              void *mesh_obj,
                                              void *effective_animator,
-                                             float out_min[3],
-                                             float out_max[3],
-                                             float *out_radius) {
+                                             double out_min[3],
+                                             double out_max[3],
+                                             double *out_radius) {
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
     float local_min[3];
     float local_max[3];
-    float world_min[3];
-    float world_max[3];
-    float radius = 0.0f;
+    double world_min[3];
+    double world_max[3];
+    float radius_f = 0.0f;
+    double radius = 0.0;
     if (!node || !mesh || !out_min || !out_max)
         return 0;
-    scene_mesh_bounds(mesh, local_min, local_max, &radius);
+    scene_mesh_bounds(mesh, local_min, local_max, &radius_f);
+    radius = (double)radius_f;
     if (scene3d_mesh_has_dynamic_deformation(mesh, effective_animator)) {
-        float pad = radius > 0.0f ? radius * 0.5f : 0.0f;
-        local_min[0] -= pad;
-        local_min[1] -= pad;
-        local_min[2] -= pad;
-        local_max[0] += pad;
-        local_max[1] += pad;
-        local_max[2] += pad;
+        double pad = radius > 0.0 ? radius * 0.5 : 0.0;
+        local_min[0] = scene3d_float_or_zero((double)local_min[0] - pad);
+        local_min[1] = scene3d_float_or_zero((double)local_min[1] - pad);
+        local_min[2] = scene3d_float_or_zero((double)local_min[2] - pad);
+        local_max[0] = scene3d_float_or_zero((double)local_max[0] + pad);
+        local_max[1] = scene3d_float_or_zero((double)local_max[1] + pad);
+        local_max[2] = scene3d_float_or_zero((double)local_max[2] + pad);
     }
-    vgfx3d_transform_aabb(local_min, local_max, node->world_matrix, world_min, world_max);
+    if (!scene3d_transform_aabb_d(local_min, local_max, node->world_matrix, world_min, world_max))
+        return 0;
     scene3d_bounds_include_world_aabb(out_min, out_max, world_min, world_max);
     if (out_radius && radius > *out_radius)
         *out_radius = radius;
@@ -2258,14 +2344,14 @@ static int scene3d_include_mesh_world_bounds(rt_scene_node3d *node,
 
 static int scene3d_node_world_draw_union_aabb(rt_scene_node3d *node,
                                               void *effective_animator,
-                                              float world_min[3],
-                                              float world_max[3],
-                                              float *out_radius) {
+                                              double world_min[3],
+                                              double world_max[3],
+                                              double *out_radius) {
     int has_bounds = 0;
-    float radius = 0.0f;
+    double radius = 0.0;
     if (!node || !world_min || !world_max)
         return 0;
-    scene_bounds_reset(world_min, world_max);
+    scene_bounds_reset_d(world_min, world_max);
     if (node->mesh &&
         scene3d_include_mesh_world_bounds(
             node, node->mesh, effective_animator, world_min, world_max, &radius))
@@ -2302,9 +2388,9 @@ static void *scene3d_effective_animator(rt_scene_node3d *node) {
 static int scene3d_spatial_add_entry(rt_scene3d_spatial_index *index,
                                      rt_scene_node3d *node,
                                      int32_t traversal_order,
-                                     const float world_min[3],
-                                     const float world_max[3],
-                                     float radius) {
+                                     const double world_min[3],
+                                     const double world_max[3],
+                                     double radius) {
     rt_scene3d_spatial_entry *entry;
     if (!index || !node || !world_min || !world_max)
         return 1;
@@ -2315,7 +2401,7 @@ static int scene3d_spatial_add_entry(rt_scene3d_spatial_index *index,
     memcpy(entry->world_min, world_min, sizeof(entry->world_min));
     memcpy(entry->world_max, world_max, sizeof(entry->world_max));
     entry->traversal_order = traversal_order;
-    entry->cullable = radius > 0.0f ? 1 : 0;
+    entry->cullable = radius > 0.0 ? 1 : 0;
     return 1;
 }
 
@@ -2339,9 +2425,9 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
         scene_index_build_stack_item_t item = stack[--count];
         rt_scene_node3d *current = item.node;
         void *effective_animator;
-        float world_min[3];
-        float world_max[3];
-        float radius = 0.0f;
+        double world_min[3];
+        double world_max[3];
+        double radius = 0.0;
         int32_t order = traversal_order++;
 
         if (!current->visible)
@@ -2391,8 +2477,8 @@ static int scene3d_spatial_ensure(rt_scene3d *scene) {
 }
 
 static int scene3d_spatial_collect_aabb(rt_scene3d *scene,
-                                        const float query_min[3],
-                                        const float query_max[3],
+                                        const double query_min[3],
+                                        const double query_max[3],
                                         scene3d_spatial_candidate_list_t *out,
                                         int count_cullable_prefilter) {
     rt_scene3d_spatial_index *index;
@@ -2463,30 +2549,30 @@ static int scene3d_spatial_collect_all(rt_scene3d *scene, scene3d_spatial_candid
     return 1;
 }
 
-static int scene3d_ray_sweep_bounds(const float origin[3],
-                                    const float direction[3],
+static int scene3d_ray_sweep_bounds(const double origin[3],
+                                    const double direction[3],
                                     double max_distance,
-                                    float out_min[3],
-                                    float out_max[3]) {
-    float end[3];
+                                    double out_min[3],
+                                    double out_max[3]) {
+    double end[3];
     if (!origin || !direction || !out_min || !out_max)
         return 0;
     if (!isfinite(max_distance) || max_distance > 1.0e30)
         return 0;
     for (int i = 0; i < 3; ++i) {
-        double e = (double)origin[i] + (double)direction[i] * max_distance;
+        double e = origin[i] + direction[i] * max_distance;
         if (!isfinite(e))
             return 0;
-        end[i] = scene3d_float_or_zero(e);
-        out_min[i] = fminf(origin[i], end[i]);
-        out_max[i] = fmaxf(origin[i], end[i]);
+        end[i] = e;
+        out_min[i] = fmin(origin[i], end[i]);
+        out_max[i] = fmax(origin[i], end[i]);
     }
     return 1;
 }
 
 static int scene3d_frustum_bounds_from_vp(const float vp[16],
-                                          float out_min[3],
-                                          float out_max[3]) {
+                                          double out_min[3],
+                                          double out_max[3]) {
     double m[16];
     double inv[16];
     if (!vp || !out_min || !out_max)
@@ -2498,7 +2584,7 @@ static int scene3d_frustum_bounds_from_vp(const float vp[16],
     }
     if (mat4d_invert(m, inv) != 0)
         return 0;
-    scene_bounds_reset(out_min, out_max);
+    scene_bounds_reset_d(out_min, out_max);
     for (int xi = 0; xi < 2; ++xi) {
         for (int yi = 0; yi < 2; ++yi) {
             for (int zi = 0; zi < 2; ++zi) {
@@ -2509,7 +2595,7 @@ static int scene3d_frustum_bounds_from_vp(const float vp[16],
                 double wy = inv[4] * x + inv[5] * y + inv[6] * z + inv[7];
                 double wz = inv[8] * x + inv[9] * y + inv[10] * z + inv[11];
                 double ww = inv[12] * x + inv[13] * y + inv[14] * z + inv[15];
-                float point[3];
+                double point[3];
                 if (!isfinite(ww) || fabs(ww) <= 1.0e-12)
                     return 0;
                 wx /= ww;
@@ -2517,10 +2603,10 @@ static int scene3d_frustum_bounds_from_vp(const float vp[16],
                 wz /= ww;
                 if (!isfinite(wx) || !isfinite(wy) || !isfinite(wz))
                     return 0;
-                point[0] = scene3d_float_or_zero(wx);
-                point[1] = scene3d_float_or_zero(wy);
-                point[2] = scene3d_float_or_zero(wz);
-                scene_bounds_include_point(out_min, out_max, point);
+                point[0] = wx;
+                point[1] = wy;
+                point[2] = wz;
+                scene_bounds_include_point_d(out_min, out_max, point);
             }
         }
     }
@@ -2767,10 +2853,10 @@ static int draw_node_spatial(rt_scene3d *scene,
                              const float vp[16],
                              int32_t *culled,
                              int32_t *visible_nodes,
-                             const float *cam_pos) {
+    const float *cam_pos) {
     scene3d_spatial_candidate_list_t candidates = {0};
-    float frustum_min[3];
-    float frustum_max[3];
+    double frustum_min[3];
+    double frustum_max[3];
     int ok;
     if (!scene || !scene->use_spatial_index)
         return 0;
@@ -3549,26 +3635,26 @@ void *rt_scene3d_query_aabb(void *obj, void *min_obj, void *max_obj) {
     rt_scene_node3d **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
-    float a[3];
-    float b[3];
-    float query_min[3];
-    float query_max[3];
+    double a[3];
+    double b[3];
+    double query_min[3];
+    double query_max[3];
     if (!s || !s->root || !result)
         return result;
-    if (!scene3d_read_vec3f(min_obj, a, "Scene3D.QueryAABB: min must be Vec3") ||
-        !scene3d_read_vec3f(max_obj, b, "Scene3D.QueryAABB: max must be Vec3"))
+    if (!scene3d_read_vec3d(min_obj, a, "Scene3D.QueryAABB: min must be Vec3") ||
+        !scene3d_read_vec3d(max_obj, b, "Scene3D.QueryAABB: max must be Vec3"))
         return result;
     for (int i = 0; i < 3; ++i) {
-        query_min[i] = fminf(a[i], b[i]);
-        query_max[i] = fmaxf(a[i], b[i]);
+        query_min[i] = fmin(a[i], b[i]);
+        query_max[i] = fmax(a[i], b[i]);
     }
     if (s->use_spatial_index) {
         scene3d_spatial_candidate_list_t candidates = {0};
         if (scene3d_spatial_collect_aabb(s, query_min, query_max, &candidates, 0)) {
             for (int32_t i = 0; i < candidates.count; ++i) {
                 rt_scene_node3d *current = candidates.items[i]->node;
-                float world_min[3];
-                float world_max[3];
+                double world_min[3];
+                double world_max[3];
                 if (scene3d_node_world_mesh_aabb(current, world_min, world_max) &&
                     scene3d_aabb_intersects_aabb(world_min, world_max, query_min, query_max))
                     rt_seq_push(result, current);
@@ -3584,8 +3670,8 @@ void *rt_scene3d_query_aabb(void *obj, void *min_obj, void *max_obj) {
     }
     while (count > 0) {
         rt_scene_node3d *current = stack[--count];
-        float world_min[3];
-        float world_max[3];
+        double world_min[3];
+        double world_max[3];
         if (!current->visible)
             continue;
         if (scene3d_node_world_mesh_aabb(current, world_min, world_max) &&
@@ -3610,24 +3696,24 @@ void *rt_scene3d_query_sphere(void *obj, void *center_obj, double radius) {
     rt_scene_node3d **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
-    float center[3];
-    float r;
+    double center[3];
+    double r;
     if (!s || !s->root || !result)
         return result;
-    if (!scene3d_read_vec3f(center_obj, center, "Scene3D.QuerySphere: center must be Vec3"))
+    if (!scene3d_read_vec3d(center_obj, center, "Scene3D.QuerySphere: center must be Vec3"))
         return result;
     if (!isfinite(radius) || radius < 0.0)
         radius = 0.0;
-    r = scene3d_float_or_zero(radius);
+    r = radius;
     if (s->use_spatial_index) {
         scene3d_spatial_candidate_list_t candidates = {0};
-        float query_min[3] = {center[0] - r, center[1] - r, center[2] - r};
-        float query_max[3] = {center[0] + r, center[1] + r, center[2] + r};
+        double query_min[3] = {center[0] - r, center[1] - r, center[2] - r};
+        double query_max[3] = {center[0] + r, center[1] + r, center[2] + r};
         if (scene3d_spatial_collect_aabb(s, query_min, query_max, &candidates, 0)) {
             for (int32_t i = 0; i < candidates.count; ++i) {
                 rt_scene_node3d *current = candidates.items[i]->node;
-                float world_min[3];
-                float world_max[3];
+                double world_min[3];
+                double world_max[3];
                 if (scene3d_node_world_mesh_aabb(current, world_min, world_max) &&
                     scene3d_aabb_intersects_sphere(world_min, world_max, center, r))
                     rt_seq_push(result, current);
@@ -3643,8 +3729,8 @@ void *rt_scene3d_query_sphere(void *obj, void *center_obj, double radius) {
     }
     while (count > 0) {
         rt_scene_node3d *current = stack[--count];
-        float world_min[3];
-        float world_max[3];
+        double world_min[3];
+        double world_max[3];
         if (!current->visible)
             continue;
         if (scene3d_node_world_mesh_aabb(current, world_min, world_max) &&
@@ -3671,24 +3757,23 @@ void *rt_scene3d_raycast_nodes(void *obj,
     rt_scene_node3d **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
-    float origin[3];
-    float direction[3];
+    double origin[3];
+    double direction[3];
     double dir_len;
     double best_t;
     rt_scene_node3d *best = NULL;
     if (!s || !s->root)
         return NULL;
-    if (!scene3d_read_vec3f(origin_obj, origin, "Scene3D.RaycastNodes: origin must be Vec3") ||
-        !scene3d_read_vec3f(direction_obj, direction, "Scene3D.RaycastNodes: direction must be Vec3"))
+    if (!scene3d_read_vec3d(origin_obj, origin, "Scene3D.RaycastNodes: origin must be Vec3") ||
+        !scene3d_read_vec3d(direction_obj, direction, "Scene3D.RaycastNodes: direction must be Vec3"))
         return NULL;
-    dir_len = sqrt((double)direction[0] * (double)direction[0] +
-                   (double)direction[1] * (double)direction[1] +
-                   (double)direction[2] * (double)direction[2]);
+    dir_len = sqrt(direction[0] * direction[0] + direction[1] * direction[1] +
+                   direction[2] * direction[2]);
     if (!isfinite(dir_len) || dir_len <= 1e-12)
         return NULL;
-    direction[0] = (float)((double)direction[0] / dir_len);
-    direction[1] = (float)((double)direction[1] / dir_len);
-    direction[2] = (float)((double)direction[2] / dir_len);
+    direction[0] /= dir_len;
+    direction[1] /= dir_len;
+    direction[2] /= dir_len;
     if (!isfinite(max_distance))
         max_distance = DBL_MAX;
     if (max_distance < 0.0)
@@ -3696,8 +3781,8 @@ void *rt_scene3d_raycast_nodes(void *obj,
     best_t = max_distance;
     if (s->use_spatial_index) {
         scene3d_spatial_candidate_list_t candidates = {0};
-        float query_min[3];
-        float query_max[3];
+        double query_min[3];
+        double query_max[3];
         int ok;
         if (scene3d_ray_sweep_bounds(origin, direction, max_distance, query_min, query_max))
             ok = scene3d_spatial_collect_aabb(s, query_min, query_max, &candidates, 0);
@@ -3706,8 +3791,8 @@ void *rt_scene3d_raycast_nodes(void *obj,
         if (ok) {
             for (int32_t i = 0; i < candidates.count; ++i) {
                 rt_scene_node3d *current = candidates.items[i]->node;
-                float world_min[3];
-                float world_max[3];
+                double world_min[3];
+                double world_max[3];
                 double t;
                 if (scene3d_node_world_mesh_aabb(current, world_min, world_max) &&
                     scene3d_ray_intersects_aabb(
@@ -3729,8 +3814,8 @@ void *rt_scene3d_raycast_nodes(void *obj,
     }
     while (count > 0) {
         rt_scene_node3d *current = stack[--count];
-        float world_min[3];
-        float world_max[3];
+        double world_min[3];
+        double world_max[3];
         double t;
         if (!current->visible)
             continue;

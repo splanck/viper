@@ -27,9 +27,23 @@ void rt_g3d_commit_queue_free(void *queue);
 /// @return Non-zero when the callback was queued.
 int8_t rt_g3d_commit_queue_enqueue(void *queue, rt_g3d_commit_fn fn, void *user_data);
 
+/// @brief Enqueue a commit callback with an estimated main-thread cost.
+/// @details The cost is an opaque budget unit; asset jobs use decoded texture bytes.
+/// @return Non-zero when the callback was queued.
+int8_t rt_g3d_commit_queue_enqueue_cost(void *queue,
+                                        rt_g3d_commit_fn fn,
+                                        void *user_data,
+                                        uint64_t cost);
+
 /// @brief Drain up to @p max_items callbacks on the main thread.
 /// @details `max_items <= 0` drains until the queue is empty.
 int64_t rt_g3d_commit_queue_drain(void *queue, int64_t max_items);
+
+/// @brief Drain callbacks up to both an item count and cost budget.
+/// @details `max_items <= 0` means no item limit. `max_cost == UINT64_MAX` means
+/// no cost limit. If the first pending item is larger than a positive budget,
+/// it drains alone so oversized assets cannot deadlock the queue.
+int64_t rt_g3d_commit_queue_drain_budget(void *queue, int64_t max_items, uint64_t max_cost);
 
 /// @brief Approximate number of pending commits.
 int64_t rt_g3d_commit_queue_pending(void *queue);

@@ -111,6 +111,8 @@
 @property(nonatomic, strong) NSMutableDictionary *renderTargetCache;
 @property(nonatomic, strong) NSMutableDictionary *samplerCache;
 @property(nonatomic) uint64_t frameSerial;
+@property(nonatomic) uint64_t textureUploadBytes;
+@property(nonatomic) uint64_t textureUploadBudgetBytes;
 @property(nonatomic, strong) id<MTLSamplerState> sharedSampler;
 @property(nonatomic, strong) id<MTLSamplerState> cubeSampler;
 @property(nonatomic, strong) id<MTLTexture> defaultCubemap;
@@ -154,6 +156,11 @@
 @interface VGFXMetalTextureCacheEntry : NSObject
 @property(nonatomic, strong) id<MTLTexture> texture;
 @property(nonatomic) uint64_t generation;
+@property(nonatomic) uint64_t pendingGeneration;
+@property(nonatomic) int32_t width;
+@property(nonatomic) int32_t height;
+@property(nonatomic) int32_t uploadNextRow;
+@property(nonatomic) int8_t uploadInProgress;
 @property(nonatomic) uint64_t lastUsedFrame;
 @end
 
@@ -163,6 +170,11 @@
 @interface VGFXMetalCubemapCacheEntry : NSObject
 @property(nonatomic, strong) id<MTLTexture> texture;
 @property(nonatomic) uint64_t generation;
+@property(nonatomic) uint64_t pendingGeneration;
+@property(nonatomic) int32_t faceSize;
+@property(nonatomic) int32_t uploadFace;
+@property(nonatomic) int32_t uploadNextRow;
+@property(nonatomic) int8_t uploadInProgress;
 @property(nonatomic) uint64_t lastUsedFrame;
 @end
 
@@ -1457,15 +1469,20 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
     ctx.postfxCompositedToDrawable = 0;
 }
 
-static int metal_upload_rgba_to_bgra_texture(id<MTLTexture> tex,
-                                             const uint8_t *rgba,
-                                             int32_t w,
-                                             int32_t h) {
+static int metal_upload_rgba_to_bgra_texture_rows(id<MTLTexture> tex,
+                                                  const uint8_t *rgba,
+                                                  int32_t w,
+                                                  int32_t start_y,
+                                                  int32_t rows) {
     uint8_t *bgra;
     size_t pixel_count;
-    if (!tex || !rgba || w <= 0 || h <= 0)
+    if (!tex || !rgba || w <= 0 || rows <= 0 || start_y < 0)
         return 0;
-    pixel_count = (size_t)w * (size_t)h;
+    pixel_count = (size_t)w * (size_t)rows;
+    if ((size_t)w != 0 && pixel_count / (size_t)w != (size_t)rows)
+        return 0;
+    if (pixel_count > SIZE_MAX / 4u)
+        return 0;
     bgra = (uint8_t *)malloc(pixel_count * 4u);
     if (!bgra)
         return 0;
@@ -1475,10 +1492,44 @@ static int metal_upload_rgba_to_bgra_texture(id<MTLTexture> tex,
         bgra[i * 4 + 2] = rgba[i * 4 + 0];
         bgra[i * 4 + 3] = rgba[i * 4 + 3];
     }
-    [tex replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)w, (NSUInteger)h)
+    [tex replaceRegion:MTLRegionMake2D(0, (NSUInteger)start_y, (NSUInteger)w, (NSUInteger)rows)
            mipmapLevel:0
              withBytes:bgra
            bytesPerRow:(NSUInteger)(w * 4)];
+    free(bgra);
+    return 1;
+}
+
+static int metal_upload_rgba_to_bgra_cubemap_rows(id<MTLTexture> tex,
+                                                  const uint8_t *rgba,
+                                                  int32_t w,
+                                                  int32_t face,
+                                                  int32_t start_y,
+                                                  int32_t rows) {
+    uint8_t *bgra;
+    size_t pixel_count;
+    if (!tex || !rgba || w <= 0 || face < 0 || face >= 6 || rows <= 0 || start_y < 0)
+        return 0;
+    pixel_count = (size_t)w * (size_t)rows;
+    if ((size_t)w != 0 && pixel_count / (size_t)w != (size_t)rows)
+        return 0;
+    if (pixel_count > SIZE_MAX / 4u)
+        return 0;
+    bgra = (uint8_t *)malloc(pixel_count * 4u);
+    if (!bgra)
+        return 0;
+    for (size_t i = 0; i < pixel_count; i++) {
+        bgra[i * 4 + 0] = rgba[i * 4 + 2];
+        bgra[i * 4 + 1] = rgba[i * 4 + 1];
+        bgra[i * 4 + 2] = rgba[i * 4 + 0];
+        bgra[i * 4 + 3] = rgba[i * 4 + 3];
+    }
+    [tex replaceRegion:MTLRegionMake2D(0, (NSUInteger)start_y, (NSUInteger)w, (NSUInteger)rows)
+           mipmapLevel:0
+                 slice:(NSUInteger)face
+             withBytes:bgra
+           bytesPerRow:(NSUInteger)(w * 4)
+         bytesPerImage:(NSUInteger)((size_t)w * (size_t)rows * 4u)];
     free(bgra);
     return 1;
 }
@@ -2066,6 +2117,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
         ctx.renderTargetCache = [NSMutableDictionary dictionaryWithCapacity:8];
         ctx.samplerCache = [NSMutableDictionary dictionaryWithCapacity:8];
         ctx.currentTargetKind = VGFX3D_METAL_TARGET_SWAPCHAIN;
+        ctx.textureUploadBudgetBytes = UINT64_MAX;
 
         view.wantsLayer = YES;
         if (!view.layer)
@@ -2681,6 +2733,8 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         if (!ctx.rttActive && cam->load_existing_color && ctx.postfxCompositedToDrawable)
             ctx.currentTargetKind = VGFX3D_METAL_TARGET_SWAPCHAIN;
         is_overlay_pass = ctx.currentTargetKind == VGFX3D_METAL_TARGET_OVERLAY ? 1 : 0;
+        if (!is_overlay_pass)
+            ctx.textureUploadBytes = 0;
         history = ctx.frameHistory;
         load_existing_color = vgfx3d_metal_should_load_existing_color(
             ctx.currentTargetKind, cam->load_existing_color, history.overlay_used_this_frame);
@@ -2744,28 +2798,118 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     }
 }
 
-/// MTL-03: Retrieve or create a cached MTLTexture from a Pixels object pointer.
-/// Cache uses the stable Pixels cache key so allocator-reused addresses do not
-/// alias a fresh image to an older GPU upload. Conversion is RGBA→BGRA.
-static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void *pixels_ptr) {
+static void metal_record_texture_upload_bytes(VGFXMetalContext *ctx, uint64_t bytes) {
+    if (!ctx || bytes == 0)
+        return;
+    if (ctx.textureUploadBytes > UINT64_MAX - bytes) {
+        ctx.textureUploadBytes = UINT64_MAX;
+        return;
+    }
+    ctx.textureUploadBytes += bytes;
+}
+
+static uint64_t metal_texture_pending_bytes(VGFXMetalTextureCacheEntry *entry) {
+    if (!entry)
+        return 0;
+    return vgfx3d_pending_rgba_upload_bytes(
+        entry.width, entry.height, entry.uploadNextRow, entry.uploadInProgress ? 1 : 0);
+}
+
+static uint64_t metal_cubemap_pending_bytes(VGFXMetalCubemapCacheEntry *entry) {
+    if (!entry)
+        return 0;
+    return vgfx3d_pending_cubemap_rgba_upload_bytes(entry.faceSize,
+                                                   entry.uploadFace,
+                                                   entry.uploadNextRow,
+                                                   entry.uploadInProgress ? 1 : 0);
+}
+
+static uint64_t metal_get_texture_upload_pending_bytes(void *ctx_ptr) {
+    VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+    uint64_t total = 0;
+    if (!ctx || !ctx.textureCache)
+        return 0;
+    for (NSValue *key in ctx.textureCache) {
+        VGFXMetalTextureCacheEntry *entry = ctx.textureCache[key];
+        uint64_t bytes = metal_texture_pending_bytes(entry);
+        if (total > UINT64_MAX - bytes)
+            return UINT64_MAX;
+        total += bytes;
+    }
+    for (NSValue *key in ctx.cubemapCache) {
+        VGFXMetalCubemapCacheEntry *entry = ctx.cubemapCache[key];
+        uint64_t bytes = metal_cubemap_pending_bytes(entry);
+        if (total > UINT64_MAX - bytes)
+            return UINT64_MAX;
+        total += bytes;
+    }
+    return total;
+}
+
+static void metal_set_texture_upload_budget(void *ctx_ptr, uint64_t bytes) {
+    VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+    if (ctx)
+        ctx.textureUploadBudgetBytes = bytes;
+}
+
+static int metal_continue_texture_upload(VGFXMetalContext *ctx,
+                                         VGFXMetalTextureCacheEntry *entry,
+                                         const void *pixels_ptr) {
+    int32_t rows;
+    int32_t slice_w = 0;
+    int32_t slice_rows = 0;
+    uint8_t *rgba = NULL;
+    uint64_t bytes;
+
+    if (!ctx || !entry || !pixels_ptr || !entry.uploadInProgress || !entry.texture)
+        return 0;
+    rows = vgfx3d_upload_rows_for_budget(entry.width,
+                                         entry.height,
+                                         entry.uploadNextRow,
+                                         ctx.textureUploadBudgetBytes,
+                                         ctx.textureUploadBytes);
+    if (rows <= 0)
+        return 0;
+    if (vgfx3d_unpack_pixels_rgba_rows(
+            pixels_ptr, entry.uploadNextRow, rows, 0, &slice_w, &slice_rows, &rgba) != 0 ||
+        !rgba || slice_w != entry.width || slice_rows <= 0) {
+        free(rgba);
+        return 0;
+    }
+    if (!metal_upload_rgba_to_bgra_texture_rows(
+            entry.texture, rgba, slice_w, entry.uploadNextRow, slice_rows)) {
+        free(rgba);
+        return 0;
+    }
+    bytes = (uint64_t)(uint32_t)slice_w * (uint64_t)(uint32_t)slice_rows * 4u;
+    metal_record_texture_upload_bytes(ctx, bytes);
+    free(rgba);
+
+    entry.uploadNextRow += slice_rows;
+    entry.lastUsedFrame = ctx.frameSerial;
+    if (entry.uploadNextRow >= entry.height) {
+        entry.generation = entry.pendingGeneration;
+        entry.pendingGeneration = 0;
+        entry.uploadInProgress = 0;
+        metal_generate_mipmaps(ctx, entry.texture);
+        return 1;
+    }
+    return 0;
+}
+
+static int metal_start_texture_upload(VGFXMetalContext *ctx,
+                                      VGFXMetalTextureCacheEntry *entry,
+                                      const void *pixels_ptr,
+                                      uint64_t cache_key) {
     int32_t tw = 0;
     int32_t th = 0;
-    uint8_t *rgba = NULL;
     int32_t mip_count;
-    uint64_t cache_key;
-    NSValue *key = [NSValue valueWithPointer:pixels_ptr];
-    VGFXMetalTextureCacheEntry *cached = ctx.textureCache[key];
-    cache_key = vgfx3d_get_pixels_cache_key(pixels_ptr);
-    if (cached && cached.texture && cached.generation == cache_key) {
-        cached.lastUsedFrame = ctx.frameSerial;
-        return cached.texture;
-    }
-    if (vgfx3d_unpack_pixels_rgba(pixels_ptr, &tw, &th, &rgba) != 0 || !rgba)
-        return nil;
+
+    if (!ctx || !entry || !pixels_ptr || !vgfx3d_get_pixels_extent(pixels_ptr, &tw, &th))
+        return 0;
 
     mip_count = vgfx3d_metal_compute_mip_count(tw, th);
-    if (!cached || !cached.texture || (int32_t)cached.texture.width != tw ||
-        (int32_t)cached.texture.height != th) {
+    if (!entry.texture || (int32_t)entry.texture.width != tw || (int32_t)entry.texture.height != th) {
         MTLTextureDescriptor *texDesc =
             [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
                                                                width:(NSUInteger)tw
@@ -2773,26 +2917,141 @@ static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void
                                                            mipmapped:(mip_count > 1)];
         texDesc.usage = MTLTextureUsageShaderRead;
         texDesc.storageMode = MTLStorageModeShared;
-        if (!cached)
-            cached = [[VGFXMetalTextureCacheEntry alloc] init];
-        cached.texture = [ctx.device newTextureWithDescriptor:texDesc];
+        entry.texture = [ctx.device newTextureWithDescriptor:texDesc];
     }
-    if (!metal_upload_rgba_to_bgra_texture(cached.texture, rgba, tw, th)) {
-        free(rgba);
+    if (!entry.texture)
+        return 0;
+
+    entry.pendingGeneration = cache_key;
+    entry.generation = 0;
+    entry.width = tw;
+    entry.height = th;
+    entry.uploadNextRow = 0;
+    entry.uploadInProgress = 1;
+    entry.lastUsedFrame = ctx.frameSerial;
+    metal_continue_texture_upload(ctx, entry, pixels_ptr);
+    return 1;
+}
+
+/// MTL-03: Retrieve or create a cached MTLTexture from a Pixels object pointer.
+/// Cache uses the stable Pixels cache key so allocator-reused addresses do not
+/// alias a fresh image to an older GPU upload. Conversion is RGBA→BGRA.
+static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void *pixels_ptr) {
+    uint64_t cache_key;
+    NSValue *key;
+    VGFXMetalTextureCacheEntry *cached;
+
+    if (!ctx || !pixels_ptr)
         return nil;
+    key = [NSValue valueWithPointer:pixels_ptr];
+    cached = ctx.textureCache[key];
+    cache_key = vgfx3d_get_pixels_cache_key(pixels_ptr);
+    if (cached && cached.texture && cached.generation == cache_key) {
+        cached.lastUsedFrame = ctx.frameSerial;
+        return cached.texture;
     }
-    free(rgba);
-    cached.generation = cache_key;
-    cached.lastUsedFrame = ctx.frameSerial;
-    metal_generate_mipmaps(ctx, cached.texture);
+    if (cached && cached.pendingGeneration == cache_key && cached.uploadInProgress) {
+        return metal_continue_texture_upload(ctx, cached, pixels_ptr) ? cached.texture : nil;
+    }
+    if (!cached)
+        cached = [[VGFXMetalTextureCacheEntry alloc] init];
     ctx.textureCache[key] = cached;
-    return cached.texture;
+    if (!metal_start_texture_upload(ctx, cached, pixels_ptr, cache_key))
+        return nil;
+    return cached.uploadInProgress ? nil : cached.texture;
+}
+
+static int metal_continue_cubemap_upload(VGFXMetalContext *ctx,
+                                         VGFXMetalCubemapCacheEntry *entry,
+                                         const rt_cubemap3d *cubemap) {
+    if (!ctx || !entry || !cubemap || !entry.uploadInProgress || !entry.texture ||
+        entry.faceSize <= 0)
+        return 0;
+
+    while (entry.uploadFace < 6) {
+        int32_t rows = vgfx3d_upload_rows_for_budget(entry.faceSize,
+                                                     entry.faceSize,
+                                                     entry.uploadNextRow,
+                                                     ctx.textureUploadBudgetBytes,
+                                                     ctx.textureUploadBytes);
+        int32_t slice_size = 0;
+        int32_t slice_rows = 0;
+        uint8_t *rgba = NULL;
+        uint64_t bytes;
+
+        if (rows <= 0)
+            return 0;
+        if (vgfx3d_unpack_cubemap_rgba_rows(cubemap,
+                                            entry.uploadFace,
+                                            entry.uploadNextRow,
+                                            rows,
+                                            0,
+                                            &slice_size,
+                                            &slice_rows,
+                                            &rgba) != 0 ||
+            !rgba || slice_size != entry.faceSize || slice_rows <= 0) {
+            free(rgba);
+            return 0;
+        }
+        if (!metal_upload_rgba_to_bgra_cubemap_rows(
+                entry.texture, rgba, slice_size, entry.uploadFace, entry.uploadNextRow, slice_rows)) {
+            free(rgba);
+            return 0;
+        }
+        bytes = (uint64_t)(uint32_t)slice_size * (uint64_t)(uint32_t)slice_rows * 4u;
+        metal_record_texture_upload_bytes(ctx, bytes);
+        free(rgba);
+
+        entry.uploadNextRow += slice_rows;
+        entry.lastUsedFrame = ctx.frameSerial;
+        if (entry.uploadNextRow < entry.faceSize)
+            return 0;
+        entry.uploadFace++;
+        entry.uploadNextRow = 0;
+    }
+
+    entry.generation = entry.pendingGeneration;
+    entry.pendingGeneration = 0;
+    entry.uploadInProgress = 0;
+    metal_generate_mipmaps(ctx, entry.texture);
+    return 1;
+}
+
+static int metal_start_cubemap_upload(VGFXMetalContext *ctx,
+                                      VGFXMetalCubemapCacheEntry *entry,
+                                      const rt_cubemap3d *cubemap,
+                                      uint64_t generation) {
+    int32_t face_size = 0;
+    int32_t mip_count;
+
+    if (!ctx || !entry || !cubemap || !vgfx3d_get_cubemap_face_size(cubemap, &face_size))
+        return 0;
+
+    mip_count = vgfx3d_metal_compute_mip_count(face_size, face_size);
+    if (!entry.texture || (int32_t)entry.texture.width != face_size) {
+        MTLTextureDescriptor *cubeDesc =
+            [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                  size:(NSUInteger)face_size
+                                                             mipmapped:(mip_count > 1)];
+        cubeDesc.usage = MTLTextureUsageShaderRead;
+        cubeDesc.storageMode = MTLStorageModeShared;
+        entry.texture = [ctx.device newTextureWithDescriptor:cubeDesc];
+    }
+    if (!entry.texture)
+        return 0;
+
+    entry.pendingGeneration = generation;
+    entry.generation = 0;
+    entry.faceSize = face_size;
+    entry.uploadFace = 0;
+    entry.uploadNextRow = 0;
+    entry.uploadInProgress = 1;
+    entry.lastUsedFrame = ctx.frameSerial;
+    metal_continue_cubemap_upload(ctx, entry, cubemap);
+    return 1;
 }
 
 static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_cubemap3d *cubemap) {
-    int32_t face_size = 0;
-    uint8_t *faces[6];
-    int32_t mip_count;
     uint64_t generation;
     NSValue *key;
     VGFXMetalCubemapCacheEntry *cached;
@@ -2807,54 +3066,16 @@ static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_c
         cached.lastUsedFrame = ctx.frameSerial;
         return cached.texture;
     }
-    if (vgfx3d_unpack_cubemap_faces_rgba(cubemap, &face_size, faces) != 0)
-        return nil;
-
-    mip_count = vgfx3d_metal_compute_mip_count(face_size, face_size);
-    if (!cached || !cached.texture || (int32_t)cached.texture.width != face_size) {
-        MTLTextureDescriptor *cubeDesc =
-            [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                                  size:(NSUInteger)face_size
-                                                             mipmapped:(mip_count > 1)];
-        cubeDesc.usage = MTLTextureUsageShaderRead;
-        cubeDesc.storageMode = MTLStorageModeShared;
-        if (!cached)
-            cached = [[VGFXMetalCubemapCacheEntry alloc] init];
-        cached.texture = [ctx.device newTextureWithDescriptor:cubeDesc];
+    if (cached && cached.pendingGeneration == generation && cached.uploadInProgress) {
+        cached.lastUsedFrame = ctx.frameSerial;
+        return metal_continue_cubemap_upload(ctx, cached, cubemap) ? cached.texture : nil;
     }
-
-    for (NSUInteger face = 0; face < 6; face++) {
-        size_t pixel_count = (size_t)face_size * (size_t)face_size;
-        uint8_t *bgra = (uint8_t *)malloc(pixel_count * 4u);
-        if (!bgra) {
-            for (int cleanup = 0; cleanup < 6; cleanup++)
-                free(faces[cleanup]);
-            return nil;
-        }
-        for (size_t i = 0; i < pixel_count; i++) {
-            bgra[i * 4 + 0] = faces[face][i * 4 + 2];
-            bgra[i * 4 + 1] = faces[face][i * 4 + 1];
-            bgra[i * 4 + 2] = faces[face][i * 4 + 0];
-            bgra[i * 4 + 3] = faces[face][i * 4 + 3];
-        }
-        [cached.texture
-            replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)face_size, (NSUInteger)face_size)
-              mipmapLevel:0
-                    slice:face
-                withBytes:bgra
-              bytesPerRow:(NSUInteger)(face_size * 4)
-            bytesPerImage:(NSUInteger)(face_size * face_size * 4)];
-        free(bgra);
-    }
-
-    for (int cleanup = 0; cleanup < 6; cleanup++)
-        free(faces[cleanup]);
-
-    cached.generation = generation;
-    cached.lastUsedFrame = ctx.frameSerial;
-    metal_generate_mipmaps(ctx, cached.texture);
+    if (!cached)
+        cached = [[VGFXMetalCubemapCacheEntry alloc] init];
     ctx.cubemapCache[key] = cached;
-    return cached.texture;
+    if (!metal_start_cubemap_upload(ctx, cached, cubemap, generation))
+        return nil;
+    return cached.uploadInProgress ? nil : cached.texture;
 }
 
 typedef struct {
@@ -3350,6 +3571,11 @@ static void metal_end_frame(void *ctx_ptr) {
         ctx.encoder = nil;
         ctx.inFrame = NO;
     }
+}
+
+static uint64_t metal_get_texture_upload_bytes(void *ctx_ptr) {
+    VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+    return ctx ? ctx.textureUploadBytes : 0;
 }
 
 /// @brief Present the most recent on-screen drawable. Called from Flip().
@@ -4345,6 +4571,9 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     .set_gpu_postfx_snapshot = metal_set_gpu_postfx_snapshot,
     .show_gpu_layer = metal_show_gpu_layer,
     .hide_gpu_layer = metal_hide_gpu_layer,
+    .set_texture_upload_budget = metal_set_texture_upload_budget,
+    .get_texture_upload_pending_bytes = metal_get_texture_upload_pending_bytes,
+    .get_texture_upload_bytes = metal_get_texture_upload_bytes,
 };
 
 #endif /* __APPLE__ && VIPER_ENABLE_GRAPHICS */

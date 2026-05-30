@@ -242,12 +242,12 @@ typedef struct {
     double specular[3];
     double shininess;
     int32_t workflow;             /* 0=legacy/Blinn-Phong surface, 1=PBR metallic-roughness */
-    void *texture;                /* Pixels fallback (diffuse, slot 0) or NULL */
-    void *normal_map;             /* Pixels fallback (normal map, slot 1) or NULL */
-    void *specular_map;           /* Pixels fallback (specular map, slot 2) or NULL */
-    void *emissive_map;           /* Pixels fallback (emissive map, slot 3) or NULL */
-    void *metallic_roughness_map; /* Pixels fallback (glTF metallic/roughness map) or NULL */
-    void *ao_map;                 /* Pixels fallback (ambient occlusion map) or NULL */
+    void *texture;                /* Pixels or TextureAsset3D source (diffuse, slot 0) */
+    void *normal_map;             /* Pixels or TextureAsset3D source (normal map, slot 1) */
+    void *specular_map;           /* Pixels or TextureAsset3D source (specular map, slot 2) */
+    void *emissive_map;           /* Pixels or TextureAsset3D source (emissive map, slot 3) */
+    void *metallic_roughness_map; /* Pixels or TextureAsset3D source (glTF metallic/roughness map) */
+    void *ao_map;                 /* Pixels or TextureAsset3D source (ambient occlusion map) */
     double emissive[3];           /* emissive color multiplier */
     double metallic;              /* [0,1] dielectric->metal */
     double roughness;             /* [0,1] smooth->rough */
@@ -274,6 +274,9 @@ typedef struct {
     int32_t shading_model;   /* 0=BlinnPhong, 1=Toon, 2=PBR, 3=Unlit, 4=Fresnel, 5=Emissive */
     double custom_params[8]; /* user-defined parameters per shading model */
 } rt_material3d;
+
+/// @brief Resolve a Material3D texture slot source to the currently resident Pixels fallback.
+void *rt_material3d_resolve_texture_pixels(void *texture_ref);
 
 #define RT_MATERIAL3D_TEXTURE_WRAP_REPEAT 0
 #define RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE 1
@@ -515,6 +518,8 @@ typedef struct {
     float cached_cam_pos[3];     /* camera position cached for sort key computation */
     float cached_cam_forward[3]; /* forward vector cached for skybox + ortho shading */
     int8_t cached_cam_is_ortho;
+    int8_t camera_relative_upload;
+    double camera_relative_origin[3];
     float last_scene_vp[16]; /* most recent 3D VP matrix (preserved across 2D passes) */
     float last_scene_cam_pos[3];
     int8_t has_last_scene_vp;
@@ -617,6 +622,7 @@ typedef struct {
     int8_t clustered_lighting;
     int32_t last_draw_count;
     int32_t last_occluded_draw_count;
+    int64_t last_texture_upload_bytes;
 
     /* Timing */
     int64_t frame_serial;
@@ -704,6 +710,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         const void *motion_key,
                                         const float *prev_bone_palette,
                                         const float *prev_morph_weights);
+/// @brief Internal: enable camera-relative float upload for large-world Game3D frames.
+void rt_canvas3d_set_camera_relative_upload(void *obj, int8_t enabled);
 /// @brief Internal: invalidate and release the cached CPU skybox fallback image.
 void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *canvas);
 /// @brief Internal: submit a mesh draw after applying morph targets.

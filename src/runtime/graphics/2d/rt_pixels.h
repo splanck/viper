@@ -143,6 +143,16 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path);
 /// @note Supports all PNG color types and bit depths.
 void *rt_pixels_load_png(void *path);
 
+/// @brief Decode a PNG memory buffer into malloc-owned raw RGBA32 pixels.
+/// @details Internal worker-safe helper. The returned buffer stores 0xRRGGBBAA
+///          pixels in row-major order; caller frees it with free().
+/// @return 1 on success, 0 on failure.
+int rt_png_decode_buffer_rgba32(const uint8_t *data,
+                                size_t len,
+                                uint32_t **out_pixels,
+                                int64_t *out_width,
+                                int64_t *out_height);
+
 /// @brief Load a JPEG image from a file path.
 /// @param path File path (runtime string).
 /// @return New Pixels object, or NULL on failure.
@@ -154,6 +164,16 @@ void *rt_pixels_load_jpeg(void *path);
 /// @param len Length of data in bytes.
 /// @return New Pixels object, or NULL on failure. Does NOT take ownership of data.
 void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len);
+
+/// @brief Decode a JPEG memory buffer into malloc-owned raw RGBA32 pixels.
+/// @details Internal worker-safe helper. The returned buffer stores 0xRRGGBBAA
+///          pixels in row-major order; caller frees it with free().
+/// @return 1 on success, 0 on failure.
+int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
+                                 size_t len,
+                                 uint32_t **out_pixels,
+                                 int64_t *out_width,
+                                 int64_t *out_height);
 
 /// @brief Load a GIF image from a file path (first frame only for static use).
 /// @param path File path (runtime string).

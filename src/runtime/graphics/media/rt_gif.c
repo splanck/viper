@@ -636,3 +636,249 @@ int gif_decode_file(const char *filepath,
         *out_height = screen_h;
     return frame_count;
 }
+
+int rt_gif_decode_memory_first_rgba32(const uint8_t *data,
+                                      size_t len,
+                                      uint32_t **out_pixels,
+                                      int *out_width,
+                                      int *out_height) {
+    gif_reader_t reader;
+    gif_reader_t *r = &reader;
+    uint8_t sig[6];
+    int screen_w;
+    int screen_h;
+    int packed;
+    int has_gct;
+    int gct_size_field;
+    int bg_color_index;
+    uint8_t gct[256 * 3];
+    int gct_count = 0;
+    size_t canvas_size;
+    uint32_t *canvas = NULL;
+    uint32_t bg_rgba = 0x00000000;
+    int gce_delay_ms = 0;
+    int gce_dispose = 0;
+    int gce_transparent = -1;
+    int gce_valid = 0;
+
+    if (out_pixels)
+        *out_pixels = NULL;
+    if (out_width)
+        *out_width = 0;
+    if (out_height)
+        *out_height = 0;
+    if (!data || len == 0 || len > 100u * 1024u * 1024u || !out_pixels)
+        return 0;
+
+    reader.data = data;
+    reader.len = len;
+    reader.pos = 0;
+
+    if (!gif_read(r, sig, 6) || (memcmp(sig, "GIF87a", 6) != 0 && memcmp(sig, "GIF89a", 6) != 0))
+        return 0;
+
+    screen_w = gif_read_u16_le(r);
+    screen_h = gif_read_u16_le(r);
+    if (screen_w <= 0 || screen_h <= 0 || screen_w > 32768 || screen_h > 32768)
+        return 0;
+    if ((size_t)screen_w > SIZE_MAX / (size_t)screen_h)
+        return 0;
+    canvas_size = (size_t)screen_w * (size_t)screen_h;
+    if (canvas_size > SIZE_MAX / sizeof(uint32_t))
+        return 0;
+
+    packed = gif_read_u8(r);
+    if (packed < 0)
+        return 0;
+    has_gct = (packed >> 7) & 1;
+    gct_size_field = packed & 0x07;
+    bg_color_index = gif_read_u8(r);
+    if (bg_color_index < 0 || gif_read_u8(r) < 0)
+        return 0;
+
+    memset(gct, 0, sizeof(gct));
+    if (has_gct) {
+        gct_count = 1 << (gct_size_field + 1);
+        if (!gif_read(r, gct, (size_t)gct_count * 3))
+            return 0;
+    }
+
+    canvas = (uint32_t *)calloc(canvas_size, sizeof(uint32_t));
+    if (!canvas)
+        return 0;
+
+    if (has_gct && bg_color_index < gct_count) {
+        bg_rgba = ((uint32_t)gct[bg_color_index * 3] << 24) |
+                  ((uint32_t)gct[bg_color_index * 3 + 1] << 16) |
+                  ((uint32_t)gct[bg_color_index * 3 + 2] << 8) | 0xFF;
+    }
+    for (size_t i = 0; i < canvas_size; i++)
+        canvas[i] = bg_rgba;
+
+    while (r->pos < r->len) {
+        int block_type = gif_read_u8(r);
+        if (block_type < 0 || block_type == 0x3B)
+            break;
+
+        if (block_type == 0x21) {
+            int ext_label = gif_read_u8(r);
+            if (ext_label == 0xF9) {
+                int block_size = gif_read_u8(r);
+                if (block_size >= 4) {
+                    int gce_packed = gif_read_u8(r);
+                    int delay;
+                    int trans_idx;
+                    if (gce_packed < 0)
+                        break;
+                    gce_dispose = (gce_packed >> 2) & 0x07;
+                    delay = gif_read_u16_le(r);
+                    trans_idx = gif_read_u8(r);
+                    if (delay < 0 || trans_idx < 0)
+                        break;
+                    gce_delay_ms = delay * 10;
+                    gce_transparent = (gce_packed & 0x01) ? trans_idx : -1;
+                    gce_valid = 1;
+                    if (block_size > 4) {
+                        size_t skip = (size_t)(block_size - 4);
+                        if (skip > r->len - r->pos)
+                            break;
+                        r->pos += skip;
+                    }
+                }
+                if (gif_read_u8(r) < 0)
+                    break;
+            } else {
+                gif_skip_sub_blocks(r);
+            }
+            continue;
+        }
+
+        if (block_type == 0x2C) {
+            int img_left = gif_read_u16_le(r);
+            int img_top = gif_read_u16_le(r);
+            int img_w = gif_read_u16_le(r);
+            int img_h = gif_read_u16_le(r);
+            int img_packed = gif_read_u8(r);
+            int has_lct;
+            int interlaced;
+            int lct_size_field;
+            uint8_t lct[256 * 3];
+            int lct_count = 0;
+            const uint8_t *color_table = gct;
+            int color_count = gct_count;
+            int min_code_size;
+            size_t lzw_data_len = 0;
+            uint8_t *lzw_data = NULL;
+            size_t pixel_count;
+            size_t index_len = 0;
+            uint8_t *indices = NULL;
+            size_t idx = 0;
+            uint32_t *copy;
+
+            if (img_left < 0 || img_top < 0 || img_w < 0 || img_h < 0 || img_packed < 0)
+                break;
+            has_lct = (img_packed >> 7) & 1;
+            interlaced = (img_packed >> 6) & 1;
+            lct_size_field = img_packed & 0x07;
+            if (has_lct) {
+                lct_count = 1 << (lct_size_field + 1);
+                if (!gif_read(r, lct, (size_t)lct_count * 3))
+                    break;
+                color_table = lct;
+                color_count = lct_count;
+            }
+
+            min_code_size = gif_read_u8(r);
+            if (min_code_size < 2 || min_code_size > 11)
+                goto skip_image_data;
+            if (img_w <= 0 || img_h <= 0 || img_left > screen_w - img_w ||
+                img_top > screen_h - img_h)
+                goto skip_image_data;
+            if ((size_t)img_w > SIZE_MAX / (size_t)img_h)
+                goto skip_image_data;
+
+            lzw_data = gif_read_sub_blocks(r, &lzw_data_len);
+            if (!lzw_data)
+                continue;
+            pixel_count = (size_t)img_w * (size_t)img_h;
+            indices =
+                lzw_decompress(min_code_size, lzw_data, lzw_data_len, pixel_count, &index_len);
+            free(lzw_data);
+            if (!indices)
+                continue;
+
+            for (int y = 0; y < img_h && idx < index_len; y++) {
+                int actual_y;
+                if (interlaced) {
+                    actual_y = -1;
+                    int row_in_pass = y;
+                    for (int pass = 0; pass < 4; pass++) {
+                        int pass_rows =
+                            (img_h - gif_interlace_start[pass] + gif_interlace_step[pass] - 1) /
+                            gif_interlace_step[pass];
+                        if (row_in_pass < pass_rows) {
+                            actual_y =
+                                gif_interlace_start[pass] + row_in_pass * gif_interlace_step[pass];
+                            break;
+                        }
+                        row_in_pass -= pass_rows;
+                    }
+                    if (actual_y < 0)
+                        actual_y = y;
+                } else {
+                    actual_y = y;
+                }
+
+                int canvas_y = img_top + actual_y;
+                if (canvas_y < 0 || canvas_y >= screen_h) {
+                    idx += (size_t)img_w;
+                    continue;
+                }
+                for (int x = 0; x < img_w && idx < index_len; x++, idx++) {
+                    int canvas_x = img_left + x;
+                    int color_idx;
+                    if (canvas_x < 0 || canvas_x >= screen_w)
+                        continue;
+                    color_idx = indices[idx];
+                    if (gce_transparent >= 0 && color_idx == gce_transparent)
+                        continue;
+                    if (color_idx < color_count) {
+                        uint32_t rgba = ((uint32_t)color_table[color_idx * 3] << 24) |
+                                        ((uint32_t)color_table[color_idx * 3 + 1] << 16) |
+                                        ((uint32_t)color_table[color_idx * 3 + 2] << 8) | 0xFF;
+                        canvas[canvas_y * screen_w + canvas_x] = rgba;
+                    }
+                }
+            }
+            free(indices);
+
+            copy = (uint32_t *)malloc(canvas_size * sizeof(uint32_t));
+            if (!copy) {
+                free(canvas);
+                return 0;
+            }
+            memcpy(copy, canvas, canvas_size * sizeof(uint32_t));
+            free(canvas);
+            *out_pixels = copy;
+            if (out_width)
+                *out_width = screen_w;
+            if (out_height)
+                *out_height = screen_h;
+            (void)gce_valid;
+            (void)gce_delay_ms;
+            (void)gce_dispose;
+            return 1;
+
+        skip_image_data:
+            gif_skip_sub_blocks(r);
+            gce_valid = 0;
+            gce_delay_ms = 0;
+            gce_dispose = 0;
+            gce_transparent = -1;
+            continue;
+        }
+    }
+
+    free(canvas);
+    return 0;
+}

@@ -36,6 +36,8 @@ void rt_decal3d_update(void *decal, double dt);
 int8_t rt_decal3d_is_expired(void *decal);
 /// @brief Project and draw @p decal onto the 3D canvas.
 void rt_canvas3d_draw_decal(void *canvas, void *decal);
+/// @brief Internal: shift decal world position by `-delta` and rebuild cached geometry.
+void rt_decal3d_rebase_origin(void *decal, double dx, double dy, double dz);
 
 #ifdef __cplusplus
 }

@@ -23,6 +23,7 @@
 #pragma once
 
 #include "rt_string.h"
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -36,6 +37,18 @@ void *rt_model3d_load(rt_string path);
 /// @details glTF/GLB assets resolve external dependencies relative to the model
 ///          asset and search mounted/embedded packages before dev filesystem files.
 void *rt_model3d_load_asset(rt_string path);
+/// @brief Internal async path: build a glTF/GLB model from preloaded root bytes.
+/// @details Takes ownership of @p preloaded_data; callers must not reuse it.
+void *rt_model3d_load_preloaded_gltf(rt_string path,
+                                     uint8_t *preloaded_data,
+                                     size_t preloaded_size,
+                                     int load_assets);
+struct rt_gltf_preload_bundle;
+/// @brief Internal async path: load a glTF/GLB Model3D from staged root/dependency bytes.
+/// @details Takes ownership of @p bundle.
+void *rt_model3d_load_preloaded_gltf_bundle(rt_string path,
+                                            struct rt_gltf_preload_bundle *bundle,
+                                            int load_assets);
 
 /// @brief Number of meshes contained in the model.
 int64_t rt_model3d_get_mesh_count(void *obj);

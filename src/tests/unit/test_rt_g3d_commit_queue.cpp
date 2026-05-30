@@ -194,6 +194,57 @@ static void test_worker_drain_is_rejected() {
     rt_threadpool_shutdown(pool);
     rt_g3d_commit_queue_free(queue);
 }
+
+static void test_cost_budget_drain() {
+    void *queue = rt_g3d_commit_queue_new();
+    expect_true(queue != nullptr, "queue should be created for cost-budget test");
+
+    CommitContext ctx = {};
+    CommitRecord records[6] = {
+        {&ctx, 10}, {&ctx, 20}, {&ctx, 30}, {&ctx, 40}, {&ctx, 50}, {&ctx, 60}};
+    expect_true(rt_g3d_commit_queue_enqueue_cost(queue, record_commit, &records[0], 10) != 0,
+                "enqueue cost 10 should succeed");
+    expect_true(rt_g3d_commit_queue_enqueue_cost(queue, record_commit, &records[1], 15) != 0,
+                "enqueue cost 15 should succeed");
+    expect_true(rt_g3d_commit_queue_enqueue_cost(queue, record_commit, &records[2], 0) != 0,
+                "enqueue cost 0 should succeed");
+    expect_true(rt_g3d_commit_queue_enqueue_cost(queue, record_commit, &records[3], 40) != 0,
+                "enqueue oversized cost should succeed");
+
+    expect_true(rt_g3d_commit_queue_drain_budget(queue, 0, 20) == 1,
+                "cost budget drains only the prefix within budget");
+    expect_true(ctx.count == 1 && ctx.values[0] == 10, "first cost-budget drain runs FIFO head");
+    expect_true(rt_g3d_commit_queue_pending(queue) == 3,
+                "cost budget leaves over-budget tail pending");
+
+    expect_true(rt_g3d_commit_queue_drain_budget(queue, 0, 20) == 2,
+                "zero-cost callbacks can share remaining budget");
+    expect_true(ctx.count == 3 && ctx.values[1] == 20 && ctx.values[2] == 30,
+                "second cost-budget drain preserves FIFO");
+
+    expect_true(rt_g3d_commit_queue_drain_budget(queue, 0, 20) == 1,
+                "oversized first item drains alone for liveness");
+    expect_true(ctx.count == 4 && ctx.values[3] == 40, "oversized item runs after prior budget");
+    expect_true(rt_g3d_commit_queue_pending(queue) == 0, "queue empty after oversized drain");
+
+    expect_true(rt_g3d_commit_queue_enqueue_cost(queue, record_commit, &records[4], 0) != 0,
+                "enqueue zero-cost item should succeed");
+    expect_true(rt_g3d_commit_queue_enqueue_cost(queue, record_commit, &records[5], 1) != 0,
+                "enqueue positive-cost item should succeed");
+    expect_true(rt_g3d_commit_queue_drain_budget(queue, 0, 0) == 1,
+                "zero budget drains zero-cost work only");
+    expect_true(ctx.count == 5 && ctx.values[4] == 50,
+                "zero budget ran the zero-cost callback");
+    expect_true(rt_g3d_commit_queue_pending(queue) == 1,
+                "zero budget leaves positive-cost work pending");
+
+    expect_true(rt_g3d_commit_queue_drain_budget(queue, 1, 100) == 1,
+                "item budget still applies with cost budget");
+    expect_true(ctx.count == 6 && ctx.values[5] == 60,
+                "final positive-cost callback runs when budget allows");
+
+    rt_g3d_commit_queue_free(queue);
+}
 } // namespace
 
 int main() {
@@ -201,6 +252,7 @@ int main() {
     test_fifo_drain_budget();
     test_worker_enqueue_main_thread_drain();
     test_worker_drain_is_rejected();
+    test_cost_budget_drain();
     std::printf("Graphics3D commit queue tests: all passed\n");
     return 0;
 }

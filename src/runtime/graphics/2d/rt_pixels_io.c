@@ -466,7 +466,7 @@ static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c) {
     return c;
 }
 
-/// @brief Decode a PNG file into a Pixels object.
+/// @brief Decode a PNG memory buffer into malloc-owned raw RGBA32 pixels.
 ///
 /// Implements a focused PNG reader (RFC 2083): parses the 8-byte
 /// signature + IHDR header, walks the IDAT chunks, decompresses
@@ -474,54 +474,27 @@ static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c) {
 /// scanline using the standard 5 filters (None, Sub, Up, Average,
 /// Paeth) and converts to RGBA. Supports color types 2 (RGB), 6
 /// (RGBA), 0 (grayscale), 4 (gray + alpha), and 3 (palette via
-/// PLTE/tRNS chunks). Bit depth must be 8.
-/// @return GC-managed `rt_pixels_impl*` on success, NULL on any
-///         decode failure (malformed file, unsupported variant, OOM).
-void *rt_pixels_load_png(void *path) {
-    if (!path)
-        return NULL;
-
-    const char *filepath = rt_string_cstr((rt_string)path);
-    if (!filepath)
-        return NULL;
-
-    FILE *f = fopen(filepath, "rb");
-    if (!f)
-        return NULL;
-
-    // Read entire file into memory (64-bit safe)
-    if (px_fseek(f, 0, SEEK_END) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    int64_t file_len = px_ftell(f);
-    if (px_fseek(f, 0, SEEK_SET) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    if (file_len < 8 || file_len > 256 * 1024 * 1024) {
-        fclose(f);
-        return NULL;
-    }
-
-    uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
-    if (!file_data) {
-        fclose(f);
-        return NULL;
-    }
-    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
-        free(file_data);
-        fclose(f);
-        return NULL;
-    }
-    fclose(f);
+/// PLTE/tRNS chunks).
+/// @return 1 on success, 0 on any decode failure.
+int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
+                                size_t file_len,
+                                uint32_t **out_pixels,
+                                int64_t *out_width,
+                                int64_t *out_height) {
+    if (out_pixels)
+        *out_pixels = NULL;
+    if (out_width)
+        *out_width = 0;
+    if (out_height)
+        *out_height = 0;
+    if (!file_data || file_len < 8 || file_len > 256u * 1024u * 1024u || !out_pixels ||
+        !out_width || !out_height)
+        return 0;
 
     // Verify PNG signature
     static const uint8_t png_sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
-    if (memcmp(file_data, png_sig, 8) != 0) {
-        free(file_data);
-        return NULL;
-    }
+    if (memcmp(file_data, png_sig, 8) != 0)
+        return 0;
 
     // Parse IHDR and collect IDAT chunks
     uint32_t width = 0, height = 0;
@@ -551,29 +524,25 @@ void *rt_pixels_load_png(void *path) {
         const uint8_t *chunk_data = file_data + pos + 8;
 
         if (pos + 12 + chunk_len > (size_t)file_len) {
-            free(file_data);
             free(idat_buf);
-            return NULL;
+            return 0;
         }
         uint32_t expected_crc = png_read_u32(file_data + pos + 8 + chunk_len);
         uint32_t actual_crc = rt_crc32_compute(chunk_type, (size_t)chunk_len + 4u);
         if (actual_crc != expected_crc) {
-            free(file_data);
             free(idat_buf);
-            return NULL;
+            return 0;
         }
 
         if (!ihdr_seen && memcmp(chunk_type, "IHDR", 4) != 0) {
-            free(file_data);
             free(idat_buf);
-            return NULL;
+            return 0;
         }
 
         if (memcmp(chunk_type, "IHDR", 4) == 0) {
             if (ihdr_seen || chunk_len != 13) {
-                free(file_data);
                 free(idat_buf);
-                return NULL;
+                return 0;
             }
             width = png_read_u32(chunk_data);
             height = png_read_u32(chunk_data + 4);
@@ -597,17 +566,15 @@ void *rt_pixels_load_png(void *path) {
                 valid = (bit_depth == 8 || bit_depth == 16);
             if (!valid || width == 0 || height == 0 || compression_method != 0 ||
                 filter_method != 0 || (interlace != 0 && interlace != 1)) {
-                free(file_data);
                 if (idat_buf)
                     free(idat_buf);
-                return NULL;
+                return 0;
             }
             ihdr_seen = 1;
         } else if (memcmp(chunk_type, "PLTE", 4) == 0) {
             if (idat_seen || chunk_len == 0 || (chunk_len % 3u) != 0u || chunk_len > 768u) {
-                free(file_data);
                 free(idat_buf);
-                return NULL;
+                return 0;
             }
             palette_count = (int)(chunk_len / 3);
             if (palette_count > 256)
@@ -615,15 +582,13 @@ void *rt_pixels_load_png(void *path) {
             memcpy(palette, chunk_data, (size_t)palette_count * 3);
         } else if (memcmp(chunk_type, "tRNS", 4) == 0) {
             if (idat_seen) {
-                free(file_data);
                 free(idat_buf);
-                return NULL;
+                return 0;
             }
             if (color_type == 3) {
                 if (palette_count <= 0 || chunk_len > (uint32_t)palette_count) {
-                    free(file_data);
                     free(idat_buf);
-                    return NULL;
+                    return 0;
                 }
                 // Per-palette-entry alpha values
                 trns_count = (int)chunk_len;
@@ -643,18 +608,16 @@ void *rt_pixels_load_png(void *path) {
             }
         } else if (memcmp(chunk_type, "IDAT", 4) == 0) {
             if (color_type == 3 && palette_count <= 0) {
-                free(file_data);
                 free(idat_buf);
-                return NULL;
+                return 0;
             }
             idat_seen = 1;
             // Accumulate IDAT data
             if (chunk_len > SIZE_MAX - idat_len) // overflow guard
             {
-                free(file_data);
                 if (idat_buf)
                     free(idat_buf);
-                return NULL;
+                return 0;
             }
             size_t needed_idat = idat_len + (size_t)chunk_len;
             if (needed_idat > idat_cap) {
@@ -668,10 +631,9 @@ void *rt_pixels_load_png(void *path) {
                 }
                 uint8_t *new_buf = (uint8_t *)realloc(idat_buf, new_cap);
                 if (!new_buf) {
-                    free(file_data);
                     if (idat_buf)
                         free(idat_buf);
-                    return NULL;
+                    return 0;
                 }
                 idat_buf = new_buf;
                 idat_cap = new_cap;
@@ -686,63 +648,33 @@ void *rt_pixels_load_png(void *path) {
         pos += 12 + chunk_len; // length + type + data + crc
     }
 
-    free(file_data);
-
     if (!ihdr_seen || !iend_seen || width == 0 || height == 0 || !idat_buf || idat_len < 2 ||
         (color_type == 3 && palette_count <= 0)) {
         if (idat_buf)
             free(idat_buf);
-        return NULL;
+        return 0;
     }
 
     // IDAT data is a zlib stream: 2-byte header + DEFLATE data + 4-byte Adler32.
     if (!png_validate_zlib_header(idat_buf, idat_len)) {
         free(idat_buf);
-        return NULL;
+        return 0;
     }
     size_t deflate_len = idat_len - 6; // strip 2-byte zlib header and 4-byte Adler32.
     uint32_t expected_adler = png_read_u32(idat_buf + idat_len - 4);
 
-    // Create a Bytes object with the raw DEFLATE data for rt_compress_inflate
-    void *comp_bytes = rt_bytes_new((int64_t)deflate_len);
-    if (!comp_bytes) {
-        free(idat_buf);
-        return NULL;
-    }
-    // Copy deflate data (skip 2-byte zlib header)
-    {
-        // Access internal bytes data
-        typedef struct {
-            int64_t len;
-            uint8_t *data;
-        } bytes_t;
-
-        bytes_t *b = (bytes_t *)comp_bytes;
-        memcpy(b->data, idat_buf + 2, deflate_len);
-    }
-    free(idat_buf);
-
-    // Decompress — all error paths after this point must go through cleanup
-    // to release comp_bytes and raw_bytes (GC-managed, refcount=1).
-    void *raw_bytes = NULL;
+    uint8_t *raw_data = NULL;
+    size_t raw_len = 0;
     uint8_t *img = NULL;
-    rt_pixels_impl *pixels = NULL;
+    uint32_t *pixels = NULL;
     int success = 0;
 
-    raw_bytes = rt_compress_inflate(comp_bytes);
-    if (!raw_bytes)
-        goto cleanup;
-
-    // Access decompressed data
-    typedef struct {
-        int64_t len;
-        uint8_t *data;
-    } bytes_t;
-
-    bytes_t *raw = (bytes_t *)raw_bytes;
-    if (raw->len < 0)
-        goto cleanup;
-    if (png_adler32(raw->data, (size_t)raw->len) != expected_adler)
+    if (!rt_compress_inflate_raw(idat_buf + 2, deflate_len, 256u * 1024u * 1024u, &raw_data, &raw_len)) {
+        free(idat_buf);
+        return 0;
+    }
+    free(idat_buf);
+    if (png_adler32(raw_data, raw_len) != expected_adler)
         goto cleanup;
 
     // Compute bytes-per-pixel at the filter level (before sub-byte unpacking).
@@ -812,8 +744,8 @@ void *rt_pixels_load_png(void *path) {
         if (!img)
             goto cleanup;
 
-        const uint8_t *src_ptr = raw->data;
-        const uint8_t *src_end = raw->data + raw->len;
+        const uint8_t *src_ptr = raw_data;
+        const uint8_t *src_end = raw_data + raw_len;
 
         for (int pass = 0; pass < 7; pass++) {
             uint32_t x0 = (uint32_t)a7_x0[pass];
@@ -890,7 +822,7 @@ void *rt_pixels_load_png(void *path) {
         size_t expected = 0;
         if (!px_mul_size(filtered_stride, (size_t)height, &expected))
             goto cleanup;
-        if ((size_t)raw->len < expected)
+        if (raw_len < expected)
             goto cleanup;
 
         size_t image_bytes = 0;
@@ -900,7 +832,7 @@ void *rt_pixels_load_png(void *path) {
         if (!img)
             goto cleanup;
 
-        const uint8_t *src_ptr = raw->data;
+        const uint8_t *src_ptr = raw_data;
         for (uint32_t y = 0; y < height; y++) {
             uint8_t *dst_row = img + y * stride;
             const uint8_t *prev_row = (y > 0) ? img + (y - 1) * stride : NULL;
@@ -908,8 +840,13 @@ void *rt_pixels_load_png(void *path) {
         }
     }
 
-    // Create Pixels object and convert to our RGBA format (0xRRGGBBAA)
-    pixels = pixels_alloc((int64_t)width, (int64_t)height);
+    // Create raw pixel storage and convert to our RGBA format (0xRRGGBBAA).
+    size_t pixel_count = 0;
+    size_t pixel_bytes = 0;
+    if (!px_mul_size((size_t)width, (size_t)height, &pixel_count) ||
+        !px_mul_size(pixel_count, sizeof(uint32_t), &pixel_bytes))
+        goto cleanup;
+    pixels = (uint32_t *)malloc(pixel_bytes);
     if (!pixels)
         goto cleanup;
 
@@ -1018,7 +955,7 @@ void *rt_pixels_load_png(void *path) {
                     break;
             }
 
-            pixels->data[y * width + x] =
+            pixels[(size_t)y * (size_t)width + x] =
                 ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b_ch << 8) | alpha;
         }
     }
@@ -1026,19 +963,85 @@ void *rt_pixels_load_png(void *path) {
 
 cleanup:
     free(img);
-    if (!success && pixels) {
+    free(raw_data);
+    if (!success) {
+        free(pixels);
+        return 0;
+    }
+    *out_pixels = pixels;
+    *out_width = (int64_t)width;
+    *out_height = (int64_t)height;
+    return 1;
+}
+
+#undef PNG_FILTER_ROW
+#undef PNG_DOWN16
+
+/// @brief Decode a PNG file into a Pixels object.
+/// @return GC-managed `rt_pixels_impl*` on success, NULL on any decode failure.
+void *rt_pixels_load_png(void *path) {
+    if (!path)
+        return NULL;
+
+    const char *filepath = rt_string_cstr((rt_string)path);
+    if (!filepath)
+        return NULL;
+
+    FILE *f = fopen(filepath, "rb");
+    if (!f)
+        return NULL;
+
+    if (px_fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    int64_t file_len = px_ftell(f);
+    if (px_fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    if (file_len < 8 || file_len > 256 * 1024 * 1024) {
+        fclose(f);
+        return NULL;
+    }
+
+    uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
+    if (!file_data) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
+        free(file_data);
+        fclose(f);
+        return NULL;
+    }
+    fclose(f);
+
+    uint32_t *raw_pixels = NULL;
+    int64_t width = 0;
+    int64_t height = 0;
+    if (!rt_png_decode_buffer_rgba32(file_data, (size_t)file_len, &raw_pixels, &width, &height)) {
+        free(file_data);
+        return NULL;
+    }
+    free(file_data);
+
+    rt_pixels_impl *pixels = pixels_alloc(width, height);
+    if (!pixels) {
+        free(raw_pixels);
+        return NULL;
+    }
+    size_t pixel_count = 0;
+    size_t pixel_bytes = 0;
+    if (!px_mul_size((size_t)width, (size_t)height, &pixel_count) ||
+        !px_mul_size(pixel_count, sizeof(uint32_t), &pixel_bytes)) {
+        free(raw_pixels);
         if (rt_obj_release_check0(pixels))
             rt_obj_free(pixels);
-        pixels = NULL;
+        return NULL;
     }
-    if (raw_bytes) {
-        if (rt_obj_release_check0(raw_bytes))
-            rt_obj_free(raw_bytes);
-    }
-    if (comp_bytes) {
-        if (rt_obj_release_check0(comp_bytes))
-            rt_obj_free(comp_bytes);
-    }
+    memcpy(pixels->data, raw_pixels, pixel_bytes);
+    free(raw_pixels);
     return pixels;
 }
 
@@ -1665,13 +1668,108 @@ static uint8_t jpeg_clamp(int val) {
     return (uint8_t)val;
 }
 
-/// @brief Decode a JPEG image from a memory buffer.
-/// @param data Pointer to JPEG data (must start with 0xFFD8 SOI marker).
-/// @param len Length of data in bytes.
-/// @return New Pixels object, or NULL on failure. Caller does NOT free data.
-void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
-    if (!data || len < 2 || data[0] != 0xFF || data[1] != 0xD8)
+static int jpeg_rgba_pixel_count_checked(int64_t width, int64_t height, size_t *out_count) {
+    if (out_count)
+        *out_count = 0;
+    if (width <= 0 || height <= 0 || !out_count)
+        return 0;
+    if ((uint64_t)width > SIZE_MAX || (uint64_t)height > SIZE_MAX)
+        return 0;
+    if ((size_t)width > SIZE_MAX / (size_t)height)
+        return 0;
+    *out_count = (size_t)width * (size_t)height;
+    return 1;
+}
+
+static uint32_t *jpeg_rgba_alloc(int64_t width, int64_t height) {
+    size_t count;
+    if (!jpeg_rgba_pixel_count_checked(width, height, &count))
         return NULL;
+    if (count > SIZE_MAX / sizeof(uint32_t))
+        return NULL;
+    return (uint32_t *)calloc(count, sizeof(uint32_t));
+}
+
+static int jpeg_rgba_apply_orientation(uint32_t **pixels,
+                                       int64_t *width,
+                                       int64_t *height,
+                                       int orientation) {
+    uint32_t *src;
+    uint32_t *dst;
+    int64_t src_w;
+    int64_t src_h;
+    int64_t dst_w;
+    int64_t dst_h;
+    if (!pixels || !*pixels || !width || !height || orientation <= 1 || orientation > 8)
+        return 1;
+    src = *pixels;
+    src_w = *width;
+    src_h = *height;
+    dst_w = (orientation >= 5 && orientation <= 8) ? src_h : src_w;
+    dst_h = (orientation >= 5 && orientation <= 8) ? src_w : src_h;
+    dst = jpeg_rgba_alloc(dst_w, dst_h);
+    if (!dst)
+        return 0;
+    for (int64_t y = 0; y < src_h; ++y) {
+        for (int64_t x = 0; x < src_w; ++x) {
+            int64_t dx = x;
+            int64_t dy = y;
+            switch (orientation) {
+                case 2:
+                    dx = src_w - 1 - x;
+                    dy = y;
+                    break;
+                case 3:
+                    dx = src_w - 1 - x;
+                    dy = src_h - 1 - y;
+                    break;
+                case 4:
+                    dx = x;
+                    dy = src_h - 1 - y;
+                    break;
+                case 5:
+                    dx = y;
+                    dy = x;
+                    break;
+                case 6:
+                    dx = src_h - 1 - y;
+                    dy = x;
+                    break;
+                case 7:
+                    dx = src_h - 1 - y;
+                    dy = src_w - 1 - x;
+                    break;
+                case 8:
+                    dx = y;
+                    dy = src_w - 1 - x;
+                    break;
+                default:
+                    break;
+            }
+            dst[dy * dst_w + dx] = src[y * src_w + x];
+        }
+    }
+    free(src);
+    *pixels = dst;
+    *width = dst_w;
+    *height = dst_h;
+    return 1;
+}
+
+/// @brief Decode a JPEG image from a memory buffer to malloc-owned raw RGBA32 pixels.
+int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
+                                 size_t len,
+                                 uint32_t **out_pixels,
+                                 int64_t *out_width,
+                                 int64_t *out_height) {
+    uint32_t *pixels = NULL;
+    if (!data || len < 2 || data[0] != 0xFF || data[1] != 0xD8)
+        return 0;
+    if (!out_pixels || !out_width || !out_height)
+        return 0;
+    *out_pixels = NULL;
+    *out_width = 0;
+    *out_height = 0;
 
     /* jpeg_ctx_t.data is uint8_t* but we only read from it. Use memcpy
      * to reinterpret the pointer without triggering -Wcast-qual. */
@@ -1684,9 +1782,10 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
     ctx.len = len;
     ctx.pos = 2; // past SOI
 
-    rt_pixels_impl *pixels = NULL;
     uint8_t **comp_data = NULL;
     int exif_orientation = 1; // default: no rotation
+    int64_t decoded_width = 0;
+    int64_t decoded_height = 0;
 
     // Parse markers
     while (ctx.pos + 1 < ctx.len) {
@@ -1950,9 +2049,11 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                 }
 
                 // Convert component buffers to RGBA pixels
-                pixels = pixels_alloc((int64_t)ctx.width, (int64_t)ctx.height);
+                pixels = jpeg_rgba_alloc((int64_t)ctx.width, (int64_t)ctx.height);
                 if (!pixels)
                     goto jpeg_fail;
+                decoded_width = (int64_t)ctx.width;
+                decoded_height = (int64_t)ctx.height;
 
                 if (ctx.num_components == 1) {
                     // Grayscale
@@ -1960,9 +2061,9 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                     for (int y = 0; y < ctx.height; y++) {
                         for (int x = 0; x < ctx.width; x++) {
                             uint8_t gray = comp_data[0][y * comp_stride + x];
-                            pixels->data[y * ctx.width + x] = ((uint32_t)gray << 24) |
-                                                              ((uint32_t)gray << 16) |
-                                                              ((uint32_t)gray << 8) | 0xFF;
+                            pixels[y * ctx.width + x] = ((uint32_t)gray << 24) |
+                                                        ((uint32_t)gray << 16) |
+                                                        ((uint32_t)gray << 8) | 0xFF;
                         }
                     }
                 } else if (ctx.num_components >= 3) {
@@ -1995,11 +2096,13 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
                             int g = yy_val - ((cb_val * 88 + cr_val * 183) >> 8);
                             int b = yy_val + ((cb_val * 454) >> 8);
 
-                            pixels->data[y * ctx.width + x] = ((uint32_t)jpeg_clamp(r) << 24) |
-                                                              ((uint32_t)jpeg_clamp(g) << 16) |
-                                                              ((uint32_t)jpeg_clamp(b) << 8) | 0xFF;
+                            pixels[y * ctx.width + x] = ((uint32_t)jpeg_clamp(r) << 24) |
+                                                        ((uint32_t)jpeg_clamp(g) << 16) |
+                                                        ((uint32_t)jpeg_clamp(b) << 8) | 0xFF;
                         }
                     }
+                } else {
+                    goto jpeg_fail;
                 }
 
                 // Finished SOS — skip to after entropy data (already consumed via bitstream)
@@ -2046,52 +2149,10 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
         }
     }
 
-    // Apply EXIF orientation transform
-    if (pixels && exif_orientation > 1 && exif_orientation <= 8) {
-        rt_pixels_impl *rotated = NULL;
-        switch (exif_orientation) {
-            case 2:
-                rotated = (rt_pixels_impl *)rt_pixels_flip_h(pixels);
-                break;
-            case 3:
-                rotated = (rt_pixels_impl *)rt_pixels_rotate_180(pixels);
-                break;
-            case 4:
-                rotated = (rt_pixels_impl *)rt_pixels_flip_v(pixels);
-                break;
-            case 5: {
-                void *t = rt_pixels_rotate_cw(pixels);
-                if (t) {
-                    rotated = (rt_pixels_impl *)rt_pixels_flip_h(t);
-                    if (rt_obj_release_check0(t))
-                        rt_obj_free(t);
-                }
-                break;
-            }
-            case 6:
-                rotated = (rt_pixels_impl *)rt_pixels_rotate_cw(pixels);
-                break;
-            case 7: {
-                void *t = rt_pixels_rotate_ccw(pixels);
-                if (t) {
-                    rotated = (rt_pixels_impl *)rt_pixels_flip_h(t);
-                    if (rt_obj_release_check0(t))
-                        rt_obj_free(t);
-                }
-                break;
-            }
-            case 8:
-                rotated = (rt_pixels_impl *)rt_pixels_rotate_ccw(pixels);
-                break;
-            default:
-                break;
-        }
-        if (rotated) {
-            if (rt_obj_release_check0(pixels))
-                rt_obj_free(pixels);
-            pixels = rotated;
-        }
-    }
+    // Apply EXIF orientation transform without creating GC-managed Pixels.
+    if (pixels && !jpeg_rgba_apply_orientation(
+                      &pixels, &decoded_width, &decoded_height, exif_orientation))
+        goto jpeg_fail;
 
     // Cleanup
     if (comp_data) {
@@ -2099,19 +2160,50 @@ void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
             free(comp_data[i]);
         free(comp_data);
     }
-    return pixels;
+    if (!pixels)
+        return 0;
+    *out_pixels = pixels;
+    *out_width = decoded_width;
+    *out_height = decoded_height;
+    return 1;
 
 jpeg_fail:
-    if (pixels) {
-        if (rt_obj_release_check0(pixels))
-            rt_obj_free(pixels);
-    }
+    free(pixels);
     if (comp_data) {
         for (int i = 0; i < ctx.num_components; i++)
             free(comp_data[i]);
         free(comp_data);
     }
-    return NULL;
+    *out_pixels = NULL;
+    *out_width = 0;
+    *out_height = 0;
+    return 0;
+}
+
+/// @brief Decode a JPEG image from a memory buffer.
+/// @param data Pointer to JPEG data (must start with 0xFFD8 SOI marker).
+/// @param len Length of data in bytes.
+/// @return New Pixels object, or NULL on failure. Caller does NOT free data.
+void *rt_jpeg_decode_buffer(const uint8_t *data, size_t len) {
+    uint32_t *raw_pixels = NULL;
+    int64_t width = 0;
+    int64_t height = 0;
+    size_t pixel_count = 0;
+    rt_pixels_impl *pixels;
+    if (!rt_jpeg_decode_buffer_rgba32(data, len, &raw_pixels, &width, &height))
+        return NULL;
+    if (!jpeg_rgba_pixel_count_checked(width, height, &pixel_count)) {
+        free(raw_pixels);
+        return NULL;
+    }
+    pixels = pixels_alloc(width, height);
+    if (!pixels) {
+        free(raw_pixels);
+        return NULL;
+    }
+    memcpy(pixels->data, raw_pixels, pixel_count * sizeof(uint32_t));
+    free(raw_pixels);
+    return pixels;
 }
 
 /// @brief Load a JPEG image from a file path (wrapper around rt_jpeg_decode_buffer).

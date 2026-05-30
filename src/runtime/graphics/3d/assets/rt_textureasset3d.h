@@ -44,6 +44,16 @@ void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int6
 
 /// @brief Internal bridge: borrow the active resident RGBA8 Pixels fallback, if one was decoded.
 void *rt_textureasset3d_get_pixels(void *obj);
+/// @brief Internal bridge: borrow one retained native-compressed mip payload, if available.
+int rt_textureasset3d_get_native_mip_info(void *obj,
+                                          int64_t mip,
+                                          const uint8_t **out_data,
+                                          uint64_t *out_bytes,
+                                          int32_t *out_width,
+                                          int32_t *out_height,
+                                          int32_t *out_block_width,
+                                          int32_t *out_block_height,
+                                          int32_t *out_block_bytes);
 
 #ifdef __cplusplus
 }

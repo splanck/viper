@@ -1713,6 +1713,14 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
             LABELS "runtime;graphics3d;zia;requires_display;perf"
             TIMEOUT 45)
 
+    add_test(NAME g3d_openworld_slice_streaming_hitch_probe
+            COMMAND $<TARGET_FILE:viper> run "streaming_hitch_probe.zia"
+            WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
+    set_tests_properties(g3d_openworld_slice_streaming_hitch_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS: openworld_slice_streaming_hitch_probe"
+            LABELS "runtime;graphics3d;zia;perf"
+            TIMEOUT 45)
+
     add_test(NAME g3d_openworld_slice_long_traversal
             COMMAND $<TARGET_FILE:viper> run "long_traversal.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")

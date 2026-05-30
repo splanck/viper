@@ -165,6 +165,12 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability);
 int64_t rt_canvas3d_get_draw_count(void *obj);
 /// @brief Number of draw submissions rejected by visibility culling in the latest scene draw.
 int64_t rt_canvas3d_get_occluded_draw_count(void *obj);
+/// @brief CPU image bytes uploaded to backend texture storage in the latest ended frame.
+int64_t rt_canvas3d_get_texture_upload_bytes(void *obj);
+/// @brief Set the backend texture upload byte budget for each frame; negative disables the budget.
+void rt_canvas3d_set_texture_upload_budget(void *obj, int64_t bytes);
+/// @brief CPU image bytes still waiting for backend texture upload budget.
+int64_t rt_canvas3d_get_texture_upload_pending_bytes(void *obj);
 /// @brief Capture the current back-buffer contents into a fresh Pixels object.
 void *rt_canvas3d_screenshot(void *obj);
 /// @brief Begin recording a final overlay pass composited after post-FX during finalization.

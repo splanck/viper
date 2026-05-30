@@ -336,6 +336,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.SetResidencyBudget\""),
                  "Assets3D.SetResidencyBudget must use Game3D PascalCase method naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.GetResidentBytes\""),
+                 "Assets3D.GetResidentBytes must use Game3D PascalCase method naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.Evict\""),
                  "Assets3D.Evict must use Game3D PascalCase method naming") &&
          ok;
@@ -368,6 +371,9 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetResidencyBudget\""),
                  "Assets3D.SetResidencyBudget method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetResidentBytes\""),
+                 "Assets3D.GetResidentBytes method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"Evict\""),
                  "Assets3D.Evict method missing") &&
@@ -904,6 +910,15 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_DrawCount\""),
                  "Canvas3D.DrawCount getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_TextureUploadBytes\""),
+                 "Canvas3D.TextureUploadBytes getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetTextureUploadBudget\""),
+                 "Canvas3D.SetTextureUploadBudget must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_TextureUploadPendingBytes\""),
+                 "Canvas3D.TextureUploadPendingBytes getter must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.SetAutoLOD\""),
                  "SceneNode3D.SetAutoLOD must use Graphics3D PascalCase naming") &&
          ok;
@@ -924,6 +939,15 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"DrawCount\""),
                  "Canvas3D.DrawCount property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"TextureUploadBytes\""),
+                 "Canvas3D.TextureUploadBytes property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetTextureUploadBudget\""),
+                 "Canvas3D.SetTextureUploadBudget method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"TextureUploadPendingBytes\""),
+                 "Canvas3D.TextureUploadPendingBytes property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetAutoLOD\""),
                  "SceneNode3D.SetAutoLOD method missing") &&
@@ -1062,6 +1086,8 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.Canvas3D.setShadowCascades",
         "Viper.Graphics3D.Canvas3D.get_occludedDrawCount",
         "Viper.Graphics3D.Canvas3D.get_drawCount",
+        "Viper.Graphics3D.Canvas3D.setTextureUploadBudget",
+        "Viper.Graphics3D.Canvas3D.get_textureUploadPendingBytes",
         "Viper.Graphics3D.SceneNode3D.setAutoLOD",
         "Viper.Graphics3D.SceneNode3D.setImpostor",
         "Viper.Graphics3D.Canvas3D.SetShadowCascade\"",

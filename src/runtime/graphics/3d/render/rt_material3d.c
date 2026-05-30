@@ -14,8 +14,9 @@
 //   - PBR defaults: metallic=0.0, roughness=0.5, ao=1.0,
 //     emissive_intensity=1.0, normal_scale=1.0, alpha_mode=opaque.
 //   - Texture/normal_map/specular_map/emissive_map/metallic_roughness_map/
-//     ao_map/env_map are retained
-//     references to GC-managed Pixels/CubeMap3D objects.
+//     ao_map slots retain GC-managed Pixels or TextureAsset3D source objects;
+//     draw submission resolves TextureAsset3D to the currently resident Pixels.
+//     env_map retains a CubeMap3D object.
 //   - Alpha [0.0=invisible, 1.0=opaque] controls transparency sorting
 //     in Canvas3D.End() — opaque draws first, transparent back-to-front.
 //   - env_map and reflectivity are forwarded through the backend draw command.
@@ -121,30 +122,32 @@ static int material_cubemap_handle_valid(void *cubemap) {
     return cubemap && rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID);
 }
 
-static void *material_texture_pixels_or_trap(void *texture, const char *method) {
-    void *fallback;
-
-    if (!texture)
+void *rt_material3d_resolve_texture_pixels(void *texture_ref) {
+    if (!texture_ref)
         return NULL;
-    if (material_pixels_handle_valid(texture))
-        return texture;
-    fallback = rt_textureasset3d_get_pixels(texture);
-    if (fallback)
-        return fallback;
+    if (rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID))
+        return rt_textureasset3d_get_pixels(texture_ref);
+    return material_pixels_handle_valid(texture_ref) ? texture_ref : NULL;
+}
+
+static int material_texture_ref_valid_or_trap(void *texture, const char *method) {
+    if (!texture)
+        return 1;
+    if (rt_material3d_resolve_texture_pixels(texture))
+        return 1;
     if (rt_g3d_has_class(texture, RT_G3D_TEXTUREASSET3D_CLASS_ID)) {
         (void)method;
         rt_trap("Material3D: TextureAsset3D must expose an RGBA8 Pixels fallback");
-        return NULL;
+        return 0;
     }
     rt_trap(method ? method : "Material3D: texture must be Pixels or TextureAsset3D");
-    return NULL;
+    return 0;
 }
 
 static int material_assign_texture_ref_checked(void **slot, void *texture, const char *method) {
-    void *pixels = material_texture_pixels_or_trap(texture, method);
-    if (texture && !pixels)
+    if (!material_texture_ref_valid_or_trap(texture, method))
         return 0;
-    material_assign_ref(slot, pixels);
+    material_assign_ref(slot, texture);
     return 1;
 }
 
@@ -292,7 +295,7 @@ static void material_promote_to_pbr(rt_material3d *mat) {
 }
 
 /// @brief Deep-copy the material shell, retaining (not cloning) the underlying texture
-/// objects. Scalar / color / flag fields are memcpy-like copied; texture pointers go
+/// source objects. Scalar / color / flag fields are memcpy-like copied; texture pointers go
 /// through `material_assign_ref` so the clone holds its own retain count. Shared texture
 /// data keeps GPU uploads cheap — callers who want independent textures clone them
 /// separately. Returns NULL if `rt_material3d_new` fails to allocate.
@@ -356,7 +359,7 @@ static void *material_clone_like(void *obj) {
 /// @brief Create a new material with default white diffuse, shininess 32, fully opaque.
 /// @details Materials define how light interacts with a mesh surface. The default
 ///          state is a white, opaque, lit Phong material with no textures. Any
-///          assigned texture pointers (diffuse, normal, specular, emissive, env)
+///          assigned texture pointers/assets (diffuse, normal, specular, emissive, env)
 ///          are retained so they stay alive with the material.
 /// @return Opaque material handle, or NULL on allocation failure.
 void *rt_material3d_new(void) {
@@ -388,7 +391,7 @@ void *rt_material3d_new_color(double r, double g, double b) {
 }
 
 /// @brief Create a material with a diffuse texture map.
-/// @details Pixels or an RGBA8-backed TextureAsset3D is retained through the material's Pixels slot.
+/// @details Pixels or an RGBA8-backed TextureAsset3D is retained through the material's source slot.
 /// @param pixels Pixels or TextureAsset3D handle for the diffuse texture.
 /// @return Opaque material handle, or NULL on failure.
 void *rt_material3d_new_textured(void *pixels) {
@@ -721,13 +724,13 @@ void rt_material3d_set_normal_map(void *obj, void *pixels) {
 /// @brief Return whether the base-color/albedo texture slot is populated.
 int8_t rt_material3d_get_has_texture(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && mat->texture) ? 1 : 0;
+    return (mat && rt_material3d_resolve_texture_pixels(mat->texture)) ? 1 : 0;
 }
 
 /// @brief Return whether the normal-map slot is populated.
 int8_t rt_material3d_get_has_normal_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && mat->normal_map) ? 1 : 0;
+    return (mat && rt_material3d_resolve_texture_pixels(mat->normal_map)) ? 1 : 0;
 }
 
 /// @brief Assign a glTF-style metallic-roughness texture (B = metallic, G = roughness, R/A
@@ -746,7 +749,7 @@ void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels) {
 /// @brief Return whether the metallic-roughness texture slot is populated.
 int8_t rt_material3d_get_has_metallic_roughness_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && mat->metallic_roughness_map) ? 1 : 0;
+    return (mat && rt_material3d_resolve_texture_pixels(mat->metallic_roughness_map)) ? 1 : 0;
 }
 
 /// @brief Assign an ambient-occlusion texture (R channel). Multiplied into indirect lighting.
@@ -763,7 +766,7 @@ void rt_material3d_set_ao_map(void *obj, void *pixels) {
 /// @brief Return whether the ambient-occlusion texture slot is populated.
 int8_t rt_material3d_get_has_ao_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && mat->ao_map) ? 1 : 0;
+    return (mat && rt_material3d_resolve_texture_pixels(mat->ao_map)) ? 1 : 0;
 }
 
 /// @brief Assign a specular map texture to control per-pixel highlight intensity.
@@ -778,7 +781,7 @@ void rt_material3d_set_specular_map(void *obj, void *pixels) {
 /// @brief Return whether the specular texture slot is populated.
 int8_t rt_material3d_get_has_specular_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && mat->specular_map) ? 1 : 0;
+    return (mat && rt_material3d_resolve_texture_pixels(mat->specular_map)) ? 1 : 0;
 }
 
 /// @brief Assign an emissive map texture for self-illuminated surface regions.
@@ -793,7 +796,7 @@ void rt_material3d_set_emissive_map(void *obj, void *pixels) {
 /// @brief Return whether the emissive texture slot is populated.
 int8_t rt_material3d_get_has_emissive_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && mat->emissive_map) ? 1 : 0;
+    return (mat && rt_material3d_resolve_texture_pixels(mat->emissive_map)) ? 1 : 0;
 }
 
 /// @brief Return whether an environment cubemap is populated.

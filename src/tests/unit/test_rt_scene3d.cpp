@@ -908,6 +908,44 @@ static void test_scene_spatial_index_10k_scaling_fixture() {
                 "10k indexed Scene3D.Draw preserves flat-path visible node count");
 }
 
+static void test_scene_spatial_index_preserves_far_origin_precision() {
+    void *scene = rt_scene3d_new();
+    auto *scene_impl = (rt_scene3d *)scene;
+    void *mesh = rt_mesh3d_new_box(0.25, 0.25, 0.25);
+
+    constexpr double kBase = 1000000000.0;
+    void *target_node = rt_scene_node3d_new();
+    rt_scene_node3d_set_position(target_node, kBase, 0.0, -10.0);
+    rt_scene_node3d_set_mesh(target_node, mesh);
+    rt_scene3d_add(scene, target_node);
+
+    void *offset_node = rt_scene_node3d_new();
+    rt_scene_node3d_set_position(offset_node, kBase + 4.0, 0.0, -5.0);
+    rt_scene_node3d_set_mesh(offset_node, mesh);
+    rt_scene3d_add(scene, offset_node);
+
+    void *aabb_hits = rt_scene3d_query_aabb(scene,
+                                            rt_vec3_new(kBase - 0.5, -1.0, -10.5),
+                                            rt_vec3_new(kBase + 0.5, 1.0, -9.5));
+    EXPECT_TRUE(rt_seq_len(aabb_hits) == 1,
+                "Far-origin QueryAABB keeps sub-float-spaced nodes distinct");
+    EXPECT_TRUE(rt_seq_get(aabb_hits, 0) == target_node,
+                "Far-origin QueryAABB returns the exact target node");
+    EXPECT_TRUE(scene_impl->spatial_index.last_candidate_count == 1,
+                "Far-origin spatial index culls the offset node before exact testing");
+
+    void *sphere_hits = rt_scene3d_query_sphere(scene, rt_vec3_new(kBase, 0.0, -10.0), 0.75);
+    EXPECT_TRUE(rt_seq_len(sphere_hits) == 1,
+                "Far-origin QuerySphere keeps sub-float-spaced nodes distinct");
+    EXPECT_TRUE(rt_seq_get(sphere_hits, 0) == target_node,
+                "Far-origin QuerySphere returns the exact target node");
+
+    void *ray_hit = rt_scene3d_raycast_nodes(
+        scene, rt_vec3_new(kBase, 0.0, 0.0), rt_vec3_new(0.0, 0.0, -1.0), 20.0);
+    EXPECT_TRUE(ray_hit == target_node,
+                "Far-origin RaycastNodes does not collapse the nearer offset node onto the ray");
+}
+
 static void test_scene_draw_reuses_active_frame() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
@@ -2034,6 +2072,7 @@ int main() {
     test_scene_spatial_index_rebuilds_on_dirty_node();
     test_scene_draw_spatial_index_matches_flat_reference();
     test_scene_spatial_index_10k_scaling_fixture();
+    test_scene_spatial_index_preserves_far_origin_precision();
     test_scene_draw_reuses_active_frame();
     test_scene_draw_culling_uses_canvas_output_aspect();
     test_scene_save_escapes_json_names();

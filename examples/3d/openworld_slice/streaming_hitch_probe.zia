@@ -1,0 +1,123 @@
+module openworld_slice_streaming_hitch_probe;
+
+bind Viper.Game3D as Game3D;
+bind Viper.Terminal as Terminal;
+bind Viper.Text.Fmt as Fmt;
+bind Viper.Threads.Thread as Thread;
+bind Viper.Time.Clock as Clock;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func start() {
+    var path = "assets/models/skinned_agent.gltf";
+
+    Game3D.Assets3D.SetUploadBudget(-1);
+    Game3D.Assets3D.SetResidencyBudget(-1);
+    Game3D.Assets3D.ClearCache();
+
+    var blockingStart = Clock.TicksUs();
+    var blockingTemplate = Game3D.Assets3D.LoadModelTemplateAsset(path);
+    var blockingUs = Clock.TicksUs() - blockingStart;
+    if (blockingTemplate == null) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("blocking template load failed");
+        return;
+    }
+    var blockingResidentBytes = Game3D.Assets3D.GetResidentBytes();
+    if (blockingResidentBytes <= 0) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("blocking load did not update resident-byte telemetry");
+        return;
+    }
+    Game3D.Assets3D.ClearCache();
+    if (Game3D.Assets3D.GetResidentBytes() != 0) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("blocking clear did not return resident bytes to zero");
+        return;
+    }
+
+    Game3D.Assets3D.SetUploadBudget(0);
+    var asyncStart = Clock.TicksUs();
+    var asyncHandle = Game3D.Assets3D.LoadModelTemplateAssetAsync(path);
+    var asyncCreateUs = Clock.TicksUs() - asyncStart;
+    if (asyncHandle == null) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("async template load did not return a handle");
+        return;
+    }
+
+    var observeStart = Clock.TicksUs();
+    var firstReady = Game3D.AssetHandle3D.get_ready(asyncHandle);
+    var firstObserveUs = Clock.TicksUs() - observeStart;
+    if (firstReady) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("async template completed synchronously under zero upload budget");
+        return;
+    }
+
+    var stayedPending = true;
+    var i = 0;
+    while (i < 20) {
+        if (Game3D.AssetHandle3D.get_ready(asyncHandle)) {
+            stayedPending = false;
+            break;
+        }
+        Thread.Sleep(2);
+        i = i + 1;
+    }
+    if (stayedPending == false) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("zero upload budget drained a positive-cost async commit");
+        return;
+    }
+
+    var releaseStart = Clock.TicksUs();
+    Game3D.Assets3D.SetUploadBudget(1);
+    var ready = false;
+    i = 0;
+    while (i < 200) {
+        if (Game3D.AssetHandle3D.get_ready(asyncHandle)) {
+            ready = true;
+            break;
+        }
+        Thread.Sleep(5);
+        i = i + 1;
+    }
+    var releaseUs = Clock.TicksUs() - releaseStart;
+    if (ready == false) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("positive upload budget did not release async commit: " +
+             Game3D.AssetHandle3D.get_error(asyncHandle));
+        return;
+    }
+    if (Game3D.AssetHandle3D.getTemplate(asyncHandle) == null) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("ready async handle did not expose a template");
+        return;
+    }
+    var asyncResidentBytes = Game3D.Assets3D.GetResidentBytes();
+    if (asyncResidentBytes <= 0) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("async load did not update resident-byte telemetry");
+        return;
+    }
+
+    Game3D.Assets3D.ClearCache();
+    if (Game3D.Assets3D.GetResidentBytes() != 0) {
+        Game3D.Assets3D.SetUploadBudget(-1);
+        fail("async clear did not return resident bytes to zero");
+        return;
+    }
+    Game3D.Assets3D.SetUploadBudget(-1);
+
+    Terminal.Say("HITCH: blocking_us=" + Fmt.Int(blockingUs) +
+                 " async_create_us=" + Fmt.Int(asyncCreateUs) +
+                 " first_observe_us=" + Fmt.Int(firstObserveUs) +
+                 " zero_budget_pending=1" +
+                 " release_us=" + Fmt.Int(releaseUs) +
+                 " blocking_resident_bytes=" + Fmt.Int(blockingResidentBytes) +
+                 " async_resident_bytes=" + Fmt.Int(asyncResidentBytes));
+    Terminal.Say("PASS: openworld_slice_streaming_hitch_probe");
+}

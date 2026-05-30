@@ -253,6 +253,23 @@ static void test_body_velocity() {
     EXPECT_NEAR(rt_vec3_z(vel), 3.0, 0.01, "Velocity Z = 3");
 }
 
+static void test_body_far_origin_integrates_sub_float_delta() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *body = rt_body3d_new_aabb(0.25, 0.25, 0.25, 1.0);
+    constexpr double kBase = 1000000000.0;
+
+    rt_body3d_set_position(body, kBase, 0.0, 0.0);
+    rt_body3d_set_velocity(body, 0.125, 0.0, 0.0);
+    rt_world3d_add(world, body);
+    rt_world3d_step(world, 1.0);
+
+    void *pos = rt_body3d_get_position(body);
+    EXPECT_NEAR(rt_vec3_x(pos),
+                kBase + 0.125,
+                1e-9,
+                "Physics body state preserves sub-float deltas at far origin");
+}
+
 static void test_body_collision_layer_mask() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     rt_body3d_set_collision_layer(b, 4);
@@ -2163,6 +2180,7 @@ int main() {
     test_body_scale_affects_queries();
     test_body_orientation_roundtrip();
     test_body_velocity();
+    test_body_far_origin_integrates_sub_float_delta();
     test_body_collision_layer_mask();
     test_body_material_coefficients_are_sanitized();
     test_body_sanitizes_nonfinite_motion_state();

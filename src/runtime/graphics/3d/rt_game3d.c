@@ -52,6 +52,8 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_collider3d.h"
 #include "rt_decal3d.h"
+#include "rt_g3d_commit_queue.h"
+#include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_input.h"
 #include "rt_json.h"
@@ -63,15 +65,18 @@
 #include "rt_particles3d.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
+#include "rt_platform.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
+#include "rt_scene3d_internal.h"
 #include "rt_seq.h"
 #include "rt_sound3d.h"
 #include "rt_soundlistener3d.h"
 #include "rt_soundsource3d.h"
 #include "rt_string.h"
 #include "rt_terrain3d.h"
+#include "rt_textureasset3d.h"
 #include "rt_parallel.h"
 #include "rt_threadpool.h"
 #include "rt_trap.h"
@@ -81,6 +86,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <math.h>
+#include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -104,6 +110,10 @@
 #include <pthread.h>
 #include <unistd.h>
 #endif
+
+extern void rt_trap_set_recovery(jmp_buf *buf);
+extern void rt_trap_clear_recovery(void);
+extern const char *rt_trap_get_error(void);
 
 // Default tuning constants applied when callers omit a value or pass a
 // non-finite one; chosen for a 60 Hz first-person feel with safe clip planes.
@@ -169,6 +179,8 @@ void rt_camera3d_orbit_components(void *obj,
                                   double pitch);
 void rt_camera3d_set_position(void *obj, void *pos);
 int8_t rt_scene_node3d_get_world_position_components(void *node, double *x, double *y, double *z);
+void rt_decal3d_rebase_origin(void *decal, double dx, double dy, double dz);
+void rt_particles3d_rebase_origin(void *particles, double dx, double dy, double dz);
 
 /// @brief LayerMask payload: a single bitfield of RT_GAME3D_LAYER_* bits.
 typedef struct rt_game3d_layermask {
@@ -301,13 +313,14 @@ typedef struct rt_game3d_model_template {
 } rt_game3d_model_template;
 
 /// @brief AssetHandle3D payload: request state plus either an entity result or
-///   a reusable ModelTemplate result. Deferred handles currently complete on
-///   first result observation; failures are terminal handle errors instead of
-///   escaping through the blocking loader's trap path.
+///   a reusable ModelTemplate result. Deferred handles schedule worker loading
+///   on first observation and publish terminal results through the main-thread
+///   commit queue.
 typedef struct rt_game3d_asset_handle {
     int8_t ready;
     int8_t cancelled;
     int8_t deferred;
+    int8_t async_started;
     int8_t asset_path;
     int8_t template_request;
     double progress;
@@ -317,12 +330,22 @@ typedef struct rt_game3d_asset_handle {
     void *model_template;
 } rt_game3d_asset_handle;
 
+typedef struct rt_game3d_asset_async_job {
+    rt_game3d_asset_handle *handle;
+    rt_gltf_preload_bundle *preloaded_gltf;
+    uint64_t cache_generation;
+    uint64_t upload_total_bytes;
+    uint64_t upload_prepared_bytes;
+    char error[256];
+} rt_game3d_asset_async_job;
+
 typedef struct rt_game3d_stream_cell {
     rt_string name;
     rt_string path;
     double center[3];
     double radius;
     int64_t resident_bytes;
+    int64_t measured_resident_bytes;
     void *scene;
     void *entity;
     int8_t resident;
@@ -509,9 +532,21 @@ static rt_game3d_model_cache_entry *g_game3d_model_cache = NULL;
 static int32_t g_game3d_model_cache_count = 0;
 static int32_t g_game3d_model_cache_capacity = 0;
 static uint64_t g_game3d_model_cache_tick = 0;
+static uint64_t g_game3d_model_cache_generation = 1;
 static uint64_t g_game3d_model_resident_bytes = 0;
 static uint64_t g_game3d_model_residency_budget_bytes = UINT64_MAX;
 #define RT_GAME3D_MODEL_CACHE_MAX_ENTRIES 64
+
+// Process-wide async asset workers and main-thread commit queue. Workers stage
+// model bytes/requests; the queue builds runtime objects and publishes handle
+// results on the main thread.
+static void *g_game3d_asset_async_pool = NULL;
+static void *g_game3d_asset_commit_queue = NULL;
+#define RT_GAME3D_ASSET_COMMIT_DRAIN_BUDGET 8
+#define RT_GAME3D_ASSET_UPLOAD_BUDGET_DEFAULT_BYTES (16ull * 1024ull * 1024ull)
+#define RT_GAME3D_ASSET_UPLOAD_SLICE_BYTES (64ull * 1024ull)
+static volatile uint64_t g_game3d_asset_upload_budget_bytes =
+    RT_GAME3D_ASSET_UPLOAD_BUDGET_DEFAULT_BYTES;
 
 #if defined(_WIN32)
 static INIT_ONCE g_game3d_model_cache_once = INIT_ONCE_STATIC_INIT;
@@ -769,6 +804,21 @@ static void game3d_shift_body_position(void *body, const double delta[3]) {
         body, rt_vec3_x(pos) - delta[0], rt_vec3_y(pos) - delta[1], rt_vec3_z(pos) - delta[2]);
 }
 
+static void game3d_effects_rebase_origin(void *effects_obj, const double delta[3]) {
+    rt_game3d_effects *effects = (rt_game3d_effects *)effects_obj;
+    if (!effects || !delta)
+        return;
+    for (int32_t i = 0; i < effects->count; ++i) {
+        rt_game3d_effect_item *item = &effects->items[i];
+        if (!item || !item->object)
+            continue;
+        if (item->type == RT_GAME3D_EFFECT_PARTICLES)
+            rt_particles3d_rebase_origin(item->object, delta[0], delta[1], delta[2]);
+        else if (item->type == RT_GAME3D_EFFECT_DECAL)
+            rt_decal3d_rebase_origin(item->object, delta[0], delta[1], delta[2]);
+    }
+}
+
 static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const double delta[3]) {
     if (!world)
         return;
@@ -779,6 +829,7 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
 
     if (scene_rebased)
         rt_scene3d_rebase_origin(world->scene, delta[0], delta[1], delta[2]);
+    game3d_effects_rebase_origin(world->effects, delta);
 
     for (int32_t i = 0; i < world->entity_count; ++i) {
         rt_game3d_entity *entity = world->entities[i];
@@ -4035,6 +4086,86 @@ static int game3d_path_has_model_extension(const char *path) {
     return 0;
 }
 
+static int game3d_path_has_gltf_extension(const char *path) {
+    static const char *const exts[] = {".gltf", ".glb"};
+    if (!path)
+        return 0;
+    const char *dot = strrchr(path, '.');
+    if (!dot || !dot[1])
+        return 0;
+    for (size_t i = 0; i < sizeof(exts) / sizeof(exts[0]); ++i) {
+        const char *a = dot;
+        const char *b = exts[i];
+        while (*a && *b) {
+            if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+                break;
+            ++a;
+            ++b;
+        }
+        if (*a == '\0' && *b == '\0')
+            return 1;
+    }
+    return 0;
+}
+
+static uint8_t *game3d_asset_read_file_bytes(const char *path, size_t *out_size) {
+    FILE *file;
+    long len;
+    uint8_t *data;
+    size_t read_len;
+    if (out_size)
+        *out_size = 0;
+    if (!path)
+        return NULL;
+    file = fopen(path, "rb");
+    if (!file)
+        return NULL;
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return NULL;
+    }
+    len = ftell(file);
+    if (len <= 0) {
+        fclose(file);
+        return NULL;
+    }
+    if (fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return NULL;
+    }
+    data = (uint8_t *)malloc((size_t)len);
+    if (!data) {
+        fclose(file);
+        return NULL;
+    }
+    read_len = fread(data, 1, (size_t)len, file);
+    fclose(file);
+    if (read_len != (size_t)len) {
+        free(data);
+        return NULL;
+    }
+    if (out_size)
+        *out_size = read_len;
+    return data;
+}
+
+static uint8_t *game3d_asset_load_root_bytes(rt_string path,
+                                             int8_t asset_path,
+                                             size_t *out_size) {
+    const char *path_cstr = path ? rt_string_cstr(path) : NULL;
+    uint8_t *data;
+    if (out_size)
+        *out_size = 0;
+    if (!path_cstr)
+        return NULL;
+    if (asset_path) {
+        data = rt_asset_load_raw(path, out_size);
+        if (data || strncmp(path_cstr, "asset://", 8) == 0)
+            return data;
+    }
+    return game3d_asset_read_file_bytes(path_cstr, out_size);
+}
+
 static uint64_t game3d_u64_saturating_add(uint64_t a, uint64_t b) {
     if (UINT64_MAX - a < b)
         return UINT64_MAX;
@@ -4051,11 +4182,90 @@ static uint64_t game3d_u64_from_i64_nonnegative(int64_t value) {
     return value > 0 ? (uint64_t)value : 0;
 }
 
+static int64_t game3d_i64_from_u64_saturating(uint64_t value) {
+    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
+}
+
+static int game3d_seen_ptr_contains(void **seen, int32_t seen_count, void *value) {
+    if (!value)
+        return 1;
+    for (int32_t i = 0; i < seen_count; ++i) {
+        if (seen[i] == value)
+            return 1;
+    }
+    return 0;
+}
+
+static uint64_t game3d_pixels_estimate_resident_bytes(void *pixels) {
+    uint64_t width;
+    uint64_t height;
+    uint64_t texels;
+
+    if (!pixels)
+        return 0;
+    width = game3d_u64_from_i64_nonnegative(rt_pixels_width(pixels));
+    height = game3d_u64_from_i64_nonnegative(rt_pixels_height(pixels));
+    texels = game3d_u64_saturating_mul_u64(width, height);
+    return game3d_u64_saturating_mul_u64(texels, 4u);
+}
+
+static uint64_t game3d_count_material_texture_once(void *texture,
+                                                   void **seen_textures,
+                                                   int32_t *seen_count,
+                                                   int32_t seen_capacity) {
+    if (!texture || !seen_textures || !seen_count)
+        return 0;
+    if (game3d_seen_ptr_contains(seen_textures, *seen_count, texture))
+        return 0;
+    if (*seen_count < seen_capacity)
+        seen_textures[(*seen_count)++] = texture;
+    if (rt_g3d_has_class(texture, RT_G3D_TEXTUREASSET3D_CLASS_ID))
+        return game3d_u64_from_i64_nonnegative(rt_textureasset3d_get_resident_bytes(texture));
+    return game3d_pixels_estimate_resident_bytes(texture);
+}
+
+static uint64_t game3d_material_estimate_texture_bytes(rt_material3d *material,
+                                                       void **seen_textures,
+                                                       int32_t *seen_count,
+                                                       int32_t seen_capacity) {
+    uint64_t total = 0;
+    if (!material)
+        return 0;
+    total = game3d_u64_saturating_add(
+        total,
+        game3d_count_material_texture_once(
+            material->texture, seen_textures, seen_count, seen_capacity));
+    total = game3d_u64_saturating_add(
+        total,
+        game3d_count_material_texture_once(
+            material->normal_map, seen_textures, seen_count, seen_capacity));
+    total = game3d_u64_saturating_add(
+        total,
+        game3d_count_material_texture_once(
+            material->specular_map, seen_textures, seen_count, seen_capacity));
+    total = game3d_u64_saturating_add(
+        total,
+        game3d_count_material_texture_once(
+            material->emissive_map, seen_textures, seen_count, seen_capacity));
+    total = game3d_u64_saturating_add(
+        total,
+        game3d_count_material_texture_once(
+            material->metallic_roughness_map, seen_textures, seen_count, seen_capacity));
+    total = game3d_u64_saturating_add(
+        total,
+        game3d_count_material_texture_once(
+            material->ao_map, seen_textures, seen_count, seen_capacity));
+    return total;
+}
+
 /// @brief Conservative resident-byte estimate for cache policy decisions.
 static uint64_t game3d_model_template_estimate_resident_bytes(rt_game3d_model_template *model_template) {
+    void *seen_textures[128];
+    int32_t seen_texture_count = 0;
     uint64_t total = sizeof(*model_template);
     if (!model_template)
         return 1;
+    memset(seen_textures, 0, sizeof(seen_textures));
     if (model_template->path) {
         const char *path = rt_string_cstr(model_template->path);
         if (path)
@@ -4076,6 +4286,16 @@ static uint64_t game3d_model_template_estimate_resident_bytes(rt_game3d_model_te
             total, game3d_u64_saturating_mul_u64(game3d_u64_from_i64_nonnegative(animation_count), 2048u));
         total = game3d_u64_saturating_add(
             total, game3d_u64_saturating_mul_u64(game3d_u64_from_i64_nonnegative(node_count), 256u));
+        for (int64_t i = 0; i < material_count; ++i) {
+            rt_material3d *material = (rt_material3d *)rt_model3d_get_material(model_template->model, i);
+            total = game3d_u64_saturating_add(
+                total,
+                game3d_material_estimate_texture_bytes(material,
+                                                       seen_textures,
+                                                       &seen_texture_count,
+                                                       (int32_t)(sizeof(seen_textures) /
+                                                                 sizeof(seen_textures[0]))));
+        }
         for (int64_t i = 0; i < mesh_count; ++i) {
             void *mesh = rt_model3d_get_mesh(model_template->model, i);
             uint64_t vertices = game3d_u64_from_i64_nonnegative(rt_mesh3d_get_vertex_count(mesh));
@@ -4090,6 +4310,155 @@ static uint64_t game3d_model_template_estimate_resident_bytes(rt_game3d_model_te
     return total > 0 ? total : 1;
 }
 
+static uint64_t game3d_mesh_estimate_resident_bytes(void *mesh) {
+    uint64_t vertices;
+    uint64_t triangles;
+    uint64_t indices;
+
+    if (!mesh)
+        return 0;
+    vertices = game3d_u64_from_i64_nonnegative(rt_mesh3d_get_vertex_count(mesh));
+    triangles = game3d_u64_from_i64_nonnegative(rt_mesh3d_get_triangle_count(mesh));
+    indices = game3d_u64_saturating_mul_u64(triangles, 3u);
+    return game3d_u64_saturating_add(
+        game3d_u64_saturating_mul_u64(vertices, (uint64_t)sizeof(vgfx3d_vertex_t)),
+        game3d_u64_saturating_mul_u64(indices, (uint64_t)sizeof(uint32_t)));
+}
+
+static uint64_t game3d_count_scene_mesh_once(void *mesh,
+                                             void **seen_meshes,
+                                             int32_t *seen_count,
+                                             int32_t seen_capacity) {
+    if (!mesh || !seen_meshes || !seen_count)
+        return 0;
+    if (game3d_seen_ptr_contains(seen_meshes, *seen_count, mesh))
+        return 0;
+    if (*seen_count < seen_capacity)
+        seen_meshes[(*seen_count)++] = mesh;
+    return game3d_mesh_estimate_resident_bytes(mesh);
+}
+
+static uint64_t game3d_count_scene_material_once(rt_material3d *material,
+                                                 void **seen_materials,
+                                                 int32_t *seen_material_count,
+                                                 int32_t seen_material_capacity,
+                                                 void **seen_textures,
+                                                 int32_t *seen_texture_count,
+                                                 int32_t seen_texture_capacity) {
+    uint64_t bytes;
+
+    if (!material || !seen_materials || !seen_material_count)
+        return 0;
+    if (game3d_seen_ptr_contains(seen_materials, *seen_material_count, material))
+        return 0;
+    if (*seen_material_count < seen_material_capacity)
+        seen_materials[(*seen_material_count)++] = material;
+    bytes = 256u;
+    bytes = game3d_u64_saturating_add(
+        bytes,
+        game3d_material_estimate_texture_bytes(
+            material, seen_textures, seen_texture_count, seen_texture_capacity));
+    return bytes;
+}
+
+static uint64_t game3d_scene_estimate_resident_bytes(void *scene_obj) {
+    rt_scene3d *scene = (rt_scene3d *)rt_g3d_checked_or_null(scene_obj, RT_G3D_SCENE3D_CLASS_ID);
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    void *seen_meshes[256];
+    void *seen_materials[256];
+    void *seen_textures[256];
+    int32_t seen_mesh_count = 0;
+    int32_t seen_material_count = 0;
+    int32_t seen_texture_count = 0;
+    uint64_t total = 0;
+
+    if (!scene || !scene->root)
+        return 0;
+    memset(seen_meshes, 0, sizeof(seen_meshes));
+    memset(seen_materials, 0, sizeof(seen_materials));
+    memset(seen_textures, 0, sizeof(seen_textures));
+
+    capacity = 32u;
+    stack = (rt_scene_node3d **)malloc(capacity * sizeof(*stack));
+    if (!stack)
+        return 0;
+    stack[count++] = scene->root;
+
+    while (count > 0) {
+        rt_scene_node3d *node = stack[--count];
+        if (!node)
+            continue;
+
+        total = game3d_u64_saturating_add(total, (uint64_t)sizeof(*node));
+        total = game3d_u64_saturating_add(
+            total,
+            game3d_count_scene_mesh_once(node->mesh,
+                                         seen_meshes,
+                                         &seen_mesh_count,
+                                         (int32_t)(sizeof(seen_meshes) / sizeof(seen_meshes[0]))));
+        for (int32_t i = 0; i < node->lod_count; ++i) {
+            total = game3d_u64_saturating_add(
+                total,
+                game3d_count_scene_mesh_once(
+                    node->lod_levels[i].mesh,
+                    seen_meshes,
+                    &seen_mesh_count,
+                    (int32_t)(sizeof(seen_meshes) / sizeof(seen_meshes[0]))));
+        }
+        if (node->has_impostor) {
+            total = game3d_u64_saturating_add(
+                total,
+                game3d_count_scene_mesh_once(node->impostor_mesh,
+                                             seen_meshes,
+                                             &seen_mesh_count,
+                                             (int32_t)(sizeof(seen_meshes) / sizeof(seen_meshes[0]))));
+            total = game3d_u64_saturating_add(
+                total,
+                game3d_count_scene_material_once(
+                    (rt_material3d *)node->impostor_material,
+                    seen_materials,
+                    &seen_material_count,
+                    (int32_t)(sizeof(seen_materials) / sizeof(seen_materials[0])),
+                    seen_textures,
+                    &seen_texture_count,
+                    (int32_t)(sizeof(seen_textures) / sizeof(seen_textures[0]))));
+        }
+        total = game3d_u64_saturating_add(
+            total,
+            game3d_count_scene_material_once(
+                (rt_material3d *)node->material,
+                seen_materials,
+                &seen_material_count,
+                (int32_t)(sizeof(seen_materials) / sizeof(seen_materials[0])),
+                seen_textures,
+                &seen_texture_count,
+                (int32_t)(sizeof(seen_textures) / sizeof(seen_textures[0]))));
+
+        for (int32_t i = 0; i < node->child_count; ++i) {
+            if (count >= capacity) {
+                size_t new_capacity = capacity * 2u;
+                rt_scene_node3d **grown;
+                if (new_capacity <= capacity || new_capacity > SIZE_MAX / sizeof(*stack)) {
+                    free(stack);
+                    return total;
+                }
+                grown = (rt_scene_node3d **)realloc(stack, new_capacity * sizeof(*stack));
+                if (!grown) {
+                    free(stack);
+                    return total;
+                }
+                stack = grown;
+                capacity = new_capacity;
+            }
+            stack[count++] = node->children[i];
+        }
+    }
+    free(stack);
+    return total;
+}
+
 static uint64_t game3d_model_cache_next_tick(void) {
     if (g_game3d_model_cache_tick == UINT64_MAX) {
         for (int32_t i = 0; i < g_game3d_model_cache_count; ++i)
@@ -4097,6 +4466,29 @@ static uint64_t game3d_model_cache_next_tick(void) {
         g_game3d_model_cache_tick = 1;
     }
     return ++g_game3d_model_cache_tick;
+}
+
+static uint64_t game3d_model_cache_current_generation(void) {
+    uint64_t generation;
+    game3d_model_cache_lock();
+    generation = g_game3d_model_cache_generation;
+    game3d_model_cache_unlock();
+    return generation;
+}
+
+static int game3d_model_cache_generation_matches(uint64_t generation) {
+    int matches;
+    game3d_model_cache_lock();
+    matches = g_game3d_model_cache_generation == generation;
+    game3d_model_cache_unlock();
+    return matches;
+}
+
+static void game3d_model_cache_advance_generation_locked(void) {
+    if (g_game3d_model_cache_generation == UINT64_MAX)
+        g_game3d_model_cache_generation = 1;
+    else
+        g_game3d_model_cache_generation++;
 }
 
 #if !defined(_WIN32)
@@ -4308,7 +4700,7 @@ static rt_game3d_asset_handle *game3d_asset_handle_new(int8_t ready,
     return handle;
 }
 
-/// @brief Create a deferred AssetHandle3D request that completes on first observation.
+/// @brief Create a deferred AssetHandle3D request that starts on first observation.
 static rt_game3d_asset_handle *game3d_asset_handle_pending(rt_string path,
                                                            int8_t asset_path,
                                                            int8_t template_request) {
@@ -4351,6 +4743,405 @@ static rt_string game3d_asset_handle_load_error(rt_game3d_asset_handle *handle) 
     if (handle && handle->asset_path)
         return rt_const_cstr("failed to load model asset");
     return rt_const_cstr("failed to load model");
+}
+
+static int game3d_asset_async_ensure_runtime(void) {
+    if (!g_game3d_asset_commit_queue) {
+        g_game3d_asset_commit_queue = rt_g3d_commit_queue_new();
+        if (!g_game3d_asset_commit_queue)
+            return 0;
+    }
+    if (!g_game3d_asset_async_pool) {
+        g_game3d_asset_async_pool = rt_threadpool_new(game3d_default_worker_count());
+        if (!g_game3d_asset_async_pool)
+            return 0;
+    }
+    return 1;
+}
+
+static void game3d_asset_async_drain_commits(void) {
+    if (g_game3d_asset_commit_queue) {
+        uint64_t upload_budget =
+            __atomic_load_n(&g_game3d_asset_upload_budget_bytes, __ATOMIC_RELAXED);
+        (void)rt_g3d_commit_queue_drain_budget(g_game3d_asset_commit_queue,
+                                               RT_GAME3D_ASSET_COMMIT_DRAIN_BUDGET,
+                                               upload_budget);
+    }
+}
+
+static rt_game3d_model_template *game3d_model_cache_try_retain_ready(rt_string cache_path,
+                                                                     int8_t asset_path) {
+    rt_game3d_model_template *model_template = NULL;
+    int32_t index;
+    game3d_model_cache_lock();
+    index = game3d_model_cache_find_index(cache_path, asset_path);
+    if (index >= 0) {
+        rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[index];
+        if (!entry->loading && entry->model_template) {
+            entry->last_used = game3d_model_cache_next_tick();
+            rt_obj_retain_maybe(entry->model_template);
+            model_template = (rt_game3d_model_template *)entry->model_template;
+        }
+    }
+    game3d_model_cache_unlock();
+    return model_template;
+}
+
+static rt_game3d_model_template *game3d_model_cache_store_loaded_template(rt_string cache_path,
+                                                                         int8_t asset_path,
+                                                                         void *loaded_model) {
+    if (!loaded_model)
+        return NULL;
+    rt_game3d_model_template *model_template =
+        game3d_model_template_new(cache_path, asset_path, loaded_model);
+    if (!model_template)
+        return NULL;
+
+    game3d_model_cache_lock();
+    int32_t index = game3d_model_cache_find_index(cache_path, asset_path);
+    if (index >= 0) {
+        rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[index];
+        if (!entry->loading && entry->model_template) {
+            rt_game3d_model_template *existing =
+                (rt_game3d_model_template *)entry->model_template;
+            entry->last_used = game3d_model_cache_next_tick();
+            rt_obj_retain_maybe(existing);
+            game3d_model_cache_unlock();
+            if (rt_obj_release_check0(model_template))
+                rt_obj_free(model_template);
+            return existing;
+        }
+        game3d_model_cache_remove_at(index);
+    }
+
+    game3d_model_cache_evict_if_full();
+    if (g_game3d_model_cache_count >= RT_GAME3D_MODEL_CACHE_MAX_ENTRIES ||
+        !game3d_model_cache_grow(g_game3d_model_cache_count + 1)) {
+        game3d_model_cache_unlock();
+        if (rt_obj_release_check0(model_template))
+            rt_obj_free(model_template);
+        return NULL;
+    }
+
+    index = g_game3d_model_cache_count++;
+    rt_game3d_model_cache_entry *entry = &g_game3d_model_cache[index];
+    memset(entry, 0, sizeof(*entry));
+    game3d_assign_ref((void **)&entry->path, cache_path ? cache_path : rt_const_cstr(""));
+    entry->asset_path = asset_path ? 1 : 0;
+    game3d_assign_ref(&entry->model_template, model_template);
+    entry->resident_bytes = game3d_model_template_estimate_resident_bytes(model_template);
+    g_game3d_model_resident_bytes =
+        game3d_u64_saturating_add(g_game3d_model_resident_bytes, entry->resident_bytes);
+    entry->last_used = game3d_model_cache_next_tick();
+    game3d_model_cache_evict_to_budget();
+    game3d_model_cache_notify_all();
+    game3d_model_cache_unlock();
+    return model_template;
+}
+
+static void game3d_asset_async_job_free(rt_game3d_asset_async_job *job) {
+    if (!job)
+        return;
+    rt_gltf_preload_bundle_free(job->preloaded_gltf);
+    if (job->handle && rt_obj_release_check0(job->handle))
+        rt_obj_free(job->handle);
+    free(job);
+}
+
+static uint64_t game3d_asset_async_job_commit_cost(rt_game3d_asset_async_job *job) {
+    size_t decoded_image_bytes;
+    if (!job || job->error[0])
+        return 0u;
+    decoded_image_bytes = rt_gltf_preload_bundle_decoded_image_bytes(job->preloaded_gltf);
+    if (decoded_image_bytes > UINT64_MAX)
+        return UINT64_MAX;
+    return decoded_image_bytes > 0u ? (uint64_t)decoded_image_bytes : 1u;
+}
+
+static uint64_t game3d_asset_async_next_upload_slice_cost(rt_game3d_asset_async_job *job) {
+    size_t slice_bytes;
+    if (!job || job->error[0] || !job->preloaded_gltf)
+        return 0u;
+    slice_bytes = rt_gltf_preload_bundle_next_decoded_image_slice_bytes(
+        job->preloaded_gltf, (size_t)RT_GAME3D_ASSET_UPLOAD_SLICE_BYTES);
+    if (slice_bytes > UINT64_MAX)
+        return UINT64_MAX;
+    return (uint64_t)slice_bytes;
+}
+
+static void game3d_asset_async_commit(void *user_data);
+static void game3d_asset_async_prepare_upload_slice(void *user_data);
+
+static int game3d_asset_async_enqueue_next_commit(rt_game3d_asset_async_job *job) {
+    uint64_t slice_cost = game3d_asset_async_next_upload_slice_cost(job);
+    if (slice_cost > 0u) {
+        return rt_g3d_commit_queue_enqueue_cost(g_game3d_asset_commit_queue,
+                                                game3d_asset_async_prepare_upload_slice,
+                                                job,
+                                                slice_cost);
+    }
+    return rt_g3d_commit_queue_enqueue_cost(g_game3d_asset_commit_queue,
+                                            game3d_asset_async_commit,
+                                            job,
+                                            game3d_asset_async_job_commit_cost(job));
+}
+
+static void *game3d_asset_async_commit_load_model(rt_game3d_asset_async_job *job) {
+    rt_game3d_asset_handle *handle = job ? job->handle : NULL;
+    void *loaded_model = NULL;
+    jmp_buf recovery;
+    if (!job || !handle)
+        return NULL;
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        if (job->preloaded_gltf) {
+            rt_gltf_preload_bundle *bundle = job->preloaded_gltf;
+            job->preloaded_gltf = NULL;
+            loaded_model =
+                rt_model3d_load_preloaded_gltf_bundle(handle->path, bundle, handle->asset_path);
+        } else {
+            loaded_model = handle->asset_path ? rt_model3d_load_asset(handle->path)
+                                              : rt_model3d_load(handle->path);
+        }
+        if (!loaded_model && !job->error[0]) {
+            const char *fallback = handle->asset_path ? "failed to load model asset"
+                                                      : "failed to load model";
+            snprintf(job->error, sizeof(job->error), "%s", fallback);
+        }
+    } else {
+        const char *msg = rt_trap_get_error();
+        snprintf(job->error,
+                 sizeof(job->error),
+                 "%s",
+                 (msg && msg[0]) ? msg : (handle->asset_path ? "failed to load model asset"
+                                                             : "failed to load model"));
+    }
+    rt_trap_clear_recovery();
+    return loaded_model;
+}
+
+static void game3d_asset_async_prepare_upload_slice(void *user_data) {
+    rt_game3d_asset_async_job *job = (rt_game3d_asset_async_job *)user_data;
+    rt_game3d_asset_handle *handle = job ? job->handle : NULL;
+    size_t prepared = 0u;
+    jmp_buf recovery;
+    if (!job || !handle) {
+        game3d_asset_async_job_free(job);
+        return;
+    }
+
+    if (handle->ready || handle->cancelled) {
+        game3d_asset_async_job_free(job);
+        return;
+    }
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        prepared = rt_gltf_preload_bundle_prepare_decoded_image_slice(
+            job->preloaded_gltf, (size_t)RT_GAME3D_ASSET_UPLOAD_SLICE_BYTES);
+    } else {
+        const char *msg = rt_trap_get_error();
+        snprintf(job->error,
+                 sizeof(job->error),
+                 "%s",
+                 (msg && msg[0]) ? msg : "failed to prepare texture upload");
+    }
+    rt_trap_clear_recovery();
+
+    if (!job->error[0]) {
+        if (prepared == 0u && game3d_asset_async_next_upload_slice_cost(job) > 0u)
+            snprintf(job->error, sizeof(job->error), "%s", "failed to prepare texture upload");
+        else {
+            job->upload_prepared_bytes =
+                game3d_u64_saturating_add(job->upload_prepared_bytes, (uint64_t)prepared);
+            if (job->upload_total_bytes > 0u) {
+                double ratio =
+                    (double)job->upload_prepared_bytes / (double)job->upload_total_bytes;
+                if (ratio > 1.0)
+                    ratio = 1.0;
+                handle->progress = 0.10 + ratio * 0.70;
+            } else {
+                handle->progress = 0.50;
+            }
+        }
+    }
+
+    if (!game3d_asset_async_enqueue_next_commit(job))
+        game3d_asset_async_job_free(job);
+}
+
+static void game3d_asset_async_commit(void *user_data) {
+    rt_game3d_asset_async_job *job = (rt_game3d_asset_async_job *)user_data;
+    rt_game3d_asset_handle *handle = job ? job->handle : NULL;
+    void *loaded_model = NULL;
+    if (!job || !handle) {
+        game3d_asset_async_job_free(job);
+        return;
+    }
+
+    if (!handle->ready && !handle->cancelled) {
+        if (!job->error[0])
+            loaded_model = game3d_asset_async_commit_load_model(job);
+        if (loaded_model) {
+            if (handle->template_request) {
+                rt_string cache_path = game3d_model_cache_key_path(handle->path, handle->asset_path);
+                rt_game3d_model_template *model_template = NULL;
+                if (game3d_model_cache_generation_matches(job->cache_generation)) {
+                    model_template = game3d_model_cache_store_loaded_template(cache_path,
+                                                                             handle->asset_path,
+                                                                             loaded_model);
+                } else {
+                    model_template =
+                        game3d_model_template_new(cache_path, handle->asset_path, loaded_model);
+                }
+                if (model_template) {
+                    game3d_assign_ref(&handle->model_template, model_template);
+                    game3d_release_ref((void **)&model_template);
+                } else {
+                    game3d_assign_ref((void **)&handle->error,
+                                      game3d_asset_handle_load_error(handle));
+                }
+                game3d_release_ref((void **)&cache_path);
+            } else {
+                rt_game3d_model_template *model_template =
+                    game3d_model_template_new(handle->path, handle->asset_path, loaded_model);
+                void *entity = model_template ? rt_game3d_model_template_instantiate(model_template)
+                                              : NULL;
+                if (entity) {
+                    game3d_assign_ref(&handle->entity, entity);
+                    game3d_release_ref(&entity);
+                } else {
+                    game3d_assign_ref((void **)&handle->error,
+                                      rt_const_cstr("failed to load model"));
+                }
+                if (model_template && rt_obj_release_check0(model_template))
+                    rt_obj_free(model_template);
+            }
+        } else {
+            if (job->error[0]) {
+                rt_string error = rt_string_from_bytes(job->error, strlen(job->error));
+                game3d_assign_ref((void **)&handle->error,
+                                  error ? error : game3d_asset_handle_load_error(handle));
+                game3d_release_ref((void **)&error);
+            } else {
+                game3d_assign_ref((void **)&handle->error,
+                                  game3d_asset_handle_load_error(handle));
+            }
+        }
+        handle->deferred = 0;
+        handle->ready = 1;
+        handle->progress = 1.0;
+    }
+
+    game3d_release_ref(&loaded_model);
+    game3d_asset_async_job_free(job);
+}
+
+static void game3d_asset_async_worker(void *user_data) {
+    rt_game3d_asset_async_job *job = (rt_game3d_asset_async_job *)user_data;
+    rt_game3d_asset_handle *handle = job ? job->handle : NULL;
+    const char *path = handle && handle->path ? rt_string_cstr(handle->path) : NULL;
+    uint8_t *root_data = NULL;
+    size_t root_len = 0;
+    if (!job || !handle)
+        return;
+
+    if (game3d_path_has_gltf_extension(path)) {
+        root_data = game3d_asset_load_root_bytes(handle->path, handle->asset_path, &root_len);
+        if (!root_data) {
+            const char *fallback = handle->asset_path ? "failed to load model asset"
+                                                      : "failed to load model";
+            snprintf(job->error, sizeof(job->error), "%s", fallback);
+        } else {
+            job->preloaded_gltf = rt_gltf_preload_bundle_create(handle->path,
+                                                                root_data,
+                                                                root_len,
+                                                                handle->asset_path,
+                                                                job->error,
+                                                                sizeof(job->error));
+            root_data = NULL;
+            job->upload_total_bytes =
+                (uint64_t)rt_gltf_preload_bundle_decoded_image_bytes(job->preloaded_gltf);
+            if (!job->preloaded_gltf && !job->error[0]) {
+                const char *fallback = handle->asset_path ? "failed to load model asset"
+                                                          : "failed to load model";
+                snprintf(job->error, sizeof(job->error), "%s", fallback);
+            }
+        }
+    }
+
+    if (!game3d_asset_async_enqueue_next_commit(job))
+        game3d_asset_async_job_free(job);
+}
+
+static void game3d_asset_handle_start_async(rt_game3d_asset_handle *handle) {
+    if (!handle || handle->ready || handle->cancelled || !handle->deferred ||
+        handle->async_started)
+        return;
+
+    rt_string preflight_error = game3d_asset_handle_preflight_error(handle);
+    if (game3d_string_has_bytes(preflight_error)) {
+        handle->deferred = 0;
+        handle->ready = 1;
+        handle->progress = 1.0;
+        game3d_assign_ref((void **)&handle->error, preflight_error);
+        return;
+    }
+
+    if (handle->template_request) {
+        rt_string cache_path = game3d_model_cache_key_path(handle->path, handle->asset_path);
+        rt_game3d_model_template *cached =
+            game3d_model_cache_try_retain_ready(cache_path, handle->asset_path);
+        if (cached) {
+            game3d_assign_ref(&handle->model_template, cached);
+            game3d_release_ref((void **)&cached);
+            handle->deferred = 0;
+            handle->ready = 1;
+            handle->progress = 1.0;
+            game3d_release_ref((void **)&cache_path);
+            return;
+        }
+        game3d_release_ref((void **)&cache_path);
+    }
+
+    if (!game3d_asset_async_ensure_runtime()) {
+        handle->deferred = 0;
+        handle->ready = 1;
+        handle->progress = 1.0;
+        game3d_assign_ref((void **)&handle->error, rt_const_cstr("failed to schedule asset load"));
+        return;
+    }
+
+    rt_game3d_asset_async_job *job =
+        (rt_game3d_asset_async_job *)calloc(1, sizeof(rt_game3d_asset_async_job));
+    if (!job) {
+        handle->deferred = 0;
+        handle->ready = 1;
+        handle->progress = 1.0;
+        game3d_assign_ref((void **)&handle->error, rt_const_cstr("failed to schedule asset load"));
+        return;
+    }
+
+    job->handle = handle;
+    job->cache_generation = game3d_model_cache_current_generation();
+    rt_obj_retain_maybe(handle);
+    handle->async_started = 1;
+    if (!rt_threadpool_submit(
+            g_game3d_asset_async_pool, game3d_task_fnptr(game3d_asset_async_worker), job)) {
+        handle->async_started = 0;
+        handle->deferred = 0;
+        handle->ready = 1;
+        handle->progress = 1.0;
+        game3d_assign_ref((void **)&handle->error, rt_const_cstr("failed to schedule asset load"));
+        game3d_asset_async_job_free(job);
+    }
+}
+
+static void game3d_asset_handle_service(rt_game3d_asset_handle *handle, int start_if_needed) {
+    game3d_asset_async_drain_commits();
+    if (start_if_needed)
+        game3d_asset_handle_start_async(handle);
 }
 
 /// @brief Load a model from disk/asset and wrap it in a new ModelTemplate, bypassing the
@@ -4574,48 +5365,7 @@ void *rt_game3d_assets_load_model_template_asset(rt_string path) {
 }
 
 static void game3d_asset_handle_complete_if_deferred(rt_game3d_asset_handle *handle) {
-    if (!handle || !handle->deferred || handle->ready || handle->cancelled)
-        return;
-    handle->deferred = 0;
-    rt_string preflight_error = game3d_asset_handle_preflight_error(handle);
-    if (game3d_string_has_bytes(preflight_error)) {
-        game3d_assign_ref((void **)&handle->error, preflight_error);
-        handle->ready = 1;
-        handle->progress = 1.0;
-        return;
-    }
-    if (handle->template_request) {
-        void *model_template = game3d_assets_load_template_cached_impl(
-            handle->path,
-            handle->asset_path,
-            handle->asset_path ? "Game3D.Assets3D.LoadModelTemplateAssetAsync: failed to load model asset"
-                               : "Game3D.Assets3D.LoadModelTemplateAsync: failed to load model",
-            0);
-        if (model_template) {
-            game3d_assign_ref(&handle->model_template, model_template);
-            game3d_release_ref(&model_template);
-        } else {
-            game3d_assign_ref((void **)&handle->error, game3d_asset_handle_load_error(handle));
-        }
-    } else {
-        rt_game3d_model_template *model_template = game3d_assets_load_template_uncached_impl(
-            handle->path,
-            handle->asset_path,
-            handle->asset_path ? "Game3D.Assets3D.LoadModelAssetAsync: failed to load model asset"
-                               : "Game3D.Assets3D.LoadModelAsync: failed to load model",
-            0);
-        void *entity = model_template ? rt_game3d_model_template_instantiate(model_template) : NULL;
-        if (entity) {
-            game3d_assign_ref(&handle->entity, entity);
-            game3d_release_ref(&entity);
-        } else {
-            game3d_assign_ref((void **)&handle->error, game3d_asset_handle_load_error(handle));
-        }
-        if (model_template && rt_obj_release_check0(model_template))
-            rt_obj_free(model_template);
-    }
-    handle->ready = 1;
-    handle->progress = 1.0;
+    game3d_asset_handle_service(handle, 1);
 }
 
 /// @brief Load a filesystem model and expose the terminal result through AssetHandle3D.
@@ -4648,6 +5398,21 @@ void rt_game3d_assets_set_residency_budget(int64_t bytes) {
     game3d_model_cache_unlock();
 }
 
+/// @brief Return estimated bytes currently resident in the shared ModelTemplate cache.
+int64_t rt_game3d_assets_get_resident_bytes(void) {
+    uint64_t bytes;
+    game3d_model_cache_lock();
+    bytes = g_game3d_model_resident_bytes;
+    game3d_model_cache_unlock();
+    return game3d_i64_from_u64_saturating(bytes);
+}
+
+/// @brief Set the process-wide async asset upload budget. Negative means unlimited.
+void rt_game3d_assets_set_upload_budget(int64_t bytes) {
+    uint64_t budget = bytes < 0 ? UINT64_MAX : (uint64_t)bytes;
+    __atomic_store_n(&g_game3d_asset_upload_budget_bytes, budget, __ATOMIC_RELAXED);
+}
+
 /// @brief Evict the cached template backing a ready template AssetHandle3D.
 void rt_game3d_assets_evict(void *asset_handle) {
     rt_game3d_asset_handle *handle =
@@ -4673,6 +5438,7 @@ int8_t rt_game3d_asset_handle_get_ready(void *obj) {
 double rt_game3d_asset_handle_get_progress(void *obj) {
     rt_game3d_asset_handle *handle =
         game3d_asset_handle_checked(obj, "Game3D.AssetHandle3D.progress: invalid handle");
+    game3d_asset_handle_service(handle, 1);
     return handle ? handle->progress : 0.0;
 }
 
@@ -4680,6 +5446,7 @@ double rt_game3d_asset_handle_get_progress(void *obj) {
 rt_string rt_game3d_asset_handle_get_error(void *obj) {
     rt_game3d_asset_handle *handle =
         game3d_asset_handle_checked(obj, "Game3D.AssetHandle3D.error: invalid handle");
+    game3d_asset_handle_service(handle, 1);
     return handle && handle->error ? handle->error : rt_const_cstr("");
 }
 
@@ -4718,10 +5485,22 @@ void *rt_game3d_asset_handle_get_template(void *obj) {
     return handle->model_template;
 }
 
-/// @brief Warm the cache by loading `path` and dropping the local reference. See header.
+/// @brief Warm the cache by scheduling a filesystem template load. See header.
 void rt_game3d_assets_preload(rt_string path) {
-    void *model_template = rt_game3d_assets_load_model_template(path);
-    game3d_release_ref(&model_template);
+    rt_game3d_asset_handle *handle = game3d_asset_handle_pending(path, 0, 1);
+    if (!handle)
+        return;
+    game3d_asset_handle_service(handle, 1);
+    game3d_release_ref((void **)&handle);
+}
+
+/// @brief Warm the cache by scheduling a packed-asset template load. See header.
+void rt_game3d_assets_preload_asset(rt_string path) {
+    rt_game3d_asset_handle *handle = game3d_asset_handle_pending(path, 1, 1);
+    if (!handle)
+        return;
+    game3d_asset_handle_service(handle, 1);
+    game3d_release_ref((void **)&handle);
 }
 
 /// @brief Release every cached model template and reset the cache count. See header.
@@ -4749,6 +5528,7 @@ void rt_game3d_assets_clear_cache(void) {
     g_game3d_model_cache_capacity = 0;
     g_game3d_model_cache_tick = 0;
     g_game3d_model_resident_bytes = 0;
+    game3d_model_cache_advance_generation_locked();
     game3d_model_cache_notify_all();
     game3d_model_cache_unlock();
 
@@ -6553,7 +7333,11 @@ static rt_string game3d_stream_resolve_manifest_path(rt_string manifest_path, rt
 }
 
 static int64_t game3d_stream_cell_bytes(const rt_game3d_stream_cell *cell) {
-    if (!cell || cell->resident_bytes <= 0)
+    if (!cell)
+        return 64 * 1024;
+    if (cell->resident && cell->measured_resident_bytes > 0)
+        return cell->measured_resident_bytes;
+    if (cell->resident_bytes <= 0)
         return 64 * 1024;
     return cell->resident_bytes;
 }
@@ -6950,6 +7734,7 @@ static void game3d_world_stream_unload_cell(rt_game3d_world_stream *stream,
     game3d_release_ref(&cell->entity);
     game3d_release_ref(&cell->scene);
     cell->resident = 0;
+    cell->measured_resident_bytes = 0;
 }
 
 static int game3d_world_stream_load_cell(rt_game3d_world_stream *stream,
@@ -6977,6 +7762,11 @@ static int game3d_world_stream_load_cell(rt_game3d_world_stream *stream,
             cell->scene = scene;
             cell->entity = entity;
             cell->resident = 1;
+            uint64_t measured = game3d_scene_estimate_resident_bytes(scene);
+            cell->measured_resident_bytes = game3d_i64_from_u64_saturating(measured);
+            if (cell->measured_resident_bytes <= 0)
+                cell->measured_resident_bytes =
+                    cell->resident_bytes > 0 ? cell->resident_bytes : 64 * 1024;
             scene = NULL;
         } else {
             game3d_release_ref(&entity);
@@ -7250,6 +8040,11 @@ static void game3d_world_stream_recompute(rt_game3d_world_stream *stream, int64_
                 if (load_budget > 0)
                     load_budget--;
                 if (game3d_world_stream_load_cell(stream, cell)) {
+                    bytes = game3d_stream_cell_bytes(cell);
+                    if (budget >= 0 && cell_bytes > budget - bytes) {
+                        game3d_world_stream_unload_cell(stream, cell);
+                        continue;
+                    }
                     cells++;
                     cell_bytes = game3d_i64_saturating_add(cell_bytes, bytes);
                 }
@@ -8333,6 +9128,7 @@ int8_t rt_game3d_world_tick(void *obj) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.World3D.tick: invalid world");
     if (!world || !world->canvas)
         return 0;
+    game3d_asset_async_drain_commits();
     if (!rt_canvas3d_poll(world->canvas)) {
         world->width = rt_canvas3d_get_window_width(world->canvas);
         world->height = rt_canvas3d_get_window_height(world->canvas);
@@ -8354,6 +9150,7 @@ static void game3d_world_step_simulation_impl(rt_game3d_world *world,
                                               int8_t advance_time_counters) {
     if (!world)
         return;
+    game3d_asset_async_drain_commits();
     double dt = game3d_clamp_dt(step_sec);
     world->dt = dt;
     if (advance_time_counters) {
@@ -8518,6 +9315,7 @@ void rt_game3d_world_begin_frame(void *obj) {
     if (!world || !world->canvas || !world->camera)
         return;
     rt_canvas3d_clear(world->canvas, world->clear_r, world->clear_g, world->clear_b);
+    rt_canvas3d_set_camera_relative_upload(world->canvas, world->floating_origin);
     rt_canvas3d_begin(world->canvas, world->camera);
 }
 

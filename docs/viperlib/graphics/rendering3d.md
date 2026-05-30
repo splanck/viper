@@ -155,10 +155,30 @@ support. `BackendSupports("shadow-csm")` similarly gates cascaded shadows;
 `BackendSupports("etc2")` are reserved for native compressed texture upload;
 current backends report them false while `TextureAsset3D` exposes metadata and
 RGBA8 fallback material binding. For uncompressed RGBA8 KTX2 files, each
-declared mip is decoded into a CPU `Pixels` fallback and
-`TextureAsset3D.SetResidentMipRange` switches the active fallback to the first
-resident mip while updating byte telemetry; native compressed upload still stays
-behind backend capability gates.
+declared mip is decoded into a CPU `Pixels` fallback; for precompressed KTX2
+files, native mip block payloads are retained internally for backend upload
+wiring. `TextureAsset3D.SetResidentMipRange` switches the active fallback to the
+first resident mip while updating byte telemetry. Materials retain the texture asset
+and resolve that active fallback at draw time, so already-bound materials follow
+later residency changes; native compressed upload still stays behind backend
+capability gates.
+
+### Canvas3D Performance Telemetry
+
+| Member | Type | Description |
+|--------|------|-------------|
+| `TextureUploadBytes` | `Integer` property | CPU image bytes uploaded into backend texture storage during the latest ended frame |
+| `TextureUploadPendingBytes` | `Integer` property | CPU image bytes still waiting for backend texture or cubemap upload budget |
+| `SetTextureUploadBudget(bytes)` | `Void(Integer)` method | Set the backend material-texture/cubemap upload byte budget per frame; negative means unlimited, `0` pauses new upload rows |
+
+`TextureUploadBytes` counts actual texture cache uploads and re-uploads performed by the active
+Metal, OpenGL, or D3D11 backend. Pixels-backed 2D material textures and cubemaps are advanced in
+row slices under `SetTextureUploadBudget`. Cache hits report no new upload bytes,
+software/unsupported backends report `0`, and the value is reset at the next non-overlay frame
+begin. `TextureUploadPendingBytes` reports remaining queued texture and cubemap row bytes and
+returns to `0` after final row slices drain. Use these members with
+`Assets3D.SetUploadBudget` and streaming counters to find frames where decoded asset commits are
+followed by GPU texture upload pressure.
 
 ### Canvas3D Visibility Controls
 
@@ -173,6 +193,8 @@ skips. They are not GPU occlusion queries, Hi-Z, or portal/PVS culling.
 | `SetOcclusionCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection plus conservative CPU occlusion skips |
 | `DrawCount` | `Integer` | Main 3D draw submissions queued by the latest ended frame |
 | `OccludedDrawCount` | `Integer` | Latest scene draw submissions skipped by visibility culling |
+| `TextureUploadBytes` | `Integer` | Backend texture upload bytes in the latest ended frame |
+| `TextureUploadPendingBytes` | `Integer` | Backend material texture and cubemap bytes still pending upload |
 
 Use `SetFrustumCulling` when you only want off-frustum rejection. Use
 `SetOcclusionCulling` for the stronger CPU visibility path; transparent draws
@@ -207,9 +229,16 @@ The query methods are backed by the Scene3D spatial index when it is clean, with
 the deterministic flat walk kept as the internal parity fallback. Results skip
 hidden subtrees and only return nodes with their own mesh bounds. Draw culling
 uses the same indexed candidate set, then runs the exact selected-LOD/impostor
-frustum test before submitting. Runtime tests keep a generated 10k drawable-node
-grid in the normal Scene3D ctest lane to guard isolated-query and frame-cull
-candidate reduction.
+frustum test before submitting. The index stores transformed world AABBs in
+double precision, so far-origin queries and raycasts keep nodes distinct even
+when their separation is below single-precision world-space granularity. Mesh
+vertices and backend upload remain float data. Game3D floating-origin frames
+opt into a Canvas3D camera-relative upload path for double-precision `DrawMesh`
+model matrices, camera frame position/view translation, and point/spot light
+positions; caller-provided float instancing data and raw/generated vertex paths
+remain limited by the precision of the data supplied to Canvas3D. Runtime tests
+keep a generated 10k drawable-node grid in the normal Scene3D ctest lane to
+guard isolated-query and frame-cull candidate reduction.
 
 `RebaseOrigin` is the low-level floating-origin primitive used by Game3D. It
 keeps child-local transforms stable by moving only root-level subtrees in world
@@ -353,8 +382,11 @@ sprite draws.
 
 Texture map methods accept `Pixels` or `TextureAsset3D` handles that have an
 active RGBA8 fallback. KTX2 BC3/BC7/ASTC/ETC2 texture assets can be loaded for
-metadata and mip residency byte telemetry today, but binding compressed-only
-assets traps until a backend advertises native upload support.
+metadata, native mip block retention, and mip residency byte telemetry today,
+but binding compressed-only assets traps until a backend advertises native
+upload support.
+When a `TextureAsset3D` is bound, the material retains the asset and resolves
+the currently resident RGBA8 mip for each draw.
 
 #### Properties
 

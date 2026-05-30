@@ -40,6 +40,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -74,6 +75,9 @@ typedef enum {
 #define MAX_LIT_CODES 286     // 0-255 literals + 256 end + 257-285 lengths
 #define MAX_DIST_CODES 30     // Distance codes
 #define MAX_CODE_LEN_CODES 19 // Code length alphabet size
+
+extern void rt_trap_set_recovery(jmp_buf *buf);
+extern void rt_trap_clear_recovery(void);
 
 // Fixed Huffman code lengths (RFC 1951)
 #define FIXED_LIT_CODES 288
@@ -898,11 +902,12 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
 /// 256MB decompression-bomb limit. After the final block, any residual
 /// non-zero bits in the byte-aligned tail are a stream corruption —
 /// not just padding — and also trap.
-static void *inflate_data_limited_ex(const uint8_t *data,
-                                     size_t len,
-                                     size_t max_output,
-                                     size_t *consumed_bytes,
-                                     bool allow_trailing) {
+static uint8_t *inflate_raw_limited_ex(const uint8_t *data,
+                                       size_t len,
+                                       size_t max_output,
+                                       size_t *out_len,
+                                       size_t *consumed_bytes,
+                                       bool allow_trailing) {
     init_fixed_trees();
 
     bit_reader_t br;
@@ -983,15 +988,29 @@ static void *inflate_data_limited_ex(const uint8_t *data,
         }
     }
 
-    // Create output Bytes object
-    void *result = rt_bytes_new(out.len);
+    if (out_len)
+        *out_len = out.len;
+    return out.data;
+}
+
+static void *inflate_data_limited_ex(const uint8_t *data,
+                                     size_t len,
+                                     size_t max_output,
+                                     size_t *consumed_bytes,
+                                     bool allow_trailing) {
+    size_t raw_len = 0;
+    uint8_t *raw = inflate_raw_limited_ex(
+        data, len, max_output, &raw_len, consumed_bytes, allow_trailing);
+    if (!raw)
+        return NULL;
+    void *result = rt_bytes_new(raw_len);
     if (!result) {
-        out_free(&out);
+        free(raw);
         return NULL;
     }
-    memcpy(bytes_data(result), out.data, out.len);
-    out_free(&out);
-
+    if (raw_len > 0)
+        memcpy(bytes_data(result), raw, raw_len);
+    free(raw);
     return result;
 }
 
@@ -1695,6 +1714,36 @@ void *rt_compress_inflate_limit(void *data, int64_t max_output) {
         return NULL;
     }
     return inflate_data_limited(bytes_data(data), bytes_len(data), (size_t)max_output);
+}
+
+int rt_compress_inflate_raw(const uint8_t *data,
+                            size_t len,
+                            size_t max_output,
+                            uint8_t **out_data,
+                            size_t *out_len) {
+    jmp_buf recovery;
+    uint8_t *raw = NULL;
+    size_t raw_len = 0;
+    int ok = 0;
+    if (out_data)
+        *out_data = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!data || !out_data || !out_len)
+        return 0;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        raw = inflate_raw_limited_ex(data, len, max_output, &raw_len, NULL, false);
+        ok = raw != NULL || raw_len == 0;
+    }
+    rt_trap_clear_recovery();
+    if (!ok) {
+        free(raw);
+        return 0;
+    }
+    *out_data = raw;
+    *out_len = raw_len;
+    return 1;
 }
 
 /// @brief `Compress.Gzip(data)` — RFC 1952 GZIP wrap at default level.

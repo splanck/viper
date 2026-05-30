@@ -21,6 +21,7 @@
 #include "rt_string.h"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -331,6 +332,928 @@ static void test_gltf_resolves_percent_encoded_external_buffers() {
         return;
     EXPECT_NEAR(mesh->vertices[1].pos[0], 2.0, 0.001, "External buffer vertex X is loaded");
     EXPECT_NEAR(mesh->vertices[2].pos[1], 3.0, 0.001, "External buffer vertex Y is loaded");
+}
+
+static void test_gltf_preload_bundle_supplies_external_buffers() {
+    const char *bin_path = "/tmp/viper_gltf_preload_external.bin";
+    const char *gltf_path = "/tmp/viper_gltf_preload_external.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    FILE *bin = std::fopen(bin_path, "wb");
+    EXPECT_TRUE(bin != nullptr, "Preload external buffer file can be created");
+    if (!bin)
+        return;
+    std::fwrite(gltf_buffer.data(), 1, gltf_buffer.size(), bin);
+    std::fclose(bin);
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"viper_gltf_preload_external.bin\",\"byteLength\":" +
+        std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload glTF fixture can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload glTF root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Preload root byte copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle =
+        rt_gltf_preload_bundle_create(rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle != nullptr, "Preload bundle can be built from root bytes");
+    EXPECT_TRUE(error[0] == '\0', "Preload bundle build has no terminal error");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 2,
+                "Preload bundle stages the external buffer plus decoded mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                "Preload bundle worker-decodes the external-buffer static mesh to POD");
+    if (!bundle)
+        return;
+
+    std::remove(bin_path);
+    void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+    EXPECT_TRUE(asset != nullptr, "Preloaded bundle supplies external buffer after source deletion");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                "Preloaded external buffer builds the expected mesh");
+    if (!mesh)
+        return;
+    EXPECT_NEAR(mesh->vertices[1].pos[0], 4.0, 0.001, "Preloaded buffer vertex X is loaded");
+    EXPECT_NEAR(mesh->vertices[2].pos[1], 5.0, 0.001, "Preloaded buffer vertex Y is loaded");
+}
+
+static void test_gltf_preload_bundle_rejects_missing_required_buffers() {
+    const char *gltf_path = "/tmp/viper_gltf_preload_missing_required_buffer.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"viper_gltf_preload_missing_required_buffer.bin\","
+        "\"byteLength\":36}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+        "\"type\":\"VEC3\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Missing-buffer preload glTF fixture can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Missing-buffer root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Missing-buffer root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle == nullptr, "Preload rejects missing required external buffers on worker");
+    EXPECT_TRUE(std::strstr(error, "failed to stage glTF dependency") != nullptr,
+                "Missing required buffer reports a preload-stage error");
+}
+
+static void test_gltf_preload_bundle_validates_accessor_ranges() {
+    const char *gltf_path = "/tmp/viper_gltf_preload_invalid_accessor_range.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 10.0f, 0.0f, 0.0f, 0.0f, 11.0f, 0.0f};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":24}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+        "\"type\":\"VEC3\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Invalid-accessor preload glTF fixture can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Invalid-accessor root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Invalid-accessor root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle == nullptr, "Preload validates accessor byte ranges on worker");
+    EXPECT_TRUE(std::strstr(error, "invalid glTF accessor range") != nullptr,
+                "Invalid accessor range reports a worker validation error");
+}
+
+static void test_gltf_preload_bundle_rejects_corrupt_required_image_payload() {
+    const char *gltf_path = "/tmp/viper_gltf_preload_corrupt_required_image.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"images\":[{\"uri\":\"data:image/png;base64,AAAA\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Corrupt required-image preload fixture can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Corrupt required-image root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Corrupt required-image root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle == nullptr, "Preload rejects corrupt required texture image payloads");
+    EXPECT_TRUE(std::strstr(error, "invalid glTF image payload") != nullptr,
+                "Corrupt required image reports a preload image error");
+}
+
+static void test_gltf_preload_bundle_stages_data_uri_buffers_and_images() {
+    const char *png_path = "/tmp/viper_gltf_preload_data_uri.png";
+    const char *gltf_path = "/tmp/viper_gltf_preload_data_uri.gltf";
+    void *pixels = rt_pixels_new(1, 1);
+    rt_pixels_set(pixels, 0, 0, 0x5588CCFFll);
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "Preload data-uri PNG can be written");
+
+    std::vector<uint8_t> png_bytes;
+    EXPECT_TRUE(read_file_bytes(png_path, png_bytes), "Preload data-uri PNG can be read");
+    if (png_bytes.empty())
+        return;
+
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 6.0f, 0.0f, 0.0f, 0.0f, 7.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string image_b64 = base64_encode(png_bytes.data(), png_bytes.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"images\":[{\"uri\":\"data:image/png;base64," +
+        image_b64 +
+        "\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"material\":0}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload data-uri glTF can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload data-uri root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Preload data-uri root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage data-uri payloads");
+    EXPECT_TRUE(error[0] == '\0', "Preload data-uri bundle build has no terminal error");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
+                "Preload bundle stages data-uri buffer, decoded PNG image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
+                "Preload bundle worker-decodes PNG image bytes to raw RGBA POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                "Preload bundle worker-decodes the data-uri static mesh to POD");
+    if (!bundle)
+        return;
+
+    void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+    EXPECT_TRUE(asset != nullptr, "Preloaded data-uri bundle builds an asset");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                "Preloaded data-uri buffer builds the expected mesh");
+    EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
+                    rt_pixels_get(material->texture, 0, 0) == 0x5588CCFFll,
+                "Preloaded data-uri image builds the expected material texture");
+    if (mesh) {
+        EXPECT_NEAR(mesh->vertices[1].pos[0], 6.0, 0.001, "Data-uri preload vertex X loads");
+        EXPECT_NEAR(mesh->vertices[2].pos[1], 7.0, 0.001, "Data-uri preload vertex Y loads");
+    }
+    std::remove(png_path);
+}
+
+static void test_gltf_preload_bundle_decodes_bmp_images_to_rgba_pod() {
+    const char *bmp_path = "/tmp/viper_gltf_preload_data_uri.bmp";
+    const char *gltf_path = "/tmp/viper_gltf_preload_data_uri_bmp.gltf";
+    void *pixels = rt_pixels_new(1, 1);
+    rt_pixels_set(pixels, 0, 0, 0xCC8844FFll);
+    EXPECT_TRUE(rt_pixels_save_bmp(pixels, rt_const_cstr(bmp_path)) == 1,
+                "Preload data-uri BMP can be written");
+
+    std::vector<uint8_t> bmp_bytes;
+    EXPECT_TRUE(read_file_bytes(bmp_path, bmp_bytes), "Preload data-uri BMP can be read");
+    if (bmp_bytes.empty())
+        return;
+
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 12.0f, 0.0f, 0.0f, 0.0f, 13.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string image_b64 = base64_encode(bmp_bytes.data(), bmp_bytes.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"images\":[{\"uri\":\"data:image/bmp;base64," +
+        image_b64 +
+        "\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"material\":0}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload data-uri BMP glTF can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload data-uri BMP root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Preload data-uri BMP root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage BMP payloads");
+    EXPECT_TRUE(error[0] == '\0', "Preload data-uri BMP bundle build has no terminal error");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
+                "Preload bundle stages data-uri buffer, decoded BMP image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
+                "Preload bundle worker-decodes BMP image bytes to raw RGBA POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                "Preload bundle worker-decodes the BMP fixture static mesh to POD");
+    if (!bundle)
+        return;
+
+    void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+    EXPECT_TRUE(asset != nullptr, "Preloaded BMP data-uri bundle builds an asset");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                "Preloaded BMP data-uri buffer builds the expected mesh");
+    EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
+                    rt_pixels_get(material->texture, 0, 0) == 0xCC8844FFll,
+                "Preloaded worker-decoded BMP image builds the expected material texture");
+    if (mesh) {
+        EXPECT_NEAR(mesh->vertices[1].pos[0], 12.0, 0.001, "BMP preload vertex X loads");
+        EXPECT_NEAR(mesh->vertices[2].pos[1], 13.0, 0.001, "BMP preload vertex Y loads");
+    }
+    std::remove(bmp_path);
+}
+
+static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
+    const char *gltf_path = "/tmp/viper_gltf_preload_data_uri_jpeg.gltf";
+    const char *image_b64 =
+        "/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAA"
+        "A6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD/7QA4UGhvdG9zaG9w"
+        "IDMuMAA4QklNBAQAAAAAAAA4QklNBCUAAAAAABDUHYzZjwCyBOmACZjs+EJ+/8AAEQgAAQAB"
+        "AwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMC"
+        "BAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBka"
+        "JSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqS"
+        "k5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq"
+        "8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQE"
+        "AwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEX"
+        "GBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJ"
+        "ipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp"
+        "6vLz9PX29/j5+v/bAEMAAgICAgICAwICAwUDAwMFBgUFBQUGCAYGBgYGCAoICAgICAgKCgoK"
+        "CgoKCgwMDAwMDA4ODg4ODw8PDw8PDw8PD//bAEMBAgICBAQEBwQEBxALCQsQEBAQEBAQEBAQ"
+        "EBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEP/dAAQAAf/aAAwDAQAC"
+        "EQMRAD8A9Uooor+Sz+oD/9k=";
+
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 16.0f, 0.0f, 0.0f, 0.0f, 17.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"images\":[{\"uri\":\"data:image/jpeg;base64," +
+        std::string(image_b64) +
+        "\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"material\":0}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Preload data-uri JPEG glTF can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload data-uri JPEG root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Preload data-uri JPEG root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage JPEG payloads");
+    EXPECT_TRUE(error[0] == '\0', "Preload data-uri JPEG bundle build has no terminal error");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
+                "Preload bundle stages data-uri buffer, decoded JPEG image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
+                "Preload bundle worker-decodes JPEG image bytes to raw RGBA POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                "Preload bundle worker-decodes the JPEG fixture static mesh to POD");
+    if (!bundle)
+        return;
+
+    void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+    EXPECT_TRUE(asset != nullptr, "Preloaded JPEG data-uri bundle builds an asset");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                "Preloaded JPEG data-uri buffer builds the expected mesh");
+    int64_t rgba = material && material->texture ? rt_pixels_get(material->texture, 0, 0) : 0;
+    int red = (int)((rgba >> 24) & 0xFF);
+    int green = (int)((rgba >> 16) & 0xFF);
+    int blue = (int)((rgba >> 8) & 0xFF);
+    int alpha = (int)(rgba & 0xFF);
+    EXPECT_TRUE(material != nullptr && material->texture != nullptr && red >= 140 &&
+                    green >= 60 && green <= 200 && blue <= 160 && alpha == 0xFF,
+                "Preloaded worker-decoded JPEG image builds the expected material texture");
+    if (mesh) {
+        EXPECT_NEAR(mesh->vertices[1].pos[0], 16.0, 0.001, "JPEG preload vertex X loads");
+        EXPECT_NEAR(mesh->vertices[2].pos[1], 17.0, 0.001, "JPEG preload vertex Y loads");
+    }
+}
+
+static void test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod() {
+    const char *gltf_path = "/tmp/viper_gltf_preload_data_uri_gif.gltf";
+    const uint8_t gif_bytes[] = {
+        'G',  'I',  'F',  '8',  '7',  'a',
+        0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00,
+        0xFF, 0x00, 0x00,
+        0x00, 0x00, 0x00,
+        0x2C,
+        0x00, 0x00, 0x00, 0x00,
+        0x01, 0x00, 0x01, 0x00,
+        0x00,
+        0x02,
+        0x02, 0x44, 0x01,
+        0x00,
+        0x3B};
+
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 18.0f, 0.0f, 0.0f, 0.0f, 19.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string image_b64 = base64_encode(gif_bytes, sizeof(gif_bytes));
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"images\":[{\"uri\":\"data:image/gif;base64," +
+        image_b64 +
+        "\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"material\":0}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Preload data-uri GIF glTF can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload data-uri GIF root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Preload data-uri GIF root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage GIF payloads");
+    EXPECT_TRUE(error[0] == '\0', "Preload data-uri GIF bundle build has no terminal error");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
+                "Preload bundle stages data-uri buffer, decoded GIF image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
+                "Preload bundle worker-decodes GIF image bytes to raw RGBA POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                "Preload bundle worker-decodes the GIF fixture static mesh to POD");
+    if (!bundle)
+        return;
+
+    void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+    EXPECT_TRUE(asset != nullptr, "Preloaded GIF data-uri bundle builds an asset");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                "Preloaded GIF data-uri buffer builds the expected mesh");
+    EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
+                    rt_pixels_get(material->texture, 0, 0) == 0xFF0000FFll,
+                "Preloaded worker-decoded GIF image builds the expected material texture");
+    if (mesh) {
+        EXPECT_NEAR(mesh->vertices[1].pos[0], 18.0, 0.001, "GIF preload vertex X loads");
+        EXPECT_NEAR(mesh->vertices[2].pos[1], 19.0, 0.001, "GIF preload vertex Y loads");
+    }
+}
+
+static void test_gltf_preload_bundle_decodes_static_mesh_to_pod() {
+    const char *gltf_path = "/tmp/viper_gltf_preload_static_mesh_pod.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 14.0f, 0.0f, 0.0f, 0.0f, 15.0f, 0.0f};
+    const float normals[9] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
+    const float uvs[6] = {0.0f, 0.0f, 1.0f, 0.25f, 0.5f, 1.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : normals)
+        append_bytes(gltf_buffer, v);
+    for (float v : uvs)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":72,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":96,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":3,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,"
+        "\"TEXCOORD_0\":2},\"indices\":3}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Preload static-mesh POD glTF fixture can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload static-mesh POD root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Preload static-mesh POD root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage a static mesh POD payload");
+    EXPECT_TRUE(error[0] == '\0', "Preload static-mesh POD bundle build has no terminal error");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 2,
+                "Preload bundle stages the raw buffer plus decoded static mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                "Preload bundle worker-decodes the static triangle mesh to POD");
+    if (!bundle)
+        return;
+
+    void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+    EXPECT_TRUE(asset != nullptr, "Preloaded static-mesh POD bundle builds an asset");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                "Preloaded static-mesh POD builds the expected mesh");
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_capacity == 3 && mesh->index_capacity == 3,
+                "Preloaded static-mesh path commits the worker POD mesh directly");
+    if (!mesh)
+        return;
+    EXPECT_NEAR(mesh->vertices[1].pos[0], 14.0, 0.001, "Static-mesh POD vertex X loads");
+    EXPECT_NEAR(mesh->vertices[2].pos[1], 15.0, 0.001, "Static-mesh POD vertex Y loads");
+    EXPECT_NEAR(mesh->vertices[0].normal[2], 1.0, 0.001, "Static-mesh POD normals load");
+    EXPECT_NEAR(mesh->vertices[1].uv[1], 0.25, 0.001, "Static-mesh POD UVs load");
+}
+
+static void test_gltf_preload_bundle_decodes_strip_and_fan_without_normals_to_pod() {
+    const char *gltf_path = "/tmp/viper_gltf_preload_topology_mesh_pod.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float strip_positions[12] = {
+        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f,
+    };
+    const float fan_positions[12] = {
+        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+    };
+    const float uvs[8] = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f};
+
+    for (float v : strip_positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uvs)
+        append_bytes(gltf_buffer, v);
+    for (float v : fan_positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uvs)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":48},"
+        "{\"buffer\":0,\"byteOffset\":48,\"byteLength\":32},"
+        "{\"buffer\":0,\"byteOffset\":80,\"byteLength\":48},"
+        "{\"buffer\":0,\"byteOffset\":128,\"byteLength\":32}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":4,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
+        "{\"bufferView\":3,\"componentType\":5126,\"count\":4,\"type\":\"VEC2\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":["
+        "{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},\"mode\":5},"
+        "{\"attributes\":{\"POSITION\":2,\"TEXCOORD_0\":3},\"mode\":6}"
+        "]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Preload topology POD glTF fixture can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload topology POD root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Preload topology POD root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage strip/fan mesh POD payloads");
+    EXPECT_TRUE(error[0] == '\0', "Preload topology POD bundle build has no terminal error");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
+                "Preload bundle stages the raw buffer plus two topology mesh PODs");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 2,
+                "Preload bundle worker-decodes triangle strip and fan primitives to POD");
+    if (!bundle)
+        return;
+
+    void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+    EXPECT_TRUE(asset != nullptr, "Preloaded topology POD bundle builds an asset");
+    if (!asset)
+        return;
+    auto *strip_mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    auto *fan_mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 1));
+    EXPECT_TRUE(strip_mesh != nullptr && strip_mesh->vertex_count == 4 &&
+                    strip_mesh->index_count == 6,
+                "Preloaded triangle-strip POD builds two triangles");
+    EXPECT_TRUE(fan_mesh != nullptr && fan_mesh->vertex_count == 4 && fan_mesh->index_count == 6,
+                "Preloaded triangle-fan POD builds two triangles");
+    EXPECT_TRUE(strip_mesh != nullptr && strip_mesh->vertex_capacity == 4 &&
+                    strip_mesh->index_capacity == 6,
+                "Preloaded triangle-strip POD commits direct mesh storage");
+    EXPECT_TRUE(fan_mesh != nullptr && fan_mesh->vertex_capacity == 4 &&
+                    fan_mesh->index_capacity == 6,
+                "Preloaded triangle-fan POD commits direct mesh storage");
+    if (!strip_mesh || !fan_mesh)
+        return;
+    EXPECT_TRUE(strip_mesh->indices[0] == 0 && strip_mesh->indices[1] == 1 &&
+                    strip_mesh->indices[2] == 2 && strip_mesh->indices[3] == 2 &&
+                    strip_mesh->indices[4] == 1 && strip_mesh->indices[5] == 3,
+                "Preloaded triangle-strip POD preserves alternating winding");
+    EXPECT_TRUE(fan_mesh->indices[0] == 0 && fan_mesh->indices[1] == 1 &&
+                    fan_mesh->indices[2] == 2 && fan_mesh->indices[3] == 0 &&
+                    fan_mesh->indices[4] == 2 && fan_mesh->indices[5] == 3,
+                "Preloaded triangle-fan POD preserves fan winding");
+    EXPECT_NEAR(strip_mesh->vertices[0].normal[2],
+                1.0,
+                0.001,
+                "Preloaded strip POD recalculates missing normals on commit");
+    EXPECT_NEAR(fan_mesh->vertices[0].normal[2],
+                1.0,
+                0.001,
+                "Preloaded fan POD recalculates missing normals on commit");
+}
+
+static void test_gltf_preload_bundle_stages_buffer_view_images() {
+    const char *png_path = "/tmp/viper_gltf_preload_bufferview_image.png";
+    const char *gltf_path = "/tmp/viper_gltf_preload_bufferview_image.gltf";
+    void *pixels = rt_pixels_new(2, 2);
+    rt_pixels_set(pixels, 0, 0, 0xAA6633FFll);
+    rt_pixels_set(pixels, 1, 0, 0x11223344ll);
+    rt_pixels_set(pixels, 0, 1, 0x55667788ll);
+    rt_pixels_set(pixels, 1, 1, 0x99AABBCCll);
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "Preload bufferView PNG can be written");
+
+    std::vector<uint8_t> png_bytes;
+    EXPECT_TRUE(read_file_bytes(png_path, png_bytes), "Preload bufferView PNG can be read");
+    if (png_bytes.empty())
+        return;
+
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 8.0f, 0.0f, 0.0f, 0.0f, 9.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    size_t image_offset = gltf_buffer.size();
+    gltf_buffer.insert(gltf_buffer.end(), png_bytes.begin(), png_bytes.end());
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(image_offset) + ",\"byteLength\":" + std::to_string(png_bytes.size()) +
+        "}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"images\":[{\"bufferView\":2,\"mimeType\":\"image/png\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"material\":0}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload bufferView glTF can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload bufferView root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Preload bufferView root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage bufferView image payloads");
+    EXPECT_TRUE(error[0] == '\0', "Preload bufferView bundle build has no terminal error");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
+                "Preload bundle stages data-uri buffer, decoded bufferView PNG image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
+                "Preload bundle worker-decodes bufferView PNG image bytes to raw RGBA POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                "Preload bundle worker-decodes the bufferView-image fixture mesh to POD");
+    if (!bundle)
+        return;
+
+    void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+    EXPECT_TRUE(asset != nullptr, "Preloaded bufferView bundle builds an asset");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                "Preloaded bufferView fixture builds the expected mesh");
+    EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
+                    rt_pixels_get(material->texture, 0, 0) == 0xAA6633FFll &&
+                    rt_pixels_get(material->texture, 1, 0) == 0x11223344ll &&
+                    rt_pixels_get(material->texture, 0, 1) == 0x55667788ll &&
+                    rt_pixels_get(material->texture, 1, 1) == 0x99AABBCCll,
+                "Preloaded bufferView image builds the expected material texture");
+    EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
+                    rt_pixels_generation(material->texture) <= 1,
+                "Preloaded RGBA POD commits texture pixels through one bulk mutation");
+    if (mesh) {
+        EXPECT_NEAR(mesh->vertices[1].pos[0], 8.0, 0.001, "BufferView preload vertex X loads");
+        EXPECT_NEAR(mesh->vertices[2].pos[1], 9.0, 0.001, "BufferView preload vertex Y loads");
+    }
+    std::remove(png_path);
+}
+
+static void test_gltf_preload_bundle_slices_decoded_image_commit() {
+    const char *png_path = "/tmp/viper_gltf_sliced_preload_texture.png";
+    const char *gltf_path = "/tmp/viper_gltf_sliced_preload_texture.gltf";
+
+    void *pixels = rt_pixels_new(32, 32);
+    EXPECT_TRUE(pixels != nullptr, "Sliced preload source Pixels can be allocated");
+    if (!pixels)
+        return;
+    for (int64_t y = 0; y < 32; ++y) {
+        for (int64_t x = 0; x < 32; ++x)
+            rt_pixels_set(pixels, x, y, 0xAA7744FFll);
+    }
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "Sliced preload PNG can be written");
+
+    std::vector<uint8_t> png_bytes;
+    EXPECT_TRUE(read_file_bytes(png_path, png_bytes), "Sliced preload PNG can be read");
+    if (png_bytes.empty())
+        return;
+
+    std::string image_b64 = base64_encode(png_bytes.data(), png_bytes.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"images\":[{\"uri\":\"data:image/png;base64," +
+        image_b64 +
+        "\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Sliced preload glTF fixture can be written");
+
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Sliced preload root bytes can be read");
+    if (root.empty())
+        return;
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Sliced preload root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, root.data(), root.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle != nullptr, "Sliced preload bundle can stage decoded image POD");
+    EXPECT_TRUE(error[0] == '\0', "Sliced preload bundle build has no terminal error");
+    if (!bundle)
+        return;
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
+                "Sliced preload starts with one decoded RGBA image");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_bytes(bundle) == 32u * 32u * 4u,
+                "Sliced preload decoded-byte estimate starts at full RGBA size");
+    EXPECT_TRUE(rt_gltf_preload_bundle_next_decoded_image_slice_bytes(bundle, 256u) == 256u,
+                "Sliced preload exposes a bounded first commit slice");
+
+    size_t slices = 0;
+    size_t prepared_total = 0;
+    for (;;) {
+        size_t prepared = rt_gltf_preload_bundle_prepare_decoded_image_slice(bundle, 256u);
+        if (prepared == 0u)
+            break;
+        prepared_total += prepared;
+        slices++;
+    }
+    EXPECT_TRUE(slices > 1, "Sliced preload decoded image requires multiple commit slices");
+    EXPECT_TRUE(prepared_total == 32u * 32u * 4u,
+                "Sliced preload prepares exactly the decoded RGBA payload");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 0,
+                "Sliced preload converts decoded RGBA into a prepared Pixels dependency");
+    EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_bytes(bundle) == 0,
+                "Sliced preload has no remaining decoded RGBA bytes after preparation");
+
+    void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+    EXPECT_TRUE(asset != nullptr, "Sliced preload bundle builds an asset after sliced prep");
+    if (asset) {
+        auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+        EXPECT_TRUE(mat != nullptr && mat->texture != nullptr,
+                    "Sliced preload material keeps the prepared Pixels texture");
+        EXPECT_TRUE(mat != nullptr && mat->texture != nullptr &&
+                        rt_pixels_get(mat->texture, 17, 13) == 0xAA7744FFll,
+                    "Sliced preload prepared texture preserves pixel contents");
+    }
+    std::remove(gltf_path);
+    std::remove(png_path);
 }
 
 static void test_gltf_load_asset_resolves_mounted_external_buffers() {
@@ -968,6 +1891,44 @@ static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
         "\"WEIGHTS_0\":2,\"JOINTS_1\":3,\"WEIGHTS_1\":4},\"indices\":5}]}]"
         "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "JOINTS_1 glTF fixture can be created");
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "JOINTS_1 preload root bytes can be read");
+    if (!root.empty()) {
+        uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+        EXPECT_TRUE(owned_root != nullptr, "JOINTS_1 preload root copy can be allocated");
+        if (owned_root) {
+            std::memcpy(owned_root, root.data(), root.size());
+            char error[128] = {0};
+            rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+                rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+            EXPECT_TRUE(bundle != nullptr,
+                        "Preload bundle can stage JOINTS_1 mesh payloads");
+            EXPECT_TRUE(error[0] == '\0', "JOINTS_1 preload bundle build has no terminal error");
+            EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                        "Preload bundle worker-decodes JOINTS_1 attributes to mesh POD");
+            if (bundle) {
+                void *preloaded = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+                EXPECT_TRUE(preloaded != nullptr, "Preloaded JOINTS_1 bundle builds an asset");
+                auto *preloaded_mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(preloaded, 0));
+                EXPECT_TRUE(preloaded_mesh != nullptr,
+                            "Preloaded JOINTS_1 bundle exposes the mesh");
+                if (preloaded_mesh) {
+                    EXPECT_TRUE(preloaded_mesh->vertices[0].bone_indices[0] == 1 &&
+                                    preloaded_mesh->vertices[0].bone_indices[1] == 2 &&
+                                    preloaded_mesh->vertices[0].bone_indices[2] == 5 &&
+                                    preloaded_mesh->vertices[0].bone_indices[3] == 6,
+                                "Preloaded JOINTS_1 mesh keeps the strongest four influences");
+                    EXPECT_NEAR(preloaded_mesh->vertices[0].bone_weights[2],
+                                0.30 / 0.75,
+                                0.001,
+                                "Preloaded JOINTS_1 mesh keeps secondary weights");
+                    EXPECT_TRUE(preloaded_mesh->bone_count == 7,
+                                "Preloaded JOINTS_1 mesh keeps its bone palette size");
+                }
+            }
+        }
+    }
+
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load parses secondary joint sets");
     if (!asset)
@@ -1202,6 +2163,45 @@ static void test_gltf_imports_skins_and_animation_clips() {
     std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
     std::fclose(gltf);
 
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Skinned preload root bytes can be read");
+    if (!root.empty()) {
+        uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+        EXPECT_TRUE(owned_root != nullptr, "Skinned preload root copy can be allocated");
+        if (owned_root) {
+            std::memcpy(owned_root, root.data(), root.size());
+            char error[128] = {0};
+            rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+                rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+            EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage skinned mesh payloads");
+            EXPECT_TRUE(error[0] == '\0', "Skinned preload bundle build has no terminal error");
+            EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                        "Preload bundle worker-decodes skinned mesh attributes to POD");
+            if (bundle) {
+                void *preloaded = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+                EXPECT_TRUE(preloaded != nullptr, "Preloaded skinned bundle builds an asset");
+                auto *preloaded_mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(preloaded, 0));
+                EXPECT_TRUE(preloaded_mesh != nullptr,
+                            "Preloaded skinned bundle exposes the skinned mesh");
+                if (preloaded_mesh) {
+                    EXPECT_TRUE(preloaded_mesh->bone_count == 2,
+                                "Preloaded skinned mesh remaps joint attributes to runtime bones");
+                    EXPECT_TRUE(preloaded_mesh->vertices[1].bone_indices[0] == 0 &&
+                                    preloaded_mesh->vertices[1].bone_indices[1] == 1,
+                                "Preloaded skinned mesh preserves mixed joint influences");
+                    EXPECT_NEAR(preloaded_mesh->vertices[1].bone_weights[0],
+                                0.25,
+                                0.001,
+                                "Preloaded skinned mesh keeps root weight");
+                    EXPECT_NEAR(preloaded_mesh->vertices[1].bone_weights[1],
+                                0.75,
+                                0.001,
+                                "Preloaded skinned mesh keeps child weight");
+                }
+            }
+        }
+    }
+
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load parses skinned animation assets");
     if (!asset)
@@ -1394,6 +2394,46 @@ static void test_gltf_applies_sparse_accessors() {
     std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
     std::fclose(gltf);
 
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Sparse preload root bytes can be read");
+    if (!root.empty()) {
+        uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+        EXPECT_TRUE(owned_root != nullptr, "Sparse preload root copy can be allocated");
+        if (owned_root) {
+            std::memcpy(owned_root, root.data(), root.size());
+            char error[128] = {0};
+            rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+                rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+            EXPECT_TRUE(bundle != nullptr,
+                        "Preload bundle can stage sparse accessor mesh payloads");
+            EXPECT_TRUE(error[0] == '\0', "Sparse preload bundle build has no terminal error");
+            EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                        "Preload bundle worker-decodes sparse accessor mesh to POD");
+            if (bundle) {
+                void *preloaded = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+                EXPECT_TRUE(preloaded != nullptr, "Preloaded sparse bundle builds an asset");
+                auto *preloaded_mesh =
+                    static_cast<rt_mesh3d *>(rt_gltf_get_mesh(preloaded, 0));
+                EXPECT_TRUE(preloaded_mesh != nullptr,
+                            "Preloaded sparse bundle exposes sparse accessor mesh");
+                if (preloaded_mesh) {
+                    EXPECT_NEAR(preloaded_mesh->vertices[1].pos[0],
+                                1.0,
+                                0.001,
+                                "Sparse preload overrides vertex 1 X");
+                    EXPECT_NEAR(preloaded_mesh->vertices[1].pos[1],
+                                2.0,
+                                0.001,
+                                "Sparse preload overrides vertex 1 Y");
+                    EXPECT_NEAR(preloaded_mesh->vertices[2].pos[1],
+                                1.0,
+                                0.001,
+                                "Sparse preload can author a valid triangle");
+                }
+            }
+        }
+    }
+
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load parses sparse accessor assets");
     if (!asset)
@@ -1497,6 +2537,77 @@ static void test_gltf_imports_morph_targets() {
     std::fwrite(gltf_json.data(), 1, gltf_json.size(), gltf);
     std::fclose(gltf);
 
+    std::vector<uint8_t> root;
+    EXPECT_TRUE(read_file_bytes(gltf_path, root), "Morph preload root bytes can be read");
+    if (!root.empty()) {
+        uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(root.size()));
+        EXPECT_TRUE(owned_root != nullptr, "Morph preload root copy can be allocated");
+        if (owned_root) {
+            std::memcpy(owned_root, root.data(), root.size());
+            char error[128] = {0};
+            rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+                rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+            EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage morph-target mesh payloads");
+            EXPECT_TRUE(error[0] == '\0', "Morph preload bundle build has no terminal error");
+            EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
+                        "Preload bundle worker-decodes morph-target meshes to POD");
+            if (bundle) {
+                void *preloaded = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+                EXPECT_TRUE(preloaded != nullptr, "Preloaded morph bundle builds an asset");
+                auto *preloaded_mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(preloaded, 0));
+                EXPECT_TRUE(preloaded_mesh != nullptr &&
+                                preloaded_mesh->morph_targets_ref != nullptr,
+                            "Preloaded morph bundle exposes attached morph targets");
+                if (preloaded_mesh && preloaded_mesh->morph_targets_ref) {
+                    EXPECT_TRUE(rt_morphtarget3d_get_shape_count(
+                                    preloaded_mesh->morph_targets_ref) == 1,
+                                "Preloaded morph bundle imports one blend shape");
+                    EXPECT_TRUE(rt_morphtarget3d_has_tangent_deltas(
+                                    preloaded_mesh->morph_targets_ref) == 1,
+                                "Preloaded morph bundle imports tangent deltas");
+                    EXPECT_NEAR(rt_morphtarget3d_get_weight(
+                                    preloaded_mesh->morph_targets_ref, 0),
+                                0.25,
+                                0.001,
+                                "Preloaded morph bundle preserves default weight");
+                    const float *preloaded_pos =
+                        rt_morphtarget3d_get_packed_deltas(preloaded_mesh->morph_targets_ref);
+                    const float *preloaded_norm =
+                        rt_morphtarget3d_get_packed_normal_deltas(
+                            preloaded_mesh->morph_targets_ref);
+                    EXPECT_TRUE(preloaded_pos != nullptr,
+                                "Preloaded morph bundle packs position deltas");
+                    EXPECT_TRUE(preloaded_norm != nullptr,
+                                "Preloaded morph bundle packs normal deltas");
+                    if (preloaded_pos)
+                        EXPECT_NEAR(preloaded_pos[4],
+                                    0.5,
+                                    0.001,
+                                    "Preloaded morph bundle keeps vertex 1 position delta Y");
+                    if (preloaded_norm)
+                        EXPECT_NEAR(preloaded_norm[8],
+                                    -0.1,
+                                    0.001,
+                                    "Preloaded morph bundle keeps vertex 2 normal delta Z");
+                }
+                void *preloaded_root = rt_gltf_get_scene_root(preloaded);
+                void *preloaded_node =
+                    preloaded_root ? rt_scene_node3d_get_child(preloaded_root, 0) : nullptr;
+                auto *preloaded_scene_mesh =
+                    preloaded_node
+                        ? static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(preloaded_node))
+                        : nullptr;
+                if (preloaded_scene_mesh && preloaded_scene_mesh->morph_targets_ref) {
+                    EXPECT_NEAR(rt_morphtarget3d_get_weight(
+                                    preloaded_scene_mesh->morph_targets_ref, 0),
+                                0.75,
+                                0.001,
+                                "Preloaded morph bundle applies node morph weights");
+                }
+            }
+        }
+    }
+
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "GLTF.Load parses morph-target assets");
     if (!asset)
@@ -1579,6 +2690,21 @@ static void test_gltf_rejects_malformed_glb_headers() {
 
     EXPECT_TRUE(rt_gltf_load(rt_const_cstr(glb_path)) == nullptr,
                 "GLTF.Load rejects unsupported GLB versions");
+}
+
+static void test_gltf_rejects_corrupt_required_image_payload() {
+    const char *gltf_path = "/tmp/viper_gltf_corrupt_required_image.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"images\":[{\"uri\":\"data:image/png;base64,AAAA\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Corrupt required-image glTF fixture can be written");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(gltf_path)) == nullptr,
+                "GLTF.Load rejects corrupt texture image payloads instead of dropping the map");
 }
 
 static void test_gltf_rejects_unsafe_external_buffer_paths() {
@@ -1941,6 +3067,18 @@ int main() {
     test_gltf_accessors_reject_wrong_handles();
     test_gltf_loads_data_uri_buffers_and_embedded_textures();
     test_gltf_resolves_percent_encoded_external_buffers();
+    test_gltf_preload_bundle_supplies_external_buffers();
+    test_gltf_preload_bundle_rejects_missing_required_buffers();
+    test_gltf_preload_bundle_validates_accessor_ranges();
+    test_gltf_preload_bundle_rejects_corrupt_required_image_payload();
+    test_gltf_preload_bundle_stages_data_uri_buffers_and_images();
+    test_gltf_preload_bundle_decodes_bmp_images_to_rgba_pod();
+    test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod();
+    test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod();
+    test_gltf_preload_bundle_decodes_static_mesh_to_pod();
+    test_gltf_preload_bundle_decodes_strip_and_fan_without_normals_to_pod();
+    test_gltf_preload_bundle_stages_buffer_view_images();
+    test_gltf_preload_bundle_slices_decoded_image_commit();
     test_gltf_load_asset_resolves_mounted_external_buffers();
     test_gltf_load_asset_handles_glb_filesystem_and_mounted_package();
     test_gltf_rejects_out_of_range_indices();
@@ -1953,6 +3091,7 @@ int main() {
     test_gltf_applies_sparse_accessors();
     test_gltf_imports_morph_targets();
     test_gltf_rejects_malformed_glb_headers();
+    test_gltf_rejects_corrupt_required_image_payload();
     test_gltf_rejects_unsafe_external_buffer_paths();
     test_gltf_assigns_default_material_to_materialless_primitives();
     test_gltf_uses_texture_texcoord_and_transform();

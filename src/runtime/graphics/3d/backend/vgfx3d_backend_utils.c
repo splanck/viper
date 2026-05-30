@@ -124,6 +124,254 @@ int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
     return 0;
 }
 
+int vgfx3d_get_pixels_extent(const void *pixels_ptr, int32_t *out_w, int32_t *out_h) {
+    const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)pixels_ptr;
+
+    if (out_w)
+        *out_w = 0;
+    if (out_h)
+        *out_h = 0;
+    if (!pv || !out_w || !out_h || !pv->data || pv->w <= 0 || pv->h <= 0 || pv->w > INT32_MAX ||
+        pv->h > INT32_MAX)
+        return 0;
+
+    *out_w = (int32_t)pv->w;
+    *out_h = (int32_t)pv->h;
+    return 1;
+}
+
+int vgfx3d_unpack_pixels_rgba_rows(const void *pixels_ptr,
+                                   int32_t start_row,
+                                   int32_t row_count,
+                                   int flip_y,
+                                   int32_t *out_w,
+                                   int32_t *out_rows,
+                                   uint8_t **out_rgba) {
+    const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)pixels_ptr;
+    int32_t w;
+    int32_t h;
+    size_t row_bytes;
+    size_t total_bytes;
+    uint8_t *rgba;
+
+    if (out_w)
+        *out_w = 0;
+    if (out_rows)
+        *out_rows = 0;
+    if (out_rgba)
+        *out_rgba = NULL;
+    if (!pv || !out_w || !out_rows || !out_rgba || !pv->data || pv->w <= 0 || pv->h <= 0 ||
+        pv->w > INT32_MAX || pv->h > INT32_MAX || start_row < 0 || row_count <= 0)
+        return -1;
+
+    w = (int32_t)pv->w;
+    h = (int32_t)pv->h;
+    if (start_row >= h)
+        return -1;
+    if (row_count > h - start_row)
+        row_count = h - start_row;
+    if ((size_t)w > SIZE_MAX / 4u)
+        return -1;
+    row_bytes = (size_t)w * 4u;
+    if ((size_t)row_count > SIZE_MAX / row_bytes)
+        return -1;
+    total_bytes = (size_t)row_count * row_bytes;
+    rgba = (uint8_t *)malloc(total_bytes);
+    if (!rgba)
+        return -1;
+
+    for (int32_t y = 0; y < row_count; y++) {
+        int32_t src_y = flip_y ? (h - 1 - (start_row + y)) : (start_row + y);
+        const uint32_t *src = pv->data + ((size_t)src_y * (size_t)w);
+        uint8_t *dst = rgba + ((size_t)y * row_bytes);
+        for (int32_t x = 0; x < w; x++) {
+            uint32_t px = src[x]; /* 0xRRGGBBAA */
+            dst[(size_t)x * 4u + 0u] = (uint8_t)((px >> 24) & 0xFF);
+            dst[(size_t)x * 4u + 1u] = (uint8_t)((px >> 16) & 0xFF);
+            dst[(size_t)x * 4u + 2u] = (uint8_t)((px >> 8) & 0xFF);
+            dst[(size_t)x * 4u + 3u] = (uint8_t)(px & 0xFF);
+        }
+    }
+
+    *out_w = w;
+    *out_rows = row_count;
+    *out_rgba = rgba;
+    return 0;
+}
+
+/// @brief Compute the RGBA8 byte count uploaded for one Pixels texture.
+int vgfx3d_estimate_pixels_rgba_upload_bytes(const void *pixels_ptr, uint64_t *out_bytes) {
+    const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)pixels_ptr;
+    uint64_t w;
+    uint64_t h;
+    uint64_t pixel_count;
+
+    if (out_bytes)
+        *out_bytes = 0;
+    if (!pv || !out_bytes || !pv->data || pv->w <= 0 || pv->h <= 0 || pv->w > INT32_MAX ||
+        pv->h > INT32_MAX)
+        return 0;
+
+    w = (uint64_t)pv->w;
+    h = (uint64_t)pv->h;
+    if (w > UINT64_MAX / h)
+        return 0;
+    pixel_count = w * h;
+    if (pixel_count > UINT64_MAX / 4u)
+        return 0;
+
+    *out_bytes = pixel_count * 4u;
+    return 1;
+}
+
+int32_t vgfx3d_upload_rows_for_budget(
+    int32_t width, int32_t height, int32_t next_row, uint64_t budget, uint64_t used) {
+    uint64_t row_bytes;
+    uint64_t remaining_budget;
+    uint64_t budget_rows;
+    int32_t remaining_rows;
+
+    if (width <= 0 || height <= 0 || next_row < 0 || next_row >= height)
+        return 0;
+    remaining_rows = height - next_row;
+    if (budget == UINT64_MAX)
+        return remaining_rows;
+    if (budget == 0)
+        return 0;
+
+    row_bytes = (uint64_t)(uint32_t)width * 4u;
+    if (row_bytes == 0 || used >= budget)
+        return 0;
+    remaining_budget = budget - used;
+    budget_rows = remaining_budget / row_bytes;
+    if (budget_rows == 0)
+        budget_rows = 1;
+    if (budget_rows > (uint64_t)remaining_rows)
+        budget_rows = (uint64_t)remaining_rows;
+    return (int32_t)budget_rows;
+}
+
+uint64_t vgfx3d_pending_rgba_upload_bytes(int32_t width,
+                                          int32_t height,
+                                          int32_t next_row,
+                                          int upload_in_progress) {
+    uint64_t remaining_rows;
+    uint64_t row_bytes;
+
+    if (!upload_in_progress || width <= 0 || height <= 0 || next_row < 0 || next_row >= height)
+        return 0;
+    remaining_rows = (uint64_t)(uint32_t)(height - next_row);
+    row_bytes = (uint64_t)(uint32_t)width * 4u;
+    if (row_bytes != 0 && remaining_rows > UINT64_MAX / row_bytes)
+        return UINT64_MAX;
+    return remaining_rows * row_bytes;
+}
+
+uint64_t vgfx3d_pending_cubemap_rgba_upload_bytes(int32_t face_size,
+                                                  int32_t upload_face,
+                                                  int32_t upload_next_row,
+                                                  int upload_in_progress) {
+    uint64_t remaining_rows;
+    uint64_t row_bytes;
+
+    if (!upload_in_progress || face_size <= 0 || upload_face < 0 || upload_face >= 6 ||
+        upload_next_row < 0 || upload_next_row >= face_size)
+        return 0;
+    remaining_rows = (uint64_t)(uint32_t)(face_size - upload_next_row);
+    remaining_rows += (uint64_t)(uint32_t)(5 - upload_face) * (uint64_t)(uint32_t)face_size;
+    row_bytes = (uint64_t)(uint32_t)face_size * 4u;
+    if (row_bytes != 0 && remaining_rows > UINT64_MAX / row_bytes)
+        return UINT64_MAX;
+    return remaining_rows * row_bytes;
+}
+
+static int vgfx3d_block_upload_shape(int32_t width,
+                                     int32_t height,
+                                     int32_t block_width,
+                                     int32_t block_height,
+                                     int32_t block_bytes,
+                                     uint64_t *out_block_rows,
+                                     uint64_t *out_row_bytes) {
+    uint64_t block_cols;
+    uint64_t block_rows;
+
+    if (out_block_rows)
+        *out_block_rows = 0;
+    if (out_row_bytes)
+        *out_row_bytes = 0;
+    if (width <= 0 || height <= 0 || block_width <= 0 || block_height <= 0 || block_bytes <= 0)
+        return 0;
+
+    block_cols = ((uint64_t)(uint32_t)width + (uint64_t)(uint32_t)block_width - 1u) /
+                 (uint64_t)(uint32_t)block_width;
+    block_rows = ((uint64_t)(uint32_t)height + (uint64_t)(uint32_t)block_height - 1u) /
+                 (uint64_t)(uint32_t)block_height;
+    if (block_cols == 0 || block_rows == 0 ||
+        block_cols > UINT64_MAX / (uint64_t)(uint32_t)block_bytes)
+        return 0;
+    if (out_block_rows)
+        *out_block_rows = block_rows;
+    if (out_row_bytes)
+        *out_row_bytes = block_cols * (uint64_t)(uint32_t)block_bytes;
+    return 1;
+}
+
+int32_t vgfx3d_upload_block_rows_for_budget(int32_t width,
+                                            int32_t height,
+                                            int32_t block_width,
+                                            int32_t block_height,
+                                            int32_t block_bytes,
+                                            int32_t next_block_row,
+                                            uint64_t budget,
+                                            uint64_t used) {
+    uint64_t block_rows;
+    uint64_t row_bytes;
+    uint64_t remaining_rows;
+    uint64_t remaining_budget;
+    uint64_t budget_rows;
+
+    if (!vgfx3d_block_upload_shape(
+            width, height, block_width, block_height, block_bytes, &block_rows, &row_bytes))
+        return 0;
+    if (next_block_row < 0 || (uint64_t)(uint32_t)next_block_row >= block_rows || budget == 0 ||
+        used >= budget)
+        return 0;
+    remaining_rows = block_rows - (uint64_t)(uint32_t)next_block_row;
+    if (budget == UINT64_MAX)
+        return remaining_rows > (uint64_t)INT32_MAX ? INT32_MAX : (int32_t)remaining_rows;
+
+    remaining_budget = budget - used;
+    budget_rows = remaining_budget / row_bytes;
+    if (budget_rows == 0)
+        budget_rows = 1;
+    if (budget_rows > remaining_rows)
+        budget_rows = remaining_rows;
+    return (int32_t)budget_rows;
+}
+
+uint64_t vgfx3d_pending_block_upload_bytes(int32_t width,
+                                           int32_t height,
+                                           int32_t block_width,
+                                           int32_t block_height,
+                                           int32_t block_bytes,
+                                           int32_t next_block_row,
+                                           int upload_in_progress) {
+    uint64_t block_rows;
+    uint64_t row_bytes;
+    uint64_t remaining_rows;
+
+    if (!upload_in_progress ||
+        !vgfx3d_block_upload_shape(
+            width, height, block_width, block_height, block_bytes, &block_rows, &row_bytes))
+        return 0;
+    if (next_block_row < 0 || (uint64_t)(uint32_t)next_block_row >= block_rows)
+        return 0;
+    remaining_rows = block_rows - (uint64_t)(uint32_t)next_block_row;
+    if (row_bytes != 0 && remaining_rows > UINT64_MAX / row_bytes)
+        return UINT64_MAX;
+    return remaining_rows * row_bytes;
+}
+
 /// @brief Decode all six cubemap faces into separate RGBA8 byte arrays.
 /// All faces must be square and the same size. Caller owns and frees each
 /// face buffer. On error any partially-allocated faces are freed automatically.
@@ -156,6 +404,95 @@ int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
 
     *out_face_size = face_size;
     return 0;
+}
+
+int vgfx3d_get_cubemap_face_size(const void *cubemap_ptr, int32_t *out_face_size) {
+    const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
+    int32_t face_size;
+
+    if (out_face_size)
+        *out_face_size = 0;
+    if (!cubemap || !out_face_size || cubemap->face_size <= 0 || cubemap->face_size > INT32_MAX)
+        return 0;
+
+    face_size = (int32_t)cubemap->face_size;
+    for (int face = 0; face < 6; face++) {
+        int32_t w = 0;
+        int32_t h = 0;
+        if (!vgfx3d_get_pixels_extent(cubemap->faces[face], &w, &h) || w != face_size ||
+            h != face_size)
+            return 0;
+    }
+
+    *out_face_size = face_size;
+    return 1;
+}
+
+int vgfx3d_unpack_cubemap_rgba_rows(const void *cubemap_ptr,
+                                    int32_t face_index,
+                                    int32_t start_row,
+                                    int32_t row_count,
+                                    int flip_y,
+                                    int32_t *out_face_size,
+                                    int32_t *out_rows,
+                                    uint8_t **out_rgba) {
+    const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
+    int32_t face_size = 0;
+    int32_t w = 0;
+    int32_t rows = 0;
+    uint8_t *rgba = NULL;
+
+    if (out_face_size)
+        *out_face_size = 0;
+    if (out_rows)
+        *out_rows = 0;
+    if (out_rgba)
+        *out_rgba = NULL;
+    if (!cubemap || !out_face_size || !out_rows || !out_rgba || face_index < 0 ||
+        face_index >= 6 || !vgfx3d_get_cubemap_face_size(cubemap, &face_size))
+        return -1;
+
+    if (vgfx3d_unpack_pixels_rgba_rows(cubemap->faces[face_index],
+                                       start_row,
+                                       row_count,
+                                       flip_y,
+                                       &w,
+                                       &rows,
+                                       &rgba) != 0 ||
+        !rgba || w != face_size || rows <= 0) {
+        free(rgba);
+        return -1;
+    }
+
+    *out_face_size = face_size;
+    *out_rows = rows;
+    *out_rgba = rgba;
+    return 0;
+}
+
+/// @brief Compute the RGBA8 byte count uploaded for one six-face cubemap.
+int vgfx3d_estimate_cubemap_rgba_upload_bytes(const void *cubemap_ptr, uint64_t *out_bytes) {
+    const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
+    uint64_t face_bytes = 0;
+    uint64_t total = 0;
+
+    if (out_bytes)
+        *out_bytes = 0;
+    if (!cubemap || !out_bytes || cubemap->face_size <= 0 || cubemap->face_size > INT32_MAX)
+        return 0;
+
+    for (int face = 0; face < 6; face++) {
+        const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)cubemap->faces[face];
+        if (!pv || pv->w != cubemap->face_size || pv->h != cubemap->face_size ||
+            !vgfx3d_estimate_pixels_rgba_upload_bytes(pv, &face_bytes))
+            return 0;
+        if (total > UINT64_MAX - face_bytes)
+            return 0;
+        total += face_bytes;
+    }
+
+    *out_bytes = total;
+    return 1;
 }
 
 /// @brief Hash cubemap identity + all six face generations into one signature.

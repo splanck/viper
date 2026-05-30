@@ -151,8 +151,13 @@ Game3D surface.
 distance threshold. With `floatingOrigin` enabled, the world recenters around
 the active camera when it crosses that threshold, calls
 `Scene3D.RebaseOrigin()` for scene root subtrees, shifts physics bodies by the
-same delta, and accumulates the absolute offset in `worldOrigin`. With the flag
-off, bounded scenes are unchanged.
+same delta, shifts the explicit audio listener pose, and rebases world-owned
+effect-registry particles and decals. The absolute offset accumulates in
+`worldOrigin`. During `World3D.beginFrame`, the flag also enables Canvas3D
+camera-relative upload for
+double-precision `DrawMesh` model matrices and point/spot light positions, so
+backend float payloads stay near the camera. With the flag off, bounded scenes
+use the unchanged absolute-upload path.
 
 `World3D.NewWithCamera(title, width, height, fov, near, far)` uses the same
 defaults with custom camera projection values.
@@ -419,9 +424,12 @@ Game3D.World3D.spawn(world, enemy);
 | `LoadModelTemplateAsync(path)` | Return an `AssetHandle3D` for a cached filesystem `ModelTemplate` |
 | `LoadModelTemplateAssetAsync(assetPath)` | Return an `AssetHandle3D` for a cached package-aware `ModelTemplate` |
 | `SetResidencyBudget(bytes)` | Bound the shared template cache by estimated resident bytes; negative means unlimited |
+| `GetResidentBytes()` | Report estimated resident bytes held by the shared template cache |
+| `SetUploadBudget(bytes)` | Bound each async asset commit drain by decoded texture bytes; negative means unlimited |
 | `Evict(handle)` | Drop the cached template entry backing a ready template `AssetHandle3D` |
-| `Preload(path)` | Warm the filesystem template cache |
-| `ClearCache()` | Release cached template entries and backing storage after in-flight loads finish |
+| `Preload(path)` | Start a background filesystem template-cache warm |
+| `PreloadAsset(assetPath)` | Start a background package-aware template-cache warm |
+| `ClearCache()` | Release cached template entries and prevent older preload jobs from repopulating the cache |
 | `ModelTemplate.instantiate()` | Clone the template root subtree into a group `Entity3D` |
 
 Loaded entities are groups whose backing node is the instantiated model root.
@@ -442,29 +450,78 @@ cache condition variable rather than polling while another thread finishes an
 import.
 
 `AssetHandle3D` exposes `ready`, `progress`, `error`, `cancel()`,
-`getEntity()`, and `getTemplate()`. The current runtime returns deferred handles:
-`progress == 0.0` until the request is first observed, then `ready`, `getEntity()`,
-or `getTemplate()` completes the same loader path used by the blocking methods.
-On success, progress becomes `1.0` and `error == ""`. Entity loaders return an
-entity from `getEntity()` and `null` from `getTemplate()`; template loaders do
-the inverse. Missing filesystem paths and missing asset-manager paths become
-terminal load-error handles on observation (`"cannot read file"` or
-`"asset not found"`) rather than trapping. Existing files with unsupported model
-extensions complete with `"unsupported file extension"`. Malformed glTF JSON
-or other importer failures that return no model complete with
-`"failed to load model"` or `"failed to load model asset"`. Calling `cancel()` before first
-observation makes the handle terminal with `error == "cancelled"` and no result.
-Calling `cancel()` on a completed handle is a no-op, which keeps retrieved
-results stable. The handle contract is the public surface that later
-worker-backed decode/upload and residency budgeting will fill in without
-changing call sites.
+`getEntity()`, and `getTemplate()`. Handles start with `ready == false` and
+`progress == 0.0`; first observation through `ready`, `progress`, `error`,
+`getEntity()`, or `getTemplate()` services the process-wide asset commit queue
+and starts worker staging/loading for valid uncached model requests. While the
+worker is running, `ready` remains false and repeated observations keep draining
+committed results. On success, progress becomes `1.0` and `error == ""`. Entity loaders
+return an entity from `getEntity()` and `null` from `getTemplate()`; template
+loaders do the inverse. Cached template handles can complete immediately on
+first observation.
+
+Missing filesystem paths and missing asset-manager paths become terminal
+load-error handles on observation (`"cannot read file"` or `"asset not found"`)
+rather than trapping. Existing files with unsupported model extensions complete
+with `"unsupported file extension"`. Malformed glTF JSON or other importer
+failures complete through the worker/commit path with `"failed to load model"` or
+`"failed to load model asset"`. Calling `cancel()` before worker completion makes
+the handle terminal with `error == "cancelled"` and no result. Calling `cancel()`
+on a completed handle is a no-op, which keeps retrieved results stable.
+
+Current worker-backed async model loading stages glTF/GLB root bytes plus
+external, data URI, and bufferView-backed buffer/image payloads on a runtime
+worker. PNG, BMP, JPEG, and GIF image payloads in that preload bundle are decoded on the
+worker into raw RGBA POD; the main-thread commit queue prepares those bytes into
+`Pixels` objects in bounded slices, touching content generation once the image is
+complete. Static, skinned, and morph-target glTF triangle topology
+primitives (triangle lists, strips, and fans) with positions, optional normals,
+sparse accessor overrides, and `JOINTS_0`/`WEIGHTS_0`/`JOINTS_1`/`WEIGHTS_1`
+attributes are decoded into raw `Mesh3D` POD on the worker, then committed into
+runtime mesh objects on the main thread; missing normals are regenerated during
+commit, skin joint remapping still runs after skeleton import, and morph-target
+delta payloads become attached `MorphTarget3D` objects during commit. The worker preload also
+rejects missing required buffer
+payloads, accessor ranges that overrun their declared bufferViews, and corrupt
+required PNG/BMP/JPEG/GIF texture image payloads before the main-thread commit
+queue builds the `Model3D`/`ModelTemplate`/`Entity3D` result. Blocking glTF
+loads reject the same corrupt required data-URI texture images instead of
+silently dropping the material map.
+External `.bin` buffers can be loaded from the staged bundle even if the source
+file disappears before commit. `Assets3D.Preload(path)` and
+`Assets3D.PreloadAsset(assetPath)` schedule the same template-mode worker path as
+background cache warms for filesystem and package-aware keys respectively.
+`World3D.tick` and simulation steps drain the asset commit queue with a fixed
+per-frame item budget plus a decoded-texture byte budget so preload commits do
+not require polling a returned handle. `Assets3D.SetUploadBudget(bytes)` changes
+that byte budget: negative means unlimited, `0` pauses positive-cost decoded
+texture slices, and positive budgets advance large decoded images across
+multiple queue drains before the final model/template publish. Pair this with
+`Canvas3D.SetTextureUploadBudget`, `TextureUploadBytes`, and
+`TextureUploadPendingBytes` when profiling frames where decoded commits turn
+into backend texture-cache uploads. That Canvas3D budget row-slices
+Pixels-backed 2D material texture and cubemap uploads on Metal/OpenGL/D3D11.
+The backend pending-byte counters return to zero when final row slices drain,
+and the open-world hitch probe verifies resident-byte cache churn returns to
+zero after blocking and async clears. Non-glTF formats still enqueue a
+main-thread load request. The remaining Phase 4 depth is native-compressed
+backend upload slicing.
+
+`ClearCache()` advances the template-cache generation. Any `Preload` /
+`PreloadAsset` job that was already in flight may still finish, but it publishes
+only to its internal handle and does not reinsert a stale template into the
+fresh cache generation.
 
 `SetResidencyBudget(bytes)` applies to the shared `ModelTemplate` cache. The
-budget uses a conservative CPU/GPU-resource estimate, evicts least-recently-used
+budget uses a conservative CPU/GPU-resource estimate that includes mesh buffers,
+model metadata, and decoded material texture pixels, evicts least-recently-used
 non-loading entries, and treats a negative value as unlimited. A budget of `0`
 keeps returned templates alive for callers that hold them, but prevents them
-from remaining in the shared cache. `Evict(handle)` is explicit cache eviction
-for ready template handles; entity handles are accepted as a stable no-op.
+from remaining in the shared cache. `GetResidentBytes()` returns the same cache
+counter, so tests and tooling can assert that blocking and async load/clear churn
+returns resident template bytes to zero. `Evict(handle)` is explicit cache
+eviction for ready template handles; entity handles are accepted as a stable
+no-op.
 
 ---
 
@@ -519,10 +576,14 @@ terrain through the existing scene bake path.
 `getResidentTerrainTile(index)` returns the nth currently resident payload or
 `null`. The telemetry properties (`residentCellCount`,
 `residentTerrainTileCount`, `pendingRequestCount`, and `residentBytes`) reflect
-resident cell payloads plus manifest-backed terrain tile residency. `update(dt)`
-advances a deterministic per-frame load budget; when the stream center jumps
-across multiple desired cell/tile payloads, stale payloads unload immediately,
-one or more new payloads are admitted by the frame budget, and
+resident cell payloads plus manifest-backed terrain tile residency. Loaded VSCN
+cells are measured from their authored scene resources, including base meshes,
+LOD meshes, impostor meshes, materials, and resident material textures; unloaded
+cells continue to report the manifest `bytes` estimate for planning and editor
+inspection. `update(dt)` advances a deterministic per-frame load budget; when
+the stream center jumps across multiple desired cell/tile payloads, stale
+payloads unload immediately, one or more new payloads are admitted by the frame
+budget, and
 `pendingRequestCount` reports deferred desired payloads until later updates
 drain them. A budget of `0` unloads cells and reports no resident cells or
 tiles; a negative budget is unlimited. Worker-backed decode/upload and real
@@ -552,6 +613,10 @@ target, reads the
 compares the software final frame to the committed
 `assets/baselines/openworld_slice_software.png` baseline, and repeats the same
 fixed-step sequence to prove deterministic replay.
+`streaming_hitch_probe.zia` records blocking-vs-async template load timing,
+proves a zero upload budget keeps positive-cost async commit work pending until
+the budget is restored, and checks `Assets3D.GetResidentBytes()` returns to zero
+after cache churn.
 
 ---
 
@@ -663,7 +728,10 @@ attached audio observes the same final entity transforms as follow cameras.
 
 `World3D.effects` owns the existing `PostFX3D` chain plus a particle/decal
 registry. The registry can be driven manually, but world stepping and
-`drawEffects()` handle the normal update/draw path:
+`drawEffects()` handle the normal update/draw path. When `World3D.floatingOrigin`
+performs a rebase, registered particle emitters, live particles, and decals are
+shifted by the same delta; decal mesh caches are rebuilt on the next draw so
+their vertices stay near the rebased camera:
 
 ```zia
 var effects = Game3D.World3D.get_effects(world);
@@ -881,6 +949,7 @@ The Game3D runtime is covered by:
 | `g3d_openworld_slice_probe` | Open-world slice stream in/out, rendered heightmapped terrain payload access, async asset handle completion, skinned glTF play/crossfade plus LookAt IK binding, committed GLB/WAV asset fixture loading, terrain-sampled TwoBone foot IK proof, character/physics/nav stepping, software final-frame baseline comparison, and deterministic replay |
 | `g3d_openworld_slice_perf_probe` | Open-world slice deterministic software frame-loop perf probe; emits setup, elapsed, average-frame, FPS, draw, visibility, entity, body, and stream residency metrics |
 | `g3d_openworld_slice_perf_harness` | Reusable CTest perf harness wrapper that runs `perf_probe.zia`, parses the `PERF:` metrics, validates required counters, and emits a stable `HARNESS:` summary |
+| `g3d_openworld_slice_streaming_hitch_probe` | Phase 4 async asset probe that records blocking-vs-async load timing, verifies zero-upload-budget pending behavior, releases work under a positive budget, and checks resident bytes return to zero |
 | `g3d_openworld_slice_long_traversal` | Open-world slice repeated all-quadrant stream churn with bounded residency, terrain collider checks, render telemetry, and deterministic replay |
 | `g3d_openworld_slice_gpu_smoke` | Capability-gated platform GPU backend smoke for the open-world slice, including a degenerate-basis normal-map robustness pass; reports `SKIP` when the requested GPU backend is unavailable |
 | `g3d_openworld_slice_package_dry_run` | Open-world slice `viper.project` asset packaging layout |

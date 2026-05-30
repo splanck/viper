@@ -2484,6 +2484,42 @@ int64_t rt_canvas3d_get_occluded_draw_count(void *o) {
     return 0;
 }
 
+/// @brief Stub for `Canvas3D.TextureUploadBytes` — latest texture upload telemetry.
+///
+/// Silent stub returning 0.
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_canvas3d_get_texture_upload_bytes(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.SetTextureUploadBudget` — would normally limit
+///        backend texture uploads per frame.
+///
+/// Silent no-op in disabled-graphics builds.
+///
+/// @param o     Canvas3D handle (ignored).
+/// @param bytes Budget in bytes; negative means unlimited (ignored).
+void rt_canvas3d_set_texture_upload_budget(void *o, int64_t bytes) {
+    (void)o;
+    (void)bytes;
+}
+
+/// @brief Stub for `Canvas3D.TextureUploadPendingBytes` — queued upload telemetry.
+///
+/// Silent stub returning 0.
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_canvas3d_get_texture_upload_pending_bytes(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Canvas3D.Screenshot` — would normally read back the
 ///        current 3D framebuffer into a fresh Pixels surface.
 ///
@@ -5018,6 +5054,34 @@ void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int6
 void *rt_textureasset3d_get_pixels(void *obj) {
     (void)obj;
     return NULL;
+}
+
+int rt_textureasset3d_get_native_mip_info(void *obj,
+                                          int64_t mip,
+                                          const uint8_t **out_data,
+                                          uint64_t *out_bytes,
+                                          int32_t *out_width,
+                                          int32_t *out_height,
+                                          int32_t *out_block_width,
+                                          int32_t *out_block_height,
+                                          int32_t *out_block_bytes) {
+    (void)obj;
+    (void)mip;
+    if (out_data)
+        *out_data = NULL;
+    if (out_bytes)
+        *out_bytes = 0;
+    if (out_width)
+        *out_width = 0;
+    if (out_height)
+        *out_height = 0;
+    if (out_block_width)
+        *out_block_width = 0;
+    if (out_block_height)
+        *out_block_height = 0;
+    if (out_block_bytes)
+        *out_block_bytes = 0;
+    return 0;
 }
 
 /* GLTF Loader stubs */
@@ -12517,4 +12581,31 @@ void rt_texatlas3d_get_uv_rect(
         *u1 = 1;
     if (v1)
         *v1 = 1;
+}
+
+/// @brief Stub for `Game3D.Assets3D.PreloadAsset` when 3D graphics are unavailable.
+///
+/// Silent no-op stub.
+///
+/// @param path Packed asset path (ignored).
+void rt_game3d_assets_preload_asset(rt_string path) {
+    (void)path;
+}
+
+/// @brief Stub for `Game3D.Assets3D.GetResidentBytes` when 3D graphics are unavailable.
+///
+/// There is no shared 3D template cache in graphics-disabled builds.
+///
+/// @return 0.
+int64_t rt_game3d_assets_get_resident_bytes(void) {
+    return 0;
+}
+
+/// @brief Stub for `Game3D.Assets3D.SetUploadBudget` when 3D graphics are unavailable.
+///
+/// Silent no-op stub.
+///
+/// @param bytes Upload budget in decoded bytes (ignored).
+void rt_game3d_assets_set_upload_budget(int64_t bytes) {
+    (void)bytes;
 }
