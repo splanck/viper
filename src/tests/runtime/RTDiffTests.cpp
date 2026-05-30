@@ -132,6 +132,42 @@ static void test_empty_inputs() {
     rt_string_unref(text);
 }
 
+static void test_embedded_nul_lines_are_length_aware() {
+    const char a_bytes[] = {'a', '\0', 'x', '\n', 's', 'a', 'm', 'e'};
+    const char b_bytes[] = {'a', '\0', 'y', '\n', 's', 'a', 'm', 'e'};
+    const char removal[] = {'-', 'a', '\0', 'x'};
+    const char addition[] = {'+', 'a', '\0', 'y'};
+
+    rt_string a = rt_string_from_bytes(a_bytes, sizeof(a_bytes));
+    rt_string b = rt_string_from_bytes(b_bytes, sizeof(b_bytes));
+    void *diff = rt_diff_lines(a, b);
+
+    assert(rt_seq_len(diff) == 3);
+    int saw_removal = 0;
+    int saw_addition = 0;
+    for (int64_t i = 0; i < 2; i++) {
+        rt_string line = (rt_string)rt_seq_get(diff, i);
+        if (rt_str_len(line) == (int64_t)sizeof(removal) &&
+            memcmp(rt_string_cstr(line), removal, sizeof(removal)) == 0) {
+            saw_removal = 1;
+        }
+        if (rt_str_len(line) == (int64_t)sizeof(addition) &&
+            memcmp(rt_string_cstr(line), addition, sizeof(addition)) == 0) {
+            saw_addition = 1;
+        }
+    }
+    assert(saw_removal == 1);
+    assert(saw_addition == 1);
+
+    rt_string patched = rt_diff_patch(a, diff);
+    assert(rt_str_len(patched) == (int64_t)sizeof(b_bytes));
+    assert(memcmp(rt_string_cstr(patched), b_bytes, sizeof(b_bytes)) == 0);
+
+    rt_string_unref(a);
+    rt_string_unref(b);
+    rt_string_unref(patched);
+}
+
 /// @brief Main.
 int main() {
     test_identical();
@@ -141,6 +177,7 @@ int main() {
     test_patch();
     test_unified();
     test_empty_inputs();
+    test_embedded_nul_lines_are_length_aware();
 
     return 0;
 }

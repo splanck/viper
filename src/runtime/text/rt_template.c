@@ -374,6 +374,10 @@ int8_t rt_template_has(rt_string tmpl, rt_string key) {
         int start = find_at(tmpl_str, tmpl_len, "{{", 2, pos);
         if (start < 0)
             break;
+        if (start + 4 <= tmpl_len && memcmp(tmpl_str + start + 2, "{{", 2) == 0) {
+            pos = start + 4;
+            continue;
+        }
 
         int key_start = start + 2;
         int end = find_at(tmpl_str, tmpl_len, "}}", 2, key_start);
@@ -415,6 +419,10 @@ void *rt_template_keys(rt_string tmpl) {
         int start = find_at(tmpl_str, tmpl_len, "{{", 2, pos);
         if (start < 0)
             break;
+        if (start + 4 <= tmpl_len && memcmp(tmpl_str + start + 2, "{{", 2) == 0) {
+            pos = start + 4;
+            continue;
+        }
 
         int key_start = start + 2;
         int end = find_at(tmpl_str, tmpl_len, "}}", 2, key_start);

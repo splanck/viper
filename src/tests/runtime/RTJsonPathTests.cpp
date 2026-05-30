@@ -142,6 +142,37 @@ static void test_wildcard_query() {
     rt_string_unref(path);
 }
 
+static void test_wildcard_query_over_map_skips_non_containers() {
+    void *u1 = rt_map_new();
+    rt_map_set(u1, make_str("name"), make_str("A"));
+    void *obj = rt_map_new();
+    rt_map_set(obj, make_str("user"), u1);
+    rt_map_set(obj, make_str("scalar"), make_str("ignore"));
+
+    rt_string path = make_str("*.name");
+    void *results = rt_jsonpath_query(obj, path);
+    assert(rt_seq_len(results) == 1);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(results, 0)), "A") == 0);
+    rt_string_unref(path);
+}
+
+static void test_auto_parse_raw_json_getters_are_stable() {
+    rt_string json = make_str("{\"user\":{\"name\":\"Ada\",\"count\":7}}");
+
+    rt_string name_path = make_str("user.name");
+    rt_string name = rt_jsonpath_get_str(json, name_path);
+    assert(strcmp(rt_string_cstr(name), "Ada") == 0);
+
+    rt_string count_path = make_str("user.count");
+    int64_t count = rt_jsonpath_get_int(json, count_path);
+    assert(count == 7);
+
+    rt_string_unref(name);
+    rt_string_unref(name_path);
+    rt_string_unref(count_path);
+    rt_string_unref(json);
+}
+
 static void test_null_safety() {
     assert(rt_jsonpath_get(NULL, NULL) == NULL);
     assert(rt_jsonpath_has(NULL, NULL) == 0);
@@ -192,6 +223,8 @@ int main() {
     test_get_str();
     test_get_int();
     test_wildcard_query();
+    test_wildcard_query_over_map_skips_non_containers();
+    test_auto_parse_raw_json_getters_are_stable();
     test_null_safety();
     test_get_int_from_parsed_json();
     test_get_str_from_parsed_json();

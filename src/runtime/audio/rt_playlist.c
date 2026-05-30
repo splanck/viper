@@ -401,7 +401,14 @@ void rt_playlist_add(void *obj, rt_string path) {
         return;
     int64_t current_actual = playlist_current_actual_index(pl);
 
-    rt_seq_push(pl->tracks, (void *)(path ? path : rt_const_cstr("")));
+    rt_string empty_path = NULL;
+    if (!path) {
+        empty_path = rt_const_cstr("");
+        path = empty_path;
+    }
+    rt_seq_push(pl->tracks, (void *)path);
+    if (empty_path)
+        rt_string_unref(empty_path);
 
     if (pl->shuffle) {
         generate_shuffle_order(pl);
@@ -429,7 +436,14 @@ void rt_playlist_insert(void *obj, int64_t index, rt_string path) {
     if (index > count)
         index = count;
 
-    rt_seq_insert(pl->tracks, index, (void *)(path ? path : rt_const_cstr("")));
+    rt_string empty_path = NULL;
+    if (!path) {
+        empty_path = rt_const_cstr("");
+        path = empty_path;
+    }
+    rt_seq_insert(pl->tracks, index, (void *)path);
+    if (empty_path)
+        rt_string_unref(empty_path);
 
     if (pl->shuffle) {
         generate_shuffle_order(pl);

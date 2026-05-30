@@ -229,6 +229,44 @@ static void test_format() {
     rt_string_unref(input);
 }
 
+static void test_parse_preserves_embedded_nul_values() {
+    const char bytes[] = {'k', 'e', 'y', ' ', '=', ' ', 'a', '\0', 'b', '\n'};
+    const char expected[] = {'a', '\0', 'b'};
+    rt_string input = rt_string_from_bytes(bytes, sizeof(bytes));
+    void *ini = rt_ini_parse(input);
+
+    rt_string section = make_str("");
+    rt_string key = make_str("key");
+    rt_string value = rt_ini_get(ini, section, key);
+    assert(rt_str_len(value) == (int64_t)sizeof(expected));
+    assert(memcmp(rt_string_cstr(value), expected, sizeof(expected)) == 0);
+
+    rt_string_unref(value);
+    rt_string_unref(section);
+    rt_string_unref(key);
+    rt_string_unref(input);
+}
+
+static void test_format_preserves_embedded_nul_keys_and_values() {
+    void *ini = rt_ini_parse(make_str(""));
+    rt_string section = make_str("");
+    const char key_bytes[] = {'a', '\0', 'b'};
+    const char value_bytes[] = {'x', '\0', 'y'};
+    rt_string key = rt_string_from_bytes(key_bytes, sizeof(key_bytes));
+    rt_string value = rt_string_from_bytes(value_bytes, sizeof(value_bytes));
+    rt_ini_set(ini, section, key, value);
+
+    rt_string formatted = rt_ini_format(ini);
+    const char expected[] = {'a', '\0', 'b', ' ', '=', ' ', 'x', '\0', 'y', '\n'};
+    assert(rt_str_len(formatted) == (int64_t)sizeof(expected));
+    assert(memcmp(rt_string_cstr(formatted), expected, sizeof(expected)) == 0);
+
+    rt_string_unref(formatted);
+    rt_string_unref(section);
+    rt_string_unref(key);
+    rt_string_unref(value);
+}
+
 static void test_get_missing_returns_empty() {
     rt_string input = make_str("[s]\nk = v\n");
     void *ini = rt_ini_parse(input);
@@ -296,6 +334,8 @@ int main() {
     test_remove();
     test_remove_nonexistent();
     test_format();
+    test_parse_preserves_embedded_nul_values();
+    test_format_preserves_embedded_nul_keys_and_values();
     test_get_missing_returns_empty();
     test_null_safety();
     test_crlf_line_endings();

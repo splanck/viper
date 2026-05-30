@@ -183,10 +183,13 @@ rt_string rt_textwrap_fill(rt_string text, int64_t width) {
 ///          Counts lines up-front to size the output buffer exactly:
 ///          `src_len + line_count * pre_len`.
 rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
-    const char *src = rt_string_cstr(text);
+    const char *src = text ? rt_string_cstr(text) : "";
     int64_t src_len = rt_str_len(text);
-    const char *pre = rt_string_cstr(prefix);
+    const char *pre = prefix ? rt_string_cstr(prefix) : "";
     int64_t pre_len = rt_str_len(prefix);
+
+    if (src_len == 0)
+        return rt_string_from_bytes("", 0);
 
     // Count lines
     int64_t line_count = 1;
@@ -236,6 +239,9 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
 ///          Tabs and spaces are compared literally so a partial tab is never
 ///          removed as if it were a run of spaces.
 rt_string rt_textwrap_dedent(rt_string text) {
+    if (!text)
+        return rt_string_from_bytes("", 0);
+
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
 
@@ -279,24 +285,33 @@ rt_string rt_textwrap_dedent(rt_string text) {
                        "TextWrapper.Dedent: memory allocation failed");
 
     int64_t result_pos = 0;
-    int64_t skip_remaining = common_len;
-    int at_line_start = 1;
+    line_start = 0;
+    while (line_start < src_len) {
+        int64_t line_end = line_start;
+        while (line_end < src_len && src[line_end] != '\n')
+            line_end++;
 
-    for (int64_t i = 0; i < src_len; i++) {
-        if (at_line_start) {
-            if (skip_remaining > 0) {
-                skip_remaining--;
-                continue;
+        int64_t pos = line_start;
+        while (pos < line_end && (src[pos] == ' ' || src[pos] == '\t'))
+            pos++;
+
+        int64_t skip = 0;
+        if (pos < line_end) {
+            while (skip < common_len && line_start + skip < line_end &&
+                   src[common_start + skip] == src[line_start + skip]) {
+                skip++;
             }
-            at_line_start = 0;
         }
 
-        result[result_pos++] = src[i];
-
-        if (src[i] == '\n') {
-            at_line_start = 1;
-            skip_remaining = common_len;
+        int64_t copy_start = line_start + skip;
+        if (copy_start < line_end) {
+            memcpy(result + result_pos, src + copy_start, (size_t)(line_end - copy_start));
+            result_pos += line_end - copy_start;
         }
+        if (line_end < src_len && src[line_end] == '\n')
+            result[result_pos++] = '\n';
+
+        line_start = line_end + 1;
     }
 
     result[result_pos] = '\0';
@@ -311,9 +326,12 @@ rt_string rt_textwrap_dedent(rt_string text) {
 ///          align under the body. The first non-empty line is left
 ///          alone; every subsequent line gets `prefix` prepended.
 rt_string rt_textwrap_hang(rt_string text, rt_string prefix) {
+    if (!text)
+        return rt_string_from_bytes("", 0);
+
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
-    const char *pre = rt_string_cstr(prefix);
+    const char *pre = prefix ? rt_string_cstr(prefix) : "";
     int64_t pre_len = rt_str_len(prefix);
 
     // Count lines
@@ -370,18 +388,37 @@ rt_string rt_textwrap_truncate(rt_string text, int64_t width) {
 ///          Edge case: if `width <= suffix_len`, returns just the
 ///          suffix (no useful prefix can fit).
 rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suffix) {
+    if (!text)
+        return rt_string_from_bytes("", 0);
+    rt_string suffix_eff = suffix;
+    int release_suffix = 0;
+    if (!suffix_eff) {
+        suffix_eff = rt_const_cstr("");
+        release_suffix = 1;
+    }
+
     int64_t text_len = rt_str_len(text);
-    int64_t suffix_len = rt_str_len(suffix);
+    int64_t suffix_len = rt_str_len(suffix_eff);
 
-    if (text_len <= width)
+    if (text_len <= width) {
+        if (release_suffix)
+            rt_string_unref(suffix_eff);
         return rt_string_ref(text);
+    }
 
-    if (width <= suffix_len)
-        return rt_str_substr(suffix, 0, width);
+    if (width <= suffix_len) {
+        rt_string result = rt_str_substr(suffix_eff, 0, width);
+        if (release_suffix)
+            rt_string_unref(suffix_eff);
+        return result;
+    }
 
     int64_t keep = width - suffix_len;
     rt_string kept = rt_str_substr(text, 0, keep);
-    return rt_str_concat(kept, rt_string_ref(suffix));
+    rt_string result = rt_str_concat(kept, rt_string_ref(suffix_eff));
+    if (release_suffix)
+        rt_string_unref(suffix_eff);
+    return result;
 }
 
 /// @brief Shorten by replacing the middle with `"..."` while preserving start and end.
@@ -391,6 +428,9 @@ rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suf
 ///          back to a head-truncate when `width < 5` (no room for
 ///          even three dots plus one char on each side).
 rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
+    if (!text)
+        return rt_string_from_bytes("", 0);
+
     int64_t text_len = rt_str_len(text);
 
     if (text_len <= width)
@@ -417,6 +457,17 @@ rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
 /// @details If `text` is already as wide or wider than `width`, it's
 ///          returned unchanged.
 rt_string rt_textwrap_left(rt_string text, int64_t width) {
+    if (!text) {
+        if (width <= 0)
+            return rt_string_from_bytes("", 0);
+        char *spaces = checked_malloc((size_t)width + 1, "TextWrapper.Left: memory allocation failed");
+        memset(spaces, ' ', (size_t)width);
+        spaces[width] = '\0';
+        rt_string result = rt_string_from_bytes(spaces, width);
+        free(spaces);
+        return result;
+    }
+
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return rt_string_ref(text);
@@ -435,6 +486,17 @@ rt_string rt_textwrap_left(rt_string text, int64_t width) {
 
 /// @brief Right-justify `text` in a `width`-column field, padding with leading spaces.
 rt_string rt_textwrap_right(rt_string text, int64_t width) {
+    if (!text) {
+        if (width <= 0)
+            return rt_string_from_bytes("", 0);
+        char *spaces = checked_malloc((size_t)width + 1, "TextWrapper.Right: memory allocation failed");
+        memset(spaces, ' ', (size_t)width);
+        spaces[width] = '\0';
+        rt_string result = rt_string_from_bytes(spaces, width);
+        free(spaces);
+        return result;
+    }
+
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return rt_string_ref(text);
@@ -455,6 +517,17 @@ rt_string rt_textwrap_right(rt_string text, int64_t width) {
 /// @details For odd-padding cases the extra space goes on the right
 ///          (matching Python's `str.center`).
 rt_string rt_textwrap_center(rt_string text, int64_t width) {
+    if (!text) {
+        if (width <= 0)
+            return rt_string_from_bytes("", 0);
+        char *spaces = checked_malloc((size_t)width + 1, "TextWrapper.Center: memory allocation failed");
+        memset(spaces, ' ', (size_t)width);
+        spaces[width] = '\0';
+        rt_string result = rt_string_from_bytes(spaces, width);
+        free(spaces);
+        return result;
+    }
+
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return rt_string_ref(text);
@@ -490,6 +563,9 @@ rt_string rt_textwrap_center(rt_string text, int64_t width) {
 /// @details Empty input still counts as 1 line. Trailing newline does
 ///          not add an extra empty line.
 int64_t rt_textwrap_line_count(rt_string text) {
+    if (!text)
+        return 1;
+
     const char *src = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
     int64_t count = 1;
@@ -506,6 +582,9 @@ int64_t rt_textwrap_line_count(rt_string text) {
 /// @details Walks the input once, tracking the running line length
 ///          and resetting it on each newline.
 int64_t rt_textwrap_max_line_len(rt_string text) {
+    if (!text)
+        return 0;
+
     const char *src = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
     int64_t max_len = 0;

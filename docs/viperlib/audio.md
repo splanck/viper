@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-15
+last-verified: 2026-05-30
 ---
 
 # Audio
@@ -751,6 +751,9 @@ without overloading the two built-ins. Registered named groups receive stable id
 the current process and can be passed to `PlayGroup`, `PlayExGroup`, and
 `PlayLoopGroup`.
 
+Group names are stored as fixed-size C backend names. Embedded `NUL` bytes are sanitized
+to `_` before registration and lookup so `"amb\0x"` cannot alias `"amb"`.
+
 ---
 
 ## Music Crossfading
@@ -857,6 +860,8 @@ auto-detected from file magic bytes — no extension matching required.
 | Max decoded Sound data | **100 MB** | Compressed sounds that decode beyond this return `null` |
 
 Behavior notes:
+`Sound.Load(path)` and `Music.Load(path)` reject paths containing embedded `NUL` bytes and return `null` instead of passing a truncated path to the backend.
+`Playlist.Add(path)` and `Playlist.Insert(index, path)` treat a null path as an empty string entry.
 `Playlist.Insert(index, path)` clamps out-of-range indices to the valid `[0, Count]` insertion range.
 `Music.CrossfadeTo` keeps the destination track's current loop setting instead of forcing one-shot playback.
 `Music.CrossfadeTo` rejects detached handles after `Audio.Shutdown()`; load the asset again after reinitializing audio.

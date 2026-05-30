@@ -20,8 +20,8 @@
 //   - Invalid JSONPath expressions cause a trap with a descriptive error.
 //
 // Ownership/Lifetime:
-//   - The input JSON tree is borrowed; the query engine does not retain it.
-//   - Matched nodes in the returned Seq are borrowed from the input tree.
+//   - The input JSON tree is borrowed unless a raw JSON string root is auto-parsed.
+//   - Returned values and query result elements are retained for the caller.
 //   - The returned Seq itself is a fresh allocation owned by the caller.
 //
 // Links: src/runtime/text/rt_jsonpath.h (public API),
@@ -35,6 +35,7 @@
 #include "rt_internal.h"
 #include "rt_json.h"
 #include "rt_map.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -44,6 +45,24 @@
 #include <string.h>
 
 #include "rt_trap.h"
+
+#define JSONPATH_SEQ_MIN_PAYLOAD (sizeof(int64_t) * 2 + sizeof(void *) + sizeof(int8_t))
+#define JSONPATH_MAP_MIN_PAYLOAD (sizeof(void *) * 2 + sizeof(size_t) * 2)
+
+static int is_seq_obj(void *obj) {
+    return obj && !rt_string_is_handle(obj) &&
+           rt_obj_is_instance(obj, RT_SEQ_CLASS_ID, JSONPATH_SEQ_MIN_PAYLOAD);
+}
+
+static int is_map_obj(void *obj) {
+    return obj && !rt_string_is_handle(obj) &&
+           rt_obj_is_instance(obj, RT_MAP_CLASS_ID, JSONPATH_MAP_MIN_PAYLOAD);
+}
+
+static void release_local_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
 
 // --- Helper: navigate one segment ---
 
@@ -59,9 +78,8 @@ static void *navigate_segment(void *current, const char *seg, int64_t len) {
         buf[copy_len] = '\0';
         int64_t idx = strtoll(buf, NULL, 10);
 
-        // Try as seq index
-        int64_t slen = rt_seq_len(current);
-        if (slen > 0) {
+        if (is_seq_obj(current)) {
+            int64_t slen = rt_seq_len(current);
             if (idx < 0)
                 idx += slen;
             if (idx >= 0 && idx < slen)
@@ -71,6 +89,8 @@ static void *navigate_segment(void *current, const char *seg, int64_t len) {
     }
 
     // Map key lookup
+    if (!is_map_obj(current))
+        return NULL;
     rt_string key = rt_string_from_bytes(seg, len);
     void *val = rt_map_get(current, key);
     rt_string_unref(key);
@@ -152,10 +172,8 @@ static void collect_wildcard(void *current, const char *remaining, void *results
     if (!current)
         return;
 
-    // Try as seq first. For maps, the first field (vptr) is NULL so
-    // rt_seq_len interprets it as 0, letting us fall through to map handling.
-    int64_t slen = rt_seq_len(current);
-    if (slen > 0) {
+    if (is_seq_obj(current)) {
+        int64_t slen = rt_seq_len(current);
         for (int64_t i = 0; i < slen; i++) {
             void *val = rt_seq_get(current, i);
             if (!remaining || !*remaining) {
@@ -170,6 +188,8 @@ static void collect_wildcard(void *current, const char *remaining, void *results
     }
 
     // Try as map - iterate all values
+    if (!is_map_obj(current))
+        return;
     void *keys = rt_map_keys(current);
     if (keys) {
         int64_t n = rt_seq_len(keys);
@@ -183,6 +203,7 @@ static void collect_wildcard(void *current, const char *remaining, void *results
                     rt_seq_push(results, sub);
             }
         }
+        release_local_obj(keys);
     }
 }
 
@@ -191,12 +212,16 @@ static void collect_wildcard(void *current, const char *remaining, void *results
 /// @brief Auto-detect if root is a raw JSON string and parse it.
 /// @details Checks the RT_STRING_MAGIC header to identify raw strings,
 ///          and also handles boxed strings (from Zia str→ptr conversion).
-static void *auto_parse_root(void *root) {
+static void *auto_parse_root(void *root, int *owned) {
+    if (owned)
+        *owned = 0;
     if (!root)
         return NULL;
     if (rt_string_is_handle(root)) {
         // root is a raw string — try to parse it as JSON
         void *parsed = rt_json_parse((rt_string)root);
+        if (parsed && owned)
+            *owned = 1;
         return parsed;
     }
     if (rt_box_type(root) == RT_BOX_STR) {
@@ -204,20 +229,33 @@ static void *auto_parse_root(void *root) {
         rt_string s = rt_unbox_str(root);
         if (s) {
             void *parsed = rt_json_parse(s);
+            rt_string_unref(s);
+            if (parsed && owned)
+                *owned = 1;
             return parsed;
         }
     }
     return root;
 }
 
+static void *retain_jsonpath_value(void *value) {
+    if (value)
+        rt_obj_retain_maybe(value);
+    return value;
+}
+
 /// @brief Navigate a parsed JSON tree by dot-separated path (e.g., "user.name").
 void *rt_jsonpath_get(void *root, rt_string path) {
     if (!root || !path)
         return NULL;
-    root = auto_parse_root(root);
+    int owned_root = 0;
+    root = auto_parse_root(root, &owned_root);
     if (!root)
         return NULL;
-    return resolve_path(root, rt_string_cstr(path));
+    void *result = retain_jsonpath_value(resolve_path(root, rt_string_cstr(path)));
+    if (owned_root)
+        release_local_obj(root);
+    return result;
 }
 
 /// @brief Navigate a JSON tree by path, returning a default value if the path doesn't exist.
@@ -228,16 +266,22 @@ void *rt_jsonpath_get_or(void *root, rt_string path, void *def) {
 
 /// @brief Check whether a path exists in a parsed JSON tree.
 int8_t rt_jsonpath_has(void *root, rt_string path) {
-    return rt_jsonpath_get(root, path) != NULL ? 1 : 0;
+    void *result = rt_jsonpath_get(root, path);
+    if (!result)
+        return 0;
+    release_local_obj(result);
+    return 1;
 }
 
 /// @brief Query a JSON tree with wildcard path support (returns a sequence of matching values).
 void *rt_jsonpath_query(void *root, rt_string path) {
     void *results = rt_seq_new();
+    rt_seq_set_owns_elements(results, 1);
     if (!root || !path)
         return results;
 
-    root = auto_parse_root(root);
+    int owned_root = 0;
+    root = auto_parse_root(root, &owned_root);
     if (!root)
         return results;
 
@@ -256,6 +300,8 @@ void *rt_jsonpath_query(void *root, rt_string path) {
         void *val = resolve_path(root, p);
         if (val)
             rt_seq_push(results, val);
+        if (owned_root)
+            release_local_obj(root);
         return results;
     }
 
@@ -281,6 +327,8 @@ void *rt_jsonpath_query(void *root, rt_string path) {
         remaining++;
 
     collect_wildcard(parent, remaining, results);
+    if (owned_root)
+        release_local_obj(root);
     return results;
 }
 
@@ -289,30 +337,30 @@ rt_string rt_jsonpath_get_str(void *root, rt_string path) {
     void *val = rt_jsonpath_get(root, path);
     if (!val)
         return rt_string_from_bytes("", 0);
+    rt_string result = NULL;
     // If it's already a string, return it directly
     if (rt_string_is_handle(val))
-        return (rt_string)val;
+        result = rt_string_ref((rt_string)val);
     // If it's a boxed value, try to extract string or convert
-    int64_t tag = rt_box_type(val);
-    if (tag == RT_BOX_STR)
-        return rt_unbox_str(val);
-    if (tag == RT_BOX_I64) {
+    int64_t tag = result ? -1 : rt_box_type(val);
+    if (tag == RT_BOX_STR) {
+        result = rt_unbox_str(val);
+    } else if (tag == RT_BOX_I64) {
         int64_t n = rt_unbox_i64(val);
         char buf[32];
         snprintf(buf, sizeof(buf), "%lld", (long long)n);
-        return rt_string_from_bytes(buf, strlen(buf));
-    }
-    if (tag == RT_BOX_F64) {
+        result = rt_string_from_bytes(buf, strlen(buf));
+    } else if (tag == RT_BOX_F64) {
         double d = rt_unbox_f64(val);
         char buf[64];
         snprintf(buf, sizeof(buf), "%.17g", d);
-        return rt_string_from_bytes(buf, strlen(buf));
-    }
-    if (tag == RT_BOX_I1) {
+        result = rt_string_from_bytes(buf, strlen(buf));
+    } else if (tag == RT_BOX_I1) {
         int64_t b = rt_unbox_i1(val);
-        return b ? rt_string_from_bytes("true", 4) : rt_string_from_bytes("false", 5);
+        result = b ? rt_string_from_bytes("true", 4) : rt_string_from_bytes("false", 5);
     }
-    return rt_string_from_bytes("", 0);
+    release_local_obj(val);
+    return result ? result : rt_string_from_bytes("", 0);
 }
 
 /// @brief Get an integer value at a JSON path (returns 0 if missing or wrong type).
@@ -320,23 +368,28 @@ int64_t rt_jsonpath_get_int(void *root, rt_string path) {
     void *val = rt_jsonpath_get(root, path);
     if (!val)
         return 0;
+    int64_t result = 0;
     // If it's a boxed number, unbox it
     int64_t tag = rt_box_type(val);
     if (tag == RT_BOX_I64)
-        return rt_unbox_i64(val);
+        result = rt_unbox_i64(val);
     if (tag == RT_BOX_F64)
-        return (int64_t)rt_unbox_f64(val);
+        result = (int64_t)rt_unbox_f64(val);
     if (tag == RT_BOX_I1)
-        return rt_unbox_i1(val);
+        result = rt_unbox_i1(val);
     if (tag == RT_BOX_STR) {
         rt_string s = rt_unbox_str(val);
         const char *cs = rt_string_cstr(s);
-        return strtoll(cs, NULL, 10);
+        result = cs ? strtoll(cs, NULL, 10) : 0;
+        rt_string_unref(s);
+        release_local_obj(val);
+        return result;
     }
     // If it's a raw string, parse it
     if (rt_string_is_handle(val)) {
         const char *s = rt_string_cstr((rt_string)val);
-        return strtoll(s, NULL, 10);
+        result = s ? strtoll(s, NULL, 10) : 0;
     }
-    return 0;
+    release_local_obj(val);
+    return result;
 }

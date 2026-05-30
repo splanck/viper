@@ -91,6 +91,24 @@ static void test_indent() {
                     strcmp(rt_string_cstr(result), "> Line1\n> Line2") == 0);
     }
 
+    // Test 3: NULL text and prefix are treated as empty strings
+    {
+        rt_string text = rt_const_cstr("Line");
+        rt_string result = rt_textwrap_indent(NULL, rt_const_cstr("> "));
+        test_result("Indent NULL text returns empty", strcmp(rt_string_cstr(result), "") == 0);
+
+        result = rt_textwrap_indent(text, NULL);
+        test_result("Indent NULL prefix leaves text unchanged",
+                    strcmp(rt_string_cstr(result), "Line") == 0);
+    }
+
+    // Test 4: Empty input stays empty instead of becoming a bare prefix
+    {
+        rt_string empty = rt_const_cstr("");
+        rt_string result = rt_textwrap_indent(empty, rt_const_cstr("> "));
+        test_result("Indent empty text returns empty", strcmp(rt_string_cstr(result), "") == 0);
+    }
+
     printf("\n");
 }
 
@@ -117,6 +135,20 @@ static void test_dedent() {
         rt_string result = rt_textwrap_dedent(text);
         test_result("Does not over-remove partial tab indent",
                     strcmp(rt_string_cstr(result), "\tLine1\n  Line2") == 0);
+    }
+
+    // Test 4: Blank lines are preserved while common indent is removed
+    {
+        rt_string text = rt_const_cstr("\n  Line1\n\n  Line2");
+        rt_string result = rt_textwrap_dedent(text);
+        test_result("Preserves blank lines during dedent",
+                    strcmp(rt_string_cstr(result), "\nLine1\n\nLine2") == 0);
+    }
+
+    // Test 5: NULL input is safe
+    {
+        rt_string result = rt_textwrap_dedent(NULL);
+        test_result("Dedent NULL returns empty", strcmp(rt_string_cstr(result), "") == 0);
     }
 
     printf("\n");
@@ -153,6 +185,16 @@ static void test_truncate() {
         test_result("Suffix clipped to width", strcmp(rt_string_cstr(result), "..") == 0);
     }
 
+    // Test 5: NULL text and NULL suffix are safe
+    {
+        rt_string text = rt_const_cstr("Hello World");
+        rt_string result = rt_textwrap_truncate_with(NULL, 5, rt_const_cstr("..."));
+        test_result("Truncate NULL text returns empty", strcmp(rt_string_cstr(result), "") == 0);
+
+        result = rt_textwrap_truncate_with(text, 5, NULL);
+        test_result("Truncate NULL suffix keeps prefix", strcmp(rt_string_cstr(result), "Hello") == 0);
+    }
+
     printf("\n");
 }
 
@@ -166,6 +208,12 @@ static void test_shorten() {
         // Should be something like "Hell...Test"
         test_result("Shorten has ellipsis", strstr(rt_string_cstr(result), "...") != NULL);
         test_result("Shorten starts with H", rt_string_cstr(result)[0] == 'H');
+    }
+
+    // Test 2: NULL input is safe
+    {
+        rt_string result = rt_textwrap_shorten(NULL, 8);
+        test_result("Shorten NULL returns empty", strcmp(rt_string_cstr(result), "") == 0);
     }
 
     printf("\n");
@@ -202,6 +250,18 @@ static void test_alignment() {
         test_result("Center odd width", strcmp(rt_string_cstr(result), " Hi  ") == 0);
     }
 
+    // Test 5: NULL text pads as an empty string
+    {
+        rt_string result = rt_textwrap_left(NULL, 3);
+        test_result("Left NULL pads to width", strcmp(rt_string_cstr(result), "   ") == 0);
+
+        result = rt_textwrap_right(NULL, 2);
+        test_result("Right NULL pads to width", strcmp(rt_string_cstr(result), "  ") == 0);
+
+        result = rt_textwrap_center(NULL, 4);
+        test_result("Center NULL pads to width", strcmp(rt_string_cstr(result), "    ") == 0);
+    }
+
     printf("\n");
 }
 
@@ -232,6 +292,12 @@ static void test_utility() {
         test_result("Max line length", rt_textwrap_max_line_len(text) == 5);
     }
 
+    // Test 5: NULL metrics are safe and deterministic
+    {
+        test_result("NULL line count is one empty line", rt_textwrap_line_count(NULL) == 1);
+        test_result("NULL max line length is zero", rt_textwrap_max_line_len(NULL) == 0);
+    }
+
     printf("\n");
 }
 
@@ -247,6 +313,17 @@ static void test_hang() {
         // Subsequent lines should have indent
         test_result("Hang has indented lines",
                     strstr(rt_string_cstr(result), "    Second") != NULL);
+    }
+
+    // Test: NULL input and prefix are safe
+    {
+        rt_string result = rt_textwrap_hang(NULL, rt_const_cstr("    "));
+        test_result("Hang NULL text returns empty", strcmp(rt_string_cstr(result), "") == 0);
+
+        rt_string text = rt_const_cstr("First\nSecond");
+        result = rt_textwrap_hang(text, NULL);
+        test_result("Hang NULL prefix leaves continuation unprefixed",
+                    strcmp(rt_string_cstr(result), "First\nSecond") == 0);
     }
 
     printf("\n");

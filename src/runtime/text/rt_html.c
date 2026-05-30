@@ -88,6 +88,15 @@ static int bytes_eq_ci(const char *a, size_t a_len, const char *b, size_t b_len)
     return 1;
 }
 
+static int slash_closes_tag(const char *p, const char *tag_end) {
+    if (p >= tag_end || *p != '/')
+        return 0;
+    p++;
+    while (p < tag_end && isspace((unsigned char)*p))
+        p++;
+    return p == tag_end;
+}
+
 static const char *find_byte_bounded(const char *p, const char *end, char needle) {
     while (p < end) {
         if (*p == needle)
@@ -141,6 +150,33 @@ static int tag_name_matches_at(
     if ((size_t)(end - p) < tag_len || !bytes_eq_ci(p, tag_len, tag, tag_len))
         return 0;
     return p + tag_len == end || tag_boundary(p[tag_len]);
+}
+
+static int tag_is_text_separator(const char *tag_start, const char *tag_end) {
+    static const char *const separators[] = {"address", "article", "aside", "blockquote", "br",
+                                             "dd",      "div",     "dl",    "dt",         "figcaption",
+                                             "figure",  "footer",  "h1",    "h2",         "h3",
+                                             "h4",      "h5",      "h6",    "header",     "hr",
+                                             "li",      "main",    "nav",   "ol",         "p",
+                                             "pre",     "section", "table", "td",         "th",
+                                             "tr",      "ul",      NULL};
+
+    const char *p = tag_start;
+    while (p < tag_end && (*p == '<' || *p == '/' || isspace((unsigned char)*p)))
+        p++;
+    const char *name_start = p;
+    while (p < tag_end && !tag_boundary(*p))
+        p++;
+    size_t name_len = (size_t)(p - name_start);
+    if (name_len == 0)
+        return 0;
+
+    for (int i = 0; separators[i]; i++) {
+        size_t sep_len = strlen(separators[i]);
+        if (bytes_eq_ci(name_start, name_len, separators[i], sep_len))
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Create a new HTML node as a map with tag, text, attrs, children.
@@ -257,7 +293,8 @@ static void parse_attrs(void *attrs_map, const char *start, const char *end) {
                     p++; // skip closing quote
             } else {
                 val_start = p;
-                while (p < end && *p != ' ' && *p != '\t' && *p != '>' && *p != '/')
+                while (p < end && *p != ' ' && *p != '\t' && *p != '>' &&
+                       !slash_closes_tag(p, end))
                     p++;
                 val_len = (size_t)(p - val_start);
             }
@@ -668,15 +705,17 @@ rt_string rt_html_strip_tags(rt_string str) {
 
     size_t pos = 0;
     int in_tag = 0;
+    size_t tag_start = 0;
 
     for (size_t i = 0; i < src_len; i++) {
         if (src[i] == '<') {
             in_tag = 1;
+            tag_start = i;
         } else if (src[i] == '>') {
             in_tag = 0;
-            // Insert space separator between stripped tags so block elements
-            // don't merge their text content (e.g., "<p>a</p><p>b</p>" → "a b")
-            if (pos > 0 && out[pos - 1] != ' ')
+            // Separate block-like tags without inventing spaces around inline tags.
+            if (pos > 0 && out[pos - 1] != ' ' &&
+                tag_is_text_separator(src + tag_start, src + i))
                 out[pos++] = ' ';
         } else if (!in_tag) {
             out[pos++] = src[i];
@@ -752,7 +791,8 @@ void *rt_html_extract_links(rt_string str) {
                             attr++;
                     } else {
                         value_start = attr;
-                        while (attr < tag_end && !isspace((unsigned char)*attr) && *attr != '>')
+                        while (attr < tag_end && !isspace((unsigned char)*attr) &&
+                               *attr != '>' && !slash_closes_tag(attr, tag_end))
                             attr++;
                         value_end = attr;
                     }

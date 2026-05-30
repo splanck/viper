@@ -123,8 +123,21 @@ static void audio_group_copy_name(char *dst, size_t cap, rt_string name) {
         len--;
     if ((size_t)len >= cap)
         len = (int64_t)cap - 1;
-    memcpy(dst, s, (size_t)len);
+    for (int64_t i = 0; i < len; i++)
+        dst[i] = s[i] == '\0' ? '_' : s[i];
     dst[len] = '\0';
+}
+
+static const char *audio_path_cstr(rt_string path) {
+    if (!path)
+        return NULL;
+    const char *path_str = rt_string_cstr(path);
+    if (!path_str)
+        return NULL;
+    int64_t len = rt_str_len(path);
+    if (len > 0 && memchr(path_str, '\0', (size_t)len))
+        return NULL;
+    return path_str;
 }
 
 /// @brief Find an in-use mix group by name. @return its group id, or -1 if
@@ -1514,7 +1527,7 @@ void *rt_sound_load(rt_string path) {
     if (!ensure_audio_init())
         return NULL;
 
-    const char *path_str = rt_string_cstr(path);
+    const char *path_str = audio_path_cstr(path);
     if (!path_str)
         return NULL;
 
@@ -1797,7 +1810,7 @@ void *rt_music_load(rt_string path) {
     if (!ensure_audio_init())
         return NULL;
 
-    const char *path_str = rt_string_cstr(path);
+    const char *path_str = audio_path_cstr(path);
     if (!path_str)
         return NULL;
 

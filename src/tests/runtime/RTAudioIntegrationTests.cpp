@@ -107,6 +107,14 @@ static void test_sound_null_safety() {
     ASSERT(voice3 == -1, "play_loop null sound returns -1");
 }
 
+static void test_embedded_nul_paths_rejected_before_backend_open() {
+    const char path_bytes[] = {'/', 't', 'm', 'p', '/', 'v', 'i', 'p', 'e', 'r', '\0', 'x'};
+    rt_string path = rt_string_from_bytes(path_bytes, sizeof(path_bytes));
+    ASSERT(rt_sound_load(path) == NULL, "Sound.Load rejects embedded-NUL paths");
+    ASSERT(rt_music_load(path) == NULL, "Music.Load rejects embedded-NUL paths");
+    rt_string_unref(path);
+}
+
 static void test_voice_null_safety() {
     // Voice operations on invalid IDs
     rt_voice_stop(0);
@@ -1356,6 +1364,7 @@ int main() {
     test_audio_volume();
     test_audio_pause_resume();
     test_sound_null_safety();
+    test_embedded_nul_paths_rejected_before_backend_open();
     test_voice_null_safety();
     test_music_null_safety();
 

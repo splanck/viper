@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-05-30
 ---
 
 # Pattern Matching
@@ -498,6 +498,8 @@ Line-based text differencing using the Myers diff algorithm. Computes changes be
 - `Patch` takes the original text and a Seq of diff lines (as returned by `Lines`) and reconstructs the modified text
 - `Unified` produces standard unified diff output similar to `diff -u`, with the specified number of context lines around each change
 - All methods operate on line boundaries (splitting on newlines)
+- Diffing and patching use runtime string byte lengths, so lines containing embedded `NUL` bytes are compared and reconstructed without truncation
+- `Lines` returns an owned sequence of owned line strings
 
 ### Zia Example
 

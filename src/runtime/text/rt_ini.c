@@ -54,17 +54,27 @@ static const char *ini_trim(const char *start, size_t len, size_t *out_len) {
     return start;
 }
 
-/// @brief Compute the C-string length of an `rt_string`, NULL-safe.
-/// @details The runtime stores strings as length-prefixed objects, but
-///          the existing `rt_string_cstr` accessor returns the inner
-///          NUL-terminated buffer. `strlen` is fine here because INI
-///          values are guaranteed to contain no embedded NULs (the
-///          parser strips them at line boundaries).
+static void release_local_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Compute the byte length of an `rt_string`, NULL-safe.
+/// @details Runtime strings are length-prefixed; embedded NUL bytes are
+///          preserved when parsing/formatting.
 static size_t str_len(rt_string s) {
     if (!s)
         return 0;
+    int64_t len = rt_str_len(s);
+    return len > 0 ? (size_t)len : 0;
+}
+
+static void append_rt_string(rt_string_builder *sb, rt_string s) {
+    if (!s)
+        return;
     const char *c = rt_string_cstr(s);
-    return c ? strlen(c) : 0;
+    if (c)
+        rt_sb_append_bytes(sb, c, str_len(s));
 }
 
 // ---------------------------------------------------------------------------
@@ -82,13 +92,14 @@ void *rt_ini_parse(rt_string text) {
     if (!src)
         return root;
 
-    size_t src_len = strlen(src);
+    size_t src_len = (size_t)rt_str_len(text);
     const char *end = src + src_len;
 
     // Current section name (starts as "" for default section)
     rt_string current_section = rt_string_from_bytes("", 0);
     void *current_map = rt_map_new();
     rt_map_set(root, current_section, current_map);
+    release_local_obj(current_map);
 
     const char *line_start = src;
     while (line_start <= end) {
@@ -119,6 +130,7 @@ void *rt_ini_parse(rt_string text) {
                     void *new_section = rt_map_new();
                     rt_map_set(root, current_section, new_section);
                     current_map = new_section;
+                    release_local_obj(new_section);
                 } else {
                     current_map = rt_map_get(root, current_section);
                 }
@@ -136,7 +148,7 @@ void *rt_ini_parse(rt_string text) {
                 rt_string v = rt_string_from_bytes(val, val_len);
                 rt_map_set(current_map, k, (void *)v);
                 rt_string_unref(k);
-                // v is retained by the map
+                rt_string_unref(v);
             }
         }
 
@@ -189,15 +201,12 @@ rt_string rt_ini_format(void *ini_map) {
         for (int64_t i = 0; i < kcount; ++i) {
             rt_string key = (rt_string)rt_seq_get(keys, i);
             rt_string val = (rt_string)rt_map_get(default_sec, key);
-            const char *kc = rt_string_cstr(key);
-            const char *vc = val ? rt_string_cstr(val) : "";
-            if (kc)
-                rt_sb_append_cstr(&sb, kc);
+            append_rt_string(&sb, key);
             rt_sb_append_cstr(&sb, " = ");
-            if (vc)
-                rt_sb_append_cstr(&sb, vc);
+            append_rt_string(&sb, val);
             rt_sb_append_bytes(&sb, "\n", 1);
         }
+        release_local_obj(keys);
     }
     rt_string_unref(empty);
 
@@ -212,9 +221,7 @@ rt_string rt_ini_format(void *ini_map) {
             continue;
 
         rt_sb_append_bytes(&sb, "\n[", 2);
-        const char *sc = rt_string_cstr(sect_name);
-        if (sc)
-            rt_sb_append_cstr(&sb, sc);
+        append_rt_string(&sb, sect_name);
         rt_sb_append_bytes(&sb, "]\n", 2);
 
         void *keys = rt_map_keys(sect_map);
@@ -222,16 +229,14 @@ rt_string rt_ini_format(void *ini_map) {
         for (int64_t i = 0; i < kcount; ++i) {
             rt_string key = (rt_string)rt_seq_get(keys, i);
             rt_string val = (rt_string)rt_map_get(sect_map, key);
-            const char *kc = rt_string_cstr(key);
-            const char *vc = val ? rt_string_cstr(val) : "";
-            if (kc)
-                rt_sb_append_cstr(&sb, kc);
+            append_rt_string(&sb, key);
             rt_sb_append_cstr(&sb, " = ");
-            if (vc)
-                rt_sb_append_cstr(&sb, vc);
+            append_rt_string(&sb, val);
             rt_sb_append_bytes(&sb, "\n", 1);
         }
+        release_local_obj(keys);
     }
+    release_local_obj(sections);
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);

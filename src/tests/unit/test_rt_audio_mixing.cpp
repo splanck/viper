@@ -30,6 +30,7 @@
 #include "rt_playlist.h"
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <thread>
 
 // Trap handler
@@ -116,6 +117,26 @@ static void test_group_volume_invalid_group(void) {
     assert(rt_audio_get_group_volume(99) == 100);
     assert(rt_audio_get_group_volume(-1) == 100);
     rt_audio_set_group_volume(99, 50); // No crash, no-op
+    PASS();
+}
+
+static void test_named_group_embedded_nul_does_not_alias_prefix(void) {
+    TEST("Named group embedded NUL does not alias prefix");
+    const char raw_name[] = {'c', 'o', 'd', 'e', 'x', '_', 'a', 'u', 'd', '\0', 'x'};
+    rt_string full = rt_string_from_bytes(raw_name, sizeof(raw_name));
+    rt_string prefix = rt_const_cstr("codex_aud");
+
+    int64_t full_id = rt_audio_register_group(full);
+    int64_t prefix_id = rt_audio_register_group(prefix);
+    assert(full_id >= 0);
+    assert(prefix_id >= 0);
+    assert(full_id != prefix_id);
+    assert(rt_audio_find_group(full) == full_id);
+    assert(rt_audio_find_group(prefix) == prefix_id);
+
+    rt_string stored = rt_audio_group_name(full_id);
+    assert(strcmp(rt_string_cstr(stored), "codex_aud_x") == 0);
+    rt_string_unref(full);
     PASS();
 }
 
@@ -268,6 +289,22 @@ static void test_playlist_crossfade_null_safety(void) {
     PASS();
 }
 
+static void test_playlist_null_paths_are_empty_strings(void) {
+    TEST("Playlist add/insert NULL paths store empty strings");
+    void *pl = rt_playlist_new();
+    rt_playlist_add(pl, NULL);
+    rt_playlist_insert(pl, 0, NULL);
+    assert(rt_playlist_len(pl) == 2);
+
+    rt_string first = rt_playlist_get(pl, 0);
+    rt_string second = rt_playlist_get(pl, 1);
+    assert(first != NULL && rt_str_len(first) == 0);
+    assert(second != NULL && rt_str_len(second) == 0);
+    rt_str_release_maybe(first);
+    rt_str_release_maybe(second);
+    PASS();
+}
+
 //=============================================================================
 // Sound Group Playback (NULL safety only — no audio hardware)
 //=============================================================================
@@ -294,6 +331,7 @@ int main() {
     test_group_volume_clamp_low();
     test_group_volume_zero();
     test_group_volume_invalid_group();
+    test_named_group_embedded_nul_does_not_alias_prefix();
     test_group_independence();
     test_group_volume_threaded_stress();
     test_master_volume_without_backend_roundtrip();
@@ -310,6 +348,7 @@ int main() {
     test_playlist_crossfade_set_get();
     test_playlist_crossfade_negative_clamped();
     test_playlist_crossfade_null_safety();
+    test_playlist_null_paths_are_empty_strings();
 
     // Sound group playback
     test_sound_play_group_null();

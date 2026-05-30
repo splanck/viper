@@ -73,6 +73,18 @@ static void test_strip_tags() {
     assert(strcmp(rt_string_cstr(result), "Hello World") == 0);
 }
 
+static void test_strip_tags_keeps_inline_text_together() {
+    const char *inline_html = "<span>a</span><b>b</b><i>c</i>";
+    rt_string input = rt_string_from_bytes(inline_html, strlen(inline_html));
+    rt_string result = rt_html_strip_tags(input);
+    assert(strcmp(rt_string_cstr(result), "abc") == 0);
+
+    const char *block_html = "<p>a</p><p>b</p><br>c";
+    input = rt_string_from_bytes(block_html, strlen(block_html));
+    result = rt_html_strip_tags(input);
+    assert(strcmp(rt_string_cstr(result), "a b c") == 0);
+}
+
 static void test_to_text() {
     rt_string input = rt_string_from_bytes("<p>Hello &amp; World</p>", 24);
     rt_string result = rt_html_to_text(input);
@@ -99,6 +111,15 @@ static void test_extract_links_attribute_scanning() {
     assert(rt_seq_len(links) == 2);
     assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(links, 0)), "ok") == 0);
     assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(links, 1)), "/next") == 0);
+}
+
+static void test_extract_links_self_closing_unquoted_href() {
+    const char *html = "<a href=x/><a href=y />";
+    rt_string input = rt_string_from_bytes(html, strlen(html));
+    void *links = rt_html_extract_links(input);
+    assert(rt_seq_len(links) == 2);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(links, 0)), "x") == 0);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(links, 1)), "y") == 0);
 }
 
 static void test_extract_text() {
@@ -171,9 +192,11 @@ int main() {
     test_unescape_nbsp();
     test_unescape_preserves_embedded_nul();
     test_strip_tags();
+    test_strip_tags_keeps_inline_text_together();
     test_to_text();
     test_extract_links();
     test_extract_links_attribute_scanning();
+    test_extract_links_self_closing_unquoted_href();
     test_extract_text();
     test_parse_basic();
     test_parse_matches_closing_tag_names();

@@ -247,6 +247,12 @@ static void test_has() {
     tmpl = rt_const_cstr("");
     test_result("Empty template has nothing", !rt_template_has(tmpl, rt_const_cstr("name")));
 
+    tmpl = rt_const_cstr("Literal {{{{name}}}} and real {{count}}");
+    test_result("Escaped placeholder not reported by Has",
+                !rt_template_has(tmpl, rt_const_cstr("name")));
+    test_result("Real placeholder after escaped one is reported",
+                rt_template_has(tmpl, rt_const_cstr("count")));
+
     printf("\n");
 }
 
@@ -287,6 +293,11 @@ static void test_keys() {
     test_result("Whitespace trimmed, count = 2", rt_bag_len(keys) == 2);
     test_result("Contains trimmed 'name'", bag_contains(keys, "name"));
     test_result("Contains trimmed 'age'", bag_contains(keys, "age"));
+
+    tmpl = rt_const_cstr("Literal {{{{name}}}} and {{count}}");
+    keys = rt_template_keys(tmpl);
+    test_result("Escaped placeholder ignored by Keys", rt_bag_len(keys) == 1);
+    test_result("Keys keeps real placeholder after escape", bag_contains(keys, "count"));
 
     printf("\n");
 }

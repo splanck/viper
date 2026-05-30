@@ -395,21 +395,23 @@ int8_t rt_toml_is_valid(rt_string src) {
     return 1;
 }
 
-static int is_bare_key(const char *s) {
-    if (!s || *s == '\0')
+static int is_bare_key_bytes(const char *s, size_t len) {
+    if (!s || len == 0)
         return 0;
-    for (const char *p = s; *p; ++p) {
-        if (!(isalnum((unsigned char)*p) || *p == '_' || *p == '-'))
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char ch = (unsigned char)s[i];
+        if (!(isalnum(ch) || ch == '_' || ch == '-'))
             return 0;
     }
     return 1;
 }
 
-static void append_quoted_toml_string(rt_string_builder *sb, const char *s) {
+static void append_quoted_toml_bytes(rt_string_builder *sb, const char *s, size_t len) {
     rt_sb_append_cstr(sb, "\"");
     if (s) {
-        for (const char *p = s; *p; ++p) {
-            switch (*p) {
+        for (size_t i = 0; i < len; ++i) {
+            char ch = s[i];
+            switch (ch) {
                 case '\\':
                     rt_sb_append_cstr(sb, "\\\\");
                     break;
@@ -432,12 +434,12 @@ static void append_quoted_toml_string(rt_string_builder *sb, const char *s) {
                     rt_sb_append_cstr(sb, "\\f");
                     break;
                 default:
-                    if ((unsigned char)*p < 0x20) {
+                    if ((unsigned char)ch < 0x20) {
                         char esc[7];
-                        snprintf(esc, sizeof(esc), "\\u%04x", (unsigned char)*p);
+                        snprintf(esc, sizeof(esc), "\\u%04x", (unsigned char)ch);
                         rt_sb_append_cstr(sb, esc);
                     } else {
-                        rt_sb_append_bytes(sb, p, 1);
+                        rt_sb_append_bytes(sb, &ch, 1);
                     }
                     break;
             }
@@ -446,11 +448,15 @@ static void append_quoted_toml_string(rt_string_builder *sb, const char *s) {
     rt_sb_append_cstr(sb, "\"");
 }
 
-static void append_toml_key(rt_string_builder *sb, const char *key) {
-    if (is_bare_key(key))
-        rt_sb_append_bytes(sb, key, strlen(key));
+static void append_quoted_toml_string(rt_string_builder *sb, const char *s) {
+    append_quoted_toml_bytes(sb, s, s ? strlen(s) : 0);
+}
+
+static void append_toml_key_bytes(rt_string_builder *sb, const char *key, size_t key_len) {
+    if (is_bare_key_bytes(key, key_len))
+        rt_sb_append_bytes(sb, key, key_len);
     else
-        append_quoted_toml_string(sb, key ? key : "");
+        append_quoted_toml_bytes(sb, key ? key : "", key ? key_len : 0);
 }
 
 static void append_toml_value(rt_string_builder *sb, void *val) {
@@ -460,7 +466,8 @@ static void append_toml_value(rt_string_builder *sb, void *val) {
     }
 
     if (rt_string_is_handle(val)) {
-        append_quoted_toml_string(sb, rt_string_cstr((rt_string)val));
+        rt_string s = (rt_string)val;
+        append_quoted_toml_bytes(sb, rt_string_cstr(s), (size_t)rt_str_len(s));
         return;
     }
 
@@ -480,7 +487,7 @@ static void append_toml_value(rt_string_builder *sb, void *val) {
             return;
         case RT_BOX_STR: {
             rt_string s = rt_unbox_str(val);
-            append_quoted_toml_string(sb, rt_string_cstr(s));
+            append_quoted_toml_bytes(sb, rt_string_cstr(s), (size_t)rt_str_len(s));
             rt_string_unref(s);
             return;
         }
@@ -520,10 +527,11 @@ rt_string rt_toml_format(void *map) {
         rt_string key = (rt_string)rt_seq_get(keys, i);
         void *val = rt_map_get(map, key);
         const char *key_cstr = rt_string_cstr(key);
+        size_t key_len = (size_t)rt_str_len(key);
 
         if (is_map_obj(val)) {
             rt_sb_append_cstr(&sb, "[");
-            append_toml_key(&sb, key_cstr);
+            append_toml_key_bytes(&sb, key_cstr, key_len);
             rt_sb_append_cstr(&sb, "]\n");
 
             void *sub_k = rt_map_keys(val);
@@ -533,7 +541,7 @@ rt_string rt_toml_format(void *map) {
                 if (is_map_obj(sv))
                     continue;
                 const char *sk_cstr = rt_string_cstr(sk);
-                append_toml_key(&sb, sk_cstr);
+                append_toml_key_bytes(&sb, sk_cstr, (size_t)rt_str_len(sk));
                 rt_sb_append_cstr(&sb, " = ");
                 append_toml_value(&sb, sv);
                 rt_sb_append_cstr(&sb, "\n");
@@ -543,7 +551,7 @@ rt_string rt_toml_format(void *map) {
             continue;
         }
 
-        append_toml_key(&sb, key_cstr);
+        append_toml_key_bytes(&sb, key_cstr, key_len);
         rt_sb_append_cstr(&sb, " = ");
         append_toml_value(&sb, val);
         rt_sb_append_cstr(&sb, "\n");
@@ -577,21 +585,23 @@ void *rt_toml_get(void *root, rt_string key_path) {
     }
 
     const char *path = rt_string_cstr(key_path);
+    size_t path_len = (size_t)rt_str_len(key_path);
+    size_t path_pos = 0;
     void *current = root;
 
-    while (*path) {
+    while (path_pos < path_len) {
         if (!is_map_obj(current))
             return NULL;
 
-        const char *dot = strchr(path, '.');
-        rt_string key;
-        if (dot) {
-            key = make_str(path, (int64_t)(dot - path));
-            path = dot + 1;
-        } else {
-            key = make_str(path, (int64_t)strlen(path));
-            path += strlen(rt_string_cstr(key));
-        }
+        size_t start = path_pos;
+        while (path_pos < path_len && path[path_pos] != '.')
+            path_pos++;
+        if (path_pos == start)
+            return NULL;
+
+        rt_string key = make_str(path + start, (int64_t)(path_pos - start));
+        if (path_pos < path_len && path[path_pos] == '.')
+            path_pos++;
 
         void *next = rt_map_get(current, key);
         rt_string_unref(key);

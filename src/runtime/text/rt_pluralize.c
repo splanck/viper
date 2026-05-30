@@ -93,17 +93,16 @@ static const char *uncountables[] = {
     "luggage", "traffic",     "music",     "software", "hardware", "knowledge",
     "weather", "research",    "evidence",  "homework", NULL};
 
-/// @brief Test whether a length-bounded byte string ends with a specific NUL-terminated suffix.
-/// @details Case-sensitive byte comparison. Used by the pluralizer
-///          to test for English suffix patterns (`-s`, `-y`, `-ch`,
-///          `-sh`, `-fe`, etc.) without copying or modifying the
-///          input. Returns 0 when the suffix is longer than the
-///          input.
-static int str_ends_with(const char *str, size_t len, const char *suffix) {
+static int str_ends_with_ci(const char *str, size_t len, const char *suffix) {
     size_t slen = strlen(suffix);
     if (slen > len)
         return 0;
-    return memcmp(str + len - slen, suffix, slen) == 0;
+    const char *tail = str + len - slen;
+    for (size_t i = 0; i < slen; i++) {
+        if (tolower((unsigned char)tail[i]) != tolower((unsigned char)suffix[i]))
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Case-insensitive ASCII string comparison (`a == b` with `toLower` on both sides).
@@ -156,6 +155,50 @@ static rt_string inflection_with_input_case(const char *src,
     return result;
 }
 
+static void copy_suffix_with_input_case(char *dst,
+                                        const char *src,
+                                        size_t src_len,
+                                        const char *suffix,
+                                        size_t suffix_len) {
+    memcpy(dst, suffix, suffix_len);
+    if (is_ascii_all_caps_word(src, src_len)) {
+        for (size_t i = 0; i < suffix_len; i++)
+            dst[i] = (char)toupper((unsigned char)dst[i]);
+    }
+}
+
+static rt_string append_suffix(const char *src, size_t len, const char *suffix) {
+    size_t suffix_len = strlen(suffix);
+    size_t blen = len + suffix_len;
+    char *buf = (char *)malloc(blen + 1);
+    if (!buf)
+        rt_trap("Pluralize: memory allocation failed");
+    memcpy(buf, src, len);
+    copy_suffix_with_input_case(buf + len, src, len, suffix, suffix_len);
+    buf[blen] = '\0';
+    rt_string result = rt_string_from_bytes(buf, blen);
+    free(buf);
+    return result;
+}
+
+static rt_string replace_suffix(const char *src,
+                                size_t len,
+                                size_t remove_len,
+                                const char *replacement) {
+    size_t replacement_len = strlen(replacement);
+    size_t stem_len = remove_len > len ? 0 : len - remove_len;
+    size_t blen = stem_len + replacement_len;
+    char *buf = (char *)malloc(blen + 1);
+    if (!buf)
+        rt_trap("Pluralize: memory allocation failed");
+    memcpy(buf, src, stem_len);
+    copy_suffix_with_input_case(buf + stem_len, src, len, replacement, replacement_len);
+    buf[blen] = '\0';
+    rt_string result = rt_string_from_bytes(buf, blen);
+    free(buf);
+    return result;
+}
+
 /// @brief Test whether `word` is in the uncountable-noun list (case-insensitive).
 /// @details Linear scan — the table is small (~22 entries) so a hash
 ///          lookup wouldn't pay off. Words like "sheep", "rice",
@@ -202,96 +245,41 @@ rt_string rt_pluralize(rt_string word) {
 
     // Rules applied in order:
     // -s, -x, -z, -ch, -sh -> +es
-    if (str_ends_with(src, len, "s") || str_ends_with(src, len, "x") ||
-        str_ends_with(src, len, "z") || str_ends_with(src, len, "ch") ||
-        str_ends_with(src, len, "sh")) {
-        size_t blen = len + 2; // + "es"
-        char *buf = (char *)malloc(blen + 1);
-        if (!buf)
-            rt_trap("Pluralize: memory allocation failed");
-        memcpy(buf, src, len);
-        memcpy(buf + len, "es", 2);
-        buf[blen] = '\0';
-        rt_string result = rt_string_from_bytes(buf, blen);
-        free(buf);
-        return result;
+    if (str_ends_with_ci(src, len, "s") || str_ends_with_ci(src, len, "x") ||
+        str_ends_with_ci(src, len, "z") || str_ends_with_ci(src, len, "ch") ||
+        str_ends_with_ci(src, len, "sh")) {
+        return append_suffix(src, len, "es");
     }
 
     // consonant + y -> ies
-    if (len >= 2 && src[len - 1] == 'y') {
+    if (len >= 2 && tolower((unsigned char)src[len - 1]) == 'y') {
         char prev = (char)tolower((unsigned char)src[len - 2]);
         if (prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u') {
-            size_t blen = len + 2; // (len-1) + "ies"
-            char *buf = (char *)malloc(blen + 1);
-            if (!buf)
-                rt_trap("Pluralize: memory allocation failed");
-            memcpy(buf, src, len - 1);
-            memcpy(buf + len - 1, "ies", 3);
-            buf[blen] = '\0';
-            rt_string result = rt_string_from_bytes(buf, blen);
-            free(buf);
-            return result;
+            return replace_suffix(src, len, 1, "ies");
         }
     }
 
     // -f -> -ves (but not already covered by irregulars)
-    if (len >= 2 && src[len - 1] == 'f' && src[len - 2] != 'f') {
-        size_t blen = len + 2; // (len-1) + "ves"
-        char *buf = (char *)malloc(blen + 1);
-        if (!buf)
-            rt_trap("Pluralize: memory allocation failed");
-        memcpy(buf, src, len - 1);
-        memcpy(buf + len - 1, "ves", 3);
-        buf[blen] = '\0';
-        rt_string result = rt_string_from_bytes(buf, blen);
-        free(buf);
-        return result;
+    if (len >= 2 && tolower((unsigned char)src[len - 1]) == 'f' &&
+        tolower((unsigned char)src[len - 2]) != 'f') {
+        return replace_suffix(src, len, 1, "ves");
     }
 
     // -fe -> -ves
-    if (str_ends_with(src, len, "fe")) {
-        size_t blen = len + 1; // (len-2) + "ves"
-        char *buf = (char *)malloc(blen + 1);
-        if (!buf)
-            rt_trap("Pluralize: memory allocation failed");
-        memcpy(buf, src, len - 2);
-        memcpy(buf + len - 2, "ves", 3);
-        buf[blen] = '\0';
-        rt_string result = rt_string_from_bytes(buf, blen);
-        free(buf);
-        return result;
+    if (str_ends_with_ci(src, len, "fe")) {
+        return replace_suffix(src, len, 2, "ves");
     }
 
     // -o -> -oes for certain words (simplified: consonant + o -> oes)
-    if (len >= 2 && src[len - 1] == 'o') {
+    if (len >= 2 && tolower((unsigned char)src[len - 1]) == 'o') {
         char prev = (char)tolower((unsigned char)src[len - 2]);
         if (prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u') {
-            size_t blen = len + 2; // + "es"
-            char *buf = (char *)malloc(blen + 1);
-            if (!buf)
-                rt_trap("Pluralize: memory allocation failed");
-            memcpy(buf, src, len);
-            memcpy(buf + len, "es", 2);
-            buf[blen] = '\0';
-            rt_string result = rt_string_from_bytes(buf, blen);
-            free(buf);
-            return result;
+            return append_suffix(src, len, "es");
         }
     }
 
     // Default: add -s
-    {
-        size_t blen = len + 1; // + "s"
-        char *buf = (char *)malloc(blen + 1);
-        if (!buf)
-            rt_trap("Pluralize: memory allocation failed");
-        memcpy(buf, src, len);
-        buf[len] = 's';
-        buf[blen] = '\0';
-        rt_string result = rt_string_from_bytes(buf, blen);
-        free(buf);
-        return result;
-    }
+    return append_suffix(src, len, "s");
 }
 
 /// @brief Convert an English plural noun back to singular form.
@@ -327,50 +315,32 @@ rt_string rt_singularize(rt_string word) {
     }
 
     // -ves -> -f or -fe
-    if (str_ends_with(src, len, "ves") && len > 3) {
-        // Try -f first (e.g., "wolves" -> "wolf")
-        size_t blen = len - 2; // (len-3) chars + 'f' + null
-        char *buf = (char *)malloc(blen + 1);
-        if (!buf)
-            rt_trap("Singularize: memory allocation failed");
-        memcpy(buf, src, len - 3);
-        buf[len - 3] = 'f';
-        buf[blen] = '\0';
-        rt_string result = rt_string_from_bytes(buf, blen);
-        free(buf);
-        return result;
+    if (str_ends_with_ci(src, len, "ves") && len > 3) {
+        return replace_suffix(src, len, 3, "f");
     }
 
     // -ies -> -y
-    if (str_ends_with(src, len, "ies") && len > 3) {
-        size_t blen = len - 2; // (len-3) chars + 'y'
-        char *buf = (char *)malloc(blen + 1);
-        if (!buf)
-            rt_trap("Singularize: memory allocation failed");
-        memcpy(buf, src, len - 3);
-        buf[len - 3] = 'y';
-        buf[blen] = '\0';
-        rt_string result = rt_string_from_bytes(buf, blen);
-        free(buf);
-        return result;
+    if (str_ends_with_ci(src, len, "ies") && len > 3) {
+        return replace_suffix(src, len, 3, "y");
     }
 
     // -ses, -xes, -zes, -ches, -shes -> remove -es
-    if (str_ends_with(src, len, "shes") || str_ends_with(src, len, "ches")) {
+    if (str_ends_with_ci(src, len, "shes") || str_ends_with_ci(src, len, "ches")) {
         return rt_string_from_bytes(src, len - 2);
     }
-    if (str_ends_with(src, len, "ses") || str_ends_with(src, len, "xes") ||
-        str_ends_with(src, len, "zes")) {
+    if (str_ends_with_ci(src, len, "ses") || str_ends_with_ci(src, len, "xes") ||
+        str_ends_with_ci(src, len, "zes")) {
         return rt_string_from_bytes(src, len - 2);
     }
 
     // -oes -> -o
-    if (str_ends_with(src, len, "oes") && len > 3) {
+    if (str_ends_with_ci(src, len, "oes") && len > 3) {
         return rt_string_from_bytes(src, len - 2);
     }
 
     // -s (but not -ss) -> remove -s
-    if (len > 1 && src[len - 1] == 's' && src[len - 2] != 's') {
+    if (len > 1 && tolower((unsigned char)src[len - 1]) == 's' &&
+        tolower((unsigned char)src[len - 2]) != 's') {
         return rt_string_from_bytes(src, len - 1);
     }
 

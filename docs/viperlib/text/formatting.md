@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-05-30
 ---
 
 # Formatting & Generation
@@ -35,6 +35,7 @@ Simple string templating with placeholder substitution.
 - Missing keys are left as-is: `{{unknown}}` outputs `{{unknown}}`
 - Empty keys are left as-is: `{{}}` outputs `{{}}`
 - Unclosed placeholders are left as-is: `{{name` outputs `{{name`
+- Doubling delimiters escapes them: `{{{{name}}}}` renders as literal `{{name}}`; `Has()` and `Keys()` ignore escaped placeholders
 
 ### Notes
 
@@ -304,7 +305,9 @@ Text wrapping, alignment, indentation, and truncation utilities for formatting t
 - `Dedent` removes a common leading whitespace byte prefix; tabs and spaces are not treated as interchangeable
 - `LineCount` does not count a final trailing newline as an extra empty line
 - `Shorten` keeps the beginning and end of the text, replacing the middle with "..."
-- `Wrap`, `Fill`, and `WrapLines` treat null text as empty text
+- `Wrap`, `Fill`, `WrapLines`, indentation, truncation, shortening, alignment, and line-metric helpers treat null text as empty text
+- A null indent or hanging prefix is treated as an empty prefix; a null truncation suffix is treated as an empty suffix
+- `Indent("", prefix)` returns an empty string instead of a standalone prefix, and `Dedent` preserves blank lines while removing common indentation from non-blank lines
 - `WrapLines` returns an owned sequence of owned line strings
 
 ### Zia Example
@@ -518,6 +521,7 @@ English noun pluralization and singularization. Handles common English rules, ir
 - Knows common irregular forms: child/children, person/people, mouse/mice, ox/oxen, etc.
 - `Count` automatically chooses singular or plural form based on the number (1 = singular, everything else = plural)
 - Irregular forms preserve input casing for title-case and all-uppercase words, e.g. `Child` -> `Children`, `CHILD` -> `CHILDREN`
+- Regular suffix rules are case-insensitive for matching and preserve all-uppercase input where practical, e.g. `BOX` -> `BOXES`, `CITY` -> `CITIES`
 - Runtime string byte length is used, so embedded `NUL` bytes are preserved in regular inflection and `Count`
 - Not a full NLP engine -- covers the approximately 95% common case for English nouns
 
@@ -733,8 +737,9 @@ Tolerant HTML parser and utility functions for escaping, unescaping, tag strippi
 - Closing tags are matched by tag name; unmatched closing tags are ignored instead of blindly popping the parse stack.
 - **Entity support:** Handles named entities (`&lt;`, `&gt;`, `&amp;`, `&quot;`, `&apos;`, `&nbsp;`), numeric entities (`&#60;`, `&#x3C;`), and passes through unknown entities unchanged.
 - **StripTags vs ToText:** `StripTags` removes tags but leaves entities as-is. `ToText` removes tags AND unescapes entities.
+- `StripTags` inserts separators for block-like tags such as paragraphs and line breaks, while inline tags such as `span`, `b`, and `i` do not invent spaces inside a word.
 - Escaping, unescaping, stripping, and extraction use runtime string byte length, so embedded `NUL` bytes are preserved.
-- `ExtractLinks` recognizes `href` attributes with whitespace around `=` and ignores non-`href` names such as `data-href`.
+- `ExtractLinks` recognizes `href` attributes with whitespace around `=`, quoted or unquoted values, absolute paths such as `/about`, and self-closing tags; it ignores non-`href` names such as `data-href`.
 - `ExtractLinks` and `ExtractText` return owned sequences of owned strings.
 - All methods return empty string/empty Seq for NULL input.
 
@@ -833,7 +838,7 @@ Basic Markdown to HTML conversion and text extraction. Supports common Markdown 
 
 | Syntax                | HTML Output          | Description            |
 |-----------------------|----------------------|------------------------|
-| `# Heading`           | `<h1>Heading</h1>`  | Headings (h1-h6)       |
+| `# Heading`           | `<h1>Heading</h1>`  | Headings (h1-h6, one to six `#` followed by a space) |
 | `**bold**`            | `<strong>bold</strong>` | Bold text           |
 | `*italic*`            | `<em>italic</em>`    | Italic text            |
 | `` `code` ``          | `<code>code</code>`  | Inline code            |
@@ -894,7 +899,8 @@ PRINT headings.Get(0)  ' Output: "Introduction"
 - Supports the most commonly used Markdown features
 - Link URLs are escaped before being written to HTML attributes, and unsafe schemes are blocked even with leading whitespace/control bytes
 - Unmatched `**`, `*`, and backtick markers are emitted as literal text rather than as unclosed formatting spans
-- `ToText` preserves source line breaks but does not append an extra final newline
+- `ToText` preserves source line breaks but does not append an extra final newline; malformed link starts such as `[` stay literal, and underscore emphasis markers are stripped like asterisks
+- `ExtractHeadings` follows the same heading rule as rendering: one to six `#` characters followed by a space
 - Extraction helpers return owned sequences of owned strings
 - Nested formatting (e.g., bold within italic) may not render correctly
 

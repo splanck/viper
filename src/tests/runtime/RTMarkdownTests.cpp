@@ -36,6 +36,22 @@ static void test_heading_levels() {
     assert(strstr(rt_string_cstr(html), "<h3>Third</h3>") != NULL);
 }
 
+static void test_invalid_heading_markers_are_paragraphs() {
+    rt_string md = make_str("#NoSpace\n####### Too deep");
+    rt_string html = rt_markdown_to_html(md);
+    const char *out = rt_string_cstr(html);
+    assert(strstr(out, "<h1>") == NULL);
+    assert(strstr(out, "<h6>") == NULL);
+    assert(strstr(out, "<p>#NoSpace</p>") != NULL);
+    assert(strstr(out, "<p>####### Too deep</p>") != NULL);
+
+    rt_string text = rt_markdown_to_text(md);
+    assert(strcmp(rt_string_cstr(text), "#NoSpace\n####### Too deep") == 0);
+
+    void *headings = rt_markdown_extract_headings(md);
+    assert(rt_seq_len(headings) == 0);
+}
+
 static void test_bold() {
     rt_string md = make_str("This is **bold** text");
     rt_string html = rt_markdown_to_html(md);
@@ -131,6 +147,12 @@ static void test_to_text_does_not_add_final_newline() {
     assert(strcmp(rt_string_cstr(text), "Title\nNext") == 0);
 }
 
+static void test_to_text_preserves_malformed_link_and_strips_underscore() {
+    rt_string md = make_str("This is _italic_ and [broken");
+    rt_string text = rt_markdown_to_text(md);
+    assert(strcmp(rt_string_cstr(text), "This is italic and [broken") == 0);
+}
+
 static void test_extract_links() {
     rt_string md = make_str("See [A](http://a.com) and [B](http://b.com)");
     void *links = rt_markdown_extract_links(md);
@@ -166,6 +188,7 @@ static void test_null_safety() {
 int main() {
     test_heading();
     test_heading_levels();
+    test_invalid_heading_markers_are_paragraphs();
     test_bold();
     test_italic();
     test_inline_code();
@@ -178,6 +201,7 @@ int main() {
     test_code_block();
     test_to_text();
     test_to_text_does_not_add_final_newline();
+    test_to_text_preserves_malformed_link_and_strips_underscore();
     test_extract_links();
     test_extract_headings();
     test_null_safety();

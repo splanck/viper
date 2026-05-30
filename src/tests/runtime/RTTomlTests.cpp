@@ -230,6 +230,50 @@ static void test_format_scalar_values() {
     assert(rt_str_len(empty) == 0);
 }
 
+static void test_format_escapes_embedded_nul_keys_and_values() {
+    void *root = rt_map_new();
+    const char key_bytes[] = {'a', '\0', 'b'};
+    const char value_bytes[] = {'x', '\0', 'y'};
+    rt_string key = rt_string_from_bytes(key_bytes, sizeof(key_bytes));
+    rt_string value = rt_string_from_bytes(value_bytes, sizeof(value_bytes));
+    rt_map_set(root, key, value);
+
+    rt_string formatted = rt_toml_format(root);
+    assert(strcmp(rt_string_cstr(formatted), "\"a\\u0000b\" = \"x\\u0000y\"\n") == 0);
+
+    rt_string_unref(key);
+    rt_string_unref(value);
+}
+
+static void test_format_escapes_embedded_nul_boxed_string() {
+    void *root = rt_map_new();
+    const char value_bytes[] = {'x', '\0', 'y'};
+    rt_string key = make_str("value");
+    rt_string value = rt_string_from_bytes(value_bytes, sizeof(value_bytes));
+    rt_map_set(root, key, rt_box_str(value));
+
+    rt_string formatted = rt_toml_format(root);
+    assert(strcmp(rt_string_cstr(formatted), "value = \"x\\u0000y\"\n") == 0);
+
+    rt_string_unref(key);
+    rt_string_unref(value);
+}
+
+static void test_get_path_preserves_embedded_nul_segments() {
+    void *root = rt_map_new();
+    const char key_bytes[] = {'a', '\0', 'b'};
+    rt_string key = rt_string_from_bytes(key_bytes, sizeof(key_bytes));
+    rt_string value = make_str("ok");
+    rt_map_set(root, key, value);
+
+    void *got = rt_toml_get(root, key);
+    assert(got != NULL);
+    assert(strcmp(rt_string_cstr((rt_string)got), "ok") == 0);
+
+    rt_string_unref(key);
+    rt_string_unref(value);
+}
+
 /// @brief Main.
 int main() {
     test_parse_simple();
@@ -245,5 +289,8 @@ int main() {
     test_empty();
     test_depth_limit();
     test_format_scalar_values();
+    test_format_escapes_embedded_nul_keys_and_values();
+    test_format_escapes_embedded_nul_boxed_string();
+    test_get_path_preserves_embedded_nul_segments();
     return 0;
 }

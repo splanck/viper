@@ -126,6 +126,32 @@ static void test_plural_uncountable() {
     rt_string_unref(w);
 }
 
+static void test_plural_regular_suffixes_are_case_insensitive() {
+    rt_string w = make_str("BOX");
+    rt_string r = rt_pluralize(w);
+    assert(str_eq(r, "BOXES"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+
+    w = make_str("CHURCH");
+    r = rt_pluralize(w);
+    assert(str_eq(r, "CHURCHES"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+
+    w = make_str("CITY");
+    r = rt_pluralize(w);
+    assert(str_eq(r, "CITIES"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+
+    w = make_str("HERO");
+    r = rt_pluralize(w);
+    assert(str_eq(r, "HEROES"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+}
+
 // ---------------------------------------------------------------------------
 // Singularize tests
 // ---------------------------------------------------------------------------
@@ -180,6 +206,32 @@ static void test_singular_uncountable() {
     rt_string w = make_str("fish");
     rt_string r = rt_singularize(w);
     assert(str_eq(r, "fish"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+}
+
+static void test_singular_regular_suffixes_are_case_insensitive() {
+    rt_string w = make_str("BOXES");
+    rt_string r = rt_singularize(w);
+    assert(str_eq(r, "BOX"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+
+    w = make_str("CHURCHES");
+    r = rt_singularize(w);
+    assert(str_eq(r, "CHURCH"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+
+    w = make_str("CITIES");
+    r = rt_singularize(w);
+    assert(str_eq(r, "CITY"));
+    rt_string_unref(r);
+    rt_string_unref(w);
+
+    w = make_str("HEROES");
+    r = rt_singularize(w);
+    assert(str_eq(r, "HERO"));
     rt_string_unref(r);
     rt_string_unref(w);
 }
@@ -251,6 +303,7 @@ int main() {
     test_plural_embedded_nul();
     test_plural_man();
     test_plural_uncountable();
+    test_plural_regular_suffixes_are_case_insensitive();
 
     // Singularize
     test_singular_regular();
@@ -259,6 +312,7 @@ int main() {
     test_singular_irregular();
     test_singular_irregular_preserves_case();
     test_singular_uncountable();
+    test_singular_regular_suffixes_are_case_insensitive();
 
     // Count
     test_count_one();

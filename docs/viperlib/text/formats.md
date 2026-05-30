@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-05-30
 ---
 
 # Data Formats
@@ -146,6 +146,14 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 | `key[0]`         | Array element by index                | `"items[0]"`         |
 | `key1.key2[0].x` | Mixed object/array access             | `"users[0].name"`    |
 | `key.*`          | Wildcard (all children)               | `"users.*.name"`     |
+
+### Notes
+
+- `GetStr()` returns a retained string value when found, or a new empty string when the path is missing or not a string.
+- `GetInt()` accepts parsed numeric boxes and numeric strings.
+- `Get()`, `Has()`, `GetStr()`, `GetInt()`, and `Query()` also accept a raw JSON string root and parse it internally for the lookup.
+- Wildcards traverse both arrays and object maps, and safely skip scalar values that cannot contain the next segment.
+- `Query()` returns an owned sequence that retains the matched values it contains.
 
 ### Zia Example
 
@@ -473,6 +481,8 @@ TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
 - Dotted section headers such as `[server.database.primary]` create nested Maps for each path part.
 - **Format:** Converts a Map back to TOML text format, including string values, boxed numeric/boolean values, arrays, and section Maps.
 - `Format()` quotes keys and string values when needed so scalar values are not misinterpreted as Maps.
+- `Format()` uses runtime string byte lengths and escapes embedded `NUL` and other control bytes as TOML basic-string escapes instead of truncating at the first `NUL`.
+- `Get()` and `GetStr()` use the runtime byte length of the dotted path; embedded `NUL` bytes inside a path segment are part of that segment, not a terminator.
 - Invalid TOML returns NULL from `Parse()` rather than trapping.
 - Missing closing section or array brackets, trailing junk after section headers, duplicate keys, scalar/table conflicts, and overly deep section paths are invalid.
 - `GetStr()` returns a retained string value when found, or a new empty string when the path is missing or not a string.
@@ -555,6 +565,8 @@ INI configuration file parsing and manipulation. Parses standard INI format with
 - Entries that appear before any section header are stored under the empty string key `""`
 - `Set` creates the section automatically if it does not already exist
 - `Remove` returns true (1) if the key was found and removed, false (0) if not found
+- `Parse` and `Format` use runtime string byte lengths, so embedded `NUL` bytes in keys and values are preserved.
+- `Format` writes values verbatim; INI has no escaping layer, so consumers that require text-only INI should avoid control bytes.
 
 ### Zia Example
 

@@ -106,6 +106,18 @@ static void append_escaped(rt_string_builder *sb, char c) {
     }
 }
 
+static int markdown_heading_level(const char *line, const char *eol) {
+    int level = 0;
+    const char *p = line;
+    while (p < eol && *p == '#') {
+        level++;
+        p++;
+    }
+    if (level < 1 || level > 6)
+        return 0;
+    return (p < eol && *p == ' ') ? level : 0;
+}
+
 // --- Helper: process inline formatting ---
 
 /// @brief Convert one Markdown line's inline span syntax to HTML, appending into `sb`.
@@ -255,15 +267,10 @@ rt_string rt_markdown_to_html(rt_string md) {
         }
 
         // Heading
-        if (*p == '#') {
-            int level = 0;
-            const char *h = p;
-            while (h < eol && *h == '#' && level < 6) {
-                level++;
-                h++;
-            }
-            if (h < eol && *h == ' ')
-                h++;
+        int heading_level = markdown_heading_level(p, eol);
+        if (heading_level > 0) {
+            int level = heading_level;
+            const char *h = p + level + 1;
             char tag[8];
             snprintf(tag, sizeof(tag), "<h%d>", level);
             rt_sb_append_cstr(&sb, tag);
@@ -378,20 +385,23 @@ rt_string rt_markdown_to_text(rt_string md) {
 
         // Skip heading markers
         const char *start = p;
-        while (start < eol && *start == '#')
-            start++;
-        if (start > p && start < eol && *start == ' ')
-            start++;
+        int heading_level = markdown_heading_level(p, eol);
+        if (heading_level > 0)
+            start = p + heading_level + 1;
 
         // Strip inline formatting
         for (const char *c = start; c < eol; c++) {
-            if (*c == '*' || *c == '`')
+            if (*c == '*' || *c == '_' || *c == '`')
                 continue;
             if (*c == '[') {
                 // Extract link text only
                 const char *link_text_end = c + 1;
                 while (link_text_end < eol && *link_text_end != ']')
                     link_text_end++;
+                if (link_text_end >= eol || *link_text_end != ']') {
+                    rt_sb_append_bytes(&sb, c, 1);
+                    continue;
+                }
                 for (const char *t = c + 1; t < link_text_end; t++)
                     rt_sb_append_bytes(&sb, t, 1);
                 // Skip URL part
@@ -465,12 +475,12 @@ void *rt_markdown_extract_headings(rt_string md) {
     while (p < end_src) {
         // Beginning of line (or start of string)
         if (p == src || p[-1] == '\n') {
-            if (*p == '#') {
-                const char *h = p;
-                while (h < end_src && *h == '#')
-                    h++;
-                if (h < end_src && *h == ' ')
-                    h++;
+            const char *line_end = p;
+            while (line_end < end_src && *line_end != '\n')
+                line_end++;
+            int level = markdown_heading_level(p, line_end);
+            if (level > 0) {
+                const char *h = p + level + 1;
                 const char *eol = h;
                 while (eol < end_src && *eol != '\n')
                     eol++;
