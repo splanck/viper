@@ -289,6 +289,34 @@ static void test_owns_elements_pop_transfers_reference() {
     release_obj(stack);
 }
 
+static void test_owns_elements_pop_retain_overflow_keeps_stack_unchanged() {
+    void *stack = rt_stack_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_stack_set_owns_elements(stack, 1);
+    rt_stack_push(stack, value);
+    release_obj(value); // Stack now owns the only reference.
+
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    EXPECT_TRAP(rt_stack_pop(stack));
+    assert(rt_stack_len(stack) == 1);
+    assert(rt_stack_peek(stack) == value);
+
+    EXPECT_TRAP(rt_stack_try_pop(stack));
+    assert(rt_stack_len(stack) == 1);
+    assert(rt_stack_peek(stack) == value);
+
+    hdr->refcnt = 1;
+    rt_stack_clear(stack);
+    assert(g_finalizer_calls == 1);
+    release_obj(stack);
+}
+
 static void test_owns_elements_clone_retains_values() {
     void *stack = rt_stack_new();
     void *value = new_obj();
@@ -335,6 +363,7 @@ int main() {
     test_interleaved_operations();
     test_owns_elements_mode_releases_on_clear();
     test_owns_elements_pop_transfers_reference();
+    test_owns_elements_pop_retain_overflow_keeps_stack_unchanged();
     test_owns_elements_clone_retains_values();
     test_owns_elements_mode_change_non_empty_traps();
 

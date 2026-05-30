@@ -474,10 +474,19 @@ int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count, const int *slot_co
 ///   indexing a shadow SRV that was not allocated this frame.
 int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
                                            int32_t advertised_shadow_count) {
+    advertised_shadow_count = vgfx3d_d3d11_clamp_shadow_count(advertised_shadow_count);
     if (advertised_shadow_count <= 0 || requested_shadow_index < 0 ||
         requested_shadow_index >= advertised_shadow_count)
         return -1;
     return requested_shadow_index;
+}
+
+/// @brief Clamp a shadow-count value to the fixed HLSL shadow texture bindings.
+int32_t vgfx3d_d3d11_clamp_shadow_count(int32_t advertised_shadow_count) {
+    if (advertised_shadow_count <= 0)
+        return 0;
+    return advertised_shadow_count > VGFX3D_MAX_SHADOW_LIGHTS ? VGFX3D_MAX_SHADOW_LIGHTS
+                                                              : advertised_shadow_count;
 }
 
 /// @brief Decide whether an RTT can safely mark its CPU-side mirror dirty.
@@ -519,6 +528,8 @@ vgfx3d_d3d11_motion_attachment_mode_t vgfx3d_d3d11_choose_motion_attachment_mode
     vgfx3d_d3d11_target_kind_t target_kind, const vgfx3d_draw_cmd_t *cmd) {
     if (target_kind != VGFX3D_D3D11_TARGET_SCENE)
         return VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY;
+    if (!cmd || cmd->disable_depth_test)
+        return VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY;
     return vgfx3d_d3d11_choose_blend_mode(cmd) == VGFX3D_D3D11_BLEND_OPAQUE
                ? VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_AND_MOTION
                : VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_ONLY;
@@ -535,4 +546,61 @@ int vgfx3d_d3d11_has_complete_splat(int8_t cmd_has_splat,
                                     int has_layer2,
                                     int has_layer3) {
     return cmd_has_splat && has_splat_map && has_layer0 && has_layer1 && has_layer2 && has_layer3;
+}
+
+/// @brief Decide whether the offscreen scene still needs a swapchain composite.
+int vgfx3d_d3d11_should_composite_to_swapchain(int8_t rtt_active,
+                                               int8_t gpu_postfx_enabled,
+                                               int has_scene_targets,
+                                               int8_t scene_composited_to_swapchain) {
+    return !rtt_active && gpu_postfx_enabled && has_scene_targets &&
+           !scene_composited_to_swapchain;
+}
+
+/// @brief Decide whether a new begin-frame invalidates a prior swapchain composite.
+int vgfx3d_d3d11_should_reset_composited_swapchain_for_frame(int8_t rtt_active,
+                                                             int8_t load_existing_color) {
+    return rtt_active || !load_existing_color;
+}
+
+/// @brief Decide whether a post-FX enable update invalidates a prior swapchain composite.
+int vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(
+    int8_t current_enabled, int8_t requested_enabled) {
+    return (current_enabled ? 1 : 0) != (requested_enabled ? 1 : 0);
+}
+
+/// @brief Decide whether a begin-frame should preserve scene temporal history.
+int vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
+    vgfx3d_d3d11_target_kind_t resolved_target_kind, int8_t requested_load_existing_color) {
+    return resolved_target_kind == VGFX3D_D3D11_TARGET_OVERLAY ||
+           (requested_load_existing_color && resolved_target_kind != VGFX3D_D3D11_TARGET_RTT);
+}
+
+/// @brief Decide whether overlay contents are in the separate overlay target.
+int vgfx3d_d3d11_uses_separate_overlay_target(vgfx3d_d3d11_target_kind_t resolved_target_kind,
+                                              int has_overlay_target) {
+    return resolved_target_kind == VGFX3D_D3D11_TARGET_OVERLAY && has_overlay_target;
+}
+
+/// @brief Choose the readback source class without touching D3D11 resources.
+vgfx3d_d3d11_readback_kind_t vgfx3d_d3d11_choose_readback_kind(
+    int8_t presented_snapshot_valid,
+    int8_t scene_composited_to_swapchain,
+    int8_t gpu_postfx_enabled,
+    int8_t postfx_chain_valid,
+    int8_t postfx_chain_enabled,
+    int32_t postfx_effect_count,
+    int postfx_has_effects,
+    int has_scene_targets,
+    vgfx3d_d3d11_target_kind_t current_target_kind) {
+    if (presented_snapshot_valid)
+        return VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT;
+    if (scene_composited_to_swapchain)
+        return VGFX3D_D3D11_READBACK_BACKBUFFER;
+    if (gpu_postfx_enabled && postfx_chain_valid && postfx_chain_enabled && has_scene_targets &&
+        postfx_effect_count > 0 && postfx_has_effects)
+        return VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE;
+    if (has_scene_targets && current_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN)
+        return VGFX3D_D3D11_READBACK_SCENE_COLOR;
+    return VGFX3D_D3D11_READBACK_BACKBUFFER;
 }

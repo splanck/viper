@@ -367,10 +367,18 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
         // Insert new entry
         ensure_capacity(tm);
 
-        if (keylen == SIZE_MAX)
+        if (value)
+            rt_obj_retain_maybe(value);
+
+        if (keylen == SIZE_MAX) {
+            if (value && rt_obj_release_check0(value))
+                rt_obj_free(value);
             rt_trap("TreeMap: key allocation overflow");
+        }
         char *key_copy = (char *)malloc(keylen + 1);
         if (!key_copy) {
+            if (value && rt_obj_release_check0(value))
+                rt_obj_free(value);
             rt_trap("TreeMap: memory allocation failed");
             return;
         }
@@ -388,9 +396,6 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
         treemap_entry *e = &tm->entries[idx];
         e->key = key_copy;
         e->keylen = keylen;
-
-        // Retain value
-        rt_obj_retain_maybe(value);
         e->value = value;
 
         tm->count++;

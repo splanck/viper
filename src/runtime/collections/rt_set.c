@@ -196,18 +196,20 @@ int8_t rt_set_add(void *obj, void *elem) {
     if (find_entry(set->buckets[idx], elem))
         return 0; // Already exists
 
+    rt_obj_retain_maybe(elem);
+
     // Create new entry
     rt_set_entry *entry = malloc(sizeof(rt_set_entry));
-    if (!entry)
+    if (!entry) {
+        if (elem && rt_obj_release_check0(elem))
+            rt_obj_free(elem);
         rt_trap("Set.Add: memory allocation failed");
+    }
 
     entry->elem = elem;
     entry->next = set->buckets[idx];
     set->buckets[idx] = entry;
     set->count++;
-
-    // Retain the element
-    rt_obj_retain_maybe(elem);
 
     return 1;
 }

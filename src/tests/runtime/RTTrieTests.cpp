@@ -17,11 +17,32 @@
 #include "rt_trie.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstring>
 
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
+
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
 
 static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
@@ -293,6 +314,25 @@ static void test_empty_key() {
     rt_release_obj(t);
 }
 
+static void test_set_retain_overflow_leaves_key_absent() {
+    void *t = rt_trie_new();
+    rt_string k = make_key("boom");
+    void *value = new_obj();
+
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    EXPECT_TRAP(rt_trie_set(t, k, value));
+    assert(rt_trie_len(t) == 0);
+    assert(rt_trie_has(t, k) == 0);
+    assert(rt_trie_get(t, k) == NULL);
+
+    hdr->refcnt = 1;
+    rt_string_unref(k);
+    rt_release_obj(value);
+    rt_release_obj(t);
+}
+
 static void test_embedded_nul_keys() {
     void *t = rt_trie_new();
     void *v = new_obj();
@@ -352,6 +392,7 @@ int main() {
     test_clear();
     test_keys();
     test_empty_key();
+    test_set_retain_overflow_leaves_key_absent();
     test_embedded_nul_keys();
     test_null_safety();
     return 0;

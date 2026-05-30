@@ -48,6 +48,13 @@
 
 #include "rt_trap.h"
 
+#include <setjmp.h>
+#include <stdio.h>
+
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
+
 // --- Helper: extract string from seq element (may be boxed) ---
 
 /// @brief Coerce a seq element to an rt_string, unboxing if necessary.
@@ -144,6 +151,36 @@ static void fm_release_value(void *value) {
         rt_obj_free(value);
 }
 
+static void fm_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *err = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+static void fm_retain_new_slot_refs(rt_string key, void *value) {
+    volatile int key_retained = 0;
+    volatile int value_retained = 0;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        fm_save_trap_error(saved_error, sizeof(saved_error), "FrozenMap: retain failed");
+        rt_trap_clear_recovery();
+        if (value_retained)
+            fm_release_value(value);
+        if (key_retained)
+            rt_string_unref(key);
+        rt_trap(saved_error);
+        return;
+    }
+
+    rt_obj_retain_maybe(key);
+    key_retained = key ? 1 : 0;
+    rt_obj_retain_maybe(value);
+    value_retained = value ? 1 : 0;
+    rt_trap_clear_recovery();
+}
+
 /// @brief GC finalizer: unref every occupied slot's key, release its value,
 ///        and free the slot array.
 static void fm_finalizer(void *obj) {
@@ -199,14 +236,14 @@ static rt_frozenmap_impl *fm_alloc(int64_t count) {
         needed = count * 2;
     }
     int64_t cap = fm_next_pow2(needed);
+    if ((uint64_t)cap > SIZE_MAX / sizeof(fm_slot))
+        rt_trap("FrozenMap: allocation size overflow");
     rt_frozenmap_impl *fm =
         (rt_frozenmap_impl *)rt_obj_new_i64(RT_FROZENMAP_CLASS_ID, sizeof(rt_frozenmap_impl));
     if (!fm)
         rt_trap("FrozenMap: memory allocation failed");
     fm->count = 0;
     fm->capacity = cap;
-    if ((uint64_t)cap > SIZE_MAX / sizeof(fm_slot))
-        rt_trap("FrozenMap: allocation size overflow");
     fm->slots = (fm_slot *)calloc((size_t)cap, sizeof(fm_slot));
     if (!fm->slots) {
         if (rt_obj_release_check0(fm))
@@ -230,10 +267,9 @@ static int8_t fm_insert(rt_frozenmap_impl *fm, rt_string key, void *value) {
     for (int64_t i = 0; i < fm->capacity; i++) {
         int64_t slot = (idx + i) & mask;
         if (!fm->slots[slot].key) {
+            fm_retain_new_slot_refs(key, value);
             fm->slots[slot].key = key;
-            rt_obj_retain_maybe(key);
             fm->slots[slot].value = value;
-            rt_obj_retain_maybe(value);
             fm->count++;
             return 1;
         }

@@ -661,6 +661,7 @@ void rt_promise_set_transferred(void *obj, void *value) {
 
     if (p->done) {
         promise_unlock(p);
+        future_release_object(value);
         future_release_object(obj);
         rt_trap("Promise: already completed");
     }

@@ -71,6 +71,14 @@ typedef enum {
     VGFX3D_D3D11_MOTION_ATTACHMENTS_COLOR_AND_MOTION = 1,
 } vgfx3d_d3d11_motion_attachment_mode_t;
 
+/// @brief Source texture/surface class for a canvas readback request.
+typedef enum {
+    VGFX3D_D3D11_READBACK_BACKBUFFER = 0,
+    VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE = 1,
+    VGFX3D_D3D11_READBACK_SCENE_COLOR = 2,
+    VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT = 3,
+} vgfx3d_d3d11_readback_kind_t;
+
 /// @brief Per-object HLSL constant buffer: model/prev-model/normal matrices plus skinning,
 ///   morph, and instancing flags and packed morph weights.
 typedef struct {
@@ -220,6 +228,8 @@ int32_t vgfx3d_d3d11_compute_shadow_count(int32_t slot_count, const int *slot_co
 /// @brief Clamp or disable a light's shadow slot against the advertised slot range.
 int32_t vgfx3d_d3d11_sanitize_shadow_index(int32_t requested_shadow_index,
                                            int32_t advertised_shadow_count);
+/// @brief Clamp a shadow-count value to the D3D11 shader-visible shadow slots.
+int32_t vgfx3d_d3d11_clamp_shadow_count(int32_t advertised_shadow_count);
 /// @brief Decide whether an RTT frame has enough state to mark its CPU mirror dirty.
 int vgfx3d_d3d11_should_mark_rtt_dirty(int8_t rtt_active,
                                        int has_target,
@@ -247,6 +257,34 @@ int vgfx3d_d3d11_has_complete_splat(int8_t cmd_has_splat,
                                     int has_layer1,
                                     int has_layer2,
                                     int has_layer3);
+/// @brief Decide whether scene color should be composited to the swapchain now.
+int vgfx3d_d3d11_should_composite_to_swapchain(int8_t rtt_active,
+                                               int8_t gpu_postfx_enabled,
+                                               int has_scene_targets,
+                                               int8_t scene_composited_to_swapchain);
+/// @brief Decide whether a new begin-frame invalidates a prior swapchain composite.
+int vgfx3d_d3d11_should_reset_composited_swapchain_for_frame(int8_t rtt_active,
+                                                             int8_t load_existing_color);
+/// @brief Decide whether a post-FX enable update invalidates a prior swapchain composite.
+int vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(
+    int8_t current_enabled, int8_t requested_enabled);
+/// @brief Decide whether a begin-frame should preserve scene temporal history as an overlay pass.
+int vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
+    vgfx3d_d3d11_target_kind_t resolved_target_kind, int8_t requested_load_existing_color);
+/// @brief Decide whether the overlay pass is rendering into the separate overlay target.
+int vgfx3d_d3d11_uses_separate_overlay_target(vgfx3d_d3d11_target_kind_t resolved_target_kind,
+                                              int has_overlay_target);
+/// @brief Decide whether readback should source a present snapshot, backbuffer, post-FX, or scene.
+vgfx3d_d3d11_readback_kind_t vgfx3d_d3d11_choose_readback_kind(
+    int8_t presented_snapshot_valid,
+    int8_t scene_composited_to_swapchain,
+    int8_t gpu_postfx_enabled,
+    int8_t postfx_chain_valid,
+    int8_t postfx_chain_enabled,
+    int32_t postfx_effect_count,
+    int postfx_has_effects,
+    int has_scene_targets,
+    vgfx3d_d3d11_target_kind_t current_target_kind);
 
 #ifdef __cplusplus
 }

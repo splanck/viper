@@ -59,7 +59,8 @@ func assertShowcaseFrame(img: Pixels) -> Boolean {
     }
 
     var accent = Pixels.Get(img, 20, 15);
-    if (red(accent) > 96 || green(accent) < 130 || blue(accent) < 150) {
+    if (green(accent) < 130 || blue(accent) < 150 ||
+        green(accent) - red(accent) < 32 || blue(accent) - red(accent) < 48) {
         Terminal.Say("FAIL: showcase final HUD overlay was not composited");
         return false;
     }

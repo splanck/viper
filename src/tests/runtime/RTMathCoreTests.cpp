@@ -16,6 +16,7 @@
 #include "viper/runtime/rt.h"
 #include <cassert>
 #include <cmath>
+#include <limits>
 
 int main() {
     const double eps = 1e-12;
@@ -32,5 +33,15 @@ int main() {
     assert(!ok);
     assert(rt_abs_i64(-42) == 42);
     assert(std::fabs(rt_abs_f64(-3.5) - 3.5) < eps);
+
+    double nan = std::numeric_limits<double>::quiet_NaN();
+    assert(std::isnan(rt_min_f64(nan, 5.0)));
+    assert(std::isnan(rt_min_f64(5.0, nan)));
+    assert(std::isnan(rt_max_f64(nan, 5.0)));
+    assert(std::isnan(rt_max_f64(5.0, nan)));
+    double min_zero = rt_min_f64(+0.0, -0.0);
+    double max_zero = rt_max_f64(-0.0, +0.0);
+    assert(min_zero == 0.0 && std::signbit(min_zero));
+    assert(max_zero == 0.0 && !std::signbit(max_zero));
     return 0;
 }

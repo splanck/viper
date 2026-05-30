@@ -83,6 +83,27 @@ TEST(RtgenHeaderParse, LoadRuntimeHeaderDeclarationsIgnoresMacroGeneratedPrototy
     EXPECT_TRUE(decls.find("rt_real_decl") != decls.end());
 }
 
+TEST(RtgenHeaderParse, LoadRuntimeHeaderDeclarationsIgnoresInlineBodyCalls) {
+    TempDir repo = makeTempDir();
+    const fs::path runtimeDir = repo.path / "runtime";
+    fs::create_directories(runtimeDir);
+
+    const fs::path headerPath = runtimeDir / "inline_test.h";
+    std::ofstream out(headerPath);
+    out << "#pragma once\n"
+           "void rt_real_decl(int value);\n"
+           "static inline void rt_inline_wrapper(int value) {\n"
+           "    rt_real_decl(value);\n"
+           "}\n";
+    out.close();
+
+    const auto decls = loadRuntimeHeaderDeclarations(runtimeDir, repo.path);
+
+    EXPECT_TRUE(decls.find("rt_real_decl") != decls.end());
+    EXPECT_TRUE(decls.find("rt_inline_wrapper") == decls.end());
+    EXPECT_EQ(decls.size(), static_cast<size_t>(1));
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

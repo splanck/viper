@@ -145,6 +145,52 @@ static void test_insert_begin_middle_end() {
     rt_release_obj(c);
 }
 
+static void test_push_retain_overflow_keeps_length() {
+    void *list = rt_list_new();
+    assert(list != nullptr);
+
+    void *a = new_obj();
+    rt_list_push(list, a);
+
+    void *value = new_obj();
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    EXPECT_TRAP(rt_list_push(list, value));
+    assert(rt_list_len(list) == 1);
+    assert_item(list, 0, a);
+
+    hdr->refcnt = 1;
+    cleanup_list(list);
+    rt_release_obj(a);
+    rt_release_obj(value);
+}
+
+static void test_insert_retain_overflow_keeps_order() {
+    void *list = rt_list_new();
+    assert(list != nullptr);
+
+    void *a = new_obj();
+    void *b = new_obj();
+    rt_list_push(list, a);
+    rt_list_push(list, b);
+
+    void *value = new_obj();
+    rt_heap_hdr_t *hdr = rt_heap_hdr(value);
+    hdr->refcnt = RT_HEAP_MAX_MORTAL_REFCNT;
+
+    EXPECT_TRAP(rt_list_insert(list, 1, value));
+    assert(rt_list_len(list) == 2);
+    assert_item(list, 0, a);
+    assert_item(list, 1, b);
+
+    hdr->refcnt = 1;
+    cleanup_list(list);
+    rt_release_obj(a);
+    rt_release_obj(b);
+    rt_release_obj(value);
+}
+
 static void test_remove_returns_bool_and_removes_first_only() {
     void *list = rt_list_new();
     assert(list != nullptr);
@@ -302,6 +348,8 @@ int main() {
     test_has_empty_and_nonempty();
     test_find_returns_index_or_minus1();
     test_insert_begin_middle_end();
+    test_push_retain_overflow_keeps_length();
+    test_insert_retain_overflow_keeps_order();
     test_remove_returns_bool_and_removes_first_only();
     test_insert_out_of_range_traps();
     test_list_finalizer_releases_elements();

@@ -249,9 +249,9 @@ void rt_pqueue_push(void *obj, int64_t priority, void *val) {
         heap_grow(h);
     }
 
+    rt_obj_retain_maybe(val);
     // Add at the end
     h->items[h->len].priority = priority;
-    rt_obj_retain_maybe(val);
     h->items[h->len].value = val;
     h->len++;
 

@@ -255,27 +255,30 @@ void *rt_stack_to_seq(void *stack) {
     if ((uint64_t)len > SIZE_MAX / sizeof(void *))
         rt_trap("stack_to_seq: size overflow");
 
-    // Create temporary array by popping all elements, then re-pushing to restore.
-    // WARNING: Stack is temporarily empty during this operation. Not safe if another
-    // thread reads the stack concurrently.
-    void **temp = malloc(sizeof(void *) * (size_t)len);
-    if (!temp)
+    void *clone = rt_stack_clone(stack);
+    if (!clone)
         return seq;
 
+    // Pop a clone so conversion never mutates the source stack on traps.
+    void **temp = malloc(sizeof(void *) * (size_t)len);
+    if (!temp) {
+        release_temp_obj(clone);
+        return seq;
+    }
+
     int64_t count = 0;
-    while (!rt_stack_is_empty(stack)) {
-        temp[count++] = rt_stack_pop(stack);
+    while (!rt_stack_is_empty(clone)) {
+        temp[count++] = rt_stack_pop(clone);
     }
 
     // Add to seq in reverse order (bottom to top)
     for (int64_t i = count - 1; i >= 0; i--) {
         rt_seq_push(seq, temp[i]);
-        // Also restore the stack
-        rt_stack_push(stack, temp[i]);
         release_temp_obj(temp[i]);
     }
 
     free(temp);
+    release_temp_obj(clone);
     return seq;
 }
 
@@ -304,24 +307,17 @@ void *rt_queue_to_seq(void *queue) {
     if ((uint64_t)len > SIZE_MAX / sizeof(void *))
         rt_trap("queue_to_seq: size overflow");
 
-    // Create temporary array by dequeuing all
-    void **temp = malloc(sizeof(void *) * (size_t)len);
-    if (!temp)
+    void *clone = rt_queue_clone(queue);
+    if (!clone)
         return seq;
 
-    int64_t count = 0;
-    while (!rt_queue_is_empty(queue)) {
-        temp[count++] = rt_queue_pop(queue);
+    while (!rt_queue_is_empty(clone)) {
+        void *elem = rt_queue_pop(clone);
+        rt_seq_push(seq, elem);
+        release_temp_obj(elem);
     }
 
-    // Add to seq in order (front to back) and restore queue
-    for (int64_t i = 0; i < count; i++) {
-        rt_seq_push(seq, temp[i]);
-        rt_queue_push(queue, temp[i]);
-        release_temp_obj(temp[i]);
-    }
-
-    free(temp);
+    release_temp_obj(clone);
     return seq;
 }
 

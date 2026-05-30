@@ -269,8 +269,22 @@ void rt_cancellation_reset(void *token) {
 
 /// @brief Create a child token that is automatically cancelled when the parent is cancelled.
 void *rt_cancellation_linked(void *parent) {
+    rt_cancellation_data *parent_data = NULL;
+    int8_t parent_cancelled = 0;
+    int parent_retained = 0;
+    if (parent) {
+        parent_data = cancellation_require(parent);
+        if (!parent_data)
+            return NULL;
+        parent_cancelled = rt_cancellation_is_cancelled(parent);
+        rt_obj_retain_maybe(parent);
+        parent_retained = 1;
+    }
+
     void *obj = rt_obj_new_i64(RT_CANCELLATION_CLASS_ID, sizeof(rt_cancellation_data));
     if (!obj) {
+        if (parent_retained)
+            cancellation_release_object(parent);
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
                            -1,
@@ -283,6 +297,8 @@ void *rt_cancellation_linked(void *parent) {
     data->monitor = rt_obj_new_i64(0, 1);
     if (!data->monitor) {
         cancellation_release_object(obj);
+        if (parent_retained)
+            cancellation_release_object(parent);
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
                            -1,
@@ -294,14 +310,7 @@ void *rt_cancellation_linked(void *parent) {
     rt_obj_set_finalizer(obj, cancellation_finalizer);
 
     if (parent) {
-        rt_cancellation_data *parent_data = cancellation_require(parent);
-        if (!parent_data) {
-            cancellation_release_object(obj);
-            return NULL;
-        }
-        rt_obj_retain_maybe(parent);
         data->parent = parent;
-        int8_t parent_cancelled = rt_cancellation_is_cancelled(parent);
         if (parent_data->monitor) {
             rt_monitor_enter(parent_data->monitor);
             data->next_sibling = parent_data->first_child;

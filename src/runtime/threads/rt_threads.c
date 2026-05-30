@@ -150,6 +150,10 @@ static void thread_retain_owned_arg_or_release(void *arg,
     rt_trap_clear_recovery();
 }
 
+static void thread_retain_self_or_release(void *obj, const char *fallback) {
+    thread_retain_owned_arg_or_release(obj, obj, fallback);
+}
+
 static void thread_join_inner_or_release(void *inner) {
     if (!inner)
         return;
@@ -416,7 +420,7 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     }
 
     // Hold a self-reference until the thread exits.
-    rt_obj_retain_maybe(t);
+    thread_retain_self_or_release(t, "Thread.Start: self retain failed");
 
     t->hThread = CreateThread(NULL, 0, rt_thread_trampoline_win, t, 0, &t->threadId);
     if (!t->hThread) {
@@ -982,7 +986,7 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
     }
 
     // Hold a self-reference until the thread exits.
-    rt_obj_retain_maybe(t);
+    thread_retain_self_or_release(t, "Thread.Start: self retain failed");
 
     if (pthread_create(&t->pthread, NULL, rt_thread_trampoline, t) != 0) {
         // Drop thread self-reference and the caller-visible reference, then trap.
@@ -1380,7 +1384,21 @@ static void *safe_thread_copy_inner_thread(SafeThreadCtx *ctx) {
     if (ctx->monitor)
         rt_monitor_enter(ctx->monitor);
     inner = ctx->thread;
+
+    char saved_error[256];
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        thread_save_trap_error(saved_error, sizeof(saved_error), "SafeThread: retain failed");
+        rt_trap_clear_recovery();
+        if (ctx->monitor)
+            rt_monitor_exit(ctx->monitor);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
     rt_obj_retain_maybe(inner);
+    rt_trap_clear_recovery();
     if (ctx->monitor)
         rt_monitor_exit(ctx->monitor);
     return inner;
@@ -1455,7 +1473,7 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
         ctx->owns_arg = 1;
     }
 
-    rt_obj_retain_maybe(ctx); // Worker thread holds a self-reference until it exits.
+    thread_retain_self_or_release(ctx, "Thread.StartSafe: self retain failed");
 
     char saved_error[256];
     jmp_buf start_recovery;

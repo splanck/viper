@@ -278,20 +278,27 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
     if ((long double)m->count * 4.0L >= (long double)m->capacity * 3.0L)
         om_resize(m);
 
+    if (value)
+        rt_obj_retain_maybe(value);
+
     // Create new entry
     rt_om_entry *e = (rt_om_entry *)calloc(1, sizeof(rt_om_entry));
-    if (!e)
+    if (!e) {
+        om_release_value(value);
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
                            -1,
                            "OrderedMap: entry allocation failed");
+    }
     if (klen == SIZE_MAX) {
+        om_release_value(value);
         free(e);
         rt_trap_raise_kind(
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "OrderedMap: key allocation overflow");
     }
     e->key = (char *)malloc(klen + 1);
     if (!e->key) {
+        om_release_value(value);
         free(e);
         rt_trap_raise_kind(
             RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, "OrderedMap: key allocation failed");
@@ -299,8 +306,6 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
     memcpy(e->key, kstr, klen);
     e->key[klen] = '\0';
     e->key_len = klen;
-    if (value)
-        rt_obj_retain_maybe(value);
     e->value = value;
 
     // Add to hash chain

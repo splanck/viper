@@ -42,6 +42,7 @@ if "%VIPER_WARN_AS_ERROR%"=="" (
 REM --- Compiler selection -----------------------------------------------------
 REM Default to MSVC on Windows. Opt into clang-cl with VIPER_WINDOWS_COMPILER=clang-cl.
 set COMPILER_FLAGS=
+set "REQUESTED_WINDOWS_COMPILER=msvc"
 if /I "%VIPER_WINDOWS_COMPILER%"=="clang-cl" (
     where clang-cl >nul 2>&1
     if errorlevel 1 (
@@ -49,16 +50,29 @@ if /I "%VIPER_WINDOWS_COMPILER%"=="clang-cl" (
         exit /b 1
     )
     echo Using clang-cl ^(VIPER_WINDOWS_COMPILER=clang-cl^)
+    set "REQUESTED_WINDOWS_COMPILER=clang-cl"
     set COMPILER_FLAGS=-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
 ) else (
     echo Using default compiler MSVC
 )
 echo.
 
+REM --- Cached compiler validation --------------------------------------------
+REM CMake stores the selected compiler as an absolute path. Visual Studio updates
+REM can remove that path, so clear only the configure cache when it points at a
+REM missing or no-longer-requested compiler.
+set "CACHE_RESET=0"
+call :reset_stale_compiler_cache
+if errorlevel 1 exit /b 1
+
 REM --- Clean previous build ---------------------------------------------------
-cmake --build "%VIPER_BUILD_DIR%" --target clean-all 2>nul
-if errorlevel 1 (
-    REM clean-all target may not exist on first build; ignore
+if "%CACHE_RESET%"=="0" (
+    cmake --build "%VIPER_BUILD_DIR%" --target clean-all 2>nul
+    if errorlevel 1 (
+        REM clean-all target may not exist on first build; ignore
+    )
+) else (
+    echo Skipping pre-configure clean because cached compiler state was reset.
 )
 
 REM --- Configure --------------------------------------------------------------
@@ -164,4 +178,79 @@ echo Build complete
 echo ==========================================
 
 if %TESTS_FAILED% neq 0 exit /b 1
+exit /b 0
+
+:reset_stale_compiler_cache
+set "CACHE_FILE=%VIPER_BUILD_DIR%\CMakeCache.txt"
+set "STALE_CACHE=0"
+if not exist "%CACHE_FILE%" exit /b 0
+
+call :check_cached_compiler CMAKE_C_COMPILER
+if errorlevel 2 exit /b 1
+if errorlevel 1 set "STALE_CACHE=1"
+
+call :check_cached_compiler CMAKE_CXX_COMPILER
+if errorlevel 2 exit /b 1
+if errorlevel 1 set "STALE_CACHE=1"
+
+if "%STALE_CACHE%"=="0" exit /b 0
+
+echo Detected stale CMake compiler cache in "%VIPER_BUILD_DIR%".
+echo Resetting cached configure state; build outputs will be regenerated as needed.
+del /q "%CACHE_FILE%" >nul 2>&1
+if exist "%CACHE_FILE%" (
+    echo ERROR: Failed to remove "%CACHE_FILE%"
+    exit /b 1
+)
+if exist "%VIPER_BUILD_DIR%\CMakeFiles" (
+    rmdir /s /q "%VIPER_BUILD_DIR%\CMakeFiles"
+    if exist "%VIPER_BUILD_DIR%\CMakeFiles" (
+        echo ERROR: Failed to remove "%VIPER_BUILD_DIR%\CMakeFiles"
+        exit /b 1
+    )
+)
+set "CACHE_RESET=1"
+exit /b 0
+
+:check_cached_compiler
+set "CACHE_KEY=%~1"
+set "CACHE_VALUE="
+for /f "usebackq tokens=1,* delims==" %%A in ("%CACHE_FILE%") do (
+    if /I "%%A"=="%CACHE_KEY%:FILEPATH" set "CACHE_VALUE=%%B"
+    if /I "%%A"=="%CACHE_KEY%:STRING" set "CACHE_VALUE=%%B"
+)
+if "%CACHE_VALUE%"=="" exit /b 0
+
+call :cached_compiler_matches_request "%CACHE_VALUE%"
+if errorlevel 1 (
+    echo Cached %CACHE_KEY% does not match requested compiler "%REQUESTED_WINDOWS_COMPILER%": %CACHE_VALUE%
+    exit /b 1
+)
+
+call :tool_exists "%CACHE_VALUE%"
+if errorlevel 1 (
+    echo Cached %CACHE_KEY% no longer exists: %CACHE_VALUE%
+    exit /b 1
+)
+exit /b 0
+
+:cached_compiler_matches_request
+set "CACHE_TOOL=%~nx1"
+if /I "%REQUESTED_WINDOWS_COMPILER%"=="clang-cl" (
+    if /I "%CACHE_TOOL%"=="clang-cl" exit /b 0
+    if /I "%CACHE_TOOL%"=="clang-cl.exe" exit /b 0
+    exit /b 1
+)
+if /I "%CACHE_TOOL%"=="clang-cl" exit /b 1
+if /I "%CACHE_TOOL%"=="clang-cl.exe" exit /b 1
+exit /b 0
+
+:tool_exists
+set "TOOL_VALUE=%~1"
+if "%TOOL_VALUE%"=="" exit /b 0
+if exist "%TOOL_VALUE%" exit /b 0
+echo "%TOOL_VALUE%" | findstr /R "[\\/]" >nul 2>&1
+if not errorlevel 1 exit /b 1
+where "%TOOL_VALUE%" >nul 2>&1
+if errorlevel 1 exit /b 1
 exit /b 0

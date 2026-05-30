@@ -18,6 +18,7 @@ func near(a: Float, b: Float, eps: Float) -> Boolean {
 
 func start() {
     var world = Game3D.World3D.New("Game3D RunFrames Probe", 64, 48);
+    Game3D.World3D.onResize(world, 64, 48);
     Game3D.World3D.runFramesOnly(world, 3, 0.025);
 
     if (Game3D.World3D.get_frame(world) != 3) {
