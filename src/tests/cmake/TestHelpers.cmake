@@ -27,6 +27,9 @@ set(_VIPER_TEST_LABEL_WHITELIST
         requires_display
         requires_graphics_disabled
         requires_ipv6
+        requires_linux
+        requires_linux_deb
+        requires_linux_rpm
         requires_local_bind
         requires_macos
         requires_posix_shell
