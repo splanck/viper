@@ -125,7 +125,7 @@ Tracks every runtime contract from `../runtime-changes.md`. Most new rows start
 |---|---|---|---|---|---|
 | R-VAL-001 | `check_runtime_completeness.sh` green | Validation | todo |  |  |
 | R-VAL-002 | Build + `-L graphics3d` green mac/win/linux | Validation | todo |  | CO-1 |
-| R-VAL-003 | `lint_platform_policy.sh` + `run_cross_platform_smoke.sh` | Validation | todo |  |  |
+| R-VAL-003 | `lint_platform_policy.sh` + `run_cross_platform_smoke.sh` | Validation | done | `../../3dnextlevel3/policy-audit-closure.md`; `./scripts/lint_platform_policy.sh --strict --changed-only`; `./scripts/run_cross_platform_smoke.sh --build-dir cmake-build-debug` | Smoke script now capability-gates disabled-surface tests and skips missing executables in partial build trees; final local lane passed after building linker smoke targets |
 | R-VAL-004 | Before/after perf number per scale feature | Validation | todo |  | GATE-004 |
 | R-VAL-005 | `runFrames` VM/native determinism per sim change | Validation | done | `../../3dnextlevel3/determinism-closure.md`; focused local lane passed: `g3d_3dnext2_surface_probe`, `test_rt_game3d`, `test_codegen_env_is_native`, native-run Zia promise tests, and `test_crosslayer_arith` | Future simulation-touching changes must rerun the same gate; IL/VM/native semantic changes also need GATE-009 ADR evidence |
 | R-VAL-006 | Software path + capability-gated GPU per visual feature | Validation | done | `../../3dnextlevel3/software-baseline-closure.md`; focused local gate passed 9/9 | GATE-005 closed locally; unsupported GPU features still require clean capability skips |

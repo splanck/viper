@@ -124,7 +124,7 @@
 
 - [x] **NL3-033 [GATE-005] Record software-baseline correctness for each remaining visual feature before GPU enablement.** `software-baseline-closure.md` records the software-correctness matrix and passing local gate for compressed textures, clustered lighting, CSM, occlusion/PVS, runtime LOD/impostors, and the open-world visual slice. The gate also fixed and proves the native-compressed upload path no longer leaves abandoned fallback upload bytes when a GPU backend pauses native texture upload under a zero budget.
 
-- [ ] **NL3-034 [GATE-007/009] Complete dependency, platform-policy, and ADR audits for each new slice.** Keep the zero-new-dependency rule, `lint_platform_policy.sh`, no raw platform macros outside adapters, and ADR coverage for any IL/VM-touching change.
+- [x] **NL3-034 [GATE-007/009] Complete dependency, platform-policy, and ADR audits for each new slice.** `policy-audit-closure.md` records the zero-new-dependency audit, changed-file strict platform-policy lint, cross-platform smoke lane, smoke-script capability gating fix, and ADR coverage for registry-only IL runtime surface edits via `docs/adr/0004-graphics3d-runtime-surface-expansion.md`.
 
 ## Deferred / External / Stretch
 

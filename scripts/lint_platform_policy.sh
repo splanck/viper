@@ -127,7 +127,7 @@ RAW_PATTERN='_WIN32|_WIN64|__APPLE__|__linux__|_MSC_VER'
 search_raw_platform_macros() {
     local path="$1"
     if command -v rg >/dev/null 2>&1; then
-        (cd "$ROOT_DIR" && rg -n -w "$RAW_PATTERN" --color never "$path" || true)
+        (cd "$ROOT_DIR" && rg --with-filename -n -w "$RAW_PATTERN" --color never "$path" || true)
         return
     fi
     (cd "$ROOT_DIR" && grep -nEH "(^|[^[:alnum:]_])(${RAW_PATTERN})([^[:alnum:]_]|$)" "$path" || true)

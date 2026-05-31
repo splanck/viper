@@ -106,6 +106,8 @@ echo "=========================================="
 run_named_tests() {
     local regex="$1"
     local listing
+    local detail
+    local test_name
     if [[ -z "$regex" ]]; then
         return
     fi
@@ -113,14 +115,40 @@ run_named_tests() {
     if ! printf '%s\n' "$listing" | grep -q "Test #"; then
         return
     fi
-    "$CTEST_CMD" --test-dir "$BUILD_DIR_FOR_CTEST" "${CTEST_CONFIG_ARGS[@]}" --output-on-failure -R "$regex"
+    while IFS= read -r line; do
+        if [[ "$line" =~ Test[[:space:]]+\#[0-9]+:[[:space:]]+([^[:space:]]+) ]]; then
+            test_name="${BASH_REMATCH[1]}"
+            detail="$("$CTEST_CMD" --test-dir "$BUILD_DIR_FOR_CTEST" "${CTEST_CONFIG_ARGS[@]}" -N -V -R "^${test_name}$" 2>&1 || true)"
+            if printf '%s\n' "$detail" | grep -q "Could not find executable"; then
+                echo "Skipping $test_name because its executable is missing in this build tree"
+                continue
+            fi
+            if ! printf '%s\n' "$detail" | grep -Eq "Test command: .+"; then
+                echo "Skipping $test_name because CTest has no runnable command for it"
+                continue
+            fi
+            "$CTEST_CMD" --test-dir "$BUILD_DIR_FOR_CTEST" "${CTEST_CONFIG_ARGS[@]}" --output-on-failure -R "^${test_name}$"
+        fi
+    done <<< "$listing"
 }
 
 core_regex='^(smoke_term_basic|smoke_basic_oop|zia_smoke_paint|zia_smoke_vipersql|zia_smoke_chess)$'
 run_named_tests "$core_regex"
 
-disabled_surface_regex='^(test_rt_canvas_unavailable|test_rt_graphics_surface_link|test_rt_audio_unavailable|test_rt_audio_surface_link)$'
-run_named_tests "$disabled_surface_regex"
+surface_link_regex='^(test_rt_graphics_surface_link|test_rt_audio_surface_link)$'
+run_named_tests "$surface_link_regex"
+
+if [[ $HAS_GRAPHICS -eq 0 ]]; then
+    run_named_tests '^test_rt_canvas_unavailable$'
+else
+    echo "Skipping no-graphics canvas unavailable test on graphics-enabled build"
+fi
+
+if [[ $HAS_AUDIO -eq 0 ]]; then
+    run_named_tests '^test_rt_audio_unavailable$'
+else
+    echo "Skipping no-audio unavailable test on audio-enabled build"
+fi
 
 planner_regex='^(test_linker_platform_import_planners|test_linker_runtime_import_audit|test_linker_elf_exe_writer)$'
 run_named_tests "$planner_regex"

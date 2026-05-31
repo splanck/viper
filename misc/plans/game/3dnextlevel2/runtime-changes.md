@@ -714,7 +714,8 @@ navigation bake from one Game3D handle.
 - Build + `ctest --test-dir build -L graphics3d` green on macOS, Windows, Linux
   (CO-1); no macOS-only paths.
 - `./scripts/lint_platform_policy.sh` + `./scripts/run_cross_platform_smoke.sh`
-  for platform-sensitive work.
+  for platform-sensitive work. NL3-034 closes the local policy audit in
+  `../3dnextlevel3/policy-audit-closure.md`.
 - A before/after performance number on a committed Phase-0 fixture for any scale
   feature.
 - `runFrames` worker-count parity plus VM/native determinism parity for any
@@ -722,6 +723,10 @@ navigation bake from one Game3D handle.
   `g3d_3dnext2_surface_probe`, `test_rt_game3d`,
   `test_codegen_env_is_native`, the native-run Zia promise tests, and
   `test_crosslayer_arith`.
+- Runtime-registry-only `runtime.def` / `RuntimeSurfacePolicy.inc` additions for
+  public Graphics3D/Game3D APIs are covered by
+  `docs/adr/0004-graphics3d-runtime-surface-expansion.md`; semantic IL, VM, or
+  native-codegen changes still require a dedicated ADR before GATE-009 closes.
 - A software-backend correctness path for any new visual feature; GPU parity
   capability-gated + smoke-tested. NL3-033 closes the local evidence matrix in
   `../3dnextlevel3/software-baseline-closure.md`.
