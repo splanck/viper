@@ -2456,9 +2456,10 @@ static GLuint gl_get_cached_native_texture(gl_context_t *ctx, void *asset) {
 /// @brief Resolve a material's texture to a GL texture, preferring native blocks then RGBA Pixels.
 /// @return The GL texture name to bind, or 0 if neither source is uploadable.
 static GLuint gl_get_material_texture(gl_context_t *ctx, void *asset, const void *pixels) {
-    GLuint tex = asset ? gl_get_cached_native_texture(ctx, asset) : 0;
-    if (tex)
-        return tex;
+    /* Native-supported assets stay on the native upload path. Falling back to
+     * RGBA while native upload is budget-paused leaves abandoned pending bytes. */
+    if (asset && vgfx3d_textureasset_native_supported(asset, gl_get_native_texture_caps(ctx)))
+        return gl_get_cached_native_texture(ctx, asset);
     return pixels ? gl_get_cached_texture(ctx, pixels) : 0;
 }
 

@@ -128,5 +128,5 @@ Tracks every runtime contract from `../runtime-changes.md`. Most new rows start
 | R-VAL-003 | `lint_platform_policy.sh` + `run_cross_platform_smoke.sh` | Validation | todo |  |  |
 | R-VAL-004 | Before/after perf number per scale feature | Validation | todo |  | GATE-004 |
 | R-VAL-005 | `runFrames` VM/native determinism per sim change | Validation | done | `../../3dnextlevel3/determinism-closure.md`; focused local lane passed: `g3d_3dnext2_surface_probe`, `test_rt_game3d`, `test_codegen_env_is_native`, native-run Zia promise tests, and `test_crosslayer_arith` | Future simulation-touching changes must rerun the same gate; IL/VM/native semantic changes also need GATE-009 ADR evidence |
-| R-VAL-006 | Software path + capability-gated GPU per visual feature | Validation | todo |  | GATE-005 |
+| R-VAL-006 | Software path + capability-gated GPU per visual feature | Validation | done | `../../3dnextlevel3/software-baseline-closure.md`; focused local gate passed 9/9 | GATE-005 closed locally; unsupported GPU features still require clean capability skips |
 | R-VAL-007 | Success + negative/capability ctest per new fn, or waiver | Validation | todo |  |  |

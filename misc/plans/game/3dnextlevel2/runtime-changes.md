@@ -723,7 +723,8 @@ navigation bake from one Game3D handle.
   `test_codegen_env_is_native`, the native-run Zia promise tests, and
   `test_crosslayer_arith`.
 - A software-backend correctness path for any new visual feature; GPU parity
-  capability-gated + smoke-tested.
+  capability-gated + smoke-tested. NL3-033 closes the local evidence matrix in
+  `../3dnextlevel3/software-baseline-closure.md`.
 - Each new public runtime function/class has a success-path and a negative/
   capability ctest, plus class-id/`runtime.def` completeness for new classes, or
   a named waiver in `progress/06-waivers.md`.

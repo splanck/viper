@@ -2809,9 +2809,10 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_material_srv(d3d11_context_
                                                                   void *asset,
                                                                   const void *pixels,
                                                                   d3d_temp_srv_t *out_temp) {
-    ID3D11ShaderResourceView *srv = d3d11_get_or_create_native_srv(ctx, asset);
-    if (srv)
-        return srv;
+    /* Native-supported assets stay on the native upload path. Falling back to
+     * RGBA while native upload is budget-paused leaves abandoned pending bytes. */
+    if (asset && vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx)))
+        return d3d11_get_or_create_native_srv(ctx, asset);
     return d3d11_get_or_create_srv(ctx, pixels, out_temp);
 }
 

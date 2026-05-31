@@ -122,7 +122,7 @@
 
 - [x] **NL3-032 [AC-014, GATE-006] Prove no-regression for bounded scenes.** `g3d_bounded_no_regression_probe` runs the existing `walk_min.zia` bounded sample twice under the software backend: once on the default bounded path and once with floating origin, occlusion culling, clustered lighting, cascaded shadows, and texture upload budgeting explicitly disabled/defaulted. It proves exact final-frame pixel equality, exact player/body/draw/visibility/stream counter parity, and `scale_flags_off=1`.
 
-- [ ] **NL3-033 [GATE-005] Record software-baseline correctness for each remaining visual feature before GPU enablement.** For compressed textures, clustered lighting, CSM, occlusion/PVS, HLOD-related work, and any new visual path, keep the software backend as the correctness baseline with capability-gated GPU parity tests.
+- [x] **NL3-033 [GATE-005] Record software-baseline correctness for each remaining visual feature before GPU enablement.** `software-baseline-closure.md` records the software-correctness matrix and passing local gate for compressed textures, clustered lighting, CSM, occlusion/PVS, runtime LOD/impostors, and the open-world visual slice. The gate also fixed and proves the native-compressed upload path no longer leaves abandoned fallback upload bytes when a GPU backend pauses native texture upload under a zero budget.
 
 - [ ] **NL3-034 [GATE-007/009] Complete dependency, platform-policy, and ADR audits for each new slice.** Keep the zero-new-dependency rule, `lint_platform_policy.sh`, no raw platform macros outside adapters, and ADR coverage for any IL/VM-touching change.
 

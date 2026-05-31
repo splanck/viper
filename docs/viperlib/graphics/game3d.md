@@ -1010,6 +1010,7 @@ The Game3D runtime is covered by:
 | `test_rt_g3d_commit_queue` | Internal Graphics3D main-thread commit queue FIFO/budgeted drain, worker-enqueue/main-thread-commit behavior, and worker-drain rejection |
 | `scripts/g3d_tsan_concurrency_lane.sh` | Focused ThreadSanitizer lane for the worker pool, ordered map/reduce, runtime concurrency stress, asset-worker decode paths, Game3D worker parity, open-world streaming hitch probe, and the Graphics3D commit queue |
 | NL3-031 determinism gate | `g3d_3dnext2_surface_probe`, `test_rt_game3d`, `test_codegen_env_is_native`, native-run Zia promise tests, and `test_crosslayer_arith` prove worker-count replay, ordered merge, and VM/native parity |
+| NL3-033 software-baseline gate | `test_rt_canvas3d`, `test_rt_canvas3d_gpu_paths`, `test_rt_canvas3d_production`, `test_rt_scene3d`, `test_vgfx3d_backend_utils`, and open-world slice probes keep software visual correctness as the baseline before capability-gated GPU upload/lighting/shadow/visibility paths |
 | `g3d_game3d_showcase` | Full-stack sample smoke, software final-frame structural/HUD assertion, asset/audio/VFX/camera/physics/animation integration, and deterministic replay |
 | `g3d_game3d_bowling_setup` | Bowling setup migration smoke and deterministic replay |
 

@@ -3281,9 +3281,12 @@ static id<MTLTexture> metal_get_cached_native_texture(VGFXMetalContext *ctx, voi
 static id<MTLTexture> metal_get_material_texture(VGFXMetalContext *ctx,
                                                  void *asset,
                                                  const void *pixels_ptr) {
-    id<MTLTexture> tex = asset ? metal_get_cached_native_texture(ctx, asset) : nil;
-    if (tex)
-        return tex;
+    /* Native-supported assets stay on the native upload path. Falling back to
+     * RGBA while native upload is budget-paused leaves abandoned pending bytes. */
+    if (asset &&
+        vgfx3d_textureasset_native_supported(
+            asset, metal_get_native_texture_caps((__bridge void *)ctx)))
+        return metal_get_cached_native_texture(ctx, asset);
     return pixels_ptr ? metal_get_cached_texture(ctx, pixels_ptr) : nil;
 }
 
