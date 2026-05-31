@@ -127,8 +127,9 @@ transcode only. `runFrames` must produce identical state with the pool enabled
 vs. disabled, VM and native.
 
 **Tests.** Parallel-map determinism; pool on/off `runFrames` parity; focused
-race/stress via `scripts/g3d_tsan_concurrency_lane.sh`; ADR if any VM/IL change
-is implied.
+race/stress via `scripts/g3d_tsan_concurrency_lane.sh`; VM/native parity via
+the NL3-031 determinism lane (`test_codegen_env_is_native`, native-run Zia
+promise tests, and `test_crosslayer_arith`); ADR if any VM/IL change is implied.
 
 ---
 
@@ -714,7 +715,11 @@ navigation bake from one Game3D handle.
   for platform-sensitive work.
 - A before/after performance number on a committed Phase-0 fixture for any scale
   feature.
-- `runFrames` VM/native determinism parity for any simulation-touching change.
+- `runFrames` worker-count parity plus VM/native determinism parity for any
+  simulation-touching change. Rerun the NL3-031 focused gate:
+  `g3d_3dnext2_surface_probe`, `test_rt_game3d`,
+  `test_codegen_env_is_native`, the native-run Zia promise tests, and
+  `test_crosslayer_arith`.
 - A software-backend correctness path for any new visual feature; GPU parity
   capability-gated + smoke-tested.
 - Each new public runtime function/class has a success-path and a negative/

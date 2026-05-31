@@ -118,7 +118,7 @@
 
 - [x] **NL3-030 [P12, AC-013, GATE-008] Refresh docs and ctest-compiled snippets for every new or changed API.** Public graphics docs and examples now describe the landed Phase 9/10/11/12 surfaces instead of stale future-work language: animation retarget name/role/proportional behavior, IK pole/ground-normal controls, bone-count LOD, native compressed texture residency, the visible KTX2/BC7 slice panel, and visible terrain-foot IK proof. The Graphics3D docs-snippet CTest compiles the latest retarget/IK/LOD API surface, old 3dnextlevel2 docs/progress rows were reconciled, and runtime completeness plus ABI/link/runtime-surface audits are green.
 
-- [ ] **NL3-031 [AC-001, GATE-002] Formally close determinism.** The pool-on/off `runFrames` and ordered-map evidence exists; record the VM/native determinism arm explicitly for the acceptance row and require the same proof for any future simulation-touching change.
+- [x] **NL3-031 [AC-001, GATE-002] Formally close determinism.** Determinism is now closed across ordered worker merge, Game3D worker-count replay parity, and VM/native parity. Evidence: `determinism-closure.md` records the required future-change gate and the passing local CTest lane: `g3d_3dnext2_surface_probe`, `test_rt_game3d`, `test_codegen_env_is_native`, `native_run_zia_42_try_catch_promises`, `native_run_zia_43_alpha_hardening`, `native_run_zia_44_language_promises`, and `test_crosslayer_arith`.
 
 - [ ] **NL3-032 [AC-014, GATE-006] Prove no-regression for bounded scenes.** Run an existing bounded-scene game/sample with all new scale flags off and prove byte-for-byte output/state compatibility.
 

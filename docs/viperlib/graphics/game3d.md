@@ -314,6 +314,12 @@ multi-worker value before separate `runFramesOnly` replays and compare the final
 state. Internal jobs must merge results deterministically, so worker count should
 not affect simulation results.
 
+For future simulation-touching changes, rerun the full determinism gate: the
+Game3D worker-count replay tests, the ordered-merge surface probe, the native
+Zia promise tests, `test_codegen_env_is_native`, and `test_crosslayer_arith`.
+Changes that alter IL, VM, or native codegen semantics used by simulation also
+need the GATE-009 ADR/proof note.
+
 The raw `Canvas3D` finalization calls map to the Game3D frame helpers this way:
 
 | Raw call | Meaning |
@@ -1000,6 +1006,7 @@ The Game3D runtime is covered by:
 | `g3d_3dnext2_surface_probe` | Phase-0 3D next-level surface probe covering worker-backed ordered `Viper.Threads.Parallel` map output and `World3D.runFramesOnly` worker-count replay parity |
 | `test_rt_g3d_commit_queue` | Internal Graphics3D main-thread commit queue FIFO/budgeted drain, worker-enqueue/main-thread-commit behavior, and worker-drain rejection |
 | `scripts/g3d_tsan_concurrency_lane.sh` | Focused ThreadSanitizer lane for the worker pool, ordered map/reduce, runtime concurrency stress, asset-worker decode paths, Game3D worker parity, open-world streaming hitch probe, and the Graphics3D commit queue |
+| NL3-031 determinism gate | `g3d_3dnext2_surface_probe`, `test_rt_game3d`, `test_codegen_env_is_native`, native-run Zia promise tests, and `test_crosslayer_arith` prove worker-count replay, ordered merge, and VM/native parity |
 | `g3d_game3d_showcase` | Full-stack sample smoke, software final-frame structural/HUD assertion, asset/audio/VFX/camera/physics/animation integration, and deterministic replay |
 | `g3d_game3d_bowling_setup` | Bowling setup migration smoke and deterministic replay |
 
