@@ -852,15 +852,93 @@ rt_string rt_animation3d_get_name(void *obj) {
     return a ? rt_const_cstr(a->name) : rt_const_cstr("");
 }
 
+/// @brief Infer a canonical humanoid-joint id from a bone name so a clip can retarget across
+///   skeletons that use different naming conventions (mixamo, Unreal, Blender). @details Lowercases
+///   the name, drops separators and a `mixamorig` prefix, detects side (left/right, incl. a trailing
+///   l/r on limbs), and matches a base joint by keyword. Returns 0 for unrecognized names (caller
+///   falls back to exact-name then index matching). Bare `leg`/`arm` follow mixamo, where `Leg` is
+///   the calf and `Arm` the upper arm (`UpLeg`/`ForeArm` disambiguate the others).
+static int animation3d_humanoid_role(const char *raw) {
+    char b[64];
+    int n = 0;
+    const char *s;
+    int side = 0; /* 0 center, 1 left, 2 right */
+    int base = 0;
+    if (!raw || !raw[0])
+        return 0;
+    for (const char *p = raw; *p && n < 63; ++p) {
+        char c = *p;
+        if (c >= 'A' && c <= 'Z')
+            c = (char)(c - 'A' + 'a');
+        if (c == '_' || c == ' ' || c == '.' || c == '-' || c == ':')
+            continue;
+        b[n++] = c;
+    }
+    b[n] = '\0';
+    s = b;
+    if (strncmp(s, "mixamorig", 9) == 0)
+        s += 9;
+    if (strstr(s, "left"))
+        side = 1;
+    else if (strstr(s, "right"))
+        side = 2;
+    if (strstr(s, "hip") || strstr(s, "pelvis"))
+        base = 1;
+    else if (strstr(s, "upperchest"))
+        base = 4;
+    else if (strstr(s, "chest"))
+        base = 3;
+    else if (strstr(s, "spine"))
+        base = 2;
+    else if (strstr(s, "neck"))
+        base = 5;
+    else if (strstr(s, "head"))
+        base = 6;
+    else if (strstr(s, "shoulder") || strstr(s, "clavicle"))
+        base = 7;
+    else if (strstr(s, "forearm") || strstr(s, "lowerarm"))
+        base = 9;
+    else if (strstr(s, "upperarm") || strstr(s, "uparm") || strstr(s, "arm"))
+        base = 8;
+    else if (strstr(s, "hand"))
+        base = 10;
+    else if (strstr(s, "upperleg") || strstr(s, "upleg") || strstr(s, "thigh"))
+        base = 11;
+    else if (strstr(s, "lowerleg") || strstr(s, "calf") || strstr(s, "shin") || strstr(s, "leg"))
+        base = 12;
+    else if (strstr(s, "foot") || strstr(s, "ankle"))
+        base = 13;
+    else if (strstr(s, "toe") || strstr(s, "ball"))
+        base = 14;
+    if (base == 0)
+        return 0;
+    if (side == 0 && base >= 7) { /* limb without an explicit side word: trailing l/r */
+        char last = n > 0 ? b[n - 1] : '\0';
+        if (last == 'l')
+            side = 1;
+        else if (last == 'r')
+            side = 2;
+    }
+    return base * 4 + side;
+}
+
 static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
                                               const rt_skeleton3d *dst,
                                               int32_t src_bone) {
     if (!src || !dst || src_bone < 0 || src_bone >= src->bone_count)
         return -1;
     const char *name = src->bones[src_bone].name;
+    int role;
     if (name && name[0] != '\0') {
         for (int32_t i = 0; i < dst->bone_count; ++i)
             if (strcmp(dst->bones[i].name, name) == 0)
+                return i;
+    }
+    /* No exact-name match: try humanoid role mapping (handles cross-convention skeletons). */
+    role = animation3d_humanoid_role(name);
+    if (role != 0) {
+        for (int32_t i = 0; i < dst->bone_count; ++i)
+            if (animation3d_humanoid_role(dst->bones[i].name) == role)
                 return i;
     }
     return src_bone < dst->bone_count ? src_bone : -1;

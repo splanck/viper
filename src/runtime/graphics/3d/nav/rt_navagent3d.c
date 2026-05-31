@@ -77,9 +77,28 @@ typedef struct rt_navagent3d {
     int8_t auto_repath;
     int8_t avoidance_enabled;
     struct rt_navagent3d *registry_next;
+    /* Uniform spatial-hash grid links for O(1)-ish neighbor queries during avoidance. The agent is
+     * present in exactly one cell (grid_cx,grid_cz); the cell is refreshed whenever position syncs. */
+    struct rt_navagent3d *grid_next;
+    int32_t grid_cx;
+    int32_t grid_cz;
+    int8_t in_grid;
 } rt_navagent3d;
 
 static rt_navagent3d *g_navagent3d_registry = NULL;
+
+/* Spatial hash over agent XZ positions: each registered agent lives in exactly one bucket so
+ * avoidance can scan a small cell neighborhood instead of the whole registry (O(N^2) -> ~O(N)). */
+#define NAVAGENT_GRID_CELL 4.0
+#define NAVAGENT_GRID_BUCKETS 1024u /* power of two for mask-based modulo */
+#define NAVAGENT_GRID_MAX_RING 16   /* beyond this, fall back to a full registry scan */
+static rt_navagent3d *g_navagent3d_grid[NAVAGENT_GRID_BUCKETS];
+/* Monotonic max of (effective avoidance radius + desired speed) across agents; bounds the cell
+ * neighborhood a query must cover so the grid never misses a contributing peer. */
+static double g_navagent3d_max_reach = 0.0;
+
+static void navagent_grid_refresh(rt_navagent3d *agent);
+static void navagent_grid_remove(rt_navagent3d *agent);
 
 /// @brief Validate @p obj as a NavAgent3D handle and return its typed pointer (NULL on mismatch).
 static rt_navagent3d *navagent3d_checked(void *obj) {
@@ -91,12 +110,14 @@ static void navagent_register(rt_navagent3d *agent) {
         return;
     agent->registry_next = g_navagent3d_registry;
     g_navagent3d_registry = agent;
+    navagent_grid_refresh(agent); /* insert into the spatial grid at its current cell */
 }
 
 static void navagent_unregister(rt_navagent3d *agent) {
     rt_navagent3d **link = &g_navagent3d_registry;
     if (!agent)
         return;
+    navagent_grid_remove(agent);
     while (*link) {
         if (*link == agent) {
             *link = agent->registry_next;
@@ -213,96 +234,258 @@ static double navagent_effective_avoidance_radius(const rt_navagent3d *agent) {
     return agent->avoidance_radius;
 }
 
-static void navagent_apply_local_avoidance(rt_navagent3d *agent, double dt) {
+/// @brief An agent's interaction "reach": effective avoidance radius + its desired speed. Two agents
+///   can only influence each other within (reachA + reachB), which bounds the grid query.
+static double navagent_reach(const rt_navagent3d *agent) {
+    double r = navagent_effective_avoidance_radius(agent);
+    double s = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0) ? agent->desired_speed
+                                                                              : 0.0;
+    return r + s;
+}
+
+static int32_t navagent_grid_coord(double v) {
+    double c;
+    if (!isfinite(v))
+        return 0;
+    c = floor(v / NAVAGENT_GRID_CELL);
+    if (c < -1.0e9)
+        c = -1.0e9;
+    if (c > 1.0e9)
+        c = 1.0e9;
+    return (int32_t)c;
+}
+
+static uint32_t navagent_grid_bucket(int32_t cx, int32_t cz) {
+    uint32_t h = (uint32_t)cx * 73856093u ^ (uint32_t)cz * 19349663u;
+    return h & (NAVAGENT_GRID_BUCKETS - 1u);
+}
+
+static void navagent_grid_insert(rt_navagent3d *agent) {
+    uint32_t b;
+    if (!agent || agent->in_grid)
+        return;
+    agent->grid_cx = navagent_grid_coord(agent->position[0]);
+    agent->grid_cz = navagent_grid_coord(agent->position[2]);
+    b = navagent_grid_bucket(agent->grid_cx, agent->grid_cz);
+    agent->grid_next = g_navagent3d_grid[b];
+    g_navagent3d_grid[b] = agent;
+    agent->in_grid = 1;
+}
+
+static void navagent_grid_remove(rt_navagent3d *agent) {
+    uint32_t b;
+    rt_navagent3d **link;
+    if (!agent || !agent->in_grid)
+        return;
+    b = navagent_grid_bucket(agent->grid_cx, agent->grid_cz);
+    link = &g_navagent3d_grid[b];
+    while (*link) {
+        if (*link == agent) {
+            *link = agent->grid_next;
+            agent->grid_next = NULL;
+            break;
+        }
+        link = &(*link)->grid_next;
+    }
+    agent->in_grid = 0;
+}
+
+/// @brief Keep @p agent's grid cell current and grow the global reach bound. Called after every
+///   position sync and on registration; moves the agent between buckets only when its cell changes.
+static void navagent_grid_refresh(rt_navagent3d *agent) {
+    double reach;
+    int32_t cx;
+    int32_t cz;
+    if (!agent)
+        return;
+    reach = navagent_reach(agent);
+    if (reach > g_navagent3d_max_reach)
+        g_navagent3d_max_reach = reach;
+    if (!agent->in_grid) {
+        navagent_grid_insert(agent);
+        return;
+    }
+    cx = navagent_grid_coord(agent->position[0]);
+    cz = navagent_grid_coord(agent->position[2]);
+    if (cx != agent->grid_cx || cz != agent->grid_cz) {
+        navagent_grid_remove(agent);
+        navagent_grid_insert(agent);
+    }
+}
+
+/// @brief Accumulate one peer's avoidance influence into (@p adjust_x, @p adjust_z). Skips self /
+///   disabled / different-navmesh peers and contributes zero outside interaction range, so visiting
+///   a superset of peers (as the grid does) yields the same result as a full registry scan, modulo
+///   floating-point summation order.
+static void navagent_accumulate_peer(rt_navagent3d *agent,
+                                     rt_navagent3d *other,
+                                     double agent_radius,
+                                     double lookahead,
+                                     double *adjust_x,
+                                     double *adjust_z) {
+    double other_radius;
+    double combined;
+    double dx;
+    double dz;
+    double dist_sq;
+    double dist;
+    double nx;
+    double nz;
+    double influence = 0.0;
+    if (other == agent || !other->avoidance_enabled || other->navmesh != agent->navmesh)
+        return;
+    other_radius = navagent_effective_avoidance_radius(other);
+    combined = agent_radius + other_radius;
+    if (combined <= 0.0)
+        return;
+    dx = agent->position[0] - other->position[0];
+    dz = agent->position[2] - other->position[2];
+    dist_sq = dx * dx + dz * dz;
+    if (dist_sq <= 1e-10) {
+        if (fabs(agent->desired_velocity[0]) > fabs(agent->desired_velocity[2])) {
+            dx = -agent->desired_velocity[0];
+            dz = 0.0;
+        } else {
+            dx = 0.0;
+            dz = -agent->desired_velocity[2];
+        }
+        if (fabs(dx) + fabs(dz) <= 1e-10)
+            dx = 1.0;
+        dist_sq = dx * dx + dz * dz;
+    }
+    dist = sqrt(dist_sq);
+    nx = dx / dist;
+    nz = dz / dist;
+    if (dist < combined) {
+        influence = ((combined - dist) / combined) + 0.5;
+    } else {
+        double rel_px = other->position[0] - agent->position[0];
+        double rel_pz = other->position[2] - agent->position[2];
+        double rel_vx = agent->desired_velocity[0] - other->desired_velocity[0];
+        double rel_vz = agent->desired_velocity[2] - other->desired_velocity[2];
+        double rel_v_sq = rel_vx * rel_vx + rel_vz * rel_vz;
+        double closing = rel_px * rel_vx + rel_pz * rel_vz;
+        if (closing > 0.0 && rel_v_sq > 1e-10) {
+            double t = closing / rel_v_sq;
+            if (t > 0.0 && t <= lookahead) {
+                double closest_x = rel_px - rel_vx * t;
+                double closest_z = rel_pz - rel_vz * t;
+                double closest_sq = closest_x * closest_x + closest_z * closest_z;
+                if (closest_sq < combined * combined) {
+                    double closest_dist = sqrt(closest_sq);
+                    double predictive =
+                        ((combined - closest_dist) / combined) * (1.0 - (t / lookahead));
+                    if (closest_sq > 1e-10) {
+                        double inv = 1.0 / sqrt(closest_sq);
+                        nx = -closest_x * inv;
+                        nz = -closest_z * inv;
+                    }
+                    influence = predictive * 0.75;
+                }
+            }
+        }
+    }
+    if (influence > 0.0) {
+        *adjust_x += nx * influence;
+        *adjust_z += nz * influence;
+    }
+}
+
+/// @brief Compute the raw avoidance steering adjustment for @p agent. With @p use_grid it scans only
+///   the spatial-grid cell neighborhood sized to cover the interaction range (falling back to a full
+///   registry scan when reaches are pathologically large); otherwise it scans the whole registry.
+///   Both paths visit the same contributing peers, so results agree up to summation order.
+///   @return 1 if avoidance applies (outputs written), 0 otherwise.
+static int navagent_compute_avoidance_adjust(rt_navagent3d *agent,
+                                             double dt,
+                                             int use_grid,
+                                             double *out_ax,
+                                             double *out_az) {
     double agent_radius;
     double max_speed;
     double lookahead;
     double adjust_x = 0.0;
     double adjust_z = 0.0;
+    rt_navagent3d *other;
     if (!agent || !agent->avoidance_enabled)
-        return;
+        return 0;
     agent_radius = navagent_effective_avoidance_radius(agent);
     max_speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
                     ? agent->desired_speed
                     : 0.0;
     if (agent_radius <= 0.0 || max_speed <= 0.0)
-        return;
-
+        return 0;
     lookahead = (isfinite(dt) && dt > 0.0) ? dt * 4.0 : 0.5;
     if (lookahead < 0.25)
         lookahead = 0.25;
     if (lookahead > 1.0)
         lookahead = 1.0;
 
-    for (rt_navagent3d *other = g_navagent3d_registry; other; other = other->registry_next) {
-        double other_radius;
-        double combined;
-        double dx;
-        double dz;
-        double dist_sq;
-        double dist;
-        double nx;
-        double nz;
-        double influence = 0.0;
-        if (other == agent || !other->avoidance_enabled || other->navmesh != agent->navmesh)
-            continue;
-        other_radius = navagent_effective_avoidance_radius(other);
-        combined = agent_radius + other_radius;
-        if (combined <= 0.0)
-            continue;
-
-        dx = agent->position[0] - other->position[0];
-        dz = agent->position[2] - other->position[2];
-        dist_sq = dx * dx + dz * dz;
-        if (dist_sq <= 1e-10) {
-            if (fabs(agent->desired_velocity[0]) > fabs(agent->desired_velocity[2])) {
-                dx = -agent->desired_velocity[0];
-                dz = 0.0;
-            } else {
-                dx = 0.0;
-                dz = -agent->desired_velocity[2];
-            }
-            if (fabs(dx) + fabs(dz) <= 1e-10)
-                dx = 1.0;
-            dist_sq = dx * dx + dz * dz;
-        }
-        dist = sqrt(dist_sq);
-        nx = dx / dist;
-        nz = dz / dist;
-
-        if (dist < combined) {
-            influence = ((combined - dist) / combined) + 0.5;
-        } else {
-            double rel_px = other->position[0] - agent->position[0];
-            double rel_pz = other->position[2] - agent->position[2];
-            double rel_vx = agent->desired_velocity[0] - other->desired_velocity[0];
-            double rel_vz = agent->desired_velocity[2] - other->desired_velocity[2];
-            double rel_v_sq = rel_vx * rel_vx + rel_vz * rel_vz;
-            double closing = rel_px * rel_vx + rel_pz * rel_vz;
-            if (closing > 0.0 && rel_v_sq > 1e-10) {
-                double t = closing / rel_v_sq;
-                if (t > 0.0 && t <= lookahead) {
-                    double closest_x = rel_px - rel_vx * t;
-                    double closest_z = rel_pz - rel_vz * t;
-                    double closest_sq = closest_x * closest_x + closest_z * closest_z;
-                    if (closest_sq < combined * combined) {
-                        double closest_dist = sqrt(closest_sq);
-                        double predictive =
-                            ((combined - closest_dist) / combined) * (1.0 - (t / lookahead));
-                        if (closest_sq > 1e-10) {
-                            double inv = 1.0 / sqrt(closest_sq);
-                            nx = -closest_x * inv;
-                            nz = -closest_z * inv;
-                        }
-                        influence = predictive * 0.75;
+    if (use_grid && agent->in_grid) {
+        double dmax = navagent_reach(agent) + g_navagent3d_max_reach;
+        int ring = (int)ceil(dmax / NAVAGENT_GRID_CELL) + 1;
+        if (ring >= 1 && ring <= NAVAGENT_GRID_MAX_RING) {
+            int32_t cx = agent->grid_cx;
+            int32_t cz = agent->grid_cz;
+            int32_t dz;
+            for (dz = -ring; dz <= ring; dz++) {
+                int32_t dx;
+                for (dx = -ring; dx <= ring; dx++) {
+                    int32_t qx = cx + dx;
+                    int32_t qz = cz + dz;
+                    uint32_t b = navagent_grid_bucket(qx, qz);
+                    for (other = g_navagent3d_grid[b]; other; other = other->grid_next) {
+                        /* hash collisions can mix foreign cells into a bucket: match the exact cell
+                         * so each real cell (hence each agent) is visited at most once. */
+                        if (other->grid_cx == qx && other->grid_cz == qz)
+                            navagent_accumulate_peer(agent, other, agent_radius, lookahead,
+                                                     &adjust_x, &adjust_z);
                     }
                 }
             }
+            *out_ax = adjust_x;
+            *out_az = adjust_z;
+            return 1;
         }
+        /* reach too large for a tight neighborhood: fall through to the full scan */
+    }
+    for (other = g_navagent3d_registry; other; other = other->registry_next)
+        navagent_accumulate_peer(agent, other, agent_radius, lookahead, &adjust_x, &adjust_z);
+    *out_ax = adjust_x;
+    *out_az = adjust_z;
+    return 1;
+}
 
-        if (influence > 0.0) {
-            adjust_x += nx * influence;
-            adjust_z += nz * influence;
+static void navagent_apply_local_avoidance(rt_navagent3d *agent, double dt) {
+    double max_speed;
+    double adjust_x = 0.0;
+    double adjust_z = 0.0;
+    /* Gather peer influence through the spatial grid (full-registry fallback for large reaches). */
+    if (!navagent_compute_avoidance_adjust(agent, dt, 1, &adjust_x, &adjust_z))
+        return;
+    max_speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
+                    ? agent->desired_speed
+                    : 0.0;
+
+    /* Head-on deadlock tie-break: a symmetric head-on collapses the avoidance vector to point
+     * straight back along travel, which only stalls the agent at the meeting point. When the
+     * avoidance opposes our heading, add a consistent rightward perpendicular so both agents veer
+     * to their own right and pass each other instead of deadlocking. Reciprocal: both peers run
+     * this and their headings are opposite, so they pick opposite world sides. */
+    {
+        double dvx = agent->desired_velocity[0];
+        double dvz = agent->desired_velocity[2];
+        double dv_len = sqrt(dvx * dvx + dvz * dvz);
+        double adj_len = sqrt(adjust_x * adjust_x + adjust_z * adjust_z);
+        if (dv_len > 1e-6 && adj_len > 1e-6) {
+            double ddx = dvx / dv_len;
+            double ddz = dvz / dv_len;
+            double adot = (adjust_x * ddx + adjust_z * ddz) / adj_len;
+            if (adot < -0.7) {
+                /* right of travel in XZ = (ddz, -ddx) */
+                adjust_x += ddz * adj_len;
+                adjust_z += -ddx * adj_len;
+            }
         }
     }
 
@@ -320,6 +503,27 @@ static void navagent_apply_local_avoidance(rt_navagent3d *agent, double dt) {
             agent->desired_velocity[2] *= scale;
         }
     }
+}
+
+/// @brief Test-only: verify the spatial-grid avoidance query produces the same steering adjustment
+///   as a full registry scan for every registered agent (they must agree up to floating-point
+///   summation order). @return 1 if all agents agree (or none registered), 0 on any mismatch. Not
+///   part of the scripting surface.
+int8_t rt_navagent3d_check_avoidance_grid_parity(void) {
+    rt_navagent3d *a;
+    for (a = g_navagent3d_registry; a; a = a->registry_next) {
+        double gx = 0.0;
+        double gz = 0.0;
+        double fx = 0.0;
+        double fz = 0.0;
+        int g = navagent_compute_avoidance_adjust(a, 1.0 / 60.0, 1, &gx, &gz);
+        int f = navagent_compute_avoidance_adjust(a, 1.0 / 60.0, 0, &fx, &fz);
+        if (g != f)
+            return 0;
+        if (g && (fabs(gx - fx) > 1e-6 || fabs(gz - fz) > 1e-6))
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Derive "close enough to this corner" distance from the agent's radius. Half
@@ -444,11 +648,12 @@ static void navagent_sync_position_from_bindings(rt_navagent3d *agent) {
         agent->position[1] = pos ? rt_vec3_y(pos) : 0.0;
         agent->position[2] = pos ? rt_vec3_z(pos) : 0.0;
         navagent_release_local(pos);
-        return;
-    }
-    if (agent->bound_node) {
+    } else if (agent->bound_node) {
         navagent_get_node_world_position(agent->bound_node, agent->position);
     }
+    /* The synced position may have moved the agent to a new cell — keep the spatial grid aligned so
+     * other agents' avoidance queries find it. (An agent only moves during its own update/sync.) */
+    navagent_grid_refresh(agent);
 }
 
 /// @brief Propagate the agent's current position *out* to every live binding — the
@@ -731,6 +936,7 @@ void rt_navagent3d_warp(void *obj, void *position) {
     world[1] = rt_vec3_y(position);
     world[2] = rt_vec3_z(position);
     navagent_sample_point(agent, world, agent->position);
+    navagent_grid_refresh(agent); /* a warp can jump cells — realign the spatial grid immediately */
     navagent_push_position_to_bindings(agent);
     navagent_zero_motion(agent);
     navagent_clear_path(agent);

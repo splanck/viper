@@ -38,6 +38,8 @@ int8_t rt_decal3d_is_expired(void *decal);
 void rt_canvas3d_draw_decal(void *canvas, void *decal);
 /// @brief Internal: shift decal world position by `-delta` and rebuild cached geometry.
 void rt_decal3d_rebase_origin(void *decal, double dx, double dy, double dz);
+/// @brief Internal: copy the decal world position into @p out (zeroed on invalid handle).
+void rt_decal3d_get_position(void *decal, double out[3]);
 
 #ifdef __cplusplus
 }

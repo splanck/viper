@@ -71,6 +71,8 @@ void rt_particles3d_update(void *obj, double delta_time);
 void rt_particles3d_draw(void *obj, void *canvas3d, void *camera);
 /// @brief Internal: shift emitter and live particle world positions by `-delta`.
 void rt_particles3d_rebase_origin(void *obj, double dx, double dy, double dz);
+/// @brief Internal: copy the emitter world position into @p out (zeroed on invalid handle).
+void rt_particles3d_get_position(void *obj, double out[3]);
 /// @brief Number of currently-alive particles.
 int64_t rt_particles3d_get_count(void *obj);
 /// @brief True if the emitter is in continuous-emission mode (between Start and Stop).

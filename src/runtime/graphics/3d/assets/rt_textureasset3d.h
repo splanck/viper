@@ -19,6 +19,15 @@
 extern "C" {
 #endif
 
+/// @brief Decode one 16-byte BC3 (DXT5) block into 16 row-major RGBA texels (@p out_rgba is 64
+///   bytes). The software reference decode used to render BC3 textures on non-BC backends.
+void rt_textureasset3d_decode_bc3_block(const uint8_t *block16, uint8_t *out_rgba);
+
+/// @brief Decode one 16-byte BC7 block into 16 row-major RGBA texels (@p out_rgba is 64 bytes).
+///   Handles single-subset modes 4/5/6; returns 0 (leaving @p out_rgba untouched) for the
+///   partitioned modes 0-3/7. @return 1 if decoded, 0 if the mode is not software-supported.
+int rt_textureasset3d_decode_bc7_block(const uint8_t *block16, uint8_t *out_rgba);
+
 /// @brief Load a KTX2 texture from the filesystem.
 void *rt_textureasset3d_load_ktx2(rt_string path);
 /// @brief Load a KTX2 texture through the runtime asset manager.

@@ -46,6 +46,8 @@ typedef struct {
     float target[3];
     float pole[3];
     int8_t has_pole;
+    float ground_normal[3];
+    int8_t has_ground_normal;
     float weight;
     float *solved_locals;
     float *solved_globals;
@@ -274,6 +276,26 @@ static void ik3d_quat_slerp(const float *a, const float *b, float t, float *out)
     ik3d_quat_normalize(out);
 }
 
+static void ik3d_quat_conjugate(const float *q, float *out) {
+    out[0] = -q[0];
+    out[1] = -q[1];
+    out[2] = -q[2];
+    out[3] = q[3];
+}
+
+/// @brief Hamilton product out = a * b (apply b then a), for (x,y,z,w) quaternions.
+static void ik3d_quat_mul(const float *a, const float *b, float *out) {
+    float x = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+    float y = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+    float z = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+    float w = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    out[3] = w;
+    ik3d_quat_normalize(out);
+}
+
 static void ik3d_decompose_trs(const float *m, float *out_pos, float *out_rot, float *out_scl) {
     float sx = sqrtf(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
     float sy = sqrtf(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
@@ -455,6 +477,75 @@ void rt_ik_solver3d_set_pole(void *obj, void *pole) {
     solver->has_pole = 1;
 }
 
+void rt_ik_solver3d_set_ground_normal(void *obj, void *normal) {
+    rt_ik_solver3d *solver = ik_solver3d_checked(obj);
+    if (!solver || !rt_g3d_is_vec3(normal))
+        return;
+    solver->ground_normal[0] = ik3d_finite_float(rt_vec3_x(normal), 0.0f);
+    solver->ground_normal[1] = ik3d_finite_float(rt_vec3_y(normal), 1.0f);
+    solver->ground_normal[2] = ik3d_finite_float(rt_vec3_z(normal), 0.0f);
+    solver->has_ground_normal = 1;
+}
+
+/// @brief Orient the chain's end (foot) bone so its local +Y (sole-up) aligns with the supplied
+///   ground normal, preserving the foot's facing as much as possible. Run after the position solve.
+///   The desired world rotation is converted into the foot's parent-local space, so it is correct
+///   for a foot parented under an arbitrarily-rotated leg.
+static void ik3d_apply_foot_orientation(rt_ik_solver3d *solver,
+                                        float *locals,
+                                        float *globals,
+                                        int32_t bone_count) {
+    int32_t end;
+    int32_t parent;
+    float up[3], fwd_ref[3], right[3], fwd[3];
+    float desired[4], parent_rot[4], parent_conj[4], local_target[4];
+    float cur_pos[3], cur_rot[4], cur_scl[3], blended[4];
+    if (!solver || !locals || !globals || solver->chain_count < 2)
+        return;
+    end = solver->chain[solver->chain_count - 1];
+    if (end < 0 || end >= bone_count)
+        return;
+    up[0] = solver->ground_normal[0];
+    up[1] = solver->ground_normal[1];
+    up[2] = solver->ground_normal[2];
+    if (!ik3d_normalize3(up))
+        return;
+    /* Reference forward = the foot's current world +Z (column 2 of its global matrix). */
+    fwd_ref[0] = globals[end * 16 + 2];
+    fwd_ref[1] = globals[end * 16 + 6];
+    fwd_ref[2] = globals[end * 16 + 10];
+    ik3d_cross3(up, fwd_ref, right);
+    if (!ik3d_normalize3(right)) {
+        float alt[3] = {1.0f, 0.0f, 0.0f};
+        if (fabsf(up[0]) > 0.9f) {
+            alt[0] = 0.0f;
+            alt[2] = 1.0f;
+        }
+        ik3d_cross3(up, alt, right);
+        if (!ik3d_normalize3(right))
+            return;
+    }
+    ik3d_cross3(right, up, fwd);
+    if (!ik3d_normalize3(fwd))
+        return;
+    /* Columns are right=X, up=Y, fwd=Z. */
+    ik3d_quat_from_matrix_rows(
+        right[0], up[0], fwd[0], right[1], up[1], fwd[1], right[2], up[2], fwd[2], desired);
+    parent = solver->skeleton->bones[end].parent_index;
+    if (parent >= 0 && parent < bone_count) {
+        float ppos[3], pscl[3];
+        ik3d_decompose_trs(&globals[parent * 16], ppos, parent_rot, pscl);
+    } else {
+        ik3d_quat_identity(parent_rot);
+    }
+    ik3d_quat_conjugate(parent_rot, parent_conj);
+    ik3d_quat_mul(parent_conj, desired, local_target);
+    ik3d_decompose_trs(&locals[end * 16], cur_pos, cur_rot, cur_scl);
+    ik3d_quat_slerp(cur_rot, local_target, solver->weight, blended);
+    ik3d_build_trs(cur_pos, blended, cur_scl, &locals[end * 16]);
+    ik3d_build_globals(solver->skeleton, locals, globals, bone_count);
+}
+
 static int ik3d_apply_chain(rt_ik_solver3d *solver,
                             float *locals,
                             float *globals,
@@ -564,6 +655,8 @@ static int ik3d_apply_chain(rt_ik_solver3d *solver,
             blended[lane] = original[i][lane] + (positions[i][lane] - original[i][lane]) * solver->weight;
         ik3d_set_global_position(solver, locals, globals, bone_count, bone, blended);
     }
+    if (solver->has_ground_normal)
+        ik3d_apply_foot_orientation(solver, locals, globals, bone_count);
     return 1;
 }
 

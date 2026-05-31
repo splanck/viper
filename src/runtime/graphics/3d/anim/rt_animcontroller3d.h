@@ -71,6 +71,8 @@ void rt_anim_controller3d_set_state_speed(void *controller, rt_string state_name
 void rt_anim_controller3d_set_state_looping(void *controller, rt_string state_name, int8_t loop);
 /// @brief Configure deterministic update-rate LOD for distant / low-priority controllers.
 void rt_anim_controller3d_set_animation_lod(void *controller, double distance, double rate_hz);
+/// @brief Configure bone-count LOD: freeze bones at/after `max_bones` to bind-local (<=0 disables).
+void rt_anim_controller3d_set_bone_lod(void *controller, int64_t max_bones);
 /// @brief Use a BlendTree3D as the base pose source; pass NULL to clear it.
 int8_t rt_anim_controller3d_set_blend_tree(void *controller, void *blend_tree);
 /// @brief Apply an IKSolver3D after controller layers and before skinning; pass NULL to clear it.

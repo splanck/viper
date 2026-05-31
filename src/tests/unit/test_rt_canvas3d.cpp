@@ -1172,6 +1172,181 @@ static void test_textureasset3d_ktx2_material_bridge() {
     PASS();
 }
 
+static void test_textureasset3d_bc3_software_decode() {
+    /* Build one BC3 block: colour0 = red (565 0xF800), colour1 = blue (0x001F); alpha0=255,
+     * alpha1=0 (8-alpha mode). Texel 0 uses colour/alpha index 0 -> opaque red; texel 1 uses
+     * index 1 -> transparent blue. Verifies endpoint expansion + index selection on both channels. */
+    uint8_t block[16];
+    std::memset(block, 0, sizeof(block));
+    block[0] = 0xFF; /* alpha0 = 255 */
+    block[1] = 0x00; /* alpha1 = 0 */
+    block[2] = 0x08; /* alpha indices: texel0 -> 0, texel1 -> 1 */
+    block[8] = 0x00; /* colour0 low  (0xF800 = red) */
+    block[9] = 0xF8; /* colour0 high */
+    block[10] = 0x1F; /* colour1 low (0x001F = blue) */
+    block[11] = 0x00; /* colour1 high */
+    block[12] = 0x04; /* colour indices: texel0 -> 0, texel1 -> 1 */
+
+    uint8_t out[64];
+    std::memset(out, 0x55, sizeof(out));
+    rt_textureasset3d_decode_bc3_block(block, out);
+
+    /* Texel 0: opaque red. */
+    EXPECT_TRUE(out[0] == 255, "BC3 decode texel0 R = 255 (red endpoint expanded)");
+    EXPECT_TRUE(out[1] == 0, "BC3 decode texel0 G = 0");
+    EXPECT_TRUE(out[2] == 0, "BC3 decode texel0 B = 0");
+    EXPECT_TRUE(out[3] == 255, "BC3 decode texel0 A = 255 (alpha index 0)");
+    /* Texel 1: transparent blue. */
+    EXPECT_TRUE(out[4] == 0, "BC3 decode texel1 R = 0");
+    EXPECT_TRUE(out[5] == 0, "BC3 decode texel1 G = 0");
+    EXPECT_TRUE(out[6] == 255, "BC3 decode texel1 B = 255 (blue endpoint expanded)");
+    EXPECT_TRUE(out[7] == 0, "BC3 decode texel1 A = 0 (alpha index 1)");
+}
+
+/* LSB-first bit writer mirroring BC7's bitstream layout, for constructing known blocks. */
+struct Bc7BitWriter {
+    uint8_t *buf;
+    int pos;
+    void put(uint32_t v, int n) {
+        for (int i = 0; i < n; i++) {
+            if ((v >> i) & 1u)
+                buf[pos >> 3] |= (uint8_t)(1u << (pos & 7));
+            pos++;
+        }
+    }
+};
+
+static void test_textureasset3d_bc7_software_decode() {
+    uint8_t out[64];
+
+    /* --- Mode 6: single subset, RGBA 7+pbit, 4-bit indices. e0 = transparent black
+     * (7-bit 0, p=0 -> 0), e1 = opaque white (7-bit 0x7F, p=1 -> 255). Texel 0 index 0 -> e0,
+     * texel 1 index 15 -> e1, texel 2 index 8 -> interp at weight 34 -> ~135. */
+    uint8_t b6[16];
+    std::memset(b6, 0, sizeof(b6));
+    {
+        Bc7BitWriter w{b6, 0};
+        for (int i = 0; i < 6; i++)
+            w.put(0, 1);
+        w.put(1, 1); /* mode 6 */
+        for (int c = 0; c < 4; c++) {
+            w.put(0, 7);
+            w.put(0x7F, 7);
+        } /* R0R1 G0G1 B0B1 A0A1 */
+        w.put(0, 1);
+        w.put(1, 1); /* p0=0 p1=1 */
+        w.put(0, 3);  /* texel 0 (anchor, 3 bits) -> 0 */
+        w.put(15, 4); /* texel 1 -> 15 */
+        w.put(8, 4);  /* texel 2 -> 8 */
+        for (int t = 3; t < 16; t++)
+            w.put(0, 4);
+    }
+    std::memset(out, 0x55, sizeof(out));
+    EXPECT_TRUE(rt_textureasset3d_decode_bc7_block(b6, out) == 1, "BC7 mode6 decodes");
+    EXPECT_TRUE(out[0] == 0 && out[1] == 0 && out[2] == 0 && out[3] == 0,
+                "BC7 mode6 texel0 = transparent black (index 0 -> endpoint 0)");
+    EXPECT_TRUE(out[4] == 255 && out[5] == 255 && out[6] == 255 && out[7] == 255,
+                "BC7 mode6 texel1 = opaque white (index 15 -> endpoint 1)");
+    EXPECT_TRUE(out[8] == 135 && out[11] == 135,
+                "BC7 mode6 texel2 interpolated at weight 34 (= 135)");
+
+    /* --- Mode 5: single subset, RGB 7-bit + A 8-bit, rotation 0, separate 2-bit color/alpha
+     * indices. e0 = (0,0,0,0), e1 = (255,255,255,255). */
+    uint8_t b5[16];
+    std::memset(b5, 0, sizeof(b5));
+    {
+        Bc7BitWriter w{b5, 0};
+        for (int i = 0; i < 5; i++)
+            w.put(0, 1);
+        w.put(1, 1); /* mode 5 */
+        w.put(0, 2); /* rotation 0 */
+        for (int c = 0; c < 3; c++) {
+            w.put(0, 7);
+            w.put(0x7F, 7);
+        }
+        w.put(0, 8);
+        w.put(255, 8); /* A0 A1 */
+        w.put(0, 1);
+        w.put(3, 2);
+        for (int t = 2; t < 16; t++)
+            w.put(0, 2); /* color indices */
+        w.put(0, 1);
+        w.put(3, 2);
+        for (int t = 2; t < 16; t++)
+            w.put(0, 2); /* alpha indices */
+    }
+    std::memset(out, 0x55, sizeof(out));
+    EXPECT_TRUE(rt_textureasset3d_decode_bc7_block(b5, out) == 1, "BC7 mode5 decodes");
+    EXPECT_TRUE(out[0] == 0 && out[3] == 0, "BC7 mode5 texel0 = (0,0,0,0)");
+    EXPECT_TRUE(out[4] == 255 && out[7] == 255, "BC7 mode5 texel1 = (255,255,255,255)");
+
+    /* --- Mode 5 with rotation 1 (swap R<->A): decoded texel0 (0,0,0,A=255) -> (255,0,0,0). */
+    uint8_t b5r[16];
+    std::memset(b5r, 0, sizeof(b5r));
+    {
+        Bc7BitWriter w{b5r, 0};
+        for (int i = 0; i < 5; i++)
+            w.put(0, 1);
+        w.put(1, 1); /* mode 5 */
+        w.put(1, 2); /* rotation 1 -> swap R and A */
+        for (int c = 0; c < 3; c++) {
+            w.put(0, 7);
+            w.put(0, 7);
+        }                /* RGB endpoints all 0 */
+        w.put(255, 8);
+        w.put(255, 8);   /* A0 = A1 = 255 */
+        for (int s = 0; s < 2; s++) {
+            w.put(0, 1);
+            for (int t = 1; t < 16; t++)
+                w.put(0, 2); /* all indices 0 -> endpoint 0 */
+        }
+    }
+    std::memset(out, 0x55, sizeof(out));
+    EXPECT_TRUE(rt_textureasset3d_decode_bc7_block(b5r, out) == 1, "BC7 mode5 (rot) decodes");
+    EXPECT_TRUE(out[0] == 255 && out[1] == 0 && out[2] == 0 && out[3] == 0,
+                "BC7 mode5 rotation 1 swaps alpha into R (255,0,0,0)");
+
+    /* --- Mode 4: RGB 5-bit + A 6-bit, idxMode 0 (color=2-bit, alpha=3-bit). e0=(0,0,0,0),
+     * e1=(255,255,255,255). Texel0 -> e0, texel1 -> e1. */
+    uint8_t b4[16];
+    std::memset(b4, 0, sizeof(b4));
+    {
+        Bc7BitWriter w{b4, 0};
+        for (int i = 0; i < 4; i++)
+            w.put(0, 1);
+        w.put(1, 1); /* mode 4 */
+        w.put(0, 2); /* rotation 0 */
+        w.put(0, 1); /* idxMode 0 */
+        for (int c = 0; c < 3; c++) {
+            w.put(0, 5);
+            w.put(31, 5);
+        }
+        w.put(0, 6);
+        w.put(63, 6); /* A0 A1 */
+        w.put(0, 1);
+        w.put(3, 2);
+        for (int t = 2; t < 16; t++)
+            w.put(0, 2); /* 2-bit index set */
+        w.put(0, 2);
+        w.put(7, 3);
+        for (int t = 2; t < 16; t++)
+            w.put(0, 3); /* 3-bit index set */
+    }
+    std::memset(out, 0x55, sizeof(out));
+    EXPECT_TRUE(rt_textureasset3d_decode_bc7_block(b4, out) == 1, "BC7 mode4 decodes");
+    EXPECT_TRUE(out[0] == 0 && out[3] == 0, "BC7 mode4 texel0 = (0,0,0,0)");
+    EXPECT_TRUE(out[4] == 255 && out[7] == 255, "BC7 mode4 texel1 = (255,255,255,255)");
+
+    /* --- Partitioned mode 0 (byte0 bit0 set) is declined: returns 0, leaves out untouched. */
+    uint8_t b0[16];
+    std::memset(b0, 0, sizeof(b0));
+    b0[0] = 0x01; /* mode 0 */
+    std::memset(out, 0x55, sizeof(out));
+    EXPECT_TRUE(rt_textureasset3d_decode_bc7_block(b0, out) == 0,
+                "BC7 partitioned mode 0 declines software decode");
+    EXPECT_TRUE(out[0] == 0x55, "BC7 declined mode leaves output buffer untouched");
+}
+
 static void test_textureasset3d_mip_residency() {
     TEST("TextureAsset3D mip residency range telemetry");
     const char *path = "/tmp/viper_textureasset3d_mips_test.ktx2";
@@ -4577,6 +4752,8 @@ int main() {
     test_material_new_textured();
     test_material_texture_setters_reject_invalid_handles();
     test_textureasset3d_ktx2_material_bridge();
+    test_textureasset3d_bc3_software_decode();
+    test_textureasset3d_bc7_software_decode();
     test_textureasset3d_mip_residency();
     test_material_inspection_getters();
     test_material_texture_presence_getters();

@@ -65,7 +65,9 @@ int8_t rt_navmesh3d_remove_obstacle(void *navmesh, int64_t index);
 int8_t rt_navmesh3d_update_obstacle(void *navmesh, int64_t index, void *min, void *max);
 /// @brief Number of authored coarse AABB obstacles.
 int64_t rt_navmesh3d_get_obstacle_count(void *navmesh);
-/// @brief Rebuild one tile. Current baseline refilters the whole navmesh.
+/// @brief Re-carve a single tile of a tiled bake in place (O(tile): no adjacency/grid rebuild).
+///        Falls back to a whole-mesh refilter for non-tiled meshes. Tile (tx,tz) covers world XZ
+///        [meshMin + t*tile_size, meshMin + (t+1)*tile_size).
 int8_t rt_navmesh3d_rebuild_tile(void *navmesh, int64_t tile_x, int64_t tile_z);
 /// @brief Set the maximum walkable slope (degrees) used when baking.
 void rt_navmesh3d_set_max_slope(void *navmesh, double degrees);
@@ -76,6 +78,20 @@ void rt_navmesh3d_debug_draw(void *navmesh, void *canvas);
 /// @brief Compute a path from @p from to @p to and copy it into a freshly
 ///        malloc'd flat xyz array. @return point count (caller frees the array).
 int64_t rt_navmesh3d_copy_path_points(void *navmesh, void *from, void *to, double **out_points_xyz);
+
+/// @brief Test-only: verify the spatial query-grid point location matches a brute-force linear
+///        scan over a sample lattice spanning the navmesh bounds. @return 1 if all samples agree
+///        (or the navmesh has no grid), 0 on any mismatch / invalid handle.
+int8_t rt_navmesh3d_check_query_grid_parity(void *navmesh);
+
+/// @brief Test-only: append an obstacle WITHOUT re-flagging any tile, leaving the tiled navmesh in
+///        a deliberately stale state so a subsequent RebuildTile can be shown to affect exactly one
+///        tile. @return 1 on success, 0 on invalid handle / OOM.
+int8_t rt_navmesh3d_test_inject_obstacle(void *navmesh, void *min, void *max);
+/// @brief Test-only: map a world XZ position to its tile coordinates. @return 1 if tiled (outputs
+///        written), 0 otherwise.
+int8_t rt_navmesh3d_test_tile_of_point(void *navmesh, double px, double pz, int64_t *out_tx,
+                                       int64_t *out_tz);
 
 #ifdef __cplusplus
 }

@@ -30,6 +30,9 @@ void rt_ik_solver3d_set_target(void *solver, void *target);
 void rt_ik_solver3d_set_weight(void *solver, double weight);
 /// @brief Set a world-space pole target orienting a two-bone chain's mid joint.
 void rt_ik_solver3d_set_pole(void *solver, void *pole);
+/// @brief Set a ground normal; the chain's end (foot) bone is oriented so its sole-up axis aligns
+///        with it after the position solve. Non-Vec3 normals are ignored.
+void rt_ik_solver3d_set_ground_normal(void *solver, void *normal);
 /// @brief Solve the IK constraint against the skeleton bind pose.
 void rt_ik_solver3d_solve(void *solver);
 

@@ -30,6 +30,8 @@ extern double rt_vec3_z(void *v);
 extern void *rt_quat_new(double x, double y, double z, double w);
 extern void *rt_mat4_identity(void);
 extern void *rt_mat4_translate(double tx, double ty, double tz);
+extern void *rt_mat4_rotate_z(double angle);
+extern void *rt_mat4_mul(void *a, void *b);
 extern double rt_mat4_get(void *m, int64_t row, int64_t col);
 extern rt_string rt_const_cstr(const char *s);
 extern const char *rt_string_cstr(rt_string s);
@@ -427,6 +429,42 @@ static void test_controller_ik_solver_drives_end_effector() {
     EXPECT_NEAR(rt_mat4_get(foot_mat, 1, 3), 0.0, 0.01, "Clearing IK restores bind-pose foot y");
 }
 
+static void test_two_bone_ik_foot_aligns_to_ground_normal() {
+    /* The knee is given a 90-degree bind rotation so the foot's parent has a non-identity world
+     * rotation. That exercises the foot-orientation's local/world conversion: a version that
+     * forgot the parent inverse would only align correctly under an identity parent. */
+    const double half_pi = 1.5707963267948966;
+    void *skel = rt_skeleton3d_new();
+    int64_t root = rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    void *knee_bind = rt_mat4_mul(rt_mat4_translate(1.0, 0.0, 0.0), rt_mat4_rotate_z(half_pi));
+    int64_t knee = rt_skeleton3d_add_bone(skel, rt_const_cstr("knee"), root, knee_bind);
+    int64_t foot =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *controller = rt_anim_controller3d_new(skel);
+    void *solver = rt_ik_solver3d_two_bone(skel, root, knee, foot);
+    rt_ik_solver3d_set_target(solver, rt_vec3_new(1.5, 0.5, 0.0));
+    rt_ik_solver3d_set_weight(solver, 1.0);
+    /* A slope normal tilted away from world up. */
+    double nx = 0.5, ny = 1.0, nz = 0.0;
+    double nlen = std::sqrt(nx * nx + ny * ny + nz * nz);
+    nx /= nlen;
+    ny /= nlen;
+    nz /= nlen;
+    rt_ik_solver3d_set_ground_normal(solver, rt_vec3_new(nx, ny, nz));
+    rt_ik_solver3d_solve(solver);
+    EXPECT_TRUE(rt_anim_controller3d_set_ik_solver(controller, solver) == 1,
+                "AnimController3D accepts the foot-orientation IK solver");
+
+    /* The foot's world up axis (global matrix column 1) should align with the ground normal,
+     * regardless of the rotated knee parent. */
+    void *foot_mat = rt_anim_controller3d_get_bone_matrix(controller, foot);
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 0, 1), nx, 0.05, "Foot IK aligns foot up.x to ground normal");
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 1, 1), ny, 0.05, "Foot IK aligns foot up.y to ground normal");
+    EXPECT_NEAR(rt_mat4_get(foot_mat, 2, 1), nz, 0.05, "Foot IK aligns foot up.z to ground normal");
+}
+
 static void test_ik_solver_look_at_and_fabrik_factories() {
     void *look_skel = rt_skeleton3d_new();
     int64_t look_bone = rt_skeleton3d_add_bone(look_skel, rt_const_cstr("head"), -1, rt_mat4_identity());
@@ -560,6 +598,52 @@ static void test_controller_rejects_wrong_animation_handles() {
                 "Animation3D getters/setters reject non-Animation3D handles");
 }
 
+static void test_controller_bone_count_lod_freezes_distal_bones() {
+    /* 4-bone chain, identity binds: root(0) - b1(1) - b2(2) - foot(3). */
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t b1 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b1"), 0, rt_mat4_identity());
+    int64_t b2 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b2"), (int64_t)b1, rt_mat4_identity());
+    int64_t foot =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("foot"), (int64_t)b2, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    /* LOD off: animating only the foot moves it (local x -> 1 at the t=0.5 midpoint). */
+    void *c1 = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(
+        c1, rt_const_cstr("kick"), make_anim("kick", foot, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0));
+    rt_anim_controller3d_play(c1, rt_const_cstr("kick"));
+    rt_anim_controller3d_update(c1, 0.5);
+    EXPECT_NEAR(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(c1, foot), 0, 3),
+                1.0,
+                0.1,
+                "Bone LOD off: the distal foot animates");
+
+    /* LOD freezing bones >= foot: the foot stops adding local animation (returns to bind x=0). */
+    void *c2 = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(
+        c2, rt_const_cstr("kick"), make_anim("kick", foot, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0));
+    rt_anim_controller3d_play(c2, rt_const_cstr("kick"));
+    rt_anim_controller3d_set_bone_lod(c2, foot);
+    rt_anim_controller3d_update(c2, 0.5);
+    EXPECT_NEAR(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(c2, foot), 0, 3),
+                0.0,
+                0.05,
+                "Bone LOD freezes the distal foot to its bind-pose local");
+
+    /* Frozen bones still follow animated ancestors: animate b1, freeze from b2 on, foot follows. */
+    void *c3 = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(
+        c3, rt_const_cstr("shift"), make_anim("shift", b1, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0));
+    rt_anim_controller3d_play(c3, rt_const_cstr("shift"));
+    rt_anim_controller3d_set_bone_lod(c3, b2);
+    rt_anim_controller3d_update(c3, 0.5);
+    EXPECT_NEAR(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(c3, foot), 0, 3),
+                1.0,
+                0.1,
+                "Bone LOD: frozen bones still follow their animated ancestors");
+}
+
 int main() {
     test_controller_state_flow();
     test_controller_root_motion_disabled_and_loop_wrap();
@@ -569,8 +653,10 @@ int main() {
     test_controller_blend_tree_drives_base_pose();
     test_two_bone_ik_pole_vector();
     test_controller_ik_solver_drives_end_effector();
+    test_two_bone_ik_foot_aligns_to_ground_normal();
     test_ik_solver_look_at_and_fabrik_factories();
     test_controller_animation_lod_throttles_updates_deterministically();
+    test_controller_bone_count_lod_freezes_distal_bones();
     test_controller_events_cover_full_loops_and_reverse();
     test_controller_rejects_wrong_animation_handles();
 

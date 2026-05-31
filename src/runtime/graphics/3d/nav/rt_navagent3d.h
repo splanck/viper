@@ -74,6 +74,10 @@ void rt_navagent3d_bind_character(void *agent, void *controller);
 /// @brief Bind a SceneNode3D — Update will write the agent's position into the node's transform.
 void rt_navagent3d_bind_node(void *agent, void *node);
 
+/// @brief Test-only: verify the spatial-grid avoidance query matches a full registry scan for every
+///   registered agent. @return 1 if all agree (or none registered), 0 on any mismatch.
+int8_t rt_navagent3d_check_avoidance_grid_parity(void);
+
 #ifdef __cplusplus
 }
 #endif

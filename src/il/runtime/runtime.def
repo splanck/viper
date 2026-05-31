@@ -15500,6 +15500,7 @@ RT_FUNC(IKSolver3DFABRIK,        rt_ik_solver3d_fabrik,           "Viper.Graphic
 RT_FUNC(IKSolver3DSetTarget,     rt_ik_solver3d_set_target,       "Viper.Graphics3D.IKSolver3D.SetTarget",        "void(obj,obj)")
 RT_FUNC(IKSolver3DSetWeight,     rt_ik_solver3d_set_weight,       "Viper.Graphics3D.IKSolver3D.SetWeight",        "void(obj,f64)")
 RT_FUNC(IKSolver3DSetPole,       rt_ik_solver3d_set_pole,         "Viper.Graphics3D.IKSolver3D.SetPole",          "void(obj,obj)")
+RT_FUNC(IKSolver3DSetGroundNormal,rt_ik_solver3d_set_ground_normal,"Viper.Graphics3D.IKSolver3D.SetGroundNormal", "void(obj,obj)")
 RT_FUNC(IKSolver3DSolve,         rt_ik_solver3d_solve,            "Viper.Graphics3D.IKSolver3D.Solve",            "void(obj)")
 
 RT_CLASS_BEGIN("Viper.Graphics3D.IKSolver3D", IKSolver3D, "obj", IKSolver3DTwoBone)
@@ -15509,6 +15510,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.IKSolver3D", IKSolver3D, "obj", IKSolver3DTwoBo
     RT_METHOD("SetTarget", "void(obj)", IKSolver3DSetTarget)
     RT_METHOD("SetWeight", "void(f64)", IKSolver3DSetWeight)
     RT_METHOD("SetPole", "void(obj)", IKSolver3DSetPole)
+    RT_METHOD("SetGroundNormal", "void(obj)", IKSolver3DSetGroundNormal)
     RT_METHOD("Solve", "void()", IKSolver3DSolve)
 RT_CLASS_END()
 
@@ -15540,6 +15542,7 @@ RT_FUNC(AnimController3DIsStatePlaying, rt_anim_controller3d_is_state_playing, "
 RT_FUNC(AnimController3DSetStateSpeed,  rt_anim_controller3d_set_state_speed,  "Viper.Graphics3D.AnimController3D.SetStateSpeed",   "void(obj,str,f64)")
 RT_FUNC(AnimController3DSetStateLooping,rt_anim_controller3d_set_state_looping,"Viper.Graphics3D.AnimController3D.SetStateLooping", "void(obj,str,i1)")
 RT_FUNC(AnimController3DSetAnimationLOD,rt_anim_controller3d_set_animation_lod,"Viper.Graphics3D.AnimController3D.SetAnimationLOD", "void(obj,f64,f64)")
+RT_FUNC(AnimController3DSetBoneLOD,     rt_anim_controller3d_set_bone_lod,     "Viper.Graphics3D.AnimController3D.SetBoneLOD",      "void(obj,i64)")
 RT_FUNC(AnimController3DSetBlendTree,   rt_anim_controller3d_set_blend_tree,   "Viper.Graphics3D.AnimController3D.SetBlendTree",    "i1(obj,obj)")
 RT_FUNC(AnimController3DSetIKSolver,    rt_anim_controller3d_set_ik_solver,    "Viper.Graphics3D.AnimController3D.SetIKSolver",     "i1(obj,obj)")
 RT_FUNC(AnimController3DAddEvent,       rt_anim_controller3d_add_event,        "Viper.Graphics3D.AnimController3D.AddEvent",        "void(obj,str,f64,str)")
@@ -15573,6 +15576,7 @@ RT_CLASS_BEGIN("Viper.Graphics3D.AnimController3D", AnimController3D, "obj", Ani
     RT_METHOD("SetStateSpeed", "void(str,f64)", AnimController3DSetStateSpeed)
     RT_METHOD("SetStateLooping", "void(str,i1)", AnimController3DSetStateLooping)
     RT_METHOD("SetAnimationLOD", "void(f64,f64)", AnimController3DSetAnimationLOD)
+    RT_METHOD("SetBoneLOD", "void(i64)", AnimController3DSetBoneLOD)
     RT_METHOD("SetBlendTree", "i1(obj)", AnimController3DSetBlendTree)
     RT_METHOD("SetIKSolver", "i1(obj)", AnimController3DSetIKSolver)
     RT_METHOD("AddEvent", "void(str,f64,str)", AnimController3DAddEvent)

@@ -116,6 +116,7 @@ typedef struct {
     double animation_lod_distance;
     double animation_lod_rate_hz;
     double animation_lod_accum;
+    int32_t animation_lod_max_bones; /* >0 freezes bones at/after this index to bind-local (LOD) */
     int32_t root_motion_bone;
 
     char event_queue[RT_ANIM_CONTROLLER3D_EVENT_QUEUE_MAX][RT_ANIM_CONTROLLER3D_EVENT_NAME_MAX];
@@ -936,6 +937,25 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
                                            bone_count);
     }
 
+    /* Bone-count animation LOD: for distant characters, freeze bones at/after the LOD index to
+     * their bind-pose local transform. They still follow their (animated) ancestors through the
+     * hierarchy, but add no local animation of their own, so distal detail (fingers, toes) costs
+     * nothing to pose. Bones are stored parents-before-children, so re-accumulating only the frozen
+     * tail in order keeps each frozen bone hanging off its last-animated ancestor. */
+    if (controller->animation_lod_max_bones > 0 &&
+        controller->animation_lod_max_bones < bone_count) {
+        for (int32_t bone = controller->animation_lod_max_bones; bone < bone_count; bone++) {
+            const float *bind = controller->skeleton->bones[bone].bind_pose_local;
+            int32_t parent = controller->skeleton->bones[bone].parent_index;
+            if (parent >= 0)
+                controller_mat4f_mul(&controller->final_globals[parent * 16],
+                                     bind,
+                                     &controller->final_globals[bone * 16]);
+            else
+                memcpy(&controller->final_globals[bone * 16], bind, 16 * sizeof(float));
+        }
+    }
+
     for (int32_t bone = 0; bone < bone_count; bone++) {
         controller_mat4f_mul(&controller->final_globals[bone * 16],
                              controller->skeleton->bones[bone].inverse_bind,
@@ -1622,6 +1642,22 @@ void rt_anim_controller3d_set_animation_lod(void *obj, double distance, double r
     controller->animation_lod_distance = distance;
     controller->animation_lod_rate_hz = rate_hz;
     controller->animation_lod_accum = 0.0;
+}
+
+/// @brief Configure bone-count animation LOD: bones at/after @p max_bones are frozen to their
+/// bind-pose local transform (they still follow animated ancestors but add no local animation).
+/// @details A non-positive @p max_bones disables it. Callers enable this for distant characters so
+/// distal detail (fingers, toes — high bone indices in the parents-first ordering) costs nothing.
+void rt_anim_controller3d_set_bone_lod(void *obj, int64_t max_bones) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    if (!controller)
+        return;
+    if (max_bones <= 0)
+        controller->animation_lod_max_bones = 0;
+    else if (max_bones > INT32_MAX)
+        controller->animation_lod_max_bones = INT32_MAX;
+    else
+        controller->animation_lod_max_bones = (int32_t)max_bones;
 }
 
 /// @brief Use a BlendTree3D as the base pose source. Passing NULL clears it.

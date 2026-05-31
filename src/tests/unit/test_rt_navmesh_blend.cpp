@@ -408,8 +408,11 @@ static void test_navmesh_bake_scene_flattens_transformed_nodes() {
     void *to = rt_vec3_new(5.0, 0.0, 1.0);
 
     EXPECT_TRUE(nm != nullptr, "NavMesh Bake: scene with transformed mesh bakes");
-    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 2,
-                "NavMesh Bake: transformed plane contributes two walkable triangles");
+    /* The voxel baker emits a shared-corner grid mesh (a quad per walkable cell), so the triangle
+     * count reflects the cell_size grid resolution, not the 2 input plane triangles. A 6x6 plane at
+     * cell_size 0.3, eroded by the 0.4 agent radius, yields a ~17x17 walkable-cell grid. */
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) > 100,
+                "NavMesh Bake: voxelizes into a grid decoupled from input triangle density");
     EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, center) != 0,
                 "NavMesh Bake: world-space transformed center is walkable");
     EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, outside) == 0,
@@ -427,14 +430,112 @@ static void test_navmesh_bake_tiled_and_rebuild_tile_baseline() {
     void *center = rt_vec3_new(3.0, 0.0, -1.0);
 
     EXPECT_TRUE(nm != nullptr, "NavMesh BakeTiled: scene bakes through tiled API");
-    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 2,
-                "NavMesh BakeTiled: baseline preserves full-scene geometry");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) > 100,
+                "NavMesh BakeTiled: voxelizes the full scene into a navmesh grid");
     EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, center) != 0,
                 "NavMesh BakeTiled: transformed geometry is walkable");
     EXPECT_TRUE(rt_navmesh3d_rebuild_tile(nm, 0, 0) != 0,
-                "NavMesh RebuildTile: refilters whole-mesh baseline");
+                "NavMesh RebuildTile: tiled mesh re-carves a tile in place");
     EXPECT_TRUE(rt_navmesh3d_rebuild_tile(scene, 0, 0) == 0,
                 "NavMesh RebuildTile: rejects non-navmesh handles");
+}
+
+/* R-NAV-002: RebuildTile re-carves only its own tile, not the whole mesh. We inject an obstacle
+ * WITHOUT re-flagging (a deliberately stale tiled mesh), then show that rebuilding a far-away tile
+ * leaves the obstacle's cell walkable, while rebuilding the obstacle's own tile carves it. The two
+ * outcomes are indistinguishable for a whole-mesh refilter — only a genuinely tile-local rebuild
+ * can leave one tile stale while updating another. */
+static void test_navmesh_rebuild_tile_is_tile_local() {
+    void *scene = make_scene_bake_fixture();
+    void *nm = rt_navmesh3d_bake_tiled(scene, 2.0, 0.4, 1.8, 45.0, 0.3);
+    EXPECT_TRUE(nm != nullptr, "RebuildTile local: tiled bake succeeds");
+    int64_t base = rt_navmesh3d_get_triangle_count(nm);
+    EXPECT_TRUE(base > 100, "RebuildTile local: baked grid has many walkable triangles");
+
+    /* The transformed plane center is walkable (same point the bake-fixture test checks). */
+    void *p = rt_vec3_new(3.0, 0.0, -1.0);
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, p) != 0, "RebuildTile local: target cell starts walkable");
+
+    int64_t ptx = 0, ptz = 0;
+    EXPECT_TRUE(rt_navmesh3d_test_tile_of_point(nm, 3.0, -1.0, &ptx, &ptz) != 0,
+                "RebuildTile local: tiled mesh maps a point to a tile");
+
+    /* Inject an obstacle over the target cell with NO re-flag — the mesh is now stale. */
+    void *omin = rt_vec3_new(2.6, -0.5, -1.4);
+    void *omax = rt_vec3_new(3.4, 0.5, -0.6);
+    EXPECT_TRUE(rt_navmesh3d_test_inject_obstacle(nm, omin, omax) != 0,
+                "RebuildTile local: obstacle injected");
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(nm) == 1,
+                "RebuildTile local: injected obstacle is tracked");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, p) != 0,
+                "RebuildTile local: cell still walkable before any tile is rebuilt (stale)");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == base,
+                "RebuildTile local: injecting without rebuild leaves the walkable count unchanged");
+
+    /* Rebuild a far-away tile: must NOT carve the obstacle's cell. */
+    EXPECT_TRUE(rt_navmesh3d_rebuild_tile(nm, ptx + 5, ptz + 5) != 0,
+                "RebuildTile local: rebuilding a far tile succeeds");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, p) != 0,
+                "RebuildTile local: far-tile rebuild leaves the obstacle's tile untouched");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == base,
+                "RebuildTile local: far-tile rebuild does not carve the obstacle");
+
+    /* Rebuild the obstacle's own tile: now the cell is carved and the walkable count drops. */
+    EXPECT_TRUE(rt_navmesh3d_rebuild_tile(nm, ptx, ptz) != 0,
+                "RebuildTile local: rebuilding the obstacle's tile succeeds");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, p) == 0,
+                "RebuildTile local: rebuilding the obstacle's own tile carves the cell");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) < base,
+                "RebuildTile local: tile rebuild reduces the walkable triangle count");
+}
+
+/* A narrow plank: 1.0 wide (x) x 10.0 long (z), centered at origin. */
+static void *make_narrow_plank_scene() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_plane(1.0, 10.0);
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene3d_add(scene, node);
+    return scene;
+}
+
+static void test_navmesh_bake_agent_radius_erodes_narrow_corridor() {
+    /* The voxel baker erodes the walkable set by the agent radius. On a 1.0-wide plank an agent of
+     * radius 0.2 (clearance 0.4 < 1.0) keeps an inset walkable strip, while an agent of radius 0.6
+     * (clearance 1.2 > 1.0) cannot fit, so the whole plank erodes away and the bake yields no
+     * navmesh. The pre-voxel passthrough baker ignored agent_radius, so the wide-agent NULL is a
+     * genuine fail-before/pass-after for R-NAV-003. */
+    void *narrow = make_narrow_plank_scene();
+    void *nm_small = rt_navmesh3d_bake(narrow, 0.2, 1.8, 45.0, 0.1);
+    EXPECT_TRUE(nm_small != nullptr, "NavMesh erosion: small agent keeps the plank walkable");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm_small) > 0,
+                "NavMesh erosion: small-agent navmesh has walkable triangles");
+    void *center = rt_vec3_new(0.0, 0.0, 0.0);
+    void *near_edge = rt_vec3_new(0.45, 0.0, 0.0);
+    void *path_from = rt_vec3_new(0.0, 0.0, -4.0);
+    void *path_to = rt_vec3_new(0.0, 0.0, 4.0);
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm_small, center) != 0,
+                "NavMesh erosion: plank center stays walkable for the small agent");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm_small, near_edge) == 0,
+                "NavMesh erosion: the agent-radius margin near the plank edge is eroded");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm_small, path_from, path_to) != nullptr,
+                "NavMesh erosion: small agent paths along the eroded corridor");
+
+    void *wide = make_narrow_plank_scene();
+    void *nm_wide = rt_navmesh3d_bake(wide, 0.6, 1.8, 45.0, 0.1);
+    EXPECT_TRUE(nm_wide == nullptr,
+                "NavMesh erosion: an agent wider than the corridor erodes it away entirely");
+}
+
+static void test_navmesh_query_grid_matches_linear_scan() {
+    /* A voxel bake builds the spatial query grid that accelerates point location. Verify the
+     * grid-backed find-triangle agrees with a brute-force linear scan at every sampled point, so
+     * the acceleration is exact (no popping / missed snaps for agents querying the navmesh). */
+    void *scene = make_scene_bake_fixture();
+    void *nm = rt_navmesh3d_bake(scene, 0.4, 1.8, 45.0, 0.3);
+    EXPECT_TRUE(nm != nullptr, "NavMesh query grid: scene bakes with a spatial index");
+    EXPECT_TRUE(rt_navmesh3d_check_query_grid_parity(nm) != 0,
+                "NavMesh query grid: grid point location matches the linear scan everywhere");
 }
 
 /*==========================================================================
@@ -637,6 +738,9 @@ int main() {
     test_navmesh_add_obstacle_carves_walkable_triangles();
     test_navmesh_bake_scene_flattens_transformed_nodes();
     test_navmesh_bake_tiled_and_rebuild_tile_baseline();
+    test_navmesh_rebuild_tile_is_tile_local();
+    test_navmesh_bake_agent_radius_erodes_narrow_corridor();
+    test_navmesh_query_grid_matches_linear_scan();
 
     /* AnimBlend3D */
     test_blend_create();

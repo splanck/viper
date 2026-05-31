@@ -219,6 +219,17 @@ void rt_decal3d_rebase_origin(void *obj, double dx, double dy, double dz) {
     decal3d_release_ref(&d->mesh);
 }
 
+/// @brief Copy the decal world position into @p out. Used by floating-origin rebase tests to
+///   verify the decal shifted; zeroed if the handle is invalid or @p out is NULL.
+void rt_decal3d_get_position(void *obj, double out[3]) {
+    rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
+    if (!out)
+        return;
+    out[0] = d ? d->position[0] : 0.0;
+    out[1] = d ? d->position[1] : 0.0;
+    out[2] = d ? d->position[2] : 0.0;
+}
+
 /// @brief Build the decal's quad mesh + material on first draw (lazy init).
 /// @details Classic tangent-frame construction:
 ///          1. Pick an arbitrary "up" that isn't parallel to the surface

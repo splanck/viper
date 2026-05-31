@@ -59,7 +59,7 @@ typedef struct {
 ///          produces `["a", "b"]`, mirroring how unified-diff tools
 ///          treat trailing newlines.
 static line_array split_lines(const char *text, size_t text_len) {
-    line_array la = {NULL, 0};
+    line_array la = {NULL, NULL, 0};
     if (!text || text_len == 0)
         return la;
 

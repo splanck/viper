@@ -616,6 +616,58 @@ static void test_animation_retarget_scales_by_proportion() {
     EXPECT_NEAR(arm_mat->m[3], 2.0, 0.05, "Retarget scales translation by bone-length ratio");
 }
 
+static void test_animation_retarget_maps_humanoid_roles() {
+    /* Source: mixamo-style leg chain. */
+    void *src = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(src, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t s_thigh =
+        rt_skeleton3d_add_bone(src, rt_const_cstr("LeftUpLeg"), 0, rt_mat4_translate(0.0, -1.0, 0.0));
+    int64_t s_calf = rt_skeleton3d_add_bone(
+        src, rt_const_cstr("LeftLeg"), (int64_t)s_thigh, rt_mat4_translate(0.0, -1.0, 0.0));
+    rt_skeleton3d_add_bone(
+        src, rt_const_cstr("LeftFoot"), (int64_t)s_calf, rt_mat4_translate(0.0, -1.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(src);
+
+    /* Target: Unreal-style names, with a spine bone shifting indices. The source thigh is bone
+     * index 1; the index fallback would mis-map it onto the target's bone 1 (the spine). Only
+     * humanoid role mapping lands it on thigh_l (bone 2). */
+    void *dst = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(dst, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t d_spine =
+        rt_skeleton3d_add_bone(dst, rt_const_cstr("spine_01"), 0, rt_mat4_translate(0.0, 1.0, 0.0));
+    int64_t d_thigh =
+        rt_skeleton3d_add_bone(dst, rt_const_cstr("thigh_l"), 0, rt_mat4_translate(0.0, -1.0, 0.0));
+    int64_t d_calf = rt_skeleton3d_add_bone(
+        dst, rt_const_cstr("calf_l"), (int64_t)d_thigh, rt_mat4_translate(0.0, -1.0, 0.0));
+    rt_skeleton3d_add_bone(
+        dst, rt_const_cstr("foot_l"), (int64_t)d_calf, rt_mat4_translate(0.0, -1.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(dst);
+
+    /* Animate the source thigh to slide +1.0 in Z by t=2 (so t=1 samples +0.5). */
+    void *anim = rt_animation3d_new(rt_const_cstr("kick"), 2.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, s_thigh, 0.0, rt_vec3_new(0.0, -1.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, s_thigh, 2.0, rt_vec3_new(0.0, -1.0, 1.0), rot, scl);
+
+    void *retargeted = rt_animation3d_retarget(anim, src, dst);
+    EXPECT_TRUE(retargeted != nullptr, "Humanoid retarget returns an animation");
+
+    void *player = rt_anim_player3d_new(dst);
+    rt_anim_player3d_play(player, retargeted);
+    rt_anim_player3d_update(player, 1.0); /* sample at t=1 -> thigh Z = 0.5 */
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *thigh = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, d_thigh);
+    mat4_view *spine = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, d_spine);
+    /* Role mapping lands LeftUpLeg's channel on thigh_l (Z animates to 0.5), not on the
+     * index-fallback bone (the spine, which stays at its Z=0 bind). */
+    EXPECT_NEAR(thigh->m[11], 0.5, 0.05, "Humanoid retarget maps LeftUpLeg -> thigh_l by role");
+    EXPECT_NEAR(
+        spine->m[11], 0.0, 0.05, "Humanoid retarget does not mis-map onto the index-fallback bone");
+}
+
 static void test_animation_retarget_matches_bone_names() {
     void *src = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(src, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -698,6 +750,7 @@ int main() {
     test_anim_blend_dt_zero_and_looping_defaults();
     test_animation_retarget_matches_bone_names();
     test_animation_retarget_scales_by_proportion();
+    test_animation_retarget_maps_humanoid_roles();
     test_crossfade_preserves_structure();
 
     printf("Skeleton3D tests: %d/%d passed\n", tests_passed, tests_run);

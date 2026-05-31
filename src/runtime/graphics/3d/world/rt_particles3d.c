@@ -603,6 +603,17 @@ int64_t rt_particles3d_get_count(void *o) {
     return p ? p->count : 0;
 }
 
+/// @brief Copy the emitter world position into @p out. Used by floating-origin rebase tests to
+///   verify the emitter shifted; zeroed if the handle is invalid or @p out is NULL.
+void rt_particles3d_get_position(void *o, double out[3]) {
+    rt_particles3d *p = particles3d_checked(o);
+    if (!out)
+        return;
+    out[0] = p ? p->position[0] : 0.0;
+    out[1] = p ? p->position[1] : 0.0;
+    out[2] = p ? p->position[2] : 0.0;
+}
+
 /// @brief Returns 1 if continuous emission is enabled (`_start` called, no subsequent `_stop`).
 int8_t rt_particles3d_get_emitting(void *o) {
     rt_particles3d *p = particles3d_checked(o);

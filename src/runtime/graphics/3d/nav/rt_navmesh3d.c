@@ -70,6 +70,7 @@ typedef struct {
     int32_t neighbors[3]; /* adjacent tri per edge, -1 = boundary */
     float centroid[3];
     float normal[3];
+    int8_t blocked; /* 1 = carved out by a dynamic obstacle; kept in the array but skipped by every query */
 } nav_triangle_t;
 
 typedef struct {
@@ -102,9 +103,29 @@ typedef struct {
     double agent_radius;
     double agent_height;
     double max_slope; /* degrees */
+    int8_t skip_portal_width_gate; /* voxel bake enforces clearance via erosion, not portal width */
+    /* >0 => tiled bake: RebuildTile / tiled AddObstacle re-flag one tile's triangles in place
+     * (O(tile), no adjacency/grid rebuild). 0 => non-tiled: obstacle edits whole-mesh refilter.
+     * Tile (tx,tz) covers world XZ [qgrid_min + t*tile_size, qgrid_min + (t+1)*tile_size). */
+    double tile_size;
+    /* Uniform XZ grid index over `triangles` for fast point location (find_tri), rebuilt whenever
+     * apply_slope_filter rebuilds the triangle set. Empty (qgrid_nx == 0) => linear-scan fallback.
+     * CSR layout: qgrid_starts[c]..qgrid_starts[c+1] indexes qgrid_tris for cell c. */
+    double qgrid_min_x;
+    double qgrid_min_z;
+    double qgrid_inv_cell;
+    int32_t qgrid_nx;
+    int32_t qgrid_nz;
+    int32_t *qgrid_starts;
+    int32_t *qgrid_tris;
 } rt_navmesh3d;
 
 static void navmesh3d_refresh_offmesh_links(rt_navmesh3d *nm);
+static void *navmesh3d_voxel_bake(rt_mesh3d *src,
+                                  double agent_radius,
+                                  double agent_height,
+                                  double max_slope,
+                                  double cell_size);
 
 /// @brief GC finalizer for NavMesh3D. Frees the baked vertex and triangle arrays
 /// (heap-allocated during `Build`) and nulls the slots so a stale handle would crash
@@ -117,11 +138,15 @@ static void navmesh3d_finalizer(void *obj) {
     free(nm->triangles);
     free(nm->offmesh_links);
     free(nm->obstacles);
+    free(nm->qgrid_starts);
+    free(nm->qgrid_tris);
     nm->vertices = NULL;
     nm->source_triangles = NULL;
     nm->triangles = NULL;
     nm->offmesh_links = NULL;
     nm->obstacles = NULL;
+    nm->qgrid_starts = NULL;
+    nm->qgrid_tris = NULL;
 }
 
 /// @brief Release a partially-constructed navmesh on allocation failure, freeing if refcount hits
@@ -155,6 +180,11 @@ static double navmesh3d_sanitize_slope(double degrees) {
 static int navmesh3d_portal_allows_agent(const rt_navmesh3d *nm, int32_t va, int32_t vb) {
     if (!nm || !nm->vertices || va < 0 || vb < 0 || va >= nm->vertex_count || vb >= nm->vertex_count)
         return 0;
+    /* Voxel-baked navmeshes already eroded the walkable set by the agent radius, so every surviving
+     * grid edge is agent-safe; gating those (cell_size-wide) portals by 2*radius would fragment the
+     * mesh. The width gate only applies to the Build() passthrough path over authored triangles. */
+    if (nm->skip_portal_width_gate)
+        return 1;
     if (!isfinite(nm->agent_radius) || nm->agent_radius <= 0.0)
         return 1;
     const float *a = nm->vertices[va].position;
@@ -276,6 +306,148 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
 /// @details Compares each triangle's surface-normal Y component against `cos(max_slope)`;
 ///          triangles with normals pitched too steeply are dropped. Rebuilds adjacency
 ///          afterwards via `navmesh3d_build_adjacency`.
+
+/// @brief Release the spatial query-grid index.
+static void navmesh3d_free_query_grid(rt_navmesh3d *nm) {
+    if (!nm)
+        return;
+    free(nm->qgrid_starts);
+    free(nm->qgrid_tris);
+    nm->qgrid_starts = NULL;
+    nm->qgrid_tris = NULL;
+    nm->qgrid_nx = 0;
+    nm->qgrid_nz = 0;
+}
+
+/// @brief Compute the inclusive grid-cell range covered by triangle @p i's XZ bounding box.
+static void navmesh3d_tri_cell_range(const rt_navmesh3d *nm,
+                                     int32_t i,
+                                     double min_x,
+                                     double min_z,
+                                     double inv,
+                                     int32_t gnx,
+                                     int32_t gnz,
+                                     int *cx0,
+                                     int *cx1,
+                                     int *cz0,
+                                     int *cz1) {
+    const nav_triangle_t *t = &nm->triangles[i];
+    const float *a = nm->vertices[t->v[0]].position;
+    const float *b = nm->vertices[t->v[1]].position;
+    const float *c = nm->vertices[t->v[2]].position;
+    int x0 = (int)(((double)fminf(a[0], fminf(b[0], c[0])) - min_x) * inv);
+    int x1 = (int)(((double)fmaxf(a[0], fmaxf(b[0], c[0])) - min_x) * inv);
+    int z0 = (int)(((double)fminf(a[2], fminf(b[2], c[2])) - min_z) * inv);
+    int z1 = (int)(((double)fmaxf(a[2], fmaxf(b[2], c[2])) - min_z) * inv);
+    if (x0 < 0)
+        x0 = 0;
+    if (z0 < 0)
+        z0 = 0;
+    if (x1 >= gnx)
+        x1 = gnx - 1;
+    if (z1 >= gnz)
+        z1 = gnz - 1;
+    if (x1 < x0)
+        x1 = x0;
+    if (z1 < z0)
+        z1 = z0;
+    *cx0 = x0;
+    *cx1 = x1;
+    *cz0 = z0;
+    *cz1 = z1;
+}
+
+/// @brief Build a uniform XZ grid over `triangles` so point location scans only the triangles whose
+///   XZ bounding box overlaps the query cell. A point inside a triangle is inside that triangle's
+///   AABB, so the triangle is inserted into the point's cell — scanning one cell is exact. On any
+///   allocation failure the grid is left empty and find_tri falls back to a (correct) linear scan.
+static void navmesh3d_build_query_grid(rt_navmesh3d *nm) {
+    double min_x = DBL_MAX, min_z = DBL_MAX, max_x = -DBL_MAX, max_z = -DBL_MAX;
+    double span_x, span_z, cell, inv;
+    int32_t dim, gnx, gnz;
+    size_t ncells, total;
+    int32_t *starts, *tris, *cursor;
+    navmesh3d_free_query_grid(nm);
+    if (!nm || nm->triangle_count <= 0 || !nm->triangles || !nm->vertices)
+        return;
+    for (int32_t i = 0; i < nm->triangle_count; i++) {
+        const nav_triangle_t *t = &nm->triangles[i];
+        for (int k = 0; k < 3; k++) {
+            const float *p = nm->vertices[t->v[k]].position;
+            if (p[0] < min_x)
+                min_x = p[0];
+            if (p[0] > max_x)
+                max_x = p[0];
+            if (p[2] < min_z)
+                min_z = p[2];
+            if (p[2] > max_z)
+                max_z = p[2];
+        }
+    }
+    if (!(max_x >= min_x) || !(max_z >= min_z))
+        return;
+    span_x = max_x - min_x;
+    span_z = max_z - min_z;
+    dim = (int32_t)sqrt((double)nm->triangle_count); /* ~1-2 triangles per cell */
+    if (dim < 1)
+        dim = 1;
+    if (dim > 256)
+        dim = 256;
+    cell = fmax(span_x, span_z) / (double)dim;
+    if (!(cell > 1e-9))
+        cell = 1.0;
+    inv = 1.0 / cell;
+    gnx = (int32_t)(span_x / cell) + 1;
+    gnz = (int32_t)(span_z / cell) + 1;
+    if (gnx < 1)
+        gnx = 1;
+    if (gnz < 1)
+        gnz = 1;
+    if (gnx > 512)
+        gnx = 512;
+    if (gnz > 512)
+        gnz = 512;
+    ncells = (size_t)gnx * (size_t)gnz;
+    starts = (int32_t *)calloc(ncells + 1, sizeof(int32_t));
+    if (!starts)
+        return;
+    for (int32_t i = 0; i < nm->triangle_count; i++) {
+        int cx0, cx1, cz0, cz1;
+        navmesh3d_tri_cell_range(nm, i, min_x, min_z, inv, gnx, gnz, &cx0, &cx1, &cz0, &cz1);
+        for (int cz = cz0; cz <= cz1; cz++)
+            for (int cx = cx0; cx <= cx1; cx++)
+                starts[(size_t)cz * (size_t)gnx + (size_t)cx + 1]++;
+    }
+    for (size_t c = 0; c < ncells; c++)
+        starts[c + 1] += starts[c];
+    total = (size_t)starts[ncells];
+    tris = (int32_t *)malloc((total ? total : 1) * sizeof(int32_t));
+    cursor = (int32_t *)malloc(ncells * sizeof(int32_t));
+    if (!tris || !cursor) {
+        free(starts);
+        free(tris);
+        free(cursor);
+        return;
+    }
+    for (size_t c = 0; c < ncells; c++)
+        cursor[c] = starts[c];
+    for (int32_t i = 0; i < nm->triangle_count; i++) {
+        int cx0, cx1, cz0, cz1;
+        navmesh3d_tri_cell_range(nm, i, min_x, min_z, inv, gnx, gnz, &cx0, &cx1, &cz0, &cz1);
+        for (int cz = cz0; cz <= cz1; cz++)
+            for (int cx = cx0; cx <= cx1; cx++)
+                tris[cursor[(size_t)cz * (size_t)gnx + (size_t)cx]++] = i;
+    }
+    free(cursor);
+    nm->qgrid_min_x = min_x;
+    nm->qgrid_min_z = min_z;
+    nm->qgrid_inv_cell = inv;
+    nm->qgrid_nx = gnx;
+    nm->qgrid_nz = gnz;
+    nm->qgrid_starts = starts;
+    nm->qgrid_tris = tris;
+}
+
 static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
     if (!nm || !nm->source_triangles || !nm->triangles)
         return 0;
@@ -285,9 +457,10 @@ static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
         nav_triangle_t tri = nm->source_triangles[i];
         if (tri.normal[1] < (float)max_slope_cos)
             continue;
-        if (navmesh3d_triangle_blocked_by_obstacle(nm, &tri))
-            continue;
         tri.neighbors[0] = tri.neighbors[1] = tri.neighbors[2] = -1;
+        /* Keep obstacle-carved triangles in the set but flag them blocked, so a later per-tile
+         * rebuild only has to re-evaluate this flag instead of recompacting the whole array. */
+        tri.blocked = navmesh3d_triangle_blocked_by_obstacle(nm, &tri) ? 1 : 0;
         nm->triangles[nm->triangle_count++] = tri;
     }
     if (!navmesh3d_build_adjacency(nm)) {
@@ -295,7 +468,52 @@ static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
         return 0;
     }
     navmesh3d_refresh_offmesh_links(nm);
+    navmesh3d_build_query_grid(nm);
     return 1;
+}
+
+/// @brief Map a world-space XZ position to its tile coordinates under the tiled-bake convention.
+/// @details Tile (tx,tz) spans [origin + t*tile_size, origin + (t+1)*tile_size) where the origin is
+///          the query-grid minimum (the mesh's min XZ). Floor keeps negative coordinates on the
+///          correct side of the origin. Returns 0 (outputs untouched) when the mesh is not tiled or
+///          has no spatial grid yet.
+static int navmesh3d_tile_of_point(const rt_navmesh3d *nm, double px, double pz, int64_t *out_tx,
+                                   int64_t *out_tz) {
+    if (!nm || nm->tile_size <= 0.0 || nm->qgrid_nx <= 0)
+        return 0;
+    double inv = 1.0 / nm->tile_size;
+    if (out_tx)
+        *out_tx = (int64_t)floor((px - nm->qgrid_min_x) * inv);
+    if (out_tz)
+        *out_tz = (int64_t)floor((pz - nm->qgrid_min_z) * inv);
+    return 1;
+}
+
+/// @brief Re-evaluate obstacle blocking for every triangle whose centroid lies in tile (tx,tz).
+/// @details The O(tile) heart of tile-local rebuild: flips each in-tile triangle's `blocked` flag
+///          against the current obstacle list without touching adjacency, the query grid, or any
+///          other tile. Triangles outside the tile keep whatever state a prior edit left them in,
+///          which is exactly what lets one tile be re-carved while the rest of the mesh is stale.
+///          Returns the number of triangles re-flagged.
+static int32_t navmesh3d_reflag_tile(rt_navmesh3d *nm, int64_t tile_x, int64_t tile_z) {
+    if (!nm || !nm->triangles || nm->tile_size <= 0.0 || nm->qgrid_nx <= 0)
+        return 0;
+    double tsz = nm->tile_size;
+    double x0 = nm->qgrid_min_x + (double)tile_x * tsz;
+    double x1 = x0 + tsz;
+    double z0 = nm->qgrid_min_z + (double)tile_z * tsz;
+    double z1 = z0 + tsz;
+    int32_t touched = 0;
+    for (int32_t i = 0; i < nm->triangle_count; i++) {
+        nav_triangle_t *t = &nm->triangles[i];
+        double cx = (double)t->centroid[0];
+        double cz = (double)t->centroid[2];
+        if (cx < x0 || cx >= x1 || cz < z0 || cz >= z1)
+            continue;
+        t->blocked = navmesh3d_triangle_blocked_by_obstacle(nm, t) ? 1 : 0;
+        touched++;
+    }
+    return touched;
 }
 
 /// @brief Transform a point by a row-major Mat4.
@@ -552,42 +770,45 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
 }
 
 /// @brief Bake a navmesh from all Mesh3D-bearing nodes in a Scene3D.
-/// @details This baseline flattens scene node meshes through their world transforms into a
-/// temporary Mesh3D, then routes through the existing triangle Build path. @p cell_size is
-/// accepted for API compatibility with the planned voxel/tiled baker but is not used yet.
+/// @details Flattens scene node meshes through their world transforms into a temporary world-space
+/// Mesh3D, then runs the from-scratch voxel baker (`navmesh3d_voxel_bake`): the walkable surface is
+/// rasterized into a `cell_size` heightfield grid, eroded by the agent radius, and re-emitted as a
+/// shared-corner grid mesh. Unlike `Build`, the result is decoupled from the input triangle density
+/// and honors the agent radius, which is what `Scene3D`/`World3D` auto-bake expects.
 void *rt_navmesh3d_bake(void *scene,
                         double agent_radius,
                         double agent_height,
                         double max_slope,
                         double cell_size) {
-    (void)cell_size;
     void *source_mesh = navmesh3d_build_scene_source_mesh(scene);
     rt_navmesh3d *nm;
     if (!source_mesh)
         return NULL;
-    nm = (rt_navmesh3d *)rt_navmesh3d_build(source_mesh, agent_radius, agent_height);
+    nm = (rt_navmesh3d *)navmesh3d_voxel_bake(
+        (rt_mesh3d *)source_mesh, agent_radius, agent_height, max_slope, cell_size);
     navmesh3d_release_local(source_mesh);
-    if (!nm)
-        return NULL;
-    nm->max_slope = navmesh3d_sanitize_slope(max_slope);
-    if (!navmesh3d_apply_slope_filter(nm)) {
-        navmesh3d_free_partial(nm);
-        return NULL;
-    }
     return nm;
 }
 
-/// @brief Bake through the tiled API shape.
-/// @details Tile ownership is not materialized yet; this returns a full-scene navmesh so callers
-/// can use the final API while `RebuildTile` remains a whole-mesh refilter baseline.
+/// @brief Bake a full-scene navmesh and tag it tiled so obstacle edits can rebuild per tile.
+/// @details The triangle set is still baked over the whole scene (one voxel pass), but recording
+/// `tile_size` switches `RebuildTile` and `AddObstacle` onto the O(tile) in-place re-carve path
+/// instead of a whole-mesh refilter. Tile (tx,tz) covers world XZ
+/// [meshMin + t*tile_size, meshMin + (t+1)*tile_size). A non-positive tile_size leaves the mesh
+/// untiled (whole-mesh refilter), matching `Bake`.
 void *rt_navmesh3d_bake_tiled(void *scene,
                               double tile_size,
                               double agent_radius,
                               double agent_height,
                               double max_slope,
                               double cell_size) {
-    (void)tile_size;
-    return rt_navmesh3d_bake(scene, agent_radius, agent_height, max_slope, cell_size);
+    void *obj = rt_navmesh3d_bake(scene, agent_radius, agent_height, max_slope, cell_size);
+    if (obj && tile_size > 0.0 && isfinite(tile_size)) {
+        rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+        if (nm)
+            nm->tile_size = tile_size;
+    }
+    return obj;
 }
 
 /// @brief Point-in-triangle test on XZ plane (2D barycentric).
@@ -621,6 +842,334 @@ static float triangle_y_at_xz(
     float u = (dpx * d2z - d2x * dpz) * inv;
     float v = (d1x * dpz - dpx * d1z) * inv;
     return v0[1] + u * (v1[1] - v0[1]) + v * (v2[1] - v0[1]);
+}
+
+/// @brief Get-or-create the shared grid-corner vertex at corner `(ccx, ccz)` in the navmesh vertex
+///   array, placing it at the average surface height of the up-to-four walkable cells touching the
+///   corner. Sharing one vertex per corner is what makes adjacent walkable cells share edge
+///   vertices, so `navmesh3d_build_adjacency` connects them. Returns the vertex index.
+static int32_t navmesh3d_voxel_corner_vertex(rt_navmesh3d *nm,
+                                             int32_t *corner_vid,
+                                             const float *cell_h,
+                                             const uint8_t *cell_walk,
+                                             int32_t nx,
+                                             int32_t nz,
+                                             double min_x,
+                                             double min_z,
+                                             double cell_size,
+                                             int32_t ccx,
+                                             int32_t ccz) {
+    int32_t cnx = nx + 1;
+    size_t cidx = (size_t)ccz * (size_t)cnx + (size_t)ccx;
+    if (corner_vid[cidx] >= 0)
+        return corner_vid[cidx];
+    double sum = 0.0;
+    int n = 0;
+    for (int dz = -1; dz <= 0; dz++) {
+        for (int dx = -1; dx <= 0; dx++) {
+            int32_t sx = ccx + dx;
+            int32_t sz = ccz + dz;
+            if (sx < 0 || sz < 0 || sx >= nx || sz >= nz)
+                continue;
+            size_t s = (size_t)sz * (size_t)nx + (size_t)sx;
+            if (!cell_walk[s])
+                continue;
+            sum += (double)cell_h[s];
+            n++;
+        }
+    }
+    int32_t vid = nm->vertex_count++;
+    nm->vertices[vid].position[0] = (float)(min_x + (double)ccx * cell_size);
+    nm->vertices[vid].position[1] = (n > 0) ? (float)(sum / (double)n) : 0.0f;
+    nm->vertices[vid].position[2] = (float)(min_z + (double)ccz * cell_size);
+    corner_vid[cidx] = vid;
+    return vid;
+}
+
+/// @brief Append one walkable-surface triangle (indices into the navmesh vertex array) to the
+///   navmesh source-triangle set, computing an up-facing face normal and centroid. Winding does
+///   not matter to the downstream point-in-triangle / A* queries; the normal is forced to +Y so the
+///   slope filter retains the surface.
+static void navmesh3d_voxel_emit_tri(rt_navmesh3d *nm, int32_t a, int32_t b, int32_t c) {
+    const float *p0 = nm->vertices[a].position;
+    const float *p1 = nm->vertices[b].position;
+    const float *p2 = nm->vertices[c].position;
+    float e1x = p1[0] - p0[0], e1y = p1[1] - p0[1], e1z = p1[2] - p0[2];
+    float e2x = p2[0] - p0[0], e2y = p2[1] - p0[1], e2z = p2[2] - p0[2];
+    float nx_ = e1y * e2z - e1z * e2y;
+    float ny_ = e1z * e2x - e1x * e2z;
+    float nz_ = e1x * e2y - e1y * e2x;
+    float nlen = sqrtf(nx_ * nx_ + ny_ * ny_ + nz_ * nz_);
+    if (nlen < 1e-8f) {
+        nx_ = 0.0f;
+        ny_ = 1.0f;
+        nz_ = 0.0f;
+        nlen = 1.0f;
+    }
+    nx_ /= nlen;
+    ny_ /= nlen;
+    nz_ /= nlen;
+    if (ny_ < 0.0f) {
+        nx_ = -nx_;
+        ny_ = -ny_;
+        nz_ = -nz_;
+    }
+    nav_triangle_t *tri = &nm->source_triangles[nm->source_triangle_count++];
+    tri->v[0] = a;
+    tri->v[1] = b;
+    tri->v[2] = c;
+    tri->normal[0] = nx_;
+    tri->normal[1] = ny_;
+    tri->normal[2] = nz_;
+    tri->centroid[0] = (p0[0] + p1[0] + p2[0]) / 3.0f;
+    tri->centroid[1] = (p0[1] + p1[1] + p2[1]) / 3.0f;
+    tri->centroid[2] = (p0[2] + p1[2] + p2[2]) / 3.0f;
+    tri->neighbors[0] = tri->neighbors[1] = tri->neighbors[2] = -1;
+}
+
+/// @brief From-scratch voxel navmesh baker (Recast-style, software, zero dependencies).
+/// @details Replaces the slope-filter passthrough used by `Build()` for scene auto-bake. Steps:
+///   (1) compute the XZ bounds of the world-space source geometry; (2) lay an XZ grid of
+///   `cell_size`, coarsening the cell size if the grid would exceed a bounded budget; (3) rasterize
+///   every slope-walkable source triangle into the grid, keeping the highest walkable surface
+///   height per cell; (4) erode the walkable set by the agent radius (cells within `radius` of a
+///   non-walkable cell or the grid edge are dropped, so corridors narrower than the agent are
+///   removed); (5) emit a shared-corner grid mesh — one vertex per touched grid corner at the
+///   averaged surface height, two triangles per surviving cell — into `source_triangles`; (6) run
+///   the existing slope filter, which copies into `triangles`, builds edge adjacency, and refreshes
+///   off-mesh links. The result's triangle count tracks the grid resolution, not the input mesh
+///   density, and corridors honor the agent radius.
+/// @return a NavMesh3D handle, or NULL on degenerate input / no walkable surface / allocation
+///   failure.
+static void *navmesh3d_voxel_bake(rt_mesh3d *src,
+                                  double agent_radius,
+                                  double agent_height,
+                                  double max_slope,
+                                  double cell_size) {
+    if (!src || src->vertex_count == 0 || src->index_count < 3)
+        return NULL;
+
+    if (!isfinite(cell_size) || cell_size <= 0.0)
+        cell_size = 0.5;
+    double radius = (isfinite(agent_radius) && agent_radius > 0.0) ? agent_radius : 0.4;
+    double slope = navmesh3d_sanitize_slope(max_slope);
+    double walkable_cos = cos(slope * M_PI / 180.0);
+
+    /* 1. XZ bounds of the world-space source geometry. */
+    double min_x = DBL_MAX, min_z = DBL_MAX, max_x = -DBL_MAX, max_z = -DBL_MAX;
+    for (uint32_t i = 0; i < src->vertex_count; i++) {
+        double x = (double)src->vertices[i].pos[0];
+        double z = (double)src->vertices[i].pos[2];
+        if (x < min_x)
+            min_x = x;
+        if (x > max_x)
+            max_x = x;
+        if (z < min_z)
+            min_z = z;
+        if (z > max_z)
+            max_z = z;
+    }
+    if (!(max_x >= min_x) || !(max_z >= min_z))
+        return NULL;
+
+    /* 2. Grid dimensions; coarsen cell_size until the grid fits a bounded budget. A navmesh is
+     *    coarse relative to render geometry — an oversized grid makes both the adjacency build and
+     *    per-frame nav queries pathologically slow — so a multi-km world collapses into a coarse
+     *    single navmesh here. Fine-grained large-world nav is the tiled baker's job (R-NAV-002). */
+    const int64_t MAX_DIM = 128;
+    const int64_t MAX_CELLS = 16384;
+    double span_x = max_x - min_x;
+    double span_z = max_z - min_z;
+    for (int guard = 0; guard < 64; guard++) {
+        int64_t tnx = (int64_t)(span_x / cell_size) + 1;
+        int64_t tnz = (int64_t)(span_z / cell_size) + 1;
+        if (tnx <= MAX_DIM && tnz <= MAX_DIM && tnx * tnz <= MAX_CELLS)
+            break;
+        cell_size *= 2.0;
+    }
+    int32_t nx = (int32_t)(span_x / cell_size) + 1;
+    int32_t nz = (int32_t)(span_z / cell_size) + 1;
+    if (nx < 1)
+        nx = 1;
+    if (nz < 1)
+        nz = 1;
+
+    size_t cell_count = (size_t)nx * (size_t)nz;
+    float *cell_h = (float *)malloc(cell_count * sizeof(float));
+    uint8_t *cell_walk = (uint8_t *)calloc(cell_count, 1);
+    if (!cell_h || !cell_walk) {
+        free(cell_h);
+        free(cell_walk);
+        return NULL;
+    }
+
+    /* 3. Rasterize slope-walkable surfaces into the grid, keeping the highest surface per cell. */
+    for (uint32_t t = 0; t + 2 < src->index_count; t += 3) {
+        uint32_t i0 = src->indices[t], i1 = src->indices[t + 1], i2 = src->indices[t + 2];
+        if (i0 >= src->vertex_count || i1 >= src->vertex_count || i2 >= src->vertex_count)
+            continue;
+        const float *p0 = src->vertices[i0].pos;
+        const float *p1 = src->vertices[i1].pos;
+        const float *p2 = src->vertices[i2].pos;
+        float e1x = p1[0] - p0[0], e1y = p1[1] - p0[1], e1z = p1[2] - p0[2];
+        float e2x = p2[0] - p0[0], e2y = p2[1] - p0[1], e2z = p2[2] - p0[2];
+        float fnx = e1y * e2z - e1z * e2y;
+        float fny = e1z * e2x - e1x * e2z;
+        float fnz = e1x * e2y - e1y * e2x;
+        float flen = sqrtf(fnx * fnx + fny * fny + fnz * fnz);
+        if (flen < 1e-8f)
+            continue;
+        if (fabsf(fny / flen) < (float)walkable_cos)
+            continue; /* face too steep to walk */
+        float tminx = fminf(p0[0], fminf(p1[0], p2[0]));
+        float tmaxx = fmaxf(p0[0], fmaxf(p1[0], p2[0]));
+        float tminz = fminf(p0[2], fminf(p1[2], p2[2]));
+        float tmaxz = fmaxf(p0[2], fmaxf(p1[2], p2[2]));
+        int cx0 = (int)((tminx - min_x) / cell_size);
+        int cx1 = (int)((tmaxx - min_x) / cell_size);
+        int cz0 = (int)((tminz - min_z) / cell_size);
+        int cz1 = (int)((tmaxz - min_z) / cell_size);
+        if (cx0 < 0)
+            cx0 = 0;
+        if (cz0 < 0)
+            cz0 = 0;
+        if (cx1 >= nx)
+            cx1 = nx - 1;
+        if (cz1 >= nz)
+            cz1 = nz - 1;
+        for (int cz = cz0; cz <= cz1; cz++) {
+            for (int cx = cx0; cx <= cx1; cx++) {
+                float px = (float)(min_x + ((double)cx + 0.5) * cell_size);
+                float pz = (float)(min_z + ((double)cz + 0.5) * cell_size);
+                if (!point_in_tri_xz(px, pz, p0, p1, p2))
+                    continue;
+                float y = triangle_y_at_xz(px, pz, p0, p1, p2);
+                size_t idx = (size_t)cz * (size_t)nx + (size_t)cx;
+                if (!cell_walk[idx] || y > cell_h[idx]) {
+                    cell_h[idx] = y;
+                    cell_walk[idx] = 1;
+                }
+            }
+        }
+    }
+
+    /* 4. Erode the walkable set by the agent radius; the grid edge counts as a boundary so the
+     *    navmesh is inset by the radius and corridors narrower than 2*radius drop out. */
+    int erode_r = (int)ceil(radius / cell_size);
+    if (erode_r > 0) {
+        uint8_t *eroded = (uint8_t *)malloc(cell_count);
+        if (!eroded) {
+            free(cell_h);
+            free(cell_walk);
+            return NULL;
+        }
+        memcpy(eroded, cell_walk, cell_count);
+        for (int32_t cz = 0; cz < nz; cz++) {
+            for (int32_t cx = 0; cx < nx; cx++) {
+                size_t idx = (size_t)cz * (size_t)nx + (size_t)cx;
+                if (!cell_walk[idx])
+                    continue;
+                int blocked = 0;
+                for (int dz = -erode_r; dz <= erode_r && !blocked; dz++) {
+                    for (int dx = -erode_r; dx <= erode_r; dx++) {
+                        int sx = cx + dx, sz = cz + dz;
+                        if (sx < 0 || sz < 0 || sx >= nx || sz >= nz) {
+                            blocked = 1;
+                            break;
+                        }
+                        if (!cell_walk[(size_t)sz * (size_t)nx + (size_t)sx]) {
+                            blocked = 1;
+                            break;
+                        }
+                    }
+                }
+                if (blocked)
+                    eroded[idx] = 0;
+            }
+        }
+        free(cell_walk);
+        cell_walk = eroded;
+    }
+
+    int64_t walk_cells = 0;
+    for (size_t i = 0; i < cell_count; i++)
+        if (cell_walk[i])
+            walk_cells++;
+    if (walk_cells == 0) {
+        free(cell_h);
+        free(cell_walk);
+        return NULL;
+    }
+
+    /* 5. Emit a shared-corner grid mesh into source_triangles. */
+    int32_t cnx = nx + 1, cnz = nz + 1;
+    size_t corner_count = (size_t)cnx * (size_t)cnz;
+    int32_t *corner_vid = (int32_t *)malloc(corner_count * sizeof(int32_t));
+    if (!corner_vid) {
+        free(cell_h);
+        free(cell_walk);
+        return NULL;
+    }
+    for (size_t i = 0; i < corner_count; i++)
+        corner_vid[i] = -1;
+
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_obj_new_i64(RT_G3D_NAVMESH3D_CLASS_ID, (int64_t)sizeof(rt_navmesh3d));
+    if (!nm) {
+        free(cell_h);
+        free(cell_walk);
+        free(corner_vid);
+        return NULL;
+    }
+    memset(nm, 0, sizeof(*nm));
+    nm->agent_radius = radius;
+    nm->agent_height = (isfinite(agent_height) && agent_height > 0.0) ? agent_height : 1.8;
+    nm->max_slope = slope;
+    nm->skip_portal_width_gate = 1; /* clearance comes from the radius erosion in step 4 */
+    rt_obj_set_finalizer(nm, navmesh3d_finalizer);
+
+    int64_t tri_cap = walk_cells * 2;
+    nm->vertices = (nav_vertex_t *)malloc(corner_count * sizeof(nav_vertex_t));
+    nm->source_triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
+    nm->triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
+    if (!nm->vertices || !nm->source_triangles || !nm->triangles) {
+        free(cell_h);
+        free(cell_walk);
+        free(corner_vid);
+        navmesh3d_free_partial(nm);
+        return NULL;
+    }
+    nm->vertex_count = 0;
+    nm->source_triangle_count = 0;
+    nm->triangle_count = 0;
+
+    for (int32_t cz = 0; cz < nz; cz++) {
+        for (int32_t cx = 0; cx < nx; cx++) {
+            if (!cell_walk[(size_t)cz * (size_t)nx + (size_t)cx])
+                continue;
+            int32_t a = navmesh3d_voxel_corner_vertex(
+                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx, cz);
+            int32_t b = navmesh3d_voxel_corner_vertex(
+                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx + 1, cz);
+            int32_t c = navmesh3d_voxel_corner_vertex(
+                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx + 1, cz + 1);
+            int32_t d = navmesh3d_voxel_corner_vertex(
+                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx, cz + 1);
+            navmesh3d_voxel_emit_tri(nm, a, c, b);
+            navmesh3d_voxel_emit_tri(nm, a, d, c);
+        }
+    }
+
+    free(cell_h);
+    free(cell_walk);
+    free(corner_vid);
+
+    /* 6. Filter (keeps all up-facing surfaces), build edge adjacency, refresh off-mesh links. */
+    if (!navmesh3d_apply_slope_filter(nm)) {
+        navmesh3d_free_partial(nm);
+        return NULL;
+    }
+    return nm;
 }
 
 /// @brief Vertical snap tolerance for point-on-mesh tests: half the agent height,
@@ -697,32 +1246,106 @@ static void closest_point_on_tri_xz(float px,
 }
 
 /// @brief Find triangle containing point (projected onto XZ), with optional vertical tolerance.
+/// @brief Test one candidate triangle for containment of (px,pz); update the best (min |dy|) match.
+static void navmesh3d_find_tri_test(const rt_navmesh3d *nm,
+                                    int32_t i,
+                                    float px,
+                                    float py,
+                                    float pz,
+                                    float max_dy,
+                                    float *best_dy,
+                                    int32_t *best) {
+    const nav_triangle_t *t = &nm->triangles[i];
+    if (t->blocked)
+        return; /* carved out by an obstacle — not a valid point-location target */
+    const float *v0 = nm->vertices[t->v[0]].position;
+    const float *v1 = nm->vertices[t->v[1]].position;
+    const float *v2 = nm->vertices[t->v[2]].position;
+    if (point_in_tri_xz(px, pz, v0, v1, v2)) {
+        float surface_y = triangle_y_at_xz(px, pz, v0, v1, v2);
+        float dy = fabsf(py - surface_y);
+        if (max_dy >= 0.0f && dy > max_dy)
+            return;
+        if (dy < *best_dy) {
+            *best_dy = dy;
+            *best = i;
+        }
+    }
+}
+
 static int32_t find_tri_with_max_dy(
     const rt_navmesh3d *nm, float px, float py, float pz, float max_dy) {
     float best_dy = FLT_MAX;
     int32_t best = -1;
-    for (int32_t i = 0; i < nm->triangle_count; i++) {
-        const nav_triangle_t *t = &nm->triangles[i];
-        const float *v0 = nm->vertices[t->v[0]].position;
-        const float *v1 = nm->vertices[t->v[1]].position;
-        const float *v2 = nm->vertices[t->v[2]].position;
-        if (point_in_tri_xz(px, pz, v0, v1, v2)) {
-            float surface_y = triangle_y_at_xz(px, pz, v0, v1, v2);
-            float dy = fabsf(py - surface_y);
-            if (max_dy >= 0.0f && dy > max_dy)
-                continue;
-            if (dy < best_dy) {
-                best_dy = dy;
-                best = i;
-            }
-        }
+    /* Spatial-grid fast path: a point inside a triangle lies inside that triangle's XZ AABB, so the
+     * triangle is registered in the point's cell — scanning that one cell is exact and matches the
+     * linear scan. Points outside the grid bounds cannot lie on any triangle. */
+    if (nm->qgrid_nx > 0 && nm->qgrid_starts && nm->qgrid_tris) {
+        int cx = (int)(((double)px - nm->qgrid_min_x) * nm->qgrid_inv_cell);
+        int cz = (int)(((double)pz - nm->qgrid_min_z) * nm->qgrid_inv_cell);
+        if (cx < 0 || cz < 0 || cx >= nm->qgrid_nx || cz >= nm->qgrid_nz)
+            return -1;
+        size_t cell = (size_t)cz * (size_t)nm->qgrid_nx + (size_t)cx;
+        for (int32_t k = nm->qgrid_starts[cell]; k < nm->qgrid_starts[cell + 1]; k++)
+            navmesh3d_find_tri_test(nm, nm->qgrid_tris[k], px, py, pz, max_dy, &best_dy, &best);
+        return best;
     }
+    for (int32_t i = 0; i < nm->triangle_count; i++)
+        navmesh3d_find_tri_test(nm, i, px, py, pz, max_dy, &best_dy, &best);
     return best;
 }
 
 /// @brief Find triangle containing point (projected onto XZ), ignoring vertical separation.
 static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz) {
     return find_tri_with_max_dy(nm, px, py, pz, -1.0f);
+}
+
+int8_t rt_navmesh3d_check_query_grid_parity(void *obj) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    float min_x, min_z, max_x, max_z, mid_y;
+    const int N = 40;
+    if (!nm)
+        return 0;
+    if (nm->triangle_count <= 0 || nm->qgrid_nx <= 0)
+        return 1; /* no grid: nothing to diverge from the linear scan */
+    min_x = min_z = FLT_MAX;
+    max_x = max_z = -FLT_MAX;
+    {
+        float min_y = FLT_MAX, max_y = -FLT_MAX;
+        for (int32_t i = 0; i < nm->vertex_count; i++) {
+            const float *p = nm->vertices[i].position;
+            if (p[0] < min_x)
+                min_x = p[0];
+            if (p[0] > max_x)
+                max_x = p[0];
+            if (p[1] < min_y)
+                min_y = p[1];
+            if (p[1] > max_y)
+                max_y = p[1];
+            if (p[2] < min_z)
+                min_z = p[2];
+            if (p[2] > max_z)
+                max_z = p[2];
+        }
+        mid_y = 0.5f * (min_y + max_y);
+    }
+    /* Sample a lattice spanning the bounds (slightly padded so out-of-bounds points are covered). */
+    for (int iz = 0; iz <= N; iz++) {
+        for (int ix = 0; ix <= N; ix++) {
+            float fx = (float)ix / (float)N;
+            float fz = (float)iz / (float)N;
+            float px = min_x + (max_x - min_x) * (fx * 1.1f - 0.05f);
+            float pz = min_z + (max_z - min_z) * (fz * 1.1f - 0.05f);
+            float best_dy = FLT_MAX;
+            int32_t grid_hit = find_tri_with_max_dy(nm, px, mid_y, pz, -1.0f);
+            int32_t lin_hit = -1;
+            for (int32_t i = 0; i < nm->triangle_count; i++)
+                navmesh3d_find_tri_test(nm, i, px, mid_y, pz, -1.0f, &best_dy, &lin_hit);
+            if (grid_hit != lin_hit)
+                return 0;
+        }
+    }
+    return 1;
 }
 
 /// @brief Re-resolve authored off-mesh link endpoints against the current walkable triangle set.
@@ -919,7 +1542,7 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
 
         for (int e = 0; e < 3; e++) {
             int32_t next = nm->triangles[cur].neighbors[e];
-            if (next < 0 || closed[next])
+            if (next < 0 || closed[next] || nm->triangles[next].blocked)
                 continue;
 
             float new_g = g_cost[cur] + centroid_dist(nm, cur, next);
@@ -937,7 +1560,7 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
                 next = link->to_tri;
             else if (link->bidirectional && link->to_tri == cur)
                 next = link->from_tri;
-            if (next < 0 || next >= tc || closed[next])
+            if (next < 0 || next >= tc || closed[next] || nm->triangles[next].blocked)
                 continue;
 
             float new_g = g_cost[cur] + centroid_dist(nm, cur, next);
@@ -1152,6 +1775,8 @@ void *rt_navmesh3d_sample_position(void *obj, void *point) {
     float best_z = pz;
     for (int32_t i = 0; i < nm->triangle_count; i++) {
         nav_triangle_t *t = &nm->triangles[i];
+        if (t->blocked)
+            continue; /* don't snap onto a carved-out triangle */
         const float *v0 = nm->vertices[t->v[0]].position;
         const float *v1 = nm->vertices[t->v[1]].position;
         const float *v2 = nm->vertices[t->v[2]].position;
@@ -1196,7 +1821,15 @@ int8_t rt_navmesh3d_is_walkable(void *obj, void *point) {
 /// @brief Number of walkable triangles in the baked navmesh.
 int64_t rt_navmesh3d_get_triangle_count(void *obj) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
-    return nm ? nm->triangle_count : 0;
+    if (!nm || !nm->triangles)
+        return 0;
+    /* Public count is the walkable (non-carved) set; blocked triangles linger in the array only
+     * so per-tile rebuilds can flip them back without recompacting. */
+    int64_t walkable = 0;
+    for (int32_t i = 0; i < nm->triangle_count; i++)
+        if (!nm->triangles[i].blocked)
+            walkable++;
+    return walkable;
 }
 
 /// @brief Add an authored off-mesh traversal link between two walkable points.
@@ -1313,6 +1946,17 @@ int8_t rt_navmesh3d_add_obstacle(void *obj, void *min_v, void *max_v) {
     nav_obstacle_t *obstacle = &nm->obstacles[nm->obstacle_count++];
     memcpy(obstacle->min, omin, sizeof(omin));
     memcpy(obstacle->max, omax, sizeof(omax));
+    /* Tiled bake: re-carve only the tiles the obstacle AABB overlaps. The triangle set, adjacency,
+     * and query grid are untouched — only the in-tile `blocked` flags flip. O(overlapped tiles). */
+    if (nm->tile_size > 0.0 && nm->qgrid_nx > 0) {
+        int64_t tx0 = 0, tz0 = 0, tx1 = 0, tz1 = 0;
+        navmesh3d_tile_of_point(nm, (double)omin[0], (double)omin[2], &tx0, &tz0);
+        navmesh3d_tile_of_point(nm, (double)omax[0], (double)omax[2], &tx1, &tz1);
+        for (int64_t tz = tz0; tz <= tz1; tz++)
+            for (int64_t tx = tx0; tx <= tx1; tx++)
+                navmesh3d_reflag_tile(nm, tx, tz);
+        return 1;
+    }
     if (!navmesh3d_apply_slope_filter(nm)) {
         nm->obstacle_count--;
         (void)navmesh3d_apply_slope_filter(nm);
@@ -1381,12 +2025,58 @@ int64_t rt_navmesh3d_get_offmesh_link_count(void *obj) {
 /// preserved source triangles and rebuilds adjacency/off-mesh endpoint resolution for the whole
 /// navmesh. The tile coordinates are accepted for API stability.
 int8_t rt_navmesh3d_rebuild_tile(void *obj, int64_t tile_x, int64_t tile_z) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm || !nm->triangles || nm->triangle_count <= 0)
+        return 0;
+    /* Tiled bake: re-carve just this tile in place (O(tile)) — no adjacency or grid rebuild. */
+    if (nm->tile_size > 0.0 && nm->qgrid_nx > 0) {
+        navmesh3d_reflag_tile(nm, tile_x, tile_z);
+        return 1;
+    }
+    /* Non-tiled mesh (Build / untiled bake): preserve the whole-mesh refilter baseline. */
+    if (!nm->source_triangles || nm->source_triangle_count <= 0)
+        return 0;
     (void)tile_x;
     (void)tile_z;
-    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
-    if (!nm || !nm->source_triangles || !nm->triangles || nm->source_triangle_count <= 0)
-        return 0;
     return navmesh3d_apply_slope_filter(nm) ? 1 : 0;
+}
+
+/// @brief Test-only: append an obstacle WITHOUT re-flagging any triangle.
+/// @details Used by unit tests to create a "stale" tiled navmesh — the obstacle exists but no tile
+/// has been re-carved yet — so a subsequent `RebuildTile` can be observed to affect exactly one
+/// tile. Not part of the scripting surface (classified internal in RuntimeSurfacePolicy.inc).
+int8_t rt_navmesh3d_test_inject_obstacle(void *obj, void *min_v, void *max_v) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!navmesh3d_can_edit_obstacles(nm))
+        return 0;
+    float omin[3];
+    float omax[3];
+    if (!navmesh3d_read_obstacle_bounds(min_v, max_v, omin, omax))
+        return 0;
+    if (nm->obstacle_count >= nm->obstacle_capacity) {
+        int32_t new_cap = nm->obstacle_capacity > 0 ? nm->obstacle_capacity * 2 : 4;
+        if (nm->obstacle_capacity > INT32_MAX / 2 ||
+            (size_t)new_cap > SIZE_MAX / sizeof(nav_obstacle_t))
+            return 0;
+        nav_obstacle_t *obstacles =
+            (nav_obstacle_t *)realloc(nm->obstacles, (size_t)new_cap * sizeof(nav_obstacle_t));
+        if (!obstacles)
+            return 0;
+        nm->obstacles = obstacles;
+        nm->obstacle_capacity = new_cap;
+    }
+    nav_obstacle_t *obstacle = &nm->obstacles[nm->obstacle_count++];
+    memcpy(obstacle->min, omin, sizeof(omin));
+    memcpy(obstacle->max, omax, sizeof(omax));
+    return 1;
+}
+
+/// @brief Test-only: map a world XZ position to its tile coords (see navmesh3d_tile_of_point).
+/// Returns 0 if the mesh is not tiled. Not part of the scripting surface.
+int8_t rt_navmesh3d_test_tile_of_point(void *obj, double px, double pz, int64_t *out_tx,
+                                       int64_t *out_tz) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    return (int8_t)(navmesh3d_tile_of_point(nm, px, pz, out_tx, out_tz) ? 1 : 0);
 }
 
 /// @brief Set the maximum slope angle (in degrees) considered walkable.
@@ -1411,6 +2101,8 @@ void rt_navmesh3d_debug_draw(void *obj, void *canvas) {
 
     for (int32_t i = 0; i < nm->triangle_count; i++) {
         nav_triangle_t *tri = &nm->triangles[i];
+        if (tri->blocked)
+            continue; /* carved out — not part of the walkable surface */
         float *v0 = nm->vertices[tri->v[0]].position;
         float *v1 = nm->vertices[tri->v[1]].position;
         float *v2 = nm->vertices[tri->v[2]].position;
