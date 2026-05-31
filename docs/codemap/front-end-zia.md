@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-25
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: Zia Frontend
@@ -14,7 +14,7 @@ Last updated: 2026-04-25
 
 ## Overview
 
-- **Total source files**: 74 (.hpp/.cpp)
+- **Total source files**: 81 (.hpp/.cpp)
 
 ## Core Infrastructure
 
@@ -125,6 +125,12 @@ Recent correctness notes:
 | `Lowerer_Stmt_EH.cpp`        | Exception handling statement lowering                            |
 | `Lowerer_Stmt.cpp`            | Statement lowering                                               |
 | `LowererSymbolTable.hpp`     | Symbol table for the lowerer                                     |
+| `LowererBinaryOperatorLowerer.hpp` | Helper: lowering non-assignment binary operators           |
+| `LowererBinaryOperatorLowerer.cpp` | Binary-operator lowering helper impl                       |
+| `LowererCallArgumentLowerer.hpp`   | Helper: convert call/new arguments into IL argument vectors |
+| `LowererCallArgumentLowerer.cpp`   | Call-argument lowering helper impl                         |
+| `LowererCollectionLowerer.hpp`     | Helper: list/set/map literal, tuple, and index lowering    |
+| `LowererCollectionLowerer.cpp`     | Collection lowering helper impl                            |
 
 Recent correctness notes:
 
@@ -152,6 +158,7 @@ Recent correctness notes:
 | `ZiaLocationScope.cpp`| Location scope implementation          |
 | `Sema_Completion.cpp` | Semantic analysis for completions      |
 | `rt_zia_completion.cpp`| Runtime completion bridge (C API)     |
+| `rt_zia_highlight.cpp`| Runtime syntax-highlighter bridge (C API for the GUI editor) |
 
 ## Debugging and Inspection
 

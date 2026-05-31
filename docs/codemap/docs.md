@@ -1,12 +1,13 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: Documentation
 
-User-facing documentation (`docs/`).
+User-facing documentation (`docs/`). This is a curated overview of key entry points;
+see [README.md](../README.md) for the complete documentation index.
 
 ## Getting Started
 

@@ -494,6 +494,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_navmesh3d_copy_path_points")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_navmesh3d_check_query_grid_parity")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_navmesh3d_test_inject_obstacle")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_navmesh3d_test_tile_of_point")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_navmesh3d_test_set_tile_source")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_navagent3d_check_avoidance_grid_parity")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_physics2d_solve_joints")
 

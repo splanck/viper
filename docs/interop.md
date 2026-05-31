@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers, users
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # Cross-Language Interop Guide
@@ -247,13 +247,12 @@ entry main.zia
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Core.Convert;
 
 foreign func Factorial(n: Integer) -> Integer
 
 func start() {
     let result = Factorial(10)
-    Say(ToString(result))
+    Say(toString(result))
 }
 ```
 

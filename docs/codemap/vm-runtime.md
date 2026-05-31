@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: Virtual Machine
@@ -149,6 +149,12 @@ For the separate bytecode interpreter in `src/bytecode/`, see
 | File               | Purpose                                       |
 |--------------------|-----------------------------------------------|
 | `ThreadsRuntime.cpp`| Runtime threading support and synchronization|
+
+## Networking
+
+| File                | Purpose                                                       |
+|---------------------|---------------------------------------------------------------|
+| `NetworkRuntime.cpp`| VM-aware helpers for `Viper.Network.HttpServer` handler binding |
 
 ## Debug Infrastructure (`debug/`)
 

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: IL Runtime
@@ -10,7 +10,7 @@ Runtime signature metadata (`src/il/runtime/`) for C ABI helpers.
 
 ## Overview
 
-- **Total source files**: 22 (.hpp/.cpp/.def/.inc)
+- **Total source files**: 23 (.hpp/.cpp/.def/.inc)
 - **Subdirectories**: classes/, signatures/
 
 ## Definition Files
@@ -19,6 +19,7 @@ Runtime signature metadata (`src/il/runtime/`) for C ABI helpers.
 |---------------------------------|----------------------------------------------------------------|
 | `runtime.def`                   | X-macro table defining all runtime functions, classes, methods, properties, and aliases |
 | `RuntimeSigs.def`               | Compact signature definitions for generated code               |
+| `RuntimeSurfacePolicy.inc`      | X-macro surface-policy table (frontend-visible `Viper.*` APIs + intentionally-internal headers); consumed by audit tests |
 
 ## Signature Registry
 
@@ -27,6 +28,7 @@ Runtime signature metadata (`src/il/runtime/`) for C ABI helpers.
 | `HelperEffects.hpp`             | Effect tags for runtime helpers (side-effects, aliasing) |
 | `RuntimeClassNames.hpp`         | Canonical runtime class name constants                   |
 | `RuntimeNameMap.hpp`            | Name to runtime function mapping                         |
+| `RuntimeOwnership.hpp`          | Runtime reference-ownership metadata for optimizer queries |
 | `RuntimeSignatureParser.cpp`    | Parse compact ABI signature spellings impl               |
 | `RuntimeSignatureParser.hpp`    | Parse compact ABI signature spellings                    |
 | `RuntimeSignatures.cpp`         | Main registry implementation                             |

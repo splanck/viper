@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: IL Core
@@ -10,7 +10,7 @@ Core IL data structures (`src/il/core/`) representing modules, functions, blocks
 
 ## Overview
 
-- **Total source files**: 24 (.hpp/.cpp/.def)
+- **Total source files**: 26 (.hpp/.cpp/.def)
 
 ## Module Structure
 
@@ -24,6 +24,7 @@ Core IL data structures (`src/il/core/`) representing modules, functions, blocks
 | `BasicBlock.hpp`| Block: label, parameters, instructions, terminator flag       |
 | `Instr.cpp`     | Instruction implementation                                    |
 | `Instr.hpp`     | Instruction: opcode, result, operands, successors, source loc |
+| `EffectAttrs.hpp`| Shared semantic effect attributes (`nothrow`/`readonly`/`pure`) for callable IL decls; `FunctionAttrs`/`CallAttrs` alias it |
 
 ### `Module` (`Module.hpp`)
 
@@ -137,6 +138,7 @@ Enum class controlling whether a function or global is visible across module bou
 | `Value.cpp` | SSA value implementation                                     |
 | `Value.hpp` | SSA value tagged union: temps, constants, globals, null      |
 | `Param.hpp` | Function/block parameter: type, name, id, and optional attributes |
+| `FPCast.hpp` | Checked floating-point cast helpers: `CheckedFPCastFailure`, `CheckedFPCastResult` |
 
 ### `Type` (`Type.hpp`)
 

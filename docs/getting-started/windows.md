@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-18
+last-verified: 2026-05-31
 ---
 
 # Getting Started on Windows
@@ -146,7 +146,7 @@ After a local Debug build, run the Viper binary directly from the build director
 .\build\src\tools\viper\Debug\viper.exe --version
 ```
 
-You should see the version string (e.g., `viper 0.2.5-dev`).
+You should see the version string (e.g., `viper v0.2.x-dev`) followed by the IL version.
 
 After running the developer installer, open a new PowerShell and verify:
 

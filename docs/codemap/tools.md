@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: Tools
@@ -10,7 +10,7 @@ Command-line tools (`src/tools/`) for the Viper toolchain.
 
 ## Overview
 
-- **Total source files**: 117 (.hpp/.cpp)
+- **Total source files**: 125 (.hpp/.cpp; excludes `zia-server/`, mapped separately in [Zia Server](zia-server.md))
 
 ## User-Facing Tools
 
@@ -164,3 +164,82 @@ BASIC language server (reuses lsp-common infrastructure).
 |--------------|----------------------------------|
 | `common.cpp` | Shared BASIC tool implementation |
 | `common.hpp` | Shared BASIC tool utilities      |
+
+### Packaging — builders (`common/packaging/`)
+
+| File                          | Purpose                                                  |
+|-------------------------------|----------------------------------------------------------|
+| `LinuxPackageBuilder.cpp`     | Linux `.deb`/`.rpm`/`.tar.gz` package builder impl       |
+| `LinuxPackageBuilder.hpp`     | Linux package builder                                    |
+| `MacOSPackageBuilder.cpp`     | macOS `.pkg` package builder impl                        |
+| `MacOSPackageBuilder.hpp`     | macOS package builder                                    |
+| `WindowsPackageBuilder.cpp`   | Windows installer/package builder impl                   |
+| `WindowsPackageBuilder.hpp`   | Windows installer/package builder                        |
+| `PackageConfig.hpp`           | Package configuration types and options                  |
+| `ToolchainInstallManifest.cpp`| Toolchain install manifest model impl                    |
+| `ToolchainInstallManifest.hpp`| Install manifest (files, symlinks, associations)         |
+
+### Packaging — archive/format writers (`common/packaging/`)
+
+| File             | Purpose                                              |
+|------------------|------------------------------------------------------|
+| `ArWriter.cpp`   | Unix `ar` archive writer impl (`.deb` control/data)  |
+| `ArWriter.hpp`   | Unix `ar` archive writer                             |
+| `CpioWriter.cpp` | cpio archive writer impl (RPM payloads)              |
+| `CpioWriter.hpp` | cpio archive writer                                  |
+| `TarWriter.cpp`  | tar archive writer impl                              |
+| `TarWriter.hpp`  | tar archive writer                                   |
+| `XarWriter.cpp`  | xar archive writer impl (macOS `.pkg`)               |
+| `XarWriter.hpp`  | xar archive writer                                   |
+| `ZipReader.cpp`  | ZIP archive reader impl                              |
+| `ZipReader.hpp`  | ZIP archive reader                                   |
+| `ZipWriter.cpp`  | ZIP archive writer impl                              |
+| `ZipWriter.hpp`  | ZIP archive writer                                   |
+| `LnkWriter.cpp`  | Windows `.lnk` shortcut writer impl                  |
+| `LnkWriter.hpp`  | Windows `.lnk` shortcut writer                       |
+| `PEBuilder.cpp`  | PE executable builder impl (installer stub `.exe`)   |
+| `PEBuilder.hpp`  | PE executable builder                                |
+
+### Packaging — compression & hashing (`common/packaging/`)
+
+| File             | Purpose                                  |
+|------------------|------------------------------------------|
+| `PkgDeflate.cpp` | DEFLATE compression impl                 |
+| `PkgDeflate.hpp` | DEFLATE compression                      |
+| `PkgGzip.cpp`    | gzip container impl                       |
+| `PkgGzip.hpp`    | gzip container                           |
+| `PkgZlib.cpp`    | zlib stream impl                          |
+| `PkgZlib.hpp`    | zlib stream                              |
+| `PkgHash.cpp`    | Packaging hash helpers impl              |
+| `PkgHash.hpp`    | Packaging hash helpers                   |
+| `PkgMD5.cpp`     | MD5 digest impl                          |
+| `PkgMD5.hpp`     | MD5 digest                              |
+| `PkgPNG.cpp`     | PNG encoder impl (generated icons)       |
+| `PkgPNG.hpp`     | PNG encoder                             |
+| `PkgUtils.hpp`   | Shared packaging utilities               |
+| `PkgVerify.cpp`  | Package integrity verification impl      |
+| `PkgVerify.hpp`  | Package integrity verification           |
+
+### Packaging — installer & metadata generators (`common/packaging/`)
+
+| File                        | Purpose                                          |
+|-----------------------------|--------------------------------------------------|
+| `InstallerStub.cpp`         | Self-extracting installer stub impl              |
+| `InstallerStub.hpp`         | Self-extracting installer stub                   |
+| `InstallerStubGen.cpp`      | Installer stub generator impl                    |
+| `InstallerStubGen.hpp`      | Installer stub generator                         |
+| `DesktopEntryGenerator.cpp` | Linux `.desktop` entry generator impl            |
+| `DesktopEntryGenerator.hpp` | Linux `.desktop` entry generator                 |
+| `IconGenerator.cpp`         | Application icon generator impl                  |
+| `IconGenerator.hpp`         | Application icon generator                       |
+| `PlistGenerator.cpp`        | macOS `Info.plist` generator impl                |
+| `PlistGenerator.hpp`        | macOS `Info.plist` generator                     |
+
+### Asset compiler (`common/asset/`)
+
+| File                | Purpose                                            |
+|---------------------|----------------------------------------------------|
+| `AssetCompiler.cpp` | Project asset → VPA compilation impl               |
+| `AssetCompiler.hpp` | Project asset compiler (`embed`/`pack` directives) |
+| `VpaWriter.cpp`     | VPA (Viper Pack Archive) writer impl               |
+| `VpaWriter.hpp`     | VPA pack archive writer                            |

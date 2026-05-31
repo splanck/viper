@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-23
+last-verified: 2026-05-31
 ---
 
 # Viper Arithmetic Semantics Reference
@@ -216,6 +216,6 @@ Type hierarchy: `INTEGER% (I16) < LONG& (I64) < SINGLE! (F64) < DOUBLE# (F64)`
 Both frontends emit the checked variants because source IL is expected to use
 the plain (non-`.ovf` / non-`.chk0`) signed integer opcodes only after a
 proving optimizer demotes them. The BASIC frontend
-exposes an internal `OverflowPolicy::Wrap` switch (in `EmitCommon.cpp:135`),
+exposes an internal `OverflowPolicy::Wrap` switch (in `EmitCommon.cpp`),
 but every current call site passes `OverflowPolicy::Checked`, so the wrapping
 path is dead code at lowering time and would fail verification if enabled.

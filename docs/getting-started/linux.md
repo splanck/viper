@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # Getting Started on Linux
@@ -108,7 +108,7 @@ After building, confirm Viper is working:
 viper --version
 ```
 
-You should see the version string (e.g., `viper 0.2.5-dev`). If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
+You should see the version string (e.g., `viper v0.2.x-dev`) followed by the IL version. If the command is not found, ensure `/usr/local/bin` is in your `PATH`:
 
 ```bash
 echo $PATH | tr ':' '\n' | grep /usr/local/bin
@@ -223,11 +223,11 @@ After installing, re-run the build script. Verify with `clang++ --version` or `g
 
 ### 2. "X11 not found" or "ALSA not found" warnings
 
-**Symptom:** During the CMake configure step you see:
+**Symptom:** During the CMake configure step you see status lines like:
 
 ```
--- WARNING: X11 not found. Install libx11-dev (Debian/Ubuntu) or libX11-devel (Fedora/RHEL) to enable
--- WARNING: ALSA not found. Install libasound2-dev (Debian/Ubuntu) or alsa-lib-devel (Fedora/RHEL) to enable
+-- ViperGFX: disabled (X11 not found; install libx11-dev/libX11-devel or set VIPER_GRAPHICS_MODE=OFF)
+-- ViperAUD: disabled (ALSA not found; install libasound2-dev/alsa-lib-devel or set VIPER_AUDIO_MODE=OFF)
 ```
 
 **Cause:** The development headers for X11 or ALSA are not installed. The build continues, but the graphics and/or audio libraries are skipped.

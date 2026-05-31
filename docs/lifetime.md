@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # Lifetime Model
@@ -24,9 +24,9 @@ model and best practices.
 
 ## Destructors
 
-- Avoid side effects that rely on object fields after disposal; fields may be released before the destructor returns.
-- Destructors chain from most-derived to base, automatically.
 - Each class may declare one destructor (`DESTRUCTOR ... END DESTRUCTOR`) that runs before storage is freed.
+- Destructors chain from most-derived to base, automatically.
+- Avoid side effects that rely on object fields after disposal; fields may be released before the destructor returns.
 
 ## Static Destructors
 

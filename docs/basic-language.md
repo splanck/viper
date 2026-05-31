@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # Viper BASIC — Tutorial
@@ -49,11 +49,12 @@ PRINT "A"; "B"        ' "AB" (no newline)
 
 ### Assignment with LET
 
-Assignments **require** `LET`. Variables can be declared implicitly by assigning, or explicitly with `DIM` to pin a
-type.
+The `LET` keyword is optional; this tutorial includes it for clarity. Variables can be declared implicitly by assigning,
+or explicitly with `DIM` to pin a type.
 
 ```basic
-LET I = 42
+LET I = 42        ' with LET
+J = 7             ' LET is optional
 DIM Flag AS BOOLEAN
 LET Flag = TRUE
 ```
@@ -512,7 +513,7 @@ fails to lower if no such label exists.
 ### Example A: Number Guessing Game
 
 ```basic
-RANDOMIZE TIMER
+RANDOMIZE TIMER()
 LET SECRET = INT(RND() * 100) + 1
 LET ATTEMPTS = 0
 

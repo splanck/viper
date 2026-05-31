@@ -52,6 +52,29 @@ typedef struct rt_tcp_server {
     bool is_listening; // Server state
 } rt_tcp_server_t;
 
+int rt_net_cstr_no_embedded_nul(rt_string value, const char **out, size_t *len_out) {
+    if (!out || !len_out)
+        return 0;
+    *out = NULL;
+    *len_out = 0;
+    if (!value)
+        return 0;
+
+    int64_t len64 = rt_str_len(value);
+    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+        return 0;
+    const char *cstr = rt_string_cstr(value);
+    if (!cstr && len64 > 0)
+        return 0;
+    size_t len = (size_t)len64;
+    if (cstr && memchr(cstr, '\0', len) != NULL)
+        return 0;
+
+    *out = cstr ? cstr : "";
+    *len_out = len;
+    return 1;
+}
+
 /// @brief GC finalizer for TCP client — close the socket and free the host string.
 static void rt_tcp_finalize(void *obj) {
     if (!obj)

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-16
+last-verified: 2026-05-31
 ---
 
 # Zia — Getting Started
@@ -285,25 +285,25 @@ class Player {
         score = 0;
     }
 
-    func takeDamage(amount: Integer) {
+    expose func takeDamage(amount: Integer) {
         health = health - amount;
         if health < 0 {
             health = 0;
         }
     }
 
-    func addScore(points: Integer) {
+    expose func addScore(points: Integer) {
         score = score + points;
     }
 
-    func isAlive() -> Integer {
+    expose func isAlive() -> Integer {
         if health > 0 {
             return 1;
         }
         return 0;
     }
 
-    func getHealth() -> Integer {
+    expose func getHealth() -> Integer {
         return health;
     }
 }
@@ -330,9 +330,9 @@ func start() {
 **Key points:**
 
 - Use `new ClassName()` to create instances
-- Fields are accessed with dot notation
-- `init()` is the conventional initializer method
-- Methods can access fields directly (implicit `self`)
+- Class members are **private by default**; mark a method (or field) `expose` to make it accessible from outside the class
+- `init()` is the conventional initializer method (callable via `new` without `expose`)
+- Methods can access their own fields directly (implicit `self`)
 
 ---
 
@@ -352,7 +352,7 @@ struct Point {
         y = py;
     }
 
-    func distanceFromOrigin() -> Number {
+    expose func distanceFromOrigin() -> Number {
         return Sqrt(x * x + y * y);
     }
 }

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-23
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: IL Transform
@@ -10,7 +10,7 @@ Optimization passes (`src/il/transform/`) for IL programs.
 
 ## Overview
 
-- **Total source files**: 73 (.hpp/.cpp)
+- **Total source files**: 81 (.hpp/.cpp)
 - **Subdirectories**: SimplifyCFG/, analysis/
 
 ## Pass Infrastructure
@@ -52,6 +52,21 @@ Optimization passes (`src/il/transform/`) for IL programs.
 | `Reassociate.hpp`| Reassociation for improved constant folding                    |
 | `SiblingRecursion.cpp` | Sibling recursion optimization implementation            |
 | `SiblingRecursion.hpp` | Sibling recursion / tail call optimization               |
+
+## Specialization Passes
+
+Post-inline passes that select faster runtime paths once provenance or bounds are proven.
+
+| File                     | Purpose                                                                    |
+|--------------------------|----------------------------------------------------------------------------|
+| `ArrayFastPathOpt.cpp`   | Array fast-path selection implementation                                   |
+| `ArrayFastPathOpt.hpp`   | Select unchecked numeric array runtime helpers after proven bounds checks  |
+| `Devirtualize.cpp`       | Devirtualization implementation                                            |
+| `Devirtualize.hpp`       | Convert statically-known indirect calls to direct calls                    |
+| `OwnershipOpt.cpp`       | Ownership optimization implementation                                      |
+| `OwnershipOpt.hpp`       | Remove provably redundant runtime retain/release traffic                   |
+| `RuntimeFastPathOpt.cpp` | Runtime fast-path selection implementation                                 |
+| `RuntimeFastPathOpt.hpp` | Select specialized runtime helpers after simple provenance proofs          |
 
 ## Utility Passes
 

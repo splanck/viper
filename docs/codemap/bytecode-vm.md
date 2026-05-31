@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-15
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: Bytecode VM
@@ -14,6 +14,7 @@ IL VM in `src/vm/`.
 
 | File | Purpose |
 |------|---------|
+| `Bytecode.def` | X-macro opcode table: single source of truth for the bytecode opcode set |
 | `Bytecode.hpp` / `Bytecode.cpp` | Opcode enum, slot type, constants, opcode names |
 | `BytecodeModule.hpp` | Bytecode module/function containers |
 | `BytecodeCompiler.hpp` / `BytecodeCompiler.cpp` | IL to bytecode lowering, SSA local mapping, block linearization |

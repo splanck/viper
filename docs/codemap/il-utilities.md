@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-13
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: IL Utilities

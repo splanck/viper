@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-25
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: BASIC Frontend
@@ -10,8 +10,8 @@ The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
 
 ## Overview
 
-- **Total source files**: 278 (.hpp/.cpp/.def)
-- **Subdirectories**: ast/, builtins/, constfold/, detail/, diag/, lower/, lower/builtins/, lower/common/, lower/detail/, lower/oop/, passes/, print/, sem/, types/
+- **Total source files**: 279 (.hpp/.cpp/.def/.inc)
+- **Subdirectories**: ast/, builtins/, constfold/, detail/, diag/, lower/, lower/builtins/, lower/common/, lower/detail/, lower/oop/, lowerer/, passes/, print/, sem/, types/
 
 ## Core Infrastructure
 
@@ -199,6 +199,8 @@ Recent correctness notes:
 | `LoweringContext.cpp`       | Extended lowering context impl       |
 | `LoweringContext.hpp`       | Extended lowering context            |
 | `LoweringPipeline.hpp`      | Lowering pipeline definition         |
+| `lowerer/LowererDetailAccess.hpp` | DetailAccess inner-class accessor: narrow public surface for Lowerer internals |
+| `lowerer/LowererRuntimeRequirements.hpp` | Runtime requirement declarations for the Lowerer |
 
 ## Procedure Lowering
 
@@ -275,6 +277,8 @@ Recent correctness notes:
 | `lower/Lowerer_Errors.cpp`              | Error lowering                  |
 | `lower/Lowerer_Expr.cpp`                | Expression lowerer              |
 | `lower/Lowerer_Stmt.cpp`                | Statement lowerer               |
+| `lower/MemberArrayResolver.cpp`         | Member array field resolution impl |
+| `lower/MemberArrayResolver.hpp`         | Member array field resolution for the lowerer |
 | `lower/Scan_ExprTypes.cpp`              | Expression type scanning        |
 | `lower/Scan_RuntimeNeeds.cpp`           | Runtime requirement scanning    |
 
@@ -333,6 +337,7 @@ Recent correctness notes:
 | `builtins/StringBuiltins.hpp` | String builtin declarations    |
 | `Intrinsics.cpp`              | Intrinsic function impl        |
 | `Intrinsics.hpp`              | Intrinsic function definitions |
+| `builtin_registry.inc`        | Auto-generated builtin X-macro table (rows expand via the includer's `BUILTIN` macro) |
 
 ## Constant Folding (`constfold/`)
 
@@ -389,6 +394,15 @@ Recent correctness notes:
 | `print/Print_Stmt_Decl.cpp`   | Declaration statement printing |
 | `print/Print_Stmt_IO.cpp`     | I/O statement printing         |
 | `print/Print_Stmt_Jump.cpp`   | Jump statement printing        |
+
+## IDE Tooling
+
+| File                  | Purpose                                                       |
+|-----------------------|---------------------------------------------------------------|
+| `BasicAnalysis.cpp`   | Partial-compilation API implementation for IDE tooling        |
+| `BasicAnalysis.hpp`   | Partial-compilation API for BASIC IDE tooling (completion, hover) |
+| `BasicCompletion.cpp` | Code-completion engine implementation                         |
+| `BasicCompletion.hpp` | Code-completion engine for the Viper BASIC language           |
 
 ## Debugging and Inspection
 

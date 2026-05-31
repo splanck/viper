@@ -324,7 +324,7 @@ Last updated: 2026-04-05
 
 ## 3D Graphics Engine
 
-> **Directory:** `src/runtime/graphics/` — 28-class 3D rendering engine with 4 backends
+> **Directory:** `src/runtime/graphics/3d/` — 3D rendering engine with 4 backends, plus the Game3D code-first layer
 
 ### Core Rendering
 
@@ -332,6 +332,7 @@ Last updated: 2026-04-05
 |------|---------|
 | `rt_canvas3d.c` / `.h` | Canvas3D lifecycle, vtable dispatch, deferred draw queue |
 | `rt_canvas3d_internal.h` | Internal struct definitions (rt_mesh3d, rt_camera3d, rt_material3d, etc.) |
+| `rt_canvas3d_overlay.c` | 2D overlay drawing composited on top of the 3D scene |
 | `rt_mesh3d.c` | Mesh3D construction, generators (box, sphere, plane, cylinder), OBJ loader |
 | `rt_camera3d.c` | Camera3D (perspective, orthographic, orbit, FPS, ray cast) |
 | `rt_material3d.c` | Material3D (legacy + PBR workflow, texture maps, clone/instance semantics) |
@@ -346,6 +347,10 @@ Last updated: 2026-04-05
 | `vgfx3d_backend_metal.m` | Metal GPU backend (macOS, 94% feature parity) |
 | `vgfx3d_backend_d3d11.c` | D3D11 GPU backend (Windows) |
 | `vgfx3d_backend_opengl.c` | OpenGL 3.3 GPU backend (Linux) |
+| `vgfx3d_backend_d3d11_shared.c` / `.h` | Shared D3D11 backend helpers |
+| `vgfx3d_backend_metal_shared.c` / `.h` | Shared Metal backend helpers |
+| `vgfx3d_backend_opengl_shared.c` / `.h` | Shared OpenGL backend helpers |
+| `vgfx3d_backend_utils.c` / `.h` | Shared backend utility functions |
 
 ### Scene Graph & Physics
 
@@ -355,7 +360,10 @@ Last updated: 2026-04-05
 | `rt_transform3d.c` / `.h` | Transform3D (standalone TRS) |
 | `rt_physics3d.c` / `.h` | Physics3DWorld + Body3D (AABB, sphere, capsule) |
 | `rt_raycast3d.c` / `.h` | Ray3D + RayHit3D intersection tests |
-| `rt_joints3d.c` / `.h` | DistanceJoint3D, SpringJoint3D |
+| `rt_joints3d.c` / `.h` | DistanceJoint3D, SpringJoint3D, HingeJoint3D, RopeJoint3D, SixDofJoint3D |
+| `rt_collider3d.c` / `.h` | Collider3D shapes and compound colliders |
+| `rt_scene3d_internal.h` | Internal Scene3D / SceneNode3D struct definitions |
+| `rt_scene3d_vscn.c` | Scene3D `.vscn` serialization (save/load) |
 | `vgfx3d_frustum.c` / `.h` | Frustum culling math |
 
 ### Animation
@@ -366,6 +374,9 @@ Last updated: 2026-04-05
 | `rt_animcontroller3d.c` / `.h` | AnimController3D state flow, events, root motion, and masked layers |
 | `rt_morphtarget3d.c` / `.h` | MorphTarget3D blend shapes |
 | `vgfx3d_skinning.c` / `.h` | CPU vertex skinning math |
+| `rt_blendtree3d.c` / `.h` | BlendTree3D animation blending |
+| `rt_iksolver3d.c` / `.h` | IKSolver3D inverse kinematics |
+| `rt_skeleton3d_internal.h` | Internal skeleton/animation struct definitions |
 
 ### Effects & Advanced
 
@@ -389,6 +400,16 @@ Last updated: 2026-04-05
 | `rt_fbx_loader.c` / `.h` | FBX binary format loader |
 | `rt_gltf.c` / `.h` | glTF 2.0 format loader |
 | `rt_model3d.c` / `.h` | Model3D unified imported asset container and instancing helper |
+| `rt_textureasset3d.c` / `.h` | TextureAsset3D (KTX2 / precompressed textures) |
+| `rt_vegetation3d.c` / `.h` | Vegetation3D instanced foliage scattering |
+
+### Game3D Layer
+
+| File | Purpose |
+|------|---------|
+| `rt_game3d.c` / `.h` | Game3D code-first workflow layer over Graphics3D (world, entities, input, layers, streaming) |
+| `rt_g3d_commit_queue.c` / `.h` | Main-thread commit queue for worker-produced Graphics3D/Game3D jobs |
+| `rt_graphics3d_ids.h` | Stable handle/ID constants for the 3D runtime |
 
 ## Audio
 

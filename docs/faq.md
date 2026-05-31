@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # Viper FAQ
@@ -111,8 +111,10 @@ Zia is Viper's primary language, designed as a modern, clean systems programming
 ```rust
 module Main;
 
+bind Viper.Terminal;
+
 func start() {
-    Viper.Terminal.Say("Hello, world!");
+    Say("Hello, world!");
 }
 ```
 
@@ -214,7 +216,7 @@ Paths are relative to the file containing the `AddFile` statement.
 
 ## IL (Intermediate Language)
 
-### 19. What is the Viper IL?
+### 16. What is the Viper IL?
 
 The Viper Intermediate Language is a low-level, typed, control-flow graph representation that sits between frontends (
 Zia, BASIC) and backends (VM or native code). It's similar to LLVM IR or .NET CIL but designed specifically for this
@@ -222,7 +224,7 @@ project's needs.
 
 See `/docs/il-guide.md` for the complete IL specification.
 
-### 20. Can I write IL code directly?
+### 17. Can I write IL code directly?
 
 Yes! The IL has a textual assembly syntax. You can write `.il` files and run them:
 
@@ -236,7 +238,7 @@ Tools available:
 - `il-verify` - IL verifier
 - `ilrun` - IL runner
 
-### 21. How does the compilation pipeline work?
+### 18. How does the compilation pipeline work?
 
 ```text
 Source (Zia/BASIC) → Parser → Semantic Analysis → IL Generation → IL Transforms →
@@ -250,7 +252,7 @@ The IL layer provides optimization passes, verification, and serialization. Diff
 
 ## VM and Runtime
 
-### 22. What's the difference between VM and native execution?
+### 19. What's the difference between VM and native execution?
 
 - **VM**: Executes IL directly. Slower but includes debugging support (breakpoints, stepping, watches).
   Default execution mode.
@@ -258,7 +260,7 @@ The IL layer provides optimization passes, verification, and serialization. Diff
 
 For development, use VM mode. For performance testing, use native compilation.
 
-### 23. How do I debug programs?
+### 20. How do I debug programs?
 
 The VM supports source-level debugging:
 
@@ -273,7 +275,7 @@ viper -run /tmp/program.il --break-src program.zia:42
 
 See VM debugging tests in `/src/tests/vm/` for examples.
 
-### 24. What runtime functions are available?
+### 21. What runtime functions are available?
 
 Both frontends (Zia, BASIC) share the same runtime library. Sample built-in functions:
 
@@ -290,7 +292,7 @@ for language-specific function lists.
 
 ## Development and Contributing
 
-### 25. How do I add a new built-in function?
+### 22. How do I add a new built-in function?
 
 1. Add the function signature to the builtin registry for the frontend
 2. Implement the lowering logic in the frontend
@@ -299,13 +301,13 @@ for language-specific function lists.
 
 See `/docs/frontend-howto.md` for detailed guidance.
 
-### 26. How do I report bugs or request features?
+### 23. How do I report bugs or request features?
 
 - **Bugs**: Open a GitHub issue
 - **Features**: Open a discussion or create an issue describing the use case
 - **Contributing**: Follow the Conventional Commits format for commit messages
 
-### 27. Where can I find more documentation?
+### 24. Where can I find more documentation?
 
 Key documentation files:
 

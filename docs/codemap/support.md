@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: Support & Common
@@ -10,13 +10,13 @@ Shared support and infrastructure used across the toolchain.
 
 Directories: `src/support/`, `src/common/`, `src/parse/`, `src/pass/`.
 
-Last updated: 2026-02-17
+Last updated: 2026-05-31
 
 ## Overview
 
-- **Total source files**: 26 (.hpp/.cpp)
+- **Total source files**: 27 (.hpp/.cpp)
   - support/: 19 files
-  - common/: 5 files
+  - common/: 6 files
   - parse/: 1 file
   - pass/: 1 file
 
@@ -71,6 +71,7 @@ Last updated: 2026-02-17
 | `IntegerHelpers.hpp` | Integer helpers (width/signedness, overflow policies)  |
 | `Mangle.cpp`         | Name mangling implementation                           |
 | `Mangle.hpp`         | Name mangling helpers used by frontends/codegen        |
+| `PlatformCapabilities.hpp` | Shared compile-time platform capability flags (preferred over raw `_WIN32`/`__APPLE__`/`__linux__` checks) |
 | `RunProcess.cpp`     | Test helper to spawn subprocesses implementation       |
 | `RunProcess.hpp`     | Test helper to spawn subprocesses with env/dir control |
 

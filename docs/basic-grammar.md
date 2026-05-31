@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # BASIC Frontend Grammar Notes
@@ -253,9 +253,9 @@ Notes:
 - The frontend lowers `IS`/`AS` to runtime helpers (type id queries and itable checks). See also the dispatch and RTTI
   details in the [OOP Semantics](basic-reference.md#oop-semantics) section of the BASIC reference.
 
-## Milestone D: Static Members and Properties
+## Static Members and Properties
 
-## STATIC modifier placement
+### STATIC modifier placement
 
 `STATIC` applies to the next member declaration inside a `CLASS`:
 
@@ -269,7 +269,7 @@ CLASS C
 END CLASS
 ```
 
-## PROPERTY blocks
+### PROPERTY blocks
 
 ```basic
 PROPERTY <Name> AS <Type>
@@ -285,7 +285,7 @@ END PROPERTY
 - `<AccessorAccess>`: optional `PUBLIC` or `PRIVATE` on each accessor; defaults to the property head's access.
 - `SET` parameter defaults to the property type and parameter name `value` when not given explicitly.
 
-## Static constructor
+### Static constructor
 
 One static constructor per class is supported using the standard constructor syntax preceded by `STATIC`:
 

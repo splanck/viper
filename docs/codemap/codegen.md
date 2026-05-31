@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: Codegen
@@ -33,6 +33,7 @@ Native code generation backends for x86_64 and AArch64.
 | `PeepholeUtil.hpp`         | Shared peephole utility functions                   |
 | `RuntimeComponents.hpp`    | Runtime component descriptors for codegen           |
 | `TargetInfoBase.hpp`       | Base class for target-specific information          |
+| `AArch64RelocUtil.hpp`     | Shared AArch64 relocation helper utilities          |
 
 ### Register Allocation Utilities (`src/codegen/common/ra/`)
 
@@ -55,6 +56,7 @@ Native code generation backends for x86_64 and AArch64.
 | `Relocation.hpp`           | Relocation entry data structures               |
 | `StringTable.hpp/cpp`      | String table builder for object files          |
 | `SymbolTable.hpp/cpp`      | Symbol table builder for object files          |
+| `RelocationValidation.hpp` | Relocation range/target validation helpers     |
 
 ### Native Linker (`src/codegen/common/linker/`)
 
@@ -85,6 +87,11 @@ Native code generation backends for x86_64 and AArch64.
 | `SectionMerger.hpp/cpp`    | Cross-object section merging and VA assignment    |
 | `StringDedup.hpp/cpp`      | String deduplication for merged sections          |
 | `SymbolResolver.hpp/cpp`   | Symbol resolution across objects and archives     |
+| `DynamicSymbolPolicy.hpp`  | Dynamic symbol export/import policy               |
+| `PlatformImportPlanner.hpp`| Platform-agnostic dynamic-import planning interface |
+| `LinuxImportPlanner.cpp`   | Linux (ELF) dynamic import planning               |
+| `MacImportPlanner.cpp`     | macOS (Mach-O) dynamic import planning            |
+| `WindowsImportPlanner.cpp` | Windows (PE) dynamic import planning              |
 
 ## AArch64 Backend (`src/codegen/aarch64/`)
 
@@ -100,6 +107,8 @@ Targeting AAPCS64 (Apple Silicon, Linux ARM64).
 | `MachineIR.hpp/cpp`     | Machine IR data structures             |
 | `OpcodeMappings.hpp`    | IL opcode to MIR opcode mapping        |
 | `TargetAArch64.hpp/cpp` | Target description and ABI information |
+| `MOpcodeDef.inc`        | X-macro MIR opcode definitions         |
+| `Noreturn.hpp`          | No-return call annotation helpers      |
 
 ### Lowering
 
@@ -109,6 +118,7 @@ Targeting AAPCS64 (Apple Silicon, Linux ARM64).
 | `LowerILToMIR.hpp/cpp`      | Main IL to MIR lowering driver     |
 | `OpcodeDispatch.hpp/cpp`    | Opcode-based dispatch for lowering |
 | `TerminatorLowering.hpp/cpp`| Block terminator lowering          |
+| `FpCompareLowering.hpp`     | Floating-point comparison lowering |
 
 ### Pipeline & Infrastructure
 
@@ -139,14 +149,38 @@ Targeting AAPCS64 (Apple Silicon, Linux ARM64).
 | File                      | Purpose                              |
 |---------------------------|--------------------------------------|
 | `Coalescer.hpp/cpp`       | Pre-RA register coalescer            |
+| `PreRegAllocOpt.hpp/cpp`  | Pre-register-allocation optimization |
 | `Peephole.hpp/cpp`        | Top-level peephole dispatcher        |
 | `peephole/BranchOpt.hpp/cpp`       | Branch optimization sub-pass        |
 | `peephole/CopyPropDCE.hpp/cpp`     | Copy propagation and DCE sub-pass   |
 | `peephole/IdentityElim.hpp/cpp`    | Identity instruction elimination    |
 | `peephole/LoopOpt.hpp/cpp`         | Loop-level peephole optimization    |
+| `peephole/Dominators.hpp/cpp`      | Dominator-tree analysis for peephole|
 | `peephole/MemoryOpt.hpp/cpp`       | Memory access optimization          |
-| `peephole/PeepholeCommon.hpp`      | Shared peephole utilities           |
+| `peephole/PeepholeCommon.hpp/cpp`  | Shared peephole utilities           |
 | `peephole/StrengthReduce.hpp/cpp`  | Strength reduction sub-pass         |
+
+### Pipeline Passes (`passes/`)
+
+| File                               | Purpose                                  |
+|------------------------------------|------------------------------------------|
+| `passes/PassManager.hpp`           | Pass orchestration and sequencing        |
+| `passes/LoweringPass.hpp/cpp`      | IL to MIR lowering pass                  |
+| `passes/LegalizePass.hpp/cpp`      | Pre-RA legalization and pseudo expansion |
+| `passes/PreRegAllocOptPass.hpp/cpp`| Pre-register-allocation optimization pass|
+| `passes/RegAllocPass.hpp/cpp`      | Register allocation pass                 |
+| `passes/SchedulerPass.hpp/cpp`     | Instruction scheduling pass              |
+| `passes/PeepholePass.hpp/cpp`      | Peephole optimization pass               |
+| `passes/BlockLayoutPass.hpp/cpp`   | Basic-block layout pass                  |
+| `passes/EmitPass.hpp/cpp`          | Assembly text emission pass              |
+| `passes/BinaryEmitPass.hpp/cpp`    | Native binary object emission pass       |
+
+### Binary Encoder (`binenc/`)
+
+| File                              | Purpose                                   |
+|-----------------------------------|-------------------------------------------|
+| `binenc/A64BinaryEncoder.hpp/cpp` | AArch64 native binary instruction encoder |
+| `binenc/A64Encoding.hpp`          | AArch64 encoding tables and format defs   |
 
 ### Emission
 
@@ -215,6 +249,20 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 | `OperandUtils.hpp`         | Operand manipulation utilities       |
 | `ParallelCopyResolver.hpp` | Parallel copy resolution for SSA     |
 | `Peephole.hpp/cpp`         | Peephole optimizations               |
+| `OperandRoles.hpp/cpp`     | Per-operand use/def role classification |
+| `PreRegAllocOpt.hpp/cpp`   | Pre-register-allocation optimization |
+| `Scheduler.hpp/cpp`        | Instruction scheduling               |
+
+### Peephole (`peephole/`)
+
+| File                            | Purpose                              |
+|---------------------------------|--------------------------------------|
+| `peephole/ArithSimplify.hpp/cpp`| Arithmetic simplification sub-pass   |
+| `peephole/BranchOpt.hpp/cpp`    | Branch optimization sub-pass         |
+| `peephole/DCE.hpp/cpp`          | Dead code elimination sub-pass       |
+| `peephole/MemoryOpt.hpp/cpp`    | Memory access optimization sub-pass  |
+| `peephole/MovFolding.hpp/cpp`   | Move folding sub-pass                |
+| `peephole/PeepholeCommon.hpp`   | Shared peephole utilities            |
 
 ### Pipeline Passes (`passes/`)
 
@@ -227,6 +275,8 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 | `PassManager.hpp/cpp`     | Pass orchestration and sequencing        |
 | `PeepholePass.hpp/cpp`    | Peephole optimization pass               |
 | `RegAllocPass.hpp/cpp`    | Register allocation pass                 |
+| `PreRegAllocOptPass.hpp/cpp`| Pre-register-allocation optimization pass |
+| `SchedulerPass.hpp/cpp`   | Instruction scheduling pass              |
 
 ### Register Allocation (`ra/`)
 
@@ -244,6 +294,13 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 |----------------------------|---------------------------------------------|
 | `X64BinaryEncoder.hpp/cpp` | x86-64 native binary instruction encoder    |
 | `X64Encoding.hpp`          | Encoding tables and format definitions      |
+
+### Generated Tables (`generated/`)
+
+| File                          | Purpose                                       |
+|-------------------------------|-----------------------------------------------|
+| `generated/EncodingTable.inc` | Generated MIR opcode → machine encoding table |
+| `generated/OpFmtTable.inc`    | Generated MIR opcode operand-format table     |
 
 ### Legacy Register Allocation
 

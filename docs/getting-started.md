@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # Getting Started with Viper
@@ -43,9 +43,9 @@ The platform build scripts configure, compile, test, and install Viper in one st
 ./scripts/build_viper_linux.sh
 
 # Windows
-scripts\build_viper.cmd
+scripts\build_viper_win.cmd
 ```
-The compatibility wrapper `./scripts/build_viper.sh` still dispatches to the correct Unix script on macOS and Linux.
+The macOS and Linux scripts are thin wrappers over `./scripts/build_viper_unix.sh`, which you can also run directly on any Unix system.
 
 ---
 
@@ -113,8 +113,10 @@ viper run examples/basic/ex1_hello_cond.bas
 **Expected output:**
 
 ```text
-Hello, World!
-Condition is true
+HELLO
+READY
+10
+10
 ```
 
 ### Zia
@@ -124,8 +126,10 @@ Create a file `hello.zia`:
 ```rust
 module Hello;
 
+bind Viper.Terminal;
+
 func start() {
-    Viper.Terminal.Say("Hello, World!");
+    Say("Hello, World!");
 }
 ```
 

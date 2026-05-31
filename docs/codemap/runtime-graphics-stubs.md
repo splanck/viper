@@ -1,12 +1,12 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-15
+last-verified: 2026-05-31
 ---
 
 # CODEMAP: Runtime Graphics Stubs
 
-`src/runtime/graphics/rt_graphics_stubs.c` is compiled when
+`src/runtime/graphics/common/rt_graphics_stubs.c` is compiled when
 `VIPER_ENABLE_GRAPHICS` is not defined. It preserves link compatibility for the
 graphics/runtime surface while making unavailable stateful graphics operations
 fail deterministically.

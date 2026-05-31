@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-31
 ---
 
 # Code Map
@@ -20,9 +20,10 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 | `src/common/`          | Cross-cutting utils (mangling, integer helpers, process runner)          |
 | `src/frontends/`       | Language frontends: `basic/`, `zia/`, `common/`                          |
 | `src/il/`              | IL core types, builder, I/O, verifier, analysis, transforms, linker, API |
-| `src/lib/graphics/`    | ViperGFX 2D graphics library (C API, examples, tests)                    |
+| `src/lib/`             | Optional C libraries: ViperGFX 2D graphics (`graphics/`), ViperAUD audio (`audio/`), ViperGUI (`gui/`) |
 | `src/parse/`           | Cursor utilities used by frontends (`include/viper/parse/Cursor.h`)      |
 | `src/pass/`            | Generic pass manager façade (`include/viper/pass/PassManager.hpp`)       |
+| `src/repl/`            | Interactive REPL: line editor, input classifier, session, meta-commands, BASIC adapter |
 | `src/runtime/`         | C runtime library (strings, collections, I/O, math, graphics, audio, input, networking, threading, text, time, crypto, GC, serialization, physics, async) |
 | `src/support/`         | Shared support: diagnostics, arena, source manager, symbols, result      |
 | `src/tests/`           | Unit, golden, e2e, and perf tests by area                                |
@@ -37,11 +38,12 @@ Source layout for the Viper compiler toolchain (current tree, kept in sync).
 - Codegen: `src/codegen/{aarch64,common,x86_64}`
 - Frontends: `src/frontends/{basic,common,zia}`
 - IL: `src/il/{analysis,api,build,core,internal,io,link,runtime,transform,utils,verify}`
-- Libraries: `src/lib/graphics`, `src/tui`
+- Libraries: `src/lib/{graphics,audio,gui}`, `src/tui`
 - Runtime: `src/runtime` (C sources and headers)
 - Support & Infra: `src/{common,parse,pass,support}`
+- REPL: `src/repl` (line editor, input classifier, session, meta-commands)
 - Tests: `src/tests/{e2e,golden,perf,smoke,unit,...}`
-- Tools: `src/tools/{basic,basic-ast-dump,basic-lex-dump,common,il-dis,il-verify,ilrun,lsp-common,rtgen,vbasic,vbasic-server,viper,zia,zia-server}`
+- Tools: `src/tools/{basic,basic-ast-dump,basic-lex-dump,common,il-dis,il-verify,ilrun,lsp-common,macos,rtgen,vbasic,vbasic-server,viper,zia,zia-server}`
 - VM: `src/vm` (+ `ops/{common,generated}` and `debug/`)
 
 For architecture and layering, see [architecture.md](architecture.md).
