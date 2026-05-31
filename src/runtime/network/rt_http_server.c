@@ -1424,8 +1424,11 @@ rt_string rt_server_req_param(void *obj, rt_string name) {
     rt_string value = rt_route_match_param(req->params, name);
     const char *value_cstr = rt_string_cstr(value);
     int64_t value_len = value ? rt_str_len(value) : 0;
-    return value_cstr && value_len >= 0 ? rt_string_from_bytes(value_cstr, (size_t)value_len)
-                      : rt_string_from_bytes("", 0);
+    rt_string result = value_cstr && value_len >= 0
+                           ? rt_string_from_bytes(value_cstr, (size_t)value_len)
+                           : rt_string_from_bytes("", 0);
+    rt_string_unref(value);
+    return result;
 }
 
 /// @brief `ServerReq.Query(name)` — read a query-string value.

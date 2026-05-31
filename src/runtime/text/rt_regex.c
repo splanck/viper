@@ -99,6 +99,8 @@ static void pattern_cache_unlock(void) {
 
 /// @brief Safely cast strlen() result to int, trapping on overflow.
 static int safe_strlen_int(const char *s) {
+    if (!s)
+        rt_trap("Pattern: null string");
     size_t n = strlen(s);
     if (n > (size_t)INT_MAX)
         rt_trap("Pattern: string too long for regex engine");
@@ -106,14 +108,17 @@ static int safe_strlen_int(const char *s) {
 }
 
 static int safe_rt_string_len_int(rt_string s) {
-    size_t n = s ? (size_t)rt_str_len(s) : 0;
-    if (n > (size_t)INT_MAX)
+    if (!s)
+        return 0;
+    int64_t n = rt_str_len(s);
+    if (n < 0 || (uint64_t)n > (uint64_t)INT_MAX)
         rt_trap("Pattern: string too long for regex engine");
     return (int)n;
 }
 
 static const char *pattern_text_or_empty(rt_string text) {
-    return text ? rt_string_cstr(text) : "";
+    const char *cstr = text ? rt_string_cstr(text) : "";
+    return cstr ? cstr : "";
 }
 
 static const char *pattern_required(rt_string pattern) {
@@ -121,7 +126,10 @@ static const char *pattern_required(rt_string pattern) {
         rt_trap("Pattern: null pattern");
         return "";
     }
-    return rt_string_cstr(pattern);
+    const char *cstr = rt_string_cstr(pattern);
+    if (!cstr)
+        rt_trap("Pattern: invalid pattern string");
+    return cstr;
 }
 
 static void ensure_result_capacity(
@@ -134,8 +142,12 @@ static void ensure_result_capacity(
     if (needed == SIZE_MAX)
         rt_trap(trap_msg);
     size_t new_cap = *result_cap;
+    if (new_cap == 0)
+        new_cap = 64;
     while (new_cap <= needed) {
         if (new_cap > SIZE_MAX / 2) {
+            if (needed == SIZE_MAX)
+                rt_trap(trap_msg);
             new_cap = needed + 1;
             break;
         }
@@ -264,7 +276,11 @@ static void node_free(re_node *n) {
 /// to `n` — the parent's `node_free` will reclaim it.
 static void children_add(re_node *n, re_node *child) {
     if (n->data.children.count >= n->data.children.capacity) {
+        if (n->data.children.capacity > INT_MAX / 2)
+            rt_trap("Pattern: too many child nodes");
         int new_cap = n->data.children.capacity == 0 ? 4 : n->data.children.capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(re_node *))
+            rt_trap("Pattern: child node allocation overflow");
         re_node **new_children =
             (re_node **)realloc(n->data.children.children, new_cap * sizeof(re_node *));
         if (!new_children)
@@ -866,6 +882,22 @@ static int collect_quant_positions(
     return num;
 }
 
+static int *alloc_match_positions(int text_len, int pos, int *capacity_out) {
+    if (capacity_out)
+        *capacity_out = 0;
+    if (pos < 0 || pos > text_len)
+        rt_trap("Pattern: invalid match position");
+    size_t capacity = (size_t)(text_len - pos) + 2;
+    if (capacity > (size_t)INT_MAX || capacity > SIZE_MAX / sizeof(int))
+        rt_trap("Pattern: position allocation overflow");
+    int *positions = (int *)malloc(sizeof(int) * capacity);
+    if (!positions)
+        rt_trap("Pattern: memory allocation failed");
+    if (capacity_out)
+        *capacity_out = (int)capacity;
+    return positions;
+}
+
 /// @brief Match a quantifier node when it has no following continuation.
 ///
 /// Picks the longest (greedy) or shortest (lazy) reachable end without
@@ -875,11 +907,9 @@ static int collect_quant_positions(
 static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos) {
     bool greedy = n->data.quant.greedy;
 
-    int *positions = (int *)malloc(sizeof(int) * (ctx->text_len - pos + 2));
-    if (!positions)
-        rt_trap("Pattern: memory allocation failed");
-
-    int num = collect_quant_positions(ctx, n, pos, positions, ctx->text_len - pos + 2);
+    int capacity = 0;
+    int *positions = alloc_match_positions(ctx->text_len, pos, &capacity);
+    int num = collect_quant_positions(ctx, n, pos, positions, capacity);
 
     bool found = false;
     if (greedy) {
@@ -908,6 +938,8 @@ static bool match_quant(match_context *ctx, re_node *n, int pos, int *end_pos) {
 /// false) when the S-11 ReDoS cap is exceeded — this is what protects
 /// the engine from catastrophic backtracking inputs.
 static bool match_node(match_context *ctx, re_node *n, int pos, int *end_pos) {
+    if (!ctx || !end_pos || pos < 0 || pos > ctx->text_len)
+        return false;
     /* S-11: ReDoS guard — abort if step limit exceeded */
     if (ctx->max_steps > 0 && ++ctx->steps > ctx->max_steps) {
         *end_pos = pos;
@@ -1005,11 +1037,9 @@ static bool match_concat_from(
     if (child->type == RE_QUANT) {
         bool greedy = child->data.quant.greedy;
 
-        int *positions = (int *)malloc(sizeof(int) * (ctx->text_len - pos + 2));
-        if (!positions)
-            rt_trap("Pattern: memory allocation failed");
-
-        int num = collect_quant_positions(ctx, child, pos, positions, ctx->text_len - pos + 2);
+        int capacity = 0;
+        int *positions = alloc_match_positions(ctx->text_len, pos, &capacity);
+        int num = collect_quant_positions(ctx, child, pos, positions, capacity);
 
         bool found = false;
         if (greedy) {
@@ -1117,16 +1147,16 @@ static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, i
     int min_count = (qtype == QUANT_PLUS) ? 1 : 0;
     int max_count = (qtype == QUANT_QUEST) ? 1 : INT32_MAX;
 
-    int *match_ends = (int *)malloc(sizeof(int) * (ctx->text_len - pos + 2));
-    if (!match_ends)
-        rt_trap("Pattern: memory allocation failed");
+    int capacity = 0;
+    int *match_ends = alloc_match_positions(ctx->text_len, pos, &capacity);
 
     int num_matches = 0;
     int cur_pos = pos;
 
-    match_ends[num_matches++] = pos;
+    if (num_matches < capacity)
+        match_ends[num_matches++] = pos;
 
-    while (num_matches - 1 < max_count) {
+    while (num_matches < capacity && num_matches - 1 < max_count) {
         int child_end;
         if (match_node_groups(ctx, child, cur_pos, &child_end)) {
             if (child_end == cur_pos)
@@ -1170,6 +1200,8 @@ static bool match_quant_groups(match_context_groups *ctx, re_node *n, int pos, i
 /// step counter here — typical group-capturing matches are bounded
 /// in practice by the public API only running once per call.
 static bool match_node_groups(match_context_groups *ctx, re_node *n, int pos, int *end_pos) {
+    if (!ctx || !end_pos || pos < 0 || pos > ctx->text_len)
+        return false;
     if (!n) {
         *end_pos = pos;
         return true;
@@ -1556,6 +1588,11 @@ rt_string rt_pattern_replace(rt_string text, rt_string pattern, rt_string replac
 
         // Copy text before match
         size_t before_len = match_start - pos;
+        if ((size_t)rep_len > SIZE_MAX - before_len) {
+            free(result);
+            release_cached_pattern(cp);
+            rt_trap("Pattern: replacement length overflow");
+        }
         ensure_result_capacity(&result,
                                &result_cap,
                                result_len,
@@ -1673,22 +1710,28 @@ rt_string rt_pattern_escape(rt_string text) {
     int text_len = safe_rt_string_len_int(text);
 
     // Count special characters
-    int special_count = 0;
+    size_t special_count = 0;
     for (int i = 0; i < text_len; i++) {
         char c = txt_str[i];
         if (c == '\\' || c == '.' || c == '*' || c == '+' || c == '?' || c == '^' || c == '$' ||
             c == '[' || c == ']' || c == '(' || c == ')' || c == '|' || c == '{' || c == '}') {
+            if (special_count == SIZE_MAX)
+                rt_trap("Pattern: escape length overflow");
             special_count++;
         }
     }
 
     // Allocate result
-    size_t result_len = text_len + special_count;
+    if ((size_t)text_len > SIZE_MAX - special_count)
+        rt_trap("Pattern: escape length overflow");
+    size_t result_len = (size_t)text_len + special_count;
+    if (result_len == SIZE_MAX)
+        rt_trap("Pattern: escape length overflow");
     char *result = (char *)malloc(result_len + 1);
     if (!result)
         rt_trap("Pattern: memory allocation failed");
 
-    int j = 0;
+    size_t j = 0;
     for (int i = 0; i < text_len; i++) {
         char c = txt_str[i];
         if (c == '\\' || c == '.' || c == '*' || c == '+' || c == '?' || c == '^' || c == '$' ||

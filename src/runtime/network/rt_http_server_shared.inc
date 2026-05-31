@@ -334,10 +334,20 @@ static chunk_parse_status_t decode_chunked_body(const char *encoded,
         }
 
         if (decoded_out && chunk_size > 0) {
-            if (decoded_len + chunk_size + 1 > decoded_cap) {
+            if (decoded_len > SIZE_MAX - chunk_size - 1) {
+                free(decoded);
+                return CHUNK_PARSE_INVALID;
+            }
+            size_t needed = decoded_len + chunk_size + 1;
+            if (needed > decoded_cap) {
                 size_t next_cap = decoded_cap ? decoded_cap : 256;
-                while (next_cap < decoded_len + chunk_size + 1)
+                while (next_cap < needed) {
+                    if (next_cap > SIZE_MAX / 2) {
+                        free(decoded);
+                        return CHUNK_PARSE_INVALID;
+                    }
                     next_cap *= 2;
+                }
                 char *grown = (char *)realloc(decoded, next_cap);
                 if (!grown) {
                     free(decoded);
@@ -603,30 +613,43 @@ static bool parse_http_request(const char *raw, size_t raw_len, server_req_t *re
         }
 
         const char *colon = find_char_bounded(p, (size_t)(next_end - p), ':');
-        if (colon && colon < next_end) {
-            size_t name_len = (size_t)(colon - p);
-            char *name = (char *)malloc(name_len + 1);
-            if (name) {
-                memcpy(name, p, name_len);
-                name[name_len] = '\0';
-                for (char *c = name; *c; c++) {
-                    if (*c >= 'A' && *c <= 'Z')
-                        *c += 32;
-                }
+        if (!colon || colon >= next_end)
+            goto fail;
 
-                const char *val = colon + 1;
-                while (val < next_end && (*val == ' ' || *val == '\t'))
-                    val++;
-                size_t val_len = (size_t)(next_end - val);
-
-                rt_string key = rt_string_from_bytes(name, name_len);
-                rt_string value = rt_string_from_bytes(val, val_len);
-                rt_map_set(req->headers, key, (void *)value);
-                rt_string_unref(key);
-                rt_string_unref(value);
-                free(name);
-            }
+        size_t name_len = (size_t)(colon - p);
+        if (name_len == 0)
+            goto fail;
+        for (size_t i = 0; i < name_len; i++) {
+            if (!http_token_char((unsigned char)p[i]))
+                goto fail;
         }
+
+        char *name = (char *)malloc(name_len + 1);
+        if (!name)
+            goto fail;
+        memcpy(name, p, name_len);
+        name[name_len] = '\0';
+        for (size_t i = 0; i < name_len; i++) {
+            if (name[i] >= 'A' && name[i] <= 'Z')
+                name[i] += 32;
+        }
+
+        const char *val = colon + 1;
+        while (val < next_end && (*val == ' ' || *val == '\t'))
+            val++;
+        size_t val_len = (size_t)(next_end - val);
+
+        rt_string key = rt_string_from_bytes(name, name_len);
+        rt_string value = rt_string_from_bytes(val, val_len);
+        free(name);
+        if (!key || !value) {
+            rt_string_unref(key);
+            rt_string_unref(value);
+            goto fail;
+        }
+        rt_map_set(req->headers, key, (void *)value);
+        rt_string_unref(key);
+        rt_string_unref(value);
 
         p = next_end + 2;
         header_count++;

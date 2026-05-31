@@ -63,6 +63,8 @@ typedef struct {
 static void generate_boundary(char *buf, size_t buf_len) {
     static const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     uint8_t random[32];
+    if (!buf || buf_len == 0)
+        return;
     rt_crypto_random_bytes(random, sizeof(random));
 
     size_t len = buf_len - 1;
@@ -162,22 +164,31 @@ static int multipart_ascii_ieq_n(const char *a, const char *b, size_t len) {
     return 1;
 }
 
-static size_t multipart_escaped_quoted_length(const char *value) {
+static int multipart_escaped_quoted_length(const char *value, size_t *len_out) {
     size_t len = 0;
+    if (len_out)
+        *len_out = 0;
     if (!value)
-        return 0;
+        return 1;
     while (*value) {
+        size_t add = (*value == '"' || *value == '\\') ? 2u : 1u;
+        if (len > SIZE_MAX - add)
+            return 0;
         if (*value == '"' || *value == '\\')
             len += 2;
         else
             len += 1;
         value++;
     }
-    return len;
+    if (len_out)
+        *len_out = len;
+    return 1;
 }
 
 static char *multipart_escape_quoted_value(const char *value) {
-    size_t len = multipart_escaped_quoted_length(value);
+    size_t len = 0;
+    if (!multipart_escaped_quoted_length(value, &len) || len == SIZE_MAX)
+        return NULL;
     char *escaped = (char *)malloc(len + 1);
     char *out = escaped;
     if (!escaped)
@@ -265,8 +276,6 @@ static int multipart_extract_param_value(const char *text,
         const char *name_start;
         const char *name_end;
         multipart_skip_ows(&p);
-        while (*p && *p != ';')
-            p++;
         if (*p == ';')
             p++;
         multipart_skip_ows(&p);
@@ -299,6 +308,9 @@ static int multipart_extract_param_value(const char *text,
             multipart_copy_unescaped_quoted(&p, NULL, 0);
         else
             multipart_copy_token_value(&p, NULL, 0);
+
+        while (*p && *p != ';' && *p != '\r' && *p != '\n')
+            p++;
     }
 
     return 0;
@@ -481,8 +493,11 @@ void *rt_multipart_build(void *obj) {
     size_t blen = strlen(mp->boundary);
     for (int i = 0; i < mp->part_count; i++) {
         multipart_part_t *part = &mp->parts[i];
-        size_t escaped_name_len = multipart_escaped_quoted_length(part->name);
-        size_t escaped_filename_len = multipart_escaped_quoted_length(part->filename);
+        size_t escaped_name_len = 0;
+        size_t escaped_filename_len = 0;
+        if (!multipart_escaped_quoted_length(part->name, &escaped_name_len) ||
+            !multipart_escaped_quoted_length(part->filename, &escaped_filename_len))
+            return rt_bytes_new(0);
         if (!multipart_size_add(&total, 2 + blen + 2))
             return rt_bytes_new(0); // --boundary\r\n
         if (part->is_file) {
@@ -706,6 +721,10 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
             next = s_end;
 
         size_t data_size = (size_t)(next - data_start);
+        if (!part_name[0]) {
+            p = next;
+            continue;
+        }
 
         char *name_copy = strdup(part_name);
         char *filename_copy = is_file ? strdup(part_filename) : NULL;

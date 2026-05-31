@@ -8,7 +8,7 @@
 // File: src/runtime/network/rt_http_url.c
 // Purpose: URL parsing, encoding/decoding, and query string utilities.
 // Key invariants:
-//   - All returned strings are allocated; callers must free.
+//   - Public getters return owned rt_string handles; internal char* helpers return heap buffers.
 //   - parse_url_full zeroes the result struct before use.
 // Ownership/Lifetime:
 //   - rt_url_t instances are GC-managed via rt_obj_set_finalizer.
@@ -76,6 +76,12 @@ static char *rt_url_alloc_or_trap(size_t size, const char *context) {
     return buffer;
 }
 
+static void rt_url_size_add_or_trap(size_t *total, size_t value, const char *context) {
+    if (!total || value == SIZE_MAX || *total > SIZE_MAX - value)
+        rt_url_trap_runtime(context);
+    *total += value;
+}
+
 /// @brief Duplicate `begin[0..len)` into a NUL-terminated string; trap-with-cleanup on OOM.
 ///
 /// If allocation fails and `url` is non-NULL, the half-built URL is
@@ -85,6 +91,11 @@ static char *rt_url_dup_slice_or_trap_cleanup(rt_url_t *url,
                                               const char *begin,
                                               size_t len,
                                               const char *context) {
+    if ((!begin && len > 0) || len == SIZE_MAX) {
+        if (url)
+            free_url(url);
+        rt_url_trap_runtime(context);
+    }
     char *copy = (char *)malloc(len + 1);
     if (!copy) {
         if (url)
@@ -526,12 +537,14 @@ static char *normalize_path(const char *path) {
         return rt_url_strdup_or_trap_cleanup(NULL, "/", "URL.NormalizePath: allocation failed");
 
     size_t input_len = strlen(path);
+    if (input_len == SIZE_MAX || input_len + 1 > SIZE_MAX / sizeof(char *))
+        rt_url_trap_runtime("URL.NormalizePath: length overflow");
     char **segments = (char **)calloc(input_len + 1, sizeof(char *));
     if (!segments)
         rt_url_trap_runtime("URL.NormalizePath: segment allocation failed");
 
     int absolute = path[0] == '/';
-    int segment_count = 0;
+    size_t segment_count = 0;
     const char *cursor = path;
     while (*cursor) {
         while (*cursor == '/')
@@ -542,6 +555,8 @@ static char *normalize_path(const char *path) {
         size_t segment_len = (size_t)(segment_end - cursor);
         if (segment_len == 0)
             break;
+        if (segment_len == SIZE_MAX)
+            goto fail;
 
         char *segment = (char *)malloc(segment_len + 1);
         if (!segment)
@@ -563,10 +578,16 @@ static char *normalize_path(const char *path) {
     }
 
     size_t out_len = absolute ? 1 : 0;
-    for (int i = 0; i < segment_count; i++)
-        out_len += strlen(segments[i]) + 1;
+    for (size_t i = 0; i < segment_count; i++) {
+        size_t seg_len = strlen(segments[i]);
+        if (out_len > SIZE_MAX - seg_len - 1)
+            goto fail;
+        out_len += seg_len + 1;
+    }
     if (out_len == 0)
         out_len = 1;
+    if (out_len == SIZE_MAX)
+        goto fail;
 
     char *out = (char *)malloc(out_len + 1);
     if (!out)
@@ -575,7 +596,7 @@ static char *normalize_path(const char *path) {
     size_t pos = 0;
     if (absolute)
         out[pos++] = '/';
-    for (int i = 0; i < segment_count; i++) {
+    for (size_t i = 0; i < segment_count; i++) {
         size_t seg_len = strlen(segments[i]);
         memcpy(out + pos, segments[i], seg_len);
         pos += seg_len;
@@ -586,13 +607,13 @@ static char *normalize_path(const char *path) {
         out[pos++] = '/';
     out[pos] = '\0';
 
-    for (int i = 0; i < segment_count; i++)
+    for (size_t i = 0; i < segment_count; i++)
         free(segments[i]);
     free(segments);
     return out;
 
 fail:
-    for (int i = 0; i < segment_count; i++)
+    for (size_t i = 0; i < segment_count; i++)
         free(segments[i]);
     free(segments);
     rt_url_trap_runtime("URL.NormalizePath: allocation failed");
@@ -632,6 +653,8 @@ void *rt_url_parse(rt_string url_str) {
     rt_obj_set_finalizer(url, rt_url_finalize);
 
     if (parse_url_full(str, url) != 0) {
+        if (rt_obj_release_check0(url))
+            rt_obj_free(url);
         rt_trap_net("URL: Failed to parse URL", Err_InvalidUrl);
     }
 
@@ -716,7 +739,13 @@ static bool rt_url_host_needs_brackets(const char *host) {
 static size_t rt_url_formatted_host_len(const char *host) {
     if (!host)
         return 0;
-    return strlen(host) + (rt_url_host_needs_brackets(host) ? 2 : 0);
+    size_t len = strlen(host);
+    if (rt_url_host_needs_brackets(host)) {
+        if (len > SIZE_MAX - 2)
+            return SIZE_MAX;
+        len += 2;
+    }
+    return len;
 }
 
 static char *rt_url_append_formatted_host(char *p, char *end, const char *host) {
@@ -807,18 +836,25 @@ rt_string rt_url_authority(void *obj) {
     // Calculate size: user:pass@host:port
     size_t size = 0;
     if (url->user) {
-        size += strlen(url->user);
-        if (url->pass)
-            size += 1 + strlen(url->pass); // :pass
-        size += 1;                         // @
+        rt_url_size_add_or_trap(&size, strlen(url->user), "URL.Authority: length overflow");
+        if (url->pass) {
+            rt_url_size_add_or_trap(&size, 1, "URL.Authority: length overflow"); // :
+            rt_url_size_add_or_trap(
+                &size, strlen(url->pass), "URL.Authority: length overflow");
+        }
+        rt_url_size_add_or_trap(&size, 1, "URL.Authority: length overflow");     // @
     }
     if (url->host)
-        size += rt_url_formatted_host_len(url->host);
+        rt_url_size_add_or_trap(
+            &size, rt_url_formatted_host_len(url->host), "URL.Authority: length overflow");
     if (url->port > 0)
-        size += 22; // :PORT (max 19 digits for int64_t + colon + margin)
+        rt_url_size_add_or_trap(
+            &size, 22, "URL.Authority: length overflow"); // :PORT
 
     if (size == 0)
         return rt_str_empty();
+    if (size == SIZE_MAX)
+        rt_url_trap_runtime("URL.Authority: length overflow");
 
     char *result = rt_url_alloc_or_trap(size + 1, "URL.Authority: allocation failed");
 
@@ -852,7 +888,13 @@ rt_string rt_url_host_port(void *obj) {
     int64_t default_port = default_port_for_scheme(url->scheme);
     bool show_port = url->port > 0 && url->port != default_port;
 
-    size_t size = rt_url_formatted_host_len(url->host) + (show_port ? 22 : 0);
+    size_t size = 0;
+    rt_url_size_add_or_trap(
+        &size, rt_url_formatted_host_len(url->host), "URL.HostPort: length overflow");
+    if (show_port)
+        rt_url_size_add_or_trap(&size, 22, "URL.HostPort: length overflow");
+    if (size == SIZE_MAX)
+        rt_url_trap_runtime("URL.HostPort: length overflow");
     char *result = rt_url_alloc_or_trap(size + 1, "URL.HostPort: allocation failed");
 
     char *p = result;
@@ -874,27 +916,38 @@ rt_string rt_url_full(void *obj) {
 
     // Calculate total size
     size_t size = 0;
-    if (url->scheme)
-        size += strlen(url->scheme) + 3; // scheme://
+    if (url->scheme) {
+        rt_url_size_add_or_trap(&size, strlen(url->scheme), "URL.Full: length overflow");
+        rt_url_size_add_or_trap(&size, 3, "URL.Full: length overflow"); // ://
+    }
     if (url->user) {
-        size += strlen(url->user);
-        if (url->pass)
-            size += 1 + strlen(url->pass);
-        size += 1; // @
+        rt_url_size_add_or_trap(&size, strlen(url->user), "URL.Full: length overflow");
+        if (url->pass) {
+            rt_url_size_add_or_trap(&size, 1, "URL.Full: length overflow"); // :
+            rt_url_size_add_or_trap(&size, strlen(url->pass), "URL.Full: length overflow");
+        }
+        rt_url_size_add_or_trap(&size, 1, "URL.Full: length overflow"); // @
     }
     if (url->host)
-        size += rt_url_formatted_host_len(url->host);
+        rt_url_size_add_or_trap(
+            &size, rt_url_formatted_host_len(url->host), "URL.Full: length overflow");
     if (url->port > 0)
-        size += 22; // :PORT (max 19 digits for int64_t + colon + margin)
+        rt_url_size_add_or_trap(&size, 22, "URL.Full: length overflow"); // :PORT
     if (url->path)
-        size += strlen(url->path);
-    if (url->query)
-        size += 1 + strlen(url->query); // ?query
-    if (url->fragment)
-        size += 1 + strlen(url->fragment); // #fragment
+        rt_url_size_add_or_trap(&size, strlen(url->path), "URL.Full: length overflow");
+    if (url->query) {
+        rt_url_size_add_or_trap(&size, 1, "URL.Full: length overflow"); // ?
+        rt_url_size_add_or_trap(&size, strlen(url->query), "URL.Full: length overflow");
+    }
+    if (url->fragment) {
+        rt_url_size_add_or_trap(&size, 1, "URL.Full: length overflow"); // #
+        rt_url_size_add_or_trap(&size, strlen(url->fragment), "URL.Full: length overflow");
+    }
 
     if (size == 0)
         return rt_str_empty();
+    if (size == SIZE_MAX)
+        rt_url_trap_runtime("URL.Full: length overflow");
 
     char *result = rt_url_alloc_or_trap(size + 1, "URL.Full: allocation failed");
 
@@ -1068,8 +1121,10 @@ void *rt_url_resolve(void *obj, rt_string relative) {
     // Parse relative URL.
     rt_url_t rel;
     memset(&rel, 0, sizeof(rel));
-    if (parse_url_full(rel_str, &rel) != 0)
+    if (parse_url_full(rel_str, &rel) != 0) {
+        free_url(&rel);
         rt_trap_net("URL.Resolve: invalid relative URL", Err_InvalidUrl);
+    }
 
     // Create new URL
     rt_url_t *result = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
@@ -1137,7 +1192,14 @@ void *rt_url_resolve(void *obj, rt_string relative) {
                     // Merge paths
                     if (!base->host || !base->path || *base->path == '\0') {
                         // No base authority or empty base path
-                        size_t len = strlen(rel.path) + 2;
+                        size_t rel_len = strlen(rel.path);
+                        if (rel_len > SIZE_MAX - 2) {
+                            free_url(&rel);
+                            if (rt_obj_release_check0(result))
+                                rt_obj_free(result);
+                            rt_url_trap_runtime("URL.Resolve: path length overflow");
+                        }
+                        size_t len = rel_len + 2;
                         result->path =
                             rt_url_alloc_or_trap(len, "URL.Resolve: path allocation failed");
                         snprintf(result->path, len, "/%s", rel.path);
@@ -1146,11 +1208,17 @@ void *rt_url_resolve(void *obj, rt_string relative) {
                         const char *last_slash = strrchr(base->path, '/');
                         if (last_slash) {
                             size_t base_len = last_slash - base->path + 1;
-                            size_t len = base_len + strlen(rel.path) + 1;
+                            size_t rel_len = strlen(rel.path);
+                            if (base_len > SIZE_MAX - rel_len - 1) {
+                                free_url(&rel);
+                                if (rt_obj_release_check0(result))
+                                    rt_obj_free(result);
+                                rt_url_trap_runtime("URL.Resolve: path length overflow");
+                            }
+                            size_t len = base_len + rel_len + 1;
                             result->path =
                                 rt_url_alloc_or_trap(len, "URL.Resolve: path allocation failed");
                             memcpy(result->path, base->path, base_len);
-                            size_t rel_len = strlen(rel.path);
                             memcpy(result->path + base_len, rel.path, rel_len + 1);
                         } else {
                             result->path = rt_url_strdup_or_trap_cleanup(

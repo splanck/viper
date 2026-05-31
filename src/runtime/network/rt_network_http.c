@@ -334,17 +334,24 @@ typedef struct http_conn_pool {
     int lock_initialized;
 } http_conn_pool_t;
 
-static void http_make_pool_key(
+static int http_make_pool_key(
     const char *host, int port, int use_tls, int tls_verify, char *buf, size_t buf_len) {
-    snprintf(buf,
-             buf_len,
-             "%c%c|%s%s%s|%d",
-             use_tls ? 's' : 'p',
-             tls_verify ? 'v' : 'i',
-             host_needs_brackets(host) ? "[" : "",
-             host ? host : "",
-             host_needs_brackets(host) ? "]" : "",
-             port);
+    if (!buf || buf_len == 0)
+        return 0;
+    int written = snprintf(buf,
+                           buf_len,
+                           "%c%c|%s%s%s|%d",
+                           use_tls ? 's' : 'p',
+                           tls_verify ? 'v' : 'i',
+                           host_needs_brackets(host) ? "[" : "",
+                           host ? host : "",
+                           host_needs_brackets(host) ? "]" : "",
+                           port);
+    if (written < 0 || (size_t)written >= buf_len) {
+        buf[0] = '\0';
+        return 0;
+    }
+    return 1;
 }
 
 static int http_conn_is_healthy(http_conn_t *conn) {
@@ -464,7 +471,8 @@ static int http_conn_pool_acquire(
 
     http_conn_pool_t *pool = (http_conn_pool_t *)obj;
     char key[sizeof(out_conn->pool_key)];
-    http_make_pool_key(host, port, use_tls, tls_verify, key, sizeof(key));
+    if (!http_make_pool_key(host, port, use_tls, tls_verify, key, sizeof(key)))
+        return 0;
 
     HTTP_POOL_MUTEX_LOCK(&pool->lock);
     http_conn_pool_evict_idle_locked(pool, time(NULL));
@@ -504,6 +512,13 @@ static void http_conn_pool_release(http_conn_t *conn, int reusable) {
     http_conn_pool_t *pool = (http_conn_pool_t *)conn->pool;
     if (!pool) {
         http_conn_close(conn);
+        return;
+    }
+    if (conn->pool_key[0] == '\0') {
+        http_conn_close(conn);
+        memset(conn, 0, sizeof(*conn));
+        conn->socket_fd = INVALID_SOCK;
+        conn->pool_slot = -1;
         return;
     }
 
@@ -644,12 +659,13 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
     conn->pool_slot = -1;
     conn->tls_verify = req->tls_verify ? 1 : 0;
     conn->reused_from_pool = 0;
-    http_make_pool_key(req->url.host,
-                       req->url.port,
-                       req->url.use_tls,
-                       conn->tls_verify,
-                       conn->pool_key,
-                       sizeof(conn->pool_key));
+    if (!http_make_pool_key(req->url.host,
+                            req->url.port,
+                            req->url.use_tls,
+                            conn->tls_verify,
+                            conn->pool_key,
+                            sizeof(conn->pool_key)))
+        conn->pool_key[0] = '\0';
 
     if (http_request_wants_pool(req) && http_conn_pool_acquire(req->connection_pool,
                                                                req->url.host,
@@ -736,13 +752,14 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
         conn->tls_verify = req->tls_verify ? 1 : 0;
     }
 
-    http_make_pool_key(req->url.host,
-                       req->url.port,
-                       req->url.use_tls,
-                       conn->tls_verify,
-                       conn->pool_key,
-                       sizeof(conn->pool_key));
-    if (http_request_wants_pool(req))
+    if (!http_make_pool_key(req->url.host,
+                            req->url.port,
+                            req->url.use_tls,
+                            conn->tls_verify,
+                            conn->pool_key,
+                            sizeof(conn->pool_key)))
+        conn->pool_key[0] = '\0';
+    if (http_request_wants_pool(req) && conn->pool_key[0] != '\0')
         conn->pool = req->connection_pool;
     return 1;
 }

@@ -97,6 +97,47 @@ static void test_parser_handles_bare_token_params() {
     rt_string_unref(field);
 }
 
+static void test_parser_handles_direct_boundary_param() {
+    printf("\nTesting Multipart parser direct boundary parameter:\n");
+
+    const char *raw_body = "--plain\r\n"
+                           "Content-Disposition: form-data; name=plain\r\n"
+                           "\r\n"
+                           "ok\r\n"
+                           "--plain--\r\n";
+
+    void *body = rt_bytes_from_str(rt_const_cstr(raw_body));
+    void *mp = rt_multipart_parse(rt_const_cstr("boundary=plain"), body);
+
+    test_result("Direct boundary parameter parsed", rt_multipart_count(mp) == 1);
+    rt_string field = rt_multipart_get_field(mp, rt_const_cstr("plain"));
+    test_result("Direct boundary field parsed", strcmp(rt_string_cstr(field), "ok") == 0);
+    rt_string_unref(field);
+}
+
+static void test_parser_skips_parts_without_name() {
+    printf("\nTesting Multipart parser skips unnamed parts:\n");
+
+    const char *raw_body = "--abc\r\n"
+                           "Content-Disposition: form-data; filename=\"x.txt\"\r\n"
+                           "\r\n"
+                           "ignored\r\n"
+                           "--abc\r\n"
+                           "Content-Disposition: form-data; name=\"field\"\r\n"
+                           "\r\n"
+                           "kept\r\n"
+                           "--abc--\r\n";
+
+    void *body = rt_bytes_from_str(rt_const_cstr(raw_body));
+    void *mp = rt_multipart_parse(rt_const_cstr("multipart/form-data; boundary=abc"), body);
+
+    test_result("Unnamed part is ignored", rt_multipart_count(mp) == 1);
+    rt_string field = rt_multipart_get_field(mp, rt_const_cstr("field"));
+    test_result("Named field after unnamed part is preserved",
+                strcmp(rt_string_cstr(field), "kept") == 0);
+    rt_string_unref(field);
+}
+
 static void test_builder_preserves_empty_parts_and_final_boundary() {
     printf("\nTesting Multipart empty parts and terminator:\n");
 
@@ -163,6 +204,8 @@ int main() {
     test_builder_escapes_header_params();
     test_parser_handles_quoted_and_escaped_params();
     test_parser_handles_bare_token_params();
+    test_parser_handles_direct_boundary_param();
+    test_parser_skips_parts_without_name();
     test_builder_preserves_empty_parts_and_final_boundary();
     test_field_value_preserves_embedded_nul();
 

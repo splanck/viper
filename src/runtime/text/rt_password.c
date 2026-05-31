@@ -205,6 +205,15 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len) {
         return NULL;
     if (len > 0 && (data[0] == '=' || data[1] == '='))
         return NULL;
+    if (padding == 2) {
+        int b = base64_decode_char(data[len - 3]);
+        if (b < 0 || (b & 0x0F) != 0)
+            return NULL;
+    } else if (padding == 1) {
+        int c = base64_decode_char(data[len - 2]);
+        if (c < 0 || (c & 0x03) != 0)
+            return NULL;
+    }
 
     size_t olen = (len / 4) * 3;
     olen -= padding;

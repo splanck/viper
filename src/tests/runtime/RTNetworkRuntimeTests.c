@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_http_server.h"
+#include "rt_http_router.h"
 #include "rt_map.h"
 #include "rt_network.h"
 #include "rt_object.h"
@@ -128,6 +129,31 @@ static void native_http_handler(void *req_obj, void *res_obj) {
     rt_server_res_status(res_obj, 201);
     rt_server_res_header(res_obj, rt_const_cstr("X-Handled"), rt_const_cstr("yes"));
     rt_server_res_send(res_obj, rt_const_cstr("native-ok"));
+}
+
+static void test_http_router_returns_owned_params_and_trims_wildcards(void) {
+    void *router = rt_http_router_new();
+    rt_http_router_get(router, rt_const_cstr("/users/:id"));
+    rt_http_router_get(router, rt_const_cstr("/static/*path"));
+
+    void *match = rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/users/42"));
+    ASSERT(match != NULL);
+    rt_string id = rt_route_match_param(match, rt_const_cstr("id"));
+    if (rt_obj_release_check0(match))
+        rt_obj_free(match);
+    ASSERT(id && strcmp(rt_string_cstr(id), "42") == 0);
+    rt_string_unref(id);
+
+    match = rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/static/a/b/"));
+    ASSERT(match != NULL);
+    rt_string path = rt_route_match_param(match, rt_const_cstr("path"));
+    if (rt_obj_release_check0(match))
+        rt_obj_free(match);
+    ASSERT(path && strcmp(rt_string_cstr(path), "a/b") == 0);
+    rt_string_unref(path);
+
+    if (rt_obj_release_check0(router))
+        rt_obj_free(router);
 }
 
 static void test_http_server_parses_exact_body(void) {
@@ -606,6 +632,19 @@ static void test_http_header_name_validation_rejects_invalid_fields(void) {
     ASSERT(rt_http_header_name_valid_for_test("") == 0);
 }
 
+static void test_http_server_rejects_invalid_request_header_names(void) {
+    const char bad_space[] = "GET / HTTP/1.1\r\n"
+                             "Bad Header: value\r\n"
+                             "\r\n";
+    const char missing_colon[] = "GET / HTTP/1.1\r\n"
+                                 "BrokenHeader\r\n"
+                                 "\r\n";
+    ASSERT(rt_http_server_test_parse_request(
+               bad_space, sizeof(bad_space) - 1, NULL, NULL, NULL, NULL) == 0);
+    ASSERT(rt_http_server_test_parse_request(
+               missing_colon, sizeof(missing_colon) - 1, NULL, NULL, NULL, NULL) == 0);
+}
+
 static void test_ws_parse_url_accepts_ipv6_literal(void) {
     int secure = 0;
     int port = 0;
@@ -832,6 +871,7 @@ static void test_tls_extract_cn_uses_subject_not_issuer(void) {
 }
 
 int main(void) {
+    test_http_router_returns_owned_params_and_trims_wildcards();
     test_http_server_parses_exact_body();
     test_http_server_rejects_invalid_http_version();
     test_http_server_rejects_invalid_content_length();
@@ -858,6 +898,7 @@ int main(void) {
     test_http_parse_url_accepts_case_insensitive_scheme();
     test_http_parse_url_rejects_malformed_ipv6_authority();
     test_http_header_name_validation_rejects_invalid_fields();
+    test_http_server_rejects_invalid_request_header_names();
     test_ws_parse_url_accepts_ipv6_literal();
     test_ws_parse_url_rejects_bad_authorities();
     test_ws_parse_url_accepts_case_insensitive_scheme();

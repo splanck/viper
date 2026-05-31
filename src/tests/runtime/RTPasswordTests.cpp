@@ -288,6 +288,10 @@ static void test_password_invalid_input() {
                                                  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
         test_result("Malformed current PBKDF2 hash needs rehash in approved mode",
                     rt_password_needs_rehash(malformed_hash) == 1);
+        rt_string noncanonical_hash = rt_const_cstr("PBKDF2$300000$AAAAAAAAAAAAAAAAAAAAAB==$"
+                                                    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        test_result("Non-canonical PBKDF2 base64 needs rehash in approved mode",
+                    rt_password_needs_rehash(noncanonical_hash) == 1);
         rt_string valid_hash = rt_password_hash(rt_const_cstr("password"));
         test_result("Valid approved PBKDF2 hash is current",
                     rt_password_needs_rehash(valid_hash) == 0);

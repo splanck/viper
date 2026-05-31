@@ -49,6 +49,7 @@
 #include "rt_keyderive_internal.h"
 #include "rt_string.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -265,7 +266,7 @@ static int local_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
 
     // Pre-processing: adding padding bits.
     // Guard against integer overflow: len must be small enough that len+8 doesn't wrap.
-    if (len > SIZE_MAX - 72)
+    if (len > UINT64_MAX / 8 || len > SIZE_MAX - 72)
         return -1; // input too large to hash
     size_t padded_len = ((len + 8) / 64 + 1) * 64;
     uint8_t *padded = (uint8_t *)calloc(padded_len, 1);

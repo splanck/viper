@@ -408,6 +408,8 @@ static int h2_parse_status_code(const char *value, int *status_out) {
 }
 
 static char *h2_strdup_range(const uint8_t *src, size_t len) {
+    if (len == SIZE_MAX)
+        return NULL;
     char *out = (char *)malloc(len + 1);
     if (!out)
         return NULL;
@@ -419,6 +421,8 @@ static char *h2_strdup_range(const uint8_t *src, size_t len) {
 
 static char *h2_strdup_lower(const char *src) {
     size_t len = src ? strlen(src) : 0;
+    if (len == SIZE_MAX)
+        return NULL;
     char *out = (char *)malloc(len + 1);
     if (!out)
         return NULL;
@@ -555,7 +559,7 @@ static int hpack_dyn_table_add(hpack_dyn_table_t *table, const char *name, const
         table->bytes = 0;
         return 1;
     }
-    while (table->bytes + entry_size > table->max_bytes && table->count > 0) {
+    while (table->bytes > table->max_bytes - entry_size && table->count > 0) {
         hpack_dyn_entry_t *entry = &table->entries[table->count - 1];
         table->bytes -= entry->size;
         free(entry->name);
@@ -564,6 +568,9 @@ static int hpack_dyn_table_add(hpack_dyn_table_t *table, const char *name, const
     }
     if (table->count == table->cap) {
         size_t new_cap = table->cap ? table->cap * 2 : 8;
+        if ((table->cap && table->cap > SIZE_MAX / 2) ||
+            new_cap > SIZE_MAX / sizeof(*table->entries))
+            return 0;
         hpack_dyn_entry_t *grown =
             (hpack_dyn_entry_t *)realloc(table->entries, new_cap * sizeof(*grown));
         if (!grown)
@@ -675,9 +682,13 @@ static int hpack_int_decode(const uint8_t *src,
     }
     while (consumed < src_len) {
         uint8_t b = src[consumed++];
+        size_t add = 0;
         if (shift > sizeof(size_t) * 8 - 7)
             return 0;
-        value += (size_t)(b & 0x7f) << shift;
+        add = (size_t)(b & 0x7f) << shift;
+        if (value > SIZE_MAX - add)
+            return 0;
+        value += add;
         if ((b & 0x80) == 0) {
             if (value_out)
                 *value_out = value;
@@ -692,9 +703,9 @@ static int hpack_int_decode(const uint8_t *src,
 
 static int hpack_int_encode(h2_buf_t *dst, uint8_t prefix_bits, uint8_t prefix_high, size_t value) {
     uint8_t first = prefix_high;
-    size_t max_prefix = ((size_t)1u << prefix_bits) - 1u;
     if (!dst || prefix_bits == 0 || prefix_bits > 8)
         return 0;
+    size_t max_prefix = ((size_t)1u << prefix_bits) - 1u;
     if (value < max_prefix) {
         first = (uint8_t)(prefix_high | (uint8_t)value);
         return h2_buf_append_byte(dst, first);
