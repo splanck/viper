@@ -180,8 +180,10 @@ same scene near origin and after a 50 km floating-origin rebase with frustum
 culling enabled and disabled, verifies camera-relative upload on the far pass,
 compares final-frame pixels within tolerance, and proves the bounded-scene
 output remains byte-identical after toggling `floatingOrigin` back off.
-Remaining exit work is the broader named bounded-scene/sample no-regression
-gate.
+`g3d_bounded_no_regression_probe` closes the broader bounded-sample gate by
+running `walk_min.zia` once on the default bounded path and once with scale
+flags explicitly off, then comparing final-frame pixels and captured state
+exactly.
 
 ---
 

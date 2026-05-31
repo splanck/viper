@@ -1637,6 +1637,18 @@ if (EXISTS "${WALK_MIN_VISUAL_PROBE}")
             TIMEOUT 30)
 endif ()
 
+set(BOUNDED_NO_REGRESSION_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/bounded_no_regression_probe.zia")
+if (EXISTS "${BOUNDED_NO_REGRESSION_PROBE}")
+    add_test(NAME g3d_bounded_no_regression_probe
+            COMMAND $<TARGET_FILE:viper> run "${BOUNDED_NO_REGRESSION_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/3d")
+    set_tests_properties(g3d_bounded_no_regression_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok .*byte_exact=1.*state_exact=1.*scale_flags_off=1"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
 set(GAME3D_SHOWCASE_PROBE "${CMAKE_SOURCE_DIR}/examples/3d/game3d_showcase/showcase.zia")
 if (EXISTS "${GAME3D_SHOWCASE_PROBE}")
     add_test(NAME g3d_game3d_showcase

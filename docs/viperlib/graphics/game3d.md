@@ -165,7 +165,9 @@ stay near the camera. With the flag off, bounded scenes use the unchanged
 absolute-upload path. The local Game3D CTests include a software final-frame
 parity check between a near-origin scene and the same scene after a 50 km
 floating-origin rebase, plus a byte-identical bounded-scene check after the
-feature is toggled back off.
+feature is toggled back off. `g3d_bounded_no_regression_probe` also runs the
+existing `walk_min.zia` bounded sample with scale flags explicitly off and
+checks exact final-frame pixel and captured-state parity.
 
 `World3D.NewWithCamera(title, width, height, fov, near, far)` uses the same
 defaults with custom camera projection values.
@@ -990,6 +992,7 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_docs_snippets` | Copy-paste docs surfaces for setup, presets, assets, physics, audio/VFX, deterministic frame helpers, and manual final-frame capture |
 | `g3d_test_graphics3d_docs_snippets` | Copy-paste Graphics3D animation docs surface for retargeting, IK pole/ground-normal controls, animation LOD, and bone-count LOD |
 | `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
+| `g3d_bounded_no_regression_probe` | Existing `walk_min.zia` bounded sample run with scale flags off, proving exact final-frame pixel parity and exact player/body/draw/visibility/stream state parity against the default bounded path |
 | `g3d_game3d_hello` | <=20-line hello-world scene with lighting, walkable ground, first-person character, and no `Mat4` |
 | `g3d_game3d_common_no_mat4` | CMake guard that common Game3D samples/probes avoid direct `Mat4.` calls |
 | `g3d_game3d_starter_probe` | Starter project deterministic movement, package-aware model asset, final capture, and grounded character path |

@@ -1,0 +1,146 @@
+module bounded_no_regression_probe;
+
+bind Viper.Game3D;
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind "./walk_min";
+
+class BoundedSceneCapture {
+    expose Pixels frame;
+    expose Float playerX;
+    expose Float playerY;
+    expose Float playerZ;
+    expose Boolean grounded;
+    expose Boolean floatingOrigin;
+    expose Integer entityCount;
+    expose Integer bodyCount;
+    expose Integer drawCount;
+    expose Integer visibleNodeCount;
+    expose Integer occludedDrawCount;
+    expose Integer streamResidentBytes;
+
+    expose func capture(game: WalkMinGame, snap: Pixels) {
+        frame = Pixels.Clone(snap);
+        var world = game.getWorld();
+        var playerPos = Entity3D.position(game.getPlayer());
+        playerX = Vec3.get_X(playerPos);
+        playerY = Vec3.get_Y(playerPos);
+        playerZ = Vec3.get_Z(playerPos);
+        grounded = CharacterController3D.grounded(game.getCharacter());
+        floatingOrigin = World3D.get_floatingOrigin(world);
+        entityCount = World3D.get_entityCount(world);
+        bodyCount = World3D.get_bodyCount(world);
+        drawCount = World3D.get_drawCount(world);
+        visibleNodeCount = World3D.get_visibleNodeCount(world);
+        occludedDrawCount = World3D.get_occludedDrawCount(world);
+        streamResidentBytes = World3D.get_streamResidentBytes(world);
+    }
+}
+
+func fail(message: String) {
+    Terminal.Say("RESULT: fail " + message);
+}
+
+func scaleFlagsOff(game: WalkMinGame) {
+    var world = game.getWorld();
+    var canvas = game.getCanvas();
+    World3D.set_floatingOrigin(world, false);
+    Canvas3D.SetOcclusionCulling(canvas, false);
+    Canvas3D.SetClusteredLighting(canvas, false);
+    Canvas3D.SetShadowCascades(canvas, 1);
+    Canvas3D.SetTextureUploadBudget(canvas, -1);
+}
+
+func floatExact(a: Float, b: Float) -> Boolean {
+    return (a < b) == false && (b < a) == false;
+}
+
+func stateMatches(a: BoundedSceneCapture, b: BoundedSceneCapture) -> Boolean {
+    return floatExact(a.playerX, b.playerX) &&
+           floatExact(a.playerY, b.playerY) &&
+           floatExact(a.playerZ, b.playerZ) &&
+           a.grounded == b.grounded &&
+           a.floatingOrigin == b.floatingOrigin &&
+           a.entityCount == b.entityCount &&
+           a.bodyCount == b.bodyCount &&
+           a.drawCount == b.drawCount &&
+           a.visibleNodeCount == b.visibleNodeCount &&
+           a.occludedDrawCount == b.occludedDrawCount &&
+           a.streamResidentBytes == b.streamResidentBytes;
+}
+
+func pixelsExact(a: Pixels, b: Pixels) -> Boolean {
+    if (a == null || b == null) { return false; }
+    if (Pixels.get_Width(a) != Pixels.get_Width(b) ||
+        Pixels.get_Height(a) != Pixels.get_Height(b)) {
+        return false;
+    }
+
+    var y = 0;
+    while (y < Pixels.get_Height(a)) {
+        var x = 0;
+        while (x < Pixels.get_Width(a)) {
+            if (Pixels.Get(a, x, y) != Pixels.Get(b, x, y)) {
+                return false;
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return true;
+}
+
+func runBoundedScene(explicitFlagsOff: Boolean) -> BoundedSceneCapture {
+    var game = new WalkMinGame();
+    game.setup("Bounded No Regression", 320, 180);
+    if (explicitFlagsOff) {
+        scaleFlagsOff(game);
+    }
+
+    game.step(0.016);
+    game.renderFrame();
+
+    var snap = World3D.captureFinalFrame(game.getWorld());
+    if (snap == null ||
+        Pixels.get_Width(snap) != 320 ||
+        Pixels.get_Height(snap) != 180) {
+        game.destroy();
+        return null;
+    }
+
+    var capture = new BoundedSceneCapture();
+    capture.capture(game, snap);
+    game.destroy();
+    return capture;
+}
+
+func start() {
+    var baseline = runBoundedScene(false);
+    if (baseline == null) {
+        fail("default bounded capture");
+        return;
+    }
+
+    var explicitOff = runBoundedScene(true);
+    if (explicitOff == null) {
+        fail("explicit-off bounded capture");
+        return;
+    }
+
+    if (stateMatches(baseline, explicitOff) == false) {
+        fail("bounded state changed with scale flags off");
+        return;
+    }
+    if (explicitOff.floatingOrigin != false || explicitOff.streamResidentBytes != 0) {
+        fail("scale flags were not off");
+        return;
+    }
+    if (pixelsExact(baseline.frame, explicitOff.frame) == false) {
+        fail("bounded final frame changed with scale flags off");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok bounded_no_regression byte_exact=1 state_exact=1 scale_flags_off=1");
+}

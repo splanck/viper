@@ -25,6 +25,9 @@ uses the normal C runtime `Viper.Game3D` surface over `Viper.Graphics3D`:
 - CPU-safe post-FX
 - final overlay recording through `BeginOverlay()` / `EndOverlay()`
 - `ScreenshotFinal()` and grounded synthetic movement coverage in `walk_min_probe.zia`
+- bounded-scene no-regression coverage in `bounded_no_regression_probe.zia`,
+  which compares exact final-frame pixels and runtime state against the default
+  path with scale flags explicitly off
 
 Run the interactive sample with:
 
@@ -36,6 +39,12 @@ Run the visual and movement probe with the software backend:
 
 ```sh
 VIPER_3D_BACKEND=software build/src/tools/viper/viper run examples/3d/walk_min_probe.zia
+```
+
+Run the bounded no-regression probe with the software backend:
+
+```sh
+VIPER_3D_BACKEND=software build/src/tools/viper/viper run examples/3d/bounded_no_regression_probe.zia
 ```
 
 ## game3d_starter/
