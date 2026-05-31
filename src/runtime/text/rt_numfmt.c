@@ -88,6 +88,27 @@ static rt_string numfmt_percent_fixed(double value, int decimals) {
     return numfmt_finish_buffer(buf, written, needed);
 }
 
+static rt_string numfmt_nonfinite(double value, const char *suffix) {
+    const char *base = NULL;
+    if (isnan(value))
+        base = "NaN";
+    else if (isinf(value))
+        base = value < 0.0 ? "-Infinity" : "Infinity";
+    else
+        return NULL;
+
+    if (!suffix || suffix[0] == '\0')
+        return rt_string_from_bytes(base, strlen(base));
+
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    numfmt_check_sb(rt_sb_append_cstr(&sb, base), "NumberFormat: formatting failed");
+    numfmt_check_sb(rt_sb_append_cstr(&sb, suffix), "NumberFormat: formatting failed");
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+    return result;
+}
+
 // ---------------------------------------------------------------------------
 // rt_numfmt_decimals
 // ---------------------------------------------------------------------------
@@ -103,6 +124,10 @@ rt_string rt_numfmt_decimals(double n, int64_t decimals) {
         decimals = 0;
     if (decimals > 20)
         decimals = 20;
+
+    rt_string special = numfmt_nonfinite(n, NULL);
+    if (special)
+        return special;
 
     return numfmt_fixed(n, (int)decimals);
 }
@@ -210,6 +235,10 @@ void rt_numfmt_group_digits(rt_string_builder *sb,
 ///          Hard-codes `,` as the thousands separator — locale-aware
 ///          formatting is intentionally out of scope.
 rt_string rt_numfmt_currency(double n, rt_string symbol) {
+    rt_string special = numfmt_nonfinite(n, NULL);
+    if (special)
+        return special;
+
     const char *sym = "$";
     size_t sym_len = 1;
     if (symbol) {
@@ -282,10 +311,14 @@ rt_string rt_numfmt_currency(double n, rt_string symbol) {
 rt_string rt_numfmt_percent(double n) {
     double pct = n * 100.0;
 
+    rt_string special = numfmt_nonfinite(pct, "%");
+    if (special)
+        return special;
+
     // Use at most 1 decimal place, but omit trailing .0
     double rounded = round(pct * 10.0) / 10.0;
     if (!isfinite(rounded))
-        return numfmt_percent_fixed(rounded, 0);
+        return numfmt_nonfinite(rounded, "%");
 
     rt_string formatted = numfmt_percent_fixed(rounded, 1);
     const char *text = rt_string_cstr(formatted);

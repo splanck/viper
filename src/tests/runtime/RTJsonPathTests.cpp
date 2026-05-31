@@ -89,11 +89,12 @@ static void test_get_or() {
     assert(strcmp(rt_string_cstr((rt_string)v1), "hello") == 0);
 
     void *v2 = rt_jsonpath_get_or(obj, p2, def);
+    rt_string_unref(def);
     assert(strcmp(rt_string_cstr((rt_string)v2), "default") == 0);
+    rt_string_unref((rt_string)v2);
 
     rt_string_unref(p1);
     rt_string_unref(p2);
-    rt_string_unref(def);
 }
 
 static void test_get_str() {

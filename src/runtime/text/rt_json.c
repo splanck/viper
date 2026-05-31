@@ -81,6 +81,11 @@ typedef struct {
     int64_t error_column;
 } json_parser;
 
+static void json_release_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
+
 // ---------------------------------------------------------------------------
 // Parser primitives over a flat byte buffer. Tracks nesting depth
 // so we can fail gracefully on adversarial inputs (S-16) instead of
@@ -528,6 +533,7 @@ static void *parse_array(json_parser *p) {
     }
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     parser_skip_whitespace(p);
 
     // Empty array
@@ -544,15 +550,18 @@ static void *parse_array(json_parser *p) {
         parser_skip_whitespace(p);
         void *value = parse_value(p);
         if (p->has_error) {
+            json_release_value(value);
             p->depth--;
             return seq;
         }
         /* S-16: depth limit hit inside nested value — bail out cleanly */
         if (p->depth_exceeded) {
+            json_release_value(value);
             p->depth--;
             return seq;
         }
         rt_seq_push(seq, value);
+        json_release_value(value);
 
         parser_skip_whitespace(p);
         char c = parser_peek(p);
@@ -617,6 +626,7 @@ static void *parse_object(json_parser *p) {
 
         if (parser_peek(p) != '"') {
             parser_error(p, "expected string key in object");
+            p->depth--;
             return map;
         }
 
@@ -631,6 +641,7 @@ static void *parse_object(json_parser *p) {
         if (parser_consume(p) != ':') {
             rt_str_release_maybe(key);
             parser_error(p, "expected ':' after key in object");
+            p->depth--;
             return map;
         }
 
@@ -638,17 +649,20 @@ static void *parse_object(json_parser *p) {
         void *value = parse_value(p);
         if (p->has_error) {
             rt_str_release_maybe(key);
+            json_release_value(value);
             p->depth--;
             return map;
         }
         /* S-16: depth limit hit inside nested value — bail out cleanly */
         if (p->depth_exceeded) {
             rt_str_release_maybe(key);
+            json_release_value(value);
             p->depth--;
             return map;
         }
 
         rt_map_set(map, key, value);
+        json_release_value(value);
         rt_str_release_maybe(key);
 
         parser_skip_whitespace(p);

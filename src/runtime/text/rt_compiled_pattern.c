@@ -215,6 +215,7 @@ void *rt_compiled_pattern_find_all(void *obj, rt_string text) {
     const char *txt_str = compiled_text_or_empty(text);
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     int text_len = safe_rt_string_len_int(text);
     int pos = 0;
 
@@ -225,6 +226,7 @@ void *rt_compiled_pattern_find_all(void *obj, rt_string text) {
 
         rt_string match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
         rt_seq_push(seq, (void *)match);
+        rt_string_unref(match);
 
         pos = match_end > match_start ? match_end : match_start + 1;
     }
@@ -250,6 +252,7 @@ void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start
     const char *txt_str = compiled_text_or_empty(text);
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     int text_len = safe_rt_string_len_int(text);
 
     if (start < 0)
@@ -274,12 +277,14 @@ void *rt_compiled_pattern_captures_from(void *obj, rt_string text, int64_t start
         // Group 0 is the full match
         rt_string full_match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
         rt_seq_push(seq, (void *)full_match);
+        rt_string_unref(full_match);
 
         // Add captured groups
         for (int i = 0; i < num_groups; i++) {
             rt_string group =
                 rt_string_from_bytes(txt_str + group_starts[i], group_ends[i] - group_starts[i]);
             rt_seq_push(seq, (void *)group);
+            rt_string_unref(group);
         }
     }
 
@@ -399,6 +404,7 @@ void *rt_compiled_pattern_split_n(void *obj, rt_string text, int64_t limit) {
     const char *txt_str = compiled_text_or_empty(text);
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     int text_len = safe_rt_string_len_int(text);
     int pos = 0;
     int64_t split_count = 0;
@@ -409,6 +415,7 @@ void *rt_compiled_pattern_split_n(void *obj, rt_string text, int64_t limit) {
             // Add remaining text as final element
             rt_string part = rt_string_from_bytes(txt_str + pos, text_len - pos);
             rt_seq_push(seq, (void *)part);
+            rt_string_unref(part);
             return seq;
         }
 
@@ -417,12 +424,14 @@ void *rt_compiled_pattern_split_n(void *obj, rt_string text, int64_t limit) {
             // No more matches; add remaining text
             rt_string part = rt_string_from_bytes(txt_str + pos, text_len - pos);
             rt_seq_push(seq, (void *)part);
+            rt_string_unref(part);
             break;
         }
 
         // Add text before match
         rt_string part = rt_string_from_bytes(txt_str + pos, match_start - pos);
         rt_seq_push(seq, (void *)part);
+        rt_string_unref(part);
         split_count++;
 
         // Move past match
@@ -430,13 +439,17 @@ void *rt_compiled_pattern_split_n(void *obj, rt_string text, int64_t limit) {
 
         // If at end after match, add empty string
         if (pos > text_len) {
-            rt_seq_push(seq, (void *)rt_const_cstr(""));
+            rt_string empty = rt_const_cstr("");
+            rt_seq_push(seq, (void *)empty);
+            rt_string_unref(empty);
         }
     }
 
     // Handle empty result
     if (rt_seq_len(seq) == 0) {
-        rt_seq_push(seq, (void *)rt_string_from_bytes(txt_str, text_len));
+        rt_string part = rt_string_from_bytes(txt_str, text_len);
+        rt_seq_push(seq, (void *)part);
+        rt_string_unref(part);
     }
 
     return seq;

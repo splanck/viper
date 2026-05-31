@@ -156,6 +156,7 @@ static _Thread_local int g_toml_had_error = 0;
 static void *parse_array(const char **p) {
     (*p)++; // skip '['
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     int closed = 0;
 
     while (**p && **p != '\n') {
@@ -350,6 +351,7 @@ void *rt_toml_parse(rt_string src) {
         if (*p != '=') {
             /* S-14: flag missing '=' separator */
             g_toml_had_error = 1;
+            rt_string_unref(key);
             skip_line(&p);
             continue;
         }

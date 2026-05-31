@@ -364,23 +364,28 @@ static double pow2_cents(int64_t cents) {
 
     /* Handle negative values via reciprocal */
     int negate = 0;
+    uint64_t magnitude;
     if (cents < 0) {
         negate = 1;
-        cents = -cents;
+        magnitude = (uint64_t)(-(cents + 1)) + 1u;
+    } else {
+        magnitude = (uint64_t)cents;
     }
+    if (magnitude > 2400u)
+        magnitude = 2400u;
 
     /* Decompose: cents = semitones * 100 + remainder */
-    int64_t semitones = cents / 100;
-    int64_t remainder = cents % 100;
+    uint64_t semitones = magnitude / 100u;
+    uint64_t remainder = magnitude % 100u;
 
     /* Octave component: 2^(semitones/12) */
     /* Split into octaves and sub-octave semitones */
-    int64_t octaves = semitones / 12;
-    int64_t sub_semi = semitones % 12;
+    uint64_t octaves = semitones / 12u;
+    uint64_t sub_semi = semitones % 12u;
 
     /* Start with octave power (exact powers of 2) */
     double result = 1.0;
-    for (int64_t i = 0; i < octaves; i++)
+    for (uint64_t i = 0; i < octaves; i++)
         result *= 2.0;
 
     /* Apply sub-octave semitone from table */
@@ -574,10 +579,26 @@ static void mg_write_le32(uint8_t *p, uint32_t v) {
     p[3] = (uint8_t)((v >> 24) & 0xFFu);
 }
 
+/// @brief Validate frame count and compute WAV byte sizes without signed overflow.
+static int mg_wav_sizes(int32_t num_frames, uint32_t *data_size_out, size_t *wav_size_out) {
+    if (num_frames <= 0)
+        return 0;
+
+    uint64_t data_size =
+        (uint64_t)(uint32_t)num_frames * (uint64_t)MG_CHANNELS * (uint64_t)(MG_BITS / 8);
+    if (data_size > (uint64_t)UINT32_MAX - (uint64_t)(MG_WAV_HEADER - 8))
+        return 0;
+
+    if (data_size_out)
+        *data_size_out = (uint32_t)data_size;
+    if (wav_size_out)
+        *wav_size_out = (size_t)MG_WAV_HEADER + (size_t)data_size;
+    return 1;
+}
+
 /// @brief Write a WAV header for stereo 16-bit PCM data.
-static void mg_write_wav_header(uint8_t *buf, int32_t num_frames) {
-    int32_t data_size = num_frames * MG_CHANNELS * (MG_BITS / 8);
-    int32_t file_size = MG_WAV_HEADER + data_size - 8;
+static void mg_write_wav_header(uint8_t *buf, uint32_t data_size) {
+    uint32_t file_size = (uint32_t)(MG_WAV_HEADER - 8) + data_size;
     int32_t byte_rate = MG_SAMPLE_RATE * MG_CHANNELS * (MG_BITS / 8);
     int16_t block_align = MG_CHANNELS * (MG_BITS / 8);
 
@@ -595,7 +616,7 @@ static void mg_write_wav_header(uint8_t *buf, int32_t num_frames) {
     mg_write_le16(buf + 34, (uint16_t)MG_BITS);
 
     memcpy(buf + 36, "data", 4);
-    mg_write_le32(buf + 40, (uint32_t)data_size);
+    mg_write_le32(buf + 40, data_size);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1222,20 +1243,24 @@ void *rt_musicgen_build(void *song_ptr) {
     }
 
     /* Build stereo WAV and create Sound object */
-    int32_t data_size = (int32_t)(pcm_count * sizeof(int16_t));
-    int32_t wav_size = MG_WAV_HEADER + data_size;
+    uint32_t data_size = 0;
+    size_t wav_size = 0;
+    if (!mg_wav_sizes(total_frames, &data_size, &wav_size)) {
+        free(pcm);
+        return NULL;
+    }
 
-    uint8_t *wav_buf = (uint8_t *)malloc((size_t)wav_size);
+    uint8_t *wav_buf = (uint8_t *)malloc(wav_size);
     if (!wav_buf) {
         free(pcm);
         return NULL;
     }
 
-    mg_write_wav_header(wav_buf, total_frames);
-    memcpy(wav_buf + MG_WAV_HEADER, pcm, (size_t)data_size);
+    mg_write_wav_header(wav_buf, data_size);
+    memcpy(wav_buf + MG_WAV_HEADER, pcm, data_size);
     free(pcm);
 
-    void *sound = rt_sound_load_mem(wav_buf, wav_size);
+    void *sound = rt_sound_load_mem(wav_buf, (int64_t)wav_size);
     free(wav_buf);
 
     return sound;

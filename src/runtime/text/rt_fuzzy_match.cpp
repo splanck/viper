@@ -38,9 +38,29 @@ void releaseObject(void *obj) {
 }
 
 void mapSetStr(void *map, const char *key, const std::string &value) {
+    rt_string k = rt_const_cstr(key);
     rt_string s = rt_string_from_bytes(value.data(), value.size());
-    rt_map_set_str(map, rt_const_cstr(key), s);
+    rt_map_set_str(map, k, s);
     rt_string_unref(s);
+    rt_string_unref(k);
+}
+
+void mapSetInt(void *map, const char *key, int64_t value) {
+    rt_string k = rt_const_cstr(key);
+    rt_map_set_int(map, k, value);
+    rt_string_unref(k);
+}
+
+void mapSetBool(void *map, const char *key, int8_t value) {
+    rt_string k = rt_const_cstr(key);
+    rt_map_set_bool(map, k, value);
+    rt_string_unref(k);
+}
+
+void mapSetObj(void *map, const char *key, void *value) {
+    rt_string k = rt_const_cstr(key);
+    rt_map_set(map, k, value);
+    rt_string_unref(k);
 }
 
 bool isBoundary(const std::string &s, size_t i) {
@@ -105,8 +125,8 @@ void *makeRanges(const std::vector<int64_t> &positions) {
     int64_t prev = positions[0];
     auto pushRange = [&](int64_t s, int64_t e) {
         void *range = rt_map_new();
-        rt_map_set_int(range, rt_const_cstr("start"), s);
-        rt_map_set_int(range, rt_const_cstr("end"), e);
+        mapSetInt(range, "start", s);
+        mapSetInt(range, "end", e);
         rt_seq_push(ranges, range);
         releaseObject(range);
     };
@@ -135,12 +155,12 @@ void *rt_fuzzy_match_match(rt_string query, rt_string candidate) {
     std::string c = toStd(candidate);
     MatchResult m = computeMatch(q, c);
     void *result = rt_map_new();
-    rt_map_set_bool(result, rt_const_cstr("matched"), m.matched ? 1 : 0);
-    rt_map_set_int(result, rt_const_cstr("score"), m.score);
+    mapSetBool(result, "matched", m.matched ? 1 : 0);
+    mapSetInt(result, "score", m.score);
     mapSetStr(result, "query", q);
     mapSetStr(result, "candidate", c);
     void *ranges = makeRanges(m.positions);
-    rt_map_set(result, rt_const_cstr("ranges"), ranges);
+    mapSetObj(result, "ranges", ranges);
     releaseObject(ranges);
     return result;
 }

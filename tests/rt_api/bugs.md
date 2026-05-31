@@ -307,7 +307,75 @@ Uses `rt_obj_new_i64()` for GC-managed allocation, matching the Unix implementat
 
 ---
 
-## Fix Summary
+## BUG-025..BUG-074: Text, Sound, and Utilities runtime hardening pass
+
+**Layer:** Runtime C/C++
+**Severity:** Low to High
+**Status:** FIXED
+**Scope:** `Viper.Text.*`, `Viper.Sound.*`, and utility/core runtime support code.
+
+| Bug | Area | Root Cause | Fix Location | Regression |
+|-----|------|------------|--------------|------------|
+| BUG-025 | `String.Split(NULL, delim)` | Returned a non-owning Seq containing a string handle. | `rt_string_advanced.c` | `test_rt_string_ext` |
+| BUG-026 | `String.Split(text, "")` | Created an extra retained string and stored it in a non-owning Seq. | `rt_string_advanced.c` | `test_rt_string_ext` |
+| BUG-027 | `String.Split` with delimiter longer than text | Same non-owning/surplus-retain branch as empty delimiter. | `rt_string_advanced.c` | `test_rt_string_ext` |
+| BUG-028 | `String.Split` normal segments | Segment strings were pushed into a non-owning Seq and leaked. | `rt_string_advanced.c` | `test_rt_string_ext` |
+| BUG-029 | `String.Split` final segment | Final split string was never released after insertion. | `rt_string_advanced.c` | `test_rt_string_ext` |
+| BUG-030 | `String.Split` delimiter count | Extremely many delimiters could overflow the Seq capacity cast. | `rt_string_advanced.c` | code review |
+| BUG-031 | `CamelCase` | Dropped words after the fixed 128-word scratch array. | `rt_string_specialized.c` | `test_rt_string_ext` |
+| BUG-032 | `PascalCase` | Dropped words after the fixed 128-word scratch array. | `rt_string_specialized.c` | `test_rt_string_ext` |
+| BUG-033 | `SnakeCase` | Dropped words after the fixed 128-word scratch array. | `rt_string_specialized.c` | `test_rt_string_ext` |
+| BUG-034 | `KebabCase` | Dropped words after the fixed 128-word scratch array. | `rt_string_specialized.c` | `test_rt_string_ext` |
+| BUG-035 | `ScreamingSnake` | Dropped words after the fixed 128-word scratch array. | `rt_string_specialized.c` | `test_rt_string_ext` |
+| BUG-036 | case conversion scratch allocation | `len + 256` and word-count casts were not bounded. | `rt_string_specialized.c` | code review |
+| BUG-037 | `Pattern.FindAll` | Returned a non-owning Seq of newly allocated matches. | `rt_regex.c` | `test_rt_pattern` |
+| BUG-038 | `Pattern.Split` match parts | Split pieces were stored in a non-owning Seq. | `rt_regex.c` | `test_rt_pattern` |
+| BUG-039 | `Pattern.Split` final part | Final piece was not released after insertion. | `rt_regex.c` | `test_rt_pattern` |
+| BUG-040 | `Pattern.Split` trailing empty | Trailing empty string handle was not owned by the result. | `rt_regex.c` | `test_rt_pattern` |
+| BUG-041 | `CompiledPattern.FindAll` | Returned a non-owning Seq of newly allocated matches. | `rt_compiled_pattern.c` | `test_rt_compiled_pattern` |
+| BUG-042 | `CompiledPattern.Captures` full match | Full-match string was leaked and not owned by the result. | `rt_compiled_pattern.c` | `test_rt_compiled_pattern` |
+| BUG-043 | `CompiledPattern.Captures` groups | Capture group strings were leaked and not owned by the result. | `rt_compiled_pattern.c` | `test_rt_compiled_pattern` |
+| BUG-044 | `CompiledPattern.SplitN` limit final part | Limit branch returned before releasing the inserted string. | `rt_compiled_pattern.c` | `test_rt_compiled_pattern` |
+| BUG-045 | `CompiledPattern.SplitN` split pieces | Regular split pieces were stored in a non-owning Seq. | `rt_compiled_pattern.c` | `test_rt_compiled_pattern` |
+| BUG-046 | `CompiledPattern.SplitN` trailing/empty fallback | Empty and fallback pieces were not owned by the result. | `rt_compiled_pattern.c` | `test_rt_compiled_pattern` |
+| BUG-047 | `Json.Parse` arrays | Parsed arrays did not own their element values. | `rt_json.c` | `test_rt_json` |
+| BUG-048 | `Json.Parse` scalar array values | String/number/bool array values leaked after push. | `rt_json.c` | `test_rt_json` |
+| BUG-049 | `Json.Parse` nested array values | Nested arrays/objects leaked after push. | `rt_json.c` | `test_rt_json` |
+| BUG-050 | `Json.Parse` scalar object values | Object string/number/bool values leaked after `Map.Set`. | `rt_json.c` | `test_rt_json` |
+| BUG-051 | `Json.Parse` nested object values | Nested array/object values leaked after `Map.Set`. | `rt_json.c` | `test_rt_json` |
+| BUG-052 | `Json.Parse` malformed object key | Missing key quote returned without unwinding parse depth. | `rt_json.c` | `test_rt_json` |
+| BUG-053 | `Json.Parse` malformed object colon | Missing colon returned without unwinding parse depth. | `rt_json.c` | `test_rt_json` |
+| BUG-054 | `Toml.Parse` inline arrays | Array parser pushed strings then released them into a non-owning Seq. | `rt_toml.c` | `test_rt_toml` |
+| BUG-055 | `Toml.Parse` missing `=` | Malformed key/value line leaked the parsed key. | `rt_toml.c` | `test_rt_toml` |
+| BUG-056 | `Ini.Set` | Auto-created section map was retained by the map and never locally released. | `rt_ini.c` | `test_rt_ini` |
+| BUG-057 | `JsonPath.GetOr` | Found values were retained, but returned defaults were borrowed. | `rt_jsonpath.c` | `test_rt_jsonpath` |
+| BUG-058 | `Playlist` shuffle load | Current cursor bounds were checked before shuffle translation, not after. | `rt_playlist.c` | code review |
+| BUG-059 | synth sound creation | `samples_to_sound` accepted NULL sample buffers. | `rt_synth.c` | build/tests |
+| BUG-060 | synth sound creation | Non-positive sample counts produced invalid WAV sizes. | `rt_synth.c` | build/tests |
+| BUG-061 | synth sound creation | PCM data size used signed 32-bit multiplication. | `rt_synth.c` | code review |
+| BUG-062 | synth WAV header | RIFF/data chunk sizes could overflow before writing. | `rt_synth.c` | code review |
+| BUG-063 | `MusicGen` pitch detune | `pow2_cents(INT64_MIN)` negated a signed minimum value. | `rt_musicgen.c` | code review |
+| BUG-064 | `MusicGen` pitch detune | Huge cent offsets could drive unbounded octave loops. | `rt_musicgen.c` | code review |
+| BUG-065 | `MusicGen` WAV header | Stereo data size used signed 32-bit multiplication. | `rt_musicgen.c` | code review |
+| BUG-066 | `MusicGen.Build` | WAV allocation/copy sizes used overflow-prone `int32_t` totals. | `rt_musicgen.c` | build/tests |
+| BUG-067 | `NumberFormat.Decimals` | Non-finite output depended on platform `printf` spellings. | `rt_numfmt.c` | `test_rt_numfmt` |
+| BUG-068 | `NumberFormat.Currency(NaN)` | `nan` text was treated as integer digits and grouped. | `rt_numfmt.c` | `test_rt_numfmt` |
+| BUG-069 | `NumberFormat.Currency(+Inf)` | `inf` text was treated as integer digits and grouped. | `rt_numfmt.c` | `test_rt_numfmt` |
+| BUG-070 | `NumberFormat.Currency(-Inf)` | `inf` text was grouped after sign/symbol handling. | `rt_numfmt.c` | `test_rt_numfmt` |
+| BUG-071 | `NumberFormat.Percent` | Non-finite output depended on platform `printf` spellings. | `rt_numfmt.c` | `test_rt_numfmt` |
+| BUG-072 | `FuzzyMatch.Match` | Temporary `rt_const_cstr` map keys were leaked. | `rt_fuzzy_match.cpp` | build/tests |
+| BUG-073 | debug protocol maps | Temporary `rt_const_cstr` map keys were leaked. | `rt_debug_protocol.cpp` | build/tests |
+| BUG-074 | audio group names | Invalid string handles could yield NULL C strings and then be dereferenced. | `rt_audio.c` | code review |
+
+### Verification (BUG-025-BUG-074)
+
+- `cmake --build build --config Debug` passed.
+- `ctest --test-dir build -C Debug -R "^(test_rt_(string|string_sso|string_invalid|conv|int_to_str_big|val_str|audio_mixing|codec|ogg|vorbis_internal|csv|fuzzy_match|json|json_stream|regex|xml|textwrap|pattern|compiled_pattern|template|diag|debug_protocol|fmt|log|parse|bool_std|trim_case|chr_asc|chr_invalid|split_fields|string_ext|string_edge|soundbank|musicgen|ini|fmt_ext|case_convert|pluralize|numfmt|toml|markdown|jsonpath|html|audio_integration|audio_surface_link|audio_unavailable|string_size_clamp|string_ranges|string_alloc_overflow|string_len_clamp|string_wrap_alloc_fail|sound3d_objects|sound3d_contract))$" --output-on-failure` passed with 0 failures across 53 selected tests; `test_rt_audio_unavailable` was skipped by CTest.
+- `ctest --test-dir build -C Debug -R "^test_rt_" --output-on-failure` ran the broader runtime suite and reported 2 failures outside this pass: `test_rt_game3d` graphics capture assertions and `test_rt_network` local bind permission/port behavior.
+
+---
+
+## Prior Fix Summary (BUG-001-BUG-024)
 
 ### Fixed / Resolved (23 bugs)
 | Bug | Description | Fix Location | Regression Test |
@@ -341,7 +409,7 @@ Uses `rt_obj_new_i64()` for GC-managed allocation, matching the Unix implementat
 |-----|-------------|-------|
 | BUG-014 | Bool prints as -1/0 in BASIC | Traditional BASIC behavior |
 
-### Verification
+### Prior Verification
 - **1047/1047 ctests pass** (clean build via `scripts/build_viper.cmd`)
 - **20 regression ctests** added across BASIC and Zia frontends
 - **Zero regressions** introduced

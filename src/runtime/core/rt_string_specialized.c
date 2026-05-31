@@ -34,6 +34,7 @@
 #include "rt_string_internal.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -466,6 +467,27 @@ static int split_words(
     return wcount;
 }
 
+static int split_words_dynamic(const char *src, size_t len, char **buf_out, const char ***words_out) {
+    if (len > (size_t)INT_MAX || len > SIZE_MAX - 256)
+        rt_trap("string_ops: input too large");
+
+    char *wbuf = (char *)malloc(len + 256);
+    if (!wbuf)
+        rt_trap("string_ops: memory allocation failed");
+
+    size_t word_cap = len > 0 ? len : 1;
+    const char **words = (const char **)malloc(word_cap * sizeof(*words));
+    if (!words) {
+        free(wbuf);
+        rt_trap("string_ops: memory allocation failed");
+    }
+
+    int wc = split_words(src, len, wbuf, len + 256, words, (int)word_cap);
+    *buf_out = wbuf;
+    *words_out = words;
+    return wc;
+}
+
 /// @brief Convert "hello world" / "hello-world" / "hello_world" to "helloWorld". First word
 /// stays lowercase; subsequent words have their first letter capitalized. Word separators
 /// (whitespace, '-', '_') are dropped.
@@ -477,11 +499,9 @@ rt_string rt_str_camel_case(rt_string str) {
         return rt_string_from_bytes("", 0);
     const char *src = str->data;
 
-    char *wbuf = (char *)malloc(len + 256);
-    if (!wbuf)
-        rt_trap("string_ops: memory allocation failed");
-    const char *words[128];
-    int wc = split_words(src, len, wbuf, len + 256, words, 128);
+    char *wbuf = NULL;
+    const char **words = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words);
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -503,6 +523,7 @@ rt_string rt_str_camel_case(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(words);
     free(wbuf);
     return result;
 }
@@ -516,11 +537,9 @@ rt_string rt_str_pascal_case(rt_string str) {
         return rt_string_from_bytes("", 0);
     const char *src = str->data;
 
-    char *wbuf = (char *)malloc(len + 256);
-    if (!wbuf)
-        rt_trap("string_ops: memory allocation failed");
-    const char *words[128];
-    int wc = split_words(src, len, wbuf, len + 256, words, 128);
+    char *wbuf = NULL;
+    const char **words = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words);
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -541,6 +560,7 @@ rt_string rt_str_pascal_case(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(words);
     free(wbuf);
     return result;
 }
@@ -555,11 +575,9 @@ rt_string rt_str_snake_case(rt_string str) {
         return rt_string_from_bytes("", 0);
     const char *src = str->data;
 
-    char *wbuf = (char *)malloc(len + 256);
-    if (!wbuf)
-        rt_trap("string_ops: memory allocation failed");
-    const char *words[128];
-    int wc = split_words(src, len, wbuf, len + 256, words, 128);
+    char *wbuf = NULL;
+    const char **words = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words);
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -577,6 +595,7 @@ rt_string rt_str_snake_case(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(words);
     free(wbuf);
     return result;
 }
@@ -590,11 +609,9 @@ rt_string rt_str_kebab_case(rt_string str) {
         return rt_string_from_bytes("", 0);
     const char *src = str->data;
 
-    char *wbuf = (char *)malloc(len + 256);
-    if (!wbuf)
-        rt_trap("string_ops: memory allocation failed");
-    const char *words[128];
-    int wc = split_words(src, len, wbuf, len + 256, words, 128);
+    char *wbuf = NULL;
+    const char **words = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words);
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -612,6 +629,7 @@ rt_string rt_str_kebab_case(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(words);
     free(wbuf);
     return result;
 }
@@ -625,11 +643,9 @@ rt_string rt_str_screaming_snake(rt_string str) {
         return rt_string_from_bytes("", 0);
     const char *src = str->data;
 
-    char *wbuf = (char *)malloc(len + 256);
-    if (!wbuf)
-        rt_trap("string_ops: memory allocation failed");
-    const char *words[128];
-    int wc = split_words(src, len, wbuf, len + 256, words, 128);
+    char *wbuf = NULL;
+    const char **words = NULL;
+    int wc = split_words_dynamic(src, len, &wbuf, &words);
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -647,6 +663,7 @@ rt_string rt_str_screaming_snake(rt_string str) {
 
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    free(words);
     free(wbuf);
     return result;
 }

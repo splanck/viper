@@ -112,6 +112,8 @@ static void audio_group_copy_name(char *dst, size_t cap, rt_string name) {
     if (!name)
         return;
     const char *s = rt_string_cstr(name);
+    if (!s)
+        return;
     int64_t len = rt_str_len(name);
     if (len < 0)
         len = 0;

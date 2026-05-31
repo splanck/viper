@@ -46,9 +46,17 @@ void releaseObject(void *obj) {
 }
 
 void mapSetStr(void *map, const char *key, const std::string &value) {
+    rt_string k = rt_const_cstr(key);
     rt_string s = makeString(value);
-    rt_map_set_str(map, rt_const_cstr(key), s);
+    rt_map_set_str(map, k, s);
     rt_string_unref(s);
+    rt_string_unref(k);
+}
+
+void mapSetInt(void *map, const char *key, int64_t value) {
+    rt_string k = rt_const_cstr(key);
+    rt_map_set_int(map, k, value);
+    rt_string_unref(k);
 }
 
 std::string trim(std::string s) {
@@ -117,7 +125,7 @@ void *makeEvent(const std::string &type,
     mapSetStr(event, "type", type);
     mapSetStr(event, "reason", reason);
     mapSetStr(event, "path", path);
-    rt_map_set_int(event, rt_const_cstr("line"), line);
+    mapSetInt(event, "line", line);
     return event;
 }
 
@@ -255,10 +263,10 @@ void *rt_debug_protocol_stack_frames(void *session) {
     auto *h = requireSession(session);
     void *seq = rt_seq_new_owned();
     void *frame = rt_map_new();
-    rt_map_set_int(frame, rt_const_cstr("id"), 0);
+    mapSetInt(frame, "id", 0);
     mapSetStr(frame, "name", "start");
     mapSetStr(frame, "path", h->state->path);
-    rt_map_set_int(frame, rt_const_cstr("line"), h->state->pc);
+    mapSetInt(frame, "line", h->state->pc);
     rt_seq_push(seq, frame);
     releaseObject(frame);
     return seq;

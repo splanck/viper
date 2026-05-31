@@ -96,6 +96,23 @@ static void test_parse_bare_values() {
     rt_string_unref(ek);
 }
 
+static void test_parse_inline_array_values_survive() {
+    rt_string src = make_str("items = [alpha, \"beta\", gamma]\n");
+    void *root = rt_toml_parse(src);
+    assert(root != NULL);
+
+    rt_string key = make_str("items");
+    void *items = rt_map_get(root, key);
+    assert(items != NULL);
+    assert(rt_seq_len(items) == 3);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(items, 0)), "alpha") == 0);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(items, 1)), "beta") == 0);
+    assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(items, 2)), "gamma") == 0);
+
+    rt_string_unref(key);
+    rt_string_unref(src);
+}
+
 static void test_is_valid() {
     rt_string valid = make_str("key = \"value\"\n");
     assert(rt_toml_is_valid(valid) == 1);
@@ -145,6 +162,10 @@ static void test_invalid_syntax_returns_null() {
     rt_string table_conflict = make_str("a = \"scalar\"\n[a.b]\nvalue = \"bad\"\n");
     assert(rt_toml_parse(table_conflict) == NULL);
     assert(rt_toml_is_valid(table_conflict) == 0);
+
+    rt_string missing_equals = make_str("key \"value\"\n");
+    assert(rt_toml_parse(missing_equals) == NULL);
+    assert(rt_toml_is_valid(missing_equals) == 0);
 }
 
 static void test_null_safety() {
@@ -281,6 +302,7 @@ int main() {
     test_parse_comments();
     test_parse_quoted_values();
     test_parse_bare_values();
+    test_parse_inline_array_values_survive();
     test_is_valid();
     test_get_dotted();
     test_get_deep_dotted_section();

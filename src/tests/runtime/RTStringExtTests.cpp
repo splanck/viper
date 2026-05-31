@@ -16,6 +16,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <string>
 
 // Helper to create a runtime string from C string literal
 static rt_string make_str(const char *s) {
@@ -496,6 +497,36 @@ static void test_hamming() {
     assert(rt_str_hamming(make_str(""), make_str("")) == 0);
 }
 
+static void test_case_conversion_more_than_128_words() {
+    std::string input;
+    for (int i = 0; i < 140; i++) {
+        if (i > 0)
+            input += ' ';
+        input += "word" + std::to_string(i);
+    }
+    rt_string src = rt_string_from_bytes(input.data(), input.size());
+
+    rt_string camel = rt_str_camel_case(src);
+    assert(strstr(rt_string_cstr(camel), "Word129Word130") != nullptr);
+    assert(strstr(rt_string_cstr(camel), "Word139") != nullptr);
+
+    rt_string pascal = rt_str_pascal_case(src);
+    assert(strstr(rt_string_cstr(pascal), "Word129Word130") != nullptr);
+    assert(strstr(rt_string_cstr(pascal), "Word139") != nullptr);
+
+    rt_string snake = rt_str_snake_case(src);
+    assert(strstr(rt_string_cstr(snake), "word129_word130") != nullptr);
+    assert(strstr(rt_string_cstr(snake), "word139") != nullptr);
+
+    rt_string kebab = rt_str_kebab_case(src);
+    assert(strstr(rt_string_cstr(kebab), "word129-word130") != nullptr);
+    assert(strstr(rt_string_cstr(kebab), "word139") != nullptr);
+
+    rt_string screaming = rt_str_screaming_snake(src);
+    assert(strstr(rt_string_cstr(screaming), "WORD129_WORD130") != nullptr);
+    assert(strstr(rt_string_cstr(screaming), "WORD139") != nullptr);
+}
+
 //===----------------------------------------------------------------------===//
 // Main
 //===----------------------------------------------------------------------===//
@@ -570,6 +601,7 @@ int main() {
     test_jaro();
     test_jaro_winkler();
     test_hamming();
+    test_case_conversion_more_than_128_words();
 
     return 0;
 }

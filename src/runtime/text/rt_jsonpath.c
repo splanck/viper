@@ -261,7 +261,7 @@ void *rt_jsonpath_get(void *root, rt_string path) {
 /// @brief Navigate a JSON tree by path, returning a default value if the path doesn't exist.
 void *rt_jsonpath_get_or(void *root, rt_string path, void *def) {
     void *result = rt_jsonpath_get(root, path);
-    return result ? result : def;
+    return result ? result : retain_jsonpath_value(def);
 }
 
 /// @brief Check whether a path exists in a parsed JSON tree.

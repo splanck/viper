@@ -274,6 +274,7 @@ void rt_ini_set(void *ini_map, rt_string section, rt_string key, rt_string value
     if (!sect_map) {
         sect_map = rt_map_new();
         rt_map_set(ini_map, section, sect_map);
+        release_local_obj(sect_map);
     }
     rt_map_set(sect_map, key, (void *)value);
 }

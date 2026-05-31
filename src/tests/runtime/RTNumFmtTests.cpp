@@ -10,6 +10,7 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 
@@ -52,6 +53,20 @@ static void test_decimals_large_value_not_truncated() {
     rt_string r = rt_numfmt_decimals(1e100, 2);
     assert(rt_str_len(r) > 64);
     assert(strstr(rt_string_cstr(r), ".00") != nullptr);
+    rt_string_unref(r);
+}
+
+static void test_decimals_nonfinite_canonical() {
+    rt_string r = rt_numfmt_decimals(NAN, 2);
+    assert(str_eq(r, "NaN"));
+    rt_string_unref(r);
+
+    r = rt_numfmt_decimals(INFINITY, 2);
+    assert(str_eq(r, "Infinity"));
+    rt_string_unref(r);
+
+    r = rt_numfmt_decimals(-INFINITY, 2);
+    assert(str_eq(r, "-Infinity"));
     rt_string_unref(r);
 }
 
@@ -153,6 +168,24 @@ static void test_currency_embedded_nul_symbol() {
     rt_string_unref(sym);
 }
 
+static void test_currency_nonfinite_canonical() {
+    rt_string sym = make_str("$");
+
+    rt_string r = rt_numfmt_currency(NAN, sym);
+    assert(str_eq(r, "NaN"));
+    rt_string_unref(r);
+
+    r = rt_numfmt_currency(INFINITY, sym);
+    assert(str_eq(r, "Infinity"));
+    rt_string_unref(r);
+
+    r = rt_numfmt_currency(-INFINITY, sym);
+    assert(str_eq(r, "-Infinity"));
+    rt_string_unref(r);
+
+    rt_string_unref(sym);
+}
+
 // ---------------------------------------------------------------------------
 // Percent
 // ---------------------------------------------------------------------------
@@ -180,6 +213,20 @@ static void test_percent_large_value_no_integer_cast_overflow() {
     assert(rt_str_len(r) > 0);
     const char *text = rt_string_cstr(r);
     assert(text[rt_str_len(r) - 1] == '%');
+    rt_string_unref(r);
+}
+
+static void test_percent_nonfinite_canonical() {
+    rt_string r = rt_numfmt_percent(NAN);
+    assert(str_eq(r, "NaN%"));
+    rt_string_unref(r);
+
+    r = rt_numfmt_percent(INFINITY);
+    assert(str_eq(r, "Infinity%"));
+    rt_string_unref(r);
+
+    r = rt_numfmt_percent(-INFINITY);
+    assert(str_eq(r, "-Infinity%"));
     rt_string_unref(r);
 }
 
@@ -327,6 +374,7 @@ int main() {
     test_decimals_zero();
     test_decimals_padding();
     test_decimals_large_value_not_truncated();
+    test_decimals_nonfinite_canonical();
 
     // Thousands
     test_thousands_basic();
@@ -341,12 +389,14 @@ int main() {
     test_currency_euro();
     test_currency_large_value_not_truncated();
     test_currency_embedded_nul_symbol();
+    test_currency_nonfinite_canonical();
 
     // Percent
     test_percent_basic();
     test_percent_whole();
     test_percent_zero();
     test_percent_large_value_no_integer_cast_overflow();
+    test_percent_nonfinite_canonical();
 
     // Ordinal
     test_ordinal();

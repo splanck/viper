@@ -95,10 +95,25 @@ static void write_le32(uint8_t *p, uint32_t v) {
     p[3] = (uint8_t)((v >> 24) & 0xFFu);
 }
 
+/// @brief Validate the sample count and compute WAV byte sizes without overflow.
+static int synth_wav_sizes(int32_t num_samples, uint32_t *data_size_out, size_t *wav_size_out) {
+    if (num_samples <= 0)
+        return 0;
+
+    uint64_t data_size = (uint64_t)(uint32_t)num_samples * (uint64_t)sizeof(int16_t);
+    if (data_size > (uint64_t)UINT32_MAX - (uint64_t)(WAV_HEADER_SIZE - 8))
+        return 0;
+
+    if (data_size_out)
+        *data_size_out = (uint32_t)data_size;
+    if (wav_size_out)
+        *wav_size_out = (size_t)WAV_HEADER_SIZE + (size_t)data_size;
+    return 1;
+}
+
 /// @brief Write a minimal WAV header for mono 16-bit PCM data.
-static void write_wav_header(uint8_t *buf, int32_t num_samples) {
-    int32_t data_size = num_samples * SYNTH_CHANNELS * (SYNTH_BITS / 8);
-    int32_t file_size = WAV_HEADER_SIZE + data_size - 8;
+static void write_wav_header(uint8_t *buf, uint32_t data_size) {
+    uint32_t file_size = (uint32_t)(WAV_HEADER_SIZE - 8) + data_size;
     int32_t byte_rate = SYNTH_SAMPLE_RATE * SYNTH_CHANNELS * (SYNTH_BITS / 8);
     int16_t block_align = SYNTH_CHANNELS * (SYNTH_BITS / 8);
 
@@ -119,7 +134,7 @@ static void write_wav_header(uint8_t *buf, int32_t num_samples) {
 
     /* data sub-chunk */
     memcpy(buf + 36, "data", 4);
-    write_le32(buf + 40, (uint32_t)data_size);
+    write_le32(buf + 40, data_size);
 }
 
 //===----------------------------------------------------------------------===//
@@ -168,18 +183,22 @@ static double waveform_sample(double phase, int64_t waveform) {
 static void *samples_to_sound(const int16_t *samples, int32_t num_samples) {
     if (!rt_audio_is_available())
         return NULL;
+    if (!samples)
+        return NULL;
 
-    int32_t data_size = num_samples * (int32_t)sizeof(int16_t);
-    int32_t wav_size = WAV_HEADER_SIZE + data_size;
+    uint32_t data_size = 0;
+    size_t wav_size = 0;
+    if (!synth_wav_sizes(num_samples, &data_size, &wav_size))
+        return NULL;
 
-    uint8_t *wav_buf = (uint8_t *)malloc((size_t)wav_size);
+    uint8_t *wav_buf = (uint8_t *)malloc(wav_size);
     if (!wav_buf)
         return NULL;
 
-    write_wav_header(wav_buf, num_samples);
-    memcpy(wav_buf + WAV_HEADER_SIZE, samples, (size_t)data_size);
+    write_wav_header(wav_buf, data_size);
+    memcpy(wav_buf + WAV_HEADER_SIZE, samples, data_size);
 
-    void *sound = rt_sound_load_mem(wav_buf, wav_size);
+    void *sound = rt_sound_load_mem(wav_buf, (int64_t)wav_size);
     free(wav_buf);
 
     return sound;

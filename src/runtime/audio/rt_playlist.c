@@ -232,6 +232,9 @@ static void *playlist_load_current_music(playlist_impl *pl) {
         return NULL;
 
     int64_t actual_index = get_track_index(pl, pl->current);
+    if (actual_index < 0 || actual_index >= rt_seq_len(pl->tracks))
+        return NULL;
+
     rt_string path = (rt_string)rt_seq_get(pl->tracks, actual_index);
     if (!path)
         return NULL;

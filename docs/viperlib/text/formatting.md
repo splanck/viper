@@ -429,6 +429,7 @@ Number formatting utilities for human-readable display of integers and floating-
 - `Bytes` uses binary units: B, KB, MB, GB, TB with two decimal places where appropriate
 - `Currency` adds thousands separators and always shows two decimal places (e.g., `$1,234.56`)
 - `Currency` preserves the full runtime string for the symbol, including embedded `NUL` bytes
+- `Decimals`, `Currency`, and `Percent` use canonical `NaN`, `Infinity`, and `-Infinity` spellings for non-finite values; `Percent` appends `%`
 - `Ordinal` handles special cases: 11th, 12th, 13th (not 11st, 12nd, 13th)
 - `Bytes` and `Pad` handle the full signed 64-bit integer range, including `INT64_MIN`
 - `Thousands` preserves the full runtime string for the separator, including embedded `NUL` bytes; null or empty separators default to `","`

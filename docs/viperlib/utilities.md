@@ -107,7 +107,7 @@ String formatting utilities for converting values to formatted strings.
 | `NumSci(value, decimals)`   | `String(Double, Integer)`          | Format number in scientific notation     |
 | `NumPct(value, decimals)`   | `String(Double, Integer)`          | Format number as percentage              |
 | `Bool(value)`               | `String(Boolean)`                  | Format as "true" or "false"              |
-| `BoolYN(value)`             | `String(Boolean)`                  | Format as "Yes" or "No"                  |
+| `BoolYN(value)`             | `String(Boolean)`                  | Format as "yes" or "no"                  |
 | `Size(bytes)`               | `String(Integer)`                  | Format byte count as human-readable size |
 | `Hex(value)`                | `String(Integer)`                  | Format as lowercase hex                  |
 | `HexPad(value, width)`      | `String(Integer, Integer)`         | Format as hex with zero-padding          |
@@ -152,7 +152,7 @@ func start() {
 
     // Boolean formatting
     Say("Bool: " + Fmt.Bool(true));          // Output: Bool: true
-    Say("YesNo: " + Fmt.BoolYN(false));      // Output: YesNo: No
+    Say("YesNo: " + Fmt.BoolYN(false));      // Output: YesNo: no
 
     // Size formatting
     Say("Size: " + Fmt.Size(1048576));       // Output: Size: 1.0 MB
@@ -175,7 +175,7 @@ PRINT Viper.Text.Fmt.NumPct(0.756, 1)        ' Output: "75.6%"
 
 ' Boolean formatting
 PRINT Viper.Text.Fmt.Bool(TRUE)              ' Output: "true"
-PRINT Viper.Text.Fmt.BoolYN(FALSE)           ' Output: "No"
+PRINT Viper.Text.Fmt.BoolYN(FALSE)           ' Output: "no"
 
 ' Size formatting (auto-scales to KB, MB, GB, etc.)
 PRINT Viper.Text.Fmt.Size(1024)              ' Output: "1.0 KB"

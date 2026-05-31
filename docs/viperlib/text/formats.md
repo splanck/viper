@@ -150,6 +150,7 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 ### Notes
 
 - `GetStr()` returns a retained string value when found, or a new empty string when the path is missing or not a string.
+- `GetOr()` returns a retained value when the path is found, and retains the supplied default when it is returned.
 - `GetInt()` accepts parsed numeric boxes and numeric strings.
 - `Get()`, `Has()`, `GetStr()`, `GetInt()`, and `Query()` also accept a raw JSON string root and parse it internally for the lookup.
 - Wildcards traverse both arrays and object maps, and safely skip scalar values that cannot contain the next segment.

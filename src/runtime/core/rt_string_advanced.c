@@ -291,7 +291,7 @@ rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str) {
 void *rt_str_split(rt_string str, rt_string delim) {
     if (!str) {
         // Push empty string for null input
-        void *result = rt_seq_with_capacity(1);
+        void *result = rt_seq_with_capacity_owned(1);
         rt_seq_push(result, (void *)rt_empty_string());
         return result;
     }
@@ -301,8 +301,8 @@ void *rt_str_split(rt_string str, rt_string delim) {
 
     // Empty delimiter: return single element with original string
     if (delim_len == 0 || delim_len > str_len) {
-        void *result = rt_seq_with_capacity(1);
-        rt_seq_push(result, (void *)rt_string_ref(str));
+        void *result = rt_seq_with_capacity_owned(1);
+        rt_seq_push(result, (void *)str);
         return result;
     }
 
@@ -320,6 +320,8 @@ void *rt_str_split(rt_string str, rt_string delim) {
 
         p = match;
         if (memcmp(p, delim->data, delim_len) == 0) {
+            if (count == (size_t)INT64_MAX)
+                rt_trap("String.Split: result too large");
             count++;
             p += delim_len;
         } else {
@@ -328,7 +330,7 @@ void *rt_str_split(rt_string str, rt_string delim) {
     }
 
     // Pre-allocate sequence with exact capacity
-    void *result = rt_seq_with_capacity((int64_t)count);
+    void *result = rt_seq_with_capacity_owned((int64_t)count);
 
     // Pass 2: Build segments
     const char *start = str->data;
@@ -344,6 +346,7 @@ void *rt_str_split(rt_string str, rt_string delim) {
             size_t chunk_len = (size_t)(p - start);
             rt_string chunk = rt_string_from_bytes(start, chunk_len);
             rt_seq_push(result, (void *)chunk);
+            rt_string_unref(chunk);
             p += delim_len;
             start = p;
         } else {
@@ -355,6 +358,7 @@ void *rt_str_split(rt_string str, rt_string delim) {
     size_t final_len = (size_t)(end - start);
     rt_string final_str = rt_string_from_bytes(start, final_len);
     rt_seq_push(result, (void *)final_str);
+    rt_string_unref(final_str);
 
     return result;
 }

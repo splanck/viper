@@ -1497,6 +1497,7 @@ void *rt_pattern_find_all(rt_string text, rt_string pattern) {
     const char *txt_str = pattern_text_or_empty(text);
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     compiled_pattern *cp = get_cached_pattern(pat_str);
     int text_len = safe_rt_string_len_int(text);
     int pos = 0;
@@ -1508,6 +1509,7 @@ void *rt_pattern_find_all(rt_string text, rt_string pattern) {
 
         rt_string match = rt_string_from_bytes(txt_str + match_start, match_end - match_start);
         rt_seq_push(seq, (void *)match);
+        rt_string_unref(match);
 
         // Move past this match (at least 1 char to avoid infinite loop on empty match)
         pos = match_end > match_start ? match_end : match_start + 1;
@@ -1622,6 +1624,7 @@ void *rt_pattern_split(rt_string text, rt_string pattern) {
     const char *txt_str = pattern_text_or_empty(text);
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     compiled_pattern *cp = get_cached_pattern(pat_str);
     int text_len = safe_rt_string_len_int(text);
     int pos = 0;
@@ -1632,25 +1635,31 @@ void *rt_pattern_split(rt_string text, rt_string pattern) {
             // No more matches; add remaining text
             rt_string part = rt_string_from_bytes(txt_str + pos, text_len - pos);
             rt_seq_push(seq, (void *)part);
+            rt_string_unref(part);
             break;
         }
 
         // Add text before match
         rt_string part = rt_string_from_bytes(txt_str + pos, match_start - pos);
         rt_seq_push(seq, (void *)part);
+        rt_string_unref(part);
 
         // Move past match
         pos = match_end > match_start ? match_end : match_start + 1;
 
         // If we're at end after match, add empty string
         if (pos > text_len) {
-            rt_seq_push(seq, (void *)rt_const_cstr(""));
+            rt_string empty = rt_const_cstr("");
+            rt_seq_push(seq, (void *)empty);
+            rt_string_unref(empty);
         }
     }
 
     // Handle empty text or pattern that doesn't match
     if (rt_seq_len(seq) == 0) {
-        rt_seq_push(seq, (void *)rt_string_from_bytes(txt_str, text_len));
+        rt_string part = rt_string_from_bytes(txt_str, text_len);
+        rt_seq_push(seq, (void *)part);
+        rt_string_unref(part);
     }
 
     release_cached_pattern(cp);
