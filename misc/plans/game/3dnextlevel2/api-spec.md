@@ -539,12 +539,13 @@ Implemented slice: `TextureAsset3D.LoadKTX2`, `LoadKTX2Asset`, `Width`,
 mipCount)` are registered as `Viper.Graphics3D.TextureAsset3D` with appended
 class id `RT_G3D_TEXTUREASSET3D_CLASS_ID`. The loader parses KTX2 metadata,
 records declared mip payload byte ranges for residency telemetry, retains
-precompressed native mip block payloads for backend upload, and decodes
-uncompressed RGBA8 mip payloads into CPU `Pixels` fallbacks. `SetResidentMipRange`
-switches the active fallback to the first resident mip while updating telemetry.
-Existing material texture methods accept `TextureAsset3D` when a fallback or
-native compressed mip blocks exist, retain the asset source, and resolve the
-currently resident fallback/native source at draw time. `Canvas3D.BackendSupports("bc7"/"astc"/"etc2")`
+precompressed native mip block payloads for backend upload, and decodes RGBA8,
+BC3, BC7 modes 0-7, representative ETC2 RGBA8/EAC, and ASTC LDR void-extent
+mips into CPU `Pixels` fallbacks. `SetResidentMipRange` switches the active
+fallback to the first resident mip while updating telemetry. Existing material
+texture methods accept `TextureAsset3D` when a fallback or native compressed mip
+blocks exist, retain the asset source, and resolve the currently resident
+fallback/native source at draw time. `Canvas3D.BackendSupports("bc7"/"astc"/"etc2")`
 now reports the active backend/device native upload capabilities.
 
 Implemented slice: `Model3D.SceneCount`, `GetCameraCount(sceneIndex)`,

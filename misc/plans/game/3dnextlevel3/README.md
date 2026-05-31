@@ -108,7 +108,7 @@
 
 ### Phase 11 - Asset Pipeline Depth
 
-- [ ] **NL3-027 [P11, AC-011] Add ETC2 / ASTC software decode and BC7 partitioned-mode decode.** BC3 and BC7 single-subset modes 4/5/6 already decode to RGBA8 fallback; add ETC2, ASTC, BC7 partitioned modes 0-3/7, the partition/anchor tables, and representative compressed texture fixtures.
+- [x] **NL3-027 [P11, AC-011] Add ETC2 / ASTC software decode and BC7 partitioned-mode decode.** `TextureAsset3D` now has table-driven BC7 modes 0-7 with fixed BC7 partition/anchor tables, representative ETC2 RGBA8/EAC individual/differential fallback, ASTC LDR void-extent fallback, retained native payloads for unsupported blocks, and compressed block/KTX2 fixtures. Evidence: `test_rt_canvas3d` covers BC7 partitioned constant-white modes 0-3/7, direct ETC2/ASTC block decode, ETC2/ASTC KTX2 `Pixels` fallbacks, and native-only ASTC draw forwarding; ABI/link/runtime-surface audits guard the helper symbols. Unsupported ETC2 T/H/planar and non-void ASTC blocks remain native-only until a broader decoder lands.
 
 - [ ] **NL3-028 [P11, AC-011] Wire native compressed block residency through TextureAsset3D and the streaming/upload path.** After NL3-001 adds backend upload, connect resident mip ranges to native block submission and record compressed-vs-raw tolerance plus RAM/VRAM reduction per capable backend.
 

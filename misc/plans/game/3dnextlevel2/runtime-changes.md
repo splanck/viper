@@ -649,12 +649,13 @@ No Draco/meshopt; OBJ ignores `.mtl` (geometry-only import,
   `SetSpecularMap` / `SetEmissiveMap` validation to accept
   `Viper.Graphics3D.TextureAsset3D`; do not add duplicate `Set*Asset` methods.
   Current slices are implemented for KTX2 metadata, declared mip-range byte
-  telemetry through `SetResidentMipRange`, and uncompressed RGBA8 per-mip
-  fallback binding. Precompressed BC3/BC7/ASTC/ETC2 KTX2 payloads are retained
-  as native mip blocks with block dimensions/bytes for backend upload wiring.
-  Materials retain accepted `TextureAsset3D` sources and resolve the active
-  RGBA8 fallback during draw submission, so later `SetResidentMipRange` calls
-  affect already-bound materials; compressed-only assets expose
+  telemetry through `SetResidentMipRange`, RGBA8 fallback binding, BC3/BC7
+  software fallbacks, representative ETC2 RGBA8/EAC fallback, and ASTC LDR
+  void-extent fallback. Precompressed BC3/BC7/ASTC/ETC2 KTX2 payloads are
+  retained as native mip blocks with block dimensions/bytes for backend upload
+  wiring. Materials retain accepted `TextureAsset3D` sources and resolve the
+  active RGBA8 fallback during draw submission, so later `SetResidentMipRange`
+  calls affect already-bound materials; unsupported ETC2/ASTC blocks expose
   format/resolution/mip metadata, residency byte counts, and native mip payload
   views, but must wait for backend upload support before material binding.
 - Treat Basis-universal supercompression transcode, Draco decode, and meshopt

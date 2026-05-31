@@ -1141,8 +1141,8 @@ static void test_textureasset3d_ktx2_material_bridge() {
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_textureasset3d_get_format(bc7_asset)), "bc7") == 0,
                 "BC7 KTX2 reports bc7 format");
     EXPECT_EQ(rt_textureasset3d_get_compressed(bc7_asset), 1);
-    EXPECT_TRUE(rt_textureasset3d_get_pixels(bc7_asset) == nullptr,
-                "compressed KTX2 has no CPU Pixels fallback yet");
+    EXPECT_TRUE(rt_textureasset3d_get_pixels(bc7_asset) != nullptr,
+                "BC7 KTX2 exposes a CPU Pixels fallback");
     EXPECT_TRUE(rt_textureasset3d_get_native_mip_info(bc7_asset,
                                                       0,
                                                       &native_payload,
@@ -1222,6 +1222,73 @@ struct Bc7BitWriter {
         }
     }
 };
+
+static void write_bc7_constant_white_block(uint8_t *block, int mode, uint32_t partition) {
+    int subsets = 1;
+    int partition_bits = 0;
+    int color_bits = 0;
+    int alpha_bits = 0;
+    int endpoint_pbits = 0;
+    int shared_pbits = 0;
+    int endpoints;
+    Bc7BitWriter w{block, 0};
+
+    std::memset(block, 0, 16);
+    for (int i = 0; i < mode; i++)
+        w.put(0, 1);
+    w.put(1, 1);
+
+    switch (mode) {
+    case 0:
+        subsets = 3;
+        partition_bits = 4;
+        color_bits = 4;
+        endpoint_pbits = 1;
+        break;
+    case 1:
+        subsets = 2;
+        partition_bits = 6;
+        color_bits = 6;
+        shared_pbits = 1;
+        break;
+    case 2:
+        subsets = 3;
+        partition_bits = 6;
+        color_bits = 5;
+        break;
+    case 3:
+        subsets = 2;
+        partition_bits = 6;
+        color_bits = 7;
+        endpoint_pbits = 1;
+        break;
+    case 7:
+        subsets = 2;
+        partition_bits = 6;
+        color_bits = 5;
+        alpha_bits = 5;
+        endpoint_pbits = 1;
+        break;
+    default:
+        return;
+    }
+
+    if (partition_bits)
+        w.put(partition & ((1u << partition_bits) - 1u), partition_bits);
+    endpoints = subsets * 2;
+    for (int c = 0; c < 3; c++)
+        for (int e = 0; e < endpoints; e++)
+            w.put((1u << color_bits) - 1u, color_bits);
+    if (alpha_bits)
+        for (int e = 0; e < endpoints; e++)
+            w.put((1u << alpha_bits) - 1u, alpha_bits);
+    if (endpoint_pbits)
+        for (int e = 0; e < endpoints; e++)
+            w.put(1, endpoint_pbits);
+    if (shared_pbits)
+        for (int s = 0; s < subsets; s++)
+            w.put(1, shared_pbits);
+}
 
 static void test_textureasset3d_bc7_software_decode() {
     uint8_t out[64];
@@ -1344,14 +1411,76 @@ static void test_textureasset3d_bc7_software_decode() {
     EXPECT_TRUE(out[0] == 0 && out[3] == 0, "BC7 mode4 texel0 = (0,0,0,0)");
     EXPECT_TRUE(out[4] == 255 && out[7] == 255, "BC7 mode4 texel1 = (255,255,255,255)");
 
-    /* --- Partitioned mode 0 (byte0 bit0 set) is declined: returns 0, leaves out untouched. */
-    uint8_t b0[16];
-    std::memset(b0, 0, sizeof(b0));
-    b0[0] = 0x01; /* mode 0 */
+    for (int mode : {0, 1, 2, 3, 7}) {
+        uint8_t block[16];
+        uint32_t partition = mode == 0 ? 5u : 17u;
+        write_bc7_constant_white_block(block, mode, partition);
+        std::memset(out, 0x55, sizeof(out));
+        EXPECT_TRUE(rt_textureasset3d_decode_bc7_block(block, out) == 1,
+                    "BC7 partitioned mode decodes");
+        EXPECT_TRUE(out[0] == 255 && out[1] == 255 && out[2] == 255 && out[3] == 255,
+                    "BC7 partitioned constant-white block decodes to opaque white");
+    }
+}
+
+static void test_textureasset3d_etc2_astc_software_decode() {
+    TEST("TextureAsset3D ETC2/ASTC software decode fixtures");
+    const char *etc2_path = "/tmp/viper_textureasset3d_etc2_test.ktx2";
+    const char *astc_path = "/tmp/viper_textureasset3d_astc_test.ktx2";
+    const uint8_t etc2_block[16] = {
+        0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00,
+    };
+    const uint8_t astc_block[16] = {
+        0xFC, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0x00, 0x00, 0x00, 0x80, 0xFF, 0xFF,
+    };
+    uint8_t out[12 * 12 * 4];
+    rt_string path_s;
+    void *asset;
+    void *pixels;
+
     std::memset(out, 0x55, sizeof(out));
-    EXPECT_TRUE(rt_textureasset3d_decode_bc7_block(b0, out) == 0,
-                "BC7 partitioned mode 0 declines software decode");
-    EXPECT_TRUE(out[0] == 0x55, "BC7 declined mode leaves output buffer untouched");
+    EXPECT_TRUE(rt_textureasset3d_decode_etc2_rgba8_block(etc2_block, out) == 1,
+                "ETC2 RGBA8/EAC block decodes");
+    EXPECT_EQ(out[0], 247);
+    EXPECT_EQ(out[1], 247);
+    EXPECT_EQ(out[2], 247);
+    EXPECT_EQ(out[3], 128);
+
+    std::memset(out, 0x55, sizeof(out));
+    EXPECT_TRUE(rt_textureasset3d_decode_astc_ldr_block(astc_block, 4, 4, out) == 1,
+                "ASTC LDR void-extent block decodes");
+    EXPECT_EQ(out[0], 255);
+    EXPECT_EQ(out[1], 0);
+    EXPECT_EQ(out[2], 128);
+    EXPECT_EQ(out[3], 255);
+
+    EXPECT_TRUE(write_test_ktx2(etc2_path, 151u, 4u, 4u, etc2_block, sizeof(etc2_block)),
+                "test ETC2 KTX2 fixture written");
+    path_s = rt_string_from_bytes(etc2_path, std::strlen(etc2_path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+    assert(asset != nullptr);
+    pixels = rt_textureasset3d_get_pixels(asset);
+    EXPECT_TRUE(pixels != nullptr, "ETC2 KTX2 exposes a Pixels fallback");
+    EXPECT_EQ(rt_pixels_get_rgba(pixels, 0, 0), 0xF7F7F780);
+    EXPECT_EQ(rt_textureasset3d_get_native_format_id(asset), RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2);
+
+    EXPECT_TRUE(write_test_ktx2(astc_path, 157u, 4u, 4u, astc_block, sizeof(astc_block)),
+                "test ASTC KTX2 fixture written");
+    path_s = rt_string_from_bytes(astc_path, std::strlen(astc_path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+    assert(asset != nullptr);
+    pixels = rt_textureasset3d_get_pixels(asset);
+    EXPECT_TRUE(pixels != nullptr, "ASTC KTX2 exposes a Pixels fallback");
+    EXPECT_EQ(rt_pixels_get_rgba(pixels, 0, 0), 0xFF0080FF);
+    EXPECT_EQ(rt_textureasset3d_get_native_format_id(asset), RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC);
+
+    std::remove(etc2_path);
+    std::remove(astc_path);
+    PASS();
 }
 
 static void test_textureasset3d_mip_residency() {
@@ -4000,8 +4129,8 @@ static void test_canvas_material_textureasset_resolves_resident_mip_on_draw() {
 
 static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
     TEST("Canvas3D forwards native TextureAsset3D material slots at draw time");
-    const char *path = "/tmp/viper_textureasset3d_draw_native_bc7_test.ktx2";
-    const uint8_t bc7_level0[] = {
+    const char *path = "/tmp/viper_textureasset3d_draw_native_astc_test.ktx2";
+    const uint8_t astc_level0[] = {
         0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
         0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF0, 0x0F,
     };
@@ -4014,8 +4143,8 @@ static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
     void *mat = rt_material3d_new();
     void *xf = rt_mat4_identity();
 
-    EXPECT_TRUE(write_test_ktx2(path, 145u, 4u, 4u, bc7_level0, sizeof(bc7_level0)),
-                "draw-time native BC7 fixture written");
+    EXPECT_TRUE(write_test_ktx2(path, 157u, 4u, 4u, astc_level0, sizeof(astc_level0)),
+                "draw-time native ASTC fixture written");
     path_s = rt_string_from_bytes(path, std::strlen(path));
     asset = rt_textureasset3d_load_ktx2(path_s);
     rt_string_unref(path_s);
@@ -4023,7 +4152,7 @@ static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
 
     rt_material3d_set_texture(mat, asset);
     EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
-                "native BC7 draw fixture has no Pixels fallback");
+                "native ASTC draw fixture has no Pixels fallback");
 
     backend.name = "opengl";
     backend.begin_frame = tracked_begin_frame;
@@ -4983,6 +5112,7 @@ int main() {
     test_textureasset3d_ktx2_material_bridge();
     test_textureasset3d_bc3_software_decode();
     test_textureasset3d_bc7_software_decode();
+    test_textureasset3d_etc2_astc_software_decode();
     test_textureasset3d_mip_residency();
     test_material_inspection_getters();
     test_material_texture_presence_getters();

@@ -161,14 +161,16 @@ trapping before mutation. The open-world GPU smoke records a 3-cascade Metal
 fixture (`CSM_SHADOWS`) after the clustered-lighting probe.
 `BackendSupports("bc7")`, `BackendSupports("astc")`, and
 `BackendSupports("etc2")` report native compressed texture upload support for
-the active backend/device. For uncompressed RGBA8 KTX2 files, each
-declared mip is decoded into a CPU `Pixels` fallback; for precompressed KTX2
-files, native mip block payloads are retained internally for capability-gated
-backend upload. `TextureAsset3D.SetResidentMipRange` switches the active fallback to the
-first resident mip while updating byte telemetry. Materials retain the texture asset
-and resolve that active fallback at draw time, so already-bound materials follow
-later residency changes; when no fallback exists, capable GPU backends receive
-the resident compressed blocks through the same upload-budget telemetry path.
+the active backend/device. KTX2 RGBA8, BC3, BC7 modes 0-7, representative ETC2
+RGBA8/EAC, and ASTC LDR void-extent mips decode into CPU `Pixels` fallbacks;
+all precompressed mip block payloads are still retained internally for
+capability-gated backend upload. Unsupported ETC2 color modes and non-void ASTC
+blocks remain native-only. `TextureAsset3D.SetResidentMipRange` switches the
+active fallback to the first resident mip while updating byte telemetry.
+Materials retain the texture asset and resolve that active fallback at draw
+time, so already-bound materials follow later residency changes; when no
+fallback exists, capable GPU backends receive the resident compressed blocks
+through the same upload-budget telemetry path.
 
 ### Canvas3D Performance Telemetry
 
@@ -430,11 +432,12 @@ sprite draws.
 | `SetEnvMap(cubemap)` | `Void(Object)` | Bind or clear an environment cubemap |
 
 Texture map methods accept `Pixels` or `TextureAsset3D` handles with either an
-active RGBA8 fallback or retained native mip blocks. KTX2 BC3/BC7/ASTC/ETC2
-texture assets can be loaded for metadata, native mip block retention, and mip
-residency byte telemetry; compressed-only assets draw on GPU backends that
-advertise the matching compression capability and otherwise behave as unbound
-textures until a fallback-capable mip is resident.
+active RGBA8 fallback or retained native mip blocks. KTX2 BC3, BC7, supported
+ETC2 RGBA8/EAC, and ASTC LDR void-extent texture assets expose CPU fallbacks
+alongside retained native mip block payloads and mip residency byte telemetry;
+unsupported compressed blocks stay native-only. Native-only assets draw on GPU
+backends that advertise the matching compression capability and otherwise behave
+as unbound textures until a fallback-capable mip is resident.
 When a `TextureAsset3D` is bound, the material retains the asset and resolves
 the currently resident RGBA8 mip and native block source for each draw.
 

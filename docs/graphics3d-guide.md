@@ -697,7 +697,8 @@ KTX2 texture asset metadata and material binding bridge.
 | `ResidentBytes` | Integer | Declared byte size of resident/requested mip levels |
 
 The current runtime parses KTX2 headers, records declared mip payload byte
-ranges, and decodes each uncompressed RGBA8 mip into a `Pixels` fallback.
+ranges, and decodes RGBA8, BC3, BC7 modes 0-7, representative ETC2
+RGBA8/EAC, and ASTC LDR void-extent mips into `Pixels` fallbacks.
 `SetResidentMipRange` updates mip residency telemetry and selects the first
 resident RGBA8 mip as the active fallback resolved by materials at draw time;
 negative arguments trap, `mipCount` clamps to the available range, and a zero
@@ -705,8 +706,10 @@ count releases all resident telemetry/fallback binding. `Material3D.NewTextured`
 `SetAlbedoMap`, `SetNormalMap`, `SetMetallicRoughnessMap`, `SetAOMap`,
 `SetSpecularMap`, and `SetEmissiveMap` accept texture assets directly when they
 have an RGBA8 fallback or native compressed mip blocks. BC3/BC7/ASTC/ETC2
-assets expose metadata and residency byte counts, and native mip block payloads
-upload through capable GPU backends under `Canvas3D.SetTextureUploadBudget`;
+assets expose metadata, residency byte counts, retained native mip payloads,
+and software fallbacks for supported compressed blocks; unsupported ASTC or
+ETC2 modes remain native-only. Native mip block payloads upload through capable
+GPU backends under `Canvas3D.SetTextureUploadBudget`;
 `BackendSupports("bc7"|"astc"|"etc2")` advertises the device-specific native
 paths.
 

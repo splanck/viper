@@ -8,15 +8,17 @@
 // File: src/runtime/graphics/3d/assets/rt_textureasset3d.c
 // Purpose: TextureAsset3D — loads KTX2 textures (RGBA8/BC3/BC7/ETC2/ASTC),
 //   retains native compressed mip payloads for GPU upload, and software-decodes
-//   RGBA8/BC3/BC7 to a Pixels fallback for backends without native support.
+//   RGBA8/BC3/BC7/ETC2 plus ASTC LDR void-extent blocks to a Pixels fallback
+//   for backends without native support.
 //
 // Key invariants:
 //   - Only 2D, single-layer, single-face KTX2 (no array/cube/3D) is accepted.
 //   - Software fallbacks cap at TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES; files
 //     cap at TEXTUREASSET3D_MAX_FILE_BYTES. All offset/length math is overflow-
 //     and bounds-checked against the file size before any read.
-//   - BC7 software decode covers only single-subset modes 4/5/6; partitioned
-//     modes (0-3/7) keep native blocks only (no RGBA fallback).
+//   - BC7 software decode covers modes 0-7. ETC2 fallback covers RGBA8/EAC
+//     blocks in individual/differential color modes. ASTC fallback covers LDR
+//     2D void-extent blocks; unsupported compressed blocks keep native payloads.
 //   - cache_identity is a process-unique nonzero id; native_revision bumps on
 //     every resident-range change so the backend cache key invalidates.
 //
@@ -577,15 +579,13 @@ static void **textureasset3d_decode_bc3_mips(
 }
 
 /* ------------------------------------------------------------------------- *
- * BC7 software reference decode (single-subset modes 4/5/6).
+ * BC7 software reference decode.
  *
- * BC7 packs a 4x4 RGBA block into 16 bytes across eight "modes" that trade
- * subset count, endpoint precision, and index precision. Modes 4/5/6 use a
- * single subset (every texel is subset 0), so they need no partition or anchor
- * tables — only subset 0's implicit rule that texel 0's index stores one fewer
- * bit (high bit == 0). We decode those three (they dominate high-quality RGBA
- * encodes; mode 6 especially) and decline a fallback for the partitioned modes
- * 0-3/7, which keep their native blocks for GPU upload.
+ * BC7 packs a 4x4 RGBA block into 16 bytes across eight modes. Modes 0-3/7 split
+ * texels across two or three endpoint subsets and need the fixed partition and
+ * anchor-index tables from the BC7/BPTC format. Modes 4-6 are single-subset but
+ * share the same endpoint/index expansion rules, so the decoder below uses one
+ * table-driven path for all non-reserved modes.
  * ------------------------------------------------------------------------- */
 
 /* Interpolation weights (numerator over 64) for 2-, 3-, and 4-bit indices. */
@@ -595,22 +595,129 @@ static const uint8_t BC7_W4[16] = {0, 4,  9,  13, 17, 21, 26, 30,
                                    34, 38, 43, 47, 51, 55, 60, 64};
 
 typedef struct {
-    const uint8_t *p;
-    int pos; /* next bit to read, LSB-first within each byte */
-} bc7_reader;
+    uint8_t subset_count;
+    uint8_t partition_bits;
+    uint8_t rotation_bits;
+    uint8_t index_selection_bits;
+    uint8_t color_bits;
+    uint8_t alpha_bits;
+    uint8_t endpoint_pbits;
+    uint8_t shared_pbits;
+    uint8_t primary_index_bits;
+    uint8_t primary_index_total_bits;
+    uint8_t secondary_index_bits;
+} bc7_mode_info;
 
-/* Read the next `n` bits LSB-first from the block bitstream, advancing the reader. */
-static uint32_t bc7_get(bc7_reader *r, int n) {
+static const bc7_mode_info BC7_MODES[8] = {
+    {3, 4, 0, 0, 4, 0, 1, 0, 3, 45, 0}, {2, 6, 0, 0, 6, 0, 0, 1, 3, 46, 0},
+    {3, 6, 0, 0, 5, 0, 0, 0, 2, 29, 0}, {2, 6, 0, 0, 7, 0, 1, 0, 2, 30, 0},
+    {1, 0, 2, 1, 5, 6, 0, 0, 2, 31, 3}, {1, 0, 2, 0, 7, 8, 0, 0, 2, 31, 2},
+    {1, 0, 0, 0, 7, 7, 1, 0, 4, 63, 0}, {2, 6, 0, 0, 5, 5, 1, 0, 2, 30, 0},
+};
+
+static const uint8_t BC7_PARTITION2[64][16] = {
+    {0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1}, {0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1},
+    {0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1}, {0,0,0,1,0,0,1,1,0,0,1,1,0,1,1,1},
+    {0,0,0,0,0,0,0,1,0,0,0,1,0,0,1,1}, {0,0,1,1,0,1,1,1,0,1,1,1,1,1,1,1},
+    {0,0,0,1,0,0,1,1,0,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,1,0,0,1,1,0,1,1,1},
+    {0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1}, {0,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1},
+    {0,0,0,0,0,0,0,1,0,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1},
+    {0,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1},
+    {0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1},
+    {0,0,0,0,1,0,0,0,1,1,1,0,1,1,1,1}, {0,1,1,1,0,0,0,1,0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0,0,0,1,0,0,0,1,1,1,0}, {0,1,1,1,0,0,1,1,0,0,0,1,0,0,0,0},
+    {0,0,1,1,0,0,0,1,0,0,0,0,0,0,0,0}, {0,0,0,0,1,0,0,0,1,1,0,0,1,1,1,0},
+    {0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0}, {0,1,1,1,0,0,1,1,0,0,1,1,0,0,0,1},
+    {0,0,1,1,0,0,0,1,0,0,0,1,0,0,0,0}, {0,0,0,0,1,0,0,0,1,0,0,0,1,1,0,0},
+    {0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0}, {0,0,1,1,0,1,1,0,0,1,1,0,1,1,0,0},
+    {0,0,0,1,0,1,1,1,1,1,1,0,1,0,0,0}, {0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0},
+    {0,1,1,1,0,0,0,1,1,0,0,0,1,1,1,0}, {0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0},
+    {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1}, {0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1},
+    {0,1,0,1,1,0,1,0,0,1,0,1,1,0,1,0}, {0,0,1,1,0,0,1,1,1,1,0,0,1,1,0,0},
+    {0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0}, {0,1,0,1,0,1,0,1,1,0,1,0,1,0,1,0},
+    {0,1,1,0,1,0,0,1,0,1,1,0,1,0,0,1}, {0,1,0,1,1,0,1,0,1,0,1,0,0,1,0,1},
+    {0,1,1,1,0,0,1,1,1,1,0,0,1,1,1,0}, {0,0,0,1,0,0,1,1,1,1,0,0,1,0,0,0},
+    {0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0}, {0,0,1,1,1,0,1,1,1,1,0,1,1,1,0,0},
+    {0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0}, {0,0,1,1,1,1,0,0,1,1,0,0,0,0,1,1},
+    {0,1,1,0,0,1,1,0,1,0,0,1,1,0,0,1}, {0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0},
+    {0,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0}, {0,0,1,0,0,1,1,1,0,0,1,0,0,0,0,0},
+    {0,0,0,0,0,0,1,0,0,1,1,1,0,0,1,0}, {0,0,0,0,0,1,0,0,1,1,1,0,0,1,0,0},
+    {0,1,1,0,1,1,0,0,1,0,0,1,0,0,1,1}, {0,0,1,1,0,1,1,0,1,1,0,0,1,0,0,1},
+    {0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0}, {0,0,1,1,1,0,0,1,1,1,0,0,0,1,1,0},
+    {0,1,1,0,1,1,0,0,1,1,0,0,1,0,0,1}, {0,1,1,0,0,0,1,1,0,0,1,1,1,0,0,1},
+    {0,1,1,1,1,1,1,0,1,0,0,0,0,0,0,1}, {0,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1},
+    {0,0,0,0,1,1,1,1,0,0,1,1,0,0,1,1}, {0,0,1,1,0,0,1,1,1,1,1,1,0,0,0,0},
+    {0,0,1,0,0,0,1,0,1,1,1,0,1,1,1,0}, {0,1,0,0,0,1,0,0,0,1,1,1,0,1,1,1},
+};
+
+static const uint8_t BC7_PARTITION3[64][16] = {
+    {0,0,1,1,0,0,1,1,0,2,2,1,2,2,2,2}, {0,0,0,1,0,0,1,1,2,2,1,1,2,2,2,1},
+    {0,0,0,0,2,0,0,1,2,2,1,1,2,2,1,1}, {0,2,2,2,0,0,2,2,0,0,1,1,0,1,1,1},
+    {0,0,0,0,0,0,0,0,1,1,2,2,1,1,2,2}, {0,0,1,1,0,0,1,1,0,0,2,2,0,0,2,2},
+    {0,0,2,2,0,0,2,2,1,1,1,1,1,1,1,1}, {0,0,1,1,0,0,1,1,2,2,1,1,2,2,1,1},
+    {0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2}, {0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2},
+    {0,0,0,0,1,1,1,1,2,2,2,2,2,2,2,2}, {0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2},
+    {0,1,1,2,0,1,1,2,0,1,1,2,0,1,1,2}, {0,1,2,2,0,1,2,2,0,1,2,2,0,1,2,2},
+    {0,0,1,1,0,1,1,2,1,1,2,2,1,2,2,2}, {0,0,1,1,2,0,0,1,2,2,0,0,2,2,2,0},
+    {0,0,0,1,0,0,1,1,0,1,1,2,1,1,2,2}, {0,1,1,1,0,0,1,1,2,0,0,1,2,2,0,0},
+    {0,0,0,0,1,1,2,2,1,1,2,2,1,1,2,2}, {0,0,2,2,0,0,2,2,0,0,2,2,1,1,1,1},
+    {0,1,1,1,0,1,1,1,0,2,2,2,0,2,2,2}, {0,0,0,1,0,0,0,1,2,2,2,1,2,2,2,1},
+    {0,0,0,0,0,0,1,1,0,1,2,2,0,1,2,2}, {0,0,0,0,1,1,0,0,2,2,1,0,2,2,1,0},
+    {0,1,2,2,0,1,2,2,0,0,1,1,0,0,0,0}, {0,0,1,2,0,0,1,2,1,1,2,2,2,2,2,2},
+    {0,1,1,0,1,2,2,1,1,2,2,1,0,1,1,0}, {0,0,0,0,0,1,1,0,1,2,2,1,1,2,2,1},
+    {0,0,2,2,1,1,0,2,1,1,0,2,0,0,2,2}, {0,1,1,0,0,1,1,0,2,0,0,2,2,2,2,2},
+    {0,0,1,1,0,1,2,2,0,1,2,2,0,0,1,1}, {0,0,0,0,2,0,0,0,2,2,1,1,2,2,2,1},
+    {0,0,0,0,0,0,0,2,1,1,2,2,1,2,2,2}, {0,2,2,2,0,0,2,2,0,0,1,2,0,0,1,1},
+    {0,0,1,1,0,0,1,2,0,0,2,2,0,2,2,2}, {0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0},
+    {0,0,0,0,1,1,1,1,2,2,2,2,0,0,0,0}, {0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0},
+    {0,1,2,0,2,0,1,2,1,2,0,1,0,1,2,0}, {0,0,1,1,2,2,0,0,1,1,2,2,0,0,1,1},
+    {0,0,1,1,1,1,2,2,2,2,0,0,0,0,1,1}, {0,1,0,1,0,1,0,1,2,2,2,2,2,2,2,2},
+    {0,0,0,0,0,0,0,0,2,1,2,1,2,1,2,1}, {0,0,2,2,1,1,2,2,0,0,2,2,1,1,2,2},
+    {0,0,2,2,0,0,1,1,0,0,2,2,0,0,1,1}, {0,2,2,0,1,2,2,1,0,2,2,0,1,2,2,1},
+    {0,1,0,1,2,2,2,2,2,2,2,2,0,1,0,1}, {0,0,0,0,2,1,2,1,2,1,2,1,2,1,2,1},
+    {0,1,0,1,0,1,0,1,0,1,0,1,2,2,2,2}, {0,2,2,2,0,1,1,1,0,2,2,2,0,1,1,1},
+    {0,0,0,2,1,1,1,2,0,0,0,2,1,1,1,2}, {0,0,0,0,2,1,1,2,2,1,1,2,2,1,1,2},
+    {0,2,2,2,0,1,1,1,0,1,1,1,0,2,2,2}, {0,0,0,2,1,1,1,2,1,1,1,2,0,0,0,2},
+    {0,1,1,0,0,1,1,0,0,1,1,0,2,2,2,2}, {0,0,0,0,0,0,0,0,2,1,1,2,2,1,1,2},
+    {0,1,1,0,0,1,1,0,2,2,2,2,2,2,2,2}, {0,0,2,2,0,0,1,1,0,0,1,1,0,0,2,2},
+    {0,0,2,2,1,1,2,2,1,1,2,2,0,0,2,2}, {0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,2},
+    {0,0,0,2,0,0,0,1,0,0,0,2,0,0,0,1}, {0,2,2,2,1,2,2,2,0,2,2,2,1,2,2,2},
+    {0,1,0,1,2,2,2,2,2,2,2,2,2,2,2,2}, {0,1,1,1,2,0,1,1,2,2,0,1,2,2,2,0},
+};
+
+static const uint8_t BC7_ANCHOR2[64] = {
+    15,15,15,15,15,15,15,15, 15,15,15,15,15,15,15,15,
+    15, 2, 8, 2, 2, 8, 8,15,  2, 8, 2, 2, 8, 8, 2, 2,
+    15,15, 6, 8, 2, 8,15,15,  2, 8, 2, 2, 2,15,15, 6,
+     6, 2, 6, 8,15,15, 2, 2, 15,15,15,15,15, 2, 2,15,
+};
+
+static const uint8_t BC7_ANCHOR3A[64] = {
+     3, 3,15,15, 8, 3,15,15, 8, 8, 6, 6, 6, 5, 3, 3,
+     3, 3, 8,15, 3, 3, 6,10, 5, 8, 8, 6, 8, 5,15,15,
+     8,15, 3, 5, 6,10, 8,15,15, 3,15, 5,15,15,15,15,
+     3,15, 5, 5, 5, 8, 5,10, 5,10, 8,13,15,12, 3, 3,
+};
+
+static const uint8_t BC7_ANCHOR3B[64] = {
+    15, 8, 8, 3,15,15, 3, 8,15,15,15,15,15,15,15, 8,
+    15, 8,15, 3,15, 8,15, 8, 3,15, 6,10,15,15,10, 8,
+    15, 3,15,10,10, 8, 9,10, 6,15, 8,15, 3, 6, 6, 8,
+    15, 3,15,15,15,15,15,15,15,15,15,15, 3,15,15, 8,
+};
+
+/* Read `n` bits at a fixed bit offset, LSB-first within each byte. */
+static uint32_t bc7_get_bits_at(const uint8_t *b, int offset, int n) {
     uint32_t v = 0;
-    for (int i = 0; i < n; i++) {
-        v |= (uint32_t)((r->p[r->pos >> 3] >> (r->pos & 7)) & 1u) << i;
-        r->pos++;
-    }
+    for (int i = 0; i < n; i++)
+        v |= (uint32_t)((b[(offset + i) >> 3] >> ((offset + i) & 7)) & 1u) << i;
     return v;
 }
 
 /* Expand a `bits`-bit endpoint component to 8 bits by bit replication. */
 static uint8_t bc7_unq(uint32_t v, int bits) {
+    if (bits >= 8)
+        return (uint8_t)v;
     return (uint8_t)((v << (8 - bits)) | (v >> (2 * bits - 8)));
 }
 
@@ -645,116 +752,184 @@ static int bc7_block_mode(const uint8_t *b) {
     return mode;
 }
 
+static int bc7_num_colors(const bc7_mode_info *info) {
+    return (int)info->subset_count * 2;
+}
+
+static int bc7_endpoint_base(int mode, const bc7_mode_info *info) {
+    return mode + 1 + (int)info->partition_bits + (int)info->rotation_bits +
+           (int)info->index_selection_bits;
+}
+
+static int bc7_red_offset(int mode, const bc7_mode_info *info, int endpoint) {
+    return bc7_endpoint_base(mode, info) + (int)info->color_bits * endpoint;
+}
+
+static int bc7_green_offset(int mode, const bc7_mode_info *info, int endpoint) {
+    return bc7_red_offset(mode, info, bc7_num_colors(info)) + (int)info->color_bits * endpoint;
+}
+
+static int bc7_blue_offset(int mode, const bc7_mode_info *info, int endpoint) {
+    return bc7_green_offset(mode, info, bc7_num_colors(info)) + (int)info->color_bits * endpoint;
+}
+
+static int bc7_alpha_offset(int mode, const bc7_mode_info *info, int endpoint) {
+    return bc7_blue_offset(mode, info, bc7_num_colors(info)) + (int)info->alpha_bits * endpoint;
+}
+
+static int bc7_endpoint_pbit_offset(int mode, const bc7_mode_info *info, int endpoint) {
+    return bc7_alpha_offset(mode, info, bc7_num_colors(info)) + (int)info->endpoint_pbits * endpoint;
+}
+
+static int bc7_shared_pbit_offset(int mode, const bc7_mode_info *info, int subset) {
+    return bc7_endpoint_pbit_offset(mode, info, bc7_num_colors(info)) +
+           (int)info->shared_pbits * subset;
+}
+
+static int bc7_index_base(int mode, const bc7_mode_info *info) {
+    return bc7_shared_pbit_offset(mode, info, 2);
+}
+
+static int bc7_subset_index(const bc7_mode_info *info, int partition, int texel) {
+    if (info->subset_count == 2)
+        return BC7_PARTITION2[partition][texel];
+    if (info->subset_count == 3)
+        return BC7_PARTITION3[partition][texel];
+    return 0;
+}
+
+static int bc7_anchor_index(const bc7_mode_info *info, int partition, int subset) {
+    if (subset == 1)
+        return info->subset_count == 2 ? BC7_ANCHOR2[partition] : BC7_ANCHOR3A[partition];
+    if (subset == 2)
+        return BC7_ANCHOR3B[partition];
+    return 0;
+}
+
+static uint32_t bc7_index_value(const uint8_t *b,
+                                int mode,
+                                const bc7_mode_info *info,
+                                int anchor,
+                                int color_channel,
+                                int *bit_offset,
+                                int *out_bits) {
+    int selection_offset = mode + 1 + (int)info->partition_bits + (int)info->rotation_bits;
+    int selection = info->index_selection_bits ? (int)bc7_get_bits_at(b, selection_offset, 1) : 0;
+    int secondary = color_channel ? selection == 1 : (info->secondary_index_bits != 0 && selection == 0);
+    int bits = secondary ? (int)info->secondary_index_bits : (int)info->primary_index_bits;
+    int read_bits = bits - (anchor ? 1 : 0);
+    int base = bc7_index_base(mode, info) +
+               (secondary ? (int)info->primary_index_total_bits : 0) + *bit_offset;
+    uint32_t value = read_bits > 0 ? bc7_get_bits_at(b, base, read_bits) : 0;
+    *bit_offset += read_bits;
+    if (out_bits)
+        *out_bits = bits;
+    return value;
+}
+
+static uint8_t bc7_index_weight(uint32_t index, int bits) {
+    if (bits == 2)
+        return BC7_W2[index & 3u];
+    if (bits == 3)
+        return BC7_W3[index & 7u];
+    return BC7_W4[index & 15u];
+}
+
 /// @brief Decode one 16-byte BC7 block into 16 row-major RGBA texels (@p out_rgba is 64 bytes).
-///   Handles single-subset modes 4/5/6; returns 0 for partitioned modes (0-3/7) and leaves
-///   @p out_rgba untouched. Non-static so the unit test can verify against constructed blocks.
+///   Handles modes 0-7, including partitioned modes. Non-static so the unit test can verify
+///   against constructed blocks.
 int rt_textureasset3d_decode_bc7_block(const uint8_t *b, uint8_t *out_rgba) {
-    bc7_reader r;
     int mode;
     if (!b || !out_rgba)
         return 0;
-    r.p = b;
-    r.pos = 0;
-    mode = 0;
-    while (mode < 8 && bc7_get(&r, 1) == 0)
-        mode++;
-    if (mode != 4 && mode != 5 && mode != 6)
-        return 0; /* partitioned / invalid: no software fallback */
+    mode = bc7_block_mode(b);
+    if (mode >= 8)
+        return 0;
 
-    if (mode == 6) {
-        /* 1 subset, RGBA 7 bits + 1 p-bit per endpoint (8-bit effective), 4-bit indices. */
-        uint32_t c0[4], c1[4], p0, p1;
-        uint8_t e0[4], e1[4];
-        for (int c = 0; c < 4; c++) {
-            c0[c] = bc7_get(&r, 7);
-            c1[c] = bc7_get(&r, 7);
-        }
-        p0 = bc7_get(&r, 1);
-        p1 = bc7_get(&r, 1);
-        for (int c = 0; c < 4; c++) {
-            e0[c] = (uint8_t)((c0[c] << 1) | p0);
-            e1[c] = (uint8_t)((c1[c] << 1) | p1);
-        }
-        for (int t = 0; t < 16; t++) {
-            uint8_t w = BC7_W4[bc7_get(&r, t == 0 ? 3 : 4)];
-            for (int c = 0; c < 4; c++)
-                out_rgba[t * 4 + c] = bc7_interp(e0[c], e1[c], w);
-        }
-        return 1;
-    }
-
-    if (mode == 5) {
-        /* 1 subset, RGB 7 bits + A 8 bits, 2-bit rotation, separate 2-bit color/alpha indices. */
-        uint32_t rot = bc7_get(&r, 2);
-        uint32_t cr0[3], cr1[3], a0, a1;
-        uint8_t e0[4], e1[4], cidx[16], aidx[16];
-        for (int c = 0; c < 3; c++) {
-            cr0[c] = bc7_get(&r, 7);
-            cr1[c] = bc7_get(&r, 7);
-        }
-        a0 = bc7_get(&r, 8);
-        a1 = bc7_get(&r, 8);
-        for (int c = 0; c < 3; c++) {
-            e0[c] = bc7_unq(cr0[c], 7);
-            e1[c] = bc7_unq(cr1[c], 7);
-        }
-        e0[3] = (uint8_t)a0;
-        e1[3] = (uint8_t)a1;
-        for (int t = 0; t < 16; t++)
-            cidx[t] = (uint8_t)bc7_get(&r, t == 0 ? 1 : 2);
-        for (int t = 0; t < 16; t++)
-            aidx[t] = (uint8_t)bc7_get(&r, t == 0 ? 1 : 2);
-        for (int t = 0; t < 16; t++) {
-            uint8_t cw = BC7_W2[cidx[t]];
-            out_rgba[t * 4 + 0] = bc7_interp(e0[0], e1[0], cw);
-            out_rgba[t * 4 + 1] = bc7_interp(e0[1], e1[1], cw);
-            out_rgba[t * 4 + 2] = bc7_interp(e0[2], e1[2], cw);
-            out_rgba[t * 4 + 3] = bc7_interp(e0[3], e1[3], BC7_W2[aidx[t]]);
-            bc7_apply_rotation(rot, &out_rgba[t * 4]);
-        }
-        return 1;
-    }
-
-    /* mode == 4: 1 subset, RGB 5 bits + A 6 bits, 2-bit rotation, 1-bit index selector,
-     * a 2-bit and a 3-bit index set (idxMode picks which drives color vs alpha). */
     {
-        uint32_t rot = bc7_get(&r, 2);
-        uint32_t idx_mode = bc7_get(&r, 1);
-        uint32_t cr0[3], cr1[3], a0, a1;
-        uint8_t e0[4], e1[4], i2[16], i3[16];
-        for (int c = 0; c < 3; c++) {
-            cr0[c] = bc7_get(&r, 5);
-            cr1[c] = bc7_get(&r, 5);
+        const bc7_mode_info *info = &BC7_MODES[mode];
+        uint8_t endpoint[3][2][4];
+        int color_bits = (int)info->color_bits + (int)info->endpoint_pbits + (int)info->shared_pbits;
+        int alpha_bits = (int)info->alpha_bits + (int)info->endpoint_pbits + (int)info->shared_pbits;
+        int partition = info->partition_bits ? (int)bc7_get_bits_at(b, mode + 1, info->partition_bits) : 0;
+        int rotation_offset = mode + 1 + (int)info->partition_bits;
+        uint32_t rotation = info->rotation_bits ? bc7_get_bits_at(b, rotation_offset, info->rotation_bits) : 0;
+        int color_index_offset = 0;
+        int alpha_index_offset = 0;
+
+        for (int s = 0; s < (int)info->subset_count; s++) {
+            for (int e = 0; e < 2; e++) {
+                int endpoint_index = s * 2 + e;
+                endpoint[s][e][0] = (uint8_t)bc7_get_bits_at(
+                    b, bc7_red_offset(mode, info, endpoint_index), info->color_bits);
+                endpoint[s][e][1] = (uint8_t)bc7_get_bits_at(
+                    b, bc7_green_offset(mode, info, endpoint_index), info->color_bits);
+                endpoint[s][e][2] = (uint8_t)bc7_get_bits_at(
+                    b, bc7_blue_offset(mode, info, endpoint_index), info->color_bits);
+                endpoint[s][e][3] = info->alpha_bits ? (uint8_t)bc7_get_bits_at(
+                                                          b,
+                                                          bc7_alpha_offset(mode, info, endpoint_index),
+                                                          info->alpha_bits)
+                                                      : 255;
+            }
         }
-        a0 = bc7_get(&r, 6);
-        a1 = bc7_get(&r, 6);
-        for (int c = 0; c < 3; c++) {
-            e0[c] = bc7_unq(cr0[c], 5);
-            e1[c] = bc7_unq(cr1[c], 5);
+
+        if (info->shared_pbits) {
+            for (int s = 0; s < (int)info->subset_count; s++) {
+                uint8_t p = (uint8_t)bc7_get_bits_at(b, bc7_shared_pbit_offset(mode, info, s), 1);
+                for (int e = 0; e < 2; e++)
+                    for (int c = 0; c < 3; c++)
+                        endpoint[s][e][c] = (uint8_t)((endpoint[s][e][c] << 1) | p);
+            }
         }
-        e0[3] = bc7_unq(a0, 6);
-        e1[3] = bc7_unq(a1, 6);
-        for (int t = 0; t < 16; t++)
-            i2[t] = (uint8_t)bc7_get(&r, t == 0 ? 1 : 2);
-        for (int t = 0; t < 16; t++)
-            i3[t] = (uint8_t)bc7_get(&r, t == 0 ? 2 : 3);
+        if (info->endpoint_pbits) {
+            for (int s = 0; s < (int)info->subset_count; s++) {
+                for (int e = 0; e < 2; e++) {
+                    int endpoint_index = s * 2 + e;
+                    uint8_t p =
+                        (uint8_t)bc7_get_bits_at(b, bc7_endpoint_pbit_offset(mode, info, endpoint_index), 1);
+                    for (int c = 0; c < 3; c++)
+                        endpoint[s][e][c] = (uint8_t)((endpoint[s][e][c] << 1) | p);
+                    if (info->alpha_bits)
+                        endpoint[s][e][3] = (uint8_t)((endpoint[s][e][3] << 1) | p);
+                }
+            }
+        }
+        for (int s = 0; s < (int)info->subset_count; s++) {
+            for (int e = 0; e < 2; e++) {
+                for (int c = 0; c < 3; c++)
+                    endpoint[s][e][c] = bc7_unq(endpoint[s][e][c], color_bits);
+                if (info->alpha_bits)
+                    endpoint[s][e][3] = bc7_unq(endpoint[s][e][3], alpha_bits);
+            }
+        }
+
         for (int t = 0; t < 16; t++) {
-            uint8_t cw = idx_mode ? BC7_W3[i3[t]] : BC7_W2[i2[t]];
-            uint8_t aw = idx_mode ? BC7_W2[i2[t]] : BC7_W3[i3[t]];
-            out_rgba[t * 4 + 0] = bc7_interp(e0[0], e1[0], cw);
-            out_rgba[t * 4 + 1] = bc7_interp(e0[1], e1[1], cw);
-            out_rgba[t * 4 + 2] = bc7_interp(e0[2], e1[2], cw);
-            out_rgba[t * 4 + 3] = bc7_interp(e0[3], e1[3], aw);
-            bc7_apply_rotation(rot, &out_rgba[t * 4]);
+            int subset = bc7_subset_index(info, partition, t);
+            int anchor = bc7_anchor_index(info, partition, subset) == t;
+            int c_bits = 0;
+            int a_bits = 0;
+            uint32_t cidx = bc7_index_value(
+                b, mode, info, anchor, 1, &color_index_offset, &c_bits);
+            uint32_t aidx = bc7_index_value(
+                b, mode, info, anchor, 0, &alpha_index_offset, &a_bits);
+            uint8_t cw = bc7_index_weight(cidx, c_bits);
+            uint8_t aw = bc7_index_weight(aidx, a_bits);
+
+            for (int c = 0; c < 3; c++)
+                out_rgba[t * 4 + c] = bc7_interp(endpoint[subset][0][c], endpoint[subset][1][c], cw);
+            out_rgba[t * 4 + 3] =
+                bc7_interp(endpoint[subset][0][3], endpoint[subset][1][3], aw);
+            bc7_apply_rotation(rotation, &out_rgba[t * 4]);
         }
         return 1;
     }
 }
 
 /// @brief Software-decode a whole BC7 mip into a new RGBA8 Pixels object.
-/// @details First scans every block and bails (returns NULL) if any uses a partitioned mode
-///          with no software path, so the texture stays native-only rather than partially
-///          decoded. Otherwise decodes each block, clipping edge overhang. Bounds/budget-checked.
+/// @details First scans every block and bails (returns NULL) if any uses the reserved mode 8, so
+///          the texture stays native-only rather than partially decoded. Otherwise decodes each
+///          block, clipping edge overhang. Bounds/budget-checked.
 static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
                                                 size_t size,
                                                 uint32_t width,
@@ -774,13 +949,12 @@ static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
         return NULL;
     if (length < needed || offset > (uint64_t)size || needed > (uint64_t)size - offset)
         return NULL;
-    /* Only produce an RGBA fallback when every block is a software-supported mode; otherwise the
-     * texture keeps its native blocks (partitioned modes have no software path here). */
+    /* Only produce an RGBA fallback when every block is a software-supported BC7 mode. */
     for (uint32_t by = 0; by < blocks_y; by++)
         for (uint32_t bx = 0; bx < blocks_x; bx++) {
             const uint8_t *block = data + offset + ((uint64_t)by * blocks_x + bx) * 16u;
             int m = bc7_block_mode(block);
-            if (m != 4 && m != 5 && m != 6)
+            if (m >= 8)
                 return NULL;
         }
     pixels = rt_pixels_new((int64_t)width, (int64_t)height);
@@ -813,8 +987,8 @@ static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
 }
 
 /// @brief Decode all mips of a BC7 texture into a Pixels array.
-/// @details Returns NULL if any mip contains an unsupported (partitioned) mode, so a texture
-///          is either fully software-decoded or left native-only — never a mix.
+/// @details Returns NULL if any mip contains a reserved/unsupported block, so a texture is either
+///          fully software-decoded or left native-only — never a mix.
 static void **textureasset3d_decode_bc7_mips(
     const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
     void **mip_pixels;
@@ -827,7 +1001,307 @@ static void **textureasset3d_decode_bc7_mips(
         mip_pixels[i] = textureasset3d_decode_bc7_fallback(
             data, size, mips[i].width, mips[i].height, mips[i].offset, mips[i].length);
         if (!mip_pixels[i]) {
-            /* A partitioned-mode mip (or any failure) means no whole-texture RGBA fallback. */
+            /* A reserved block (or any failure) means no whole-texture RGBA fallback. */
+            textureasset3d_release_mip_pixels(mip_pixels, mip_count);
+            return NULL;
+        }
+    }
+    return mip_pixels;
+}
+
+static uint8_t textureasset3d_expand4(uint32_t v) {
+    return (uint8_t)((v << 4) | v);
+}
+
+static uint8_t textureasset3d_clamp_u8(int v) {
+    if (v < 0)
+        return 0;
+    if (v > 255)
+        return 255;
+    return (uint8_t)v;
+}
+
+static int textureasset3d_sign3(uint32_t v) {
+    return (v & 4u) ? (int)v - 8 : (int)v;
+}
+
+static uint8_t textureasset3d_unorm16_to_u8(uint32_t v) {
+    return (uint8_t)((v * 255u + 32767u) / 65535u);
+}
+
+static const int8_t ETC2_ALPHA_MODIFIERS[16][8] = {
+    {-3,-6,-9,-15, 2, 5, 8,14}, {-3,-7,-10,-13, 2, 6, 9,12},
+    {-2,-5,-8,-13, 1, 4, 7,12}, {-2,-4, -6,-13, 1, 3, 5,12},
+    {-3,-6,-8,-12, 2, 5, 7,11}, {-3,-7, -9,-11, 2, 6, 8,10},
+    {-4,-7,-8,-11, 3, 6, 7,10}, {-3,-5, -8,-11, 2, 4, 7,10},
+    {-2,-6,-8,-10, 1, 5, 7, 9}, {-2,-5, -8,-10, 1, 4, 7, 9},
+    {-2,-4,-8,-10, 1, 3, 7, 9}, {-2,-5, -7,-10, 1, 4, 6, 9},
+    {-3,-4,-7,-10, 2, 3, 6, 9}, {-1,-2, -3,-10, 0, 1, 2, 9},
+    {-4,-6,-8, -9, 3, 5, 7, 8}, {-3,-5, -7, -9, 2, 4, 6, 8},
+};
+
+static const int16_t ETC2_COLOR_MODIFIERS[8][4] = {
+    {-8, -2, 2, 8}, {-17, -5, 5, 17}, {-29, -9, 9, 29}, {-42, -13, 13, 42},
+    {-60, -18, 18, 60}, {-80, -24, 24, 80}, {-106, -33, 33, 106}, {-183, -47, 47, 183},
+};
+
+static uint64_t textureasset3d_read_u48be(const uint8_t *p) {
+    uint64_t v = 0;
+    for (int i = 0; i < 6; i++)
+        v = (v << 8) | (uint64_t)p[i];
+    return v;
+}
+
+static int etc2_color_index(const uint8_t *c, int x, int y) {
+    int bit = x * 4 + y;
+    uint16_t msb = ((uint16_t)c[4] << 8) | (uint16_t)c[5];
+    uint16_t lsb = ((uint16_t)c[6] << 8) | (uint16_t)c[7];
+    return (int)(((msb >> bit) & 1u) << 1) | (int)((lsb >> bit) & 1u);
+}
+
+/// @brief Decode one ETC2 RGBA8/EAC 16-byte block into 16 row-major RGBA texels.
+/// @details Supports the ETC2 individual and differential color modes plus EAC alpha. T/H/planar
+///          color modes return 0 so the texture can remain native-only rather than partially decode.
+int rt_textureasset3d_decode_etc2_rgba8_block(const uint8_t *b, uint8_t *out_rgba) {
+    uint8_t alpha[16];
+    uint64_t alpha_bits;
+    const uint8_t *c;
+    uint8_t base_rgb[2][3];
+    int table[2];
+    int flip;
+    int diff;
+
+    if (!b || !out_rgba)
+        return 0;
+
+    alpha_bits = textureasset3d_read_u48be(b + 2);
+    for (int t = 0; t < 16; t++) {
+        int idx = (int)((alpha_bits >> (45 - t * 3)) & 7u);
+        int table_index = b[1] & 0x0F;
+        int multiplier = (b[1] >> 4) & 0x0F;
+        alpha[t] = textureasset3d_clamp_u8((int)b[0] + ETC2_ALPHA_MODIFIERS[table_index][idx] * multiplier);
+    }
+
+    c = b + 8;
+    diff = (c[3] & 0x02u) != 0;
+    flip = (c[3] & 0x01u) != 0;
+    table[0] = (c[3] >> 5) & 0x07;
+    table[1] = (c[3] >> 2) & 0x07;
+
+    if (diff) {
+        int r0 = (c[0] >> 3) & 0x1F;
+        int g0 = (c[1] >> 3) & 0x1F;
+        int b0 = (c[2] >> 3) & 0x1F;
+        int r1 = r0 + textureasset3d_sign3(c[0] & 0x07);
+        int g1 = g0 + textureasset3d_sign3(c[1] & 0x07);
+        int b1 = b0 + textureasset3d_sign3(c[2] & 0x07);
+        if (r1 < 0 || r1 > 31 || g1 < 0 || g1 > 31 || b1 < 0 || b1 > 31)
+            return 0; /* T/H/planar modes use ETC2's differential overflow selectors. */
+        base_rgb[0][0] = textureasset3d_expand5((uint32_t)r0);
+        base_rgb[0][1] = textureasset3d_expand5((uint32_t)g0);
+        base_rgb[0][2] = textureasset3d_expand5((uint32_t)b0);
+        base_rgb[1][0] = textureasset3d_expand5((uint32_t)r1);
+        base_rgb[1][1] = textureasset3d_expand5((uint32_t)g1);
+        base_rgb[1][2] = textureasset3d_expand5((uint32_t)b1);
+    } else {
+        base_rgb[0][0] = textureasset3d_expand4((c[0] >> 4) & 0x0F);
+        base_rgb[1][0] = textureasset3d_expand4(c[0] & 0x0F);
+        base_rgb[0][1] = textureasset3d_expand4((c[1] >> 4) & 0x0F);
+        base_rgb[1][1] = textureasset3d_expand4(c[1] & 0x0F);
+        base_rgb[0][2] = textureasset3d_expand4((c[2] >> 4) & 0x0F);
+        base_rgb[1][2] = textureasset3d_expand4(c[2] & 0x0F);
+    }
+
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            int texel = y * 4 + x;
+            int subset = flip ? (y >= 2) : (x >= 2);
+            int idx = etc2_color_index(c, x, y);
+            int mod = ETC2_COLOR_MODIFIERS[table[subset]][idx];
+            out_rgba[texel * 4 + 0] = textureasset3d_clamp_u8((int)base_rgb[subset][0] + mod);
+            out_rgba[texel * 4 + 1] = textureasset3d_clamp_u8((int)base_rgb[subset][1] + mod);
+            out_rgba[texel * 4 + 2] = textureasset3d_clamp_u8((int)base_rgb[subset][2] + mod);
+            out_rgba[texel * 4 + 3] = alpha[texel];
+        }
+    }
+    return 1;
+}
+
+/// @brief Decode one ASTC LDR 2D void-extent block into a row-major RGBA texel block.
+/// @details Non-void ASTC is left native-only; the software fallback covers constant-color ASTC
+///          fixtures and the required LDR void-extent baseline without adding an ASTC dependency.
+int rt_textureasset3d_decode_astc_ldr_block(const uint8_t *b,
+                                            int32_t block_width,
+                                            int32_t block_height,
+                                            uint8_t *out_rgba) {
+    uint64_t low;
+    uint8_t rgba[4];
+
+    if (!b || !out_rgba || block_width <= 0 || block_height <= 0 || block_width > 12 || block_height > 12)
+        return 0;
+    low = textureasset3d_read_u64le(b);
+    if ((low & UINT64_C(0xFFF)) != UINT64_C(0xDFC))
+        return 0; /* Not an LDR 2D void-extent block. */
+    rgba[0] = textureasset3d_unorm16_to_u8((uint32_t)b[8] | ((uint32_t)b[9] << 8));
+    rgba[1] = textureasset3d_unorm16_to_u8((uint32_t)b[10] | ((uint32_t)b[11] << 8));
+    rgba[2] = textureasset3d_unorm16_to_u8((uint32_t)b[12] | ((uint32_t)b[13] << 8));
+    rgba[3] = textureasset3d_unorm16_to_u8((uint32_t)b[14] | ((uint32_t)b[15] << 8));
+    for (int32_t y = 0; y < block_height; y++)
+        for (int32_t x = 0; x < block_width; x++) {
+            uint8_t *dst = &out_rgba[((int)y * block_width + (int)x) * 4];
+            dst[0] = rgba[0];
+            dst[1] = rgba[1];
+            dst[2] = rgba[2];
+            dst[3] = rgba[3];
+        }
+    return 1;
+}
+
+typedef int (*textureasset3d_block_decode_fn)(
+    const uint8_t *block, int32_t block_width, int32_t block_height, uint8_t *out_rgba);
+
+static int textureasset3d_decode_etc2_block_adapter(
+    const uint8_t *block, int32_t block_width, int32_t block_height, uint8_t *out_rgba) {
+    (void)block_width;
+    (void)block_height;
+    return rt_textureasset3d_decode_etc2_rgba8_block(block, out_rgba);
+}
+
+static int textureasset3d_decode_astc_block_adapter(
+    const uint8_t *block, int32_t block_width, int32_t block_height, uint8_t *out_rgba) {
+    return rt_textureasset3d_decode_astc_ldr_block(block, block_width, block_height, out_rgba);
+}
+
+static int textureasset3d_compressed_block_bytes(uint32_t width,
+                                                uint32_t height,
+                                                int32_t block_width,
+                                                int32_t block_height,
+                                                int32_t block_bytes,
+                                                uint64_t *out_needed,
+                                                uint32_t *out_blocks_x,
+                                                uint32_t *out_blocks_y) {
+    uint32_t blocks_x;
+    uint32_t blocks_y;
+    uint64_t block_count;
+
+    if (out_needed)
+        *out_needed = 0;
+    if (out_blocks_x)
+        *out_blocks_x = 0;
+    if (out_blocks_y)
+        *out_blocks_y = 0;
+    if (width == 0 || height == 0 || block_width <= 0 || block_height <= 0 || block_bytes <= 0)
+        return 0;
+    blocks_x = (width + (uint32_t)block_width - 1u) / (uint32_t)block_width;
+    blocks_y = (height + (uint32_t)block_height - 1u) / (uint32_t)block_height;
+    if ((uint64_t)blocks_x > UINT64_MAX / (uint64_t)blocks_y)
+        return 0;
+    block_count = (uint64_t)blocks_x * (uint64_t)blocks_y;
+    if (block_count > UINT64_MAX / (uint64_t)block_bytes)
+        return 0;
+    if (out_needed)
+        *out_needed = block_count * (uint64_t)block_bytes;
+    if (out_blocks_x)
+        *out_blocks_x = blocks_x;
+    if (out_blocks_y)
+        *out_blocks_y = blocks_y;
+    return 1;
+}
+
+static void *textureasset3d_decode_compressed_fallback(const uint8_t *data,
+                                                       size_t size,
+                                                       uint32_t width,
+                                                       uint32_t height,
+                                                       uint64_t offset,
+                                                       uint64_t length,
+                                                       int32_t block_width,
+                                                       int32_t block_height,
+                                                       int32_t block_bytes,
+                                                       textureasset3d_block_decode_fn decode,
+                                                       const char *alloc_error) {
+    void *pixels;
+    uint32_t blocks_x;
+    uint32_t blocks_y;
+    uint64_t needed = 0;
+    uint64_t rgba_bytes = 0;
+    uint8_t texels[12 * 12 * 4];
+
+    if (!decode)
+        return NULL;
+    if (!textureasset3d_compressed_block_bytes(
+            width, height, block_width, block_height, block_bytes, &needed, &blocks_x, &blocks_y))
+        return NULL;
+    if (!textureasset3d_rgba8_byte_count(width, height, &rgba_bytes))
+        return NULL;
+    if (rgba_bytes > TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES)
+        return NULL;
+    if (length < needed || offset > (uint64_t)size || needed > (uint64_t)size - offset)
+        return NULL;
+
+    for (uint32_t by = 0; by < blocks_y; by++)
+        for (uint32_t bx = 0; bx < blocks_x; bx++) {
+            const uint8_t *block = data + offset + ((uint64_t)by * blocks_x + bx) * (uint64_t)block_bytes;
+            if (!decode(block, block_width, block_height, texels))
+                return NULL;
+        }
+
+    pixels = rt_pixels_new((int64_t)width, (int64_t)height);
+    if (!pixels) {
+        rt_trap(alloc_error ? alloc_error : "TextureAsset3D.LoadKTX2: Pixels fallback allocation failed");
+        return NULL;
+    }
+    for (uint32_t by = 0; by < blocks_y; by++) {
+        for (uint32_t bx = 0; bx < blocks_x; bx++) {
+            const uint8_t *block = data + offset + ((uint64_t)by * blocks_x + bx) * (uint64_t)block_bytes;
+            if (!decode(block, block_width, block_height, texels))
+                continue;
+            for (int32_t ty = 0; ty < block_height; ty++) {
+                for (int32_t tx = 0; tx < block_width; tx++) {
+                    uint32_t px = bx * (uint32_t)block_width + (uint32_t)tx;
+                    uint32_t py = by * (uint32_t)block_height + (uint32_t)ty;
+                    const uint8_t *c = &texels[((int)ty * block_width + (int)tx) * 4];
+                    uint32_t rgba;
+                    if (px >= width || py >= height)
+                        continue;
+                    rgba = ((uint32_t)c[0] << 24) | ((uint32_t)c[1] << 16) | ((uint32_t)c[2] << 8) |
+                           (uint32_t)c[3];
+                    rt_pixels_set_rgba(pixels, (int64_t)px, (int64_t)py, (int64_t)rgba);
+                }
+            }
+        }
+    }
+    return pixels;
+}
+
+static void **textureasset3d_decode_compressed_mips(const uint8_t *data,
+                                                    size_t size,
+                                                    const textureasset3d_mip *mips,
+                                                    int64_t mip_count,
+                                                    int32_t block_width,
+                                                    int32_t block_height,
+                                                    int32_t block_bytes,
+                                                    textureasset3d_block_decode_fn decode,
+                                                    const char *alloc_error) {
+    void **mip_pixels;
+
+    if (!data || !mips || mip_count <= 0)
+        return NULL;
+    mip_pixels = (void **)calloc((size_t)mip_count, sizeof(void *));
+    if (!mip_pixels)
+        return NULL;
+    for (int64_t i = 0; i < mip_count; i++) {
+        mip_pixels[i] = textureasset3d_decode_compressed_fallback(data,
+                                                                  size,
+                                                                  mips[i].width,
+                                                                  mips[i].height,
+                                                                  mips[i].offset,
+                                                                  mips[i].length,
+                                                                  block_width,
+                                                                  block_height,
+                                                                  block_bytes,
+                                                                  decode,
+                                                                  alloc_error);
+        if (!mip_pixels[i]) {
             textureasset3d_release_mip_pixels(mip_pixels, mip_count);
             return NULL;
         }
@@ -838,7 +1312,8 @@ static void **textureasset3d_decode_bc7_mips(
 /// @brief Parse a KTX2 byte stream into a fully-populated TextureAsset3D.
 /// @details Validates the identifier and dimensionality, reads the level index, builds the
 ///          mip table with bounds checks, then — for uncompressed level data — produces an
-///          RGBA8/BC3/BC7 software Pixels fallback and/or retains native compressed payloads.
+///          RGBA8/BC3/BC7/ETC2/ASTC software Pixels fallback and/or retains native compressed
+///          payloads.
 ///          Seeds the cache identity and makes all mips resident. Traps with @p api_name on
 ///          malformed input.
 /// @return New TextureAsset3D handle, or NULL on validation/allocation failure.
@@ -929,10 +1404,29 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
      * on backends that cannot upload BC3 natively (native blocks are still retained below). */
     if (strcmp(format.name, "bc3") == 0 && supercompression_scheme == 0 && level_count > 0)
         mip_pixels = textureasset3d_decode_bc3_mips(data, size, mips, mip_count);
-    /* BC7 software reference decode (single-subset modes 4/5/6) -> RGBA8 Pixels fallback; native
-     * blocks are still retained below. Partitioned modes leave mip_pixels NULL (native-only). */
+    /* BC7 software reference decode -> RGBA8 Pixels fallback; native blocks are still retained. */
     if (strcmp(format.name, "bc7") == 0 && supercompression_scheme == 0 && level_count > 0)
         mip_pixels = textureasset3d_decode_bc7_mips(data, size, mips, mip_count);
+    if (strcmp(format.name, "etc2") == 0 && supercompression_scheme == 0 && level_count > 0)
+        mip_pixels = textureasset3d_decode_compressed_mips(data,
+                                                          size,
+                                                          mips,
+                                                          mip_count,
+                                                          format.block_width,
+                                                          format.block_height,
+                                                          format.block_bytes,
+                                                          textureasset3d_decode_etc2_block_adapter,
+                                                          "TextureAsset3D.LoadKTX2: ETC2 Pixels fallback allocation failed");
+    if (strcmp(format.name, "astc") == 0 && supercompression_scheme == 0 && level_count > 0)
+        mip_pixels = textureasset3d_decode_compressed_mips(data,
+                                                          size,
+                                                          mips,
+                                                          mip_count,
+                                                          format.block_width,
+                                                          format.block_height,
+                                                          format.block_bytes,
+                                                          textureasset3d_decode_astc_block_adapter,
+                                                          "TextureAsset3D.LoadKTX2: ASTC Pixels fallback allocation failed");
     if (format.compressed && supercompression_scheme == 0 && level_count > 0) {
         mip_payloads = textureasset3d_copy_native_mip_payloads(data, size, mips, mip_count);
         if (!mip_payloads) {
