@@ -282,8 +282,9 @@ manifest entries now parse authored `material`, `layer` / `collisionLayer`,
 `sidecar` / `binarySidecar` metadata. Cell layer/mask metadata is applied to
 the spawned root entity, terrain collision metadata is applied to generated
 heightfield collider bodies, and typed inspection getters expose the parsed
-values. Worker-backed scheduler integration and real tile-local nav ownership
-remain Phase 5 runtime work.
+values. Worker-backed payload decode/upload and streamed nav bake/export tooling
+remain Phase 5 runtime work; runtime retained tile rebuilds are covered by
+`NavMesh3D.BakeTiled` / `RebuildTile`.
 `World3D.stream` now returns a stable world-owned stream handle;
 `WorldStream3D.New(world)` remains available for separate controllers.
 
@@ -434,7 +435,7 @@ expose func World3D.bakeTiledNavMesh(tileSize: Float, agentRadius: Float,
 ```
 Existing `NavMesh3D.Build(mesh, ...)` (bake-from-one-mesh) is retained.
 
-Implemented slices: `NavAgent3D.AvoidanceEnabled` and `AvoidanceRadius` are now public `Viper.Graphics3D` PascalCase properties. They provide an opt-in same-NavMesh local separation pass during `Update`. `NavMesh3D.Bake(scene, ...)` is public and flattens `Mesh3D` nodes through `Scene3D` world transforms before using the existing triangle build path. `World3D.bakeNavMesh(...)` and `bakeTiledNavMesh(...)` expose the same bake path as Game3D lower/camel editor hooks over the world's owned scene. `NavMesh3D.BakeTiled(scene, ...)` and `RebuildTile(tileX, tileZ)` are public baseline entries; they currently operate on a full-scene navmesh and refilter preserved source triangles rather than owning real tile-local data. `NavMesh3D.AddOffMeshLink(from, to, bidirectional)` and read-only `OffMeshLinkCount` are public; authored endpoints must resolve to current walkable polygons, and pathfinding treats the link as a directed or bidirectional graph edge. `NavMesh3D.AddObstacle(min, max)`, `RemoveObstacle(index)`, `UpdateObstacle(index, min, max)`, and read-only `ObstacleCount` are also public; the baseline stores finite AABB obstacles, removes overlapping walkable triangles, and rebuilds adjacency immediately after edits. `agentRadius` is applied as a conservative shared-portal width gate. Full ORCA/RVO crowd quality, polygon/corridor erosion, voxel/region baking, real tiled ownership, and pathfinding acceleration remain tracked Phase 9 work.
+Implemented slices: `NavAgent3D.AvoidanceEnabled` and `AvoidanceRadius` are now public `Viper.Graphics3D` PascalCase properties. They provide an opt-in same-NavMesh local separation pass during `Update`. `NavMesh3D.Bake(scene, ...)` is public and flattens `Mesh3D` nodes through `Scene3D` world transforms before using the voxel baker. `World3D.bakeNavMesh(...)` and `bakeTiledNavMesh(...)` expose the same bake path as Game3D lower/camel editor hooks over the world's owned scene. `NavMesh3D.BakeTiled(scene, ...)` keeps retained voxel-cell source data per tile, and `RebuildTile(tileX, tileZ)` refreshes only that tile's geometry, heights, and blocked state. `NavMesh3D.AddOffMeshLink(from, to, bidirectional)` and read-only `OffMeshLinkCount` are public; authored endpoints must resolve to current walkable polygons, and pathfinding treats the link as a directed or bidirectional graph edge. `NavMesh3D.AddObstacle(min, max)`, `RemoveObstacle(index)`, `UpdateObstacle(index, min, max)`, and read-only `ObstacleCount` are also public; tiled bakes re-carve only overlapped tiles while non-tiled meshes refilter preserved source triangles. Full ORCA/RVO crowd quality, fine polygon/corridor carving, traversal metadata, and the agent-count perf target remain tracked Phase 9 work.
 
 ## Animation — `Viper.Graphics3D` IK / controller
 

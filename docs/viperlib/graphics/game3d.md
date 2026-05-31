@@ -621,8 +621,8 @@ payloads unload immediately, one or more new payloads are admitted by the frame
 budget, and
 `pendingRequestCount` reports deferred desired payloads until later updates
 drain them. A budget of `0` unloads cells and reports no resident cells or
-tiles; a negative budget is unlimited. Worker-backed decode/upload and real
-tile-local nav ownership are the next streaming layers.
+tiles; a negative budget is unlimited. Worker-backed decode/upload remains a
+future streaming layer.
 
 Editor/debug inspection uses method-style lower/camel calls:
 `getCellCount()`, `getCellName(i)`, `getCellCenter(i)`,
@@ -664,9 +664,10 @@ cellSize)` are Game3D editor hooks over the lower-level
 `Viper.Graphics3D.NavMesh3D.Bake*` APIs. They bake from the world's current
 `Scene3D`, including hidden streamed-terrain nav source nodes, preserve
 world-space transforms, and return a
-`Viper.Graphics3D.NavMesh3D` for `NavAgent3D` use. The tiled entry currently
-uses the same full-scene baseline as `NavMesh3D.BakeTiled`; real tile-local
-ownership remains tracked in the 3D next-level plan.
+`Viper.Graphics3D.NavMesh3D` for `NavAgent3D` use. The tiled entry uses
+`NavMesh3D.BakeTiled`, which retains tile voxel source data so
+`NavMesh3D.RebuildTile(tileX, tileZ)` can refresh one tile's geometry and
+obstacle state without a whole-scene bake.
 
 ---
 

@@ -2783,7 +2783,7 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 |-------------|-----------|-------------|
 | `Build(mesh, agentRadius, agentHeight)` | `obj(obj, f64, f64)` | Build navmesh from Mesh3D geometry |
 | `Bake(scene, agentRadius, agentHeight, maxSlope, cellSize)` | `obj(obj, f64, f64, f64, f64)` | Build navmesh from Mesh3D-bearing Scene3D nodes |
-| `BakeTiled(scene, tileSize, agentRadius, agentHeight, maxSlope, cellSize)` | `obj(obj, f64, f64, f64, f64, f64)` | Use the tiled bake API shape; currently returns a full-scene navmesh |
+| `BakeTiled(scene, tileSize, agentRadius, agentHeight, maxSlope, cellSize)` | `obj(obj, f64, f64, f64, f64, f64)` | Build a tiled voxel navmesh with retained tile source data |
 
 ### Properties
 
@@ -2801,16 +2801,16 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 | `SamplePosition(position)` | `obj(obj)` | Snap position to nearest point on navmesh (Vec3) |
 | `IsWalkable(position)` | `i1(obj)` | Check if Vec3 position is on the navmesh |
 | `AddOffMeshLink(from, to, bidirectional)` | `i1(obj, obj, i1)` | Add a directed or bidirectional traversal edge between walkable points |
-| `AddObstacle(min, max)` | `i1(obj, obj)` | Add a coarse AABB obstacle and refilter walkable triangles |
-| `RemoveObstacle(index)` | `i1(i64)` | Remove a coarse obstacle and refilter walkable triangles |
-| `UpdateObstacle(index, min, max)` | `i1(i64, obj, obj)` | Move/resize a coarse obstacle and refilter walkable triangles |
-| `RebuildTile(tileX, tileZ)` | `i1(i64, i64)` | Refilter the current navmesh after tile-scoped edits |
+| `AddObstacle(min, max)` | `i1(obj, obj)` | Add a coarse AABB obstacle and re-carve affected triangles |
+| `RemoveObstacle(index)` | `i1(i64)` | Remove a coarse obstacle and re-carve affected triangles |
+| `UpdateObstacle(index, min, max)` | `i1(i64, obj, obj)` | Move/resize a coarse obstacle and re-carve affected triangles |
+| `RebuildTile(tileX, tileZ)` | `i1(i64, i64)` | Rebuild one retained tiled-bake voxel source tile |
 | `SetMaxSlope(degrees)` | `void(f64)` | Update walkability slope threshold |
 | `DebugDraw(canvas)` | `void(obj)` | Visualize navmesh wireframe on Canvas3D |
 
-`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `Bake()` gathers every `Mesh3D` attached under a `Scene3D`, applies each node's world transform, and then routes through the same triangle build path. `BakeTiled()` currently accepts the final tiled API shape but returns a full-scene navmesh; physical tile ownership is still future work. `SetMaxSlope()` and `RebuildTile()` both refilter preserved source triangles and rebuild adjacency immediately instead of requiring callers to rebuild the mesh handle. Slope tests use upward-facing triangle planes. Shared-edge portals narrower than `agentRadius * 2` are not linked, so wider agents do not path through narrow authored passages. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
+`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `Bake()` gathers every `Mesh3D` attached under a `Scene3D`, applies each node's world transform, and runs the voxel baker. `BakeTiled()` keeps retained voxel-cell source data for each tile; `RebuildTile()` refreshes only the requested tile's geometry, heights, and blocked state from that retained source instead of running a whole-scene bake. `SetMaxSlope()` refilters preserved source triangles. Slope tests use upward-facing triangle planes. Shared-edge portals narrower than `agentRadius * 2` are not linked, so wider agents do not path through narrow authored passages. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
 
-`AddOffMeshLink()` stores authored endpoint pairs such as jumps, ladders, and drop-downs. Both endpoints must resolve to current walkable polygons; pathfinding treats the link as an extra graph edge and emits the link endpoints as waypoints. `AddObstacle()` stores a finite world-space AABB, removes overlapping triangles from the current walkable set, and rebuilds adjacency immediately. `RemoveObstacle()` and `UpdateObstacle()` edit the authored obstacle list by zero-based index and refilter immediately. This is a coarse carving baseline intended for tile-sized navmesh geometry; true voxel/region generation, tile-local storage, full polygon erosion for `agentRadius`, and pathfinding acceleration remain deeper navigation work.
+`AddOffMeshLink()` stores authored endpoint pairs such as jumps, ladders, and drop-downs. Both endpoints must resolve to current walkable polygons; pathfinding treats the link as an extra graph edge and emits the link endpoints as waypoints. `AddObstacle()` stores a finite world-space AABB and removes overlapping triangles from the current walkable set. On tiled bakes, obstacle adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still refilter the preserved source mesh. This is a coarse AABB carving baseline; fine polygon erosion, traversal metadata, and full crowd planning remain deeper navigation work.
 
 ### Zia Example
 

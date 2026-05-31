@@ -383,7 +383,7 @@ inspection. Both cell and terrain manifests now parse authored `material`,
 `traversalCost`, and optional `sidecar` / `binarySidecar` metadata, expose it
 through typed inspection hooks, and apply layer/mask/enabled data to spawned
 cell roots and generated terrain heightfield colliders. Worker-backed
-decode/upload and real tile-local nav ownership remain future layers.
+decode/upload and streamed nav bake/export tooling remain future layers.
 
 **Change.**
 
@@ -396,8 +396,8 @@ decode/upload and real tile-local nav ownership remain future layers.
   tile/cell indexing. Optional binary sidecars may hold payload data referenced
   by the VSCN manifest, but do not introduce a new general scene format. Add a
   bake hook ViperIDE targets.
-- Expand per-tile collider/nav binding from parsed authored metadata into real
-  tile-local nav ownership once the bake/export path needs it.
+- Expand per-tile collider/nav binding from parsed authored metadata into
+  bake/export tooling that can feed retained per-tile nav source data.
 
 **Tests.** Cell stream in/out across boundaries, manifest-driven terrain tile
 payload residency, height sidecar loading, heightfield collider body residency,
@@ -410,8 +410,8 @@ proof are covered in
 load budget; `g3d_openworld_slice_long_traversal` repeatedly churns all four
 quadrants with deterministic replay and records max visit time / max resident
 bytes; `g3d_openworld_slice_probe` verifies the world-scoped nav bake includes
-streamed terrain. Remaining Phase 5 depth is real tile-local nav ownership and
-bake/export tooling.
+streamed terrain. Remaining Phase 5 depth is streamed nav bake/export tooling;
+runtime retained tile rebuilds are covered under Phase 9.
 
 ---
 
@@ -539,19 +539,19 @@ hinge/rope/6DOF behavior; named island-batched body-count perf fixture;
 
 **Current facts.** Navmesh can still be baked from one provided mesh, and
 `NavMesh3D.Bake(scene, ...)` now flattens `Mesh3D`-bearing `Scene3D` nodes through
-their world transforms before using that same triangle build path. `BakeTiled`
-accepts the final API shape and returns a full-scene navmesh; `RebuildTile`
-currently refilters the whole preserved source mesh. There is no real voxel/region
-generation or tile-local ownership yet. `agent_radius` gates shared-edge portals
-conservatively at adjacency-build time, while full polygon erosion remains future
-work. A* still uses O(triangles) find-tri and a simplified string-pull, with
-per-agent 4 Hz repath. `NavMesh3D.AddOffMeshLink` stores authored endpoint pairs
-that resolve to walkable triangles and are used as directed/bidirectional graph
-edges during A*. `NavMesh3D.AddObstacle` stores finite AABB obstacles, removes
-overlapping walkable triangles, and rebuilds adjacency immediately. `RemoveObstacle`
-and `UpdateObstacle` edit that authored obstacle list and refilter the same preserved
-source geometry. This is coarse carving, not real tile-local navmesh rebuild
-ownership. `NavAgent3D` now has opt-in
+their world transforms before using the voxel baker. `BakeTiled` accepts the
+final API shape and retains voxel-cell source height/walkability plus corner
+mappings for each tile; `RebuildTile` refreshes only the requested tile's
+geometry, heights, and blocked state without a whole-scene voxel pass.
+`agent_radius` erodes voxel-baked walkable cells and gates shared-edge portals
+for direct `Build(mesh, ...)` meshes. A* uses the query grid for point location
+and a simplified string-pull, with per-agent 4 Hz repath.
+`NavMesh3D.AddOffMeshLink` stores authored endpoint pairs that resolve to
+walkable triangles and are used as directed/bidirectional graph edges during
+A*. `NavMesh3D.AddObstacle` stores finite AABB obstacles; tiled bakes re-carve
+only overlapped tiles while non-tiled meshes refilter preserved source triangles.
+`RemoveObstacle` and `UpdateObstacle` edit that authored obstacle list through
+the same tiled/non-tiled paths. `NavAgent3D` now has opt-in
 same-NavMesh local separation via `AvoidanceEnabled`/`AvoidanceRadius`; this is a
 working lightweight avoidance baseline, not the full ORCA/RVO crowd solver.
 

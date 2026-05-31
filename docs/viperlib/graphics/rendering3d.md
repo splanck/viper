@@ -1095,31 +1095,30 @@ ambiguous.
 | `SamplePosition(pos)` | `Object(Object)` | Snap `pos` to the nearest walkable position |
 | `IsWalkable(pos)` | `Boolean(Object)` | True when `pos` is on the walkable surface |
 | `AddOffMeshLink(from, to, bidirectional)` | `Boolean(Object, Object, Boolean)` | Add a directed or bidirectional link between walkable points |
-| `AddObstacle(min, max)` | `Boolean(Object, Object)` | Add a coarse AABB obstacle and refilter walkable triangles |
-| `RemoveObstacle(index)` | `Boolean(Integer)` | Remove a coarse obstacle and refilter walkable triangles |
-| `UpdateObstacle(index, min, max)` | `Boolean(Integer, Object, Object)` | Move/resize a coarse obstacle and refilter walkable triangles |
-| `RebuildTile(tileX, tileZ)` | `Boolean(Integer, Integer)` | Refilter the current navmesh after tile-scoped edits |
+| `AddObstacle(min, max)` | `Boolean(Object, Object)` | Add a coarse AABB obstacle and re-carve affected walkable triangles |
+| `RemoveObstacle(index)` | `Boolean(Integer)` | Remove a coarse obstacle and re-carve affected walkable triangles |
+| `UpdateObstacle(index, min, max)` | `Boolean(Integer, Object, Object)` | Move/resize a coarse obstacle and re-carve affected walkable triangles |
+| `RebuildTile(tileX, tileZ)` | `Boolean(Integer, Integer)` | Rebuild one retained tiled-bake voxel source tile |
 | `SetMaxSlope(degrees)` | `Void(Double)` | Override the maximum walkable slope angle |
 | `DebugDraw(canvas3D)` | `Void(Object)` | Draw the navmesh wireframe for debugging |
 
 `Bake` flattens every `Mesh3D` attached under a `Scene3D` through each node's
-world transform and then uses the same triangle-build path as `Build`.
-`BakeTiled` accepts the final tiled API shape but currently returns a full-scene
-navmesh. `RebuildTile` likewise refilters the preserved full mesh rather than
-owning tile-local geometry; real tile storage remains future work.
+world transform and runs the voxel baker. `BakeTiled` keeps retained voxel-cell
+source data for each tile; `RebuildTile(tileX, tileZ)` refreshes only that tile's
+geometry, heights, and blocked state from the retained source without a
+whole-scene voxel pass.
 
 `AddOffMeshLink` is for authored traversal such as jumps, ladders, and
 drop-downs. Both endpoints must be on current walkable polygons. The pathfinder
 uses the link as an extra graph edge and includes the link endpoints in the
 returned waypoint list. Shared-edge portals narrower than `agentRadius * 2` are
 not linked when the mesh is built, so wider agents do not path through narrow
-authored passages. `AddObstacle` stores a finite world-space AABB, removes
-overlapping triangles from the current walkable set, and rebuilds adjacency
-immediately. `RemoveObstacle` and `UpdateObstacle` edit the authored obstacle list
-by zero-based index and refilter the preserved source geometry immediately. This
-is a coarse carving baseline for tile-sized navmesh geometry; voxel/region
-generation, tile-local rebuilds, fine polygon erosion, and pathfinding
-acceleration are still separate navigation-depth work.
+authored passages. `AddObstacle` stores a finite world-space AABB and removes
+overlapping triangles from the current walkable set. On tiled bakes, obstacle
+adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still
+refilter the preserved source mesh. This remains a coarse AABB carving baseline;
+fine polygon erosion, traversal metadata, and full crowd path-quality work remain
+separate navigation-depth items.
 
 ---
 
@@ -1419,9 +1418,10 @@ Texture atlas for 3D rendering with named-region management.
 
 - `Transform3D` is distinct from `SceneNode3D` — use `Transform3D` for standalone matrix math and non-scene-graph transforms; attach nodes to the scene for scene-managed transform hierarchies.
 - `AnimController3D.PollEvent` returns events one at a time per call; poll it in a loop until an empty string is returned if multiple events fire in one update.
-- `NavMesh3D` is rebuilt by `NavMesh3D.Build`; `AddObstacle` provides coarse
-  AABB carving on the current mesh, but geometry changes still require a rebuild.
-  Keep baked meshes manifold at shared edges.
+- `NavMesh3D` direct meshes are rebuilt by `NavMesh3D.Build`; `BakeTiled`
+  retains voxel source data so `RebuildTile` can refresh one tile's geometry,
+  while tiled obstacle edits re-carve only affected tiles. Keep baked meshes
+  manifold at shared edges.
 - `Particles3D.Draw` should be called inside the `Canvas3D.Begin`/`End` scene pass after opaque geometry when you want particles over the main scene.
 - Deferred heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; public `DrawMesh` rejects raw stack mesh payloads, while internal skinned and morphed paths retain or snapshot the animation payloads needed for backend submission.
 - `Sound3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.

@@ -280,8 +280,8 @@ place.
   Optional binary sidecars may hold payload data referenced by the manifest, but
   do not create a new general scene format. Add an authoring/bake hook ViperIDE
   can target later.
-- Extend parsed terrain collision/nav metadata into real tile-local nav ownership
-  and bake/export tooling.
+- Extend parsed terrain collision/nav metadata into bake/export tooling that can
+  feed retained per-tile nav source data.
 
 Exit:
 
@@ -292,8 +292,8 @@ Exit:
 
 Local exit evidence is recorded in
 `examples/3d/openworld_slice/baselines/perf_macos_apple_m4_max.md`; remaining
-Phase 5 depth is tile-local nav ownership and bake/export tooling rather than
-the baseline stream/churn proof.
+Phase 5 depth is streamed nav bake/export tooling rather than the baseline
+stream/churn proof; runtime retained tile rebuilds are tracked under Phase 9.
 
 Cannot precede: this is the defining open-world milestone; Phase 12 exercises it.
 
@@ -404,11 +404,13 @@ Goal: many NPCs navigating a large, changing world.
   contour → mesh; a from-scratch Recast-style baker), replacing bake-from-one-
   mesh/scene-flatten baselines.
 - Implement tiled/streamable navmesh aligned to Phase-5 cells, with dynamic
-  obstacle carving (doors, placed objects) and runtime tile rebuild. The current
-  `BakeTiled`/`RebuildTile` API entries are whole-mesh refilter baselines, not
-  tile-local ownership.
-- Implement off-mesh links (jumps/ladders/drop-downs) and apply `agent_radius`
-  corridor erosion (currently stored but ignored, `nav/rt_navmesh3d.c:80`).
+  obstacle carving (doors, placed objects) and runtime tile rebuild. `BakeTiled`
+  now retains tile-local voxel source data and `RebuildTile` refreshes the
+  requested tile; remaining depth is fine polygon carving, traversal metadata,
+  and the crowd/perf exit.
+- Implement off-mesh links (jumps/ladders/drop-downs), traversal state metadata,
+  and richer area/cost metadata. `agent_radius` erosion and portal gating are in
+  place for the current baker.
 - Implement local avoidance (ORCA/RVO-style) and pathfinding acceleration
   (spatialized find-tri, path caching, time-sliced/hierarchical A*), parallelized
   via Phase 1.

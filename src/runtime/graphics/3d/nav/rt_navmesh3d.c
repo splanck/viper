@@ -118,9 +118,22 @@ typedef struct {
     int32_t qgrid_nz;
     int32_t *qgrid_starts;
     int32_t *qgrid_tris;
+    double voxel_min_x;
+    double voxel_min_z;
+    double voxel_cell_size;
+    int32_t voxel_nx;
+    int32_t voxel_nz;
+    float *voxel_cell_height;
+    uint8_t *voxel_cell_walkable;
+    int32_t *voxel_corner_vertices;
 } rt_navmesh3d;
 
 static void navmesh3d_refresh_offmesh_links(rt_navmesh3d *nm);
+static void navmesh3d_voxel_emit_tri(rt_navmesh3d *nm,
+                                     int32_t a,
+                                     int32_t b,
+                                     int32_t c,
+                                     int8_t blocked);
 static void *navmesh3d_voxel_bake(rt_mesh3d *src,
                                   double agent_radius,
                                   double agent_height,
@@ -140,6 +153,9 @@ static void navmesh3d_finalizer(void *obj) {
     free(nm->obstacles);
     free(nm->qgrid_starts);
     free(nm->qgrid_tris);
+    free(nm->voxel_cell_height);
+    free(nm->voxel_cell_walkable);
+    free(nm->voxel_corner_vertices);
     nm->vertices = NULL;
     nm->source_triangles = NULL;
     nm->triangles = NULL;
@@ -147,6 +163,9 @@ static void navmesh3d_finalizer(void *obj) {
     nm->obstacles = NULL;
     nm->qgrid_starts = NULL;
     nm->qgrid_tris = NULL;
+    nm->voxel_cell_height = NULL;
+    nm->voxel_cell_walkable = NULL;
+    nm->voxel_corner_vertices = NULL;
 }
 
 /// @brief Release a partially-constructed navmesh on allocation failure, freeing if refcount hits
@@ -461,9 +480,10 @@ static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
         if (tri.normal[1] < (float)max_slope_cos)
             continue;
         tri.neighbors[0] = tri.neighbors[1] = tri.neighbors[2] = -1;
-        /* Keep obstacle-carved triangles in the set but flag them blocked, so a later per-tile
-         * rebuild only has to re-evaluate this flag instead of recompacting the whole array. */
-        tri.blocked = navmesh3d_triangle_blocked_by_obstacle(nm, &tri) ? 1 : 0;
+        /* Keep unwalkable/source-carved and obstacle-carved triangles in the set but flag them
+         * blocked, so a per-tile rebuild can flip flags/geometry without recompacting arrays. */
+        tri.blocked =
+            (tri.blocked || navmesh3d_triangle_blocked_by_obstacle(nm, &tri)) ? 1 : 0;
         nm->triangles[nm->triangle_count++] = tri;
     }
     if (!navmesh3d_build_adjacency(nm)) {
@@ -513,9 +533,185 @@ static int32_t navmesh3d_reflag_tile(rt_navmesh3d *nm, int64_t tile_x, int64_t t
         double cz = (double)t->centroid[2];
         if (cx < x0 || cx >= x1 || cz < z0 || cz >= z1)
             continue;
-        t->blocked = navmesh3d_triangle_blocked_by_obstacle(nm, t) ? 1 : 0;
+        int8_t source_blocked =
+            (nm->source_triangles && i < nm->source_triangle_count && nm->source_triangles[i].blocked)
+                ? 1
+                : 0;
+        t->blocked = (source_blocked || navmesh3d_triangle_blocked_by_obstacle(nm, t)) ? 1 : 0;
         touched++;
     }
+    return touched;
+}
+
+/// @brief Re-evaluate dynamic obstacle blocking for all tiles overlapped by an AABB.
+static void navmesh3d_reflag_obstacle_tiles(rt_navmesh3d *nm, const float *omin, const float *omax) {
+    if (!nm || !omin || !omax || nm->tile_size <= 0.0 || nm->qgrid_nx <= 0)
+        return;
+    int64_t tx0 = 0, tz0 = 0, tx1 = 0, tz1 = 0;
+    navmesh3d_tile_of_point(nm, (double)omin[0], (double)omin[2], &tx0, &tz0);
+    navmesh3d_tile_of_point(nm, (double)omax[0], (double)omax[2], &tx1, &tz1);
+    if (tx1 < tx0) {
+        int64_t t = tx0;
+        tx0 = tx1;
+        tx1 = t;
+    }
+    if (tz1 < tz0) {
+        int64_t t = tz0;
+        tz0 = tz1;
+        tz1 = t;
+    }
+    for (int64_t tz = tz0; tz <= tz1; tz++)
+        for (int64_t tx = tx0; tx <= tx1; tx++)
+            navmesh3d_reflag_tile(nm, tx, tz);
+    navmesh3d_refresh_offmesh_links(nm);
+}
+
+/// @brief True when the navmesh retained fixed-grid voxel source data for tile rebuilds.
+static int navmesh3d_has_voxel_source(const rt_navmesh3d *nm) {
+    return nm && nm->voxel_cell_height && nm->voxel_cell_walkable && nm->voxel_corner_vertices &&
+           nm->voxel_nx > 0 && nm->voxel_nz > 0 && nm->voxel_cell_size > 0.0 && nm->vertices &&
+           nm->source_triangles && nm->triangles;
+}
+
+/// @brief Return the retained voxel cell index, or SIZE_MAX for an invalid coordinate.
+static size_t navmesh3d_voxel_cell_index(const rt_navmesh3d *nm, int32_t cx, int32_t cz) {
+    if (!navmesh3d_has_voxel_source(nm) || cx < 0 || cz < 0 || cx >= nm->voxel_nx ||
+        cz >= nm->voxel_nz)
+        return SIZE_MAX;
+    return (size_t)cz * (size_t)nm->voxel_nx + (size_t)cx;
+}
+
+/// @brief Get the fixed source-triangle index pair for a retained voxel cell.
+static int32_t navmesh3d_voxel_cell_tri_start(const rt_navmesh3d *nm, int32_t cx, int32_t cz) {
+    size_t cell = navmesh3d_voxel_cell_index(nm, cx, cz);
+    if (cell == SIZE_MAX || cell > (size_t)INT32_MAX / 2)
+        return -1;
+    int32_t start = (int32_t)(cell * 2u);
+    if (start < 0 || start + 1 >= nm->source_triangle_count || start + 1 >= nm->triangle_count)
+        return -1;
+    return start;
+}
+
+/// @brief Recompute one retained voxel corner height from the current tile source cells.
+static void navmesh3d_voxel_refresh_corner(rt_navmesh3d *nm, int32_t ccx, int32_t ccz) {
+    if (!navmesh3d_has_voxel_source(nm) || ccx < 0 || ccz < 0 || ccx > nm->voxel_nx ||
+        ccz > nm->voxel_nz)
+        return;
+    int32_t cnx = nm->voxel_nx + 1;
+    size_t corner = (size_t)ccz * (size_t)cnx + (size_t)ccx;
+    int32_t vid = nm->voxel_corner_vertices[corner];
+    if (vid < 0 || vid >= nm->vertex_count)
+        return;
+    double sum = 0.0;
+    int n = 0;
+    for (int dz = -1; dz <= 0; dz++) {
+        for (int dx = -1; dx <= 0; dx++) {
+            int32_t sx = ccx + dx;
+            int32_t sz = ccz + dz;
+            size_t cell = navmesh3d_voxel_cell_index(nm, sx, sz);
+            if (cell == SIZE_MAX || !nm->voxel_cell_walkable[cell])
+                continue;
+            sum += (double)nm->voxel_cell_height[cell];
+            n++;
+        }
+    }
+    nm->vertices[vid].position[1] = n > 0 ? (float)(sum / (double)n) : 0.0f;
+}
+
+/// @brief Recompute one retained voxel cell's two source/current triangles from fixed corners.
+static void navmesh3d_voxel_refresh_cell(rt_navmesh3d *nm, int32_t cx, int32_t cz) {
+    int32_t tri_start = navmesh3d_voxel_cell_tri_start(nm, cx, cz);
+    if (tri_start < 0)
+        return;
+    int32_t cnx = nm->voxel_nx + 1;
+    int32_t a = nm->voxel_corner_vertices[(size_t)cz * (size_t)cnx + (size_t)cx];
+    int32_t b = nm->voxel_corner_vertices[(size_t)cz * (size_t)cnx + (size_t)(cx + 1)];
+    int32_t c = nm->voxel_corner_vertices[(size_t)(cz + 1) * (size_t)cnx + (size_t)(cx + 1)];
+    int32_t d = nm->voxel_corner_vertices[(size_t)(cz + 1) * (size_t)cnx + (size_t)cx];
+    if (a < 0 || b < 0 || c < 0 || d < 0)
+        return;
+    size_t cell = navmesh3d_voxel_cell_index(nm, cx, cz);
+    int8_t source_blocked =
+        (cell == SIZE_MAX || !nm->voxel_cell_walkable[cell]) ? 1 : 0;
+    int32_t old_source_count = nm->source_triangle_count;
+    nav_triangle_t updated[2];
+    nm->source_triangle_count = tri_start;
+    navmesh3d_voxel_emit_tri(nm, a, c, b, source_blocked);
+    navmesh3d_voxel_emit_tri(nm, a, d, c, source_blocked);
+    updated[0] = nm->source_triangles[tri_start];
+    updated[1] = nm->source_triangles[tri_start + 1];
+    nm->source_triangle_count = old_source_count;
+    for (int i = 0; i < 2; i++) {
+        nav_triangle_t tri = updated[i];
+        tri.neighbors[0] = nm->triangles[tri_start + i].neighbors[0];
+        tri.neighbors[1] = nm->triangles[tri_start + i].neighbors[1];
+        tri.neighbors[2] = nm->triangles[tri_start + i].neighbors[2];
+        nm->source_triangles[tri_start + i] = updated[i];
+        tri.blocked =
+            (source_blocked || navmesh3d_triangle_blocked_by_obstacle(nm, &tri)) ? 1 : 0;
+        nm->triangles[tri_start + i] = tri;
+    }
+}
+
+/// @brief Compute the retained voxel-cell range whose centers lie in tile (tile_x,tile_z).
+static int navmesh3d_voxel_tile_cell_range(const rt_navmesh3d *nm,
+                                           int64_t tile_x,
+                                           int64_t tile_z,
+                                           int32_t *out_cx0,
+                                           int32_t *out_cx1,
+                                           int32_t *out_cz0,
+                                           int32_t *out_cz1) {
+    if (!navmesh3d_has_voxel_source(nm) || nm->tile_size <= 0.0)
+        return 0;
+    double x0 = nm->qgrid_min_x + (double)tile_x * nm->tile_size;
+    double x1 = x0 + nm->tile_size;
+    double z0 = nm->qgrid_min_z + (double)tile_z * nm->tile_size;
+    double z1 = z0 + nm->tile_size;
+    int32_t cx0 = (int32_t)ceil((x0 - nm->voxel_min_x - nm->voxel_cell_size * 0.5) /
+                                nm->voxel_cell_size);
+    int32_t cx1 = (int32_t)floor((x1 - nm->voxel_min_x - nm->voxel_cell_size * 0.5) /
+                                 nm->voxel_cell_size);
+    int32_t cz0 = (int32_t)ceil((z0 - nm->voxel_min_z - nm->voxel_cell_size * 0.5) /
+                                nm->voxel_cell_size);
+    int32_t cz1 = (int32_t)floor((z1 - nm->voxel_min_z - nm->voxel_cell_size * 0.5) /
+                                 nm->voxel_cell_size);
+    if (cx0 < 0)
+        cx0 = 0;
+    if (cz0 < 0)
+        cz0 = 0;
+    if (cx1 >= nm->voxel_nx)
+        cx1 = nm->voxel_nx - 1;
+    if (cz1 >= nm->voxel_nz)
+        cz1 = nm->voxel_nz - 1;
+    if (cx1 < cx0 || cz1 < cz0)
+        return 0;
+    if (out_cx0)
+        *out_cx0 = cx0;
+    if (out_cx1)
+        *out_cx1 = cx1;
+    if (out_cz0)
+        *out_cz0 = cz0;
+    if (out_cz1)
+        *out_cz1 = cz1;
+    return 1;
+}
+
+/// @brief Rebuild one retained voxel tile's geometry/blocked flags in place.
+static int32_t navmesh3d_rebuild_voxel_tile(rt_navmesh3d *nm, int64_t tile_x, int64_t tile_z) {
+    int32_t cx0, cx1, cz0, cz1;
+    int32_t touched = 0;
+    if (!navmesh3d_voxel_tile_cell_range(nm, tile_x, tile_z, &cx0, &cx1, &cz0, &cz1))
+        return 0;
+    for (int32_t cz = cz0; cz <= cz1 + 1; cz++)
+        for (int32_t cx = cx0; cx <= cx1 + 1; cx++)
+            navmesh3d_voxel_refresh_corner(nm, cx, cz);
+    for (int32_t cz = cz0; cz <= cz1; cz++) {
+        for (int32_t cx = cx0; cx <= cx1; cx++) {
+            navmesh3d_voxel_refresh_cell(nm, cx, cz);
+            touched++;
+        }
+    }
+    navmesh3d_refresh_offmesh_links(nm);
     return touched;
 }
 
@@ -762,6 +958,7 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
         tri->centroid[1] = (p0[1] + p1[1] + p2[1]) / 3.0f;
         tri->centroid[2] = (p0[2] + p1[2] + p2[2]) / 3.0f;
         tri->neighbors[0] = tri->neighbors[1] = tri->neighbors[2] = -1;
+        tri->blocked = 0;
     }
 
     if (!navmesh3d_apply_slope_filter(nm)) {
@@ -893,7 +1090,11 @@ static int32_t navmesh3d_voxel_corner_vertex(rt_navmesh3d *nm,
 ///   navmesh source-triangle set, computing an up-facing face normal and centroid. Winding does
 ///   not matter to the downstream point-in-triangle / A* queries; the normal is forced to +Y so the
 ///   slope filter retains the surface.
-static void navmesh3d_voxel_emit_tri(rt_navmesh3d *nm, int32_t a, int32_t b, int32_t c) {
+static void navmesh3d_voxel_emit_tri(rt_navmesh3d *nm,
+                                     int32_t a,
+                                     int32_t b,
+                                     int32_t c,
+                                     int8_t blocked) {
     const float *p0 = nm->vertices[a].position;
     const float *p1 = nm->vertices[b].position;
     const float *p2 = nm->vertices[c].position;
@@ -928,6 +1129,7 @@ static void navmesh3d_voxel_emit_tri(rt_navmesh3d *nm, int32_t a, int32_t b, int
     tri->centroid[1] = (p0[1] + p1[1] + p2[1]) / 3.0f;
     tri->centroid[2] = (p0[2] + p1[2] + p2[2]) / 3.0f;
     tri->neighbors[0] = tri->neighbors[1] = tri->neighbors[2] = -1;
+    tri->blocked = blocked ? 1 : 0;
 }
 
 /// @brief From-scratch voxel navmesh baker (Recast-style, software, zero dependencies).
@@ -1131,25 +1333,36 @@ static void *navmesh3d_voxel_bake(rt_mesh3d *src,
     nm->skip_portal_width_gate = 1; /* clearance comes from the radius erosion in step 4 */
     rt_obj_set_finalizer(nm, navmesh3d_finalizer);
 
-    int64_t tri_cap = walk_cells * 2;
+    int64_t tri_cap = (int64_t)cell_count * 2;
     nm->vertices = (nav_vertex_t *)malloc(corner_count * sizeof(nav_vertex_t));
     nm->source_triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
     nm->triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
-    if (!nm->vertices || !nm->source_triangles || !nm->triangles) {
+    nm->voxel_cell_height = (float *)malloc(cell_count * sizeof(float));
+    nm->voxel_cell_walkable = (uint8_t *)malloc(cell_count);
+    nm->voxel_corner_vertices = (int32_t *)malloc(corner_count * sizeof(int32_t));
+    if (!nm->vertices || !nm->source_triangles || !nm->triangles || !nm->voxel_cell_height ||
+        !nm->voxel_cell_walkable || !nm->voxel_corner_vertices) {
         free(cell_h);
         free(cell_walk);
         free(corner_vid);
         navmesh3d_free_partial(nm);
         return NULL;
     }
+    memcpy(nm->voxel_cell_height, cell_h, cell_count * sizeof(float));
+    memcpy(nm->voxel_cell_walkable, cell_walk, cell_count);
+    nm->voxel_min_x = min_x;
+    nm->voxel_min_z = min_z;
+    nm->voxel_cell_size = cell_size;
+    nm->voxel_nx = nx;
+    nm->voxel_nz = nz;
     nm->vertex_count = 0;
     nm->source_triangle_count = 0;
     nm->triangle_count = 0;
 
     for (int32_t cz = 0; cz < nz; cz++) {
         for (int32_t cx = 0; cx < nx; cx++) {
-            if (!cell_walk[(size_t)cz * (size_t)nx + (size_t)cx])
-                continue;
+            size_t cell_idx = (size_t)cz * (size_t)nx + (size_t)cx;
+            int8_t blocked = cell_walk[cell_idx] ? 0 : 1;
             int32_t a = navmesh3d_voxel_corner_vertex(
                 nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx, cz);
             int32_t b = navmesh3d_voxel_corner_vertex(
@@ -1158,10 +1371,11 @@ static void *navmesh3d_voxel_bake(rt_mesh3d *src,
                 nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx + 1, cz + 1);
             int32_t d = navmesh3d_voxel_corner_vertex(
                 nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx, cz + 1);
-            navmesh3d_voxel_emit_tri(nm, a, c, b);
-            navmesh3d_voxel_emit_tri(nm, a, d, c);
+            navmesh3d_voxel_emit_tri(nm, a, c, b, blocked);
+            navmesh3d_voxel_emit_tri(nm, a, d, c, blocked);
         }
     }
+    memcpy(nm->voxel_corner_vertices, corner_vid, corner_count * sizeof(int32_t));
 
     free(cell_h);
     free(cell_walk);
@@ -1964,12 +2178,7 @@ int8_t rt_navmesh3d_add_obstacle(void *obj, void *min_v, void *max_v) {
     /* Tiled bake: re-carve only the tiles the obstacle AABB overlaps. The triangle set, adjacency,
      * and query grid are untouched — only the in-tile `blocked` flags flip. O(overlapped tiles). */
     if (nm->tile_size > 0.0 && nm->qgrid_nx > 0) {
-        int64_t tx0 = 0, tz0 = 0, tx1 = 0, tz1 = 0;
-        navmesh3d_tile_of_point(nm, (double)omin[0], (double)omin[2], &tx0, &tz0);
-        navmesh3d_tile_of_point(nm, (double)omax[0], (double)omax[2], &tx1, &tz1);
-        for (int64_t tz = tz0; tz <= tz1; tz++)
-            for (int64_t tx = tx0; tx <= tx1; tx++)
-                navmesh3d_reflag_tile(nm, tx, tz);
+        navmesh3d_reflag_obstacle_tiles(nm, omin, omax);
         return 1;
     }
     if (!navmesh3d_apply_slope_filter(nm)) {
@@ -1990,6 +2199,10 @@ int8_t rt_navmesh3d_remove_obstacle(void *obj, int64_t index) {
     for (int32_t i = remove_at; i < nm->obstacle_count - 1; ++i)
         nm->obstacles[i] = nm->obstacles[i + 1];
     nm->obstacle_count--;
+    if (nm->tile_size > 0.0 && nm->qgrid_nx > 0) {
+        navmesh3d_reflag_obstacle_tiles(nm, removed.min, removed.max);
+        return 1;
+    }
     if (!navmesh3d_apply_slope_filter(nm)) {
         for (int32_t i = nm->obstacle_count; i > remove_at; --i)
             nm->obstacles[i] = nm->obstacles[i - 1];
@@ -2015,6 +2228,11 @@ int8_t rt_navmesh3d_update_obstacle(void *obj, int64_t index, void *min_v, void 
     old_obstacle = nm->obstacles[edit_at];
     memcpy(nm->obstacles[edit_at].min, omin, sizeof(omin));
     memcpy(nm->obstacles[edit_at].max, omax, sizeof(omax));
+    if (nm->tile_size > 0.0 && nm->qgrid_nx > 0) {
+        navmesh3d_reflag_obstacle_tiles(nm, old_obstacle.min, old_obstacle.max);
+        navmesh3d_reflag_obstacle_tiles(nm, omin, omax);
+        return 1;
+    }
     if (!navmesh3d_apply_slope_filter(nm)) {
         nm->obstacles[edit_at] = old_obstacle;
         (void)navmesh3d_apply_slope_filter(nm);
@@ -2043,9 +2261,15 @@ int8_t rt_navmesh3d_rebuild_tile(void *obj, int64_t tile_x, int64_t tile_z) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || !nm->triangles || nm->triangle_count <= 0)
         return 0;
-    /* Tiled bake: re-carve just this tile in place (O(tile)) — no adjacency or grid rebuild. */
+    /* Tiled voxel bake: rebuild just this tile's retained voxel source in place (O(tile)) — no
+     * whole-scene voxel pass, adjacency rebuild, or query-grid rebuild. */
     if (nm->tile_size > 0.0 && nm->qgrid_nx > 0) {
-        navmesh3d_reflag_tile(nm, tile_x, tile_z);
+        if (navmesh3d_has_voxel_source(nm))
+            navmesh3d_rebuild_voxel_tile(nm, tile_x, tile_z);
+        else {
+            navmesh3d_reflag_tile(nm, tile_x, tile_z);
+            navmesh3d_refresh_offmesh_links(nm);
+        }
         return 1;
     }
     /* Non-tiled mesh (Build / untiled bake): preserve the whole-mesh refilter baseline. */
@@ -2092,6 +2316,36 @@ int8_t rt_navmesh3d_test_tile_of_point(void *obj, double px, double pz, int64_t 
                                        int64_t *out_tz) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     return (int8_t)(navmesh3d_tile_of_point(nm, px, pz, out_tx, out_tz) ? 1 : 0);
+}
+
+/// @brief Test-only: edit retained voxel source for a tile without touching the live mesh.
+/// @details This simulates a tile-local geometry source change. A far-tile RebuildTile must leave
+/// the live mesh stale; rebuilding this tile must refresh its geometry/blocking from the retained
+/// source. Not part of the scripting surface.
+int8_t rt_navmesh3d_test_set_tile_source(void *obj,
+                                         int64_t tile_x,
+                                         int64_t tile_z,
+                                         double height,
+                                         int8_t walkable) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    int32_t cx0, cx1, cz0, cz1;
+    if (!navmesh3d_voxel_tile_cell_range(nm, tile_x, tile_z, &cx0, &cx1, &cz0, &cz1) ||
+        !isfinite(height))
+        return 0;
+    if (height > (double)FLT_MAX)
+        height = (double)FLT_MAX;
+    if (height < -(double)FLT_MAX)
+        height = -(double)FLT_MAX;
+    for (int32_t cz = cz0; cz <= cz1; cz++) {
+        for (int32_t cx = cx0; cx <= cx1; cx++) {
+            size_t cell = navmesh3d_voxel_cell_index(nm, cx, cz);
+            if (cell == SIZE_MAX)
+                continue;
+            nm->voxel_cell_height[cell] = (float)height;
+            nm->voxel_cell_walkable[cell] = walkable ? 1 : 0;
+        }
+    }
+    return 1;
 }
 
 /// @brief Set the maximum slope angle (in degrees) considered walkable.

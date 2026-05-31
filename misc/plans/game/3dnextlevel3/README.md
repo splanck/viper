@@ -100,7 +100,7 @@
 
 ### Phase 9 - Navigation And AI Depth
 
-- [ ] **NL3-024 [P9, AC-009] Implement per-tile geometry re-voxelization.** Tile-local obstacle re-carve is O(tile), but actual geometry changes still need retained tile source geometry so a tile can rebuild from its own geometry instead of relying on a whole-scene baseline.
+- [x] **NL3-024 [P9, AC-009] Implement per-tile geometry re-voxelization.** Tiled navmesh bakes now retain per-cell voxel source height/walkability and corner mappings so `RebuildTile(tileX, tileZ)` refreshes only that tile's geometry, heights, and blocked state without a whole-scene voxel pass. Evidence: `test_rt_navmesh_blend` `test_navmesh_rebuild_tile_refreshes_retained_geometry_source` proves a retained tile source edit stays stale before rebuild, remains stale after a far-tile rebuild, updates height after its own tile rebuild, and removes walkability when the retained source tile becomes unwalkable.
 
 - [ ] **NL3-025 [P9] Add fine polygon-level carving plus traversal metadata.** Current carving uses coarse AABB obstacles and per-triangle blocked flags; add sub-triangle/polygon-level carving and nav area types, traversal costs, and link/state metadata.
 

@@ -92,6 +92,12 @@ int8_t rt_navmesh3d_test_inject_obstacle(void *navmesh, void *min, void *max);
 ///        written), 0 otherwise.
 int8_t rt_navmesh3d_test_tile_of_point(void *navmesh, double px, double pz, int64_t *out_tx,
                                        int64_t *out_tz);
+/// @brief Test-only: edit retained tiled voxel source for one tile without rebuilding it.
+int8_t rt_navmesh3d_test_set_tile_source(void *navmesh,
+                                         int64_t tile_x,
+                                         int64_t tile_z,
+                                         double height,
+                                         int8_t walkable);
 
 #ifdef __cplusplus
 }

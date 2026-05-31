@@ -489,6 +489,50 @@ static void test_navmesh_rebuild_tile_is_tile_local() {
                 "RebuildTile local: tile rebuild reduces the walkable triangle count");
 }
 
+static void test_navmesh_rebuild_tile_refreshes_retained_geometry_source() {
+    void *scene = make_scene_bake_fixture();
+    void *nm = rt_navmesh3d_bake_tiled(scene, 2.0, 0.4, 1.8, 45.0, 0.3);
+    void *p = rt_vec3_new(3.0, 0.0, -1.0);
+    void *p_raised = rt_vec3_new(3.0, 2.0, -1.0);
+    int64_t tx = 0, tz = 0;
+    EXPECT_TRUE(nm != nullptr, "RebuildTile source: tiled bake succeeds");
+    EXPECT_TRUE(rt_navmesh3d_test_tile_of_point(nm, 3.0, -1.0, &tx, &tz) != 0,
+                "RebuildTile source: target point maps to a tile");
+    void *sample0 = rt_navmesh3d_sample_position(nm, p);
+    EXPECT_NEAR(rt_vec3_y(sample0), 0.0, 0.05, "RebuildTile source: tile starts at base height");
+
+    EXPECT_TRUE(rt_navmesh3d_test_set_tile_source(nm, tx, tz, 2.0, 1) != 0,
+                "RebuildTile source: retained tile geometry source can be edited");
+    void *stale = rt_navmesh3d_sample_position(nm, p);
+    EXPECT_NEAR(rt_vec3_y(stale), 0.0, 0.05,
+                "RebuildTile source: source edit stays stale before rebuild");
+    EXPECT_TRUE(rt_navmesh3d_rebuild_tile(nm, tx + 5, tz + 5) != 0,
+                "RebuildTile source: far tile rebuild succeeds");
+    void *far = rt_navmesh3d_sample_position(nm, p);
+    EXPECT_NEAR(rt_vec3_y(far), 0.0, 0.05,
+                "RebuildTile source: far tile rebuild leaves edited tile stale");
+
+    EXPECT_TRUE(rt_navmesh3d_rebuild_tile(nm, tx, tz) != 0,
+                "RebuildTile source: own tile rebuild succeeds");
+    void *raised = rt_navmesh3d_sample_position(nm, p);
+    EXPECT_TRUE(rt_vec3_y(raised) > 1.5,
+                "RebuildTile source: own tile rebuild refreshes retained geometry height");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, p_raised) != 0,
+                "RebuildTile source: raised tile remains walkable when source says walkable");
+
+    int64_t before_block = rt_navmesh3d_get_triangle_count(nm);
+    EXPECT_TRUE(rt_navmesh3d_test_set_tile_source(nm, tx, tz, 2.0, 0) != 0,
+                "RebuildTile source: retained tile geometry can become unwalkable");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, p_raised) != 0,
+                "RebuildTile source: unwalkable source edit is stale before own tile rebuild");
+    EXPECT_TRUE(rt_navmesh3d_rebuild_tile(nm, tx, tz) != 0,
+                "RebuildTile source: own tile rebuild applies unwalkable source edit");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, p_raised) == 0,
+                "RebuildTile source: own tile rebuild removes edited source geometry");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) < before_block,
+                "RebuildTile source: source geometry removal drops walkable triangle count");
+}
+
 /* A narrow plank: 1.0 wide (x) x 10.0 long (z), centered at origin. */
 static void *make_narrow_plank_scene() {
     void *scene = rt_scene3d_new();
@@ -739,6 +783,7 @@ int main() {
     test_navmesh_bake_scene_flattens_transformed_nodes();
     test_navmesh_bake_tiled_and_rebuild_tile_baseline();
     test_navmesh_rebuild_tile_is_tile_local();
+    test_navmesh_rebuild_tile_refreshes_retained_geometry_source();
     test_navmesh_bake_agent_radius_erodes_narrow_corridor();
     test_navmesh_query_grid_matches_linear_scan();
 
