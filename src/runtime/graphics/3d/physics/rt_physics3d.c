@@ -239,6 +239,8 @@ static rt_body3d *body3d_checked(void *obj) {
     return (rt_body3d *)rt_g3d_checked_or_null(obj, RT_G3D_BODY3D_CLASS_ID);
 }
 
+/// @brief Bump a body's broadphase revision (wrapping past UINT64_MAX to 1) so cached broadphase
+///        structures know to re-evaluate it.
 static void body3d_touch_broadphase(rt_body3d *body) {
     if (!body)
         return;
@@ -246,6 +248,7 @@ static void body3d_touch_broadphase(rt_body3d *body) {
         body->broadphase_revision == UINT64_MAX ? 1u : body->broadphase_revision + 1u;
 }
 
+/// @brief Invalidate the world's cached query broadphase so the next spatial query rebuilds it.
 static void world3d_invalidate_query_broadphase(rt_world3d *world) {
     if (!world)
         return;
@@ -483,6 +486,9 @@ static void ph3d_vec3_set_finite(double *dst, double x, double y, double z) {
 
 #define PH3D_STATE_ABS_MAX 1000000000000.0
 
+/// @brief Clamp a physics state scalar to ±PH3D_STATE_ABS_MAX, mapping NaN/inf to 0.
+/// @details Keeps positions/velocities from blowing up to non-finite values that would poison the
+///          whole simulation; the bound is large enough not to affect well-behaved bodies.
 static double ph3d_saturate_state_value(double value) {
     if (!isfinite(value))
         return 0.0;
@@ -493,6 +499,7 @@ static double ph3d_saturate_state_value(double value) {
     return value;
 }
 
+/// @brief Saturate each component of a state vector in place (see ph3d_saturate_state_value).
 static void ph3d_vec3_sanitize_state(double *v) {
     if (!v)
         return;
@@ -501,6 +508,7 @@ static void ph3d_vec3_sanitize_state(double *v) {
     v[2] = ph3d_saturate_state_value(v[2]);
 }
 
+/// @brief Add (x, y, z) into @p dst, sanitizing the addends and saturating the result per component.
 static void ph3d_vec3_accumulate_state(double *dst, double x, double y, double z) {
     if (!dst)
         return;
@@ -1677,6 +1685,8 @@ static void contact_snapshot_copy(rt_contact3d *dst, const rt_contact3d *src) {
     memcpy(dst, src, sizeof(*dst));
 }
 
+/// @brief Whether the body's orientation quaternion is (within 1e-9) the identity.
+/// @details Lets axis-aligned collision paths skip rotation math for un-rotated bodies.
 static int body3d_orientation_is_identity(const rt_body3d *body) {
     if (!body)
         return 0;
@@ -1684,6 +1694,7 @@ static int body3d_orientation_is_identity(const rt_body3d *body) {
            fabs(body->orientation[2]) < 1e-9 && fabs(body->orientation[3] - 1.0) < 1e-9;
 }
 
+/// @brief Write a manifold point (position, normal, separation) at @p index (bounds-checked).
 static void contact3d_set_manifold_point(rt_contact3d *contact,
                                          int32_t index,
                                          const double *point,
@@ -1696,6 +1707,7 @@ static void contact3d_set_manifold_point(rt_contact3d *contact,
     contact->separations[index] = separation;
 }
 
+/// @brief Whether @p point already appears in the manifold (within 1e-6 distance) — a dedup guard.
 static int contact3d_point_exists(const rt_contact3d *contact, const double *point) {
     if (!contact || !point)
         return 1;
@@ -1709,6 +1721,7 @@ static int contact3d_point_exists(const rt_contact3d *contact, const double *poi
     return 0;
 }
 
+/// @brief Reset the contact manifold to a single point (position, normal, separation).
 static void contact3d_init_single_point(rt_contact3d *contact,
                                         const double *point,
                                         const double *normal,
@@ -1719,6 +1732,7 @@ static void contact3d_init_single_point(rt_contact3d *contact,
     contact3d_set_manifold_point(contact, 0, point, normal, separation);
 }
 
+/// @brief Add a manifold point if it is finite, non-duplicate, and the manifold isn't full.
 static void contact3d_try_add_manifold_point(rt_contact3d *contact,
                                              const double *point,
                                              const double *normal,
@@ -1733,6 +1747,9 @@ static void contact3d_try_add_manifold_point(rt_contact3d *contact,
     contact3d_set_manifold_point(contact, contact->contact_count++, point, normal, separation);
 }
 
+/// @brief Promote a single-point box/box contact to a multi-point manifold over the AABB overlap.
+/// @details Samples the corners of the two bodies' overlapping AABB region as extra contact points,
+///          giving the solver a stable contact patch (resting boxes don't wobble on one point).
 static void contact3d_expand_aabb_manifold(rt_contact3d *contact, const rt_body3d *a, const rt_body3d *b) {
     double a_min[3];
     double a_max[3];
@@ -2834,6 +2851,9 @@ static int mesh_physics_bvh_rebuild(rt_mesh3d *mesh);
 static void transform_local_aabb_to_world(
     const rt_collider_pose *pose, const float *mn, const float *mx, double *out_min, double *out_max);
 
+/// @brief Whether a sphere overlaps an axis-aligned box, via closest-point squared distance.
+/// @details Sums squared distance only on axes where the center lies outside [mn, mx] and compares
+///          to radius² — no sqrt, and an inside-the-box center trivially intersects.
 static int aabb_intersects_sphere_raw(const double *mn,
                                       const double *mx,
                                       const double *center,
@@ -3323,6 +3343,9 @@ typedef struct {
     int32_t b;
 } epa_edge;
 
+/// @brief Triple cross product out = (a × b) × c, with a stable fallback when it degenerates.
+/// @details GJK uses this to get a direction lying in an edge's plane and pointing toward the origin;
+///          when the inputs are collinear (near-zero result) it substitutes an arbitrary perpendicular.
 static void vec3_triple_cross(const double *a, const double *b, const double *c, double *out) {
     double tmp[3];
     vec3_cross(a, b, tmp);
@@ -3335,6 +3358,9 @@ static void vec3_triple_cross(const double *a, const double *b, const double *c,
     }
 }
 
+/// @brief Minkowski-difference support point: support(A, dir) − support(B, −dir).
+/// @details The farthest point of the configuration-space obstacle (A ⊖ B) along @p direction —
+///          the single primitive GJK and EPA query to probe the shapes' combined geometry.
 static void gjk_support(void *a_collider,
                         const rt_collider_pose *a_pose,
                         void *b_collider,
@@ -3350,11 +3376,13 @@ static void gjk_support(void *a_collider,
     vec3_sub(pa, pb, out->v);
 }
 
+/// @brief Reduce the simplex to the single vertex @p a.
 static void gjk_simplex_set1(gjk_simplex *simplex, const gjk_support_point *a) {
     simplex->p[0] = *a;
     simplex->count = 1;
 }
 
+/// @brief Set the simplex to the line segment (b, a) with @p a as the most-recent vertex.
 static void gjk_simplex_set2(gjk_simplex *simplex,
                              const gjk_support_point *b,
                              const gjk_support_point *a) {
@@ -3363,6 +3391,7 @@ static void gjk_simplex_set2(gjk_simplex *simplex,
     simplex->count = 2;
 }
 
+/// @brief Set the simplex to the triangle (c, b, a) with @p a as the most-recent vertex.
 static void gjk_simplex_set3(gjk_simplex *simplex,
                              const gjk_support_point *c,
                              const gjk_support_point *b,
@@ -3373,6 +3402,9 @@ static void gjk_simplex_set3(gjk_simplex *simplex,
     simplex->count = 3;
 }
 
+/// @brief Evolve a 2-point (line) simplex toward the origin, updating the search @p direction.
+/// @details Keeps the edge if the origin projects onto it (search perpendicular toward origin),
+///          else drops back to the newest vertex. Returns 0 (origin not yet enclosed).
 static int gjk_update_line(gjk_simplex *simplex, double *direction) {
     gjk_support_point a = simplex->p[simplex->count - 1];
     gjk_support_point b = simplex->p[simplex->count - 2];
@@ -3389,6 +3421,10 @@ static int gjk_update_line(gjk_simplex *simplex, double *direction) {
     return 0;
 }
 
+/// @brief Evolve a 3-point (triangle) simplex toward the origin, updating the search @p direction.
+/// @details Tests the origin against the triangle's edge regions and the two face half-spaces,
+///          reducing to the relevant edge or keeping the triangle (with the face normal toward the
+///          origin) as the next search direction. Returns 0 (origin not yet enclosed).
 static int gjk_update_triangle(gjk_simplex *simplex, double *direction) {
     gjk_support_point a = simplex->p[2];
     gjk_support_point b = simplex->p[1];
@@ -3431,6 +3467,9 @@ static int gjk_update_triangle(gjk_simplex *simplex, double *direction) {
     return 0;
 }
 
+/// @brief Compute the unit normal of face (a, b, c) oriented to point away from @p opposite.
+/// @details Used per-face in the tetrahedron test so each face normal points outward; degenerate
+///          faces fall back to +Y.
 static void gjk_face_normal_away_from_point(const gjk_support_point *a,
                                             const gjk_support_point *b,
                                             const gjk_support_point *c,
@@ -3451,6 +3490,10 @@ static void gjk_face_normal_away_from_point(const gjk_support_point *a,
         vec3_negate(normal, normal);
 }
 
+/// @brief Evolve a 4-point (tetrahedron) simplex; report whether it encloses the origin.
+/// @details Checks the origin against each of the three faces touching the newest vertex; if it lies
+///          outside one, drops to that face and continues. If inside all three, the origin is enclosed.
+/// @return 1 if the origin is inside the tetrahedron (collision), 0 to keep searching.
 static int gjk_update_tetrahedron(gjk_simplex *simplex, double *direction) {
     gjk_support_point a = simplex->p[3];
     gjk_support_point b = simplex->p[2];
@@ -3484,6 +3527,8 @@ static int gjk_update_tetrahedron(gjk_simplex *simplex, double *direction) {
     return 1;
 }
 
+/// @brief Advance the GJK simplex one step by dispatching on its current vertex count.
+/// @return 1 when the simplex (a tetrahedron) encloses the origin, else 0.
 static int gjk_update_simplex(gjk_simplex *simplex, double *direction) {
     if (!simplex || !direction)
         return 0;
@@ -3498,6 +3543,9 @@ static int gjk_update_simplex(gjk_simplex *simplex, double *direction) {
     return 0;
 }
 
+/// @brief Build an EPA polytope face from three vertex indices, oriented outward from the origin.
+/// @details Computes the unit normal and its signed distance from the origin; flips the winding so
+///          the normal faces away from the origin (distance >= 0). Returns 0 for a degenerate face.
 static int epa_make_face(const gjk_support_point *vertices,
                          int32_t a,
                          int32_t b,
@@ -3527,6 +3575,10 @@ static int epa_make_face(const gjk_support_point *vertices,
     return 1;
 }
 
+/// @brief Add edge (a, b) to the EPA horizon, cancelling it against an existing reverse edge.
+/// @details A directed edge shared by two removed faces appears once as (a,b) and once as (b,a);
+///          cancelling those pairs leaves exactly the silhouette/horizon edges that the new faces
+///          must close over. Caps the edge list to avoid unbounded growth.
 static int epa_add_edge(epa_edge *edges, int32_t *edge_count, int32_t a, int32_t b) {
     if (!edges || !edge_count)
         return 0;
@@ -3544,6 +3596,8 @@ static int epa_add_edge(epa_edge *edges, int32_t *edge_count, int32_t a, int32_t
     return 1;
 }
 
+/// @brief Append an EPA face (a, b, c) to the polytope, skipping degenerate faces.
+/// @return 0 only when the face array is full; 1 otherwise (including a skipped degenerate face).
 static int epa_add_face(const gjk_support_point *vertices,
                         epa_face *faces,
                         int32_t *face_count,
@@ -3558,6 +3612,12 @@ static int epa_add_face(const gjk_support_point *vertices,
     return 1;
 }
 
+/// @brief Run EPA on GJK's enclosing tetrahedron to find the penetration normal and depth.
+/// @details Iteratively expands the polytope toward the Minkowski surface: each step takes a support
+///          point past the closest face, removes all faces it can "see", and re-closes the resulting
+///          horizon, until the closest face stops moving (within @p tolerance). Writes the outward
+///          contact @p normal and penetration @p depth.
+/// @return 1 on success, 0 if the input simplex is not a tetrahedron or the polytope degenerates.
 static int epa_solve(void *a_collider,
                      const rt_collider_pose *a_pose,
                      void *b_collider,
@@ -3633,6 +3693,11 @@ static int epa_solve(void *a_collider,
     return 0;
 }
 
+/// @brief Test two convex colliders for overlap and, when overlapping, report the contact via EPA.
+/// @details Runs GJK seeded from the center-to-center direction until it builds an origin-enclosing
+///          tetrahedron (or an iteration cap proves separation), then hands that simplex to EPA for
+///          the penetration @p normal and @p depth.
+/// @return 1 if the shapes overlap (normal/depth written), 0 if separate.
 static int test_convex_hull_gjk_epa(void *a_collider,
                                     const rt_collider_pose *a_pose,
                                     void *b_collider,
@@ -4890,6 +4955,9 @@ static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
     return event;
 }
 
+/// @brief Release every cached collision-event object in an array and NULL each slot.
+/// @details The array itself is kept (capacity unchanged) for reuse next frame; only the pooled
+///          event objects are released.
 static void world3d_release_event_object_array(void ***array, int32_t *capacity) {
     if (!array || !capacity || !*array)
         return;
@@ -4901,6 +4969,7 @@ static void world3d_release_event_object_array(void ***array, int32_t *capacity)
     }
 }
 
+/// @brief Release all four cached collision-event object pools (collision/enter/stay/exit).
 static void world3d_release_cached_event_objects(rt_world3d *w) {
     if (!w)
         return;
@@ -4911,6 +4980,7 @@ static void world3d_release_cached_event_objects(rt_world3d *w) {
     world3d_release_event_object_array(&w->exit_event_objects, &w->exit_event_object_capacity);
 }
 
+/// @brief Ensure an event-object pool array holds at least @p needed slots (zero-filled growth).
 static int world3d_reserve_event_object_array(void ***array, int32_t *capacity, int32_t needed) {
     void **grown;
     if (!array || !capacity)
@@ -4929,6 +4999,9 @@ static int world3d_reserve_event_object_array(void ***array, int32_t *capacity, 
     return 1;
 }
 
+/// @brief Get (or lazily build) the pooled collision-event object for @p contact at @p index.
+/// @details Reuses the slot's existing event object across frames — refreshing its fields from the
+///          contact — to avoid per-frame allocation in the collision callback path.
 static void *world3d_cached_event_from_contact(void ***array,
                                                int32_t *capacity,
                                                int64_t index,
@@ -5514,14 +5587,17 @@ int8_t rt_world3d_try_add(void *obj, void *body) {
     return 1;
 }
 
+/// @brief Add a body to the world, ignoring the success flag (see rt_world3d_try_add).
 void rt_world3d_add(void *obj, void *body) {
     (void)rt_world3d_try_add(obj, body);
 }
 
+/// @brief Whether a contact references @p body as either participant.
 static int contact_mentions_body(const rt_contact3d *contact, const rt_body3d *body) {
     return contact && body && (contact->body_a == body || contact->body_b == body);
 }
 
+/// @brief Remove every contact mentioning @p body from a contact array, compacting it in place.
 static void world3d_purge_contact_array_for_body(rt_contact3d *contacts,
                                                  int32_t *count,
                                                  const rt_body3d *body) {
@@ -5540,6 +5616,8 @@ static void world3d_purge_contact_array_for_body(rt_contact3d *contacts,
     *count = write;
 }
 
+/// @brief Purge all of the world's contact/event arrays of contacts involving @p body.
+/// @details Called when a body leaves the world so stale contacts don't fire spurious events.
 static void world3d_purge_body_contacts(rt_world3d *w, const rt_body3d *body) {
     if (!w || !body)
         return;
@@ -5581,6 +5659,7 @@ int64_t rt_world3d_body_count(void *obj) {
     return w ? w->body_count : 0;
 }
 
+/// @brief Whether @p body is currently registered in the world.
 int8_t rt_world3d_contains_body(void *obj, void *body) {
     rt_world3d *w = world3d_checked(obj);
     rt_body3d *b = body3d_checked(body);
@@ -5620,6 +5699,70 @@ void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz) {
     if (!w)
         return;
     ph3d_vec3_set_finite(w->gravity, gx, gy, gz);
+}
+
+/// @brief Shift a contact's cached points by the floating-origin rebase @p delta.
+/// @details When the world recenters to keep coordinates near the origin, contact points must move
+///          with it; saturates the shifted values to stay finite.
+static void contact3d_rebase_origin(rt_contact3d *contact, const double delta[3]) {
+    if (!contact || !delta)
+        return;
+    contact->point[0] = ph3d_saturate_state_value(contact->point[0] - delta[0]);
+    contact->point[1] = ph3d_saturate_state_value(contact->point[1] - delta[1]);
+    contact->point[2] = ph3d_saturate_state_value(contact->point[2] - delta[2]);
+    int32_t point_count = contact->contact_count;
+    if (point_count < 0)
+        point_count = 0;
+    if (point_count > PH3D_MAX_MANIFOLD_POINTS)
+        point_count = PH3D_MAX_MANIFOLD_POINTS;
+    for (int32_t i = 0; i < point_count; ++i) {
+        contact->points[i][0] = ph3d_saturate_state_value(contact->points[i][0] - delta[0]);
+        contact->points[i][1] = ph3d_saturate_state_value(contact->points[i][1] - delta[1]);
+        contact->points[i][2] = ph3d_saturate_state_value(contact->points[i][2] - delta[2]);
+    }
+}
+
+/// @brief Apply a floating-origin rebase @p delta to every contact in an array.
+static void world3d_rebase_contact_array(rt_contact3d *contacts,
+                                         int32_t count,
+                                         const double delta[3]) {
+    if (!contacts || count <= 0 || !delta)
+        return;
+    for (int32_t i = 0; i < count; ++i)
+        contact3d_rebase_origin(&contacts[i], delta);
+}
+
+/// @brief `World3D.RebaseOrigin(dx, dy, dz)` — shift body/contact/query state by -delta.
+void rt_world3d_rebase_origin(void *obj, double dx, double dy, double dz) {
+    rt_world3d *w = world3d_checked(obj);
+    if (!w)
+        return;
+    double delta[3] = {
+        ph3d_finite_or(dx, 0.0),
+        ph3d_finite_or(dy, 0.0),
+        ph3d_finite_or(dz, 0.0),
+    };
+    if (delta[0] == 0.0 && delta[1] == 0.0 && delta[2] == 0.0)
+        return;
+
+    for (int32_t i = 0; i < w->body_count; ++i) {
+        rt_body3d *body = w->bodies[i];
+        if (!body)
+            continue;
+        body->position[0] = ph3d_saturate_state_value(body->position[0] - delta[0]);
+        body->position[1] = ph3d_saturate_state_value(body->position[1] - delta[1]);
+        body->position[2] = ph3d_saturate_state_value(body->position[2] - delta[2]);
+        body3d_touch_broadphase(body);
+    }
+
+    world3d_rebase_contact_array(w->contacts, w->contact_count, delta);
+    world3d_rebase_contact_array(w->frame_contacts, w->frame_contact_count, delta);
+    world3d_rebase_contact_array(w->previous_contacts, w->previous_contact_count, delta);
+    world3d_rebase_contact_array(w->enter_events, w->enter_event_count, delta);
+    world3d_rebase_contact_array(w->stay_events, w->stay_event_count, delta);
+    world3d_rebase_contact_array(w->exit_events, w->exit_event_count, delta);
+    world3d_invalidate_query_broadphase(w);
+    world3d_release_cached_event_objects(w);
 }
 
 /*==========================================================================
@@ -5999,6 +6142,10 @@ static int query_hit_insert_sorted(rt_query_hit3d *hits, int32_t count, const rt
     return count + 1;
 }
 
+/// @brief Insert a query hit into a distance-sorted array capped at @p capacity (keeps the nearest).
+/// @details Below capacity it inserts in order; when full, a hit nearer than the current farthest
+///          displaces it (bounded insertion sort), so the array always holds the K closest results.
+/// @return The new hit count.
 static int query_hit_insert_sorted_bounded(rt_query_hit3d *hits,
                                            int32_t count,
                                            int32_t capacity,
@@ -6042,6 +6189,11 @@ static uint64_t world3d_query_broadphase_signature(rt_world3d *w) {
     return hash ? hash : 1;
 }
 
+/// @brief Build (or reuse) the cached broadphase entry list used to accelerate spatial queries.
+/// @details Collects each body's world AABB into entries sorted by min-X for sweep-and-prune, and
+///          stamps an FNV-1a signature over the body set/revisions so an unchanged world reuses the
+///          cache instead of rebuilding.
+/// @return The number of broadphase entries.
 static int32_t world3d_build_query_broadphase(rt_world3d *w) {
     int32_t entry_count = 0;
     uint64_t signature;
@@ -6070,6 +6222,7 @@ static int32_t world3d_build_query_broadphase(rt_world3d *w) {
     return entry_count;
 }
 
+/// @brief Whether a broadphase entry's AABB overlaps the query's AABB on all three axes.
 static int query_entry_overlaps_bounds(const ph3d_broadphase_entry *entry,
                                        const double *query_min,
                                        const double *query_max) {
@@ -6121,6 +6274,7 @@ static int overlap_query_body_against_body(rt_body3d *query_body,
     return 1;
 }
 
+/// @brief Populate a query-hit record (body, point, normal, distance) for a sphere-sweep result.
 static void sweep_sphere_fill_hit(rt_body3d *body,
                                   const double *start_center,
                                   const double *dir,
@@ -6894,6 +7048,7 @@ static int raycast_triangle_world(const double *origin,
     return 1;
 }
 
+/// @brief Grow the AABB [mn, mx] in place to include point @p p.
 static void mesh_bvh_expand(float *mn, float *mx, const float *p) {
     for (int axis = 0; axis < 3; axis++) {
         if (p[axis] < mn[axis])
@@ -6903,6 +7058,7 @@ static void mesh_bvh_expand(float *mn, float *mx, const float *p) {
     }
 }
 
+/// @brief Compute triangle @p tri's AABB (@p mn, @p mx) and centroid for BVH construction.
 static void mesh_bvh_triangle_bounds(
     const rt_mesh3d *mesh, uint32_t tri, float *mn, float *mx, float *centroid) {
     uint32_t i0 = mesh->indices[tri * 3u + 0u];
@@ -6918,6 +7074,10 @@ static void mesh_bvh_triangle_bounds(
     }
 }
 
+/// @brief Recursively build a physics BVH node over a range of mesh triangles.
+/// @details Computes the node bounds, and if the range exceeds the leaf threshold, splits the
+///          triangles by centroid along the widest axis and recurses into two children; otherwise
+///          stores a leaf. Returns the node index, or a negative value on allocation failure.
 static int mesh_bvh_build_node(rt_mesh3d *mesh,
                                rt_physics_mesh_bvh_node *nodes,
                                int32_t *node_count,
@@ -6992,6 +7152,10 @@ static int mesh_bvh_build_node(rt_mesh3d *mesh,
     return node_index;
 }
 
+/// @brief Rebuild the mesh's physics BVH acceleration structure for ray/shape queries.
+/// @details Allocates the node/index arrays and builds the tree from the current geometry; cached so
+///          repeated queries against an unchanged mesh skip the rebuild.
+/// @return 1 on success, 0 on allocation failure or empty geometry.
 static int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
     uint32_t tri_total;
     uint32_t *tri_indices = NULL;
@@ -7047,6 +7211,9 @@ static int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
     return 1;
 }
 
+/// @brief Transform a local-space AABB through a collider pose into a world-space AABB.
+/// @details Rotates and translates all eight corners and takes their min/max, so the result tightly
+///          bounds the oriented box (a plain min/max of the rotated extents would over-grow it).
 static void transform_local_aabb_to_world(
     const rt_collider_pose *pose, const float *mn, const float *mx, double *out_min, double *out_max) {
     for (int axis = 0; axis < 3; axis++) {
@@ -7781,6 +7948,9 @@ void *rt_body3d_get_orientation(void *o) {
     return rt_quat_new(b->orientation[0], b->orientation[1], b->orientation[2], b->orientation[3]);
 }
 
+/// @brief Read a body's full pose — position, orientation quaternion, and scale — into raw arrays.
+/// @details Out-params are optional (NULL-skippable). Used by the renderer/scene sync to mirror the
+///          simulated body transform without boxing Vec3/Quat values.
 void rt_body3d_get_pose_raw(void *o, double *position_out, double *rotation_out, double *scale_out) {
     rt_body3d *b = body3d_checked(o);
     if (position_out)

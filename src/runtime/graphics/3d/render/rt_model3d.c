@@ -137,6 +137,7 @@ static void model_release_array(void ***arr, int32_t *count) {
     *arr = NULL;
 }
 
+/// @brief Release every scene entry's root, name, and camera list (does not free the array itself).
 static void model_release_scenes(rt_model3d *model) {
     if (!model || !model->scenes)
         return;
@@ -225,6 +226,7 @@ static int model_grow_array(void ***arr, int32_t *cap, int32_t need) {
 static int model_append_ref(
     void ***arr, int32_t *count, int32_t *cap, void *obj, const char *trap_msg);
 
+/// @brief Duplicate @p value, or @p fallback when @p value is NULL/empty (traps on alloc failure).
 static char *model_strdup_or(const char *value, const char *fallback) {
     const char *src = (value && value[0] != '\0') ? value : fallback;
     size_t len;
@@ -241,6 +243,8 @@ static char *model_strdup_or(const char *value, const char *fallback) {
     return copy;
 }
 
+/// @brief Ensure the model's scene array holds at least @p need entries (zero-filled growth).
+/// @return 1 on success, 0 on overflow or reallocation failure.
 static int model_grow_scenes(rt_model3d *model, int32_t need) {
     model3d_scene_entry *grown;
     int32_t new_cap;
@@ -269,6 +273,9 @@ static int model_grow_scenes(rt_model3d *model, int32_t need) {
     return 1;
 }
 
+/// @brief Append a scene (retained @p root + name) to the model, synthesizing a name if empty.
+/// @details Uses "default" for the first scene, else "scene_N". Reports the new index via
+///          @p out_index. Returns 0 and traps on growth or name-allocation failure.
 static int model_append_scene_entry(rt_model3d *model,
                                     const char *name,
                                     rt_scene_node3d *root,
@@ -299,6 +306,7 @@ static int model_append_scene_entry(rt_model3d *model,
     return 1;
 }
 
+/// @brief Append a Camera3D to a scene entry's camera list (no-op for NULL args).
 static int model_append_scene_camera(model3d_scene_entry *scene, void *camera) {
     if (!scene || !camera)
         return 1;
@@ -1147,6 +1155,11 @@ void *rt_model3d_load_preloaded_gltf(rt_string path,
     return rt_model3d_load_impl(path, load_assets ? 1 : 0, preloaded_data, preloaded_size, NULL);
 }
 
+/// @brief Build a Model3D from a glTF asset that was staged off-thread into @p bundle.
+/// @details Loads the glTF on the main thread from the preload bundle (no file I/O), then wraps the
+///          resulting asset's meshes/materials/scenes as a Model3D. Falls back to a normal load when
+///          @p bundle is NULL.
+/// @return New Model3D handle, or NULL on failure.
 void *rt_model3d_load_preloaded_gltf_bundle(rt_string path,
                                             struct rt_gltf_preload_bundle *bundle,
                                             int load_assets) {

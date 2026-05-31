@@ -415,6 +415,9 @@ Located in `src/tests/unit/test_vm_concurrency_stress.cpp`. Exercises:
 TSan detects data races at runtime. To run with TSan:
 
 ```bash
+# Focused 3D/concurrency lane used by the 3D Next Level roadmap
+scripts/g3d_tsan_concurrency_lane.sh
+
 # Configure with TSan enabled
 cmake -S . -B build-tsan -DCMAKE_CXX_FLAGS="-fsanitize=thread -g" -DCMAKE_C_FLAGS="-fsanitize=thread -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
 

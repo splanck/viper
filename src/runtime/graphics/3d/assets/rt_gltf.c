@@ -1004,6 +1004,9 @@ static void gltf_apply_texture_slot(const gltf_sampler_info_t *texture_samplers,
                                           filter);
 }
 
+/// @brief True if a texture is a supported format but its decoded image is still missing.
+/// @details Flags an in-range, supported-format texture whose image slot is NULL, i.e. one the
+///          caller still needs to decode/stage before the material can reference it.
 static int gltf_texture_index_missing_supported_payload(int64_t texture_index,
                                                         int32_t texture_count,
                                                         void **texture_images,
@@ -1046,6 +1049,8 @@ typedef enum {
 #define GLTF_PRELOAD_MORPH_POD_HAS_NORMALS 0x2u
 #define GLTF_PRELOAD_MORPH_POD_HAS_TANGENTS 0x4u
 
+/// @brief One staged preload dependency: an owned key (path), raw bytes and/or a decoded
+///        runtime object, how many bytes have been incrementally prepared, and its kind tag.
 typedef struct {
     char *path;
     uint8_t *data;
@@ -1113,6 +1118,7 @@ static void gltf_preload_morph_key(int mesh_index, int primitive_index, char *ou
 static uint32_t gltf_read_u32_le(const uint8_t *p);
 static int gltf_checked_mul_size(size_t a, size_t b, size_t *out);
 
+/// @brief Duplicate a NUL-terminated string into a malloc'd copy (NULL in -> NULL out).
 static char *gltf_strdup_cstr(const char *text) {
     size_t len;
     char *copy;
@@ -1126,6 +1132,7 @@ static char *gltf_strdup_cstr(const char *text) {
     return copy;
 }
 
+/// @brief Release a GC reference held in @p *slot if this is its last drop, then NULL it.
 static void gltf_preload_release_object(void **slot) {
     if (!slot || !*slot)
         return;
@@ -1134,6 +1141,7 @@ static void gltf_preload_release_object(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Free one dependency's owned path, raw bytes, and decoded object, then zero it.
 static void gltf_preload_dependency_clear(gltf_preload_dependency_t *dep) {
     if (!dep)
         return;
@@ -1143,6 +1151,7 @@ static void gltf_preload_dependency_clear(gltf_preload_dependency_t *dep) {
     memset(dep, 0, sizeof(*dep));
 }
 
+/// @brief Free a preload bundle: its root JSON bytes, every staged dependency, and the bundle.
 void rt_gltf_preload_bundle_free(rt_gltf_preload_bundle *bundle) {
     if (!bundle)
         return;
@@ -1154,10 +1163,12 @@ void rt_gltf_preload_bundle_free(rt_gltf_preload_bundle *bundle) {
     free(bundle);
 }
 
+/// @brief Number of staged dependencies in the bundle (0 if NULL).
 size_t rt_gltf_preload_bundle_dependency_count(const rt_gltf_preload_bundle *bundle) {
     return bundle ? bundle->dependency_count : 0u;
 }
 
+/// @brief Count staged dependencies that are decoded RGBA images.
 size_t rt_gltf_preload_bundle_decoded_image_count(const rt_gltf_preload_bundle *bundle) {
     size_t count = 0;
     if (!bundle)
@@ -1169,6 +1180,9 @@ size_t rt_gltf_preload_bundle_decoded_image_count(const rt_gltf_preload_bundle *
     return count;
 }
 
+/// @brief Total still-unprepared RGBA pixel bytes across decoded-image dependencies.
+/// @details Excludes the 12-byte "VGRA" header and any bytes already prepared via the slice
+///          API; saturates at SIZE_MAX. Lets a caller budget remaining main-thread upload work.
 size_t rt_gltf_preload_bundle_decoded_image_bytes(const rt_gltf_preload_bundle *bundle) {
     size_t bytes = 0;
     if (!bundle)
@@ -1193,6 +1207,8 @@ size_t rt_gltf_preload_bundle_decoded_image_bytes(const rt_gltf_preload_bundle *
     return bytes;
 }
 
+/// @brief Validate a "VGRA" blob header and report its width, height, and pixel byte count.
+/// @return 1 with the out-params set, or 0 on a malformed/too-short blob (out-params zeroed).
 static int gltf_preload_rgba_blob_pixel_bytes(const uint8_t *blob,
                                               size_t len,
                                               uint32_t *out_width,
@@ -1229,6 +1245,10 @@ static int gltf_preload_rgba_blob_pixel_bytes(const uint8_t *blob,
     return 1;
 }
 
+/// @brief Size (<= @p max_bytes) of the next decoded-image slice that would be prepared.
+/// @details Returns a 4-byte-aligned (whole-pixel) byte count for the first decoded-RGBA
+///          dependency with work remaining, letting the caller pace upload without mutating
+///          state. Returns 0 when nothing is pending or a blob is malformed.
 size_t rt_gltf_preload_bundle_next_decoded_image_slice_bytes(const rt_gltf_preload_bundle *bundle,
                                                              size_t max_bytes) {
     if (!bundle || max_bytes == 0u)
@@ -1253,6 +1273,12 @@ size_t rt_gltf_preload_bundle_next_decoded_image_slice_bytes(const rt_gltf_prelo
     return 0u;
 }
 
+/// @brief Incrementally upload up to @p max_bytes of the next decoded image into its Pixels object.
+/// @details Lazily allocates the destination Pixels on first slice, copies a whole-pixel-aligned
+///          run of RGBA texels, and advances the prepared cursor. When a blob finishes it marks the
+///          surface dirty, frees the staging bytes, and retags the dependency as IMAGE_PIXELS. This
+///          spreads large texture uploads across frames to avoid a single main-thread stall.
+/// @return Bytes prepared this call (0 when nothing remains or allocation fails).
 size_t rt_gltf_preload_bundle_prepare_decoded_image_slice(rt_gltf_preload_bundle *bundle,
                                                           size_t max_bytes) {
     if (!bundle || max_bytes == 0u)
@@ -1314,6 +1340,7 @@ size_t rt_gltf_preload_bundle_prepare_decoded_image_slice(rt_gltf_preload_bundle
     return 0u;
 }
 
+/// @brief Count staged dependencies that are packed mesh POD blobs.
 size_t rt_gltf_preload_bundle_decoded_mesh_count(const rt_gltf_preload_bundle *bundle) {
     size_t count = 0;
     if (!bundle)
@@ -1325,6 +1352,10 @@ size_t rt_gltf_preload_bundle_decoded_mesh_count(const rt_gltf_preload_bundle *b
     return count;
 }
 
+/// @brief Append a dependency (taking ownership of @p data) under key @p path, growing the array.
+/// @details Doubles capacity as needed and copies the key string. On any failure the caller
+///          retains ownership of @p data (it is not stored).
+/// @return 1 on success, 0 on invalid args or allocation failure.
 static int gltf_preload_bundle_add_dependency(rt_gltf_preload_bundle *bundle,
                                               const char *path,
                                               gltf_preload_dependency_kind_t kind,
@@ -1358,6 +1389,9 @@ static int gltf_preload_bundle_add_dependency(rt_gltf_preload_bundle *bundle,
     return 1;
 }
 
+/// @brief Find a dependency by (kind, path), remove it, and hand its raw bytes to the caller.
+/// @details Transfers ownership of the returned buffer (caller frees) and compacts the array.
+/// @return The dependency's data with @p out_len set, or NULL if no match.
 static uint8_t *gltf_preload_bundle_take_dependency(rt_gltf_preload_bundle *bundle,
                                                     const char *path,
                                                     gltf_preload_dependency_kind_t kind,
@@ -1388,6 +1422,9 @@ static uint8_t *gltf_preload_bundle_take_dependency(rt_gltf_preload_bundle *bund
     return NULL;
 }
 
+/// @brief Find a dependency by (kind, path), remove it, and hand its decoded object to the caller.
+/// @details Frees the dependency's raw bytes and key, compacts the array, and transfers ownership
+///          of the returned runtime object. Returns NULL if no match.
 static void *gltf_preload_bundle_take_object_dependency(rt_gltf_preload_bundle *bundle,
                                                         const char *path,
                                                         gltf_preload_dependency_kind_t kind) {
@@ -1448,14 +1485,17 @@ static int gltf_checked_mul_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
+/// @brief Read a little-endian uint16 from @p p.
 static uint16_t gltf_read_u16_le(const uint8_t *p) {
     return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
 }
 
+/// @brief Read a little-endian int32 from @p p (two's-complement reinterpretation of the u32).
 static int32_t gltf_read_i32_le(const uint8_t *p) {
     return (int32_t)gltf_read_u32_le(p);
 }
 
+/// @brief Write @p v as a little-endian uint32 into @p p.
 static void gltf_write_u32_le(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)(v & 0xFFu);
     p[1] = (uint8_t)((v >> 8) & 0xFFu);
@@ -1463,6 +1503,7 @@ static void gltf_write_u32_le(uint8_t *p, uint32_t v) {
     p[3] = (uint8_t)((v >> 24) & 0xFFu);
 }
 
+/// @brief Read a little-endian IEEE-754 float32 from @p p (bit-copied, no aliasing).
 static float gltf_read_f32_le(const uint8_t *p) {
     uint32_t bits = gltf_read_u32_le(p);
     float value = 0.0f;
@@ -1470,12 +1511,15 @@ static float gltf_read_f32_le(const uint8_t *p) {
     return value;
 }
 
+/// @brief Write @p value as a little-endian IEEE-754 float32 into @p p.
 static void gltf_write_f32_le(uint8_t *p, float value) {
     uint32_t bits = 0u;
     memcpy(&bits, &value, sizeof(bits));
     gltf_write_u32_le(p, bits);
 }
 
+/// @brief Case-insensitive substring search: is @p needle present anywhere in @p text?
+/// @details An empty needle matches; used to spot a MIME token within a longer type string.
 static int gltf_ascii_has_token_i(const char *text, const char *needle) {
     size_t needle_len;
     if (!text || !needle)
@@ -1490,6 +1534,7 @@ static int gltf_ascii_has_token_i(const char *text, const char *needle) {
     return 0;
 }
 
+/// @brief Whether @p mime_or_name denotes a BMP image (by MIME token or .bmp extension).
 static int gltf_preload_image_is_bmp(const char *mime_or_name) {
     size_t len;
     if (!mime_or_name)
@@ -1501,6 +1546,7 @@ static int gltf_preload_image_is_bmp(const char *mime_or_name) {
     return len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".bmp", 4u);
 }
 
+/// @brief Whether @p mime_or_name denotes a PNG image (by MIME token or .png extension).
 static int gltf_preload_image_is_png(const char *mime_or_name) {
     size_t len;
     if (!mime_or_name)
@@ -1511,6 +1557,7 @@ static int gltf_preload_image_is_png(const char *mime_or_name) {
     return len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".png", 4u);
 }
 
+/// @brief Whether @p mime_or_name denotes a JPEG image (by MIME token or .jpg/.jpeg extension).
 static int gltf_preload_image_is_jpeg(const char *mime_or_name) {
     size_t len;
     if (!mime_or_name)
@@ -1523,6 +1570,7 @@ static int gltf_preload_image_is_jpeg(const char *mime_or_name) {
            (len >= 5u && gltf_ascii_ieq_n(mime_or_name + len - 5u, ".jpeg", 5u));
 }
 
+/// @brief Whether @p mime_or_name denotes a GIF image (by MIME token or .gif extension).
 static int gltf_preload_image_is_gif(const char *mime_or_name) {
     size_t len;
     if (!mime_or_name)
@@ -1533,6 +1581,7 @@ static int gltf_preload_image_is_gif(const char *mime_or_name) {
     return len >= 4u && gltf_ascii_ieq_n(mime_or_name + len - 4u, ".gif", 4u);
 }
 
+/// @brief Whether the image format is one the preloader can decode (PNG/BMP/JPEG/GIF).
 static int gltf_preload_image_is_supported_format(const char *mime_or_name) {
     return gltf_preload_image_is_png(mime_or_name) ||
            gltf_preload_image_is_bmp(mime_or_name) ||
@@ -1540,6 +1589,12 @@ static int gltf_preload_image_is_supported_format(const char *mime_or_name) {
            gltf_preload_image_is_gif(mime_or_name);
 }
 
+/// @brief Decode an uncompressed 24/32-bpp BMP into an owned "VGRA" RGBA blob.
+/// @details Parses the BMP/DIB headers, handles bottom-up vs. top-down (negative height) row
+///          order and the 4-byte row-stride padding, and swizzles BGR(A) to RGBA. Every size
+///          computation is overflow-checked. The output blob is `V`,`G`,`R`,`A` + LE width +
+///          LE height + tightly-packed RGBA8 rows (caller frees @p out_blob).
+/// @return 1 on success, 0 on a malformed/unsupported BMP or allocation failure.
 static int gltf_decode_bmp_to_rgba_blob(const uint8_t *data,
                                         size_t len,
                                         uint8_t **out_blob,
@@ -1636,6 +1691,8 @@ static int gltf_decode_bmp_to_rgba_blob(const uint8_t *data,
     return 1;
 }
 
+/// @brief Pack a 0xRRGGBBAA pixel array into an owned "VGRA" RGBA blob (overflow-checked).
+/// @details Shared sink for the PNG/JPEG/GIF decoders, which all emit packed 32-bit pixels.
 static int gltf_rgba32_to_rgba_blob(const uint32_t *pixels,
                                     int64_t width_i,
                                     int64_t height_i,
@@ -1682,6 +1739,10 @@ static int gltf_rgba32_to_rgba_blob(const uint32_t *pixels,
     return 1;
 }
 
+/// @brief Decode an encoded image payload (PNG/BMP/JPEG/GIF) into an owned "VGRA" RGBA blob.
+/// @details Dispatches on @p mime_or_name to the matching codec; PNG/JPEG/GIF go through the
+///          shared rt_*_decode helpers then gltf_rgba32_to_rgba_blob, BMP uses the inline decoder.
+/// @return 1 on success, 0 for an unsupported format or any decode failure.
 static int gltf_decode_image_payload_to_rgba_blob(const char *mime_or_name,
                                                   const uint8_t *data,
                                                   size_t data_len,
@@ -1729,6 +1790,10 @@ static int gltf_decode_image_payload_to_rgba_blob(const char *mime_or_name,
     return 0;
 }
 
+/// @brief Build a runtime Pixels object from a "VGRA" RGBA blob (inverse of the blob encoders).
+/// @details Validates the magic and header, bounds-checks the payload, then packs the RGBA
+///          bytes into the Pixels 0xRRGGBBAA words and marks the surface dirty.
+/// @return New Pixels handle, or NULL on a malformed blob or allocation failure.
 static void *gltf_pixels_from_rgba_blob(uint8_t *blob, size_t len) {
     uint32_t width;
     uint32_t height;
@@ -1818,6 +1883,7 @@ static int gltf_safe_relative_uri(const char *decoded_uri) {
 static const char gltf_base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+/// @brief Value of a hex digit (0-15), or -1 if @p ch is not a hex digit. Used for %XX URI escapes.
 static int gltf_data_uri_hex_digit(char ch) {
     if (ch >= '0' && ch <= '9')
         return ch - '0';
@@ -1828,10 +1894,13 @@ static int gltf_data_uri_hex_digit(char ch) {
     return -1;
 }
 
+/// @brief ASCII whitespace test (space, tab, CR, LF, form-feed, vertical-tab); locale-independent.
 static int gltf_ascii_isspace(char ch) {
     return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\f' || ch == '\v';
 }
 
+/// @brief Case-insensitive compare of the first @p len bytes of @p a and @p b (ASCII only).
+/// @return 1 if equal ignoring ASCII case, 0 otherwise.
 static int gltf_ascii_ieq_n(const char *a, const char *b, size_t len) {
     for (size_t i = 0; i < len; ++i) {
         char ca = a[i];
@@ -1846,6 +1915,9 @@ static int gltf_ascii_ieq_n(const char *a, const char *b, size_t len) {
     return 1;
 }
 
+/// @brief Whether a data-URI metadata segment contains a ";base64" token.
+/// @details Scans the semicolon-separated parameters between the MIME type and the comma,
+///          matching the literal "base64" parameter case-insensitively.
 static int gltf_data_uri_meta_has_base64(const char *meta, size_t len) {
     size_t start = 0;
     while (start < len) {
@@ -1859,6 +1931,11 @@ static int gltf_data_uri_meta_has_base64(const char *meta, size_t len) {
     return 0;
 }
 
+/// @brief Percent-decode (%XX) a URI string into a freshly allocated byte buffer (caller frees).
+/// @details Decodes valid %XX escapes to bytes and copies all other characters verbatim; a
+///          malformed escape near the end is left literal. The buffer is sized to the input
+///          length (an upper bound, since decoding only shrinks).
+/// @return 1 with @p out_data / @p out_len set, or 0 on bad args or allocation failure.
 static int gltf_percent_decode_bytes(const char *src,
                                      size_t len,
                                      uint8_t **out_data,
@@ -2038,6 +2115,8 @@ static int gltf_parse_data_uri(
     return 1;
 }
 
+/// @brief Copy a data-URI's MIME type (the part between "data:" and the first ';' or ',') into
+///        @p mime_buf, NUL-terminated and truncated to @p mime_buf_cap. Empties the buffer if absent.
 static void gltf_data_uri_copy_mime(const char *uri, char *mime_buf, size_t mime_buf_cap) {
     const char *comma;
     const char *meta;
@@ -2714,6 +2793,12 @@ static void gltf_release_local(void *obj) {
     gltf_release_ref(&tmp);
 }
 
+/// @brief Unpack a primitive's preloaded "VGMT" morph-target POD blob and attach it to @p mesh_obj.
+/// @details Looks up the morph dependency by mesh/primitive key, validates the header (magic,
+///          version, matching vertex count) and every record/name/payload offset against the blob
+///          length, then rebuilds an rt_morphtarget3d — adding each named shape with its weight and
+///          per-vertex position/normal/tangent deltas (only the flagged channels). No-op if the
+///          blob is missing or malformed; always frees the blob and the transient morph reference.
 static void gltf_preload_take_decoded_morph(rt_gltf_preload_bundle *preload_bundle,
                                             int mesh_index,
                                             int primitive_index,
@@ -2851,6 +2936,12 @@ done:
     free(blob);
 }
 
+/// @brief Unpack a primitive's preloaded "VGMP" mesh POD blob into a new Mesh3D.
+/// @details Looks up the mesh dependency by key, validates the header and that the declared
+///          vertex/index byte spans fit the blob, then installs the deserialized vertex and index
+///          arrays directly into a fresh mesh's internals (a fast path that bypasses per-vertex
+///          appends), attaches any morph targets, and returns the primitive's flags via @p out_flags.
+/// @return New Mesh3D handle, or NULL if the blob is missing or malformed.
 static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bundle,
                                             int mesh_index,
                                             int primitive_index,
@@ -2926,8 +3017,10 @@ static void *gltf_preload_take_decoded_mesh(rt_gltf_preload_bundle *preload_bund
     }
     mesh = (rt_mesh3d *)mesh_obj;
     free(mesh->vertices);
+    free(mesh->positions64);
     free(mesh->indices);
     mesh->vertices = vertices;
+    mesh->positions64 = NULL;
     mesh->vertex_count = vertex_count;
     mesh->vertex_capacity = vertex_count;
     mesh->indices = indices;
@@ -2997,6 +3090,7 @@ static double gltf_arr_num(void *arr, int64_t index, double fallback) {
     return jvalue_num(rt_seq_get(arr, index), fallback);
 }
 
+/// @brief Duplicate @p value, or @p fallback when @p value is NULL/empty (traps on alloc failure).
 static char *gltf_strdup_or(const char *value, const char *fallback) {
     const char *src = (value && value[0] != '\0') ? value : fallback;
     size_t len;
@@ -3043,6 +3137,9 @@ static int gltf_append_camera(rt_gltf_asset *asset, void *camera) {
     return 1;
 }
 
+/// @brief Append a Camera3D to one scene's camera list, growing it as needed (takes ownership).
+/// @details Per-scene analogue of gltf_append_camera. Returns 1 on success (or no-op for NULL
+///          args); returns 0 and traps on overflow or allocation failure.
 static int gltf_append_scene_camera(gltf_scene_info_t *scene, void *camera) {
     void **grown;
     int32_t next_capacity;
@@ -3066,6 +3163,10 @@ static int gltf_append_scene_camera(gltf_scene_info_t *scene, void *camera) {
     return 1;
 }
 
+/// @brief Register a scene (its root node + name) on the asset, growing the scene list.
+/// @details Counts the root's descendants for node_count and synthesizes a name ("default" for
+///          the first scene, else "scene_N") when @p name is empty. Returns 0 and traps on overflow
+///          or allocation failure; the root is borrowed (the asset references it, not copies it).
 static int gltf_append_scene(rt_gltf_asset *asset, void *root, const char *name) {
     gltf_scene_info_t *grown;
     gltf_scene_info_t *scene;
@@ -3106,6 +3207,10 @@ static int gltf_append_scene(rt_gltf_asset *asset, void *root, const char *name)
     return 1;
 }
 
+/// @brief Clone a scene node's own transform/bounds/attachments without its children.
+/// @details Copies the local TRS, AABB, and bounding sphere, and shares (retains) the mesh,
+///          material, light, and name handles. Marks world transform dirty. Children are not
+///          copied — gltf_clone_scene_node walks the hierarchy using this as the per-node step.
 static rt_scene_node3d *gltf_clone_scene_node_shallow(const rt_scene_node3d *src) {
     rt_scene_node3d *dst;
     if (!src)
@@ -3140,12 +3245,18 @@ static rt_scene_node3d *gltf_clone_scene_node_shallow(const rt_scene_node3d *src
     return dst;
 }
 
+/// @brief One explicit-stack frame for the iterative scene-node clone: the source/dest node
+///        pair and the index of the next child still to be cloned.
 typedef struct {
     const rt_scene_node3d *src;
     rt_scene_node3d *dst;
     int32_t next_child;
 } gltf_clone_frame_t;
 
+/// @brief Deep-clone a scene node and its entire subtree (shallow-clone per node + shared assets).
+/// @details Uses an explicit growable stack rather than recursion, so arbitrarily deep glTF
+///          hierarchies cannot overflow the C call stack. On any allocation failure it releases
+///          the partially-built clone and traps. Returns the cloned root (NULL on failure).
 static rt_scene_node3d *gltf_clone_scene_node(const rt_scene_node3d *src) {
     rt_scene_node3d *root;
     gltf_clone_frame_t *stack;
@@ -3371,6 +3482,10 @@ static int gltf_import_scene_cameras(gltf_scene_info_t *scene,
     return 1;
 }
 
+/// @brief Mirror the first parsed scene onto the asset's legacy single-scene fields.
+/// @details Back-compat shim: retains scene 0's root as the asset's scene_root, copies its node
+///          count, and re-registers its cameras on the asset so older single-scene accessors keep
+///          working. Returns 0 and releases the camera on append failure.
 static int gltf_install_active_scene_compat(rt_gltf_asset *asset) {
     gltf_scene_info_t *scene;
     if (!asset || asset->scene_count <= 0)
@@ -3823,6 +3938,9 @@ done:
     return data;
 }
 
+/// @brief Take a preloaded image for @p key as a Pixels object, decoding from RGBA if needed.
+/// @details Prefers an already-finished IMAGE_PIXELS dependency; otherwise consumes the staged
+///          IMAGE_RGBA blob and builds Pixels from it. Returns NULL if neither is present.
 static void *gltf_preload_take_decoded_image(rt_gltf_preload_bundle *preload_bundle,
                                              const char *key) {
     uint8_t *rgba_blob;
@@ -3878,12 +3996,14 @@ static void *gltf_load_dependency_image(const char *resource_path,
     return rt_pixels_load(rt_const_cstr(resource_path));
 }
 
+/// @brief Write a NUL-terminated error message into the caller's buffer (no-op if buffer absent).
 static void gltf_preload_set_error(char *error, size_t error_cap, const char *message) {
     if (error && error_cap > 0) {
         snprintf(error, error_cap, "%s", message ? message : "failed to stage glTF preload");
     }
 }
 
+/// @brief Advance @p pos past JSON whitespace (space/tab/CR/LF) in the raw byte scanner.
 static size_t gltf_json_skip_ws(const char *json, size_t len, size_t pos) {
     while (pos < len) {
         char c = json[pos];
@@ -3894,6 +4014,8 @@ static size_t gltf_json_skip_ws(const char *json, size_t len, size_t pos) {
     return pos;
 }
 
+/// @brief Skip a quoted JSON string (honoring backslash escapes) starting at @p pos.
+/// @return Index just past the closing quote, or SIZE_MAX if @p pos isn't a string or it's unterminated.
 static size_t gltf_json_skip_string_raw(const char *json, size_t len, size_t pos) {
     if (!json || pos >= len || json[pos] != '"')
         return SIZE_MAX;
@@ -3911,6 +4033,10 @@ static size_t gltf_json_skip_string_raw(const char *json, size_t len, size_t pos
     return SIZE_MAX;
 }
 
+/// @brief Read and unescape a quoted JSON string at @p pos into a malloc'd C string (caller frees).
+/// @details Decodes the standard JSON escape set (\" \\ \/ \b \f \n \r \t); rejects any other
+///          escape. Sets @p out_next past the closing quote on success.
+/// @return The decoded string, or NULL on a malformed/unterminated string or allocation failure.
 static char *gltf_json_read_string_alloc(const char *json,
                                          size_t len,
                                          size_t pos,
@@ -3970,6 +4096,7 @@ static char *gltf_json_read_string_alloc(const char *json,
     return NULL;
 }
 
+/// @brief Whether the JSON string at @p pos equals @p key, advancing @p out_next past it either way.
 static int gltf_json_key_matches(const char *json,
                                  size_t len,
                                  size_t pos,
@@ -3981,6 +4108,10 @@ static int gltf_json_key_matches(const char *json,
     return matches;
 }
 
+/// @brief Skip a complete JSON value (string, number, object, or array) starting at @p pos.
+/// @details Strings are skipped whole; objects/arrays are skipped by tracking nesting depth so the
+///          scanner lands on the value's first sibling/terminator. Primitives run to the next
+///          delimiter. Returns SIZE_MAX on malformed/unbalanced input.
 static size_t gltf_json_skip_value(const char *json, size_t len, size_t pos) {
     int object_depth = 0;
     int array_depth = 0;
@@ -4015,6 +4146,9 @@ static size_t gltf_json_skip_value(const char *json, size_t len, size_t pos) {
     return object_depth == 0 && array_depth == 0 ? pos : SIZE_MAX;
 }
 
+/// @brief Find the index just past the bracket that closes the @p open_ch at @p pos.
+/// @details Tracks nesting and skips quoted strings so brackets inside strings don't miscount.
+/// @return Index after the matching @p close_ch, or SIZE_MAX if unbalanced.
 static size_t gltf_json_find_matching(const char *json,
                                       size_t len,
                                       size_t pos,
@@ -4043,6 +4177,10 @@ static size_t gltf_json_find_matching(const char *json,
     return SIZE_MAX;
 }
 
+/// @brief Locate a top-level array property @p key in the root object, by raw byte scan.
+/// @details Only matches keys at object depth 1 (true top level), then returns the byte range
+///          of the '['..']' array value via @p out_start / @p out_end.
+/// @return 1 if found (range set), 0 otherwise.
 static int gltf_json_find_top_level_array(const char *json,
                                           size_t len,
                                           const char *key,
@@ -4098,6 +4236,9 @@ static int gltf_json_find_top_level_array(const char *json,
     return 0;
 }
 
+/// @brief Read a direct string property @p key from the object spanning [obj_start, obj_end).
+/// @details Only the object's own (depth-1) keys are considered; nested objects are skipped.
+/// @return The unescaped value (caller frees), or NULL if absent or not a string.
 static char *gltf_json_object_get_string(const char *json,
                                          size_t len,
                                          size_t obj_start,
@@ -4143,6 +4284,8 @@ static char *gltf_json_object_get_string(const char *json,
     return NULL;
 }
 
+/// @brief Read a direct non-negative integer property @p key as size_t (overflow-checked).
+/// @return The parsed value, or @p fallback if absent, non-numeric, or it would overflow.
 static size_t gltf_json_object_get_size(const char *json,
                                         size_t len,
                                         size_t obj_start,
@@ -4198,6 +4341,8 @@ static size_t gltf_json_object_get_size(const char *json,
     return fallback;
 }
 
+/// @brief Read a direct signed integer property @p key as int (overflow-checked, allows leading '-').
+/// @return The parsed value, or @p fallback if absent, non-numeric, or it would overflow.
 static int gltf_json_object_get_int(const char *json,
                                     size_t len,
                                     size_t obj_start,
@@ -4258,6 +4403,10 @@ static int gltf_json_object_get_int(const char *json,
     return fallback;
 }
 
+/// @brief Find the byte range of a direct property @p key's value within an object.
+/// @details Reports the [out_start, out_end) span of the raw value (any JSON type) for the
+///          caller to parse further. Only depth-1 keys match.
+/// @return 1 if found (range set), 0 otherwise.
 static int gltf_json_object_find_value(const char *json,
                                        size_t len,
                                        size_t obj_start,
@@ -4315,6 +4464,9 @@ static int gltf_json_object_find_value(const char *json,
     return 0;
 }
 
+/// @brief Find the byte range of the @p item_index-th element of a JSON array.
+/// @details Walks comma-separated values (skipping each whole) until it reaches the index.
+/// @return 1 with [out_start, out_end) set, or 0 if the index is out of range or input malformed.
 static int gltf_json_array_item_range(const char *json,
                                       size_t len,
                                       size_t array_start,
@@ -4357,6 +4509,8 @@ static int gltf_json_array_item_range(const char *json,
     return 0;
 }
 
+/// @brief Read the @p item_index-th array element as a double via strtod (@p fallback otherwise).
+/// @details Rejects string/object/array elements and non-finite results, returning @p fallback.
 static double gltf_json_array_get_number(const char *json,
                                          size_t len,
                                          size_t array_start,
@@ -4390,6 +4544,7 @@ static double gltf_json_array_get_number(const char *json,
     return value;
 }
 
+/// @brief Read the @p item_index-th array element as an unescaped string (caller frees; NULL if not a string).
 static char *gltf_json_array_get_string_alloc(const char *json,
                                               size_t len,
                                               size_t array_start,
@@ -4406,6 +4561,8 @@ static char *gltf_json_array_get_string_alloc(const char *json,
     return gltf_json_read_string_alloc(json, len, value_start, NULL);
 }
 
+/// @brief Read a property @p key as a boolean, accepting literal true/false or a nonzero number.
+/// @return 1 for true/nonzero, 0 for false/zero, or @p fallback if the key is absent.
 static int gltf_json_object_get_boolish(const char *json,
                                         size_t len,
                                         size_t obj_start,
@@ -4426,6 +4583,10 @@ static int gltf_json_object_get_boolish(const char *json,
     return gltf_json_object_get_int(json, len, obj_start, obj_end, key, fallback) ? 1 : 0;
 }
 
+/// @brief Extract the glTF JSON text from raw bytes, handling both .gltf and binary .glb.
+/// @details For GLB (magic "glTF", version 2) it validates the chunk table and copies the first
+///          (JSON) chunk; for plain .gltf it copies the bytes verbatim. Returns a NUL-terminated
+///          owned copy (caller frees) with @p out_len set, or NULL on a malformed container.
 static char *gltf_json_copy_from_root_bytes(const uint8_t *data, size_t len, size_t *out_len) {
     char *json_copy = NULL;
     if (out_len)
@@ -4473,6 +4634,11 @@ static char *gltf_json_copy_from_root_bytes(const uint8_t *data, size_t len, siz
     return json_copy;
 }
 
+/// @brief Stage an image payload under @p key, decoding to RGBA up front when possible.
+/// @details Takes ownership of @p data. If it decodes to an RGBA blob the dependency is tagged
+///          IMAGE_RGBA (ready for streaming upload); otherwise the raw bytes are kept as IMAGE.
+///          When @p required and a supported format fails to decode, sets @p error and fails.
+/// @return 1 on success (including the no-op for empty data), 0 on a required decode/stage failure.
 static int gltf_preload_bundle_add_image_payload(rt_gltf_preload_bundle *bundle,
                                                  const char *key,
                                                  const char *mime_or_name,
@@ -4507,6 +4673,10 @@ static int gltf_preload_bundle_add_image_payload(rt_gltf_preload_bundle *bundle,
     return 1;
 }
 
+/// @brief Resolve and stage an external (non-data-URI) image referenced by @p uri.
+/// @details Resolves @p uri relative to @p model_path, loads the bytes (from the asset system or
+///          disk), and stages them via add_image_payload keyed by the resolved path. data: URIs and
+///          unreadable optional images are skipped; an unreadable required image sets @p error.
 static int gltf_preload_stage_external_image(rt_gltf_preload_bundle *bundle,
                                              const char *model_path,
                                              const char *uri,
@@ -4534,12 +4704,14 @@ static int gltf_preload_stage_external_image(rt_gltf_preload_bundle *bundle,
         bundle, resource_path, resource_path, data, data_len, required, error, error_cap);
 }
 
+/// @brief Format the dependency key for inline buffer @p index ("<gltf:inline-buffer:N>").
 static void gltf_preload_buffer_key(int index, char *out, size_t out_cap) {
     if (!out || out_cap == 0)
         return;
     snprintf(out, out_cap, "<gltf:inline-buffer:%d>", index);
 }
 
+/// @brief Format the dependency key for inline image @p index, with an extension chosen by MIME type.
 static void gltf_preload_image_key(int index, const char *mime_type, char *out, size_t out_cap) {
     const char *ext = ".bin";
     if (!out || out_cap == 0)
@@ -4557,18 +4729,24 @@ static void gltf_preload_image_key(int index, const char *mime_type, char *out, 
     snprintf(out, out_cap, "inline-image-%d%s", index, ext);
 }
 
+/// @brief Format the mesh-POD dependency key for a (mesh, primitive) pair.
 static void gltf_preload_mesh_key(int mesh_index, int primitive_index, char *out, size_t out_cap) {
     if (!out || out_cap == 0)
         return;
     snprintf(out, out_cap, "<gltf:mesh-pod:%d:%d>", mesh_index, primitive_index);
 }
 
+/// @brief Format the morph-POD dependency key for a (mesh, primitive) pair.
 static void gltf_preload_morph_key(int mesh_index, int primitive_index, char *out, size_t out_cap) {
     if (!out || out_cap == 0)
         return;
     snprintf(out, out_cap, "<gltf:morph-pod:%d:%d>", mesh_index, primitive_index);
 }
 
+/// @brief Locate the binary (BIN) chunk inside a GLB container.
+/// @details Validates the "glTF" magic/version/length and walks the chunk table (the JSON chunk
+///          must come first) to find the 0x004E4942 ("BIN\0") chunk.
+/// @return 1 with @p out_bin / @p out_bin_len set, 0 for a plain .gltf or a malformed/absent BIN.
 static int gltf_root_find_glb_bin(const uint8_t *data,
                                   size_t len,
                                   const uint8_t **out_bin,
@@ -4605,6 +4783,8 @@ static int gltf_root_find_glb_bin(const uint8_t *data,
     return 0;
 }
 
+/// @brief Ensure the buffer-ref array holds at least @p required_count entries, zero-filling growth.
+/// @return 1 on success, 0 on bad args or reallocation failure.
 static int gltf_preload_grow_buffer_refs(gltf_preload_buffer_ref_t **refs,
                                          int *capacity,
                                          int required_count) {
@@ -4627,6 +4807,10 @@ static int gltf_preload_grow_buffer_refs(gltf_preload_buffer_ref_t **refs,
     return 1;
 }
 
+/// @brief Stage every glTF buffer and build the buffer-ref table the views/accessors resolve against.
+/// @details Walks the top-level "buffers" array: a data: URI is decoded inline, an external URI is
+///          resolved/loaded, and an absent URI binds to the GLB BIN chunk. Each ref records the
+///          bytes so later stages can slice them. Sets @p error and returns 0 on a staging failure.
 static int gltf_preload_stage_buffers(rt_gltf_preload_bundle *bundle,
                                       const char *model_path,
                                       const char *json,
@@ -4749,6 +4933,7 @@ static int gltf_preload_stage_buffers(rt_gltf_preload_bundle *bundle,
     return 1;
 }
 
+/// @brief Ensure the buffer-view-ref array holds at least @p required_count entries (zero-filled growth).
 static int gltf_preload_grow_view_refs(gltf_preload_buffer_view_ref_t **views,
                                        int *capacity,
                                        int required_count) {
@@ -4771,6 +4956,9 @@ static int gltf_preload_grow_view_refs(gltf_preload_buffer_view_ref_t **views,
     return 1;
 }
 
+/// @brief Parse the top-level "bufferViews" array into a ref table (buffer, offset, length, stride).
+/// @details A view is marked valid when it names a buffer and has a positive length. Returns the
+///          table via @p out_views / @p out_count; on allocation failure sets @p error and returns 0.
 static int gltf_preload_parse_buffer_views(const char *json,
                                            size_t json_len,
                                            gltf_preload_buffer_view_ref_t **out_views,
@@ -4832,6 +5020,12 @@ static int gltf_preload_parse_buffer_views(const char *json,
     return 1;
 }
 
+/// @brief Verify one accessor's element range lies entirely within its buffer view and buffer.
+/// @details Computes element size from componentType x type, derives the stride (explicit or
+///          tightly-packed), and overflow-checks that the last element's end offset fits both the
+///          view's byteLength and the backing buffer. This is the security gate that stops a
+///          malformed accessor from inducing out-of-bounds reads during mesh packing.
+/// @return 1 if valid (or count 0 / no bufferView), 0 if any bound is exceeded or types are bad.
 static int gltf_preload_validate_accessor(const char *json,
                                           size_t json_len,
                                           size_t obj_start,
@@ -4897,6 +5091,8 @@ static int gltf_preload_validate_accessor(const char *json,
     return buffer_end <= buffers[view->buffer].len;
 }
 
+/// @brief Validate every accessor in the top-level "accessors" array against its view/buffer bounds.
+/// @details Fails fast (setting @p error) on the first out-of-range accessor. Returns 1 if all pass.
 static int gltf_preload_validate_accessors(const char *json,
                                            size_t json_len,
                                            const gltf_preload_buffer_ref_t *buffers,
@@ -4937,6 +5133,7 @@ static int gltf_preload_validate_accessors(const char *json,
     return 1;
 }
 
+/// @brief Ensure the accessor-ref array holds at least @p required_count entries (zero-filled growth).
 static int gltf_preload_grow_accessor_refs(gltf_preload_accessor_ref_t **accessors,
                                            int *capacity,
                                            int required_count) {
@@ -4959,6 +5156,10 @@ static int gltf_preload_grow_accessor_refs(gltf_preload_accessor_ref_t **accesso
     return 1;
 }
 
+/// @brief Parse the top-level "accessors" array (including sparse substitutions) into a ref table.
+/// @details Records component type/count, element count, normalization, and any sparse
+///          indices/values sub-views. Marks each accessor valid only with a positive count and
+///          known component size. Returns the table via @p out_accessors / @p out_count.
 static int gltf_preload_parse_accessors(const char *json,
                                         size_t json_len,
                                         gltf_preload_accessor_ref_t **out_accessors,
@@ -5071,6 +5272,11 @@ static int gltf_preload_parse_accessors(const char *json,
     return 1;
 }
 
+/// @brief Resolve an accessor index to a concrete, bounds-checked view over buffer memory.
+/// @details Computes element size and stride, validates the dense range fits the view and buffer,
+///          and — for sparse accessors — validates the index/value sub-views and that sparse indices
+///          are strictly increasing and in-range. Fills @p out with raw pointers the packers read.
+/// @return 1 with @p out populated, or 0 if the accessor is invalid or any bound/ordering check fails.
 static int gltf_preload_resolve_accessor_view(
     const gltf_preload_accessor_ref_t *accessors,
     int accessor_count,
@@ -5197,6 +5403,7 @@ static int gltf_preload_resolve_accessor_view(
     return 1;
 }
 
+/// @brief Whether all @p count floats are finite (no NaN/Inf); false for NULL or non-positive count.
 static int gltf_preload_floats_are_finite(const float *values, int count) {
     if (!values || count <= 0)
         return 0;
@@ -5207,6 +5414,9 @@ static int gltf_preload_floats_are_finite(const float *values, int count) {
     return 1;
 }
 
+/// @brief Whether three vertices form a non-degenerate triangle (positive area).
+/// @details Computes the squared area from the cross product of two edges and rejects values
+///          below 1e-20, dropping zero-area triangles that would produce invalid normals.
 static int gltf_preload_pod_positions_form_triangle(const vgfx3d_vertex_t *vertices,
                                                     uint32_t vertex_count,
                                                     uint32_t i0,
@@ -5239,6 +5449,8 @@ static int gltf_preload_pod_positions_form_triangle(const vgfx3d_vertex_t *verti
     return isfinite(area_sq) && area_sq > 1e-20;
 }
 
+/// @brief Append a triangle's three indices if it is non-degenerate (distinct, positive-area).
+/// @return 1 if emitted, 0 if the triangle was rejected (degenerate or repeated indices).
 static int gltf_preload_emit_pod_triangle(const vgfx3d_vertex_t *vertices,
                                           uint32_t vertex_count,
                                           uint32_t i0,
@@ -5256,6 +5468,7 @@ static int gltf_preload_emit_pod_triangle(const vgfx3d_vertex_t *vertices,
     return 1;
 }
 
+/// @brief Read an index from the index accessor, or use @p element_index directly for non-indexed geometry.
 static uint32_t gltf_preload_read_index_or_vertex(const gltf_accessor_view_t *view,
                                                   int32_t element_index) {
     uint32_t value = (uint32_t)element_index;
@@ -5264,6 +5477,9 @@ static uint32_t gltf_preload_read_index_or_vertex(const gltf_accessor_view_t *vi
     return value;
 }
 
+/// @brief Compute the triangle-list index capacity needed to triangulate a primitive topology.
+/// @details mode 4 = triangles (count/3 tris), 5/6 = strip/fan (count-2 tris); each yields 3
+///          indices per triangle. Overflow-checked. Returns 0 for unsupported topologies.
 static int gltf_preload_topology_index_capacity(int mode,
                                                 int32_t source_index_count,
                                                 uint32_t *out_capacity) {
@@ -5287,6 +5503,10 @@ static int gltf_preload_topology_index_capacity(int mode,
     return 1;
 }
 
+/// @brief Write a vertex's 4 skinning joints/weights, normalizing the weights to sum to 1.
+/// @details Out-of-range joints and non-positive weights are zeroed; weights are renormalized by
+///          their total (or all zeroed if the total is ~0).
+/// @return One past the highest referenced bone index (i.e. a bone-count hint), or 0 if none.
 static uint32_t gltf_preload_write_vertex_bone_weights(vgfx3d_vertex_t *vertex,
                                                        const uint32_t joints[4],
                                                        const float weights[4]) {
@@ -5320,6 +5540,10 @@ static uint32_t gltf_preload_write_vertex_bone_weights(vgfx3d_vertex_t *vertex,
     return max_bone_index >= 0 ? (uint32_t)(max_bone_index + 1) : 0u;
 }
 
+/// @brief Serialize a packed mesh primitive into a "VGMP" POD blob and stage it as a dependency.
+/// @details Writes the 32-byte header (magic, version, vertex/index counts, flags, byte spans, bone
+///          count) followed by the raw vertex and index arrays, all overflow-checked, then stores it
+///          under the mesh/primitive key for gltf_preload_take_decoded_mesh to consume later.
 static int gltf_preload_pack_mesh_pod(rt_gltf_preload_bundle *bundle,
                                       int mesh_index,
                                       int primitive_index,
@@ -5374,6 +5598,8 @@ static int gltf_preload_pack_mesh_pod(rt_gltf_preload_bundle *bundle,
     return 1;
 }
 
+/// @brief One decoded morph shape staged for packing: its name, base weight, present-channel
+///        flags, and owned per-vertex position/normal/tangent delta arrays.
 typedef struct {
     char *name;
     float weight;
@@ -5383,6 +5609,7 @@ typedef struct {
     float *tangent_deltas;
 } gltf_preload_morph_shape_t;
 
+/// @brief Free an array of morph shapes and every owned name/delta buffer inside it.
 static void gltf_preload_free_morph_shapes(gltf_preload_morph_shape_t *shapes,
                                            size_t shape_count) {
     if (!shapes)
@@ -5396,6 +5623,9 @@ static void gltf_preload_free_morph_shapes(gltf_preload_morph_shape_t *shapes,
     free(shapes);
 }
 
+/// @brief Resolve a morph target's display name, falling back to "target_N".
+/// @details Reads the optional mesh `extras.targetNames[target_index]`; if absent or empty,
+///          synthesizes a name from the index. Returns an owned string (caller frees).
 static char *gltf_preload_target_name_alloc(const char *json,
                                             size_t json_len,
                                             size_t mesh_start,
@@ -5427,6 +5657,7 @@ static char *gltf_preload_target_name_alloc(const char *json,
     return gltf_strdup_cstr(fallback);
 }
 
+/// @brief Read a morph target's default weight from the mesh "weights" array (0.0 if absent).
 static double gltf_preload_target_weight(const char *json,
                                          size_t json_len,
                                          size_t mesh_start,
@@ -5441,6 +5672,9 @@ static double gltf_preload_target_weight(const char *json,
     return gltf_json_array_get_number(json, json_len, weights_start, weights_end, target_index, 0.0);
 }
 
+/// @brief Copy one morph channel (vec3 deltas) from an accessor view into an owned float array.
+/// @details Allocates vertex_count*3 floats, samples up to the accessor's count (zero-padding the
+///          rest), and sanitizes non-finite components to 0. NULL view yields a NULL out (no-op).
 static int gltf_preload_copy_morph_channel(const gltf_accessor_view_t *view,
                                            int32_t vertex_count,
                                            float **out_deltas) {
@@ -5467,6 +5701,10 @@ static int gltf_preload_copy_morph_channel(const gltf_accessor_view_t *view,
     return 1;
 }
 
+/// @brief Serialize a primitive's morph shapes into a "VGMT" POD blob and stage it as a dependency.
+/// @details Lays out a header, fixed-size per-shape records, a packed names region, and a deltas
+///          payload (position/normal/tangent channels per the flags), all overflow-checked, then
+///          stores it under the morph key for gltf_preload_take_decoded_morph to consume later.
 static int gltf_preload_pack_morph_pod(rt_gltf_preload_bundle *bundle,
                                        int mesh_index,
                                        int primitive_index,
@@ -6130,6 +6368,10 @@ done:
     return ok;
 }
 
+/// @brief Stage every mesh primitive as a packed POD blob (and its morph targets) off the main thread.
+/// @details Walks "meshes"[].primitives[], resolves each attribute/index accessor, triangulates the
+///          topology, normalizes skinning, and emits "VGMP"/"VGMT" dependencies so the main-thread
+///          load can build meshes without re-parsing. Sets @p error and returns 0 on a staging failure.
 static int gltf_preload_stage_meshes(rt_gltf_preload_bundle *bundle,
                                      const char *json,
                                      size_t json_len,
@@ -6222,6 +6464,7 @@ static int gltf_preload_stage_meshes(rt_gltf_preload_bundle *bundle,
     return 1;
 }
 
+/// @brief Stage an inline image's bytes under its image-index key (decoding to RGBA when possible).
 static int gltf_preload_stage_image_bytes(rt_gltf_preload_bundle *bundle,
                                           int image_index,
                                           const char *mime_type,
@@ -6238,6 +6481,9 @@ static int gltf_preload_stage_image_bytes(rt_gltf_preload_bundle *bundle,
         bundle, key, mime_type ? mime_type : key, data, data_len, required, error, error_cap);
 }
 
+/// @brief Mark which image sources are actually referenced by a texture, in the @p required bitmap.
+/// @details Scans the top-level "textures" array and sets required[source] for each texture's image
+///          index, so only images a material can use are treated as mandatory to stage.
 static void gltf_preload_mark_required_images(const char *json,
                                               size_t json_len,
                                               uint8_t *required,
@@ -6274,6 +6520,10 @@ static void gltf_preload_mark_required_images(const char *json,
     }
 }
 
+/// @brief Verify that every texture-referenced data-URI image decodes to a supported format.
+/// @details Marks required images (via gltf_preload_mark_required_images), then checks each
+///          referenced inline data-URI image is a decodable format, rejecting the model otherwise.
+/// @return 1 if all required inline images are valid, 0 if any is unsupported/corrupt.
 static int gltf_validate_required_data_uri_images(const char *json, size_t json_len) {
     size_t array_start;
     size_t array_end;
@@ -6367,6 +6617,10 @@ static int gltf_validate_required_data_uri_images(const char *json, size_t json_
     return 1;
 }
 
+/// @brief Stage every glTF image (inline data-URI, bufferView-embedded, or external file).
+/// @details Walks the "images" array, marking texture-referenced images required, and stages each
+///          image's bytes (decoding to RGBA when possible) under its image key. A required image that
+///          cannot be staged sets @p error and fails; optional images are skipped on error.
 static int gltf_preload_stage_images(rt_gltf_preload_bundle *bundle,
                                      const char *model_path,
                                      const char *json,
@@ -6524,6 +6778,13 @@ static int gltf_preload_stage_images(rt_gltf_preload_bundle *bundle,
     return 1;
 }
 
+/// @brief Build an off-main-thread preload bundle by staging a glTF model's buffers, views,
+///        accessors, images, and meshes from its raw bytes.
+/// @details Extracts the JSON, validates accessors, and stages all dependencies so the subsequent
+///          rt_gltf_load_preloaded_bundle call can build runtime objects on the main thread with no
+///          file I/O or re-parsing. Takes ownership of @p root_data. On failure writes @p error,
+///          frees partial work, and returns NULL.
+/// @return A populated preload bundle (caller frees via rt_gltf_preload_bundle_free), or NULL.
 rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
                                                       uint8_t *root_data,
                                                       size_t root_size,
@@ -9074,6 +9335,10 @@ void *rt_gltf_load_preloaded(rt_string path,
     return rt_gltf_load_impl(path, load_assets ? 1 : 0, preloaded_data, preloaded_size, NULL);
 }
 
+/// @brief Build a glTF asset on the main thread from a previously-staged preload bundle.
+/// @details Consumes the bundle's staged dependencies (no file I/O), falling back to a normal
+///          rt_gltf_load/rt_gltf_load_asset when @p bundle is NULL. Always frees @p bundle.
+/// @return The loaded glTF asset handle, or NULL on failure.
 void *rt_gltf_load_preloaded_bundle(rt_string path,
                                     rt_gltf_preload_bundle *bundle,
                                     int load_assets) {

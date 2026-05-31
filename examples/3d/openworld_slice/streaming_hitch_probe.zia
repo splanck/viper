@@ -1,6 +1,11 @@
 module openworld_slice_streaming_hitch_probe;
 
+bind Viper.Collections as Collections;
 bind Viper.Game3D as Game3D;
+bind Viper.Graphics3D;
+bind Viper.IO as IO;
+bind Viper.Math;
+bind Viper.System.Environment as Environment;
 bind Viper.Terminal as Terminal;
 bind Viper.Text.Fmt as Fmt;
 bind Viper.Threads.Thread as Thread;
@@ -10,8 +15,163 @@ func fail(message: String) {
     Terminal.Say("FAIL: " + message);
 }
 
+func writeU32LE(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
+    Collections.Bytes.Set(data, pos, value % 256);
+    Collections.Bytes.Set(data, pos + 1, (value / 256) % 256);
+    Collections.Bytes.Set(data, pos + 2, (value / 65536) % 256);
+    Collections.Bytes.Set(data, pos + 3, (value / 16777216) % 256);
+}
+
+func writeSmallU64LE(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
+    writeU32LE(data, pos, value);
+    writeU32LE(data, pos + 4, 0);
+}
+
+func writeNativeKtx2(path: String, vkFormat: Integer) {
+    var data = Collections.Bytes.New(120);
+
+    Collections.Bytes.Set(data, 0, 0xAB);
+    Collections.Bytes.Set(data, 1, 0x4B);
+    Collections.Bytes.Set(data, 2, 0x54);
+    Collections.Bytes.Set(data, 3, 0x58);
+    Collections.Bytes.Set(data, 4, 0x20);
+    Collections.Bytes.Set(data, 5, 0x32);
+    Collections.Bytes.Set(data, 6, 0x30);
+    Collections.Bytes.Set(data, 7, 0xBB);
+    Collections.Bytes.Set(data, 8, 0x0D);
+    Collections.Bytes.Set(data, 9, 0x0A);
+    Collections.Bytes.Set(data, 10, 0x1A);
+    Collections.Bytes.Set(data, 11, 0x0A);
+
+    writeU32LE(data, 12, vkFormat);
+    writeU32LE(data, 16, 1);
+    writeU32LE(data, 20, 4);
+    writeU32LE(data, 24, 4);
+    writeU32LE(data, 36, 1);
+    writeU32LE(data, 40, 1);
+
+    writeSmallU64LE(data, 80, 104);
+    writeSmallU64LE(data, 88, 16);
+    writeSmallU64LE(data, 96, 16);
+
+    var i = 0;
+    while (i < 16) {
+        Collections.Bytes.Set(data, 104 + i, (0x20 + i * 11) % 256);
+        i = i + 1;
+    }
+
+    IO.File.WriteAllBytes(path, data);
+}
+
+func nativeProbeRequested() -> Boolean {
+    if (Environment.HasVariable("VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE") == false) {
+        return false;
+    }
+    return Environment.GetVariable("VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE") != "0";
+}
+
+func runNativeCompressedUploadProbe() -> String {
+    var canvas = Canvas3D.New("Open World Native Upload Hitch Probe", 96, 72);
+    var backend = Canvas3D.get_Backend(canvas);
+    var texture: TextureAsset3D = null;
+    var generatedPath = "";
+    var nativeFormat = "";
+
+    if (Canvas3D.BackendSupports(canvas, "bc7")) {
+        texture = TextureAsset3D.LoadKTX2Asset("assets/textures/marker_bc7.ktx2");
+        nativeFormat = "bc7";
+    } else if (Canvas3D.BackendSupports(canvas, "astc")) {
+        generatedPath = IO.TempFile.PathWithExt("openworld_native_astc", ".ktx2");
+        writeNativeKtx2(generatedPath, 157);
+        texture = TextureAsset3D.LoadKTX2(generatedPath);
+        nativeFormat = "astc";
+    } else if (Canvas3D.BackendSupports(canvas, "etc2")) {
+        generatedPath = IO.TempFile.PathWithExt("openworld_native_etc2", ".ktx2");
+        writeNativeKtx2(generatedPath, 151);
+        texture = TextureAsset3D.LoadKTX2(generatedPath);
+        nativeFormat = "etc2";
+    } else {
+        Terminal.Say("SKIP: native compressed upload unsupported on backend " + backend);
+        return " native_compressed_upload=0 native_backend=" + backend +
+               " native_format=unsupported";
+    }
+
+    if (texture == null || TextureAsset3D.get_Compressed(texture) == false ||
+        TextureAsset3D.get_ResidentBytes(texture) <= 0) {
+        if (generatedPath != "") { IO.File.Delete(generatedPath); }
+        fail("native compressed fixture did not load with resident bytes");
+        return "";
+    }
+
+    var mesh = Mesh3D.NewPlane(1.0, 1.0);
+    var material = Material3D.NewPBR(0.8, 0.72, 0.6);
+    Material3D.SetAlbedoMap(material, texture);
+    var camera = Camera3D.NewOrtho(2.0, 1.0, 0.1, 20.0);
+    Camera3D.LookAt(camera,
+        Vec3.New(0.0, 0.0, 2.0),
+        Vec3.New(0.0, 0.0, 0.0),
+        Vec3.New(0.0, 1.0, 0.0));
+
+    Canvas3D.SetTextureUploadBudget(canvas, 0);
+    var zeroStart = Clock.TicksUs();
+    Canvas3D.Clear(canvas, 0.02, 0.02, 0.025);
+    Canvas3D.Begin(canvas, camera);
+    Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
+    Canvas3D.End(canvas);
+    var zeroFrameUs = Clock.TicksUs() - zeroStart;
+    var zeroPendingBytes = Canvas3D.get_TextureUploadPendingBytes(canvas);
+    var zeroUploadBytes = Canvas3D.get_TextureUploadBytes(canvas);
+    if (zeroPendingBytes <= 0 || zeroUploadBytes != 0) {
+        if (generatedPath != "") { IO.File.Delete(generatedPath); }
+        fail("zero texture upload budget did not hold native compressed upload pending");
+        return "";
+    }
+
+    Canvas3D.SetTextureUploadBudget(canvas, 1);
+    var releaseStart = Clock.TicksUs();
+    var nativeReady = false;
+    var i = 0;
+    while (i < 8) {
+        Canvas3D.Clear(canvas, 0.02, 0.02, 0.025);
+        Canvas3D.Begin(canvas, camera);
+        Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
+        Canvas3D.End(canvas);
+        if (Canvas3D.get_TextureUploadPendingBytes(canvas) == 0) {
+            nativeReady = true;
+            break;
+        }
+        i = i + 1;
+    }
+    var nativeReleaseUs = Clock.TicksUs() - releaseStart;
+    var releaseUploadBytes = Canvas3D.get_TextureUploadBytes(canvas);
+    var releasePendingBytes = Canvas3D.get_TextureUploadPendingBytes(canvas);
+    Canvas3D.SetTextureUploadBudget(canvas, -1);
+    if (generatedPath != "") { IO.File.Delete(generatedPath); }
+
+    if (nativeReady == false || releaseUploadBytes <= 0 || releasePendingBytes != 0) {
+        fail("positive texture upload budget did not drain native compressed upload");
+        return "";
+    }
+
+    return " native_compressed_upload=1" +
+           " native_backend=" + backend +
+           " native_format=" + nativeFormat +
+           " native_zero_frame_us=" + Fmt.Int(zeroFrameUs) +
+           " native_zero_pending_bytes=" + Fmt.Int(zeroPendingBytes) +
+           " native_release_us=" + Fmt.Int(nativeReleaseUs) +
+           " native_upload_bytes=" + Fmt.Int(releaseUploadBytes);
+}
+
 func start() {
     var path = "assets/models/skinned_agent.gltf";
+    var nativeFields = "";
+
+    if (nativeProbeRequested()) {
+        nativeFields = runNativeCompressedUploadProbe();
+        if (nativeFields == "") {
+            return;
+        }
+    }
 
     Game3D.Assets3D.SetUploadBudget(-1);
     Game3D.Assets3D.SetResidencyBudget(-1);
@@ -118,6 +278,7 @@ func start() {
                  " zero_budget_pending=1" +
                  " release_us=" + Fmt.Int(releaseUs) +
                  " blocking_resident_bytes=" + Fmt.Int(blockingResidentBytes) +
-                 " async_resident_bytes=" + Fmt.Int(asyncResidentBytes));
+                 " async_resident_bytes=" + Fmt.Int(asyncResidentBytes) +
+                 nativeFields);
     Terminal.Say("PASS: openworld_slice_streaming_hitch_probe");
 }

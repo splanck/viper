@@ -90,14 +90,25 @@ planned for async loading and GPU upload.
 expose Boolean World3D.floatingOrigin;       // get/set; enable origin rebasing
 expose Vec3 World3D.worldOrigin;             // current rebase offset (read)
 expose func World3D.setOriginRebaseThreshold(meters: Float)
-// internal: rt_scene3d_rebase_origin(delta) shifts nodes/bodies/audio/particles
+expose func World3D.rebaseOrigin(dx: Float, dy: Float, dz: Float)
+expose func Scene3D.RebaseOrigin(dx: Float, dy: Float, dz: Float)
+expose func Physics3DWorld.RebaseOrigin(dx: Float, dy: Float, dz: Float)
+expose func Particles3D.RebaseOrigin(dx: Float, dy: Float, dz: Float)
+expose func Sprite3D.RebaseOrigin(dx: Float, dy: Float, dz: Float)
 ```
 
 `World3D.floatingOrigin` is also the internal capability gate for
 camera-relative Canvas3D upload during `World3D.beginFrame`: camera frame
 payloads, double `DrawMesh` model matrices, and point/spot lights are narrowed
-to backend floats after subtracting the active camera origin. The flag-off path
-remains the bounded-scene absolute upload path.
+to backend floats after subtracting the active camera origin. Programmatic
+`Mesh3D.AddVertex` positions preserve double precision for identity-matrix raw
+mesh draws, and generated `Particles3D` / `Sprite3D` / decal billboard vertices
+are built camera-relative before upload. The flag-off path remains the
+bounded-scene absolute upload path. `World3D.rebaseOrigin` uses the same
+between-frames cross-system boundary as the automatic threshold rebase; it
+shifts scene roots, physics bodies and contact/query state, camera, explicit
+listener, and world-owned effects together. Existing query/event objects are
+pre-rebase snapshots, so callers should query again after the boundary.
 
 ## Spatial queries — `Viper.Graphics3D.Scene3D`
 
@@ -108,15 +119,19 @@ expose func Scene3D.QuerySphere(center: Vec3, radius: Float) -> Seq[SceneNode3D]
 expose func Scene3D.RaycastNodes(origin: Vec3, dir: Vec3, maxDist: Float) -> SceneNode3D?
 expose Integer Scene3D.VisibleNodeCount;     // last-frame, for Debug3D/telemetry
 ```
-These methods are backed by the internal Scene3D spatial index with a
-deterministic flat-walk fallback for parity testing. They skip hidden subtrees
-and return visible nodes with their own mesh bounds. Cull substitution is
-internal. Transformed spatial bounds are stored and tested in double precision,
-so far-origin query/raycast candidate selection does not collapse nodes that are
-closer together than single-precision world-space granularity. A generated 10k
-Scene3D fixture now guards candidate reduction for isolated AABB queries and
-indexed draw culling. Physics may share this query contract while using a
-separate tuned broadphase structure behind the same API.
+These methods are backed by the internal Scene3D BVH spatial index with a
+deterministic flat-walk fallback for parity testing. Transform-only changes
+refit the existing BVH; hierarchy, visibility, mesh, LOD, and impostor changes
+rebuild it lazily. They skip hidden subtrees and return visible nodes with their
+own mesh bounds. Cull substitution is internal. Transformed spatial bounds are
+stored and tested in double precision, so far-origin query/raycast candidate
+selection does not collapse nodes that are closer together than
+single-precision world-space granularity. A generated 10k Scene3D fixture now
+guards BVH shape, candidate reduction for isolated AABB queries, and indexed
+draw culling. Physics shares the finite-AABB query semantics but keeps a
+separate body-centric broadphase because solver pair generation must include
+non-render bodies, layer/mask filtering, static-static rejection, trigger state,
+and contact-event identity.
 
 ## Async assets — `Viper.Game3D.Assets3D`
 
@@ -135,6 +150,7 @@ expose func Assets3D.LoadModelTemplateAsync(path: String) -> AssetHandle3D
 expose func Assets3D.LoadModelTemplateAssetAsync(assetPath: String) -> AssetHandle3D
 expose func Assets3D.SetResidencyBudget(bytes: Integer)
 expose func Assets3D.GetResidentBytes() -> Integer
+expose func Assets3D.SetResidencyHint(template: ModelTemplate, priority: Float, distance: Float)
 expose func Assets3D.SetUploadBudget(bytes: Integer)
 expose func Assets3D.Evict(handle: AssetHandle3D)
 expose func Assets3D.Preload(path: String)
@@ -159,23 +175,27 @@ commit. Non-glTF formats still enqueue a
 main-thread load. `Assets3D.Preload(path)` and `Assets3D.PreloadAsset(assetPath)` now start
 the filesystem and package-aware template async paths immediately and publish
 cache-warm results through the same world-drained commit queue.
-`SetResidencyBudget`, `GetResidentBytes`, and `Evict` are implemented over the shared
-`ModelTemplate` cache with least-recently-used eviction. Cache byte estimates
-include mesh buffers, model metadata, and decoded material texture pixels, so
-texture-heavy templates obey the same budget as geometry-heavy templates, and
-blocking/async load-clear churn can prove resident template bytes return to zero.
+`SetResidencyBudget`, `GetResidentBytes`, `SetResidencyHint`, and `Evict` are
+implemented over the shared `ModelTemplate` cache. Cache byte estimates include
+mesh buffers, model metadata, and decoded material texture pixels, so
+texture-heavy templates obey the same budget as geometry-heavy templates.
+Eviction considers explicit residency hints before falling back to LRU:
+higher-priority templates survive lower-priority templates, nearer templates
+survive farther templates when priority ties, and blocking/async load-clear
+churn can prove resident template bytes return to zero.
 `SetUploadBudget` is implemented over the async asset commit queue; staged glTF
 image payloads contribute their decoded RGBA byte count to commit-slice cost,
 `0` pauses positive-cost decoded texture slices, positive budgets advance large
 decoded images across multiple drains, and negative restores unlimited upload drains.
 `Canvas3D.SetTextureUploadBudget` caps Metal/OpenGL/D3D11 Pixels-backed 2D
-material texture and cubemap uploads by backend-frame row slices. Negative means
-unlimited, `0` pauses new rows, and positive budgets advance rows while
-reporting queued material and cubemap row bytes through
+material texture/cubemap row slices and native compressed `TextureAsset3D` mip
+block submissions. Negative means unlimited, `0` pauses new uploads, and
+positive budgets advance rows or resident native mips while reporting queued
+material/cubemap row bytes and native mip bytes through
 `Canvas3D.TextureUploadPendingBytes`. `Canvas3D.TextureUploadBytes` reports the
-actual CPU image bytes uploaded into backend texture storage by the latest ended
-frame, including material and cubemap row slices; cache hits and software
-fallback report `0`.
+actual texture payload bytes uploaded into backend storage by the latest ended
+frame, including material/cubemap row slices and native compressed mip blocks;
+cache hits and software fallback report `0`.
 `ClearCache` advances the template-cache generation so preload jobs that started
 before the clear cannot repopulate the cache after they finish.
 Missing filesystem
@@ -188,10 +208,13 @@ byte ranges, and corrupt required texture payloads before the commit-side model
 build. Blocking glTF loads reject matching corrupt required data-URI texture
 payloads instead of silently dropping material maps.
 `g3d_openworld_slice_streaming_hitch_probe` records blocking-vs-async timing and
-verifies zero-upload-budget pending/release behavior. Cubemap uploads now share
-the Canvas3D backend row budget/telemetry path, and shared backend pending-byte
-helpers prove row queues return to zero after final slices drain.
-Native-compressed backend upload slicing remains the Phase 4 expansion.
+verifies zero-upload-budget pending/release behavior. Cubemap and native-compressed
+uploads now share the Canvas3D backend byte budget/telemetry path, and shared
+backend pending-byte helpers prove row/native queues return to zero after final
+slices drain. The named native-compressed hitch rerun is now covered by
+`g3d_openworld_slice_streaming_hitch_native_compressed_probe`, which records
+the platform GPU backend, compressed format, zero-budget pending bytes, release
+time, and upload bytes.
 Existing synchronous `LoadModel` stays; `Preload` / `PreloadAsset` are now
 background template warms and will move to the full POD loader as that importer
 split lands.
@@ -235,23 +258,32 @@ resident telemetry. `mountCells` parses JSON/VSCN manifests shaped as
 `{"cells":[{"name":"cell_00","path":"cell_00.vscn","center":[x,y,z],"radius":r,"bytes":n}]}`
 and loads/unloads resident `.vscn` scene subtrees around `setCenter`.
 Resident cells now report measured scene-resource residency after load,
-including authored base meshes, LOD meshes, impostor meshes, materials, and
-resident material textures; unloaded cells report the manifest `bytes` estimate.
+including authored base meshes, resident LOD meshes, impostor meshes, materials,
+and resident material textures. Loaded cells remeasure after mesh/LOD residency
+changes so detail can be demoted without unloading the whole cell; unloaded
+cells report the manifest `bytes` estimate.
 `mountTiledTerrain` parses `tiles[]` manifests with the same metadata shape plus
 optional `width`, `depth`, `scale`, and `heightmap`, instantiates `Terrain3D`
 tile payloads for resident tiles, applies `viper-heightmap-v1` normalized
 height sidecars through the existing terrain heightmap path, spawns matching
 static heightfield collider entities for resident tiles, renders resident tiles
-through `World3D.drawScene`, contributes hidden terrain nav-bake source nodes to
-the owning world scene, and exposes terrain payloads through
+through `World3D.drawScene`, stitches full adjacent resident tile edges in
+world-height space before terrain LOD meshes are drawn, contributes hidden
+terrain nav-bake source nodes to the owning world scene, and exposes terrain
+payloads through
 `getResidentTerrainTile(index)`. `WorldStream3D.update(dt)` now applies a
 deterministic per-update load budget and reports deferred desired payloads
 through `pendingRequestCount`. Phase 12 editor/debug hooks expose parsed cell
 and terrain-tile counts, names, centers, resident flags, and byte estimates
 through lower/camel `getCell*` and `getTerrainTile*` methods, including
-`getTerrainTileHeightmap(index)` for the resolved sidecar path. Nav area
-metadata, authored terrain physics metadata, and worker-backed scheduler
-integration remain Phase 5 runtime work.
+`getTerrainTileHeightmap(index)` for the resolved sidecar path. The same
+manifest entries now parse authored `material`, `layer` / `collisionLayer`,
+`collisionMask` or nested `collision`, `navArea`, `traversalCost`, and optional
+`sidecar` / `binarySidecar` metadata. Cell layer/mask metadata is applied to
+the spawned root entity, terrain collision metadata is applied to generated
+heightfield collider bodies, and typed inspection getters expose the parsed
+values. Worker-backed scheduler integration and real tile-local nav ownership
+remain Phase 5 runtime work.
 `World3D.stream` now returns a stable world-owned stream handle;
 `WorldStream3D.New(world)` remains available for separate controllers.
 
@@ -261,24 +293,44 @@ integration remain Phase 5 runtime work.
 expose func Canvas3D.SetOcclusionCulling(on: Boolean)   // frustum + conservative CPU occlusion
 expose func Canvas3D.SetFrustumCulling(on: Boolean)     // frustum-only
 expose func Canvas3D.BackendSupports(name: String) -> Boolean // + "occlusion", "hlod"
+expose func Scene3D.AddVisibilityZone(name: String, min: Vec3, max: Vec3) -> Integer
+expose func Scene3D.AddVisibilityPortal(from: Integer, to: Integer, bidirectional: Boolean) -> Integer
+expose Integer Scene3D.PvsCulledCount
+expose Integer Scene3D.VisibilityZoneCount
+expose Integer Scene3D.VisibilityPortalCount
 // auto-LOD on SceneNode3D (extends existing manual LOD)
+expose Boolean Mesh3D.Resident
+expose Integer Mesh3D.ResidentBytes
 expose func SceneNode3D.SetAutoLOD(on: Boolean, screenErrorPx: Float)
+expose func SceneNode3D.SetLodResident(index: Integer, on: Boolean)
+expose func SceneNode3D.GetLodResident(index: Integer) -> Boolean
+expose func SceneNode3D.GetLodResidentBytes(index: Integer) -> Integer
 expose func SceneNode3D.SetImpostor(distance: Float, pixels: Object)   // HLOD/impostor
 expose Integer Canvas3D.DrawCount;                      // telemetry
 expose Integer Canvas3D.OccludedDrawCount;              // telemetry
+expose Integer Canvas3D.OcclusionCandidateCount;        // CPU occlusion grid workload telemetry
 expose Integer Canvas3D.TextureUploadBytes;             // backend upload telemetry
 expose Integer Canvas3D.TextureUploadPendingBytes;      // queued material texture row bytes
 expose func Canvas3D.SetTextureUploadBudget(bytes: Integer)
 ```
 
 Implemented slice: `SetOcclusionCulling` enables frustum rejection plus a
-conservative low-resolution CPU coverage/depth grid over sorted opaque draws;
-`SetFrustumCulling` remains frustum-only. `SetAutoLOD` selects among authored
-`AddLOD` meshes by projected screen size, `SetImpostor` builds a retained unlit
-textured quad proxy, `BackendSupports("occlusion")` and
-`BackendSupports("hlod")` report those runtime paths, and `OccludedDrawCount`
-mirrors the latest visibility skip count. GPU occlusion queries, Hi-Z, and
-portal/PVS are still backend/index acceleration work.
+conservative low-resolution CPU coverage/depth grid; Scene3D draws feed that
+grid from the BVH spatial candidate set before Canvas3D opaque sorting, while
+raw Canvas3D draws keep the sorted-queue fallback. `SetFrustumCulling` remains
+frustum-only. `SetAutoLOD` selects among authored resident `AddLOD` meshes by
+projected screen size, `SetLodResident` marks the underlying LOD mesh payload
+resident/nonresident for draw selection and byte accounting, `SetImpostor`
+builds a retained unlit textured quad proxy, `BackendSupports("occlusion")` and
+`BackendSupports("hlod")` report those runtime paths, `OccludedDrawCount`
+mirrors the latest visibility skip count, and `OcclusionCandidateCount` reports
+CPU grid workload. `Scene3D.AddVisibilityZone` / `AddVisibilityPortal` add an
+authored interior PVS graph; `Draw` skips drawables inside unreachable zones,
+keeps unzoned drawables visible, and reports `PvsCulledCount`. GPU occlusion
+queries and Hi-Z are still backend acceleration work. The named
+`openworld_slice` dense visibility probe records the authored city/forest
+draw/fill-proxy reduction and software final-frame parity proof for this API
+surface.
 
 ## Lighting — `Viper.Graphics3D.Canvas3D` / `Light3D` / `PostFX`
 
@@ -293,11 +345,14 @@ The current implemented contract is capability-gated: unsupported clustered
 lighting leaves `MaxActiveLights == 16`, `BackendSupports("clustered-lighting")`
 false, and `SetClusteredLighting(true)` traps before mutation. The software
 backend advertises the capability as the correctness baseline and raises
-`MaxActiveLights` to the bounded 64-light payload table when enabled. Real GPU
-forward+ upload/shading work remains Phase 7 runtime scope.
-`SetShadowCascades(1)` maps to the current single-shadow-map behavior; counts
-above one require
-`BackendSupports("shadow-csm")` and currently trap before mutation.
+`MaxActiveLights` to the bounded 64-light payload table when enabled. Real
+Metal, D3D11, and OpenGL backend vtables advertise the same bounded many-light
+path; fake GPU-named test backends do not.
+`SetShadowCascades(1)` maps to the non-cascaded shadow-map behavior; counts
+above one require `BackendSupports("shadow-csm")` and trap before mutation on
+unsupported backends. Supporting software and real platform GPU backends render
+the primary directional caster into up to four camera-depth cascades and publish
+split metadata to the backend light payload.
 
 ## Physics — `Viper.Graphics3D.Physics3DWorld` / joints / `Collider3D`
 
@@ -465,13 +520,13 @@ Implemented slice: `TextureAsset3D.LoadKTX2`, `LoadKTX2Asset`, `Width`,
 mipCount)` are registered as `Viper.Graphics3D.TextureAsset3D` with appended
 class id `RT_G3D_TEXTUREASSET3D_CLASS_ID`. The loader parses KTX2 metadata,
 records declared mip payload byte ranges for residency telemetry, retains
-precompressed native mip block payloads for backend upload wiring, and decodes
+precompressed native mip block payloads for backend upload, and decodes
 uncompressed RGBA8 mip payloads into CPU `Pixels` fallbacks. `SetResidentMipRange`
 switches the active fallback to the first resident mip while updating telemetry.
-Existing material texture methods accept `TextureAsset3D` when that fallback exists,
-retain the asset source, and resolve the currently resident fallback at draw time, and
-`Canvas3D.BackendSupports("bc7"/"astc"/"etc2")` now recognizes the capability
-names while reporting unsupported until native compressed upload lands.
+Existing material texture methods accept `TextureAsset3D` when a fallback or
+native compressed mip blocks exist, retain the asset source, and resolve the
+currently resident fallback/native source at draw time. `Canvas3D.BackendSupports("bc7"/"astc"/"etc2")`
+now reports the active backend/device native upload capabilities.
 
 Implemented slice: `Model3D.SceneCount`, `GetCameraCount(sceneIndex)`,
 `GetCamera(sceneIndex, i)`, `GetSceneName(index)`, and

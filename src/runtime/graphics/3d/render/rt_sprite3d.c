@@ -51,6 +51,7 @@ extern void rt_canvas3d_draw_mesh_matrix(void *canvas,
                                          const double *transform,
                                          void *material);
 extern int rt_canvas3d_add_temp_object(void *canvas, void *value);
+extern int rt_canvas3d_get_camera_relative_origin(void *canvas, double out_origin[3]);
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
@@ -94,6 +95,22 @@ static double sprite3d_clamp01(double value) {
     if (value > 1.0)
         return 1.0;
     return value;
+}
+
+/// @brief Build a row-major model matrix that translates by @p origin (identity rotation/scale).
+static void sprite3d_origin_model_matrix(const double origin[3], double out[16]) {
+    static const double identity[16] = {
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    };
+    memcpy(out, identity, sizeof(identity));
+    if (origin) {
+        out[3] = origin[0];
+        out[7] = origin[1];
+        out[11] = origin[2];
+    }
 }
 
 /// @brief GC finalizer — release the texture, billboard mesh, and cached material.
@@ -238,6 +255,23 @@ void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_
     s->frame_h = (int32_t)fh;
 }
 
+/// @brief Shift standalone Sprite3D world-space position by -delta for floating-origin rebases.
+void rt_sprite3d_rebase_origin(void *obj, double dx, double dy, double dz) {
+    rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
+    if (!s)
+        return;
+    double delta[3] = {
+        sprite3d_finite_or(dx, 0.0),
+        sprite3d_finite_or(dy, 0.0),
+        sprite3d_finite_or(dz, 0.0),
+    };
+    if (delta[0] == 0.0 && delta[1] == 0.0 && delta[2] == 0.0)
+        return;
+    s->position[0] = sprite3d_finite_or(s->position[0] - delta[0], 0.0);
+    s->position[1] = sprite3d_finite_or(s->position[1] - delta[1], 0.0);
+    s->position[2] = sprite3d_finite_or(s->position[2] - delta[2], 0.0);
+}
+
 /// @brief Draw a 3D sprite as a camera-facing billboard on the canvas.
 /// @details Constructs a billboard quad each frame using the camera's right and
 ///          up vectors, applies the anchor offset, and renders as a textured mesh.
@@ -263,6 +297,8 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     double cx = s->position[0] + rx * ax + ux * ay;
     double cy = s->position[1] + ry * ax + uy * ay;
     double cz = s->position[2] + rz * ax + uz * ay;
+    double origin[3] = {0.0, 0.0, 0.0};
+    (void)rt_canvas3d_get_camera_relative_origin(canvas, origin);
 
     /* UV from frame rect */
     double u0 = 0.0, v0 = 0.0, u1 = 1.0, v1 = 1.0;
@@ -299,36 +335,36 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     double nx = -(cam->view[8]), ny = -(cam->view[9]), nz = -(cam->view[10]); /* face camera */
 
     rt_mesh3d_add_vertex(mesh,
-                         cx - rx * hw - ux * hh,
-                         cy - ry * hw - uy * hh,
-                         cz - rz * hw - uz * hh,
+                         cx - rx * hw - ux * hh - origin[0],
+                         cy - ry * hw - uy * hh - origin[1],
+                         cz - rz * hw - uz * hh - origin[2],
                          nx,
                          ny,
                          nz,
                          u0,
                          v1);
     rt_mesh3d_add_vertex(mesh,
-                         cx + rx * hw - ux * hh,
-                         cy + ry * hw - uy * hh,
-                         cz + rz * hw - uz * hh,
+                         cx + rx * hw - ux * hh - origin[0],
+                         cy + ry * hw - uy * hh - origin[1],
+                         cz + rz * hw - uz * hh - origin[2],
                          nx,
                          ny,
                          nz,
                          u1,
                          v1);
     rt_mesh3d_add_vertex(mesh,
-                         cx + rx * hw + ux * hh,
-                         cy + ry * hw + uy * hh,
-                         cz + rz * hw + uz * hh,
+                         cx + rx * hw + ux * hh - origin[0],
+                         cy + ry * hw + uy * hh - origin[1],
+                         cz + rz * hw + uz * hh - origin[2],
                          nx,
                          ny,
                          nz,
                          u1,
                          v0);
     rt_mesh3d_add_vertex(mesh,
-                         cx - rx * hw + ux * hh,
-                         cy - ry * hw + uy * hh,
-                         cz - rz * hw + uz * hh,
+                         cx - rx * hw + ux * hh - origin[0],
+                         cy - ry * hw + uy * hh - origin[1],
+                         cz - rz * hw + uz * hh - origin[2],
                          nx,
                          ny,
                          nz,
@@ -341,27 +377,9 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     rt_canvas3d_add_temp_object(canvas, mesh);
     rt_canvas3d_add_temp_object(canvas, s->cached_material);
 
-    {
-        static const double identity[16] = {
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-        };
-        rt_canvas3d_draw_mesh_matrix(canvas, mesh, identity, s->cached_material);
-    }
+    double model[16];
+    sprite3d_origin_model_matrix(origin, model);
+    rt_canvas3d_draw_mesh_matrix(canvas, mesh, model, s->cached_material);
 }
 
 #else

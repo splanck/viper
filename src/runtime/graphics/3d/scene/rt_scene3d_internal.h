@@ -76,18 +76,49 @@ typedef struct {
     double world_max[3];
     int32_t traversal_order;
     int8_t cullable;
+    uint32_t world_revision;
 } rt_scene3d_spatial_entry;
+
+typedef struct {
+    double world_min[3];
+    double world_max[3];
+    int32_t left;
+    int32_t right;
+    int32_t start;
+    int32_t count;
+    int32_t cullable_count;
+    int8_t leaf;
+} rt_scene3d_spatial_bvh_node;
 
 typedef struct {
     rt_scene3d_spatial_entry *entries;
     int32_t count;
     int32_t capacity;
+    int32_t *entry_indices;
+    int32_t entry_index_capacity;
+    rt_scene3d_spatial_bvh_node *nodes;
+    int32_t node_count;
+    int32_t node_capacity;
+    int32_t root_node;
     int8_t dirty;
+    int8_t topology_dirty;
     int8_t valid;
     uint32_t build_count;
+    uint32_t refit_count;
     int32_t last_candidate_count;
     int32_t last_prefiltered_count;
 } rt_scene3d_spatial_index;
+
+typedef struct {
+    rt_string name;
+    double world_min[3];
+    double world_max[3];
+} rt_scene3d_visibility_zone;
+
+typedef struct {
+    int32_t from_zone;
+    int32_t to_zone;
+} rt_scene3d_visibility_portal;
 
 /// @brief SceneNode3D payload: local TRS, lazily-recomputed world matrix with dirty flag,
 ///   parent/children links, bound mesh/material/light/body/animator(s) and sync mode,
@@ -152,8 +183,15 @@ typedef struct rt_scene3d {
     int32_t node_count;
     int32_t last_culled_count;
     int32_t last_visible_node_count;
+    int32_t last_pvs_culled_count;
     int8_t use_spatial_index;
     rt_scene3d_spatial_index spatial_index;
+    rt_scene3d_visibility_zone *visibility_zones;
+    int32_t visibility_zone_count;
+    int32_t visibility_zone_capacity;
+    rt_scene3d_visibility_portal *visibility_portals;
+    int32_t visibility_portal_count;
+    int32_t visibility_portal_capacity;
 } rt_scene3d;
 
 #ifdef __cplusplus

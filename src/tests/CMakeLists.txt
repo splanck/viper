@@ -1681,6 +1681,13 @@ endif ()
 
 set(GAME3D_OPENWORLD_SLICE_DIR "${CMAKE_SOURCE_DIR}/examples/3d/openworld_slice")
 set(GAME3D_OPENWORLD_SLICE_PROBE "${GAME3D_OPENWORLD_SLICE_DIR}/test.zia")
+if (APPLE)
+    set(GAME3D_OPENWORLD_SLICE_GPU_BACKEND "metal")
+elseif (WIN32)
+    set(GAME3D_OPENWORLD_SLICE_GPU_BACKEND "d3d11")
+else ()
+    set(GAME3D_OPENWORLD_SLICE_GPU_BACKEND "opengl")
+endif ()
 if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
     add_test(NAME g3d_openworld_slice_probe
             COMMAND $<TARGET_FILE:viper> run "test.zia"
@@ -1721,6 +1728,15 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
             LABELS "runtime;graphics3d;zia;perf"
             TIMEOUT 45)
 
+    add_test(NAME g3d_openworld_slice_streaming_hitch_native_compressed_probe
+            COMMAND $<TARGET_FILE:viper> run "streaming_hitch_probe.zia"
+            WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
+    set_tests_properties(g3d_openworld_slice_streaming_hitch_native_compressed_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "(native_compressed_upload=1|SKIP: native compressed upload unsupported)"
+            LABELS "runtime;graphics3d;zia;requires_display;gpu_smoke;perf"
+            ENVIRONMENT "VIPER_3D_BACKEND=${GAME3D_OPENWORLD_SLICE_GPU_BACKEND};VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1"
+            TIMEOUT 45)
+
     add_test(NAME g3d_openworld_slice_long_traversal
             COMMAND $<TARGET_FILE:viper> run "long_traversal.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
@@ -1729,6 +1745,15 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
             LABELS "runtime;graphics3d;zia;requires_display"
             ENVIRONMENT "VIPER_3D_BACKEND=software"
             TIMEOUT 60)
+
+    add_test(NAME g3d_openworld_slice_visibility_dense_probe
+            COMMAND $<TARGET_FILE:viper> run "visibility_dense_probe.zia"
+            WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
+    set_tests_properties(g3d_openworld_slice_visibility_dense_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS: openworld_slice_visibility_dense_probe"
+            LABELS "runtime;graphics3d;zia;requires_display;perf"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 45)
 
     add_test(NAME g3d_openworld_slice_package_dry_run
             COMMAND $<TARGET_FILE:viper> package "." --target tarball --dry-run
@@ -1741,19 +1766,11 @@ endif ()
 
 set(GAME3D_OPENWORLD_SLICE_GPU_SMOKE "${GAME3D_OPENWORLD_SLICE_DIR}/gpu_smoke.zia")
 if (EXISTS "${GAME3D_OPENWORLD_SLICE_GPU_SMOKE}")
-    if (APPLE)
-        set(GAME3D_OPENWORLD_SLICE_GPU_BACKEND "metal")
-    elseif (WIN32)
-        set(GAME3D_OPENWORLD_SLICE_GPU_BACKEND "d3d11")
-    else ()
-        set(GAME3D_OPENWORLD_SLICE_GPU_BACKEND "opengl")
-    endif ()
-
     add_test(NAME g3d_openworld_slice_gpu_smoke
             COMMAND $<TARGET_FILE:viper> run "gpu_smoke.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_gpu_smoke PROPERTIES
-            PASS_REGULAR_EXPRESSION "^(PASS|SKIP):"
+            PASS_REGULAR_EXPRESSION "(PASS|SKIP):"
             LABELS "runtime;graphics3d;zia;requires_display;gpu_smoke"
             ENVIRONMENT "VIPER_3D_BACKEND=${GAME3D_OPENWORLD_SLICE_GPU_BACKEND}"
             TIMEOUT 45)

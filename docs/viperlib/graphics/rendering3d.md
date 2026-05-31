@@ -147,45 +147,58 @@ The default path remains fixed forward lighting with `MaxActiveLights == 16`.
 `BackendSupports("clustered-lighting")` gates the many-light path; enabling it
 without support traps before mutating the canvas so fallback behavior stays
 explicit. The software backend advertises this capability as the correctness
-baseline and raises the bounded active-light payload to 64. GPU backends keep
-the 16-light forward cap until their clustered upload/shader paths advertise
-support. `BackendSupports("shadow-csm")` similarly gates cascaded shadows;
-`SetShadowCascades(1)` preserves the current single-shadow-map path.
+baseline and raises the bounded active-light payload to 64. The real Metal,
+D3D11, and OpenGL backend vtables also advertise it: their main shaders and
+light-upload paths consume the bounded 64-light payload, while synthetic/fake
+test backends with GPU-like names do not advertise production support. The
+open-world GPU smoke records a 24-light run against the 16-light fallback.
+`BackendSupports("shadow-csm")` similarly gates cascaded shadows;
+`SetShadowCascades(1)` preserves the non-cascaded shadow path. On supporting
+software and real platform GPU backends, counts above one render the primary
+directional shadow caster into up to four camera-depth cascades, publish split
+metadata in the backend light payload, and keep unsupported/fake backends
+trapping before mutation. The open-world GPU smoke records a 3-cascade Metal
+fixture (`CSM_SHADOWS`) after the clustered-lighting probe.
 `BackendSupports("bc7")`, `BackendSupports("astc")`, and
-`BackendSupports("etc2")` are reserved for native compressed texture upload;
-current backends report them false while `TextureAsset3D` exposes metadata and
-RGBA8 fallback material binding. For uncompressed RGBA8 KTX2 files, each
+`BackendSupports("etc2")` report native compressed texture upload support for
+the active backend/device. For uncompressed RGBA8 KTX2 files, each
 declared mip is decoded into a CPU `Pixels` fallback; for precompressed KTX2
-files, native mip block payloads are retained internally for backend upload
-wiring. `TextureAsset3D.SetResidentMipRange` switches the active fallback to the
+files, native mip block payloads are retained internally for capability-gated
+backend upload. `TextureAsset3D.SetResidentMipRange` switches the active fallback to the
 first resident mip while updating byte telemetry. Materials retain the texture asset
 and resolve that active fallback at draw time, so already-bound materials follow
-later residency changes; native compressed upload still stays behind backend
-capability gates.
+later residency changes; when no fallback exists, capable GPU backends receive
+the resident compressed blocks through the same upload-budget telemetry path.
 
 ### Canvas3D Performance Telemetry
 
 | Member | Type | Description |
 |--------|------|-------------|
-| `TextureUploadBytes` | `Integer` property | CPU image bytes uploaded into backend texture storage during the latest ended frame |
-| `TextureUploadPendingBytes` | `Integer` property | CPU image bytes still waiting for backend texture or cubemap upload budget |
+| `TextureUploadBytes` | `Integer` property | Texture bytes uploaded into backend storage during the latest ended frame |
+| `TextureUploadPendingBytes` | `Integer` property | Texture bytes still waiting for backend texture or cubemap upload budget |
 | `SetTextureUploadBudget(bytes)` | `Void(Integer)` method | Set the backend material-texture/cubemap upload byte budget per frame; negative means unlimited, `0` pauses new upload rows |
 
 `TextureUploadBytes` counts actual texture cache uploads and re-uploads performed by the active
-Metal, OpenGL, or D3D11 backend. Pixels-backed 2D material textures and cubemaps are advanced in
-row slices under `SetTextureUploadBudget`. Cache hits report no new upload bytes,
-software/unsupported backends report `0`, and the value is reset at the next non-overlay frame
-begin. `TextureUploadPendingBytes` reports remaining queued texture and cubemap row bytes and
-returns to `0` after final row slices drain. Use these members with
+Metal, OpenGL, or D3D11 backend. Pixels-backed 2D material textures and cubemaps
+are advanced in row slices under `SetTextureUploadBudget`; native compressed
+`TextureAsset3D` blocks are submitted by resident mip under the same budget and
+telemetry. Cache hits report no new upload bytes, software/unsupported backends
+report `0`, and the value is reset at the next non-overlay frame begin.
+`TextureUploadPendingBytes` reports remaining queued texture/cubemap row bytes
+plus native compressed mip bytes and returns to `0` after final submissions
+drain. Use these members with
 `Assets3D.SetUploadBudget` and streaming counters to find frames where decoded asset commits are
 followed by GPU texture upload pressure.
 
 ### Canvas3D Visibility Controls
 
 The current visibility controls are a coarse CPU path: frustum rejection for
-bounded draws, front-to-back ordering for opaque submissions, and a
-low-resolution screen-space coverage/depth grid for conservative occlusion
-skips. They are not GPU occlusion queries, Hi-Z, or portal/PVS culling.
+bounded draws, Scene3D BVH candidate selection before Canvas3D draw sorting, and
+a low-resolution screen-space coverage/depth grid for conservative occlusion
+skips. Scene3D also has an authored portal/PVS accelerator for interiors: add
+visibility-zone AABBs and portal links, and `Draw` skips drawables inside
+interior zones that are not reachable from the camera's current zone. These
+paths are not GPU occlusion queries or Hi-Z culling.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -193,6 +206,7 @@ skips. They are not GPU occlusion queries, Hi-Z, or portal/PVS culling.
 | `SetOcclusionCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection plus conservative CPU occlusion skips |
 | `DrawCount` | `Integer` | Main 3D draw submissions queued by the latest ended frame |
 | `OccludedDrawCount` | `Integer` | Latest scene draw submissions skipped by visibility culling |
+| `OcclusionCandidateCount` | `Integer` | Opaque draw candidates tested by the CPU occlusion grid in the latest frame |
 | `TextureUploadBytes` | `Integer` | Backend texture upload bytes in the latest ended frame |
 | `TextureUploadPendingBytes` | `Integer` | Backend material texture and cubemap bytes still pending upload |
 
@@ -203,7 +217,26 @@ are never used as occluders and are not rejected by the coarse coverage grid.
 proxies. `BackendSupports("occlusion")` reports the CPU occlusion baseline; GPU
 query/Hi-Z/portal acceleration can advertise the same capability once added.
 The unit lane includes a dense covered-draw fixture that queues 65 opaque draws,
-submits only the front occluder, and reports 64 occlusion skips.
+submits only the front occluder, and reports 64 occlusion skips. The Scene3D
+indexed-occlusion fixture indexes 130 drawables, narrows the CPU occlusion grid
+to 2 spatial candidates before Canvas3D sorting, and submits only the front draw.
+The open-world slice adds a named authored dense city/forest fixture in
+`visibility_dense_probe.zia`; the local macOS software Release baseline records
+169 authored drawables reduced to 49 submitted draws, 120 PVS skips, 50.407%
+fill-proxy reduction, and a final-frame pixel match against the no-PVS render.
+
+Scene3D interior PVS is authored on the scene:
+
+| Method / Property | Signature | Description |
+|-------------------|-----------|-------------|
+| `AddVisibilityZone(name, min, max)` | `Integer(String, Vec3, Vec3)` | Add a world-space interior visibility zone AABB and return its index |
+| `AddVisibilityPortal(from, to, bidirectional)` | `Integer(Integer, Integer, Boolean)` | Add a directed or bidirectional visibility link between zones |
+| `VisibilityZoneCount` | `Integer` | Authored zone count |
+| `VisibilityPortalCount` | `Integer` | Directed portal-link count |
+| `PvsCulledCount` | `Integer` | Drawables skipped by the latest portal/PVS pass |
+
+Nodes that intersect no visibility zone remain visible, which keeps outdoor or
+mixed scenes from disappearing when a PVS graph is only authored for interiors.
 
 ### Viper.Graphics3D.Scene3D
 
@@ -225,31 +258,44 @@ transforms.
 | `SyncBindings(dt)` | `Void(Double)` | Push physics, animation, and binding transforms |
 | `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift every root-level subtree by `-delta` while leaving the root unchanged |
 
-The query methods are backed by the Scene3D spatial index when it is clean, with
-the deterministic flat walk kept as the internal parity fallback. Results skip
-hidden subtrees and only return nodes with their own mesh bounds. Draw culling
-uses the same indexed candidate set, then runs the exact selected-LOD/impostor
-frustum test before submitting. The index stores transformed world AABBs in
-double precision, so far-origin queries and raycasts keep nodes distinct even
-when their separation is below single-precision world-space granularity. Mesh
+The query methods are backed by the Scene3D BVH spatial index, with the
+deterministic flat walk kept as the internal parity fallback. Transform-only
+dirties refit the existing BVH; hierarchy, visibility, mesh, LOD, and impostor
+changes rebuild it lazily. Results skip hidden subtrees and only return nodes
+with their own mesh bounds. Draw culling uses the same indexed candidate set,
+then runs the exact selected-LOD/impostor frustum test before submitting. The
+index stores transformed world AABBs in double precision, so far-origin queries
+and raycasts keep nodes distinct even when their separation is below
+single-precision world-space granularity. Mesh
 vertices and backend upload remain float data. Game3D floating-origin frames
 opt into a Canvas3D camera-relative upload path for double-precision `DrawMesh`
 model matrices, camera frame position/view translation, and point/spot light
-positions; caller-provided float instancing data and raw/generated vertex paths
-remain limited by the precision of the data supplied to Canvas3D. Runtime tests
+positions. Programmatic `Mesh3D.AddVertex` keeps an internal double-position
+sidecar so identity-matrix raw world-space meshes can subtract the active camera
+origin before vertex upload; generated billboard paths such as standalone
+`Particles3D`, `Sprite3D`, and decal meshes likewise upload camera-relative
+vertices. Caller-provided float instancing data remains limited by the precision
+of the data supplied to Canvas3D. Runtime tests
 keep a generated 10k drawable-node grid in the normal Scene3D ctest lane to
-guard isolated-query and frame-cull candidate reduction.
+guard BVH shape, transform refit, isolated-query reduction, and frame-cull
+candidate reduction.
 
 `RebaseOrigin` is the low-level floating-origin primitive used by Game3D. It
 keeps child-local transforms stable by moving only root-level subtrees in world
 space; physics bodies, cameras, and audio listeners should be rebased through
-their owning world systems as well.
+their owning world systems as well. Query results returned before a rebase are
+snapshots; run spatial queries again after the between-frame rebase boundary.
+
+`Mesh3D.Resident` and read-only `ResidentBytes` expose mesh-payload residency
+for streaming systems. Nonresident meshes keep their handles and authored data
+but report zero resident bytes and are skipped by Canvas3D/Scene3D draw paths.
 
 ### Viper.Graphics3D.SceneNode3D LOD
 
 `SceneNode3D` supports authored mesh LODs through `AddLOD(distance, mesh)`.
 Entries remain sorted by distance, duplicate distances replace the previous
-mesh, and `ClearLOD()` restores the base mesh at every distance.
+mesh, and `ClearLOD()` restores the base mesh at every distance. LOD selection
+skips nonresident meshes and falls back to the next resident choice.
 
 | Method / Property | Signature | Description |
 |-------------------|-----------|-------------|
@@ -260,6 +306,9 @@ mesh, and `ClearLOD()` restores the base mesh at every distance.
 | `LodCount` | `Integer` | Number of registered LOD entries |
 | `GetLodMesh(index)` | `Object(Integer)` | Borrow the mesh for an LOD entry |
 | `GetLodDistance(index)` | `Double(Integer)` | Get the sorted distance threshold |
+| `SetLodResident(index, resident)` | `Void(Integer, Boolean)` | Mark an LOD mesh payload resident/nonresident |
+| `GetLodResident(index)` | `Boolean(Integer)` | Return whether an LOD mesh payload is resident |
+| `GetLodResidentBytes(index)` | `Integer(Integer)` | Return resident bytes for an LOD mesh payload |
 
 `SetAutoLOD` does not synthesize new meshes; it selects among meshes already
 registered with `AddLOD`. A lower `screenErrorPx` keeps the base mesh longer,
@@ -369,7 +418,7 @@ sprite draws.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `NewColor(r, g, b)` | `Object(Double, Double, Double)` | Create a diffuse-color material |
-| `NewTextured(texture)` | `Object(Object)` | Create a material with a base `Pixels` or RGBA8-backed `TextureAsset3D` texture |
+| `NewTextured(texture)` | `Object(Object)` | Create a material with a base `Pixels` or `TextureAsset3D` texture |
 | `NewPBR(r, g, b)` | `Object(Double, Double, Double)` | Create a PBR material |
 | `SetColor(r, g, b)` | `Void(Double, Double, Double)` | Set diffuse/base color |
 | `SetTexture(texture)` / `SetAlbedoMap(texture)` | `Void(Object)` | Bind or clear the base-color texture slot |
@@ -380,13 +429,14 @@ sprite draws.
 | `SetAOMap(texture)` | `Void(Object)` | Bind or clear the ambient-occlusion map |
 | `SetEnvMap(cubemap)` | `Void(Object)` | Bind or clear an environment cubemap |
 
-Texture map methods accept `Pixels` or `TextureAsset3D` handles that have an
-active RGBA8 fallback. KTX2 BC3/BC7/ASTC/ETC2 texture assets can be loaded for
-metadata, native mip block retention, and mip residency byte telemetry today,
-but binding compressed-only assets traps until a backend advertises native
-upload support.
+Texture map methods accept `Pixels` or `TextureAsset3D` handles with either an
+active RGBA8 fallback or retained native mip blocks. KTX2 BC3/BC7/ASTC/ETC2
+texture assets can be loaded for metadata, native mip block retention, and mip
+residency byte telemetry; compressed-only assets draw on GPU backends that
+advertise the matching compression capability and otherwise behave as unbound
+textures until a fallback-capable mip is resident.
 When a `TextureAsset3D` is bound, the material retains the asset and resolves
-the currently resident RGBA8 mip for each draw.
+the currently resident RGBA8 mip and native block source for each draw.
 
 #### Properties
 
@@ -863,6 +913,7 @@ mutating the emitter's live particle order.
 | `Stop()` | `Void()` | Stop continuous emission |
 | `Burst(count)` | `Void(Integer)` | Emit `count` particles immediately |
 | `Clear()` | `Void()` | Remove all active particles |
+| `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift the emitter and live particles by `-delta` |
 | `Update(deltaSeconds)` | `Void(Double)` | Advance particle simulation |
 | `Draw(canvas3D, camera)` | `Void(Object, Object)` | Render particles to the scene |
 
@@ -1344,6 +1395,7 @@ Billboard sprite placed in 3D world space, suitable for particles, UI labels, or
 | `SetScale(w, h)` | `Void(Double, Double)` | Set billboard scale in world units |
 | `SetAnchor(ax, ay)` | `Void(Double, Double)` | Set anchor offset `[0.0–1.0]` |
 | `SetFrame(x, y, width, height)` | `Void(Integer, Integer, Integer, Integer)` | Set the source pixel region |
+| `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift the sprite position by `-delta` |
 
 ---
 

@@ -62,6 +62,21 @@ static rt_mesh3d *mesh3d_checked(void *obj) {
     return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
 }
 
+/// @brief Estimate vertex/index payload bytes, saturating to INT64_MAX for ABI stability.
+static int64_t mesh3d_estimate_payload_bytes(const rt_mesh3d *m) {
+    uint64_t vertex_bytes;
+    uint64_t index_bytes;
+    uint64_t total;
+    if (!m)
+        return 0;
+    vertex_bytes = (uint64_t)m->vertex_count * (uint64_t)sizeof(vgfx3d_vertex_t);
+    index_bytes = (uint64_t)m->index_count * (uint64_t)sizeof(uint32_t);
+    total = vertex_bytes + index_bytes;
+    if (total < vertex_bytes)
+        return INT64_MAX;
+    return total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
+}
+
 /// @brief Parse an OBJ/STL ASCII float with '.' decimal semantics, independent of locale.
 static int mesh_parse_ascii_double_span(const char *p,
                                         const char *limit,
@@ -152,6 +167,36 @@ static int mesh_value_fits_float(double value) {
     return isfinite(value) && value >= -MESH3D_FLOAT_ABS_MAX && value <= MESH3D_FLOAT_ABS_MAX;
 }
 
+/// @brief Ensure the optional double-position sidecar exists and mirrors existing vertices.
+/// @details Programmatic AddVertex meshes preserve authoring precision here so the
+///          camera-relative upload path can subtract the frame origin before float
+///          narrowing. Meshes loaded by importers that directly assign float vertex
+///          buffers simply leave this NULL and use the existing float positions.
+static int mesh3d_ensure_positions64(rt_mesh3d *m, const char *label) {
+    char msg[160];
+    if (!m)
+        return 0;
+    if (m->positions64)
+        return 1;
+    if ((size_t)m->vertex_capacity > SIZE_MAX / (3u * sizeof(double))) {
+        snprintf(msg, sizeof(msg), "%s: position sidecar allocation overflow", label);
+        rt_trap(msg);
+        return 0;
+    }
+    m->positions64 = (double *)calloc((size_t)m->vertex_capacity * 3u, sizeof(double));
+    if (!m->positions64) {
+        snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
+        rt_trap(msg);
+        return 0;
+    }
+    for (uint32_t i = 0; i < m->vertex_count; i++) {
+        m->positions64[(size_t)i * 3u + 0] = (double)m->vertices[i].pos[0];
+        m->positions64[(size_t)i * 3u + 1] = (double)m->vertices[i].pos[1];
+        m->positions64[(size_t)i * 3u + 2] = (double)m->vertices[i].pos[2];
+    }
+    return 1;
+}
+
 /// @brief True if all 16 lanes of a 4x4 float matrix are finite (no NaN/Inf).
 static int mesh_matrix4f_is_finite(const float *m) {
     if (!m)
@@ -177,6 +222,21 @@ static double mesh_triangle_area_sq_f32(const float *a, const float *b, const fl
     return nx * nx + ny * ny + nz * nz;
 }
 
+/// @brief Squared area of triangle (a, b, c) in double precision (half the cross-product magnitude²).
+/// @details Used as a degeneracy test that avoids a sqrt; near-zero means a sliver/collinear triangle.
+static double mesh_triangle_area_sq_f64(const double *a, const double *b, const double *c) {
+    double abx = b[0] - a[0];
+    double aby = b[1] - a[1];
+    double abz = b[2] - a[2];
+    double acx = c[0] - a[0];
+    double acy = c[1] - a[1];
+    double acz = c[2] - a[2];
+    double nx = aby * acz - abz * acy;
+    double ny = abz * acx - abx * acz;
+    double nz = abx * acy - aby * acx;
+    return nx * nx + ny * ny + nz * nz;
+}
+
 /// @brief Return non-zero when three float positions define a usable triangle.
 static int mesh_positions_form_triangle(const float *a, const float *b, const float *c) {
     double area_sq = a && b && c ? mesh_triangle_area_sq_f32(a, b, c) : 0.0;
@@ -191,6 +251,13 @@ static int mesh_indices_form_triangle(const rt_mesh3d *mesh,
     if (!mesh || !mesh->vertices || i0 == i1 || i1 == i2 || i0 == i2 || i0 >= mesh->vertex_count ||
         i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
         return 0;
+    if (mesh->positions64) {
+        const double *a = &mesh->positions64[(size_t)i0 * 3u];
+        const double *b = &mesh->positions64[(size_t)i1 * 3u];
+        const double *c = &mesh->positions64[(size_t)i2 * 3u];
+        double area_sq = mesh_triangle_area_sq_f64(a, b, c);
+        return isfinite(area_sq) && area_sq > 1e-20;
+    }
     return mesh_positions_form_triangle(
         mesh->vertices[i0].pos, mesh->vertices[i1].pos, mesh->vertices[i2].pos);
 }
@@ -245,10 +312,24 @@ static int mesh3d_reserve_storage(rt_mesh3d *m,
         return 0;
     if (vertex_capacity > m->vertex_capacity) {
         vgfx3d_vertex_t *nv;
+        double *np = NULL;
         if ((size_t)vertex_capacity > SIZE_MAX / sizeof(vgfx3d_vertex_t)) {
             snprintf(msg, sizeof(msg), "%s: vertex allocation overflow", label);
             rt_trap(msg);
             return 0;
+        }
+        if (m->positions64) {
+            if ((size_t)vertex_capacity > SIZE_MAX / (3u * sizeof(double))) {
+                snprintf(msg, sizeof(msg), "%s: position sidecar allocation overflow", label);
+                rt_trap(msg);
+                return 0;
+            }
+            np = (double *)realloc(m->positions64, (size_t)vertex_capacity * 3u * sizeof(double));
+            if (!np) {
+                snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
+                rt_trap(msg);
+                return 0;
+            }
         }
         nv = (vgfx3d_vertex_t *)realloc(
             m->vertices, (size_t)vertex_capacity * sizeof(vgfx3d_vertex_t));
@@ -257,6 +338,8 @@ static int mesh3d_reserve_storage(rt_mesh3d *m,
             rt_trap(msg);
             return 0;
         }
+        if (np)
+            m->positions64 = np;
         m->vertices = nv;
         m->vertex_capacity = vertex_capacity;
     }
@@ -342,6 +425,8 @@ static void rt_mesh3d_finalize(void *obj) {
     rt_mesh3d *m = (rt_mesh3d *)obj;
     free(m->vertices);
     m->vertices = NULL;
+    free(m->positions64);
+    m->positions64 = NULL;
     free(m->indices);
     m->indices = NULL;
     free(m->physics_bvh_nodes);
@@ -367,6 +452,7 @@ void *rt_mesh3d_new(void) {
     }
     m->vptr = NULL;
     m->vertices = (vgfx3d_vertex_t *)calloc(MESH_INIT_VERTS, sizeof(vgfx3d_vertex_t));
+    m->positions64 = NULL;
     m->vertex_count = 0;
     m->vertex_capacity = MESH_INIT_VERTS;
     m->indices = (uint32_t *)calloc(MESH_INIT_IDXS, sizeof(uint32_t));
@@ -386,6 +472,7 @@ void *rt_mesh3d_new(void) {
     m->geometry_revision = 1;
     m->tangent_revision = 0;
     m->tangents_ready = 0;
+    m->resident = 1;
     m->geometry_batch_depth = 0;
     m->geometry_batch_dirty = 0;
     m->physics_bvh_nodes = NULL;
@@ -396,8 +483,10 @@ void *rt_mesh3d_new(void) {
     rt_mesh3d_reset_bounds(m);
     if (!m->vertices || !m->indices) {
         free(m->vertices);
+        free(m->positions64);
         free(m->indices);
         m->vertices = NULL;
+        m->positions64 = NULL;
         m->indices = NULL;
         if (rt_obj_release_check0(m))
             rt_obj_free(m);
@@ -496,24 +585,22 @@ void rt_mesh3d_add_vertex(
         new_cap = m->vertex_capacity * 2u;
         if (new_cap <= m->vertex_count)
             new_cap = m->vertex_count + 1u;
-        if ((size_t)new_cap > SIZE_MAX / sizeof(vgfx3d_vertex_t)) {
+        if (!mesh3d_reserve_storage(m, new_cap, m->index_capacity, "Mesh3D.AddVertex")) {
             mesh_mark_build_failed(m);
-            rt_trap("Mesh3D.AddVertex: vertex allocation overflow");
             return;
         }
-        vgfx3d_vertex_t *nv =
-            (vgfx3d_vertex_t *)realloc(m->vertices, (size_t)new_cap * sizeof(vgfx3d_vertex_t));
-        if (!nv) {
-            mesh_mark_build_failed(m);
-            rt_trap("Mesh3D.AddVertex: memory allocation failed");
-            return;
-        }
-        m->vertices = nv;
-        m->vertex_capacity = new_cap;
+    }
+    if (!mesh3d_ensure_positions64(m, "Mesh3D.AddVertex")) {
+        mesh_mark_build_failed(m);
+        return;
     }
 
-    vgfx3d_vertex_t *vt = &m->vertices[m->vertex_count++];
+    uint32_t vertex_index = m->vertex_count++;
+    vgfx3d_vertex_t *vt = &m->vertices[vertex_index];
     memset(vt, 0, sizeof(vgfx3d_vertex_t));
+    m->positions64[(size_t)vertex_index * 3u + 0] = x;
+    m->positions64[(size_t)vertex_index * 3u + 1] = y;
+    m->positions64[(size_t)vertex_index * 3u + 2] = z;
     vt->pos[0] = (float)x;
     vt->pos[1] = (float)y;
     vt->pos[2] = (float)z;
@@ -612,6 +699,28 @@ int64_t rt_mesh3d_get_triangle_count(void *obj) {
     return m ? (int64_t)(m->index_count / 3) : 0;
 }
 
+/// @brief Return whether this mesh's vertex/index payload is resident.
+int8_t rt_mesh3d_get_resident(void *obj) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    return (m && m->resident) ? 1 : 0;
+}
+
+/// @brief Mark a mesh payload resident/nonresident without releasing the Mesh3D object.
+void rt_mesh3d_set_resident(void *obj, int8_t resident) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m)
+        return;
+    m->resident = resident ? 1 : 0;
+}
+
+/// @brief Resident vertex/index byte estimate; nonresident meshes report zero.
+int64_t rt_mesh3d_get_resident_bytes(void *obj) {
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m || !m->resident)
+        return 0;
+    return mesh3d_estimate_payload_bytes(m);
+}
+
 /// @brief Recalculate smooth vertex normals by averaging face normals per-vertex.
 void rt_mesh3d_recalc_normals(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
@@ -704,12 +813,15 @@ void *rt_mesh3d_clone(void *obj) {
         return NULL;
 
     free(dst->vertices);
+    free(dst->positions64);
     free(dst->indices);
     dst->vertices = NULL;
+    dst->positions64 = NULL;
     dst->indices = NULL;
 
     if ((size_t)src->vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
-        (size_t)src->index_count > SIZE_MAX / sizeof(uint32_t)) {
+        (size_t)src->index_count > SIZE_MAX / sizeof(uint32_t) ||
+        (src->positions64 && (size_t)src->vertex_count > SIZE_MAX / (3u * sizeof(double)))) {
         if (rt_obj_release_check0(dst))
             rt_obj_free(dst);
         rt_trap("Mesh3D.Clone: allocation overflow");
@@ -718,10 +830,12 @@ void *rt_mesh3d_clone(void *obj) {
 
     dst->vertex_capacity = src->vertex_count > 0 ? src->vertex_count : 1;
     dst->vertices = (vgfx3d_vertex_t *)malloc(dst->vertex_capacity * sizeof(vgfx3d_vertex_t));
+    if (src->positions64)
+        dst->positions64 = (double *)malloc((size_t)dst->vertex_capacity * 3u * sizeof(double));
     dst->index_capacity = src->index_count > 0 ? src->index_count : 1;
     dst->indices = (uint32_t *)malloc(dst->index_capacity * sizeof(uint32_t));
 
-    if (!dst->vertices || !dst->indices) {
+    if (!dst->vertices || !dst->indices || (src->positions64 && !dst->positions64)) {
         if (rt_obj_release_check0(dst))
             rt_obj_free(dst);
         rt_trap("Mesh3D.Clone: memory allocation failed");
@@ -731,6 +845,8 @@ void *rt_mesh3d_clone(void *obj) {
     dst->vertex_count = src->vertex_count;
     if (src->vertex_count > 0)
         memcpy(dst->vertices, src->vertices, src->vertex_count * sizeof(vgfx3d_vertex_t));
+    if (src->positions64 && src->vertex_count > 0)
+        memcpy(dst->positions64, src->positions64, (size_t)src->vertex_count * 3u * sizeof(double));
 
     dst->index_count = src->index_count;
     if (src->index_count > 0)
@@ -759,6 +875,7 @@ void *rt_mesh3d_clone(void *obj) {
     dst->geometry_revision = src->geometry_revision;
     dst->tangent_revision = src->tangent_revision;
     dst->tangents_ready = src->tangents_ready;
+    dst->resident = src->resident ? 1 : 0;
     dst->build_failed = 0;
     dst->aabb_min[0] = src->aabb_min[0];
     dst->aabb_min[1] = src->aabb_min[1];
@@ -828,8 +945,12 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         handedness_sign = -1.0f;
 
     for (uint32_t i = 0; i < m->vertex_count; i++) {
-        const float *p = m->vertices[i].pos;
-        double x = p[0], y = p[1], z = p[2];
+        double x = m->positions64 ? m->positions64[(size_t)i * 3u + 0]
+                                  : (double)m->vertices[i].pos[0];
+        double y = m->positions64 ? m->positions64[(size_t)i * 3u + 1]
+                                  : (double)m->vertices[i].pos[1];
+        double z = m->positions64 ? m->positions64[(size_t)i * 3u + 2]
+                                  : (double)m->vertices[i].pos[2];
         double tx = xform->m[0] * x + xform->m[1] * y + xform->m[2] * z + xform->m[3];
         double ty = xform->m[4] * x + xform->m[5] * y + xform->m[6] * z + xform->m[7];
         double tz = xform->m[8] * x + xform->m[9] * y + xform->m[10] * z + xform->m[11];
@@ -866,10 +987,20 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
 
     for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *p = m->vertices[i].pos;
-        double x = p[0], y = p[1], z = p[2];
-        p[0] = (float)(xform->m[0] * x + xform->m[1] * y + xform->m[2] * z + xform->m[3]);
-        p[1] = (float)(xform->m[4] * x + xform->m[5] * y + xform->m[6] * z + xform->m[7]);
-        p[2] = (float)(xform->m[8] * x + xform->m[9] * y + xform->m[10] * z + xform->m[11]);
+        double x = m->positions64 ? m->positions64[(size_t)i * 3u + 0] : (double)p[0];
+        double y = m->positions64 ? m->positions64[(size_t)i * 3u + 1] : (double)p[1];
+        double z = m->positions64 ? m->positions64[(size_t)i * 3u + 2] : (double)p[2];
+        double px = xform->m[0] * x + xform->m[1] * y + xform->m[2] * z + xform->m[3];
+        double py = xform->m[4] * x + xform->m[5] * y + xform->m[6] * z + xform->m[7];
+        double pz = xform->m[8] * x + xform->m[9] * y + xform->m[10] * z + xform->m[11];
+        if (m->positions64) {
+            m->positions64[(size_t)i * 3u + 0] = px;
+            m->positions64[(size_t)i * 3u + 1] = py;
+            m->positions64[(size_t)i * 3u + 2] = pz;
+        }
+        p[0] = (float)px;
+        p[1] = (float)py;
+        p[2] = (float)pz;
 
         /* Transform normals with the inverse-transpose upper 3x3. */
         float *n = m->vertices[i].normal;
@@ -1508,6 +1639,9 @@ static int obj_get_or_add_mesh_vertex(void *mesh,
     return 1;
 }
 
+/// @brief Signed area (×2) of a polygon projected onto axes (@p ax0, @p ax1) via the shoelace formula.
+/// @details Its sign gives the polygon's winding in that projection, which the ear-clip uses to
+///          orient inside/outside tests.
 static double obj_projected_area2(const rt_mesh3d *mesh,
                                   const uint32_t *indices,
                                   int count,
@@ -1522,6 +1656,9 @@ static double obj_projected_area2(const rt_mesh3d *mesh,
     return area;
 }
 
+/// @brief Pick the two axes to project a planar polygon onto for 2D triangulation.
+/// @details Computes the polygon's Newell normal and drops the axis with the largest |normal|
+///          component, keeping the projection that preserves the most area (avoids edge-on degeneracy).
 static void obj_choose_projection_axes(const rt_mesh3d *mesh,
                                        const uint32_t *indices,
                                        int count,
@@ -1547,6 +1684,8 @@ static void obj_choose_projection_axes(const rt_mesh3d *mesh,
     }
 }
 
+/// @brief 2D orientation of points (ia, ib, ic) in the (@p ax0, @p ax1) projection.
+/// @details The signed cross product (b-a)×(c-a); >0 is CCW, <0 CW, ~0 collinear.
 static double obj_orient2(const rt_mesh3d *mesh,
                           uint32_t ia,
                           uint32_t ib,
@@ -1563,6 +1702,9 @@ static double obj_orient2(const rt_mesh3d *mesh,
     return ab0 * ac1 - ab1 * ac0;
 }
 
+/// @brief Whether projected point @p p lies strictly inside triangle (a, b, c) for the given winding.
+/// @details Checks @p p is on the interior side of all three edges (scaled by @p winding so it works
+///          for either orientation); the 1e-12 epsilon excludes on-edge points so ears don't overlap.
 static int obj_point_in_triangle2(const rt_mesh3d *mesh,
                                   uint32_t p,
                                   uint32_t a,
@@ -1578,6 +1720,11 @@ static int obj_point_in_triangle2(const rt_mesh3d *mesh,
     return o0 > eps && o1 > eps && o2 > eps;
 }
 
+/// @brief Triangulate an OBJ n-gon face into the mesh via ear-clipping (fan fallback for triangles).
+/// @details Projects the face to its best 2D plane, determines winding, then repeatedly clips a valid
+///          ear (a convex corner whose triangle contains no other vertex), emitting one triangle each
+///          step. A guard counter bounds the loop against degenerate/self-intersecting faces.
+/// @return Non-zero on success; 0 if the face is invalid or a triangle add failed.
 static int obj_triangulate_face(void *mesh_obj, const uint32_t *mesh_indices, int face_count) {
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
     int ax0 = 0;
@@ -1845,6 +1992,9 @@ void rt_mesh3d_calc_tangents_impl(rt_mesh3d *m) {
     m->tangent_revision = m->geometry_revision;
 }
 
+/// @brief Recompute per-vertex tangents for the mesh (used by normal/parallax mapping).
+/// @details Validates the handle and delegates to the implementation, which derives tangents from
+///          positions and UVs and falls back to a normal-derived tangent on degenerate UVs.
 void rt_mesh3d_calc_tangents(void *obj) {
     rt_mesh3d_calc_tangents_impl(mesh3d_checked(obj));
 }
@@ -2253,6 +2403,9 @@ static int stl_normal_is_usable(const float *normal) {
     return len_sq > 1e-20;
 }
 
+/// @brief Cap the initial triangle reservation for a binary STL to a safe ceiling.
+/// @details Avoids over-allocating from an untrusted header count; the buffer grows as facets are
+///          actually read.
 static uint32_t stl_initial_reserve_triangles(uint32_t tri_count) {
     return tri_count < STL_BINARY_INITIAL_RESERVE_TRIANGLES ? tri_count
                                                            : STL_BINARY_INITIAL_RESERVE_TRIANGLES;
@@ -2655,6 +2808,10 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
     return mesh;
 }
 
+/// @brief Parse an ASCII STL stream into a new Mesh3D.
+/// @details Drives a small state machine over `facet`/`outer loop`/`vertex`/`endfacet` keywords,
+///          accumulating each facet's three vertices (with the stored normal) into the mesh.
+/// @return New Mesh3D handle, or NULL on a malformed stream or allocation failure.
 static void *stl_load_ascii_stream(FILE *f) {
     enum {
         STL_ASCII_OUTSIDE_FACET = 0,

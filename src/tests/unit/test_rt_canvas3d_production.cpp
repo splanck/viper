@@ -101,6 +101,11 @@ static void fake_present_postfx(void *, const vgfx3d_postfx_chain_t *) {}
 
 static void fake_apply_postfx(void *, const vgfx3d_postfx_chain_t *) {}
 
+static int64_t fake_native_texture_caps(void *) {
+    return RT_CANVAS3D_BACKEND_CAP_BC7 | RT_CANVAS3D_BACKEND_CAP_ASTC |
+           RT_CANVAS3D_BACKEND_CAP_ETC2;
+}
+
 static vgfx3d_backend_t make_fake_gpu_backend() {
     vgfx3d_backend_t backend = {};
     backend.name = "testgpu";
@@ -250,6 +255,24 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "BackendSupports rejects unknown capability names");
 }
 
+static void test_gpu_backend_native_texture_capability_hook() {
+    vgfx3d_backend_t fake_gpu_backend = make_fake_gpu_backend();
+    rt_canvas3d canvas = {};
+    fake_gpu_backend.get_native_texture_caps = fake_native_texture_caps;
+    canvas.backend = &fake_gpu_backend;
+
+    int64_t caps = rt_canvas3d_get_backend_capabilities(&canvas);
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC7) != 0,
+                "native texture hook advertises BC7 compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ASTC) != 0,
+                "native texture hook advertises ASTC compressed upload");
+    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_ETC2) != 0,
+                "native texture hook advertises ETC2 compressed upload");
+    EXPECT_TRUE(backend_supports(&canvas, "bc7"), "BackendSupports reports hooked BC7 support");
+    EXPECT_TRUE(backend_supports(&canvas, "astc"), "BackendSupports reports hooked ASTC support");
+    EXPECT_TRUE(backend_supports(&canvas, "etc2"), "BackendSupports reports hooked ETC2 support");
+}
+
 static void test_frustum_culling_aliases_share_state() {
     rt_canvas3d canvas = {};
 
@@ -301,6 +324,7 @@ int main() {
     test_null_canvas_has_no_capabilities();
     test_software_backend_reports_canvas_fallback_features();
     test_gpu_backend_capability_bits_and_names();
+    test_gpu_backend_native_texture_capability_hook();
     test_frustum_culling_aliases_share_state();
     test_canvas_render_state_sanitizes_inputs();
 

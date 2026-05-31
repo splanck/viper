@@ -107,7 +107,7 @@ in `vgfx3d_backend_metal.m`), so that probe is new Phase-11 work.
 ### Phase 1 — concurrency
 | ID | Implement | Test |
 |---|---|---|
-| MTL-1-1 | Worker pool on `rt_platform.h` pthreads; Apple-Clang atomics; Apple-Silicon `__dmb(_ARM64_BARRIER_ISH)` barriers | TSan-clean stress run on macOS |
+| MTL-1-1 | Worker pool on `rt_platform.h` pthreads; Apple-Clang atomics; Apple-Silicon `__dmb(_ARM64_BARRIER_ISH)` barriers | `scripts/g3d_tsan_concurrency_lane.sh --no-configure` passed 9/9 under ThreadSanitizer on Apple M4 Max |
 | MTL-1-2 | Workers call `newTextureWithDescriptor:`/`newBufferWithBytes:`; encode/present on the main commit queue | `runFrames` parity pool on/off on macOS |
 
 ### Phase 2 — floating origin
@@ -162,7 +162,7 @@ existing 256-bone palette buffer). No new MSL/resource work expected.
 - [ ] `build_viper_mac.sh` + `build_demos_mac.sh` succeed (Apple Clang)
 - [ ] `ctest -L graphics3d` green on macOS for every shipped phase
 - [ ] each new feature has an MSL path + capability string + software-baseline diff
-- [ ] async upload clean under churn (no Metal validation errors, no leak); TSan-clean job system on Apple Silicon
+- [ ] async upload clean under churn (no Metal validation errors, no leak); TSan-clean job system on Apple Silicon recorded by NL3-004
 - [ ] CAMetalLayer resize + offscreen RTT finalization correct; direct/overlay split preserved
 - [ ] compressed-texture path branches correctly by GPU family (BC on Intel/AMD, ASTC/ETC2 on Apple Silicon, software fallback otherwise)
 - [ ] perf baseline recorded on named Mac reference hardware (note Apple Silicon vs Intel)

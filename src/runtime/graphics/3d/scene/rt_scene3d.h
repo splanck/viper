@@ -58,6 +58,13 @@ void *rt_scene3d_query_aabb(void *scene, void *min, void *max);
 void *rt_scene3d_query_sphere(void *scene, void *center, double radius);
 /// @brief Return the closest visible mesh node hit by the world-space ray, or NULL.
 void *rt_scene3d_raycast_nodes(void *scene, void *origin, void *direction, double max_distance);
+/// @brief Add an authored interior visibility zone and return its zero-based index.
+int64_t rt_scene3d_add_visibility_zone(void *scene, rt_string name, void *min, void *max);
+/// @brief Add a directed or bidirectional portal between visibility zones.
+int64_t rt_scene3d_add_visibility_portal(void *scene,
+                                         int64_t from_zone,
+                                         int64_t to_zone,
+                                         int8_t bidirectional);
 /// @brief Render every visible drawable node in the scene from @p camera onto @p canvas3d.
 void rt_scene3d_draw(void *scene, void *canvas3d, void *camera);
 /// @brief Detach all children of the root (does not delete the root itself).
@@ -163,12 +170,24 @@ int64_t rt_scene_node3d_get_lod_count(void *node);
 double rt_scene_node3d_get_lod_distance(void *node, int64_t index);
 /// @brief Get the mesh used for the @p index-th LOD entry.
 void *rt_scene_node3d_get_lod_mesh(void *node, int64_t index);
+/// @brief Mark the @p index-th LOD mesh payload resident/nonresident.
+void rt_scene_node3d_set_lod_resident(void *node, int64_t index, int8_t resident);
+/// @brief Return whether the @p index-th LOD mesh payload is resident.
+int8_t rt_scene_node3d_get_lod_resident(void *node, int64_t index);
+/// @brief Return estimated resident bytes for the @p index-th LOD mesh.
+int64_t rt_scene_node3d_get_lod_resident_bytes(void *node, int64_t index);
 
 /* Scene3D — frustum culling stats */
 /// @brief Number of nodes culled by the frustum during the most recent Draw (perf metric).
 int64_t rt_scene3d_get_culled_count(void *scene);
 /// @brief Number of drawable nodes submitted by the most recent Draw.
 int64_t rt_scene3d_get_visible_node_count(void *scene);
+/// @brief Number of drawable nodes skipped by the portal/PVS visibility mask in the latest Draw.
+int64_t rt_scene3d_get_pvs_culled_count(void *scene);
+/// @brief Number of authored visibility zones.
+int64_t rt_scene3d_get_visibility_zone_count(void *scene);
+/// @brief Number of directed visibility portal links.
+int64_t rt_scene3d_get_visibility_portal_count(void *scene);
 /// @brief Total number of nodes in the scene graph.
 int64_t rt_scene3d_get_node_count(void *scene);
 

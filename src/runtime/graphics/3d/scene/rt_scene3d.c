@@ -88,11 +88,23 @@ static void scene3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Mark the spatial index fully stale: a topology change forces a full BVH rebuild.
 static void scene3d_mark_spatial_dirty(rt_scene3d *scene) {
     if (!scene)
         return;
     scene->spatial_index.dirty = 1;
     scene->spatial_index.valid = 0;
+    scene->spatial_index.topology_dirty = 1;
+}
+
+/// @brief Request a cheaper BVH refit (a node moved but the tree shape is unchanged).
+/// @details Only escalates to a full topology rebuild if the index is already invalid.
+static void scene3d_mark_spatial_refit_dirty(rt_scene3d *scene) {
+    if (!scene)
+        return;
+    scene->spatial_index.dirty = 1;
+    if (!scene->spatial_index.valid)
+        scene->spatial_index.topology_dirty = 1;
 }
 
 /// @brief Return @p value if it is a finite number, otherwise return @p fallback.
@@ -893,6 +905,7 @@ static int scene_node_const_stack_push(const rt_scene_node3d ***stack,
     return 1;
 }
 
+/// @brief Set @p owner as the owning scene on @p node and every descendant (iterative DFS).
 static void scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner) {
     rt_scene_node3d **stack = NULL;
     size_t count = 0;
@@ -917,6 +930,7 @@ static void scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d 
     free(stack);
 }
 
+/// @brief Clear @p owner from @p node and every descendant that still references it (iterative DFS).
 static void scene_node_clear_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner) {
     rt_scene_node3d **stack = NULL;
     size_t count = 0;
@@ -951,7 +965,7 @@ static void mark_dirty(rt_scene_node3d *node) {
     if (!node)
         return;
     node->world_dirty = 1;
-    scene3d_mark_spatial_dirty(node->owner_scene);
+    scene3d_mark_spatial_refit_dirty(node->owner_scene);
 }
 
 /// @brief Forward declaration for the recursive node-name search used by the animation
@@ -1181,6 +1195,7 @@ static void *node_anim_find_first_morph_targets(rt_scene_node3d *node) {
     return result;
 }
 
+/// @brief Apply morph-target weights from an animation down a node subtree (recursive).
 static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
                                               const float *weights,
                                               int32_t weight_count) {
@@ -1217,6 +1232,7 @@ static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
     free(stack);
 }
 
+/// @brief Whether @p node lies in @p root's subtree (walks parent links up to root).
 static int scene_node_is_descendant_of(rt_scene_node3d *root, rt_scene_node3d *node) {
     while (node) {
         if (node == root)
@@ -1226,6 +1242,9 @@ static int scene_node_is_descendant_of(rt_scene_node3d *root, rt_scene_node3d *n
     return 0;
 }
 
+/// @brief Resolve an animation channel's target node within @p root's subtree, by name.
+/// @details Caches the resolved node on the channel keyed by the target name, so repeated frames skip
+///          the by-name search unless the name changes.
 static rt_scene_node3d *node_anim_resolve_target(rt_scene_node3d *root,
                                                  rt_node_anim_channel3d *channel) {
     const char *target_name;
@@ -1855,6 +1874,7 @@ static void scene_bounds_reset(float out_min[3], float out_max[3]) {
     }
 }
 
+/// @brief Reset an AABB to the empty state (min = +DBL_MAX, max = -DBL_MAX) ready for accumulation.
 static void scene_bounds_reset_d(double out_min[3], double out_max[3]) {
     if (out_min) {
         out_min[0] = DBL_MAX;
@@ -1882,6 +1902,7 @@ static void scene_bounds_include_point(float bounds_min[3],
     }
 }
 
+/// @brief Expand an AABB in place to contain a point.
 static void scene_bounds_include_point_d(double bounds_min[3],
                                          double bounds_max[3],
                                          const double point[3]) {
@@ -1895,6 +1916,7 @@ static void scene_bounds_include_point_d(double bounds_min[3],
     }
 }
 
+/// @brief Transform a local AABB by a matrix into a world AABB by bounding its eight rotated corners.
 static int scene3d_transform_aabb_d(const float obj_min[3],
                                     const float obj_max[3],
                                     const double world_matrix[16],
@@ -2095,6 +2117,7 @@ static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target) 
     return NULL;
 }
 
+/// @brief Read a boxed Vec3 into a double[3], trapping with @p trap_message on a non-Vec3 handle.
 static int scene3d_read_vec3d(void *obj, double out[3], const char *trap_message) {
     if (!out)
         return 0;
@@ -2121,6 +2144,7 @@ static int scene3d_node_world_mesh_aabb(rt_scene_node3d *node,
     return scene3d_transform_aabb_d(local_min, local_max, node->world_matrix, world_min, world_max);
 }
 
+/// @brief Whether two AABBs overlap on all three axes.
 static int scene3d_aabb_intersects_aabb(const double a_min[3],
                                         const double a_max[3],
                                         const double b_min[3],
@@ -2129,6 +2153,7 @@ static int scene3d_aabb_intersects_aabb(const double a_min[3],
            a_max[1] >= b_min[1] && a_min[2] <= b_max[2] && a_max[2] >= b_min[2];
 }
 
+/// @brief Whether a sphere overlaps an AABB, via closest-point squared distance vs radius².
 static int scene3d_aabb_intersects_sphere(const double aabb_min[3],
                                           const double aabb_max[3],
                                           const double center[3],
@@ -2195,6 +2220,21 @@ typedef struct {
     int32_t capacity;
 } scene3d_spatial_candidate_list_t;
 
+typedef struct {
+    int32_t *items;
+    int32_t count;
+    int32_t capacity;
+} scene3d_spatial_node_stack_t;
+
+typedef struct {
+    uint8_t *visible_zones;
+    int32_t zone_count;
+    int32_t *culled_count;
+    int8_t active;
+} scene3d_pvs_context_t;
+
+/// @brief Push a (node, inherited-animator) frame onto the index-build traversal stack, growing it.
+/// @return 1 on success (or NULL no-op), 0 on overflow/allocation failure.
 static int scene_index_build_stack_push(scene_index_build_stack_item_t **stack,
                                         size_t *count,
                                         size_t *capacity,
@@ -2221,6 +2261,7 @@ static int scene_index_build_stack_push(scene_index_build_stack_item_t **stack,
     return 1;
 }
 
+/// @brief Ensure the spatial index can hold @p needed leaf entries (doubling growth).
 static int scene3d_spatial_ensure_capacity(rt_scene3d_spatial_index *index, int32_t needed) {
     int32_t new_capacity;
     rt_scene3d_spatial_entry *grown;
@@ -2245,6 +2286,59 @@ static int scene3d_spatial_ensure_capacity(rt_scene3d_spatial_index *index, int3
     return 1;
 }
 
+/// @brief Ensure the index's entry-index array (BVH leaf ordering) holds @p needed slots.
+static int scene3d_spatial_ensure_entry_index_capacity(rt_scene3d_spatial_index *index,
+                                                       int32_t needed) {
+    int32_t new_capacity;
+    int32_t *grown;
+    if (!index || needed < 0)
+        return 0;
+    if (needed <= index->entry_index_capacity)
+        return 1;
+    new_capacity = index->entry_index_capacity < 64 ? 64 : index->entry_index_capacity;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(index->entry_indices[0]))
+        return 0;
+    grown = (int32_t *)realloc(index->entry_indices,
+                               (size_t)new_capacity * sizeof(index->entry_indices[0]));
+    if (!grown)
+        return 0;
+    index->entry_indices = grown;
+    index->entry_index_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Ensure the index's BVH node array holds @p needed nodes (doubling growth).
+static int scene3d_spatial_ensure_bvh_node_capacity(rt_scene3d_spatial_index *index,
+                                                    int32_t needed) {
+    int32_t new_capacity;
+    rt_scene3d_spatial_bvh_node *grown;
+    if (!index || needed < 0)
+        return 0;
+    if (needed <= index->node_capacity)
+        return 1;
+    new_capacity = index->node_capacity < 64 ? 64 : index->node_capacity;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(index->nodes[0]))
+        return 0;
+    grown = (rt_scene3d_spatial_bvh_node *)realloc(
+        index->nodes, (size_t)new_capacity * sizeof(index->nodes[0]));
+    if (!grown)
+        return 0;
+    index->nodes = grown;
+    index->node_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Append a spatial entry to a query's candidate list, growing it as needed.
 static int scene3d_spatial_candidate_push(scene3d_spatial_candidate_list_t *list,
                                           rt_scene3d_spatial_entry *entry) {
     int32_t new_capacity;
@@ -2267,20 +2361,30 @@ static int scene3d_spatial_candidate_push(scene3d_spatial_candidate_list_t *list
     return 1;
 }
 
-static int scene3d_spatial_entry_compare_min_x(const void *a, const void *b) {
-    const rt_scene3d_spatial_entry *ea = (const rt_scene3d_spatial_entry *)a;
-    const rt_scene3d_spatial_entry *eb = (const rt_scene3d_spatial_entry *)b;
-    if (ea->world_min[0] < eb->world_min[0])
-        return -1;
-    if (ea->world_min[0] > eb->world_min[0])
+/// @brief Push a BVH node index onto a query's traversal stack, growing it as needed.
+static int scene3d_spatial_node_stack_push(scene3d_spatial_node_stack_t *stack,
+                                           int32_t node_index) {
+    int32_t new_capacity;
+    int32_t *grown;
+    if (!stack || node_index < 0)
         return 1;
-    if (ea->traversal_order < eb->traversal_order)
-        return -1;
-    if (ea->traversal_order > eb->traversal_order)
-        return 1;
-    return 0;
+    if (stack->count >= stack->capacity) {
+        new_capacity = stack->capacity < 64 ? 64 : stack->capacity * 2;
+        if (new_capacity <= stack->capacity ||
+            (size_t)new_capacity > SIZE_MAX / sizeof(stack->items[0]))
+            return 0;
+        grown =
+            (int32_t *)realloc(stack->items, (size_t)new_capacity * sizeof(stack->items[0]));
+        if (!grown)
+            return 0;
+        stack->items = grown;
+        stack->capacity = new_capacity;
+    }
+    stack->items[stack->count++] = node_index;
+    return 1;
 }
 
+/// @brief qsort comparator ordering candidate entries by their scene traversal order (stable draw order).
 static int scene3d_spatial_entry_ptr_compare_order(const void *a, const void *b) {
     const rt_scene3d_spatial_entry *ea = *(rt_scene3d_spatial_entry *const *)a;
     const rt_scene3d_spatial_entry *eb = *(rt_scene3d_spatial_entry *const *)b;
@@ -2291,6 +2395,170 @@ static int scene3d_spatial_entry_ptr_compare_order(const void *a, const void *b)
     return 0;
 }
 
+/// @brief Centroid of a spatial entry's world AABB along @p axis (used to choose BVH split planes).
+static double scene3d_spatial_entry_centroid_axis(const rt_scene3d_spatial_index *index,
+                                                  int32_t entry_index,
+                                                  int axis) {
+    const rt_scene3d_spatial_entry *entry;
+    if (!index || entry_index < 0 || entry_index >= index->count || axis < 0 || axis > 2)
+        return 0.0;
+    entry = &index->entries[entry_index];
+    return 0.5 * (entry->world_min[axis] + entry->world_max[axis]);
+}
+
+/// @brief Ordering predicate for two entry indices along @p axis (by centroid, traversal-order tiebreak).
+static int scene3d_spatial_entry_index_less(const rt_scene3d_spatial_index *index,
+                                            int32_t a,
+                                            int32_t b,
+                                            int axis) {
+    double ca = scene3d_spatial_entry_centroid_axis(index, a, axis);
+    double cb = scene3d_spatial_entry_centroid_axis(index, b, axis);
+    if (ca < cb)
+        return 1;
+    if (ca > cb)
+        return 0;
+    return index && a >= 0 && b >= 0 && a < index->count && b < index->count
+               ? index->entries[a].traversal_order < index->entries[b].traversal_order
+               : a < b;
+}
+
+/// @brief Quicksort a sub-range of the entry-index array by centroid along @p axis.
+/// @details In-place median-of-center-pivot quicksort; orders leaves so a BVH range can be split
+///          cleanly at its midpoint.
+static void scene3d_spatial_sort_entry_indices(rt_scene3d_spatial_index *index,
+                                               int32_t start,
+                                               int32_t count,
+                                               int axis) {
+    int32_t left;
+    int32_t right;
+    int32_t pivot;
+    int32_t pivot_value;
+    if (!index || !index->entry_indices || count <= 1 || axis < 0 || axis > 2)
+        return;
+    left = start;
+    right = start + count - 1;
+    pivot = index->entry_indices[start + count / 2];
+    while (left <= right) {
+        while (scene3d_spatial_entry_index_less(index, index->entry_indices[left], pivot, axis))
+            left++;
+        while (scene3d_spatial_entry_index_less(index, pivot, index->entry_indices[right], axis))
+            right--;
+        if (left <= right) {
+            int32_t tmp = index->entry_indices[left];
+            index->entry_indices[left] = index->entry_indices[right];
+            index->entry_indices[right] = tmp;
+            left++;
+            right--;
+        }
+    }
+    pivot_value = right - start + 1;
+    if (pivot_value > 1)
+        scene3d_spatial_sort_entry_indices(index, start, pivot_value, axis);
+    pivot_value = start + count - left;
+    if (pivot_value > 1)
+        scene3d_spatial_sort_entry_indices(index, left, pivot_value, axis);
+}
+
+/// @brief Expand AABB [out_min, out_max] in place to also contain AABB [in_min, in_max].
+static void scene3d_spatial_bounds_include(double out_min[3],
+                                           double out_max[3],
+                                           const double in_min[3],
+                                           const double in_max[3]) {
+    scene_bounds_include_point_d(out_min, out_max, in_min);
+    scene_bounds_include_point_d(out_min, out_max, in_max);
+}
+
+/// @brief Choose the BVH split axis as the one with the greatest spread of entry centroids.
+/// @details Splitting along the widest centroid extent yields tighter, better-balanced child nodes.
+static int scene3d_spatial_choose_split_axis(const rt_scene3d_spatial_index *index,
+                                             int32_t start,
+                                             int32_t count) {
+    double centroid_min[3];
+    double centroid_max[3];
+    double spread[3];
+    int axis = 0;
+    scene_bounds_reset_d(centroid_min, centroid_max);
+    for (int32_t i = start; i < start + count; ++i) {
+        int32_t entry_index = index->entry_indices[i];
+        double centroid[3] = {
+            scene3d_spatial_entry_centroid_axis(index, entry_index, 0),
+            scene3d_spatial_entry_centroid_axis(index, entry_index, 1),
+            scene3d_spatial_entry_centroid_axis(index, entry_index, 2)};
+        scene_bounds_include_point_d(centroid_min, centroid_max, centroid);
+    }
+    spread[0] = centroid_max[0] - centroid_min[0];
+    spread[1] = centroid_max[1] - centroid_min[1];
+    spread[2] = centroid_max[2] - centroid_min[2];
+    if (spread[1] > spread[axis])
+        axis = 1;
+    if (spread[2] > spread[axis])
+        axis = 2;
+    return axis;
+}
+
+/// @brief Allocate and zero-initialize a new BVH node (children set to -1). Returns its index or -1.
+static int scene3d_spatial_alloc_bvh_node(rt_scene3d_spatial_index *index) {
+    int32_t node_index;
+    if (!index || !scene3d_spatial_ensure_bvh_node_capacity(index, index->node_count + 1))
+        return -1;
+    node_index = index->node_count++;
+    memset(&index->nodes[node_index], 0, sizeof(index->nodes[node_index]));
+    index->nodes[node_index].left = -1;
+    index->nodes[node_index].right = -1;
+    return node_index;
+}
+
+/// @brief Recursively build a BVH subtree over entry-index range [start, start+count).
+/// @details Computes the node's bounds and cullable count; ranges of <= 8 entries become leaves,
+///          larger ranges are sorted on the widest centroid axis and split at the midpoint into two
+///          child nodes. Returns the node index, or -1 on allocation failure.
+static int scene3d_spatial_build_bvh_range(rt_scene3d_spatial_index *index,
+                                           int32_t start,
+                                           int32_t count) {
+    enum { SCENE3D_SPATIAL_LEAF_SIZE = 8 };
+    int32_t node_index;
+    rt_scene3d_spatial_bvh_node *node;
+    if (!index || start < 0 || count <= 0 || start > INT32_MAX - count)
+        return -1;
+    node_index = scene3d_spatial_alloc_bvh_node(index);
+    if (node_index < 0)
+        return -1;
+    node = &index->nodes[node_index];
+    scene_bounds_reset_d(node->world_min, node->world_max);
+    node->start = start;
+    node->count = count;
+    for (int32_t i = start; i < start + count; ++i) {
+        rt_scene3d_spatial_entry *entry = &index->entries[index->entry_indices[i]];
+        scene3d_spatial_bounds_include(
+            node->world_min, node->world_max, entry->world_min, entry->world_max);
+        if (entry->cullable)
+            node->cullable_count++;
+    }
+    if (count <= SCENE3D_SPATIAL_LEAF_SIZE) {
+        node->leaf = 1;
+        return node_index;
+    }
+    {
+        int axis = scene3d_spatial_choose_split_axis(index, start, count);
+        int32_t left_count = count / 2;
+        int32_t right_count = count - left_count;
+        int32_t left_node;
+        int32_t right_node;
+        scene3d_spatial_sort_entry_indices(index, start, count, axis);
+        left_node = scene3d_spatial_build_bvh_range(index, start, left_count);
+        right_node = scene3d_spatial_build_bvh_range(index, start + left_count, right_count);
+        if (left_node < 0 || right_node < 0)
+            return -1;
+        node = &index->nodes[node_index];
+        node->left = left_node;
+        node->right = right_node;
+    }
+    return node_index;
+}
+
+/// @brief Whether a mesh deforms at runtime (skeletal animator or morph targets present).
+/// @details Deforming meshes need looser/refit bounds each frame, so the spatial index treats them
+///          differently from static geometry during culling.
 static int scene3d_mesh_has_dynamic_deformation(rt_mesh3d *mesh, void *effective_animator) {
     return mesh &&
            (effective_animator != NULL || mesh->morph_targets_ref != NULL ||
@@ -2298,6 +2566,7 @@ static int scene3d_mesh_has_dynamic_deformation(rt_mesh3d *mesh, void *effective
             mesh->morph_shape_count > 0);
 }
 
+/// @brief Expand world AABB [out_min, out_max] in place to also contain [in_min, in_max].
 static void scene3d_bounds_include_world_aabb(double out_min[3],
                                               double out_max[3],
                                               const double in_min[3],
@@ -2308,6 +2577,7 @@ static void scene3d_bounds_include_world_aabb(double out_min[3],
     scene_bounds_include_point_d(out_min, out_max, in_max);
 }
 
+/// @brief Accumulate a single node's mesh world-space AABB into the running bounds.
 static int scene3d_include_mesh_world_bounds(rt_scene_node3d *node,
                                              void *mesh_obj,
                                              void *effective_animator,
@@ -2342,6 +2612,7 @@ static int scene3d_include_mesh_world_bounds(rt_scene_node3d *node,
     return 1;
 }
 
+/// @brief Compute the union world AABB of a node's drawable geometry and that of its descendants.
 static int scene3d_node_world_draw_union_aabb(rt_scene_node3d *node,
                                               void *effective_animator,
                                               double world_min[3],
@@ -2375,6 +2646,94 @@ static int scene3d_node_world_draw_union_aabb(rt_scene_node3d *node,
     return has_bounds;
 }
 
+static void *scene3d_effective_animator(rt_scene_node3d *node);
+static int scene3d_spatial_rebuild(rt_scene3d *scene);
+
+/// @brief Recompute a spatial entry's world AABB from its node's current transform/geometry.
+/// @return 1 if the bounds changed, 0 if unchanged (lets refit skip untouched subtrees).
+static int scene3d_spatial_refresh_entry_bounds(rt_scene3d_spatial_entry *entry) {
+    double world_min[3];
+    double world_max[3];
+    double radius = 0.0;
+    if (!entry || !entry->node || !entry->node->visible)
+        return 0;
+    recompute_world_matrix(entry->node);
+    if (!scene3d_node_world_draw_union_aabb(
+            entry->node, scene3d_effective_animator(entry->node), world_min, world_max, &radius))
+        return 0;
+    memcpy(entry->world_min, world_min, sizeof(entry->world_min));
+    memcpy(entry->world_max, world_max, sizeof(entry->world_max));
+    entry->cullable = radius > 0.0 ? 1 : 0;
+    entry->world_revision = entry->node->world_revision;
+    return 1;
+}
+
+/// @brief Recompute a BVH node's bounds bottom-up from its children/leaf entries (refit, no resplit).
+static void scene3d_spatial_refit_bvh_node(rt_scene3d_spatial_index *index, int32_t node_index) {
+    rt_scene3d_spatial_bvh_node *node;
+    if (!index || node_index < 0 || node_index >= index->node_count)
+        return;
+    node = &index->nodes[node_index];
+    scene_bounds_reset_d(node->world_min, node->world_max);
+    node->cullable_count = 0;
+    if (node->leaf) {
+        for (int32_t i = node->start; i < node->start + node->count; ++i) {
+            rt_scene3d_spatial_entry *entry = &index->entries[index->entry_indices[i]];
+            scene3d_spatial_bounds_include(
+                node->world_min, node->world_max, entry->world_min, entry->world_max);
+            if (entry->cullable)
+                node->cullable_count++;
+        }
+        return;
+    }
+    scene3d_spatial_refit_bvh_node(index, node->left);
+    scene3d_spatial_refit_bvh_node(index, node->right);
+    if (node->left >= 0 && node->left < index->node_count) {
+        rt_scene3d_spatial_bvh_node *left = &index->nodes[node->left];
+        scene3d_spatial_bounds_include(
+            node->world_min, node->world_max, left->world_min, left->world_max);
+        node->cullable_count += left->cullable_count;
+    }
+    if (node->right >= 0 && node->right < index->node_count) {
+        rt_scene3d_spatial_bvh_node *right = &index->nodes[node->right];
+        scene3d_spatial_bounds_include(
+            node->world_min, node->world_max, right->world_min, right->world_max);
+        node->cullable_count += right->cullable_count;
+    }
+}
+
+/// @brief Refit the whole BVH to current geometry without changing its topology.
+/// @details Refreshes each leaf entry's bounds then re-expands node bounds bottom-up — cheaper than a
+///          rebuild when only transforms moved. Returns 0 (signalling a rebuild is needed) if the
+///          tree shape no longer fits.
+static int scene3d_spatial_refit(rt_scene3d *scene) {
+    rt_scene3d_spatial_index *index;
+    int refreshed = 0;
+    if (!scene || !scene->root)
+        return 0;
+    index = &scene->spatial_index;
+    if (!index->valid || index->topology_dirty)
+        return scene3d_spatial_rebuild(scene);
+    for (int32_t i = 0; i < index->count; ++i) {
+        uint32_t before = index->entries[i].world_revision;
+        if (!scene3d_spatial_refresh_entry_bounds(&index->entries[i]))
+            return scene3d_spatial_rebuild(scene);
+        if (index->entries[i].world_revision != before)
+            refreshed = 1;
+    }
+    if (index->root_node >= 0)
+        scene3d_spatial_refit_bvh_node(index, index->root_node);
+    index->dirty = 0;
+    index->valid = 1;
+    index->topology_dirty = 0;
+    if (refreshed)
+        index->refit_count++;
+    index->last_candidate_count = 0;
+    index->last_prefiltered_count = 0;
+    return 1;
+}
+
+/// @brief Resolve the animator governing a node, inheriting the nearest ancestor's bound animator.
 static void *scene3d_effective_animator(rt_scene_node3d *node) {
     rt_scene_node3d *current = node;
     while (current) {
@@ -2385,6 +2744,7 @@ static void *scene3d_effective_animator(rt_scene_node3d *node) {
     return NULL;
 }
 
+/// @brief Add a drawable node to the spatial index as a leaf entry with its world bounds.
 static int scene3d_spatial_add_entry(rt_scene3d_spatial_index *index,
                                      rt_scene_node3d *node,
                                      int32_t traversal_order,
@@ -2402,9 +2762,14 @@ static int scene3d_spatial_add_entry(rt_scene3d_spatial_index *index,
     memcpy(entry->world_max, world_max, sizeof(entry->world_max));
     entry->traversal_order = traversal_order;
     entry->cullable = radius > 0.0 ? 1 : 0;
+    entry->world_revision = node->world_revision;
     return 1;
 }
 
+/// @brief Rebuild the scene's spatial BVH from scratch by traversing the node hierarchy.
+/// @details Collects every drawable node as a leaf entry (tracking its effective animator), then
+///          builds the BVH over them. Called when the topology dirty flag is set.
+/// @return 1 on success, 0 on allocation failure.
 static int scene3d_spatial_rebuild(rt_scene3d *scene) {
     scene_index_build_stack_item_t *stack = NULL;
     size_t count = 0;
@@ -2415,6 +2780,8 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
         return 0;
     index = &scene->spatial_index;
     index->count = 0;
+    index->node_count = 0;
+    index->root_node = -1;
     index->last_candidate_count = 0;
     index->last_prefiltered_count = 0;
     if (!scene_index_build_stack_push(&stack, &count, &capacity, scene->root, NULL)) {
@@ -2457,65 +2824,95 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
         }
     }
     free(stack);
-    if (index->count > 1)
-        qsort(index->entries,
-              (size_t)index->count,
-              sizeof(index->entries[0]),
-              scene3d_spatial_entry_compare_min_x);
+    if (!scene3d_spatial_ensure_entry_index_capacity(index, index->count)) {
+        rt_trap("Scene3D.SpatialIndex: BVH index allocation failed");
+        return 0;
+    }
+    for (int32_t i = 0; i < index->count; ++i)
+        index->entry_indices[i] = i;
+    if (index->count > 0) {
+        index->root_node = scene3d_spatial_build_bvh_range(index, 0, index->count);
+        if (index->root_node < 0) {
+            rt_trap("Scene3D.SpatialIndex: BVH node allocation failed");
+            return 0;
+        }
+    }
     index->dirty = 0;
+    index->topology_dirty = 0;
     index->valid = 1;
     index->build_count++;
     return 1;
 }
 
+/// @brief Ensure the spatial index is current before a query: rebuild on topology change, else refit.
+/// @return 1 if a usable index is available, 0 if it could not be built.
 static int scene3d_spatial_ensure(rt_scene3d *scene) {
     if (!scene || !scene->use_spatial_index)
         return 0;
     if (scene->spatial_index.valid && !scene->spatial_index.dirty)
         return 1;
+    if (scene->spatial_index.valid && scene->spatial_index.dirty &&
+        !scene->spatial_index.topology_dirty)
+        return scene3d_spatial_refit(scene);
     return scene3d_spatial_rebuild(scene);
 }
 
+/// @brief Collect spatial entries whose world bounds overlap a query AABB via BVH traversal.
+/// @details Descends only into nodes whose bounds intersect the query, so a large scene costs
+///          O(log n + hits) rather than scanning every node.
 static int scene3d_spatial_collect_aabb(rt_scene3d *scene,
                                         const double query_min[3],
                                         const double query_max[3],
                                         scene3d_spatial_candidate_list_t *out,
                                         int count_cullable_prefilter) {
     rt_scene3d_spatial_index *index;
+    scene3d_spatial_node_stack_t stack = {0};
     int32_t prefiltered = 0;
     if (!scene || !query_min || !query_max || !out)
         return 0;
     if (!scene3d_spatial_ensure(scene))
         return 0;
     index = &scene->spatial_index;
-    for (int32_t i = 0; i < index->count; ++i) {
-        rt_scene3d_spatial_entry *entry = &index->entries[i];
-        if (entry->world_min[0] > query_max[0]) {
-            if (count_cullable_prefilter) {
-                for (int32_t j = i; j < index->count; ++j)
-                    if (index->entries[j].cullable)
+    if (index->root_node >= 0 &&
+        !scene3d_spatial_node_stack_push(&stack, index->root_node)) {
+        rt_trap("Scene3D.SpatialIndex: BVH traversal stack allocation failed");
+        return 0;
+    }
+    while (stack.count > 0) {
+        rt_scene3d_spatial_bvh_node *node;
+        int32_t node_index = stack.items[--stack.count];
+        if (node_index < 0 || node_index >= index->node_count)
+            continue;
+        node = &index->nodes[node_index];
+        if (!scene3d_aabb_intersects_aabb(node->world_min, node->world_max, query_min, query_max)) {
+            prefiltered += count_cullable_prefilter ? node->cullable_count : node->count;
+            continue;
+        }
+        if (node->leaf) {
+            for (int32_t i = node->start; i < node->start + node->count; ++i) {
+                rt_scene3d_spatial_entry *entry = &index->entries[index->entry_indices[i]];
+                if (!scene3d_aabb_intersects_aabb(
+                        entry->world_min, entry->world_max, query_min, query_max)) {
+                    if (!count_cullable_prefilter || entry->cullable)
                         prefiltered++;
-            } else {
-                prefiltered += index->count - i;
+                    continue;
+                }
+                if (!scene3d_spatial_candidate_push(out, entry)) {
+                    rt_trap("Scene3D.SpatialIndex: candidate allocation failed");
+                    free(stack.items);
+                    return 0;
+                }
             }
-            break;
-        }
-        if (entry->world_max[0] < query_min[0]) {
-            if (!count_cullable_prefilter || entry->cullable)
-                prefiltered++;
-            continue;
-        }
-        if (!scene3d_aabb_intersects_aabb(
-                entry->world_min, entry->world_max, query_min, query_max)) {
-            if (!count_cullable_prefilter || entry->cullable)
-                prefiltered++;
-            continue;
-        }
-        if (!scene3d_spatial_candidate_push(out, entry)) {
-            rt_trap("Scene3D.SpatialIndex: candidate allocation failed");
-            return 0;
+        } else {
+            if (!scene3d_spatial_node_stack_push(&stack, node->right) ||
+                !scene3d_spatial_node_stack_push(&stack, node->left)) {
+                rt_trap("Scene3D.SpatialIndex: BVH traversal stack allocation failed");
+                free(stack.items);
+                return 0;
+            }
         }
     }
+    free(stack.items);
     if (out->count > 1)
         qsort(out->items,
               (size_t)out->count,
@@ -2526,6 +2923,7 @@ static int scene3d_spatial_collect_aabb(rt_scene3d *scene,
     return 1;
 }
 
+/// @brief Collect every spatial entry (no spatial filtering) into the candidate list.
 static int scene3d_spatial_collect_all(rt_scene3d *scene, scene3d_spatial_candidate_list_t *out) {
     rt_scene3d_spatial_index *index;
     if (!scene || !out)
@@ -2549,6 +2947,146 @@ static int scene3d_spatial_collect_all(rt_scene3d *scene, scene3d_spatial_candid
     return 1;
 }
 
+static int scene3d_visibility_zone_ensure_capacity(rt_scene3d *scene, int32_t needed) {
+    int32_t new_capacity;
+    rt_scene3d_visibility_zone *grown;
+    if (!scene || needed < 0)
+        return 0;
+    if (needed <= scene->visibility_zone_capacity)
+        return 1;
+    new_capacity = scene->visibility_zone_capacity < 8 ? 8 : scene->visibility_zone_capacity;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(scene->visibility_zones[0]))
+        return 0;
+    grown = (rt_scene3d_visibility_zone *)realloc(
+        scene->visibility_zones, (size_t)new_capacity * sizeof(scene->visibility_zones[0]));
+    if (!grown)
+        return 0;
+    scene->visibility_zones = grown;
+    scene->visibility_zone_capacity = new_capacity;
+    return 1;
+}
+
+static int scene3d_visibility_portal_ensure_capacity(rt_scene3d *scene, int32_t needed) {
+    int32_t new_capacity;
+    rt_scene3d_visibility_portal *grown;
+    if (!scene || needed < 0)
+        return 0;
+    if (needed <= scene->visibility_portal_capacity)
+        return 1;
+    new_capacity =
+        scene->visibility_portal_capacity < 8 ? 8 : scene->visibility_portal_capacity;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(scene->visibility_portals[0]))
+        return 0;
+    grown = (rt_scene3d_visibility_portal *)realloc(
+        scene->visibility_portals,
+        (size_t)new_capacity * sizeof(scene->visibility_portals[0]));
+    if (!grown)
+        return 0;
+    scene->visibility_portals = grown;
+    scene->visibility_portal_capacity = new_capacity;
+    return 1;
+}
+
+static int scene3d_visibility_zone_contains_point(const rt_scene3d_visibility_zone *zone,
+                                                  const double point[3]) {
+    return zone && point && point[0] >= zone->world_min[0] && point[0] <= zone->world_max[0] &&
+           point[1] >= zone->world_min[1] && point[1] <= zone->world_max[1] &&
+           point[2] >= zone->world_min[2] && point[2] <= zone->world_max[2];
+}
+
+static int scene3d_visibility_find_camera_zone(const rt_scene3d *scene, const rt_camera3d *cam) {
+    double eye[3];
+    if (!scene || !cam)
+        return -1;
+    eye[0] = cam->eye[0] + cam->shake_offset[0];
+    eye[1] = cam->eye[1] + cam->shake_offset[1];
+    eye[2] = cam->eye[2] + cam->shake_offset[2];
+    if (!isfinite(eye[0]) || !isfinite(eye[1]) || !isfinite(eye[2]))
+        return -1;
+    for (int32_t i = 0; i < scene->visibility_zone_count; ++i) {
+        if (scene3d_visibility_zone_contains_point(&scene->visibility_zones[i], eye))
+            return i;
+    }
+    return -1;
+}
+
+static int scene3d_build_pvs_context(rt_scene3d *scene,
+                                     rt_camera3d *cam,
+                                     scene3d_pvs_context_t *out) {
+    int32_t camera_zone;
+    int32_t *queue = NULL;
+    int32_t head = 0;
+    int32_t tail = 0;
+    if (!scene || !cam || !out || scene->visibility_zone_count <= 0)
+        return 0;
+    camera_zone = scene3d_visibility_find_camera_zone(scene, cam);
+    if (camera_zone < 0)
+        return 0;
+    out->visible_zones = (uint8_t *)calloc((size_t)scene->visibility_zone_count, 1);
+    queue = (int32_t *)malloc((size_t)scene->visibility_zone_count * sizeof(queue[0]));
+    if (!out->visible_zones || !queue) {
+        free(out->visible_zones);
+        free(queue);
+        memset(out, 0, sizeof(*out));
+        return 0;
+    }
+    out->zone_count = scene->visibility_zone_count;
+    out->active = 1;
+    out->visible_zones[camera_zone] = 1;
+    queue[tail++] = camera_zone;
+    while (head < tail) {
+        int32_t zone = queue[head++];
+        for (int32_t i = 0; i < scene->visibility_portal_count; ++i) {
+            const rt_scene3d_visibility_portal *portal = &scene->visibility_portals[i];
+            if (portal->from_zone != zone || portal->to_zone < 0 ||
+                portal->to_zone >= scene->visibility_zone_count)
+                continue;
+            if (!out->visible_zones[portal->to_zone]) {
+                out->visible_zones[portal->to_zone] = 1;
+                queue[tail++] = portal->to_zone;
+            }
+        }
+    }
+    free(queue);
+    return 1;
+}
+
+static void scene3d_pvs_context_clear(scene3d_pvs_context_t *pvs) {
+    if (!pvs)
+        return;
+    free(pvs->visible_zones);
+    memset(pvs, 0, sizeof(*pvs));
+}
+
+static int scene3d_pvs_allows_aabb(const rt_scene3d *scene,
+                                   const scene3d_pvs_context_t *pvs,
+                                   const double world_min[3],
+                                   const double world_max[3]) {
+    int matched_zone = 0;
+    if (!scene || !pvs || !pvs->active || !pvs->visible_zones || !world_min || !world_max)
+        return 1;
+    for (int32_t i = 0; i < scene->visibility_zone_count && i < pvs->zone_count; ++i) {
+        const rt_scene3d_visibility_zone *zone = &scene->visibility_zones[i];
+        if (!scene3d_aabb_intersects_aabb(world_min, world_max, zone->world_min, zone->world_max))
+            continue;
+        matched_zone = 1;
+        if (pvs->visible_zones[i])
+            return 1;
+    }
+    return matched_zone ? 0 : 1;
+}
+
+/// @brief Compute the AABB swept by a ray segment (origin to origin + dir·length) for broadphase culling.
 static int scene3d_ray_sweep_bounds(const double origin[3],
                                     const double direction[3],
                                     double max_distance,
@@ -2570,6 +3108,9 @@ static int scene3d_ray_sweep_bounds(const double origin[3],
     return 1;
 }
 
+/// @brief Compute a world-space AABB enclosing the view frustum of a view-projection matrix.
+/// @details Unprojects the eight clip-space corners through the inverse VP and bounds them, giving a
+///          coarse AABB the spatial index can use to reject off-screen nodes before exact culling.
 static int scene3d_frustum_bounds_from_vp(const float vp[16],
                                           double out_min[3],
                                           double out_max[3]) {
@@ -2624,6 +3165,11 @@ static void *scene3d_auto_lod_mesh(rt_scene_node3d *node,
                                    double radius,
                                    double distance);
 
+/// @brief Return true when a Mesh3D payload is resident and eligible for draw selection.
+static int scene3d_mesh_resident(void *mesh) {
+    return mesh && rt_mesh3d_get_resident(mesh) != 0;
+}
+
 /// @brief Push (node, inherited animator) onto a growable draw-traversal stack.
 /// @details Same iterative-traversal rationale and growth/return contract as
 ///          scene_bounds_stack_push: capacity doubles from 64; returns 1 on
@@ -2653,11 +3199,14 @@ static int scene_draw_stack_push(scene_draw_stack_item_t **stack,
     return 1;
 }
 
+/// @brief Draw a single node's own geometry (mesh + material) at its world transform.
+/// @details Does not recurse into children; the traversal/culling layer calls this per visible node.
 static void scene3d_draw_node_self(rt_scene_node3d *current,
                                    void *canvas3d,
                                    rt_canvas3d *canvas,
                                    rt_camera3d *cam,
                                    const vgfx3d_frustum_t *frustum,
+                                   const scene3d_pvs_context_t *pvs,
                                    int32_t *culled,
                                    int32_t *visible_nodes,
                                    const float *cam_pos,
@@ -2712,7 +3261,8 @@ static void scene3d_draw_node_self(rt_scene_node3d *current,
         if (!current->auto_lod_enabled && current->lod_count > 0 && has_camera_distance) {
             float dist = camera_distance;
             for (int32_t l = current->lod_count - 1; l >= 0; l--) {
-                if (dist >= (float)current->lod_levels[l].distance) {
+                if (dist >= (float)current->lod_levels[l].distance &&
+                    scene3d_mesh_resident(current->lod_levels[l].mesh)) {
                     draw_mesh = current->lod_levels[l].mesh;
                     break;
                 }
@@ -2721,21 +3271,26 @@ static void scene3d_draw_node_self(rt_scene_node3d *current,
     }
 
     if (current->has_impostor && current->impostor_mesh && current->impostor_material &&
-        has_camera_distance && camera_distance >= (float)current->impostor_distance) {
+        has_camera_distance && camera_distance >= (float)current->impostor_distance &&
+        scene3d_mesh_resident(current->impostor_mesh)) {
         draw_mesh = current->impostor_mesh;
         draw_material = current->impostor_material;
     }
 
+    if (draw_mesh && !scene3d_mesh_resident(draw_mesh))
+        draw_mesh = NULL;
+
     if (draw_mesh)
         scene_mesh_bounds((rt_mesh3d *)draw_mesh, draw_min, draw_max, &draw_radius);
 
-    if (frustum && draw_mesh && draw_radius > 0.0f) {
+    if ((frustum || (pvs && pvs->active)) && draw_mesh && draw_radius > 0.0f) {
         rt_mesh3d *draw_mesh_impl = (rt_mesh3d *)draw_mesh;
         int has_dynamic_deformation =
             scene3d_mesh_has_dynamic_deformation(draw_mesh_impl, effective_animator);
         float cull_min[3] = {draw_min[0], draw_min[1], draw_min[2]};
         float cull_max[3] = {draw_max[0], draw_max[1], draw_max[2]};
         float world_min[3], world_max[3];
+        double world_min_d[3], world_max_d[3];
         if (has_dynamic_deformation) {
             float pad = draw_radius > 0.0f ? draw_radius * 0.5f : 0.0f;
             cull_min[0] -= pad;
@@ -2746,7 +3301,20 @@ static void scene3d_draw_node_self(rt_scene_node3d *current,
             cull_max[2] += pad;
         }
         vgfx3d_transform_aabb(cull_min, cull_max, current->world_matrix, world_min, world_max);
-        if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
+        world_min_d[0] = (double)world_min[0];
+        world_min_d[1] = (double)world_min[1];
+        world_min_d[2] = (double)world_min[2];
+        world_max_d[0] = (double)world_max[0];
+        world_max_d[1] = (double)world_max[1];
+        world_max_d[2] = (double)world_max[2];
+        if (pvs && pvs->active && !scene3d_pvs_allows_aabb(
+                                      current->owner_scene, pvs, world_min_d, world_max_d)) {
+            draw_self = 0;
+            if (culled)
+                (*culled)++;
+            if (pvs->culled_count)
+                (*pvs->culled_count)++;
+        } else if (frustum && vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
             draw_self = 0;
             if (culled)
                 (*culled)++;
@@ -2800,6 +3368,7 @@ static void draw_node(rt_scene_node3d *node,
                       rt_canvas3d *canvas,
                       rt_camera3d *cam,
                       const vgfx3d_frustum_t *frustum,
+                      const scene3d_pvs_context_t *pvs,
                       int32_t *culled,
                       int32_t *visible_nodes,
                       const float *cam_pos,
@@ -2828,6 +3397,7 @@ static void draw_node(rt_scene_node3d *node,
                                canvas,
                                cam,
                                frustum,
+                               pvs,
                                culled,
                                visible_nodes,
                                cam_pos,
@@ -2845,15 +3415,20 @@ static void draw_node(rt_scene_node3d *node,
     free(stack);
 }
 
+/// @brief Draw the scene using the spatial index for frustum culling.
+/// @details Gathers candidate nodes whose bounds intersect the camera frustum via the BVH, sorts them
+///          back into scene traversal order for stable draw ordering, and draws each. Falls back to a
+///          full traversal when the index is unavailable.
 static int draw_node_spatial(rt_scene3d *scene,
                              void *canvas3d,
                              rt_canvas3d *canvas,
                              rt_camera3d *cam,
                              const vgfx3d_frustum_t *frustum,
+                             const scene3d_pvs_context_t *pvs,
                              const float vp[16],
                              int32_t *culled,
                              int32_t *visible_nodes,
-    const float *cam_pos) {
+                             const float *cam_pos) {
     scene3d_spatial_candidate_list_t candidates = {0};
     double frustum_min[3];
     double frustum_max[3];
@@ -2877,6 +3452,7 @@ static int draw_node_spatial(rt_scene3d *scene,
                                canvas,
                                cam,
                                frustum,
+                               pvs,
                                culled,
                                visible_nodes,
                                cam_pos,
@@ -3093,6 +3669,8 @@ void *rt_scene_node3d_get_world_position(void *obj) {
     return rt_vec3_new(x, y, z);
 }
 
+/// @brief Read a node's world-space position into @p x / @p y / @p z (resolving its world transform).
+/// @return 1 on success, 0 (no writes) for an invalid handle.
 int8_t rt_scene_node3d_get_world_position_components(void *obj, double *x, double *y, double *z) {
     rt_scene_node3d *n = scene_node3d_checked(obj);
     if (!x || !y || !z)
@@ -3181,6 +3759,9 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
     return 1;
 }
 
+/// @brief Attach @p child_obj under @p obj, retaining it and propagating owner/dirty state.
+/// @details Updates the child's parent link and owning scene, and marks the spatial index topology
+///          dirty so the BVH rebuilds. Ignores cycles and invalid handles.
 void rt_scene_node3d_add_child(void *obj, void *child_obj) {
     (void)rt_scene_node3d_try_add_child(obj, child_obj);
 }
@@ -3536,9 +4117,27 @@ static void rt_scene3d_finalize(void *obj) {
     }
     scene3d_release_ref((void **)&scene->root);
     free(scene->spatial_index.entries);
+    free(scene->spatial_index.entry_indices);
+    free(scene->spatial_index.nodes);
     scene->spatial_index.entries = NULL;
+    scene->spatial_index.entry_indices = NULL;
+    scene->spatial_index.nodes = NULL;
     scene->spatial_index.count = 0;
     scene->spatial_index.capacity = 0;
+    scene->spatial_index.entry_index_capacity = 0;
+    scene->spatial_index.node_count = 0;
+    scene->spatial_index.node_capacity = 0;
+    scene->spatial_index.root_node = -1;
+    for (int32_t i = 0; i < scene->visibility_zone_count; ++i)
+        scene3d_release_ref((void **)&scene->visibility_zones[i].name);
+    free(scene->visibility_zones);
+    free(scene->visibility_portals);
+    scene->visibility_zones = NULL;
+    scene->visibility_portals = NULL;
+    scene->visibility_zone_count = 0;
+    scene->visibility_zone_capacity = 0;
+    scene->visibility_portal_count = 0;
+    scene->visibility_portal_capacity = 0;
 }
 
 /// @brief Allocate a fresh Scene3D with an empty root node and no lights or skybox.
@@ -3561,9 +4160,12 @@ void *rt_scene3d_new(void) {
     s->node_count = 1; /* root */
     s->last_culled_count = 0;
     s->last_visible_node_count = 0;
+    s->last_pvs_culled_count = 0;
     s->use_spatial_index = 1;
     memset(&s->spatial_index, 0, sizeof(s->spatial_index));
+    s->spatial_index.root_node = -1;
     s->spatial_index.dirty = 1;
+    s->spatial_index.topology_dirty = 1;
     rt_obj_set_finalizer(s, rt_scene3d_finalize);
     return s;
 }
@@ -3586,6 +4188,7 @@ int8_t rt_scene3d_try_add(void *obj, void *node) {
     return n->parent == s->root ? 1 : 0;
 }
 
+/// @brief Add a top-level node to the scene (under its root), taking ownership and dirtying the index.
 void rt_scene3d_add(void *obj, void *node) {
     (void)rt_scene3d_try_add(obj, node);
 }
@@ -3838,6 +4441,76 @@ void *rt_scene3d_raycast_nodes(void *obj,
     return best;
 }
 
+/// @brief Add an authored PVS visibility zone AABB; returns its zero-based index, or -1.
+int64_t rt_scene3d_add_visibility_zone(void *obj, rt_string name, void *min_obj, void *max_obj) {
+    rt_scene3d *s = scene3d_checked(obj);
+    double a[3];
+    double b[3];
+    rt_scene3d_visibility_zone *zone;
+    if (!s)
+        return -1;
+    if (!scene3d_read_vec3d(min_obj, a, "Scene3D.AddVisibilityZone: min must be Vec3") ||
+        !scene3d_read_vec3d(max_obj, b, "Scene3D.AddVisibilityZone: max must be Vec3"))
+        return -1;
+    if (s->visibility_zone_count == INT32_MAX ||
+        !scene3d_visibility_zone_ensure_capacity(s, s->visibility_zone_count + 1)) {
+        rt_trap("Scene3D.AddVisibilityZone: allocation failed");
+        return -1;
+    }
+    zone = &s->visibility_zones[s->visibility_zone_count];
+    memset(zone, 0, sizeof(*zone));
+    for (int i = 0; i < 3; ++i) {
+        zone->world_min[i] = fmin(a[i], b[i]);
+        zone->world_max[i] = fmax(a[i], b[i]);
+    }
+    if (!name)
+        name = rt_const_cstr("");
+    rt_obj_retain_maybe(name);
+    zone->name = name;
+    return s->visibility_zone_count++;
+}
+
+static int scene3d_add_visibility_portal_directed(rt_scene3d *s, int32_t from_zone, int32_t to_zone) {
+    rt_scene3d_visibility_portal *portal;
+    if (!s || from_zone < 0 || to_zone < 0 || from_zone >= s->visibility_zone_count ||
+        to_zone >= s->visibility_zone_count)
+        return 0;
+    if (s->visibility_portal_count == INT32_MAX ||
+        !scene3d_visibility_portal_ensure_capacity(s, s->visibility_portal_count + 1))
+        return 0;
+    portal = &s->visibility_portals[s->visibility_portal_count++];
+    portal->from_zone = from_zone;
+    portal->to_zone = to_zone;
+    return 1;
+}
+
+/// @brief Add a directed or bidirectional visibility portal between authored zones.
+int64_t rt_scene3d_add_visibility_portal(void *obj,
+                                         int64_t from_zone,
+                                         int64_t to_zone,
+                                         int8_t bidirectional) {
+    rt_scene3d *s = scene3d_checked(obj);
+    int32_t from_i;
+    int32_t to_i;
+    int32_t first_index;
+    if (!s || from_zone < 0 || to_zone < 0 || from_zone > INT32_MAX || to_zone > INT32_MAX)
+        return -1;
+    from_i = (int32_t)from_zone;
+    to_i = (int32_t)to_zone;
+    if (from_i >= s->visibility_zone_count || to_i >= s->visibility_zone_count)
+        return -1;
+    first_index = s->visibility_portal_count;
+    if (!scene3d_add_visibility_portal_directed(s, from_i, to_i)) {
+        rt_trap("Scene3D.AddVisibilityPortal: allocation failed");
+        return -1;
+    }
+    if (bidirectional && !scene3d_add_visibility_portal_directed(s, to_i, from_i)) {
+        rt_trap("Scene3D.AddVisibilityPortal: allocation failed");
+        return -1;
+    }
+    return first_index;
+}
+
 /// @brief Helper to convert double[16] to float[16] for frustum extraction.
 static void mat4_d2f_local(const double *src, float *dst) {
     for (int i = 0; i < 16; i++)
@@ -3932,7 +4605,7 @@ static void *scene3d_auto_lod_mesh(rt_scene_node3d *node,
         screen_error_px = 1000000.0;
     for (int32_t i = node->lod_count - 1; i >= 0; --i) {
         double threshold = screen_error_px * (double)(node->lod_count - i);
-        if (projected_px <= threshold)
+        if (projected_px <= threshold && scene3d_mesh_resident(node->lod_levels[i].mesh))
             return node->lod_levels[i].mesh;
     }
     return NULL;
@@ -3996,6 +4669,8 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     vgfx3d_frustum_t frustum;
     int32_t culled = 0;
     int32_t visible_nodes = 0;
+    int32_t pvs_culled = 0;
+    scene3d_pvs_context_t pvs = {0};
 
     if (!s || !canvas || !cam)
         return;
@@ -4012,6 +4687,8 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     }
     scene3d_build_culling_vp(canvas, cam, vp);
     vgfx3d_frustum_extract(&frustum, vp);
+    if (scene3d_build_pvs_context(s, cam, &pvs))
+        pvs.culled_count = &pvs_culled;
 
     float cam_pos[3] = {scene3d_float_or_zero(cam->eye[0]),
                         scene3d_float_or_zero(cam->eye[1]),
@@ -4028,8 +4705,9 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
            scene_light_ptrs,
            (size_t)scene_light_count * sizeof(scene_light_ptrs[0]));
     if (!draw_node_spatial(
-            s, canvas3d, canvas, cam, &frustum, vp, &culled, &visible_nodes, cam_pos)) {
-        draw_node(s->root, canvas3d, canvas, cam, &frustum, &culled, &visible_nodes, cam_pos, NULL);
+            s, canvas3d, canvas, cam, &frustum, &pvs, vp, &culled, &visible_nodes, cam_pos)) {
+        draw_node(
+            s->root, canvas3d, canvas, cam, &frustum, &pvs, &culled, &visible_nodes, cam_pos, NULL);
     }
     if (started_frame)
         rt_canvas3d_end(canvas3d);
@@ -4038,7 +4716,9 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     memcpy(canvas->scene_light_storage, prev_scene_light_storage, sizeof(prev_scene_light_storage));
     s->last_culled_count = culled;
     s->last_visible_node_count = visible_nodes;
+    s->last_pvs_culled_count = pvs_culled;
     canvas->last_occluded_draw_count += culled;
+    scene3d_pvs_context_clear(&pvs);
 }
 
 /// @brief Detach and release every child of the root so the scene is empty.
@@ -4099,6 +4779,24 @@ int64_t rt_scene3d_get_culled_count(void *obj) {
 int64_t rt_scene3d_get_visible_node_count(void *obj) {
     rt_scene3d *scene = scene3d_checked(obj);
     return scene ? scene->last_visible_node_count : 0;
+}
+
+/// @brief Number of drawable mesh nodes skipped by portal/PVS visibility in the most recent draw.
+int64_t rt_scene3d_get_pvs_culled_count(void *obj) {
+    rt_scene3d *scene = scene3d_checked(obj);
+    return scene ? scene->last_pvs_culled_count : 0;
+}
+
+/// @brief Number of authored visibility zones in the scene.
+int64_t rt_scene3d_get_visibility_zone_count(void *obj) {
+    rt_scene3d *scene = scene3d_checked(obj);
+    return scene ? scene->visibility_zone_count : 0;
+}
+
+/// @brief Number of directed visibility portal links in the scene.
+int64_t rt_scene3d_get_visibility_portal_count(void *obj) {
+    rt_scene3d *scene = scene3d_checked(obj);
+    return scene ? scene->visibility_portal_count : 0;
 }
 
 /*==========================================================================
@@ -4317,6 +5015,37 @@ void *rt_scene_node3d_get_lod_mesh(void *obj, int64_t index) {
     if (index < 0 || index >= node->lod_count)
         return NULL;
     return node->lod_levels[index].mesh;
+}
+
+/// @brief Toggle resident state for the mesh backing the @p index-th LOD entry.
+void rt_scene_node3d_set_lod_resident(void *obj, int64_t index, int8_t resident) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
+        return;
+    if (index < 0 || index >= node->lod_count)
+        return;
+    rt_mesh3d_set_resident(node->lod_levels[index].mesh, resident);
+    scene3d_mark_spatial_dirty(node->owner_scene);
+}
+
+/// @brief Return whether the @p index-th LOD mesh payload is resident.
+int8_t rt_scene_node3d_get_lod_resident(void *obj, int64_t index) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
+        return 0;
+    if (index < 0 || index >= node->lod_count)
+        return 0;
+    return rt_mesh3d_get_resident(node->lod_levels[index].mesh);
+}
+
+/// @brief Estimated resident payload bytes for the @p index-th LOD mesh.
+int64_t rt_scene_node3d_get_lod_resident_bytes(void *obj, int64_t index) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
+        return 0;
+    if (index < 0 || index >= node->lod_count)
+        return 0;
+    return rt_mesh3d_get_resident_bytes(node->lod_levels[index].mesh);
 }
 
 //=============================================================================

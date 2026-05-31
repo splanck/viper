@@ -60,6 +60,7 @@ and joint integration.
 | `SweepCapsule(a, b, radius, delta, mask)` | `Object(Object, Object, Double, Object, Integer)` | Sweep a capsule segment and return the first `PhysicsHit3D` or `Nothing` |
 | `OverlapSphere(center, radius, mask)` | `Object(Object, Double, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
 | `OverlapAABB(min, max, mask)` | `Object(Object, Object, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
+| `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift registered bodies and contact/query state by `-delta` |
 | `GetCollisionBodyA(i)`    | `Object(Integer)`     | Get the first body in contact pair `i` |
 | `GetCollisionBodyB(i)`    | `Object(Integer)`     | Get the second body in contact pair `i` |
 | `GetCollisionNormal(i)`   | `Object(Integer)`     | Get the contact normal as a `Vec3` |
@@ -78,11 +79,17 @@ and joint integration.
   receive gravity or force integration.
 - `Add(body)` keeps the historical void API. `TryAdd(body)` returns `false` for invalid handles or allocation failure, returns `true` for already-present bodies, and leaves the body count stable on duplicates.
 - World storage for bodies, contacts, contact events, and joints grows on demand from production-sized initial capacities. Query result lists store a bounded nearest/result prefix for predictable allocation behavior, while `PhysicsHitList3D.TotalCount` and `Truncated` expose whether more matches existed.
-- Collision detection uses a sweep-and-prune broadphase before shape-specific narrow-phase tests. Box colliders honor body and compound-child orientation.
+- Collision detection uses a body-centric sweep-and-prune broadphase before shape-specific narrow-phase tests. This is intentionally separate from the render-facing `Scene3D` BVH: physics indexes all collider bodies, including non-render bodies, and applies solver filters such as static-static rejection, layer/mask checks, trigger state, and contact-event identity.
 - The unit lane includes a sparse 321-body step stress that exercises body
   storage growth, broadphase scratch growth, and dynamic integration without
   producing contacts.
-- World queries reuse the broadphase and honor each body's collision scale before running shape tests.
+- World queries reuse the physics broadphase/query cache and honor each body's collision scale before running shape tests.
+- `RebaseOrigin(dx, dy, dz)` is the low-level floating-origin hook. It shifts all
+  registered body positions, live/previous collision contact points, and
+  enter/stay/exit contact buffers by `-delta`, invalidates query broadphase
+  caches, and clears cached boxed collision-event objects. Treat existing
+  `PhysicsHitList3D`, `PhysicsHit3D`, and `CollisionEvent3D` objects as
+  pre-rebase snapshots and query again after the boundary.
 - `Raycast` and `RaycastAll` test collider geometry, not only broadphase bounds: boxes, spheres, capsules, compound leaves, mesh/convex triangles, and heightfields report nearest shape hits. Mesh raycasts build and reuse a per-mesh BVH, and heightfield raycasts adapt their step to the heightfield cell spacing.
 - Mesh colliders use the per-mesh BVH to prune candidate triangles for sphere,
   capsule, and box contacts, with a full triangle scan retained as a correctness

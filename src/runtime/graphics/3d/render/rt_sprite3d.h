@@ -36,6 +36,8 @@ void rt_sprite3d_set_anchor(void *spr, double ax, double ay);
 /// @brief Select a sub-rectangle (fx,fy,fw,fh) of the texture as the frame
 ///        (for sprite-sheet animation).
 void rt_sprite3d_set_frame(void *spr, int64_t fx, int64_t fy, int64_t fw, int64_t fh);
+/// @brief Shift sprite world-space state by the inverse of a floating-origin delta.
+void rt_sprite3d_rebase_origin(void *spr, double dx, double dy, double dz);
 /// @brief Draw @p sprite billboarded toward @p camera onto the 3D canvas.
 void rt_canvas3d_draw_sprite3d(void *canvas, void *sprite, void *camera);
 

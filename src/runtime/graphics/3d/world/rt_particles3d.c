@@ -62,8 +62,8 @@ extern int rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
  *=========================================================================*/
 
 typedef struct {
-    float pos[3];
-    float vel[3];
+    double pos[3];
+    double vel[3];
     float color[4]; /* current RGBA */
     float size;
     float life;
@@ -637,23 +637,23 @@ static void spawn_particle(rt_particles3d *ps) {
     vgfx3d_particle_t *p = &ps->particles[ps->count++];
 
     /* Position: emitter origin + shape offset */
-    p->pos[0] = (float)ps->position[0];
-    p->pos[1] = (float)ps->position[1];
-    p->pos[2] = (float)ps->position[2];
+    p->pos[0] = ps->position[0];
+    p->pos[1] = ps->position[1];
+    p->pos[2] = ps->position[2];
 
     if (ps->emitter_shape == 1) /* sphere */
     {
-        float r = cbrtf(randf(ps)) * (float)ps->emitter_size[0];
-        float theta = randf(ps) * (float)(2.0 * M_PI);
-        float phi = acosf(1.0f - 2.0f * randf(ps));
-        p->pos[0] += r * sinf(phi) * cosf(theta);
-        p->pos[1] += r * cosf(phi);
-        p->pos[2] += r * sinf(phi) * sinf(theta);
+        double r = cbrt((double)randf(ps)) * ps->emitter_size[0];
+        double theta = (double)randf(ps) * (2.0 * M_PI);
+        double phi = acos(1.0 - 2.0 * (double)randf(ps));
+        p->pos[0] += r * sin(phi) * cos(theta);
+        p->pos[1] += r * cos(phi);
+        p->pos[2] += r * sin(phi) * sin(theta);
     } else if (ps->emitter_shape == 2) /* box */
     {
-        p->pos[0] += (randf(ps) - 0.5f) * 2.0f * (float)ps->emitter_size[0];
-        p->pos[1] += (randf(ps) - 0.5f) * 2.0f * (float)ps->emitter_size[1];
-        p->pos[2] += (randf(ps) - 0.5f) * 2.0f * (float)ps->emitter_size[2];
+        p->pos[0] += ((double)randf(ps) - 0.5) * 2.0 * ps->emitter_size[0];
+        p->pos[1] += ((double)randf(ps) - 0.5) * 2.0 * ps->emitter_size[1];
+        p->pos[2] += ((double)randf(ps) - 0.5) * 2.0 * ps->emitter_size[2];
     }
 
     /* Velocity */
@@ -715,17 +715,18 @@ void rt_particles3d_rebase_origin(void *o, double dx, double dy, double dz) {
         particles_clamp_abs_or(ps->position[2] - delta[2], 0.0, PARTICLES3D_WORLD_ABS_MAX);
 
     for (int32_t i = 0; i < ps->count;) {
-        double x = (double)ps->particles[i].pos[0] - delta[0];
-        double y = (double)ps->particles[i].pos[1] - delta[1];
-        double z = (double)ps->particles[i].pos[2] - delta[2];
-        if (!isfinite(x) || !isfinite(y) || !isfinite(z) || fabs(x) > (double)FLT_MAX ||
-            fabs(y) > (double)FLT_MAX || fabs(z) > (double)FLT_MAX) {
+        double x = ps->particles[i].pos[0] - delta[0];
+        double y = ps->particles[i].pos[1] - delta[1];
+        double z = ps->particles[i].pos[2] - delta[2];
+        if (!isfinite(x) || !isfinite(y) || !isfinite(z) ||
+            fabs(x) > PARTICLES3D_WORLD_ABS_MAX || fabs(y) > PARTICLES3D_WORLD_ABS_MAX ||
+            fabs(z) > PARTICLES3D_WORLD_ABS_MAX) {
             ps->particles[i] = ps->particles[--ps->count];
             continue;
         }
-        ps->particles[i].pos[0] = (float)x;
-        ps->particles[i].pos[1] = (float)y;
-        ps->particles[i].pos[2] = (float)z;
+        ps->particles[i].pos[0] = x;
+        ps->particles[i].pos[1] = y;
+        ps->particles[i].pos[2] = z;
         i++;
     }
 }
@@ -743,8 +744,8 @@ void rt_particles3d_update(void *o, double delta_time) {
         return;
     if (delta_time > 1.0)
         delta_time = 1.0;
-    float dt = (float)delta_time;
-    if (!isfinite(dt) || dt <= 0.0f)
+    double dt = delta_time;
+    if (!isfinite(dt) || dt <= 0.0)
         return;
 
     /* Update alive particles */
@@ -761,9 +762,9 @@ void rt_particles3d_update(void *o, double delta_time) {
         p->pos[0] += p->vel[0] * dt;
         p->pos[1] += p->vel[1] * dt;
         p->pos[2] += p->vel[2] * dt;
-        p->vel[0] += (float)ps->gravity[0] * dt;
-        p->vel[1] += (float)ps->gravity[1] * dt;
-        p->vel[2] += (float)ps->gravity[2] * dt;
+        p->vel[0] += ps->gravity[0] * dt;
+        p->vel[1] += ps->gravity[1] * dt;
+        p->vel[2] += ps->gravity[2] * dt;
 
         /* Interpolate size, color, alpha based on age ratio */
         float age = 1.0f - p->life / p->max_life; /* 0 = birth, 1 = death */
@@ -806,6 +807,7 @@ extern void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                                const void *motion_key,
                                                const float *prev_bone_palette,
                                                const float *prev_morph_weights);
+extern int rt_canvas3d_get_camera_relative_origin(void *canvas, double out_origin[3]);
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_color(void *m, double r, double g, double b);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
@@ -818,7 +820,7 @@ extern int rt_canvas3d_remove_temp_buffer(void *canvas, void *buffer);
 ///   camera, used to order transparent billboards back-to-front.
 typedef struct particle3d_sort_key {
     int32_t index;
-    float dist_sq;
+    double dist_sq;
 } particle3d_sort_key;
 
 /// @brief qsort comparator ordering keys by descending camera distance (farthest first);
@@ -833,6 +835,8 @@ static int particle3d_sort_key_desc(const void *a, const void *b) {
     return ka->index - kb->index;
 }
 
+/// @brief Lazily create the system's shared unlit white particle material in @p *slot.
+/// @return 1 if the slot holds a material (existing or newly made), 0 on allocation failure.
 static int particles3d_ensure_material(void **slot) {
     if (!slot)
         return 0;
@@ -846,6 +850,11 @@ static int particles3d_ensure_material(void **slot) {
     return 1;
 }
 
+/// @brief Acquire transient vertex/index/material storage for this frame's particle batch.
+/// @details Prefers canvas-owned scratch buffers (flagged via @p out_canvas_owned) to avoid
+///          per-frame allocation, falling back to the system's own storage. Also ensures the
+///          shared particle material exists.
+/// @return 1 with the out-params set, 0 on invalid args or allocation failure.
 static int particles3d_acquire_draw_storage(rt_particles3d *ps,
                                             rt_canvas3d *canvas,
                                             uint32_t vert_count,
@@ -919,6 +928,22 @@ static int particles3d_acquire_draw_storage(rt_particles3d *ps,
     return 1;
 }
 
+/// @brief Build a row-major model matrix that translates by @p origin (identity rotation/scale).
+static void particles3d_origin_model_matrix(const double origin[3], double out[16]) {
+    static const double identity[16] = {
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    };
+    memcpy(out, identity, sizeof(identity));
+    if (origin) {
+        out[3] = origin[0];
+        out[7] = origin[1];
+        out[11] = origin[2];
+    }
+}
+
 /// @brief Render every live particle as a camera-facing billboard quad. Extracts right/up from
 /// the camera view matrix to build the quads. Sorts back-to-front for alpha blending; skips the
 /// sort when in additive mode (order-independent). Both additive and alpha modes stay batched;
@@ -932,7 +957,8 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     if (ps->count == 0)
         return;
 
-    (void)canvas; /* validated above; draw calls use the original handle below */
+    double origin[3] = {0.0, 0.0, 0.0};
+    (void)rt_canvas3d_get_camera_relative_origin(canvas3d, origin);
 
     /* Extract camera right and up vectors from view matrix (row-major).
      * Row 0 = right, Row 1 = up (before translation). */
@@ -949,15 +975,14 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
 
     /* Sort particles back-to-front for alpha blend (skip for additive) */
     if (!ps->additive_blend) {
-        float cam_pos[3] = {(float)cam->eye[0], (float)cam->eye[1], (float)cam->eye[2]};
         if ((size_t)ps->count <= SIZE_MAX / sizeof(*sort_keys))
             sort_keys = (particle3d_sort_key *)malloc((size_t)ps->count * sizeof(*sort_keys));
         if (sort_keys) {
             for (int32_t i = 0; i < ps->count; i++) {
                 vgfx3d_particle_t *p = &ps->particles[i];
-                float dx = p->pos[0] - cam_pos[0];
-                float dy = p->pos[1] - cam_pos[1];
-                float dz = p->pos[2] - cam_pos[2];
+                double dx = p->pos[0] - cam->eye[0];
+                double dy = p->pos[1] - cam->eye[1];
+                double dz = p->pos[2] - cam->eye[2];
                 sort_keys[i].index = i;
                 sort_keys[i].dist_sq = dx * dx + dy * dy + dz * dz;
             }
@@ -996,9 +1021,12 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
             float rs = (vi == 1 || vi == 2) ? hs : -hs;
             float us = (vi == 2 || vi == 3) ? hs : -hs;
             vgfx3d_vertex_t *v = &verts[base + vi];
-            v->pos[0] = p->pos[0] + right[0] * rs + up[0] * us;
-            v->pos[1] = p->pos[1] + right[1] * rs + up[1] * us;
-            v->pos[2] = p->pos[2] + right[2] * rs + up[2] * us;
+            double vx = p->pos[0] - origin[0] + (double)right[0] * rs + (double)up[0] * us;
+            double vy = p->pos[1] - origin[1] + (double)right[1] * rs + (double)up[1] * us;
+            double vz = p->pos[2] - origin[2] + (double)right[2] * rs + (double)up[2] * us;
+            v->pos[0] = (float)vx;
+            v->pos[1] = (float)vy;
+            v->pos[2] = (float)vz;
             v->normal[0] = forward[0];
             v->normal[1] = forward[1];
             v->normal[2] = forward[2];
@@ -1032,9 +1060,11 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     rt_mesh3d tmp_mesh;
     memset(&tmp_mesh, 0, sizeof(tmp_mesh));
     tmp_mesh.vertices = verts;
+    tmp_mesh.positions64 = NULL;
     tmp_mesh.vertex_count = vert_count;
     tmp_mesh.indices = indices;
     tmp_mesh.index_count = idx_count;
+    tmp_mesh.resident = 1;
 
     rt_material3d_set_texture(mat, ps->texture);
     ((rt_material3d *)mat)->additive_blend = 0;
@@ -1061,28 +1091,12 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         }
     }
 
-    static const double identity[16] = {
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-    };
+    double model[16];
+    particles3d_origin_model_matrix(origin, model);
     rt_material3d_set_alpha(mat, 1.0);
     rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
     ((rt_material3d *)mat)->additive_blend = ps->additive_blend ? 1 : 0;
-    rt_canvas3d_draw_mesh_matrix(canvas3d, &tmp_mesh, identity, mat);
+    rt_canvas3d_draw_mesh_matrix(canvas3d, &tmp_mesh, model, mat);
     if (canvas_owned_storage && mat && rt_obj_release_check0(mat))
         rt_obj_free(mat);
 }

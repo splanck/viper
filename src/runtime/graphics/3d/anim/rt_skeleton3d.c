@@ -922,6 +922,9 @@ static int animation3d_humanoid_role(const char *raw) {
     return base * 4 + side;
 }
 
+/// @brief Map a source-skeleton bone to the best-matching destination bone for retargeting.
+/// @details Prefers an exact name match, then falls back to a humanoid-role match, then to the same
+///          index if in range. Returns -1 when no correspondence exists.
 static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
                                               const rt_skeleton3d *dst,
                                               int32_t src_bone) {
@@ -944,6 +947,9 @@ static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
     return src_bone < dst->bone_count ? src_bone : -1;
 }
 
+/// @brief Whether @p anim already has an animation channel targeting @p bone.
+/// @details Guards retargeting against two source bones that map to the same destination
+///          bone both emitting channels — the first mapping wins, avoiding duplicates.
 static int animation3d_has_channel_for_bone(const rt_animation3d *anim, int32_t bone) {
     if (!anim)
         return 0;
@@ -964,6 +970,10 @@ static float animation3d_bone_bind_length(const rt_skeleton3d *skel, int32_t bon
     return sqrtf(m[3] * m[3] + m[7] * m[7] + m[11] * m[11]);
 }
 
+/// @brief Copy an animation channel onto @p dst_bone, scaling its translation keys by @p pos_scale.
+/// @details Duplicates the source keyframes; translation keys are multiplied by the bone-length ratio
+///          (rotations/scales transfer unchanged) so motion fits a differently-proportioned skeleton.
+/// @return 1 on success, 0 if the channel table is full or a keyframe copy fails.
 static int animation3d_retarget_copy_channel(rt_animation3d *dst,
                                              const vgfx3d_anim_channel_t *src,
                                              int32_t dst_bone,
@@ -1002,6 +1012,12 @@ static int animation3d_retarget_copy_channel(rt_animation3d *dst,
     return 1;
 }
 
+/// @brief Retarget an animation clip from a source skeleton onto a destination skeleton.
+/// @details Builds a new clip preserving duration/looping, then for each source channel
+///          maps its bone to the destination (by humanoid role or index), scales translation
+///          keys by the bone-length ratio so the motion fits differing proportions, and
+///          carries rotations/scales over unchanged. Bones with no mapping are skipped.
+/// @return New Animation3D handle, or NULL on invalid input or allocation failure.
 void *rt_animation3d_retarget(void *animation, void *src_skeleton, void *dst_skeleton) {
     rt_animation3d *src_anim = animation3d_checked(animation);
     rt_skeleton3d *src_skel =
@@ -1730,6 +1746,7 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
 
     rt_mesh3d tmp = *mesh;
     tmp.vertices = skinned;
+    tmp.positions64 = NULL;
     tmp.bone_palette = NULL;
     tmp.prev_bone_palette = NULL;
     tmp.bone_count = 0;

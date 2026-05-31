@@ -41,9 +41,9 @@ The review reached a clear two-part verdict:
 
 | # | Wall | Evidence (from review) |
 |---|---|---|
-| 1 | **World streaming / partition depth** | Initial review found whole-scene, all-or-nothing residency. Manifest-driven scene-cell/terrain tile streaming, collider/nav-source residency, and bounded traversal probes now exist; Phase 5 still needs Phase 4 native-compressed backend upload slicing and full hitch/memory proof. |
-| 2 | **Async streaming depth** | Initial review found zero 3D worker use and blocking loads. `AssetHandle3D` now worker-stages glTF/GLB root bytes plus external, data URI, and bufferView-backed buffer/image payloads, worker-decodes PNG, BMP, JPEG, and GIF image payloads into raw RGBA POD, prepares decoded RGBA POD into `Pixels` across bounded main-thread commit slices, and worker-decodes static, skinned, and morph-target glTF triangle topology primitives (lists/strips/fans) with positions, optional normals, sparse accessor overrides, JOINTS/WEIGHTS attributes, and morph deltas into raw POD, rejects missing required buffers, accessor overruns, and corrupt required texture payloads before commit, counts decoded material texture pixels in the template-cache residency budget, publishes runtime objects through the cost-aware main-thread commit queue, exposes `Assets3D.SetUploadBudget`/`GetResidentBytes`, row-slices Pixels-backed 2D material texture and cubemap uploads with `Canvas3D.SetTextureUploadBudget`/`TextureUploadPendingBytes`, and records blocking-vs-async timing plus zero-budget pending behavior in `g3d_openworld_slice_streaming_hitch_probe`; resident-byte churn and backend pending-byte baseline proof are covered locally, while native-compressed backend upload slicing remains. |
-| 3 | **Spatial acceleration depth** | Initial review found flat scene traversal. A Scene3D candidate index and parity tests now exist; Phase 3 still needs a true tree/BVH with incremental refit, named timing, and physics broadphase sharing. |
+| 1 | **World streaming / partition depth** | Initial review found whole-scene, all-or-nothing residency. Manifest-driven scene-cell/terrain tile streaming, adjacent terrain LOD-seam stitching, richer stream metadata, collider/nav-source residency, named bounded traversal hitch/memory proof, and native-compressed backend upload proof now exist; Phase 5 remaining work is tile-local nav ownership/bake depth. |
+| 2 | **Async streaming depth** | Initial review found zero 3D worker use and blocking loads. `AssetHandle3D` now worker-stages glTF/GLB root bytes plus external, data URI, and bufferView-backed buffer/image payloads, worker-decodes PNG, BMP, JPEG, and GIF image payloads into raw RGBA POD, prepares decoded RGBA POD into `Pixels` across bounded main-thread commit slices, and worker-decodes static, skinned, and morph-target glTF triangle topology primitives (lists/strips/fans) with positions, optional normals, sparse accessor overrides, JOINTS/WEIGHTS attributes, and morph deltas into raw POD, rejects missing required buffers, accessor overruns, and corrupt required texture payloads before commit, counts decoded material texture pixels in the template-cache residency budget, publishes runtime objects through the cost-aware main-thread commit queue, exposes `Assets3D.SetUploadBudget`/`GetResidentBytes`, row-slices Pixels-backed and native-compressed texture uploads with `Canvas3D.SetTextureUploadBudget`/`TextureUploadPendingBytes`, and records blocking-vs-async timing plus zero-budget pending behavior in `g3d_openworld_slice_streaming_hitch_probe`; resident-byte churn, backend pending-byte baseline proof, and the named native-compressed hitch rerun are covered locally. |
+| 3 | **Spatial acceleration depth** | Initial review found flat scene traversal. A Scene3D BVH with transform refit and parity tests now exists; Phase 3 still needs named timing, while physics broadphase sharing was rejected by documented sibling-structure proof. |
 | 4 | **Physics scale & stability** | Warm-started sequential impulses, sleep islands, friction, and AABB multi-point manifolds now land a deterministic resting box stack. Remaining depth is OBB-vs-OBB clipped manifolds, richer non-AABB contacts, island-batched perf, and named body-count timing. |
 | 5 | **No floating origin** | Node transforms are `double` (`scene/rt_scene3d_internal.h:77`) but cull bounds + vertices + GPU pipeline are `float` (`scene/rt_scene3d_internal.h:102`); precision degrades a few km from origin |
 
@@ -73,11 +73,11 @@ not glue.
 
 | Area | Existing capability (keep) | Gap this plan adds |
 |---|---|---|
-| Concurrency | Deterministic main-thread simulation with worker substrate and commit queue | Race-stress and deeper asset/upload queue integration |
+| Concurrency | Deterministic main-thread simulation with worker substrate, ordered merge, main-thread commit queue, asset-worker coverage, and a focused TSan race lane | Formal VM/native determinism acceptance for future simulation-touching changes |
 | Coordinates | `double` scene-node transforms | Floating origin + camera-relative rendering + `double` cull bounds/physics |
-| Spatial structure | Scene3D candidate index with flat-walk parity coverage | True tree/BVH refit + physics broadphase sharing |
-| Asset loading | Correct importers plus glTF/GLB root and external/embedded buffer/image worker staging, PNG/BMP/JPEG/GIF image decode to raw RGBA POD plus bounded commit-side `Pixels` preparation, static/skinned/morph-target triangle-list/strip/fan/sparse-accessor mesh decode to raw `Mesh3D`/`MorphTarget3D` POD with commit-side normal regeneration, skin remapping, and morph attachment, required-buffer/accessor-range/corrupt-texture preload validation through `AssetHandle3D`, matching blocking corrupt data-URI texture rejection, texture-aware `ModelTemplate` cache residency estimates, `Assets3D.SetUploadBudget` decoded-image commit-slice gating, and `Canvas3D.SetTextureUploadBudget` row-slicing for Pixels-backed 2D material texture and cubemap uploads; filesystem `Assets3D.Preload` and package-aware `Assets3D.PreloadAsset` now background template warms through world-drained commits | Native-compressed backend upload slices plus cross-platform hardware memory/perf proof |
-| World size | Manifest-driven streamed terrain/cell baseline | Full streamed-world hitch/memory proof and Phase 4 upload integration |
+| Spatial structure | Scene3D BVH with flat-walk parity and transform refit coverage | Named timing proof; physics keeps a documented sibling broadphase |
+| Asset loading | Correct importers plus glTF/GLB root and external/embedded buffer/image worker staging, PNG/BMP/JPEG/GIF image decode to raw RGBA POD plus bounded commit-side `Pixels` preparation, static/skinned/morph-target triangle-list/strip/fan/sparse-accessor mesh decode to raw `Mesh3D`/`MorphTarget3D` POD with commit-side normal regeneration, skin remapping, and morph attachment, required-buffer/accessor-range/corrupt-texture preload validation through `AssetHandle3D`, matching blocking corrupt data-URI texture rejection, texture-aware `ModelTemplate` cache residency estimates, `Assets3D.SetUploadBudget` decoded-image commit-slice gating, and `Canvas3D.SetTextureUploadBudget` row-slicing for Pixels-backed 2D material textures, cubemaps, and native-compressed mip uploads with a named hitch proof; filesystem `Assets3D.Preload` and package-aware `Assets3D.PreloadAsset` now background template warms through world-drained commits | Cross-platform hardware memory/perf proof |
+| World size | Manifest-driven streamed terrain/cell baseline with stitched tile seams and named traversal proof | Tile-local nav ownership/bake depth |
 | Visibility | Frustum cull + front-to-back sort | Occlusion culling + automatic mesh LOD + HLOD/impostors |
 | Lighting | Forward, 16 lights, 2 shadow casters | Clustered/forward+ many-light path + cascaded shadow maps |
 | Physics | Primitives, character controller, raycast BVH, single contact | Contact manifolds + iterated/warm-started solver + BVH mesh narrow-phase + GJK/EPA + hinge/rope/6DOF joints |
@@ -123,8 +123,8 @@ per-phase in `roadmap.md`. See §8 for the open sequencing decision.
    no frame hitch when content enters range.
 5. **World partition + streamable terrain** beyond the single-heightmap ceiling:
    tiles and scene cells loaded/unloaded around the player with seamless seams.
-6. **Visibility scaling**: occlusion culling and automatic LOD/HLOD/impostors so
-   dense scenes stay within frame budget.
+6. **Visibility scaling**: indexed CPU occlusion culling plus automatic
+   LOD/HLOD/impostors so dense scenes stay within frame budget.
 7. **Lighting scaling**: a clustered/forward+ path beyond 16 lights and cascaded
    shadow maps for large outdoor scenes.
 8. **Physics depth**: stable stacking (manifolds + iterated/warm-started solver),
@@ -245,9 +245,10 @@ outcomes are:
 2. **Job-system shape.** Reuse `Viper.Threads.Pool` /
    `Viper.Threads.Parallel` on `rt_platform.h`; do not add a second public
    3D-only job API.
-3. **Spatial index choice.** Scene3D's current indexed candidate store is the
-   scene cull/query contract. Physics keeps a sibling broadphase until a shared
-   tree wins on correctness and performance.
+3. **Spatial index choice.** Scene3D's BVH is the scene cull/query contract.
+   Physics keeps a sibling body-centric broadphase because its solver-facing
+   membership, filtering, and contact-event requirements differ from render
+   visibility.
 4. **Floating-origin strategy.** Use periodic active-world rebase through
    `World3D.floatingOrigin` and `Scene3D.RebaseOrigin`; per-cell or
    camera-relative upload is a later backend refinement.

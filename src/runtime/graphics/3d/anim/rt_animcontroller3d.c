@@ -555,6 +555,7 @@ static void controller_quat_slerp_float(const float *a, const float *b, float t,
         out[i] /= len;
 }
 
+/// @brief Quaternion conjugate (negated vector part) — the inverse for a unit quaternion.
 static void controller_quat_conjugate_float(const float *q, float *out) {
     if (!q || !out)
         return;
@@ -564,6 +565,7 @@ static void controller_quat_conjugate_float(const float *q, float *out) {
     out[3] = q[3];
 }
 
+/// @brief Hamilton product out = a * b (apply b then a), normalized; identity on degenerate result.
 static void controller_quat_mul_float(const float *a, const float *b, float *out) {
     float w;
     float x;

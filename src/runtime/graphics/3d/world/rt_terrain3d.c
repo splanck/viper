@@ -58,6 +58,8 @@ extern void rt_canvas3d_draw_mesh_matrix(void *canvas,
                                          const double *transform,
                                          void *material);
 extern void rt_material3d_set_texture(void *material, void *pixels);
+extern void *rt_pixels_new(int64_t width, int64_t height);
+extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 
 #define TERRAIN_CHUNK_SIZE 16
 #define TERRAIN3D_ABS_MAX 1000000.0
@@ -489,6 +491,152 @@ static float sample_height(const rt_terrain3d *t, int32_t x, int32_t z) {
     return t->heights[z * t->width + x];
 }
 
+/// @brief Number of samples that lie on a terrain edge.
+static int32_t terrain_edge_sample_count(const rt_terrain3d *t, int64_t edge) {
+    if (!t)
+        return 0;
+    switch (edge) {
+    case RT_TERRAIN3D_EDGE_WEST:
+    case RT_TERRAIN3D_EDGE_EAST:
+        return t->depth;
+    case RT_TERRAIN3D_EDGE_NORTH:
+    case RT_TERRAIN3D_EDGE_SOUTH:
+        return t->width;
+    default:
+        return 0;
+    }
+}
+
+/// @brief Return a mutable height sample slot on the requested edge.
+static float *terrain_edge_height_slot(rt_terrain3d *t, int64_t edge, int32_t sample) {
+    if (!t || !t->heights)
+        return NULL;
+    switch (edge) {
+    case RT_TERRAIN3D_EDGE_WEST:
+        if (sample < 0 || sample >= t->depth)
+            return NULL;
+        return &t->heights[(int64_t)sample * t->width];
+    case RT_TERRAIN3D_EDGE_EAST:
+        if (sample < 0 || sample >= t->depth)
+            return NULL;
+        return &t->heights[(int64_t)sample * t->width + (t->width - 1)];
+    case RT_TERRAIN3D_EDGE_NORTH:
+        if (sample < 0 || sample >= t->width)
+            return NULL;
+        return &t->heights[sample];
+    case RT_TERRAIN3D_EDGE_SOUTH:
+        if (sample < 0 || sample >= t->width)
+            return NULL;
+        return &t->heights[(int64_t)(t->depth - 1) * t->width + sample];
+    default:
+        return NULL;
+    }
+}
+
+/// @brief Convert a normalized height sample into world-Y units.
+static double terrain_sample_to_world_height(const rt_terrain3d *t, float h) {
+    double sy = t ? t->scale[1] : 1.0;
+    if (!isfinite(sy))
+        sy = 1.0;
+    return (double)h * sy;
+}
+
+/// @brief Convert a world-Y height back into a terrain height sample.
+static float terrain_world_height_to_sample(const rt_terrain3d *t, double h) {
+    double sy = t ? t->scale[1] : 1.0;
+    if (!isfinite(sy) || fabs(sy) < 1e-12)
+        sy = 1.0;
+    double sample = h / sy;
+    if (!isfinite(sample))
+        sample = 0.0;
+    if (sample > TERRAIN3D_ABS_MAX)
+        sample = TERRAIN3D_ABS_MAX;
+    if (sample < -TERRAIN3D_ABS_MAX)
+        sample = -TERRAIN3D_ABS_MAX;
+    return (float)sample;
+}
+
+/// @brief Average two border edges in world-height space and invalidate affected LOD meshes.
+/// @details Used by WorldStream3D after adjacent terrain tiles become resident. The helper maps
+///   differing edge sample counts by normalized edge distance so a coarse tile can stitch to a
+///   denser neighbor without relying on visual skirts to cover the shared border.
+int64_t rt_terrain3d_stitch_edge(void *terrain_obj,
+                                 int64_t edge,
+                                 void *neighbor_obj,
+                                 int64_t neighbor_edge) {
+    rt_terrain3d *terrain =
+        (rt_terrain3d *)rt_g3d_checked_or_null(terrain_obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    rt_terrain3d *neighbor =
+        (rt_terrain3d *)rt_g3d_checked_or_null(neighbor_obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!terrain || !neighbor || terrain == neighbor)
+        return 0;
+    int32_t terrain_count = terrain_edge_sample_count(terrain, edge);
+    int32_t neighbor_count = terrain_edge_sample_count(neighbor, neighbor_edge);
+    if (terrain_count <= 0 || neighbor_count <= 0)
+        return 0;
+    int32_t stitch_count = terrain_count > neighbor_count ? terrain_count : neighbor_count;
+    if (stitch_count <= 0)
+        return 0;
+
+    int64_t changed = 0;
+    for (int32_t i = 0; i < stitch_count; ++i) {
+        double u = stitch_count > 1 ? (double)i / (double)(stitch_count - 1) : 0.0;
+        int32_t terrain_i =
+            terrain_count > 1 ? (int32_t)llround(u * (double)(terrain_count - 1)) : 0;
+        int32_t neighbor_i =
+            neighbor_count > 1 ? (int32_t)llround(u * (double)(neighbor_count - 1)) : 0;
+        float *terrain_h = terrain_edge_height_slot(terrain, edge, terrain_i);
+        float *neighbor_h = terrain_edge_height_slot(neighbor, neighbor_edge, neighbor_i);
+        if (!terrain_h || !neighbor_h)
+            continue;
+        double world_h = (terrain_sample_to_world_height(terrain, *terrain_h) +
+                          terrain_sample_to_world_height(neighbor, *neighbor_h)) *
+                         0.5;
+        float stitched_terrain = terrain_world_height_to_sample(terrain, world_h);
+        float stitched_neighbor = terrain_world_height_to_sample(neighbor, world_h);
+        if (*terrain_h != stitched_terrain || *neighbor_h != stitched_neighbor) {
+            *terrain_h = stitched_terrain;
+            *neighbor_h = stitched_neighbor;
+            changed++;
+        }
+    }
+    if (changed > 0) {
+        invalidate_all_chunks(terrain);
+        invalidate_all_chunks(neighbor);
+    }
+    return changed;
+}
+
+/// @brief Build a grayscale Pixels heightmap from the terrain's current height samples.
+void *rt_terrain3d_build_heightmap_pixels(void *terrain_obj) {
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(terrain_obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t || t->width <= 0 || t->depth <= 0)
+        return NULL;
+    void *pixels = rt_pixels_new(t->width, t->depth);
+    if (!pixels)
+        return NULL;
+    for (int32_t z = 0; z < t->depth; ++z) {
+        for (int32_t x = 0; x < t->width; ++x) {
+            double h = (double)t->heights[(int64_t)z * t->width + x];
+            if (!isfinite(h))
+                h = 0.0;
+            if (h < 0.0)
+                h = 0.0;
+            if (h > 1.0)
+                h = 1.0;
+            uint32_t sample = (uint32_t)llround(h * 65535.0);
+            if (sample > 65535u)
+                sample = 65535u;
+            uint32_t rgba = ((sample >> 8) & 0xFFu) << 24 |
+                            (sample & 0xFFu) << 16 |
+                            0x000000FFu;
+            rt_pixels_set(pixels, x, z, (int64_t)rgba);
+        }
+    }
+    return pixels;
+}
+
 /// @brief Bilinearly sample the terrain height at world-space (wx, wz). Coordinates outside the
 /// grid are clamped to the nearest edge cell. Returns 0 for an invalid handle or a degenerate
 /// scale. Result is in world Y units (heights times scale[1]).
@@ -582,9 +730,6 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
 /// Generates a Pixels texture where each texel is the weighted blend of the 4
 /// layer textures, sampled at their respective UV scales, weighted by the splat
 /// map RGBA channels. Applied once when chunks are invalidated.
-extern void *rt_pixels_new(int64_t width, int64_t height);
-extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
-
 /// @brief Pre-blend the four splat-map layers into a single baked terrain texture.
 /// @details Real-time splat-mapping — sampling four layer textures and
 ///   RGBA-weight blending per fragment — is bandwidth-expensive, so this CPU
@@ -946,6 +1091,9 @@ void rt_terrain3d_set_skirt_depth(void *obj, double depth) {
     invalidate_all_chunks(t);
 }
 
+/// @brief Number of nav-mesh grid samples along an axis of @p max_index cells decimated by @p step.
+/// @details Always includes the final cell (adds an extra sample when max_index isn't a multiple of
+///          step) and yields at least 2, so the nav source spans the full terrain footprint.
 static int32_t terrain_nav_sample_count(int32_t max_index, int32_t step) {
     int32_t count;
     if (max_index <= 0)
@@ -960,6 +1108,7 @@ static int32_t terrain_nav_sample_count(int32_t max_index, int32_t step) {
     return count;
 }
 
+/// @brief Map a decimated nav sample @p index to its grid coordinate, snapping the ends to 0/max_index.
 static int32_t terrain_nav_sample_coord(int32_t index, int32_t count, int32_t max_index, int32_t step) {
     if (index <= 0)
         return 0;

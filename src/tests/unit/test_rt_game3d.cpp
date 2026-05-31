@@ -160,6 +160,29 @@ static bool write_text_file(const char *path, const char *text) {
     return std::fclose(file) == 0 && ok;
 }
 
+static std::string terrain_heightmap_fixture(int width,
+                                             int depth,
+                                             double west_edge,
+                                             double east_edge,
+                                             double interior) {
+    std::string text = "viper-heightmap-v1 " + std::to_string(width) + " " +
+                       std::to_string(depth) + "\n";
+    char sample[32];
+    for (int z = 0; z < depth; ++z) {
+        for (int x = 0; x < width; ++x) {
+            double h = interior + (double)((x + z) % 3) * 0.01;
+            if (x == 0)
+                h = west_edge;
+            if (x == width - 1)
+                h = east_edge;
+            std::snprintf(sample, sizeof(sample), "%.4f", h);
+            text += sample;
+            text += (x + 1 == width) ? "\n" : " ";
+        }
+    }
+    return text;
+}
+
 template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *needle) {
     g_last_trap = nullptr;
     g_expect_trap = true;
@@ -170,6 +193,134 @@ template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *nee
     }
     g_expect_trap = false;
     return g_last_trap && (!needle || std::strstr(g_last_trap, needle) != nullptr);
+}
+
+struct Game3DRenderCapture {
+    std::vector<uint32_t> pixels;
+    int64_t width = 0;
+    int64_t height = 0;
+    int64_t draw_count = 0;
+    int64_t occluded_draw_count = 0;
+    int8_t camera_relative_upload = 0;
+};
+
+static int game3d_copy_pixels(void *pixels, Game3DRenderCapture &capture) {
+    if (!pixels)
+        return 0;
+    capture.width = rt_pixels_width(pixels);
+    capture.height = rt_pixels_height(pixels);
+    if (capture.width <= 0 || capture.height <= 0)
+        return 0;
+    const uint32_t *raw = rt_pixels_raw_buffer(pixels);
+    size_t count = (size_t)capture.width * (size_t)capture.height;
+    capture.pixels.assign(count, 0);
+    if (raw) {
+        std::memcpy(capture.pixels.data(), raw, count * sizeof(uint32_t));
+    } else {
+        for (int64_t y = 0; y < capture.height; ++y) {
+            for (int64_t x = 0; x < capture.width; ++x)
+                capture.pixels[(size_t)y * (size_t)capture.width + (size_t)x] =
+                    (uint32_t)rt_pixels_get_rgba(pixels, x, y);
+        }
+    }
+    return 1;
+}
+
+static int game3d_render_parity_scene(double base_x,
+                                      int8_t floating_origin,
+                                      int8_t frustum_culling,
+                                      int8_t toggle_before_off,
+                                      int8_t include_scene,
+                                      Game3DRenderCapture &capture) {
+    capture = Game3DRenderCapture{};
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D 50km Parity"), 64, 48);
+    if (!world)
+        return 0;
+    rt_canvas3d *canvas = (rt_canvas3d *)rt_game3d_world_get_canvas(world);
+    if (!canvas) {
+        rt_game3d_world_destroy(world);
+        return 0;
+    }
+    rt_canvas3d_set_frustum_culling(canvas, frustum_culling);
+    rt_canvas3d_set_backface_cull(canvas, 0);
+    rt_game3d_world_set_ambient(world, 1.0, 1.0, 1.0);
+
+    if (include_scene) {
+        void *material = rt_material3d_new_color(0.9, 0.2, 0.08);
+        rt_material3d_set_unlit(material, 1);
+        void *mesh = rt_mesh3d_new_box(1.6, 1.2, 1.0);
+        void *visible = rt_game3d_entity_of(mesh, material);
+        rt_game3d_entity_set_position(visible, base_x, 1.0, 0.0);
+        rt_game3d_world_spawn(world, visible);
+
+        void *decoy_material = rt_material3d_new_color(0.1, 0.8, 0.2);
+        rt_material3d_set_unlit(decoy_material, 1);
+        void *decoy_mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+        void *decoy = rt_game3d_entity_of(decoy_mesh, decoy_material);
+        rt_game3d_entity_set_position(decoy, base_x + 1000.0, 1.0, 0.0);
+        rt_game3d_world_spawn(world, decoy);
+    }
+
+    void *camera = rt_game3d_world_get_camera(world);
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(base_x, 2.0, 6.0),
+                        rt_vec3_new(base_x, 1.0, 0.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+    if (toggle_before_off) {
+        rt_game3d_world_set_floating_origin(world, 1);
+        rt_game3d_world_set_floating_origin(world, 0);
+    } else {
+        rt_game3d_world_set_floating_origin(world, floating_origin);
+    }
+    if (floating_origin && !toggle_before_off) {
+        rt_game3d_world_set_origin_rebase_threshold(world, 1.0);
+        rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+    }
+
+    rt_game3d_world_begin_frame(world);
+    capture.camera_relative_upload = canvas->camera_relative_upload;
+    rt_game3d_world_draw_scene(world);
+    rt_game3d_world_end_scene(world);
+    capture.draw_count = rt_game3d_world_get_draw_count(world);
+    capture.occluded_draw_count = rt_game3d_world_get_occluded_draw_count(world);
+    void *pixels = rt_game3d_world_capture_final_frame(world);
+    int ok = game3d_copy_pixels(pixels, capture);
+    rt_game3d_world_destroy(world);
+    return ok;
+}
+
+static int game3d_pixels_match_with_tolerance(const Game3DRenderCapture &a,
+                                              const Game3DRenderCapture &b,
+                                              int max_channel_delta,
+                                              double max_mean_delta) {
+    if (a.width != b.width || a.height != b.height || a.pixels.size() != b.pixels.size())
+        return 0;
+    uint64_t total_delta = 0;
+    int max_delta = 0;
+    for (size_t i = 0; i < a.pixels.size(); ++i) {
+        uint32_t pa = a.pixels[i];
+        uint32_t pb = b.pixels[i];
+        for (int shift = 0; shift <= 24; shift += 8) {
+            int da = (int)((pa >> shift) & 0xFFu);
+            int db = (int)((pb >> shift) & 0xFFu);
+            int delta = std::abs(da - db);
+            if (delta > max_delta)
+                max_delta = delta;
+            total_delta += (uint64_t)delta;
+        }
+    }
+    double denom = a.pixels.empty() ? 1.0 : (double)a.pixels.size() * 4.0;
+    double mean_delta = (double)total_delta / denom;
+    if (max_delta > max_channel_delta || mean_delta > max_mean_delta) {
+        std::fprintf(stderr,
+                     "FAIL: render parity delta too high (max=%d mean=%.6f, limits=%d/%.6f)\n",
+                     max_delta,
+                     mean_delta,
+                     max_channel_delta,
+                     max_mean_delta);
+        return 0;
+    }
+    return 1;
 }
 
 static void set_software_backend_env() {
@@ -283,6 +434,39 @@ static std::string game3d_test_base64_encode(const uint8_t *data, size_t len) {
         out.push_back(remaining > 2 ? table[value & 0x3Fu] : '=');
     }
     return out;
+}
+
+static bool write_game3d_embedded_triangle_gltf(const char *path, float x_offset) {
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {x_offset, 0.0f, 0.0f, x_offset + 1.0f, 0.0f,
+                                0.0f,     x_offset, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_game3d_test_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_game3d_test_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = game3d_test_base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}],"
+        "\"nodes\":[{\"mesh\":0}],"
+        "\"scenes\":[{\"nodes\":[0]}],"
+        "\"scene\":0"
+        "}";
+    return write_text_file(path, gltf_json.c_str());
 }
 
 struct Game3DTestVpaEntry {
@@ -1147,7 +1331,79 @@ static bool test_world_floating_origin_controls_and_rebase() {
                 "floatingOrigin off keeps bounded-scene upload path unchanged");
     rt_game3d_world_end_scene(world);
 
+    rt_game3d_world_rebase_origin(world, 1.0, 2.0, 3.0);
+    EXPECT_NEAR(rt_vec3_x(rt_game3d_world_get_world_origin(world)),
+                50021.0,
+                0.000001,
+                "manual rebase accumulates worldOrigin X");
+    EXPECT_NEAR(rt_vec3_y(rt_game3d_world_get_world_origin(world)),
+                -3.0,
+                0.000001,
+                "manual rebase accumulates worldOrigin Y");
+    EXPECT_NEAR(rt_vec3_z(rt_game3d_world_get_world_origin(world)),
+                7003.0,
+                0.000001,
+                "manual rebase accumulates worldOrigin Z");
+    EXPECT_NEAR(rt_vec3_x(rt_camera3d_get_position(camera)),
+                -1.0,
+                0.000001,
+                "manual rebase shifts camera X");
+    EXPECT_NEAR(rt_vec3_y(rt_game3d_entity_position(entity)),
+                0.0,
+                0.000001,
+                "manual rebase shifts entity Y");
+    void *manual_body_pos = rt_body3d_get_position(rt_game3d_entity_get_body(entity));
+    EXPECT_NEAR(rt_vec3_z(manual_body_pos), -5.0, 0.000001, "manual rebase shifts body Z");
+    listener_pos = rt_soundlistener3d_get_position(listener);
+    EXPECT_NEAR(rt_vec3_y(listener_pos), -1.0, 0.000001, "manual rebase shifts listener Y");
+    rt_particles3d_get_position(far_particles, particle_pos);
+    rt_decal3d_get_position(far_decal, decal_pos);
+    EXPECT_NEAR(particle_pos[0], 2.0, 0.000001, "manual rebase shifts particle emitter X");
+    EXPECT_NEAR(decal_pos[2], -4.0, 0.000001, "manual rebase shifts decal Z");
+
+    rt_game3d_world_begin_frame(world);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_world_rebase_origin(world, 1.0, 0.0, 0.0); },
+                                     "between frames"),
+                "manual rebase traps while a frame is active");
+    rt_game3d_world_end_scene(world);
+
     rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static bool test_world_floating_origin_rendered_parity_and_flag_off_bytes() {
+    TEST("World3D floatingOrigin rendered 50km parity and flag-off byte equality");
+    for (int frustum = 0; frustum <= 1; ++frustum) {
+        Game3DRenderCapture empty_capture;
+        Game3DRenderCapture near_capture;
+        Game3DRenderCapture far_capture;
+        EXPECT_TRUE(game3d_render_parity_scene(0.0, 0, (int8_t)frustum, 0, 0, empty_capture) != 0,
+                    "empty render capture succeeds");
+        EXPECT_TRUE(game3d_render_parity_scene(0.0, 0, (int8_t)frustum, 0, 1, near_capture) != 0,
+                    "near-origin render capture succeeds");
+        EXPECT_TRUE(game3d_render_parity_scene(50000.0, 1, (int8_t)frustum, 0, 1, far_capture) != 0,
+                    "50km render capture succeeds");
+        EXPECT_TRUE(near_capture.pixels != empty_capture.pixels,
+                    "near-origin parity scene renders geometry over the clear frame");
+        EXPECT_TRUE(far_capture.pixels != empty_capture.pixels,
+                    "50km parity scene renders geometry over the clear frame");
+        EXPECT_TRUE(far_capture.camera_relative_upload != 0,
+                    "50km render uses camera-relative upload");
+        EXPECT_TRUE(game3d_pixels_match_with_tolerance(near_capture, far_capture, 160, 2.0) != 0,
+                    frustum ? "50km render matches near render with CPU frustum culling"
+                            : "50km render matches near render through backend clipping");
+    }
+
+    Game3DRenderCapture baseline_off;
+    Game3DRenderCapture toggled_off;
+    EXPECT_TRUE(game3d_render_parity_scene(0.0, 0, 1, 0, 1, baseline_off) != 0,
+                "flag-off baseline capture succeeds");
+    EXPECT_TRUE(game3d_render_parity_scene(0.0, 0, 1, 1, 1, toggled_off) != 0,
+                "flag-off toggled capture succeeds");
+    EXPECT_TRUE(baseline_off.camera_relative_upload == 0 && toggled_off.camera_relative_upload == 0,
+                "floatingOrigin disabled keeps camera-relative upload off");
+    EXPECT_TRUE(baseline_off.pixels == toggled_off.pixels,
+                "floatingOrigin flag-off bounded-scene output is byte-identical");
     PASS();
 }
 
@@ -1823,6 +2079,52 @@ static bool test_phase4_assets3d_resident_bytes_returns_to_baseline() {
     PASS();
 }
 
+static bool test_phase4_assets3d_residency_hint_eviction() {
+    TEST("Assets3D residency hints guide template cache eviction");
+    const char *near_path = "/tmp/viper_game3d_residency_near.gltf";
+    const char *priority_path = "/tmp/viper_game3d_residency_priority.gltf";
+    const char *far_path = "/tmp/viper_game3d_residency_far.gltf";
+
+    EXPECT_TRUE(write_game3d_embedded_triangle_gltf(near_path, 0.0f),
+                "near residency fixture can be written");
+    EXPECT_TRUE(write_game3d_embedded_triangle_gltf(priority_path, 2.0f),
+                "priority residency fixture can be written");
+    EXPECT_TRUE(write_game3d_embedded_triangle_gltf(far_path, 4.0f),
+                "far residency fixture can be written");
+
+    rt_game3d_assets_set_residency_budget(-1);
+    rt_game3d_assets_clear_cache();
+    void *near_tpl = rt_game3d_assets_load_model_template(rt_const_cstr(near_path));
+    void *priority_tpl = rt_game3d_assets_load_model_template(rt_const_cstr(priority_path));
+    void *far_tpl = rt_game3d_assets_load_model_template(rt_const_cstr(far_path));
+    EXPECT_TRUE(near_tpl != nullptr && priority_tpl != nullptr && far_tpl != nullptr,
+                "all residency fixture templates load");
+    int64_t total_bytes = rt_game3d_assets_get_resident_bytes();
+    EXPECT_TRUE(total_bytes > 3, "three cached fixtures report resident bytes");
+
+    rt_game3d_assets_set_residency_hint(near_tpl, 0.0, 10.0);
+    rt_game3d_assets_set_residency_hint(priority_tpl, 5.0, 100000.0);
+    rt_game3d_assets_set_residency_hint(far_tpl, 0.0, 1000.0);
+    rt_game3d_assets_set_residency_budget(total_bytes - 1);
+    EXPECT_TRUE(rt_game3d_assets_get_resident_bytes() < total_bytes,
+                "budget pressure evicts one hinted cache entry");
+
+    void *near_again = rt_game3d_assets_load_model_template(rt_const_cstr(near_path));
+    EXPECT_TRUE(near_again == near_tpl, "near low-priority template survives farther peer");
+    void *priority_again = rt_game3d_assets_load_model_template(rt_const_cstr(priority_path));
+    EXPECT_TRUE(priority_again == priority_tpl,
+                "high-priority template survives despite large distance");
+    void *far_again = rt_game3d_assets_load_model_template(rt_const_cstr(far_path));
+    EXPECT_TRUE(far_again != far_tpl, "far low-priority template is evicted first");
+
+    rt_game3d_assets_set_residency_budget(-1);
+    rt_game3d_assets_clear_cache();
+    std::remove(near_path);
+    std::remove(priority_path);
+    std::remove(far_path);
+    PASS();
+}
+
 static bool test_phase4_assets3d_texture_residency_budget() {
     TEST("Assets3D residency budget accounts for texture payloads");
     const char *png_path = "/tmp/viper_game3d_budget_texture.png";
@@ -2207,6 +2509,107 @@ static bool test_phase5_world_stream3d_terrain_manifest() {
     PASS();
 }
 
+static bool test_phase5_world_stream3d_terrain_lod_seams_large_world() {
+    TEST("WorldStream3D stitches adjacent terrain LOD seams beyond one heightmap cap");
+    const char *manifest_path = "/tmp/viper_game3d_terrain_lod_seams_manifest.json";
+    const char *west_height_path = "/tmp/viper_game3d_terrain_lod_seams_west.height";
+    const char *east_height_path = "/tmp/viper_game3d_terrain_lod_seams_east.height";
+    const double tile_scale = 600.0;
+    const int64_t tile_samples = 9;
+    const double tile_extent = (double)(tile_samples - 1) * tile_scale;
+    const double combined_extent_x = tile_extent * 2.0;
+    const double combined_area = combined_extent_x * tile_extent;
+
+    std::string west_heights =
+        terrain_heightmap_fixture((int)tile_samples, (int)tile_samples, 0.30, 0.80, 0.42);
+    std::string east_heights =
+        terrain_heightmap_fixture((int)tile_samples, (int)tile_samples, 0.20, 0.65, 0.46);
+    EXPECT_TRUE(write_text_file(west_height_path, west_heights.c_str()),
+                "west large-world terrain height sidecar is writable");
+    EXPECT_TRUE(write_text_file(east_height_path, east_heights.c_str()),
+                "east large-world terrain height sidecar is writable");
+
+    char manifest[2048];
+    std::snprintf(manifest,
+                  sizeof(manifest),
+                  "{\"tiles\":["
+                  "{\"name\":\"west_lod_tile\",\"path\":\"terrain/west.tile\","
+                  "\"heightmap\":\"viper_game3d_terrain_lod_seams_west.height\","
+                  "\"center\":[0,0,0],\"radius\":6000,\"bytes\":4096,"
+                  "\"width\":%lld,\"depth\":%lld,\"scale\":[%.1f,10,%.1f]},"
+                  "{\"name\":\"east_lod_tile\",\"path\":\"terrain/east.tile\","
+                  "\"heightmap\":\"viper_game3d_terrain_lod_seams_east.height\","
+                  "\"center\":[%.1f,0,0],\"radius\":6000,\"bytes\":4096,"
+                  "\"width\":%lld,\"depth\":%lld,\"scale\":[%.1f,10,%.1f]}"
+                  "]}",
+                  (long long)tile_samples,
+                  (long long)tile_samples,
+                  tile_scale,
+                  tile_scale,
+                  tile_extent,
+                  (long long)tile_samples,
+                  (long long)tile_samples,
+                  tile_scale,
+                  tile_scale);
+    EXPECT_TRUE(write_text_file(manifest_path, manifest),
+                "large-world terrain seam manifest is writable");
+
+    void *world = rt_game3d_world_new_with_camera(
+        rt_const_cstr("Game3D Terrain Seam Unit"), 96, 72, 60.0, 0.1, 20000.0);
+    void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_radii(stream, 7000.0, 8000.0);
+    rt_game3d_world_stream_set_center(stream, rt_vec3_new(tile_extent * 0.5, 0.0, 0.0));
+    rt_game3d_world_stream_mount_tiled_terrain(stream, rt_const_cstr(manifest_path));
+
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_terrain_tile_count(stream),
+                  2,
+                  "large stream radius admits both adjacent terrain tiles");
+    EXPECT_TRUE(tile_samples <= 4096,
+                "each proof tile stays within the single Terrain3D.New heightmap cap");
+    EXPECT_TRUE(combined_extent_x > 4096.0,
+                "stitched terrain proof exceeds the single-heightmap 4096-unit span");
+    EXPECT_TRUE(combined_area > 4000000.0,
+                "stitched terrain proof exceeds four square kilometers at meter scale");
+    EXPECT_EQ_INT(rt_game3d_world_get_body_count(world),
+                  2,
+                  "stitched terrain tiles rebuild heightfield collider bodies");
+
+    void *west = rt_game3d_world_stream_get_resident_terrain_tile(stream, 0);
+    void *east = rt_game3d_world_stream_get_resident_terrain_tile(stream, 1);
+    EXPECT_TRUE(west != nullptr && east != nullptr,
+                "both adjacent terrain payloads are resident for seam sampling");
+    double west_edge = rt_terrain3d_get_height_at(west, tile_extent, tile_extent * 0.5);
+    double east_edge = rt_terrain3d_get_height_at(east, 0.0, tile_extent * 0.5);
+    EXPECT_NEAR(west_edge,
+                east_edge,
+                0.001,
+                "adjacent resident tiles average mismatched heightmap edges");
+    EXPECT_NEAR(west_edge,
+                5.0,
+                0.02,
+                "stitched seam uses world-height averaging, not one tile's original edge");
+
+    rt_terrain3d_set_skirt_depth(west, 0.0);
+    rt_terrain3d_set_skirt_depth(east, 0.0);
+    rt_terrain3d_set_lod_distances(west, 1.0, 2.0);
+    rt_terrain3d_set_lod_distances(east, 100000.0, 200000.0);
+    rt_camera3d_look_at(rt_game3d_world_get_camera(world),
+                        rt_vec3_new(tile_extent * 0.5, 3500.0, tile_extent * 1.75),
+                        rt_vec3_new(tile_extent * 0.5, 0.0, 0.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+    rt_game3d_world_begin_frame(world);
+    rt_game3d_world_draw_scene(world);
+    rt_game3d_world_end_scene(world);
+    EXPECT_TRUE(rt_game3d_world_get_draw_count(world) > 0,
+                "World3D.drawScene renders stitched terrain while adjacent tiles use different LODs");
+
+    rt_game3d_world_destroy(world);
+    std::remove(manifest_path);
+    std::remove(west_height_path);
+    std::remove(east_height_path);
+    PASS();
+}
+
 static bool write_stream_cell_scene(const char *path, const char *marker_name) {
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
@@ -2354,6 +2757,31 @@ static bool test_phase5_world_stream3d_measures_lod_residency() {
     EXPECT_TRUE(measured_total >= measured_cell_bytes,
                 "resident stream bytes include measured cell residency");
 
+    void *loaded_lod_node =
+        rt_game3d_world_find_node(world, rt_const_cstr("stream_lod_residency_marker"));
+    EXPECT_TRUE(loaded_lod_node != nullptr, "loaded stream node is available for LOD residency");
+    int64_t lod_resident_bytes =
+        loaded_lod_node ? rt_scene_node3d_get_lod_resident_bytes(loaded_lod_node, 0) : 0;
+    EXPECT_TRUE(lod_resident_bytes > 0, "loaded stream LOD reports resident mesh bytes");
+    if (loaded_lod_node)
+        rt_scene_node3d_set_lod_resident(loaded_lod_node, 0, 0);
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+    int64_t demoted_cell_bytes = rt_game3d_world_stream_get_cell_bytes(stream, 0);
+    EXPECT_TRUE(demoted_cell_bytes > 0 && demoted_cell_bytes < measured_cell_bytes,
+                "stream cell remeasures lower bytes after LOD payload demotion");
+    EXPECT_TRUE(rt_game3d_world_stream_get_resident_bytes(stream) < measured_total,
+                "stream resident-byte telemetry follows LOD residency changes");
+    EXPECT_TRUE(loaded_lod_node && rt_scene_node3d_get_lod_resident_bytes(loaded_lod_node, 0) == 0,
+                "demoted stream LOD reports zero resident mesh bytes");
+
+    if (loaded_lod_node)
+        rt_scene_node3d_set_lod_resident(loaded_lod_node, 0, 1);
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+    measured_cell_bytes = rt_game3d_world_stream_get_cell_bytes(stream, 0);
+    measured_total = rt_game3d_world_stream_get_resident_bytes(stream);
+    EXPECT_TRUE(measured_cell_bytes > demoted_cell_bytes,
+                "stream cell remeasures higher bytes after LOD payload promotion");
+
     rt_game3d_world_stream_set_residency_budget(stream, measured_total - 1);
     rt_game3d_world_stream_update(stream, 1.0 / 60.0);
     EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
@@ -2492,9 +2920,14 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
                   "{"
                   "\"cells\":["
                   "{\"name\":\"inspect_near\",\"path\":\"%s\",\"center\":[0,0,0],"
-                  "\"radius\":16,\"bytes\":1111},"
+                  "\"radius\":16,\"bytes\":1111,\"material\":\"stone\","
+                  "\"layer\":1,\"collisionMask\":5,\"navArea\":\"road\","
+                  "\"traversalCost\":1.25,\"sidecar\":\"meta/near_cell.bin\"},"
                   "{\"name\":\"inspect_far\",\"path\":\"%s\",\"center\":[512,0,0],"
-                  "\"radius\":16,\"bytes\":2222}"
+                  "\"radius\":16,\"bytes\":2222,\"material\":\"glass\","
+                  "\"collision\":{\"enabled\":false,\"layer\":8,\"mask\":2},"
+                  "\"navArea\":\"blocked\",\"traversalCost\":3.5,"
+                  "\"sidecar\":\"meta/far_cell.bin\"}"
                   "]"
                   "}",
                   near_path,
@@ -2505,9 +2938,13 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
     const char *terrain_manifest =
         "{\"tiles\":["
         "{\"name\":\"terrain_near\",\"path\":\"terrain/near.tile\",\"center\":[0,0,0],"
-        "\"radius\":16,\"bytes\":3333,\"width\":8,\"depth\":10,\"scale\":[2,3,4]},"
+        "\"radius\":16,\"bytes\":3333,\"width\":8,\"depth\":10,\"scale\":[2,3,4],"
+        "\"material\":\"grass\",\"collisionLayer\":1,\"collisionMask\":5,"
+        "\"navArea\":\"meadow\",\"traversalCost\":1.5,\"sidecar\":\"terrain/near.meta\"},"
         "{\"name\":\"terrain_far\",\"path\":\"terrain/far.tile\",\"center\":[512,0,0],"
-        "\"radius\":16,\"bytes\":4444,\"width\":12,\"depth\":14,\"scale\":[4,5,6]}"
+        "\"radius\":16,\"bytes\":4444,\"width\":12,\"depth\":14,\"scale\":[4,5,6],"
+        "\"material\":\"rock\",\"collision\":{\"enabled\":false,\"layer\":8,\"mask\":2},"
+        "\"navArea\":\"cliff\",\"traversalCost\":4.0,\"binarySidecar\":\"terrain/far.meta\"}"
         "]}";
     EXPECT_TRUE(write_text_file(terrain_manifest_path, terrain_manifest),
                 "inspection terrain manifest writes");
@@ -2547,9 +2984,51 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
     EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_bytes(stream, 1),
                   2222,
                   "inspection hooks expose manifest estimates for unloaded cells");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_cell_material(stream, 0)),
+                            "stone") == 0,
+                "inspection hooks expose cell material metadata");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_layer(stream, 0),
+                  rt_game3d_layers_world(),
+                  "inspection hooks expose cell layer metadata");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_collision_mask(stream, 0),
+                  rt_game3d_layers_world() | rt_game3d_layers_player(),
+                  "inspection hooks expose cell collision mask metadata");
+    EXPECT_TRUE(rt_game3d_world_stream_get_cell_collision_enabled(stream, 1) == 0,
+                "inspection hooks expose nested cell collision-enabled metadata");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_cell_nav_area(stream, 0)),
+                            "road") == 0,
+                "inspection hooks expose cell nav-area metadata");
+    EXPECT_NEAR(rt_game3d_world_stream_get_cell_traversal_cost(stream, 1),
+                3.5,
+                0.0001,
+                "inspection hooks expose cell traversal-cost metadata");
+    EXPECT_TRUE(std::strstr(rt_string_cstr(rt_game3d_world_stream_get_cell_sidecar(stream, 0)),
+                            "meta/near_cell.bin") != nullptr,
+                "inspection hooks expose resolved cell binary sidecar metadata");
     EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_bytes(stream, 1),
                   4444,
                   "inspection hooks expose terrain tile byte estimates");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_material(stream, 0)),
+                            "grass") == 0,
+                "inspection hooks expose terrain material metadata");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_layer(stream, 0),
+                  rt_game3d_layers_world(),
+                  "inspection hooks expose terrain collision layer metadata");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_collision_mask(stream, 0),
+                  rt_game3d_layers_world() | rt_game3d_layers_player(),
+                  "inspection hooks expose terrain collision mask metadata");
+    EXPECT_TRUE(rt_game3d_world_stream_get_terrain_tile_collision_enabled(stream, 1) == 0,
+                "inspection hooks expose nested terrain collision-enabled metadata");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_nav_area(stream, 1)),
+                            "cliff") == 0,
+                "inspection hooks expose terrain nav-area metadata");
+    EXPECT_NEAR(rt_game3d_world_stream_get_terrain_tile_traversal_cost(stream, 0),
+                1.5,
+                0.0001,
+                "inspection hooks expose terrain traversal-cost metadata");
+    EXPECT_TRUE(std::strstr(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_sidecar(stream, 1)),
+                            "terrain/far.meta") != nullptr,
+                "inspection hooks expose resolved terrain binary sidecar metadata");
     EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_resident(stream, 0),
                   1,
                   "near cell starts resident");
@@ -3256,6 +3735,7 @@ int main() {
     ok = test_worker_count_runframes_replay_parity() && ok;
     ok = test_worker_count_parallel_animation_parity() && ok;
     ok = test_world_floating_origin_controls_and_rebase() && ok;
+    ok = test_world_floating_origin_rendered_parity_and_flag_off_bytes() && ok;
     ok = test_step_simulation_clamps_invalid_dt() && ok;
     ok = test_free_fly_controller_synthetic_input() && ok;
     ok = test_run_frames_only_preserves_synthetic_holds() && ok;
@@ -3266,10 +3746,12 @@ int main() {
     ok = test_phase3_world_presets_environment_and_debug() && ok;
     ok = test_phase4_assets3d_model_templates() && ok;
     ok = test_phase4_assets3d_resident_bytes_returns_to_baseline() && ok;
+    ok = test_phase4_assets3d_residency_hint_eviction() && ok;
     ok = test_phase4_assets3d_texture_residency_budget() && ok;
     ok = test_assets3d_loads_packaged_gltf_hierarchy() && ok;
     ok = test_phase5_world_stream3d_baseline() && ok;
     ok = test_phase5_world_stream3d_terrain_manifest() && ok;
+    ok = test_phase5_world_stream3d_terrain_lod_seams_large_world() && ok;
     ok = test_phase5_world_stream3d_manifest_cells() && ok;
     ok = test_phase5_world_stream3d_measures_lod_residency() && ok;
     ok = test_phase5_world_stream3d_hitch_budgeted_update() && ok;

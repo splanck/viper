@@ -30,6 +30,7 @@
 #if defined(__linux__) && defined(VIPER_ENABLE_GRAPHICS)
 
 #include "vgfx.h"
+#include "rt_textureasset3d.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_opengl_shared.h"
 #include "vgfx3d_backend_utils.h"
@@ -59,6 +60,15 @@ typedef unsigned int GLbitfield;
 
 #define VGFX3D_STR_IMPL(x) #x
 #define VGFX3D_STR(x) VGFX3D_STR_IMPL(x)
+
+#define GL_TU_SHADOW0 4
+#define GL_TU_SPLAT_CONTROL 8
+#define GL_TU_SPLAT_LAYER0 9
+#define GL_TU_ENV_MAP 13
+#define GL_TU_METALLIC_ROUGHNESS 14
+#define GL_TU_AO 15
+#define GL_TU_MORPH_DELTAS 16
+#define GL_TU_MORPH_NORMAL_DELTAS 17
 
 #define GL_TRUE 1
 #define GL_FALSE 0
@@ -106,6 +116,27 @@ typedef unsigned int GLbitfield;
 #define GL_TEXTURE_WRAP_R 0x8072
 #define GL_TEXTURE_MIN_FILTER 0x2801
 #define GL_TEXTURE_MAG_FILTER 0x2800
+#define GL_TEXTURE_BASE_LEVEL 0x813C
+#define GL_TEXTURE_MAX_LEVEL 0x813D
+#define GL_EXTENSIONS 0x1F03
+#define GL_VERSION 0x1F02
+#define GL_NUM_EXTENSIONS 0x821D
+#define GL_COMPRESSED_RGBA_BPTC_UNORM 0x8E8C
+#define GL_COMPRESSED_RGBA8_ETC2_EAC 0x9278
+#define GL_COMPRESSED_RGBA_ASTC_4x4_KHR 0x93B0
+#define GL_COMPRESSED_RGBA_ASTC_5x4_KHR 0x93B1
+#define GL_COMPRESSED_RGBA_ASTC_5x5_KHR 0x93B2
+#define GL_COMPRESSED_RGBA_ASTC_6x5_KHR 0x93B3
+#define GL_COMPRESSED_RGBA_ASTC_6x6_KHR 0x93B4
+#define GL_COMPRESSED_RGBA_ASTC_8x5_KHR 0x93B5
+#define GL_COMPRESSED_RGBA_ASTC_8x6_KHR 0x93B6
+#define GL_COMPRESSED_RGBA_ASTC_8x8_KHR 0x93B7
+#define GL_COMPRESSED_RGBA_ASTC_10x5_KHR 0x93B8
+#define GL_COMPRESSED_RGBA_ASTC_10x6_KHR 0x93B9
+#define GL_COMPRESSED_RGBA_ASTC_10x8_KHR 0x93BA
+#define GL_COMPRESSED_RGBA_ASTC_10x10_KHR 0x93BB
+#define GL_COMPRESSED_RGBA_ASTC_12x10_KHR 0x93BC
+#define GL_COMPRESSED_RGBA_ASTC_12x12_KHR 0x93BD
 #define GL_REPEAT 0x2901
 #define GL_MIRRORED_REPEAT 0x8370
 #define GL_LINEAR 0x2601
@@ -187,6 +218,8 @@ typedef void (*PFNGLACTIVETEXTUREPROC)(GLenum);
 typedef void (*PFNGLBINDTEXTUREPROC)(GLenum, GLuint);
 typedef void (*PFNGLTEXIMAGE2DPROC)(
     GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void *);
+typedef void (*PFNGLCOMPRESSEDTEXIMAGE2DPROC)(
+    GLenum, GLint, GLenum, GLsizei, GLsizei, GLint, GLsizei, const void *);
 typedef void (*PFNGLTEXPARAMETERIPROC)(GLenum, GLenum, GLint);
 typedef void (*PFNGLTEXBUFFERPROC)(GLenum, GLenum, GLuint);
 typedef void (*PFNGLGENERATEMIPMAPPROC)(GLenum);
@@ -209,10 +242,16 @@ typedef void (*PFNGLDRAWBUFFERPROC)(GLenum);
 typedef void (*PFNGLDRAWBUFFERSPROC)(GLsizei, const GLenum *);
 typedef void (*PFNGLREADBUFFERPROC)(GLenum);
 typedef GLenum (*PFNGLGETERRORPROC)(void);
+typedef const unsigned char *(*PFNGLGETSTRINGPROC)(GLenum);
+typedef const unsigned char *(*PFNGLGETSTRINGIPROC)(GLenum, GLuint);
+typedef void (*PFNGLGETINTEGERVPROC)(GLenum, GLint *);
 
 static struct {
     void *lib;
     PFNGLGETERRORPROC GetError;
+    PFNGLGETSTRINGPROC GetString;
+    PFNGLGETSTRINGIPROC GetStringi;
+    PFNGLGETINTEGERVPROC GetIntegerv;
     PFNGLCLEARPROC Clear;
     PFNGLCLEARCOLORPROC ClearColor;
     PFNGLCLEARDEPTHPROC ClearDepth;
@@ -273,6 +312,7 @@ static struct {
     PFNGLACTIVETEXTUREPROC ActiveTexture;
     PFNGLBINDTEXTUREPROC BindTexture;
     PFNGLTEXIMAGE2DPROC TexImage2D;
+    PFNGLCOMPRESSEDTEXIMAGE2DPROC CompressedTexImage2D;
     PFNGLTEXPARAMETERIPROC TexParameteri;
     PFNGLTEXBUFFERPROC TexBuffer;
     PFNGLGENERATEMIPMAPPROC GenerateMipmap;
@@ -359,12 +399,16 @@ static struct {
 
 typedef struct {
     const void *pixels;
+    void *texture_asset;
     uint64_t generation;
     uint64_t pending_generation;
     GLuint tex;
     int32_t width;
     int32_t height;
     int32_t upload_next_row;
+    int32_t native_format;
+    int64_t native_next_mip;
+    int64_t native_mip_count;
     int8_t upload_in_progress;
     uint64_t last_used_frame;
 } gl_texture_cache_entry_t;
@@ -542,6 +586,8 @@ typedef struct {
     GLint uLightType[VGFX3D_MAX_LIGHTS], uLightShadowIndex[VGFX3D_MAX_LIGHTS],
         uLightDir[VGFX3D_MAX_LIGHTS], uLightPos[VGFX3D_MAX_LIGHTS], uLightColor[VGFX3D_MAX_LIGHTS],
         uLightIntensity[VGFX3D_MAX_LIGHTS];
+    GLint uLightShadowCascadeCount[VGFX3D_MAX_LIGHTS],
+        uLightShadowCascadeSplits[VGFX3D_MAX_LIGHTS];
     GLint uShadowVP[VGFX3D_MAX_SHADOW_LIGHTS];
     GLint uLightAtten[VGFX3D_MAX_LIGHTS], uLightInnerCos[VGFX3D_MAX_LIGHTS],
         uLightOuterCos[VGFX3D_MAX_LIGHTS];
@@ -680,6 +726,8 @@ static int load_gl(void) {
     return -1
 
     LOAD(GetError);
+    LOAD(GetString);
+    LOAD(GetIntegerv);
     LOAD(Clear);
     LOAD(ClearColor);
     LOAD(ClearDepth);
@@ -751,6 +799,7 @@ static int load_gl(void) {
     LOADP(ActiveTexture);
     LOADP(BindTexture);
     LOADP(TexImage2D);
+    LOADP(CompressedTexImage2D);
     LOADP(TexParameteri);
     LOADP(TexBuffer);
     LOADP(GenerateMipmap);
@@ -772,6 +821,8 @@ static int load_gl(void) {
     LOADP(DrawBuffer);
     LOADP(DrawBuffers);
     LOADP(ReadBuffer);
+    gl.GetStringi =
+        (PFNGLGETSTRINGIPROC)glx.GetProcAddress((const unsigned char *)"glGetStringi");
 
 #undef LOAD
 #undef LOADX
@@ -979,7 +1030,9 @@ static const char *const
                                               VGFX3D_MAX_LIGHTS) "];\n"
                                                                  "uniform int "
                                                                  "uLightShadowIndex[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
-                                                                                                                    "uniform vec3 uLightDir[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                    "uniform int uLightShadowCascadeCount[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                                                                          "uniform vec4 uLightShadowCascadeSplits[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
+                                                                                                                                                                                                                                  "uniform vec3 uLightDir[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
                                                                                                                                                                             "uniform vec3 uLightPos[" VGFX3D_STR(VGFX3D_MAX_LIGHTS) "];\n"
                                                                                                                                                                                                                                     "uniform vec3 uLightColor[" VGFX3D_STR(
                                                                                                                                                                                                                                         VGFX3D_MAX_LIGHTS) "];\n"
@@ -994,6 +1047,8 @@ static const char *const
                                                                                                                                                                                                                                                                                                                                                                                                                                                                           "uniform sampler2D uEmissiveTex;\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                           "uniform sampler2D uShadowTex0;\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                           "uniform sampler2D uShadowTex1;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uShadowTex2;\n"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform sampler2D uShadowTex3;\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                           "uniform samplerCube uEnvMap;\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                           "uniform sampler2D uMetallicRoughnessTex;\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                           "uniform sampler2D uAOTex;\n"
@@ -1050,9 +1105,33 @@ static const char *const
             "    return vec2(uv.x * m.x + uv.y * m.y + t.x,\n"
             "                uv.x * m.z + uv.y * m.w + t.y);\n"
             "}\n",
-            "float sampleShadowMap(int shadowIndex, vec3 worldPos) {\n"
+            "int resolveShadowCascade(int shadowIndex, int cascadeCount, vec4 splits, vec3 worldPos) {\n"
+            "    if (shadowIndex < 0 || shadowIndex >= uShadowCount) return -1;\n"
+            "    int count = clamp(cascadeCount, 1, " VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS) ");\n"
+            "    count = min(count, uShadowCount - shadowIndex);\n"
+            "    if (count <= 1) return shadowIndex;\n"
+            "    float viewDepth = dot(worldPos - uCameraPos, uCameraForward);\n"
+            "    if (viewDepth <= splits.x || count == 1) return shadowIndex;\n"
+            "    if (viewDepth <= splits.y || count == 2) return shadowIndex + 1;\n"
+            "    if (viewDepth <= splits.z || count == 3) return shadowIndex + 2;\n"
+            "    return shadowIndex + 3;\n"
+            "}\n"
+            "vec2 shadowTexelSize(int shadowIndex) {\n"
+            "    if (shadowIndex == 0) return 1.0 / vec2(textureSize(uShadowTex0, 0));\n"
+            "    if (shadowIndex == 1) return 1.0 / vec2(textureSize(uShadowTex1, 0));\n"
+            "    if (shadowIndex == 2) return 1.0 / vec2(textureSize(uShadowTex2, 0));\n"
+            "    return 1.0 / vec2(textureSize(uShadowTex3, 0));\n"
+            "}\n"
+            "float sampleShadowDepth(int shadowIndex, vec2 uv) {\n"
+            "    if (shadowIndex == 0) return texture(uShadowTex0, uv).r;\n"
+            "    if (shadowIndex == 1) return texture(uShadowTex1, uv).r;\n"
+            "    if (shadowIndex == 2) return texture(uShadowTex2, uv).r;\n"
+            "    return texture(uShadowTex3, uv).r;\n"
+            "}\n"
+            "float sampleShadowMap(int shadowIndex, int cascadeCount, vec4 splits, vec3 worldPos) {\n"
+            "    shadowIndex = resolveShadowCascade(shadowIndex, cascadeCount, splits, worldPos);\n"
             "    if (shadowIndex < 0 || shadowIndex >= uShadowCount) return 1.0;\n"
-            "    mat4 shadowVP = (shadowIndex == 0) ? uShadowVP[0] : uShadowVP[1];\n"
+            "    mat4 shadowVP = uShadowVP[shadowIndex];\n"
             "    vec4 lc = shadowVP * vec4(worldPos, 1.0);\n"
             "    if (lc.w <= 0.0001) return 1.0;\n"
             "    float invW = 1.0 / lc.w;\n"
@@ -1061,15 +1140,11 @@ static const char *const
             "    float depth = ndc.z * 0.5 + 0.5;\n"
             "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth < 0.0 || depth "
             "> 1.0) return 1.0;\n"
-            "    vec2 texel = (shadowIndex == 0)\n"
-            "        ? 1.0 / vec2(textureSize(uShadowTex0, 0))\n"
-            "        : 1.0 / vec2(textureSize(uShadowTex1, 0));\n"
+            "    vec2 texel = shadowTexelSize(shadowIndex);\n"
             "    float lit = 0.0;\n"
             "    for (int y = -1; y <= 1; y++) {\n"
             "        for (int x = -1; x <= 1; x++) {\n"
-            "            float smp = (shadowIndex == 0)\n"
-            "                ? texture(uShadowTex0, uv + vec2(x, y) * texel).r\n"
-            "                : texture(uShadowTex1, uv + vec2(x, y) * texel).r;\n"
+            "            float smp = sampleShadowDepth(shadowIndex, uv + vec2(x, y) * texel);\n"
             "            lit += (depth - uShadowBias <= smp) ? 1.0 : 0.0;\n"
             "        }\n"
             "    }\n"
@@ -1175,7 +1250,7 @@ static const char *const
             "            if (uLightType[i] == 0) {\n"
             "                L = safeNormalize3(-uLightDir[i], vec3(0.0));\n"
             "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], "
-            "vWorldPos));\n"
+            "uLightShadowCascadeCount[i], uLightShadowCascadeSplits[i], vWorldPos));\n"
             "            } else if (uLightType[i] == 1) {\n"
             "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
             "                float d = length(toLight);\n"
@@ -1231,7 +1306,7 @@ static const char *const
             "            if (uLightType[i] == 0) {\n"
             "                L = safeNormalize3(-uLightDir[i], vec3(0.0));\n"
             "                atten *= mix(0.15, 1.0, sampleShadowMap(uLightShadowIndex[i], "
-            "vWorldPos));\n"
+            "uLightShadowCascadeCount[i], uLightShadowCascadeSplits[i], vWorldPos));\n"
             "            } else if (uLightType[i] == 1) {\n"
             "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
             "                float d = length(toLight);\n"
@@ -1923,6 +1998,7 @@ static void texture_cache_destroy(gl_context_t *ctx) {
     ctx->morph_cache_capacity = 0;
 }
 
+/// @brief Add @p bytes to the context's running per-frame texture-upload total (saturating).
 static void gl_record_texture_upload_bytes(gl_context_t *ctx, uint64_t bytes) {
     if (!ctx || bytes == 0)
         return;
@@ -1933,13 +2009,116 @@ static void gl_record_texture_upload_bytes(gl_context_t *ctx, uint64_t bytes) {
     ctx->texture_upload_bytes += bytes;
 }
 
+/// @brief Whether the named OpenGL extension is present (checks both indexed and legacy queries).
+static int gl_extension_supported(const char *name) {
+    GLint count = 0;
+    const char *extensions;
+
+    if (!name || !*name || !gl.GetString)
+        return 0;
+    if (gl.GetStringi && gl.GetIntegerv) {
+        gl.GetIntegerv(GL_NUM_EXTENSIONS, &count);
+        for (GLint i = 0; i < count; i++) {
+            const char *ext = (const char *)gl.GetStringi(GL_EXTENSIONS, (GLuint)i);
+            if (ext && strcmp(ext, name) == 0)
+                return 1;
+        }
+    }
+    extensions = (const char *)gl.GetString(GL_EXTENSIONS);
+    if (extensions) {
+        size_t len = strlen(name);
+        const char *p = extensions;
+        while ((p = strstr(p, name)) != NULL) {
+            if ((p == extensions || p[-1] == ' ') && (p[len] == '\0' || p[len] == ' '))
+                return 1;
+            p += len;
+        }
+    }
+    return 0;
+}
+
+/// @brief Whether the current GL context version is at least @p major.@p minor (parsed from GL_VERSION).
+static int gl_version_at_least(int major, int minor) {
+    const char *version = gl.GetString ? (const char *)gl.GetString(GL_VERSION) : NULL;
+    int found_major = 0;
+    int found_minor = 0;
+
+    if (!version || sscanf(version, "%d.%d", &found_major, &found_minor) != 2)
+        return 0;
+    return found_major > major || (found_major == major && found_minor >= minor);
+}
+
+/// @brief Report which native compressed texture formats this GL context can upload.
+/// @details Probes for BPTC (BC7), ASTC LDR, and ETC2 via version/extension checks and returns the
+///          matching RT_CANVAS3D_BACKEND_CAP_* bitmask (0 if compressed uploads are unavailable).
+static int64_t gl_get_native_texture_caps(void *ctx_ptr) {
+    (void)ctx_ptr;
+    int64_t caps = 0;
+    if (!gl.CompressedTexImage2D)
+        return 0;
+    if (gl_version_at_least(4, 2) || gl_extension_supported("GL_ARB_texture_compression_bptc"))
+        caps |= RT_CANVAS3D_BACKEND_CAP_BC7;
+    if (gl_extension_supported("GL_KHR_texture_compression_astc_ldr"))
+        caps |= RT_CANVAS3D_BACKEND_CAP_ASTC;
+    if (gl_version_at_least(4, 3) || gl_extension_supported("GL_ARB_ES3_compatibility"))
+        caps |= RT_CANVAS3D_BACKEND_CAP_ETC2;
+    return caps;
+}
+
+/// @brief Map a native compressed mip's format/block size to the matching GL internal format enum.
+/// @details BC7→BPTC, ETC2→ETC2_EAC, ASTC→the specific ASTC block-size enum. Returns 0 if unsupported.
+static GLenum gl_native_texture_internal_format(const vgfx3d_native_texture_mip_t *mip) {
+    if (!mip)
+        return 0;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7)
+        return GL_COMPRESSED_RGBA_BPTC_UNORM;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2)
+        return GL_COMPRESSED_RGBA8_ETC2_EAC;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC) {
+        if (mip->block_width == 4 && mip->block_height == 4)
+            return GL_COMPRESSED_RGBA_ASTC_4x4_KHR;
+        if (mip->block_width == 5 && mip->block_height == 4)
+            return GL_COMPRESSED_RGBA_ASTC_5x4_KHR;
+        if (mip->block_width == 5 && mip->block_height == 5)
+            return GL_COMPRESSED_RGBA_ASTC_5x5_KHR;
+        if (mip->block_width == 6 && mip->block_height == 5)
+            return GL_COMPRESSED_RGBA_ASTC_6x5_KHR;
+        if (mip->block_width == 6 && mip->block_height == 6)
+            return GL_COMPRESSED_RGBA_ASTC_6x6_KHR;
+        if (mip->block_width == 8 && mip->block_height == 5)
+            return GL_COMPRESSED_RGBA_ASTC_8x5_KHR;
+        if (mip->block_width == 8 && mip->block_height == 6)
+            return GL_COMPRESSED_RGBA_ASTC_8x6_KHR;
+        if (mip->block_width == 8 && mip->block_height == 8)
+            return GL_COMPRESSED_RGBA_ASTC_8x8_KHR;
+        if (mip->block_width == 10 && mip->block_height == 5)
+            return GL_COMPRESSED_RGBA_ASTC_10x5_KHR;
+        if (mip->block_width == 10 && mip->block_height == 6)
+            return GL_COMPRESSED_RGBA_ASTC_10x6_KHR;
+        if (mip->block_width == 10 && mip->block_height == 8)
+            return GL_COMPRESSED_RGBA_ASTC_10x8_KHR;
+        if (mip->block_width == 10 && mip->block_height == 10)
+            return GL_COMPRESSED_RGBA_ASTC_10x10_KHR;
+        if (mip->block_width == 12 && mip->block_height == 10)
+            return GL_COMPRESSED_RGBA_ASTC_12x10_KHR;
+        if (mip->block_width == 12 && mip->block_height == 12)
+            return GL_COMPRESSED_RGBA_ASTC_12x12_KHR;
+    }
+    return 0;
+}
+
+/// @brief Bytes still to upload for a cached texture entry (native or RGBA streaming path).
 static uint64_t gl_texture_pending_bytes(const gl_texture_cache_entry_t *entry) {
     if (!entry)
         return 0;
+    if (entry->texture_asset)
+        return vgfx3d_textureasset_pending_native_bytes(
+            entry->texture_asset, entry->native_next_mip, entry->upload_in_progress);
     return vgfx3d_pending_rgba_upload_bytes(
         entry->width, entry->height, entry->upload_next_row, entry->upload_in_progress);
 }
 
+/// @brief Bytes still to upload for a cached cubemap entry across its remaining faces/rows.
 static uint64_t gl_cubemap_pending_bytes(const gl_cubemap_cache_entry_t *entry) {
     if (!entry)
         return 0;
@@ -1947,6 +2126,7 @@ static uint64_t gl_cubemap_pending_bytes(const gl_cubemap_cache_entry_t *entry) 
         entry->face_size, entry->upload_face, entry->upload_next_row, entry->upload_in_progress);
 }
 
+/// @brief Total bytes still pending across all in-progress texture uploads on the context (saturating).
 static uint64_t gl_get_texture_upload_pending_bytes(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     uint64_t total = 0;
@@ -1968,12 +2148,98 @@ static uint64_t gl_get_texture_upload_pending_bytes(void *ctx_ptr) {
     return total;
 }
 
+/// @brief Set the per-frame byte budget that paces streaming texture uploads on this context.
 static void gl_set_texture_upload_budget(void *ctx_ptr, uint64_t bytes) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (ctx)
         ctx->texture_upload_budget_bytes = bytes;
 }
 
+/// @brief Upload more of an in-progress native compressed texture, bounded by the upload budget.
+/// @details Uploads whole resident mips via glCompressedTexImage2D until the budget is spent or the
+///          asset is fully resident, advancing the per-entry mip cursor.
+/// @return 1 if the upload finished this call, 0 if more remains (or on a precondition failure).
+static int gl_continue_native_texture_upload(gl_context_t *ctx, gl_texture_cache_entry_t *entry) {
+    if (!ctx || !entry || !entry->texture_asset || !entry->upload_in_progress || !entry->tex ||
+        !gl.CompressedTexImage2D)
+        return 0;
+    gl.BindTexture(GL_TEXTURE_2D, entry->tex);
+    while (entry->native_next_mip < entry->native_mip_count) {
+        vgfx3d_native_texture_mip_t mip;
+        GLenum internal_format;
+        if (ctx->texture_upload_budget_bytes != UINT64_MAX &&
+            ctx->texture_upload_bytes >= ctx->texture_upload_budget_bytes)
+            return 0;
+        if (!vgfx3d_textureasset_get_native_resident_mip(
+                entry->texture_asset, entry->native_next_mip, &mip))
+            return 0;
+        internal_format = gl_native_texture_internal_format(&mip);
+        if (!internal_format || mip.bytes > (uint64_t)INT32_MAX)
+            return 0;
+        gl.CompressedTexImage2D(GL_TEXTURE_2D,
+                                (GLint)entry->native_next_mip,
+                                internal_format,
+                                (GLsizei)mip.width,
+                                (GLsizei)mip.height,
+                                0,
+                                (GLsizei)mip.bytes,
+                                mip.data);
+        gl_record_texture_upload_bytes(ctx, mip.bytes);
+        entry->native_next_mip++;
+        entry->last_used_frame = ctx->frame_serial;
+    }
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)(entry->native_mip_count - 1));
+    entry->generation = entry->pending_generation;
+    entry->pending_generation = 0;
+    entry->upload_in_progress = 0;
+    return 1;
+}
+
+/// @brief Begin uploading a native compressed TextureAsset3D: create the GL texture and seed the cursor.
+/// @details Allocates the texture object and mip metadata, then kicks the first budgeted upload chunk.
+static int gl_start_native_texture_upload(gl_context_t *ctx,
+                                          gl_texture_cache_entry_t *entry,
+                                          void *asset,
+                                          uint64_t cache_key) {
+    vgfx3d_native_texture_mip_t first_mip;
+    int64_t mip_count;
+
+    if (!ctx || !entry || !asset ||
+        !vgfx3d_textureasset_native_supported(asset, gl_get_native_texture_caps(ctx)) ||
+        !vgfx3d_textureasset_get_native_resident_mip(asset, 0, &first_mip) ||
+        !gl_native_texture_internal_format(&first_mip))
+        return 0;
+    mip_count = rt_textureasset3d_get_resident_mip_count(asset);
+    if (mip_count <= 0)
+        return 0;
+    if (!entry->tex) {
+        gl.GenTextures(1, &entry->tex);
+        if (!entry->tex)
+            return 0;
+    }
+    entry->pixels = NULL;
+    entry->texture_asset = asset;
+    entry->pending_generation = cache_key;
+    entry->generation = 0;
+    entry->width = first_mip.width;
+    entry->height = first_mip.height;
+    entry->upload_next_row = 0;
+    entry->native_format = first_mip.format_id;
+    entry->native_next_mip = 0;
+    entry->native_mip_count = mip_count;
+    entry->upload_in_progress = 1;
+    entry->last_used_frame = ctx->frame_serial;
+    gl_continue_native_texture_upload(ctx, entry);
+    return 1;
+}
+
+/// @brief Upload more rows of an in-progress RGBA texture, bounded by the upload budget.
+/// @return 1 if the upload finished this call, 0 if more rows remain.
 static int gl_continue_texture_upload(
     gl_context_t *ctx, gl_texture_cache_entry_t *entry, const void *pixels_ptr) {
     int32_t rows;
@@ -2025,6 +2291,7 @@ static int gl_continue_texture_upload(
     return 0;
 }
 
+/// @brief Begin uploading an RGBA Pixels texture: allocate the GL texture and seed the row cursor.
 static int gl_start_texture_upload(
     gl_context_t *ctx, gl_texture_cache_entry_t *entry, const void *pixels_ptr, uint64_t cache_key) {
     int32_t w = 0;
@@ -2039,11 +2306,15 @@ static int gl_start_texture_upload(
     }
 
     entry->pixels = pixels_ptr;
+    entry->texture_asset = NULL;
     entry->pending_generation = cache_key;
     entry->generation = 0;
     entry->width = w;
     entry->height = h;
     entry->upload_next_row = 0;
+    entry->native_format = RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+    entry->native_next_mip = 0;
+    entry->native_mip_count = 0;
     entry->upload_in_progress = 1;
     entry->last_used_frame = ctx->frame_serial;
 
@@ -2121,6 +2392,76 @@ static GLuint gl_get_cached_texture(gl_context_t *ctx, const void *pixels_ptr) {
     return entry->upload_in_progress ? 0 : entry->tex;
 }
 
+/// @brief Get the GL texture for a native TextureAsset3D, creating/streaming it on a cache miss.
+/// @details Keyed by the asset's native cache key so residency changes invalidate the cache entry.
+/// @return The GL texture name, or 0 if it cannot be created.
+static GLuint gl_get_cached_native_texture(gl_context_t *ctx, void *asset) {
+    uint64_t cache_key;
+
+    if (!ctx || !asset || !vgfx3d_textureasset_native_supported(asset, gl_get_native_texture_caps(ctx)))
+        return 0;
+    cache_key = rt_textureasset3d_get_native_cache_key(asset);
+    if (cache_key == 0)
+        return 0;
+
+    for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
+        if (ctx->texture_cache[i].texture_asset == asset &&
+            ctx->texture_cache[i].generation == cache_key) {
+            ctx->texture_cache[i].last_used_frame = ctx->frame_serial;
+            return ctx->texture_cache[i].tex;
+        }
+        if (ctx->texture_cache[i].texture_asset == asset &&
+            ctx->texture_cache[i].pending_generation == cache_key &&
+            ctx->texture_cache[i].upload_in_progress) {
+            return gl_continue_native_texture_upload(ctx, &ctx->texture_cache[i])
+                       ? ctx->texture_cache[i].tex
+                       : 0;
+        }
+    }
+
+    for (int32_t i = 0; i < ctx->texture_cache_count; i++) {
+        if (ctx->texture_cache[i].texture_asset == asset) {
+            if (!gl_start_native_texture_upload(ctx, &ctx->texture_cache[i], asset, cache_key))
+                return 0;
+            return ctx->texture_cache[i].upload_in_progress ? 0 : ctx->texture_cache[i].tex;
+        }
+    }
+
+    if (ctx->texture_cache_count >= ctx->texture_cache_capacity) {
+        int32_t new_cap = vgfx3d_opengl_next_capacity(
+            ctx->texture_cache_capacity, ctx->texture_cache_count + 1, 16);
+        gl_texture_cache_entry_t *nv = (gl_texture_cache_entry_t *)realloc(
+            ctx->texture_cache, (size_t)new_cap * sizeof(gl_texture_cache_entry_t));
+        if (!nv)
+            return 0;
+        ctx->texture_cache = nv;
+        memset(ctx->texture_cache + ctx->texture_cache_capacity,
+               0,
+               (size_t)(new_cap - ctx->texture_cache_capacity) * sizeof(*ctx->texture_cache));
+        ctx->texture_cache_capacity = new_cap;
+    }
+
+    gl_texture_cache_entry_t *entry = &ctx->texture_cache[ctx->texture_cache_count++];
+    memset(entry, 0, sizeof(*entry));
+    if (!gl_start_native_texture_upload(ctx, entry, asset, cache_key)) {
+        if (entry->tex)
+            gl.DeleteTextures(1, &entry->tex);
+        memset(entry, 0, sizeof(*entry));
+        ctx->texture_cache_count--;
+        return 0;
+    }
+    return entry->upload_in_progress ? 0 : entry->tex;
+}
+
+/// @brief Resolve a material's texture to a GL texture, preferring native blocks then RGBA Pixels.
+/// @return The GL texture name to bind, or 0 if neither source is uploadable.
+static GLuint gl_get_material_texture(gl_context_t *ctx, void *asset, const void *pixels) {
+    GLuint tex = asset ? gl_get_cached_native_texture(ctx, asset) : 0;
+    if (tex)
+        return tex;
+    return pixels ? gl_get_cached_texture(ctx, pixels) : 0;
+}
+
 /// @brief Float max-LOD index for a cubemap's mip pyramid (parity with D3D11 version).
 /// @details Counts `log2(face_size)` levels down to 1×1. Returned as a float because
 ///   GL's `TEXTURE_MAX_LOD` / `textureLod` uniforms take floats, and the returned value
@@ -2140,6 +2481,8 @@ static float gl_cubemap_max_lod(const rt_cubemap3d *cubemap) {
     return lod;
 }
 
+/// @brief Upload more of an in-progress cubemap (face by face, row band by row band) within budget.
+/// @return 1 if all six faces finished this call, 0 if more remains.
 static int gl_continue_cubemap_upload(
     gl_context_t *ctx, gl_cubemap_cache_entry_t *entry, const rt_cubemap3d *cubemap) {
     if (!ctx || !entry || !cubemap || !entry->upload_in_progress || !entry->tex ||
@@ -2202,6 +2545,7 @@ static int gl_continue_cubemap_upload(
     return 1;
 }
 
+/// @brief Begin uploading a cubemap: create the GL cubemap texture and seed the face/row cursor.
 static int gl_start_cubemap_upload(gl_context_t *ctx,
                                    gl_cubemap_cache_entry_t *entry,
                                    const rt_cubemap3d *cubemap,
@@ -3544,7 +3888,7 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
 /// @brief Push skinning + morph state into the program.
 ///
 /// Bone palette → UBO. Morph weights → uniform float array. Morph
-/// deltas → TBOs bound to texture units 10/11. Cached entries take
+/// deltas → TBOs bound to dedicated vertex texture units. Cached entries take
 /// the fast path; transient morph data goes through the streaming
 /// path. Uniform values fall back to safe zeros when arrays aren't
 /// available so the shader's `if (morphShapeCount > 0)` short-circuits.
@@ -3572,7 +3916,7 @@ static void bind_morph_payload(gl_context_t *ctx,
     if (use_skinning)
         upload_active_bone_palettes(ctx, cmd);
 
-    gl.ActiveTexture(GL_TEXTURE0 + 11);
+    gl.ActiveTexture(GL_TEXTURE0 + GL_TU_MORPH_DELTAS);
     if (morph_count > 0) {
         size_t bytes;
         if (!gl_compute_morph_payload_bytes(cmd->vertex_count, morph_count, &bytes)) {
@@ -3616,8 +3960,8 @@ static void bind_morph_payload(gl_context_t *ctx,
     } else {
         gl.BindTexture(GL_TEXTURE_BUFFER, 0);
     }
-    gl.Uniform1i(uMorphDeltas, 11);
-    gl.ActiveTexture(GL_TEXTURE0 + 12);
+    gl.Uniform1i(uMorphDeltas, GL_TU_MORPH_DELTAS);
+    gl.ActiveTexture(GL_TEXTURE0 + GL_TU_MORPH_NORMAL_DELTAS);
     if (uHasMorphNormalDeltas >= 0) {
         gl.Uniform1i(uHasMorphNormalDeltas,
                      (morph_count > 0 && cmd->morph_normal_deltas && morph_normal_tbo != 0) ? 1
@@ -3629,7 +3973,7 @@ static void bind_morph_payload(gl_context_t *ctx,
         gl.BindTexture(GL_TEXTURE_BUFFER, 0);
     }
     if (uMorphNormalDeltas >= 0)
-        gl.Uniform1i(uMorphNormalDeltas, 12);
+        gl.Uniform1i(uMorphNormalDeltas, GL_TU_MORPH_NORMAL_DELTAS);
     gl.ActiveTexture(GL_TEXTURE0);
 }
 
@@ -3796,6 +4140,13 @@ static void upload_light_uniforms(gl_context_t *ctx,
             vgfx3d_opengl_sanitize_shadow_index(lights[i].shadow_index, ctx->shadow_count);
         gl.Uniform1i(ctx->uLightType[i], lights[i].type);
         gl.Uniform1i(ctx->uLightShadowIndex[i], shadow_index);
+        gl.Uniform1i(ctx->uLightShadowCascadeCount[i],
+                     shadow_index >= 0 ? lights[i].shadow_cascade_count : 1);
+        gl.Uniform4f(ctx->uLightShadowCascadeSplits[i],
+                     lights[i].shadow_cascade_splits[0],
+                     lights[i].shadow_cascade_splits[1],
+                     lights[i].shadow_cascade_splits[2],
+                     lights[i].shadow_cascade_splits[3]);
         gl.Uniform3f(ctx->uLightDir[i],
                      lights[i].direction[0],
                      lights[i].direction[1],
@@ -3924,18 +4275,20 @@ static void upload_main_uniforms(gl_context_t *ctx,
 /// @brief Resolve every cmd texture from the cache and bind to its sampler unit.
 ///
 /// Slot map: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4-5=shadow,
-/// 6=splat-control, 7-10=splat layers, 13=env cubemap, 14=metallic-
+/// 8=splat-control, 9-12=splat layers, 13=env cubemap, 14=metallic-
 /// rough, 15=AO. Slots 11/12 are reserved for morph TBOs (set by
 /// `bind_morph_payload`). Each `has*` uniform tells the shader which
 /// slots are populated.
 static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
-    GLuint diffuse_tex = cmd->texture ? gl_get_cached_texture(ctx, cmd->texture) : 0;
-    GLuint normal_tex = cmd->normal_map ? gl_get_cached_texture(ctx, cmd->normal_map) : 0;
-    GLuint specular_tex = cmd->specular_map ? gl_get_cached_texture(ctx, cmd->specular_map) : 0;
-    GLuint emissive_tex = cmd->emissive_map ? gl_get_cached_texture(ctx, cmd->emissive_map) : 0;
-    GLuint metallic_roughness_tex =
-        cmd->metallic_roughness_map ? gl_get_cached_texture(ctx, cmd->metallic_roughness_map) : 0;
-    GLuint ao_tex = cmd->ao_map ? gl_get_cached_texture(ctx, cmd->ao_map) : 0;
+    GLuint diffuse_tex = gl_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
+    GLuint normal_tex = gl_get_material_texture(ctx, cmd->normal_map_asset, cmd->normal_map);
+    GLuint specular_tex =
+        gl_get_material_texture(ctx, cmd->specular_map_asset, cmd->specular_map);
+    GLuint emissive_tex =
+        gl_get_material_texture(ctx, cmd->emissive_map_asset, cmd->emissive_map);
+    GLuint metallic_roughness_tex = gl_get_material_texture(
+        ctx, cmd->metallic_roughness_map_asset, cmd->metallic_roughness_map);
+    GLuint ao_tex = gl_get_material_texture(ctx, cmd->ao_map_asset, cmd->ao_map);
     GLuint env_tex =
         cmd->env_map ? gl_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map) : 0;
     GLuint splat_tex = cmd->splat_map ? gl_get_cached_texture(ctx, cmd->splat_map) : 0;
@@ -3985,25 +4338,27 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
                                    emissive_tex,
                                    cmd,
                                    RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE);
-    bind_texture_unit(
-        ctx->uShadowTex[0], 4, GL_TEXTURE_2D, ctx->shadow_count > 0 ? ctx->shadow_depth_tex[0] : 0);
-    bind_texture_unit(
-        ctx->uShadowTex[1], 5, GL_TEXTURE_2D, ctx->shadow_count > 1 ? ctx->shadow_depth_tex[1] : 0);
-    bind_texture_unit(ctx->uSplatTex, 6, GL_TEXTURE_2D, splat_tex);
-    bind_texture_unit(ctx->uSplatLayer0, 7, GL_TEXTURE_2D, splat_layer0);
-    bind_texture_unit(ctx->uSplatLayer1, 8, GL_TEXTURE_2D, splat_layer1);
-    bind_texture_unit(ctx->uSplatLayer2, 9, GL_TEXTURE_2D, splat_layer2);
-    bind_texture_unit(ctx->uSplatLayer3, 10, GL_TEXTURE_2D, splat_layer3);
-    bind_texture_unit(ctx->uEnvMap, 13, GL_TEXTURE_CUBE_MAP, env_tex);
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        bind_texture_unit(ctx->uShadowTex[slot],
+                          GL_TU_SHADOW0 + slot,
+                          GL_TEXTURE_2D,
+                          ctx->shadow_count > slot ? ctx->shadow_depth_tex[slot] : 0);
+    }
+    bind_texture_unit(ctx->uSplatTex, GL_TU_SPLAT_CONTROL, GL_TEXTURE_2D, splat_tex);
+    bind_texture_unit(ctx->uSplatLayer0, GL_TU_SPLAT_LAYER0, GL_TEXTURE_2D, splat_layer0);
+    bind_texture_unit(ctx->uSplatLayer1, GL_TU_SPLAT_LAYER0 + 1, GL_TEXTURE_2D, splat_layer1);
+    bind_texture_unit(ctx->uSplatLayer2, GL_TU_SPLAT_LAYER0 + 2, GL_TEXTURE_2D, splat_layer2);
+    bind_texture_unit(ctx->uSplatLayer3, GL_TU_SPLAT_LAYER0 + 3, GL_TEXTURE_2D, splat_layer3);
+    bind_texture_unit(ctx->uEnvMap, GL_TU_ENV_MAP, GL_TEXTURE_CUBE_MAP, env_tex);
     bind_texture_unit_with_sampler(ctx,
                                    ctx->uMetallicRoughnessTex,
-                                   14,
+                                   GL_TU_METALLIC_ROUGHNESS,
                                    GL_TEXTURE_2D,
                                    metallic_roughness_tex,
                                    cmd,
                                    RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS);
     bind_texture_unit_with_sampler(
-        ctx, ctx->uAOTex, 15, GL_TEXTURE_2D, ao_tex, cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO);
+        ctx, ctx->uAOTex, GL_TU_AO, GL_TEXTURE_2D, ao_tex, cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO);
     if (ctx->uSplatScales >= 0) {
         gl.Uniform4f(ctx->uSplatScales,
                      cmd->splat_layer_scales[0],
@@ -4208,6 +4563,10 @@ static void query_main_uniforms(gl_context_t *ctx) {
         ctx->uLightType[i] = gl.GetUniformLocation(ctx->program, name);
         snprintf(name, sizeof(name), "uLightShadowIndex[%d]", i);
         ctx->uLightShadowIndex[i] = gl.GetUniformLocation(ctx->program, name);
+        snprintf(name, sizeof(name), "uLightShadowCascadeCount[%d]", i);
+        ctx->uLightShadowCascadeCount[i] = gl.GetUniformLocation(ctx->program, name);
+        snprintf(name, sizeof(name), "uLightShadowCascadeSplits[%d]", i);
+        ctx->uLightShadowCascadeSplits[i] = gl.GetUniformLocation(ctx->program, name);
         snprintf(name, sizeof(name), "uLightDir[%d]", i);
         ctx->uLightDir[i] = gl.GetUniformLocation(ctx->program, name);
         snprintf(name, sizeof(name), "uLightPos[%d]", i);
@@ -4230,6 +4589,8 @@ static void query_main_uniforms(gl_context_t *ctx) {
     }
     ctx->uShadowTex[0] = gl.GetUniformLocation(ctx->program, "uShadowTex0");
     ctx->uShadowTex[1] = gl.GetUniformLocation(ctx->program, "uShadowTex1");
+    ctx->uShadowTex[2] = gl.GetUniformLocation(ctx->program, "uShadowTex2");
+    ctx->uShadowTex[3] = gl.GetUniformLocation(ctx->program, "uShadowTex3");
 }
 
 /// @brief Resolve uniform locations for the depth-only shadow program.
@@ -4504,21 +4865,21 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl.Uniform1i(ctx->uNormalTex, 1);
     gl.Uniform1i(ctx->uSpecularTex, 2);
     gl.Uniform1i(ctx->uEmissiveTex, 3);
-    gl.Uniform1i(ctx->uShadowTex[0], 4);
-    gl.Uniform1i(ctx->uShadowTex[1], 5);
-    gl.Uniform1i(ctx->uSplatTex, 6);
-    gl.Uniform1i(ctx->uSplatLayer0, 7);
-    gl.Uniform1i(ctx->uSplatLayer1, 8);
-    gl.Uniform1i(ctx->uSplatLayer2, 9);
-    gl.Uniform1i(ctx->uSplatLayer3, 10);
-    gl.Uniform1i(ctx->uMorphDeltas, 11);
-    gl.Uniform1i(ctx->uMorphNormalDeltas, 12);
-    gl.Uniform1i(ctx->uEnvMap, 13);
-    gl.Uniform1i(ctx->uMetallicRoughnessTex, 14);
-    gl.Uniform1i(ctx->uAOTex, 15);
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+        gl.Uniform1i(ctx->uShadowTex[slot], GL_TU_SHADOW0 + slot);
+    gl.Uniform1i(ctx->uSplatTex, GL_TU_SPLAT_CONTROL);
+    gl.Uniform1i(ctx->uSplatLayer0, GL_TU_SPLAT_LAYER0);
+    gl.Uniform1i(ctx->uSplatLayer1, GL_TU_SPLAT_LAYER0 + 1);
+    gl.Uniform1i(ctx->uSplatLayer2, GL_TU_SPLAT_LAYER0 + 2);
+    gl.Uniform1i(ctx->uSplatLayer3, GL_TU_SPLAT_LAYER0 + 3);
+    gl.Uniform1i(ctx->uMorphDeltas, GL_TU_MORPH_DELTAS);
+    gl.Uniform1i(ctx->uMorphNormalDeltas, GL_TU_MORPH_NORMAL_DELTAS);
+    gl.Uniform1i(ctx->uEnvMap, GL_TU_ENV_MAP);
+    gl.Uniform1i(ctx->uMetallicRoughnessTex, GL_TU_METALLIC_ROUGHNESS);
+    gl.Uniform1i(ctx->uAOTex, GL_TU_AO);
 
     gl.UseProgram(ctx->shadow_program);
-    gl.Uniform1i(ctx->shadow_uMorphDeltas, 11);
+    gl.Uniform1i(ctx->shadow_uMorphDeltas, GL_TU_MORPH_DELTAS);
     gl.Uniform1i(ctx->shadow_uDiffuseTex, 0);
 
     gl.UseProgram(ctx->skybox_program);
@@ -4920,6 +5281,7 @@ static void gl_end_frame(void *ctx_ptr) {
     }
 }
 
+/// @brief Read the total bytes uploaded to GL textures so far this frame (diagnostics counter).
 static uint64_t gl_get_texture_upload_bytes(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     return ctx ? ctx->texture_upload_bytes : 0;
@@ -5195,7 +5557,7 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp[ctx->shadow_pass_slot]);
     bind_shadow_anim(ctx, cmd);
     {
-        GLuint diffuse_tex = cmd->texture ? gl_get_cached_texture(ctx, cmd->texture) : 0;
+        GLuint diffuse_tex = gl_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
         gl.Uniform1i(ctx->shadow_uHasTexture, diffuse_tex ? 1 : 0);
         gl.Uniform1i(ctx->shadow_uAlphaMode, cmd->alpha_mode);
         gl.Uniform1f(ctx->shadow_uAlphaCutoff, cmd->alpha_cutoff);
@@ -5342,6 +5704,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .set_texture_upload_budget = gl_set_texture_upload_budget,
     .get_texture_upload_pending_bytes = gl_get_texture_upload_pending_bytes,
     .get_texture_upload_bytes = gl_get_texture_upload_bytes,
+    .get_native_texture_caps = gl_get_native_texture_caps,
 };
 
 #endif /* __linux__ && VIPER_ENABLE_GRAPHICS */

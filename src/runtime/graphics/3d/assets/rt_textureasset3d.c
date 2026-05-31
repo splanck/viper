@@ -6,7 +6,25 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/assets/rt_textureasset3d.c
-// Purpose: KTX2/precompressed TextureAsset3D metadata and RGBA8 fallback loader.
+// Purpose: TextureAsset3D — loads KTX2 textures (RGBA8/BC3/BC7/ETC2/ASTC),
+//   retains native compressed mip payloads for GPU upload, and software-decodes
+//   RGBA8/BC3/BC7 to a Pixels fallback for backends without native support.
+//
+// Key invariants:
+//   - Only 2D, single-layer, single-face KTX2 (no array/cube/3D) is accepted.
+//   - Software fallbacks cap at TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES; files
+//     cap at TEXTUREASSET3D_MAX_FILE_BYTES. All offset/length math is overflow-
+//     and bounds-checked against the file size before any read.
+//   - BC7 software decode covers only single-subset modes 4/5/6; partitioned
+//     modes (0-3/7) keep native blocks only (no RGBA fallback).
+//   - cache_identity is a process-unique nonzero id; native_revision bumps on
+//     every resident-range change so the backend cache key invalidates.
+//
+// Ownership/Lifetime:
+//   - TextureAsset3D is GC-managed; the finalizer frees the mip table, the
+//     per-mip native payloads, and releases each decoded Pixels mip.
+//
+// Links: rt_textureasset3d.h, rt_pixels.h, rt_asset.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -41,6 +59,8 @@
 #define VK_FORMAT_ASTC_4X4_UNORM_BLOCK 157u
 #define VK_FORMAT_ASTC_12X12_SRGB_BLOCK 184u
 
+/// @brief Decoded properties of a Vulkan texture format: runtime name, whether it
+///        is block-compressed, and its block dimensions/byte size.
 typedef struct {
     const char *name;
     int8_t compressed;
@@ -49,6 +69,8 @@ typedef struct {
     int32_t block_bytes;
 } textureasset3d_format_info;
 
+/// @brief One mip level's location in the KTX2 byte stream (offset/length), its
+///        uncompressed size, and pixel dimensions.
 typedef struct {
     uint64_t offset;
     uint64_t length;
@@ -57,6 +79,9 @@ typedef struct {
     uint32_t height;
 } textureasset3d_mip;
 
+/// @brief TextureAsset3D state: the mip table plus parallel arrays of decoded
+///        Pixels mips and retained native payloads, format/block metadata, the
+///        currently-resident mip window, and the cache identity/revision pair.
 typedef struct {
     void *vptr;
     void *pixels;
@@ -74,16 +99,46 @@ typedef struct {
     int32_t block_width;
     int32_t block_height;
     int32_t block_bytes;
+    uint64_t cache_identity;
+    uint64_t native_revision;
 } rt_textureasset3d;
 
 static const uint8_t ktx2_identifier[12] = {
     0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A,
 };
 
+static volatile uint64_t g_next_textureasset3d_cache_identity = 1;
+
+/// @brief Atomically allocate the next process-unique, nonzero cache identity.
+/// @details 0 is reserved as "no key", so the loop retries past a wrapped-to-zero value.
+static uint64_t textureasset3d_next_cache_identity(void) {
+    uint64_t id;
+    do {
+        id = __atomic_fetch_add(
+            &g_next_textureasset3d_cache_identity, UINT64_C(1), __ATOMIC_RELAXED);
+    } while (id == 0);
+    return id;
+}
+
+/// @brief Bump the native-payload revision so the backend cache key changes.
+/// @details Wraps past 0 (a reserved value) to keep every revision nonzero.
+static void textureasset3d_bump_native_revision(rt_textureasset3d *asset) {
+    if (!asset)
+        return;
+    if (asset->native_revision == UINT64_MAX)
+        asset->native_revision = 1;
+    else
+        asset->native_revision++;
+    if (asset->native_revision == 0)
+        asset->native_revision = 1;
+}
+
+/// @brief Validate @p obj as a TextureAsset3D handle and return its typed pointer (NULL on mismatch).
 static rt_textureasset3d *textureasset3d_checked(void *obj) {
     return (rt_textureasset3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREASSET3D_CLASS_ID);
 }
 
+/// @brief Release a GC reference held in @p *slot if this is its last drop, then NULL it.
 static void textureasset3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -92,6 +147,7 @@ static void textureasset3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief GC finalizer: release each decoded Pixels mip and free the mip table and native payloads.
 static void textureasset3d_finalize(void *obj) {
     rt_textureasset3d *asset = (rt_textureasset3d *)obj;
     if (!asset)
@@ -113,17 +169,22 @@ static void textureasset3d_finalize(void *obj) {
     asset->mips = NULL;
 }
 
+/// @brief Read a little-endian uint32 from @p p (KTX2 is little-endian on all hosts).
 static uint32_t textureasset3d_read_u32le(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
            ((uint32_t)p[3] << 24);
 }
 
+/// @brief Read a little-endian uint64 from @p p.
 static uint64_t textureasset3d_read_u64le(const uint8_t *p) {
     uint64_t lo = textureasset3d_read_u32le(p);
     uint64_t hi = textureasset3d_read_u32le(p + 4);
     return lo | (hi << 32);
 }
 
+/// @brief Map a Vulkan format enum to runtime format metadata (name, block size, compression).
+/// @details Recognizes RGBA8, BC3, BC7, ETC2, and the ASTC block sizes via a dimension table;
+///          unknown formats return a "unknown" entry flagged compressed with a zero block size.
 static textureasset3d_format_info textureasset3d_format_from_vk(uint32_t vk_format) {
     if (vk_format == VK_FORMAT_R8G8B8A8_UNORM || vk_format == VK_FORMAT_R8G8B8A8_SRGB)
         return (textureasset3d_format_info){"rgba8", 0, 1, 1, 4};
@@ -153,17 +214,27 @@ static textureasset3d_format_info textureasset3d_format_from_vk(uint32_t vk_form
     return (textureasset3d_format_info){"unknown", 1, 0, 0, 0};
 }
 
+/// @brief Compute a mip level's dimension as base >> level, clamped to a minimum of 1.
 static uint32_t textureasset3d_mip_dimension(uint32_t base, uint32_t level) {
     uint32_t value = base >> level;
     return value > 0 ? value : 1;
 }
 
+/// @brief Set the resident mip window and recompute resident byte total / active Pixels.
+/// @details Clamps the range to the available mips, sums resident payload lengths (saturating
+///          to INT64_MAX), and points `pixels` at the first resident decoded mip. Bumps the
+///          native revision only when the start/count actually changed. Traps via @p api_name
+///          on a negative range. Returns 1 on success, 0 for a NULL asset.
 static int textureasset3d_set_resident_mip_range_internal(
     rt_textureasset3d *asset, int64_t first_mip, int64_t mip_count, const char *api_name) {
     uint64_t total = 0;
+    int64_t old_start;
+    int64_t old_count;
 
     if (!asset)
         return 0;
+    old_start = asset->resident_mip_start;
+    old_count = asset->resident_mip_count;
     if (first_mip < 0 || mip_count < 0) {
         rt_trap(api_name ? api_name : "TextureAsset3D.SetResidentMipRange: negative mip range");
         return 0;
@@ -173,6 +244,8 @@ static int textureasset3d_set_resident_mip_range_internal(
         asset->resident_mip_count = 0;
         asset->resident_bytes = 0;
         asset->pixels = NULL;
+        if (old_start != asset->resident_mip_start || old_count != asset->resident_mip_count)
+            textureasset3d_bump_native_revision(asset);
         return 1;
     }
     if (mip_count > asset->mip_count - first_mip)
@@ -193,9 +266,14 @@ static int textureasset3d_set_resident_mip_range_internal(
     asset->pixels = (asset->mip_pixels && first_mip < asset->mip_count)
                         ? asset->mip_pixels[first_mip]
                         : NULL;
+    if (old_start != asset->resident_mip_start || old_count != asset->resident_mip_count)
+        textureasset3d_bump_native_revision(asset);
     return 1;
 }
 
+/// @brief Read an entire file into a freshly malloc'd buffer (caller frees).
+/// @details Rejects empty files and files larger than TEXTUREASSET3D_MAX_FILE_BYTES.
+/// @return Byte buffer with @p out_size set, or NULL on open/read/size failure.
 static uint8_t *textureasset3d_read_file_bytes(const char *path, size_t *out_size) {
     FILE *file;
     long file_size;
@@ -237,6 +315,8 @@ static uint8_t *textureasset3d_read_file_bytes(const char *path, size_t *out_siz
     return bytes;
 }
 
+/// @brief Compute width*height*4 RGBA8 bytes with overflow checks.
+/// @return 1 with @p out_byte_count set, or 0 on zero dimension or multiplication overflow.
 static int textureasset3d_rgba8_byte_count(
     uint32_t width, uint32_t height, uint64_t *out_byte_count) {
     uint64_t pixels;
@@ -254,6 +334,10 @@ static int textureasset3d_rgba8_byte_count(
     return 1;
 }
 
+/// @brief Copy a raw RGBA8 mip from the file into a new Pixels object.
+/// @details Validates the byte budget and that [offset, offset+needed) lies within @p size,
+///          then repacks the source bytes into the Pixels RGBA word order.
+/// @return New Pixels handle, or NULL on bounds/budget failure.
 static void *textureasset3d_decode_rgba8_fallback(
     const uint8_t *data, size_t size, uint32_t width, uint32_t height, uint64_t offset, uint64_t length) {
     uint64_t needed = 0;
@@ -284,6 +368,7 @@ static void *textureasset3d_decode_rgba8_fallback(
     return pixels;
 }
 
+/// @brief Release every decoded Pixels mip in the array, then free the array itself.
 static void textureasset3d_release_mip_pixels(void **mip_pixels, int64_t mip_count) {
     if (!mip_pixels)
         return;
@@ -292,6 +377,7 @@ static void textureasset3d_release_mip_pixels(void **mip_pixels, int64_t mip_cou
     free(mip_pixels);
 }
 
+/// @brief Free every native payload buffer in the array, then free the array itself.
 static void textureasset3d_release_mip_payloads(uint8_t **mip_payloads, int64_t mip_count) {
     if (!mip_payloads)
         return;
@@ -300,6 +386,9 @@ static void textureasset3d_release_mip_payloads(uint8_t **mip_payloads, int64_t 
     free(mip_payloads);
 }
 
+/// @brief Copy each compressed mip's native bytes out of the file into owned per-mip buffers.
+/// @details Bounds-checks every mip against @p size; on any failure releases all buffers
+///          allocated so far and returns NULL. Zero-length mips leave a NULL slot.
 static uint8_t **textureasset3d_copy_native_mip_payloads(
     const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
     uint8_t **mip_payloads;
@@ -331,6 +420,7 @@ static uint8_t **textureasset3d_copy_native_mip_payloads(
     return mip_payloads;
 }
 
+/// @brief Decode all mips of a raw RGBA8 texture into a Pixels array (NULL if any mip fails).
 static void **textureasset3d_decode_rgba8_mips(
     const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
     void **mip_pixels;
@@ -353,9 +443,11 @@ static void **textureasset3d_decode_rgba8_mips(
 
 /* --- BC3 (DXT5) software reference decode. Produces an RGBA8 Pixels fallback so BC3-compressed
  *     textures render on backends that cannot upload BC3 natively (R-TEX-001). --- */
+/* Expand a 5-bit color component to 8 bits by bit replication (BC1/BC3 R and B endpoints). */
 static uint8_t textureasset3d_expand5(uint32_t v) {
     return (uint8_t)((v << 3) | (v >> 2));
 }
+/* Expand a 6-bit color component to 8 bits by bit replication (BC1/BC3 green endpoints). */
 static uint8_t textureasset3d_expand6(uint32_t v) {
     return (uint8_t)((v << 2) | (v >> 4));
 }
@@ -413,6 +505,10 @@ void rt_textureasset3d_decode_bc3_block(const uint8_t *b, uint8_t *out_rgba) {
     }
 }
 
+/// @brief Software-decode a whole BC3 mip into a new RGBA8 Pixels object.
+/// @details Iterates 4x4 blocks, decodes each via rt_textureasset3d_decode_bc3_block, and
+///          writes only the texels inside the image (edge blocks may overhang). Bounds- and
+///          budget-checked. Returns NULL on overflow, oversize, or allocation failure.
 static void *textureasset3d_decode_bc3_fallback(const uint8_t *data,
                                                 size_t size,
                                                 uint32_t width,
@@ -460,6 +556,7 @@ static void *textureasset3d_decode_bc3_fallback(const uint8_t *data,
     return pixels;
 }
 
+/// @brief Decode all mips of a BC3 texture into a Pixels array (NULL if any mip fails).
 static void **textureasset3d_decode_bc3_mips(
     const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
     void **mip_pixels;
@@ -502,6 +599,7 @@ typedef struct {
     int pos; /* next bit to read, LSB-first within each byte */
 } bc7_reader;
 
+/* Read the next `n` bits LSB-first from the block bitstream, advancing the reader. */
 static uint32_t bc7_get(bc7_reader *r, int n) {
     uint32_t v = 0;
     for (int i = 0; i < n; i++) {
@@ -516,6 +614,7 @@ static uint8_t bc7_unq(uint32_t v, int bits) {
     return (uint8_t)((v << (8 - bits)) | (v >> (2 * bits - 8)));
 }
 
+/* Interpolate two endpoints by weight `w` (out of 64) with rounding: lerp(e0, e1, w/64). */
 static uint8_t bc7_interp(uint8_t e0, uint8_t e1, uint8_t w) {
     return (uint8_t)(((uint32_t)e0 * (64u - w) + (uint32_t)e1 * w + 32u) >> 6);
 }
@@ -652,6 +751,10 @@ int rt_textureasset3d_decode_bc7_block(const uint8_t *b, uint8_t *out_rgba) {
     }
 }
 
+/// @brief Software-decode a whole BC7 mip into a new RGBA8 Pixels object.
+/// @details First scans every block and bails (returns NULL) if any uses a partitioned mode
+///          with no software path, so the texture stays native-only rather than partially
+///          decoded. Otherwise decodes each block, clipping edge overhang. Bounds/budget-checked.
 static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
                                                 size_t size,
                                                 uint32_t width,
@@ -709,6 +812,9 @@ static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
     return pixels;
 }
 
+/// @brief Decode all mips of a BC7 texture into a Pixels array.
+/// @details Returns NULL if any mip contains an unsupported (partitioned) mode, so a texture
+///          is either fully software-decoded or left native-only — never a mix.
 static void **textureasset3d_decode_bc7_mips(
     const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
     void **mip_pixels;
@@ -729,6 +835,13 @@ static void **textureasset3d_decode_bc7_mips(
     return mip_pixels;
 }
 
+/// @brief Parse a KTX2 byte stream into a fully-populated TextureAsset3D.
+/// @details Validates the identifier and dimensionality, reads the level index, builds the
+///          mip table with bounds checks, then — for uncompressed level data — produces an
+///          RGBA8/BC3/BC7 software Pixels fallback and/or retains native compressed payloads.
+///          Seeds the cache identity and makes all mips resident. Traps with @p api_name on
+///          malformed input.
+/// @return New TextureAsset3D handle, or NULL on validation/allocation failure.
 static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const char *api_name) {
     uint32_t vk_format;
     uint32_t pixel_width;
@@ -852,11 +965,14 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     asset->block_width = format.block_width;
     asset->block_height = format.block_height;
     asset->block_bytes = format.block_bytes;
+    asset->cache_identity = textureasset3d_next_cache_identity();
+    asset->native_revision = 1;
     textureasset3d_set_resident_mip_range_internal(asset, 0, asset->mip_count, NULL);
     (void)api_name;
     return asset;
 }
 
+/// @brief Load a KTX2 texture from a filesystem path. Traps on bad path or read failure.
 void *rt_textureasset3d_load_ktx2(rt_string path) {
     const char *cpath = path ? rt_string_cstr(path) : NULL;
     size_t size = 0;
@@ -877,6 +993,7 @@ void *rt_textureasset3d_load_ktx2(rt_string path) {
     return asset;
 }
 
+/// @brief Load a KTX2 texture from a packed asset path (rt_asset registry). Traps if not found.
 void *rt_textureasset3d_load_ktx2_asset(rt_string path) {
     size_t size = 0;
     uint8_t *data;
@@ -896,57 +1013,108 @@ void *rt_textureasset3d_load_ktx2_asset(rt_string path) {
     return asset;
 }
 
+/// @brief Texture width in pixels (0 if the handle is invalid).
 int64_t rt_textureasset3d_get_width(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return asset ? asset->width : 0;
 }
 
+/// @brief Texture height in pixels (0 if the handle is invalid).
 int64_t rt_textureasset3d_get_height(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return asset ? asset->height : 0;
 }
 
+/// @brief Number of mip levels (0 if the handle is invalid).
 int64_t rt_textureasset3d_get_mip_count(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return asset ? asset->mip_count : 0;
 }
 
+/// @brief Runtime format name ("rgba8"/"bc3"/"bc7"/"astc"/"etc2"/"unknown"; "" if invalid).
 rt_string rt_textureasset3d_get_format(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return rt_const_cstr((asset && asset->format) ? asset->format : "");
 }
 
+/// @brief Whether the texture is block-compressed (or supercompressed).
 int8_t rt_textureasset3d_get_compressed(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return (asset && asset->compressed) ? 1 : 0;
 }
 
+/// @brief First mip index currently marked resident.
 int64_t rt_textureasset3d_get_resident_mip_start(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return asset ? asset->resident_mip_start : 0;
 }
 
+/// @brief Number of mip levels currently marked resident.
 int64_t rt_textureasset3d_get_resident_mip_count(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return asset ? asset->resident_mip_count : 0;
 }
 
+/// @brief Total byte size of the currently-resident mips (saturated to INT64_MAX).
 int64_t rt_textureasset3d_get_resident_bytes(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return asset ? asset->resident_bytes : 0;
 }
 
+/// @brief Set the resident mip window (traps on a negative range); see the internal helper.
 void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int64_t mip_count) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     textureasset3d_set_resident_mip_range_internal(
         asset, first_mip, mip_count, "TextureAsset3D.SetResidentMipRange: negative mip range");
 }
 
+/// @brief Borrow the decoded Pixels object for the first resident mip (NULL if none/invalid).
 void *rt_textureasset3d_get_pixels(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return asset ? asset->pixels : NULL;
 }
 
+/// @brief Compute the backend texture-cache key for this asset's resident native blocks.
+/// @details Folds the asset's cache identity, native revision, and resident mip range into a
+///          single hash (FNV offset basis seed, golden-ratio mix per term). Returns 0 when there
+///          is nothing to cache (no native payloads or no resident mips); never returns 0 otherwise.
+uint64_t rt_textureasset3d_get_native_cache_key(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    uint64_t signature = 1469598103934665603ull;
+
+    if (!asset || !asset->compressed || !asset->mip_payloads || asset->resident_mip_count <= 0)
+        return 0;
+    signature ^= asset->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
+    signature ^= asset->native_revision + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
+    signature ^= (uint64_t)asset->resident_mip_start + 0x9e3779b97f4a7c15ull + (signature << 6) +
+                 (signature >> 2);
+    signature ^= (uint64_t)asset->resident_mip_count + 0x9e3779b97f4a7c15ull + (signature << 6) +
+                 (signature >> 2);
+    return signature ? signature : 1;
+}
+
+/// @brief Map the asset's compressed format to a native format id for the backend (NONE if
+///        uncompressed/unknown). Used to pick the GPU upload path for retained native blocks.
+int32_t rt_textureasset3d_get_native_format_id(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+
+    if (!asset || !asset->compressed || !asset->format)
+        return RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+    if (strcmp(asset->format, "bc3") == 0)
+        return RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3;
+    if (strcmp(asset->format, "bc7") == 0)
+        return RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7;
+    if (strcmp(asset->format, "astc") == 0)
+        return RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC;
+    if (strcmp(asset->format, "etc2") == 0)
+        return RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2;
+    return RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+}
+
+/// @brief Borrow a retained native compressed mip's bytes and geometry for backend upload.
+/// @details Reports the payload pointer, byte size, pixel dimensions, and block geometry for the
+///          given absolute @p mip. Only valid for compressed assets with retained native payloads.
+/// @return 1 with the out-params set, 0 if the mip is out of range or has no native payload.
 int rt_textureasset3d_get_native_mip_info(void *obj,
                                           int64_t mip,
                                           const uint8_t **out_data,

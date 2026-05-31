@@ -165,11 +165,13 @@ int8_t rt_canvas3d_backend_supports(void *obj, rt_string capability);
 int64_t rt_canvas3d_get_draw_count(void *obj);
 /// @brief Number of draw submissions rejected by visibility culling in the latest scene draw.
 int64_t rt_canvas3d_get_occluded_draw_count(void *obj);
-/// @brief CPU image bytes uploaded to backend texture storage in the latest ended frame.
+/// @brief Number of opaque draw candidates tested by the CPU occlusion grid in the latest frame.
+int64_t rt_canvas3d_get_occlusion_candidate_count(void *obj);
+/// @brief Texture payload bytes uploaded to backend storage in the latest ended frame.
 int64_t rt_canvas3d_get_texture_upload_bytes(void *obj);
 /// @brief Set the backend texture upload byte budget for each frame; negative disables the budget.
 void rt_canvas3d_set_texture_upload_budget(void *obj, int64_t bytes);
-/// @brief CPU image bytes still waiting for backend texture upload budget.
+/// @brief Texture payload bytes still waiting for backend texture upload budget.
 int64_t rt_canvas3d_get_texture_upload_pending_bytes(void *obj);
 /// @brief Capture the current back-buffer contents into a fresh Pixels object.
 void *rt_canvas3d_screenshot(void *obj);
@@ -251,6 +253,12 @@ void *rt_mesh3d_from_stl(rt_string path);
 int64_t rt_mesh3d_get_vertex_count(void *obj);
 /// @brief Number of triangles currently in the mesh (== indices / 3).
 int64_t rt_mesh3d_get_triangle_count(void *obj);
+/// @brief True when the mesh payload is resident and drawable.
+int8_t rt_mesh3d_get_resident(void *obj);
+/// @brief Mark the mesh payload resident/nonresident without releasing the Mesh3D handle.
+void rt_mesh3d_set_resident(void *obj, int8_t resident);
+/// @brief Estimated bytes for the currently resident vertex/index payload.
+int64_t rt_mesh3d_get_resident_bytes(void *obj);
 /// @brief Append a vertex with position, normal, and UV.
 void rt_mesh3d_add_vertex(
     void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);
@@ -320,7 +328,7 @@ void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_
 void *rt_material3d_new(void);
 /// @brief Create a flat-color legacy material with the given diffuse color.
 void *rt_material3d_new_color(double r, double g, double b);
-/// @brief Create a textured legacy material from Pixels or an RGBA8-backed TextureAsset3D.
+/// @brief Create a textured legacy material from Pixels or TextureAsset3D.
 void *rt_material3d_new_textured(void *pixels);
 /// @brief Create a PBR-workflow material with the given base color (default metallic=0,
 /// roughness=0.5).

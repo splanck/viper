@@ -677,6 +677,8 @@ void *rt_game3d_assets_load_model_template_asset_async(rt_string path);
 void rt_game3d_assets_set_residency_budget(int64_t bytes);
 /// @brief Return estimated bytes currently resident in the shared cached-template store.
 int64_t rt_game3d_assets_get_resident_bytes(void);
+/// @brief Hint cache eviction: higher priority and lower distance survive pressure first.
+void rt_game3d_assets_set_residency_hint(void *model_template, double priority, double distance);
 /// @brief Set the per-drain async asset upload budget in decoded bytes; negative means unlimited.
 void rt_game3d_assets_set_upload_budget(int64_t bytes);
 /// @brief Evict the cached template backing a ready template AssetHandle3D.
@@ -949,6 +951,8 @@ void rt_game3d_world_set_floating_origin(void *world, int8_t enabled);
 void *rt_game3d_world_get_world_origin(void *world);
 /// @brief Set the camera-distance threshold that triggers a floating-origin rebase.
 void rt_game3d_world_set_origin_rebase_threshold(void *world, double meters);
+/// @brief Apply a manual floating-origin rebase. Must be called between frames.
+void rt_game3d_world_rebase_origin(void *world, double dx, double dy, double dz);
 /// @brief Spawn an entity into the world (adds it to scene + physics); returns the entity.
 void *rt_game3d_world_spawn(void *world, void *entity);
 /// @brief Despawn an entity, removing it from scene and physics.
@@ -1053,6 +1057,20 @@ void *rt_game3d_world_stream_get_cell_center(void *stream, int64_t index);
 int8_t rt_game3d_world_stream_get_cell_resident(void *stream, int64_t index);
 /// @brief Get the byte estimate for a parsed scene-cell entry.
 int64_t rt_game3d_world_stream_get_cell_bytes(void *stream, int64_t index);
+/// @brief Get parsed scene-cell material metadata, or "" for invalid/missing.
+rt_string rt_game3d_world_stream_get_cell_material(void *stream, int64_t index);
+/// @brief Get parsed scene-cell optional binary sidecar path, or "" for invalid/missing.
+rt_string rt_game3d_world_stream_get_cell_sidecar(void *stream, int64_t index);
+/// @brief Get parsed scene-cell collision/render layer metadata, or 0 if unset/invalid.
+int64_t rt_game3d_world_stream_get_cell_layer(void *stream, int64_t index);
+/// @brief Get parsed scene-cell collision mask metadata, or all bits if unset.
+int64_t rt_game3d_world_stream_get_cell_collision_mask(void *stream, int64_t index);
+/// @brief Return whether parsed scene-cell collision is enabled.
+int8_t rt_game3d_world_stream_get_cell_collision_enabled(void *stream, int64_t index);
+/// @brief Get parsed scene-cell navigation area metadata, or "" for invalid/missing.
+rt_string rt_game3d_world_stream_get_cell_nav_area(void *stream, int64_t index);
+/// @brief Get parsed scene-cell traversal cost metadata.
+double rt_game3d_world_stream_get_cell_traversal_cost(void *stream, int64_t index);
 /// @brief Get parsed terrain-tile entry count.
 int64_t rt_game3d_world_stream_get_terrain_tile_count(void *stream);
 /// @brief Get a parsed terrain-tile name, or "" for an invalid index.
@@ -1065,6 +1083,20 @@ void *rt_game3d_world_stream_get_terrain_tile_center(void *stream, int64_t index
 int8_t rt_game3d_world_stream_get_terrain_tile_resident(void *stream, int64_t index);
 /// @brief Get the byte estimate for a parsed terrain-tile entry.
 int64_t rt_game3d_world_stream_get_terrain_tile_bytes(void *stream, int64_t index);
+/// @brief Get parsed terrain-tile material metadata, or "" for invalid/missing.
+rt_string rt_game3d_world_stream_get_terrain_tile_material(void *stream, int64_t index);
+/// @brief Get parsed terrain-tile optional binary sidecar path, or "" for invalid/missing.
+rt_string rt_game3d_world_stream_get_terrain_tile_sidecar(void *stream, int64_t index);
+/// @brief Get parsed terrain-tile collision/render layer metadata.
+int64_t rt_game3d_world_stream_get_terrain_tile_layer(void *stream, int64_t index);
+/// @brief Get parsed terrain-tile collision mask metadata.
+int64_t rt_game3d_world_stream_get_terrain_tile_collision_mask(void *stream, int64_t index);
+/// @brief Return whether parsed terrain-tile collision is enabled.
+int8_t rt_game3d_world_stream_get_terrain_tile_collision_enabled(void *stream, int64_t index);
+/// @brief Get parsed terrain-tile navigation area metadata, or "" for invalid/missing.
+rt_string rt_game3d_world_stream_get_terrain_tile_nav_area(void *stream, int64_t index);
+/// @brief Get parsed terrain-tile traversal cost metadata.
+double rt_game3d_world_stream_get_terrain_tile_traversal_cost(void *stream, int64_t index);
 /// @brief Get pending stream request count.
 int64_t rt_game3d_world_stream_get_pending_request_count(void *stream);
 /// @brief Get estimated resident stream bytes.

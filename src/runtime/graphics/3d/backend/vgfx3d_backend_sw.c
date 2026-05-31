@@ -206,6 +206,38 @@ static float sw_sample_shadow_visibility(
     return sample_count > 0 ? visibility_sum / (float)sample_count : 1.0f;
 }
 
+/// @brief Resolve the concrete shadow-map slot for a light at the given world position.
+static int32_t sw_resolve_shadow_slot(const sw_context_t *ctx,
+                                      const vgfx3d_light_params_t *light,
+                                      float wx,
+                                      float wy,
+                                      float wz) {
+    int32_t base_slot;
+    int32_t cascade_count;
+    float view_depth;
+
+    if (!ctx || !light || light->shadow_index < 0)
+        return -1;
+    base_slot = light->shadow_index;
+    cascade_count = light->shadow_cascade_count;
+    if (cascade_count <= 1)
+        return base_slot;
+    if (cascade_count > VGFX3D_MAX_SHADOW_LIGHTS - base_slot)
+        cascade_count = VGFX3D_MAX_SHADOW_LIGHTS - base_slot;
+    if (cascade_count > ctx->shadow_count - base_slot)
+        cascade_count = ctx->shadow_count - base_slot;
+    if (cascade_count <= 1)
+        return base_slot;
+    view_depth = (wx - ctx->cam_pos[0]) * ctx->cam_forward[0] +
+                 (wy - ctx->cam_pos[1]) * ctx->cam_forward[1] +
+                 (wz - ctx->cam_pos[2]) * ctx->cam_forward[2];
+    for (int32_t cascade = 0; cascade < cascade_count - 1; cascade++) {
+        if (view_depth <= light->shadow_cascade_splits[cascade])
+            return base_slot + cascade;
+    }
+    return base_slot + cascade_count - 1;
+}
+
 /// @brief Resize the depth buffer if dimensions changed; idempotent on match.
 ///
 /// Reallocates `width × height` floats. Used during resize and on
@@ -1835,9 +1867,12 @@ static void raster_triangle(uint8_t *pixels,
                                         continue;
                                     }
 
-                                    if (lt->type == 0 && lt->shadow_index >= 0)
+                                    if (lt->type == 0 && lt->shadow_index >= 0) {
+                                        int32_t shadow_slot =
+                                            sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
                                         la *= sw_sample_shadow_visibility(
-                                            fog_ctx, lt->shadow_index, wx, wy, wz);
+                                            fog_ctx, shadow_slot, wx, wy, wz);
+                                    }
 
                                     float ndl = dot3f(pnx, pny, pnz, llx, lly, llz);
                                     if (ndl <= 0.0f)
@@ -2000,9 +2035,12 @@ static void raster_triangle(uint8_t *pixels,
                                         continue;
                                     }
 
-                                    if (lt->type == 0 && lt->shadow_index >= 0)
+                                    if (lt->type == 0 && lt->shadow_index >= 0) {
+                                        int32_t shadow_slot =
+                                            sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
                                         la *= sw_sample_shadow_visibility(
-                                            fog_ctx, lt->shadow_index, wx, wy, wz);
+                                            fog_ctx, shadow_slot, wx, wy, wz);
+                                    }
 
                                     float ndl = pnx * llx + pny * lly + pnz * llz;
                                     if (ndl < 0.0f)

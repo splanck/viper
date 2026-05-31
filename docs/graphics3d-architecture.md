@@ -118,10 +118,16 @@ named local Release software and Metal measurements live under
 wraps the probe and validates the required counters for CI logs. A second companion,
 `g3d_openworld_slice_long_traversal`, repeats all-quadrant stream
 churn and replay checks without the final-frame readback cost. A third
+companion, `g3d_openworld_slice_visibility_dense_probe`, authors a dense
+city/forest occlusion scene and records PVS draw-call/fill-proxy reduction while
+comparing software final-frame pixels against the no-PVS baseline. A fourth
 companion, `g3d_openworld_slice_gpu_smoke`, requests the platform GPU backend
 and reports a clean skip when that backend is unavailable; when it runs, it also
-submits a degenerate-normal/tangent normal-mapped mesh so GPU shader basis
-fallbacks stay exercised outside unit tests.
+submits a degenerate-normal/tangent normal-mapped mesh and a 24-light
+clustered/forward+ draw so GPU shader basis fallbacks and many-light upload
+paths stay exercised outside unit tests. The same smoke now follows with a
+3-cascade primary directional CSM fixture, covering the lifted four-slot shadow
+payload and backend cascade split metadata on the platform GPU lane.
 
 ## Runtime Input Guards
 
@@ -313,6 +319,10 @@ Shadow Pass (before main pass, when shadows enabled):
     Rasterize normalized [0,1] depth into shadow depth buffer (1024×1024)
     No lighting, no texturing, no color — depth writes only
   Main pass samples shadows through percentage-closer filtering to soften single-texel edges.
+  When `SetShadowCascades(count > 1)` is enabled on a supporting backend, Canvas3D
+  dedicates contiguous shadow slots to the primary directional light, builds
+  camera-depth cascade split distances, and the backend shader resolves the
+  concrete shadow slot per fragment from that split metadata.
 ```
 
 ## Vertex Format (vgfx3d_vertex_t — 92 bytes)
@@ -530,6 +540,10 @@ they must not dereference or mutate renderer-facing handles directly.
 results in deterministic order before they affect simulation or renderer state.
 `g3d_3dnext2_surface_probe` covers the ordered `Viper.Threads.Parallel` map
 surface plus `World3D.runFramesOnly` replay parity across worker counts.
+`scripts/g3d_tsan_concurrency_lane.sh` configures a focused ThreadSanitizer
+build for the worker pool, ordered map/reduce, general runtime concurrency,
+asset-worker decode paths, Game3D worker parity, the open-world streaming hitch
+probe, and the Graphics3D commit queue.
 
 Worker paths that need to create renderer-facing resources enqueue callbacks
 through the internal Graphics3D main-thread commit queue. The queue accepts
@@ -551,11 +565,26 @@ Canvas3D coexists with the existing 2D Canvas system:
 
 `Scene3D.SyncBindings(dt)` is the explicit integration step for node bindings. It applies body-driven transforms, node-driven kinematic pushes, and animator root motion before rendering.
 
-Canvas3D sorts opaque deferred draws front-to-back before submission, independent of whether visibility
-culling is enabled. `Canvas3D.SetFrustumCulling(true)` additionally applies the same coarse
-AABB-vs-frustum rejection to the deferred canvas draw queue. The older
-`SetOcclusionCulling` name remains as a compatibility alias; it is not a hardware occlusion-query
-or Hi-Z visibility system.
+Canvas3D sorts opaque deferred draws front-to-back before submission.
+`Canvas3D.SetFrustumCulling(true)` additionally applies coarse AABB-vs-frustum
+rejection to the deferred canvas draw queue. `SetOcclusionCulling(true)` enables
+that frustum rejection plus a conservative 64 x 64 CPU coverage/depth grid.
+When drawing through Scene3D, the BVH spatial index selects the candidate draw
+set before Canvas3D sorting, so CPU occlusion grid work is bounded by indexed
+spatial candidates. This is not a hardware occlusion-query or Hi-Z visibility
+system.
+
+Scene3D also owns an authored interior PVS layer. `AddVisibilityZone` registers
+world-space room/sector AABBs, and `AddVisibilityPortal` registers directed
+visibility links. During `Scene3D.Draw`, the camera's containing zone seeds a
+portal graph walk; drawables intersecting unreachable zones are skipped before
+submission. Drawables outside all authored zones remain visible so outdoor
+geometry can coexist with interior PVS graphs.
+The open-world slice's `visibility_dense_probe.zia` is the named authored
+city/forest fixture for this path: on the local macOS software Release lane it
+reduces 169 authored drawables to 49 submitted draws, reports 120 PVS skips,
+cuts the authored fill proxy by 50.407%, and verifies the optimized final frame
+matches the no-PVS baseline.
 
 `Scene3D.Draw()` performs depth-first traversal of the scene node tree:
 

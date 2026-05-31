@@ -75,6 +75,8 @@ int64_t rt_world3d_get_last_ccd_substeps(void *world);
 int64_t rt_world3d_get_ccd_substep_clamped_count(void *world);
 /// @brief Replace the world gravity vector at runtime.
 void rt_world3d_set_gravity(void *world, double gx, double gy, double gz);
+/// @brief Shift all body/contact/query state by the inverse of a floating-origin delta.
+void rt_world3d_rebase_origin(void *world, double dx, double dy, double dz);
 
 /* Joint management */
 /// @brief Register a joint; @p joint_type matches the RT_JOINT_* constants.

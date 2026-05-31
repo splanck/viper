@@ -135,6 +135,15 @@ extern "C" int rt_canvas3d_remove_temp_buffer(void *, void *) {
     return 1;
 }
 
+extern "C" int rt_canvas3d_get_camera_relative_origin(void *, double out_origin[3]) {
+    if (out_origin) {
+        out_origin[0] = 0.0;
+        out_origin[1] = 0.0;
+        out_origin[2] = 0.0;
+    }
+    return 0;
+}
+
 extern "C" void *rt_material3d_new(void) {
     return std::calloc(1, sizeof(StubMaterial));
 }
@@ -350,6 +359,42 @@ static void test_setters_sanitize_nonfinite_ranges() {
     assert(view->emitter_size[2] == 0.0);
 }
 
+static void test_rebase_origin_shifts_emitter_and_live_particles() {
+    void *ps = rt_particles3d_new(8);
+    assert(ps != nullptr);
+    ParticlesView *view = static_cast<ParticlesView *>(ps);
+
+    rt_particles3d_set_position(ps, 1000.0, -5.0, 20.0);
+    rt_particles3d_set_speed(ps, 0.0, 0.0);
+    rt_particles3d_set_lifetime(ps, 10.0, 10.0);
+    rt_particles3d_burst(ps, 1);
+    assert(rt_particles3d_get_count(ps) == 1);
+
+    rt_particles3d_rebase_origin(ps, 990.0, -7.0, 5.0);
+    double pos[3] = {0.0, 0.0, 0.0};
+    rt_particles3d_get_position(ps, pos);
+    assert(std::fabs(pos[0] - 10.0) < 1e-9);
+    assert(std::fabs(pos[1] - 2.0) < 1e-9);
+    assert(std::fabs(pos[2] - 15.0) < 1e-9);
+    assert(view->particles != nullptr);
+    struct ParticleView {
+        double pos[3];
+        double vel[3];
+        double age;
+        double life;
+        double size0;
+        double size1;
+        float color0[3];
+        float color1[3];
+        double alpha0;
+        double alpha1;
+    };
+    ParticleView *particle = static_cast<ParticleView *>(view->particles);
+    assert(std::fabs(particle[0].pos[0] - 10.0) < 1e-9);
+    assert(std::fabs(particle[0].pos[1] - 2.0) < 1e-9);
+    assert(std::fabs(particle[0].pos[2] - 15.0) < 1e-9);
+}
+
 static void reset_draw_records() {
     g_draw_mesh_calls = 0;
     g_draw_mesh_matrix_keyed_calls = 0;
@@ -429,6 +474,7 @@ int main() {
     test_particles_expire_after_lifetime();
     test_update_clamps_large_finite_delta_time();
     test_setters_sanitize_nonfinite_ranges();
+    test_rebase_origin_shifts_emitter_and_live_particles();
     test_draw_batches_additive_and_alpha_particles();
     std::printf("RTParticles3DContractTests passed.\n");
     return 0;

@@ -228,6 +228,7 @@ void rt_canvas3d_draw_line3d_raw(void *obj, const double *from, const double *to
         rt_canvas3d_end(c);
 }
 
+/// @brief Draw a 3D line segment between two Vec3 world points in the given packed color.
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
     double p0[3];
     double p1[3];
@@ -364,6 +365,53 @@ rt_string rt_canvas3d_get_backend(void *obj) {
     return rt_const_cstr(c->backend ? c->backend->name : "unknown");
 }
 
+/// @brief True when the active backend has the GPU many-light shader/upload path.
+/// @details Keep this tied to the real backend vtables, not backend-name strings, so
+///          stack/fake unit-test backends do not accidentally advertise production
+///          clustered/forward+ support just because they use a GPU-like name.
+static int canvas3d_backend_supports_clustered_lighting(const vgfx3d_backend_t *backend) {
+    if (!backend)
+        return 0;
+    if (backend == &vgfx3d_software_backend ||
+        (backend->name && strcmp(backend->name, "software") == 0))
+        return 1;
+#if defined(__APPLE__)
+    if (backend == &vgfx3d_metal_backend)
+        return 1;
+#endif
+#if defined(_WIN32)
+    if (backend == &vgfx3d_d3d11_backend)
+        return 1;
+#endif
+#if defined(__linux__)
+    if (backend == &vgfx3d_opengl_backend)
+        return 1;
+#endif
+    return 0;
+}
+
+/// @brief True when the backend can consume multiple shadow slots as primary-light cascades.
+static int canvas3d_backend_supports_shadow_csm(const vgfx3d_backend_t *backend) {
+    if (!backend || !backend->shadow_begin || !backend->shadow_draw || !backend->shadow_end)
+        return 0;
+    if (backend == &vgfx3d_software_backend ||
+        (backend->name && strcmp(backend->name, "software") == 0))
+        return 1;
+#if defined(__APPLE__)
+    if (backend == &vgfx3d_metal_backend)
+        return 1;
+#endif
+#if defined(_WIN32)
+    if (backend == &vgfx3d_d3d11_backend)
+        return 1;
+#endif
+#if defined(__linux__)
+    if (backend == &vgfx3d_opengl_backend)
+        return 1;
+#endif
+    return 0;
+}
+
 /// @brief Return the feature bits advertised by the active backend.
 /// @details The mask is based on backend vtable hooks plus the software
 ///          fallback paths owned by Canvas3D. This lets applications choose
@@ -405,8 +453,14 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
                 RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY;
     if (caps & RT_CANVAS3D_BACKEND_CAP_WINDOW_READBACK)
         caps |= RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT;
-    if (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE)
+    if (canvas3d_backend_supports_clustered_lighting(backend))
         caps |= RT_CANVAS3D_BACKEND_CAP_CLUSTERED_LIGHTING;
+    if (canvas3d_backend_supports_shadow_csm(backend))
+        caps |= RT_CANVAS3D_BACKEND_CAP_SHADOW_CSM;
+    if (backend->get_native_texture_caps)
+        caps |= backend->get_native_texture_caps(c->backend_ctx) &
+                (RT_CANVAS3D_BACKEND_CAP_BC7 | RT_CANVAS3D_BACKEND_CAP_ASTC |
+                 RT_CANVAS3D_BACKEND_CAP_ETC2);
     caps |= RT_CANVAS3D_BACKEND_CAP_OCCLUSION | RT_CANVAS3D_BACKEND_CAP_HLOD;
 
     return caps;
@@ -494,7 +548,13 @@ int64_t rt_canvas3d_get_occluded_draw_count(void *obj) {
     return c ? c->last_occluded_draw_count : 0;
 }
 
-/// @brief CPU image bytes uploaded to backend texture storage in the latest ended frame.
+/// @brief Number of opaque draws tested by the CPU occlusion grid in the latest frame.
+int64_t rt_canvas3d_get_occlusion_candidate_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->last_occlusion_candidate_count : 0;
+}
+
+/// @brief Texture payload bytes uploaded to backend storage in the latest ended frame.
 int64_t rt_canvas3d_get_texture_upload_bytes(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return c ? c->last_texture_upload_bytes : 0;
@@ -508,7 +568,7 @@ void rt_canvas3d_set_texture_upload_budget(void *obj, int64_t bytes) {
         c->backend->set_texture_upload_budget(c->backend_ctx, budget);
 }
 
-/// @brief CPU image bytes still waiting for backend texture upload budget.
+/// @brief Texture payload bytes still waiting for backend texture upload budget.
 int64_t rt_canvas3d_get_texture_upload_pending_bytes(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     uint64_t bytes = 0;
@@ -604,6 +664,7 @@ void *rt_canvas3d_screenshot(void *obj) {
     return pixels;
 }
 
+/// @brief Draw an axis-aligned bounding box as 12 wireframe edges from raw min/max corner arrays.
 void rt_canvas3d_draw_aabb_wire_raw(void *obj, const double *min_v, const double *max_v, int64_t color) {
     if (!obj || !min_v || !max_v)
         return;

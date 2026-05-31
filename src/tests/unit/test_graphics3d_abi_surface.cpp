@@ -240,6 +240,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.setOriginRebaseThreshold\""),
                  "World3D.setOriginRebaseThreshold must use Game3D lower/camel naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.rebaseOrigin\""),
+                 "World3D.rebaseOrigin must use Game3D lower/camel naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.bakeNavMesh\""),
                  "World3D.bakeNavMesh must use Game3D lower/camel naming") &&
          ok;
@@ -284,6 +287,11 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"setOriginRebaseThreshold\""),
                  "World3D.setOriginRebaseThreshold method missing") &&
+         ok;
+    ok = require(contains(runtime_def,
+                          "RT_METHOD(\"rebaseOrigin\", \"void(f64,f64,f64)\", "
+                          "Game3DWorldRebaseOrigin)"),
+                 "World3D.rebaseOrigin method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"bakeNavMesh\""),
                  "World3D.bakeNavMesh method missing") &&
@@ -339,6 +347,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.GetResidentBytes\""),
                  "Assets3D.GetResidentBytes must use Game3D PascalCase method naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.SetResidencyHint\""),
+                 "Assets3D.SetResidencyHint must use Game3D PascalCase method naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.Evict\""),
                  "Assets3D.Evict must use Game3D PascalCase method naming") &&
          ok;
@@ -375,6 +386,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"GetResidentBytes\""),
                  "Assets3D.GetResidentBytes method missing") &&
          ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetResidencyHint\""),
+                 "Assets3D.SetResidencyHint method missing") &&
+         ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"Evict\""),
                  "Assets3D.Evict method missing") &&
          ok;
@@ -409,6 +423,15 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellBytes\""),
                  "WorldStream3D.getCellBytes must use Game3D lower/camel naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellMaterial\""),
+                 "WorldStream3D.getCellMaterial must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellCollisionMask\""),
+                 "WorldStream3D.getCellCollisionMask must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getCellTraversalCost\""),
+                 "WorldStream3D.getCellTraversalCost must use Game3D lower/camel naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileCount\""),
                  "WorldStream3D.getTerrainTileCount must use Game3D lower/camel naming") &&
          ok;
@@ -426,6 +449,17 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileBytes\""),
                  "WorldStream3D.getTerrainTileBytes must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileMaterial\""),
+                 "WorldStream3D.getTerrainTileMaterial must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def,
+                         "\"Viper.Game3D.WorldStream3D.getTerrainTileCollisionMask\""),
+                 "WorldStream3D.getTerrainTileCollisionMask must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def,
+                         "\"Viper.Game3D.WorldStream3D.getTerrainTileTraversalCost\""),
+                 "WorldStream3D.getTerrainTileTraversalCost must use Game3D lower/camel naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_pendingRequestCount\""),
                  "WorldStream3D.pendingRequestCount getter must use Game3D lower/camel naming") &&
@@ -457,6 +491,12 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"getCellResident\""),
                  "WorldStream3D.getCellResident method missing") &&
          ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"getCellMaterial\""),
+                 "WorldStream3D.getCellMaterial method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"getCellTraversalCost\""),
+                 "WorldStream3D.getCellTraversalCost method missing") &&
+         ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"getTerrainTileCount\""),
                  "WorldStream3D.getTerrainTileCount method missing") &&
          ok;
@@ -465,6 +505,12 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"getTerrainTileResident\""),
                  "WorldStream3D.getTerrainTileResident method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"getTerrainTileMaterial\""),
+                 "WorldStream3D.getTerrainTileMaterial method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"getTerrainTileTraversalCost\""),
+                 "WorldStream3D.getTerrainTileTraversalCost method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"setCenter\""),
                  "WorldStream3D.setCenter method missing") &&
@@ -492,6 +538,39 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"setIKSolver\""),
                  "Animator3D.setIKSolver method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.get_Resident\""),
+                 "Mesh3D.Resident getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.set_Resident\""),
+                 "Mesh3D.Resident setter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Mesh3D.get_ResidentBytes\""),
+                 "Mesh3D.ResidentBytes getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.SetLodResident\""),
+                 "SceneNode3D.SetLodResident must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.GetLodResident\""),
+                 "SceneNode3D.GetLodResident must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.GetLodResidentBytes\""),
+                 "SceneNode3D.GetLodResidentBytes must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"Resident\""),
+                 "Mesh3D.Resident property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"ResidentBytes\""),
+                 "Mesh3D.ResidentBytes property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetLodResident\""),
+                 "SceneNode3D.SetLodResident method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetLodResident\""),
+                 "SceneNode3D.GetLodResident method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetLodResidentBytes\""),
+                 "SceneNode3D.GetLodResidentBytes method missing") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Model3D.get_SceneCount\""),
                  "Model3D.SceneCount getter must use Graphics3D PascalCase naming") &&
@@ -754,6 +833,15 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.SetSolverIterations\""),
                  "Physics3DWorld.SetSolverIterations must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.RebaseOrigin\""),
+                 "Physics3DWorld.RebaseOrigin must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Particles3D.RebaseOrigin\""),
+                 "Particles3D.RebaseOrigin must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Sprite3D.RebaseOrigin\""),
+                 "Sprite3D.RebaseOrigin must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.HingeJoint3D.New\""),
                  "HingeJoint3D.New must use Graphics3D PascalCase naming") &&
          ok;
@@ -792,6 +880,21 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetSolverIterations\""),
                  "Physics3DWorld.SetSolverIterations method missing") &&
+         ok;
+    ok = require(contains(runtime_def,
+                          "RT_METHOD(\"RebaseOrigin\", \"void(f64,f64,f64)\", "
+                          "World3DRebaseOrigin)"),
+                 "Physics3DWorld.RebaseOrigin method missing") &&
+         ok;
+    ok = require(contains(runtime_def,
+                          "RT_METHOD(\"RebaseOrigin\", \"void(f64,f64,f64)\", "
+                          "Particles3DRebaseOrigin)"),
+                 "Particles3D.RebaseOrigin method missing") &&
+         ok;
+    ok = require(contains(runtime_def,
+                          "RT_METHOD(\"RebaseOrigin\", \"void(f64,f64,f64)\", "
+                          "Sprite3DRebaseOrigin)"),
+                 "Sprite3D.RebaseOrigin method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Viper.Graphics3D.HingeJoint3D\""),
                  "HingeJoint3D class missing") &&
@@ -907,6 +1010,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_OccludedDrawCount\""),
                  "Canvas3D.OccludedDrawCount getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_OcclusionCandidateCount\""),
+                 "Canvas3D.OcclusionCandidateCount getter must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_DrawCount\""),
                  "Canvas3D.DrawCount getter must use Graphics3D PascalCase naming") &&
          ok;
@@ -918,6 +1024,15 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_TextureUploadPendingBytes\""),
                  "Canvas3D.TextureUploadPendingBytes getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.AddVisibilityZone\""),
+                 "Scene3D.AddVisibilityZone must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.AddVisibilityPortal\""),
+                 "Scene3D.AddVisibilityPortal must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.get_PvsCulledCount\""),
+                 "Scene3D.PvsCulledCount getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.SceneNode3D.SetAutoLOD\""),
                  "SceneNode3D.SetAutoLOD must use Graphics3D PascalCase naming") &&
@@ -937,6 +1052,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"OccludedDrawCount\""),
                  "Canvas3D.OccludedDrawCount property missing") &&
          ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"OcclusionCandidateCount\""),
+                 "Canvas3D.OcclusionCandidateCount property missing") &&
+         ok;
     ok = require(contains(runtime_def, "RT_PROP(\"DrawCount\""),
                  "Canvas3D.DrawCount property missing") &&
          ok;
@@ -948,6 +1066,15 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"TextureUploadPendingBytes\""),
                  "Canvas3D.TextureUploadPendingBytes property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"AddVisibilityZone\""),
+                 "Scene3D.AddVisibilityZone method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"AddVisibilityPortal\""),
+                 "Scene3D.AddVisibilityPortal method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"PvsCulledCount\""),
+                 "Scene3D.PvsCulledCount property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetAutoLOD\""),
                  "SceneNode3D.SetAutoLOD method missing") &&
@@ -996,12 +1123,16 @@ bool check_runtime_surface_names() {
         "Viper.Game3D.WorldStream3D.GetCellCount",
         "Viper.Game3D.WorldStream3D.get_cellCount",
         "Viper.Game3D.WorldStream3D.get_cell_count",
+        "Viper.Game3D.WorldStream3D.GetCellMaterial",
+        "Viper.Game3D.WorldStream3D.get_cell_material",
         "Viper.Game3D.WorldStream3D.GetTerrainTileCount",
         "Viper.Game3D.WorldStream3D.get_terrainTileCount",
         "Viper.Game3D.WorldStream3D.get_terrain_tile_count",
         "Viper.Game3D.WorldStream3D.GetTerrainTileHeightmap",
         "Viper.Game3D.WorldStream3D.get_terrainTileHeightmap",
         "Viper.Game3D.WorldStream3D.get_terrain_tile_heightmap",
+        "Viper.Game3D.WorldStream3D.GetTerrainTileMaterial",
+        "Viper.Game3D.WorldStream3D.get_terrain_tile_material",
         "Viper.Graphics3D.Physics3DWorld.get_solverIterations",
         "Viper.Graphics3D.Physics3DWorld.setSolverIterations",
         "Viper.Graphics3D.HingeJoint3D.new",

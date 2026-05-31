@@ -240,7 +240,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `ClearSkybox()` | `void()` | Remove skybox |
 | `SetFog(near, far, r, g, b)` | `void(f64, f64, f64, f64, f64)` | Enable linear distance fog; distances and RGB are sanitized |
 | `ClearFog()` | `void()` | Disable fog |
-| `EnableShadows(mapSize)` | `void(i64)` | Enable shadow mapping (mapSize = shadow map resolution; up to the two strongest directional lights receive shadow maps) |
+| `EnableShadows(mapSize)` | `void(i64)` | Enable shadow mapping (mapSize = shadow map resolution; up to four directional-light shadow slots, or up to four primary-light cascades when CSM is enabled) |
 | `DisableShadows()` | `void()` | Disable shadow mapping |
 | `SetShadowBias(bias)` | `void(f64)` | Set shadow acne bias |
 
@@ -262,7 +262,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `ResetRenderTarget()` | `void()` | Return to window rendering |
 | `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain applied during frame finalization to the window or active render target; SSAO/DOF/motion blur require GPU window postfx |
 | `SetFrustumCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
-| `SetOcclusionCulling(enabled)` | `void(i1)` | Toggle frustum rejection plus conservative CPU occlusion skips; this is not hardware occlusion-query culling |
+| `SetOcclusionCulling(enabled)` | `void(i1)` | Toggle frustum rejection plus conservative CPU occlusion skips; Scene3D feeds the grid from BVH candidates before Canvas3D sorting |
 
 ### Canvas Telemetry
 
@@ -270,15 +270,18 @@ The rendering surface. Creates a window and manages the render loop.
 |----------|------|-------------|
 | `DrawCount` | `i64` | Main 3D draw submissions queued by the latest ended frame |
 | `OccludedDrawCount` | `i64` | Latest scene draw submissions skipped by visibility culling |
-| `TextureUploadBytes` | `i64` | CPU image bytes uploaded into backend texture storage during the latest ended frame |
-| `TextureUploadPendingBytes` | `i64` | CPU image bytes still waiting for backend texture or cubemap upload budget |
+| `OcclusionCandidateCount` | `i64` | Opaque draw candidates tested by the CPU occlusion grid in the latest frame |
+| `TextureUploadBytes` | `i64` | Texture bytes uploaded into backend storage during the latest ended frame |
+| `TextureUploadPendingBytes` | `i64` | Texture bytes still waiting for backend texture or cubemap upload budget |
 
 `TextureUploadBytes` reports real backend texture cache uploads/re-uploads for Metal, OpenGL, and
-D3D11. Pixels-backed 2D material textures and cubemaps are row-sliced by
+D3D11. Pixels-backed 2D material textures and cubemaps are row-sliced, while
+native compressed `TextureAsset3D` mip blocks are submitted by resident mip, by
 `Canvas3D.SetTextureUploadBudget(bytes)`; negative means unlimited, `0` pauses new upload rows, and
 positive values cap per-frame upload bytes while preserving progress for sub-row budgets. Cache hits
 and software/unsupported backends report `0`; non-overlay frame begin resets the counter.
-`TextureUploadPendingBytes` returns to `0` once all material and cubemap row slices drain. Use it
+`TextureUploadPendingBytes` returns to `0` once all material/cubemap row slices
+and native compressed mip submissions drain. Use it
 to correlate async asset commits and streaming movement with GPU texture upload pressure.
 
 `Poll()` is the live-loop input boundary. It updates `Viper.Input.Keyboard`,
@@ -436,6 +439,8 @@ overlay, and compares to the committed baseline in `examples/3d/baselines/`.
 |----------|------|--------|-------------|
 | `VertexCount` | Integer | read | Number of vertices |
 | `TriangleCount` | Integer | read | Number of triangles |
+| `Resident` | Boolean | read/write | Whether the mesh payload is resident and eligible for draw/LOD selection |
+| `ResidentBytes` | Integer | read | Estimated resident vertex/index payload bytes; zero when `Resident` is false |
 
 ### Methods
 
@@ -461,6 +466,12 @@ These are available both as class methods and through their fully qualified stat
 | `Mesh3D.SetMorphTargets(mesh, morphTarget)` | `void(obj, obj)` | Bind a MorphTarget3D to the mesh |
 
 `SetBoneWeights` drops invalid bone indices and non-positive or non-finite weights, normalizes the remaining positive weights, updates the mesh's skinned bone count, and invalidates cached geometry so renderer-side buffers refresh. `Clone()` also clones attached `MorphTarget3D` payloads so editing morph weights or deltas on the source mesh cannot mutate the clone.
+
+`Resident` is a streaming/accounting hook: setting it to `false` keeps the
+`Mesh3D` handle alive but removes its payload from resident-byte telemetry and
+causes Canvas3D/Scene3D draw paths to skip it. `SceneNode3D` LOD selection falls
+back to the nearest resident mesh, so high-detail LODs can be demoted without
+unloading the whole node or model template.
 
 ### Zia Example
 
@@ -591,7 +602,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 |-------------|-----------|-------------|
 | `New()` | `obj()` | Default white material |
 | `NewColor(r, g, b)` | `obj(f64, f64, f64)` | Colored material (0.0-1.0 per channel) |
-| `NewTextured(texture)` | `obj(obj)` | Material with `Pixels` or RGBA8-backed `TextureAsset3D` texture |
+| `NewTextured(texture)` | `obj(obj)` | Material with `Pixels` or `TextureAsset3D` texture |
 | `NewPBR(r, g, b)` | `obj(f64, f64, f64)` | Metallic/roughness material with albedo color |
 
 ### Properties
@@ -618,7 +629,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 | `Clone()` | `obj()` | Duplicate the material state |
 | `MakeInstance()` | `obj()` | Duplicate the material for per-object overrides |
 | `SetColor(r, g, b)` | `void(f64, f64, f64)` | Change diffuse color |
-| `SetTexture(texture)` | `void(obj)` | Set/change texture (`Pixels` or RGBA8-backed `TextureAsset3D`) |
+| `SetTexture(texture)` | `void(obj)` | Set/change texture (`Pixels` or `TextureAsset3D`) |
 | `SetAlbedoMap(texture)` | `void(obj)` | Set/change the PBR albedo map |
 | `SetShininess(s)` | `void(f64)` | Specular exponent (default 32.0, higher = sharper highlights) |
 | `SetUnlit(flag)` | `void(i1)` | Skip lighting (render flat color) |
@@ -626,11 +637,11 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 | `SetRoughness(value)` | `void(f64)` | Set the roughness factor |
 | `SetAO(value)` | `void(f64)` | Set the AO multiplier |
 | `SetEmissiveIntensity(value)` | `void(f64)` | Scale emissive output |
-| `SetNormalMap(texture)` | `void(obj)` | Set tangent-space normal map (`Pixels` or RGBA8-backed `TextureAsset3D`) |
+| `SetNormalMap(texture)` | `void(obj)` | Set tangent-space normal map (`Pixels` or `TextureAsset3D`) |
 | `SetMetallicRoughnessMap(texture)` | `void(obj)` | Set the glTF-style metallic/roughness map (`G=roughness`, `B=metallic`) |
 | `SetAOMap(texture)` | `void(obj)` | Set the ambient-occlusion map (`R=occlusion`) |
-| `SetSpecularMap(texture)` | `void(obj)` | Set specular intensity map (`Pixels` or RGBA8-backed `TextureAsset3D`) |
-| `SetEmissiveMap(texture)` | `void(obj)` | Set emissive color map (`Pixels` or RGBA8-backed `TextureAsset3D`) |
+| `SetSpecularMap(texture)` | `void(obj)` | Set specular intensity map (`Pixels` or `TextureAsset3D`) |
+| `SetEmissiveMap(texture)` | `void(obj)` | Set emissive color map (`Pixels` or `TextureAsset3D`) |
 | `SetEmissiveColor(r, g, b)` | `void(f64, f64, f64)` | Set emissive color multiplier (additive glow) |
 | `SetNormalScale(value)` | `void(f64)` | Scale tangent-space normal-map strength |
 | `SetShadingModel(model)` | `void(i64)` | Set shading model (see table below) |
@@ -643,7 +654,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
 - Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults. The draw path repeats finite/clamp validation before backend command submission.
-- `NewTextured` and texture map setters accept `Pixels` handles or `TextureAsset3D` handles with an RGBA8 fallback. Compressed `TextureAsset3D` handles without a CPU fallback trap before changing material state. `SetEnvMap` accepts `CubeMap3D` handles only; invalid cubemap handles are ignored rather than retained.
+- `NewTextured` and texture map setters accept `Pixels` handles or `TextureAsset3D` handles with either an RGBA8 fallback or retained native compressed mip blocks. Compressed-only assets render on backends that advertise the matching `bc7`, `astc`, or `etc2` capability and otherwise behave as an unbound texture until a fallback-capable mip is resident. `SetEnvMap` accepts `CubeMap3D` handles only; invalid cubemap handles are ignored rather than retained.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
   - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage. Masked materials also cast alpha-tested shadows on the software, Metal, OpenGL, and D3D11 backends.
@@ -662,7 +673,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 
 See `examples/apiaudit/graphics3d/shading_demo.zia` for the legacy/custom-model path and `examples/apiaudit/graphics3d/material3d_pbr_demo.zia` / `examples/apiaudit/graphics3d/material3d_pbr_demo.bas` for the PBR workflow.
 
-**Ownership:** `Material3D` retains `Pixels`, `TextureAsset3D`, and `CubeMap3D` references internally. When a `TextureAsset3D` is accepted, the material keeps the asset handle and resolves the currently resident RGBA8 `Pixels` fallback when drawing, so later `SetResidentMipRange` calls change the texture used by already-bound materials.
+**Ownership:** `Material3D` retains `Pixels`, `TextureAsset3D`, and `CubeMap3D` references internally. When a `TextureAsset3D` is accepted, the material keeps the asset handle and resolves the currently resident RGBA8 fallback or native compressed mip blocks when drawing, so later `SetResidentMipRange` calls change the texture used by already-bound materials.
 
 ## TextureAsset3D
 
@@ -692,10 +703,12 @@ resident RGBA8 mip as the active fallback resolved by materials at draw time;
 negative arguments trap, `mipCount` clamps to the available range, and a zero
 count releases all resident telemetry/fallback binding. `Material3D.NewTextured`, `SetTexture`,
 `SetAlbedoMap`, `SetNormalMap`, `SetMetallicRoughnessMap`, `SetAOMap`,
-`SetSpecularMap`, and `SetEmissiveMap` accept RGBA8-backed texture assets
-directly. BC3/BC7/ASTC/ETC2 assets expose metadata and residency byte counts
-now, and native mip block payloads are retained internally for backend upload
-wiring; native compressed GPU submission remains backend-gated work.
+`SetSpecularMap`, and `SetEmissiveMap` accept texture assets directly when they
+have an RGBA8 fallback or native compressed mip blocks. BC3/BC7/ASTC/ETC2
+assets expose metadata and residency byte counts, and native mip block payloads
+upload through capable GPU backends under `Canvas3D.SetTextureUploadBudget`;
+`BackendSupports("bc7"|"astc"|"etc2")` advertises the device-specific native
+paths.
 
 ### Zia Example
 
@@ -1003,7 +1016,14 @@ Individual node in a Scene3D tree with transform, mesh, material, and child hier
 | `BindAnimator(controller)` | `void(obj)` | Attach an `AnimController3D` for root motion and animated draw submission |
 | `ClearAnimatorBinding()` | `void()` | Remove the current animator binding |
 | `AddLOD(distance, mesh)` | `void(f64, obj)` | Add or replace an LOD mesh at a distance threshold |
+| `SetAutoLOD(enabled, screenErrorPx)` | `void(i1, f64)` | Select authored LODs by projected screen size |
+| `SetImpostor(distance, pixels)` | `void(f64, obj)` | Generate or clear a distant textured impostor |
 | `ClearLOD()` | `void()` | Remove all LOD levels |
+| `GetLodMesh(index)` | `obj(i64)` | Borrow the mesh for an LOD entry |
+| `GetLodDistance(index)` | `f64(i64)` | Get an LOD distance threshold |
+| `SetLodResident(index, resident)` | `void(i64, i1)` | Mark the LOD mesh payload resident/nonresident |
+| `GetLodResident(index)` | `i1(i64)` | Return whether the LOD mesh payload is resident |
+| `GetLodResidentBytes(index)` | `i64(i64)` | Return resident bytes for the LOD mesh payload |
 
 ### Zia Example
 
@@ -1057,7 +1077,7 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest threshold that does not exceed camera distance. `Scene3D.Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use the internal Scene3D spatial index when it is clean, with an exact flat-walk fallback kept for parity. The normal runtime tests include a generated 10k drawable-node grid to guard isolated-query and frame-cull candidate reduction. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest resident threshold that does not exceed camera distance, falling back to the base mesh when the selected LOD has been demoted. `Scene3D.Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use the internal Scene3D BVH spatial index, with an exact flat-walk fallback kept for parity. Transform-only changes refit the BVH; hierarchy, visibility, mesh, LOD, and impostor changes rebuild it lazily. `Scene3D.AddVisibilityZone(name, min, max)` and `AddVisibilityPortal(from, to, bidirectional)` author an interior portal/PVS graph; during `Draw`, nodes inside zones unreachable from the camera zone are skipped, while unzoned nodes stay visible. `PvsCulledCount`, `VisibilityZoneCount`, and `VisibilityPortalCount` expose that state. The normal runtime tests include a generated 10k drawable-node grid to guard BVH shape, isolated-query reduction, frame-cull candidate reduction, indexed CPU-occlusion candidate reduction, portal/PVS room culling, and parity with the flat path. The open-world slice's `visibility_dense_probe.zia` adds a named dense city/forest PVS fixture and records 169 authored drawables reduced to 49 submitted draws with matching final-frame pixels on the local software Release lane. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
 
 ### Binding Sync
 
@@ -1971,8 +1991,8 @@ When captured, `Mouse.DeltaX()`/`Mouse.DeltaY()` report movement from center. Th
 Impulse-based 3D rigid body simulation with box, sphere, and capsule collision shapes.
 Bodies now track quaternion orientation and angular velocity in addition to linear motion.
 Shape-specific narrow-phase collision: sphere-sphere uses radial distance (not AABB),
-box-sphere uses closest-point projection in the box's oriented local space. Collision detection uses a sweep-and-prune broadphase
-before narrow-phase tests. Non-trigger contacts apply impulses at the contact point, so off-center
+box-sphere uses closest-point projection in the box's oriented local space. Collision detection uses a body-centric sweep-and-prune broadphase
+before narrow-phase tests. That broadphase is intentionally separate from the render-facing `Scene3D` BVH because it indexes all collider bodies, applies layer/mask and static-static solver filters, and preserves contact-event identity. Non-trigger contacts apply impulses at the contact point, so off-center
 hits update angular velocity as well as linear velocity. Coulomb friction and Baumgarte positional
 correction are applied to non-trigger contacts.
 
@@ -2034,7 +2054,7 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 Notes:
 - Query `mask` uses the same layer bit semantics as body collision layers. `0` matches no layers; use `-1`/all bits for "match any layer".
 - Queries include trigger bodies and mark them through `PhysicsHit3D.IsTrigger`.
-- Overlap, raycast, and sweep queries reuse the broadphase and include body collision scale before shape tests.
+- Overlap, raycast, and sweep queries reuse the physics broadphase/query cache and include body collision scale before shape tests.
 - CCD diagnostics are tuning counters; a non-zero clamp count means fast bodies requested more substeps than the runtime cap allows.
 - `Raycast` and `RaycastAll` are true shape queries for boxes, spheres, capsules, compound leaves, mesh/convex triangles, and heightfields. Use `SweepSphere` or `SweepCapsule` for volume casts.
 - `GetContactSeparation()` returns negative values while penetrating and positive values when separated.
@@ -3446,11 +3466,11 @@ For feature gating, prefer `canvas.BackendCapabilities` or `canvas.BackendSuppor
 | `0x20000` | ASTC compressed texture upload |
 | `0x40000` | ETC2 compressed texture upload |
 
-**Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports nearest/bilinear material texture filtering with imported wrap modes, per-vertex colors, shadow mapping for up to two directional lights with 3x3 PCF filtering, specular maps, normal maps, and per-pixel terrain splatting.
+**Software renderer** — Always available. Gouraud shading by default, switches to per-pixel Blinn-Phong when a normal map is present. Supports nearest/bilinear material texture filtering with imported wrap modes, per-vertex colors, shadow mapping for up to four directional slots, primary-directional cascaded shadow maps with 3x3 PCF filtering, specular maps, normal maps, and per-pixel terrain splatting.
 
-**Metal** (macOS) — Near-full feature parity (94%): lit/unlit textures, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot light cone attenuation, linear fog, wireframe, per-frame texture caching, GPU skinning (4-bone), morph targets, up to two directional shadow maps, instanced rendering, terrain splatting, and post-processing (bloom, FXAA, tone mapping, vignette, color grading).
+**Metal** (macOS) — Near-full feature parity (94%): lit/unlit textures, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot light cone attenuation, linear fog, wireframe, per-frame texture caching, GPU skinning (4-bone), morph targets, up to four directional shadow slots or primary-directional CSM cascades, instanced rendering, terrain splatting, and post-processing (bloom, FXAA, tone mapping, vignette, color grading).
 
-**OpenGL 3.3** (Linux) — Full feature parity (OGL-01 through OGL-20): all texture types, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot lights, fog, wireframe, render-to-texture, up to two directional shadow maps, post-processing, instancing, skinning, morph targets, terrain splatting, cubemap skybox, environment reflections, and advanced post-FX (SSAO, depth of field, motion blur).
+**OpenGL 3.3** (Linux) — Full feature parity (OGL-01 through OGL-20): all texture types, the shared `Material3D` PBR path (metallic/roughness, AO, alpha modes, emissive intensity, normal scale), spot lights, fog, wireframe, render-to-texture, up to four directional shadow slots or primary-directional CSM cascades, post-processing, instancing, skinning, morph targets, terrain splatting, cubemap skybox, environment reflections, and advanced post-FX (SSAO, depth of field, motion blur).
 
 **Direct3D 11** (Windows) — Full feature parity: same feature set as OpenGL, including the shared `Material3D` PBR path. On non-Windows hosts, validation depends on the Windows CI lane.
 

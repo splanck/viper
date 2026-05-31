@@ -118,7 +118,14 @@ static int multipart_appendf(uint8_t *buf, size_t total, size_t *pos, const char
         return 0;
     va_list args;
     va_start(args, fmt);
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
     int written = vsnprintf((char *)buf + *pos, total + 1 - *pos, fmt, args);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
     va_end(args);
     if (written < 0 || (size_t)written >= total + 1 - *pos)
         return 0;

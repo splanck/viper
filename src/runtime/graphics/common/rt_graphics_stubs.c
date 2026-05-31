@@ -2484,6 +2484,18 @@ int64_t rt_canvas3d_get_occluded_draw_count(void *o) {
     return 0;
 }
 
+/// @brief Stub for `Canvas3D.OcclusionCandidateCount` — latest CPU occlusion workload telemetry.
+///
+/// Silent stub returning 0.
+///
+/// @param o Canvas3D handle (ignored).
+///
+/// @return `0`.
+int64_t rt_canvas3d_get_occlusion_candidate_count(void *o) {
+    (void)o;
+    return 0;
+}
+
 /// @brief Stub for `Canvas3D.TextureUploadBytes` — latest texture upload telemetry.
 ///
 /// Silent stub returning 0.
@@ -2663,6 +2675,30 @@ int64_t rt_mesh3d_get_vertex_count(void *o) {
 ///
 /// @return `0`.
 int64_t rt_mesh3d_get_triangle_count(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Mesh3D.Resident` — resident payload state.
+///
+/// Silent stub returning `false`.
+int8_t rt_mesh3d_get_resident(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Mesh3D.Resident` setter.
+///
+/// Silent no-op stub.
+void rt_mesh3d_set_resident(void *o, int8_t resident) {
+    (void)o;
+    (void)resident;
+}
+
+/// @brief Stub for `Mesh3D.ResidentBytes`.
+///
+/// Silent stub returning `0`.
+int64_t rt_mesh3d_get_resident_bytes(void *o) {
     (void)o;
     return 0;
 }
@@ -3790,6 +3826,25 @@ void *rt_scene3d_raycast_nodes(void *s, void *origin, void *direction, double ma
     return NULL;
 }
 
+int64_t rt_scene3d_add_visibility_zone(void *s, rt_string name, void *min, void *max) {
+    (void)s;
+    (void)name;
+    (void)min;
+    (void)max;
+    return -1;
+}
+
+int64_t rt_scene3d_add_visibility_portal(void *s,
+                                         int64_t from_zone,
+                                         int64_t to_zone,
+                                         int8_t bidirectional) {
+    (void)s;
+    (void)from_zone;
+    (void)to_zone;
+    (void)bidirectional;
+    return -1;
+}
+
 /// @brief Stub for `Scene3D.Draw` — would normally walk the scene graph
 ///        and issue draw calls for every visible mesh node, in front-to-back
 ///        order with frustum culling.
@@ -4327,6 +4382,21 @@ int64_t rt_scene3d_get_visible_node_count(void *s) {
     return 0;
 }
 
+int64_t rt_scene3d_get_pvs_culled_count(void *s) {
+    (void)s;
+    return 0;
+}
+
+int64_t rt_scene3d_get_visibility_zone_count(void *s) {
+    (void)s;
+    return 0;
+}
+
+int64_t rt_scene3d_get_visibility_portal_count(void *s) {
+    (void)s;
+    return 0;
+}
+
 /* LOD stubs */
 
 /// @brief Stub for `SceneNode3D.AddLOD` — add a level-of-detail entry:
@@ -4424,6 +4494,33 @@ void *rt_scene_node3d_get_lod_mesh(void *n, int64_t index) {
     (void)n;
     (void)index;
     return NULL;
+}
+
+/// @brief Stub for `SceneNode3D.SetLodResident`.
+///
+/// Silent no-op stub.
+void rt_scene_node3d_set_lod_resident(void *n, int64_t index, int8_t resident) {
+    (void)n;
+    (void)index;
+    (void)resident;
+}
+
+/// @brief Stub for `SceneNode3D.GetLodResident`.
+///
+/// Silent stub returning `false`.
+int8_t rt_scene_node3d_get_lod_resident(void *n, int64_t index) {
+    (void)n;
+    (void)index;
+    return 0;
+}
+
+/// @brief Stub for `SceneNode3D.GetLodResidentBytes`.
+///
+/// Silent stub returning `0`.
+int64_t rt_scene_node3d_get_lod_resident_bytes(void *n, int64_t index) {
+    (void)n;
+    (void)index;
+    return 0;
 }
 
 /* Skeleton3D / Animation3D / AnimPlayer3D stubs */
@@ -5054,6 +5151,16 @@ void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int6
 void *rt_textureasset3d_get_pixels(void *obj) {
     (void)obj;
     return NULL;
+}
+
+uint64_t rt_textureasset3d_get_native_cache_key(void *obj) {
+    (void)obj;
+    return 0;
+}
+
+int32_t rt_textureasset3d_get_native_format_id(void *obj) {
+    (void)obj;
+    return RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
 }
 
 int rt_textureasset3d_get_native_mip_info(void *obj,

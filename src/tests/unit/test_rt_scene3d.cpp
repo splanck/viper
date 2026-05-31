@@ -57,9 +57,14 @@ extern void *rt_material3d_new_color(double r, double g, double b);
 extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
 extern void *rt_mesh3d_new(void);
 extern void *rt_mesh3d_new_box(double w, double h, double d);
+extern int64_t rt_mesh3d_get_resident_bytes(void *obj);
+extern void rt_mesh3d_set_resident(void *obj, int8_t resident);
 extern void rt_mesh3d_add_vertex(
     void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *obj, int64_t i0, int64_t i1, int64_t i2);
+extern void rt_scene_node3d_set_lod_resident(void *node, int64_t index, int8_t resident);
+extern int8_t rt_scene_node3d_get_lod_resident(void *node, int64_t index);
+extern int64_t rt_scene_node3d_get_lod_resident_bytes(void *node, int64_t index);
 }
 
 static int tests_passed = 0;
@@ -742,24 +747,39 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
     EXPECT_TRUE(rt_seq_len(first_hits) == 1, "Indexed QueryAABB returns the initial node");
     EXPECT_TRUE(scene_impl->spatial_index.valid == 1, "Scene3D spatial index is valid after query");
     EXPECT_TRUE(scene_impl->spatial_index.count == 1, "Scene3D spatial index tracks drawable nodes");
+    EXPECT_TRUE(scene_impl->spatial_index.root_node >= 0, "Scene3D spatial index builds a BVH root");
+    EXPECT_TRUE(scene_impl->spatial_index.node_count == 1,
+                "Scene3D spatial index uses a single BVH leaf for one drawable");
     uint32_t first_build_count = scene_impl->spatial_index.build_count;
+    uint32_t first_refit_count = scene_impl->spatial_index.refit_count;
 
     void *second_hits = rt_scene3d_query_aabb(
         scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(second_hits) == 1, "Indexed QueryAABB remains stable across reuse");
     EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count,
                 "Scene3D spatial index reuses a clean build");
+    EXPECT_TRUE(scene_impl->spatial_index.refit_count == first_refit_count,
+                "Scene3D spatial index does not refit a clean build");
 
     rt_scene_node3d_set_position(node, 10.0, 0.0, -4.0);
     void *old_hits = rt_scene3d_query_aabb(
         scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(old_hits) == 0, "Dirty spatial index drops the moved node from old bounds");
-    EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count + 1,
-                "Scene3D spatial index rebuilds after a node transform changes");
+    EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count,
+                "Scene3D spatial index refits instead of rebuilding after a transform change");
+    EXPECT_TRUE(scene_impl->spatial_index.refit_count == first_refit_count + 1,
+                "Scene3D spatial index records the transform-only refit");
 
     void *new_hits = rt_scene3d_query_aabb(
         scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(new_hits) == 1, "Dirty spatial index returns the moved node");
+
+    rt_scene_node3d_set_visible(node, 0);
+    void *hidden_hits = rt_scene3d_query_aabb(
+        scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
+    EXPECT_TRUE(rt_seq_len(hidden_hits) == 0, "Topology-dirty spatial index drops hidden nodes");
+    EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count + 1,
+                "Scene3D spatial index rebuilds after visibility topology changes");
 }
 
 static void test_scene_draw_spatial_index_matches_flat_reference() {
@@ -869,6 +889,9 @@ static void test_scene_spatial_index_10k_scaling_fixture() {
     EXPECT_TRUE(scene_impl->spatial_index.valid == 1, "10k fixture builds a valid spatial index");
     EXPECT_TRUE(scene_impl->spatial_index.count == kNodeCount,
                 "10k fixture indexes every visible drawable node");
+    EXPECT_TRUE(scene_impl->spatial_index.node_count > 1,
+                "10k fixture builds a multi-node BVH instead of a flat sweep array");
+    EXPECT_TRUE(scene_impl->spatial_index.root_node >= 0, "10k fixture records a BVH root node");
     EXPECT_TRUE(scene_impl->spatial_index.last_candidate_count == 1,
                 "10k fixture narrows an isolated query to one spatial candidate");
     EXPECT_TRUE(scene_impl->spatial_index.last_prefiltered_count >= kNodeCount - 1,
@@ -906,6 +929,131 @@ static void test_scene_spatial_index_10k_scaling_fixture() {
                 "10k indexed Scene3D.Draw preserves flat-path culled count");
     EXPECT_TRUE(indexed_visible_count == rt_scene3d_get_visible_node_count(scene),
                 "10k indexed Scene3D.Draw preserves flat-path visible node count");
+}
+
+static void test_scene_occlusion_grid_uses_spatial_candidates() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+
+    void *scene = rt_scene3d_new();
+    auto *scene_impl = (rt_scene3d *)scene;
+    void *mesh = rt_mesh3d_new_box(2.0, 2.0, 0.2);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(0.0, 0.0, 5.0),
+                        rt_vec3_new(0.0, 0.0, 0.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+
+    void *front = rt_scene_node3d_new();
+    rt_scene_node3d_set_position(front, 0.0, 0.0, 0.0);
+    rt_scene_node3d_set_mesh(front, mesh);
+    rt_scene_node3d_set_material(front, material);
+    rt_scene3d_add(scene, front);
+
+    void *covered = rt_scene_node3d_new();
+    rt_scene_node3d_set_position(covered, 0.0, 0.0, -2.0);
+    rt_scene_node3d_set_mesh(covered, mesh);
+    rt_scene_node3d_set_material(covered, material);
+    rt_scene3d_add(scene, covered);
+
+    for (int i = 0; i < 128; ++i) {
+        void *offscreen = rt_scene_node3d_new();
+        rt_scene_node3d_set_position(offscreen, 200.0 + (double)i * 4.0, 0.0, -2.0);
+        rt_scene_node3d_set_mesh(offscreen, mesh);
+        rt_scene_node3d_set_material(offscreen, material);
+        rt_scene3d_add(scene, offscreen);
+    }
+
+    rt_canvas3d_set_occlusion_culling(&canvas, 1);
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(scene_impl->spatial_index.count == 130,
+                "Scene3D occlusion fixture indexes every drawable node");
+    EXPECT_TRUE(scene_impl->spatial_index.last_candidate_count == 2,
+                "Scene3D spatial index narrows occlusion-visible draw candidates before sorting");
+    EXPECT_TRUE(scene_impl->spatial_index.last_prefiltered_count >= 128,
+                "Scene3D spatial index prefilters off-frustum occlusion non-candidates");
+    EXPECT_TRUE(rt_canvas3d_get_occlusion_candidate_count(&canvas) == 2,
+                "Canvas3D CPU occlusion grid tests only spatial draw candidates");
+    EXPECT_TRUE(rt_canvas3d_get_occluded_draw_count(&canvas) >= 129,
+                "Canvas3D visibility telemetry includes spatial prefilter and occlusion skips");
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D indexed occlusion submits only the unoccluded front draw");
+}
+
+static void test_scene_portal_pvs_culls_unlinked_interior_zones() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+
+    void *scene = rt_scene3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(70.0, 1.0, 0.1, 100.0);
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(0.0, 0.0, 0.0),
+                        rt_vec3_new(10.0, 0.0, 0.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+
+    int64_t zone_a = rt_scene3d_add_visibility_zone(scene,
+                                                    rt_const_cstr("room-a"),
+                                                    rt_vec3_new(-5.0, -5.0, -5.0),
+                                                    rt_vec3_new(5.0, 5.0, 5.0));
+    int64_t zone_b = rt_scene3d_add_visibility_zone(scene,
+                                                    rt_const_cstr("room-b"),
+                                                    rt_vec3_new(8.0, -5.0, -5.0),
+                                                    rt_vec3_new(16.0, 5.0, 5.0));
+    int64_t zone_c = rt_scene3d_add_visibility_zone(scene,
+                                                    rt_const_cstr("room-c"),
+                                                    rt_vec3_new(28.0, -5.0, -5.0),
+                                                    rt_vec3_new(36.0, 5.0, 5.0));
+    EXPECT_TRUE(zone_a == 0 && zone_b == 1 && zone_c == 2,
+                "Scene3D visibility zones return stable zero-based indexes");
+    EXPECT_TRUE(rt_scene3d_add_visibility_portal(scene, zone_a, zone_b, 1) == 0,
+                "Scene3D visibility portal links adjacent rooms");
+    EXPECT_TRUE(rt_scene3d_get_visibility_zone_count(scene) == 3,
+                "Scene3D reports authored visibility zone count");
+    EXPECT_TRUE(rt_scene3d_get_visibility_portal_count(scene) == 2,
+                "Scene3D stores bidirectional portals as directed PVS links");
+
+    for (int i = 0; i < 3; ++i) {
+        void *node = rt_scene_node3d_new();
+        rt_scene_node3d_set_position(node, i == 0 ? 2.0 : (i == 1 ? 12.0 : 32.0), 0.0, 0.0);
+        rt_scene_node3d_set_mesh(node, mesh);
+        rt_scene_node3d_set_material(node, material);
+        rt_scene3d_add(scene, node);
+    }
+
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 2,
+                "Scene3D portal/PVS culls the unlinked interior room");
+    EXPECT_TRUE(rt_scene3d_get_pvs_culled_count(scene) == 1,
+                "Scene3D.PvsCulledCount reports portal/PVS skips");
+    EXPECT_TRUE(rt_scene3d_get_visible_node_count(scene) == 2,
+                "Scene3D visible-node telemetry excludes PVS-hidden rooms");
+
+    EXPECT_TRUE(rt_scene3d_add_visibility_portal(scene, zone_b, zone_c, 1) == 2,
+                "Scene3D can extend the authored PVS graph");
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 3,
+                "Scene3D portal/PVS reveals rooms reachable through authored portals");
+    EXPECT_TRUE(rt_scene3d_get_pvs_culled_count(scene) == 0,
+                "Scene3D.PvsCulledCount clears when all authored zones are visible");
 }
 
 static void test_scene_spatial_index_preserves_far_origin_precision() {
@@ -1736,6 +1884,74 @@ static void test_auto_lod_uses_screen_error_selection() {
                 "SceneNode3D.SetAutoLOD(false) restores authored distance thresholds");
 }
 
+static void test_lod_residency_falls_back_and_reports_bytes() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    canvas.width = 100;
+    canvas.height = 100;
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *base_mesh = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    void *lod_mesh = rt_mesh3d_new();
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 8.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    rt_mesh3d_add_vertex(lod_mesh, -0.25, -0.25, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(lod_mesh, 0.25, -0.25, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(lod_mesh, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0, 0.5, 1.0);
+    rt_mesh3d_add_triangle(lod_mesh, 0, 1, 2);
+
+    rt_scene_node3d_set_mesh(node, base_mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene_node3d_add_lod(node, 0.0, lod_mesh);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    EXPECT_TRUE(rt_mesh3d_get_resident_bytes(base_mesh) > 0,
+                "Mesh3D.ResidentBytes reports base mesh payload bytes");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_resident(node, 0) == 1,
+                "new LOD meshes start resident");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_resident_bytes(node, 0) > 0,
+                "SceneNode3D exposes LOD resident bytes");
+
+    rt_scene_node3d_set_lod_resident(node, 0, 0);
+    EXPECT_TRUE(rt_scene_node3d_get_lod_resident(node, 0) == 0,
+                "SceneNode3D.SetLodResident marks LOD payload nonresident");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_resident_bytes(node, 0) == 0,
+                "nonresident LOD reports zero resident bytes");
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D falls back to the base mesh when selected LOD is nonresident");
+    EXPECT_TRUE(g_scene_last_vertex_count != 3,
+                "Scene3D did not submit the nonresident LOD mesh");
+
+    reset_scene_capture();
+    rt_scene_node3d_set_lod_resident(node, 0, 1);
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D redraws after the LOD payload becomes resident");
+    EXPECT_TRUE(g_scene_last_vertex_count == 3,
+                "Scene3D selects the resident LOD mesh");
+
+    reset_scene_capture();
+    rt_scene_node3d_set_lod_resident(node, 0, 0);
+    rt_mesh3d_set_resident(base_mesh, 0);
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 0,
+                "Scene3D skips drawing when both base and selected LOD payloads are nonresident");
+}
+
 static void test_impostor_proxy_draws_textured_quad() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
@@ -2065,6 +2281,7 @@ int main() {
     test_frustum_culled_count_initial();
     test_lod_culling_uses_selected_mesh_bounds();
     test_auto_lod_uses_screen_error_selection();
+    test_lod_residency_falls_back_and_reports_bytes();
     test_impostor_proxy_draws_textured_quad();
     test_dynamic_deformation_uses_conservative_frustum_culling();
     test_parent_animator_drives_child_skinned_meshes();
@@ -2072,6 +2289,8 @@ int main() {
     test_scene_spatial_index_rebuilds_on_dirty_node();
     test_scene_draw_spatial_index_matches_flat_reference();
     test_scene_spatial_index_10k_scaling_fixture();
+    test_scene_occlusion_grid_uses_spatial_candidates();
+    test_scene_portal_pvs_culls_unlinked_interior_zones();
     test_scene_spatial_index_preserves_far_origin_precision();
     test_scene_draw_reuses_active_frame();
     test_scene_draw_culling_uses_canvas_output_aspect();

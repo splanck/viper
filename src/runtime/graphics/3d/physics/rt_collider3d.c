@@ -772,6 +772,9 @@ void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double 
     vec3_copy(max_out, shape->bounds_max);
 }
 
+/// @brief Return the collider's bounds revision counter (recomputing bounds first if stale).
+/// @details The counter changes whenever the world AABB changes, letting the broadphase detect
+///          movement without re-reading the bounds themselves.
 uint64_t rt_collider3d_get_bounds_revision_raw(void *collider) {
     rt_collider3d *shape = collider3d_checked(collider);
     if (!shape)
@@ -1026,6 +1029,8 @@ int8_t rt_collider3d_sample_heightfield_raw(
     return 1;
 }
 
+/// @brief Report a heightfield collider's grid width, depth, and horizontal scale.
+/// @return 1 with the out-params set, or 0 if the collider is not a heightfield.
 int8_t rt_collider3d_get_heightfield_info_raw(
     void *collider, int32_t *width_out, int32_t *depth_out, double *scale_out) {
     rt_collider3d *shape = collider3d_checked(collider);

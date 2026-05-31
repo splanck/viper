@@ -23,6 +23,7 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 #include "rt_postfx3d.h"
+#include "rt_textureasset3d.h"
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_metal_shared.h"
@@ -161,6 +162,10 @@
 @property(nonatomic) int32_t height;
 @property(nonatomic) int32_t uploadNextRow;
 @property(nonatomic) int8_t uploadInProgress;
+@property(nonatomic, assign) void *textureAsset;
+@property(nonatomic) int32_t nativeFormat;
+@property(nonatomic) int64_t nativeNextMip;
+@property(nonatomic) int64_t nativeMipCount;
 @property(nonatomic) uint64_t lastUsedFrame;
 @end
 
@@ -275,7 +280,8 @@ static NSString *metal_shader_source = @
                                         "struct Light {\n"
                                         "    int type;\n"
                                         "    int shadowIndex;\n"
-                                        "    float _p0, _p1;\n"
+                                        "    int shadowCascadeCount;\n"
+                                        "    float _p0;\n"
                                         "    float4 direction;\n"
                                         "    float4 position;\n"
                                         "    float4 color;\n"
@@ -283,6 +289,7 @@ static NSString *metal_shader_source = @
                                         "    float attenuation;\n"
                                         "    float inner_cos;\n"
                                         "    float outer_cos;\n"
+                                        "    float4 shadowCascadeSplits;\n"
                                         "};\n"
                                         "\n"
                                         "struct PerScene {\n"
@@ -666,12 +673,53 @@ static NSString *metal_shader_source = @
                                                                                                                                                                                            "                  uv.x * m.z + uv.y * m.w + t.y);\n"
                                                                                                                                                                                            "}\n"
                                                                                                                                                                                            "\n"
-                                                                                                                                                                                           "float sample_shadow(int shadowIndex,\n"
+                                                                                                                                                                                           "int resolve_shadow_cascade(constant Light &light,\n"
+                                                                                                                                                                                           "                           float3 worldPos,\n"
+                                                                                                                                                                                           "                           constant PerScene &scene) {\n"
+                                                                                                                                                                                           "    int shadowIndex = light.shadowIndex;\n"
+                                                                                                                                                                                           "    if (shadowIndex < 0 || shadowIndex >= scene.counts.y)\n"
+                                                                                                                                                                                           "        return -1;\n"
+                                                                                                                                                                                           "    int cascadeCount = clamp(light.shadowCascadeCount, 1, " VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS) ");\n"
+                                                                                                                                                                                           "    cascadeCount = min(cascadeCount, scene.counts.y - shadowIndex);\n"
+                                                                                                                                                                                           "    if (cascadeCount <= 1)\n"
+                                                                                                                                                                                           "        return shadowIndex;\n"
+                                                                                                                                                                                           "    float viewDepth = dot(worldPos - scene.cameraPosition.xyz, scene.cameraForward.xyz);\n"
+                                                                                                                                                                                           "    if (viewDepth <= light.shadowCascadeSplits.x || cascadeCount == 1)\n"
+                                                                                                                                                                                           "        return shadowIndex;\n"
+                                                                                                                                                                                           "    if (viewDepth <= light.shadowCascadeSplits.y || cascadeCount == 2)\n"
+                                                                                                                                                                                           "        return shadowIndex + 1;\n"
+                                                                                                                                                                                           "    if (viewDepth <= light.shadowCascadeSplits.z || cascadeCount == 3)\n"
+                                                                                                                                                                                           "        return shadowIndex + 2;\n"
+                                                                                                                                                                                           "    return shadowIndex + 3;\n"
+                                                                                                                                                                                           "}\n"
+                                                                                                                                                                                           "\n"
+                                                                                                                                                                                           "float sample_shadow_at(int shadowIndex,\n"
+                                                                                                                                                                                           "                       float2 uv,\n"
+                                                                                                                                                                                           "                       float depth,\n"
+                                                                                                                                                                                           "                       constant PerScene &scene,\n"
+                                                                                                                                                                                           "                       depth2d<float> shadowMap0,\n"
+                                                                                                                                                                                           "                       depth2d<float> shadowMap1,\n"
+                                                                                                                                                                                           "                       depth2d<float> shadowMap2,\n"
+                                                                                                                                                                                           "                       depth2d<float> shadowMap3,\n"
+                                                                                                                                                                                           "                       sampler shadowSampler) {\n"
+                                                                                                                                                                                           "    if (shadowIndex == 0)\n"
+                                                                                                                                                                                           "        return shadowMap0.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                                           "    if (shadowIndex == 1)\n"
+                                                                                                                                                                                           "        return shadowMap1.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                                           "    if (shadowIndex == 2)\n"
+                                                                                                                                                                                           "        return shadowMap2.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                                           "    return shadowMap3.sample_compare(shadowSampler, uv, depth - scene.fogParams.z);\n"
+                                                                                                                                                                                           "}\n"
+                                                                                                                                                                                           "\n"
+                                                                                                                                                                                           "float sample_shadow(constant Light &light,\n"
                                                                                                                                                                                            "                    float3 worldPos,\n"
                                                                                                                                                                                            "                    constant PerScene &scene,\n"
                                                                                                                                                                                            "                    depth2d<float> shadowMap0,\n"
                                                                                                                                                                                            "                    depth2d<float> shadowMap1,\n"
+                                                                                                                                                                                           "                    depth2d<float> shadowMap2,\n"
+                                                                                                                                                                                           "                    depth2d<float> shadowMap3,\n"
                                                                                                                                                                                            "                    sampler shadowSampler) {\n"
+                                                                                                                                                                                           "    int shadowIndex = resolve_shadow_cascade(light, worldPos, scene);\n"
                                                                                                                                                                                            "    if (shadowIndex < 0 || shadowIndex >= scene.counts.y)\n"
                                                                                                                                                                                            "        return 1.0;\n"
                                                                                                                                                                                            "    float4 lc = scene.shadowVP[shadowIndex] * float4(worldPos, 1.0);\n"
@@ -682,9 +730,7 @@ static NSString *metal_shader_source = @
                                                                                                                                                                                            "    suv.y = 1.0 - suv.y;\n"
                                                                                                                                                                                            "    if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0 || suv.z < 0.0 || suv.z > 1.0)\n"
                                                                                                                                                                                            "        return 1.0;\n"
-                                                                                                                                                                                           "    return shadowIndex == 0\n"
-                                                                                                                                                                                           "        ? shadowMap0.sample_compare(shadowSampler, suv.xy, suv.z - scene.fogParams.z)\n"
-                                                                                                                                                                                           "        : shadowMap1.sample_compare(shadowSampler, suv.xy, suv.z - scene.fogParams.z);\n"
+                                                                                                                                                                                           "    return sample_shadow_at(shadowIndex, suv.xy, suv.z, scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler);\n"
                                                                                                                                                                                            "}\n"
                                                                                                                                                                                            "\n"
                                                                                                                                                                                            "fragment MainOut fragment_main(\n"
@@ -698,11 +744,13 @@ static NSString *metal_shader_source = @
                                                                                                                                                                                            "    texture2d<float> emissiveTex [[texture(3)]],\n"
                                                                                                                                                                                            "    depth2d<float> shadowMap0 [[texture(4)]],\n"
                                                                                                                                                                                            "    depth2d<float> shadowMap1 [[texture(5)]],\n"
-                                                                                                                                                                                           "    texture2d<float> splatTex [[texture(6)]],\n"
-                                                                                                                                                                                           "    texture2d<float> splatLayer0 [[texture(7)]],\n"
-                                                                                                                                                                                           "    texture2d<float> splatLayer1 [[texture(8)]],\n"
-                                                                                                                                                                                           "    texture2d<float> splatLayer2 [[texture(9)]],\n"
-                                                                                                                                                                                           "    texture2d<float> splatLayer3 [[texture(10)]],\n"
+                                                                                                                                                                                           "    depth2d<float> shadowMap2 [[texture(6)]],\n"
+                                                                                                                                                                                           "    depth2d<float> shadowMap3 [[texture(7)]],\n"
+                                                                                                                                                                                           "    texture2d<float> splatTex [[texture(8)]],\n"
+                                                                                                                                                                                           "    texture2d<float> splatLayer0 [[texture(9)]],\n"
+                                                                                                                                                                                           "    texture2d<float> splatLayer1 [[texture(10)]],\n"
+                                                                                                                                                                                           "    texture2d<float> splatLayer2 [[texture(11)]],\n"
+                                                                                                                                                                                           "    texture2d<float> splatLayer3 [[texture(12)]],\n"
                                                                                                                                                                                            "    texturecube<float> envTex [[texture(13)]],\n"
                                                                                                                                                                                            "    texture2d<float> metallicRoughnessTex [[texture(14)]],\n"
                                                                                                                                                                                            "    texture2d<float> aoTex [[texture(15)]],\n"
@@ -837,8 +885,8 @@ static NSString *metal_shader_source = @
                                                                                                                                                                                            "            }\n"
                                                                                                                                                                                            "            float NdotL = max(dot(N, L), 0.0);\n"
                                                                                                                                                                                            "            if (lights[i].type == 0)\n"
-                                                                                                                                                                                           "                atten *= mix(0.15, 1.0, sample_shadow(lights[i].shadowIndex, in.worldPos, "
-                                                                                                                                                                                           "scene, shadowMap0, shadowMap1, shadowSampler));\n"
+                                                                                                                                                                                           "                atten *= mix(0.15, 1.0, sample_shadow(lights[i], in.worldPos, "
+                                                                                                                                                                                           "scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler));\n"
                                                                                                                                                                                            "            if (NdotL <= 0.0)\n"
                                                                                                                                                                                            "                continue;\n"
                                                                                                                                                                                            "            float3 H = safe_normalize3(L + V, N);\n"
@@ -888,8 +936,8 @@ static NSString *metal_shader_source = @
                                                                                                                                                                                            "            }\n"
                                                                                                                                                                                            "            float NdotL = max(dot(N, L), 0.0);\n"
                                                                                                                                                                                            "            if (lights[i].type == 0)\n"
-                                                                                                                                                                                           "                atten *= mix(0.15, 1.0, sample_shadow(lights[i].shadowIndex, in.worldPos, "
-                                                                                                                                                                                           "scene, shadowMap0, shadowMap1, shadowSampler));\n"
+                                                                                                                                                                                           "                atten *= mix(0.15, 1.0, sample_shadow(lights[i], in.worldPos, "
+                                                                                                                                                                                           "scene, shadowMap0, shadowMap1, shadowMap2, shadowMap3, shadowSampler));\n"
                                                                                                                                                                                            "            result += lights[i].color.rgb * lights[i].intensity * NdotL * "
                                                                                                                                                                                            "baseColor * atten;\n"
                                                                                                                                                                                            "            if (NdotL > 0.0 && material.specularColor.w > 0.0) {\n"
@@ -960,7 +1008,8 @@ typedef struct {
 typedef struct {
     int32_t type;
     int32_t shadow_index;
-    float _p0, _p1;
+    int32_t shadow_cascade_count;
+    float _p0;
     float dir[4];
     float pos[4];
     float col[4];
@@ -968,6 +1017,7 @@ typedef struct {
     float attenuation;
     float inner_cos;
     float outer_cos;
+    float shadow_cascade_splits[4];
 } mtl_light_t;
 
 typedef struct {
@@ -1011,6 +1061,7 @@ static void transpose4x4(const float *src, float *dst) {
             dst[c * 4 + r] = src[r * 4 + c];
 }
 
+/// @brief Row-major 4x4 matrix product out = a * b (out must not alias a or b).
 static void mat4f_mul(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
@@ -1018,6 +1069,7 @@ static void mat4f_mul(const float *a, const float *b, float *out) {
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
+/// @brief Write the 4x4 identity matrix into @p out.
 static void mat4f_identity(float *out) {
     if (!out)
         return;
@@ -1028,6 +1080,9 @@ static void mat4f_identity(float *out) {
     out[15] = 1.0f;
 }
 
+/// @brief Recount the contiguous run of completed shadow-map slots into ctx->_shadowCount.
+/// @details Stops at the first slot that is incomplete or lacks a depth texture, so only a
+///          prefix of ready shadow maps is reported to the lighting pass.
 static void metal_recompute_shadow_count(VGFXMetalContext *ctx) {
     int32_t count = 0;
     if (!ctx)
@@ -1068,6 +1123,7 @@ static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *c
 static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
                                                     const vgfx3d_postfx_chain_t *postfx);
 
+/// @brief Maximum mip LOD index for a cubemap (0 if it has no mip chain).
 static float metal_cubemap_max_lod(const rt_cubemap3d *cubemap) {
     int32_t mip_count;
 
@@ -1078,11 +1134,13 @@ static float metal_cubemap_max_lod(const rt_cubemap3d *cubemap) {
     return mip_count > 1 ? (float)(mip_count - 1) : 0.0f;
 }
 
+/// @brief Map a runtime color-format enum to its Metal pixel format (HDR16F → RGBA16Float, else BGRA8).
 static MTLPixelFormat metal_color_pixel_format(vgfx3d_metal_color_format_t format) {
     return format == VGFX3D_METAL_COLOR_FORMAT_HDR16F ? MTLPixelFormatRGBA16Float
                                                       : MTLPixelFormatBGRA8Unorm;
 }
 
+/// @brief Create a 2D color texture with the given format/usage/storage (nil on invalid args).
 static id<MTLTexture> metal_new_color_texture(VGFXMetalContext *ctx,
                                               int32_t w,
                                               int32_t h,
@@ -1102,6 +1160,7 @@ static id<MTLTexture> metal_new_color_texture(VGFXMetalContext *ctx,
     return [ctx.device newTextureWithDescriptor:td];
 }
 
+/// @brief Create a private-storage Depth32Float depth texture (nil on invalid args).
 static id<MTLTexture> metal_new_depth_texture(VGFXMetalContext *ctx,
                                               int32_t w,
                                               int32_t h,
@@ -1118,6 +1177,7 @@ static id<MTLTexture> metal_new_depth_texture(VGFXMetalContext *ctx,
     return [ctx.device newTextureWithDescriptor:td];
 }
 
+/// @brief Generate the full mip chain for a texture via a one-shot blit encoder (blocks until done).
 static void metal_generate_mipmaps(VGFXMetalContext *ctx, id<MTLTexture> texture) {
     id<MTLCommandBuffer> cmd_buf;
     id<MTLBlitCommandEncoder> blit;
@@ -1136,6 +1196,9 @@ static void metal_generate_mipmaps(VGFXMetalContext *ctx, id<MTLTexture> texture
     [cmd_buf waitUntilCompleted];
 }
 
+/// @brief Evict texture-cache entries that are empty or older than the max-age threshold.
+/// @details Aging is measured in frames against ctx.frameSerial so textures unused for ~240 frames
+///          are released, bounding GPU memory.
 static void metal_prune_texture_cache(VGFXMetalContext *ctx) {
     NSMutableArray *keys_to_remove;
 
@@ -1153,6 +1216,7 @@ static void metal_prune_texture_cache(VGFXMetalContext *ctx) {
     [ctx.textureCache removeObjectsForKeys:keys_to_remove];
 }
 
+/// @brief Evict cubemap-cache entries that are empty or older than the max-age threshold.
 static void metal_prune_cubemap_cache(VGFXMetalContext *ctx) {
     NSMutableArray *keys_to_remove;
 
@@ -1170,6 +1234,7 @@ static void metal_prune_cubemap_cache(VGFXMetalContext *ctx) {
     [ctx.cubemapCache removeObjectsForKeys:keys_to_remove];
 }
 
+/// @brief Evict morph-cache entries that are empty or older than the max-age threshold.
 static void metal_prune_morph_cache(VGFXMetalContext *ctx) {
     NSMutableArray *keys_to_remove;
 
@@ -1187,6 +1252,7 @@ static void metal_prune_morph_cache(VGFXMetalContext *ctx) {
     [ctx.morphCache removeObjectsForKeys:keys_to_remove];
 }
 
+/// @brief Look up the cached Metal textures for a RenderTarget3D (NULL if not cached).
 static VGFXMetalRenderTargetCacheEntry *metal_lookup_render_target_entry(
     VGFXMetalContext *ctx, vgfx3d_rendertarget_t *rt) {
     if (!ctx || !ctx.renderTargetCache || !rt)
@@ -1194,6 +1260,9 @@ static VGFXMetalRenderTargetCacheEntry *metal_lookup_render_target_entry(
     return ctx.renderTargetCache[[NSValue valueWithPointer:rt]];
 }
 
+/// @brief Get or create the cached color/depth/motion textures for a render target.
+/// @details Recreates the textures when the target's size or HDR/UNORM format changed; otherwise
+///          returns the existing entry. NULL on invalid input or allocation failure.
 static VGFXMetalRenderTargetCacheEntry *metal_ensure_render_target_entry(
     VGFXMetalContext *ctx, vgfx3d_rendertarget_t *rt) {
     NSValue *key;
@@ -1253,6 +1322,8 @@ static VGFXMetalRenderTargetCacheEntry *metal_ensure_render_target_entry(
     return entry;
 }
 
+/// @brief Read a render target's GPU color texture back into its CPU-side Pixels (callback form).
+/// @details Invoked when the runtime needs the rendered image as Pixels (e.g. RenderTarget3D.AsPixels).
 static int metal_sync_render_target_color(void *userdata, vgfx3d_rendertarget_t *target) {
     VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)userdata;
     VGFXMetalRenderTargetCacheEntry *entry;
@@ -1287,6 +1358,9 @@ static int metal_sync_render_target_color(void *userdata, vgfx3d_rendertarget_t 
     }
 }
 
+/// @brief Build the render-pass descriptor for the main scene pass (color + motion + depth attachments).
+/// @details Configures load/store actions and clear values for the target's color, motion-vector, and
+///          depth textures.
 static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContext *ctx,
                                                                  BOOL loadExistingColor,
                                                                  BOOL loadExistingDepth) {
@@ -1353,6 +1427,8 @@ static MTLRenderPassDescriptor *metal_make_scene_pass_descriptor(VGFXMetalContex
     return rp;
 }
 
+/// @brief Begin the scene render-command encoder for the frame from a pass descriptor.
+/// @details Sets up viewport and shared render state so subsequent draw calls can be encoded.
 static void metal_begin_scene_encoder(VGFXMetalContext *ctx,
                                       BOOL loadExistingColor,
                                       BOOL loadExistingDepth) {
@@ -1386,6 +1462,7 @@ static void metal_begin_scene_encoder(VGFXMetalContext *ctx,
     [ctx.encoder setCullMode:MTLCullModeBack];
 }
 
+/// @brief Recreate the main offscreen color/motion/depth textures at size (w, h) after a resize.
 static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_t h) {
     if (!ctx || w <= 0 || h <= 0)
         return;
@@ -1469,6 +1546,9 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
     ctx.postfxCompositedToDrawable = 0;
 }
 
+/// @brief Upload a band of RGBA8 source rows into a BGRA8 Metal texture, swizzling R↔B per pixel.
+/// @details Metal's default textures are BGRA-order; Pixels are RGBA, so the channels are swapped
+///          during the copy. Returns 1 on success.
 static int metal_upload_rgba_to_bgra_texture_rows(id<MTLTexture> tex,
                                                   const uint8_t *rgba,
                                                   int32_t w,
@@ -1500,6 +1580,7 @@ static int metal_upload_rgba_to_bgra_texture_rows(id<MTLTexture> tex,
     return 1;
 }
 
+/// @brief Upload a band of RGBA8 rows into one BGRA8 cubemap face, swizzling R↔B per pixel.
 static int metal_upload_rgba_to_bgra_cubemap_rows(id<MTLTexture> tex,
                                                   const uint8_t *rgba,
                                                   int32_t w,
@@ -1534,6 +1615,7 @@ static int metal_upload_rgba_to_bgra_cubemap_rows(id<MTLTexture> tex,
     return 1;
 }
 
+/// @brief Round @p value up to a multiple of @p alignment (for buffer/row-pitch alignment).
 static size_t metal_align_up_size(size_t value, size_t alignment) {
     size_t remainder;
     if (alignment == 0)
@@ -1546,6 +1628,9 @@ static size_t metal_align_up_size(size_t value, size_t alignment) {
     return value + (alignment - remainder);
 }
 
+/// @brief Read a Metal texture back into a CPU RGBA8 (or HDR float) buffer via a blit + managed copy.
+/// @details Handles the BGRA→RGBA swizzle for the LDR path and the float path for HDR targets;
+///          @p stride is the destination row pitch in bytes. Returns 1 on success.
 static int metal_copy_texture_to_rgba(VGFXMetalContext *ctx,
                                       id<MTLTexture> tex,
                                       uint8_t *dst_rgba,
@@ -1649,6 +1734,7 @@ static int metal_copy_texture_to_rgba(VGFXMetalContext *ctx,
     return 1;
 }
 
+/// @brief Sync the CAMetalLayer's drawable size and scale to the current backing view.
 static void metal_update_layer_size(VGFXMetalContext *ctx) {
     if (!ctx)
         return;
@@ -1662,6 +1748,7 @@ static void metal_update_layer_size(VGFXMetalContext *ctx) {
     }
 }
 
+/// @brief End the active scene render-command encoder if one is open.
 static void metal_finish_encoding(VGFXMetalContext *ctx) {
     if (!ctx)
         return;
@@ -1671,6 +1758,7 @@ static void metal_finish_encoding(VGFXMetalContext *ctx) {
     }
 }
 
+/// @brief Commit the pending command buffer, optionally blocking until the GPU finishes it.
 static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted) {
     if (!ctx)
         return;
@@ -1696,6 +1784,7 @@ static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted)
     }
 }
 
+/// @brief Detach the active offscreen render target, optionally syncing its color back to Pixels first.
 static void metal_detach_render_target(VGFXMetalContext *ctx, BOOL syncColor) {
     vgfx3d_rendertarget_t *target;
     BOOL hadPendingFrame;
@@ -1724,6 +1813,7 @@ static void metal_detach_render_target(VGFXMetalContext *ctx, BOOL syncColor) {
     ctx.postfxCompositedToDrawable = 0;
 }
 
+/// @brief Blit a finished texture into the window's CPU framebuffer (software-present fallback path).
 static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTexture> texture) {
     vgfx_framebuffer_t fb;
     if (!ctx || !texture || !ctx.vgfxWin)
@@ -1734,6 +1824,8 @@ static void metal_present_texture_to_framebuffer(VGFXMetalContext *ctx, id<MTLTe
     ctx.displayTexture = texture;
 }
 
+/// @brief Present a finished texture to the layer's next drawable (or framebuffer fallback).
+/// @return YES if a drawable was presented, NO if it fell back / had no drawable.
 static BOOL metal_present_texture(VGFXMetalContext *ctx,
                                   id<MTLTexture> texture,
                                   BOOL schedulePresent) {
@@ -1783,6 +1875,7 @@ static BOOL metal_present_texture(VGFXMetalContext *ctx,
     return YES;
 }
 
+/// @brief Allocate a shared-storage MTLBuffer initialized from @p bytes (CPU/GPU-visible).
 static id<MTLBuffer> metal_new_shared_buffer(VGFXMetalContext *ctx,
                                              const void *bytes,
                                              size_t length) {
@@ -1791,12 +1884,14 @@ static id<MTLBuffer> metal_new_shared_buffer(VGFXMetalContext *ctx,
     return [ctx.device newBufferWithBytes:bytes length:length options:MTLResourceStorageModeShared];
 }
 
+/// @brief Allocate an uninitialized shared-storage MTLBuffer of @p length bytes.
 static id<MTLBuffer> metal_new_shared_buffer_with_length(VGFXMetalContext *ctx, size_t length) {
     if (!ctx || !ctx.device || length == 0)
         return nil;
     return [ctx.device newBufferWithLength:length options:MTLResourceStorageModeShared];
 }
 
+/// @brief Run the texture/cubemap/morph cache pruning passes once per frame.
 static void metal_cache_evict_if_needed(VGFXMetalContext *ctx) {
     NSValue *oldestKey = nil;
     VGFXMetalGeometryCacheEntry *oldestEntry = nil;
@@ -1814,6 +1909,7 @@ static void metal_cache_evict_if_needed(VGFXMetalContext *ctx) {
         [ctx.geometryCache removeObjectForKey:oldestKey];
 }
 
+/// @brief Get (growing as needed) the per-frame vertex and index buffers for a draw of given size.
 static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
                                        const vgfx3d_draw_cmd_t *cmd,
                                        id<MTLBuffer> *outVB,
@@ -1863,6 +1959,8 @@ static void metal_get_geometry_buffers(VGFXMetalContext *ctx,
         metal_new_shared_buffer(ctx, cmd->indices, (size_t)cmd->index_count * sizeof(uint32_t));
 }
 
+/// @brief The texture that holds the current frame's final image for readback/present.
+/// @details Prefers the post-FX output when post-processing ran, else the main scene color texture.
 static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx) {
     if (!ctx)
         return nil;
@@ -1877,6 +1975,7 @@ static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx) {
     return ctx.offscreenColor;
 }
 
+/// @brief Reset the cached GPU post-processing chain snapshot to empty (without freeing buffers).
 static void metal_reset_gpu_postfx_chain(VGFXMetalContext *ctx) {
     vgfx3d_postfx_chain_t chain;
     if (!ctx)
@@ -1887,6 +1986,7 @@ static void metal_reset_gpu_postfx_chain(VGFXMetalContext *ctx) {
     ctx.gpuPostfxChainValid = 0;
 }
 
+/// @brief Free the cached GPU post-processing chain snapshot and release its owned memory.
 static void metal_free_gpu_postfx_chain(VGFXMetalContext *ctx) {
     vgfx3d_postfx_chain_t chain;
     if (!ctx)
@@ -1897,6 +1997,9 @@ static void metal_free_gpu_postfx_chain(VGFXMetalContext *ctx) {
     ctx.gpuPostfxChainValid = 0;
 }
 
+/// @brief Deep-copy a post-FX chain snapshot into the context for GPU post-processing.
+/// @details Owns the copy so the chain can be applied across frames independent of the caller's data.
+/// @return 1 on success, 0 on allocation failure.
 static int metal_copy_gpu_postfx_chain(VGFXMetalContext *ctx, const vgfx3d_postfx_chain_t *src) {
     vgfx3d_postfx_chain_t chain;
     int ok;
@@ -1945,6 +2048,9 @@ static MTLVertexDescriptor *create_vertex_descriptor(void) {
     return d;
 }
 
+/// @brief Configure a pipeline color attachment's blend state for a material alpha mode.
+/// @details Sets the blend factors/equation for opaque, alpha-blend, or additive modes (and enables
+///          or disables blending accordingly).
 static void metal_configure_blend_state(MTLRenderPipelineColorAttachmentDescriptor *attachment,
                                         vgfx3d_metal_blend_mode_t blend_mode) {
     if (!attachment)
@@ -1963,6 +2069,8 @@ static void metal_configure_blend_state(MTLRenderPipelineColorAttachmentDescript
     attachment.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 }
 
+/// @brief Compile a render pipeline state for a given vertex/fragment function and blend/format config.
+/// @return The pipeline state, or nil on compilation failure.
 static id<MTLRenderPipelineState> metal_create_pipeline_state(
     id<MTLDevice> device,
     id<MTLFunction> vertex_function,
@@ -1990,6 +2098,7 @@ static id<MTLRenderPipelineState> metal_create_pipeline_state(
     return [device newRenderPipelineStateWithDescriptor:descriptor error:error];
 }
 
+/// @brief Compile the skybox render pipeline state (full-screen triangle sampling a cubemap).
 static id<MTLRenderPipelineState> metal_create_skybox_pipeline_state(
     id<MTLDevice> device,
     id<MTLFunction> vertex_function,
@@ -2012,6 +2121,8 @@ static id<MTLRenderPipelineState> metal_create_skybox_pipeline_state(
     return [device newRenderPipelineStateWithDescriptor:descriptor error:error];
 }
 
+/// @brief Get or build the cached pipeline state matching a draw's shading model, blend, and formats.
+/// @details Keyed by the render-state config so identical draws reuse one compiled pipeline.
 static id<MTLRenderPipelineState> metal_select_pipeline_state(VGFXMetalContext *ctx,
                                                               const vgfx3d_draw_cmd_t *cmd,
                                                               BOOL instanced) {
@@ -2045,6 +2156,7 @@ static id<MTLRenderPipelineState> metal_select_pipeline_state(VGFXMetalContext *
                                                             : ctx.pipelineStateColorOnly);
 }
 
+/// @brief Map a material texture-wrap mode to the corresponding MTLSamplerAddressMode.
 static MTLSamplerAddressMode metal_material_address_mode(int32_t mode) {
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE)
         return MTLSamplerAddressModeClampToEdge;
@@ -2053,6 +2165,7 @@ static MTLSamplerAddressMode metal_material_address_mode(int32_t mode) {
     return MTLSamplerAddressModeRepeat;
 }
 
+/// @brief Get or build the cached sampler state for a material's filter and wrap modes.
 static id<MTLSamplerState> metal_get_material_sampler(VGFXMetalContext *ctx,
                                                       const vgfx3d_draw_cmd_t *cmd,
                                                       int32_t slot) {
@@ -2690,6 +2803,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     }
 }
 
+/// @brief Destroy the Metal backend context and release all GPU resources and caches.
 static void metal_destroy_ctx(void *ctx_ptr) {
     if (!ctx_ptr)
         return;
@@ -2703,6 +2817,7 @@ static void metal_destroy_ctx(void *ctx_ptr) {
     }
 }
 
+/// @brief Set the clear color used when the next frame's scene pass begins.
 static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
     (void)win;
     VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
@@ -2711,6 +2826,7 @@ static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, floa
     ctx.clearB = b;
 }
 
+/// @brief Begin a 3D frame: advance the frame serial, set up camera uniforms, and open the scene pass.
 static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
@@ -2798,6 +2914,7 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     }
 }
 
+/// @brief Add @p bytes to the context's running per-frame texture-upload total (saturating).
 static void metal_record_texture_upload_bytes(VGFXMetalContext *ctx, uint64_t bytes) {
     if (!ctx || bytes == 0)
         return;
@@ -2808,13 +2925,89 @@ static void metal_record_texture_upload_bytes(VGFXMetalContext *ctx, uint64_t by
     ctx.textureUploadBytes += bytes;
 }
 
+/// @brief Report which native compressed texture formats this Metal device can sample (BC7/ASTC/ETC2).
+/// @details Apple-silicon GPUs support ASTC/ETC2; Intel Macs support BC7. Returns the matching
+///          RT_CANVAS3D_BACKEND_CAP_* bitmask.
+static int64_t metal_get_native_texture_caps(void *ctx_ptr) {
+    VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+    int64_t caps = 0;
+    if (!ctx || !ctx.device)
+        return 0;
+#if defined(__aarch64__)
+    caps |= RT_CANVAS3D_BACKEND_CAP_ASTC | RT_CANVAS3D_BACKEND_CAP_ETC2;
+#else
+    if ([ctx.device respondsToSelector:@selector(supportsBCTextureCompression)] &&
+        ctx.device.supportsBCTextureCompression)
+        caps |= RT_CANVAS3D_BACKEND_CAP_BC7;
+#endif
+    return caps;
+}
+
+/// @brief Map a native compressed mip's format/block size to the matching MTLPixelFormat (0 if unsupported).
+static MTLPixelFormat metal_native_texture_pixel_format(const vgfx3d_native_texture_mip_t *mip) {
+    if (!mip)
+        return MTLPixelFormatInvalid;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7)
+        return MTLPixelFormatBC7_RGBAUnorm;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2)
+        return MTLPixelFormatEAC_RGBA8;
+    if (mip->format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC) {
+        if (mip->block_width == 4 && mip->block_height == 4)
+            return MTLPixelFormatASTC_4x4_LDR;
+        if (mip->block_width == 5 && mip->block_height == 4)
+            return MTLPixelFormatASTC_5x4_LDR;
+        if (mip->block_width == 5 && mip->block_height == 5)
+            return MTLPixelFormatASTC_5x5_LDR;
+        if (mip->block_width == 6 && mip->block_height == 5)
+            return MTLPixelFormatASTC_6x5_LDR;
+        if (mip->block_width == 6 && mip->block_height == 6)
+            return MTLPixelFormatASTC_6x6_LDR;
+        if (mip->block_width == 8 && mip->block_height == 5)
+            return MTLPixelFormatASTC_8x5_LDR;
+        if (mip->block_width == 8 && mip->block_height == 6)
+            return MTLPixelFormatASTC_8x6_LDR;
+        if (mip->block_width == 8 && mip->block_height == 8)
+            return MTLPixelFormatASTC_8x8_LDR;
+        if (mip->block_width == 10 && mip->block_height == 5)
+            return MTLPixelFormatASTC_10x5_LDR;
+        if (mip->block_width == 10 && mip->block_height == 6)
+            return MTLPixelFormatASTC_10x6_LDR;
+        if (mip->block_width == 10 && mip->block_height == 8)
+            return MTLPixelFormatASTC_10x8_LDR;
+        if (mip->block_width == 10 && mip->block_height == 10)
+            return MTLPixelFormatASTC_10x10_LDR;
+        if (mip->block_width == 12 && mip->block_height == 10)
+            return MTLPixelFormatASTC_12x10_LDR;
+        if (mip->block_width == 12 && mip->block_height == 12)
+            return MTLPixelFormatASTC_12x12_LDR;
+    }
+    return MTLPixelFormatInvalid;
+}
+
+/// @brief Bytes per block-row of a native compressed mip (block columns × block byte size, overflow-safe).
+static uint64_t metal_native_texture_row_bytes(const vgfx3d_native_texture_mip_t *mip) {
+    uint64_t cols;
+    if (!mip || mip->width <= 0 || mip->block_width <= 0 || mip->block_bytes <= 0)
+        return 0;
+    cols = ((uint64_t)(uint32_t)mip->width + (uint64_t)(uint32_t)mip->block_width - 1u) /
+           (uint64_t)(uint32_t)mip->block_width;
+    if (cols > UINT64_MAX / (uint64_t)(uint32_t)mip->block_bytes)
+        return 0;
+    return cols * (uint64_t)(uint32_t)mip->block_bytes;
+}
+
+/// @brief Bytes still to upload for a cached texture entry (native or RGBA streaming path).
 static uint64_t metal_texture_pending_bytes(VGFXMetalTextureCacheEntry *entry) {
     if (!entry)
         return 0;
+    if (entry.textureAsset)
+        return vgfx3d_textureasset_pending_native_bytes(
+            entry.textureAsset, entry.nativeNextMip, entry.uploadInProgress ? 1 : 0);
     return vgfx3d_pending_rgba_upload_bytes(
         entry.width, entry.height, entry.uploadNextRow, entry.uploadInProgress ? 1 : 0);
 }
 
+/// @brief Bytes still to upload for a cached cubemap entry across its remaining faces/rows.
 static uint64_t metal_cubemap_pending_bytes(VGFXMetalCubemapCacheEntry *entry) {
     if (!entry)
         return 0;
@@ -2824,6 +3017,7 @@ static uint64_t metal_cubemap_pending_bytes(VGFXMetalCubemapCacheEntry *entry) {
                                                    entry.uploadInProgress ? 1 : 0);
 }
 
+/// @brief Total bytes still pending across all in-progress texture/cubemap uploads (saturating).
 static uint64_t metal_get_texture_upload_pending_bytes(void *ctx_ptr) {
     VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
     uint64_t total = 0;
@@ -2846,12 +3040,97 @@ static uint64_t metal_get_texture_upload_pending_bytes(void *ctx_ptr) {
     return total;
 }
 
+/// @brief Set the per-frame byte budget that paces streaming texture uploads on this context.
 static void metal_set_texture_upload_budget(void *ctx_ptr, uint64_t bytes) {
     VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
     if (ctx)
         ctx.textureUploadBudgetBytes = bytes;
 }
 
+/// @brief Upload more of an in-progress native compressed texture, bounded by the upload budget.
+/// @return 1 if the upload finished this call, 0 if more mips remain.
+static int metal_continue_native_texture_upload(VGFXMetalContext *ctx,
+                                                VGFXMetalTextureCacheEntry *entry) {
+    if (!ctx || !entry || !entry.textureAsset || !entry.uploadInProgress || !entry.texture)
+        return 0;
+    while (entry.nativeNextMip < entry.nativeMipCount) {
+        vgfx3d_native_texture_mip_t mip;
+        uint64_t row_bytes;
+        MTLRegion region;
+
+        if (ctx.textureUploadBudgetBytes != UINT64_MAX &&
+            ctx.textureUploadBytes >= ctx.textureUploadBudgetBytes)
+            return 0;
+        if (!vgfx3d_textureasset_get_native_resident_mip(
+                entry.textureAsset, entry.nativeNextMip, &mip))
+            return 0;
+        row_bytes = metal_native_texture_row_bytes(&mip);
+        if (row_bytes == 0 || row_bytes > (uint64_t)NSUIntegerMax || mip.bytes > (uint64_t)NSUIntegerMax)
+            return 0;
+        region = MTLRegionMake2D(0, 0, (NSUInteger)mip.width, (NSUInteger)mip.height);
+        [entry.texture replaceRegion:region
+                          mipmapLevel:(NSUInteger)entry.nativeNextMip
+                            withBytes:mip.data
+                          bytesPerRow:(NSUInteger)row_bytes];
+        metal_record_texture_upload_bytes(ctx, mip.bytes);
+        entry.nativeNextMip++;
+        entry.lastUsedFrame = ctx.frameSerial;
+    }
+    entry.generation = entry.pendingGeneration;
+    entry.pendingGeneration = 0;
+    entry.uploadInProgress = 0;
+    return 1;
+}
+
+/// @brief Begin uploading a native compressed TextureAsset3D: create the texture and seed the cursor.
+static int metal_start_native_texture_upload(VGFXMetalContext *ctx,
+                                             VGFXMetalTextureCacheEntry *entry,
+                                             void *asset,
+                                             uint64_t cache_key) {
+    vgfx3d_native_texture_mip_t first_mip;
+    MTLPixelFormat pixel_format;
+    int64_t mip_count;
+
+    if (!ctx || !entry || !asset ||
+        !vgfx3d_textureasset_native_supported(asset, metal_get_native_texture_caps((__bridge void *)ctx)) ||
+        !vgfx3d_textureasset_get_native_resident_mip(asset, 0, &first_mip))
+        return 0;
+    pixel_format = metal_native_texture_pixel_format(&first_mip);
+    if (pixel_format == MTLPixelFormatInvalid)
+        return 0;
+    mip_count = rt_textureasset3d_get_resident_mip_count(asset);
+    if (mip_count <= 0)
+        return 0;
+
+    MTLTextureDescriptor *texDesc =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pixel_format
+                                                           width:(NSUInteger)first_mip.width
+                                                          height:(NSUInteger)first_mip.height
+                                                       mipmapped:(mip_count > 1)];
+    texDesc.mipmapLevelCount = (NSUInteger)mip_count;
+    texDesc.usage = MTLTextureUsageShaderRead;
+    texDesc.storageMode = MTLStorageModeShared;
+    entry.texture = [ctx.device newTextureWithDescriptor:texDesc];
+    if (!entry.texture)
+        return 0;
+
+    entry.textureAsset = asset;
+    entry.nativeFormat = first_mip.format_id;
+    entry.nativeNextMip = 0;
+    entry.nativeMipCount = mip_count;
+    entry.pendingGeneration = cache_key;
+    entry.generation = 0;
+    entry.width = first_mip.width;
+    entry.height = first_mip.height;
+    entry.uploadNextRow = 0;
+    entry.uploadInProgress = 1;
+    entry.lastUsedFrame = ctx.frameSerial;
+    metal_continue_native_texture_upload(ctx, entry);
+    return 1;
+}
+
+/// @brief Upload more rows of an in-progress RGBA texture (swizzled to BGRA), bounded by the budget.
+/// @return 1 if the upload finished this call, 0 if more rows remain.
 static int metal_continue_texture_upload(VGFXMetalContext *ctx,
                                          VGFXMetalTextureCacheEntry *entry,
                                          const void *pixels_ptr) {
@@ -2897,6 +3176,7 @@ static int metal_continue_texture_upload(VGFXMetalContext *ctx,
     return 0;
 }
 
+/// @brief Begin uploading an RGBA Pixels texture: allocate the BGRA texture and seed the row cursor.
 static int metal_start_texture_upload(VGFXMetalContext *ctx,
                                       VGFXMetalTextureCacheEntry *entry,
                                       const void *pixels_ptr,
@@ -2924,6 +3204,10 @@ static int metal_start_texture_upload(VGFXMetalContext *ctx,
 
     entry.pendingGeneration = cache_key;
     entry.generation = 0;
+    entry.textureAsset = NULL;
+    entry.nativeFormat = RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+    entry.nativeNextMip = 0;
+    entry.nativeMipCount = 0;
     entry.width = tw;
     entry.height = th;
     entry.uploadNextRow = 0;
@@ -2961,6 +3245,50 @@ static id<MTLTexture> metal_get_cached_texture(VGFXMetalContext *ctx, const void
     return cached.uploadInProgress ? nil : cached.texture;
 }
 
+/// @brief Get the Metal texture for a native TextureAsset3D, creating/streaming it on a cache miss.
+/// @details Keyed by the asset's native cache key; returns nil while an upload is still in progress.
+static id<MTLTexture> metal_get_cached_native_texture(VGFXMetalContext *ctx, void *asset) {
+    uint64_t cache_key;
+    NSValue *key;
+    VGFXMetalTextureCacheEntry *cached;
+
+    if (!ctx || !asset ||
+        !vgfx3d_textureasset_native_supported(asset, metal_get_native_texture_caps((__bridge void *)ctx)))
+        return nil;
+    cache_key = rt_textureasset3d_get_native_cache_key(asset);
+    if (cache_key == 0)
+        return nil;
+    key = [NSValue valueWithPointer:asset];
+    cached = ctx.textureCache[key];
+    if (cached && cached.texture && cached.textureAsset == asset && cached.generation == cache_key) {
+        cached.lastUsedFrame = ctx.frameSerial;
+        return cached.texture;
+    }
+    if (cached && cached.textureAsset == asset && cached.pendingGeneration == cache_key &&
+        cached.uploadInProgress) {
+        return metal_continue_native_texture_upload(ctx, cached) ? cached.texture : nil;
+    }
+    if (!cached)
+        cached = [[VGFXMetalTextureCacheEntry alloc] init];
+    ctx.textureCache[key] = cached;
+    if (!metal_start_native_texture_upload(ctx, cached, asset, cache_key))
+        return nil;
+    return cached.uploadInProgress ? nil : cached.texture;
+}
+
+/// @brief Resolve a material's texture to an MTLTexture, preferring native blocks then RGBA Pixels.
+/// @return The texture to bind, or nil if neither source is uploadable yet.
+static id<MTLTexture> metal_get_material_texture(VGFXMetalContext *ctx,
+                                                 void *asset,
+                                                 const void *pixels_ptr) {
+    id<MTLTexture> tex = asset ? metal_get_cached_native_texture(ctx, asset) : nil;
+    if (tex)
+        return tex;
+    return pixels_ptr ? metal_get_cached_texture(ctx, pixels_ptr) : nil;
+}
+
+/// @brief Upload more of an in-progress cubemap (face by face, row band by row band) within budget.
+/// @return 1 if all six faces finished this call, 0 if more remains.
 static int metal_continue_cubemap_upload(VGFXMetalContext *ctx,
                                          VGFXMetalCubemapCacheEntry *entry,
                                          const rt_cubemap3d *cubemap) {
@@ -3017,6 +3345,7 @@ static int metal_continue_cubemap_upload(VGFXMetalContext *ctx,
     return 1;
 }
 
+/// @brief Begin uploading a cubemap: create the cube texture and seed the face/row cursor.
 static int metal_start_cubemap_upload(VGFXMetalContext *ctx,
                                       VGFXMetalCubemapCacheEntry *entry,
                                       const rt_cubemap3d *cubemap,
@@ -3051,6 +3380,8 @@ static int metal_start_cubemap_upload(VGFXMetalContext *ctx,
     return 1;
 }
 
+/// @brief Get the Metal cubemap texture for a Cubemap3D, creating/streaming it on a cache miss.
+/// @details Returns nil while the cubemap upload is still in progress.
 static id<MTLTexture> metal_get_cached_cubemap(VGFXMetalContext *ctx, const rt_cubemap3d *cubemap) {
     uint64_t generation;
     NSValue *key;
@@ -3084,6 +3415,8 @@ typedef struct {
     int has_normal_deltas;
 } metal_morph_bind_status_t;
 
+/// @brief Compute the byte size of a morph-target GPU payload for a vertex count and channel set.
+/// @return 1 with the size written, 0 on overflow or invalid inputs.
 static int metal_compute_morph_payload_bytes(uint32_t vertex_count,
                                              int32_t morph_count,
                                              size_t *out_bytes) {
@@ -3107,6 +3440,8 @@ static int metal_compute_morph_payload_bytes(uint32_t vertex_count,
     return 1;
 }
 
+/// @brief Get or build the cached GPU morph-delta buffer for a mesh's morph targets.
+/// @details Keyed by mesh + morph revision so it rebuilds when the deltas change. NULL on failure.
 static VGFXMetalMorphCacheEntry *metal_get_cached_morph_entry(VGFXMetalContext *ctx,
                                                               const vgfx3d_draw_cmd_t *cmd,
                                                               int32_t morph_count) {
@@ -3152,6 +3487,8 @@ static VGFXMetalMorphCacheEntry *metal_get_cached_morph_entry(VGFXMetalContext *
     return entry;
 }
 
+/// @brief Bind a draw's skeletal bone matrices (the skinning palette) into the vertex stage.
+/// @return 1 on success, 0 if the palette is missing or too large.
 static int metal_bind_bone_palettes(VGFXMetalContext *ctx,
                                     const vgfx3d_draw_cmd_t *cmd,
                                     int has_skinning,
@@ -3189,6 +3526,8 @@ static int metal_bind_bone_palettes(VGFXMetalContext *ctx,
     return 1;
 }
 
+/// @brief Bind a mesh's morph delta buffer and per-shape weights for a draw.
+/// @return A status enum indicating whether morphing is bound, skipped, or failed.
 static metal_morph_bind_status_t metal_bind_morph_payload(VGFXMetalContext *ctx,
                                                           const vgfx3d_draw_cmd_t *cmd) {
     metal_morph_bind_status_t status = {0, 0, 0};
@@ -3237,6 +3576,7 @@ static metal_morph_bind_status_t metal_bind_morph_payload(VGFXMetalContext *ctx,
     return status;
 }
 
+/// @brief Ensure the per-instance transform buffer can hold @p instance_count instances (grows as needed).
 static void metal_ensure_instance_storage(VGFXMetalContext *ctx, int32_t instance_count) {
     int32_t needed_capacity;
     int32_t next_capacity;
@@ -3257,6 +3597,10 @@ static void metal_ensure_instance_storage(VGFXMetalContext *ctx, int32_t instanc
     }
 }
 
+/// @brief Encode and submit a single 3D draw command (the backend's main draw entry point).
+/// @details Selects/creates the pipeline state for the material, binds geometry, textures, lighting,
+///          skinning, and morph data, applies the camera-relative transform, and issues the draw
+///          (instanced when an instance buffer is provided).
 static void metal_submit_draw(void *ctx_ptr,
                               vgfx_window_t win,
                               const vgfx3d_draw_cmd_t *cmd,
@@ -3393,17 +3737,18 @@ static void metal_submit_draw(void *ctx_ptr,
         mat.pbrScalars0[3] = cmd->emissive_intensity;
         mat.pbrScalars1[0] = cmd->normal_scale;
         mat.pbrScalars1[1] = cmd->alpha_cutoff;
-        mat.flags0[0] = cmd->texture ? 1 : 0;
+        mat.flags0[0] = (cmd->texture || cmd->texture_asset) ? 1 : 0;
         mat.flags0[1] = cmd->unlit;
-        mat.flags0[2] = cmd->normal_map ? 1 : 0;
-        mat.flags0[3] = cmd->specular_map ? 1 : 0;
-        mat.flags1[0] = cmd->emissive_map ? 1 : 0;
+        mat.flags0[2] = (cmd->normal_map || cmd->normal_map_asset) ? 1 : 0;
+        mat.flags0[3] = (cmd->specular_map || cmd->specular_map_asset) ? 1 : 0;
+        mat.flags1[0] = (cmd->emissive_map || cmd->emissive_map_asset) ? 1 : 0;
         mat.flags1[1] = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
         mat.flags1[2] = has_complete_splat;
         mat.pbrFlags[0] = cmd->workflow;
         mat.pbrFlags[1] = cmd->alpha_mode;
-        mat.pbrFlags[2] = cmd->metallic_roughness_map ? 1 : 0;
-        mat.pbrFlags[3] = cmd->ao_map ? 1 : 0;
+        mat.pbrFlags[2] =
+            (cmd->metallic_roughness_map || cmd->metallic_roughness_map_asset) ? 1 : 0;
+        mat.pbrFlags[3] = (cmd->ao_map || cmd->ao_map_asset) ? 1 : 0;
         if (has_complete_splat) {
             for (int si = 0; si < 4; si++)
                 mat.splatScales[si] = cmd->splat_layer_scales[si];
@@ -3425,15 +3770,16 @@ static void metal_submit_draw(void *ctx_ptr,
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
         /* Bind default textures to all shader slots. */
-        for (int slot = 0; slot <= 10; slot++)
+        for (int slot = 0; slot <= 12; slot++)
             [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:slot];
         [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:14];
         [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:15];
         [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:13];
-        if (ctx->_shadowCount > 0 && ctx->_shadowDepthTexture[0])
-            [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[0] atIndex:4];
-        if (ctx->_shadowCount > 1 && ctx->_shadowDepthTexture[1])
-            [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[1] atIndex:5];
+        for (int32_t slot = 0; slot < ctx->_shadowCount && slot < VGFX3D_MAX_SHADOW_LIGHTS;
+             slot++) {
+            if (ctx->_shadowDepthTexture[slot])
+                [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[slot] atIndex:4 + slot];
+        }
         [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(
                                                  ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR)
                                      atIndex:0];
@@ -3459,46 +3805,51 @@ static void metal_submit_draw(void *ctx_ptr,
                                      atIndex:7];
 
         /* MTL-03: Bind cached textures for each material map slot */
-        if (cmd->texture) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->texture);
+        if (cmd->texture || cmd->texture_asset) {
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:0];
         }
-        if (cmd->normal_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->normal_map);
+        if (cmd->normal_map || cmd->normal_map_asset) {
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx, cmd->normal_map_asset, cmd->normal_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:1];
         }
-        if (cmd->specular_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->specular_map);
+        if (cmd->specular_map || cmd->specular_map_asset) {
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx, cmd->specular_map_asset, cmd->specular_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:2];
         }
-        if (cmd->emissive_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->emissive_map);
+        if (cmd->emissive_map || cmd->emissive_map_asset) {
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx, cmd->emissive_map_asset, cmd->emissive_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
         }
-        if (cmd->metallic_roughness_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->metallic_roughness_map);
+        if (cmd->metallic_roughness_map || cmd->metallic_roughness_map_asset) {
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx, cmd->metallic_roughness_map_asset, cmd->metallic_roughness_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:14];
         }
-        if (cmd->ao_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->ao_map);
+        if (cmd->ao_map || cmd->ao_map_asset) {
+            id<MTLTexture> tex = metal_get_material_texture(ctx, cmd->ao_map_asset, cmd->ao_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:15];
         }
-        /* MTL-14: Terrain splat textures (slots 6-10) */
+        /* MTL-14: Terrain splat textures (slots 8-12) */
         if (has_complete_splat) {
             id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);
             if (sp)
-                [ctx.encoder setFragmentTexture:sp atIndex:6];
+                [ctx.encoder setFragmentTexture:sp atIndex:8];
             for (int si = 0; si < 4; si++) {
                 if (cmd->splat_layers[si]) {
                     id<MTLTexture> lt = metal_get_cached_texture(ctx, cmd->splat_layers[si]);
                     if (lt)
-                        [ctx.encoder setFragmentTexture:lt atIndex:7 + si];
+                        [ctx.encoder setFragmentTexture:lt atIndex:9 + si];
                 }
             }
         }
@@ -3517,6 +3868,8 @@ static void metal_submit_draw(void *ctx_ptr,
                 ml[i].type = lights[i].type;
                 ml[i].shadow_index =
                     vgfx3d_metal_sanitize_shadow_index(lights[i].shadow_index, ctx->_shadowCount);
+                ml[i].shadow_cascade_count =
+                    ml[i].shadow_index >= 0 ? lights[i].shadow_cascade_count : 1;
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
                 ml[i].dir[2] = lights[i].direction[2];
@@ -3530,6 +3883,9 @@ static void metal_submit_draw(void *ctx_ptr,
                 ml[i].attenuation = lights[i].attenuation;
                 ml[i].inner_cos = lights[i].inner_cos;
                 ml[i].outer_cos = lights[i].outer_cos;
+                memcpy(ml[i].shadow_cascade_splits,
+                       lights[i].shadow_cascade_splits,
+                       sizeof(ml[i].shadow_cascade_splits));
             }
             int32_t buf_count =
                 light_count > 0
@@ -3546,6 +3902,7 @@ static void metal_submit_draw(void *ctx_ptr,
     }
 }
 
+/// @brief End the frame: close the scene encoder, run GPU post-FX, present, and commit.
 static void metal_end_frame(void *ctx_ptr) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
@@ -3573,6 +3930,7 @@ static void metal_end_frame(void *ctx_ptr) {
     }
 }
 
+/// @brief Read the total bytes uploaded to Metal textures so far this frame (diagnostics counter).
 static uint64_t metal_get_texture_upload_bytes(void *ctx_ptr) {
     VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
     return ctx ? ctx.textureUploadBytes : 0;
@@ -3618,6 +3976,7 @@ static void metal_present(void *backend_ctx) {
     }
 }
 
+/// @brief Handle a window resize: update the layer size and recreate the main render targets.
 static void metal_resize(void *ctx_ptr, int32_t w, int32_t h) {
     if (!ctx_ptr || w <= 0 || h <= 0)
         return;
@@ -3633,6 +3992,8 @@ static void metal_resize(void *ctx_ptr, int32_t w, int32_t h) {
     }
 }
 
+/// @brief Read the current frame's rendered image back into a CPU RGBA buffer (for screenshots).
+/// @return 1 on success, 0 if no readable texture is available.
 static int metal_readback_rgba(
     void *ctx_ptr, uint8_t *dst_rgba, int32_t w, int32_t h, int32_t stride) {
     if (!ctx_ptr)
@@ -3780,6 +4141,7 @@ static void metal_shadow_begin(
     }
 }
 
+/// @brief Encode a draw into the active shadow-map depth pass (depth-only, from the light's view).
 static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
@@ -3821,7 +4183,7 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         {
             mtl_per_material_t mat;
             id<MTLTexture> diffuse_tex =
-                cmd->texture ? metal_get_cached_texture(ctx, cmd->texture) : nil;
+                metal_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
             memset(&mat, 0, sizeof(mat));
             memcpy(mat.dc, cmd->diffuse_color, sizeof(float) * 4);
             mat.scalars[0] = cmd->alpha;
@@ -3857,6 +4219,9 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     }
 }
 
+/// @brief Finish the shadow-map pass for @p slot, storing its depth texture, light VP, and depth bias.
+/// @details Marks the slot complete so the lighting pass can sample it; @p bias offsets depth
+///          comparisons to reduce shadow acne.
 static void metal_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
@@ -4021,17 +4386,18 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         mat.pbrScalars0[3] = cmd->emissive_intensity;
         mat.pbrScalars1[0] = cmd->normal_scale;
         mat.pbrScalars1[1] = cmd->alpha_cutoff;
-        mat.flags0[0] = cmd->texture ? 1 : 0;
+        mat.flags0[0] = (cmd->texture || cmd->texture_asset) ? 1 : 0;
         mat.flags0[1] = cmd->unlit;
-        mat.flags0[2] = cmd->normal_map ? 1 : 0;
-        mat.flags0[3] = cmd->specular_map ? 1 : 0;
-        mat.flags1[0] = cmd->emissive_map ? 1 : 0;
+        mat.flags0[2] = (cmd->normal_map || cmd->normal_map_asset) ? 1 : 0;
+        mat.flags0[3] = (cmd->specular_map || cmd->specular_map_asset) ? 1 : 0;
+        mat.flags1[0] = (cmd->emissive_map || cmd->emissive_map_asset) ? 1 : 0;
         mat.flags1[1] = (cmd->env_map && cmd->reflectivity > 0.0001f) ? 1 : 0;
         mat.flags1[2] = has_complete_splat;
         mat.pbrFlags[0] = cmd->workflow;
         mat.pbrFlags[1] = cmd->alpha_mode;
-        mat.pbrFlags[2] = cmd->metallic_roughness_map ? 1 : 0;
-        mat.pbrFlags[3] = cmd->ao_map ? 1 : 0;
+        mat.pbrFlags[2] =
+            (cmd->metallic_roughness_map || cmd->metallic_roughness_map_asset) ? 1 : 0;
+        mat.pbrFlags[3] = (cmd->ao_map || cmd->ao_map_asset) ? 1 : 0;
         if (has_complete_splat) {
             for (int si = 0; si < 4; si++)
                 mat.splatScales[si] = cmd->splat_layer_scales[si];
@@ -4053,15 +4419,16 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         [ctx.encoder setFragmentBytes:&mat length:sizeof(mat) atIndex:1];
 
         /* Default textures + sampler */
-        for (int slot = 0; slot <= 10; slot++)
+        for (int slot = 0; slot <= 12; slot++)
             [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:slot];
         [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:14];
         [ctx.encoder setFragmentTexture:ctx.defaultTexture atIndex:15];
         [ctx.encoder setFragmentTexture:ctx.defaultCubemap atIndex:13];
-        if (ctx->_shadowCount > 0 && ctx->_shadowDepthTexture[0])
-            [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[0] atIndex:4];
-        if (ctx->_shadowCount > 1 && ctx->_shadowDepthTexture[1])
-            [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[1] atIndex:5];
+        for (int32_t slot = 0; slot < ctx->_shadowCount && slot < VGFX3D_MAX_SHADOW_LIGHTS;
+             slot++) {
+            if (ctx->_shadowDepthTexture[slot])
+                [ctx.encoder setFragmentTexture:ctx->_shadowDepthTexture[slot] atIndex:4 + slot];
+        }
         [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(
                                                  ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR)
                                      atIndex:0];
@@ -4085,45 +4452,50 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         [ctx.encoder setFragmentSamplerState:metal_get_material_sampler(
                                                  ctx, cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO)
                                      atIndex:7];
-        if (cmd->texture) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->texture);
+        if (cmd->texture || cmd->texture_asset) {
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx, cmd->texture_asset, cmd->texture);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:0];
         }
-        if (cmd->normal_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->normal_map);
+        if (cmd->normal_map || cmd->normal_map_asset) {
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx, cmd->normal_map_asset, cmd->normal_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:1];
         }
-        if (cmd->specular_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->specular_map);
+        if (cmd->specular_map || cmd->specular_map_asset) {
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx, cmd->specular_map_asset, cmd->specular_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:2];
         }
-        if (cmd->emissive_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->emissive_map);
+        if (cmd->emissive_map || cmd->emissive_map_asset) {
+            id<MTLTexture> tex =
+                metal_get_material_texture(ctx, cmd->emissive_map_asset, cmd->emissive_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:3];
         }
-        if (cmd->metallic_roughness_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->metallic_roughness_map);
+        if (cmd->metallic_roughness_map || cmd->metallic_roughness_map_asset) {
+            id<MTLTexture> tex = metal_get_material_texture(
+                ctx, cmd->metallic_roughness_map_asset, cmd->metallic_roughness_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:14];
         }
-        if (cmd->ao_map) {
-            id<MTLTexture> tex = metal_get_cached_texture(ctx, cmd->ao_map);
+        if (cmd->ao_map || cmd->ao_map_asset) {
+            id<MTLTexture> tex = metal_get_material_texture(ctx, cmd->ao_map_asset, cmd->ao_map);
             if (tex)
                 [ctx.encoder setFragmentTexture:tex atIndex:15];
         }
         if (has_complete_splat) {
             id<MTLTexture> sp = metal_get_cached_texture(ctx, cmd->splat_map);
             if (sp)
-                [ctx.encoder setFragmentTexture:sp atIndex:6];
+                [ctx.encoder setFragmentTexture:sp atIndex:8];
             for (int si = 0; si < 4; si++) {
                 if (cmd->splat_layers[si]) {
                     id<MTLTexture> lt = metal_get_cached_texture(ctx, cmd->splat_layers[si]);
                     if (lt)
-                        [ctx.encoder setFragmentTexture:lt atIndex:7 + si];
+                        [ctx.encoder setFragmentTexture:lt atIndex:9 + si];
                 }
             }
         }
@@ -4142,6 +4514,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 ml[i].type = lights[i].type;
                 ml[i].shadow_index =
                     vgfx3d_metal_sanitize_shadow_index(lights[i].shadow_index, ctx->_shadowCount);
+                ml[i].shadow_cascade_count =
+                    ml[i].shadow_index >= 0 ? lights[i].shadow_cascade_count : 1;
                 ml[i].dir[0] = lights[i].direction[0];
                 ml[i].dir[1] = lights[i].direction[1];
                 ml[i].dir[2] = lights[i].direction[2];
@@ -4155,6 +4529,9 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 ml[i].attenuation = lights[i].attenuation;
                 ml[i].inner_cos = lights[i].inner_cos;
                 ml[i].outer_cos = lights[i].outer_cos;
+                memcpy(ml[i].shadow_cascade_splits,
+                       lights[i].shadow_cascade_splits,
+                       sizeof(ml[i].shadow_cascade_splits));
             }
             int32_t bc = light_count > 0
                              ? (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count)
@@ -4203,6 +4580,9 @@ typedef struct {
     int32_t overlayEnabled;
 } mtl_postfx_params_t;
 
+/// @brief Copy the current drawable's contents into the persistent display texture.
+/// @details Lets later passes (and the software-present fallback) read the last presented image.
+/// @return 1 on success, 0 if no drawable is available.
 static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *ctx) {
     NSUInteger copy_w;
     NSUInteger copy_h;
@@ -4244,6 +4624,7 @@ static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *c
     return 1;
 }
 
+/// @brief Populate the post-processing uniform parameters (exposure, tonemap, bloom, etc.) for a frame.
 static void metal_fill_postfx_params(VGFXMetalContext *ctx,
                                      const vgfx3d_postfx_snapshot_t *postfx,
                                      int overlay_enabled,
@@ -4287,6 +4668,8 @@ static void metal_fill_postfx_params(VGFXMetalContext *ctx,
     params->motionBlurSamples = postfx->motion_blur_samples;
 }
 
+/// @brief Encode one full-screen post-processing pass, sampling @p source into a new output texture.
+/// @return The pass output texture (nil on failure).
 static id<MTLTexture> metal_encode_postfx_pass(VGFXMetalContext *ctx,
                                                id<MTLTexture> source_texture,
                                                id<MTLTexture> target_texture,
@@ -4326,6 +4709,9 @@ static id<MTLTexture> metal_encode_postfx_pass(VGFXMetalContext *ctx,
     return target_texture;
 }
 
+/// @brief Run the post-FX chain on the scene color texture if post-processing is enabled.
+/// @details Applies each enabled effect (tonemap, bloom, etc.) in sequence and returns the final
+///          texture; returns the unmodified scene texture when post-FX is disabled or empty.
 static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
                                                     const vgfx3d_postfx_chain_t *postfx) {
     id<MTLTexture> source_texture;
@@ -4424,6 +4810,7 @@ static void metal_apply_postfx(void *backend_ctx, const vgfx3d_postfx_chain_t *p
     }
 }
 
+/// @brief Draw the skybox using a full-screen triangle sampling the bound environment cubemap.
 static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
     if (!ctx_ptr || !cubemap_ptr)
         return;
@@ -4486,6 +4873,7 @@ static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
     }
 }
 
+/// @brief Enable or disable the GPU post-processing pass for subsequent frames.
 static void metal_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
@@ -4509,6 +4897,7 @@ static void metal_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     }
 }
 
+/// @brief Install a post-FX chain snapshot to drive the GPU post-processing pass (deep-copied).
 static void metal_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
@@ -4536,6 +4925,7 @@ static void metal_hide_gpu_layer(void *backend_ctx) {
     }
 }
 
+/// @brief Make the Metal layer visible (attach/unhide it) so GPU-rendered frames are presented.
 static void metal_show_gpu_layer(void *backend_ctx) {
     if (!backend_ctx)
         return;
@@ -4574,6 +4964,7 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     .set_texture_upload_budget = metal_set_texture_upload_budget,
     .get_texture_upload_pending_bytes = metal_get_texture_upload_pending_bytes,
     .get_texture_upload_bytes = metal_get_texture_upload_bytes,
+    .get_native_texture_caps = metal_get_native_texture_caps,
 };
 
 #endif /* __APPLE__ && VIPER_ENABLE_GRAPHICS */

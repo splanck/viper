@@ -17,6 +17,8 @@ Run from this directory:
 VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run test.zia
 VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run perf_probe.zia
 ../../../build/src/tools/viper/viper run streaming_hitch_probe.zia
+VIPER_3D_BACKEND=metal VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1 ../../../build/src/tools/viper/viper run streaming_hitch_probe.zia
+VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run visibility_dense_probe.zia
 VIPER_3D_BACKEND=metal ../../../build/src/tools/viper/viper run gpu_smoke.zia
 ../../../build/src/tools/viper/viper package . --target tarball --dry-run
 ```
@@ -29,6 +31,12 @@ summary for CI logs.
 
 The current terrain stream instantiates and renders heightmapped `Terrain3D`
 payloads from `assets/world/terrain.vscn` plus `assets/world/terrain/*.height`;
+the runtime stitches full matching resident tile edges in world-height space
+before terrain LOD meshes are drawn, and `test_rt_game3d` carries the
+>4096-unit / >4 km2 proof with skirts disabled and adjacent tiles at different
+terrain LOD thresholds. The stream manifests also support authored metadata for
+materials, Game3D collision layers/masks, nav areas, traversal costs, and
+optional binary sidecars exposed through `WorldStream3D` inspection hooks;
 `assets/textures/` includes a tiny RGBA8 KTX2
 material fallback and a BC7 KTX2 metadata/residency fixture;
 `assets/models/skinned_agent.gltf` plus `skinned_agent.bin` are the committed
@@ -44,15 +52,32 @@ heightfield collider residency and terrain nav-bake inclusion are verified
 through streamed terrain collider/source nodes. Scripted quadrant visits settle
 the deterministic `WorldStream3D.update` load budget across a few ticks, and
 the runtime unit tests assert `pendingRequestCount` while a terrain request is
-deferred. `long_traversal.zia` churns all four streamed quadrants repeatedly and
-replays the same route to verify deterministic residency churn.
+deferred. `long_traversal.zia` churns all four streamed quadrants repeatedly,
+emits `TRAVERSAL:` hitch/memory/seam telemetry, and replays the same route to
+verify deterministic residency churn. The latest named local traversal proof is
+recorded in `baselines/perf_macos_apple_m4_max.md`.
+`visibility_dense_probe.zia` builds a named dense city/forest visibility scene:
+front city blocks and a reachable portal alley remain visible, while dense
+forest/city zones behind an opaque blocker are culled by authored Scene3D PVS.
+It emits `VISIBILITY_DENSE:` draw-call and fill-proxy reduction metrics and
+compares software final-frame pixels against the no-PVS baseline to prove no
+visible geometry was removed. The current local reduction proof is recorded in
+`baselines/perf_macos_apple_m4_max.md`.
 `streaming_hitch_probe.zia` records blocking-vs-async model-template timing,
 proves zero upload budget keeps positive-cost async commit work pending, then
 checks the shared `Assets3D.GetResidentBytes` counter returns to zero after
-clear. Native
-compressed texture upload and a visible foot-planted skinned character
-remain tracked in the 3D next-level plan.
+clear. The same script also has an opt-in GPU lane used by
+`g3d_openworld_slice_streaming_hitch_native_compressed_probe`; when
+`VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1` it binds a native compressed
+`TextureAsset3D`, proves `Canvas3D.SetTextureUploadBudget(0)` keeps backend
+upload bytes pending, then records the budgeted release upload bytes. The local
+macOS/Metal proof currently reports ASTC with `native_zero_pending_bytes=16`
+and `native_upload_bytes=16`. Visible foot-planted skinned character polish
+remains tracked in the 3D next-level plan.
 `gpu_smoke.zia` also runs under CTest with the platform GPU
 backend (`metal`, `d3d11`, or `opengl`) and skips cleanly if that backend is
 unavailable. The smoke includes a small degenerate-normal/tangent normal-map
-draw so GPU shader basis fallbacks are exercised with the rest of the slice.
+draw and a 24-light clustered/forward+ draw so GPU shader basis fallbacks and
+many-light upload paths are exercised with the rest of the slice. It also
+enables a 3-cascade primary directional CSM fixture with near/mid/far shadow
+casters and reports `CSM_SHADOWS:` telemetry for the authored shadow path.

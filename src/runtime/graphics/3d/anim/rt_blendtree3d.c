@@ -6,7 +6,22 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/anim/rt_blendtree3d.c
-// Purpose: Parametric BlendTree3D controller implemented over AnimBlend3D.
+// Purpose: Parametric 1D/2D BlendTree3D controller layered over AnimBlend3D —
+//   maps a continuous (x, y) parameter onto per-clip animation blend weights.
+//
+// Key invariants:
+//   - At most RT_BLENDTREE3D_MAX_SAMPLES (16) animation samples per tree.
+//   - 1D trees blend the two samples bracketing param_x; 2D trees use
+//     normalized inverse-distance-squared weighting over all samples.
+//   - A parameter landing exactly on a sample snaps fully to it (1D shares
+//     weight equally among ties; 2D takes the first exact match).
+//   - Weights are recomputed eagerly on every add_sample/set_param/update.
+//
+// Ownership/Lifetime:
+//   - BlendTree3D is GC-managed; it owns the underlying AnimBlend3D and the
+//     finalizer releases it. Samples are stored inline (no per-sample alloc).
+//
+// Links: rt_blendtree3d.h, rt_skeleton3d.h (AnimBlend3D backend)
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,12 +45,16 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 
+/// @brief One parameter-space sample: its (x, y) coordinate and the AnimBlend3D
+///        state index it drives.
 typedef struct {
     double x;
     double y;
     int64_t blend_index;
 } rt_blend_tree3d_sample;
 
+/// @brief BlendTree3D state: the owned AnimBlend3D, dimensionality (1 or 2), the
+///        current parameter, and the inline fixed-capacity sample table.
 typedef struct {
     void *vptr;
     void *blend;
@@ -46,19 +65,23 @@ typedef struct {
     rt_blend_tree3d_sample samples[RT_BLENDTREE3D_MAX_SAMPLES];
 } rt_blend_tree3d;
 
+/// @brief Validate @p obj as a BlendTree3D handle and return its typed pointer (NULL on mismatch).
 static rt_blend_tree3d *blend_tree3d_checked(void *obj) {
     return (rt_blend_tree3d *)rt_g3d_checked_or_null(obj, RT_G3D_BLENDTREE3D_CLASS_ID);
 }
 
+/// @brief Release a GC-managed reference when this drop is the last one.
 static void blend_tree3d_release_local(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Return @p value when finite, else 0 — sanitizes parameter inputs.
 static double blend_tree3d_finite_or_zero(double value) {
     return isfinite(value) ? value : 0.0;
 }
 
+/// @brief Zero every sample's blend weight so a fresh weighting can be written.
 static void blend_tree3d_clear_weights(rt_blend_tree3d *tree) {
     if (!tree || !tree->blend)
         return;
@@ -66,6 +89,12 @@ static void blend_tree3d_clear_weights(rt_blend_tree3d *tree) {
         rt_anim_blend3d_set_weight(tree->blend, tree->samples[i].blend_index, 0.0);
 }
 
+/// @brief Compute 1D blend weights for the current param_x and push them to AnimBlend3D.
+/// @details Locates the nearest sample below (`lower`) and above (`upper`) param_x and
+///          linearly interpolates their two weights by the fractional position between
+///          them. Samples within 1e-9 of param_x are treated as exact and share the full
+///          weight equally; when param_x falls outside the sample range, the single
+///          bracketing sample receives weight 1.0.
 static void blend_tree3d_apply_1d(rt_blend_tree3d *tree) {
     int32_t lower = -1;
     int32_t upper = -1;
@@ -118,6 +147,11 @@ static void blend_tree3d_apply_1d(rt_blend_tree3d *tree) {
     }
 }
 
+/// @brief Compute 2D blend weights for (param_x, param_y) and push them to AnimBlend3D.
+/// @details Uses normalized inverse-distance-squared weighting: each sample contributes
+///          1/d² of its parameter-space distance, then all weights are normalized to sum
+///          to 1. A parameter landing on a sample (d² ≤ 1e-12) snaps fully to it; a
+///          degenerate total (non-finite or near zero) falls back to weighting sample 0.
 static void blend_tree3d_apply_2d(rt_blend_tree3d *tree) {
     double raw[RT_BLENDTREE3D_MAX_SAMPLES];
     double total = 0.0;
@@ -153,6 +187,7 @@ static void blend_tree3d_apply_2d(rt_blend_tree3d *tree) {
         rt_anim_blend3d_set_weight(tree->blend, tree->samples[i].blend_index, raw[i] / total);
 }
 
+/// @brief Dispatch to the 1D or 2D weighting routine based on the tree's dimensionality.
 static void blend_tree3d_apply_weights(rt_blend_tree3d *tree) {
     if (!tree)
         return;
@@ -162,6 +197,7 @@ static void blend_tree3d_apply_weights(rt_blend_tree3d *tree) {
         blend_tree3d_apply_1d(tree);
 }
 
+/// @brief GC finalizer: release the owned AnimBlend3D backend.
 static void blend_tree3d_finalize(void *obj) {
     rt_blend_tree3d *tree = (rt_blend_tree3d *)obj;
     if (!tree)
@@ -170,6 +206,9 @@ static void blend_tree3d_finalize(void *obj) {
     tree->blend = NULL;
 }
 
+/// @brief Shared constructor for 1D/2D trees: wrap a new AnimBlend3D bound to @p skeleton.
+/// @details @p dimensions is clamped to 1 or 2. Returns NULL if @p skeleton is not a
+///          Skeleton3D or if either the AnimBlend3D or the tree allocation fails.
 static void *blend_tree3d_new(void *skeleton, int32_t dimensions) {
     rt_blend_tree3d *tree;
     void *blend;
@@ -191,14 +230,19 @@ static void *blend_tree3d_new(void *skeleton, int32_t dimensions) {
     return tree;
 }
 
+/// @brief Create a 1D blend tree bound to @p skeleton.
 void *rt_blend_tree3d_new_1d(void *skeleton) {
     return blend_tree3d_new(skeleton, 1);
 }
 
+/// @brief Create a 2D blend tree bound to @p skeleton.
 void *rt_blend_tree3d_new_2d(void *skeleton) {
     return blend_tree3d_new(skeleton, 2);
 }
 
+/// @brief Register an animation sample at parameter coordinate (x, y) and reblend.
+/// @details Non-finite coordinates are sanitized to 0. Returns the new sample's index,
+///          or -1 if the handle/animation is invalid or the sample table is full.
 int64_t rt_blend_tree3d_add_sample(void *obj, void *animation, double x, double y) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     int64_t blend_index;
@@ -217,6 +261,7 @@ int64_t rt_blend_tree3d_add_sample(void *obj, void *animation, double x, double 
     return tree->sample_count - 1;
 }
 
+/// @brief Set the current blend parameters (sanitized to finite) and recompute weights.
 void rt_blend_tree3d_set_param(void *obj, double x, double y) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     if (!tree)
@@ -226,6 +271,7 @@ void rt_blend_tree3d_set_param(void *obj, double x, double y) {
     blend_tree3d_apply_weights(tree);
 }
 
+/// @brief Recompute sample weights and advance the underlying AnimBlend3D by @p dt seconds.
 void rt_blend_tree3d_update(void *obj, double dt) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     if (!tree || !tree->blend)
@@ -234,11 +280,13 @@ void rt_blend_tree3d_update(void *obj, double dt) {
     rt_anim_blend3d_update(tree->blend, dt);
 }
 
+/// @brief Number of samples currently registered (0 for an invalid handle).
 int64_t rt_blend_tree3d_get_sample_count(void *obj) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     return tree ? tree->sample_count : 0;
 }
 
+/// @brief Borrow the underlying AnimBlend3D handle (not retained; NULL if invalid).
 void *rt_blend_tree3d_get_blend(void *obj) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     return tree ? tree->blend : NULL;

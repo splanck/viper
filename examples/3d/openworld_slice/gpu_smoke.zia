@@ -5,6 +5,8 @@ bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
 bind Viper.Math;
 bind Viper.Terminal as Terminal;
+bind Viper.Text.Fmt as Fmt;
+bind Viper.Time.Clock as Clock;
 bind "./main";
 
 func fail(message: String) {
@@ -59,6 +61,136 @@ func runGpuRobustnessProbe(canvas: Canvas3D) -> Boolean {
     return true;
 }
 
+func runClusteredLightingProbe(canvas: Canvas3D) -> Boolean {
+    if (Canvas3D.BackendSupports(canvas, "clustered-lighting") == false) {
+        fail("GPU backend did not advertise clustered lighting");
+        return false;
+    }
+
+    var mesh = Mesh3D.NewBox(1.25, 1.25, 1.25);
+    var material = Material3D.NewPBR(0.62, 0.58, 0.52);
+    var camera = Camera3D.New(50.0, 160.0 / 120.0, 0.1, 30.0);
+    Camera3D.LookAt(camera,
+        Vec3.New(0.0, 0.5, 5.0),
+        Vec3.New(0.0, 0.0, 0.0),
+        Vec3.New(0.0, 1.0, 0.0));
+
+    Canvas3D.ClearLights(canvas);
+    Canvas3D.SetAmbient(canvas, 0.03, 0.03, 0.035);
+    var i = 0;
+    while (i < 24) {
+        var x = -3.0 + (i % 8 + 0.0) * 0.85;
+        var y = 1.2 + ((i / 8) + 0.0) * 0.45;
+        var z = 2.2 - ((i % 3) + 0.0) * 0.55;
+        var light = Light3D.NewPoint(Vec3.New(x, y, z), 0.9, 0.72, 0.42, 0.03);
+        Light3D.SetIntensity(light, 0.7 + (i + 0.0) * 0.04);
+        Canvas3D.SetLight(canvas, i, light);
+        i = i + 1;
+    }
+
+    Canvas3D.SetClusteredLighting(canvas, false);
+    var fallbackStart = Clock.TicksUs();
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, camera);
+    Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
+    Canvas3D.End(canvas);
+    var fallbackUs = Clock.TicksUs() - fallbackStart;
+    var fallbackMax = Canvas3D.get_MaxActiveLights(canvas);
+    if (fallbackMax != 16 || Canvas3D.get_DrawCount(canvas) != 1) {
+        fail("forward fallback light-cap probe failed");
+        return false;
+    }
+
+    Canvas3D.SetClusteredLighting(canvas, true);
+    if (Canvas3D.get_MaxActiveLights(canvas) < 24 ||
+        Canvas3D.get_LightCount(canvas) != 24) {
+        fail("clustered lighting did not expose the many-light budget");
+        return false;
+    }
+
+    var clusteredStart = Clock.TicksUs();
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, camera);
+    Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
+    Canvas3D.End(canvas);
+    var clusteredUs = Clock.TicksUs() - clusteredStart;
+    if (Canvas3D.get_DrawCount(canvas) != 1) {
+        fail("clustered lighting probe submitted no draw");
+        return false;
+    }
+    if (Canvas3D.BackendSupports(canvas, "final-screenshot")) {
+        var snap = Canvas3D.ScreenshotFinal(canvas);
+        if (snap == null || Pixels.get_Width(snap) != 160 || Pixels.get_Height(snap) != 120) {
+            fail("clustered lighting final-frame readback failed");
+            return false;
+        }
+    }
+
+    Terminal.Say("CLUSTERED_LIGHTING: backend=" + Canvas3D.get_Backend(canvas) +
+                 " fallback_max_lights=" + Fmt.Int(fallbackMax) +
+                 " clustered_max_lights=" + Fmt.Int(Canvas3D.get_MaxActiveLights(canvas)) +
+                 " configured_lights=" + Fmt.Int(Canvas3D.get_LightCount(canvas)) +
+                 " fallback_us=" + Fmt.Int(fallbackUs) +
+                 " clustered_us=" + Fmt.Int(clusteredUs));
+    return true;
+}
+
+func runCsmShadowProbe(canvas: Canvas3D) -> Boolean {
+    if (Canvas3D.BackendSupports(canvas, "shadow-csm") == false) {
+        fail("GPU backend did not advertise cascaded shadows");
+        return false;
+    }
+
+    Canvas3D.ClearLights(canvas);
+    Canvas3D.SetAmbient(canvas, 0.08, 0.08, 0.09);
+    Canvas3D.EnableShadows(canvas, 1024);
+    Canvas3D.SetShadowBias(canvas, 0.0022);
+    Canvas3D.SetShadowCascades(canvas, 3);
+
+    var sun = Light3D.NewDirectional(Vec3.New(-0.35, -1.0, -0.25), 1.0, 0.96, 0.88);
+    Light3D.SetIntensity(sun, 1.35);
+    Canvas3D.SetLight(canvas, 0, sun);
+
+    var camera = Camera3D.New(55.0, 160.0 / 120.0, 0.1, 80.0);
+    Camera3D.LookAt(camera,
+        Vec3.New(0.0, 3.0, 13.0),
+        Vec3.New(0.0, 0.8, -5.0),
+        Vec3.New(0.0, 1.0, 0.0));
+
+    var ground = Mesh3D.NewBox(8.0, 0.18, 28.0);
+    var tower = Mesh3D.NewBox(1.2, 3.4, 1.2);
+    var groundMat = Material3D.NewPBR(0.48, 0.50, 0.46);
+    var towerMat = Material3D.NewPBR(0.58, 0.50, 0.42);
+
+    var start = Clock.TicksUs();
+    Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
+    Canvas3D.Begin(canvas, camera);
+    Canvas3D.DrawMesh(canvas, ground, Mat4.Translate(0.0, -0.12, -5.0), groundMat);
+    Canvas3D.DrawMesh(canvas, tower, Mat4.Translate(-2.1, 1.55, 0.0), towerMat);
+    Canvas3D.DrawMesh(canvas, tower, Mat4.Translate(1.8, 1.55, -7.0), towerMat);
+    Canvas3D.DrawMesh(canvas, tower, Mat4.Translate(0.0, 1.55, -14.0), towerMat);
+    Canvas3D.End(canvas);
+    var csmUs = Clock.TicksUs() - start;
+
+    if (Canvas3D.get_DrawCount(canvas) != 4) {
+        fail("CSM shadow probe submitted an unexpected draw count");
+        return false;
+    }
+    if (Canvas3D.BackendSupports(canvas, "final-screenshot")) {
+        var snap = Canvas3D.ScreenshotFinal(canvas);
+        if (snap == null || Pixels.get_Width(snap) != 160 || Pixels.get_Height(snap) != 120) {
+            fail("CSM shadow final-frame readback failed");
+            return false;
+        }
+    }
+
+    Terminal.Say("CSM_SHADOWS: backend=" + Canvas3D.get_Backend(canvas) +
+                 " cascades=3 shadow_map=1024 draws=" +
+                 Fmt.Int(Canvas3D.get_DrawCount(canvas)) +
+                 " csm_us=" + Fmt.Int(csmUs));
+    return true;
+}
+
 func start() {
     var game = new OpenWorldSlice();
     game.setup("Open World Slice GPU Smoke", 160, 120);
@@ -101,6 +233,14 @@ func start() {
     }
 
     if (runGpuRobustnessProbe(canvas) == false) {
+        game.destroy();
+        return;
+    }
+    if (runClusteredLightingProbe(canvas) == false) {
+        game.destroy();
+        return;
+    }
+    if (runCsmShadowProbe(canvas) == false) {
         game.destroy();
         return;
     }

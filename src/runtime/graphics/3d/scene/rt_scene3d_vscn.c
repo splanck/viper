@@ -1659,7 +1659,9 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
             }
         }
         free(mesh->vertices);
+        free(mesh->positions64);
         mesh->vertices = vertices;
+        mesh->positions64 = NULL;
         mesh->vertex_count = vertex_count;
         mesh->vertex_capacity = vertex_count;
     } else {

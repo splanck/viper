@@ -24,6 +24,9 @@
 
 #include "vgfx3d_backend_utils.h"
 
+#include "rt_canvas3d.h"
+#include "rt_textureasset3d.h"
+
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
@@ -85,6 +88,83 @@ uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr) {
     return signature;
 }
 
+/// @brief Whether a texture asset's native compressed format can be uploaded under @p native_caps.
+/// @details Maps the asset's native format id (BC7/ASTC/ETC2) to the matching backend capability bit;
+///          returns 0 for uncompressed assets or formats the backend cannot upload natively.
+int vgfx3d_textureasset_native_supported(void *asset, int64_t native_caps) {
+    int32_t format_id;
+
+    if (!asset || rt_textureasset3d_get_native_cache_key(asset) == 0)
+        return 0;
+    format_id = rt_textureasset3d_get_native_format_id(asset);
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7)
+        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC7) != 0;
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC)
+        return (native_caps & RT_CANVAS3D_BACKEND_CAP_ASTC) != 0;
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2)
+        return (native_caps & RT_CANVAS3D_BACKEND_CAP_ETC2) != 0;
+    return 0;
+}
+
+/// @brief Fill @p out_mip with the native compressed payload for the resident mip at @p relative_mip.
+/// @details @p relative_mip is offset from the asset's first resident mip. Validates that the payload,
+///          dimensions, block geometry, and format are all usable before reporting success.
+/// @return 1 with @p out_mip populated, or 0 (out_mip zeroed) if out of range or incomplete.
+int vgfx3d_textureasset_get_native_resident_mip(void *asset,
+                                                int64_t relative_mip,
+                                                vgfx3d_native_texture_mip_t *out_mip) {
+    int64_t first;
+    int64_t count;
+
+    if (out_mip)
+        memset(out_mip, 0, sizeof(*out_mip));
+    if (!asset || !out_mip || relative_mip < 0)
+        return 0;
+    first = rt_textureasset3d_get_resident_mip_start(asset);
+    count = rt_textureasset3d_get_resident_mip_count(asset);
+    if (count <= 0 || relative_mip >= count)
+        return 0;
+    if (!rt_textureasset3d_get_native_mip_info(asset,
+                                               first + relative_mip,
+                                               &out_mip->data,
+                                               &out_mip->bytes,
+                                               &out_mip->width,
+                                               &out_mip->height,
+                                               &out_mip->block_width,
+                                               &out_mip->block_height,
+                                               &out_mip->block_bytes))
+        return 0;
+    out_mip->format_id = rt_textureasset3d_get_native_format_id(asset);
+    return out_mip->data && out_mip->bytes > 0 && out_mip->width > 0 && out_mip->height > 0 &&
+           out_mip->block_width > 0 && out_mip->block_height > 0 && out_mip->block_bytes > 0 &&
+           out_mip->format_id != RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+}
+
+/// @brief Total native bytes still to upload from @p next_relative_mip to the last resident mip.
+/// @details Sums each remaining resident mip's payload size (saturating at UINT64_MAX). Returns 0
+///          when no upload is in progress, so callers can budget streaming work per frame.
+uint64_t vgfx3d_textureasset_pending_native_bytes(void *asset,
+                                                  int64_t next_relative_mip,
+                                                  int upload_in_progress) {
+    int64_t count;
+    uint64_t total = 0;
+
+    if (!upload_in_progress || !asset || next_relative_mip < 0)
+        return 0;
+    count = rt_textureasset3d_get_resident_mip_count(asset);
+    if (next_relative_mip >= count)
+        return 0;
+    for (int64_t i = next_relative_mip; i < count; i++) {
+        vgfx3d_native_texture_mip_t mip;
+        if (!vgfx3d_textureasset_get_native_resident_mip(asset, i, &mip))
+            return total;
+        if (total > UINT64_MAX - mip.bytes)
+            return UINT64_MAX;
+        total += mip.bytes;
+    }
+    return total;
+}
+
 /// @brief Decode a Pixels object into a freshly malloc'd RGBA8 byte array.
 /// Caller owns and frees the returned buffer. Returns 0 on success, -1 on
 /// invalid dimensions or allocation failure. Out-params are unmodified on error.
@@ -124,6 +204,8 @@ int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
     return 0;
 }
 
+/// @brief Read a Pixels object's width/height without unpacking its data.
+/// @return 1 with @p out_w / @p out_h set, or 0 (both zeroed) for a NULL/empty/oversized surface.
 int vgfx3d_get_pixels_extent(const void *pixels_ptr, int32_t *out_w, int32_t *out_h) {
     const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)pixels_ptr;
 
@@ -140,6 +222,11 @@ int vgfx3d_get_pixels_extent(const void *pixels_ptr, int32_t *out_w, int32_t *ou
     return 1;
 }
 
+/// @brief Decode a horizontal band of a Pixels object into a fresh RGBA8 buffer (caller frees).
+/// @details Unpacks @p row_count rows from @p start_row (clamped to the image), optionally flipping
+///          vertically (@p flip_y) for backends with a bottom-left origin. Enables streaming a large
+///          texture upload row-band by row-band.
+/// @return 0 on success with out-params set, -1 on invalid args or allocation failure.
 int vgfx3d_unpack_pixels_rgba_rows(const void *pixels_ptr,
                                    int32_t start_row,
                                    int32_t row_count,
@@ -224,6 +311,9 @@ int vgfx3d_estimate_pixels_rgba_upload_bytes(const void *pixels_ptr, uint64_t *o
     return 1;
 }
 
+/// @brief How many texture rows from @p next_row fit in the remaining per-frame upload byte budget.
+/// @details UINT64_MAX budget means "all remaining rows"; otherwise divides the leftover budget by
+///          the row size, always allowing at least one row so progress is guaranteed.
 int32_t vgfx3d_upload_rows_for_budget(
     int32_t width, int32_t height, int32_t next_row, uint64_t budget, uint64_t used) {
     uint64_t row_bytes;
@@ -251,6 +341,9 @@ int32_t vgfx3d_upload_rows_for_budget(
     return (int32_t)budget_rows;
 }
 
+/// @brief Bytes still to upload for an RGBA texture from @p next_row to the last row.
+/// @details Returns 0 when no upload is in progress; saturates at UINT64_MAX. Lets the scheduler
+///          weigh this texture's remaining work against the frame budget.
 uint64_t vgfx3d_pending_rgba_upload_bytes(int32_t width,
                                           int32_t height,
                                           int32_t next_row,
@@ -267,6 +360,9 @@ uint64_t vgfx3d_pending_rgba_upload_bytes(int32_t width,
     return remaining_rows * row_bytes;
 }
 
+/// @brief Bytes still to upload across all remaining cubemap faces and rows.
+/// @details Counts the rows left in the current face plus every row of the faces after it (faces are
+///          uploaded in order 0..5). Returns 0 when idle; saturates at UINT64_MAX.
 uint64_t vgfx3d_pending_cubemap_rgba_upload_bytes(int32_t face_size,
                                                   int32_t upload_face,
                                                   int32_t upload_next_row,
@@ -285,6 +381,10 @@ uint64_t vgfx3d_pending_cubemap_rgba_upload_bytes(int32_t face_size,
     return remaining_rows * row_bytes;
 }
 
+/// @brief Compute a block-compressed texture's block-row count and per-block-row byte size.
+/// @details Rounds width/height up to whole blocks (BCn/ASTC/ETC2 tile the image in fixed blocks),
+///          overflow-checking the row size. Shared by the block-upload budget/pending helpers.
+/// @return 1 with the out-params set, 0 on invalid dimensions or overflow.
 static int vgfx3d_block_upload_shape(int32_t width,
                                      int32_t height,
                                      int32_t block_width,
@@ -316,6 +416,9 @@ static int vgfx3d_block_upload_shape(int32_t width,
     return 1;
 }
 
+/// @brief How many block-rows from @p next_block_row fit in the remaining per-frame upload budget.
+/// @details Block-compressed analogue of vgfx3d_upload_rows_for_budget; UINT64_MAX budget means all
+///          remaining block-rows, and at least one block-row is always returned so uploads progress.
 int32_t vgfx3d_upload_block_rows_for_budget(int32_t width,
                                             int32_t height,
                                             int32_t block_width,
@@ -349,6 +452,9 @@ int32_t vgfx3d_upload_block_rows_for_budget(int32_t width,
     return (int32_t)budget_rows;
 }
 
+/// @brief Bytes still to upload for a block-compressed texture from @p next_block_row onward.
+/// @details Returns 0 when idle; saturates at UINT64_MAX. The block analogue of
+///          vgfx3d_pending_rgba_upload_bytes.
 uint64_t vgfx3d_pending_block_upload_bytes(int32_t width,
                                            int32_t height,
                                            int32_t block_width,
@@ -406,6 +512,8 @@ int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
     return 0;
 }
 
+/// @brief Read a cubemap's face size, verifying all six faces are square and identically sized.
+/// @return 1 with @p out_face_size set, or 0 (zeroed) if any face is missing or mis-sized.
 int vgfx3d_get_cubemap_face_size(const void *cubemap_ptr, int32_t *out_face_size) {
     const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
     int32_t face_size;
@@ -428,6 +536,10 @@ int vgfx3d_get_cubemap_face_size(const void *cubemap_ptr, int32_t *out_face_size
     return 1;
 }
 
+/// @brief Decode a horizontal band of one cubemap face into a fresh RGBA8 buffer (caller frees).
+/// @details Per-face, row-band analogue of vgfx3d_unpack_pixels_rgba_rows for streaming cubemap
+///          uploads; validates @p face_index in [0, 6) and that the face matches the cube size.
+/// @return 0 on success with out-params set, -1 on invalid args or allocation failure.
 int vgfx3d_unpack_cubemap_rgba_rows(const void *cubemap_ptr,
                                     int32_t face_index,
                                     int32_t start_row,

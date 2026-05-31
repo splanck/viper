@@ -28,6 +28,17 @@
 extern "C" {
 #endif
 
+typedef struct {
+    const uint8_t *data;
+    uint64_t bytes;
+    int32_t width;
+    int32_t height;
+    int32_t block_width;
+    int32_t block_height;
+    int32_t block_bytes;
+    int32_t format_id;
+} vgfx3d_native_texture_mip_t;
+
 /// @brief Decode a Pixels object into a freshly malloc'd RGBA8 byte array (caller frees).
 int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
                               int32_t *out_w,
@@ -79,6 +90,16 @@ uint64_t vgfx3d_pending_block_upload_bytes(int32_t width,
 uint64_t vgfx3d_get_pixels_generation(const void *pixels_ptr);
 /// @brief Stable cache signature for a Pixels object (identity + generation).
 uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr);
+/// @brief True when a TextureAsset3D can use native compressed upload under @p caps.
+int vgfx3d_textureasset_native_supported(void *asset, int64_t native_caps);
+/// @brief Borrow one resident native mip from a TextureAsset3D by relative mip index.
+int vgfx3d_textureasset_get_native_resident_mip(void *asset,
+                                                int64_t relative_mip,
+                                                vgfx3d_native_texture_mip_t *out_mip);
+/// @brief Sum native mip payload bytes still pending from @p next_relative_mip.
+uint64_t vgfx3d_textureasset_pending_native_bytes(void *asset,
+                                                  int64_t next_relative_mip,
+                                                  int upload_in_progress);
 /// @brief Decode all six cubemap faces into separate RGBA8 byte arrays (caller frees each).
 int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
                                      int32_t *out_face_size,

@@ -17,18 +17,22 @@
 
 #include <stdlib.h>
 
+/// @brief One queued commit: the callback, its user data, and its budget cost.
 typedef struct rt_g3d_commit_item {
     rt_g3d_commit_fn fn;
     void *user_data;
     uint64_t cost;
 } rt_g3d_commit_item;
 
+/// @brief Queue state: a lock-free FIFO of items plus submit/drain counters.
 typedef struct rt_g3d_commit_queue {
     void *items;
     volatile int64_t submitted;
     volatile int64_t drained;
 } rt_g3d_commit_queue;
 
+/// @brief Allocate a commit queue wrapping a fresh lock-free concurrent FIFO.
+/// @return Opaque queue handle, or NULL if either allocation fails.
 void *rt_g3d_commit_queue_new(void) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)calloc(1, sizeof(rt_g3d_commit_queue));
     if (!queue)
@@ -41,6 +45,9 @@ void *rt_g3d_commit_queue_new(void) {
     return queue;
 }
 
+/// @brief Drain and free every pending item without running its callback.
+/// @details Used during teardown so worker-produced commits still in the queue are
+///          reclaimed rather than leaked; the callbacks are intentionally skipped.
 static void rt_g3d_commit_queue_discard_pending(rt_g3d_commit_queue *queue) {
     if (!queue || !queue->items)
         return;
@@ -52,6 +59,7 @@ static void rt_g3d_commit_queue_discard_pending(rt_g3d_commit_queue *queue) {
     }
 }
 
+/// @brief Close the queue, discard any pending commits, and free all backing memory.
 void rt_g3d_commit_queue_free(void *obj) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue)
@@ -66,6 +74,9 @@ void rt_g3d_commit_queue_free(void *obj) {
     free(queue);
 }
 
+/// @brief Enqueue a commit callback tagged with a main-thread cost estimate.
+/// @details Traps on allocation failure rather than silently dropping the commit.
+/// @return 1 when queued; 0 when the queue or callback handle is invalid.
 int8_t rt_g3d_commit_queue_enqueue_cost(void *obj,
                                         rt_g3d_commit_fn fn,
                                         void *user_data,
@@ -84,16 +95,26 @@ int8_t rt_g3d_commit_queue_enqueue_cost(void *obj,
     return 1;
 }
 
+/// @brief Enqueue a commit callback with the default unit cost (1).
 int8_t rt_g3d_commit_queue_enqueue(void *obj, rt_g3d_commit_fn fn, void *user_data) {
     return rt_g3d_commit_queue_enqueue_cost(obj, fn, user_data, 1u);
 }
 
+/// @brief Saturating unsigned add — clamps to UINT64_MAX instead of overflowing.
+/// @details Keeps the running cost budget monotonic even when per-item costs sum
+///          past 64 bits, so the drain loop's budget comparison never wraps around.
 static uint64_t rt_g3d_commit_queue_cost_add(uint64_t a, uint64_t b) {
     if (UINT64_MAX - a < b)
         return UINT64_MAX;
     return a + b;
 }
 
+/// @brief Run pending commits on the main thread under item-count and cost budgets.
+/// @details Peeks each item's cost before dequeuing, so a commit runs only when it
+///          fits the remaining cost budget. The first item always runs even if it
+///          exceeds the budget (the `count > 0` guard), so an oversized asset commit
+///          cannot stall the queue forever. Asserts it is called on the main thread.
+/// @return Number of commits actually run.
 int64_t rt_g3d_commit_queue_drain_budget(void *obj, int64_t max_items, uint64_t max_cost) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue || !queue->items)
@@ -131,10 +152,12 @@ int64_t rt_g3d_commit_queue_drain_budget(void *obj, int64_t max_items, uint64_t 
     return count;
 }
 
+/// @brief Drain up to @p max_items commits with no cost budget.
 int64_t rt_g3d_commit_queue_drain(void *obj, int64_t max_items) {
     return rt_g3d_commit_queue_drain_budget(obj, max_items, UINT64_MAX);
 }
 
+/// @brief Approximate count of commits still waiting to run.
 int64_t rt_g3d_commit_queue_pending(void *obj) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue || !queue->items)
@@ -142,6 +165,7 @@ int64_t rt_g3d_commit_queue_pending(void *obj) {
     return rt_concqueue_len(queue->items);
 }
 
+/// @brief Total commits ever accepted by the queue (monotonic counter).
 int64_t rt_g3d_commit_queue_submitted(void *obj) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue)
@@ -149,6 +173,7 @@ int64_t rt_g3d_commit_queue_submitted(void *obj) {
     return __atomic_load_n(&queue->submitted, __ATOMIC_RELAXED);
 }
 
+/// @brief Total commits ever run by a drain call (monotonic counter).
 int64_t rt_g3d_commit_queue_drained(void *obj) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue)

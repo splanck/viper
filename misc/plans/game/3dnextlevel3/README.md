@@ -1,0 +1,153 @@
+# 3D Next Level 3 - Remaining Work Checklist
+
+> Supersedes `misc/plans/game/3dnextlevel2/`.
+>
+> `3dnextlevel2` remains the historical record: roadmap, API/runtime specs,
+> backend notes, progress trackers, and waivers. This file is the reset plan:
+> only unresolved work, checked against the current code and the old trackers,
+> with one checkbox per item that needs to be closed.
+
+## Rules for this plan
+
+- One checkbox is one closeable work item. Do not split completion state inside a
+  checkbox; if only part of an item is done, leave the checkbox open.
+- Items are ordered by dependency and leverage. Earlier items unblock later
+  items, especially compressed texture upload, spatial indexing, and GPU light
+  scaling.
+- Each checkbox carries source tags from the old plan: phase (`P#`), gate
+  (`GATE-#`), or acceptance criterion (`AC-#`).
+- Items that are not closeable on this macOS host, or are explicitly optional,
+  live in "Deferred / External / Stretch" instead of the work-down checklist.
+
+## Already Closed Locally
+
+- Phase C carryover is locally closed: lifetime and diagnostics hardening,
+  render-target finalization contract, explicit fallback-lighting decision,
+  optional getters, Metal robustness probe, occlusion docs cleanup,
+  determinism/resize probes, starter samples, and committed skinned-character /
+  GLB / audio fixtures.
+- Phase 0 foundations are locally closed: determinism/threading policy,
+  job-system shape, spatial-index direction, floating-origin strategy,
+  streaming format/granularity, lighting direction, texture-compression scope,
+  perf harness, and big-world fixtures.
+- Phase 1 core concurrency is in place: the thread-pool substrate, ordered merge,
+  main-thread commit queue, worker controls, and pool-on/off `runFrames` parity.
+- Phase 10 animation is closed: TwoBone / LookAt / FABRIK IK, pole vectors,
+  terrain-foot orientation, true additive layers, blend trees, animation-rate and
+  bone-count LOD, humanoid-role retargeting, and proportional retargeting.
+
+## Work-Down Checklist
+
+### Cross-Cutting First
+
+- [x] **NL3-001 [P4/P5/P11/P12, AC-004/005/011/012] Add native compressed-texture backend upload and capability enablement.** Extend the backend vtable beyond CPU `Pixels` uploads so retained KTX2 BC7 / ASTC / ETC2 mip blocks can upload natively under the existing `Canvas3D.SetTextureUploadBudget`, `TextureUploadPendingBytes`, and `TextureUploadBytes` controls; enable `BackendSupports("bc7"|"astc"|"etc2")` per Metal, D3D11, and OpenGL only when the native path is wired and tested, with Metal choosing BC on Intel/AMD Macs and ASTC/ETC2 on Apple Silicon as described in `../3dnextlevel2/metal.md`.
+
+- [x] **NL3-002 [P3, AC-003] Replace the flat sweep-style Scene3D index with a true tree/BVH and incremental refit.** The current `Scene3D` index is a min-X sorted array rebuilt lazily in `scene/rt_scene3d.c`; replace it with a real octree/BVH-style structure that respects double-precision world bounds, incrementally refits dirty nodes, preserves the flat-walk parity fallback behind `use_spatial_index`, and records cull/query speedup on the 10k-node fixture.
+
+- [x] **NL3-003 [P3/P8] Decide and implement the shared Scene3D/physics spatial structure, or prove the sibling physics broadphase is better.** Physics still uses sweep-and-prune broadphase sorting in `physics/rt_physics3d.c`; either route scene queries and physics broadphase through one shared structure or record a correctness/perf proof that a separate physics broadphase should remain.
+
+- [x] **NL3-004 [P1, GATE-002] Run and record the race-stress / TSan lane for the job and commit-queue paths.** Parallel-map determinism and pool-on/off parity are proven; the remaining concurrency exit evidence is a clean stress/race-detector run covering the worker pool, ordered merge, asset workers, and main-thread commit queue. Evidence: `tsan-concurrency-lane.md`.
+
+### Phase 2 - Floating Origin
+
+- [x] **NL3-005 [P2, AC-002] Finish camera-relative handling for raw/generated vertex paths.** `Mesh3D.AddVertex` now preserves double positions for identity-matrix raw world-space draws, Canvas3D snapshots/subtracts the active camera origin before float upload, and standalone `Particles3D` / `Sprite3D` / decal-style generated vertices upload camera-relative payloads. Evidence: `test_rt_canvas3d` camera-relative raw/generated slice, `test_rt_particles3d_contract`, `test_rt_game3d`, and `test_graphics3d_abi_surface`.
+
+- [x] **NL3-006 [P2] Complete the atomic cross-system rebase hook.** Added `World3D.rebaseOrigin(dx,dy,dz)` as a between-frame boundary that traps during active frames and shares the automatic floating-origin path; Game3D now routes physics through `Physics3DWorld.RebaseOrigin`, while `Particles3D.RebaseOrigin` and `Sprite3D.RebaseOrigin` cover standalone generated paths. Evidence: `test_rt_game3d`, `test_rt_physics3d`, `test_rt_canvas3d`, `test_rt_particles3d_contract`, and `test_graphics3d_abi_surface`.
+
+- [x] **NL3-007 [P2, AC-002/014] Prove 50 km rendered near/far parity and flag-off byte equality.** `test_rt_game3d` now renders the same software scene near origin and after a 50 km floating-origin rebase with Canvas3D frustum culling both on and off, verifies the far render uses camera-relative upload, compares final-frame pixels within tolerance, and proves a bounded scene stays byte-identical after toggling `floatingOrigin` back off.
+
+### Phase 4 - Async Asset Streaming
+
+- [x] **NL3-008 [P4, AC-004] Add distance-aware priority/residency to the Assets3D template cache.** `Assets3D.SetResidencyHint(template, priority, distance)` now annotates cached `ModelTemplate` entries, and byte/entry pressure evicts lower-priority and farther templates before falling back to LRU. Evidence: `test_rt_game3d` three-template budget-pressure proof and `test_graphics3d_abi_surface`.
+
+- [x] **NL3-009 [P4/P6/P11] Add unified mesh LOD residency and reference-counted streaming hooks.** `Mesh3D.Resident` / `ResidentBytes` now expose mesh-payload residency, Canvas3D/Scene3D skip nonresident meshes, SceneNode3D LOD selection falls back through resident meshes via `SetLodResident` / `GetLodResidentBytes`, and WorldStream3D remeasures loaded VSCN cells after LOD demotion/promotion so detail can unload without releasing the whole scene/template. Evidence: `test_rt_scene3d`, `test_rt_game3d`, and `test_graphics3d_abi_surface`.
+
+- [x] **NL3-010 [P4, AC-004] Close the recorded streaming hitch-budget proof with native compressed upload enabled.** `streaming_hitch_probe.zia` now has an opt-in native-compressed GPU upload lane; the CTest `g3d_openworld_slice_streaming_hitch_native_compressed_probe` runs the same hitch probe with the platform GPU backend and records backend, format, zero-budget pending bytes, release time, and latest-frame upload bytes. Local evidence on macOS/Metal/Apple Silicon: `native_compressed_upload=1 native_backend=metal native_format=astc native_zero_pending_bytes=16 native_upload_bytes=16`; the original async template hitch probe still passes unchanged.
+
+### Phase 5 - World Partition And Terrain Streaming
+
+- [x] **NL3-011 [P5, AC-005] Implement terrain tile LOD seam stitching and prove worlds beyond the 4096 heightmap cap.** Streamed terrain tiles now stitch full matching manifest edges when adjacent resident tiles load, averaging border samples in world-height space and invalidating cached LOD meshes before render. Collider/nav sources are rebuilt from the stitched height grid. Evidence: `test_rt_game3d` includes a two-tile 9600-unit / >4 km2 proof with mismatched height sidecars, skirts disabled, and adjacent tiles forced to different terrain LOD thresholds.
+
+- [x] **NL3-012 [P5] Extend the VSCN streaming manifest with richer authored physics/nav metadata.** Streamed `cells[]` and `tiles[]` now parse `material`, `layer` / `collisionLayer`, `collisionMask` or nested `collision`, `navArea`, `traversalCost`, and `sidecar` / `binarySidecar` metadata. WorldStream3D exposes typed inspection getters for those fields, applies parsed cell layer/mask to spawned root entities, and applies terrain collision layer/mask/enabled state to streamed heightfield collider bodies. Evidence: `test_rt_game3d` inspection hooks fixture and `test_graphics3d_abi_surface`.
+
+- [x] **NL3-013 [P5, AC-005] Record the named >4 km2 traversal hitch and memory proof.** `long_traversal.zia` now emits `TRAVERSAL:` telemetry for all-quadrant stream churn: backend, visits, elapsed/max-visit time, max resident stream bytes, draw/body/entity counts, one resident cell/tile, zero pending requests, streamed area, and seam status. Evidence recorded in `examples/3d/openworld_slice/baselines/perf_macos_apple_m4_max.md` on Apple M4 Max: software and Metal both traversed 32 + 32 visits over 18,939,904 m2 with checksum replay match, max stream bytes 327730, pending requests 0, and max visit 3.383 ms software / 1.191 ms Metal.
+
+### Phase 6 - Visibility Scaling
+
+- [x] **NL3-014 [P6] Feed CPU occlusion from the spatial index instead of the sorted opaque draw list.** `Canvas3D.OcclusionCandidateCount` now records CPU grid workload, and Scene3D draw feeds the grid from BVH-selected candidates before Canvas3D opaque sorting. Evidence: `test_rt_scene3d` indexes 130 drawables, narrows them to 2 occlusion candidates, and submits one front draw; `test_rt_canvas3d` still covers the raw Canvas3D sorted-queue fallback with 65 opaque draws, one submission, 64 skips, and 65 candidates.
+
+- [x] **NL3-015 [P6] Add portal/PVS occlusion for interiors.** Scene3D now supports authored visibility-zone AABBs and directed/bidirectional portal links through `AddVisibilityZone` and `AddVisibilityPortal`; `Draw` builds a camera-zone PVS, skips drawables inside unreachable zones while keeping unzoned outdoor nodes visible, and reports `PvsCulledCount`, `VisibilityZoneCount`, and `VisibilityPortalCount`. Evidence: `test_rt_scene3d` culls an unlinked interior room, reports one PVS skip, then reveals the room after a portal is added; `test_graphics3d_abi_surface` guards the public names.
+
+- [x] **NL3-016 [P6, AC-006] Build an authored dense city/forest fixture and record draw-call/fill-rate reduction.** `examples/3d/openworld_slice/visibility_dense_probe.zia` now authors a dense city/forest PVS scene, CTest registers `g3d_openworld_slice_visibility_dense_probe`, and the local macOS Apple M4 Max Release baseline records 169 authored drawables reduced to 49 submitted draws, 120 PVS skips, 71.006% draw reduction, 50.407% fill-proxy reduction, and `no_missing_geometry=1` from a software final-frame comparison against the no-PVS render.
+
+### Phase 7 - Lighting Scaling
+
+- [x] **NL3-017 [P7, AC-007] Implement real GPU clustered/forward+ lighting on Metal, D3D11, and OpenGL.** The real platform GPU backend vtables now advertise `BackendSupports("clustered-lighting")` while fake GPU-named test backends stay unsupported; `SetClusteredLighting(true)` raises `MaxActiveLights` from 16 to the bounded 64-light payload on Metal/D3D11/OpenGL. `gpu_smoke.zia` records a 24-light GPU draw against the 16-light fallback, and the local macOS Apple M4 Max Release baseline records Metal `fallback_max_lights=16`, `clustered_max_lights=64`, `configured_lights=24`, `fallback_us=66`, and `clustered_us=35`.
+
+- [x] **NL3-018 [P7, AC-007] Implement cascaded shadow maps and lift the shadow-caster cap where supported.** `VGFX3D_MAX_SHADOW_LIGHTS` is now four, `BackendSupports("shadow-csm")` advertises only the software backend and real platform GPU vtables with shadow hooks, and `SetShadowCascades(count)` drives primary-directional-light cascades with camera-depth split metadata in the backend light payload. Metal/D3D11/OpenGL/software shadow samplers now resolve up to four shadow slots, `test_rt_canvas3d_gpu_paths` proves three contiguous cascade passes plus monotonic split payloads, and `gpu_smoke.zia` records a 3-cascade Metal CSM draw (`draws=4`, `shadow_map=1024`, Release `csm_us=239` direct / `211` CTest).
+
+### Phase 8 - Physics Depth
+
+- [ ] **NL3-019 [P8, AC-008] Add OBB-vs-OBB clipped contact manifolds for rotated boxes.** Axis-aligned boxes use a four-point AABB manifold and the solver is warm-started; rotated boxes still need face-clipped multi-point manifolds that keep box stacks stable.
+
+- [ ] **NL3-020 [P8, AC-008] Add island-batched solve throughput and a named body-count/resting-pile target.** Sleep islands exist; add island-batched solve scheduling, a larger resting-pile stress fixture, and a recorded hundreds-to-thousands body perf target.
+
+- [ ] **NL3-021 [P8] Broaden mesh narrow-phase coverage and integrate it with the Phase-3 broadphase.** Per-mesh BVH pruning exists for sphere/capsule/box style contacts; expand remaining mesh paths, add a perf fixture, and connect body candidates to the chosen world broadphase structure.
+
+- [ ] **NL3-022 [P8] Broaden GJK/EPA convex coverage and analytics.** Hull-vs-hull and hull-vs-simple slices exist; add more analytic shape coverage, separation/penetration edge cases, and perf measurements for convex contacts.
+
+- [ ] **NL3-023 [P8] Deepen 6DOF pose-angle semantics and stability coverage.** Hinge/rope/SixDof motor and limit slices exist; define and test richer 6DOF rotary pose-angle behavior, stability under limits/motors, and matching docs.
+
+### Phase 9 - Navigation And AI Depth
+
+- [ ] **NL3-024 [P9, AC-009] Implement per-tile geometry re-voxelization.** Tile-local obstacle re-carve is O(tile), but actual geometry changes still need retained tile source geometry so a tile can rebuild from its own geometry instead of relying on a whole-scene baseline.
+
+- [ ] **NL3-025 [P9] Add fine polygon-level carving plus traversal metadata.** Current carving uses coarse AABB obstacles and per-triangle blocked flags; add sub-triangle/polygon-level carving and nav area types, traversal costs, and link/state metadata.
+
+- [ ] **NL3-026 [P9, AC-009] Implement full ORCA/RVO-quality crowd avoidance and record an agent-count perf baseline.** The current avoidance grid and head-on tie-break prove O(N) local separation; add full crowd-solver quality, create the agent-count fixture, and record hundreds-of-agents pathing/avoidance inside budget.
+
+### Phase 11 - Asset Pipeline Depth
+
+- [ ] **NL3-027 [P11, AC-011] Add ETC2 / ASTC software decode and BC7 partitioned-mode decode.** BC3 and BC7 single-subset modes 4/5/6 already decode to RGBA8 fallback; add ETC2, ASTC, BC7 partitioned modes 0-3/7, the partition/anchor tables, and representative compressed texture fixtures.
+
+- [ ] **NL3-028 [P11, AC-011] Wire native compressed block residency through TextureAsset3D and the streaming/upload path.** After NL3-001 adds backend upload, connect resident mip ranges to native block submission and record compressed-vs-raw tolerance plus RAM/VRAM reduction per capable backend.
+
+### Phase 12 - Slice, Docs, And Formal Gates
+
+- [ ] **NL3-029 [P12, AC-012] Keep wiring new systems into `examples/3d/openworld_slice/` as they land.** The slice already streams/renders/simulates/replays with terrain, physics, nav, async assets, KTX2 metadata, skinned animation, IK, package assets, and GPU smoke; add native compressed texture rendering, visible terrain-foot IK polish, and each new scale feature as it lands.
+
+- [ ] **NL3-030 [P12, AC-013, GATE-008] Refresh docs and ctest-compiled snippets for every new or changed API.** Keep `docs/viperlib/graphics/`, `docs/graphics3d-guide.md`, `docs/graphics3d-architecture.md`, examples, disabled-graphics stubs, runtime completeness, ABI/class-id guards, and strict runtime surface audits current; also clean stale public docs that still describe already-landed Phase 9/10 slices as future work.
+
+- [ ] **NL3-031 [AC-001, GATE-002] Formally close determinism.** The pool-on/off `runFrames` and ordered-map evidence exists; record the VM/native determinism arm explicitly for the acceptance row and require the same proof for any future simulation-touching change.
+
+- [ ] **NL3-032 [AC-014, GATE-006] Prove no-regression for bounded scenes.** Run an existing bounded-scene game/sample with all new scale flags off and prove byte-for-byte output/state compatibility.
+
+- [ ] **NL3-033 [GATE-005] Record software-baseline correctness for each remaining visual feature before GPU enablement.** For compressed textures, clustered lighting, CSM, occlusion/PVS, HLOD-related work, and any new visual path, keep the software backend as the correctness baseline with capability-gated GPU parity tests.
+
+- [ ] **NL3-034 [GATE-007/009] Complete dependency, platform-policy, and ADR audits for each new slice.** Keep the zero-new-dependency rule, `lint_platform_policy.sh`, no raw platform macros outside adapters, and ADR coverage for any IL/VM-touching change.
+
+## Deferred / External / Stretch
+
+These are not in the work-down checklist because they are blocked by external
+hardware/CI, delegated to another roadmap, or explicitly optional. They are kept
+here so they do not disappear.
+
+- **W2-001 - VM managed-closure callback trampoline.** `run(update)`,
+  `onCollision`, `onUpdate`, and streaming callback sugar remain delegated to VM
+  work; manual `tick`, `stepSimulation`, `runFramesOnly`, pollable event buffers,
+  and handle polling remain authoritative.
+- **W2-002 - Cross-platform GPU interactive-framerate proof.** Needs Windows and
+  Linux reference GPU hardware. Local macOS Metal smoke and perf evidence exist.
+- **W2-003 - Windows/Linux Release software FPS baselines and `-L graphics3d`
+  green.** Needs named reference hosts; local macOS `graphics3d` and Release
+  Apple M4 Max software/Metal baselines exist.
+- **W2-004 - Basis supercompression, Draco, and meshopt decoders.** Optional
+  Phase 11b/import-depth work, not a Phase 12 gate.
+- **Optional P2 - per-cell local-origin policy.** Implement only if active-world
+  rebase plus camera-relative upload is not enough after the 50 km proof.
+- **Stretch P6 - automatic mesh simplification and backend-baked HLOD.** Authored
+  LOD selection and generated impostor proxies are already in place; auto
+  simplification/HLOD baking is separate stretch scope.
+- **Polish P10 - deeper humanoid bone-role coverage and a dedicated visible
+  skinned-foot demo.** Phase 10 acceptance is closed locally; this is polish
+  unless a future game requires more retargeting coverage.

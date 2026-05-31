@@ -735,6 +735,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     if (!c || !m || !mt)
         return;
 
+    if (!m->resident)
+        return;
     if (m->vertex_count == 0)
         return;
     if (m->vertex_count != (uint32_t)mt->vertex_count)
@@ -855,6 +857,7 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     /* Submit via normal draw pipeline */
     rt_mesh3d tmp = *m;
     tmp.vertices = morphed;
+    tmp.positions64 = NULL;
     tmp.morph_targets_ref = NULL;
     tmp.morph_deltas = NULL;
     tmp.morph_normal_deltas = NULL;

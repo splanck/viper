@@ -1,0 +1,244 @@
+module openworld_slice_visibility_dense_probe;
+
+bind Viper.Graphics.Pixels as Pixels;
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+bind Viper.Text.Fmt as Fmt;
+bind Viper.Time.Clock as Clock;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func absInt(value: Integer) -> Integer {
+    if (value < 0) { return 0 - value; }
+    return value;
+}
+
+func red(px: Integer) -> Integer {
+    return Bits.And(px >> 24, 0xFF);
+}
+
+func green(px: Integer) -> Integer {
+    return Bits.And(px >> 16, 0xFF);
+}
+
+func blue(px: Integer) -> Integer {
+    return Bits.And(px >> 8, 0xFF);
+}
+
+func colorDiff(a: Integer, b: Integer) -> Integer {
+    return absInt(red(a) - red(b)) + absInt(green(a) - green(b)) + absInt(blue(a) - blue(b));
+}
+
+func framesMatch(a: Pixels, b: Pixels) -> Boolean {
+    if (a == null || b == null ||
+        Pixels.get_Width(a) != Pixels.get_Width(b) ||
+        Pixels.get_Height(a) != Pixels.get_Height(b)) {
+        return false;
+    }
+
+    var maxDiff = 0;
+    var totalDiff = 0;
+    var samples = 0;
+    var y = 2;
+    while (y < Pixels.get_Height(a)) {
+        var x = 2;
+        while (x < Pixels.get_Width(a)) {
+            var diff = colorDiff(Pixels.Get(a, x, y), Pixels.Get(b, x, y));
+            if (diff > maxDiff) { maxDiff = diff; }
+            totalDiff = totalDiff + diff;
+            samples = samples + 1;
+            x = x + 3;
+        }
+        y = y + 3;
+    }
+    if (samples <= 0) { return false; }
+
+    var avgDiff = totalDiff / samples;
+    return maxDiff <= 12 && avgDiff <= 1;
+}
+
+func addProp(scene: Scene3D, mesh: Mesh3D, mat: Material3D, name: String,
+             x: Float, y: Float, z: Float,
+             sx: Float, sy: Float, sz: Float) -> Integer {
+    var node = SceneNode3D.New();
+    SceneNode3D.set_Name(node, name);
+    SceneNode3D.set_Mesh(node, mesh);
+    SceneNode3D.set_Material(node, mat);
+    SceneNode3D.SetPosition(node, x, y, z);
+    SceneNode3D.SetScale(node, sx, sy, sz);
+    Scene3D.Add(scene, node);
+    return 1;
+}
+
+func addDenseForest(scene: Scene3D, trunkMesh: Mesh3D, crownMesh: Mesh3D,
+                    trunkMat: Material3D, crownMat: Material3D,
+                    prefix: String, baseZ: Float) -> Integer {
+    var count = 0;
+    var row = 0;
+    while (row < 4) {
+        var col = 0;
+        while (col < 12) {
+            var x = -7.7 + (col + 0.0) * 1.4;
+            var z = baseZ - (row + 0.0) * 1.8;
+            var y = 0.95;
+            var suffix = Fmt.Int(row) + "_" + Fmt.Int(col);
+            count = count + addProp(scene, trunkMesh, trunkMat,
+                                    prefix + "_trunk_" + suffix,
+                                    x, y, z, 0.7, 1.9, 0.7);
+            count = count + addProp(scene, crownMesh, crownMat,
+                                    prefix + "_crown_" + suffix,
+                                    x, y + 1.7, z, 1.1, 1.1, 1.1);
+            col = col + 1;
+        }
+        row = row + 1;
+    }
+    return count;
+}
+
+func addCityBlock(scene: Scene3D, mesh: Mesh3D, mat: Material3D,
+                  prefix: String, baseZ: Float) -> Integer {
+    var count = 0;
+    var row = 0;
+    while (row < 3) {
+        var col = 0;
+        while (col < 8) {
+            var x = -7.0 + (col + 0.0) * 2.0;
+            var z = baseZ - (row + 0.0) * 2.0;
+            var h = 1.8 + ((row + col) % 3 + 0.0) * 0.45;
+            count = count + addProp(scene, mesh, mat,
+                                    prefix + "_building_" + Fmt.Int(row) + "_" + Fmt.Int(col),
+                                    x, h * 0.5, z, 0.95, h, 0.95);
+            col = col + 1;
+        }
+        row = row + 1;
+    }
+    return count;
+}
+
+func renderFixture(canvas: Canvas3D, scene: Scene3D, camera: Camera3D) -> Pixels {
+    Canvas3D.Clear(canvas, 0.025, 0.03, 0.04);
+    Canvas3D.Begin(canvas, camera);
+    Scene3D.Draw(scene, canvas, camera);
+    Canvas3D.End(canvas);
+    return Canvas3D.ScreenshotFinal(canvas);
+}
+
+func pct(saved: Integer, base: Integer) -> String {
+    if (base <= 0) { return "0.000"; }
+    return Fmt.NumFixed((saved + 0.0) * 100.0 / (base + 0.0), 3);
+}
+
+func start() {
+    var canvas = Canvas3D.New("Open World Dense Visibility Probe", 160, 120);
+    Canvas3D.SetOcclusionCulling(canvas, false);
+    Canvas3D.SetAmbient(canvas, 0.35, 0.36, 0.38);
+
+    var backend = Canvas3D.get_Backend(canvas);
+    var camera = Camera3D.NewOrtho(12.0, 160.0 / 120.0, 0.1, 80.0);
+    Camera3D.LookAt(camera,
+        Vec3.New(0.0, 3.0, 18.0),
+        Vec3.New(0.0, 3.0, 0.0),
+        Vec3.New(0.0, 1.0, 0.0));
+
+    var scene = Scene3D.New();
+    var boxMesh = Mesh3D.NewBox(1.0, 1.0, 1.0);
+    var trunkMesh = Mesh3D.NewCylinder(0.18, 1.0, 8);
+    var crownMesh = Mesh3D.NewSphere(0.55, 8);
+
+    var wallMat = Material3D.NewColor(0.42, 0.45, 0.49);
+    var cityMat = Material3D.NewColor(0.55, 0.50, 0.42);
+    var alleyMat = Material3D.NewColor(0.46, 0.58, 0.62);
+    var trunkMat = Material3D.NewColor(0.35, 0.22, 0.12);
+    var crownMat = Material3D.NewColor(0.16, 0.48, 0.24);
+
+    var wallCount = addProp(scene, boxMesh, wallMat, "city_occluder_wall",
+                            0.0, 3.0, 0.55, 22.0, 13.0, 0.35);
+    var frontCount = addCityBlock(scene, boxMesh, cityMat, "city_front", 6.5);
+    var alleyCount = addCityBlock(scene, boxMesh, alleyMat, "city_portal_alley", 5.5);
+    var hiddenForestCount = addDenseForest(scene, trunkMesh, crownMesh,
+                                           trunkMat, crownMat,
+                                           "hidden_forest", -3.0);
+    var hiddenCityCount = addCityBlock(scene, boxMesh, cityMat, "hidden_city", -13.0);
+    var authoredCount = wallCount + frontCount + alleyCount + hiddenForestCount + hiddenCityCount;
+
+    var baselineStart = Clock.TicksUs();
+    var baselineSnap = renderFixture(canvas, scene, camera);
+    var baselineUs = Clock.TicksUs() - baselineStart;
+    var baselineDraws = Canvas3D.get_DrawCount(canvas);
+    var baselineVisible = Scene3D.get_VisibleNodeCount(scene);
+
+    var frontZone = Scene3D.AddVisibilityZone(scene, "city-front",
+        Vec3.New(-10.0, -4.0, 0.8), Vec3.New(10.0, 10.0, 20.0));
+    var alleyZone = Scene3D.AddVisibilityZone(scene, "portal-alley",
+        Vec3.New(-10.0, -4.0, 0.8), Vec3.New(10.0, 10.0, 20.0));
+    Scene3D.AddVisibilityZone(scene, "hidden-forest",
+        Vec3.New(-10.0, -4.0, -11.5), Vec3.New(10.0, 10.0, 0.2));
+    Scene3D.AddVisibilityZone(scene, "hidden-city",
+        Vec3.New(-10.0, -4.0, -24.0), Vec3.New(10.0, 10.0, -11.6));
+    Scene3D.AddVisibilityPortal(scene, frontZone, alleyZone, true);
+
+    var optimizedStart = Clock.TicksUs();
+    var optimizedSnap = renderFixture(canvas, scene, camera);
+    var optimizedUs = Clock.TicksUs() - optimizedStart;
+    var optimizedDraws = Canvas3D.get_DrawCount(canvas);
+    var optimizedVisible = Scene3D.get_VisibleNodeCount(scene);
+    var pvsCulled = Scene3D.get_PvsCulledCount(scene);
+
+    var baselineFillProxy = wallCount * 12000 +
+                            (frontCount + alleyCount + hiddenCityCount) * 360 +
+                            hiddenForestCount * 220;
+    var optimizedFillProxy = wallCount * 12000 +
+                             (frontCount + alleyCount) * 360;
+    var drawSaved = baselineDraws - optimizedDraws;
+    var fillSaved = baselineFillProxy - optimizedFillProxy;
+
+    if (baselineSnap == null || optimizedSnap == null ||
+        framesMatch(baselineSnap, optimizedSnap) == false) {
+        fail("PVS fixture changed visible pixels");
+        return;
+    }
+    if (authoredCount + 1 != Scene3D.get_NodeCount(scene)) {
+        fail("authored dense fixture node count changed unexpectedly");
+        return;
+    }
+    if (baselineDraws != authoredCount || baselineVisible != authoredCount) {
+        fail("baseline dense fixture did not draw every authored node");
+        return;
+    }
+    if (optimizedDraws != wallCount + frontCount + alleyCount ||
+        optimizedVisible != wallCount + frontCount + alleyCount) {
+        fail("optimized dense fixture did not keep the reachable zones visible");
+        return;
+    }
+    if (pvsCulled != hiddenForestCount + hiddenCityCount) {
+        fail("optimized dense fixture did not PVS-cull every hidden zone node");
+        return;
+    }
+    if (drawSaved <= 0 || fillSaved <= 0 ||
+        Scene3D.get_VisibilityZoneCount(scene) != 4 ||
+        Scene3D.get_VisibilityPortalCount(scene) != 2) {
+        fail("visibility telemetry did not record the authored PVS reduction");
+        return;
+    }
+
+    Terminal.Say("VISIBILITY_DENSE: backend=" + backend +
+                 " authored_nodes=" + Fmt.Int(authoredCount) +
+                 " baseline_draws=" + Fmt.Int(baselineDraws) +
+                 " optimized_draws=" + Fmt.Int(optimizedDraws) +
+                 " draw_reduction=" + Fmt.Int(drawSaved) +
+                 " draw_reduction_pct=" + pct(drawSaved, baselineDraws) +
+                 " baseline_fill_proxy_px=" + Fmt.Int(baselineFillProxy) +
+                 " optimized_fill_proxy_px=" + Fmt.Int(optimizedFillProxy) +
+                 " fill_reduction_px=" + Fmt.Int(fillSaved) +
+                 " fill_reduction_pct=" + pct(fillSaved, baselineFillProxy) +
+                 " pvs_culled=" + Fmt.Int(pvsCulled) +
+                 " zones=" + Fmt.Int(Scene3D.get_VisibilityZoneCount(scene)) +
+                 " portals=" + Fmt.Int(Scene3D.get_VisibilityPortalCount(scene)) +
+                 " no_missing_geometry=1" +
+                 " baseline_us=" + Fmt.Int(baselineUs) +
+                 " optimized_us=" + Fmt.Int(optimizedUs));
+    Terminal.Say("PASS: openworld_slice_visibility_dense_probe");
+}

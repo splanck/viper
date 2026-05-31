@@ -1486,6 +1486,47 @@ static void test_world_query_broadphase_cache_invalidates_after_body_move() {
                 "query broadphase cache invalidates after body movement");
 }
 
+static void test_world_rebase_origin_shifts_body_contact_and_query_state() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *query_body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    void *a = rt_body3d_new_sphere(1.0, 1.0);
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_position(query_body, 1000.0, 50.0, 0.0);
+    rt_body3d_set_position(a, 1004.0, 0.0, 0.0);
+    rt_body3d_set_position(b, 1005.5, 0.0, 0.0);
+    rt_world3d_add(world, query_body);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_event_count(world) >= 1,
+                "RebaseOrigin setup records an overlapping contact");
+    void *event = rt_world3d_get_collision_event(world, 0);
+    void *point = rt_collision_event3d_get_contact_point(event, 0);
+    double before_x = rt_vec3_x(point);
+
+    void *far_center = rt_vec3_new(1000.0, 50.0, 0.0);
+    void *hits = rt_world3d_overlap_sphere(world, far_center, 0.25, -1);
+    EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 1,
+                "RebaseOrigin setup warms the query broadphase at the far origin");
+
+    rt_world3d_rebase_origin(world, 1000.0, 0.0, 0.0);
+
+    void *query_pos = rt_body3d_get_position(query_body);
+    EXPECT_NEAR(rt_vec3_x(query_pos), 0.0, 0.000001, "RebaseOrigin shifts body X");
+    EXPECT_NEAR(rt_vec3_y(query_pos), 50.0, 0.000001, "RebaseOrigin preserves body Y");
+
+    void *near_center = rt_vec3_new(0.0, 50.0, 0.0);
+    hits = rt_world3d_overlap_sphere(world, near_center, 0.25, -1);
+    EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 1,
+                "RebaseOrigin invalidates query broadphase caches");
+
+    event = rt_world3d_get_collision_event(world, 0);
+    point = rt_collision_event3d_get_contact_point(event, 0);
+    EXPECT_NEAR(rt_vec3_x(point), before_x - 1000.0, 0.000001,
+                "RebaseOrigin shifts cached contact points");
+}
+
 static void test_collision_events_enter_stay_exit() {
     void *world = rt_world3d_new(0, 0, 0);
     void *floor = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
@@ -2264,6 +2305,7 @@ int main() {
     test_world_overlap_queries_honor_mask();
     test_world_overlap_queries_reject_nonfinite_inputs();
     test_world_query_broadphase_cache_invalidates_after_body_move();
+    test_world_rebase_origin_shifts_body_contact_and_query_state();
     test_collision_events_enter_stay_exit();
     test_query_mask_zero_matches_no_layers();
     test_kinematic_static_trigger_contacts_are_reported();

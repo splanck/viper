@@ -573,6 +573,9 @@ int8_t rt_camera3d_is_ortho(void *obj) {
     return cam ? cam->is_ortho : 0;
 }
 
+/// @brief Core look-at: position the camera at @p eye_in aiming at @p target_in with up @p up_in.
+/// @details Sanitizes inputs and recomputes the camera basis/view matrix; shared by the Vec3 and
+///          scalar-component entry points.
 static void camera3d_look_at_values(rt_camera3d *cam,
                                     const double eye_in[3],
                                     const double target_in[3],
@@ -621,6 +624,7 @@ void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
     camera3d_look_at_values(cam, eye, target, up);
 }
 
+/// @brief Aim the camera using scalar eye/target/up components (no Vec3 boxing required).
 void rt_camera3d_look_at_components(void *obj,
                                     double eye_x,
                                     double eye_y,
@@ -638,6 +642,9 @@ void rt_camera3d_look_at_components(void *obj,
     camera3d_look_at_values(cam, eye, target, up);
 }
 
+/// @brief Core orbit: place the camera at (yaw, pitch, distance) around a target, then look at it.
+/// @details Shared implementation behind the Vec3 and scalar-component orbit entry points; clamps
+///          pitch to avoid gimbal flip at the poles.
 static void camera3d_orbit_values(rt_camera3d *cam,
                                   double tx,
                                   double ty,
@@ -706,6 +713,7 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
                           pitch);
 }
 
+/// @brief Orbit the camera around a target using scalar components (no Vec3 boxing required).
 void rt_camera3d_orbit_components(void *obj,
                                   double target_x,
                                   double target_y,
@@ -778,6 +786,7 @@ void *rt_camera3d_get_position(void *obj) {
         finite_or(cam->eye[0], 0.0), finite_or(cam->eye[1], 0.0), finite_or(cam->eye[2], 0.0));
 }
 
+/// @brief Read the camera's world position into @p x / @p y / @p z (returns 0 with no writes if invalid).
 int8_t rt_camera3d_get_position_components(void *obj, double *x, double *y, double *z) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (x)
@@ -900,6 +909,9 @@ static int mat4d_invert(const double *m, double *out) {
     return 0;
 }
 
+/// @brief Relative-epsilon equality for cached pick parameters (NaN/inf compare unequal).
+/// @details Tolerance scales with magnitude (max(|a|,|b|,1) * 1e-12), so the inverse-VP cache stays
+///          valid across both tiny and large coordinate scales.
 static int camera_pick_cache_scalar_equal(double a, double b) {
     double scale;
     if (!isfinite(a) || !isfinite(b))
@@ -908,6 +920,10 @@ static int camera_pick_cache_scalar_equal(double a, double b) {
     return fabs(a - b) <= scale * 1e-12;
 }
 
+/// @brief Compute the inverse view-projection matrix used to unproject screen rays for picking.
+/// @details Builds the projection (perspective or ortho) for the given @p aspect, multiplies by the
+///          view matrix, and inverts the result. @p out_inv_vp receives the 4x4 inverse.
+/// @return 1 on success, 0 if inputs are invalid or the matrix is singular.
 static int camera_get_pick_inv_vp(rt_camera3d *cam, double aspect, double *out_inv_vp) {
     double near_plane;
     double far_plane;

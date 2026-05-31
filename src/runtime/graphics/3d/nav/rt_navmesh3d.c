@@ -448,6 +448,9 @@ static void navmesh3d_build_query_grid(rt_navmesh3d *nm) {
     nm->qgrid_tris = tris;
 }
 
+/// @brief Rebuild the walkable triangle set from the source triangles, dropping over-steep ones.
+/// @details A triangle is walkable when its upward normal's angle from vertical is within
+///          nm->max_slope (compared via cosines). Repopulates nm->triangles / triangle_count.
 static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
     if (!nm || !nm->source_triangles || !nm->triangles)
         return 0;
@@ -1273,6 +1276,10 @@ static void navmesh3d_find_tri_test(const rt_navmesh3d *nm,
     }
 }
 
+/// @brief Find the walkable triangle under a point (XZ projection), nearest within @p max_dy in Y.
+/// @details Uses the spatial query grid when built — a point lies in its own cell's triangle list,
+///          so scanning one cell is exact — else falls back to a linear scan. @p max_dy < 0 ignores
+///          vertical distance. Returns the triangle index, or -1 if none.
 static int32_t find_tri_with_max_dy(
     const rt_navmesh3d *nm, float px, float py, float pz, float max_dy) {
     float best_dy = FLT_MAX;
@@ -1300,6 +1307,10 @@ static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz) {
     return find_tri_with_max_dy(nm, px, py, pz, -1.0f);
 }
 
+/// @brief Test hook: verify the spatial query grid returns the same triangle as a linear scan.
+/// @details Samples an N×N lattice over the navmesh bounds and checks each point's grid lookup
+///          matches the brute-force result, guarding the grid acceleration against drift.
+/// @return 1 if every sample agrees (or there is no grid), 0 on any mismatch.
 int8_t rt_navmesh3d_check_query_grid_parity(void *obj) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     float min_x, min_z, max_x, max_z, mid_y;
@@ -1884,6 +1895,9 @@ int8_t rt_navmesh3d_add_offmesh_link(void *obj, void *from, void *to, int8_t bid
     return 1;
 }
 
+/// @brief Read and sanitize an obstacle AABB from two Vec3 handles into float min/max arrays.
+/// @details Rejects non-Vec3 or non-finite inputs, orders each axis (min<=max), and clamps to the
+///          float range. Returns 1 on success, 0 if the bounds are unusable.
 static int navmesh3d_read_obstacle_bounds(void *min_v,
                                           void *max_v,
                                           float *out_min,
@@ -1909,6 +1923,7 @@ static int navmesh3d_read_obstacle_bounds(void *min_v,
     return 1;
 }
 
+/// @brief Whether obstacles can be edited: the navmesh must retain its unfiltered source triangles.
 static int navmesh3d_can_edit_obstacles(const rt_navmesh3d *nm) {
     return nm && nm->source_triangles && nm->triangles && nm->source_triangle_count > 0;
 }

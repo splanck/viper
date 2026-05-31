@@ -183,6 +183,19 @@ static void call_reduce_final_combine_trap() {
         seq, (void *)trap_on_final_identity_combine, g_reduce_identity_sentinel, pool);
 }
 
+static bool is_thread_sanitizer_build() {
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+    return true;
+#endif
+#endif
+#if defined(__SANITIZE_THREAD__)
+    return true;
+#else
+    return false;
+#endif
+}
+
 int main(int argc, char *argv[]) {
     viper::tests::registerChildFunction(call_reduce_final_combine_trap);
     if (viper::tests::dispatchChild(argc, argv))
@@ -199,7 +212,9 @@ int main(int argc, char *argv[]) {
     test_reduce_null_seq();
     test_reduce_identity_applied_once();
     auto result = viper::tests::runIsolated(call_reduce_final_combine_trap);
-    assert(result.stderrText.find("final combine trap") != std::string::npos);
+    assert(result.trapped());
+    if (!is_thread_sanitizer_build())
+        assert(result.stderrText.find("final combine trap") != std::string::npos);
 
     printf("\nAll Parallel.Reduce tests passed!\n");
     return 0;

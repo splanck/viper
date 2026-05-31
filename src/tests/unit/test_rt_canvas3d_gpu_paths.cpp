@@ -1992,6 +1992,68 @@ static void test_shadow_selection_prefers_strongest_directional_light_regardless
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_shadow_cascades_render_primary_directional_light_slots(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "metal";
+    backend.end_frame = noop_end_frame;
+    backend.submit_draw = record_draw_with_lights;
+    backend.shadow_begin = record_shadow_begin;
+    backend.shadow_draw = record_shadow_draw;
+    backend.shadow_end = record_shadow_end;
+
+    rt_canvas3d canvas;
+    vgfx3d_rendertarget_t shadow_rt[VGFX3D_MAX_SHADOW_LIGHTS] = {};
+    float shadow_depth[VGFX3D_MAX_SHADOW_LIGHTS][16] = {};
+    rt_light3d light = {};
+    init_fake_canvas(&canvas, &backend);
+
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        shadow_rt[slot].depth_buf = shadow_depth[slot];
+        shadow_rt[slot].width = 4;
+        shadow_rt[slot].height = 4;
+        canvas.shadow_rts[slot] = &shadow_rt[slot];
+    }
+    canvas.cached_cam_forward[2] = -1.0f;
+    canvas.shadows_enabled = 1;
+    canvas.shadow_bias = 0.0025f;
+    canvas.shadow_cascade_count = 3;
+
+    light.type = 0;
+    light.direction[0] = 0.35;
+    light.direction[1] = -1.0;
+    light.direction[2] = -0.2;
+    light.color[0] = light.color[1] = light.color[2] = 1.0;
+    light.intensity = 2.0;
+    light.enabled = 1;
+    light.casts_shadows = 1;
+    canvas.lights[0] = &light;
+
+    void *mesh = make_depth_test_mesh(-1.0f, -6.0f, -12.0f);
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+
+    reset_shadow_counts();
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(shadow_begin_calls == 3 && shadow_draw_calls == 3 && shadow_end_calls == 3,
+                "CSM renders one shadow pass per configured cascade for the primary light");
+    EXPECT_TRUE(shadow_begin_slots[0] == 0 && shadow_begin_slots[1] == 1 &&
+                    shadow_begin_slots[2] == 2 && shadow_end_slots[2] == 2,
+                "CSM fills contiguous shadow cascade slots");
+    EXPECT_TRUE(last_draw_light_count == 1 && last_draw_lights[0].shadow_index == 0 &&
+                    last_draw_lights[0].shadow_cascade_count == 3,
+                "Main-pass primary light receives the first cascade slot and cascade count");
+    EXPECT_TRUE(last_draw_lights[0].shadow_cascade_splits[0] <
+                    last_draw_lights[0].shadow_cascade_splits[1] &&
+                    last_draw_lights[0].shadow_cascade_splits[1] <
+                        last_draw_lights[0].shadow_cascade_splits[2],
+                "CSM publishes monotonic camera-depth split distances to backends");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_shadow_selection_uses_queued_scene_light_snapshots(void) {
     vgfx3d_backend_t backend = {};
     backend.name = "metal";
@@ -2741,6 +2803,7 @@ int main() {
     test_transparent_sort_key_uses_mesh_bounds_depth();
     test_instanced_batch_sort_key_uses_aggregate_bounds_center();
     test_shadow_selection_prefers_strongest_directional_light_regardless_of_slot();
+    test_shadow_cascades_render_primary_directional_light_slots();
     test_shadow_selection_uses_queued_scene_light_snapshots();
     test_casts_shadows_false_skips_shadow_selection();
     test_occlusion_mode_rejects_off_frustum_draws_before_submission();

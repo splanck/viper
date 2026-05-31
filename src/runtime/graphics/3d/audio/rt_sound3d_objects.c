@@ -361,12 +361,16 @@ static void sound3d_get_node_world_direction(void *node,
     out_direction[2] /= len;
 }
 
+/// @brief World-space forward of @p node (its local -Z mapped through the node transform).
+/// @details Falls back to world -Z when the node has no usable transform.
 static void sound3d_get_node_world_forward(void *node, double *out_forward) {
     static const double local_forward[3] = {0.0, 0.0, -1.0};
     static const double fallback_forward[3] = {0.0, 0.0, -1.0};
     sound3d_get_node_world_direction(node, local_forward, fallback_forward, out_forward);
 }
 
+/// @brief World-space up of @p node (its local +Y mapped through the node transform).
+/// @details Falls back to world +Y when the node has no usable transform.
 static void sound3d_get_node_world_up(void *node, double *out_up) {
     static const double local_up[3] = {0.0, 1.0, 0.0};
     static const double fallback_up[3] = {0.0, 1.0, 0.0};

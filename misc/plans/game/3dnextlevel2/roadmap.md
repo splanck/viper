@@ -171,23 +171,24 @@ Cannot precede: Phase 5 (streaming places cells far from origin) depends on this
 Goal: per-frame cost scales with *visible* content, not *total* content, with a
 shared query contract for cull, scene queries, and physics.
 
-Current implemented slice: `Scene3D` has an internal sweep-style index over
-visible drawable nodes. `Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes`
-use indexed candidates with a flat-walk parity fallback, and `test_rt_scene3d`
-includes a generated 10k-node grid that guards query and draw candidate
-reduction. A true tree/BVH refit, release-lane timing baseline, and physics
-broadphase sharing/parity remain.
+Current implemented slice: `Scene3D` has an internal BVH over visible drawable
+nodes. `Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use indexed
+candidates with a flat-walk parity fallback; transform-only dirties refit the
+existing tree, while hierarchy/visibility/mesh/LOD/impostor changes rebuild it
+lazily. `test_rt_scene3d` includes a generated 10k-node grid that guards BVH
+shape, query candidate reduction, draw candidate reduction, and parity. The
+physics broadphase remains a proven sibling structure because solver pair
+generation has different membership/filtering requirements. A release-lane
+timing baseline remains.
 
-- Implement the chosen index over the scene graph; maintain it incrementally as
-  nodes move (dirty/refit), respecting double-precision transforms.
+- Maintain the chosen index over the scene graph, with dirty/refit for moved
+  nodes and double-precision transformed bounds.
 - Replace the full-tree `draw_node` walk (`scene/rt_scene3d.c:2100`) with an
   index query that yields only candidate-visible nodes; keep the old path behind
   the flag for parity testing.
 - Route `Scene3D`/physics spatial queries (raycast, overlap, sweep) through the
-  shared query contract. Route the physics broadphase (currently single-axis
-  sweep-and-prune sorted by min-X, `physics/rt_physics3d.c:3691`) through the
-  same physical index only if Phase 0 proves that is better than a sibling
-  physics tree.
+  shared query semantics while keeping the physics broadphase
+  (`physics/rt_physics3d.c`) as a sibling body-centric structure.
 - Optionally parallelize index queries via Phase 1 (deterministic merge).
 
 Exit:
@@ -226,10 +227,11 @@ The shared `ModelTemplate` cache budget now counts decoded material texture
 pixels when evicting least-recently-used templates, and
 `Assets3D.GetResidentBytes` exposes resident-byte telemetry used by the
 open-world streaming hitch probe to verify blocking/async cache churn returns to
-zero. Pixels-backed 2D material texture and cubemap uploads now row-slice under
-`Canvas3D.SetTextureUploadBudget` with pending-byte telemetry, and the shared
-backend helper proves queued row bytes return to zero after final slices drain.
-Native-compressed backend upload slicing remains.
+zero. Pixels-backed 2D material texture, cubemap, and native-compressed mip
+uploads now slice under `Canvas3D.SetTextureUploadBudget` with pending-byte
+telemetry, and the shared backend helper proves queued row/native bytes return
+to zero after final slices drain. The named hitch rerun with native compressed
+upload enabled is covered by `g3d_openworld_slice_streaming_hitch_native_compressed_probe`.
 
 - Move file read + glTF/FBX/image decode onto Phase-1 workers; keep GPU resource
   creation/upload on the main-thread commit queue.
@@ -239,7 +241,8 @@ Native-compressed backend upload slicing remains.
   warm. The filesystem `Preload` and package-aware `PreloadAsset` warm paths are
   implemented, `SetUploadBudget` gates decoded-image commit cost, and
   `streaming_hitch_probe.zia` records blocking-vs-async timing while proving
-  zero-budget pending behavior; native-compressed backend upload slicing remains.
+  zero-budget pending behavior plus the opt-in native-compressed backend upload
+  budget proof.
 - Add per-resource residency + reference counting and an eviction policy
   (LRU/distance) so streamed assets unload.
 - Add streaming hooks for textures/meshes (mip/LOD residency) consumed by
@@ -265,18 +268,20 @@ manifest with `cells[]` entries and loads/unloads resident `.vscn` scene
 subtrees around the stream center. The API and telemetry are stable; terrain
 tile sidecars, streamed terrain rendering, per-tile heightfield collider
 residency, terrain nav-bake binding, deterministic per-update load budgeting
-with `pendingRequestCount`, and large-world traversal proofs are in place;
-native-compressed backend upload slicing and named hitch proof remain.
+with `pendingRequestCount`, adjacent tile LOD-seam stitching, a >4096-unit /
+>4 km2 multi-tile proof, richer stream material/collision/nav metadata parsing,
+and named large-world traversal hitch/memory proofs are in place;
+native-compressed backend upload slicing and the named native hitch proof are in
+place.
 
-- Implement streamable terrain tiles (lift the single-heightmap 4096² cap at
-  `world/rt_terrain3d.c:216` into a tile grid) with seam stitching across tile LODs.
 - Implement scene cells: load/unload scene-node subtrees and their physics/nav
   around the player using Phases 1/3/4.
 - Define the streamed scene container as a VSCN streaming manifest/extension.
   Optional binary sidecars may hold payload data referenced by the manifest, but
   do not create a new general scene format. Add an authoring/bake hook ViperIDE
   can target later.
-- Wire terrain collision to the heightfield collider per active tile.
+- Extend parsed terrain collision/nav metadata into real tile-local nav ownership
+  and bake/export tooling.
 
 Exit:
 
@@ -284,6 +289,11 @@ Exit:
   with no hitch beyond budget and no seams.
 - Memory stays bounded while traversing a world larger than the resident set.
 - Determinism preserved for a scripted traversal under `runFrames`.
+
+Local exit evidence is recorded in
+`examples/3d/openworld_slice/baselines/perf_macos_apple_m4_max.md`; remaining
+Phase 5 depth is tile-local nav ownership and bake/export tooling rather than
+the baseline stream/churn proof.
 
 Cannot precede: this is the defining open-world milestone; Phase 12 exercises it.
 
@@ -293,9 +303,10 @@ Cannot precede: this is the defining open-world milestone; Phase 12 exercises it
 
 Goal: keep dense scenes within frame budget by drawing less.
 
-- Implement occlusion culling (software rasterized depth / portal-PVS for
-  interiors) over the Phase-3 index; capability-gate per backend. GPU occlusion
-  queries are optional backend accelerators, not the baseline.
+- Implement occlusion culling over the Phase-3 index; the software rasterized
+  depth baseline now uses Scene3D BVH draw candidates before Canvas3D sorting,
+  and Scene3D has authored visibility-zone/portal PVS for interiors. GPU
+  occlusion queries are optional backend accelerators, not the baseline.
 - Implement automatic selection of authored mesh LODs (extend the existing
   per-node discrete LOD at `scene/rt_scene3d.c:2012` with screen-error selection) and
   HLOD/impostor proxies for distant clusters/vegetation. Auto-generating new
@@ -306,7 +317,10 @@ Goal: keep dense scenes within frame budget by drawing less.
 Exit:
 
 - On a dense city/forest fixture, occluded draws are skipped; recorded
-  draw-call/fill reduction.
+  draw-call/fill reduction. Local macOS Release evidence is recorded by
+  `examples/3d/openworld_slice/visibility_dense_probe.zia`: 169 authored
+  drawables to 49 submitted draws, 50.407% fill-proxy reduction, and no missing
+  software pixels.
 - LOD/impostor swaps are stable (no popping beyond a tolerance) and match a
   full-detail reference within tolerance.
 
@@ -316,12 +330,13 @@ Cannot precede: Phase 12 needs this for a populated world to hit budget.
 
 ## Phase 7 — Lighting scaling (clustered/forward+ and cascaded shadows)
 
-Goal: many lights and large outdoor shadows beyond the forward 16-light /
-2-shadow cap (`render/rt_canvas3d_internal.h:308-309`).
+Goal: many lights and large outdoor shadows beyond the forward 16-light path
+and the old two-shadow cap.
 
-- Implement a clustered/forward+ light-culling path (keep existing forward
-  shaders; cull lights per cluster) raising the effective light count; software
-  backend gets a correct reference path.
+- Implement a clustered/forward+ many-light path (keep existing forward
+  shaders) raising the effective light count; software backend gets a correct
+  reference path and real GPU backends advertise the bounded 64-light payload
+  when wired.
 - Implement cascaded shadow maps (CSM) for the primary directional light and lift
   the shadow-caster cap where backends allow; use `Light3D.CastsShadows` from
   carryover CO-6.
@@ -330,10 +345,15 @@ Goal: many lights and large outdoor shadows beyond the forward 16-light /
 
 Exit:
 
-- A scene with >16 active lights renders correctly with per-cluster culling;
-  recorded cost vs. naive forward.
+- A scene with >16 active lights renders correctly through the many-light path;
+  recorded cost vs. the 16-light forward fallback.
 - CSM gives stable large-range directional shadows without acne/peter-panning
   beyond tolerance.
+
+Current local state: the bounded 64-light payload is enabled for real GPU
+backends, `VGFX3D_MAX_SHADOW_LIGHTS` is four, and primary-directional CSM uses
+contiguous shadow slots plus camera-depth split metadata. The open-world GPU
+smoke records both a 24-light clustered draw and a 3-cascade Metal CSM fixture.
 
 Cannot precede: Phase 12 lighting fidelity.
 
@@ -550,7 +570,9 @@ Coverage gaps are allowed only with a named waiver in `progress/06-waivers.md`.
 5. **Large world.** A traversal of a >4 km² streamed world keeps memory bounded
    and shows no seams.
 6. **Overdraw reduction.** Occlusion + LOD cut draw calls/fill on the dense
-   fixture by a recorded factor with no missing geometry.
+   fixture by a recorded factor with no missing geometry; the local Release
+   dense visibility probe records 71.006% draw reduction and a matching
+   optimized software frame.
 7. **Many lights.** >16 active lights render correctly via clustered culling;
    CSM gives stable directional shadows.
 8. **Stable physics at scale.** Boxes stack and piles rest; the body-count target

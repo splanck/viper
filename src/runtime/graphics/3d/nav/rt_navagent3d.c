@@ -105,6 +105,7 @@ static rt_navagent3d *navagent3d_checked(void *obj) {
     return (rt_navagent3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVAGENT3D_CLASS_ID);
 }
 
+/// @brief Add an agent to the global registry and insert it into the spatial grid at its cell.
 static void navagent_register(rt_navagent3d *agent) {
     if (!agent)
         return;
@@ -113,6 +114,7 @@ static void navagent_register(rt_navagent3d *agent) {
     navagent_grid_refresh(agent); /* insert into the spatial grid at its current cell */
 }
 
+/// @brief Remove an agent from the spatial grid and unlink it from the global registry.
 static void navagent_unregister(rt_navagent3d *agent) {
     rt_navagent3d **link = &g_navagent3d_registry;
     if (!agent)
@@ -138,6 +140,7 @@ static double navagent_len(const double v[3]) {
     return sqrt(navagent_len_sq(v));
 }
 
+/// @brief Clamp a value at zero from below, mapping non-finite values to 0.
 static double navagent_clamp_nonnegative(double value) {
     return (isfinite(value) && value >= 0.0) ? value : 0.0;
 }
@@ -228,6 +231,7 @@ static void navagent_zero_motion(rt_navagent3d *agent) {
     navagent_vec_set(agent->desired_velocity, 0.0, 0.0, 0.0);
 }
 
+/// @brief The agent's avoidance radius if positive and finite, else 0 (avoidance disabled).
 static double navagent_effective_avoidance_radius(const rt_navagent3d *agent) {
     if (!agent || !isfinite(agent->avoidance_radius) || agent->avoidance_radius <= 0.0)
         return 0.0;
@@ -243,6 +247,7 @@ static double navagent_reach(const rt_navagent3d *agent) {
     return r + s;
 }
 
+/// @brief Quantize a world coordinate to its spatial-grid cell index (clamped to ±1e9; 0 if non-finite).
 static int32_t navagent_grid_coord(double v) {
     double c;
     if (!isfinite(v))
@@ -255,11 +260,14 @@ static int32_t navagent_grid_coord(double v) {
     return (int32_t)c;
 }
 
+/// @brief Hash a 2D cell (cx, cz) to a grid bucket using the Teschner spatial-hash primes.
+/// @details NAVAGENT_GRID_BUCKETS is a power of two, so the mask replaces a modulo.
 static uint32_t navagent_grid_bucket(int32_t cx, int32_t cz) {
     uint32_t h = (uint32_t)cx * 73856093u ^ (uint32_t)cz * 19349663u;
     return h & (NAVAGENT_GRID_BUCKETS - 1u);
 }
 
+/// @brief Insert an agent into the spatial grid bucket for its current XZ cell (no-op if already in).
 static void navagent_grid_insert(rt_navagent3d *agent) {
     uint32_t b;
     if (!agent || agent->in_grid)
@@ -272,6 +280,7 @@ static void navagent_grid_insert(rt_navagent3d *agent) {
     agent->in_grid = 1;
 }
 
+/// @brief Unlink an agent from its spatial-grid bucket (no-op if not currently in the grid).
 static void navagent_grid_remove(rt_navagent3d *agent) {
     uint32_t b;
     rt_navagent3d **link;
@@ -456,6 +465,9 @@ static int navagent_compute_avoidance_adjust(rt_navagent3d *agent,
     return 1;
 }
 
+/// @brief Steer the agent's desired velocity to avoid nearby peers, with a head-on deadlock tie-break.
+/// @details Gathers peer influence via the spatial grid; when the avoidance vector points back along
+///          travel (a symmetric head-on), nudges rightward so both agents pass instead of stalling.
 static void navagent_apply_local_avoidance(rt_navagent3d *agent, double dt) {
     double max_speed;
     double adjust_x = 0.0;

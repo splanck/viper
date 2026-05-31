@@ -132,12 +132,15 @@ static void sound3d_vec_from_obj(void *vec, double *out_xyz) {
     out_xyz[2] = finite_or(rt_vec3_z(vec), 0.0);
 }
 
+/// @brief Cross product out = a x b for 3-vectors.
 static void sound3d_cross3(const double *a, const double *b, double *out) {
     out[0] = a[1] * b[2] - a[2] * b[1];
     out[1] = a[2] * b[0] - a[0] * b[2];
     out[2] = a[0] * b[1] - a[1] * b[0];
 }
 
+/// @brief Normalize a 3-vector in place (sanitizing non-finite components first).
+/// @return 1 on success, 0 if the vector is degenerate (length <= 1e-8), leaving it unchanged.
 static int sound3d_normalize3(double *v) {
     double len;
     if (!v)
@@ -349,6 +352,8 @@ void rt_sound3d_register_voice_ex(int64_t voice,
     }
 }
 
+/// @brief Register a voice's 3D attenuation params with a default reference distance of 0.
+/// @details Convenience wrapper over rt_sound3d_register_voice_ex.
 void rt_sound3d_register_voice(int64_t voice, double max_dist, int64_t base_volume) {
     rt_sound3d_register_voice_ex(voice, 0.0, max_dist, base_volume);
 }
@@ -497,6 +502,9 @@ void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listene
     }
 }
 
+/// @brief Compute a spatialized voice's volume, stereo pan, and Doppler factor for one listener.
+/// @details Combines distance attenuation (out to @p max_dist), left/right panning from the
+///          source's bearing in the listener frame, and a relative-velocity Doppler shift.
 void rt_sound3d_compute_voice_params(const rt_sound3d_listener_state *listener,
                                      const double *source_position,
                                      double max_dist,
@@ -559,6 +567,9 @@ void rt_sound3d_update_voice(int64_t voice, void *position, double max_distance)
     rt_sound3d_update_voice_ex(voice, position, NULL, 0.0, max_distance);
 }
 
+/// @brief Update a playing voice's 3D position (and optionally velocity/distances) for respatialization.
+/// @details Extended form of rt_sound3d_update_voice: @p source_velocity drives Doppler, and
+///          @p ref_distance / @p max_distance override the attenuation range (0 keeps prior values).
 void rt_sound3d_update_voice_ex(int64_t voice,
                                 void *position,
                                 const double *source_velocity,

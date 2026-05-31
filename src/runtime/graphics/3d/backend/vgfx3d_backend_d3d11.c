@@ -32,6 +32,7 @@
 #include <d3dcompiler.h>
 #include <windows.h>
 
+#include "rt_textureasset3d.h"
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_d3d11_shared.h"
@@ -81,7 +82,8 @@ static const char
         "struct Light {\n"
         "    int type;\n"
         "    int shadowIndex;\n"
-        "    float _p0, _p1;\n"
+        "    int shadowCascadeCount;\n"
+        "    float _p0;\n"
         "    float4 direction;\n"
         "    float4 position;\n"
         "    float4 color;\n"
@@ -89,6 +91,7 @@ static const char
         "    float attenuation;\n"
         "    float inner_cos;\n"
         "    float outer_cos;\n"
+        "    float4 shadowCascadeSplits;\n"
         "};\n"
         "\n"
         "cbuffer PerObject : register(b0) {\n"
@@ -164,11 +167,13 @@ static const char
                                                                                                                                                                                                                                                       "Texture2D emissiveTex : register(t3);\n"
                                                                                                                                                                                                                                                       "Texture2D<float> shadowTex0 : register(t4);\n"
                                                                                                                                                                                                                                                       "Texture2D<float> shadowTex1 : register(t5);\n"
-                                                                                                                                                                                                                                                      "Texture2D splatTex : register(t6);\n"
-                                                                                                                                                                                                                                                      "Texture2D splatLayer0 : register(t7);\n"
-                                                                                                                                                                                                                                                      "Texture2D splatLayer1 : register(t8);\n"
-                                                                                                                                                                                                                                                      "Texture2D splatLayer2 : register(t9);\n"
-                                                                                                                                                                                                                                                      "Texture2D splatLayer3 : register(t10);\n"
+                                                                                                                                                                                                                                                      "Texture2D<float> shadowTex2 : register(t6);\n"
+                                                                                                                                                                                                                                                      "Texture2D<float> shadowTex3 : register(t7);\n"
+                                                                                                                                                                                                                                                      "Texture2D splatTex : register(t8);\n"
+                                                                                                                                                                                                                                                      "Texture2D splatLayer0 : register(t9);\n"
+                                                                                                                                                                                                                                                      "Texture2D splatLayer1 : register(t10);\n"
+                                                                                                                                                                                                                                                      "Texture2D splatLayer2 : register(t11);\n"
+                                                                                                                                                                                                                                                      "Texture2D splatLayer3 : register(t12);\n"
                                                                                                                                                                                                                                                       "TextureCube envTex : register(t13);\n"
                                                                                                                                                                                                                                                       "Texture2D metallicRoughnessTex : register(t14);\n"
                                                                                                                                                                                                                                                       "Texture2D aoTex : register(t15);\n"
@@ -466,7 +471,36 @@ static const char
                                                                                                                                                                                                                                                                                             "hasPrevMorphWeights != 0) ? 1.0 : 0.0);\n"
                                                                                                                                                                                                                                                                                             "}\n"
                                                                                                                                                                                                                                                                                             "\n"
-                                                                                                                                                                                                                                                                                            "float sampleShadow(int shadowIndex, float3 worldPos) {\n"
+                                                                                                                                                                                                                                                                                            "int resolveShadowCascade(Light light, float3 worldPos) {\n"
+                                                                                                                                                                                                                                                                                            "    int shadowIndex = light.shadowIndex;\n"
+                                                                                                                                                                                                                                                                                            "    if (shadowIndex < 0 || shadowIndex >= shadowCount)\n"
+                                                                                                                                                                                                                                                                                            "        return -1;\n"
+                                                                                                                                                                                                                                                                                            "    int cascadeCount = clamp(light.shadowCascadeCount, 1, " VGFX3D_STR(VGFX3D_MAX_SHADOW_LIGHTS) ");\n"
+                                                                                                                                                                                                                                                                                            "    cascadeCount = min(cascadeCount, shadowCount - shadowIndex);\n"
+                                                                                                                                                                                                                                                                                            "    if (cascadeCount <= 1)\n"
+                                                                                                                                                                                                                                                                                            "        return shadowIndex;\n"
+                                                                                                                                                                                                                                                                                            "    float viewDepth = dot(worldPos - cameraPosition.xyz, cameraForward.xyz);\n"
+                                                                                                                                                                                                                                                                                            "    if (viewDepth <= light.shadowCascadeSplits.x || cascadeCount == 1)\n"
+                                                                                                                                                                                                                                                                                            "        return shadowIndex;\n"
+                                                                                                                                                                                                                                                                                            "    if (viewDepth <= light.shadowCascadeSplits.y || cascadeCount == 2)\n"
+                                                                                                                                                                                                                                                                                            "        return shadowIndex + 1;\n"
+                                                                                                                                                                                                                                                                                            "    if (viewDepth <= light.shadowCascadeSplits.z || cascadeCount == 3)\n"
+                                                                                                                                                                                                                                                                                            "        return shadowIndex + 2;\n"
+                                                                                                                                                                                                                                                                                            "    return shadowIndex + 3;\n"
+                                                                                                                                                                                                                                                                                            "}\n"
+                                                                                                                                                                                                                                                                                            "\n"
+                                                                                                                                                                                                                                                                                            "float sampleShadowAt(int shadowIndex, float2 uv, float depth) {\n"
+                                                                                                                                                                                                                                                                                            "    if (shadowIndex == 0)\n"
+                                                                                                                                                                                                                                                                                            "        return shadowTex0.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias);\n"
+                                                                                                                                                                                                                                                                                            "    if (shadowIndex == 1)\n"
+                                                                                                                                                                                                                                                                                            "        return shadowTex1.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias);\n"
+                                                                                                                                                                                                                                                                                            "    if (shadowIndex == 2)\n"
+                                                                                                                                                                                                                                                                                            "        return shadowTex2.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias);\n"
+                                                                                                                                                                                                                                                                                            "    return shadowTex3.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias);\n"
+                                                                                                                                                                                                                                                                                            "}\n"
+                                                                                                                                                                                                                                                                                            "\n"
+                                                                                                                                                                                                                                                                                            "float sampleShadow(Light light, float3 worldPos) {\n"
+                                                                                                                                                                                                                                                                                            "    int shadowIndex = resolveShadowCascade(light, worldPos);\n"
                                                                                                                                                                                                                                                                                             "    if (shadowIndex < 0 || shadowIndex >= shadowCount)\n"
                                                                                                                                                                                                                                                                                             "        return 1.0;\n"
                                                                                                                                                                                                                                                                                             "    row_major float4x4 shadowMatrix = shadowVP[shadowIndex];\n"
@@ -479,9 +513,7 @@ static const char
                                                                                                                                                                                                                                                                                             "    float depth = ndc.z * 0.5 + 0.5;\n"
                                                                                                                                                                                                                                                                                             "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth < 0.0 || depth > 1.0)\n"
                                                                                                                                                                                                                                                                                             "        return 1.0;\n"
-                                                                                                                                                                                                                                                                                            "    float shadow = shadowIndex == 0\n"
-                                                                                                                                                                                                                                                                                            "        ? shadowTex0.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias)\n"
-                                                                                                                                                                                                                                                                                            "        : shadowTex1.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias);\n"
+                                                                                                                                                                                                                                                                                            "    float shadow = sampleShadowAt(shadowIndex, uv, depth);\n"
                                                                                                                                                                                                                                                                                             "    return shadow == shadow ? saturate(shadow) : 1.0;\n"
                                                                                                                                                                                                                                                                                             "}\n"
                                                                                                                                                                                                                                                                                             "\n"
@@ -597,7 +629,7 @@ static const char
                                                                                                                                                                                                                                                                                             "                float atten = 1.0;\n"
                                                                                                                                                                                                                                                                                             "                if (lights[i].type == 0) {\n"
                                                                                                                                                                                                                                                                                             "                    L = safeNormalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
-                                                                                                                                                                                                                                                                                            "                    atten *= lerp(0.15, 1.0, sampleShadow(lights[i].shadowIndex, input.worldPos));\n"
+                                                                                                                                                                                                                                                                                            "                    atten *= lerp(0.15, 1.0, sampleShadow(lights[i], input.worldPos));\n"
                                                                                                                                                                                                                                                                                             "                } else if (lights[i].type == 1) {\n"
                                                                                                                                                                                                                                                                                             "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
                                                                                                                                                                                                                                                                                             "                    float d = length(toLight);\n"
@@ -651,7 +683,7 @@ static const char
                                                                                                                                                                                                                                                                                             "                float atten = 1.0;\n"
                                                                                                                                                                                                                                                                                             "                if (lights[i].type == 0) {\n"
                                                                                                                                                                                                                                                                                             "                    L = safeNormalize3(-lights[i].direction.xyz, float3(0.0, -1.0, 0.0));\n"
-                                                                                                                                                                                                                                                                                            "                    atten *= lerp(0.15, 1.0, sampleShadow(lights[i].shadowIndex, input.worldPos));\n"
+                                                                                                                                                                                                                                                                                            "                    atten *= lerp(0.15, 1.0, sampleShadow(lights[i], input.worldPos));\n"
                                                                                                                                                                                                                                                                                             "                } else if (lights[i].type == 1) {\n"
                                                                                                                                                                                                                                                                                             "                    float3 toLight = lights[i].position.xyz - input.worldPos;\n"
                                                                                                                                                                                                                                                                                             "                    float d = length(toLight);\n"
@@ -1002,6 +1034,7 @@ static const char *d3d11_postfx_shader_source =
 
 typedef struct {
     const void *pixels_ptr;
+    void *texture_asset;
     uint64_t generation;
     uint64_t pending_generation;
     ID3D11Texture2D *tex;
@@ -1009,6 +1042,9 @@ typedef struct {
     int32_t width;
     int32_t height;
     int32_t upload_next_row;
+    int32_t native_format;
+    int64_t native_next_mip;
+    int64_t native_mip_count;
     int8_t upload_in_progress;
     uint64_t last_used_frame;
 } d3d_tex_cache_entry_t;
@@ -1067,8 +1103,8 @@ typedef vgfx3d_d3d11_per_material_t d3d_per_material_t;
 typedef struct {
     int32_t type;
     int32_t shadow_index;
+    int32_t shadow_cascade_count;
     float _pad0;
-    float _pad1;
     float direction[4];
     float position[4];
     float color[4];
@@ -1076,6 +1112,7 @@ typedef struct {
     float attenuation;
     float inner_cos;
     float outer_cos;
+    float shadow_cascade_splits[4];
 } d3d_light_t;
 
 typedef struct {
@@ -2095,6 +2132,7 @@ static void d3d11_release_texture_cache(d3d11_context_t *ctx) {
         SAFE_RELEASE(ctx->tex_cache[i].srv);
         SAFE_RELEASE(ctx->tex_cache[i].tex);
         ctx->tex_cache[i].pixels_ptr = NULL;
+        ctx->tex_cache[i].texture_asset = NULL;
     }
     ctx->tex_cache_count = 0;
     free(ctx->tex_cache);
@@ -2289,6 +2327,7 @@ static void d3d11_release_temp_srv(d3d_temp_srv_t *entry) {
     entry->temporary = 0;
 }
 
+/// @brief Add @p bytes to the context's running per-frame texture-upload total (saturating).
 static void d3d11_record_texture_upload_bytes(d3d11_context_t *ctx, uint64_t bytes) {
     if (!ctx || bytes == 0)
         return;
@@ -2299,13 +2338,18 @@ static void d3d11_record_texture_upload_bytes(d3d11_context_t *ctx, uint64_t byt
     ctx->texture_upload_bytes += bytes;
 }
 
+/// @brief Bytes still to upload for a cached texture entry (native or RGBA streaming path).
 static uint64_t d3d11_texture_pending_bytes(const d3d_tex_cache_entry_t *entry) {
     if (!entry)
         return 0;
+    if (entry->texture_asset)
+        return vgfx3d_textureasset_pending_native_bytes(
+            entry->texture_asset, entry->native_next_mip, entry->upload_in_progress);
     return vgfx3d_pending_rgba_upload_bytes(
         entry->width, entry->height, entry->upload_next_row, entry->upload_in_progress);
 }
 
+/// @brief Bytes still to upload for a cached cubemap entry across its remaining faces/rows.
 static uint64_t d3d11_cubemap_pending_bytes(const d3d_cubemap_cache_entry_t *entry) {
     if (!entry)
         return 0;
@@ -2313,6 +2357,7 @@ static uint64_t d3d11_cubemap_pending_bytes(const d3d_cubemap_cache_entry_t *ent
         entry->face_size, entry->upload_face, entry->upload_next_row, entry->upload_in_progress);
 }
 
+/// @brief Total bytes still pending across all in-progress texture/cubemap uploads (saturating).
 static uint64_t d3d11_get_texture_upload_pending_bytes(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     uint64_t total = 0;
@@ -2334,12 +2379,55 @@ static uint64_t d3d11_get_texture_upload_pending_bytes(void *ctx_ptr) {
     return total;
 }
 
+/// @brief Set the per-frame byte budget that paces streaming texture uploads on this context.
 static void d3d11_set_texture_upload_budget(void *ctx_ptr, uint64_t bytes) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     if (ctx)
         ctx->texture_upload_budget_bytes = bytes;
 }
 
+/// @brief Whether the device can use @p format as a sampleable 2D texture (CheckFormatSupport query).
+static int d3d11_format_supports_texture_sampling(d3d11_context_t *ctx, DXGI_FORMAT format) {
+    UINT support = 0;
+    if (!ctx || !ctx->device)
+        return 0;
+    if (FAILED(ID3D11Device_CheckFormatSupport(ctx->device, format, &support)))
+        return 0;
+    return ((support & D3D11_FORMAT_SUPPORT_TEXTURE2D) != 0 &&
+            (support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) != 0);
+}
+
+/// @brief Report which native compressed texture formats this device can upload (BC7 only on D3D11).
+static int64_t d3d11_get_native_texture_caps(void *ctx_ptr) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    int64_t caps = 0;
+    if (d3d11_format_supports_texture_sampling(ctx, DXGI_FORMAT_BC7_UNORM))
+        caps |= RT_CANVAS3D_BACKEND_CAP_BC7;
+    return caps;
+}
+
+/// @brief Map a native texture format id to its DXGI format (only BC7 is supported; else UNKNOWN).
+static DXGI_FORMAT d3d11_native_texture_format(int32_t format_id) {
+    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7)
+        return DXGI_FORMAT_BC7_UNORM;
+    return DXGI_FORMAT_UNKNOWN;
+}
+
+/// @brief Bytes per block-row of a native compressed mip (block columns × block byte size).
+/// @details D3D11 texture updates need the source row pitch; this computes it overflow-safely.
+static uint64_t d3d11_native_texture_row_bytes(const vgfx3d_native_texture_mip_t *mip) {
+    uint64_t cols;
+    if (!mip || mip->width <= 0 || mip->block_width <= 0 || mip->block_bytes <= 0)
+        return 0;
+    cols = ((uint64_t)(uint32_t)mip->width + (uint64_t)(uint32_t)mip->block_width - 1u) /
+           (uint64_t)(uint32_t)mip->block_width;
+    if (cols > UINT64_MAX / (uint64_t)(uint32_t)mip->block_bytes)
+        return 0;
+    return cols * (uint64_t)(uint32_t)mip->block_bytes;
+}
+
+/// @brief Create an RGBA8 2D texture and its shader-resource view at the given size.
+/// @return S_OK with @p out_tex / @p out_srv set, or a failure HRESULT.
 static HRESULT d3d11_allocate_texture_srv(d3d11_context_t *ctx,
                                           int32_t w,
                                           int32_t h,
@@ -2389,6 +2477,135 @@ static HRESULT d3d11_allocate_texture_srv(d3d11_context_t *ctx,
     return hr;
 }
 
+/// @brief Create a native compressed (BC7) 2D texture and its shader-resource view for a mip chain.
+/// @return S_OK with the texture/SRV set, or a failure HRESULT.
+static HRESULT d3d11_allocate_native_texture_srv(d3d11_context_t *ctx,
+                                                 const vgfx3d_native_texture_mip_t *first_mip,
+                                                 int64_t mip_count,
+                                                 ID3D11Texture2D **out_tex,
+                                                 ID3D11ShaderResourceView **out_srv) {
+    D3D11_TEXTURE2D_DESC desc;
+    D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
+    DXGI_FORMAT format;
+    HRESULT hr;
+
+    if (out_tex)
+        *out_tex = NULL;
+    if (out_srv)
+        *out_srv = NULL;
+    if (!ctx || !out_tex || !out_srv || !first_mip || mip_count <= 0 || mip_count > UINT_MAX)
+        return E_INVALIDARG;
+    format = d3d11_native_texture_format(first_mip->format_id);
+    if (format == DXGI_FORMAT_UNKNOWN || !vgfx3d_d3d11_is_valid_texture2d_extent(first_mip->width, first_mip->height))
+        return E_INVALIDARG;
+
+    memset(&desc, 0, sizeof(desc));
+    desc.Width = (UINT)first_mip->width;
+    desc.Height = (UINT)first_mip->height;
+    desc.MipLevels = (UINT)mip_count;
+    desc.ArraySize = 1;
+    desc.Format = format;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
+    if (SUCCEEDED(hr)) {
+        memset(&srv_desc, 0, sizeof(srv_desc));
+        srv_desc.Format = desc.Format;
+        srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        srv_desc.Texture2D.MipLevels = desc.MipLevels;
+        hr = ID3D11Device_CreateShaderResourceView(
+            ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
+    }
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateTexture2D/ShaderResourceView(native texture)", hr);
+        SAFE_RELEASE(*out_srv);
+        SAFE_RELEASE(*out_tex);
+    }
+    return hr;
+}
+
+/// @brief Upload more of an in-progress native compressed texture, bounded by the upload budget.
+/// @return 1 if the upload finished this call, 0 if more mips remain.
+static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
+                                                d3d_tex_cache_entry_t *entry) {
+    if (!ctx || !entry || !entry->texture_asset || !entry->upload_in_progress || !entry->tex ||
+        !entry->srv)
+        return 0;
+    while (entry->native_next_mip < entry->native_mip_count) {
+        vgfx3d_native_texture_mip_t mip;
+        uint64_t row_bytes;
+        uint64_t block_rows;
+
+        if (ctx->texture_upload_budget_bytes != UINT64_MAX &&
+            ctx->texture_upload_bytes >= ctx->texture_upload_budget_bytes)
+            return 0;
+        if (!vgfx3d_textureasset_get_native_resident_mip(
+                entry->texture_asset, entry->native_next_mip, &mip))
+            return 0;
+        row_bytes = d3d11_native_texture_row_bytes(&mip);
+        block_rows = ((uint64_t)(uint32_t)mip.height + (uint64_t)(uint32_t)mip.block_height - 1u) /
+                     (uint64_t)(uint32_t)mip.block_height;
+        if (row_bytes == 0 || row_bytes > UINT_MAX || block_rows > UINT_MAX ||
+            mip.bytes > UINT_MAX)
+            return 0;
+        d3d11_unbind_draw_resources(ctx);
+        ID3D11DeviceContext_UpdateSubresource(ctx->ctx,
+                                              (ID3D11Resource *)entry->tex,
+                                              (UINT)entry->native_next_mip,
+                                              NULL,
+                                              mip.data,
+                                              (UINT)row_bytes,
+                                              (UINT)mip.bytes);
+        d3d11_record_texture_upload_bytes(ctx, mip.bytes);
+        entry->native_next_mip++;
+        entry->last_used_frame = ctx->frame_serial;
+    }
+    entry->generation = entry->pending_generation;
+    entry->pending_generation = 0;
+    entry->upload_in_progress = 0;
+    return 1;
+}
+
+/// @brief Begin uploading a native compressed TextureAsset3D: create the texture and seed the cursor.
+static int d3d11_start_native_texture_upload(d3d11_context_t *ctx,
+                                             d3d_tex_cache_entry_t *entry,
+                                             void *asset,
+                                             uint64_t cache_key) {
+    vgfx3d_native_texture_mip_t first_mip;
+    int64_t mip_count;
+
+    if (!ctx || !entry || !asset ||
+        !vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx)) ||
+        !vgfx3d_textureasset_get_native_resident_mip(asset, 0, &first_mip))
+        return 0;
+    mip_count = rt_textureasset3d_get_resident_mip_count(asset);
+    if (mip_count <= 0)
+        return 0;
+    SAFE_RELEASE(entry->srv);
+    SAFE_RELEASE(entry->tex);
+    if (FAILED(d3d11_allocate_native_texture_srv(ctx, &first_mip, mip_count, &entry->tex, &entry->srv)))
+        return 0;
+
+    entry->pixels_ptr = NULL;
+    entry->texture_asset = asset;
+    entry->pending_generation = cache_key;
+    entry->generation = 0;
+    entry->width = first_mip.width;
+    entry->height = first_mip.height;
+    entry->upload_next_row = 0;
+    entry->native_format = first_mip.format_id;
+    entry->native_next_mip = 0;
+    entry->native_mip_count = mip_count;
+    entry->upload_in_progress = 1;
+    entry->last_used_frame = ctx->frame_serial;
+    d3d11_continue_native_texture_upload(ctx, entry);
+    return 1;
+}
+
+/// @brief Upload more rows of an in-progress RGBA texture, bounded by the upload budget.
+/// @return 1 if the upload finished this call, 0 if more rows remain.
 static int d3d11_continue_texture_upload(
     d3d11_context_t *ctx, d3d_tex_cache_entry_t *entry, const void *pixels) {
     int32_t rows;
@@ -2440,6 +2657,7 @@ static int d3d11_continue_texture_upload(
     return 0;
 }
 
+/// @brief Begin uploading an RGBA Pixels texture: allocate the texture/SRV and seed the row cursor.
 static int d3d11_start_texture_upload(
     d3d11_context_t *ctx, d3d_tex_cache_entry_t *entry, const void *pixels, uint64_t cache_key) {
     int32_t w = 0;
@@ -2453,11 +2671,15 @@ static int d3d11_start_texture_upload(
         return 0;
 
     entry->pixels_ptr = pixels;
+    entry->texture_asset = NULL;
     entry->pending_generation = cache_key;
     entry->generation = 0;
     entry->width = w;
     entry->height = h;
     entry->upload_next_row = 0;
+    entry->native_format = RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+    entry->native_next_mip = 0;
+    entry->native_mip_count = 0;
     entry->upload_in_progress = 1;
     entry->last_used_frame = ctx->frame_serial;
     d3d11_continue_texture_upload(ctx, entry, pixels);
@@ -2505,7 +2727,7 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
     }
 
     for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
-        if (!ctx->tex_cache[i].pixels_ptr) {
+        if (!ctx->tex_cache[i].pixels_ptr && !ctx->tex_cache[i].texture_asset) {
             if (!d3d11_start_texture_upload(ctx, &ctx->tex_cache[i], pixels, cache_key))
                 return NULL;
             return ctx->tex_cache[i].upload_in_progress ? NULL : ctx->tex_cache[i].srv;
@@ -2524,6 +2746,77 @@ static ID3D11ShaderResourceView *d3d11_get_or_create_srv(d3d11_context_t *ctx,
     return NULL;
 }
 
+/// @brief Get the SRV for a native TextureAsset3D, creating/streaming it on a cache miss.
+/// @details Keyed by the asset's native cache key so residency changes invalidate the entry.
+/// @return The shader-resource view to bind, or NULL if it cannot be created.
+static ID3D11ShaderResourceView *d3d11_get_or_create_native_srv(d3d11_context_t *ctx,
+                                                                void *asset) {
+    uint64_t cache_key;
+
+    if (!ctx || !asset || !vgfx3d_textureasset_native_supported(
+                             asset, d3d11_get_native_texture_caps(ctx)))
+        return NULL;
+    cache_key = rt_textureasset3d_get_native_cache_key(asset);
+    if (cache_key == 0)
+        return NULL;
+
+    for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
+        if (ctx->tex_cache[i].texture_asset == asset &&
+            ctx->tex_cache[i].generation == cache_key && ctx->tex_cache[i].tex &&
+            ctx->tex_cache[i].srv) {
+            ctx->tex_cache[i].last_used_frame = ctx->frame_serial;
+            return ctx->tex_cache[i].srv;
+        }
+        if (ctx->tex_cache[i].texture_asset == asset &&
+            ctx->tex_cache[i].pending_generation == cache_key &&
+            ctx->tex_cache[i].upload_in_progress) {
+            return d3d11_continue_native_texture_upload(ctx, &ctx->tex_cache[i])
+                       ? ctx->tex_cache[i].srv
+                       : NULL;
+        }
+    }
+
+    for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
+        if (ctx->tex_cache[i].texture_asset == asset) {
+            if (!d3d11_start_native_texture_upload(ctx, &ctx->tex_cache[i], asset, cache_key))
+                return NULL;
+            return ctx->tex_cache[i].upload_in_progress ? NULL : ctx->tex_cache[i].srv;
+        }
+    }
+
+    for (int32_t i = 0; i < ctx->tex_cache_count; i++) {
+        if (!ctx->tex_cache[i].pixels_ptr && !ctx->tex_cache[i].texture_asset) {
+            if (!d3d11_start_native_texture_upload(ctx, &ctx->tex_cache[i], asset, cache_key))
+                return NULL;
+            return ctx->tex_cache[i].upload_in_progress ? NULL : ctx->tex_cache[i].srv;
+        }
+    }
+    if (d3d11_ensure_tex_cache_capacity(ctx, ctx->tex_cache_count + 1)) {
+        d3d_tex_cache_entry_t *entry = &ctx->tex_cache[ctx->tex_cache_count++];
+        memset(entry, 0, sizeof(*entry));
+        if (!d3d11_start_native_texture_upload(ctx, entry, asset, cache_key)) {
+            ctx->tex_cache_count--;
+            return NULL;
+        }
+        return entry->upload_in_progress ? NULL : entry->srv;
+    }
+    return NULL;
+}
+
+/// @brief Resolve a material's texture to an SRV, preferring native blocks then RGBA Pixels.
+/// @return The shader-resource view to bind, or NULL if neither source is uploadable.
+static ID3D11ShaderResourceView *d3d11_get_or_create_material_srv(d3d11_context_t *ctx,
+                                                                  void *asset,
+                                                                  const void *pixels,
+                                                                  d3d_temp_srv_t *out_temp) {
+    ID3D11ShaderResourceView *srv = d3d11_get_or_create_native_srv(ctx, asset);
+    if (srv)
+        return srv;
+    return d3d11_get_or_create_srv(ctx, pixels, out_temp);
+}
+
+/// @brief Create a cubemap texture (6 faces) and its cube shader-resource view at the given size.
+/// @return S_OK with the texture/SRV set, or a failure HRESULT.
 static HRESULT d3d11_allocate_cubemap_srv(d3d11_context_t *ctx,
                                           int32_t face_size,
                                           ID3D11Texture2D **out_tex,
@@ -2571,6 +2864,8 @@ static HRESULT d3d11_allocate_cubemap_srv(d3d11_context_t *ctx,
     return hr;
 }
 
+/// @brief Upload more of an in-progress cubemap (face by face, row band by row band) within budget.
+/// @return 1 if all six faces finished this call, 0 if more remains.
 static int d3d11_continue_cubemap_upload(
     d3d11_context_t *ctx, d3d_cubemap_cache_entry_t *entry, const rt_cubemap3d *cubemap) {
     int32_t mip_count;
@@ -2642,6 +2937,7 @@ static int d3d11_continue_cubemap_upload(
     return 1;
 }
 
+/// @brief Begin uploading a cubemap: create the cube texture/SRV and seed the face/row cursor.
 static int d3d11_start_cubemap_upload(d3d11_context_t *ctx,
                                       d3d_cubemap_cache_entry_t *entry,
                                       const rt_cubemap3d *cubemap,
@@ -3861,6 +4157,8 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
         light_data[i].type = lights[i].type;
         light_data[i].shadow_index =
             vgfx3d_d3d11_sanitize_shadow_index(lights[i].shadow_index, advertised_shadow_count);
+        light_data[i].shadow_cascade_count =
+            light_data[i].shadow_index >= 0 ? lights[i].shadow_cascade_count : 1;
         light_data[i].direction[0] = lights[i].direction[0];
         light_data[i].direction[1] = lights[i].direction[1];
         light_data[i].direction[2] = lights[i].direction[2];
@@ -3874,6 +4172,9 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
         light_data[i].attenuation = lights[i].attenuation;
         light_data[i].inner_cos = lights[i].inner_cos;
         light_data[i].outer_cos = lights[i].outer_cos;
+        memcpy(light_data[i].shadow_cascade_splits,
+               lights[i].shadow_cascade_splits,
+               sizeof(light_data[i].shadow_cascade_splits));
     }
 }
 
@@ -4202,8 +4503,8 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
 
 /// @brief Bind every texture / cubemap SRV the shader expects (PS slots 0..15).
 ///
-/// Slots: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4-5=shadows,
-/// 6=splat-control, 7-10=splat layers, 13=env cube, 14=metallic-rough,
+/// Slots: 0=diffuse, 1=normal, 2=specular, 3=emissive, 4-7=shadows,
+/// 8=splat-control, 9-12=splat layers, 13=env cube, 14=metallic-rough,
 /// 15=AO. Unbound slots get NULL so the shader's `has*` flags can
 /// gate sampling. Returns whether splat sampling was actually enabled.
 static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
@@ -4215,34 +4516,40 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
         return 0;
 
     memset(resources, 0, sizeof(*resources));
-    srvs[0] = d3d11_get_or_create_srv(ctx, cmd->texture, &resources->textures[0]);
-    srvs[1] = d3d11_get_or_create_srv(ctx, cmd->normal_map, &resources->textures[1]);
-    srvs[2] = d3d11_get_or_create_srv(ctx, cmd->specular_map, &resources->textures[2]);
-    srvs[3] = d3d11_get_or_create_srv(ctx, cmd->emissive_map, &resources->textures[3]);
-    srvs[4] = ctx->shadow_count > 0 ? ctx->shadow_srv[0] : NULL;
-    srvs[5] = ctx->shadow_count > 1 ? ctx->shadow_srv[1] : NULL;
-    srvs[6] = cmd->has_splat ? d3d11_get_or_create_srv(ctx, cmd->splat_map, &resources->textures[4])
+    srvs[0] = d3d11_get_or_create_material_srv(
+        ctx, cmd->texture_asset, cmd->texture, &resources->textures[0]);
+    srvs[1] = d3d11_get_or_create_material_srv(
+        ctx, cmd->normal_map_asset, cmd->normal_map, &resources->textures[1]);
+    srvs[2] = d3d11_get_or_create_material_srv(
+        ctx, cmd->specular_map_asset, cmd->specular_map, &resources->textures[2]);
+    srvs[3] = d3d11_get_or_create_material_srv(
+        ctx, cmd->emissive_map_asset, cmd->emissive_map, &resources->textures[3]);
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+        srvs[4 + slot] = ctx->shadow_count > slot ? ctx->shadow_srv[slot] : NULL;
+    srvs[8] = cmd->has_splat ? d3d11_get_or_create_srv(ctx, cmd->splat_map, &resources->textures[4])
                              : NULL;
-    srvs[7] = cmd->has_splat
+    srvs[9] = cmd->has_splat
                   ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[0], &resources->textures[5])
                   : NULL;
-    srvs[8] = cmd->has_splat
+    srvs[10] = cmd->has_splat
                   ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[1], &resources->textures[6])
                   : NULL;
-    srvs[9] = cmd->has_splat
+    srvs[11] = cmd->has_splat
                   ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[2], &resources->textures[7])
                   : NULL;
-    srvs[10] = cmd->has_splat
+    srvs[12] = cmd->has_splat
                    ? d3d11_get_or_create_srv(ctx, cmd->splat_layers[3], &resources->textures[8])
                    : NULL;
-    srvs[11] = NULL;
-    srvs[12] = NULL;
     srvs[13] = (cmd->env_map && cmd->reflectivity > 0.0001f)
                    ? d3d11_get_or_create_cubemap_srv(
                          ctx, (const rt_cubemap3d *)cmd->env_map, &resources->cubemap)
                    : NULL;
-    srvs[14] = d3d11_get_or_create_srv(ctx, cmd->metallic_roughness_map, &resources->textures[9]);
-    srvs[15] = d3d11_get_or_create_srv(ctx, cmd->ao_map, &resources->textures[10]);
+    srvs[14] = d3d11_get_or_create_material_srv(ctx,
+                                                cmd->metallic_roughness_map_asset,
+                                                cmd->metallic_roughness_map,
+                                                &resources->textures[9]);
+    srvs[15] =
+        d3d11_get_or_create_material_srv(ctx, cmd->ao_map_asset, cmd->ao_map, &resources->textures[10]);
 
     resources->has_texture = srvs[0] != NULL;
     resources->has_normal_map = srvs[1] != NULL;
@@ -4252,17 +4559,17 @@ static int d3d11_bind_draw_resources(d3d11_context_t *ctx,
     resources->has_metallic_roughness_map = srvs[14] != NULL;
     resources->has_ao_map = srvs[15] != NULL;
     resources->has_splat = vgfx3d_d3d11_has_complete_splat(cmd->has_splat,
-                                                           srvs[6] != NULL,
-                                                           srvs[7] != NULL,
                                                            srvs[8] != NULL,
                                                            srvs[9] != NULL,
-                                                           srvs[10] != NULL);
+                                                           srvs[10] != NULL,
+                                                           srvs[11] != NULL,
+                                                           srvs[12] != NULL);
     if (!resources->has_splat) {
-        srvs[6] = NULL;
-        srvs[7] = NULL;
         srvs[8] = NULL;
         srvs[9] = NULL;
         srvs[10] = NULL;
+        srvs[11] = NULL;
+        srvs[12] = NULL;
     }
 
     ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 16, srvs);
@@ -5341,6 +5648,7 @@ static void d3d11_end_frame(void *ctx_ptr) {
     ctx->rtt_target->hdr_color_valid = 0;
 }
 
+/// @brief Read the total bytes uploaded to D3D11 textures so far this frame (diagnostics counter).
 static uint64_t d3d11_get_texture_upload_bytes(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     return ctx ? ctx->texture_upload_bytes : 0;
@@ -6135,7 +6443,8 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         return;
     }
     if (alpha_masked_shadow) {
-        shadow_diffuse_srv = d3d11_get_or_create_srv(ctx, cmd->texture, &shadow_diffuse);
+        shadow_diffuse_srv =
+            d3d11_get_or_create_material_srv(ctx, cmd->texture_asset, cmd->texture, &shadow_diffuse);
         d3d11_prepare_material_data(
             cmd, shadow_diffuse_srv != NULL, 0, 0, 0, 0, 0, 0, 0, &material_data);
         hr = d3d11_update_constant_buffer(
@@ -6288,6 +6597,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .set_texture_upload_budget = d3d11_set_texture_upload_budget,
     .get_texture_upload_pending_bytes = d3d11_get_texture_upload_pending_bytes,
     .get_texture_upload_bytes = d3d11_get_texture_upload_bytes,
+    .get_native_texture_caps = d3d11_get_native_texture_caps,
 };
 
 #endif /* _WIN32 && VIPER_ENABLE_GRAPHICS */

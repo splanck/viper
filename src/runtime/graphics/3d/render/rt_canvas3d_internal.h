@@ -59,6 +59,7 @@ typedef struct {
 typedef struct {
     void *vptr;
     vgfx3d_vertex_t *vertices;
+    double *positions64; /* optional authoritative double positions for AddVertex-built meshes */
     uint32_t vertex_count;
     uint32_t vertex_capacity;
     uint32_t *indices;
@@ -84,6 +85,7 @@ typedef struct {
     uint32_t geometry_revision; /* increments when CPU geometry changes */
     uint32_t tangent_revision;  /* geometry_revision for cached tangent readiness */
     int8_t tangents_ready;      /* true once tangent presence/generation was resolved */
+    int8_t resident;            /* false when stream residency has dropped this mesh payload */
     uint8_t geometry_batch_depth;
     int8_t geometry_batch_dirty;
     void *physics_bvh_nodes;          /* rt_physics_mesh_bvh_node[], owned by mesh */
@@ -109,6 +111,8 @@ static inline void rt_mesh3d_mark_bounds_dirty(rt_mesh3d *mesh) {
         mesh->bounds_dirty = 1;
 }
 
+/// @brief Immediately mark geometry changed: dirties bounds, bumps geometry_revision (wrapping
+///        past UINT32_MAX to 1), and invalidates cached tangents. Bypasses batch deferral.
 static inline void rt_mesh3d_touch_geometry_now(rt_mesh3d *mesh) {
     if (!mesh)
         return;
@@ -133,12 +137,17 @@ static inline void rt_mesh3d_touch_geometry(rt_mesh3d *mesh) {
     rt_mesh3d_touch_geometry_now(mesh);
 }
 
+/// @brief Open a geometry-edit batch: defers per-edit revision bumps until the batch ends.
+/// @details Re-entrant via a depth counter (saturates at UINT8_MAX), so bulk vertex edits trigger
+///          a single re-upload instead of one per change. Pair with rt_mesh3d_end_geometry_batch.
 static inline void rt_mesh3d_begin_geometry_batch(rt_mesh3d *mesh) {
     if (!mesh || mesh->geometry_batch_depth == UINT8_MAX)
         return;
     mesh->geometry_batch_depth++;
 }
 
+/// @brief Close a geometry-edit batch; when the outermost batch closes and edits occurred,
+///        applies a single deferred geometry touch.
 static inline void rt_mesh3d_end_geometry_batch(rt_mesh3d *mesh) {
     if (!mesh || mesh->geometry_batch_depth == 0)
         return;
@@ -277,6 +286,8 @@ typedef struct {
 
 /// @brief Resolve a Material3D texture slot source to the currently resident Pixels fallback.
 void *rt_material3d_resolve_texture_pixels(void *texture_ref);
+/// @brief Resolve a Material3D texture slot source to a native TextureAsset3D, if any.
+void *rt_material3d_resolve_texture_native_asset(void *texture_ref);
 
 #define RT_MATERIAL3D_TEXTURE_WRAP_REPEAT 0
 #define RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE 1
@@ -311,7 +322,7 @@ typedef struct {
 
 #define VGFX3D_FORWARD_LIGHT_LIMIT 16
 #define VGFX3D_MAX_LIGHTS 64
-#define VGFX3D_MAX_SHADOW_LIGHTS 2
+#define VGFX3D_MAX_SHADOW_LIGHTS 4
 #define RT_CANVAS3D_EVENT_QUEUE_CAPACITY 128
 
 typedef struct {
@@ -622,6 +633,7 @@ typedef struct {
     int8_t clustered_lighting;
     int32_t last_draw_count;
     int32_t last_occluded_draw_count;
+    int32_t last_occlusion_candidate_count;
     int64_t last_texture_upload_bytes;
 
     /* Timing */
@@ -712,6 +724,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         const float *prev_morph_weights);
 /// @brief Internal: enable camera-relative float upload for large-world Game3D frames.
 void rt_canvas3d_set_camera_relative_upload(void *obj, int8_t enabled);
+/// @brief Internal: copy the active camera-relative origin; returns 1 when upload rebasing is on.
+int rt_canvas3d_get_camera_relative_origin(void *obj, double out_origin[3]);
 /// @brief Internal: invalidate and release the cached CPU skybox fallback image.
 void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *canvas);
 /// @brief Internal: submit a mesh draw after applying morph targets.

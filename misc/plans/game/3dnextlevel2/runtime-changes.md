@@ -95,7 +95,10 @@ use `Viper.Threads.Pool` / `Viper.Threads.Parallel`, plain copied data, retained
 ordered-map outputs, and commit-queue enqueue, while commit draining and handle
 mutation stay on the main thread. `test_rt_g3d_commit_queue` covers the
 worker-drain rejection path so worker jobs cannot apply renderer-facing commits
-directly. Asset decode/upload paths still need to consume the queue.
+directly. Current glTF/GLB asset worker paths consume the queue for runtime
+object commits, and the focused `scripts/g3d_tsan_concurrency_lane.sh` lane is
+clean on Apple M4 Max for the worker pool, ordered merge, asset workers, and
+main-thread commit queue.
 
 **Change.**
 
@@ -123,8 +126,9 @@ gameplay) is deterministically scheduled. Workers do load/decode/cull/bake/
 transcode only. `runFrames` must produce identical state with the pool enabled
 vs. disabled, VM and native.
 
-**Tests.** Parallel-map determinism; race/stress (TSan where available); pool
-on/off `runFrames` parity; ADR if any VM/IL change is implied.
+**Tests.** Parallel-map determinism; pool on/off `runFrames` parity; focused
+race/stress via `scripts/g3d_tsan_concurrency_lane.sh`; ADR if any VM/IL change
+is implied.
 
 ---
 
@@ -135,15 +139,20 @@ on/off `runFrames` parity; ADR if any VM/IL change is implied.
 AABBs now store transformed world bounds as `double`. Physics body position and
 velocity integration state is double-precision. Game3D floating-origin frames
 enable a Canvas3D camera-relative upload path for double `DrawMesh` matrices,
-camera frame position/view translation, and point/spot light positions before
-they narrow to backend floats. Mesh vertices, caller-supplied float instancing
-matrices, exact backend frustum tests, and raw/generated vertex paths still
-remain float precision. Origin rebasing exists through `Scene3D.RebaseOrigin`
+camera frame position/view translation, point/spot light positions, and
+identity-matrix raw/generated vertex paths before they narrow to backend floats.
+`Mesh3D.AddVertex` keeps an internal double-position sidecar for raw world-space
+mesh draws, while standalone `Particles3D`, `Sprite3D`, and decal/billboard
+geometry build camera-relative vertices for active frames. Caller-supplied float
+instancing matrices and exact backend frustum tests still remain float
+precision. Origin rebasing exists through `Scene3D.RebaseOrigin`
 and the Game3D floating-origin path; that path now shifts camera, scene nodes,
 physics bodies, explicit audio listener pose, and world-owned effect-registry
-particles/decals. The full cross-system atomic hook is still not complete
-because standalone raw particle paths and in-flight queries need separate
-coverage.
+particles/decals. The cross-system hook is now exposed as
+`World3D.rebaseOrigin(dx, dy, dz)`, guarded to run between frames, and routes
+physics through `Physics3DWorld.RebaseOrigin` so body/contact/query state shifts
+atomically. Standalone `Particles3D.RebaseOrigin` and `Sprite3D.RebaseOrigin`
+cover raw generated paths outside Game3D ownership.
 
 **Change.**
 
@@ -151,35 +160,46 @@ coverage.
   per-cell local origins with camera-relative model matrices computed at upload.
 - Promote cull bounds and physics body integration state to the chosen precision;
   keep GPU upload `float` but relative to the camera/cell origin.
-- Add an atomic `rt_scene3d_rebase_origin(delta)` that shifts nodes, physics
-  bodies, audio sources, particles, and in-flight queries between frames.
+- Add atomic rebase hooks that shift nodes, physics bodies/contact/query state,
+  audio listener state, particles, sprites, and decals between frames.
 - Capability-gate via `World3D.floatingOrigin`; off means unchanged.
 
 **Tests.** Far-origin Scene3D queries/raycasts at `1e9` preserve sub-float
 node separation, Physics3D body integration at `1e9` preserves a `0.125` unit
 step delta, and Canvas3D/Game3D tests prove floating-origin frames rebase the
-camera frame payload, double `DrawMesh` model translation, and light position
+camera frame payload, double `DrawMesh` model translation, raw identity-mesh
+vertices, standalone particle/sprite generated vertices, and light position
 while flag-off frames keep the bounded-scene upload path unchanged. Game3D
 also captures registered particle/decal draw centers before and after a 50 km
 rebase, proving live particle positions and cached decal geometry move with
-the world. Remaining exit tests are 50 km rendered parity, full rebase
-determinism under `runFrames`, standalone raw-particle/in-flight-query atomic
-hooks, and bounded-scene byte-equality.
+the world. `test_rt_physics3d`, `test_rt_particles3d_contract`, and
+`test_rt_canvas3d` cover standalone physics query/contact rebasing and
+particle/sprite raw-path rebase hooks. `test_rt_game3d` now also renders the
+same scene near origin and after a 50 km floating-origin rebase with frustum
+culling enabled and disabled, verifies camera-relative upload on the far pass,
+compares final-frame pixels within tolerance, and proves the bounded-scene
+output remains byte-identical after toggling `floatingOrigin` back off.
+Remaining exit work is the broader named bounded-scene/sample no-regression
+gate.
 
 ---
 
 ## 3. Spatial acceleration index
 
-**Current facts.** `Scene3D` now maintains an internal sweep-style spatial index
-over visible drawable scene nodes. The index is dirtied by hierarchy, transform,
-mesh, visibility, LOD, and impostor changes; `QueryAABB`, `QuerySphere`,
-`RaycastNodes`, and `Draw` use indexed candidates with deterministic flat-walk
-fallback/parity coverage. Draw still performs the exact selected-LOD/impostor
-frustum test before submitting. `test_rt_scene3d` includes a generated 10k
-drawable-node grid that verifies isolated spatial queries narrow to one candidate
-and indexed draw culling considers less than 10% of total drawable nodes before
-falling back to the exact frustum test. Physics broadphase remains a separate
-single-axis sweep-and-prune sorted by min-X each step (`physics/rt_physics3d.c:3691`).
+**Current facts.** `Scene3D` now maintains an internal BVH spatial index over
+visible drawable scene nodes. Transform-only dirties refit the existing tree,
+while hierarchy, visibility, mesh, LOD, and impostor changes rebuild it lazily;
+`QueryAABB`, `QuerySphere`, `RaycastNodes`, and `Draw` use indexed candidates
+with deterministic flat-walk fallback/parity coverage. Draw still performs the
+exact selected-LOD/impostor frustum test before submitting. `test_rt_scene3d`
+includes a generated 10k drawable-node grid that verifies BVH shape, transform
+refit, isolated spatial queries narrowing to one candidate, and indexed draw
+culling considering less than 10% of total drawable nodes before falling back to
+the exact frustum test. Physics broadphase remains a separate body-centric
+single-axis sweep-and-prune sorted by min-X each step (`physics/rt_physics3d.c:3691`);
+the sibling structure is intentional because physics pair generation must cover
+non-render bodies, layer/mask filtering, static-static rejection, trigger state,
+and contact-event identity.
 A per-mesh physics BVH exists (`physics_bvh_*` fields built in `render/rt_mesh3d.c`)
 and now drives raycasts plus mesh/convex-vs-sphere/capsule/box narrow-phase
 candidate pruning. The narrow-phase keeps a full triangle scan fallback if BVH
@@ -187,14 +207,13 @@ construction or traversal cannot complete.
 
 **Change.**
 
-- Implement the Phase-0 index (loose octree / BVH / grid) over the scene graph,
-  maintained incrementally (dirty/refit) under double-precision transforms.
+- Maintain the BVH over the scene graph with dirty/refit under double-precision
+  transforms.
 - Add `rt_scene3d_query_visible(frustum, out)` and generic spatial queries
   (point/AABB/sphere/ray) the index serves.
 - Replace the draw walk with an index query (old path behind the flag for parity).
-- Publish a shared spatial-query contract. If Phase 0 proves one physical
-  structure fits rendering and physics, share it; otherwise keep a sibling
-  physics broadphase tuned for solver needs while matching query semantics.
+- Publish a shared spatial-query contract while keeping the sibling physics
+  broadphase tuned for solver needs and matching query semantics.
 
 **Tests.** Cull/query equality vs. flat-walk reference (no popping); generated
 10k-node candidate-scaling fixture plus release-lane wall-clock timing;
@@ -230,33 +249,36 @@ Non-glTF formats still enqueue a main-thread load request. `Preload` and
 template warming. Cached
 template hits and preflight failures can still complete immediately on observation, and
 `cancel()` is terminal before worker completion. `SetResidencyBudget`,
-`GetResidentBytes`, and `Evict` control the shared template cache with
-conservative byte estimates and LRU eviction; the estimate now includes decoded
-material texture pixels so textured templates cannot bypass the cache budget as
-mesh-only entries, and blocking/async load-clear churn can assert the shared
-resident-byte counter returns to zero.
+`GetResidentBytes`, `SetResidencyHint`, and `Evict` control the shared template
+cache with conservative byte estimates and priority/distance-aware eviction; the
+estimate now includes decoded material texture pixels so textured templates
+cannot bypass the cache budget as mesh-only entries, and blocking/async
+load-clear churn can assert the shared resident-byte counter returns to zero.
 `SetUploadBudget` controls async commit drains by decoded RGBA image bytes;
 zero pauses positive-cost decoded texture slices, negative restores unlimited
 drains, and positive budgets advance large decoded images across multiple queue
 drains before final publish. `Canvas3D.SetTextureUploadBudget` now caps
-Pixels-backed 2D material texture and cubemap upload rows per backend frame on
-Metal/OpenGL/D3D11; negative restores unlimited upload, `0` pauses new rows, and
-positive sub-row budgets still advance one row for liveness.
-`Canvas3D.TextureUploadBytes` records the actual CPU image bytes uploaded into
-backend texture storage by the latest ended frame, and
-`Canvas3D.TextureUploadPendingBytes` reports queued material-texture and cubemap
-row bytes still waiting for budget. Cubemap uploads use the same Metal/OpenGL/D3D11
-row-budget path as Pixels-backed 2D material textures; shared backend pending-byte
-helpers prove queued row bytes return to zero when final slices drain, and cache
-hits plus software fallback report `0`.
+Pixels-backed 2D material/cubemap upload rows and native compressed
+`TextureAsset3D` mip submissions per backend frame on Metal/OpenGL/D3D11;
+negative restores unlimited upload, `0` pauses new uploads, and positive
+sub-row budgets still advance one row for liveness.
+`Canvas3D.TextureUploadBytes` records the actual texture payload bytes uploaded
+into backend storage by the latest ended frame, and
+`Canvas3D.TextureUploadPendingBytes` reports queued material-texture/cubemap row
+bytes plus native compressed mip bytes still waiting for budget. Cubemap uploads
+use the same Metal/OpenGL/D3D11 row-budget path as Pixels-backed 2D material
+textures; shared backend pending-byte helpers prove queued row/native bytes
+return to zero when final slices drain, and cache hits plus software fallback
+report `0`.
 `ClearCache` advances a cache generation so older in-flight preload jobs cannot
 repopulate the cache after the clear. The open-world streaming hitch probe
 records blocking-vs-async template timing, proves zero upload budget holds a
 positive-cost async commit pending until a positive budget is restored, and
 asserts resident bytes return to zero after cache churn. File and
 asset lookup failures, unsupported model extensions, and malformed glTF JSON now
-complete as terminal non-cancel error handles. The remaining architectural gap is
-native-compressed backend upload slicing.
+complete as terminal non-cancel error handles. Its native-compressed CTest lane
+now also proves capable backend upload budgeting by recording the active GPU
+backend/format, zero-budget pending bytes, release time, and upload bytes.
 
 **Change.**
 
@@ -290,15 +312,20 @@ native-compressed backend upload slicing.
   cache warming no longer calls the blocking loader or traps synchronously on
   corrupt glTF. Corrupt required PNG/BMP/JPEG/GIF texture payloads now become
   terminal async/blocking load failures. The first cache
-  residency controls are in place using an LRU byte budget over
-  `ModelTemplate` entries, including decoded material texture pixels;
-  `Assets3D.GetResidentBytes` exposes the shared resident-byte counter for
-  blocking/async load-clear churn assertions; pre-clear preload jobs are
-  generation-guarded so they cannot repopulate a cleared cache;
-  distance-aware streaming eviction remains for §5.
+  residency controls are in place using a byte budget over `ModelTemplate`
+  entries, including decoded material texture pixels. `Assets3D.SetResidencyHint`
+  adds explicit priority/distance eviction metadata so higher-priority and
+  nearer templates survive budget pressure before lower-priority or farther
+  entries, with LRU retained as the tie-breaker; `Assets3D.GetResidentBytes`
+  exposes the shared resident-byte counter for blocking/async load-clear churn
+  assertions; pre-clear preload jobs are generation-guarded so they cannot
+  repopulate a cleared cache.
 - Convert `Preload` to a real background warm. Implemented for filesystem and
   package-aware templates via the existing async worker + main-thread commit queue.
-- Add texture/mesh mip/LOD residency hooks consumed by §5/§6/§11.
+- Texture and mesh residency hooks are now in place: `TextureAsset3D.SetResidentMipRange`
+  controls mip residency, `Mesh3D.Resident` / `ResidentBytes` expose mesh-payload
+  residency, and `SceneNode3D.SetLodResident` / `GetLodResidentBytes` let LOD
+  detail be demoted while retaining the node/model handles.
 
 **Backend notes.** Resource creation stays on the backend's owning thread;
 workers produce CPU-side decoded payloads only. Capability-gate where a backend
@@ -308,7 +335,9 @@ cannot defer uploads.
 residency counters return to baseline after churn (no leak). Current coverage
 includes `g3d_openworld_slice_streaming_hitch_probe`, which emits a `HITCH:`
 line with blocking-vs-async timing and verifies zero-upload-budget gating plus
-resident-byte cache churn.
+resident-byte cache churn. `g3d_openworld_slice_streaming_hitch_native_compressed_probe`
+opts into the same script's GPU lane and records the bounded native-compressed
+backend upload release.
 
 ---
 
@@ -325,9 +354,10 @@ VSCN streaming manifest with `cells[]` entries (`name`, `path`, `center`,
 loads/unloads `.vscn` scene subtrees around the stream center through the
 deterministic `WorldStream3D.update(dt)` load budget.
 Resident VSCN cells now replace the manifest byte estimate with measured scene
-resource residency from authored base meshes, LOD meshes, impostor meshes,
-materials, and resident material textures; unloaded cells still expose the
-manifest `bytes` value for planning and inspection.
+resource residency from authored base meshes, resident LOD meshes, impostor
+meshes, materials, and resident material textures; resident cells remeasure after
+mesh/LOD residency changes, while unloaded cells still expose the manifest
+`bytes` value for planning and inspection.
 `mountTiledTerrain` now parses `tiles[]` manifests with the same metadata shape
 plus optional `width`, `depth`, `scale`, and `heightmap`, drives deterministic
 terrain tile residency around the stream center, instantiates `Terrain3D`
@@ -335,7 +365,10 @@ payloads for resident tiles, applies `viper-heightmap-v1` normalized height
 sidecars through `Terrain3D.SetHeightmap`, and exposes them through
 `WorldStream3D.getResidentTerrainTile(index)`. Resident terrain tiles render
 through `World3D.drawScene` at their manifest-centered world positions using a
-default terrain material. Resident tiles also spawn invisible static
+default terrain material. Full matching edges between adjacent resident tiles
+are stitched in world-height space before LOD meshes are drawn, cached terrain
+LOD chunks are invalidated, and collider/nav sources are rebuilt from the
+stitched height grid. Resident tiles also spawn invisible static
 heightfield-collider entities named
 `<tile>_heightfield_collider` into the owning `World3D`, and unload those
 bodies with tile residency. They also spawn hidden mesh-only
@@ -343,34 +376,40 @@ bodies with tile residency. They also spawn hidden mesh-only
 terrain. `WorldStream3D.update(dt)` now applies a deterministic per-update load
 budget and reports deferred desired payloads through `pendingRequestCount`;
 mount/radius/budget setters still recompute immediately for setup and editor
-inspection. Worker-backed decode/upload, richer authored metadata, and real
-tile-local nav ownership remain future layers.
+inspection. Both cell and terrain manifests now parse authored `material`,
+`layer`/`collisionLayer`, `collisionMask` or nested `collision`, `navArea`,
+`traversalCost`, and optional `sidecar` / `binarySidecar` metadata, expose it
+through typed inspection hooks, and apply layer/mask/enabled data to spawned
+cell roots and generated terrain heightfield colliders. Worker-backed
+decode/upload and real tile-local nav ownership remain future layers.
 
 **Change.**
 
-- Add a terrain tile grid: many `Terrain3D` tiles with shared edges and LOD-seam
-  stitching, streamed via §4; lift the single-heightmap ceiling.
 - Extend scene cells from current `.vscn` subtree load/unload to include nav
   binding keyed to player position via §1/§3/§4.
 - Expand terrain streaming from manifest-driven heightmapped `Terrain3D`
-  payloads and deterministic staged update requests into worker-backed payload
-  decode/upload and LOD seam coordination.
+  payloads, deterministic staged update requests, and stitched adjacent tile
+  edges into worker-backed payload decode/upload.
 - Define the streamed container as a VSCN streaming manifest/extension with
   tile/cell indexing. Optional binary sidecars may hold payload data referenced
   by the VSCN manifest, but do not introduce a new general scene format. Add a
   bake hook ViperIDE targets.
-- Expand per-tile collider/nav binding with authored material/physics/nav-area
-  metadata once the streaming manifest grows a bake/export path.
+- Expand per-tile collider/nav binding from parsed authored metadata into real
+  tile-local nav ownership once the bake/export path needs it.
 
 **Tests.** Cell stream in/out across boundaries, manifest-driven terrain tile
 payload residency, height sidecar loading, heightfield collider body residency,
-rendered terrain-tile submission, and shared-edge seam sampling are covered in
+rendered terrain-tile submission, streamed material/collision/nav metadata
+inspection, stitched LOD-seam repair, a 9600-unit / >4 km2 multi-tile proof
+beyond the single-heightmap cap, and a named all-quadrant traversal hitch/memory
+proof are covered in
 `test_rt_game3d`; the same unit lane now asserts staged stream updates and
 `pendingRequestCount` while a desired terrain tile waits behind the per-frame
 load budget; `g3d_openworld_slice_long_traversal` repeatedly churns all four
-quadrants with deterministic replay; `g3d_openworld_slice_probe` verifies the
-world-scoped nav bake includes streamed terrain. Remaining Phase 5 tests are
-worker-backed async traversal and richer payload metadata.
+quadrants with deterministic replay and records max visit time / max resident
+bytes; `g3d_openworld_slice_probe` verifies the world-scoped nav bake includes
+streamed terrain. Remaining Phase 5 depth is real tile-local nav ownership and
+bake/export tooling.
 
 ---
 
@@ -378,25 +417,32 @@ worker-backed async traversal and richer payload metadata.
 
 **Current facts.** `SetFrustumCulling` is frustum-only. `SetOcclusionCulling`
 now enables frustum rejection plus a conservative CPU coverage/depth grid over
-front-to-back sorted opaque draws; GPU occlusion-query / Hi-Z / portal-PVS
-acceleration is still pending. Per-node discrete LOD exists, and now has
+Scene3D BVH-selected opaque draw candidates before Canvas3D sorting, with raw
+Canvas3D draws retaining the sorted-queue fallback. Scene3D now also supports
+authored interior visibility zones and portal/PVS links that skip drawables in
+unreachable zones; the open-world slice records the authored city/forest
+draw/fill-proxy reduction proof. GPU occlusion-query / Hi-Z acceleration is
+still pending. Per-node discrete LOD exists, and now has
 screen-error authored-LOD selection plus generated textured impostor proxies via
 `SceneNode3D.SetAutoLOD` and `SetImpostor`. `Canvas3D.OccludedDrawCount`
-reports the latest visibility skip count.
+reports the latest visibility skip count, and `Canvas3D.OcclusionCandidateCount`
+reports the latest CPU grid workload.
 
 **Change.**
 
-- Implement occlusion culling: software-rasterized depth occluders (baseline) and
-  portal/PVS for interiors, over the §3 index; capability-gate per backend.
-  GPU occlusion queries are optional backend accelerators, not the baseline.
+- Keep extending portal/PVS authoring as interior content grows; the portable
+  software-rasterized depth baseline, index-fed candidate selection, authored
+  zone/portal PVS, and named city/forest reduction fixture are in place, while
+  GPU occlusion queries remain optional backend accelerators.
 - Add automatic LOD selection for authored LODs (screen-space error) plus
   HLOD/impostor proxies for distant clusters and vegetation. Auto-generating new
   mesh simplification LODs is a later stretch item unless explicitly scoped.
 - Reconcile `SetOcclusionCulling` (CO-8) to select real occlusion culling while
   retaining frustum-only behavior under `SetFrustumCulling`.
 
-**Tests.** Occluded-draw skip counts on a dense fixture; LOD/impostor stability
-vs. full-detail reference within tolerance.
+**Tests.** Occluded-draw skip counts on generated dense fixtures; authored
+city/forest draw/fill-proxy reduction with software final-frame parity;
+LOD/impostor stability vs. full-detail reference within tolerance.
 
 ---
 
@@ -404,26 +450,34 @@ vs. full-detail reference within tolerance.
 
 **Current facts.** Forward fallback budget is `VGFX3D_FORWARD_LIGHT_LIMIT 16`;
 the bounded many-light payload table is `VGFX3D_MAX_LIGHTS 64`; shadow caster
-slots remain `VGFX3D_MAX_SHADOW_LIGHTS 2`
-(`render/rt_canvas3d_internal.h:308-311`). The software backend advertises
+and cascade slots are capped by `VGFX3D_MAX_SHADOW_LIGHTS 4`
+(`render/rt_canvas3d_internal.h`). The software backend advertises
 `BackendSupports("clustered-lighting")` as the correctness baseline and submits
->16 active lights when `Canvas3D.SetClusteredLighting(true)` is enabled. GPU
-backends still report no clustered support until their upload/shader paths land.
+>16 active lights when `Canvas3D.SetClusteredLighting(true)` is enabled. Real
+Metal, D3D11, and OpenGL backend vtables also advertise the bounded 64-light
+GPU upload/shader path; fake test backends with GPU-like names remain
+unsupported. The software backend and real platform GPU vtables with shadow
+hooks advertise `BackendSupports("shadow-csm")`.
 
 **Change.**
 
-- Implement clustered/forward+ light culling (froxel grid; per-cluster light
-  lists) raising effective light count while keeping the existing forward
-  shaders. Software backend gets a correct reference path.
+- Implement clustered/forward+ many-light support raising effective light count
+  while keeping the existing forward shaders. Software backend gets a correct
+  reference path; real GPU backends enable the bounded 64-light payload.
 - Implement cascaded shadow maps for the primary directional light; lift the
   shadow-caster cap where backends allow; honor `Light3D.CastsShadows` (CO-6).
 - Capability-gate to current 16-light forward behavior on unsupported backends.
 
-**Backend notes.** Cluster build is CPU-side and shared; per-backend upload of
-cluster light-index buffers. CSM cascade count is capability-driven.
+**Backend notes.** The many-light payload is CPU-side and shared; per-backend
+upload uses the existing Metal, D3D11, and OpenGL light tables sized to
+`VGFX3D_MAX_LIGHTS`. CSM cascade count is capability-driven; primary-directional
+cascades use contiguous shadow slots plus camera-depth split metadata in
+`vgfx3d_light_params_t`.
 
-**Tests.** >16-light correctness vs. naive forward (within tolerance); CSM
-stability (no acne/peter-panning beyond tolerance); fallback path.
+**Tests.** >16-light correctness/cost vs. the 16-light forward fallback; CSM
+stability (no acne/peter-panning beyond tolerance); fallback path. Current
+evidence: `test_rt_canvas3d`, `test_rt_canvas3d_gpu_paths`, and
+`g3d_openworld_slice_gpu_smoke` with local Metal Release baseline.
 
 ---
 

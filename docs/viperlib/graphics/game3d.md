@@ -153,11 +153,19 @@ the active camera when it crosses that threshold, calls
 `Scene3D.RebaseOrigin()` for scene root subtrees, shifts physics bodies by the
 same delta, shifts the explicit audio listener pose, and rebases world-owned
 effect-registry particles and decals. The absolute offset accumulates in
-`worldOrigin`. During `World3D.beginFrame`, the flag also enables Canvas3D
+`worldOrigin`. `World3D.rebaseOrigin(dx, dy, dz)` exposes the same cross-system
+boundary for explicit world-streaming or sector handoff code and must be called
+between frames; calling it during an active `beginFrame`/`endScene` pass traps
+before state changes. During `World3D.beginFrame`, the flag also enables Canvas3D
 camera-relative upload for
-double-precision `DrawMesh` model matrices and point/spot light positions, so
-backend float payloads stay near the camera. With the flag off, bounded scenes
-use the unchanged absolute-upload path.
+double-precision `DrawMesh` model matrices, identity-matrix raw meshes built
+through `Mesh3D.AddVertex`, generated `Particles3D` / `Sprite3D` / decal
+billboard vertices, and point/spot light positions, so backend float payloads
+stay near the camera. With the flag off, bounded scenes use the unchanged
+absolute-upload path. The local Game3D CTests include a software final-frame
+parity check between a near-origin scene and the same scene after a 50 km
+floating-origin rebase, plus a byte-identical bounded-scene check after the
+feature is toggled back off.
 
 `World3D.NewWithCamera(title, width, height, fov, near, far)` uses the same
 defaults with custom camera projection values.
@@ -425,6 +433,7 @@ Game3D.World3D.spawn(world, enemy);
 | `LoadModelTemplateAssetAsync(assetPath)` | Return an `AssetHandle3D` for a cached package-aware `ModelTemplate` |
 | `SetResidencyBudget(bytes)` | Bound the shared template cache by estimated resident bytes; negative means unlimited |
 | `GetResidentBytes()` | Report estimated resident bytes held by the shared template cache |
+| `SetResidencyHint(template, priority, distance)` | Bias cached-template eviction so higher-priority and nearer templates survive pressure first |
 | `SetUploadBudget(bytes)` | Bound each async asset commit drain by decoded texture bytes; negative means unlimited |
 | `Evict(handle)` | Drop the cached template entry backing a ready template `AssetHandle3D` |
 | `Preload(path)` | Start a background filesystem template-cache warm |
@@ -500,12 +509,15 @@ multiple queue drains before the final model/template publish. Pair this with
 `Canvas3D.SetTextureUploadBudget`, `TextureUploadBytes`, and
 `TextureUploadPendingBytes` when profiling frames where decoded commits turn
 into backend texture-cache uploads. That Canvas3D budget row-slices
-Pixels-backed 2D material texture and cubemap uploads on Metal/OpenGL/D3D11.
-The backend pending-byte counters return to zero when final row slices drain,
-and the open-world hitch probe verifies resident-byte cache churn returns to
-zero after blocking and async clears. Non-glTF formats still enqueue a
-main-thread load request. The remaining Phase 4 depth is native-compressed
-backend upload slicing.
+Pixels-backed 2D material texture and cubemap uploads on Metal/OpenGL/D3D11 and
+submits native compressed `TextureAsset3D` resident mip blocks on capable GPU
+backends. The backend pending-byte counters return to zero when final row slices
+and native mip submissions drain, and the open-world hitch probe verifies
+resident-byte cache churn returns to zero after blocking and async clears. Its
+GPU opt-in CTest also records native compressed upload pressure; the local
+macOS/Metal lane uses ASTC and reports `native_zero_pending_bytes=16` followed
+by `native_upload_bytes=16` once a positive texture-upload budget is restored.
+Non-glTF formats still enqueue a main-thread load request.
 
 `ClearCache()` advances the template-cache generation. Any `Preload` /
 `PreloadAsset` job that was already in flight may still finish, but it publishes
@@ -514,14 +526,17 @@ fresh cache generation.
 
 `SetResidencyBudget(bytes)` applies to the shared `ModelTemplate` cache. The
 budget uses a conservative CPU/GPU-resource estimate that includes mesh buffers,
-model metadata, and decoded material texture pixels, evicts least-recently-used
-non-loading entries, and treats a negative value as unlimited. A budget of `0`
+model metadata, and decoded material texture pixels, treats a negative value as
+unlimited, and considers only non-loading entries for eviction. A budget of `0`
 keeps returned templates alive for callers that hold them, but prevents them
-from remaining in the shared cache. `GetResidentBytes()` returns the same cache
-counter, so tests and tooling can assert that blocking and async load/clear churn
-returns resident template bytes to zero. `Evict(handle)` is explicit cache
-eviction for ready template handles; entity handles are accepted as a stable
-no-op.
+from remaining in the shared cache. `SetResidencyHint(template, priority,
+distance)` annotates cached templates for streaming policy: higher priority
+survives pressure before lower priority, and nearer templates survive farther
+templates when priority ties; unhinted templates keep the previous LRU behavior.
+`GetResidentBytes()` returns the same cache counter, so tests and tooling can
+assert that blocking and async load/clear churn returns resident template bytes
+to zero. `Evict(handle)` is explicit cache eviction for ready template handles;
+entity handles are accepted as a stable no-op.
 
 ---
 
@@ -557,7 +572,7 @@ terrain manifest with a `tiles` array using the same `name`, `path`, `center`,
 `heightmap` for the `Terrain3D` payload:
 
 ```json
-{"tiles":[{"name":"terrain_00","path":"terrain/terrain_00.tile","heightmap":"terrain/terrain_00.height","center":[0,0,0],"radius":128,"bytes":262144,"width":129,"depth":129,"scale":[4,32,4]}]}
+{"tiles":[{"name":"terrain_00","path":"terrain/terrain_00.tile","heightmap":"terrain/terrain_00.height","center":[0,0,0],"radius":128,"bytes":262144,"width":129,"depth":129,"scale":[4,32,4],"material":"grass","collision":{"enabled":true,"layer":1,"mask":-1},"navArea":"meadow","traversalCost":1.0,"sidecar":"terrain/terrain_00.bin"}]}
 ```
 
 Terrain and heightmap paths are resolved relative to the manifest and terrain
@@ -572,15 +587,35 @@ owns an invisible `*_heightfield_collider` entity
 with a static `Collider3D.NewHeightfield` body, so physics residency follows
 terrain residency and unloads with the tile. Resident tiles also spawn hidden
 mesh-only `*_navmesh_source` nodes so `World3D.bakeNavMesh` includes streamed
-terrain through the existing scene bake path.
+terrain through the existing scene bake path. When two resident terrain tiles
+share a full manifest edge, `WorldStream3D` stitches the adjacent border samples
+in world-height space, invalidates cached terrain LOD meshes, and rebuilds the
+tile collider/nav sources from the stitched height grid. This keeps the
+single-`Terrain3D.New` 4096-sample cap intact while allowing larger streamed
+worlds to be composed from multiple tiles.
+
+Both `cells[]` and `tiles[]` may carry authored metadata for runtime/editor
+handoff: `material` names the authored surface/material, `layer` or
+`collisionLayer` selects a Game3D layer bit, `collisionMask` or nested
+`collision.mask` selects the collision mask, nested `collision.enabled=false`
+suppresses generated terrain heightfield colliders, `navArea` and
+`traversalCost` describe navigation semantics, and `sidecar` / `binarySidecar`
+points at optional binary metadata resolved relative to the manifest. Cell
+layer/mask metadata is applied to the spawned root entity; terrain collision
+metadata is applied to generated heightfield bodies. The metadata is also
+available through typed `getCell*` and `getTerrainTile*` inspection methods.
+
 `getResidentTerrainTile(index)` returns the nth currently resident payload or
 `null`. The telemetry properties (`residentCellCount`,
 `residentTerrainTileCount`, `pendingRequestCount`, and `residentBytes`) reflect
 resident cell payloads plus manifest-backed terrain tile residency. Loaded VSCN
 cells are measured from their authored scene resources, including base meshes,
-LOD meshes, impostor meshes, materials, and resident material textures; unloaded
-cells continue to report the manifest `bytes` estimate for planning and editor
-inspection. `update(dt)` advances a deterministic per-frame load budget; when
+resident LOD meshes, impostor meshes, materials, and resident material textures.
+`Mesh3D.Resident` / `SceneNode3D.SetLodResident` changes are remeasured on
+subsequent `update(dt)` calls so a cell can shed mesh detail without unloading
+its whole scene subtree; unloaded cells continue to report the manifest `bytes`
+estimate for planning and editor inspection. `update(dt)` advances a
+deterministic per-frame load budget; when
 the stream center jumps across multiple desired cell/tile payloads, stale
 payloads unload immediately, one or more new payloads are admitted by the frame
 budget, and
@@ -615,8 +650,9 @@ compares the software final frame to the committed
 fixed-step sequence to prove deterministic replay.
 `streaming_hitch_probe.zia` records blocking-vs-async template load timing,
 proves a zero upload budget keeps positive-cost async commit work pending until
-the budget is restored, and checks `Assets3D.GetResidentBytes()` returns to zero
-after cache churn.
+the budget is restored, checks `Assets3D.GetResidentBytes()` returns to zero
+after cache churn, and in its native-compressed CTest lane proves backend
+texture-upload budget telemetry on a capable GPU backend.
 
 ---
 
@@ -924,7 +960,7 @@ The Game3D runtime is covered by:
 
 | Test | Coverage |
 |------|----------|
-| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, destroyed-handle diagnostics, shared-body rejection, collision-event clearing, native callback loops, fixed-loop accumulator/spiral-guard behavior, overlay hooks, final capture, packaged glTF hierarchy loading through `Assets3D.LoadModelAsset`, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
+| `test_rt_game3d` | C runtime contracts for constants, masks, input, world defaults, spawn/despawn, destroyed-handle diagnostics, shared-body rejection, collision-event clearing, native callback loops, fixed-loop accumulator/spiral-guard behavior, overlay hooks, final capture, packaged glTF hierarchy loading through `Assets3D.LoadModelAsset`, synthetic controller input, orbit/follow late update, first-person character movement, material presets, prefabs, lighting, quality, environment, post-FX, debug helpers, streamed terrain metadata inspection and LOD seam stitching beyond the single-heightmap cap, Animator3D root motion/events, Sound3D helpers, and Effects3D presets/expiry |
 | `g3d_test_game3d_world_probe` | Zia construction, default subsystems, layer masks, entity spawn/find/despawn, direct `Entity3D.FromNode` subtree wrapping, synthetic `tick`, clamped `stepSimulation`, resize/aspect, manual frame path, final capture, and destroy |
 | `g3d_test_game3d_runframes_probe` | Zia deterministic `runFramesOnly`, dt/elapsed/frame accounting, and final capture |
 | `g3d_test_game3d_runframes_callback_reject` | Interpreted Zia callback rejection diagnostic for native callback-loop APIs |
@@ -950,11 +986,14 @@ The Game3D runtime is covered by:
 | `g3d_openworld_slice_perf_probe` | Open-world slice deterministic software frame-loop perf probe; emits setup, elapsed, average-frame, FPS, draw, visibility, entity, body, and stream residency metrics |
 | `g3d_openworld_slice_perf_harness` | Reusable CTest perf harness wrapper that runs `perf_probe.zia`, parses the `PERF:` metrics, validates required counters, and emits a stable `HARNESS:` summary |
 | `g3d_openworld_slice_streaming_hitch_probe` | Phase 4 async asset probe that records blocking-vs-async load timing, verifies zero-upload-budget pending behavior, releases work under a positive budget, and checks resident bytes return to zero |
-| `g3d_openworld_slice_long_traversal` | Open-world slice repeated all-quadrant stream churn with bounded residency, terrain collider checks, render telemetry, and deterministic replay |
-| `g3d_openworld_slice_gpu_smoke` | Capability-gated platform GPU backend smoke for the open-world slice, including a degenerate-basis normal-map robustness pass; reports `SKIP` when the requested GPU backend is unavailable |
+| `g3d_openworld_slice_streaming_hitch_native_compressed_probe` | GPU opt-in run of the same hitch probe that binds native compressed texture content, verifies zero texture-upload budget leaves backend bytes pending, then records budgeted native upload bytes once released |
+| `g3d_openworld_slice_long_traversal` | Open-world slice repeated all-quadrant stream churn with bounded residency, zero pending requests after settled visits, traversal hitch/memory/seam telemetry, terrain collider checks, render telemetry, and deterministic replay |
+| `g3d_openworld_slice_visibility_dense_probe` | Authored dense city/forest visibility fixture that records PVS draw-call/fill-proxy reduction and compares optimized software pixels against the no-PVS baseline |
+| `g3d_openworld_slice_gpu_smoke` | Capability-gated platform GPU backend smoke for the open-world slice, including a degenerate-basis normal-map robustness pass, 24-light clustered/forward+ draw, and 3-cascade primary directional CSM fixture; reports `SKIP` when the requested GPU backend is unavailable |
 | `g3d_openworld_slice_package_dry_run` | Open-world slice `viper.project` asset packaging layout |
 | `g3d_3dnext2_surface_probe` | Phase-0 3D next-level surface probe covering worker-backed ordered `Viper.Threads.Parallel` map output and `World3D.runFramesOnly` worker-count replay parity |
 | `test_rt_g3d_commit_queue` | Internal Graphics3D main-thread commit queue FIFO/budgeted drain, worker-enqueue/main-thread-commit behavior, and worker-drain rejection |
+| `scripts/g3d_tsan_concurrency_lane.sh` | Focused ThreadSanitizer lane for the worker pool, ordered map/reduce, runtime concurrency stress, asset-worker decode paths, Game3D worker parity, open-world streaming hitch probe, and the Graphics3D commit queue |
 | `g3d_game3d_showcase` | Full-stack sample smoke, software final-frame structural/HUD assertion, asset/audio/VFX/camera/physics/animation integration, and deterministic replay |
 | `g3d_game3d_bowling_setup` | Bowling setup migration smoke and deterministic replay |
 

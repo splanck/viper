@@ -6,7 +6,24 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/anim/rt_iksolver3d.c
-// Purpose: IKSolver3D — two-bone, look-at, and FABRIK pose constraints.
+// Purpose: IKSolver3D — two-bone, look-at, and FABRIK inverse-kinematics pose
+//   constraints applied over a Skeleton3D's local/global bone matrices.
+//
+// Key invariants:
+//   - Chains have at most RT_IK_SOLVER3D_MAX_CHAIN (32) bones and must form a
+//     strict parent -> child path (validated by ik3d_chain_is_parented).
+//   - FABRIK runs at most RT_IK_SOLVER3D_FABRIK_ITERS (12) iterations or until
+//     the end effector is within 1e-4 of the target.
+//   - Bone transforms are row-major 4x4 float matrices stored 16-per-bone;
+//     globals are rebuilt from locals after every positional edit.
+//   - `weight` in [0,1] blends the solved pose against the input pose; the
+//     solver retains its Skeleton3D and freezes it (skeleton->frozen = 1).
+//
+// Ownership/Lifetime:
+//   - IKSolver3D is GC-managed; it owns two heap pose buffers (solved_locals /
+//     solved_globals) and a retained Skeleton3D, all released by the finalizer.
+//
+// Links: rt_iksolver3d.h, rt_skeleton3d_internal.h (bone/bind-pose layout)
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,12 +48,16 @@
 #define RT_IK_SOLVER3D_MAX_CHAIN 32
 #define RT_IK_SOLVER3D_FABRIK_ITERS 12
 
+/// @brief Which IK algorithm a solver runs (two-bone analytic, look-at, FABRIK).
 typedef enum {
     RT_IK_SOLVER3D_TWO_BONE = 1,
     RT_IK_SOLVER3D_LOOK_AT = 2,
     RT_IK_SOLVER3D_FABRIK = 3,
 } rt_ik_solver3d_kind;
 
+/// @brief IKSolver3D state: the retained skeleton, the bone chain, the solve
+///        target/pole/ground-normal goals, the blend weight, and the owned
+///        local/global pose buffers the solve writes into.
 typedef struct {
     void *vptr;
     rt_skeleton3d *skeleton;
@@ -53,14 +74,17 @@ typedef struct {
     float *solved_globals;
 } rt_ik_solver3d;
 
+/// @brief Validate @p obj as an IKSolver3D handle and return its typed pointer (NULL on mismatch).
 static rt_ik_solver3d *ik_solver3d_checked(void *obj) {
     return (rt_ik_solver3d *)rt_g3d_checked_or_null(obj, RT_G3D_IKSOLVER3D_CLASS_ID);
 }
 
+/// @brief Validate @p obj as a Skeleton3D handle and return its typed pointer (NULL on mismatch).
 static rt_skeleton3d *ik_solver3d_skeleton_checked(void *obj) {
     return (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
 }
 
+/// @brief Release a GC reference held in @p *slot if this is its last drop, then NULL it.
 static void ik_solver3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -69,6 +93,7 @@ static void ik_solver3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Narrow a double to float, returning @p fallback for NaN/inf and saturating at ±FLT_MAX.
 static float ik3d_finite_float(double value, float fallback) {
     if (!isfinite(value))
         return fallback;
@@ -79,6 +104,7 @@ static float ik3d_finite_float(double value, float fallback) {
     return (float)value;
 }
 
+/// @brief Clamp a value to the [0, 1] float range, mapping NaN/inf to 0.
 static float ik3d_clamp01(double value) {
     if (!isfinite(value))
         return 0.0f;
@@ -89,21 +115,25 @@ static float ik3d_clamp01(double value) {
     return (float)value;
 }
 
+/// @brief Dot product of two 3-vectors.
 static float ik3d_dot3(const float *a, const float *b) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
+/// @brief Cross product out = a x b for 3-vectors.
 static void ik3d_cross3(const float *a, const float *b, float *out) {
     out[0] = a[1] * b[2] - a[2] * b[1];
     out[1] = a[2] * b[0] - a[0] * b[2];
     out[2] = a[0] * b[1] - a[1] * b[0];
 }
 
+/// @brief Euclidean length of a 3-vector (0 if the result is non-finite).
 static float ik3d_len3(const float *v) {
     float len = sqrtf(ik3d_dot3(v, v));
     return isfinite(len) ? len : 0.0f;
 }
 
+/// @brief Normalize a 3-vector in place; returns 0 (leaving it unchanged) if degenerate (len <= 1e-6).
 static int ik3d_normalize3(float *v) {
     float len = ik3d_len3(v);
     if (len <= 1e-6f)
@@ -114,11 +144,13 @@ static int ik3d_normalize3(float *v) {
     return 1;
 }
 
+/// @brief Distance between two 3-space points.
 static float ik3d_distance3(const float *a, const float *b) {
     float d[3] = {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
     return ik3d_len3(d);
 }
 
+/// @brief Row-major 4x4 matrix product out = a * b (out must not alias a or b).
 static void ik3d_mat4f_mul(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
@@ -128,6 +160,10 @@ static void ik3d_mat4f_mul(const float *a, const float *b, float *out) {
     }
 }
 
+/// @brief Accumulate each bone's global matrix as parent_global * local.
+/// @details Bones are assumed topologically ordered (parent index < child index),
+///          so a single forward pass suffices; roots (parent < 0) copy their local
+///          straight through. @p bone_count is clamped to the skeleton's bone count.
 static void ik3d_build_globals(const rt_skeleton3d *skeleton,
                                const float *locals,
                                float *globals,
@@ -145,6 +181,7 @@ static void ik3d_build_globals(const rt_skeleton3d *skeleton,
     }
 }
 
+/// @brief Read a bone's world-space position (the translation column of its global matrix).
 static void ik3d_global_position(const float *globals, int32_t bone, float *out) {
     const float *m = &globals[bone * 16];
     out[0] = m[3];
@@ -152,6 +189,11 @@ static void ik3d_global_position(const float *globals, int32_t bone, float *out)
     out[2] = m[11];
 }
 
+/// @brief Express a world point in @p bone's parent-local frame.
+/// @details Projects the world delta onto each parent axis and divides by that axis'
+///          squared length, so the result is correct even when the parent matrix carries
+///          non-unit scale. Degenerate (near-zero) axes yield a 0 component. Roots with no
+///          parent pass the world point through unchanged.
 static void ik3d_parent_local_point(const rt_skeleton3d *skeleton,
                                     const float *globals,
                                     int32_t bone,
@@ -175,6 +217,9 @@ static void ik3d_parent_local_point(const rt_skeleton3d *skeleton,
     out_local[2] = zz > 1e-8f ? ik3d_dot3(d, axis_z) / zz : 0.0f;
 }
 
+/// @brief Move @p bone to the given world position by rewriting its local translation.
+/// @details Converts @p world into the bone's parent-local frame, writes it into the
+///          bone's local matrix, then rebuilds globals so downstream bones see the move.
 static void ik3d_set_global_position(rt_ik_solver3d *solver,
                                      float *locals,
                                      float *globals,
@@ -191,6 +236,7 @@ static void ik3d_set_global_position(rt_ik_solver3d *solver,
     ik3d_build_globals(solver->skeleton, locals, globals, bone_count);
 }
 
+/// @brief Write the identity quaternion (0, 0, 0, 1) into @p out.
 static void ik3d_quat_identity(float *out) {
     out[0] = 0.0f;
     out[1] = 0.0f;
@@ -198,6 +244,7 @@ static void ik3d_quat_identity(float *out) {
     out[3] = 1.0f;
 }
 
+/// @brief Normalize a quaternion in place, falling back to identity if degenerate.
 static void ik3d_quat_normalize(float *q) {
     float len = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
     if (!isfinite(len) || len <= 1e-8f) {
@@ -208,6 +255,11 @@ static void ik3d_quat_normalize(float *q) {
         q[i] /= len;
 }
 
+/// @brief Convert a 3x3 rotation (given row by row) into a quaternion via Shepperd's method.
+/// @details Selects the branch with the largest pivot (trace, or the dominant diagonal
+///          term) to keep the divisor well away from zero, avoiding the catastrophic
+///          cancellation a naive trace-only formula suffers when the trace is small or
+///          negative. The result is normalized before returning.
 static void ik3d_quat_from_matrix_rows(float r00,
                                        float r01,
                                        float r02,
@@ -250,6 +302,10 @@ static void ik3d_quat_from_matrix_rows(float r00,
     ik3d_quat_normalize(out);
 }
 
+/// @brief Spherical linear interpolation between quaternions @p a and @p b by @p t.
+/// @details Negates @p b when the dot is negative so interpolation takes the short arc.
+///          For nearly-parallel inputs (dot > 0.9995) it falls back to normalized lerp to
+///          avoid the division-by-near-zero in the sin(theta) denominator.
 static void ik3d_quat_slerp(const float *a, const float *b, float t, float *out) {
     float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
     float nb[4] = {b[0], b[1], b[2], b[3]};
@@ -276,6 +332,7 @@ static void ik3d_quat_slerp(const float *a, const float *b, float t, float *out)
     ik3d_quat_normalize(out);
 }
 
+/// @brief Quaternion conjugate (negated vector part) — the inverse for a unit quaternion.
 static void ik3d_quat_conjugate(const float *q, float *out) {
     out[0] = -q[0];
     out[1] = -q[1];
@@ -296,6 +353,10 @@ static void ik3d_quat_mul(const float *a, const float *b, float *out) {
     ik3d_quat_normalize(out);
 }
 
+/// @brief Decompose a row-major 4x4 matrix into translation, rotation quaternion, and scale.
+/// @details Scale is the length of each basis column; columns are divided out before
+///          extracting the rotation so shear-free TRS matrices round-trip. Non-finite or
+///          near-zero scales default to 1 to keep the rotation extraction well-defined.
 static void ik3d_decompose_trs(const float *m, float *out_pos, float *out_rot, float *out_scl) {
     float sx = sqrtf(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
     float sy = sqrtf(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
@@ -318,6 +379,7 @@ static void ik3d_decompose_trs(const float *m, float *out_pos, float *out_rot, f
                                out_rot);
 }
 
+/// @brief Compose translation, a (unit) rotation quaternion, and scale into a row-major 4x4 matrix.
 static void ik3d_build_trs(const float *pos, const float *quat, const float *scl, float *out) {
     float x = quat[0], y = quat[1], z = quat[2], w = quat[3];
     float x2 = x + x, y2 = y + y, z2 = z + z;
@@ -340,6 +402,9 @@ static void ik3d_build_trs(const float *pos, const float *quat, const float *scl
     out[15] = 1.0f;
 }
 
+/// @brief Validate that @p chain is a strict parent -> child path of in-range bone indices.
+/// @details Each entry must be a valid bone, and every entry after the first must have the
+///          previous entry as its direct parent — the precondition every solver relies on.
 static int ik3d_chain_is_parented(const rt_skeleton3d *skeleton, const int32_t *chain, int32_t count) {
     if (!skeleton || !chain || count <= 0)
         return 0;
@@ -352,6 +417,7 @@ static int ik3d_chain_is_parented(const rt_skeleton3d *skeleton, const int32_t *
     return 1;
 }
 
+/// @brief GC finalizer: release the retained skeleton and free both pose buffers.
 static void ik_solver3d_finalize(void *obj) {
     rt_ik_solver3d *solver = (rt_ik_solver3d *)obj;
     if (!solver)
@@ -363,6 +429,11 @@ static void ik_solver3d_finalize(void *obj) {
     solver->solved_globals = NULL;
 }
 
+/// @brief Shared constructor for all solver kinds.
+/// @details Validates the chain, retains and freezes the skeleton, allocates the
+///          local/global pose buffers seeded from the bind pose, captures the end
+///          effector's bind position as the initial target, then runs one solve.
+/// @return Opaque IKSolver3D handle, or NULL when validation or allocation fails.
 static void *ik_solver3d_new(rt_skeleton3d *skeleton,
                              rt_ik_solver3d_kind kind,
                              const int32_t *chain,
@@ -411,6 +482,7 @@ static void *ik_solver3d_new(rt_skeleton3d *skeleton,
     return solver;
 }
 
+/// @brief Create a two-bone IK solver over a root -> mid -> end bone chain (NULL on bad input).
 void *rt_ik_solver3d_two_bone(void *skeleton_obj, int64_t root, int64_t mid, int64_t end) {
     rt_skeleton3d *skeleton = ik_solver3d_skeleton_checked(skeleton_obj);
     int32_t chain[3];
@@ -425,6 +497,7 @@ void *rt_ik_solver3d_two_bone(void *skeleton_obj, int64_t root, int64_t mid, int
     return ik_solver3d_new(skeleton, RT_IK_SOLVER3D_TWO_BONE, chain, 3);
 }
 
+/// @brief Create a single-bone look-at/aim solver (NULL on bad input).
 void *rt_ik_solver3d_look_at(void *skeleton_obj, int64_t bone) {
     rt_skeleton3d *skeleton = ik_solver3d_skeleton_checked(skeleton_obj);
     int32_t chain[1];
@@ -434,6 +507,7 @@ void *rt_ik_solver3d_look_at(void *skeleton_obj, int64_t bone) {
     return ik_solver3d_new(skeleton, RT_IK_SOLVER3D_LOOK_AT, chain, 1);
 }
 
+/// @brief Create a FABRIK solver from a Seq[Integer] bone chain (2..32 bones; NULL otherwise).
 void *rt_ik_solver3d_fabrik(void *skeleton_obj, void *chain_obj) {
     rt_skeleton3d *skeleton = ik_solver3d_skeleton_checked(skeleton_obj);
     int64_t len;
@@ -452,6 +526,7 @@ void *rt_ik_solver3d_fabrik(void *skeleton_obj, void *chain_obj) {
     return ik_solver3d_new(skeleton, RT_IK_SOLVER3D_FABRIK, chain, (int32_t)len);
 }
 
+/// @brief Set the world-space target the chain reaches toward (non-Vec3 ignored).
 void rt_ik_solver3d_set_target(void *obj, void *target) {
     rt_ik_solver3d *solver = ik_solver3d_checked(obj);
     if (!solver || !rt_g3d_is_vec3(target))
@@ -461,12 +536,14 @@ void rt_ik_solver3d_set_target(void *obj, void *target) {
     solver->target[2] = ik3d_finite_float(rt_vec3_z(target), 0.0f);
 }
 
+/// @brief Set the solve blend weight, clamped to [0, 1] (0 = pass-through, 1 = full IK).
 void rt_ik_solver3d_set_weight(void *obj, double weight) {
     rt_ik_solver3d *solver = ik_solver3d_checked(obj);
     if (solver)
         solver->weight = ik3d_clamp01(weight);
 }
 
+/// @brief Set a world-space pole target that swings a two-bone chain's mid joint (non-Vec3 ignored).
 void rt_ik_solver3d_set_pole(void *obj, void *pole) {
     rt_ik_solver3d *solver = ik_solver3d_checked(obj);
     if (!solver || !rt_g3d_is_vec3(pole))
@@ -477,6 +554,8 @@ void rt_ik_solver3d_set_pole(void *obj, void *pole) {
     solver->has_pole = 1;
 }
 
+/// @brief Set a ground normal that aligns the end (foot) bone's sole after the position solve.
+/// @details Defaults a missing Y component to 1 (up). Non-Vec3 normals are ignored.
 void rt_ik_solver3d_set_ground_normal(void *obj, void *normal) {
     rt_ik_solver3d *solver = ik_solver3d_checked(obj);
     if (!solver || !rt_g3d_is_vec3(normal))
@@ -546,6 +625,13 @@ static void ik3d_apply_foot_orientation(rt_ik_solver3d *solver,
     ik3d_build_globals(solver->skeleton, locals, globals, bone_count);
 }
 
+/// @brief Solve a multi-bone chain toward the target using FABRIK, then blend by weight.
+/// @details If the target is out of reach (distance >= total chain length) the chain is
+///          straightened toward it; otherwise FABRIK alternates backward (from the target)
+///          and forward (from the fixed root) reaching passes until convergence. For a
+///          three-bone chain with a pole target the mid joint is swung onto the pole plane,
+///          the solved positions are blended against the originals by @p solver->weight, and
+///          a ground normal (if set) finally orients the foot bone.
 static int ik3d_apply_chain(rt_ik_solver3d *solver,
                             float *locals,
                             float *globals,
@@ -660,6 +746,10 @@ static int ik3d_apply_chain(rt_ik_solver3d *solver,
     return 1;
 }
 
+/// @brief Solve a single-bone look-at: rotate the bone so its forward axis faces the target.
+/// @details Builds an orthonormal basis (right/up/forward) from the bone-to-target direction,
+///          switching the reference up to world +X when forward is near-vertical to avoid a
+///          degenerate cross product, then slerps from the current local rotation by weight.
 static int ik3d_apply_look_at(rt_ik_solver3d *solver,
                               float *locals,
                               float *globals,
@@ -711,6 +801,10 @@ static int ik3d_apply_look_at(rt_ik_solver3d *solver,
     return 1;
 }
 
+/// @brief Apply the solver in place to a controller's local-pose buffer and refresh globals.
+/// @details A weight at/below 1e-6 is a no-op success; @p bone_count is clamped to the
+///          skeleton. Dispatches to the look-at or chain solver by kind. Returns 1 on
+///          success (including the no-op), 0 on invalid arguments.
 int8_t rt_ik_solver3d_apply_to_pose(void *obj, float *locals, float *globals, int32_t bone_count) {
     rt_ik_solver3d *solver = ik_solver3d_checked(obj);
     if (!solver || !solver->skeleton || !locals || !globals || bone_count <= 0)
@@ -725,6 +819,9 @@ int8_t rt_ik_solver3d_apply_to_pose(void *obj, float *locals, float *globals, in
     return (int8_t)ik3d_apply_chain(solver, locals, globals, bone_count);
 }
 
+/// @brief Re-solve against the skeleton bind pose, refreshing the solver's owned pose buffers.
+/// @details Reseeds solved_locals from each bone's bind pose, then applies the solver so the
+///          cached solved_locals/solved_globals reflect the current target/weight settings.
 void rt_ik_solver3d_solve(void *obj) {
     rt_ik_solver3d *solver = ik_solver3d_checked(obj);
     if (!solver || !solver->skeleton || !solver->solved_locals || !solver->solved_globals)
@@ -738,6 +835,7 @@ void rt_ik_solver3d_solve(void *obj) {
     rt_ik_solver3d_apply_to_pose(solver, solver->solved_locals, solver->solved_globals, bone_count);
 }
 
+/// @brief Borrow the Skeleton3D handle retained by this solver (not retained; NULL if invalid).
 void *rt_ik_solver3d_get_skeleton(void *obj) {
     rt_ik_solver3d *solver = ik_solver3d_checked(obj);
     return solver ? solver->skeleton : NULL;

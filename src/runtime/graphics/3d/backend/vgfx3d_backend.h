@@ -54,10 +54,14 @@ typedef struct {
     float alpha;                 /* opacity [0.0=invisible, 1.0=opaque] */
     int8_t unlit;                /* skip lighting if true */
     int8_t disable_depth_test;   /* screen-space overlays bypass depth test/write */
-    const void *texture;         /* Pixels object (diffuse, slot 0) or NULL */
-    const void *normal_map;      /* Pixels (normal map, slot 1) or NULL */
-    const void *specular_map;    /* Pixels (specular map, slot 2) or NULL */
-    const void *emissive_map;    /* Pixels (emissive map, slot 3) or NULL */
+    const void *texture;         /* Pixels fallback (diffuse, slot 0) or NULL */
+    const void *normal_map;      /* Pixels fallback (normal map, slot 1) or NULL */
+    const void *specular_map;    /* Pixels fallback (specular map, slot 2) or NULL */
+    const void *emissive_map;    /* Pixels fallback (emissive map, slot 3) or NULL */
+    void *texture_asset;         /* TextureAsset3D native source (diffuse, slot 0) or NULL */
+    void *normal_map_asset;
+    void *specular_map_asset;
+    void *emissive_map_asset;
     float emissive_color[3];     /* emissive color multiplier */
     float metallic;              /* [0,1] dielectric->metal */
     float roughness;             /* [0,1] smooth->rough */
@@ -77,8 +81,10 @@ typedef struct {
     int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     float texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
-    const void *metallic_roughness_map; /* Pixels (glTF metallic/roughness map) or NULL */
-    const void *ao_map;                 /* Pixels (ambient occlusion map) or NULL */
+    const void *metallic_roughness_map; /* Pixels fallback (glTF metallic/roughness map) or NULL */
+    const void *ao_map;                 /* Pixels fallback (ambient occlusion map) or NULL */
+    void *metallic_roughness_map_asset;
+    void *ao_map_asset;
     const void *env_map;                /* CubeMap3D (environment reflections) or NULL */
     float reflectivity;                 /* [0.0=no reflection, 1.0=mirror] */
     /* Terrain splat mapping (populated by terrain draw path, NULL otherwise) */
@@ -161,12 +167,14 @@ typedef struct {
 ///   optional shadow-map slot index, direction/position/color/intensity/attenuation, and
 ///   spot inner/outer cone cosines.
 typedef struct {
-    int32_t type;         /* 0=directional, 1=point, 2=ambient, 3=spot */
-    int32_t shadow_index; /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
+    int32_t type;                 /* 0=directional, 1=point, 2=ambient, 3=spot */
+    int32_t shadow_index;         /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
+    int32_t shadow_cascade_count; /* >1 means shadow_index is the first cascade slot */
     int32_t casts_shadows;
     float direction[3];
     float position[3];
     float color[3];
+    float shadow_cascade_splits[VGFX3D_MAX_SHADOW_LIGHTS];
     float intensity;
     float attenuation;
     float inner_cos; /* spot: cosine of inner cone angle (full brightness) */
@@ -268,13 +276,17 @@ typedef struct vgfx3d_backend {
     void (*show_gpu_layer)(void *ctx);
     void (*hide_gpu_layer)(void *ctx);
 
-    /* Optional streaming/upload controls. Budget is in CPU image bytes uploaded
-     * to backend texture storage per frame; UINT64_MAX means unlimited. */
+    /* Optional streaming/upload controls. Budget is in texture payload bytes
+     * uploaded to backend storage per frame; UINT64_MAX means unlimited. */
     void (*set_texture_upload_budget)(void *ctx, uint64_t bytes);
     uint64_t (*get_texture_upload_pending_bytes)(void *ctx);
-    /* Optional streaming/upload telemetry. Returns the CPU image bytes uploaded
-     * to backend texture storage during the current frame. NULL = unsupported. */
+    /* Optional streaming/upload telemetry. Returns the texture payload bytes
+     * uploaded to backend storage during the current frame. NULL = unsupported. */
     uint64_t (*get_texture_upload_bytes)(void *ctx);
+    /* Optional native compressed TextureAsset3D capability bits. Return a mask
+     * using RT_CANVAS3D_BACKEND_CAP_BC7 / ASTC / ETC2 when native block upload is
+     * wired and supported by the active device. */
+    int64_t (*get_native_texture_caps)(void *ctx);
 } vgfx3d_backend_t;
 
 /*==========================================================================

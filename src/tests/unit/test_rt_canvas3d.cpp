@@ -28,6 +28,7 @@
 #include "rt_canvas3d.h"
 #include "rt_internal.h"
 #include "rt_morphtarget3d.h"
+#include "rt_particles3d.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
 #include "rt_sprite3d.h"
@@ -1160,12 +1161,18 @@ static void test_textureasset3d_ktx2_material_bridge() {
     EXPECT_EQ(native_block_height, 4);
     EXPECT_EQ(native_block_bytes, 16);
     EXPECT_EQ(native_payload[0], 0x11);
+    EXPECT_EQ(rt_textureasset3d_get_native_format_id(bc7_asset),
+              RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7);
+    EXPECT_TRUE(rt_textureasset3d_get_native_cache_key(bc7_asset) != 0,
+                "compressed KTX2 exposes a native cache key");
     EXPECT_TRUE(rt_textureasset3d_get_native_mip_info(
                     bc7_asset, 1, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr) == 0,
                 "native mip query rejects out-of-range mips");
-    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_texture(mat, bc7_asset); },
-                                     "TextureAsset3D"),
-                "Material3D rejects compressed TextureAsset3D without RGBA8 fallback");
+    rt_material3d_set_texture(mat, bc7_asset);
+    EXPECT_EQ(rt_material3d_get_has_texture(mat), 1);
+    textured = rt_material3d_new_textured(bc7_asset);
+    assert(textured != nullptr);
+    EXPECT_EQ(rt_material3d_get_has_texture(textured), 1);
 
     std::remove(rgba_path);
     std::remove(bc7_path);
@@ -2504,6 +2511,7 @@ static void test_sprite3d_null_safety() {
     rt_sprite3d_set_scale(NULL, 1, 1);
     rt_sprite3d_set_anchor(NULL, 0.5, 0.5);
     rt_sprite3d_set_frame(NULL, 0, 0, 16, 16);
+    rt_sprite3d_rebase_origin(NULL, 1.0, 2.0, 3.0);
     PASS();
 }
 
@@ -2590,6 +2598,8 @@ static int g_tracked_prev_model_count = 0;
 static float g_tracked_prev_model_x[16] = {0.0f};
 static vgfx3d_camera_params_t g_canvas_begin_frame_params = {};
 static vgfx3d_draw_cmd_t g_last_draw_cmd = {};
+static vgfx3d_vertex_t g_last_draw_vertices[16] = {};
+static uint32_t g_last_draw_vertex_count = 0;
 static int32_t g_last_draw_light_count = 0;
 static vgfx3d_light_params_t g_last_draw_lights[VGFX3D_MAX_LIGHTS] = {};
 static int g_backend_resize_calls = 0;
@@ -2684,6 +2694,16 @@ static void tracked_submit_draw(void *,
     }
     if (cmd) {
         g_last_draw_cmd = *cmd;
+        g_last_draw_vertex_count =
+            cmd->vertex_count > (uint32_t)(sizeof(g_last_draw_vertices) /
+                                           sizeof(g_last_draw_vertices[0]))
+                ? (uint32_t)(sizeof(g_last_draw_vertices) / sizeof(g_last_draw_vertices[0]))
+                : cmd->vertex_count;
+        if (cmd->vertices && g_last_draw_vertex_count > 0) {
+            memcpy(g_last_draw_vertices,
+                   cmd->vertices,
+                   (size_t)g_last_draw_vertex_count * sizeof(g_last_draw_vertices[0]));
+        }
         if (cmd->has_prev_model_matrix &&
             g_tracked_prev_model_count < (int)(sizeof(g_tracked_prev_model_x) /
                                                sizeof(g_tracked_prev_model_x[0]))) {
@@ -2942,6 +2962,31 @@ static void test_canvas_clustered_lighting_capability_gate() {
     PASS();
 }
 
+static void test_canvas_platform_gpu_clustered_lighting_capability() {
+    TEST("Canvas3D platform GPU clustered lighting advertises the many-light path");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+
+#if defined(__APPLE__)
+    canvas.backend = &vgfx3d_metal_backend;
+#elif defined(_WIN32)
+    canvas.backend = &vgfx3d_d3d11_backend;
+#elif defined(__linux__)
+    canvas.backend = &vgfx3d_opengl_backend;
+#else
+    canvas.backend = &vgfx3d_software_backend;
+#endif
+
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("clustered-lighting")) == 1,
+                "real platform GPU backend advertises clustered/forward+ lighting");
+    EXPECT_EQ(rt_canvas3d_get_max_active_lights(&canvas), VGFX3D_FORWARD_LIGHT_LIMIT);
+    rt_canvas3d_set_clustered_lighting(&canvas, 1);
+    EXPECT_TRUE(canvas.clustered_lighting == 1,
+                "clustered lighting can be enabled on the real platform backend");
+    EXPECT_EQ(rt_canvas3d_get_max_active_lights(&canvas), VGFX3D_MAX_LIGHTS);
+    PASS();
+}
+
 static void test_canvas_software_clustered_lighting_submits_many_lights() {
     TEST("Canvas3D software clustered lighting submits beyond the forward light cap");
     vgfx3d_backend_t backend = {};
@@ -2998,10 +3043,20 @@ static void test_canvas_shadow_cascades_capability_gate() {
     canvas.backend = &vgfx3d_software_backend;
     canvas.shadow_cascade_count = 1;
 
-    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("shadow-csm")) == 0,
-                "software backend does not advertise cascaded shadows yet");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("shadow-csm")) == 1,
+                "software backend advertises cascaded shadows");
     rt_canvas3d_set_shadow_cascades(&canvas, 0);
     EXPECT_EQ(canvas.shadow_cascade_count, 1);
+    rt_canvas3d_set_shadow_cascades(&canvas, VGFX3D_MAX_SHADOW_LIGHTS + 2);
+    EXPECT_EQ(canvas.shadow_cascade_count, VGFX3D_MAX_SHADOW_LIGHTS);
+
+    vgfx3d_backend_t unsupported = {};
+    unsupported.name = "fake";
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &unsupported;
+    canvas.shadow_cascade_count = 1;
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("shadow-csm")) == 0,
+                "fake backends do not advertise cascaded shadows");
     EXPECT_TRUE(expect_trap_contains(
                     [&] { rt_canvas3d_set_shadow_cascades(&canvas, 2); }, "not supported"),
                 "CSM counts above one trap when the backend lacks support");
@@ -3055,6 +3110,7 @@ static void test_canvas_occlusion_culling_skips_covered_opaque_draws() {
     EXPECT_EQ(rt_canvas3d_get_draw_count(&canvas), covered_draws + 1);
     EXPECT_EQ(g_canvas_submit_draw_calls, 1);
     EXPECT_EQ(rt_canvas3d_get_occluded_draw_count(&canvas), covered_draws);
+    EXPECT_EQ(rt_canvas3d_get_occlusion_candidate_count(&canvas), covered_draws + 1);
     PASS();
 }
 
@@ -3327,6 +3383,120 @@ static void test_canvas_camera_relative_upload_rebases_frame_payloads() {
 
     rt_canvas3d_set_camera_relative_upload(&canvas, 0);
     EXPECT_TRUE(canvas.camera_relative_upload == 0, "Canvas3D internal relative mode disables");
+    free_canvas3d_test_draw_state(&canvas);
+    PASS();
+}
+
+static void test_canvas_camera_relative_upload_rebases_raw_and_generated_vertices() {
+    TEST("Canvas3D camera-relative upload rebases raw and generated vertices");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    constexpr double kBase = 1000000000.0;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 1000.0);
+    void *material = rt_material3d_new();
+    void *raw_mesh = rt_mesh3d_new();
+    void *particles = rt_particles3d_new(4);
+    void *sprite = rt_sprite3d_new(NULL);
+    static const double identity[16] = {
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    };
+
+    backend.name = "software";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 128;
+    canvas.height = 128;
+    rt_canvas3d_set_camera_relative_upload(&canvas, 1);
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(kBase, 0.0, 0.0),
+                        rt_vec3_new(kBase, 0.0, -1.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+
+    rt_mesh3d_add_vertex(raw_mesh, kBase + 4.0, 0.0, -4.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(raw_mesh, kBase + 6.0, 0.0, -4.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(raw_mesh, kBase + 4.0, 2.0, -4.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(raw_mesh, 0, 1, 2);
+
+    g_canvas_submit_draw_calls = 0;
+    g_last_draw_vertex_count = 0;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    memset(g_last_draw_vertices, 0, sizeof(g_last_draw_vertices));
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_mesh_matrix(&canvas, raw_mesh, identity, material);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(g_last_draw_vertex_count, 3);
+    EXPECT_NEAR(g_last_draw_cmd.model_matrix[3], 0.0, 0.0001);
+    EXPECT_NEAR(g_last_draw_vertices[0].pos[0], 4.0, 0.0001);
+    EXPECT_NEAR(g_last_draw_vertices[1].pos[0], 6.0, 0.0001);
+    EXPECT_TRUE(g_last_draw_cmd.geometry_key == NULL,
+                "rebased raw vertex snapshots do not reuse world-space geometry caches");
+
+    rt_particles3d_set_position(particles, kBase + 4.0, 0.0, -4.0);
+    rt_particles3d_set_speed(particles, 0.0, 0.0);
+    rt_particles3d_set_lifetime(particles, 10.0, 10.0);
+    rt_particles3d_set_size(particles, 2.0, 2.0);
+    rt_particles3d_burst(particles, 1);
+
+    g_canvas_submit_draw_calls = 0;
+    g_last_draw_vertex_count = 0;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    memset(g_last_draw_vertices, 0, sizeof(g_last_draw_vertices));
+    rt_canvas3d_begin(&canvas, camera);
+    rt_particles3d_draw(particles, &canvas, camera);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(g_last_draw_vertex_count, 4);
+    EXPECT_NEAR(g_last_draw_cmd.model_matrix[3], 0.0, 0.0001);
+    EXPECT_NEAR(g_last_draw_vertices[0].pos[0], 3.0, 0.0001);
+    EXPECT_NEAR(g_last_draw_vertices[2].pos[0], 5.0, 0.0001);
+
+    rt_sprite3d_set_position(sprite, kBase + 4.0, 0.0, -4.0);
+    rt_sprite3d_set_scale(sprite, 2.0, 2.0);
+
+    g_canvas_submit_draw_calls = 0;
+    g_last_draw_vertex_count = 0;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    memset(g_last_draw_vertices, 0, sizeof(g_last_draw_vertices));
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_sprite3d(&canvas, sprite, camera);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(g_last_draw_vertex_count, 4);
+    EXPECT_NEAR(g_last_draw_cmd.model_matrix[3], 0.0, 0.0001);
+    EXPECT_NEAR(g_last_draw_vertices[0].pos[0], 3.0, 0.0001);
+    EXPECT_NEAR(g_last_draw_vertices[2].pos[0], 5.0, 0.0001);
+
+    rt_sprite3d_set_position(sprite, kBase + 8.0, 0.0, -4.0);
+    rt_sprite3d_rebase_origin(sprite, kBase, 0.0, 0.0);
+    rt_canvas3d_set_camera_relative_upload(&canvas, 0);
+
+    g_canvas_submit_draw_calls = 0;
+    g_last_draw_vertex_count = 0;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    memset(g_last_draw_vertices, 0, sizeof(g_last_draw_vertices));
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_sprite3d(&canvas, sprite, camera);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(g_last_draw_vertex_count, 4);
+    EXPECT_NEAR(g_last_draw_cmd.model_matrix[3], 0.0, 0.0001);
+    EXPECT_NEAR(g_last_draw_vertices[0].pos[0], 7.0, 0.0001);
+    EXPECT_NEAR(g_last_draw_vertices[2].pos[0], 9.0, 0.0001);
+
+    rt_canvas3d_set_camera_relative_upload(&canvas, 0);
     free_canvas3d_test_draw_state(&canvas);
     PASS();
 }
@@ -3823,6 +3993,65 @@ static void test_canvas_material_textureasset_resolves_resident_mip_on_draw() {
     rt_canvas3d_end(&canvas);
     EXPECT_TRUE(g_last_draw_cmd.texture == nullptr,
                 "Draw command omits texture when TextureAsset3D has no resident fallback");
+
+    std::remove(path);
+    PASS();
+}
+
+static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
+    TEST("Canvas3D forwards native TextureAsset3D material slots at draw time");
+    const char *path = "/tmp/viper_textureasset3d_draw_native_bc7_test.ktx2";
+    const uint8_t bc7_level0[] = {
+        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+        0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF0, 0x0F,
+    };
+    rt_string path_s;
+    void *asset;
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_plane(1.0, 1.0);
+    void *mat = rt_material3d_new();
+    void *xf = rt_mat4_identity();
+
+    EXPECT_TRUE(write_test_ktx2(path, 145u, 4u, 4u, bc7_level0, sizeof(bc7_level0)),
+                "draw-time native BC7 fixture written");
+    path_s = rt_string_from_bytes(path, std::strlen(path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+    assert(asset != nullptr && cam != nullptr && mesh != nullptr && mat != nullptr && xf != nullptr);
+
+    rt_material3d_set_texture(mat, asset);
+    EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
+                "native BC7 draw fixture has no Pixels fallback");
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(g_last_draw_cmd.texture == nullptr,
+                "Draw command has no Pixels fallback for native-only TextureAsset3D");
+    EXPECT_TRUE(g_last_draw_cmd.texture_asset == asset,
+                "Draw command forwards native TextureAsset3D source");
+
+    rt_textureasset3d_set_resident_mip_range(asset, 0, 0);
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(g_last_draw_cmd.texture == nullptr && g_last_draw_cmd.texture_asset == nullptr,
+                "Draw command omits native TextureAsset3D when residency is empty");
 
     std::remove(path);
     PASS();
@@ -4823,6 +5052,7 @@ int main() {
     test_canvas_begin2d_uses_render_target_dimensions();
     test_canvas_begin_uses_active_output_aspect_without_mutating_camera();
     test_canvas_camera_relative_upload_rebases_frame_payloads();
+    test_canvas_camera_relative_upload_rebases_raw_and_generated_vertices();
     test_canvas_resize_updates_backend_and_projection_aspect();
     test_canvas_fog_and_shadow_state_sanitize_inputs();
     test_canvas_begin_applies_camera_shake_without_follow();
@@ -4838,6 +5068,7 @@ int main() {
     test_canvas_light_rejects_invalid_inputs();
     test_canvas_default_lighting_and_clear_lights();
     test_canvas_clustered_lighting_capability_gate();
+    test_canvas_platform_gpu_clustered_lighting_capability();
     test_canvas_software_clustered_lighting_submits_many_lights();
     test_canvas_shadow_cascades_capability_gate();
     test_canvas_occlusion_culling_skips_covered_opaque_draws();
@@ -4852,6 +5083,7 @@ int main() {
     test_canvas_boolean_setters_normalize();
     test_canvas_material_shading_model_mapping();
     test_canvas_material_textureasset_resolves_resident_mip_on_draw();
+    test_canvas_material_textureasset_forwards_native_blocks_on_draw();
     test_canvas_draw_mesh_clears_pending_splat_on_failed_draw();
     test_canvas_draw_terrain_rejects_2d_frame();
 
