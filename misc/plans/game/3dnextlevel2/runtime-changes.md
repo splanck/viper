@@ -196,14 +196,16 @@ includes a generated 10k drawable-node grid that verifies BVH shape, transform
 refit, isolated spatial queries narrowing to one candidate, and indexed draw
 culling considering less than 10% of total drawable nodes before falling back to
 the exact frustum test. Physics broadphase remains a separate body-centric
-single-axis sweep-and-prune sorted by min-X each step (`physics/rt_physics3d.c:3691`);
+single-axis sweep-and-prune sorted by min-X each step (`world3d_detect_contacts`);
 the sibling structure is intentional because physics pair generation must cover
 non-render bodies, layer/mask filtering, static-static rejection, trigger state,
 and contact-event identity.
 A per-mesh physics BVH exists (`physics_bvh_*` fields built in `render/rt_mesh3d.c`)
-and now drives raycasts plus mesh/convex-vs-sphere/capsule/box narrow-phase
-candidate pruning. The narrow-phase keeps a full triangle scan fallback if BVH
-construction or traversal cannot complete.
+and now drives raycasts plus mesh-vs-sphere/capsule/box/convex-hull narrow-phase
+candidate pruning. The named `PHYSICS_MESH_BVH_TARGET` fixture covers 16 static
+mesh tiles and builds only the one overlapping tile BVH after the body-centric
+broadphase selects candidates. The narrow-phase keeps a full triangle scan
+fallback if BVH construction or traversal cannot complete.
 
 **Change.**
 
@@ -490,40 +492,46 @@ point index with a normal-agreement guard), seeded each step, friction-cone
 clamped, with restitution applied only on the first frame of contact, a split
 positional correction with a max-correction clamp, and post-solve sleep islands
 (wake propagation across contacts) that freeze settled stacks. A 5-box stack
-rests stably and bit-deterministically. AABB pairs expose bounded multi-point
-contact manifolds, while other (rotated/OBB) shape pairs still report one
-representative point. `SolverIterations` drives the contact and joint velocity
-passes. Mesh-like
-collider pairs against spheres, capsules, and boxes now traverse the per-mesh
-BVH for candidate triangles and fall back to the full scan if the BVH path is
-unavailable. `NewConvexHull` now uses a support-point GJK/EPA path for
-convex-hull-vs-convex-hull and convex-hull-vs-simple pairs, including contained
-primitive contacts. Hinge/rope joints and a `SixDofJoint3D` now
+rests stably and bit-deterministically. AABB pairs and rotated box face contacts
+expose bounded multi-point manifolds, while edge-style box contacts and other
+non-box shape pairs still report one representative point. `SolverIterations`
+drives the contact and joint velocity passes. Mesh-like
+collider pairs against spheres, capsules, boxes, and convex hulls now traverse
+the per-mesh BVH for candidate triangles and fall back to the full scan if the
+BVH path is unavailable. `NewConvexHull` now uses a support-point GJK/EPA path
+for convex-hull-vs-convex-hull and convex-hull-vs-simple pairs, including
+contained primitive contacts, separated-overlapping-AABB simple pairs, and a
+named 32-pair mixed-shape convex target. Hinge/rope joints and a
+`SixDofJoint3D` now
 exist as `Viper.Graphics3D.*` classes with
 `RT_JOINT_HINGE`, `RT_JOINT_ROPE`, and `RT_JOINT_SIXDOF` type codes. SixDof
 linear limits project frame-anchor separation and angular limits project
-relative angular velocity; richer pose-angle semantics remain future scope.
+relative joint-frame pose angles from the creation relative orientation, with
+velocity stops for locked axes and motion pushing past pose limits.
 Dynamic bodies expose manual sleep/wake and idle auto-sleep, and the unit lane
-now includes a sparse 321-body step stress plus contact/event storage growth
-coverage.
+now includes a sparse 321-body step stress, contact/event storage growth
+coverage, and a named 257-body / 32-pile island-batched resting target that
+publishes active island/body/contact telemetry.
 
 **Change.**
 
 - Extend multi-point contact manifolds beyond AABB pairs and add a warm-started
-  sequential-impulse solver so bodies stack/rest.
+  sequential-impulse solver so bodies stack/rest. Axis-aligned and rotated
+  face-contact box pairs now use bounded clipped manifolds.
   Existing raw `Viper.Graphics3D.CollisionEvent3D` contact accessors
   (`ContactCount`, `GetContact`, `GetContactPoint`, `GetContactNormal`,
   `GetContactSeparation`) must return the full manifold; add matching
   lower/camel `Viper.Game3D.Collision3DEvent` convenience accessors.
-- Drive all remaining mesh narrow-phase paths through the per-mesh BVH and/or
-  §3 index; keep the brute-force triangle loop only as a correctness fallback.
-- Add broader analytic/perf coverage around the GJK/EPA convex path, keeping
-  `NewConvexHull` collision shape-accurate without API changes.
-- Broaden SixDof pose-angle semantics/stability coverage; add solver islands +
-  scaled sleeping.
+- Drive mesh narrow-phase paths through the chosen body-centric physics
+  broadphase and then the per-mesh BVH; keep the brute-force triangle loop only
+  as a correctness fallback.
+- Keep the GJK/EPA convex path shape-accurate without API changes; remaining
+  convex work is polish/perf depth beyond the named mixed-shape target.
+- Tune scale-aware sleep thresholds if larger-world tests require it.
 
 **Tests.** Box-stack/pile rest stability; manifold correctness; GJK vs. analytic;
-hinge/rope/6DOF behavior; body-count perf fixture; `runFrames` determinism.
+hinge/rope/6DOF behavior; named island-batched body-count perf fixture;
+`runFrames` determinism.
 
 ---
 

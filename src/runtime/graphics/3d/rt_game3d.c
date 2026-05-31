@@ -7559,6 +7559,8 @@ static rt_string game3d_stream_resolve_manifest_path(rt_string manifest_path, rt
     return result;
 }
 
+/// @brief Resolve a manifest entry's "sidecar" (or fallback "binarySidecar") path against the manifest.
+/// @return Owned resolved path string, or an empty string when neither key is present.
 static rt_string game3d_json_resolved_sidecar_ref(void *entry, rt_string manifest_path) {
     rt_string raw = game3d_json_string_ref(entry, "sidecar");
     if (!raw)
@@ -7570,10 +7572,18 @@ static rt_string game3d_json_resolved_sidecar_ref(void *entry, rt_string manifes
     return resolved;
 }
 
+/// @brief Return @p layer when it is a valid layer index, otherwise @p fallback.
 static int64_t game3d_stream_layer_or_valid(int64_t layer, int64_t fallback) {
     return game3d_valid_layer(layer) ? layer : fallback;
 }
 
+/// @brief Parse collision metadata for a streaming cell/tile from its JSON manifest entry.
+/// @details Reads the collision layer ("layer", with "collisionLayer" and a nested "collision.layer"
+///          taking precedence), the collision mask ("collisionMask" or nested "collision.mask",
+///          sanitized to valid bits), and the enabled flag (defaulting on, overridden by a boolean
+///          "collision" value or nested "collision.enabled"). Every out-pointer is optional; layer
+///          and mask fall back to @p default_layer and all-bits when unspecified, and the matching
+///          has-flag reports whether the manifest actually supplied a value.
 static void game3d_stream_parse_collision_metadata(void *entry,
                                                    int64_t default_layer,
                                                    int64_t *out_layer,
@@ -7621,6 +7631,7 @@ static void game3d_stream_parse_collision_metadata(void *entry,
         *out_has_mask = has_mask;
 }
 
+/// @brief Read a manifest entry's "traversalCost", defaulting to 1.0 and clamping to the range (0, 1e6].
 static double game3d_stream_traversal_cost_or_default(void *entry) {
     double cost = game3d_json_f64_or(entry, "traversalCost", 1.0);
     if (!isfinite(cost) || cost <= 0.0)
@@ -7727,10 +7738,12 @@ static double game3d_stream_terrain_seam_tolerance(const rt_game3d_stream_terrai
     return tol;
 }
 
+/// @brief Finite-aware approximate equality: true when both values are finite and within @p tolerance.
 static int game3d_stream_almost_equal(double a, double b, double tolerance) {
     return isfinite(a) && isfinite(b) && fabs(a - b) <= tolerance;
 }
 
+/// @brief True when two [min,max] ranges match end-to-end within @p tolerance (terrain seam test).
 static int game3d_stream_range_matches(double a_min,
                                        double a_max,
                                        double b_min,

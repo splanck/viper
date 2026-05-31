@@ -7449,6 +7449,36 @@ int64_t rt_world3d_get_ccd_substep_clamped_count(void *w) {
     return 0;
 }
 
+/// @brief Stub for `Physics3DWorld.SolverIterations`.
+int64_t rt_world3d_get_solver_iterations(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.SetSolverIterations`.
+void rt_world3d_set_solver_iterations(void *w, int64_t iterations) {
+    (void)w;
+    (void)iterations;
+}
+
+/// @brief Stub for `Physics3DWorld.LastSolverIslandCount`.
+int64_t rt_world3d_get_last_solver_island_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.LastSolverActiveBodyCount`.
+int64_t rt_world3d_get_last_solver_active_body_count(void *w) {
+    (void)w;
+    return 0;
+}
+
+/// @brief Stub for `Physics3DWorld.LastSolverContactCount`.
+int64_t rt_world3d_get_last_solver_contact_count(void *w) {
+    (void)w;
+    return 0;
+}
+
 /// @brief Set the gravity of the world3d.
 void rt_world3d_set_gravity(void *w, double gx, double gy, double gz) {
     (void)w;

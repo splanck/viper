@@ -853,8 +853,8 @@ The wrapper exposes `phase`, `a`, `b`, `raw`, `isTrigger`, `relativeSpeed`,
 `normalImpulse`, `contactCount`, `point()`, `normal()`, `contactPoint(i)`,
 `contactNormal(i)`, `contactSeparation(i)`, and `other(entity)`.
 `point()` and `normal()` are first-contact convenience methods. Raw physics
-events can expose multiple contact points for AABB pairs; other shapes currently
-carry one representative point. The indexed wrapper methods mirror the raw
+events can expose multiple contact points for AABB and face-contact OBB box pairs;
+other shapes currently carry one representative point. The indexed wrapper methods mirror the raw
 `Graphics3D.CollisionEvent3D` surface so broader manifolds can extend behavior
 without another Game3D API rename.
 `CollisionPhase.Any` iterates enter, stay, and exit records. Optional

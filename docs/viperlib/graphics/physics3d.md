@@ -40,6 +40,9 @@ and joint integration.
 | `LastCCDSubsteps` | Integer | Read | Actual CCD substeps used after applying the runtime cap |
 | `CCDSubstepClampedCount` | Integer | Read | Number of steps whose CCD demand exceeded the cap |
 | `SolverIterations` | Integer | Read | Iterative constraint-solver passes used by `Step()` |
+| `LastSolverIslandCount` | Integer | Read | Max active contact islands scheduled by the most recent `Step()` |
+| `LastSolverActiveBodyCount` | Integer | Read | Max awake dynamic bodies included in contact islands by the most recent `Step()` |
+| `LastSolverContactCount` | Integer | Read | Max non-trigger contacts scheduled through contact islands by the most recent `Step()` |
 
 ### Methods
 
@@ -82,7 +85,8 @@ and joint integration.
 - Collision detection uses a body-centric sweep-and-prune broadphase before shape-specific narrow-phase tests. This is intentionally separate from the render-facing `Scene3D` BVH: physics indexes all collider bodies, including non-render bodies, and applies solver filters such as static-static rejection, layer/mask checks, trigger state, and contact-event identity.
 - The unit lane includes a sparse 321-body step stress that exercises body
   storage growth, broadphase scratch growth, and dynamic integration without
-  producing contacts.
+  producing contacts, plus named island-batch and mesh-BVH body-candidate
+  targets for larger Phase 8 coverage.
 - World queries reuse the physics broadphase/query cache and honor each body's collision scale before running shape tests.
 - `RebaseOrigin(dx, dy, dz)` is the low-level floating-origin hook. It shifts all
   registered body positions, live/previous collision contact points, and
@@ -92,9 +96,12 @@ and joint integration.
   pre-rebase snapshots and query again after the boundary.
 - `Raycast` and `RaycastAll` test collider geometry, not only broadphase bounds: boxes, spheres, capsules, compound leaves, mesh/convex triangles, and heightfields report nearest shape hits. Mesh raycasts build and reuse a per-mesh BVH, and heightfield raycasts adapt their step to the heightfield cell spacing.
 - Mesh colliders use the per-mesh BVH to prune candidate triangles for sphere,
-  capsule, and box contacts, with a full triangle scan retained as a correctness
-  fallback. Convex hulls use support-point GJK/EPA for hull-vs-hull and
-  hull-vs-simple contacts.
+  capsule, box, and convex-hull contacts, with a full triangle scan retained as
+  a correctness fallback. Convex hulls use support-point GJK/EPA for
+  hull-vs-hull, hull-vs-simple, and mesh-triangle contacts. The physics
+  body-centric broadphase feeds mesh candidates first; the `PHYSICS_MESH_BVH_TARGET`
+  fixture covers 16 static mesh tiles while building only the one overlapping
+  tile's per-mesh BVH.
 - Sphere sweeps use analytic tests against primitive spheres and boxes before falling back to adaptive sampling. Capsule sweeps use adaptive sampling, so small-radius sweeps and long capsules can hit thin geometry without a fixed world-unit step floor.
 - `LastCCDRequestedSubsteps`, `LastCCDSubsteps`, and `CCDSubstepClampedCount` are diagnostics for fast-body tuning; clamping is expected when very high velocity would require more substeps than the engine's safety cap.
 - `SolverIterations` defaults to `6` and drives both contact-resolution passes and joint
@@ -161,7 +168,7 @@ Structured per-pair contact snapshot from the most recent world step.
 | `ColliderA` | Object | Read | Leaf collider for body A |
 | `ColliderB` | Object | Read | Leaf collider for body B |
 | `IsTrigger` | Boolean | Read | Pair includes a trigger body |
-| `ContactCount` | Integer | Read | Manifold point count; AABB pairs can expose up to four points, other pairs currently expose one representative point |
+| `ContactCount` | Integer | Read | Manifold point count; AABB and face-contact OBB box pairs can expose up to four clipped points, other pairs currently expose one representative point |
 | `RelativeSpeed` | Double | Read | Relative speed along the contact normal before resolution |
 | `NormalImpulse` | Double | Read | Solver normal impulse (`0` for trigger pairs) |
 
@@ -233,7 +240,9 @@ content; bodies now own a collider instead of baking all shape state directly in
 - `NewHeightfield()` requires a valid `Pixels` object, not just a matching class ID.
 - `NewConvexHull()` treats the mesh vertex cloud as a convex support set.
   Hull-vs-hull and hull-vs-simple pairs use the GJK/EPA simplex narrow phase,
-  including contained primitive contacts.
+  including contained primitive contacts and separated-overlapping-AABB edge
+  cases. The `PHYSICS_CONVEX_GJK_TARGET` fixture covers isolated hull contacts
+  against spheres, capsules, boxes, and hulls.
 - Compound colliders are the preferred way to build richer dynamic bodies from simple children.
 - Heightfield contacts account for signed and non-uniform Y scale when computing sphere penetration depth and normals.
 
@@ -322,11 +331,12 @@ sleeping, and optional CCD.
   the contact point, so off-center hits can generate angular velocity.
 - Contacts are solved by a warm-started sequential-impulse solver: per-manifold-point
   normal and friction impulses are accumulated and carried across frames, so box stacks
-  settle and rest stably rather than jittering or sinking. Settled bodies auto-sleep and
-  freeze as an island; `SolverIterations` raises support quality for tall stacks. Resting
-  contacts apply no restitution (only genuine impacts bounce).
-- AABB primitives remain axis-aligned boxes. Capsule collision honors body orientation; use compound
-  colliders or mesh/convex-hull colliders when you need rotated box geometry.
+  settle and rest stably rather than jittering or sinking. Awake contacts are batched into
+  independent contact islands before the iterative solve; settled bodies auto-sleep and
+  freeze out of those islands. `SolverIterations` raises support quality for tall stacks.
+  Resting contacts apply no restitution (only genuine impacts bounce).
+- Box collision honors body orientation. Axis-aligned and rotated face-contact box pairs publish
+  clipped multi-point manifolds; edge-style box contacts and non-box pairs may still publish one point.
 
 ### Zia Example
 
@@ -497,8 +507,9 @@ move closer than `MaxLength`; the solver only corrects separation beyond it.
 
 Configurable frame-anchor constraint between two `Physics3DBody` instances. By
 default it locks the two frame anchor translations together. `SetLinearLimits`
-allows bounded frame-anchor separation, and `SetAngularLimits` clamps relative
-angular velocity along each world axis.
+allows bounded frame-anchor separation. `SetAngularLimits` clamps relative
+pose angle, in radians, around each joint-frame axis using the bodies' creation
+relative orientation as the zero pose.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics3D.SixDofJoint3D(bodyA, bodyB, frameA, frameB)`
@@ -507,6 +518,9 @@ angular velocity along each world axis.
 
 - `frameA` and `frameB` are `Mat4` values. Their translation components define
   the local anchor points.
+- Angular limits are per-axis pose-angle bounds. Equal min/max values lock that
+  rotary axis; the solver also removes angular velocity that would drive a
+  locked axis or already-limited pose farther out of range.
 - Register with `Physics3DWorld.AddJoint(joint, 4)`.
 
 ### Methods
@@ -514,7 +528,7 @@ angular velocity along each world axis.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetLinearLimits(min, max)` | `Void(Object, Object)` | Set per-axis minimum and maximum anchor separation as `Vec3` values |
-| `SetAngularLimits(min, max)` | `Void(Object, Object)` | Set per-axis relative angular-velocity limits as `Vec3` values |
+| `SetAngularLimits(min, max)` | `Void(Object, Object)` | Set per-axis relative pose-angle limits in radians as `Vec3` values |
 
 ---
 

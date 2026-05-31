@@ -77,7 +77,7 @@ void rt_rope_joint3d_set_max_length(void *joint, double max_length);
 void *rt_sixdof_joint3d_new(void *body_a, void *body_b, void *frame_a, void *frame_b);
 /// @brief Set allowed frame-anchor separation along each local/world axis.
 void rt_sixdof_joint3d_set_linear_limits(void *joint, void *min, void *max);
-/// @brief Set allowed relative angular velocity along each world axis.
+/// @brief Set allowed relative pose angle along each SixDof joint-frame axis.
 void rt_sixdof_joint3d_set_angular_limits(void *joint, void *min, void *max);
 /// @brief Configure a linear motor driving relative velocity (Vec3 per world axis)
 ///   along unlocked axes, bounded by a max-impulse strength.

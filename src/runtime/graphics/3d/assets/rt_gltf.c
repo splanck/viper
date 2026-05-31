@@ -5809,6 +5809,15 @@ static int gltf_preload_pack_morph_pod(rt_gltf_preload_bundle *bundle,
     return 1;
 }
 
+/// @brief Decode a primitive's morph targets and stage them as a morph POD dependency.
+/// @details Parses the primitive's "targets" JSON array; for each entry resolves the optional
+///          POSITION/NORMAL/TANGENT accessor views, copies their per-vertex deltas into a
+///          growing morph-shape list (tagging present channels via GLTF_PRELOAD_MORPH_POD_HAS_*
+///          and recording each target's name and morph weight), then hands the collected shapes
+///          to gltf_preload_pack_morph_pod so gltf_preload_take_decoded_morph can rehydrate them
+///          at load time. A primitive without a "targets" array is a successful no-op.
+/// @return 1 on success or when there is nothing to stage; 0 on allocation/staging failure
+///         (with @p error populated).
 static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                             const char *json,
                                             size_t json_len,
@@ -5965,6 +5974,16 @@ done:
     return ok;
 }
 
+/// @brief Decode one mesh primitive into interleaved vertices + indices and stage it as a mesh POD dependency.
+/// @details Reads the primitive's "attributes" (POSITION required; NORMAL, TEXCOORD_0/1, COLOR_0,
+///          TANGENT, JOINTS_0/1, WEIGHTS_0/1 optional) and "mode" (4=triangle list, 5=strip,
+///          6=fan), resolves each accessor view, and assembles a vgfx3d_vertex_t array. Up to
+///          eight bone influences (JOINTS_0 + JOINTS_1) are merged down to the top four and
+///          renormalized, with out-of-range bone indices dropped. The source topology is
+///          triangulated into a 32-bit index buffer, channel-presence flags are recorded, and the
+///          result is packed via gltf_preload_pack_mesh_pod and then gltf_preload_stage_morph_targets
+///          for any blend shapes. Non-triangle modes and position-less primitives are skipped.
+/// @return 1 on success or skip; 0 on allocation/staging failure (with @p error populated).
 static int gltf_preload_stage_mesh_primitive(
     rt_gltf_preload_bundle *bundle,
     const char *json,

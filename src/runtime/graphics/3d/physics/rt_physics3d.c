@@ -221,6 +221,9 @@ typedef struct {
     int32_t last_ccd_substeps;
     int64_t ccd_substep_clamped_count;
     int32_t solver_iterations;
+    int32_t last_solver_island_count;
+    int32_t last_solver_active_body_count;
+    int32_t last_solver_contact_count;
 } rt_world3d;
 
 struct ph3d_broadphase_entry {
@@ -635,6 +638,12 @@ static void transform_point_from_pose(const rt_collider_pose *pose,
 static void transform_point_to_local(const rt_collider_pose *pose,
                                      const double *world_point,
                                      double *local_point);
+/// @brief Compute scaled half-extents for a posed box collider.
+static void box_scaled_half_extents(void *collider,
+                                    const rt_collider_pose *pose,
+                                    double *half_extents);
+/// @brief Derive the world-space orthonormal axes for a pose rotation.
+static void pose_rotation_axes(const rt_collider_pose *pose, double axes[3][3]);
 /// @brief Sync the body's cached primitive shape from its attached collider's geometry.
 static void body3d_update_shape_cache_from_collider(rt_body3d *body);
 /// @brief Compute the two world-space endpoint positions of a capsule's axis segment.
@@ -646,7 +655,9 @@ static int test_collision(const rt_body3d *a,
                           double *depth,
                           double *point,
                           void **leaf_a_out,
-                          void **leaf_b_out);
+                          void **leaf_b_out,
+                          rt_collider_pose *leaf_a_pose_out,
+                          rt_collider_pose *leaf_b_pose_out);
 static int test_simple_collision(const rt_body3d *a,
                                  const rt_body3d *b,
                                  double *normal,
@@ -1797,6 +1808,371 @@ static void contact3d_expand_aabb_manifold(rt_contact3d *contact, const rt_body3
     p[u] = overlap_max[u];
     p[v] = overlap_max[v];
     contact3d_try_add_manifold_point(contact, p, contact->normal, contact->separation);
+}
+
+#define PH3D_OBB_CLIP_MAX_POINTS 16
+
+typedef struct {
+    double center[3];
+    double axes[3][3];
+    double half_extents[3];
+} ph3d_obb_box;
+
+typedef struct {
+    double point[3];
+    double separation;
+} ph3d_obb_contact_candidate;
+
+/// @brief Build an oriented-bounding-box description (center, world axes, scaled half-extents)
+///        from a box collider and its world pose.
+/// @return 1 if @p collider is a box and the resulting center/extents are finite; 0 otherwise.
+static int ph3d_make_obb_box(void *collider, const rt_collider_pose *pose, ph3d_obb_box *out) {
+    if (!collider || !pose || !out || rt_collider3d_get_type(collider) != RT_COLLIDER3D_TYPE_BOX)
+        return 0;
+    vec3_copy(out->center, pose->position);
+    pose_rotation_axes(pose, out->axes);
+    box_scaled_half_extents(collider, pose, out->half_extents);
+    return ph3d_vec3_all_finite(out->center) && ph3d_vec3_all_finite(out->half_extents);
+}
+
+/// @brief Pick the box local axis whose face normal is most aligned with @p target_normal.
+/// @details Scans the three local axes and selects the one with the largest |dot| against
+///          @p target_normal; the sign chooses which of the two opposing faces points toward it.
+/// @param axis_out Receives the chosen axis index (0..2).
+/// @param sign_out Receives +1/-1 selecting the positive/negative face along that axis.
+/// @param alignment_out Receives the alignment magnitude (|dot|, in [0,1]).
+/// @return 1 if a positively-aligned face was found; 0 if @p box or @p target_normal is NULL.
+static int ph3d_obb_best_face_axis(const ph3d_obb_box *box,
+                                   const double *target_normal,
+                                   int *axis_out,
+                                   double *sign_out,
+                                   double *alignment_out) {
+    double best_alignment = -1.0;
+    int best_axis = 0;
+    double best_sign = 1.0;
+    if (!box || !target_normal)
+        return 0;
+    for (int axis = 0; axis < 3; ++axis) {
+        double d = vec3_dot(target_normal, box->axes[axis]);
+        double a = fabs(d);
+        if (a > best_alignment) {
+            best_alignment = a;
+            best_axis = axis;
+            best_sign = d >= 0.0 ? 1.0 : -1.0;
+        }
+    }
+    if (axis_out)
+        *axis_out = best_axis;
+    if (sign_out)
+        *sign_out = best_sign;
+    if (alignment_out)
+        *alignment_out = best_alignment;
+    return best_alignment > 0.0;
+}
+
+/// @brief Compute the four world-space corner vertices of one OBB face.
+/// @param face_axis Axis (0..2) whose face is selected.
+/// @param face_sign +1/-1 picking the positive/negative face along @p face_axis.
+/// @param vertices Output filled with the face's four corners (wound around the face).
+static void ph3d_obb_face_vertices(const ph3d_obb_box *box,
+                                   int face_axis,
+                                   double face_sign,
+                                   double vertices[4][3]) {
+    int u = (face_axis + 1) % 3;
+    int v = (face_axis + 2) % 3;
+    const double signs[4][2] = {{-1.0, -1.0}, {1.0, -1.0}, {1.0, 1.0}, {-1.0, 1.0}};
+    double face_center[3];
+    for (int i = 0; i < 3; ++i)
+        face_center[i] =
+            box->center[i] + box->axes[face_axis][i] * box->half_extents[face_axis] * face_sign;
+    for (int corner = 0; corner < 4; ++corner) {
+        for (int i = 0; i < 3; ++i) {
+            vertices[corner][i] = face_center[i] +
+                                  box->axes[u][i] * box->half_extents[u] * signs[corner][0] +
+                                  box->axes[v][i] * box->half_extents[v] * signs[corner][1];
+        }
+    }
+}
+
+/// @brief Sutherland-Hodgman clip a convex polygon against one OBB side half-space.
+/// @details Keeps the part of the polygon satisfying `dot(point - origin, axis) <= limit`,
+///          inserting intersection points wherever an edge crosses the plane. Output is capped
+///          at PH3D_OBB_CLIP_MAX_POINTS.
+/// @return Number of vertices written to @p out_points.
+static int ph3d_clip_poly_to_extent(const double in_points[PH3D_OBB_CLIP_MAX_POINTS][3],
+                                    int in_count,
+                                    const double *origin,
+                                    const double *axis,
+                                    double limit,
+                                    double out_points[PH3D_OBB_CLIP_MAX_POINTS][3]) {
+    int out_count = 0;
+    const double eps = 1e-8;
+    if (!origin || !axis || in_count <= 0)
+        return 0;
+    for (int i = 0; i < in_count; ++i) {
+        const double *s = in_points[i];
+        const double *e = in_points[(i + 1) % in_count];
+        double so[3];
+        double eo[3];
+        double edge[3];
+        double ds;
+        double de;
+        int s_inside;
+        int e_inside;
+        vec3_sub(s, origin, so);
+        vec3_sub(e, origin, eo);
+        ds = vec3_dot(so, axis) - limit;
+        de = vec3_dot(eo, axis) - limit;
+        s_inside = ds <= eps;
+        e_inside = de <= eps;
+        vec3_sub(e, s, edge);
+        if (s_inside && e_inside) {
+            if (out_count < PH3D_OBB_CLIP_MAX_POINTS)
+                vec3_copy(out_points[out_count++], e);
+        } else if (s_inside && !e_inside) {
+            double denom = ds - de;
+            double t = fabs(denom) > 1e-12 ? ds / denom : 0.0;
+            double p[3] = {s[0] + edge[0] * t, s[1] + edge[1] * t, s[2] + edge[2] * t};
+            if (out_count < PH3D_OBB_CLIP_MAX_POINTS)
+                vec3_copy(out_points[out_count++], p);
+        } else if (!s_inside && e_inside) {
+            double denom = ds - de;
+            double t = fabs(denom) > 1e-12 ? ds / denom : 0.0;
+            double p[3] = {s[0] + edge[0] * t, s[1] + edge[1] * t, s[2] + edge[2] * t};
+            if (out_count < PH3D_OBB_CLIP_MAX_POINTS)
+                vec3_copy(out_points[out_count++], p);
+            if (out_count < PH3D_OBB_CLIP_MAX_POINTS)
+                vec3_copy(out_points[out_count++], e);
+        }
+    }
+    return out_count;
+}
+
+/// @brief Return 1 if @p candidate already appears in the first @p count entries of @p indices.
+static int ph3d_obb_candidate_exists(const int *indices, int count, int candidate) {
+    for (int i = 0; i < count; ++i) {
+        if (indices[i] == candidate)
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Select the candidate contact point that extremizes one reference-face quadrant.
+/// @details Projects each candidate onto the reference face's two tangent axes and scores it per
+///          @p quadrant (each of the four quadrants favors a different (±u, ±v) corner), appending
+///          the winning, not-yet-chosen index to @p indices. Used to reduce an over-full candidate
+///          set to a well-spread PH3D_MAX_MANIFOLD_POINTS manifold.
+static void ph3d_obb_select_candidate(const ph3d_obb_contact_candidate *candidates,
+                                      int candidate_count,
+                                      const ph3d_obb_box *ref_box,
+                                      int ref_axis,
+                                      const double *ref_face_center,
+                                      int quadrant,
+                                      int *indices,
+                                      int *index_count) {
+    int u = (ref_axis + 1) % 3;
+    int v = (ref_axis + 2) % 3;
+    double best_score = -DBL_MAX;
+    int best_index = -1;
+    for (int i = 0; i < candidate_count; ++i) {
+        double rel[3];
+        double coord_u;
+        double coord_v;
+        double score;
+        vec3_sub(candidates[i].point, ref_face_center, rel);
+        coord_u = vec3_dot(rel, ref_box->axes[u]);
+        coord_v = vec3_dot(rel, ref_box->axes[v]);
+        switch (quadrant) {
+            case 0:
+                score = -coord_u - coord_v;
+                break;
+            case 1:
+                score = coord_u - coord_v;
+                break;
+            case 2:
+                score = coord_u + coord_v;
+                break;
+            default:
+                score = -coord_u + coord_v;
+                break;
+        }
+        if (score > best_score) {
+            best_score = score;
+            best_index = i;
+        }
+    }
+    if (best_index >= 0 && *index_count < PH3D_MAX_MANIFOLD_POINTS &&
+        !ph3d_obb_candidate_exists(indices, *index_count, best_index)) {
+        indices[(*index_count)++] = best_index;
+    }
+}
+
+/// @brief Expand a single-point OBB/OBB contact into a stable multi-point manifold via face clipping.
+/// @details Reconstructs both boxes, picks the most-aligned face as the reference and the opposing
+///          box's most anti-aligned face as the incident polygon, then clips the incident face
+///          against the reference face's four side planes (ph3d_clip_poly_to_extent). Surviving
+///          points within tolerance of the reference plane become contact candidates; when more
+///          than PH3D_MAX_MANIFOLD_POINTS survive they are reduced to a spread set via
+///          ph3d_obb_select_candidate. On too-poor face alignment or fewer than two surviving
+///          points it restores the saved single-point @p contact and reports failure.
+/// @return 1 if a multi-point manifold was produced; 0 to keep the original single-point contact.
+static int contact3d_expand_obb_manifold(rt_contact3d *contact,
+                                         void *a_leaf,
+                                         const rt_collider_pose *a_pose,
+                                         void *b_leaf,
+                                         const rt_collider_pose *b_pose) {
+    rt_contact3d fallback;
+    ph3d_obb_box box_a;
+    ph3d_obb_box box_b;
+    const ph3d_obb_box *ref_box;
+    const ph3d_obb_box *inc_box;
+    double toward_b[3];
+    double toward_a[3];
+    double ref_normal[3];
+    double final_normal[3];
+    double ref_face_center[3];
+    double incident_vertices[4][3];
+    double poly_a[PH3D_OBB_CLIP_MAX_POINTS][3];
+    double poly_b[PH3D_OBB_CLIP_MAX_POINTS][3];
+    ph3d_obb_contact_candidate candidates[PH3D_OBB_CLIP_MAX_POINTS];
+    int ref_axis = 0;
+    int inc_axis = 0;
+    int clipped_count = 4;
+    int candidate_count = 0;
+    double ref_sign = 1.0;
+    double inc_sign = 1.0;
+    double align_a = 0.0;
+    double align_b = 0.0;
+    const double min_face_alignment = 0.95;
+
+    if (!contact || !ph3d_make_obb_box(a_leaf, a_pose, &box_a) ||
+        !ph3d_make_obb_box(b_leaf, b_pose, &box_b))
+        return 0;
+
+    contact_snapshot_copy(&fallback, contact);
+    vec3_copy(toward_b, contact->normal);
+    if (vec3_normalize_in_place(toward_b) <= 1e-12)
+        return 0;
+    vec3_negate(toward_b, toward_a);
+
+    ph3d_obb_best_face_axis(&box_a, toward_b, &ref_axis, &ref_sign, &align_a);
+    ph3d_obb_best_face_axis(&box_b, toward_a, &inc_axis, &inc_sign, &align_b);
+    if (align_a < min_face_alignment && align_b < min_face_alignment)
+        return 0;
+
+    if (align_b > align_a) {
+        ref_box = &box_b;
+        inc_box = &box_a;
+        ph3d_obb_best_face_axis(ref_box, toward_a, &ref_axis, &ref_sign, NULL);
+        vec3_negate(toward_b, ref_normal);
+    } else {
+        ref_box = &box_a;
+        inc_box = &box_b;
+        ph3d_obb_best_face_axis(ref_box, toward_b, &ref_axis, &ref_sign, NULL);
+        vec3_copy(ref_normal, toward_b);
+    }
+    vec3_copy(final_normal, toward_b);
+
+    for (int i = 0; i < 3; ++i)
+        ref_face_center[i] =
+            ref_box->center[i] + ref_box->axes[ref_axis][i] * ref_box->half_extents[ref_axis] *
+                                     ref_sign;
+
+    {
+        double best_inc_alignment = -1.0;
+        for (int axis = 0; axis < 3; ++axis) {
+            double d = vec3_dot(ref_normal, inc_box->axes[axis]);
+            double a = fabs(d);
+            if (a > best_inc_alignment) {
+                best_inc_alignment = a;
+                inc_axis = axis;
+                inc_sign = d >= 0.0 ? -1.0 : 1.0;
+            }
+        }
+    }
+
+    ph3d_obb_face_vertices(inc_box, inc_axis, inc_sign, incident_vertices);
+    for (int i = 0; i < 4; ++i)
+        vec3_copy(poly_a[i], incident_vertices[i]);
+
+    {
+        int u = (ref_axis + 1) % 3;
+        int v = (ref_axis + 2) % 3;
+        double neg_u[3];
+        double neg_v[3];
+        vec3_negate(ref_box->axes[u], neg_u);
+        vec3_negate(ref_box->axes[v], neg_v);
+        clipped_count = ph3d_clip_poly_to_extent(
+            poly_a, clipped_count, ref_face_center, ref_box->axes[u], ref_box->half_extents[u], poly_b);
+        clipped_count = ph3d_clip_poly_to_extent(
+            poly_b, clipped_count, ref_face_center, neg_u, ref_box->half_extents[u], poly_a);
+        clipped_count = ph3d_clip_poly_to_extent(
+            poly_a, clipped_count, ref_face_center, ref_box->axes[v], ref_box->half_extents[v], poly_b);
+        clipped_count = ph3d_clip_poly_to_extent(
+            poly_b, clipped_count, ref_face_center, neg_v, ref_box->half_extents[v], poly_a);
+    }
+
+    if (clipped_count <= 0)
+        return 0;
+
+    for (int i = 0; i < clipped_count && i < PH3D_OBB_CLIP_MAX_POINTS; ++i) {
+        double rel[3];
+        double separation;
+        vec3_sub(poly_a[i], ref_face_center, rel);
+        separation = vec3_dot(rel, ref_normal);
+        if (separation <= 1e-6 && candidate_count < PH3D_OBB_CLIP_MAX_POINTS) {
+            candidates[candidate_count].point[0] =
+                poly_a[i][0] - 0.5 * separation * ref_normal[0];
+            candidates[candidate_count].point[1] =
+                poly_a[i][1] - 0.5 * separation * ref_normal[1];
+            candidates[candidate_count].point[2] =
+                poly_a[i][2] - 0.5 * separation * ref_normal[2];
+            candidates[candidate_count].separation = separation;
+            candidate_count++;
+        }
+    }
+    if (candidate_count < 2)
+        return 0;
+
+    contact->contact_count = 0;
+    if (candidate_count <= PH3D_MAX_MANIFOLD_POINTS) {
+        for (int i = 0; i < candidate_count; ++i)
+            contact3d_try_add_manifold_point(
+                contact, candidates[i].point, final_normal, candidates[i].separation);
+    } else {
+        int indices[PH3D_MAX_MANIFOLD_POINTS];
+        int index_count = 0;
+        for (int quadrant = 0; quadrant < PH3D_MAX_MANIFOLD_POINTS; ++quadrant) {
+            ph3d_obb_select_candidate(candidates,
+                                      candidate_count,
+                                      ref_box,
+                                      ref_axis,
+                                      ref_face_center,
+                                      quadrant,
+                                      indices,
+                                      &index_count);
+        }
+        for (int i = 0; i < candidate_count && index_count < PH3D_MAX_MANIFOLD_POINTS; ++i) {
+            if (!ph3d_obb_candidate_exists(indices, index_count, i))
+                indices[index_count++] = i;
+        }
+        for (int i = 0; i < index_count; ++i) {
+            int candidate_index = indices[i];
+            contact3d_try_add_manifold_point(contact,
+                                             candidates[candidate_index].point,
+                                             final_normal,
+                                             candidates[candidate_index].separation);
+        }
+    }
+
+    if (contact->contact_count < 2) {
+        contact_snapshot_copy(contact, &fallback);
+        return 0;
+    }
+    vec3_copy(contact->point, contact->points[0]);
+    vec3_copy(contact->normal, final_normal);
+    contact->separation = contact->separations[0];
+    return 1;
 }
 
 /// @brief Identity test for contacts: same body pair AND same collider pair.
@@ -3343,6 +3719,23 @@ typedef struct {
     int32_t b;
 } epa_edge;
 
+typedef void (*ph3d_gjk_support_fn)(void *ctx,
+                                    const double *direction,
+                                    gjk_support_point *out);
+
+typedef struct {
+    void *a_collider;
+    const rt_collider_pose *a_pose;
+    void *b_collider;
+    const rt_collider_pose *b_pose;
+} ph3d_collider_pair_support_ctx;
+
+typedef struct {
+    double tri[3][3];
+    void *hull_collider;
+    const rt_collider_pose *hull_pose;
+} ph3d_triangle_hull_support_ctx;
+
 /// @brief Triple cross product out = (a × b) × c, with a stable fallback when it degenerates.
 /// @details GJK uses this to get a direction lying in an edge's plane and pointing toward the origin;
 ///          when the inputs are collinear (near-zero result) it substitutes an arbitrary perpendicular.
@@ -3374,6 +3767,44 @@ static void gjk_support(void *a_collider,
     collider_support_point(a_collider, a_pose, direction, pa);
     collider_support_point(b_collider, b_pose, inv_dir, pb);
     vec3_sub(pa, pb, out->v);
+}
+
+static void gjk_support_collider_pair(void *ctx,
+                                      const double *direction,
+                                      gjk_support_point *out) {
+    ph3d_collider_pair_support_ctx *pair = (ph3d_collider_pair_support_ctx *)ctx;
+    if (!pair || !out)
+        return;
+    gjk_support(
+        pair->a_collider, pair->a_pose, pair->b_collider, pair->b_pose, direction, out);
+}
+
+static void triangle_support_point(const double tri[3][3], const double *direction, double *out) {
+    double best_dot = -DBL_MAX;
+    int best = 0;
+    for (int i = 0; i < 3; ++i) {
+        double d = vec3_dot(tri[i], direction);
+        if (d > best_dot) {
+            best_dot = d;
+            best = i;
+        }
+    }
+    vec3_copy(out, tri[best]);
+}
+
+static void gjk_support_triangle_hull(void *ctx,
+                                      const double *direction,
+                                      gjk_support_point *out) {
+    ph3d_triangle_hull_support_ctx *pair = (ph3d_triangle_hull_support_ctx *)ctx;
+    double tri_point[3];
+    double hull_point[3];
+    double inv_dir[3];
+    if (!pair || !direction || !out)
+        return;
+    vec3_negate(direction, inv_dir);
+    triangle_support_point(pair->tri, direction, tri_point);
+    collider_support_point(pair->hull_collider, pair->hull_pose, inv_dir, hull_point);
+    vec3_sub(tri_point, hull_point, out->v);
 }
 
 /// @brief Reduce the simplex to the single vertex @p a.
@@ -3618,19 +4049,17 @@ static int epa_add_face(const gjk_support_point *vertices,
 ///          horizon, until the closest face stops moving (within @p tolerance). Writes the outward
 ///          contact @p normal and penetration @p depth.
 /// @return 1 on success, 0 if the input simplex is not a tetrahedron or the polytope degenerates.
-static int epa_solve(void *a_collider,
-                     const rt_collider_pose *a_pose,
-                     void *b_collider,
-                     const rt_collider_pose *b_pose,
-                     const gjk_simplex *simplex,
-                     double *normal,
-                     double *depth) {
+static int epa_solve_with_support(ph3d_gjk_support_fn support_fn,
+                                  void *support_ctx,
+                                  const gjk_simplex *simplex,
+                                  double *normal,
+                                  double *depth) {
     gjk_support_point vertices[64];
     epa_face faces[128];
     int32_t vertex_count = 4;
     int32_t face_count = 0;
     const double tolerance = 1e-6;
-    if (!simplex || simplex->count < 4 || !normal || !depth)
+    if (!support_fn || !simplex || simplex->count < 4 || !normal || !depth)
         return 0;
     for (int32_t i = 0; i < 4; ++i)
         vertices[i] = simplex->p[i];
@@ -3653,7 +4082,7 @@ static int epa_solve(void *a_collider,
             return 0;
 
         gjk_support_point support;
-        gjk_support(a_collider, a_pose, b_collider, b_pose, faces[best].normal, &support);
+        support_fn(support_ctx, faces[best].normal, &support);
         double support_distance = vec3_dot(support.v, faces[best].normal);
         if (support_distance - faces[best].distance <= tolerance) {
             vec3_copy(normal, faces[best].normal);
@@ -3689,6 +4118,67 @@ static int epa_solve(void *a_collider,
             if (!epa_add_face(vertices, faces, &face_count, edges[i].a, edges[i].b, new_vertex))
                 return 0;
         }
+    }
+    return 0;
+}
+
+static int epa_solve(void *a_collider,
+                     const rt_collider_pose *a_pose,
+                     void *b_collider,
+                     const rt_collider_pose *b_pose,
+                     const gjk_simplex *simplex,
+                     double *normal,
+                     double *depth) {
+    ph3d_collider_pair_support_ctx ctx = {a_collider, a_pose, b_collider, b_pose};
+    return epa_solve_with_support(gjk_support_collider_pair, &ctx, simplex, normal, depth);
+}
+
+static int gjk_epa_with_support(ph3d_gjk_support_fn support_fn,
+                                void *support_ctx,
+                                const double *seed_direction,
+                                double *normal,
+                                double *depth) {
+    gjk_simplex simplex;
+    double direction[3];
+    gjk_support_point support;
+    if (!support_fn || !normal || !depth)
+        return 0;
+    memset(&simplex, 0, sizeof(simplex));
+    if (seed_direction)
+        vec3_copy(direction, seed_direction);
+    else
+        vec3_set(direction, 1.0, 0.0, 0.0);
+    if (vec3_normalize_in_place(direction) <= 1e-12)
+        vec3_set(direction, 1.0, 0.0, 0.0);
+
+    support_fn(support_ctx, direction, &support);
+    gjk_simplex_set1(&simplex, &support);
+    vec3_negate(support.v, direction);
+    if (vec3_normalize_in_place(direction) <= 1e-12)
+        vec3_set(direction, 0.0, 1.0, 0.0);
+
+    for (int32_t iter = 0; iter < 32; ++iter) {
+        support_fn(support_ctx, direction, &support);
+        if (vec3_dot(support.v, direction) < 1e-9)
+            return 0;
+        if (simplex.count >= 4)
+            return 0;
+        simplex.p[simplex.count++] = support;
+        if (gjk_update_simplex(&simplex, direction)) {
+            if (epa_solve_with_support(support_fn, support_ctx, &simplex, normal, depth))
+                return 1;
+            if (seed_direction) {
+                vec3_copy(normal, seed_direction);
+                if (vec3_normalize_in_place(normal) <= 1e-12)
+                    vec3_set(normal, 0.0, 1.0, 0.0);
+            } else {
+                vec3_set(normal, 0.0, 1.0, 0.0);
+            }
+            *depth = 0.0;
+            return 1;
+        }
+        if (vec3_normalize_in_place(direction) <= 1e-12)
+            vec3_set(direction, 1.0, 0.0, 0.0);
     }
     return 0;
 }
@@ -3756,6 +4246,170 @@ static int test_convex_hull_gjk_epa(void *a_collider,
             vec3_set(direction, 1.0, 0.0, 0.0);
     }
     return 0;
+}
+
+static int test_triangle_convex_hull_gjk_epa(const double tri[3][3],
+                                             void *hull_collider,
+                                             const rt_collider_pose *hull_pose,
+                                             const double *hull_center,
+                                             double *normal,
+                                             double *depth) {
+    ph3d_triangle_hull_support_ctx ctx;
+    double centroid[3] = {(tri[0][0] + tri[1][0] + tri[2][0]) / 3.0,
+                          (tri[0][1] + tri[1][1] + tri[2][1]) / 3.0,
+                          (tri[0][2] + tri[1][2] + tri[2][2]) / 3.0};
+    double seed[3];
+    if (!tri || !hull_collider || !hull_pose || !normal || !depth)
+        return 0;
+    memcpy(ctx.tri, tri, sizeof(ctx.tri));
+    ctx.hull_collider = hull_collider;
+    ctx.hull_pose = hull_pose;
+    if (hull_center)
+        vec3_sub(hull_center, centroid, seed);
+    else
+        vec3_set(seed, 0.0, 1.0, 0.0);
+    if (!gjk_epa_with_support(gjk_support_triangle_hull, &ctx, seed, normal, depth))
+        return 0;
+    if (hull_center) {
+        double delta[3];
+        vec3_sub(hull_center, centroid, delta);
+        if (vec3_dot(normal, delta) < 0.0)
+            vec3_negate(normal, normal);
+    }
+    return 1;
+}
+
+/// @brief Mesh-vs-convex-hull narrow phase: broad mesh nodes by the hull AABB,
+///   then use GJK/EPA against each candidate triangle.
+static int test_meshlike_convex_hull(rt_mesh3d *mesh,
+                                     const rt_collider_pose *mesh_pose,
+                                     void *hull_collider,
+                                     const rt_collider_pose *hull_pose,
+                                     double *normal,
+                                     double *depth) {
+    double hull_min[3], hull_max[3];
+    double hull_center[3];
+    double best_depth = 0.0;
+    double best_normal[3] = {0.0, 1.0, 0.0};
+    int hit = 0;
+    if (!mesh || !mesh_pose || !hull_collider || !hull_pose)
+        return 0;
+    rt_collider3d_compute_world_aabb_raw(hull_collider,
+                                         hull_pose->position,
+                                         hull_pose->rotation,
+                                         hull_pose->scale,
+                                         hull_min,
+                                         hull_max);
+    hull_center[0] = (hull_min[0] + hull_max[0]) * 0.5;
+    hull_center[1] = (hull_min[1] + hull_max[1]) * 0.5;
+    hull_center[2] = (hull_min[2] + hull_max[2]) * 0.5;
+    rt_mesh3d_refresh_bounds(mesh);
+    if (mesh_physics_bvh_rebuild(mesh)) {
+        const rt_physics_mesh_bvh_node *nodes =
+            (const rt_physics_mesh_bvh_node *)mesh->physics_bvh_nodes;
+        const uint32_t *tri_indices = mesh->physics_bvh_tri_indices;
+        int32_t stack[128];
+        int32_t top = 0;
+        int overflow = 0;
+        stack[top++] = 0;
+        while (top > 0) {
+            int32_t node_index = stack[--top];
+            const rt_physics_mesh_bvh_node *node;
+            double node_min[3], node_max[3];
+            if (node_index < 0 || node_index >= mesh->physics_bvh_node_count)
+                continue;
+            node = &nodes[node_index];
+            transform_local_aabb_to_world(mesh_pose, node->min, node->max, node_min, node_max);
+            if (!aabb_overlap_raw(node_min, node_max, hull_min, hull_max))
+                continue;
+            if (node->left >= 0 || node->right >= 0) {
+                if (top + 2 > (int32_t)(sizeof(stack) / sizeof(stack[0]))) {
+                    overflow = 1;
+                    break;
+                }
+                if (node->right >= 0)
+                    stack[top++] = node->right;
+                if (node->left >= 0)
+                    stack[top++] = node->left;
+                continue;
+            }
+            for (int32_t item = node->start; item < node->start + node->count; ++item) {
+                uint32_t tri_index = tri_indices[item];
+                uint32_t i0 = mesh->indices[tri_index * 3u + 0u];
+                uint32_t i1 = mesh->indices[tri_index * 3u + 1u];
+                uint32_t i2 = mesh->indices[tri_index * 3u + 2u];
+                double tri[3][3];
+                double local[3];
+                double cur_normal[3];
+                double cur_depth;
+                if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count ||
+                    i2 >= mesh->vertex_count)
+                    continue;
+                local[0] = mesh->vertices[i0].pos[0];
+                local[1] = mesh->vertices[i0].pos[1];
+                local[2] = mesh->vertices[i0].pos[2];
+                transform_point_from_pose(mesh_pose, local, tri[0]);
+                local[0] = mesh->vertices[i1].pos[0];
+                local[1] = mesh->vertices[i1].pos[1];
+                local[2] = mesh->vertices[i1].pos[2];
+                transform_point_from_pose(mesh_pose, local, tri[1]);
+                local[0] = mesh->vertices[i2].pos[0];
+                local[1] = mesh->vertices[i2].pos[1];
+                local[2] = mesh->vertices[i2].pos[2];
+                transform_point_from_pose(mesh_pose, local, tri[2]);
+                if (test_triangle_convex_hull_gjk_epa(
+                        tri, hull_collider, hull_pose, hull_center, cur_normal, &cur_depth) &&
+                    (!hit || cur_depth > best_depth)) {
+                    best_depth = cur_depth;
+                    vec3_copy(best_normal, cur_normal);
+                    hit = 1;
+                }
+            }
+        }
+        if (!overflow)
+            goto mesh_hull_done;
+        best_depth = 0.0;
+        vec3_set(best_normal, 0.0, 1.0, 0.0);
+        hit = 0;
+    }
+
+    for (uint32_t i = 0; i + 2 < mesh->index_count; i += 3) {
+        uint32_t i0 = mesh->indices[i];
+        uint32_t i1 = mesh->indices[i + 1u];
+        uint32_t i2 = mesh->indices[i + 2u];
+        double tri[3][3];
+        double local[3];
+        double cur_normal[3];
+        double cur_depth;
+        if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+            continue;
+        local[0] = mesh->vertices[i0].pos[0];
+        local[1] = mesh->vertices[i0].pos[1];
+        local[2] = mesh->vertices[i0].pos[2];
+        transform_point_from_pose(mesh_pose, local, tri[0]);
+        local[0] = mesh->vertices[i1].pos[0];
+        local[1] = mesh->vertices[i1].pos[1];
+        local[2] = mesh->vertices[i1].pos[2];
+        transform_point_from_pose(mesh_pose, local, tri[1]);
+        local[0] = mesh->vertices[i2].pos[0];
+        local[1] = mesh->vertices[i2].pos[1];
+        local[2] = mesh->vertices[i2].pos[2];
+        transform_point_from_pose(mesh_pose, local, tri[2]);
+        if (test_triangle_convex_hull_gjk_epa(
+                tri, hull_collider, hull_pose, hull_center, cur_normal, &cur_depth) &&
+            (!hit || cur_depth > best_depth)) {
+            best_depth = cur_depth;
+            vec3_copy(best_normal, cur_normal);
+            hit = 1;
+        }
+    }
+
+mesh_hull_done:
+    if (!hit)
+        return 0;
+    vec3_copy(normal, best_normal);
+    *depth = best_depth;
+    return 1;
 }
 
 /// @brief Sphere-vs-heightfield narrow phase.
@@ -3897,7 +4551,7 @@ static int test_heightfield_box(void *heightfield,
 /// The "real" collision routine — handles every combination of:
 ///   - compound × anything (recurse into children)
 ///   - simple × simple (route via `test_simple_collision`)
-///   - convex hull / mesh × simple (route via `test_meshlike_*`)
+///   - convex hull / mesh × simple and mesh × convex hull (route via BVH/GJK helpers)
 ///   - heightfield × simple (route via `test_heightfield_*`)
 ///   - everything else falls back to AABB-vs-AABB.
 ///
@@ -4102,6 +4756,43 @@ static int test_collider_pair(const rt_body3d *a_body,
         return 1;
     }
 
+    if (a_type == RT_COLLIDER3D_TYPE_MESH && b_type == RT_COLLIDER3D_TYPE_CONVEX_HULL) {
+        rt_mesh3d *mesh = (rt_mesh3d *)rt_collider3d_get_mesh_raw(a_collider);
+        if (!mesh || !test_meshlike_convex_hull(
+                         mesh, a_pose, b_collider, b_pose, normal, depth))
+            return 0;
+        if (leaf_a_out)
+            *leaf_a_out = a_collider;
+        if (leaf_a_pose_out)
+            *leaf_a_pose_out = *a_pose;
+        if (leaf_b_out)
+            *leaf_b_out = b_collider;
+        if (leaf_b_pose_out)
+            *leaf_b_pose_out = *b_pose;
+        return 1;
+    }
+
+    if (a_type == RT_COLLIDER3D_TYPE_CONVEX_HULL && b_type == RT_COLLIDER3D_TYPE_MESH) {
+        int hit = test_collider_pair(b_body,
+                                     b_collider,
+                                     b_pose,
+                                     a_body,
+                                     a_collider,
+                                     a_pose,
+                                     normal,
+                                     depth,
+                                     leaf_b_out,
+                                     leaf_b_pose_out,
+                                     leaf_a_out,
+                                     leaf_a_pose_out);
+        if (hit) {
+            normal[0] = -normal[0];
+            normal[1] = -normal[1];
+            normal[2] = -normal[2];
+        }
+        return hit;
+    }
+
     if (collider_type_is_simple(a_type) &&
         (b_type == RT_COLLIDER3D_TYPE_CONVEX_HULL || b_type == RT_COLLIDER3D_TYPE_MESH)) {
         int hit;
@@ -4211,7 +4902,9 @@ static int test_collision(const rt_body3d *a,
                           double *depth,
                           double *point,
                           void **leaf_a_out,
-                          void **leaf_b_out) {
+                          void **leaf_b_out,
+                          rt_collider_pose *leaf_a_pose_out,
+                          rt_collider_pose *leaf_b_pose_out) {
     rt_collider_pose a_pose;
     rt_collider_pose b_pose;
     rt_collider_pose leaf_a_pose;
@@ -4239,6 +4932,10 @@ static int test_collision(const rt_body3d *a,
         *leaf_a_out = leaf_a;
     if (leaf_b_out)
         *leaf_b_out = leaf_b;
+    if (leaf_a_pose_out)
+        *leaf_a_pose_out = leaf_a_pose;
+    if (leaf_b_pose_out)
+        *leaf_b_pose_out = leaf_b_pose;
     if (point)
         compute_contact_point_from_leafs(leaf_a, &leaf_a_pose, leaf_b, &leaf_b_pose, normal, point);
     return 1;
@@ -4346,135 +5043,352 @@ static int ph3d_contact_should_solve(rt_body3d *a, rt_body3d *b) {
     return 1;
 }
 
+typedef struct {
+    int32_t *parent;
+    int32_t *active_body;
+    int32_t *root_to_island;
+    int32_t *body_island;
+    int32_t *island_contact_counts;
+    int32_t *island_write_offsets;
+    int32_t *island_offsets;
+    int32_t *contact_indices;
+    int32_t island_count;
+    int32_t active_body_count;
+    int32_t solver_contact_count;
+} ph3d_solver_island_batch;
+
+/// @brief Free every scratch array owned by a solver-island batch and zero it. Safe on NULL.
+static void ph3d_solver_island_batch_free(ph3d_solver_island_batch *batch) {
+    if (!batch)
+        return;
+    free(batch->parent);
+    free(batch->active_body);
+    free(batch->root_to_island);
+    free(batch->body_island);
+    free(batch->island_contact_counts);
+    free(batch->island_write_offsets);
+    free(batch->island_offsets);
+    free(batch->contact_indices);
+    memset(batch, 0, sizeof(*batch));
+}
+
+/// @brief Linear-search the world's body array for @p body.
+/// @return Index of @p body in @p w, or -1 if absent or either argument is NULL.
+static int32_t world3d_body_index_of(const rt_world3d *w, const rt_body3d *body) {
+    if (!w || !body)
+        return -1;
+    for (int32_t i = 0; i < w->body_count; ++i) {
+        if (w->bodies[i] == body)
+            return i;
+    }
+    return -1;
+}
+
+/// @brief Union-find FIND with path compression: return the island root of @p index.
+/// @details Walks parent links to the root, then re-points every node on the path directly at
+///          the root so subsequent queries are near-constant time.
+static int32_t ph3d_island_find(int32_t *parent, int32_t index) {
+    int32_t root = index;
+    while (parent[root] != root)
+        root = parent[root];
+    while (parent[index] != index) {
+        int32_t next = parent[index];
+        parent[index] = root;
+        index = next;
+    }
+    return root;
+}
+
+/// @brief Union-find UNION: merge the islands containing bodies @p a and @p b.
+/// @details Roots are joined under the numerically smaller index, giving a deterministic island
+///          layout independent of contact ordering. No-op when either index is negative.
+static void ph3d_island_union(int32_t *parent, int32_t a, int32_t b) {
+    int32_t root_a;
+    int32_t root_b;
+    if (!parent || a < 0 || b < 0)
+        return;
+    root_a = ph3d_island_find(parent, a);
+    root_b = ph3d_island_find(parent, b);
+    if (root_a == root_b)
+        return;
+    if (root_b < root_a) {
+        int32_t tmp = root_a;
+        root_a = root_b;
+        root_b = tmp;
+    }
+    parent[root_b] = root_a;
+}
+
+/// @brief Resolve the world-array indices of a contact's two bodies for solving.
+/// @details Writes -1 to both outputs first, then skips trigger contacts and pairs where neither
+///          body is active (both asleep/static) so the island builder only links solvable pairs.
+/// @return 1 if the contact should be solved (indices written); 0 if it should be skipped.
+static int ph3d_contact_solver_body_indices(const rt_world3d *w,
+                                            const rt_contact3d *contact,
+                                            int32_t *index_a,
+                                            int32_t *index_b) {
+    if (index_a)
+        *index_a = -1;
+    if (index_b)
+        *index_b = -1;
+    if (!w || !contact || contact->is_trigger)
+        return 0;
+    if (!ph3d_body_is_active(contact->body_a) && !ph3d_body_is_active(contact->body_b))
+        return 0;
+    if (index_a)
+        *index_a = world3d_body_index_of(w, contact->body_a);
+    if (index_b)
+        *index_b = world3d_body_index_of(w, contact->body_b);
+    return 1;
+}
+
+/// @brief Partition active bodies into solver islands and bucket each contact under its island.
+/// @details Uses union-find over solvable contacts to group connected active bodies into islands,
+///          assigns each island a dense id, then builds a CSR-style layout: `island_offsets` holds
+///          the per-island prefix sums and `contact_indices` the contacts flattened in island order.
+///          Solving islands independently decouples unrelated groups and is the prerequisite for
+///          parallelizing the velocity/position solve. The batch must be released with
+///          ph3d_solver_island_batch_free.
+/// @return 1 on success (including the empty-world no-op); 0 after trapping on allocation failure.
+static int world3d_build_solver_island_batch(rt_world3d *w, ph3d_solver_island_batch *batch) {
+    if (!batch)
+        return 0;
+    memset(batch, 0, sizeof(*batch));
+    if (!w || w->body_count <= 0 || w->contact_count <= 0)
+        return 1;
+
+    batch->parent = (int32_t *)malloc(sizeof(int32_t) * (size_t)w->body_count);
+    batch->active_body = (int32_t *)calloc((size_t)w->body_count, sizeof(int32_t));
+    batch->root_to_island = (int32_t *)malloc(sizeof(int32_t) * (size_t)w->body_count);
+    batch->body_island = (int32_t *)malloc(sizeof(int32_t) * (size_t)w->body_count);
+    batch->island_contact_counts = (int32_t *)calloc((size_t)w->body_count, sizeof(int32_t));
+    batch->island_write_offsets = (int32_t *)calloc((size_t)w->body_count, sizeof(int32_t));
+    batch->island_offsets = (int32_t *)calloc((size_t)w->body_count + 1u, sizeof(int32_t));
+    batch->contact_indices = (int32_t *)malloc(sizeof(int32_t) * (size_t)w->contact_count);
+    if (!batch->parent || !batch->active_body || !batch->root_to_island || !batch->body_island ||
+        !batch->island_contact_counts || !batch->island_write_offsets || !batch->island_offsets ||
+        !batch->contact_indices) {
+        ph3d_solver_island_batch_free(batch);
+        rt_trap("Physics3D.World.Step: solver island allocation failed");
+        return 0;
+    }
+
+    for (int32_t i = 0; i < w->body_count; ++i) {
+        batch->parent[i] = i;
+        batch->root_to_island[i] = -1;
+        batch->body_island[i] = -1;
+    }
+
+    for (int32_t i = 0; i < w->contact_count; ++i) {
+        rt_contact3d *contact = &w->contacts[i];
+        int32_t index_a;
+        int32_t index_b;
+        int active_a;
+        int active_b;
+        if (contact->is_trigger || !ph3d_contact_should_solve(contact->body_a, contact->body_b))
+            continue;
+        index_a = world3d_body_index_of(w, contact->body_a);
+        index_b = world3d_body_index_of(w, contact->body_b);
+        active_a = index_a >= 0 && ph3d_body_is_active(contact->body_a);
+        active_b = index_b >= 0 && ph3d_body_is_active(contact->body_b);
+        if (active_a)
+            batch->active_body[index_a] = 1;
+        if (active_b)
+            batch->active_body[index_b] = 1;
+        if (active_a && active_b)
+            ph3d_island_union(batch->parent, index_a, index_b);
+    }
+
+    for (int32_t i = 0; i < w->body_count; ++i) {
+        int32_t root;
+        int32_t island;
+        if (!batch->active_body[i])
+            continue;
+        root = ph3d_island_find(batch->parent, i);
+        island = batch->root_to_island[root];
+        if (island < 0) {
+            island = batch->island_count++;
+            batch->root_to_island[root] = island;
+        }
+        batch->body_island[i] = island;
+        batch->active_body_count++;
+    }
+
+    for (int32_t i = 0; i < w->contact_count; ++i) {
+        int32_t index_a;
+        int32_t index_b;
+        int32_t island = -1;
+        rt_contact3d *contact = &w->contacts[i];
+        if (!ph3d_contact_solver_body_indices(w, contact, &index_a, &index_b))
+            continue;
+        if (index_a >= 0 && batch->body_island[index_a] >= 0)
+            island = batch->body_island[index_a];
+        else if (index_b >= 0 && batch->body_island[index_b] >= 0)
+            island = batch->body_island[index_b];
+        if (island < 0)
+            continue;
+        batch->island_contact_counts[island]++;
+        batch->solver_contact_count++;
+    }
+
+    for (int32_t island = 0; island < batch->island_count; ++island)
+        batch->island_offsets[island + 1] =
+            batch->island_offsets[island] + batch->island_contact_counts[island];
+    memcpy(batch->island_write_offsets,
+           batch->island_offsets,
+           sizeof(int32_t) * (size_t)batch->island_count);
+
+    for (int32_t i = 0; i < w->contact_count; ++i) {
+        int32_t index_a;
+        int32_t index_b;
+        int32_t island = -1;
+        int32_t write_index;
+        rt_contact3d *contact = &w->contacts[i];
+        if (!ph3d_contact_solver_body_indices(w, contact, &index_a, &index_b))
+            continue;
+        if (index_a >= 0 && batch->body_island[index_a] >= 0)
+            island = batch->body_island[index_a];
+        else if (index_b >= 0 && batch->body_island[index_b] >= 0)
+            island = batch->body_island[index_b];
+        if (island < 0)
+            continue;
+        write_index = batch->island_write_offsets[island]++;
+        batch->contact_indices[write_index] = i;
+    }
+
+    return 1;
+}
+
 /// @brief Match this frame's contacts to the previous frame, seed accumulated
 ///   impulses (warm starting), capture per-point restitution bias, and re-apply
 ///   the seeded impulse so the velocity solver starts near the converged answer.
-static void world3d_warm_start_contacts(rt_world3d *w) {
-    if (!w)
+static void world3d_warm_start_contact(rt_world3d *w, rt_contact3d *c) {
+    rt_body3d *a;
+    rt_body3d *b;
+    const rt_contact3d *prev = NULL;
+    double e;
+    if (!w || !c)
         return;
-    for (int32_t i = 0; i < w->contact_count; ++i) {
-        rt_contact3d *c = &w->contacts[i];
-        rt_body3d *a = c->body_a;
-        rt_body3d *b = c->body_b;
-        const rt_contact3d *prev = NULL;
-        double e;
-        if (!a || !b || c->is_trigger || !ph3d_contact_should_solve(a, b))
-            continue;
-        e = (a->restitution < b->restitution) ? a->restitution : b->restitution;
+    a = c->body_a;
+    b = c->body_b;
+    if (!a || !b || c->is_trigger || !ph3d_contact_should_solve(a, b))
+        return;
+    e = (a->restitution < b->restitution) ? a->restitution : b->restitution;
 
-        /* Identical body/collider ordering keeps stored impulse directions valid. */
-        for (int32_t p = 0; p < w->previous_contact_count; ++p) {
-            const rt_contact3d *q = &w->previous_contacts[p];
-            if (q->body_a == c->body_a && q->body_b == c->body_b &&
-                q->collider_a == c->collider_a && q->collider_b == c->collider_b) {
-                prev = q;
-                break;
-            }
+    /* Identical body/collider ordering keeps stored impulse directions valid. */
+    for (int32_t p = 0; p < w->previous_contact_count; ++p) {
+        const rt_contact3d *q = &w->previous_contacts[p];
+        if (q->body_a == c->body_a && q->body_b == c->body_b &&
+            q->collider_a == c->collider_a && q->collider_b == c->collider_b) {
+            prev = q;
+            break;
         }
+    }
 
-        for (int32_t k = 0; k < c->contact_count; ++k) {
-            double n[3];
-            double t1[3];
-            double t2[3];
-            double r_a[3];
-            double r_b[3];
-            double seed_n = 0.0;
-            double seed_t0 = 0.0;
-            double seed_t1 = 0.0;
-            double vn0;
-            vec3_copy(n, c->normals[k]);
-            ph3d_contact_tangents(n, t1, t2);
+    for (int32_t k = 0; k < c->contact_count; ++k) {
+        double n[3];
+        double t1[3];
+        double t2[3];
+        double r_a[3];
+        double r_b[3];
+        double seed_n = 0.0;
+        double seed_t0 = 0.0;
+        double seed_t1 = 0.0;
+        double vn0;
+        vec3_copy(n, c->normals[k]);
+        ph3d_contact_tangents(n, t1, t2);
 
-            /* Index-based match: the manifold builder emits points in a stable
-             * order for a persistent pair, so current point k maps to previous
-             * point k. This survives fast motion (unlike a position-proximity
-             * match), which is what keeps multi-box stacks converged while they
-             * settle. The normal-agreement guard prevents carrying impulse
-             * across a normal flip (e.g. a deep-penetration axis change). */
-            if (prev && k < prev->contact_count &&
-                vec3_dot(n, prev->normals[k]) > 0.9) {
-                seed_n = prev->normal_impulse_acc[k] * PH3D_WARMSTART_FACTOR;
-                seed_t0 = prev->tangent_impulse_acc[k][0] * PH3D_WARMSTART_FACTOR;
-                seed_t1 = prev->tangent_impulse_acc[k][1] * PH3D_WARMSTART_FACTOR;
-            }
-            c->normal_impulse_acc[k] = seed_n;
-            c->tangent_impulse_acc[k][0] = seed_t0;
-            c->tangent_impulse_acc[k][1] = seed_t1;
-
-            vec3_sub(c->points[k], a->position, r_a);
-            vec3_sub(c->points[k], b->position, r_b);
-            vn0 = ph3d_contact_relative_velocity(a, r_a, b, r_b, n);
-            /* Restitution is an impact phenomenon: apply it only on the first
-             * frame of a contact (no warm-start seed). A persistent/resting
-             * contact gets zero restitution bias, so a stack cannot bounce
-             * itself apart if a body momentarily speeds up. */
-            c->restitution_bias[k] =
-                (seed_n == 0.0 && vn0 < -PH3D_RESTITUTION_THRESHOLD) ? -e * vn0 : 0.0;
-
-            ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, n, seed_n);
-            ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, t1, seed_t0);
-            ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, t2, seed_t1);
+        /* Index-based match: the manifold builder emits points in a stable
+         * order for a persistent pair, so current point k maps to previous
+         * point k. This survives fast motion (unlike a position-proximity
+         * match), which is what keeps multi-box stacks converged while they
+         * settle. The normal-agreement guard prevents carrying impulse
+         * across a normal flip (e.g. a deep-penetration axis change). */
+        if (prev && k < prev->contact_count && vec3_dot(n, prev->normals[k]) > 0.9) {
+            seed_n = prev->normal_impulse_acc[k] * PH3D_WARMSTART_FACTOR;
+            seed_t0 = prev->tangent_impulse_acc[k][0] * PH3D_WARMSTART_FACTOR;
+            seed_t1 = prev->tangent_impulse_acc[k][1] * PH3D_WARMSTART_FACTOR;
         }
+        c->normal_impulse_acc[k] = seed_n;
+        c->tangent_impulse_acc[k][0] = seed_t0;
+        c->tangent_impulse_acc[k][1] = seed_t1;
+
+        vec3_sub(c->points[k], a->position, r_a);
+        vec3_sub(c->points[k], b->position, r_b);
+        vn0 = ph3d_contact_relative_velocity(a, r_a, b, r_b, n);
+        /* Restitution is an impact phenomenon: apply it only on the first
+         * frame of a contact (no warm-start seed). A persistent/resting
+         * contact gets zero restitution bias, so a stack cannot bounce
+         * itself apart if a body momentarily speeds up. */
+        c->restitution_bias[k] =
+            (seed_n == 0.0 && vn0 < -PH3D_RESTITUTION_THRESHOLD) ? -e * vn0 : 0.0;
+
+        ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, n, seed_n);
+        ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, t1, seed_t0);
+        ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, t2, seed_t1);
     }
 }
 
-/// @brief One Gauss-Seidel velocity sweep over all manifolds: Coulomb friction
-///   on two tangents (cone-clamped to μ·normalImpulse), then the non-penetration
-///   normal constraint, both via accumulated-impulse clamping.
-static void world3d_solve_velocity_contacts(rt_world3d *w) {
-    if (!w)
+/// @brief Sequential-impulse velocity solve for one contact manifold.
+/// @details For each manifold point, solves the two friction (tangent) axes first — clamping the
+///          accumulated tangent impulse to the friction cone `|t| <= mu * normal_impulse` with a
+///          combined `mu = sqrt(friction_a * friction_b)` — then the normal axis, clamping the
+///          accumulated normal impulse to be non-negative and steering toward the stored
+///          restitution bias. Impulse deltas (new minus accumulated) are applied immediately so
+///          later points in the same iteration see updated velocities.
+static void world3d_solve_velocity_contact(rt_contact3d *c) {
+    rt_body3d *a;
+    rt_body3d *b;
+    double mu;
+    if (!c)
         return;
-    for (int32_t i = 0; i < w->contact_count; ++i) {
-        rt_contact3d *c = &w->contacts[i];
-        rt_body3d *a = c->body_a;
-        rt_body3d *b = c->body_b;
-        double mu;
-        if (!a || !b || c->is_trigger || (!ph3d_body_is_active(a) && !ph3d_body_is_active(b)))
-            continue;
-        {
-            double fa = ph3d_clamp_nonnegative_finite(a->friction, 0.0);
-            double fb = ph3d_clamp_nonnegative_finite(b->friction, 0.0);
-            mu = sqrt(fa * fb);
+    a = c->body_a;
+    b = c->body_b;
+    if (!a || !b || c->is_trigger || (!ph3d_body_is_active(a) && !ph3d_body_is_active(b)))
+        return;
+    {
+        double fa = ph3d_clamp_nonnegative_finite(a->friction, 0.0);
+        double fb = ph3d_clamp_nonnegative_finite(b->friction, 0.0);
+        mu = sqrt(fa * fb);
+    }
+    for (int32_t k = 0; k < c->contact_count; ++k) {
+        double n[3];
+        double t1[3];
+        double t2[3];
+        double r_a[3];
+        double r_b[3];
+        const double *tan_axes[2];
+        int axis;
+        vec3_copy(n, c->normals[k]);
+        ph3d_contact_tangents(n, t1, t2);
+        vec3_sub(c->points[k], a->position, r_a);
+        vec3_sub(c->points[k], b->position, r_b);
+        tan_axes[0] = t1;
+        tan_axes[1] = t2;
+
+        for (axis = 0; axis < 2; ++axis) {
+            double eff = ph3d_contact_effective_mass(a, r_a, b, r_b, tan_axes[axis]);
+            double vt = ph3d_contact_relative_velocity(a, r_a, b, r_b, tan_axes[axis]);
+            double max_f = mu * c->normal_impulse_acc[k];
+            double old = c->tangent_impulse_acc[k][axis];
+            double next = old - eff * vt;
+            if (next > max_f)
+                next = max_f;
+            else if (next < -max_f)
+                next = -max_f;
+            c->tangent_impulse_acc[k][axis] = next;
+            ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, tan_axes[axis], next - old);
         }
-        for (int32_t k = 0; k < c->contact_count; ++k) {
-            double n[3];
-            double t1[3];
-            double t2[3];
-            double r_a[3];
-            double r_b[3];
-            const double *tan_axes[2];
-            int axis;
-            vec3_copy(n, c->normals[k]);
-            ph3d_contact_tangents(n, t1, t2);
-            vec3_sub(c->points[k], a->position, r_a);
-            vec3_sub(c->points[k], b->position, r_b);
-            tan_axes[0] = t1;
-            tan_axes[1] = t2;
 
-            for (axis = 0; axis < 2; ++axis) {
-                double eff = ph3d_contact_effective_mass(a, r_a, b, r_b, tan_axes[axis]);
-                double vt = ph3d_contact_relative_velocity(a, r_a, b, r_b, tan_axes[axis]);
-                double max_f = mu * c->normal_impulse_acc[k];
-                double old = c->tangent_impulse_acc[k][axis];
-                double next = old - eff * vt;
-                if (next > max_f)
-                    next = max_f;
-                else if (next < -max_f)
-                    next = -max_f;
-                c->tangent_impulse_acc[k][axis] = next;
-                ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, tan_axes[axis], next - old);
-            }
-
-            {
-                double eff = ph3d_contact_effective_mass(a, r_a, b, r_b, n);
-                double vn = ph3d_contact_relative_velocity(a, r_a, b, r_b, n);
-                double old = c->normal_impulse_acc[k];
-                double next = old - eff * (vn - c->restitution_bias[k]);
-                if (next < 0.0)
-                    next = 0.0;
-                c->normal_impulse_acc[k] = next;
-                ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, n, next - old);
-            }
+        {
+            double eff = ph3d_contact_effective_mass(a, r_a, b, r_b, n);
+            double vn = ph3d_contact_relative_velocity(a, r_a, b, r_b, n);
+            double old = c->normal_impulse_acc[k];
+            double next = old - eff * (vn - c->restitution_bias[k]);
+            if (next < 0.0)
+                next = 0.0;
+            c->normal_impulse_acc[k] = next;
+            ph3d_apply_contact_axis_impulse(a, r_a, b, r_b, n, next - old);
         }
     }
 }
@@ -4482,47 +5396,85 @@ static void world3d_solve_velocity_contacts(rt_world3d *w) {
 /// @brief Split positional (Baumgarte) correction using each manifold's deepest
 ///   point, weighted by inverse mass. Runs after the velocity solve so it never
 ///   injects energy into the velocity state.
-static void world3d_solve_position_contacts(rt_world3d *w) {
-    if (!w)
+static void world3d_solve_position_contact(rt_contact3d *c) {
+    rt_body3d *a;
+    rt_body3d *b;
+    const double *n;
+    double inv_sum;
+    double pen;
+    double corr;
+    int32_t deepest = 0;
+    if (!c)
         return;
-    for (int32_t i = 0; i < w->contact_count; ++i) {
-        rt_contact3d *c = &w->contacts[i];
-        rt_body3d *a = c->body_a;
-        rt_body3d *b = c->body_b;
-        const double *n;
-        double inv_sum;
-        double pen;
-        double corr;
-        int32_t deepest = 0;
-        if (!a || !b || c->is_trigger || c->contact_count <= 0 ||
-            (!ph3d_body_is_active(a) && !ph3d_body_is_active(b)))
-            continue;
-        for (int32_t k = 1; k < c->contact_count; ++k) {
-            if (c->separations[k] < c->separations[deepest])
-                deepest = k;
-        }
-        pen = -c->separations[deepest] - PH3D_PENETRATION_SLOP;
-        if (pen <= 0.0)
-            continue;
-        inv_sum = a->inv_mass + b->inv_mass;
-        if (inv_sum <= 1e-12)
-            continue;
-        /* Clamp the positional projection so a deep penetration cannot teleport
-         * a body (which would otherwise inject huge separation and explode a
-         * stack). Mirrors Box2D's b2_maxLinearCorrection. */
-        pen = fmin(pen, PH3D_MAX_POSITION_CORRECTION);
-        corr = PH3D_BAUMGARTE_BETA * pen / inv_sum;
-        n = c->normals[deepest];
-        a->position[0] -= corr * a->inv_mass * n[0];
-        a->position[1] -= corr * a->inv_mass * n[1];
-        a->position[2] -= corr * a->inv_mass * n[2];
-        b->position[0] += corr * b->inv_mass * n[0];
-        b->position[1] += corr * b->inv_mass * n[1];
-        b->position[2] += corr * b->inv_mass * n[2];
-        if (a->inv_mass > 0.0)
-            body3d_touch_broadphase(a);
-        if (b->inv_mass > 0.0)
-            body3d_touch_broadphase(b);
+    a = c->body_a;
+    b = c->body_b;
+    if (!a || !b || c->is_trigger || c->contact_count <= 0 ||
+        (!ph3d_body_is_active(a) && !ph3d_body_is_active(b)))
+        return;
+    for (int32_t k = 1; k < c->contact_count; ++k) {
+        if (c->separations[k] < c->separations[deepest])
+            deepest = k;
+    }
+    pen = -c->separations[deepest] - PH3D_PENETRATION_SLOP;
+    if (pen <= 0.0)
+        return;
+    inv_sum = a->inv_mass + b->inv_mass;
+    if (inv_sum <= 1e-12)
+        return;
+    /* Clamp the positional projection so a deep penetration cannot teleport
+     * a body (which would otherwise inject huge separation and explode a
+     * stack). Mirrors Box2D's b2_maxLinearCorrection. */
+    pen = fmin(pen, PH3D_MAX_POSITION_CORRECTION);
+    corr = PH3D_BAUMGARTE_BETA * pen / inv_sum;
+    n = c->normals[deepest];
+    a->position[0] -= corr * a->inv_mass * n[0];
+    a->position[1] -= corr * a->inv_mass * n[1];
+    a->position[2] -= corr * a->inv_mass * n[2];
+    b->position[0] += corr * b->inv_mass * n[0];
+    b->position[1] += corr * b->inv_mass * n[1];
+    b->position[2] += corr * b->inv_mass * n[2];
+    if (a->inv_mass > 0.0)
+        body3d_touch_broadphase(a);
+    if (b->inv_mass > 0.0)
+        body3d_touch_broadphase(b);
+}
+
+/// @brief Warm-start every solvable contact, walking the batch island by island.
+static void world3d_warm_start_solver_islands(rt_world3d *w,
+                                              const ph3d_solver_island_batch *batch) {
+    if (!w || !batch)
+        return;
+    for (int32_t island = 0; island < batch->island_count; ++island) {
+        int32_t begin = batch->island_offsets[island];
+        int32_t end = batch->island_offsets[island + 1];
+        for (int32_t i = begin; i < end; ++i)
+            world3d_warm_start_contact(w, &w->contacts[batch->contact_indices[i]]);
+    }
+}
+
+/// @brief Run one velocity-solve pass over every solvable contact, island by island.
+static void world3d_solve_velocity_solver_islands(const ph3d_solver_island_batch *batch,
+                                                  rt_world3d *w) {
+    if (!batch || !w)
+        return;
+    for (int32_t island = 0; island < batch->island_count; ++island) {
+        int32_t begin = batch->island_offsets[island];
+        int32_t end = batch->island_offsets[island + 1];
+        for (int32_t i = begin; i < end; ++i)
+            world3d_solve_velocity_contact(&w->contacts[batch->contact_indices[i]]);
+    }
+}
+
+/// @brief Run one position-correction pass over every solvable contact, island by island.
+static void world3d_solve_position_solver_islands(const ph3d_solver_island_batch *batch,
+                                                  rt_world3d *w) {
+    if (!batch || !w)
+        return;
+    for (int32_t island = 0; island < batch->island_count; ++island) {
+        int32_t begin = batch->island_offsets[island];
+        int32_t end = batch->island_offsets[island + 1];
+        for (int32_t i = begin; i < end; ++i)
+            world3d_solve_position_contact(&w->contacts[batch->contact_indices[i]]);
     }
 }
 
@@ -4625,6 +5577,8 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     double relative_speed = 0.0;
     void *leaf_a = NULL;
     void *leaf_b = NULL;
+    rt_collider_pose leaf_a_pose;
+    rt_collider_pose leaf_b_pose;
 
     if (!w || !a || !b || a == b)
         return 1;
@@ -4634,7 +5588,7 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
         return 1;
     if (!(b->collision_layer & a->collision_mask))
         return 1;
-    if (!test_collision(a, b, normal, &depth, point, &leaf_a, &leaf_b))
+    if (!test_collision(a, b, normal, &depth, point, &leaf_a, &leaf_b, &leaf_a_pose, &leaf_b_pose))
         return 1;
 
     int32_t next_contact_count;
@@ -4645,6 +5599,7 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     }
 
     rt_contact3d *c = &w->contacts[w->contact_count++];
+    memset(c, 0, sizeof(*c));
     c->body_a = a;
     c->body_b = b;
     c->collider_a = leaf_a ? leaf_a : a->collider;
@@ -4658,9 +5613,11 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     c->separation = -depth;
     contact3d_init_single_point(c, point, normal, c->separation);
     contact3d_expand_aabb_manifold(c, a, b);
+    if (c->contact_count <= 1)
+        contact3d_expand_obb_manifold(c, leaf_a, &leaf_a_pose, leaf_b, &leaf_b_pose);
     c->is_trigger = (a->is_trigger || b->is_trigger) ? 1 : 0;
     /* Detection only: the warm-started sequential-impulse solver runs after the
-     * whole manifold is built (see world3d_solve_velocity_contacts). Record the
+     * whole manifold is built. Record the
      * pre-solve approach speed for collision-event payloads and reset the
      * per-point accumulated impulses; warm starting seeds them next step. */
     relative_speed = fabs((b->velocity[0] - a->velocity[0]) * normal[0] +
@@ -5411,6 +6368,9 @@ void rt_world3d_step(void *obj, double dt) {
     world3d_invalidate_query_broadphase(w);
     world3d_release_cached_event_objects(w);
     w->frame_contact_count = 0;
+    w->last_solver_island_count = 0;
+    w->last_solver_active_body_count = 0;
+    w->last_solver_contact_count = 0;
     for (int32_t i = 0; i < w->body_count; i++) {
         rt_body3d *b = w->bodies[i];
         if (!b)
@@ -5470,17 +6430,27 @@ void rt_world3d_step(void *obj, double dt) {
          * impulses accumulate and warm-start across frames, which is what makes
          * stacks rest stably. Joints are interleaved with the velocity iterations. */
         int32_t solver_iterations = ph3d_clamp_solver_iterations(w->solver_iterations);
+        ph3d_solver_island_batch solver_batch;
         if (!world3d_detect_contacts(w))
             goto cleanup;
-        world3d_warm_start_contacts(w);
+        if (!world3d_build_solver_island_batch(w, &solver_batch))
+            goto cleanup;
+        if (solver_batch.island_count > w->last_solver_island_count)
+            w->last_solver_island_count = solver_batch.island_count;
+        if (solver_batch.active_body_count > w->last_solver_active_body_count)
+            w->last_solver_active_body_count = solver_batch.active_body_count;
+        if (solver_batch.solver_contact_count > w->last_solver_contact_count)
+            w->last_solver_contact_count = solver_batch.solver_contact_count;
+        world3d_warm_start_solver_islands(w, &solver_batch);
         for (int32_t iter = 0; iter < solver_iterations; iter++) {
-            world3d_solve_velocity_contacts(w);
+            world3d_solve_velocity_solver_islands(&solver_batch, w);
             for (int32_t j = 0; j < w->joint_count; j++) {
                 if (w->joints[j])
                     rt_joint3d_solve(w->joints[j], w->joint_types[j], sub_dt);
             }
         }
-        world3d_solve_position_contacts(w);
+        world3d_solve_position_solver_islands(&solver_batch, w);
+        ph3d_solver_island_batch_free(&solver_batch);
         world3d_finalize_contacts(w);
         world3d_update_sleep(w, sub_dt);
         for (int32_t i = 0; i < w->contact_count; ++i) {
@@ -5563,6 +6533,24 @@ void rt_world3d_set_solver_iterations(void *obj, int64_t iterations) {
     rt_world3d *w = world3d_checked(obj);
     if (w)
         w->solver_iterations = ph3d_clamp_solver_iterations(iterations);
+}
+
+/// @brief `World3D.LastSolverIslandCount` — max active contact islands in the last Step.
+int64_t rt_world3d_get_last_solver_island_count(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->last_solver_island_count : 0;
+}
+
+/// @brief `World3D.LastSolverActiveBodyCount` — max awake bodies scheduled in contact islands.
+int64_t rt_world3d_get_last_solver_active_body_count(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->last_solver_active_body_count : 0;
+}
+
+/// @brief `World3D.LastSolverContactCount` — max contacts scheduled through islands.
+int64_t rt_world3d_get_last_solver_contact_count(void *obj) {
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->last_solver_contact_count : 0;
 }
 
 /// @brief `World3D.Add(body)` — register a body.
@@ -6258,7 +7246,7 @@ static int overlap_query_body_against_body(rt_body3d *query_body,
     void *leaf_other = NULL;
     if (!query_body || !other || !other->collider)
         return 0;
-    if (!test_collision(query_body, other, normal, &depth, point, NULL, &leaf_other))
+    if (!test_collision(query_body, other, normal, &depth, point, NULL, &leaf_other, NULL, NULL))
         return 0;
     if (out_hit) {
         memset(out_hit, 0, sizeof(*out_hit));
@@ -8492,7 +9480,7 @@ static int character3d_test_position(rt_character3d *ctrl,
         double normal[3], depth;
         if (!character3d_candidate_body(ctrl, other))
             continue;
-        if (!test_collision(body, other, normal, &depth, NULL, NULL, NULL))
+        if (!test_collision(body, other, normal, &depth, NULL, NULL, NULL, NULL, NULL))
             continue;
         if (!best.hit || depth > best.depth) {
             best.hit = 1;

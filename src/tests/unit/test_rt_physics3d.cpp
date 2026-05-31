@@ -29,6 +29,7 @@
 #include "rt_quat.h"
 #include "rt_transform3d.h"
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <csetjmp>
 #include <cstdint>
@@ -96,6 +97,24 @@ template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *nee
         }                                                                                          \
     } while (0)
 
+static double quat_rotation_component(void *q, int axis) {
+    double v[3] = {rt_quat_x(q), rt_quat_y(q), rt_quat_z(q)};
+    double w = rt_quat_w(q);
+    double v_len;
+    double angle;
+    if (w < 0.0) {
+        v[0] = -v[0];
+        v[1] = -v[1];
+        v[2] = -v[2];
+        w = -w;
+    }
+    v_len = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (v_len < 1e-12)
+        return 2.0 * v[axis];
+    angle = 2.0 * atan2(v_len, w);
+    return v[axis] * angle / v_len;
+}
+
 static int64_t encode_height16(uint16_t value) {
     return ((int64_t)((value >> 8) & 0xFF) << 24) | ((int64_t)(value & 0xFF) << 16) | 0xFF;
 }
@@ -111,6 +130,37 @@ static void *make_tetra_mesh(int sign) {
     rt_mesh3d_add_triangle(mesh, 0, 1, 3);
     rt_mesh3d_add_triangle(mesh, 0, 3, 2);
     rt_mesh3d_add_triangle(mesh, 1, 2, 3);
+    return mesh;
+}
+
+static void *make_subdivided_plane_mesh(int segments, double size) {
+    void *mesh = rt_mesh3d_new();
+    double half = size * 0.5;
+    for (int z = 0; z <= segments; ++z) {
+        double pz = -half + size * (double)z / (double)segments;
+        for (int x = 0; x <= segments; ++x) {
+            double px = -half + size * (double)x / (double)segments;
+            rt_mesh3d_add_vertex(mesh,
+                                 px,
+                                 0.0,
+                                 pz,
+                                 0.0,
+                                 1.0,
+                                 0.0,
+                                 (double)x / (double)segments,
+                                 (double)z / (double)segments);
+        }
+    }
+    for (int z = 0; z < segments; ++z) {
+        for (int x = 0; x < segments; ++x) {
+            int i00 = z * (segments + 1) + x;
+            int i10 = i00 + 1;
+            int i01 = i00 + (segments + 1);
+            int i11 = i01 + 1;
+            rt_mesh3d_add_triangle(mesh, i00, i01, i10);
+            rt_mesh3d_add_triangle(mesh, i10, i01, i11);
+        }
+    }
     return mesh;
 }
 
@@ -841,6 +891,78 @@ static void test_box_stack_rests_stably() {
         EXPECT_TRUE(y1[i] > y1[i - 1] + 0.85, "Box stack: boxes stay separated and ordered");
 }
 
+static void test_world_solver_island_batches_resting_pile_target() {
+    const int piles = 32;
+    const int height = 8;
+    void *tops[piles];
+    void *world = rt_world3d_new(0.0, -9.8, 0.0);
+    void *floor = rt_body3d_new_aabb(64.0, 0.5, 32.0, 0.0);
+    rt_world3d_set_solver_iterations(world, 20);
+    rt_body3d_set_position(floor, 0.0, -0.5, 0.0);
+    rt_world3d_add(world, floor);
+
+    for (int pile = 0; pile < piles; ++pile) {
+        double x = (double)(pile % 8) * 3.0;
+        double z = (double)(pile / 8) * 3.0;
+        for (int level = 0; level < height; ++level) {
+            void *box = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+            rt_body3d_set_position(box, x, 0.5 + (double)level, z);
+            rt_world3d_add(world, box);
+            if (level == height - 1)
+                tops[pile] = box;
+        }
+    }
+
+    auto first_begin = std::chrono::steady_clock::now();
+    rt_world3d_step(world, 1.0 / 60.0);
+    auto first_end = std::chrono::steady_clock::now();
+    int64_t first_islands = rt_world3d_get_last_solver_island_count(world);
+    int64_t first_active = rt_world3d_get_last_solver_active_body_count(world);
+    int64_t first_contacts = rt_world3d_get_last_solver_contact_count(world);
+
+    EXPECT_TRUE(rt_world3d_body_count(world) == 1 + piles * height,
+                "Solver island target: fixture keeps the expected body count");
+    EXPECT_TRUE(first_islands == piles,
+                "Solver island target: separated resting piles batch as independent islands");
+    EXPECT_TRUE(first_active == piles * height,
+                "Solver island target: all dynamic pile bodies are scheduled");
+    EXPECT_TRUE(first_contacts >= piles * height,
+                "Solver island target: floor and stacked-box contacts are scheduled");
+
+    auto settle_begin = std::chrono::steady_clock::now();
+    for (int step = 0; step < 120; ++step)
+        rt_world3d_step(world, 1.0 / 60.0);
+    auto settle_end = std::chrono::steady_clock::now();
+
+    double min_top_y = 1e300;
+    for (int pile = 0; pile < piles; ++pile) {
+        double y = rt_vec3_y(rt_body3d_get_position(tops[pile]));
+        if (y < min_top_y)
+            min_top_y = y;
+    }
+    EXPECT_TRUE(min_top_y > (double)height - 1.25,
+                "Solver island target: 256-body resting pile does not collapse");
+
+    long long first_us =
+        (long long)std::chrono::duration_cast<std::chrono::microseconds>(first_end - first_begin)
+            .count();
+    long long settle_us =
+        (long long)std::chrono::duration_cast<std::chrono::microseconds>(settle_end - settle_begin)
+            .count();
+    std::printf("PHYSICS_ISLAND_BATCH_TARGET: bodies=%d piles=%d height=%d islands=%lld "
+                "active_bodies=%lld contacts=%lld first_step_us=%lld settle_steps=120 "
+                "settle_us=%lld min_top_y=%.3f\n",
+                1 + piles * height,
+                piles,
+                height,
+                (long long)first_islands,
+                (long long)first_active,
+                (long long)first_contacts,
+                first_us,
+                settle_us,
+                min_top_y);
+}
+
 /*==========================================================================
  * Character controller tests
  *=========================================================================*/
@@ -1158,6 +1280,124 @@ static void test_convex_hull_gjk_detects_overlapping_hulls() {
     }
 }
 
+static void test_convex_hull_gjk_handles_box_capsule_and_simple_edge_cases() {
+    {
+        void *world = rt_world3d_new(0, 0, 0);
+        void *tetra = make_tetra_mesh(1);
+        void *hull_collider = rt_collider3d_new_convex_hull(tetra);
+        void *hull_body = rt_body3d_new(0.0);
+        void *box = rt_body3d_new_aabb(0.05, 0.05, 0.05, 1.0);
+        rt_body3d_set_collider(hull_body, hull_collider);
+        rt_body3d_set_position(hull_body, 0.0, 0.0, 0.0);
+        rt_body3d_set_position(box, 0.8, 0.8, 0.8);
+        rt_world3d_add(world, hull_body);
+        rt_world3d_add(world, box);
+        rt_world3d_step(world, 0.016);
+        EXPECT_TRUE(rt_world3d_get_collision_count(world) == 0,
+                    "convex hull GJK rejects a box outside a tetrahedron but inside its AABB");
+    }
+
+    {
+        void *world = rt_world3d_new(0, 0, 0);
+        void *mesh = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+        void *hull_collider = rt_collider3d_new_convex_hull(mesh);
+        void *hull_body = rt_body3d_new(0.0);
+        void *box = rt_body3d_new_aabb(0.25, 0.35, 0.25, 1.0);
+        rt_body3d_set_collider(hull_body, hull_collider);
+        rt_body3d_set_position(hull_body, 0.0, 0.0, 0.0);
+        rt_body3d_set_position(box, -1.15, 0.0, 0.0);
+        rt_world3d_add(world, box);
+        rt_world3d_add(world, hull_body);
+        rt_world3d_step(world, 0.016);
+        EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                    "convex hull GJK detects the simple-vs-hull box branch");
+        if (rt_world3d_get_collision_count(world) > 0) {
+            void *normal = rt_world3d_get_collision_normal(world, 0);
+            EXPECT_TRUE(normal != nullptr && std::isfinite(rt_vec3_x(normal)) &&
+                            std::isfinite(rt_vec3_y(normal)) &&
+                            std::isfinite(rt_vec3_z(normal)),
+                        "convex hull GJK reports a finite box contact normal");
+            EXPECT_TRUE(rt_world3d_get_collision_depth(world, 0) > 0.0,
+                        "convex hull GJK reports positive box penetration");
+        }
+    }
+
+    {
+        void *world = rt_world3d_new(0, 0, 0);
+        void *mesh = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+        void *hull_collider = rt_collider3d_new_convex_hull(mesh);
+        void *hull_body = rt_body3d_new(0.0);
+        void *capsule = rt_body3d_new_capsule(0.25, 1.2, 1.0);
+        rt_body3d_set_collider(hull_body, hull_collider);
+        rt_body3d_set_position(hull_body, 0.0, 0.0, 0.0);
+        rt_body3d_set_position(capsule, 1.15, 0.0, 0.0);
+        rt_world3d_add(world, hull_body);
+        rt_world3d_add(world, capsule);
+        rt_world3d_step(world, 0.016);
+        EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                    "convex hull GJK detects hull-vs-capsule contact");
+        EXPECT_TRUE(rt_world3d_get_collision_depth(world, 0) > 0.0,
+                    "convex hull GJK reports positive capsule penetration");
+    }
+}
+
+static void test_convex_hull_gjk_perf_target() {
+    const int pairs_per_shape = 8;
+    const int shape_kinds = 4;
+    const int pair_count = pairs_per_shape * shape_kinds;
+    void *world = rt_world3d_new(0, 0, 0);
+    void *hull_mesh = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    void *hull_collider = rt_collider3d_new_convex_hull(hull_mesh);
+    void *small_hull_mesh = rt_mesh3d_new_box(0.8, 0.8, 0.8);
+    void *small_hull_collider = rt_collider3d_new_convex_hull(small_hull_mesh);
+
+    for (int i = 0; i < pair_count; ++i) {
+        int kind = i / pairs_per_shape;
+        double x = (double)i * 4.0;
+        void *static_hull = rt_body3d_new(0.0);
+        void *dynamic_body = nullptr;
+        rt_body3d_set_collider(static_hull, hull_collider);
+        rt_body3d_set_position(static_hull, x, 0.0, 0.0);
+        rt_world3d_add(world, static_hull);
+
+        if (kind == 0) {
+            dynamic_body = rt_body3d_new_sphere(0.35, 1.0);
+            rt_body3d_set_position(dynamic_body, x + 1.2, 0.0, 0.0);
+        } else if (kind == 1) {
+            dynamic_body = rt_body3d_new_capsule(0.25, 1.2, 1.0);
+            rt_body3d_set_position(dynamic_body, x + 1.15, 0.0, 0.0);
+        } else if (kind == 2) {
+            dynamic_body = rt_body3d_new_aabb(0.25, 0.35, 0.25, 1.0);
+            rt_body3d_set_position(dynamic_body, x + 1.15, 0.0, 0.0);
+        } else {
+            dynamic_body = rt_body3d_new(1.0);
+            rt_body3d_set_collider(dynamic_body, small_hull_collider);
+            rt_body3d_set_position(dynamic_body, x + 0.8, 0.0, 0.0);
+        }
+        rt_world3d_add(world, dynamic_body);
+    }
+
+    auto step_begin = std::chrono::steady_clock::now();
+    rt_world3d_step(world, 1.0 / 60.0);
+    auto step_end = std::chrono::steady_clock::now();
+
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == pair_count,
+                "convex hull GJK target: each isolated convex pair reports one contact");
+
+    long long step_us =
+        (long long)std::chrono::duration_cast<std::chrono::microseconds>(step_end - step_begin)
+            .count();
+    std::printf("PHYSICS_CONVEX_GJK_TARGET: pairs=%d contacts=%lld spheres=%d capsules=%d "
+                "boxes=%d hulls=%d step_us=%lld\n",
+                pair_count,
+                (long long)rt_world3d_get_collision_count(world),
+                pairs_per_shape,
+                pairs_per_shape,
+                pairs_per_shape,
+                pairs_per_shape,
+                step_us);
+}
+
 static void test_mesh_collider_blocks_falling_sphere() {
     void *world = rt_world3d_new(0, -9.81, 0);
     void *mesh = rt_mesh3d_new_box(8.0, 1.0, 8.0);
@@ -1219,6 +1459,68 @@ static void test_mesh_collider_narrowphase_builds_bvh_for_sphere_and_box() {
         EXPECT_TRUE(mesh_impl->physics_bvh_revision == mesh_impl->geometry_revision,
                     "mesh narrow phase: box path marks BVH revision current");
     }
+}
+
+static void test_mesh_convex_hull_bvh_and_body_broadphase_target() {
+    const int tile_count = 16;
+    const int columns = 4;
+    const int segments = 16;
+    const double tile_size = 2.0;
+    const double spacing = 4.0;
+    const int target = 5;
+    rt_mesh3d *meshes[tile_count];
+    double tile_x[tile_count];
+    double tile_z[tile_count];
+    void *world = rt_world3d_new(0, 0, 0);
+
+    for (int i = 0; i < tile_count; ++i) {
+        int col = i % columns;
+        int row = i / columns;
+        tile_x[i] = ((double)col - 1.5) * spacing;
+        tile_z[i] = ((double)row - 1.5) * spacing;
+        void *mesh = make_subdivided_plane_mesh(segments, tile_size);
+        void *collider = rt_collider3d_new_mesh(mesh);
+        void *body = rt_body3d_new(0.0);
+        meshes[i] = (rt_mesh3d *)mesh;
+        rt_body3d_set_collider(body, collider);
+        rt_body3d_set_position(body, tile_x[i], 0.0, tile_z[i]);
+        rt_world3d_add(world, body);
+    }
+
+    void *hull_mesh = rt_mesh3d_new_box(0.8, 0.8, 0.8);
+    void *hull_collider = rt_collider3d_new_convex_hull(hull_mesh);
+    void *hull_body = rt_body3d_new(1.0);
+    rt_body3d_set_collider(hull_body, hull_collider);
+    rt_body3d_set_position(hull_body, tile_x[target], 0.2, tile_z[target]);
+    rt_world3d_add(world, hull_body);
+
+    auto step_begin = std::chrono::steady_clock::now();
+    rt_world3d_step(world, 1.0 / 60.0);
+    auto step_end = std::chrono::steady_clock::now();
+
+    int built_bvhs = 0;
+    for (int i = 0; i < tile_count; ++i) {
+        if (meshes[i]->physics_bvh_node_count > 0)
+            built_bvhs++;
+    }
+
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "mesh convex hull target: only the overlapping tile collides");
+    EXPECT_TRUE(meshes[target]->physics_bvh_node_count > 0,
+                "mesh convex hull target: overlapping tile builds its triangle BVH");
+    EXPECT_TRUE(built_bvhs == 1,
+                "mesh convex hull target: body broadphase skips distant mesh BVHs");
+
+    long long step_us =
+        (long long)std::chrono::duration_cast<std::chrono::microseconds>(step_end - step_begin)
+            .count();
+    std::printf("PHYSICS_MESH_BVH_TARGET: tiles=%d triangles_per_tile=%d built_mesh_bvhs=%d "
+                "collisions=%lld step_us=%lld\n",
+                tile_count,
+                segments * segments * 2,
+                built_bvhs,
+                (long long)rt_world3d_get_collision_count(world),
+                step_us);
 }
 
 static void test_compound_collider_child_transform_affects_contact() {
@@ -1680,6 +1982,52 @@ static void test_collision_event_surface_and_trigger_flag() {
     }
 }
 
+static void test_rotated_box_box_exposes_clipped_manifold() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_aabb(1.0, 0.5, 0.75, 0.0);
+    void *b = rt_body3d_new_aabb(1.0, 0.5, 0.75, 1.0);
+    double angle = 0.40;
+    void *q = rt_quat_from_axis_angle(rt_vec3_new(0.0, 1.0, 0.0), angle);
+    void *x_axis = rt_quat_rotate_vec3(q, rt_vec3_new(1.0, 0.0, 0.0));
+    double nx = rt_vec3_x(x_axis);
+    double nz = rt_vec3_z(x_axis);
+    rt_body3d_set_orientation(a, q);
+    rt_body3d_set_orientation(b, q);
+    rt_body3d_set_position(a, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(b, nx * 1.85, 0.0, nz * 1.85);
+    rt_body3d_set_trigger(b, 1);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "rotated box manifold: OBB face pair collides");
+    {
+        void *event = rt_world3d_get_collision_event(world, 0);
+        int64_t contact_count = rt_collision_event3d_get_contact_count(event);
+        EXPECT_TRUE(contact_count >= 4,
+                    "rotated box manifold: clipped face contact exposes four points");
+        for (int64_t i = 0; i < contact_count; ++i) {
+            void *point = rt_collision_event3d_get_contact_point(event, i);
+            void *normal = rt_collision_event3d_get_contact_normal(event, i);
+            EXPECT_TRUE(point != nullptr, "rotated box manifold: contact point returned");
+            EXPECT_TRUE(normal != nullptr, "rotated box manifold: contact normal returned");
+            EXPECT_TRUE(rt_collision_event3d_get_contact_separation(event, i) < 0.0,
+                        "rotated box manifold: clipped contact separation is penetrating");
+        }
+        {
+            void *normal = rt_collision_event3d_get_contact_normal(event, 0);
+            EXPECT_TRUE(fabs(rt_vec3_y(normal)) < 0.25,
+                        "rotated box manifold: face normal is not the old axis-aligned Y fallback");
+            EXPECT_TRUE(fabs(rt_vec3_x(normal)) > 0.75,
+                        "rotated box manifold: face normal follows the rotated box axis");
+            EXPECT_TRUE(fabs(rt_vec3_z(normal)) > 0.20,
+                        "rotated box manifold: face normal preserves yaw rotation");
+        }
+    }
+}
+
 /*==========================================================================
  * Trigger3D tests
  *=========================================================================*/
@@ -2092,20 +2440,85 @@ static void test_sixdof_joint_limits() {
         angular_joint, rt_vec3_new(-1.0, -1.0, -1.0), rt_vec3_new(1.0, 1.0, 1.0));
     rt_body3d_set_position(c, 0.0, 0.0, 0.0);
     rt_body3d_set_position(d, 3.0, 0.0, 0.0);
-    rt_body3d_set_angular_velocity(d, 5.0, 0.0, 0.0);
+    rt_body3d_set_orientation(d, rt_quat_from_axis_angle(rt_vec3_new(1.0, 0.0, 0.0), 1.5));
     rt_world3d_add(world2, c);
     rt_world3d_add(world2, d);
     rt_world3d_add_joint(world2, angular_joint, RT_JOINT_SIXDOF);
     rt_world3d_step(world2, 1.0 / 60.0);
 
-    void *ang_d = rt_body3d_get_angular_velocity(d);
-    EXPECT_TRUE(fabs(rt_vec3_x(ang_d)) <= 1.05,
-                "SixDofJoint3D SetAngularLimits clamps relative angular velocity");
+    void *rot_d = rt_body3d_get_orientation(d);
+    EXPECT_TRUE(fabs(quat_rotation_component(rot_d, 0)) <= 1.05,
+                "SixDofJoint3D SetAngularLimits clamps relative pose angle");
 
     EXPECT_TRUE(expect_trap_contains(
                     [&]() { rt_sixdof_joint3d_set_linear_limits(angular_joint, nullptr, nullptr); },
                     "min and max must be finite Vec3 values"),
                 "SixDofJoint3D.SetLinearLimits rejects invalid Vec3 handles");
+}
+
+static void test_sixdof_joint_angular_pose_limits_hold_against_spin() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *base = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);
+    void *arm = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    rt_body3d_set_collision_layer(base, 1);
+    rt_body3d_set_collision_mask(base, 1);
+    rt_body3d_set_collision_layer(arm, 2);
+    rt_body3d_set_collision_mask(arm, 2);
+    void *joint = rt_sixdof_joint3d_new(base, arm, rt_mat4_identity(), rt_mat4_identity());
+    rt_sixdof_joint3d_set_angular_limits(
+        joint, rt_vec3_new(-0.25, 0.0, 0.0), rt_vec3_new(0.25, 0.0, 0.0));
+    rt_body3d_set_angular_velocity(arm, 4.0, 1.5, -1.0);
+    rt_world3d_add(world, base);
+    rt_world3d_add(world, arm);
+    rt_world3d_add_joint(world, joint, RT_JOINT_SIXDOF);
+
+    for (int i = 0; i < 90; i++)
+        rt_world3d_step(world, 1.0 / 60.0);
+
+    void *rot = rt_body3d_get_orientation(arm);
+    void *ang = rt_body3d_get_angular_velocity(arm);
+    EXPECT_TRUE(fabs(quat_rotation_component(rot, 0)) <= 0.30,
+                "SixDof angular pose limit holds X rotation under sustained spin");
+    EXPECT_TRUE(fabs(quat_rotation_component(rot, 1)) <= 0.04,
+                "SixDof angular pose lock holds Y rotation");
+    EXPECT_TRUE(fabs(quat_rotation_component(rot, 2)) <= 0.04,
+                "SixDof angular pose lock holds Z rotation");
+    EXPECT_TRUE(fabs(rt_vec3_x(ang)) < 0.20,
+                "SixDof angular limit removes velocity at the X pose stop");
+    EXPECT_TRUE(fabs(rt_vec3_y(ang)) < 0.05 && fabs(rt_vec3_z(ang)) < 0.05,
+                "SixDof angular locks remove off-axis spin");
+}
+
+static void test_sixdof_joint_linear_motor_preserves_angular_pose_limits() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *base = rt_body3d_new_sphere(0.25, 0.0);
+    void *slider = rt_body3d_new_sphere(0.25, 1.0);
+    rt_body3d_set_collision_layer(base, 1);
+    rt_body3d_set_collision_mask(base, 1);
+    rt_body3d_set_collision_layer(slider, 2);
+    rt_body3d_set_collision_mask(slider, 2);
+    void *joint = rt_sixdof_joint3d_new(base, slider, rt_mat4_identity(), rt_mat4_identity());
+    rt_sixdof_joint3d_set_linear_limits(
+        joint, rt_vec3_new(-10.0, 0.0, 0.0), rt_vec3_new(10.0, 0.0, 0.0));
+    rt_sixdof_joint3d_set_angular_limits(
+        joint, rt_vec3_new(-0.15, 0.0, 0.0), rt_vec3_new(0.15, 0.0, 0.0));
+    rt_sixdof_joint3d_set_linear_motor(joint, 1, rt_vec3_new(1.5, 0.0, 0.0), 10.0);
+    rt_body3d_set_angular_velocity(slider, 3.0, 1.0, 0.0);
+    rt_world3d_add(world, base);
+    rt_world3d_add(world, slider);
+    rt_world3d_add_joint(world, joint, RT_JOINT_SIXDOF);
+
+    for (int i = 0; i < 60; i++)
+        rt_world3d_step(world, 1.0 / 60.0);
+
+    void *vel = rt_body3d_get_velocity(slider);
+    void *rot = rt_body3d_get_orientation(slider);
+    EXPECT_NEAR(rt_vec3_x(vel), 1.5, 0.1,
+                "SixDof linear motor keeps driving while angular limits solve");
+    EXPECT_TRUE(fabs(quat_rotation_component(rot, 0)) <= 0.20,
+                "SixDof angular pose limit remains stable with an active linear motor");
+    EXPECT_TRUE(fabs(quat_rotation_component(rot, 1)) <= 0.04,
+                "SixDof angular pose lock remains stable with an active linear motor");
 }
 
 static void test_joint_type_validation_for_new_joint_classes() {
@@ -2255,6 +2668,7 @@ int main() {
     test_trigger_no_push();
     test_ground_detection();
     test_box_stack_rests_stably();
+    test_world_solver_island_batches_resting_pile_target();
 
     /* Character controller */
     test_character_create();
@@ -2288,8 +2702,11 @@ int main() {
     test_convex_hull_gjk_detects_contained_sphere();
     test_convex_hull_gjk_rejects_aabb_false_positive();
     test_convex_hull_gjk_detects_overlapping_hulls();
+    test_convex_hull_gjk_handles_box_capsule_and_simple_edge_cases();
+    test_convex_hull_gjk_perf_target();
     test_mesh_collider_blocks_falling_sphere();
     test_mesh_collider_narrowphase_builds_bvh_for_sphere_and_box();
+    test_mesh_convex_hull_bvh_and_body_broadphase_target();
     test_compound_collider_child_transform_affects_contact();
     test_compound_collider_rejects_transitive_cycle();
     test_heightfield_collider_supports_ground_contact();
@@ -2312,6 +2729,7 @@ int main() {
     test_contact_identity_survives_broadphase_order_flip();
     test_ccd_substep_contact_generates_frame_event();
     test_collision_event_surface_and_trigger_flag();
+    test_rotated_box_box_exposes_clipped_manifold();
 
     /* Joint tests */
     test_distance_joint_create();
@@ -2326,6 +2744,8 @@ int main() {
     test_rope_joint_max_length_constraint();
     test_sixdof_joint_frame_anchor_constraint();
     test_sixdof_joint_limits();
+    test_sixdof_joint_angular_pose_limits_hold_against_spin();
+    test_sixdof_joint_linear_motor_preserves_angular_pose_limits();
     test_sixdof_joint_linear_motor();
     test_joint_type_validation_for_new_joint_classes();
     test_world_solver_iteration_controls();

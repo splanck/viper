@@ -182,6 +182,97 @@ static void joint3d_quat_conjugate(const double *q, double *out) {
     out[3] = q[3];
 }
 
+/// @brief Normalize a quaternion in place, falling back to identity for invalid values.
+static void joint3d_quat_normalize(double *q) {
+    double len_sq;
+    double inv_len;
+    if (!q) {
+        return;
+    }
+    len_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (!isfinite(len_sq) || len_sq < 1e-24) {
+        q[0] = 0.0;
+        q[1] = 0.0;
+        q[2] = 0.0;
+        q[3] = 1.0;
+        return;
+    }
+    inv_len = 1.0 / sqrt(len_sq);
+    q[0] *= inv_len;
+    q[1] *= inv_len;
+    q[2] *= inv_len;
+    q[3] *= inv_len;
+}
+
+/// @brief Build a quaternion from a normalized world axis and an angle in radians.
+static void joint3d_quat_from_axis_angle(const double *axis, double angle, double *out) {
+    double half;
+    double s;
+    if (!axis || !out || !joint3d_vec3_all_finite(axis) || !isfinite(angle)) {
+        if (out) {
+            out[0] = 0.0;
+            out[1] = 0.0;
+            out[2] = 0.0;
+            out[3] = 1.0;
+        }
+        return;
+    }
+    half = angle * 0.5;
+    s = sin(half);
+    out[0] = axis[0] * s;
+    out[1] = axis[1] * s;
+    out[2] = axis[2] * s;
+    out[3] = cos(half);
+    joint3d_quat_normalize(out);
+}
+
+/// @brief Prepend a world-axis rotation to an orientation quaternion.
+static void joint3d_quat_prepend_axis_angle(double *orientation,
+                                            const double *axis,
+                                            double angle) {
+    double delta[4];
+    double out[4];
+    if (!orientation || !axis || fabs(angle) < 1e-12)
+        return;
+    joint3d_quat_from_axis_angle(axis, angle, delta);
+    joint3d_quat_mul(delta, orientation, out);
+    memcpy(orientation, out, sizeof(out));
+    joint3d_quat_normalize(orientation);
+}
+
+/// @brief Convert a quaternion delta into a shortest-arc rotation vector.
+static void joint3d_quat_to_rotation_vector(const double *q, double *out) {
+    double qn[4];
+    double v_len;
+    double angle;
+    double scale;
+    if (!out)
+        return;
+    joint3d_vec3_set(out, 0.0, 0.0, 0.0);
+    if (!q)
+        return;
+    memcpy(qn, q, sizeof(qn));
+    joint3d_quat_normalize(qn);
+    if (qn[3] < 0.0) {
+        qn[0] = -qn[0];
+        qn[1] = -qn[1];
+        qn[2] = -qn[2];
+        qn[3] = -qn[3];
+    }
+    v_len = sqrt(qn[0] * qn[0] + qn[1] * qn[1] + qn[2] * qn[2]);
+    if (!isfinite(v_len) || v_len < 1e-12) {
+        out[0] = 2.0 * qn[0];
+        out[1] = 2.0 * qn[1];
+        out[2] = 2.0 * qn[2];
+        return;
+    }
+    angle = 2.0 * atan2(v_len, qn[3]);
+    scale = angle / v_len;
+    out[0] = qn[0] * scale;
+    out[1] = qn[1] * scale;
+    out[2] = qn[2] * scale;
+}
+
 /// @brief Rotate vector @p v by quaternion @p q (out = q * v * q⁻¹).
 static void joint3d_quat_rotate_vec3(const double *q, const double *v, double *out) {
     double qv[4] = {v[0], v[1], v[2], 0.0};
@@ -368,47 +459,6 @@ static void joint3d_remove_relative_linear_velocity_locked_axes(rt_body3d_kinema
         double correction = rel[i] / inv_sum;
         body_a->velocity[i] += correction * body_a->inv_mass;
         body_b->velocity[i] -= correction * body_b->inv_mass;
-    }
-}
-
-/// @brief Project the bodies' relative angular velocity back inside per-axis [min, max] limits.
-/// @details Only the amount by which each axis exceeds its limit is removed (inverse-mass split),
-///          leaving in-range angular motion untouched.
-static void joint3d_project_relative_angular_velocity_limits(rt_body3d_kinematics *body_a,
-                                                             rt_body3d_kinematics *body_b,
-                                                             const double *angular_min,
-                                                             const double *angular_max) {
-    double rel[3];
-    double violation[3] = {0.0, 0.0, 0.0};
-    double inv_sum;
-    int has_violation = 0;
-    if (!joint3d_body_is_finite(body_a) || !joint3d_body_is_finite(body_b) || !angular_min ||
-        !angular_max)
-        return;
-    if (!joint3d_vec3_all_finite(body_a->angular_velocity) ||
-        !joint3d_vec3_all_finite(body_b->angular_velocity))
-        return;
-    inv_sum = body_a->inv_mass + body_b->inv_mass;
-    if (!isfinite(inv_sum) || inv_sum < 1e-12)
-        return;
-    joint3d_vec3_sub(body_b->angular_velocity, body_a->angular_velocity, rel);
-    if (!joint3d_vec3_all_finite(rel))
-        return;
-    for (int i = 0; i < 3; i++) {
-        if (rel[i] < angular_min[i]) {
-            violation[i] = rel[i] - angular_min[i];
-            has_violation = 1;
-        } else if (rel[i] > angular_max[i]) {
-            violation[i] = rel[i] - angular_max[i];
-            has_violation = 1;
-        }
-    }
-    if (!has_violation)
-        return;
-    for (int i = 0; i < 3; i++) {
-        double correction = violation[i] / inv_sum;
-        body_a->angular_velocity[i] += correction * body_a->inv_mass;
-        body_b->angular_velocity[i] -= correction * body_b->inv_mass;
     }
 }
 
@@ -1131,6 +1181,7 @@ typedef struct {
     double linear_max[3];
     double angular_min[3];
     double angular_max[3];
+    double reference_relative_orientation[4];
     int8_t linear_motor_enabled;
     double linear_motor_velocity[3];
     double linear_motor_max_impulse;
@@ -1178,6 +1229,12 @@ void *rt_sixdof_joint3d_new(void *body_a, void *body_b, void *frame_a, void *fra
     joint3d_vec3_set(j->linear_max, 0.0, 0.0, 0.0);
     joint3d_vec3_set(j->angular_min, 0.0, 0.0, 0.0);
     joint3d_vec3_set(j->angular_max, 0.0, 0.0, 0.0);
+    {
+        double inv_a[4];
+        joint3d_quat_conjugate(j->body_a->orientation, inv_a);
+        joint3d_quat_mul(inv_a, j->body_b->orientation, j->reference_relative_orientation);
+        joint3d_quat_normalize(j->reference_relative_orientation);
+    }
     j->linear_motor_enabled = 0;
     joint3d_vec3_set(j->linear_motor_velocity, 0.0, 0.0, 0.0);
     j->linear_motor_max_impulse = 0.0;
@@ -1185,6 +1242,125 @@ void *rt_sixdof_joint3d_new(void *body_a, void *body_b, void *frame_a, void *fra
     rt_obj_retain_maybe(body_b);
     rt_obj_set_finalizer(j, sixdof_joint_finalizer);
     return j;
+}
+
+/// @brief Compute body B's pose-angle delta from the SixDof creation pose in body A's frame.
+static int sixdof_joint_current_pose_angles(const rt_sixdof_joint3d *j, double *out) {
+    double inv_a[4];
+    double rel[4];
+    double inv_ref[4];
+    double delta[4];
+    if (!j || !out || !joint3d_body_is_finite(j->body_a) || !joint3d_body_is_finite(j->body_b))
+        return 0;
+    joint3d_quat_conjugate(j->body_a->orientation, inv_a);
+    joint3d_quat_mul(inv_a, j->body_b->orientation, rel);
+    joint3d_quat_normalize(rel);
+    joint3d_quat_conjugate(j->reference_relative_orientation, inv_ref);
+    joint3d_quat_mul(rel, inv_ref, delta);
+    joint3d_quat_to_rotation_vector(delta, out);
+    return joint3d_vec3_all_finite(out);
+}
+
+/// @brief World-space unit axis for a SixDof angular limit component.
+static void sixdof_joint_world_axis(const rt_sixdof_joint3d *j, int axis, double *out) {
+    double local[3] = {0.0, 0.0, 0.0};
+    if (!out) {
+        return;
+    }
+    if (axis < 0 || axis > 2 || !j || !j->body_a) {
+        joint3d_vec3_set(out, 1.0, 0.0, 0.0);
+        return;
+    }
+    local[axis] = 1.0;
+    joint3d_quat_rotate_vec3(j->body_a->orientation, local, out);
+    if (!joint3d_vec3_normalize(out))
+        joint3d_vec3_set(out, axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0,
+                         axis == 2 ? 1.0 : 0.0);
+}
+
+/// @brief Correct relative orientation when the SixDof pose-angle exits an angular limit.
+static void sixdof_joint_apply_pose_angle_correction(rt_sixdof_joint3d *j,
+                                                     const double *axis_world,
+                                                     double violation) {
+    double inv_sum;
+    if (!j || !axis_world || fabs(violation) < 1e-12 ||
+        !joint3d_body_is_finite(j->body_a) || !joint3d_body_is_finite(j->body_b))
+        return;
+    inv_sum = j->body_a->inv_mass + j->body_b->inv_mass;
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
+        return;
+    joint3d_quat_prepend_axis_angle(
+        j->body_a->orientation, axis_world, violation * j->body_a->inv_mass / inv_sum);
+    joint3d_quat_prepend_axis_angle(
+        j->body_b->orientation, axis_world, -violation * j->body_b->inv_mass / inv_sum);
+}
+
+/// @brief Remove relative angular velocity that would keep driving a pose-angle outside its limit.
+static void sixdof_joint_apply_pose_angle_velocity_stop(rt_sixdof_joint3d *j,
+                                                        const double *pose_angles) {
+    double rel[3];
+    double inv_sum;
+    if (!j || !pose_angles || !joint3d_body_is_finite(j->body_a) ||
+        !joint3d_body_is_finite(j->body_b))
+        return;
+    if (!joint3d_vec3_all_finite(j->body_a->angular_velocity) ||
+        !joint3d_vec3_all_finite(j->body_b->angular_velocity))
+        return;
+    inv_sum = j->body_a->inv_mass + j->body_b->inv_mass;
+    if (!isfinite(inv_sum) || inv_sum < 1e-12)
+        return;
+    joint3d_vec3_sub(j->body_b->angular_velocity, j->body_a->angular_velocity, rel);
+    if (!joint3d_vec3_all_finite(rel))
+        return;
+    for (int i = 0; i < 3; i++) {
+        double axis_world[3];
+        double rel_axis;
+        double correction;
+        int stop = 0;
+        sixdof_joint_world_axis(j, i, axis_world);
+        rel_axis = joint3d_vec3_dot(rel, axis_world);
+        if (!isfinite(rel_axis))
+            continue;
+        if (fabs(j->angular_max[i] - j->angular_min[i]) <= 1e-12) {
+            stop = fabs(rel_axis) > 1e-12;
+        } else if (pose_angles[i] >= j->angular_max[i] - 1e-6 && rel_axis > 0.0) {
+            stop = 1;
+        } else if (pose_angles[i] <= j->angular_min[i] + 1e-6 && rel_axis < 0.0) {
+            stop = 1;
+        }
+        if (!stop)
+            continue;
+        correction = rel_axis / inv_sum;
+        for (int k = 0; k < 3; k++) {
+            j->body_a->angular_velocity[k] += axis_world[k] * correction * j->body_a->inv_mass;
+            j->body_b->angular_velocity[k] -= axis_world[k] * correction * j->body_b->inv_mass;
+        }
+    }
+}
+
+/// @brief Enforce SixDof per-axis pose-angle limits around the creation relative orientation.
+static void sixdof_joint_apply_angular_limits(rt_sixdof_joint3d *j) {
+    double pose_angles[3];
+    double clamped_angles[3];
+    if (!sixdof_joint_current_pose_angles(j, pose_angles))
+        return;
+    memcpy(clamped_angles, pose_angles, sizeof(clamped_angles));
+    for (int i = 0; i < 3; i++) {
+        double violation = 0.0;
+        double axis_world[3];
+        if (pose_angles[i] < j->angular_min[i]) {
+            violation = pose_angles[i] - j->angular_min[i];
+            clamped_angles[i] = j->angular_min[i];
+        } else if (pose_angles[i] > j->angular_max[i]) {
+            violation = pose_angles[i] - j->angular_max[i];
+            clamped_angles[i] = j->angular_max[i];
+        }
+        if (fabs(violation) <= 1e-12)
+            continue;
+        sixdof_joint_world_axis(j, i, axis_world);
+        sixdof_joint_apply_pose_angle_correction(j, axis_world, violation);
+    }
+    sixdof_joint_apply_pose_angle_velocity_stop(j, clamped_angles);
 }
 
 /// @brief Drive the relative linear velocity along each *unlocked* axis toward
@@ -1256,9 +1432,9 @@ void rt_sixdof_joint3d_set_linear_limits(void *joint, void *min_obj, void *max_o
     memcpy(j->linear_max, max_v, sizeof(j->linear_max));
 }
 
-/// @brief Set the joint's per-axis angular limits (radians) from two Vec3 handles.
-/// @details Limits are canonicalized (min<=max); equal min/max locks that rotational axis. Traps on
-///          non-Vec3 inputs.
+/// @brief Set the joint's per-axis angular pose limits (radians) from two Vec3 handles.
+/// @details Limits are relative to the creation pose in body A's joint frame; equal min/max locks
+///          that rotational axis. Traps on non-Vec3 inputs.
 void rt_sixdof_joint3d_set_angular_limits(void *joint, void *min_obj, void *max_obj) {
     double min_v[3];
     double max_v[3];
@@ -1275,9 +1451,9 @@ void rt_sixdof_joint3d_set_angular_limits(void *joint, void *min_obj, void *max_
     memcpy(j->angular_max, max_v, sizeof(j->angular_max));
 }
 
-/// @brief Solve one 6DOF constraint step: enforce linear/angular box limits and any linear motor.
+/// @brief Solve one 6DOF constraint step: enforce linear/pose-angular box limits and any motor.
 /// @details Projects the anchor gap back inside the linear limits, zeroes relative velocity on locked
-///          linear axes, clamps relative angular velocity to the angular limits, then drives the motor.
+///          linear axes, holds relative pose angles inside angular limits, then drives the motor.
 static void solve_sixdof(rt_sixdof_joint3d *j, double dt) {
     (void)dt;
     if (!j)
@@ -1286,8 +1462,7 @@ static void solve_sixdof(rt_sixdof_joint3d *j, double dt) {
         j->body_a, j->body_b, j->local_anchor_a, j->local_anchor_b, j->linear_min, j->linear_max);
     joint3d_remove_relative_linear_velocity_locked_axes(
         j->body_a, j->body_b, j->linear_min, j->linear_max);
-    joint3d_project_relative_angular_velocity_limits(
-        j->body_a, j->body_b, j->angular_min, j->angular_max);
+    sixdof_joint_apply_angular_limits(j);
     if (j->linear_motor_enabled)
         sixdof_joint_apply_linear_motor(j);
 }

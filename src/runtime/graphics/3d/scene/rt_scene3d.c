@@ -2947,6 +2947,8 @@ static int scene3d_spatial_collect_all(rt_scene3d *scene, scene3d_spatial_candid
     return 1;
 }
 
+/// @brief Grow the scene's visibility-zone array to hold at least @p needed zones (doubling growth).
+/// @return 1 on success or when capacity already suffices; 0 on overflow or allocation failure.
 static int scene3d_visibility_zone_ensure_capacity(rt_scene3d *scene, int32_t needed) {
     int32_t new_capacity;
     rt_scene3d_visibility_zone *grown;
@@ -2971,6 +2973,8 @@ static int scene3d_visibility_zone_ensure_capacity(rt_scene3d *scene, int32_t ne
     return 1;
 }
 
+/// @brief Grow the scene's visibility-portal array to hold at least @p needed portals (doubling growth).
+/// @return 1 on success or when capacity already suffices; 0 on overflow or allocation failure.
 static int scene3d_visibility_portal_ensure_capacity(rt_scene3d *scene, int32_t needed) {
     int32_t new_capacity;
     rt_scene3d_visibility_portal *grown;
@@ -2997,6 +3001,7 @@ static int scene3d_visibility_portal_ensure_capacity(rt_scene3d *scene, int32_t 
     return 1;
 }
 
+/// @brief Test whether @p point lies inside the zone's world-space AABB (inclusive bounds).
 static int scene3d_visibility_zone_contains_point(const rt_scene3d_visibility_zone *zone,
                                                   const double point[3]) {
     return zone && point && point[0] >= zone->world_min[0] && point[0] <= zone->world_max[0] &&
@@ -3004,6 +3009,8 @@ static int scene3d_visibility_zone_contains_point(const rt_scene3d_visibility_zo
            point[2] >= zone->world_min[2] && point[2] <= zone->world_max[2];
 }
 
+/// @brief Find the visibility zone containing the camera eye (including its shake offset).
+/// @return Index of the first containing zone, or -1 if the eye is non-finite or outside every zone.
 static int scene3d_visibility_find_camera_zone(const rt_scene3d *scene, const rt_camera3d *cam) {
     double eye[3];
     if (!scene || !cam)
@@ -3020,6 +3027,12 @@ static int scene3d_visibility_find_camera_zone(const rt_scene3d *scene, const rt
     return -1;
 }
 
+/// @brief Build the potentially-visible-set for the camera's current zone by portal flood-fill.
+/// @details Locates the zone containing the camera, then breadth-first traverses the directed
+///          visibility portals to mark every zone reachable from it. The result is a per-zone
+///          visibility bitmap consumed by scene3d_pvs_allows_aabb. Left inactive (zeroed) when the
+///          scene has no zones, the camera is outside all zones, or allocation fails.
+/// @return 1 if an active PVS context was produced; 0 otherwise (with @p out zeroed).
 static int scene3d_build_pvs_context(rt_scene3d *scene,
                                      rt_camera3d *cam,
                                      scene3d_pvs_context_t *out) {
@@ -3061,6 +3074,7 @@ static int scene3d_build_pvs_context(rt_scene3d *scene,
     return 1;
 }
 
+/// @brief Release a PVS context's zone bitmap and reset it to the inactive state. Safe on NULL.
 static void scene3d_pvs_context_clear(scene3d_pvs_context_t *pvs) {
     if (!pvs)
         return;
@@ -3068,6 +3082,11 @@ static void scene3d_pvs_context_clear(scene3d_pvs_context_t *pvs) {
     memset(pvs, 0, sizeof(*pvs));
 }
 
+/// @brief Test whether an AABB may be visible under the current PVS.
+/// @details An AABB passes if it overlaps no authored zone (zones do not cover it) or overlaps at
+///          least one zone flagged visible in @p pvs. Returns visible (1) whenever the PVS is
+///          inactive, so visibility culling degrades safely to a no-op.
+/// @return 1 if the AABB should be considered visible; 0 if every overlapping zone is culled.
 static int scene3d_pvs_allows_aabb(const rt_scene3d *scene,
                                    const scene3d_pvs_context_t *pvs,
                                    const double world_min[3],
@@ -4470,6 +4489,10 @@ int64_t rt_scene3d_add_visibility_zone(void *obj, rt_string name, void *min_obj,
     return s->visibility_zone_count++;
 }
 
+/// @brief Append one directed visibility portal (@p from_zone -> @p to_zone) to the scene.
+/// @details Validates both zone indices against the current zone count and grows the portal array
+///          as needed before recording the edge.
+/// @return 1 on success; 0 on invalid indices, overflow, or allocation failure.
 static int scene3d_add_visibility_portal_directed(rt_scene3d *s, int32_t from_zone, int32_t to_zone) {
     rt_scene3d_visibility_portal *portal;
     if (!s || from_zone < 0 || to_zone < 0 || from_zone >= s->visibility_zone_count ||

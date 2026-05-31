@@ -89,6 +89,12 @@ int64_t rt_world3d_joint_count(void *world);
 int64_t rt_world3d_get_solver_iterations(void *world);
 /// @brief Set iterative solver passes; clamped to the runtime-supported range.
 void rt_world3d_set_solver_iterations(void *world, int64_t iterations);
+/// @brief Max active contact islands scheduled by the most recent Step.
+int64_t rt_world3d_get_last_solver_island_count(void *world);
+/// @brief Max awake dynamic bodies included in contact islands by the most recent Step.
+int64_t rt_world3d_get_last_solver_active_body_count(void *world);
+/// @brief Max non-trigger contacts scheduled through contact islands by the most recent Step.
+int64_t rt_world3d_get_last_solver_contact_count(void *world);
 
 /* Collision event queries (populated after each Step) */
 /// @brief Number of contact pairs from the most recent Step.

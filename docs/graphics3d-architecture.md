@@ -150,9 +150,12 @@ validates heightfield `Pixels` handles, rejects compound-child cycles, and guard
 allocation sizes. `Physics3D` keeps world gravity, time steps, body motion state, damping, impulses,
 and character-controller settings finite before they feed integration and broadphase code; capsule
 primitive narrow-phase uses the body's quaternion orientation when deriving its world-space axis, and
-ray queries use analytic sphere/capsule/box tests with AABB fallback for complex colliders. Contact
-and query result buffers use checked reserve-count arithmetic so a pathological broadphase cannot
-wrap allocation sizes.
+ray queries use analytic sphere/capsule/box tests with AABB fallback for complex colliders. Mesh
+colliders use the body-centric physics broadphase before per-mesh BVH traversal for sphere, capsule,
+box, and convex-hull triangle contacts. Contact assembly publishes bounded multi-point manifolds for
+AABB pairs and clipped OBB face contacts. The warm-started contact solver batches awake contacts into
+independent islands before its velocity and position passes, and contact/query result buffers use checked reserve-count arithmetic so a
+pathological broadphase cannot wrap allocation sizes.
 `Mesh3D` rejects invalid procedural dimensions, non-finite OBJ/STL attributes, malformed OBJ face
 tokens, collinear triangles, and overflowing OBJ face indices; generated planes face +Y, generated UV
 spheres avoid zero-area pole triangles, importers skip isolated degenerate faces, normals/tangents skip

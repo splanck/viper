@@ -830,6 +830,15 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_SolverIterations\""),
                  "Physics3DWorld.SolverIterations getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverIslandCount\""),
+                 "Physics3DWorld.LastSolverIslandCount getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverActiveBodyCount\""),
+                 "Physics3DWorld.LastSolverActiveBodyCount getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverContactCount\""),
+                 "Physics3DWorld.LastSolverContactCount getter must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.SetSolverIterations\""),
                  "Physics3DWorld.SetSolverIterations must use Graphics3D PascalCase naming") &&
          ok;
@@ -877,6 +886,15 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"SolverIterations\""),
                  "Physics3DWorld.SolverIterations property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"LastSolverIslandCount\""),
+                 "Physics3DWorld.LastSolverIslandCount property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"LastSolverActiveBodyCount\""),
+                 "Physics3DWorld.LastSolverActiveBodyCount property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"LastSolverContactCount\""),
+                 "Physics3DWorld.LastSolverContactCount property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetSolverIterations\""),
                  "Physics3DWorld.SetSolverIterations method missing") &&
@@ -1134,6 +1152,12 @@ bool check_runtime_surface_names() {
         "Viper.Game3D.WorldStream3D.GetTerrainTileMaterial",
         "Viper.Game3D.WorldStream3D.get_terrain_tile_material",
         "Viper.Graphics3D.Physics3DWorld.get_solverIterations",
+        "Viper.Graphics3D.Physics3DWorld.get_lastSolverIslandCount",
+        "Viper.Graphics3D.Physics3DWorld.get_last_solver_island_count",
+        "Viper.Graphics3D.Physics3DWorld.get_lastSolverActiveBodyCount",
+        "Viper.Graphics3D.Physics3DWorld.get_last_solver_active_body_count",
+        "Viper.Graphics3D.Physics3DWorld.get_lastSolverContactCount",
+        "Viper.Graphics3D.Physics3DWorld.get_last_solver_contact_count",
         "Viper.Graphics3D.Physics3DWorld.setSolverIterations",
         "Viper.Graphics3D.HingeJoint3D.new",
         "Viper.Graphics3D.RopeJoint3D.get_maxLength",

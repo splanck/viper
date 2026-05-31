@@ -359,6 +359,9 @@ split metadata to the backend light payload.
 ```zia
 expose func Physics3DWorld.SetSolverIterations(n: Integer)   // iterative contact + joint passes
 expose Integer Physics3DWorld.SolverIterations;
+expose Integer Physics3DWorld.LastSolverIslandCount;         // max active contact islands in latest Step
+expose Integer Physics3DWorld.LastSolverActiveBodyCount;     // max awake dynamic bodies in latest island batch
+expose Integer Physics3DWorld.LastSolverContactCount;        // max non-trigger contacts in latest island batch
 expose Integer CollisionEvent3D.ContactCount;                // existing API now >1
 expose func CollisionEvent3D.GetContact(i: Integer) -> ContactPoint3D
 expose Integer Game3D.Collision3DEvent.contactCount;         // wrapper mirrors raw event
@@ -380,22 +383,31 @@ class Viper.Graphics3D.SixDofJoint3D {
     expose func SetLinearLimits(min: Vec3, max: Vec3)
     expose func SetAngularLimits(min: Vec3, max: Vec3)
 }
-// Collider3D.NewConvexHull uses GJK/EPA for hull-vs-hull and hull-vs-simple pairs (no API change).
+// Collider3D.NewConvexHull uses GJK/EPA for hull-vs-hull and hull-vs-simple pairs
+// (sphere/capsule/box), including separated-overlapping-AABB edge cases (no API change).
 ```
 
-`SetSolverIterations` is now live for contact and joint passes. AABB-vs-AABB
-events expose a bounded multi-point manifold; other shapes still report one
-representative contact, and warm-starting is still pending. Convex-hull pairs now
-use a simplex/Minkowski narrow phase rather than AABB fallback.
-Mesh/convex-vs-sphere/capsule/box contacts reuse the per-mesh BVH for candidate
-triangle pruning and keep the previous full scan as a fallback when the BVH path
-is unavailable; this has no public API surface.
+`SetSolverIterations` is now live for contact and joint passes. Awake,
+non-trigger contacts are scheduled through independent contact islands, and the
+latest `Step` exposes island/body/contact maxima through the solver telemetry
+properties above. The named `PHYSICS_ISLAND_BATCH_TARGET` fixture records a
+257-body / 32-pile resting target with first-step and settle timings.
+AABB-vs-AABB events and rotated box face contacts expose bounded multi-point
+manifolds; edge-style box contacts and other shapes still report one
+representative contact. Convex-hull pairs now use a simplex/Minkowski narrow
+phase rather than AABB fallback.
+Mesh-vs-sphere/capsule/box/convex-hull contacts reuse the per-mesh BVH for
+candidate triangle pruning and keep the previous full scan as a fallback when
+the BVH path is unavailable. The body-centric physics broadphase chooses body
+pairs before any per-mesh BVH traversal; this has no public API surface.
 `AddJoint(joint, type)` now accepts `RT_JOINT_DISTANCE 0`,
 `RT_JOINT_SPRING 1`, `RT_JOINT_HINGE 2`, `RT_JOINT_ROPE 3`, and
 `RT_JOINT_SIXDOF 4`. The runtime type constants are `RT_JOINT_*`, not the
 stale `RT_JOINT3D_*` spelling older notes used.
-SixDof linear limits currently project frame-anchor separation; angular limits
-project relative angular velocity along world axes.
+SixDof linear limits project frame-anchor separation. Angular limits project
+relative joint-frame pose angles, in radians, from the creation relative
+orientation and remove angular velocity only for locked axes or motion pushing
+an already-limited pose farther out of range.
 
 ## Navigation — `Viper.Graphics3D.NavMesh3D` / `NavAgent3D`
 

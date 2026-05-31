@@ -131,6 +131,8 @@ int64_t rt_canvas3d_get_max_active_lights(void *obj);
 void rt_canvas3d_set_ambient(void *obj, double r, double g, double b);
 /// @brief Draw a debug 3D line between two Vec3 points.
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color);
+/// @brief Raw-array form of rt_canvas3d_draw_line3d: @p from and @p to are
+///   double[3] world-space coordinates instead of boxed Vec3 objects.
 void rt_canvas3d_draw_line3d_raw(void *obj, const double *from, const double *to, int64_t color);
 /// @brief Draw a debug 3D point (square) at the given position with pixel size.
 void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size);
@@ -292,11 +294,13 @@ void rt_camera3d_orbit(void *obj, void *target, double distance, double yaw, dou
 double rt_camera3d_get_fov(void *obj);
 /// @brief Set the field of view in degrees.
 void rt_camera3d_set_fov(void *obj, double fov);
-/// @brief Get/set the near clip-plane distance.
+/// @brief Get the near clip-plane distance.
 double rt_camera3d_get_near_plane(void *obj);
+/// @brief Set the near clip-plane distance.
 void rt_camera3d_set_near_plane(void *obj, double near_plane);
-/// @brief Get/set the far clip-plane distance.
+/// @brief Get the far clip-plane distance.
 double rt_camera3d_get_far_plane(void *obj);
+/// @brief Set the far clip-plane distance.
 void rt_camera3d_set_far_plane(void *obj, double far_plane);
 /// @brief Get the camera world-space position as a Vec3.
 void *rt_camera3d_get_position(void *obj);
@@ -480,6 +484,8 @@ void rt_canvas3d_draw_text2d(void *canvas, int64_t x, int64_t y, rt_string text,
 /* Debug gizmos */
 /// @brief Draw an axis-aligned bounding box outline between min and max corners.
 void rt_canvas3d_draw_aabb_wire(void *canvas, void *min_v, void *max_v, int64_t color);
+/// @brief Raw-array form of rt_canvas3d_draw_aabb_wire: @p min_v and @p max_v are
+///   double[3] corner coordinates instead of boxed Vec3 objects.
 void rt_canvas3d_draw_aabb_wire_raw(void *canvas, const double *min_v, const double *max_v, int64_t color);
 /// @brief Draw a wireframe sphere as great circles (3 orthogonal rings).
 void rt_canvas3d_draw_sphere_wire(void *canvas, void *center, double radius, int64_t color);

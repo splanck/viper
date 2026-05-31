@@ -1992,7 +1992,7 @@ Impulse-based 3D rigid body simulation with box, sphere, and capsule collision s
 Bodies now track quaternion orientation and angular velocity in addition to linear motion.
 Shape-specific narrow-phase collision: sphere-sphere uses radial distance (not AABB),
 box-sphere uses closest-point projection in the box's oriented local space. Collision detection uses a body-centric sweep-and-prune broadphase
-before narrow-phase tests. That broadphase is intentionally separate from the render-facing `Scene3D` BVH because it indexes all collider bodies, applies layer/mask and static-static solver filters, and preserves contact-event identity. Non-trigger contacts apply impulses at the contact point, so off-center
+before narrow-phase tests. That broadphase is intentionally separate from the render-facing `Scene3D` BVH because it indexes all collider bodies, applies layer/mask and static-static solver filters, and preserves contact-event identity; mesh narrow-phase then traverses only the selected collider's per-mesh BVH for sphere, capsule, box, and convex-hull contacts. Non-trigger contacts apply impulses at the contact point, so off-center
 hits update angular velocity as well as linear velocity. Coulomb friction and Baumgarte positional
 correction are applied to non-trigger contacts.
 
@@ -2002,8 +2002,10 @@ orientation; the `NewAABB` name is kept as a compatibility factory for box bodie
 `Raycast` tests actual collider geometry for boxes, spheres, capsules, compound leaves, mesh/convex
 triangles, and heightfields. Sphere and capsule sweeps use adaptive sampling so small-radius sweeps
 and long capsules can hit thin geometry.
-Mesh/convex colliders reuse a per-mesh BVH to prune candidate triangles for sphere, capsule, and box
-contacts, falling back to a full triangle scan if the BVH path is unavailable.
+Mesh/convex colliders reuse a per-mesh BVH to prune candidate triangles for sphere, capsule, box,
+and convex-hull contacts, falling back to a full triangle scan if the BVH path is unavailable.
+SixDof joints measure angular limits as per-axis pose angles relative to the bodies' creation
+orientation, then stop angular velocity that would push locked or already-limited axes farther out.
 
 ### Physics3DWorld
 
@@ -2025,6 +2027,10 @@ World storage for bodies, contacts, contact events, and joints grows on demand f
 | `LastCCDRequestedSubsteps` | Integer | read | Unclamped CCD substeps requested by the last step |
 | `LastCCDSubsteps` | Integer | read | CCD substeps actually used after capping |
 | `CCDSubstepClampedCount` | Integer | read | Number of steps that exceeded the CCD cap |
+| `SolverIterations` | Integer | read | Iterative contact/joint solver passes used by `Step()` |
+| `LastSolverIslandCount` | Integer | read | Max active contact islands scheduled by the most recent `Step()` |
+| `LastSolverActiveBodyCount` | Integer | read | Max awake dynamic bodies included in contact islands by the most recent `Step()` |
+| `LastSolverContactCount` | Integer | read | Max non-trigger contacts scheduled through contact islands by the most recent `Step()` |
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -2097,7 +2103,7 @@ Notes:
 | `ColliderA` | Object | read | Leaf collider for body A |
 | `ColliderB` | Object | read | Leaf collider for body B |
 | `IsTrigger` | Boolean | read | Pair includes at least one trigger body |
-| `ContactCount` | Integer | read | Number of contact points in the event; AABB pairs can expose up to four manifold points, while other pairs currently expose one representative point |
+| `ContactCount` | Integer | read | Number of contact points in the event; AABB and face-contact OBB box pairs can expose up to four manifold points, while other pairs currently expose one representative point |
 | `RelativeSpeed` | Float | read | Relative speed along the contact normal before resolution |
 | `NormalImpulse` | Float | read | Solver normal impulse from the last step (`0` for trigger pairs) |
 
@@ -2149,8 +2155,8 @@ Notes:
 - `NewConvexHull` treats the mesh vertex cloud as a convex support set.
   Hull contacts against spheres, capsules, boxes, and other hulls use GJK/EPA,
   including contained primitive contacts. Triangle-mesh contacts against
-  spheres, capsules, and boxes use BVH candidate pruning before triangle-level
-  tests.
+  spheres, capsules, boxes, and convex hulls use BVH candidate pruning before
+  triangle-level tests.
 - Compound colliders are the preferred way to build complex dynamic bodies from simple children.
 
 ---

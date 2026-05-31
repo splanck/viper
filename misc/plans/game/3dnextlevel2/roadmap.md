@@ -364,27 +364,30 @@ Cannot precede: Phase 12 lighting fidelity.
 Goal: stable stacking, scalable mesh collision, real convex shapes, and the
 joints the docs already promise.
 
-- Implement multi-point contact manifolds (replace the single contact point;
-  `docs/viperlib/graphics/physics3d.md:145`, with the "reserved for future
-  multi-point manifolds" note at `physics/rt_physics3d.c:4814`) and an iterated,
-  warm-started sequential-impulse solver so bodies stack/rest stably.
-- Extend the existing per-mesh BVH narrow-phase path beyond the current
-  sphere/capsule/box mesh-like contacts, integrate it with the Phase-3 index
-  where useful, and keep brute-force O(triangles) scans only as correctness
+- Landed multi-point contact manifolds for AABB and rotated box face contacts
+  plus an iterated, warm-started sequential-impulse solver so bodies stack/rest
+  stably; non-box pairs continue to expose representative contacts under the
+  current event contract.
+- The per-mesh BVH narrow-phase path now covers sphere, capsule, box, and
+  convex-hull contacts after the chosen body-centric physics broadphase selects
+  candidate bodies; keep brute-force O(triangles) scans only as correctness
   fallbacks.
-- Broaden coverage and perf proof around the landed GJK/EPA convex path.
-  `NewConvexHull` treats the mesh vertex set as a convex support set and now
-  resolves hull-vs-hull plus hull-vs-simple primitive contacts through the
-  simplex/EPA solver without changing the public constructor.
-- Extend the new hinge/rope/SixDof joint slice with richer 6DOF pose-angle
-  semantics and broader stability coverage.
-- Add solver islands/sleeping at scale; integrate broadphase with Phase 3.
+- The landed GJK/EPA convex path now covers hull-vs-hull, hull-vs-sphere,
+  hull-vs-capsule, hull-vs-box, contained primitives, separated
+  overlapping-AABB edge cases, and a named 32-pair mixed-shape perf target
+  without changing `NewConvexHull`.
+- The hinge/rope/SixDof joint slice now includes SixDof joint-frame pose-angle
+  limits, locked-axis velocity stops, and stability coverage under spin and
+  linear motor drive.
+- Landed island-batched contact scheduling and solver telemetry for awake
+  contact islands, with the body-centric broadphase feeding mesh BVH
+  narrow-phase candidates.
 
 Exit:
 
 - A stack of boxes rests stably; a pile settles without sinking/jitter.
-- Hundreds-to-thousands of dynamic bodies hit the recorded target on the perf
-  fixture (improvement vs. current ~hundreds ceiling).
+- Hundreds-class dynamic bodies hit the recorded island-batched resting-pile
+  target on the perf fixture (257 bodies / 32 piles locally).
 - Hinge/rope/6DOF joints behave correctly; convex-vs-convex is true convex.
 - Determinism preserved under `runFrames`.
 
