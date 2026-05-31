@@ -10,9 +10,10 @@ or a *required recorded baseline* is still open — the **Remaining/Notes** colu
 states exactly what. `todo` = not started. Most graphics rows stay `partial` on a
 mix of (a) waived scope this host can't produce — cross-platform Windows/Linux runs
 and GPU-backend upload on D3D11/OpenGL (W2-002/003), Basis/Draco/meshopt (W2-004),
-VM callback sugar (W2-001) — and (b) real remaining work: Metal GPU compressed
-upload (capability bits are still `false`), ETC2/ASTC decode, per-API docs+ctest,
-recorded perf baselines. A `partial` row with a large
+VM callback sugar (W2-001) — and (b) real remaining work: cross-platform
+compressed-texture/perf baselines plus the formal acceptance gates. Local Metal
+native compressed upload, ETC2/ASTC fallback coverage, and per-changed-API
+docs/CTest snippets are now covered. A `partial` row with a large
 *Implemented* column is core-complete with that tail still open, not barely-started.
 
 ## Overall gates

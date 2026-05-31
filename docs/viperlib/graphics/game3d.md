@@ -982,12 +982,13 @@ The Game3D runtime is covered by:
 | `g3d_test_game3d_sound_probe` | Zia listener follow/manual pose, attenuation defaults, positional playback, attached-source sync, 2D playback, and source cleanup |
 | `g3d_test_game3d_effects_probe` | Zia Effects3D presets, registry diagnostics, draw path, auto-expiry, manual particle/decal registration, and collision-triggered VFX |
 | `g3d_test_game3d_docs_snippets` | Copy-paste docs surfaces for setup, presets, assets, physics, audio/VFX, deterministic frame helpers, and manual final-frame capture |
+| `g3d_test_graphics3d_docs_snippets` | Copy-paste Graphics3D animation docs surface for retargeting, IK pole/ground-normal controls, animation LOD, and bone-count LOD |
 | `g3d_walk_min_visual_probe` | Game3D sample final-frame baseline, crisp overlay, directional lighting, and grounded synthetic first-person movement |
 | `g3d_game3d_hello` | <=20-line hello-world scene with lighting, walkable ground, first-person character, and no `Mat4` |
 | `g3d_game3d_common_no_mat4` | CMake guard that common Game3D samples/probes avoid direct `Mat4.` calls |
 | `g3d_game3d_starter_probe` | Starter project deterministic movement, package-aware model asset, final capture, and grounded character path |
 | `g3d_game3d_starter_package_dry_run` | Starter `viper.project` asset packaging layout |
-| `g3d_openworld_slice_probe` | Open-world slice stream in/out, rendered heightmapped terrain payload access, async asset handle completion, skinned glTF play/crossfade plus LookAt IK binding, committed GLB/WAV asset fixture loading, terrain-sampled TwoBone foot IK proof, character/physics/nav stepping, software final-frame baseline comparison, and deterministic replay |
+| `g3d_openworld_slice_probe` | Open-world slice stream in/out, rendered heightmapped terrain payload access, visible KTX2/BC7 texture panel, async asset handle completion, skinned glTF play/crossfade plus LookAt IK binding, committed GLB/WAV asset fixture loading, visible terrain-sampled TwoBone foot IK proof, character/physics/nav stepping, software final-frame baseline comparison, and deterministic replay |
 | `g3d_openworld_slice_perf_probe` | Open-world slice deterministic software frame-loop perf probe; emits setup, elapsed, average-frame, FPS, draw, visibility, entity, body, and stream residency metrics |
 | `g3d_openworld_slice_perf_harness` | Reusable CTest perf harness wrapper that runs `perf_probe.zia`, parses the `PERF:` metrics, validates required counters, and emits a stable `HARNESS:` summary |
 | `g3d_openworld_slice_streaming_hitch_probe` | Phase 4 async asset probe that records blocking-vs-async load timing, verifies zero-upload-budget pending behavior, releases work under a positive budget, and checks resident bytes return to zero |

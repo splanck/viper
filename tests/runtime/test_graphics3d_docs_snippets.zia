@@ -1,0 +1,58 @@
+module test_graphics3d_docs_snippets;
+
+bind Viper.Graphics3D;
+bind Viper.Math;
+bind Viper.Terminal as Terminal;
+
+func fail(message: String) {
+    Terminal.Say("FAIL: " + message);
+}
+
+func start() {
+    var skel = Skeleton3D.New();
+    var hip = Skeleton3D.AddBone(skel, "Hips", -1, Mat4.Identity());
+    var knee = Skeleton3D.AddBone(skel, "LeftLeg", hip,
+                                  Mat4.Translate(0.0, -1.0, 0.0));
+    var foot = Skeleton3D.AddBone(skel, "LeftFoot", knee,
+                                  Mat4.Translate(0.0, -1.0, 0.0));
+    Skeleton3D.ComputeInverseBind(skel);
+
+    var pose = Animation3D.New("docs-foot", 1.0);
+    Animation3D.set_Looping(pose, true);
+    Animation3D.AddKeyframe(pose, hip, 0.0, Vec3.Zero(), Quat.Identity(), Vec3.One());
+    Animation3D.AddKeyframe(pose, foot, 1.0, Vec3.New(0.0, -0.2, 0.0),
+                            Quat.Identity(), Vec3.One());
+
+    var retargeted = Animation3D.Retarget(pose, skel, skel);
+    if (retargeted == null) {
+        fail("Animation3D.Retarget docs snippet failed");
+        return;
+    }
+
+    var controller = AnimController3D.New(skel);
+    AnimController3D.AddState(controller, "pose", retargeted);
+    if (AnimController3D.Play(controller, "pose") == false) {
+        fail("AnimController3D.Play docs snippet failed");
+        return;
+    }
+    AnimController3D.SetAnimationLOD(controller, 32.0, 15.0);
+    AnimController3D.SetBoneLOD(controller, knee);
+
+    var solver = IKSolver3D.TwoBone(skel, hip, knee, foot);
+    IKSolver3D.SetTarget(solver, Vec3.New(0.0, -1.8, 0.0));
+    IKSolver3D.SetPole(solver, Vec3.New(0.0, 0.0, 1.0));
+    IKSolver3D.SetGroundNormal(solver, Vec3.New(0.0, 1.0, 0.0));
+    IKSolver3D.SetWeight(solver, 1.0);
+    if (AnimController3D.SetIKSolver(controller, solver) == false) {
+        fail("AnimController3D.SetIKSolver docs snippet failed");
+        return;
+    }
+
+    AnimController3D.Update(controller, 1.0 / 30.0);
+    if (AnimController3D.GetBoneMatrix(controller, foot) == null) {
+        fail("AnimController3D.GetBoneMatrix docs snippet failed");
+        return;
+    }
+
+    Terminal.Say("PASS");
+}

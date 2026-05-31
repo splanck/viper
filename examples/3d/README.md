@@ -71,10 +71,10 @@ VIPER_3D_BACKEND=software build/src/tools/viper/viper run examples/3d/game3d_sho
 cell and terrain manifests for a >4 km² world stand-in, swaps resident quadrants
 by stream center across all four cells, keeps the resident set bounded, exposes
 rendered heightmapped `Terrain3D` tile payloads, completes an async model load through
-`AssetHandle3D`, records a zero-upload-budget streaming hitch probe, loads KTX2 texture assets, runs a
+`AssetHandle3D`, records a zero-upload-budget streaming hitch probe, renders KTX2/BC7 texture assets, runs a
 first-person character, physics, a synthetic skinned glTF agent with
 `Idle`→`Wave` crossfade plus `IKSolver3D.LookAt`, a terrain-sampled
-`IKSolver3D.TwoBone` foot-plant proof, committed GLB and WAV package-asset
+`IKSolver3D.TwoBone` foot-plant proof with visible markers, committed GLB and WAV package-asset
 fixture loads, and local-avoidance nav agents
 from a world-scoped navmesh bake that includes streamed terrain, reads `World3D` runtime counters, compares the
 final frame against a committed software baseline, then verifies deterministic

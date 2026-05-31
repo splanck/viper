@@ -1601,6 +1601,18 @@ if (EXISTS "${GAME3D_DOCS_SNIPPETS_PROBE}")
             TIMEOUT 30)
 endif ()
 
+set(GRAPHICS3D_DOCS_SNIPPETS_PROBE "${G3D_TESTS_DIR}/test_graphics3d_docs_snippets.zia")
+if (EXISTS "${GRAPHICS3D_DOCS_SNIPPETS_PROBE}")
+    add_test(NAME g3d_test_graphics3d_docs_snippets
+            COMMAND $<TARGET_FILE:viper> run "${GRAPHICS3D_DOCS_SNIPPETS_PROBE}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(g3d_test_graphics3d_docs_snippets PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "runtime;graphics3d;zia;requires_display"
+            ENVIRONMENT "VIPER_3D_BACKEND=software"
+            TIMEOUT 30)
+endif ()
+
 set(CANVAS3D_QUALITY_PROFILES_PROBE "${G3D_TESTS_DIR}/test_canvas3d_quality_profiles.zia")
 if (EXISTS "${CANVAS3D_QUALITY_PROFILES_PROBE}")
     add_test(NAME g3d_test_canvas3d_quality_profiles

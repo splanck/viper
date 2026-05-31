@@ -1260,9 +1260,10 @@ quaternions and SLERP; position/scale use linear interpolation. `pos`, `rot`, or
 of erasing that component to zero/identity.
 
 `Retarget` preserves the clip name, duration, looping flag, and keyframe data while remapping
-channels by source bone name first and by matching bone index as a fallback. Destination-only bones
-remain in bind pose. It is intended for rigs with compatible authored local-space motion; full
-humanoid/proportional retarget mapping remains deeper animation work.
+channels by exact bone name first, then humanoid role aliases, then matching bone index as a
+fallback. It scales keyed translations by the source/destination bind-length ratio when both bones
+expose a comparable segment, carries rotations/scales unchanged, and leaves destination-only bones
+in bind pose.
 
 ---
 
@@ -3146,14 +3147,18 @@ runtime target while still using authored animation as the base pose.
 |--------|-----------|-------------|
 | `SetTarget(pos)` | `void(obj)` | Set the target as a `Vec3` |
 | `SetWeight(w)` | `void(f64)` | Blend solver output from `0.0` to `1.0`; non-finite values become zero |
+| `SetPole(pos)` | `void(obj)` | Set a world-space pole target for `TwoBone` bend-plane control |
+| `SetGroundNormal(normal)` | `void(obj)` | Set a world-space ground normal used to orient solved end-effectors |
 | `Solve()` | `void()` | Solve against the skeleton bind pose for standalone inspection |
 
 Attach a solver to an animation controller with `AnimController3D.SetIKSolver(solver)` or the
 Game3D wrapper `Animator3D.setIKSolver(solver)`. Controller-bound IK is applied after the base
 state/blend tree and overlay layers are composed, then before skinning palettes are generated.
 `TwoBone` and `FABRIK` use a positional FABRIK-style chain solve and preserve the chain root;
-`LookAt` aims the selected bone's local +Z axis. `Solve()` solves against bind pose, while a bound
-controller solves against that controller's current animated pose.
+`SetPole` swings a two-bone middle joint toward the requested bend plane, `SetGroundNormal` orients
+the solved end-effector toward terrain/contact normals, and `LookAt` aims the selected bone's local
++Z axis. `Solve()` solves against bind pose, while a bound controller solves against that
+controller's current animated pose.
 
 ---
 
@@ -3190,6 +3195,7 @@ Stateful skeletal animation controller for gameplay code. `AnimController3D` bui
 | `SetStateSpeed(name, speed)` | `void(str,f64)` | Override playback speed for a named state |
 | `SetStateLooping(name, loop)` | `void(str,i1)` | Override looping behavior for a named state |
 | `SetAnimationLOD(distance, rateHz)` | `void(f64,f64)` | Enable deterministic batched updates at `rateHz` for distant/low-priority controllers; non-positive inputs disable it |
+| `SetBoneLOD(maxBones)` | `void(i64)` | Freeze bones at or after `maxBones` for deterministic bone-count LOD; non-positive values restore full-pose output |
 | `SetBlendTree(tree)` | `i1(obj)` | Use a compatible `BlendTree3D` as the base pose source; pass `Nothing`/`NULL` to clear |
 | `SetIKSolver(solver)` | `i1(obj)` | Apply a compatible `IKSolver3D` after overlays and before skinning; pass `Nothing`/`NULL` to clear |
 | `AddEvent(stateName, timeSeconds, eventName)` | `void(str,f64,str)` | Queue an event when playback crosses the specified state-local time |
@@ -3215,7 +3221,9 @@ Both paths use TRS/quaternion composition so masked layers do not introduce matr
 is disabled by default, preserves forward/reverse loop-wrap deltas, and can be reset with
 `SetRootMotionBone(-1)`. `SetAnimationLOD(distance, rateHz)` accumulates elapsed time and samples
 at the requested lower rate while preserving deterministic playback time; pass `0, 0` to restore
-per-update sampling. `SetBlendTree(tree)` updates the tree with the controller tick and uses its
+per-update sampling. `SetBoneLOD(maxBones)` limits palette updates to the retained bone-count
+prefix while keeping ancestors valid for deterministic distant-character LOD; pass `0` to restore
+full output. `SetBlendTree(tree)` updates the tree with the controller tick and uses its
 blended local pose as the base layer before overlays are applied; root-motion extraction remains
 state-player based. `SetIKSolver(solver)` applies the solver after overlays and before the final
 skin palette; it only accepts solvers bound to the same skeleton. `Stop()` returns the output pose

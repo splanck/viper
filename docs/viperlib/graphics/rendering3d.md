@@ -637,9 +637,10 @@ Single keyframe animation track referencing a `Skeleton3D`.
 | `AddKeyframe(boneIndex, time, translation, rotation, scale)` | `Void(Integer, Double, Object, Object, Object)` | Add a keyframe for the given bone at `time` seconds; `null` TRS parts fall back to bind pose |
 | `Retarget(srcSkeleton, dstSkeleton)` | `Object(Object, Object)` | Copy channels onto matching destination bones |
 
-`Retarget` maps channels by source bone name first and by matching bone index as a fallback. It
-preserves clip name, duration, looping, and keyframe values; destination-only bones remain in bind
-pose.
+`Retarget` maps channels by exact bone name first, then humanoid role aliases, then matching bone
+index as a fallback. It preserves clip name, duration, looping, and keyframe values, scales keyed
+translations by source/destination bind-length ratio where both bones expose a comparable segment,
+and leaves destination-only bones in bind pose.
 
 ---
 
@@ -761,13 +762,17 @@ Inverse-kinematics solvers for final pose adjustment before skinning.
 |--------|-----------|-------------|
 | `SetTarget(pos)` | `Void(Object)` | Set the target as a `Vec3` |
 | `SetWeight(weight)` | `Void(Double)` | Blend solver output from `0.0` to `1.0`; non-finite values become zero |
+| `SetPole(pos)` | `Void(Object)` | Set a world-space pole target for `TwoBone` bend-plane control |
+| `SetGroundNormal(normal)` | `Void(Object)` | Set a world-space ground normal used to orient solved end-effectors |
 | `Solve()` | `Void()` | Solve against the skeleton bind pose for standalone inspection |
 
 Attach a solver through `AnimController3D.SetIKSolver(solver)` or the Game3D
 wrapper `Animator3D.setIKSolver(solver)`. Controller-bound IK runs after the
 base state/blend tree and overlays are composed, then before skinning palettes
 are generated. `TwoBone` and `FABRIK` use a positional chain solve and preserve
-the chain root; `LookAt` aims the selected bone's local +Z axis.
+the chain root; `SetPole` controls two-bone bend direction, `SetGroundNormal`
+orients solved end-effectors to terrain/contact normals, and `LookAt` aims the
+selected bone's local +Z axis.
 
 ---
 
@@ -801,6 +806,7 @@ Stateful animation controller with named states, triggered transitions, animatio
 | `SetStateSpeed(state, speed)` | `Void(String, Double)` | Override playback speed for a state |
 | `SetStateLooping(state, loop)` | `Void(String, Boolean)` | Override loop setting for a state |
 | `SetAnimationLOD(distance, rateHz)` | `Void(Double, Double)` | Batch animation updates at a lower deterministic rate; non-positive inputs disable throttling |
+| `SetBoneLOD(maxBones)` | `Void(Integer)` | Freeze bones at or after `maxBones` for deterministic bone-count LOD; non-positive values restore full-pose output |
 | `SetBlendTree(tree)` | `Boolean(Object)` | Use a compatible `BlendTree3D` as the base pose source; pass `Nothing` to clear |
 | `SetIKSolver(solver)` | `Boolean(Object)` | Apply a compatible `IKSolver3D` after overlays and before skinning; pass `Nothing` to clear |
 | `AddEvent(state, time, name)` | `Void(String, Double, String)` | Register a named event to fire at a playback time |
@@ -823,6 +829,8 @@ behavior; `PlayLayerAdditive` applies `(overlayPose - bindPose) * weight` over t
 `CrossfadeLayerAdditive` uses the same additive composition while blending overlay states.
 `SetAnimationLOD(distance, rateHz)` accumulates elapsed time and samples only when the configured
 interval elapses, then applies the full accumulated delta so playback remains deterministic.
+`SetBoneLOD(maxBones)` limits palette updates to the retained bone-count prefix while keeping
+ancestors valid for deterministic distant-character LOD; pass `0` to restore full output.
 `SetBlendTree(tree)` updates the tree with the controller tick and uses its blended local pose as
 the base layer before overlay layers are applied. Root-motion extraction still comes from the
 controller's state-player base layer. `SetIKSolver(solver)` requires a solver bound to the same
