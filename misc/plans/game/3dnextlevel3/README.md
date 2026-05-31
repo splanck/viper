@@ -114,7 +114,7 @@
 
 ### Phase 12 - Slice, Docs, And Formal Gates
 
-- [ ] **NL3-029 [P12, AC-012] Keep wiring new systems into `examples/3d/openworld_slice/` as they land.** The slice already streams/renders/simulates/replays with terrain, physics, nav, async assets, KTX2 metadata, skinned animation, IK, package assets, and GPU smoke; add native compressed texture rendering, visible terrain-foot IK polish, and each new scale feature as it lands.
+- [x] **NL3-029 [P12, AC-012] Keep wiring new systems into `examples/3d/openworld_slice/` as they land.** The slice now renders a `TextureAsset3D` BC7/native-compressed material panel in the main scene, keeps the existing native-compressed GPU hitch lane for capable backends, and turns the terrain-sampled TwoBone foot IK proof into visible marker/leg entities near the streamed tile center. Evidence: `g3d_openworld_slice_probe` validates the visible node wiring, compressed texture residency, terrain-foot IK solve, software final-frame baseline tolerance, deterministic replay, stream traversal, physics/nav/character stepping, async/package fixtures, and runtime counters.
 
 - [ ] **NL3-030 [P12, AC-013, GATE-008] Refresh docs and ctest-compiled snippets for every new or changed API.** Keep `docs/viperlib/graphics/`, `docs/graphics3d-guide.md`, `docs/graphics3d-architecture.md`, examples, disabled-graphics stubs, runtime completeness, ABI/class-id guards, and strict runtime surface audits current; also clean stale public docs that still describe already-landed Phase 9/10 slices as future work.
 

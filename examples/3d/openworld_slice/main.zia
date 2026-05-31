@@ -33,11 +33,14 @@ class OpenWorldSlice {
     hide Skeleton3D footIkSkeleton;
     hide AnimController3D footIkController;
     hide IKSolver3D footIkSolver;
+    hide Entity3D footIkMarker;
+    hide Entity3D footIkLegMarker;
     hide Integer footIkFootBone;
     hide Float footIkTargetX;
     hide Float footIkTargetY;
     hide Float footIkTargetZ;
     hide Boolean footIkBound;
+    hide Entity3D compressedTexturePanel;
     hide Float sceneTime;
 
     expose func setup(title: String, width: Integer, height: Integer) {
@@ -122,7 +125,9 @@ class OpenWorldSlice {
                TextureAsset3D.get_ResidentBytes(groundTexture) == 16 &&
                TextureAsset3D.get_Compressed(compressedTexture) &&
                TextureAsset3D.get_Format(compressedTexture) == "bc7" &&
-               TextureAsset3D.get_ResidentBytes(compressedTexture) == 16;
+               TextureAsset3D.get_ResidentBytes(compressedTexture) == 16 &&
+               compressedTexturePanel != null &&
+               hasNode("NativeCompressedTexturePanel");
     }
 
     expose func skinnedCharacterReady() -> Boolean {
@@ -149,7 +154,11 @@ class OpenWorldSlice {
         }
         var footMat = AnimController3D.GetBoneMatrix(footIkController, footIkFootBone);
         if (footMat == null) { return false; }
-        return nearFloat(Mat4.Get(footMat, 0, 3), footIkTargetX, 0.06) &&
+        return footIkMarker != null &&
+               footIkLegMarker != null &&
+               hasNode("TerrainFootIkMarker") &&
+               hasNode("TerrainFootIkLegMarker") &&
+               nearFloat(Mat4.Get(footMat, 0, 3), footIkTargetX, 0.06) &&
                nearFloat(Mat4.Get(footMat, 1, 3), footIkTargetY, 0.06) &&
                nearFloat(Mat4.Get(footMat, 2, 3), footIkTargetZ, 0.06);
     }
@@ -251,6 +260,13 @@ class OpenWorldSlice {
         Entity3D.attachBody(ground, BodyDef.StaticPlane(48.0));
         World3D.spawn(world, ground);
 
+        var compressedMat = Material3D.NewPBR(1.0, 1.0, 1.0);
+        Material3D.SetAlbedoMap(compressedMat, compressedTexture);
+        compressedTexturePanel = Prefab.BoxXYZ(1.25, 1.25, 0.10, compressedMat);
+        Entity3D.setName(compressedTexturePanel, "NativeCompressedTexturePanel");
+        Entity3D.setPosition(compressedTexturePanel, -1102.15, 0.95, -1098.75);
+        World3D.spawn(world, compressedTexturePanel);
+
         var crate = Prefab.BoxXYZ(1.2, 0.9, 1.2, Materials.Metal(0.58, 0.61, 0.63));
         Entity3D.setName(crate, "SliceCrate");
         Entity3D.setPosition(crate, -1101.6, 0.45, -1100.8);
@@ -275,17 +291,23 @@ class OpenWorldSlice {
 
     hide func setupTerrainFootIkProof() {
         footIkBound = false;
+        footIkMarker = null;
+        footIkLegMarker = null;
         footIkFootBone = -1;
         var tile = WorldStream3D.getResidentTerrainTile(stream, 0);
         if (tile == null) { return; }
-        var groundY = Terrain3D.GetHeightAt(tile, 0.0, 0.0);
-        footIkTargetX = 0.65;
+        var center = WorldStream3D.getTerrainTileCenter(stream, 0);
+        if (center == null) { return; }
+        var localFootX = -2.30;
+        var localFootZ = 1.30;
+        var groundY = Terrain3D.GetHeightAt(tile, localFootX, localFootZ);
+        footIkTargetX = Vec3.get_X(center) + localFootX;
         footIkTargetY = groundY + 0.05;
-        footIkTargetZ = 0.0;
+        footIkTargetZ = Vec3.get_Z(center) + localFootZ;
 
         footIkSkeleton = Skeleton3D.New();
         var hip = Skeleton3D.AddBone(footIkSkeleton, "FootIkHip", -1,
-                                     Mat4.Translate(0.0, groundY + 1.20, 0.0));
+                                     Mat4.Translate(footIkTargetX - 0.90, groundY + 1.20, footIkTargetZ));
         var knee = Skeleton3D.AddBone(footIkSkeleton, "FootIkKnee", hip,
                                       Mat4.Translate(0.45, -0.65, 0.0));
         footIkFootBone = Skeleton3D.AddBone(footIkSkeleton, "FootIkFoot", knee,
@@ -299,6 +321,16 @@ class OpenWorldSlice {
         IKSolver3D.SetWeight(footIkSolver, 1.0);
         IKSolver3D.Solve(footIkSolver);
         footIkBound = AnimController3D.SetIKSolver(footIkController, footIkSolver);
+
+        footIkMarker = Prefab.Sphere(0.16, 12, Materials.Emissive(0.08, 0.95, 0.62, 1.4));
+        Entity3D.setName(footIkMarker, "TerrainFootIkMarker");
+        Entity3D.setPosition(footIkMarker, footIkTargetX, 0.32, footIkTargetZ);
+        World3D.spawn(world, footIkMarker);
+
+        footIkLegMarker = Prefab.BoxXYZ(0.12, 0.92, 0.12, Materials.Plastic(0.12, 0.64, 0.50));
+        Entity3D.setName(footIkLegMarker, "TerrainFootIkLegMarker");
+        Entity3D.setPosition(footIkLegMarker, footIkTargetX + 0.20, 0.76, footIkTargetZ + 0.08);
+        World3D.spawn(world, footIkLegMarker);
     }
 
     hide func setupPlayer() {

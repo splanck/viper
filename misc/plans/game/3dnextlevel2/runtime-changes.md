@@ -682,9 +682,9 @@ baselines recorded per reference platform.
 Implemented slice: `examples/3d/openworld_slice/` now provides a software-backed
 vertical-slice smoke project with `WorldStream3D` cell and heightmapped terrain
 manifests, resident `Terrain3D` tile access, `AssetHandle3D` async model completion,
-RGBA8/BC7 KTX2 `TextureAsset3D` fixture usage, character/physics/nav-agent
+visible RGBA8/BC7 KTX2 `TextureAsset3D` fixture usage, character/physics/nav-agent
 stepping, imported skinned glTF play/crossfade plus LookAt IK binding,
-committed GLB/WAV fixture loading, terrain-sampled TwoBone foot IK proof, committed
+committed GLB/WAV fixture loading, visible terrain-sampled TwoBone foot IK proof, committed
 software final-frame baseline comparison, capability-gated GPU backend smoke,
 all-four-quadrant bounded-residency traversal, software frame-loop perf
 telemetry through `g3d_openworld_slice_perf_probe` and reusable

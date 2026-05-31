@@ -5,7 +5,8 @@ manifest-driven >4 km² world stand-in, cell and terrain residency, async model
 loading, KTX2 texture-asset residency, a first-person character, physics,
 local-avoidance nav agents, a synthetic skinned glTF agent that crossfades from
 `Idle` to `Wave` with a bound `IKSolver3D.LookAt`, committed GLB and WAV
-package-asset fixture loads, final overlay capture,
+package-asset fixture loads, a visible BC7 texture panel and terrain-foot IK
+marker pair, final overlay capture,
 `World3D` runtime counter checks, a world-scoped navmesh bake, deterministic
 all-four-quadrant bounded-residency traversal, replay coverage, and a committed
 software final-frame baseline comparison.
@@ -46,8 +47,9 @@ asset fixture loaded through `Sound3D.loadAsset`;
 `assets/baselines/openworld_slice_software.png` is the software visual
 baseline used by `test.zia`; `baselines/perf_macos_apple_m4_max.md` records the
 current named local perf baseline for `perf_probe.zia`. The probe also builds a
-small three-bone foot chain, samples the resident terrain tile height, and
-asserts `IKSolver3D.TwoBone` plants the foot on that terrain target. Per-tile
+small three-bone foot chain, samples the resident terrain tile height, renders
+marker/leg entities near the streamed tile center, and asserts
+`IKSolver3D.TwoBone` plants the foot on that terrain target. Per-tile
 heightfield collider residency and terrain nav-bake inclusion are verified
 through streamed terrain collider/source nodes. Scripted quadrant visits settle
 the deterministic `WorldStream3D.update` load budget across a few ticks, and
@@ -76,8 +78,7 @@ local macOS/Metal proof currently reports ASTC with
 `native_zero_pending_bytes=16`, `native_upload_bytes=16`,
 `native_raw_rgba_bytes=64`, `native_compressed_bytes=16`,
 `native_ram_reduction_pct=75`, `native_vram_reduction_pct=75`, and
-`native_tolerance_checked=1`. Visible foot-planted skinned character polish
-remains tracked in the 3D next-level plan.
+`native_tolerance_checked=1`.
 `gpu_smoke.zia` also runs under CTest with the platform GPU
 backend (`metal`, `d3d11`, or `opengl`) and skips cleanly if that backend is
 unavailable. The smoke includes a small degenerate-normal/tangent normal-map

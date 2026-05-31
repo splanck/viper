@@ -641,12 +641,13 @@ asserts one resident cell/tile at a time, verifies bounded resident bytes,
 validates heightmapped terrain-payload swaps, rendered stream terrain, and
 inspection hooks, checks
 the async `AssetHandle3D` model path, loads RGBA8 and BC7 KTX2
-`TextureAsset3D` fixtures, loads a synthetic skinned glTF agent through
+`TextureAsset3D` fixtures, renders a BC7 texture panel in the main scene,
+loads a synthetic skinned glTF agent through
 `Assets3D.LoadModelAsset`, crossfades its auto-bound animator from `Idle` to
 `Wave`, binds `IKSolver3D.LookAt` through `Animator3D.setIKSolver`, loads a
 committed GLB through `Assets3D.LoadModelAsset`, loads a committed WAV through
 `Sound3D.loadAsset`, validates a terrain-sampled `IKSolver3D.TwoBone` foot
-target, reads the
+target, renders a visible foot marker/leg pair for that proof, reads the
 `World3D` runtime counters, runs physics/character/nav-agent simulation,
 compares the software final frame to the committed
 `assets/baselines/openworld_slice_software.png` baseline, and repeats the same
