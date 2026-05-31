@@ -2792,6 +2792,7 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 | `TriangleCount` | Integer | read | Number of triangles in navmesh |
 | `OffMeshLinkCount` | Integer | read | Number of authored traversal links |
 | `ObstacleCount` | Integer | read | Number of authored coarse AABB obstacles |
+| `LastPathCost` | Float | read | Weighted cost of the latest successful path query |
 
 ### Methods
 
@@ -2801,16 +2802,23 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 | `SamplePosition(position)` | `obj(obj)` | Snap position to nearest point on navmesh (Vec3) |
 | `IsWalkable(position)` | `i1(obj)` | Check if Vec3 position is on the navmesh |
 | `AddOffMeshLink(from, to, bidirectional)` | `i1(obj, obj, i1)` | Add a directed or bidirectional traversal edge between walkable points |
+| `SetOffMeshLinkMetadata(index, kind, cost, state)` | `i1(i64, str, f64, i64)` | Attach kind/cost/state metadata to an off-mesh link |
+| `GetOffMeshLinkKind(index)` | `str(i64)` | Return the off-mesh link kind string |
+| `GetOffMeshLinkTraversalCost(index)` | `f64(i64)` | Return the off-mesh link traversal-cost multiplier |
+| `GetOffMeshLinkState(index)` | `i64(i64)` | Return off-mesh link state flags |
 | `AddObstacle(min, max)` | `i1(obj, obj)` | Add a coarse AABB obstacle and re-carve affected triangles |
 | `RemoveObstacle(index)` | `i1(i64)` | Remove a coarse obstacle and re-carve affected triangles |
 | `UpdateObstacle(index, min, max)` | `i1(i64, obj, obj)` | Move/resize a coarse obstacle and re-carve affected triangles |
+| `SetArea(min, max, area, cost)` | `i1(obj, obj, str, f64)` | Assign area/cost metadata to polygons in a volume |
+| `GetArea(position)` | `str(obj)` | Return the area name at a walkable position |
+| `GetTraversalCost(position)` | `f64(obj)` | Return the traversal-cost multiplier at a walkable position |
 | `RebuildTile(tileX, tileZ)` | `i1(i64, i64)` | Rebuild one retained tiled-bake voxel source tile |
 | `SetMaxSlope(degrees)` | `void(f64)` | Update walkability slope threshold |
 | `DebugDraw(canvas)` | `void(obj)` | Visualize navmesh wireframe on Canvas3D |
 
 `Build()` stores the source walkable geometry separately from the filtered navigation triangles. `Bake()` gathers every `Mesh3D` attached under a `Scene3D`, applies each node's world transform, and runs the voxel baker. `BakeTiled()` keeps retained voxel-cell source data for each tile; `RebuildTile()` refreshes only the requested tile's geometry, heights, and blocked state from that retained source instead of running a whole-scene bake. `SetMaxSlope()` refilters preserved source triangles. Slope tests use upward-facing triangle planes. Shared-edge portals narrower than `agentRadius * 2` are not linked, so wider agents do not path through narrow authored passages. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
 
-`AddOffMeshLink()` stores authored endpoint pairs such as jumps, ladders, and drop-downs. Both endpoints must resolve to current walkable polygons; pathfinding treats the link as an extra graph edge and emits the link endpoints as waypoints. `AddObstacle()` stores a finite world-space AABB and removes overlapping triangles from the current walkable set. On tiled bakes, obstacle adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still refilter the preserved source mesh. This is a coarse AABB carving baseline; fine polygon erosion, traversal metadata, and full crowd planning remain deeper navigation work.
+`AddOffMeshLink()` stores authored endpoint pairs such as jumps, ladders, and drop-downs. Both endpoints must resolve to current walkable polygons; pathfinding treats the link as an extra graph edge and emits the link endpoints as waypoints. `SetOffMeshLinkMetadata()` records the link kind, traversal-cost multiplier, and state flags; link cost contributes to A* and the final `LastPathCost`. `SetArea()` tags polygons whose exact XZ footprint intersects a finite volume, `GetArea()` / `GetTraversalCost()` query that metadata, and polygon traversal costs weight A* edges. `AddObstacle()` stores a finite world-space AABB and removes polygons whose triangle footprint intersects the obstacle volume. On tiled bakes, obstacle adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still refilter the preserved source mesh. This remains polygon-level AABB carving rather than clipped sub-polygons; full ORCA/RVO crowd planning remains deeper navigation work.
 
 ### Zia Example
 

@@ -10512,6 +10512,11 @@ int64_t rt_navmesh3d_get_triangle_count(void *n) {
     return 0;
 }
 
+double rt_navmesh3d_get_last_path_cost(void *n) {
+    (void)n;
+    return 0.0;
+}
+
 /// @brief Stub for `NavMesh3D.AddOffMeshLink` — would normally add an
 ///        authored traversal edge such as a jump, ladder, or drop-down between
 ///        two walkable navmesh points.
@@ -10541,6 +10546,37 @@ int8_t rt_navmesh3d_add_offmesh_link(void *n, void *f, void *t, int8_t b) {
 /// @return `0`.
 int64_t rt_navmesh3d_get_offmesh_link_count(void *n) {
     (void)n;
+    return 0;
+}
+
+int8_t rt_navmesh3d_set_offmesh_link_metadata(void *n,
+                                              int64_t index,
+                                              rt_string kind,
+                                              double traversal_cost,
+                                              int64_t state_flags) {
+    (void)n;
+    (void)index;
+    (void)kind;
+    (void)traversal_cost;
+    (void)state_flags;
+    return 0;
+}
+
+rt_string rt_navmesh3d_get_offmesh_link_kind(void *n, int64_t index) {
+    (void)n;
+    (void)index;
+    return rt_string_from_bytes("", 0);
+}
+
+double rt_navmesh3d_get_offmesh_link_traversal_cost(void *n, int64_t index) {
+    (void)n;
+    (void)index;
+    return 0.0;
+}
+
+int64_t rt_navmesh3d_get_offmesh_link_state(void *n, int64_t index) {
+    (void)n;
+    (void)index;
     return 0;
 }
 
@@ -10580,6 +10616,27 @@ int8_t rt_navmesh3d_update_obstacle(void *n, int64_t index, void *min, void *max
 int64_t rt_navmesh3d_get_obstacle_count(void *n) {
     (void)n;
     return 0;
+}
+
+int8_t rt_navmesh3d_set_area(void *n, void *min, void *max, rt_string area, double cost) {
+    (void)n;
+    (void)min;
+    (void)max;
+    (void)area;
+    (void)cost;
+    return 0;
+}
+
+rt_string rt_navmesh3d_get_area(void *n, void *point) {
+    (void)n;
+    (void)point;
+    return rt_string_from_bytes("", 0);
+}
+
+double rt_navmesh3d_get_traversal_cost(void *n, void *point) {
+    (void)n;
+    (void)point;
+    return 0.0;
 }
 
 /// @brief Stub for `NavMesh3D.RebuildTile` — tile rebuild entry point.

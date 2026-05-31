@@ -548,10 +548,16 @@ for direct `Build(mesh, ...)` meshes. A* uses the query grid for point location
 and a simplified string-pull, with per-agent 4 Hz repath.
 `NavMesh3D.AddOffMeshLink` stores authored endpoint pairs that resolve to
 walkable triangles and are used as directed/bidirectional graph edges during
-A*. `NavMesh3D.AddObstacle` stores finite AABB obstacles; tiled bakes re-carve
-only overlapped tiles while non-tiled meshes refilter preserved source triangles.
-`RemoveObstacle` and `UpdateObstacle` edit that authored obstacle list through
-the same tiled/non-tiled paths. `NavAgent3D` now has opt-in
+A*. Off-mesh links now carry kind, traversal-cost, and state metadata through
+`SetOffMeshLinkMetadata` and getter APIs, and link costs contribute to A*.
+`NavMesh3D.AddObstacle` stores finite AABB obstacles; tiled bakes re-carve only
+overlapped tiles while non-tiled meshes refilter preserved source triangles, and
+carving tests the exact triangle XZ footprint against the obstacle volume instead
+of triangle AABB overlap. `RemoveObstacle` and `UpdateObstacle` edit that authored
+obstacle list through the same tiled/non-tiled paths. `SetArea` tags polygons
+with area names and traversal-cost multipliers, `GetArea`/`GetTraversalCost`
+query that metadata, and `LastPathCost` reports the weighted latest path cost.
+`NavAgent3D` now has opt-in
 same-NavMesh local separation via `AvoidanceEnabled`/`AvoidanceRadius`; this is a
 working lightweight avoidance baseline, not the full ORCA/RVO crowd solver.
 
@@ -560,9 +566,10 @@ working lightweight avoidance baseline, not the full ORCA/RVO crowd solver.
 - Implement navmesh auto-generation from arbitrary geometry (voxelize → walkable
   regions → contour → mesh; from-scratch Recast-style).
 - Implement tiled/streamable navmesh aligned to §5 cells, real tile ownership,
-  and finer polygon carving.
-- Extend off-mesh links to richer traversal metadata and replace the current
-  portal-width gate with full `agent_radius` polygon/corridor erosion.
+  exact polygon-footprint carving, and eventually clipped sub-polygon carving.
+- Extend off-mesh link metadata into traversal animation/state-machine hooks and
+  replace the current portal-width gate with full `agent_radius`
+  polygon/corridor erosion.
 - Implement local avoidance (ORCA/RVO-style) and pathfinding acceleration
   (spatial find-tri, path cache, time-sliced/hierarchical A*), parallel via §1.
 

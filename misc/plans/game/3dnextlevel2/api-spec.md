@@ -424,6 +424,12 @@ expose func NavMesh3D.AddObstacle(min: Vec3, max: Vec3)
 expose func NavMesh3D.RemoveObstacle(index: Integer)
 expose func NavMesh3D.UpdateObstacle(index: Integer, min: Vec3, max: Vec3)
 expose func NavMesh3D.AddOffMeshLink(from: Vec3, to: Vec3, bidirectional: Boolean)
+expose func NavMesh3D.SetOffMeshLinkMetadata(index: Integer, kind: String,
+                                             cost: Float, state: Integer)
+expose func NavMesh3D.SetArea(min: Vec3, max: Vec3, area: String, cost: Float)
+expose func NavMesh3D.GetArea(pos: Vec3) -> String
+expose func NavMesh3D.GetTraversalCost(pos: Vec3) -> Float
+expose Float NavMesh3D.LastPathCost;
 // agent local avoidance (ORCA/RVO-style); agent_radius now applied to corridors
 expose Boolean NavAgent3D.AvoidanceEnabled;
 expose Float   NavAgent3D.AvoidanceRadius;
@@ -435,7 +441,7 @@ expose func World3D.bakeTiledNavMesh(tileSize: Float, agentRadius: Float,
 ```
 Existing `NavMesh3D.Build(mesh, ...)` (bake-from-one-mesh) is retained.
 
-Implemented slices: `NavAgent3D.AvoidanceEnabled` and `AvoidanceRadius` are now public `Viper.Graphics3D` PascalCase properties. They provide an opt-in same-NavMesh local separation pass during `Update`. `NavMesh3D.Bake(scene, ...)` is public and flattens `Mesh3D` nodes through `Scene3D` world transforms before using the voxel baker. `World3D.bakeNavMesh(...)` and `bakeTiledNavMesh(...)` expose the same bake path as Game3D lower/camel editor hooks over the world's owned scene. `NavMesh3D.BakeTiled(scene, ...)` keeps retained voxel-cell source data per tile, and `RebuildTile(tileX, tileZ)` refreshes only that tile's geometry, heights, and blocked state. `NavMesh3D.AddOffMeshLink(from, to, bidirectional)` and read-only `OffMeshLinkCount` are public; authored endpoints must resolve to current walkable polygons, and pathfinding treats the link as a directed or bidirectional graph edge. `NavMesh3D.AddObstacle(min, max)`, `RemoveObstacle(index)`, `UpdateObstacle(index, min, max)`, and read-only `ObstacleCount` are also public; tiled bakes re-carve only overlapped tiles while non-tiled meshes refilter preserved source triangles. Full ORCA/RVO crowd quality, fine polygon/corridor carving, traversal metadata, and the agent-count perf target remain tracked Phase 9 work.
+Implemented slices: `NavAgent3D.AvoidanceEnabled` and `AvoidanceRadius` are now public `Viper.Graphics3D` PascalCase properties. They provide an opt-in same-NavMesh local separation pass during `Update`. `NavMesh3D.Bake(scene, ...)` is public and flattens `Mesh3D` nodes through `Scene3D` world transforms before using the voxel baker. `World3D.bakeNavMesh(...)` and `bakeTiledNavMesh(...)` expose the same bake path as Game3D lower/camel editor hooks over the world's owned scene. `NavMesh3D.BakeTiled(scene, ...)` keeps retained voxel-cell source data per tile, and `RebuildTile(tileX, tileZ)` refreshes only that tile's geometry, heights, and blocked state. `NavMesh3D.AddOffMeshLink(from, to, bidirectional)` and read-only `OffMeshLinkCount` are public; authored endpoints must resolve to current walkable polygons, and pathfinding treats the link as a directed or bidirectional graph edge. `SetOffMeshLinkMetadata(index, kind, cost, state)`, `GetOffMeshLinkKind`, `GetOffMeshLinkTraversalCost`, and `GetOffMeshLinkState` store traversal link kind/cost/state metadata; link costs contribute to A*. `NavMesh3D.AddObstacle(min, max)`, `RemoveObstacle(index)`, `UpdateObstacle(index, min, max)`, and read-only `ObstacleCount` are public; tiled bakes re-carve only overlapped tiles while non-tiled meshes refilter preserved source triangles, and carving now uses exact triangle-footprint overlap against the obstacle volume instead of triangle AABB overlap. `SetArea(min, max, area, cost)`, `GetArea(pos)`, `GetTraversalCost(pos)`, and `LastPathCost` expose polygon area/cost metadata, and A* weights polygon traversal cost. Full ORCA/RVO crowd quality, clipped sub-polygon carving, and the agent-count perf target remain tracked Phase 9 work.
 
 ## Animation — `Viper.Graphics3D` IK / controller
 

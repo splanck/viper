@@ -38,6 +38,7 @@ extern void rt_mesh3d_add_vertex(
 extern void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2);
 extern void *rt_mesh3d_new_box(double sx, double sy, double sz);
 extern int64_t rt_path3d_get_point_count(void *path);
+extern const char *rt_string_cstr(rt_string s);
 extern void *rt_mat4_identity(void);
 extern void *rt_skeleton3d_new(void);
 extern int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m);
@@ -303,6 +304,37 @@ static void test_navmesh_offmesh_links_validate_and_direct() {
     EXPECT_TRUE(reverse == nullptr, "NavMesh off-mesh: one-way link blocks reverse traversal");
 }
 
+static void test_navmesh_offmesh_link_metadata_affects_cost() {
+    void *nm = make_two_island_navmesh();
+    void *left = rt_vec3_new(-3.0, 0.0, 0.0);
+    void *right = rt_vec3_new(3.0, 0.0, 0.0);
+    rt_string jump = rt_const_cstr("jump");
+
+    EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nm, left, right, 1) != 0,
+                "NavMesh off-mesh metadata: link can be authored");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, left, right) != nullptr,
+                "NavMesh off-mesh metadata: baseline linked path exists");
+    double base_cost = rt_navmesh3d_get_last_path_cost(nm);
+    EXPECT_TRUE(rt_navmesh3d_set_offmesh_link_metadata(nm, 0, jump, 4.0, 7) != 0,
+                "NavMesh off-mesh metadata: metadata setter accepts valid link");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_navmesh3d_get_offmesh_link_kind(nm, 0)), "jump") == 0,
+                "NavMesh off-mesh metadata: kind is stored");
+    EXPECT_NEAR(rt_navmesh3d_get_offmesh_link_traversal_cost(nm, 0),
+                4.0,
+                0.001,
+                "NavMesh off-mesh metadata: traversal cost is stored");
+    EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_state(nm, 0) == 7,
+                "NavMesh off-mesh metadata: state flags are stored");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, left, right) != nullptr,
+                "NavMesh off-mesh metadata: high-cost linked path still exists");
+    EXPECT_TRUE(rt_navmesh3d_get_last_path_cost(nm) > base_cost * 3.0,
+                "NavMesh off-mesh metadata: link traversal cost contributes to A* cost");
+    EXPECT_TRUE(rt_navmesh3d_set_offmesh_link_metadata(nm, 3, jump, 2.0, 0) == 0,
+                "NavMesh off-mesh metadata: invalid link index is rejected");
+    EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_state(nm, 3) == 0,
+                "NavMesh off-mesh metadata: invalid getter returns neutral state");
+}
+
 static void *make_navmesh_obstacle_strip() {
     void *mesh = rt_mesh3d_new();
     for (int i = 0; i <= 4; i++) {
@@ -319,6 +351,31 @@ static void *make_navmesh_obstacle_strip() {
         rt_mesh3d_add_triangle(mesh, bl, tl, tr);
     }
     return rt_navmesh3d_build(mesh, 0.25, 1.8);
+}
+
+static void test_navmesh_obstacle_carving_uses_triangle_footprint() {
+    void *mesh = rt_mesh3d_new();
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 2, 1);
+    void *nm = rt_navmesh3d_build(mesh, 0.25, 1.8);
+    void *outside_min = rt_vec3_new(9.0, -0.2, 9.0);
+    void *outside_max = rt_vec3_new(9.5, 1.0, 9.5);
+    void *inside_min = rt_vec3_new(1.0, -0.2, 1.0);
+    void *inside_max = rt_vec3_new(1.5, 1.0, 1.5);
+
+    EXPECT_TRUE(nm != nullptr, "NavMesh obstacle exact: single triangle builds");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 1,
+                "NavMesh obstacle exact: triangle starts walkable");
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(nm, outside_min, outside_max) != 0,
+                "NavMesh obstacle exact: AABB-overlap-only obstacle is accepted");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 1,
+                "NavMesh obstacle exact: obstacle outside triangle footprint does not carve");
+    EXPECT_TRUE(rt_navmesh3d_update_obstacle(nm, 0, inside_min, inside_max) != 0,
+                "NavMesh obstacle exact: obstacle can move into triangle footprint");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 0,
+                "NavMesh obstacle exact: obstacle inside triangle footprint carves polygon");
 }
 
 static void test_navmesh_add_obstacle_carves_walkable_triangles() {
@@ -383,6 +440,42 @@ static void test_navmesh_add_obstacle_carves_walkable_triangles() {
                 "NavMesh obstacle: removing obstacle restores path corridor");
     EXPECT_TRUE(rt_navmesh3d_add_obstacle(from, min_v, max_v) == 0,
                 "NavMesh obstacle: rejects non-navmesh handles");
+}
+
+static void test_navmesh_area_metadata_and_traversal_costs() {
+    void *plane = rt_mesh3d_new_plane(10.0, 10.0);
+    void *nm = rt_navmesh3d_build(plane, 0.4, 1.8);
+    void *from = rt_vec3_new(-4.0, 0.0, 0.0);
+    void *to = rt_vec3_new(4.0, 0.0, 0.0);
+    void *center = rt_vec3_new(0.0, 0.0, 0.0);
+    void *min_v = rt_vec3_new(-5.0, -0.2, -5.0);
+    void *max_v = rt_vec3_new(5.0, 1.0, 5.0);
+    rt_string mud = rt_const_cstr("mud");
+
+    EXPECT_TRUE(nm != nullptr, "NavMesh area: plane builds");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr,
+                "NavMesh area: baseline path exists");
+    double base_cost = rt_navmesh3d_get_last_path_cost(nm);
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_navmesh3d_get_area(nm, center)), "default") == 0,
+                "NavMesh area: default area name is reported");
+    EXPECT_NEAR(rt_navmesh3d_get_traversal_cost(nm, center),
+                1.0,
+                0.001,
+                "NavMesh area: default traversal cost is one");
+    EXPECT_TRUE(rt_navmesh3d_set_area(nm, min_v, max_v, mud, 3.0) != 0,
+                "NavMesh area: SetArea accepts an authored area and cost");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_navmesh3d_get_area(nm, center)), "mud") == 0,
+                "NavMesh area: authored area name is reported");
+    EXPECT_NEAR(rt_navmesh3d_get_traversal_cost(nm, center),
+                3.0,
+                0.001,
+                "NavMesh area: authored traversal cost is reported");
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr,
+                "NavMesh area: path remains available after metadata assignment");
+    EXPECT_TRUE(rt_navmesh3d_get_last_path_cost(nm) > base_cost * 2.5,
+                "NavMesh area: polygon traversal cost contributes to A* cost");
+    EXPECT_TRUE(rt_navmesh3d_set_area(nm, from, max_v, nullptr, 2.0) == 0,
+                "NavMesh area: invalid area string is rejected");
 }
 
 static void *make_scene_bake_fixture() {
@@ -779,7 +872,10 @@ int main() {
     test_navmesh_agent_radius_blocks_narrow_portals();
     test_navmesh_offmesh_links_bridge_islands();
     test_navmesh_offmesh_links_validate_and_direct();
+    test_navmesh_offmesh_link_metadata_affects_cost();
+    test_navmesh_obstacle_carving_uses_triangle_footprint();
     test_navmesh_add_obstacle_carves_walkable_triangles();
+    test_navmesh_area_metadata_and_traversal_costs();
     test_navmesh_bake_scene_flattens_transformed_nodes();
     test_navmesh_bake_tiled_and_rebuild_tile_baseline();
     test_navmesh_rebuild_tile_is_tile_local();

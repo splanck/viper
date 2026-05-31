@@ -12,7 +12,7 @@
 // Key invariants:
 //   - Built from Mesh3D by filtering triangles whose normal.y > cos(max_slope).
 //   - Adjacency: triangles sharing 2 vertices are neighbors.
-//   - A* uses centroid-to-centroid distance as edge cost, Euclidean heuristic.
+//   - A* uses centroid-to-centroid distance weighted by polygon traversal cost.
 //   - FindPath returns a Path3D with waypoints through triangle centroids.
 //
 // Links: rt_path3d.h, rt_canvas3d.h
@@ -53,10 +53,22 @@ void *rt_navmesh3d_sample_position(void *navmesh, void *point);
 int8_t rt_navmesh3d_is_walkable(void *navmesh, void *point);
 /// @brief Number of triangles in the baked navmesh.
 int64_t rt_navmesh3d_get_triangle_count(void *navmesh);
+/// @brief Cost of the most recent successful FindPath/CopyPathPoints query.
+double rt_navmesh3d_get_last_path_cost(void *navmesh);
 /// @brief Add an authored off-mesh traversal link between two walkable points.
 int8_t rt_navmesh3d_add_offmesh_link(void *navmesh, void *from, void *to, int8_t bidirectional);
 /// @brief Number of authored off-mesh traversal links.
 int64_t rt_navmesh3d_get_offmesh_link_count(void *navmesh);
+/// @brief Attach kind/cost/state metadata to an authored off-mesh link by index.
+int8_t rt_navmesh3d_set_offmesh_link_metadata(void *navmesh,
+                                              int64_t index,
+                                              rt_string kind,
+                                              double traversal_cost,
+                                              int64_t state_flags);
+/// @brief Read off-mesh link metadata by index.
+rt_string rt_navmesh3d_get_offmesh_link_kind(void *navmesh, int64_t index);
+double rt_navmesh3d_get_offmesh_link_traversal_cost(void *navmesh, int64_t index);
+int64_t rt_navmesh3d_get_offmesh_link_state(void *navmesh, int64_t index);
 /// @brief Add a coarse AABB obstacle that removes overlapping walkable triangles.
 int8_t rt_navmesh3d_add_obstacle(void *navmesh, void *min, void *max);
 /// @brief Remove an authored coarse AABB obstacle by index and refilter.
@@ -65,6 +77,15 @@ int8_t rt_navmesh3d_remove_obstacle(void *navmesh, int64_t index);
 int8_t rt_navmesh3d_update_obstacle(void *navmesh, int64_t index, void *min, void *max);
 /// @brief Number of authored coarse AABB obstacles.
 int64_t rt_navmesh3d_get_obstacle_count(void *navmesh);
+/// @brief Assign nav area and traversal cost metadata to polygons overlapping an AABB volume.
+int8_t rt_navmesh3d_set_area(void *navmesh,
+                             void *min,
+                             void *max,
+                             rt_string area,
+                             double traversal_cost);
+/// @brief Read nav area and traversal cost metadata at a walkable position.
+rt_string rt_navmesh3d_get_area(void *navmesh, void *point);
+double rt_navmesh3d_get_traversal_cost(void *navmesh, void *point);
 /// @brief Re-carve a single tile of a tiled bake in place (O(tile): no adjacency/grid rebuild).
 ///        Falls back to a whole-mesh refilter for non-tiled meshes. Tile (tx,tz) covers world XZ
 ///        [meshMin + t*tile_size, meshMin + (t+1)*tile_size).

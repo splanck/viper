@@ -1086,6 +1086,7 @@ ambiguous.
 | `TriangleCount` | Integer | Read | Number of walkable triangles in the mesh |
 | `OffMeshLinkCount` | Integer | Read | Number of authored traversal links |
 | `ObstacleCount` | Integer | Read | Number of authored coarse AABB obstacles |
+| `LastPathCost` | Float | Read | Weighted cost of the latest successful path query |
 
 #### Methods
 
@@ -1095,9 +1096,16 @@ ambiguous.
 | `SamplePosition(pos)` | `Object(Object)` | Snap `pos` to the nearest walkable position |
 | `IsWalkable(pos)` | `Boolean(Object)` | True when `pos` is on the walkable surface |
 | `AddOffMeshLink(from, to, bidirectional)` | `Boolean(Object, Object, Boolean)` | Add a directed or bidirectional link between walkable points |
+| `SetOffMeshLinkMetadata(index, kind, cost, state)` | `Boolean(Integer, String, Double, Integer)` | Attach kind/cost/state metadata to a traversal link |
+| `GetOffMeshLinkKind(index)` | `String(Integer)` | Return a traversal link kind string |
+| `GetOffMeshLinkTraversalCost(index)` | `Double(Integer)` | Return a traversal link cost multiplier |
+| `GetOffMeshLinkState(index)` | `Integer(Integer)` | Return traversal link state flags |
 | `AddObstacle(min, max)` | `Boolean(Object, Object)` | Add a coarse AABB obstacle and re-carve affected walkable triangles |
 | `RemoveObstacle(index)` | `Boolean(Integer)` | Remove a coarse obstacle and re-carve affected walkable triangles |
 | `UpdateObstacle(index, min, max)` | `Boolean(Integer, Object, Object)` | Move/resize a coarse obstacle and re-carve affected walkable triangles |
+| `SetArea(min, max, area, cost)` | `Boolean(Object, Object, String, Double)` | Assign area/cost metadata to polygons in a volume |
+| `GetArea(pos)` | `String(Object)` | Return the area name at a walkable position |
+| `GetTraversalCost(pos)` | `Double(Object)` | Return the traversal-cost multiplier at a walkable position |
 | `RebuildTile(tileX, tileZ)` | `Boolean(Integer, Integer)` | Rebuild one retained tiled-bake voxel source tile |
 | `SetMaxSlope(degrees)` | `Void(Double)` | Override the maximum walkable slope angle |
 | `DebugDraw(canvas3D)` | `Void(Object)` | Draw the navmesh wireframe for debugging |
@@ -1111,14 +1119,18 @@ whole-scene voxel pass.
 `AddOffMeshLink` is for authored traversal such as jumps, ladders, and
 drop-downs. Both endpoints must be on current walkable polygons. The pathfinder
 uses the link as an extra graph edge and includes the link endpoints in the
-returned waypoint list. Shared-edge portals narrower than `agentRadius * 2` are
-not linked when the mesh is built, so wider agents do not path through narrow
-authored passages. `AddObstacle` stores a finite world-space AABB and removes
-overlapping triangles from the current walkable set. On tiled bakes, obstacle
+returned waypoint list. `SetOffMeshLinkMetadata` records link kind, cost
+multiplier, and state flags; link cost contributes to A* and `LastPathCost`.
+Shared-edge portals narrower than `agentRadius * 2` are not linked when the mesh
+is built, so wider agents do not path through narrow authored passages. `SetArea`
+tags polygons whose exact XZ footprint intersects a finite volume, and
+`GetArea`/`GetTraversalCost` query that metadata. Polygon traversal costs weight
+A* edges. `AddObstacle` stores a finite world-space AABB and removes polygons
+whose triangle footprint intersects the obstacle volume. On tiled bakes, obstacle
 adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still
-refilter the preserved source mesh. This remains a coarse AABB carving baseline;
-fine polygon erosion, traversal metadata, and full crowd path-quality work remain
-separate navigation-depth items.
+refilter the preserved source mesh. This remains polygon-level AABB carving
+rather than clipped sub-polygons; full crowd path-quality work remains separate
+navigation-depth work.
 
 ---
 

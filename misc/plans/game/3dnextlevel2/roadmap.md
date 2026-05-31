@@ -406,11 +406,12 @@ Goal: many NPCs navigating a large, changing world.
 - Implement tiled/streamable navmesh aligned to Phase-5 cells, with dynamic
   obstacle carving (doors, placed objects) and runtime tile rebuild. `BakeTiled`
   now retains tile-local voxel source data and `RebuildTile` refreshes the
-  requested tile; remaining depth is fine polygon carving, traversal metadata,
-  and the crowd/perf exit.
+  requested tile; exact triangle-footprint carving and traversal metadata are
+  in place, while clipped sub-polygon carving and the crowd/perf exit remain.
 - Implement off-mesh links (jumps/ladders/drop-downs), traversal state metadata,
-  and richer area/cost metadata. `agent_radius` erosion and portal gating are in
-  place for the current baker.
+  and richer area/cost metadata. Link kind/cost/state metadata, polygon
+  area/cost metadata, `agent_radius` erosion, and portal gating are in place for
+  the current baker.
 - Implement local avoidance (ORCA/RVO-style) and pathfinding acceleration
   (spatialized find-tri, path caching, time-sliced/hierarchical A*), parallelized
   via Phase 1.

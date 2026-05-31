@@ -743,6 +743,18 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.get_OffMeshLinkCount\""),
                  "NavMesh3D.OffMeshLinkCount getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.SetOffMeshLinkMetadata\""),
+                 "NavMesh3D.SetOffMeshLinkMetadata must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkKind\""),
+                 "NavMesh3D.GetOffMeshLinkKind must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkTraversalCost\""),
+                 "NavMesh3D.GetOffMeshLinkTraversalCost must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkState\""),
+                 "NavMesh3D.GetOffMeshLinkState must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.AddObstacle\""),
                  "NavMesh3D.AddObstacle must use Graphics3D PascalCase naming") &&
          ok;
@@ -764,14 +776,41 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.get_ObstacleCount\""),
                  "NavMesh3D.ObstacleCount getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.get_LastPathCost\""),
+                 "NavMesh3D.LastPathCost getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.SetArea\""),
+                 "NavMesh3D.SetArea must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetArea\""),
+                 "NavMesh3D.GetArea must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetTraversalCost\""),
+                 "NavMesh3D.GetTraversalCost must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "RT_PROP(\"OffMeshLinkCount\""),
                  "NavMesh3D.OffMeshLinkCount property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"ObstacleCount\""),
                  "NavMesh3D.ObstacleCount property missing") &&
          ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"LastPathCost\""),
+                 "NavMesh3D.LastPathCost property missing") &&
+         ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"AddOffMeshLink\""),
                  "NavMesh3D.AddOffMeshLink method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetOffMeshLinkMetadata\""),
+                 "NavMesh3D.SetOffMeshLinkMetadata method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetOffMeshLinkKind\""),
+                 "NavMesh3D.GetOffMeshLinkKind method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetOffMeshLinkTraversalCost\""),
+                 "NavMesh3D.GetOffMeshLinkTraversalCost method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetOffMeshLinkState\""),
+                 "NavMesh3D.GetOffMeshLinkState method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"AddObstacle\""),
                  "NavMesh3D.AddObstacle method missing") &&
@@ -781,6 +820,15 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"UpdateObstacle\""),
                  "NavMesh3D.UpdateObstacle method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"SetArea\""),
+                 "NavMesh3D.SetArea method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetArea\""),
+                 "NavMesh3D.GetArea method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"GetTraversalCost\""),
+                 "NavMesh3D.GetTraversalCost method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"Bake\""),
                  "NavMesh3D.Bake method missing") &&
@@ -1215,6 +1263,12 @@ bool check_runtime_surface_names() {
         "Viper.Game3D.Animator3D.setIkSolver",
         "Viper.Graphics3D.NavMesh3D.addOffMeshLink",
         "Viper.Graphics3D.NavMesh3D.AddOffmeshLink",
+        "Viper.Graphics3D.NavMesh3D.setOffMeshLinkMetadata",
+        "Viper.Graphics3D.NavMesh3D.SetOffmeshLinkMetadata",
+        "Viper.Graphics3D.NavMesh3D.getOffMeshLinkKind",
+        "Viper.Graphics3D.NavMesh3D.GetOffmeshLinkKind",
+        "Viper.Graphics3D.NavMesh3D.getOffMeshLinkTraversalCost",
+        "Viper.Graphics3D.NavMesh3D.getOffMeshLinkState",
         "Viper.Graphics3D.NavMesh3D.get_offMeshLinkCount",
         "Viper.Graphics3D.NavMesh3D.OffmeshLinkCount",
         "Viper.Graphics3D.NavMesh3D.addObstacle",
@@ -1230,6 +1284,11 @@ bool check_runtime_surface_names() {
         "Viper.Graphics3D.NavMesh3D.Rebuildtile",
         "Viper.Graphics3D.NavMesh3D.get_obstacleCount",
         "Viper.Graphics3D.NavMesh3D.Obstaclecount",
+        "Viper.Graphics3D.NavMesh3D.get_lastPathCost",
+        "Viper.Graphics3D.NavMesh3D.LastpathCost",
+        "Viper.Graphics3D.NavMesh3D.setArea",
+        "Viper.Graphics3D.NavMesh3D.getArea",
+        "Viper.Graphics3D.NavMesh3D.getTraversalCost",
         "Viper.Graphics3D.NavAgent3D.get_avoidanceEnabled",
         "Viper.Graphics3D.NavAgent3D.set_avoidanceEnabled",
         "Viper.Graphics3D.NavAgent3D.get_avoidanceRadius",
