@@ -1732,7 +1732,7 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
             COMMAND $<TARGET_FILE:viper> run "streaming_hitch_probe.zia"
             WORKING_DIRECTORY "${GAME3D_OPENWORLD_SLICE_DIR}")
     set_tests_properties(g3d_openworld_slice_streaming_hitch_native_compressed_probe PROPERTIES
-            PASS_REGULAR_EXPRESSION "(native_compressed_upload=1|SKIP: native compressed upload unsupported)"
+            PASS_REGULAR_EXPRESSION "(native_compressed_upload=1.*native_raw_rgba_bytes=64.*native_compressed_bytes=16.*native_ram_reduction_pct=75.*native_vram_reduction_pct=75.*native_tolerance_checked=1|SKIP: native compressed upload unsupported)"
             LABELS "runtime;graphics3d;zia;requires_display;gpu_smoke;perf"
             ENVIRONMENT "VIPER_3D_BACKEND=${GAME3D_OPENWORLD_SLICE_GPU_BACKEND};VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1"
             TIMEOUT 45)

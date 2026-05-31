@@ -70,9 +70,13 @@ clear. The same script also has an opt-in GPU lane used by
 `g3d_openworld_slice_streaming_hitch_native_compressed_probe`; when
 `VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1` it binds a native compressed
 `TextureAsset3D`, proves `Canvas3D.SetTextureUploadBudget(0)` keeps backend
-upload bytes pending, then records the budgeted release upload bytes. The local
-macOS/Metal proof currently reports ASTC with `native_zero_pending_bytes=16`
-and `native_upload_bytes=16`. Visible foot-planted skinned character polish
+upload bytes pending, then records the budgeted release upload bytes,
+raw-vs-compressed RAM/VRAM reduction, and final-frame texture tolerance. The
+local macOS/Metal proof currently reports ASTC with
+`native_zero_pending_bytes=16`, `native_upload_bytes=16`,
+`native_raw_rgba_bytes=64`, `native_compressed_bytes=16`,
+`native_ram_reduction_pct=75`, `native_vram_reduction_pct=75`, and
+`native_tolerance_checked=1`. Visible foot-planted skinned character polish
 remains tracked in the 3D next-level plan.
 `gpu_smoke.zia` also runs under CTest with the platform GPU
 backend (`metal`, `d3d11`, or `opengl`) and skips cleanly if that backend is

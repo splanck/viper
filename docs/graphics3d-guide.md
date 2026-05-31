@@ -711,7 +711,9 @@ and software fallbacks for supported compressed blocks; unsupported ASTC or
 ETC2 modes remain native-only. Native mip block payloads upload through capable
 GPU backends under `Canvas3D.SetTextureUploadBudget`;
 `BackendSupports("bc7"|"astc"|"etc2")` advertises the device-specific native
-paths.
+paths. The open-world native-compressed hitch CTest records raw RGBA bytes,
+compressed resident/upload bytes, RAM/VRAM reduction percentages, and a
+final-frame tolerance check for the selected capable backend.
 
 ### Zia Example
 

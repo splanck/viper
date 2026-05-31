@@ -231,7 +231,9 @@ zero. Pixels-backed 2D material texture, cubemap, and native-compressed mip
 uploads now slice under `Canvas3D.SetTextureUploadBudget` with pending-byte
 telemetry, and the shared backend helper proves queued row/native bytes return
 to zero after final slices drain. The named hitch rerun with native compressed
-upload enabled is covered by `g3d_openworld_slice_streaming_hitch_native_compressed_probe`.
+upload enabled is covered by `g3d_openworld_slice_streaming_hitch_native_compressed_probe`,
+which also records raw-vs-compressed RAM/VRAM reduction and final-frame texture
+tolerance.
 
 - Move file read + glTF/FBX/image decode onto Phase-1 workers; keep GPU resource
   creation/upload on the main-thread commit queue.

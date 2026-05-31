@@ -49,6 +49,7 @@
 extern "C" {
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend.h"
+#include "vgfx3d_backend_utils.h"
 }
 
 namespace {
@@ -1570,6 +1571,86 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_set_resident_mip_range(asset, 0, -1); },
                                      "negative mip range"),
                 "SetResidentMipRange rejects a negative mip count");
+
+    std::remove(path);
+    PASS();
+}
+
+static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
+    TEST("TextureAsset3D native resident mips feed backend upload helpers");
+    const char *path = "/tmp/viper_textureasset3d_native_resident_mips_test.ktx2";
+    uint8_t level0[64];
+    uint8_t level1[16];
+    uint8_t level2[16];
+    const uint8_t *levels[] = {level0, level1, level2};
+    const uint64_t level_bytes[] = {sizeof(level0), sizeof(level1), sizeof(level2)};
+    rt_string path_s;
+    void *asset;
+    uint64_t full_key;
+    uint64_t resident_key;
+    vgfx3d_native_texture_mip_t mip;
+
+    for (size_t i = 0; i < sizeof(level0); i++)
+        level0[i] = (uint8_t)(0x10u + i);
+    for (size_t i = 0; i < sizeof(level1); i++)
+        level1[i] = (uint8_t)(0x80u + i);
+    for (size_t i = 0; i < sizeof(level2); i++)
+        level2[i] = (uint8_t)(0xC0u + i);
+
+    EXPECT_TRUE(write_test_ktx2_mips(path, 145u, 8u, 8u, levels, level_bytes, 3u),
+                "test mipmapped BC7 KTX2 fixture written");
+    path_s = rt_string_from_bytes(path, std::strlen(path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+    assert(asset != nullptr);
+
+    EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 96);
+    EXPECT_TRUE(vgfx3d_textureasset_native_supported(asset, RT_CANVAS3D_BACKEND_CAP_BC7),
+                "BC7 asset is native-upload capable when backend advertises BC7");
+    EXPECT_TRUE(!vgfx3d_textureasset_native_supported(asset, RT_CANVAS3D_BACKEND_CAP_ASTC),
+                "BC7 asset is not native-upload capable under unrelated caps");
+    full_key = rt_textureasset3d_get_native_cache_key(asset);
+    EXPECT_TRUE(full_key != 0, "fully resident compressed asset has a native cache key");
+
+    rt_textureasset3d_set_resident_mip_range(asset, 1, 2);
+    resident_key = rt_textureasset3d_get_native_cache_key(asset);
+    EXPECT_TRUE(resident_key != 0 && resident_key != full_key,
+                "native cache key changes when the resident mip window changes");
+    EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 32);
+
+    EXPECT_TRUE(vgfx3d_textureasset_get_native_resident_mip(asset, 0, &mip),
+                "relative resident mip 0 resolves to absolute mip 1");
+    EXPECT_EQ(mip.bytes, 16);
+    EXPECT_EQ(mip.width, 4);
+    EXPECT_EQ(mip.height, 4);
+    EXPECT_EQ(mip.block_width, 4);
+    EXPECT_EQ(mip.block_height, 4);
+    EXPECT_EQ(mip.block_bytes, 16);
+    EXPECT_EQ(mip.format_id, RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7);
+    EXPECT_TRUE(mip.data != nullptr && mip.data[0] == level1[0],
+                "resident native mip 0 borrows mip 1 payload bytes");
+
+    EXPECT_TRUE(vgfx3d_textureasset_get_native_resident_mip(asset, 1, &mip),
+                "relative resident mip 1 resolves to absolute mip 2");
+    EXPECT_EQ(mip.bytes, 16);
+    EXPECT_EQ(mip.width, 2);
+    EXPECT_EQ(mip.height, 2);
+    EXPECT_TRUE(mip.data != nullptr && mip.data[0] == level2[0],
+                "resident native mip 1 borrows mip 2 payload bytes");
+    EXPECT_TRUE(!vgfx3d_textureasset_get_native_resident_mip(asset, 2, &mip),
+                "resident native mip query rejects out-of-range relative mips");
+
+    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 0, 1), 32);
+    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 1, 1), 16);
+    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 2, 1), 0);
+    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 0, 0), 0);
+    EXPECT_TRUE(rt_textureasset3d_get_resident_bytes(asset) < (4 * 4 * 4 + 2 * 2 * 4),
+                "resident compressed bytes are smaller than equivalent raw RGBA bytes");
+
+    rt_textureasset3d_set_resident_mip_range(asset, 0, 0);
+    EXPECT_EQ(rt_textureasset3d_get_native_cache_key(asset), 0);
+    EXPECT_TRUE(!vgfx3d_textureasset_native_supported(asset, RT_CANVAS3D_BACKEND_CAP_BC7),
+                "empty residency disables native compressed upload");
 
     std::remove(path);
     PASS();
@@ -5114,6 +5195,7 @@ int main() {
     test_textureasset3d_bc7_software_decode();
     test_textureasset3d_etc2_astc_software_decode();
     test_textureasset3d_mip_residency();
+    test_textureasset3d_native_resident_mips_feed_backend_utils();
     test_material_inspection_getters();
     test_material_texture_presence_getters();
     test_material_set_color();

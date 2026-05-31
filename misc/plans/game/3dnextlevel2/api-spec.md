@@ -214,7 +214,8 @@ backend pending-byte helpers prove row/native queues return to zero after final
 slices drain. The named native-compressed hitch rerun is now covered by
 `g3d_openworld_slice_streaming_hitch_native_compressed_probe`, which records
 the platform GPU backend, compressed format, zero-budget pending bytes, release
-time, and upload bytes.
+time, upload bytes, raw RGBA bytes, compressed resident bytes, RAM/VRAM
+reduction percentages, and final-frame tolerance.
 Existing synchronous `LoadModel` stays; `Preload` / `PreloadAsset` are now
 background template warms and will move to the full POD loader as that importer
 split lands.

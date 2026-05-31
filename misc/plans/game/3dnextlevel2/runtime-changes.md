@@ -339,7 +339,8 @@ includes `g3d_openworld_slice_streaming_hitch_probe`, which emits a `HITCH:`
 line with blocking-vs-async timing and verifies zero-upload-budget gating plus
 resident-byte cache churn. `g3d_openworld_slice_streaming_hitch_native_compressed_probe`
 opts into the same script's GPU lane and records the bounded native-compressed
-backend upload release.
+backend upload release, raw-vs-compressed RAM/VRAM reduction, and final-frame
+texture tolerance.
 
 ---
 

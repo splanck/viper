@@ -188,7 +188,10 @@ telemetry. Cache hits report no new upload bytes, software/unsupported backends
 report `0`, and the value is reset at the next non-overlay frame begin.
 `TextureUploadPendingBytes` reports remaining queued texture/cubemap row bytes
 plus native compressed mip bytes and returns to `0` after final submissions
-drain. Use these members with
+drain. The open-world native-compressed hitch CTest records the selected
+backend's raw RGBA bytes, compressed resident/upload bytes, RAM/VRAM reduction
+percentages, and final-frame tolerance after the budgeted native mip upload
+drains. Use these members with
 `Assets3D.SetUploadBudget` and streaming counters to find frames where decoded asset commits are
 followed by GPU texture upload pressure.
 

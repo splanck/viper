@@ -517,6 +517,9 @@ resident-byte cache churn returns to zero after blocking and async clears. Its
 GPU opt-in CTest also records native compressed upload pressure; the local
 macOS/Metal lane uses ASTC and reports `native_zero_pending_bytes=16` followed
 by `native_upload_bytes=16` once a positive texture-upload budget is restored.
+The same run records `native_raw_rgba_bytes=64`,
+`native_compressed_bytes=16`, `native_ram_reduction_pct=75`,
+`native_vram_reduction_pct=75`, and a checked final-frame tolerance.
 Non-glTF formats still enqueue a main-thread load request.
 
 `ClearCache()` advances the template-cache generation. Any `Preload` /
@@ -987,7 +990,7 @@ The Game3D runtime is covered by:
 | `g3d_openworld_slice_perf_probe` | Open-world slice deterministic software frame-loop perf probe; emits setup, elapsed, average-frame, FPS, draw, visibility, entity, body, and stream residency metrics |
 | `g3d_openworld_slice_perf_harness` | Reusable CTest perf harness wrapper that runs `perf_probe.zia`, parses the `PERF:` metrics, validates required counters, and emits a stable `HARNESS:` summary |
 | `g3d_openworld_slice_streaming_hitch_probe` | Phase 4 async asset probe that records blocking-vs-async load timing, verifies zero-upload-budget pending behavior, releases work under a positive budget, and checks resident bytes return to zero |
-| `g3d_openworld_slice_streaming_hitch_native_compressed_probe` | GPU opt-in run of the same hitch probe that binds native compressed texture content, verifies zero texture-upload budget leaves backend bytes pending, then records budgeted native upload bytes once released |
+| `g3d_openworld_slice_streaming_hitch_native_compressed_probe` | GPU opt-in run of the same hitch probe that binds native compressed texture content, verifies zero texture-upload budget leaves backend bytes pending, then records budgeted native upload bytes, raw-vs-compressed RAM/VRAM reduction, and final-frame texture tolerance once released |
 | `g3d_openworld_slice_long_traversal` | Open-world slice repeated all-quadrant stream churn with bounded residency, zero pending requests after settled visits, traversal hitch/memory/seam telemetry, terrain collider checks, render telemetry, and deterministic replay |
 | `g3d_openworld_slice_visibility_dense_probe` | Authored dense city/forest visibility fixture that records PVS draw-call/fill-proxy reduction and compares optimized software pixels against the no-PVS baseline |
 | `g3d_openworld_slice_gpu_smoke` | Capability-gated platform GPU backend smoke for the open-world slice, including a degenerate-basis normal-map robustness pass, 24-light clustered/forward+ draw, and 3-cascade primary directional CSM fixture; reports `SKIP` when the requested GPU backend is unavailable |

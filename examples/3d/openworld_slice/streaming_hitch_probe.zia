@@ -2,6 +2,7 @@ module openworld_slice_streaming_hitch_probe;
 
 bind Viper.Collections as Collections;
 bind Viper.Game3D as Game3D;
+bind Viper.Graphics.Pixels as Pixels;
 bind Viper.Graphics3D;
 bind Viper.IO as IO;
 bind Viper.Math;
@@ -15,6 +16,38 @@ func fail(message: String) {
     Terminal.Say("FAIL: " + message);
 }
 
+func absInt(value: Integer) -> Integer {
+    if (value < 0) { return 0 - value; }
+    return value;
+}
+
+func red(px: Integer) -> Integer {
+    return Bits.And(px >> 24, 0xFF);
+}
+
+func green(px: Integer) -> Integer {
+    return Bits.And(px >> 16, 0xFF);
+}
+
+func blue(px: Integer) -> Integer {
+    return Bits.And(px >> 8, 0xFF);
+}
+
+func maxInt(a: Integer, b: Integer) -> Integer {
+    if (a > b) { return a; }
+    return b;
+}
+
+func pixelMaxDiff(px: Integer, expectedR: Integer, expectedG: Integer, expectedB: Integer) -> Integer {
+    return maxInt(absInt(red(px) - expectedR),
+                  maxInt(absInt(green(px) - expectedG), absInt(blue(px) - expectedB)));
+}
+
+func reductionPct(compressedBytes: Integer, rawBytes: Integer) -> Integer {
+    if (rawBytes <= 0 || compressedBytes >= rawBytes) { return 0; }
+    return ((rawBytes - compressedBytes) * 100) / rawBytes;
+}
+
 func writeU32LE(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
     Collections.Bytes.Set(data, pos, value % 256);
     Collections.Bytes.Set(data, pos + 1, (value / 256) % 256);
@@ -25,6 +58,29 @@ func writeU32LE(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
 func writeSmallU64LE(data: Viper.Collections.Bytes, pos: Integer, value: Integer) {
     writeU32LE(data, pos, value);
     writeU32LE(data, pos + 4, 0);
+}
+
+func nativeBlockByte(vkFormat: Integer, i: Integer) -> Integer {
+    if (vkFormat == 145) {
+        if (i == 0) { return 0xC0; }
+        if (i >= 1 && i <= 7) { return 0xFF; }
+        if (i == 8) { return 0x01; }
+        return 0x00;
+    }
+    if (vkFormat == 157) {
+        if (i == 0) { return 0xFC; }
+        if (i == 1) { return 0xFD; }
+        if (i >= 2 && i <= 9) { return 0xFF; }
+        if (i == 13) { return 0x80; }
+        if (i == 14 || i == 15) { return 0xFF; }
+        return 0x00;
+    }
+    if (vkFormat == 151) {
+        if (i == 0) { return 0xFF; }
+        if (i >= 8 && i <= 10) { return 0xFF; }
+        return 0x00;
+    }
+    return (0x20 + i * 11) % 256;
 }
 
 func writeNativeKtx2(path: String, vkFormat: Integer) {
@@ -56,7 +112,7 @@ func writeNativeKtx2(path: String, vkFormat: Integer) {
 
     var i = 0;
     while (i < 16) {
-        Collections.Bytes.Set(data, 104 + i, (0x20 + i * 11) % 256);
+        Collections.Bytes.Set(data, 104 + i, nativeBlockByte(vkFormat, i));
         i = i + 1;
     }
 
@@ -76,20 +132,34 @@ func runNativeCompressedUploadProbe() -> String {
     var texture: TextureAsset3D = null;
     var generatedPath = "";
     var nativeFormat = "";
+    var expectedR = 0;
+    var expectedG = 0;
+    var expectedB = 0;
 
     if (Canvas3D.BackendSupports(canvas, "bc7")) {
-        texture = TextureAsset3D.LoadKTX2Asset("assets/textures/marker_bc7.ktx2");
+        generatedPath = IO.TempFile.PathWithExt("openworld_native_bc7", ".ktx2");
+        writeNativeKtx2(generatedPath, 145);
+        texture = TextureAsset3D.LoadKTX2(generatedPath);
         nativeFormat = "bc7";
+        expectedR = 255;
+        expectedG = 255;
+        expectedB = 255;
     } else if (Canvas3D.BackendSupports(canvas, "astc")) {
         generatedPath = IO.TempFile.PathWithExt("openworld_native_astc", ".ktx2");
         writeNativeKtx2(generatedPath, 157);
         texture = TextureAsset3D.LoadKTX2(generatedPath);
         nativeFormat = "astc";
+        expectedR = 255;
+        expectedG = 0;
+        expectedB = 128;
     } else if (Canvas3D.BackendSupports(canvas, "etc2")) {
         generatedPath = IO.TempFile.PathWithExt("openworld_native_etc2", ".ktx2");
         writeNativeKtx2(generatedPath, 151);
         texture = TextureAsset3D.LoadKTX2(generatedPath);
         nativeFormat = "etc2";
+        expectedR = 247;
+        expectedG = 247;
+        expectedB = 247;
     } else {
         Terminal.Say("SKIP: native compressed upload unsupported on backend " + backend);
         return " native_compressed_upload=0 native_backend=" + backend +
@@ -102,15 +172,18 @@ func runNativeCompressedUploadProbe() -> String {
         fail("native compressed fixture did not load with resident bytes");
         return "";
     }
+    var nativeCompressedBytes = TextureAsset3D.get_ResidentBytes(texture);
+    var nativeRawRgbaBytes = 4 * 4 * 4;
 
     var mesh = Mesh3D.NewPlane(1.0, 1.0);
-    var material = Material3D.NewPBR(0.8, 0.72, 0.6);
+    var material = Material3D.NewPBR(1.0, 1.0, 1.0);
+    Material3D.SetShadingModel(material, 3);
     Material3D.SetAlbedoMap(material, texture);
     var camera = Camera3D.NewOrtho(2.0, 1.0, 0.1, 20.0);
     Camera3D.LookAt(camera,
-        Vec3.New(0.0, 0.0, 2.0),
+        Vec3.New(0.0, 2.0, 0.0),
         Vec3.New(0.0, 0.0, 0.0),
-        Vec3.New(0.0, 1.0, 0.0));
+        Vec3.New(0.0, 0.0, -1.0));
 
     Canvas3D.SetTextureUploadBudget(canvas, 0);
     var zeroStart = Clock.TicksUs();
@@ -146,10 +219,36 @@ func runNativeCompressedUploadProbe() -> String {
     var releaseUploadBytes = Canvas3D.get_TextureUploadBytes(canvas);
     var releasePendingBytes = Canvas3D.get_TextureUploadPendingBytes(canvas);
     Canvas3D.SetTextureUploadBudget(canvas, -1);
-    if (generatedPath != "") { IO.File.Delete(generatedPath); }
 
     if (nativeReady == false || releaseUploadBytes <= 0 || releasePendingBytes != 0) {
+        if (generatedPath != "") { IO.File.Delete(generatedPath); }
         fail("positive texture upload budget did not drain native compressed upload");
+        return "";
+    }
+
+    if (Canvas3D.BackendSupports(canvas, "final-screenshot") == false) {
+        if (generatedPath != "") { IO.File.Delete(generatedPath); }
+        fail("native compressed tolerance readback unavailable");
+        return "";
+    }
+
+    Canvas3D.Clear(canvas, 0.02, 0.02, 0.025);
+    Canvas3D.Begin(canvas, camera);
+    Canvas3D.DrawMesh(canvas, mesh, Mat4.Identity(), material);
+    Canvas3D.End(canvas);
+    var snap = Canvas3D.ScreenshotFinal(canvas);
+    if (generatedPath != "") { IO.File.Delete(generatedPath); }
+    if (snap == null || Pixels.get_Width(snap) != 96 || Pixels.get_Height(snap) != 72) {
+        fail("native compressed final-frame readback failed");
+        return "";
+    }
+    var centerPx = Pixels.Get(snap, 48, 36);
+    var toleranceMaxDiff = pixelMaxDiff(centerPx, expectedR, expectedG, expectedB);
+    if (toleranceMaxDiff > 96) {
+        fail("native compressed final-frame color exceeded tolerance: actual=" +
+             Fmt.Int(red(centerPx)) + "," + Fmt.Int(green(centerPx)) + "," + Fmt.Int(blue(centerPx)) +
+             " expected=" + Fmt.Int(expectedR) + "," + Fmt.Int(expectedG) + "," + Fmt.Int(expectedB) +
+             " diff=" + Fmt.Int(toleranceMaxDiff));
         return "";
     }
 
@@ -159,7 +258,13 @@ func runNativeCompressedUploadProbe() -> String {
            " native_zero_frame_us=" + Fmt.Int(zeroFrameUs) +
            " native_zero_pending_bytes=" + Fmt.Int(zeroPendingBytes) +
            " native_release_us=" + Fmt.Int(nativeReleaseUs) +
-           " native_upload_bytes=" + Fmt.Int(releaseUploadBytes);
+           " native_upload_bytes=" + Fmt.Int(releaseUploadBytes) +
+           " native_raw_rgba_bytes=" + Fmt.Int(nativeRawRgbaBytes) +
+           " native_compressed_bytes=" + Fmt.Int(nativeCompressedBytes) +
+           " native_ram_reduction_pct=" + Fmt.Int(reductionPct(nativeCompressedBytes, nativeRawRgbaBytes)) +
+           " native_vram_reduction_pct=" + Fmt.Int(reductionPct(releaseUploadBytes, nativeRawRgbaBytes)) +
+           " native_tolerance_checked=1" +
+           " native_tolerance_max_diff=" + Fmt.Int(toleranceMaxDiff);
 }
 
 func start() {
