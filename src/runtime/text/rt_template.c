@@ -111,33 +111,40 @@ static int64_t parse_index(const char *s, int len) {
 ///          Operates byte-by-byte (1-byte append in the default branch)
 ///          to keep the doubling logic clean — performance is fine
 ///          because templates are typically rendered once per request.
-static void append_literal_unescaped(rt_string_builder *sb,
-                                     const char *text,
-                                     int len,
-                                     const char *prefix,
-                                     int prefix_len,
-                                     const char *suffix,
-                                     int suffix_len) {
+static rt_sb_status_t append_literal_unescaped(rt_string_builder *sb,
+                                               const char *text,
+                                               int len,
+                                               const char *prefix,
+                                               int prefix_len,
+                                               const char *suffix,
+                                               int suffix_len) {
     int i = 0;
     while (i < len) {
         if (prefix_len > 0 && i + prefix_len * 2 <= len &&
             memcmp(text + i, prefix, prefix_len) == 0 &&
             memcmp(text + i + prefix_len, prefix, prefix_len) == 0) {
-            rt_sb_append_bytes(sb, prefix, prefix_len);
+            rt_sb_status_t st = rt_sb_append_bytes(sb, prefix, prefix_len);
+            if (st != RT_SB_OK)
+                return st;
             i += prefix_len * 2;
             continue;
         }
         if (suffix_len > 0 && i + suffix_len * 2 <= len &&
             memcmp(text + i, suffix, suffix_len) == 0 &&
             memcmp(text + i + suffix_len, suffix, suffix_len) == 0) {
-            rt_sb_append_bytes(sb, suffix, suffix_len);
+            rt_sb_status_t st = rt_sb_append_bytes(sb, suffix, suffix_len);
+            if (st != RT_SB_OK)
+                return st;
             i += suffix_len * 2;
             continue;
         }
 
-        rt_sb_append_bytes(sb, text + i, 1);
+        rt_sb_status_t st = rt_sb_append_bytes(sb, text + i, 1);
+        if (st != RT_SB_OK)
+            return st;
         i++;
     }
+    return RT_SB_OK;
 }
 
 //=============================================================================
@@ -157,6 +164,14 @@ static rt_string render_internal(const char *tmpl,
     rt_string_builder sb;
     rt_sb_init(&sb);
 
+#define TEMPLATE_APPEND_OR_TRAP(expr)                                                             \
+    do {                                                                                           \
+        if ((expr) != RT_SB_OK) {                                                                  \
+            rt_sb_free(&sb);                                                                       \
+            rt_trap("Template.Render: memory allocation failed");                                  \
+        }                                                                                          \
+    } while (0)
+
     int pos = 0;
     while (pos < tmpl_len) {
         // Find next placeholder start
@@ -164,22 +179,22 @@ static rt_string render_internal(const char *tmpl,
         if (start < 0) {
             // No more placeholders, append rest of template
             if (pos < tmpl_len) {
-                append_literal_unescaped(
-                    &sb, tmpl + pos, tmpl_len - pos, prefix, prefix_len, suffix, suffix_len);
+                TEMPLATE_APPEND_OR_TRAP(append_literal_unescaped(
+                    &sb, tmpl + pos, tmpl_len - pos, prefix, prefix_len, suffix, suffix_len));
             }
             break;
         }
 
         // Append text before placeholder
         if (start > pos) {
-            append_literal_unescaped(
-                &sb, tmpl + pos, start - pos, prefix, prefix_len, suffix, suffix_len);
+            TEMPLATE_APPEND_OR_TRAP(append_literal_unescaped(
+                &sb, tmpl + pos, start - pos, prefix, prefix_len, suffix, suffix_len));
         }
 
         if (start + prefix_len * 2 <= tmpl_len &&
             memcmp(tmpl + start + prefix_len, prefix, prefix_len) == 0) {
             // Escaped prefix - emit literal and skip
-            rt_sb_append_bytes(&sb, prefix, prefix_len);
+            TEMPLATE_APPEND_OR_TRAP(rt_sb_append_bytes(&sb, prefix, prefix_len));
             pos = start + prefix_len * 2;
             continue;
         }
@@ -190,8 +205,8 @@ static rt_string render_internal(const char *tmpl,
 
         if (end < 0) {
             // No closing delimiter, append rest as-is
-            append_literal_unescaped(
-                &sb, tmpl + start, tmpl_len - start, prefix, prefix_len, suffix, suffix_len);
+            TEMPLATE_APPEND_OR_TRAP(append_literal_unescaped(
+                &sb, tmpl + start, tmpl_len - start, prefix, prefix_len, suffix, suffix_len));
             break;
         }
 
@@ -203,7 +218,8 @@ static rt_string render_internal(const char *tmpl,
 
         // Handle empty key - leave as literal
         if (key_len == 0) {
-            rt_sb_append_bytes(&sb, tmpl + start, end + suffix_len - start);
+            TEMPLATE_APPEND_OR_TRAP(
+                rt_sb_append_bytes(&sb, tmpl + start, end + suffix_len - start));
             pos = end + suffix_len;
             continue;
         }
@@ -222,6 +238,10 @@ static rt_string render_internal(const char *tmpl,
         } else {
             // Map lookup
             rt_string key = rt_string_from_bytes(tmpl + trimmed_start, key_len);
+            if (!key) {
+                rt_sb_free(&sb);
+                rt_trap("Template.Render: memory allocation failed");
+            }
             if (rt_map_has(values, key)) {
                 boxed_value = rt_map_get(values, key);
                 found = true;
@@ -238,7 +258,8 @@ static rt_string render_internal(const char *tmpl,
                 rt_string value = (rt_string)boxed_value;
                 const char *val_str = rt_string_cstr(value);
                 if (val_str) {
-                    rt_sb_append_bytes(&sb, val_str, (size_t)rt_str_len(value));
+                    TEMPLATE_APPEND_OR_TRAP(
+                        rt_sb_append_bytes(&sb, val_str, (size_t)rt_str_len(value)));
                     rendered = true;
                 }
             } else if (rt_box_type(boxed_value) == RT_BOX_STR) {
@@ -247,7 +268,13 @@ static rt_string render_internal(const char *tmpl,
                 if (value) {
                     const char *val_str = rt_string_cstr(value);
                     if (val_str) {
-                        rt_sb_append_bytes(&sb, val_str, (size_t)rt_str_len(value));
+                        rt_sb_status_t st =
+                            rt_sb_append_bytes(&sb, val_str, (size_t)rt_str_len(value));
+                        if (st != RT_SB_OK) {
+                            rt_string_unref(value);
+                            rt_sb_free(&sb);
+                            rt_trap("Template.Render: memory allocation failed");
+                        }
                         rendered = true;
                     }
                     rt_string_unref(value); // Release the retained string from unbox
@@ -256,7 +283,8 @@ static rt_string render_internal(const char *tmpl,
         }
         if (!rendered) {
             // Key not found, leave placeholder as-is
-            rt_sb_append_bytes(&sb, tmpl + start, end + suffix_len - start);
+            TEMPLATE_APPEND_OR_TRAP(
+                rt_sb_append_bytes(&sb, tmpl + start, end + suffix_len - start));
         }
 
         pos = end + suffix_len;
@@ -268,8 +296,13 @@ static rt_string render_internal(const char *tmpl,
         result = rt_const_cstr("");
     } else {
         result = rt_string_from_bytes(sb.data, sb.len);
+        if (!result) {
+            rt_sb_free(&sb);
+            rt_trap("Template.Render: memory allocation failed");
+        }
     }
     rt_sb_free(&sb);
+#undef TEMPLATE_APPEND_OR_TRAP
     return result;
 }
 
@@ -468,8 +501,12 @@ rt_string rt_template_escape(rt_string text) {
         }
     }
 
-    if (escape_count == 0)
-        return rt_string_from_bytes(txt_str, (size_t)txt_len);
+    if (escape_count == 0) {
+        rt_string unchanged = rt_string_from_bytes(txt_str, (size_t)txt_len);
+        if (!unchanged)
+            rt_trap("Template.Escape: out of memory");
+        return unchanged;
+    }
 
     // Allocate result (each {{ or }} becomes {{{{ or }}}})
     if (escape_count > (INT_MAX - txt_len) / 2)
@@ -507,5 +544,7 @@ rt_string rt_template_escape(rt_string text) {
 
     rt_string rs = rt_string_from_bytes(result, j);
     free(result);
+    if (!rs)
+        rt_trap("Template.Escape: out of memory");
     return rs;
 }

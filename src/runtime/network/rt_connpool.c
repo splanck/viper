@@ -26,6 +26,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -86,16 +87,31 @@ typedef struct {
 // Helpers
 //=============================================================================
 
+static int connpool_has_embedded_nul(const char *data, size_t len) {
+    return data && memchr(data, '\0', len) != NULL;
+}
+
+static size_t connpool_host_len_or_zero(rt_string host) {
+    int64_t len = host ? rt_str_len(host) : -1;
+    if (len <= 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
+        return 0;
+    return (size_t)len;
+}
+
 /// @brief Format a "host:port" cache key, bracketing bare IPv6 literals.
 /// @details An unbracketed colon in @p host indicates an IPv6 address that
 ///          would otherwise collide with the port colon, so we wrap it as
 ///          @c [::1]:443. Already-bracketed hosts and plain hostnames flow
 ///          through unchanged.
-static void make_key(const char *host, int port, char *buf, size_t buf_len) {
-    if (host && strchr(host, ':') != NULL && host[0] != '[')
-        snprintf(buf, buf_len, "[%s]:%d", host, port);
+static bool make_key(const char *host, int port, char *buf, size_t buf_len) {
+    int written;
+    if (!host || port < 1 || port > 65535 || !buf || buf_len == 0)
+        return false;
+    if (strchr(host, ':') != NULL && host[0] != '[')
+        written = snprintf(buf, buf_len, "[%s]:%d", host, port);
     else
-        snprintf(buf, buf_len, "%s:%d", host ? host : "", port);
+        written = snprintf(buf, buf_len, "%s:%d", host, port);
+    return written >= 0 && (size_t)written < buf_len;
 }
 
 /// @brief Close a TCP handle and drop the pool's reference.
@@ -264,11 +280,14 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
 
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
     const char *host_str = rt_string_cstr(host);
-    if (!host_str || port < 1 || port > 65535)
+    size_t host_len = connpool_host_len_or_zero(host);
+    if (!host_str || host_len == 0 || connpool_has_embedded_nul(host_str, host_len) || port < 1 ||
+        port > 65535)
         rt_trap("ConnectionPool: invalid host or port");
 
     char key[300];
-    make_key(host_str, (int)port, key, sizeof(key));
+    if (!make_key(host_str, (int)port, key, sizeof(key)))
+        rt_trap("ConnectionPool: host is too long");
 
     POOL_MUTEX_LOCK(&pool->lock);
 
@@ -353,8 +372,12 @@ void rt_connpool_release(void *obj, void *conn) {
         rt_string h = rt_tcp_host(conn);
         int64_t p = rt_tcp_port(conn);
         char key[300];
-        make_key(rt_string_cstr(h), (int)p, key, sizeof(key));
-        if (track_connection(pool, conn, key, false, time(NULL))) {
+        const char *host_str = rt_string_cstr(h);
+        size_t host_len = connpool_host_len_or_zero(h);
+        bool valid_key = host_str && host_len > 0 &&
+                         !connpool_has_embedded_nul(host_str, host_len) && p >= 1 &&
+                         p <= 65535 && make_key(host_str, (int)p, key, sizeof(key));
+        if (valid_key && track_connection(pool, conn, key, false, time(NULL))) {
             rt_string_unref(h);
             POOL_MUTEX_UNLOCK(&pool->lock);
             return;

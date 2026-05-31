@@ -49,6 +49,64 @@ static int rest_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms) {
     return 1;
 }
 
+static const char *rest_string_bytes(rt_string text,
+                                     size_t *len_out,
+                                     const char *context,
+                                     int reject_embedded_nul) {
+    if (len_out)
+        *len_out = 0;
+    if (!text)
+        return "";
+    const char *cstr = rt_string_cstr(text);
+    int64_t len64 = rt_str_len(text);
+    if (!cstr || len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+        rt_trap(context);
+    size_t len = (size_t)len64;
+    if (reject_embedded_nul && len > 0 && memchr(cstr, '\0', len))
+        rt_trap(context);
+    if (len_out)
+        *len_out = len;
+    return cstr;
+}
+
+static const char *rest_header_value_bytes(rt_string text, size_t *len_out, const char *context) {
+    const char *cstr = rest_string_bytes(text, len_out, context, 1);
+    size_t len = len_out ? *len_out : 0;
+    if (len > 0 && (memchr(cstr, '\r', len) || memchr(cstr, '\n', len)))
+        rt_trap(context);
+    return cstr;
+}
+
+static int rest_header_name_is_token(rt_string text) {
+    if (!text)
+        return 0;
+    const char *cstr = rt_string_cstr(text);
+    int64_t len64 = rt_str_len(text);
+    if (!cstr || len64 <= 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+        return 0;
+    size_t len = (size_t)len64;
+    if (memchr(cstr, '\0', len))
+        return 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)cstr[i];
+        if (ch <= 32 || ch >= 127 || strchr("()<>@,;:\\\"/[]?={}", ch))
+            return 0;
+    }
+    return 1;
+}
+
+static int rest_header_value_is_safe(rt_string text) {
+    if (!text)
+        return 0;
+    const char *cstr = rt_string_cstr(text);
+    int64_t len64 = rt_str_len(text);
+    if (!cstr || len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+        return 0;
+    size_t len = (size_t)len64;
+    return !memchr(cstr, '\0', len) && !memchr(cstr, '\r', len) &&
+           !memchr(cstr, '\n', len);
+}
+
 //=============================================================================
 // Finalizer
 //=============================================================================
@@ -80,16 +138,11 @@ static void rest_client_finalize(void *obj) {
 /// from `base` and leading slashes from `path` so callers can mix-and-match conventions without
 /// producing `//` artefacts. Always inserts exactly one separator.
 static rt_string join_url(rt_string base, rt_string path) {
-    const char *base_str = rt_string_cstr(base);
-    const char *path_str = rt_string_cstr(path);
-
-    if (!base_str)
-        base_str = "";
-    if (!path_str)
-        path_str = "";
-
-    size_t base_len = strlen(base_str);
-    size_t path_len = strlen(path_str);
+    size_t base_len = 0;
+    size_t path_len = 0;
+    const char *base_str =
+        rest_string_bytes(base, &base_len, "RestClient: invalid base URL", 1);
+    const char *path_str = rest_string_bytes(path, &path_len, "RestClient: invalid path", 1);
 
     // Remove trailing slash from base if present
     while (base_len > 0 && base_str[base_len - 1] == '/')
@@ -101,6 +154,8 @@ static rt_string join_url(rt_string base, rt_string path) {
         path_len--;
     }
 
+    if (base_len > SIZE_MAX - path_len - 1)
+        rt_trap("RestClient: URL length overflow");
     size_t total = base_len + 1 + path_len;
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -119,6 +174,8 @@ static rt_string join_url(rt_string base, rt_string path) {
 
     rt_string out = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    if (!out)
+        rt_trap("RestClient: memory allocation failed");
     return out;
 }
 
@@ -181,10 +238,16 @@ static void *execute_request(rest_client *client, void *req) {
 /// a GC-managed handle wired to `rest_client_finalize`.
 void *rt_restclient_new(rt_string base_url) {
     rest_client *client = (rest_client *)rt_obj_new_i64(0, (int64_t)sizeof(rest_client));
+    if (!client)
+        rt_trap("RestClient: memory allocation failed");
     memset(client, 0, sizeof(rest_client));
 
-    const char *url_str = rt_string_cstr(base_url);
-    client->base_url = url_str ? rt_string_from_bytes(url_str, strlen(url_str)) : rt_const_cstr("");
+    size_t url_len = 0;
+    const char *url_str =
+        rest_string_bytes(base_url, &url_len, "RestClient: invalid base URL", 1);
+    client->base_url = rt_string_from_bytes(url_str, url_len);
+    if (!client->base_url)
+        rt_trap("RestClient: memory allocation failed");
     client->headers = rt_map_new();
     client->timeout_ms = 30000; // 30 second default
     client->last_response = NULL;
@@ -210,6 +273,8 @@ rt_string rt_restclient_base_url(void *obj) {
 void rt_restclient_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
+    if (!rest_header_name_is_token(name) || !rest_header_value_is_safe(value))
+        return;
     rest_client *client = (rest_client *)obj;
     rt_map_set(client->headers, name, (void *)value);
 }
@@ -217,6 +282,8 @@ void rt_restclient_set_header(void *obj, rt_string name, rt_string value) {
 /// @brief Remove a default header so subsequent requests don't include it. No-op on missing keys.
 void rt_restclient_del_header(void *obj, rt_string name) {
     if (!obj)
+        return;
+    if (!rest_header_name_is_token(name))
         return;
     rest_client *client = (rest_client *)obj;
     rt_map_remove(client->headers, name);
@@ -228,11 +295,9 @@ void rt_restclient_set_auth_bearer(void *obj, rt_string token) {
     if (!obj)
         return;
 
-    const char *tok_str = rt_string_cstr(token);
-    if (!tok_str)
-        tok_str = "";
-
-    size_t tok_len = strlen(tok_str);
+    size_t tok_len = 0;
+    const char *tok_str =
+        rest_header_value_bytes(token, &tok_len, "RestClient: invalid bearer token");
     rt_string_builder sb;
     rt_sb_init(&sb);
 
@@ -257,15 +322,12 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
     if (!obj)
         return;
 
-    const char *user_str = rt_string_cstr(username);
-    const char *pass_str = rt_string_cstr(password);
-    if (!user_str)
-        user_str = "";
-    if (!pass_str)
-        pass_str = "";
-
-    size_t user_len = strlen(user_str);
-    size_t pass_len = strlen(pass_str);
+    size_t user_len = 0;
+    size_t pass_len = 0;
+    const char *user_str =
+        rest_header_value_bytes(username, &user_len, "RestClient: invalid username");
+    const char *pass_str =
+        rest_header_value_bytes(password, &pass_len, "RestClient: invalid password");
     rt_string_builder cred_sb;
     rt_sb_init(&cred_sb);
 
@@ -446,7 +508,9 @@ void *rt_restclient_get_json(void *obj, rt_string path) {
         return NULL;
 
     rt_string body = rt_http_res_body_str(res);
-    return rt_json_parse(body);
+    void *parsed = rt_json_parse(body);
+    rt_string_unref(body);
+    return parsed;
 }
 
 /// @brief Send a `POST` with `Content-Type: application/json` carrying `rt_json_format(json_body)`.
@@ -463,17 +527,21 @@ void *rt_restclient_post_json(void *obj, rt_string path, void *json_body) {
 
     rt_string body = rt_json_format(json_body);
     rt_http_req_set_body_str(req, body);
+    rt_string_unref(body);
 
     void *res = execute_request(client, req);
     if (!rt_http_res_is_ok(res))
         return NULL;
 
     rt_string res_body = rt_http_res_body_str(res);
-    const char *res_str = rt_string_cstr(res_body);
-    if (!res_str || strlen(res_str) == 0)
+    if (rt_str_len(res_body) == 0) {
+        rt_string_unref(res_body);
         return NULL;
+    }
 
-    return rt_json_parse(res_body);
+    void *parsed = rt_json_parse(res_body);
+    rt_string_unref(res_body);
+    return parsed;
 }
 
 /// @brief `PUT` JSON body and parse response. Same Accept/Content-Type handling as `_post_json`.
@@ -488,17 +556,21 @@ void *rt_restclient_put_json(void *obj, rt_string path, void *json_body) {
 
     rt_string body = rt_json_format(json_body);
     rt_http_req_set_body_str(req, body);
+    rt_string_unref(body);
 
     void *res = execute_request(client, req);
     if (!rt_http_res_is_ok(res))
         return NULL;
 
     rt_string res_body = rt_http_res_body_str(res);
-    const char *res_str = rt_string_cstr(res_body);
-    if (!res_str || strlen(res_str) == 0)
+    if (rt_str_len(res_body) == 0) {
+        rt_string_unref(res_body);
         return NULL;
+    }
 
-    return rt_json_parse(res_body);
+    void *parsed = rt_json_parse(res_body);
+    rt_string_unref(res_body);
+    return parsed;
 }
 
 /// @brief `PATCH` JSON body and parse response. Used for partial-update REST endpoints.
@@ -513,17 +585,21 @@ void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body) {
 
     rt_string body = rt_json_format(json_body);
     rt_http_req_set_body_str(req, body);
+    rt_string_unref(body);
 
     void *res = execute_request(client, req);
     if (!rt_http_res_is_ok(res))
         return NULL;
 
     rt_string res_body = rt_http_res_body_str(res);
-    const char *res_str = rt_string_cstr(res_body);
-    if (!res_str || strlen(res_str) == 0)
+    if (rt_str_len(res_body) == 0) {
+        rt_string_unref(res_body);
         return NULL;
+    }
 
-    return rt_json_parse(res_body);
+    void *parsed = rt_json_parse(res_body);
+    rt_string_unref(res_body);
+    return parsed;
 }
 
 /// @brief `DELETE` (no body) and parse the response as JSON. Useful when the API returns a
@@ -541,11 +617,14 @@ void *rt_restclient_delete_json(void *obj, rt_string path) {
         return NULL;
 
     rt_string res_body = rt_http_res_body_str(res);
-    const char *res_str = rt_string_cstr(res_body);
-    if (!res_str || strlen(res_str) == 0)
+    if (rt_str_len(res_body) == 0) {
+        rt_string_unref(res_body);
         return NULL;
+    }
 
-    return rt_json_parse(res_body);
+    void *parsed = rt_json_parse(res_body);
+    rt_string_unref(res_body);
+    return parsed;
 }
 
 //=============================================================================

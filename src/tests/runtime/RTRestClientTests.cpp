@@ -236,6 +236,15 @@ static void test_new_client_empty_url() {
     test_result(strlen(rt_string_cstr(base)) == 0, "new_client_empty: should have empty base URL");
 }
 
+static void test_new_client_null_url() {
+    void *client = rt_restclient_new(NULL);
+
+    test_result(client != NULL, "new_client_null_url: should create client with empty base URL");
+
+    rt_string base = rt_restclient_base_url(client);
+    test_result(rt_str_len(base) == 0, "new_client_null_url: should have empty base URL");
+}
+
 static void test_new_client_null() {
     rt_string base = rt_restclient_base_url(NULL);
     test_result(strlen(rt_string_cstr(base)) == 0, "null_client: should return empty string");
@@ -251,6 +260,16 @@ static void test_set_header() {
     // Setting a header shouldn't crash
     rt_restclient_set_header(
         client, rt_const_cstr("X-Custom-Header"), rt_const_cstr("CustomValue"));
+    rt_restclient_set_header(client, NULL, rt_const_cstr("Ignored"));
+    rt_restclient_set_header(client, rt_const_cstr("X-Ignored"), NULL);
+    rt_string bad_name = rt_string_from_bytes("X-Bad\0Name", 10);
+    rt_string bad_value = rt_string_from_bytes("bad\r\nvalue", 10);
+    rt_restclient_set_header(client, bad_name, rt_const_cstr("Ignored"));
+    rt_restclient_set_header(client, rt_const_cstr("X-Bad"), bad_value);
+    rt_restclient_del_header(client, NULL);
+    rt_restclient_del_header(client, bad_name);
+    rt_string_unref(bad_name);
+    rt_string_unref(bad_value);
 
     test_result(true, "set_header: should set header without crash");
 }
@@ -295,6 +314,15 @@ static void test_set_auth_basic() {
     rt_restclient_set_auth_basic(client, rt_const_cstr("username"), rt_const_cstr("password"));
 
     test_result(true, "set_auth_basic: should set basic auth without crash");
+}
+
+static void test_set_auth_null_values() {
+    void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
+
+    rt_restclient_set_auth_bearer(client, NULL);
+    rt_restclient_set_auth_basic(client, NULL, NULL);
+
+    test_result(true, "set_auth_null_values: should treat NULL credentials as empty strings");
 }
 
 static void test_clear_auth() {
@@ -532,6 +560,7 @@ int main() {
     // Creation tests
     test_new_client();
     test_new_client_empty_url();
+    test_new_client_null_url();
     test_new_client_null();
 
     // Header tests
@@ -542,6 +571,7 @@ int main() {
     // Auth tests
     test_set_auth_bearer();
     test_set_auth_basic();
+    test_set_auth_null_values();
     test_clear_auth();
     test_null_client_auth();
 

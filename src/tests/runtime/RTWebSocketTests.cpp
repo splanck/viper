@@ -603,6 +603,49 @@ static void test_ws_connect_for_success() {
     server.join();
 }
 
+static void test_ws_text_frames_preserve_embedded_nul() {
+    printf("\nTesting WebSocket embedded NUL text frames:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    ws_server_ready = false;
+    ws_server_failed = false;
+
+    std::thread server(ws_echo_server_thread, port);
+
+    while (!ws_server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (ws_server_failed) {
+        server.join();
+        printf("  SKIP: local bind unavailable in this environment\n");
+        return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    char url_buf[64];
+    snprintf(url_buf, sizeof(url_buf), "ws://127.0.0.1:%d/", port);
+    void *ws = rt_ws_connect(rt_const_cstr(url_buf));
+    test_result("WebSocket connect succeeds", ws != nullptr);
+
+    const char payload[] = {'h', 'e', '\0', 'l', 'o'};
+    rt_string msg = rt_string_from_bytes(payload, sizeof(payload));
+    rt_ws_send(ws, msg);
+    rt_string reply = rt_ws_recv_for(ws, 2000);
+    test_result("Embedded NUL echo reply received", reply != nullptr);
+    if (reply) {
+        test_result("Embedded NUL echo length preserved", rt_str_len(reply) == (int64_t)sizeof(payload));
+        test_result("Embedded NUL echo bytes preserved",
+                    memcmp(rt_string_cstr(reply), payload, sizeof(payload)) == 0);
+    }
+
+    rt_string_unref(msg);
+    rt_ws_close(ws);
+    server.join();
+}
+
 static void test_ws_connect_sends_canonical_host_header() {
     printf("\nTesting WebSocket Host header formatting:\n");
 
@@ -776,6 +819,7 @@ int main() {
     test_ws_recv_for_timeout();
     test_ws_recv_bytes_for_timeout();
     test_ws_connect_for_success();
+    test_ws_text_frames_preserve_embedded_nul();
     test_ws_connect_sends_canonical_host_header();
     test_ws_connect_protocol_negotiates_subprotocol();
     test_ws_fragmented_text_reassembly();

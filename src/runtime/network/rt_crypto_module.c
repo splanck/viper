@@ -567,6 +567,8 @@ const char *rt_crypto_module_status_cstr(void) {
 void rt_crypto_module_random_bytes(uint8_t *buf, size_t len) {
     if (!buf && len > 0)
         rt_trap("Crypto.Module: random output buffer is null");
+    if (len == 0)
+        return;
     if (!rt_crypto_module_init())
         rt_trap(rt_crypto_module_status_cstr());
     module_lock();

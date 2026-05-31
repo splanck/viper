@@ -94,6 +94,16 @@ static int http_client_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms
     return 1;
 }
 
+static int http_client_string_has_embedded_nul(rt_string value) {
+    if (!value)
+        return 0;
+    const char *cstr = rt_string_cstr(value);
+    int64_t len64 = rt_str_len(value);
+    if (!cstr || len64 <= 0)
+        return 0;
+    return memchr(cstr, '\0', (size_t)len64) != NULL;
+}
+
 static void free_cookie_list(rt_http_cookie *cookie) {
     while (cookie) {
         rt_http_cookie *next = cookie->next;
@@ -427,13 +437,23 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
             !cookie_path_matches(cookie, path_cstr)) {
             continue;
         }
-        total_len += strlen(cookie->name) + 1 + strlen(cookie->value);
-        if (cookie_count > 0)
+        size_t name_len = strlen(cookie->name);
+        size_t value_len = strlen(cookie->value);
+        if (name_len > SIZE_MAX - 1 || value_len > SIZE_MAX - name_len - 1)
+            goto cookie_header_done;
+        size_t item_len = name_len + 1 + value_len;
+        if (total_len > SIZE_MAX - item_len)
+            goto cookie_header_done;
+        total_len += item_len;
+        if (cookie_count > 0) {
+            if (total_len > SIZE_MAX - 2)
+                goto cookie_header_done;
             total_len += 2;
+        }
         cookie_count++;
     }
 
-    if (cookie_count > 0)
+    if (cookie_count > 0 && total_len < SIZE_MAX)
         cookie_header = (char *)malloc(total_len + 1);
     if (cookie_header) {
         size_t pos = 0;
@@ -460,6 +480,7 @@ static void apply_cookie_header(rt_http_client_impl *c, void *req, rt_string url
         free(cookie_header);
     }
 
+cookie_header_done:
     HTTP_CLIENT_MUTEX_UNLOCK(&c->lock);
 
     rt_string_unref(scheme);
@@ -658,15 +679,23 @@ static void store_response_cookies(rt_http_client_impl *c, void *res, rt_string 
 static void *do_request(rt_http_client_impl *c, const char *method, rt_string url, rt_string body) {
     int8_t follow_redirects = 0;
     int64_t redirects_left = 0;
-    const char *url_cstr = rt_string_cstr(url);
+    const char *url_cstr = url ? rt_string_cstr(url) : NULL;
+    if (!url_cstr || http_client_string_has_embedded_nul(url))
+        rt_trap("HttpClient: invalid URL");
     rt_string current_url =
         rt_string_from_bytes(url_cstr ? url_cstr : "", url_cstr ? strlen(url_cstr) : 0);
+    if (!current_url)
+        rt_trap("HttpClient: memory allocation failed");
     const char *current_method = method;
     rt_string current_body = NULL;
     if (body) {
         const char *body_cstr = rt_string_cstr(body);
-        current_body =
-            rt_string_from_bytes(body_cstr ? body_cstr : "", body_cstr ? strlen(body_cstr) : 0);
+        int64_t body_len64 = rt_str_len(body);
+        if (!body_cstr || body_len64 < 0 || (uint64_t)body_len64 > (uint64_t)SIZE_MAX)
+            rt_trap("HttpClient: invalid body");
+        current_body = rt_string_from_bytes(body_cstr, (size_t)body_len64);
+        if (!current_body)
+            rt_trap("HttpClient: memory allocation failed");
     }
 
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
@@ -797,6 +826,9 @@ void *rt_http_client_delete(void *obj, rt_string url) {
 void rt_http_client_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
+    if (!name || !value || http_client_string_has_embedded_nul(name) ||
+        http_client_string_has_embedded_nul(value))
+        return;
     rt_http_client_impl *c = (rt_http_client_impl *)obj;
     HTTP_CLIENT_MUTEX_LOCK(&c->lock);
     rt_map_set(c->default_headers, name, (void *)value);
@@ -906,10 +938,12 @@ void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_s
     rt_http_cookie *cookie;
     if (!obj)
         return;
-    domain_cstr = rt_string_cstr(domain);
-    name_cstr = rt_string_cstr(name);
-    value_cstr = rt_string_cstr(value);
-    if (!domain_cstr || !*domain_cstr || !name_cstr || !*name_cstr || !value_cstr)
+    domain_cstr = domain ? rt_string_cstr(domain) : NULL;
+    name_cstr = name ? rt_string_cstr(name) : NULL;
+    value_cstr = value ? rt_string_cstr(value) : NULL;
+    if (!domain_cstr || !*domain_cstr || !name_cstr || !*name_cstr || !value_cstr ||
+        http_client_string_has_embedded_nul(domain) || http_client_string_has_embedded_nul(name) ||
+        http_client_string_has_embedded_nul(value))
         return;
 
     cookie = (rt_http_cookie *)calloc(1, sizeof(*cookie));
@@ -919,7 +953,7 @@ void rt_http_client_set_cookie(void *obj, rt_string domain, rt_string name, rt_s
     cookie->value = strdup(value_cstr);
     cookie->domain = cookie_strdup_manual_domain(domain_cstr);
     cookie->path = strdup("/");
-    cookie->host_only = 1;
+    cookie->host_only = 0;
     if (!cookie->name || !cookie->value || !cookie->domain || !cookie->path || !*cookie->domain) {
         free_cookie_list(cookie);
         return;
@@ -937,8 +971,8 @@ void *rt_http_client_get_cookies(void *obj, rt_string domain) {
     void *snapshot;
     if (!obj)
         return rt_map_new();
-    domain_cstr = rt_string_cstr(domain);
-    if (!domain_cstr || !*domain_cstr)
+    domain_cstr = domain ? rt_string_cstr(domain) : NULL;
+    if (!domain_cstr || !*domain_cstr || http_client_string_has_embedded_nul(domain))
         return rt_map_new();
 
     rt_http_client_impl *c = (rt_http_client_impl *)obj;

@@ -68,6 +68,20 @@ typedef pthread_mutex_t http_server_mutex_t;
 #include "rt_trap.h"
 extern void rt_trap_net(const char *msg, int err_code);
 
+static int server_string_has_embedded_nul(rt_string s, const char **data_out, size_t *len_out) {
+    const char *data = rt_string_cstr(s);
+    int64_t len = rt_str_len(s);
+    if (!data || len < 0)
+        return 0;
+    if ((uint64_t)len > (uint64_t)SIZE_MAX)
+        return 0;
+    if (data_out)
+        *data_out = data;
+    if (len_out)
+        *len_out = (size_t)len;
+    return memchr(data, '\0', (size_t)len) != NULL;
+}
+
 //=============================================================================
 // Internal Structures
 //=============================================================================
@@ -1363,11 +1377,11 @@ rt_string rt_server_req_header(void *obj, rt_string name) {
     if (!req->headers)
         return rt_string_from_bytes("", 0);
 
-    const char *name_cstr = rt_string_cstr(name);
-    if (!name_cstr)
+    const char *name_cstr = NULL;
+    size_t len = 0;
+    if (server_string_has_embedded_nul(name, &name_cstr, &len) || !name_cstr)
         return rt_string_from_bytes("", 0);
 
-    size_t len = strlen(name_cstr);
     char *lower = (char *)malloc(len + 1);
     if (!lower)
         return rt_string_from_bytes("", 0);
@@ -1385,7 +1399,8 @@ rt_string rt_server_req_header(void *obj, rt_string name) {
 
     rt_string header = (rt_string)val;
     const char *header_cstr = rt_string_cstr(header);
-    return header_cstr ? rt_string_from_bytes(header_cstr, strlen(header_cstr))
+    int64_t header_len = header ? rt_str_len(header) : 0;
+    return header_cstr && header_len >= 0 ? rt_string_from_bytes(header_cstr, (size_t)header_len)
                        : rt_string_from_bytes("", 0);
 }
 
@@ -1408,7 +1423,8 @@ rt_string rt_server_req_param(void *obj, rt_string name) {
         return rt_string_from_bytes("", 0);
     rt_string value = rt_route_match_param(req->params, name);
     const char *value_cstr = rt_string_cstr(value);
-    return value_cstr ? rt_string_from_bytes(value_cstr, strlen(value_cstr))
+    int64_t value_len = value ? rt_str_len(value) : 0;
+    return value_cstr && value_len >= 0 ? rt_string_from_bytes(value_cstr, (size_t)value_len)
                       : rt_string_from_bytes("", 0);
 }
 
@@ -1430,11 +1446,11 @@ rt_string rt_server_req_query(void *obj, rt_string name) {
     if (!req->query)
         return rt_string_from_bytes("", 0);
 
-    const char *n = rt_string_cstr(name);
-    if (!n)
+    const char *n = NULL;
+    size_t nlen = 0;
+    if (server_string_has_embedded_nul(name, &n, &nlen) || !n)
         return rt_string_from_bytes("", 0);
 
-    size_t nlen = strlen(n);
     const char *p = req->query;
     while (p && *p) {
         const char *amp = strchr(p, '&');
@@ -1444,7 +1460,8 @@ rt_string rt_server_req_query(void *obj, rt_string name) {
         rt_string raw_key = rt_string_from_bytes(p, key_len);
         rt_string decoded_key = rt_url_decode(raw_key);
         const char *decoded_key_cstr = rt_string_cstr(decoded_key);
-        int match = decoded_key_cstr && strlen(decoded_key_cstr) == nlen &&
+        int64_t decoded_key_len = decoded_key ? rt_str_len(decoded_key) : -1;
+        int match = decoded_key_cstr && decoded_key_len == (int64_t)nlen &&
                     memcmp(decoded_key_cstr, n, nlen) == 0;
         rt_string_unref(decoded_key);
         rt_string_unref(raw_key);
@@ -1453,6 +1470,8 @@ rt_string rt_server_req_query(void *obj, rt_string name) {
             size_t vlen = (size_t)(param_end - val);
             rt_string raw = rt_string_from_bytes(val, vlen);
             rt_string decoded = rt_url_decode(raw);
+            if (!decoded)
+                decoded = rt_string_from_bytes("", 0);
             rt_string_unref(raw);
             return decoded;
         }
@@ -1508,7 +1527,11 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
         res->headers = rt_map_new();
     const char *name_cstr = rt_string_cstr(name);
     const char *value_cstr = rt_string_cstr(value);
-    if (!name_cstr || !value_cstr || contains_crlf(name_cstr) || contains_crlf(value_cstr) ||
+    size_t name_len = 0;
+    size_t value_len = 0;
+    if (server_string_has_embedded_nul(name, &name_cstr, &name_len) ||
+        server_string_has_embedded_nul(value, &value_cstr, &value_len) || !name_cstr ||
+        !value_cstr || name_len == 0 || contains_crlf(name_cstr) || contains_crlf(value_cstr) ||
         is_server_managed_header_name(name_cstr))
         return obj;
     rt_map_set(res->headers, name, (void *)value);

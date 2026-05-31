@@ -26,6 +26,7 @@
 #include "rt_tls.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -111,6 +112,7 @@ typedef struct rt_ws_impl {
     int8_t is_open;          ///< Connection state.
     int64_t close_code;      ///< Close status code.
     char *close_reason;      ///< Close reason string.
+    size_t close_reason_len; ///< Length of close_reason in bytes.
     uint8_t *recv_buffer;    ///< Buffer for receiving frames.
     size_t recv_buffer_size; ///< Size of receive buffer.
     size_t recv_buffer_len;  ///< Bytes currently in buffer.
@@ -119,6 +121,26 @@ typedef struct rt_ws_impl {
 /// @brief True if `host` is an IPv6 literal that must be wrapped in `[…]` for URL/Host.
 static int host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
+}
+
+static int ws_has_embedded_nul(const char *data, size_t len) {
+    return data && memchr(data, '\0', len) != NULL;
+}
+
+static int ws_string_bytes(rt_string str, const char **out, size_t *len, const char *null_msg) {
+    const char *data = rt_string_cstr(str);
+    int64_t n = rt_str_len(str);
+    if (!data || n < 0) {
+        rt_trap(null_msg);
+        return 0;
+    }
+    if ((uint64_t)n > (uint64_t)SIZE_MAX) {
+        rt_trap("WebSocket: string is too large");
+        return 0;
+    }
+    *out = data;
+    *len = (size_t)n;
+    return 1;
 }
 
 static int ws_default_port(int is_secure) {
@@ -1397,11 +1419,13 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
                 ws->close_code = code;
                 free(ws->close_reason);
                 ws->close_reason = NULL;
+                ws->close_reason_len = 0;
                 if (len > 2) {
                     ws->close_reason = malloc(len - 1);
                     if (ws->close_reason) {
                         memcpy(ws->close_reason, data + 2, len - 2);
                         ws->close_reason[len - 2] = '\0';
+                        ws->close_reason_len = len - 2;
                     }
                 }
             } else {
@@ -1433,6 +1457,7 @@ static void rt_ws_finalize(void *obj) {
     ws->url = NULL;
     ws->subprotocol = NULL;
     ws->close_reason = NULL;
+    ws->close_reason_len = 0;
     ws->recv_buffer = NULL;
 }
 
@@ -1461,13 +1486,20 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
 }
 
 void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string subprotocol) {
-    const char *url_cstr = rt_string_cstr(url);
-    const char *protocol_cstr = subprotocol ? rt_string_cstr(subprotocol) : NULL;
+    const char *url_cstr = NULL;
+    const char *protocol_cstr = NULL;
+    size_t url_len = 0;
+    size_t protocol_len = 0;
     int timeout_int = 0;
-    if (!url_cstr) {
-        rt_trap("WebSocket: NULL URL");
+    if (!ws_string_bytes(url, &url_cstr, &url_len, "WebSocket: NULL URL"))
         return NULL;
-    }
+    if (url_len == 0 || ws_has_embedded_nul(url_cstr, url_len))
+        rt_trap("WebSocket: invalid URL");
+    if (subprotocol &&
+        !ws_string_bytes(subprotocol, &protocol_cstr, &protocol_len, "WebSocket: NULL subprotocol"))
+        return NULL;
+    if (protocol_cstr && ws_has_embedded_nul(protocol_cstr, protocol_len))
+        rt_trap("WebSocket: invalid subprotocol");
     if (!ws_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("WebSocket: invalid timeout");
         return NULL;
@@ -1510,6 +1542,7 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
     ws->subprotocol = NULL;
     ws->close_code = 0;
     ws->close_reason = NULL;
+    ws->close_reason_len = 0;
     ws->recv_buffer = NULL;
     ws->recv_buffer_size = 0;
     ws->recv_buffer_len = 0;
@@ -1623,7 +1656,7 @@ rt_string rt_ws_close_reason(void *obj) {
     rt_ws_impl *ws = obj;
     if (!ws->close_reason)
         return rt_str_empty();
-    return rt_string_from_bytes(ws->close_reason, strlen(ws->close_reason));
+    return rt_string_from_bytes(ws->close_reason, ws->close_reason_len);
 }
 
 rt_string rt_ws_subprotocol(void *obj) {
@@ -1647,8 +1680,17 @@ void rt_ws_send(void *obj, rt_string text) {
         return;
     }
 
-    const char *cstr = rt_string_cstr(text);
-    size_t len = cstr ? strlen(cstr) : 0;
+    const char *cstr = text ? rt_string_cstr(text) : NULL;
+    int64_t len64 = text ? rt_str_len(text) : 0;
+    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX) {
+        rt_trap("WebSocket: invalid text length");
+        return;
+    }
+    size_t len = (size_t)len64;
+    if (!cstr && len > 0) {
+        rt_trap("WebSocket: invalid text");
+        return;
+    }
 
     if (cstr && !ws_is_valid_utf8((const uint8_t *)cstr, len)) {
         rt_trap_net("WebSocket: invalid UTF-8 text frame", Err_ProtocolError);
@@ -1850,10 +1892,19 @@ void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
     if (!ws->is_open)
         return;
 
-    const char *reason_cstr = rt_string_cstr(reason);
-    size_t reason_len = reason_cstr ? strlen(reason_cstr) : 0;
+    const char *reason_cstr = reason ? rt_string_cstr(reason) : NULL;
+    int64_t reason_len64 = reason ? rt_str_len(reason) : 0;
+    if (reason_len64 < 0 || (uint64_t)reason_len64 > (uint64_t)SIZE_MAX) {
+        rt_trap("WebSocket: invalid close reason length");
+        return;
+    }
+    size_t reason_len = (size_t)reason_len64;
     if (code < 0 || code > 4999 || !ws_close_code_is_valid((uint16_t)code)) {
         rt_trap_net("WebSocket: invalid close code", Err_ProtocolError);
+        return;
+    }
+    if (!reason_cstr && reason_len > 0) {
+        rt_trap_net("WebSocket: invalid close reason", Err_ProtocolError);
         return;
     }
     if (reason_len > 123 ||
@@ -1865,15 +1916,17 @@ void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
     // Build close payload
     size_t payload_len = 2 + reason_len;
     uint8_t *payload = malloc(payload_len);
-    if (payload) {
-        payload[0] = (uint8_t)(code >> 8);
-        payload[1] = (uint8_t)(code);
-        if (reason_len > 0)
-            memcpy(payload + 2, reason_cstr, reason_len);
-
-        ws_send_frame(ws, WS_OP_CLOSE, payload, payload_len);
-        free(payload);
+    if (!payload) {
+        rt_trap("WebSocket: memory allocation failed");
+        return;
     }
+    payload[0] = (uint8_t)(code >> 8);
+    payload[1] = (uint8_t)(code);
+    if (reason_len > 0)
+        memcpy(payload + 2, reason_cstr, reason_len);
+
+    ws_send_frame(ws, WS_OP_CLOSE, payload, payload_len);
+    free(payload);
 
     ws->is_open = 0;
     ws->close_code = code;

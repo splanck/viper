@@ -1464,9 +1464,15 @@ static int mp3_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out
     FILE *mf = fopen(filepath, "rb");
     if (!mf)
         return -1;
-    fseek(mf, 0, SEEK_END);
+    if (fseek(mf, 0, SEEK_END) != 0) {
+        fclose(mf);
+        return -1;
+    }
     long mf_len = ftell(mf);
-    fseek(mf, 0, SEEK_SET);
+    if (fseek(mf, 0, SEEK_SET) != 0) {
+        fclose(mf);
+        return -1;
+    }
     if (mf_len <= 0 || mf_len > 256 * 1024 * 1024) {
         fclose(mf);
         return -1;
@@ -1526,11 +1532,11 @@ void *rt_sound_load(rt_string path) {
     if (!path)
         return NULL;
 
-    if (!ensure_audio_init())
-        return NULL;
-
     const char *path_str = audio_path_cstr(path);
     if (!path_str)
+        return NULL;
+
+    if (!ensure_audio_init())
         return NULL;
 
     void *wrapper = NULL;
@@ -1809,11 +1815,11 @@ void *rt_music_load(rt_string path) {
     if (!path)
         return NULL;
 
-    if (!ensure_audio_init())
-        return NULL;
-
     const char *path_str = audio_path_cstr(path);
     if (!path_str)
+        return NULL;
+
+    if (!ensure_audio_init())
         return NULL;
 
     /* Detect format and load via appropriate ViperAUD function */

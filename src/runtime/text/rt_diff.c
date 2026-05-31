@@ -35,6 +35,7 @@
 #include "rt_string.h"
 #include "rt_string_builder.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -49,6 +50,8 @@ typedef struct {
     size_t *lens;
     int count;
 } line_array;
+
+static void free_lines(line_array *la);
 
 /// @brief Split a NUL-terminated string into a heap-allocated array of line copies.
 /// @details Counts `\n` characters first to size the array, then walks
@@ -66,8 +69,11 @@ static line_array split_lines(const char *text, size_t text_len) {
     // Count lines
     int count = 1;
     for (size_t i = 0; i < text_len; i++)
-        if (text[i] == '\n')
+        if (text[i] == '\n') {
+            if (count == INT_MAX)
+                rt_trap("rt_diff: too many lines");
             count++;
+        }
 
     la.lines = (char **)malloc((size_t)count * sizeof(char *));
     if (!la.lines)
@@ -84,8 +90,10 @@ static line_array split_lines(const char *text, size_t text_len) {
         if (i == text_len || text[i] == '\n') {
             size_t len = i - start;
             la.lines[la.count] = (char *)malloc(len + 1);
-            if (!la.lines[la.count])
+            if (!la.lines[la.count]) {
+                free_lines(&la);
                 rt_trap("rt_diff: memory allocation failed");
+            }
             memcpy(la.lines[la.count], text + start, len);
             la.lines[la.count][len] = '\0';
             la.lens[la.count] = len;
@@ -119,6 +127,20 @@ static int lines_equal(const line_array *a, int i, const line_array *b, int j) {
 static void release_local_obj(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static void diff_check_sb(rt_string_builder *sb, rt_sb_status_t status) {
+    if (status == RT_SB_OK)
+        return;
+    rt_sb_free(sb);
+    rt_trap("rt_diff: string builder allocation failed");
+}
+
+static rt_string diff_string_from_bytes_or_trap(const char *bytes, size_t len) {
+    rt_string result = rt_string_from_bytes(bytes, len);
+    if (!result)
+        rt_trap("rt_diff: string allocation failed");
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,21 +220,21 @@ void *rt_diff_lines(rt_string a, rt_string b) {
         rt_sb_init(&sb);
 
         if (i < m && j < n && lines_equal(&la, i, &lb, j)) {
-            rt_sb_append_bytes(&sb, " ", 1);
-            rt_sb_append_bytes(&sb, la.lines[i], la.lens[i]);
+            diff_check_sb(&sb, rt_sb_append_bytes(&sb, " ", 1));
+            diff_check_sb(&sb, rt_sb_append_bytes(&sb, la.lines[i], la.lens[i]));
             i++;
             j++;
         } else if (j < n && (i >= m || table[i][j + 1] >= table[i + 1][j])) {
-            rt_sb_append_bytes(&sb, "+", 1);
-            rt_sb_append_bytes(&sb, lb.lines[j], lb.lens[j]);
+            diff_check_sb(&sb, rt_sb_append_bytes(&sb, "+", 1));
+            diff_check_sb(&sb, rt_sb_append_bytes(&sb, lb.lines[j], lb.lens[j]));
             j++;
         } else {
-            rt_sb_append_bytes(&sb, "-", 1);
-            rt_sb_append_bytes(&sb, la.lines[i], la.lens[i]);
+            diff_check_sb(&sb, rt_sb_append_bytes(&sb, "-", 1));
+            diff_check_sb(&sb, rt_sb_append_bytes(&sb, la.lines[i], la.lens[i]));
             i++;
         }
 
-        rt_string line = rt_string_from_bytes(sb.data, sb.len);
+        rt_string line = diff_string_from_bytes_or_trap(sb.data, sb.len);
         rt_seq_push(result, line);
         rt_string_unref(line);
         rt_sb_free(&sb);
@@ -251,19 +273,19 @@ rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context) {
     rt_sb_init(&sb);
 
     // Simple unified format: output all lines with proper prefixes
-    rt_sb_append_cstr(&sb, "--- a\n");
-    rt_sb_append_cstr(&sb, "+++ b\n");
+    diff_check_sb(&sb, rt_sb_append_cstr(&sb, "--- a\n"));
+    diff_check_sb(&sb, rt_sb_append_cstr(&sb, "+++ b\n"));
 
     for (int64_t i = 0; i < len; i++) {
         rt_string line = (rt_string)rt_seq_get(diff, i);
         const char *cstr = rt_string_cstr(line);
         if (cstr) {
-            rt_sb_append_bytes(&sb, cstr, (size_t)rt_str_len(line));
-            rt_sb_append_cstr(&sb, "\n");
+            diff_check_sb(&sb, rt_sb_append_bytes(&sb, cstr, (size_t)rt_str_len(line)));
+            diff_check_sb(&sb, rt_sb_append_cstr(&sb, "\n"));
         }
     }
 
-    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_string result = diff_string_from_bytes_or_trap(sb.data, sb.len);
     rt_sb_free(&sb);
     release_local_obj(diff);
     return result;
@@ -324,16 +346,17 @@ rt_string rt_diff_patch(rt_string original, void *diff) {
         // Include lines that are same (' ') or added ('+')
         if (cstr[0] == ' ' || cstr[0] == '+') {
             if (!first)
-                rt_sb_append_cstr(&sb, "\n");
+                diff_check_sb(&sb, rt_sb_append_cstr(&sb, "\n"));
             int64_t line_len = rt_str_len(line);
             if (line_len > 1)
-                rt_sb_append_bytes(&sb, cstr + 1, (size_t)(line_len - 1)); // Skip prefix
+                diff_check_sb(
+                    &sb, rt_sb_append_bytes(&sb, cstr + 1, (size_t)(line_len - 1))); // Skip prefix
             first = 0;
         }
         // Skip removed lines ('-')
     }
 
-    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_string result = diff_string_from_bytes_or_trap(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;
 }

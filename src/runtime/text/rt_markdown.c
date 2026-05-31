@@ -33,6 +33,8 @@
 #include "rt_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_string_builder.h"
+#include "rt_trap.h"
 
 #include <ctype.h>
 #include <stdbool.h>
@@ -80,6 +82,20 @@ static bool url_scheme_is_blocked(const char *url, int64_t len) {
 
 // --- Helper: append escaped HTML ---
 
+static void markdown_check_sb(rt_string_builder *sb, rt_sb_status_t status) {
+    if (status == RT_SB_OK)
+        return;
+    rt_sb_free(sb);
+    rt_trap("Markdown: string builder allocation failed");
+}
+
+static rt_string markdown_string_from_bytes_or_trap(const char *bytes, size_t len) {
+    rt_string result = rt_string_from_bytes(bytes, len);
+    if (!result)
+        rt_trap("Markdown: string allocation failed");
+    return result;
+}
+
 /// @brief Write one character to `sb`, escaping the four HTML metacharacters.
 /// @details Maps `<`/`>`/`&`/`"` to their named entities; passes
 ///          everything else through verbatim. The single-quote `'`
@@ -89,19 +105,19 @@ static bool url_scheme_is_blocked(const char *url, int64_t len) {
 static void append_escaped(rt_string_builder *sb, char c) {
     switch (c) {
         case '<':
-            rt_sb_append_cstr(sb, "&lt;");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "&lt;"));
             break;
         case '>':
-            rt_sb_append_cstr(sb, "&gt;");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "&gt;"));
             break;
         case '&':
-            rt_sb_append_cstr(sb, "&amp;");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "&amp;"));
             break;
         case '"':
-            rt_sb_append_cstr(sb, "&quot;");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "&quot;"));
             break;
         default:
-            rt_sb_append_bytes(sb, &c, 1);
+            markdown_check_sb(sb, rt_sb_append_bytes(sb, &c, 1));
             break;
     }
 }
@@ -146,12 +162,12 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
                 continue;
             }
             i += 2;
-            rt_sb_append_cstr(sb, "<strong>");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "<strong>"));
             while (i < close) {
                 append_escaped(sb, line[i]);
                 i++;
             }
-            rt_sb_append_cstr(sb, "</strong>");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "</strong>"));
             i += 2;
             continue;
         }
@@ -166,12 +182,12 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
                 continue;
             }
             i++;
-            rt_sb_append_cstr(sb, "<em>");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "<em>"));
             while (i < close) {
                 append_escaped(sb, line[i]);
                 i++;
             }
-            rt_sb_append_cstr(sb, "</em>");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "</em>"));
             i++;
             continue;
         }
@@ -186,12 +202,12 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
                 continue;
             }
             i++;
-            rt_sb_append_cstr(sb, "<code>");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "<code>"));
             while (i < close) {
                 append_escaped(sb, line[i]);
                 i++;
             }
-            rt_sb_append_cstr(sb, "</code>");
+            markdown_check_sb(sb, rt_sb_append_cstr(sb, "</code>"));
             i++;
             continue;
         }
@@ -208,19 +224,19 @@ static void process_inline(rt_string_builder *sb, const char *line, int64_t len)
                 while (k < len && line[k] != ')')
                     k++;
                 if (k < len) {
-                    rt_sb_append_cstr(sb, "<a href=\"");
+                    markdown_check_sb(sb, rt_sb_append_cstr(sb, "<a href=\""));
                     /* S-13: Block unsafe URL schemes to prevent XSS */
                     int64_t url_len = k - url_start;
                     if (url_scheme_is_blocked(line + url_start, url_len))
-                        rt_sb_append_cstr(sb, "#");
+                        markdown_check_sb(sb, rt_sb_append_cstr(sb, "#"));
                     else {
                         for (int64_t m = url_start; m < k; m++)
                             append_escaped(sb, line[m]);
                     }
-                    rt_sb_append_cstr(sb, "\">");
+                    markdown_check_sb(sb, rt_sb_append_cstr(sb, "\">"));
                     for (int64_t m = text_start; m < j; m++)
                         append_escaped(sb, line[m]);
-                    rt_sb_append_cstr(sb, "</a>");
+                    markdown_check_sb(sb, rt_sb_append_cstr(sb, "</a>"));
                     i = k + 1;
                     continue;
                 }
@@ -241,6 +257,8 @@ rt_string rt_markdown_to_html(rt_string md) {
 
     const char *src = rt_string_cstr(md);
     int64_t src_len = rt_str_len(md);
+    if (!src || src_len < 0)
+        return rt_string_from_bytes("", 0);
     rt_string_builder sb;
     rt_sb_init(&sb);
 
@@ -259,7 +277,7 @@ rt_string rt_markdown_to_html(rt_string md) {
         // Empty line
         if (line_len == 0) {
             if (in_list) {
-                rt_sb_append_cstr(&sb, "</ul>\n");
+                markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</ul>\n"));
                 in_list = 0;
             }
             p = eol + 1;
@@ -273,10 +291,10 @@ rt_string rt_markdown_to_html(rt_string md) {
             const char *h = p + level + 1;
             char tag[8];
             snprintf(tag, sizeof(tag), "<h%d>", level);
-            rt_sb_append_cstr(&sb, tag);
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, tag));
             process_inline(&sb, h, (int64_t)(eol - h));
             snprintf(tag, sizeof(tag), "</h%d>\n", level);
-            rt_sb_append_cstr(&sb, tag);
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, tag));
             p = eol + 1;
             continue;
         }
@@ -284,12 +302,12 @@ rt_string rt_markdown_to_html(rt_string md) {
         // Unordered list item (- or *)
         if ((*p == '-' || *p == '*') && p + 1 < eol && p[1] == ' ') {
             if (!in_list) {
-                rt_sb_append_cstr(&sb, "<ul>\n");
+                markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<ul>\n"));
                 in_list = 1;
             }
-            rt_sb_append_cstr(&sb, "<li>");
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<li>"));
             process_inline(&sb, p + 2, (int64_t)(eol - p - 2));
-            rt_sb_append_cstr(&sb, "</li>\n");
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</li>\n"));
             p = eol + 1;
             continue;
         }
@@ -297,7 +315,7 @@ rt_string rt_markdown_to_html(rt_string md) {
         // Code block ```
         if (line_len >= 3 && p[0] == '`' && p[1] == '`' && p[2] == '`') {
             p = eol + 1;
-            rt_sb_append_cstr(&sb, "<pre><code>");
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<pre><code>"));
             while (p < end) {
                 eol = p;
                 while (eol < end && *eol != '\n')
@@ -309,10 +327,10 @@ rt_string rt_markdown_to_html(rt_string md) {
                 }
                 for (int64_t i = 0; i < line_len; i++)
                     append_escaped(&sb, p[i]);
-                rt_sb_append_cstr(&sb, "\n");
+                markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "\n"));
                 p = eol + 1;
             }
-            rt_sb_append_cstr(&sb, "</code></pre>\n");
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</code></pre>\n"));
             continue;
         }
 
@@ -332,7 +350,7 @@ rt_string rt_markdown_to_html(rt_string md) {
                     if (p[i] == hr_char)
                         count++;
                 if (is_hr && count >= 3) {
-                    rt_sb_append_cstr(&sb, "<hr>\n");
+                    markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<hr>\n"));
                     p = eol + 1;
                     continue;
                 }
@@ -341,21 +359,21 @@ rt_string rt_markdown_to_html(rt_string md) {
 
         // Close list if open
         if (in_list) {
-            rt_sb_append_cstr(&sb, "</ul>\n");
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</ul>\n"));
             in_list = 0;
         }
 
         // Regular paragraph
-        rt_sb_append_cstr(&sb, "<p>");
+        markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "<p>"));
         process_inline(&sb, p, line_len);
-        rt_sb_append_cstr(&sb, "</p>\n");
+        markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</p>\n"));
         p = eol + 1;
     }
 
     if (in_list)
-        rt_sb_append_cstr(&sb, "</ul>\n");
+        markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "</ul>\n"));
 
-    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_string result = markdown_string_from_bytes_or_trap(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;
 }
@@ -367,6 +385,8 @@ rt_string rt_markdown_to_text(rt_string md) {
 
     const char *src = rt_string_cstr(md);
     int64_t src_len = rt_str_len(md);
+    if (!src || src_len < 0)
+        return rt_string_from_bytes("", 0);
     rt_string_builder sb;
     rt_sb_init(&sb);
 
@@ -380,7 +400,7 @@ rt_string rt_markdown_to_text(rt_string md) {
             eol++;
 
         if (!first_line)
-            rt_sb_append_cstr(&sb, "\n");
+            markdown_check_sb(&sb, rt_sb_append_cstr(&sb, "\n"));
         first_line = 0;
 
         // Skip heading markers
@@ -399,11 +419,11 @@ rt_string rt_markdown_to_text(rt_string md) {
                 while (link_text_end < eol && *link_text_end != ']')
                     link_text_end++;
                 if (link_text_end >= eol || *link_text_end != ']') {
-                    rt_sb_append_bytes(&sb, c, 1);
+                    markdown_check_sb(&sb, rt_sb_append_bytes(&sb, c, 1));
                     continue;
                 }
                 for (const char *t = c + 1; t < link_text_end; t++)
-                    rt_sb_append_bytes(&sb, t, 1);
+                    markdown_check_sb(&sb, rt_sb_append_bytes(&sb, t, 1));
                 // Skip URL part
                 if ((eol - link_text_end) > 1 && link_text_end[1] == '(') {
                     const char *close = link_text_end + 2;
@@ -415,12 +435,12 @@ rt_string rt_markdown_to_text(rt_string md) {
                 }
                 continue;
             }
-            rt_sb_append_bytes(&sb, c, 1);
+            markdown_check_sb(&sb, rt_sb_append_bytes(&sb, c, 1));
         }
         p = eol < end ? eol + 1 : end;
     }
 
-    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_string result = markdown_string_from_bytes_or_trap(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;
 }
@@ -433,6 +453,8 @@ void *rt_markdown_extract_links(rt_string md) {
 
     const char *src = rt_string_cstr(md);
     int64_t src_len = rt_str_len(md);
+    if (!src || src_len < 0)
+        return seq;
     const char *p = src;
     const char *end_src = src + src_len;
 
@@ -448,7 +470,8 @@ void *rt_markdown_extract_links(rt_string md) {
                 while (url_end < end_src && *url_end != ')')
                     url_end++;
                 if (url_end < end_src && *url_end == ')') {
-                    rt_string url = rt_string_from_bytes(url_start, (int64_t)(url_end - url_start));
+                    rt_string url = markdown_string_from_bytes_or_trap(
+                        url_start, (size_t)(url_end - url_start));
                     rt_seq_push(seq, url);
                     rt_string_unref(url);
                     p = url_end + 1;
@@ -469,6 +492,8 @@ void *rt_markdown_extract_headings(rt_string md) {
 
     const char *src = rt_string_cstr(md);
     int64_t src_len = rt_str_len(md);
+    if (!src || src_len < 0)
+        return seq;
     const char *p = src;
     const char *end_src = src + src_len;
 
@@ -484,7 +509,7 @@ void *rt_markdown_extract_headings(rt_string md) {
                 const char *eol = h;
                 while (eol < end_src && *eol != '\n')
                     eol++;
-                rt_string heading = rt_string_from_bytes(h, (int64_t)(eol - h));
+                rt_string heading = markdown_string_from_bytes_or_trap(h, (size_t)(eol - h));
                 rt_seq_push(seq, heading);
                 rt_string_unref(heading);
                 p = eol;

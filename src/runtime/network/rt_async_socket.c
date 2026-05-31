@@ -26,6 +26,7 @@
 #include "rt_string.h"
 
 #include <setjmp.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -129,12 +130,37 @@ static void async_promise_error_from_trap(void *promise, const char *fallback) {
     async_promise_error_copy(promise, rt_trap_get_error(), fallback);
 }
 
+static size_t async_string_len_or_trap(rt_string str, const char *null_msg) {
+    const char *data = rt_string_cstr(str);
+    int64_t len = rt_str_len(str);
+    if (!data || len < 0)
+        rt_trap(null_msg);
+    if ((uint64_t)len > (uint64_t)SIZE_MAX)
+        rt_trap("AsyncSocket: string is too large");
+    return (size_t)len;
+}
+
+static int async_has_embedded_nul(const char *data, size_t len) {
+    return data && memchr(data, '\0', len) != NULL;
+}
+
+static char *async_copy_bytes(const char *data, size_t len) {
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return NULL;
+    if (len > 0)
+        memcpy(copy, data, len);
+    copy[len] = '\0';
+    return copy;
+}
+
 //=============================================================================
 // Async Connect
 //=============================================================================
 
 typedef struct {
     char *host;
+    size_t host_len;
     int64_t port;
     int64_t timeout_ms;
     void *promise;
@@ -150,7 +176,9 @@ static void async_connect_worker(void *arg) {
 
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
-        host = rt_string_from_bytes(a->host, strlen(a->host));
+        host = rt_string_from_bytes(a->host, a->host_len);
+        if (!host)
+            rt_trap("AsyncSocket: memory allocation failed");
         void *tcp = rt_tcp_connect_for(host, a->port, a->timeout_ms);
         rt_string_unref(host);
         host = NULL;
@@ -177,8 +205,9 @@ static void async_connect_worker(void *arg) {
 ///          leaking the request.
 void *rt_async_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     const char *h = rt_string_cstr(host);
-    if (!h)
-        rt_trap("AsyncSocket: NULL host");
+    size_t host_len = async_string_len_or_trap(host, "AsyncSocket: NULL host");
+    if (host_len == 0 || async_has_embedded_nul(h, host_len))
+        rt_trap("AsyncSocket: invalid host");
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
@@ -186,7 +215,8 @@ void *rt_async_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     connect_args_t *args = (connect_args_t *)malloc(sizeof(connect_args_t));
     if (!args)
         rt_trap("AsyncSocket: OOM");
-    args->host = strdup(h);
+    args->host = async_copy_bytes(h, host_len);
+    args->host_len = host_len;
     args->port = port;
     args->timeout_ms = timeout_ms;
     args->promise = promise;
@@ -333,7 +363,9 @@ void *rt_async_recv(void *tcp, int64_t max_bytes) {
 
 typedef struct {
     char *url;
+    size_t url_len;
     char *body; // NULL for GET
+    size_t body_len;
     void *promise;
 } http_args_t;
 
@@ -347,7 +379,9 @@ static void async_http_get_worker(void *arg) {
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
         rt_string result;
-        url = rt_string_from_bytes(a->url, strlen(a->url));
+        url = rt_string_from_bytes(a->url, a->url_len);
+        if (!url)
+            rt_trap("AsyncSocket: memory allocation failed");
         result = rt_http_get(url);
         rt_string_unref(url);
         url = NULL;
@@ -370,8 +404,9 @@ static void async_http_get_worker(void *arg) {
 ///          @c rt_string before calling the blocking @c rt_http_get.
 void *rt_async_http_get(rt_string url) {
     const char *u = rt_string_cstr(url);
-    if (!u)
-        rt_trap("AsyncSocket: NULL URL");
+    size_t url_len = async_string_len_or_trap(url, "AsyncSocket: NULL URL");
+    if (url_len == 0 || async_has_embedded_nul(u, url_len))
+        rt_trap("AsyncSocket: invalid URL");
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
@@ -379,8 +414,10 @@ void *rt_async_http_get(rt_string url) {
     http_args_t *args = (http_args_t *)malloc(sizeof(http_args_t));
     if (!args)
         rt_trap("AsyncSocket: OOM");
-    args->url = strdup(u);
+    args->url = async_copy_bytes(u, url_len);
+    args->url_len = url_len;
     args->body = NULL;
+    args->body_len = 0;
     args->promise = promise;
     if (!args->url) {
         free(args);
@@ -407,9 +444,10 @@ static void async_http_post_worker(void *arg) {
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
         rt_string result;
-        url = rt_string_from_bytes(a->url, strlen(a->url));
-        body =
-            a->body ? rt_string_from_bytes(a->body, strlen(a->body)) : rt_string_from_bytes("", 0);
+        url = rt_string_from_bytes(a->url, a->url_len);
+        body = rt_string_from_bytes(a->body ? a->body : "", a->body_len);
+        if (!url || !body)
+            rt_trap("AsyncSocket: memory allocation failed");
         result = rt_http_post(url, body);
         rt_string_unref(url);
         rt_string_unref(body);
@@ -438,9 +476,11 @@ static void async_http_post_worker(void *arg) {
 ///          don't have to special-case the no-body case.
 void *rt_async_http_post(rt_string url, rt_string body) {
     const char *u = rt_string_cstr(url);
-    const char *b = rt_string_cstr(body);
-    if (!u)
-        rt_trap("AsyncSocket: NULL URL");
+    const char *b = body ? rt_string_cstr(body) : NULL;
+    size_t url_len = async_string_len_or_trap(url, "AsyncSocket: NULL URL");
+    size_t body_len = body ? async_string_len_or_trap(body, "AsyncSocket: NULL body") : 0;
+    if (url_len == 0 || async_has_embedded_nul(u, url_len))
+        rt_trap("AsyncSocket: invalid URL");
 
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
@@ -448,10 +488,12 @@ void *rt_async_http_post(rt_string url, rt_string body) {
     http_args_t *args = (http_args_t *)malloc(sizeof(http_args_t));
     if (!args)
         rt_trap("AsyncSocket: OOM");
-    args->url = strdup(u);
-    args->body = b ? strdup(b) : NULL;
+    args->url = async_copy_bytes(u, url_len);
+    args->url_len = url_len;
+    args->body = body ? async_copy_bytes(b ? b : "", body_len) : NULL;
+    args->body_len = body_len;
     args->promise = promise;
-    if (!args->url || (b && !args->body)) {
+    if (!args->url || (body && !args->body)) {
         free(args->url);
         free(args->body);
         free(args);

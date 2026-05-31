@@ -1618,6 +1618,12 @@ static void test_http_req_builder() {
 
     req = rt_http_req_set_header(req, rt_const_cstr("X-Custom"), rt_const_cstr("value"));
     test_result("HttpReq.SetHeader returns same object", req != nullptr);
+    req = rt_http_req_set_header(req, NULL, rt_const_cstr("ignored"));
+    test_result("HttpReq.SetHeader ignores NULL name", req != nullptr);
+    req = rt_http_req_set_header(req, rt_const_cstr("X-Ignored"), NULL);
+    test_result("HttpReq.SetHeader ignores NULL value", req != nullptr);
+    req = rt_http_req_set_body_str(req, NULL);
+    test_result("HttpReq.SetBodyStr(NULL) clears body", req != nullptr);
 
     req = rt_http_req_set_timeout(req, 5000);
     test_result("HttpReq.SetTimeout returns same object", req != nullptr);
@@ -1650,6 +1656,8 @@ static void test_http_req_builder() {
     rt_string content_type = rt_http_res_header(res, rt_const_cstr("content-type"));
     test_result("HttpRes.Header retrieves header",
                 strcmp(rt_string_cstr(content_type), "text/plain") == 0);
+    rt_string missing_header = rt_http_res_header(res, NULL);
+    test_result("HttpRes.Header(NULL) returns empty", rt_str_len(missing_header) == 0);
 
     server_thread.join();
 }
@@ -2063,6 +2071,17 @@ static void test_url_encode_decode() {
     rt_string decoded_plus = rt_url_decode(rt_const_cstr("hello+world"));
     const char *dec_plus = rt_string_cstr(decoded_plus);
     test_result("Decode preserves plus", strcmp(dec_plus, "hello+world") == 0);
+
+    const char binary_plain[] = {'a', '\0', ' ', 'b'};
+    rt_string binary_input = rt_string_from_bytes(binary_plain, sizeof(binary_plain));
+    rt_string binary_encoded = rt_url_encode(binary_input);
+    test_result("Encode preserves embedded NUL as %00",
+                strcmp(rt_string_cstr(binary_encoded), "a%00%20b") == 0);
+    rt_string binary_decoded = rt_url_decode(binary_encoded);
+    test_result("Decode restores embedded NUL bytes",
+                rt_str_len(binary_decoded) == (int64_t)sizeof(binary_plain) &&
+                    memcmp(rt_string_cstr(binary_decoded), binary_plain, sizeof(binary_plain)) ==
+                        0);
 }
 
 /// @brief Test query string encoding/decoding.
@@ -2096,6 +2115,22 @@ static void test_url_encode_decode_query() {
     test_result(
         "DecodeQuery plus as space",
         strcmp(rt_string_cstr(rt_map_get_str(plus_map, rt_const_cstr("q"))), "hello world") == 0);
+
+    const char key_bytes[] = {'k', '\0', 'y'};
+    const char value_bytes[] = {'v', '\0', 'x'};
+    rt_string binary_key = rt_string_from_bytes(key_bytes, sizeof(key_bytes));
+    rt_string binary_value = rt_string_from_bytes(value_bytes, sizeof(value_bytes));
+    void *binary_map = rt_map_new();
+    rt_map_set_str(binary_map, binary_key, binary_value);
+    rt_string binary_query = rt_url_encode_query(binary_map);
+    test_result("EncodeQuery percent-encodes embedded NUL key/value",
+                strcmp(rt_string_cstr(binary_query), "k%00y=v%00x") == 0);
+    void *binary_decoded_map = rt_url_decode_query(binary_query);
+    rt_string roundtrip_value = rt_map_get_str(binary_decoded_map, binary_key);
+    test_result("DecodeQuery restores embedded NUL key/value",
+                roundtrip_value && rt_str_len(roundtrip_value) == (int64_t)sizeof(value_bytes) &&
+                    memcmp(rt_string_cstr(roundtrip_value), value_bytes, sizeof(value_bytes)) ==
+                        0);
 }
 
 /// @brief Test URL validation.
@@ -2107,6 +2142,9 @@ static void test_url_is_valid() {
     test_result("Valid URL with port",
                 rt_url_is_valid(rt_const_cstr("http://example.com:8080")) == 1);
     test_result("Empty string is invalid", rt_url_is_valid(rt_const_cstr("")) == 0);
+    const char hidden_suffix[] = {'h', 't', 't', 'p', ':', '/', '/', 'e', 'x', '\0', ' '};
+    rt_string hidden_url = rt_string_from_bytes(hidden_suffix, sizeof(hidden_suffix));
+    test_result("Embedded NUL URL is invalid", rt_url_is_valid(hidden_url) == 0);
 }
 
 /// @brief Test scheme is lowercased.

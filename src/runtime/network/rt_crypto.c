@@ -627,7 +627,7 @@ int rt_hkdf_expand(
     uint8_t counter = 1;
     size_t pos = 0;
 
-    if (!prk || !okm)
+    if (!prk || (!okm && okm_len > 0))
         return -1;
     if (!info && info_len > 0)
         return -1;
@@ -696,7 +696,7 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
     uint8_t hkdf_label[512];
     size_t pos = 0;
 
-    if (!secret || !label || !out)
+    if (!secret || !label || (!out && out_len > 0))
         return -1;
     if (!context && context_len > 0)
         return -1;
@@ -766,7 +766,7 @@ int rt_hkdf_expand_sha384(
     size_t pos = 0;
     int rc = -1;
 
-    if (!prk || !okm)
+    if (!prk || (!okm && okm_len > 0))
         return -1;
     if (!info && info_len > 0)
         return -1;
@@ -823,7 +823,7 @@ int rt_hkdf_expand_label_sha384(const uint8_t secret[48],
     uint8_t hkdf_label[512];
     size_t pos = 0;
 
-    if (!secret || !label || !out)
+    if (!secret || !label || (!out && out_len > 0))
         return -1;
     if (!context && context_len > 0)
         return -1;

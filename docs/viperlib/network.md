@@ -1054,6 +1054,8 @@ IPv6 literal hosts are bracketed automatically when `Authority`, `HostPort`, or 
 | `EncodeQuery(map)`    | String  | Encode Map as query string               |
 | `IsValid(urlString)`  | Boolean | Check if URL string is valid             |
 
+`Encode`, `Decode`, `EncodeQuery`, and `DecodeQuery` operate on runtime string byte lengths, so embedded NUL bytes round-trip as `%00` instead of truncating. Parsed URL strings and stored URL components reject embedded NUL bytes because URL objects keep components as NUL-terminated runtime fields.
+
 ### Default Ports
 
 | Scheme | Port |
@@ -1355,6 +1357,7 @@ WebSocket operations trap on errors:
 - **Handshake formatting:** Client `Host` headers use canonical authority formatting, omitting default ports while still bracketing IPv6 literals
 - **Handshake validation:** `WsServer` / `WssServer` reject malformed `Sec-WebSocket-Key` values and invalid `Host` headers before switching protocols
 - **Subprotocol negotiation:** `ConnectProtocol` / `ConnectForProtocol` require the server to echo the requested `Sec-WebSocket-Protocol` token or the handshake fails
+- **Runtime string lengths:** `Send(text)` and close reasons use runtime string byte lengths, so embedded NUL bytes are not truncated. Connection URLs and subprotocol tokens reject embedded NUL bytes because they are serialized into NUL-terminated handshake fields.
 - **Ping/pong:** Pong frames are handled automatically; use `Ping()` to test connectivity
 - **Message fragmentation:** Large messages are automatically fragmented/reassembled
 - **UTF-8 validation:** Text messages are validated for proper UTF-8 encoding
@@ -1878,6 +1881,8 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 - Only `HTTP/1.0` and `HTTP/1.1` request lines are accepted.
 - Request methods must be valid HTTP tokens. Request targets must be origin-form (`/path?...`), absolute-form (`http://host/path?...` or `https://host/path?...`), or `*`; absolute-form targets are normalized to the routed path.
 - Query lookups URL-decode parameter names before matching, so `%71=search` is visible as `Query("q")`.
+- Query-name matching is byte-length aware after URL decoding; `q%00x` does not match `Query("q")`. Header values and request bodies preserve embedded NUL bytes when read by handlers.
+- Response header names and values reject embedded NUL bytes as well as CR/LF bytes before serialization.
 - `HttpServer` honors protocol-correct keep-alive semantics: HTTP/1.1 defaults to keep-alive unless `Connection: close` is present, while HTTP/1.0 requires explicit `Connection: keep-alive`. Pipelined HTTP/1.1 requests on the same socket are preserved and processed in order.
 - Send and receive timeouts are enforced on live client sockets so slow readers do not stall workers indefinitely.
 
@@ -1961,6 +1966,7 @@ Thread-safe plain-TCP connection pooling for reuse across HTTP requests.
 ### Runtime Notes
 
 - `ConnectionPool` pools raw TCP sockets keyed by `host:port`.
+- Pool hosts must be non-empty, free of embedded NUL bytes, and short enough to format into the internal `host:port` key. Oversized or malformed keys are rejected instead of being silently truncated.
 - New outbound connections are registered as in-use immediately when pool capacity allows, so `Size` and `Available` reflect checked-out state instead of only idle state.
 - `maxSize` is clamped to `[1, 128]`. Acquires beyond tracked capacity still succeed, but those overflow sockets are closed on `Release()` instead of being retained.
 - It does not track TLS hostname verification, ALPN, or certificate policy; use `HttpClient` for HTTPS-aware pooling.
@@ -1998,7 +2004,7 @@ Multipart form-data builder and parser for HTTP file uploads.
 
 - Builder output escapes quoted `name=` / `filename=` values and strips embedded CR/LF from part headers, so untrusted field names and filenames cannot inject extra MIME headers.
 - Parser accepts quoted or bare-token multipart parameters, including quoted `boundary=` values and escaped quotes inside `Content-Disposition`.
-- Empty fields and zero-byte file parts are preserved. Boundaries longer than the runtime storage limit are rejected instead of being silently truncated.
+- Empty fields, zero-byte file parts, and embedded NUL bytes in field values are preserved. Part names, filenames, and Content-Type boundary text reject embedded NUL bytes because they are serialized into MIME headers. Boundaries longer than the runtime storage limit are rejected instead of being silently truncated.
 
 ---
 
@@ -2240,6 +2246,7 @@ All methods return a `Future` that can be awaited using `Threads.Future.Get()`.
 ### Failure Behavior
 
 - Transport and HTTP failures resolve the returned `Future` as an error instead of trapping out of the worker thread.
+- Async connect and HTTP GET/POST reject host or URL strings with embedded NUL bytes. `HttpPostAsync` preserves the runtime byte length of its body, including embedded NUL bytes.
 - Use `Threads.Future.IsError()` / `GetError()` to inspect asynchronous failures.
 
 ---

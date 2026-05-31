@@ -475,6 +475,17 @@ static void test_crypto_input_validation() {
         "Crypto random rejects NULL positive-length output",
         expect_trap([]() { rt_crypto_random_bytes(nullptr, 1); }, "random output buffer is null"));
 
+    uint8_t prk256[32] = {0};
+    uint8_t prk384[48] = {0};
+    test_result("HKDF-SHA256 allows NULL zero-length OKM",
+                rt_hkdf_expand(prk256, nullptr, 0, nullptr, 0) == 0);
+    test_result("HKDF-SHA384 allows NULL zero-length OKM",
+                rt_hkdf_expand_sha384(prk384, nullptr, 0, nullptr, 0) == 0);
+    test_result("HKDF-Expand-Label allows NULL zero-length OKM",
+                rt_hkdf_expand_label(prk256, "empty", nullptr, 0, nullptr, 0) == 0);
+    test_result("HKDF-Expand-Label-SHA384 allows NULL zero-length OKM",
+                rt_hkdf_expand_label_sha384(prk384, "empty", nullptr, 0, nullptr, 0) == 0);
+
     printf("\n");
 }
 

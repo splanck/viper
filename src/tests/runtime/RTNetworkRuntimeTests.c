@@ -64,9 +64,11 @@ static char captured_method[32];
 static char captured_path[64];
 static char captured_query[32];
 static char captured_header[32];
+static char captured_header_bytes[64];
 static char captured_param[32];
 static char captured_body[64];
 static char captured_body_bytes[64];
+static int64_t captured_header_len = 0;
 static int64_t captured_body_len = 0;
 
 static void copy_rt_string(char *dst, size_t cap, rt_string value) {
@@ -85,8 +87,10 @@ static void reset_captured_request_state(void) {
     captured_path[0] = '\0';
     captured_query[0] = '\0';
     captured_header[0] = '\0';
+    memset(captured_header_bytes, 0, sizeof(captured_header_bytes));
     captured_param[0] = '\0';
     captured_body[0] = '\0';
+    captured_header_len = 0;
     memset(captured_body_bytes, 0, sizeof(captured_body_bytes));
     captured_body_len = 0;
 }
@@ -105,6 +109,10 @@ static void native_http_handler(void *req_obj, void *res_obj) {
     copy_rt_string(captured_header, sizeof(captured_header), header);
     copy_rt_string(captured_param, sizeof(captured_param), param);
     copy_rt_string(captured_body, sizeof(captured_body), body);
+    captured_header_len = rt_str_len(header);
+    if (captured_header_len > 0 && captured_header_len <= (int64_t)sizeof(captured_header_bytes)) {
+        memcpy(captured_header_bytes, rt_string_cstr(header), (size_t)captured_header_len);
+    }
     captured_body_len = rt_str_len(body);
     if (captured_body_len > 0 && captured_body_len <= (int64_t)sizeof(captured_body_bytes)) {
         memcpy(captured_body_bytes, rt_string_cstr(body), (size_t)captured_body_len);
@@ -360,6 +368,35 @@ static void test_http_server_executes_bound_native_handler(void) {
     ASSERT(strcmp(captured_body, "hello") == 0);
 
     rt_string_unref(response);
+    if (rt_obj_release_check0(server))
+        rt_obj_free(server);
+}
+
+static void test_http_server_accessor_preserves_nul_header_and_query_key_length(void) {
+    reset_captured_request_state();
+
+    void *server = rt_http_server_new(8086);
+    rt_http_server_post(server, rt_const_cstr("/users/:id"), rt_const_cstr("handle_user"));
+    rt_http_server_bind_handler(server, rt_const_cstr("handle_user"), (void *)&native_http_handler);
+
+    const char raw[] = "POST /users/42?q%00x=bad&q=good HTTP/1.1\r\n"
+                       "Host: example.test\r\n"
+                       "X-Test: a\0b\r\n"
+                       "Content-Length: 0\r\n"
+                       "\r\n";
+    const char expected_header[] = {'a', '\0', 'b'};
+    rt_string raw_str = rt_string_from_bytes(raw, sizeof(raw) - 1);
+    rt_string response = (rt_string)rt_http_server_process_request(server, raw_str);
+    const char *response_cstr = rt_string_cstr(response);
+
+    ASSERT(response_cstr != NULL);
+    ASSERT(strstr(response_cstr, "HTTP/1.1 201 Created\r\n") != NULL);
+    ASSERT(strcmp(captured_query, "good") == 0);
+    ASSERT(captured_header_len == (int64_t)sizeof(expected_header));
+    ASSERT(memcmp(captured_header_bytes, expected_header, sizeof(expected_header)) == 0);
+
+    rt_string_unref(response);
+    rt_string_unref(raw_str);
     if (rt_obj_release_check0(server))
         rt_obj_free(server);
 }
@@ -809,6 +846,7 @@ int main(void) {
     test_http_server_builds_large_header_block();
     test_http_server_response_filters_managed_and_injected_headers();
     test_http_server_executes_bound_native_handler();
+    test_http_server_accessor_preserves_nul_header_and_query_key_length();
     test_http_server_process_request_preserves_nul_body_and_decodes_query_key();
     test_http_server_executes_bound_native_handler_for_chunked_body();
     test_http_server_http10_defaults_to_close();

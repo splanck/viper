@@ -1155,6 +1155,8 @@ void *rt_musicgen_build(void *song_ptr) {
     int32_t total_frames = (int32_t)total_frames_64;
 
     /* Allocate 32-bit stereo accumulator (zeroed) */
+    if ((size_t)total_frames > SIZE_MAX / 2 / sizeof(int32_t))
+        return NULL;
     size_t accum_size = (size_t)total_frames * 2 * sizeof(int32_t);
     int32_t *accum = (int32_t *)calloc(1, accum_size);
     if (!accum)
@@ -1206,6 +1208,10 @@ void *rt_musicgen_build(void *song_ptr) {
 
     /* Soft-clip to 16-bit stereo */
     size_t pcm_count = (size_t)total_frames * 2;
+    if (pcm_count > SIZE_MAX / sizeof(int16_t)) {
+        free(accum);
+        return NULL;
+    }
     int16_t *pcm = (int16_t *)malloc(pcm_count * sizeof(int16_t));
     if (!pcm) {
         free(accum);

@@ -34,6 +34,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_trap.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -69,12 +70,26 @@ static size_t str_len(rt_string s) {
     return len > 0 ? (size_t)len : 0;
 }
 
+static rt_string ini_string_from_bytes_or_trap(const char *bytes, size_t len) {
+    rt_string result = rt_string_from_bytes(bytes, len);
+    if (!result)
+        rt_trap("Ini: string allocation failed");
+    return result;
+}
+
+static void ini_check_sb(rt_string_builder *sb, rt_sb_status_t status) {
+    if (status == RT_SB_OK)
+        return;
+    rt_sb_free(sb);
+    rt_trap("Ini: string builder allocation failed");
+}
+
 static void append_rt_string(rt_string_builder *sb, rt_string s) {
     if (!s)
         return;
     const char *c = rt_string_cstr(s);
     if (c)
-        rt_sb_append_bytes(sb, c, str_len(s));
+        ini_check_sb(sb, rt_sb_append_bytes(sb, c, str_len(s)));
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +111,7 @@ void *rt_ini_parse(rt_string text) {
     const char *end = src + src_len;
 
     // Current section name (starts as "" for default section)
-    rt_string current_section = rt_string_from_bytes("", 0);
+    rt_string current_section = ini_string_from_bytes_or_trap("", 0);
     void *current_map = rt_map_new();
     rt_map_set(root, current_section, current_map);
     release_local_obj(current_map);
@@ -123,7 +138,7 @@ void *rt_ini_parse(rt_string text) {
                 size_t name_len;
                 const char *name = ini_trim(tline + 1, (size_t)(close - tline - 1), &name_len);
                 rt_string_unref(current_section);
-                current_section = rt_string_from_bytes(name, name_len);
+                current_section = ini_string_from_bytes_or_trap(name, name_len);
 
                 // Create section map if it doesn't exist
                 if (!rt_map_has(root, current_section)) {
@@ -144,8 +159,8 @@ void *rt_ini_parse(rt_string text) {
                 size_t val_len;
                 const char *val = ini_trim(eq + 1, tlen - (size_t)(eq - tline) - 1, &val_len);
 
-                rt_string k = rt_string_from_bytes(key, key_len);
-                rt_string v = rt_string_from_bytes(val, val_len);
+                rt_string k = ini_string_from_bytes_or_trap(key, key_len);
+                rt_string v = ini_string_from_bytes_or_trap(val, val_len);
                 rt_map_set(current_map, k, (void *)v);
                 rt_string_unref(k);
                 rt_string_unref(v);
@@ -193,7 +208,7 @@ rt_string rt_ini_format(void *ini_map) {
     int64_t sect_count = rt_seq_len(sections);
 
     // Write default section (empty key) first if it exists
-    rt_string empty = rt_string_from_bytes("", 0);
+    rt_string empty = ini_string_from_bytes_or_trap("", 0);
     void *default_sec = rt_map_get(ini_map, empty);
     if (default_sec && rt_map_len(default_sec) > 0) {
         void *keys = rt_map_keys(default_sec);
@@ -202,9 +217,9 @@ rt_string rt_ini_format(void *ini_map) {
             rt_string key = (rt_string)rt_seq_get(keys, i);
             rt_string val = (rt_string)rt_map_get(default_sec, key);
             append_rt_string(&sb, key);
-            rt_sb_append_cstr(&sb, " = ");
+            ini_check_sb(&sb, rt_sb_append_cstr(&sb, " = "));
             append_rt_string(&sb, val);
-            rt_sb_append_bytes(&sb, "\n", 1);
+            ini_check_sb(&sb, rt_sb_append_bytes(&sb, "\n", 1));
         }
         release_local_obj(keys);
     }
@@ -220,9 +235,9 @@ rt_string rt_ini_format(void *ini_map) {
         if (!sect_map)
             continue;
 
-        rt_sb_append_bytes(&sb, "\n[", 2);
+        ini_check_sb(&sb, rt_sb_append_bytes(&sb, "\n[", 2));
         append_rt_string(&sb, sect_name);
-        rt_sb_append_bytes(&sb, "]\n", 2);
+        ini_check_sb(&sb, rt_sb_append_bytes(&sb, "]\n", 2));
 
         void *keys = rt_map_keys(sect_map);
         int64_t kcount = rt_seq_len(keys);
@@ -230,15 +245,15 @@ rt_string rt_ini_format(void *ini_map) {
             rt_string key = (rt_string)rt_seq_get(keys, i);
             rt_string val = (rt_string)rt_map_get(sect_map, key);
             append_rt_string(&sb, key);
-            rt_sb_append_cstr(&sb, " = ");
+            ini_check_sb(&sb, rt_sb_append_cstr(&sb, " = "));
             append_rt_string(&sb, val);
-            rt_sb_append_bytes(&sb, "\n", 1);
+            ini_check_sb(&sb, rt_sb_append_bytes(&sb, "\n", 1));
         }
         release_local_obj(keys);
     }
     release_local_obj(sections);
 
-    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_string result = ini_string_from_bytes_or_trap(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;
 }

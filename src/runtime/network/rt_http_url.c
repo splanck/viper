@@ -105,11 +105,33 @@ static char *rt_url_strdup_or_trap_cleanup(rt_url_t *url, const char *str, const
     return rt_url_dup_slice_or_trap_cleanup(url, str, strlen(str), context);
 }
 
+static int rt_url_string_has_embedded_nul(rt_string value) {
+    if (!value)
+        return 0;
+    const char *str = rt_string_cstr(value);
+    int64_t len64 = rt_str_len(value);
+    if (!str || len64 <= 0)
+        return 0;
+    return memchr(str, '\0', (size_t)len64) != NULL;
+}
+
+static size_t rt_url_string_len_or_trap(rt_string value, const char *context) {
+    if (!value)
+        return 0;
+    int64_t len64 = rt_str_len(value);
+    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+        rt_url_trap_runtime(context);
+    return (size_t)len64;
+}
+
 /// @brief Duplicate the C-string content of a Viper rt_string into a heap C buffer.
 /// @brief Duplicate an rt_string argument as a heap-owned C string; trap on OOM.
 static char *rt_url_dup_string_arg(rt_string value, const char *context) {
     const char *str = value ? rt_string_cstr(value) : NULL;
-    return str ? rt_url_dup_slice_or_trap_cleanup(NULL, str, strlen(str), context) : NULL;
+    size_t len = rt_url_string_len_or_trap(value, context);
+    if (str && len > 0 && memchr(str, '\0', len))
+        rt_trap_net("URL: embedded NUL in component", Err_InvalidUrl);
+    return str ? rt_url_dup_slice_or_trap_cleanup(NULL, str, len, context) : NULL;
 }
 
 /// @brief Wrap raw bytes in an rt_string or trap on alloc failure.
@@ -196,13 +218,13 @@ static bool is_unreserved(char c) {
 
 // Note: hex_char_to_int functionality provided by rt_hex_digit_value() in rt_internal.h
 
-/// @brief Percent-encode a string.
+/// @brief Percent-encode a byte span.
 /// @return Allocated string, caller must free.
-static char *percent_encode(const char *str, bool encode_slash) {
+static char *percent_encode_n(const char *str, size_t len, bool encode_slash, size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
     if (!str)
-        return strdup("");
-
-    size_t len = strlen(str);
+        len = 0;
     // Worst case: every char becomes %XX
     if (len > SIZE_MAX / 3)
         return NULL;
@@ -222,16 +244,21 @@ static char *percent_encode(const char *str, bool encode_slash) {
         }
     }
     *p = '\0';
+    if (out_len)
+        *out_len = (size_t)(p - result);
     return result;
 }
 
-/// @brief Percent-decode a string.
+/// @brief Percent-decode a byte span.
 /// @return Allocated string, caller must free.
-static char *percent_decode_internal(const char *str, bool plus_as_space) {
+static char *percent_decode_internal_n(const char *str,
+                                       size_t len,
+                                       bool plus_as_space,
+                                       size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
     if (!str)
-        return strdup("");
-
-    size_t len = strlen(str);
+        len = 0;
     char *result = (char *)malloc(len + 1);
     if (!result)
         return NULL;
@@ -242,13 +269,7 @@ static char *percent_decode_internal(const char *str, bool plus_as_space) {
             int high = rt_hex_digit_value(str[i + 1]);
             int low = rt_hex_digit_value(str[i + 2]);
             if (high >= 0 && low >= 0) {
-                char decoded = (char)((high << 4) | low);
-                if (decoded == '\0') {
-                    // Reject %00 NUL byte injection — pass through un-decoded
-                    *p++ = '%';
-                    continue;
-                }
-                *p++ = decoded;
+                *p++ = (char)((high << 4) | low);
                 i += 2;
                 continue;
             }
@@ -259,15 +280,9 @@ static char *percent_decode_internal(const char *str, bool plus_as_space) {
         *p++ = str[i];
     }
     *p = '\0';
+    if (out_len)
+        *out_len = (size_t)(p - result);
     return result;
-}
-
-static char *percent_decode(const char *str) {
-    return percent_decode_internal(str, false);
-}
-
-static char *percent_decode_query_component(const char *str) {
-    return percent_decode_internal(str, true);
 }
 
 /// @brief Internal URL parsing.
@@ -606,6 +621,8 @@ void *rt_url_parse(rt_string url_str) {
     const char *str = url_str ? rt_string_cstr(url_str) : NULL;
     if (!str)
         rt_trap_net("URL: Invalid URL string", Err_InvalidUrl);
+    if (rt_url_string_has_embedded_nul(url_str))
+        rt_trap_net("URL: Invalid URL string", Err_InvalidUrl);
 
     rt_url_t *url = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
     if (!url)
@@ -653,12 +670,14 @@ rt_string rt_url_scheme(void *obj) {
 void rt_url_set_scheme(void *obj, rt_string scheme) {
     rt_url_t *url = rt_url_require_obj(obj, "URL.set_Scheme: null receiver");
     const char *scheme_str = scheme ? rt_string_cstr(scheme) : NULL;
-    if (!scheme_str || !*scheme_str) {
+    size_t scheme_len = rt_url_string_len_or_trap(scheme, "URL.set_Scheme: invalid length");
+    if (!scheme_str || scheme_len == 0) {
         free(url->scheme);
         url->scheme = NULL;
         return;
     }
-    if (!rt_url_scheme_is_valid(scheme_str, strlen(scheme_str)))
+    if (memchr(scheme_str, '\0', scheme_len) ||
+        !rt_url_scheme_is_valid(scheme_str, scheme_len))
         rt_trap_net("URL.set_Scheme: invalid scheme", Err_InvalidUrl);
     rt_url_replace_field(&url->scheme, scheme, "URL.set_Scheme: allocation failed", 1);
 }
@@ -1043,6 +1062,8 @@ void *rt_url_resolve(void *obj, rt_string relative) {
 
     if (!rel_str || *rel_str == '\0')
         return rt_url_clone(obj);
+    if (rt_url_string_has_embedded_nul(relative))
+        rt_trap_net("URL.Resolve: invalid relative URL", Err_InvalidUrl);
 
     // Parse relative URL.
     rt_url_t rel;
@@ -1189,12 +1210,14 @@ void *rt_url_clone(void *obj) {
 /// Reserved + non-ASCII bytes become `%XX` triples.
 rt_string rt_url_encode(rt_string text) {
     const char *str = text ? rt_string_cstr(text) : "";
-    char *encoded = percent_encode(str, true);
+    size_t text_len = rt_url_string_len_or_trap(text, "URL.Encode: invalid input length");
+    size_t encoded_len = 0;
+    char *encoded = percent_encode_n(str, text_len, true, &encoded_len);
     if (!encoded)
         rt_url_trap_runtime("URL.Encode: allocation failed");
 
     rt_string result = rt_url_string_from_bytes_or_trap(
-        encoded, strlen(encoded), "URL.Encode: string allocation failed");
+        encoded, encoded_len, "URL.Encode: string allocation failed");
     free(encoded);
     return result;
 }
@@ -1202,12 +1225,14 @@ rt_string rt_url_encode(rt_string text) {
 /// @brief URL-decode (unescape) `%XX` triples in `text`. Invalid escapes pass through verbatim.
 rt_string rt_url_decode(rt_string text) {
     const char *str = text ? rt_string_cstr(text) : "";
-    char *decoded = percent_decode(str);
+    size_t text_len = rt_url_string_len_or_trap(text, "URL.Decode: invalid input length");
+    size_t decoded_len = 0;
+    char *decoded = percent_decode_internal_n(str, text_len, false, &decoded_len);
     if (!decoded)
         rt_url_trap_runtime("URL.Decode: allocation failed");
 
     rt_string result = rt_url_string_from_bytes_or_trap(
-        decoded, strlen(decoded), "URL.Decode: string allocation failed");
+        decoded, decoded_len, "URL.Decode: string allocation failed");
     free(decoded);
     return result;
 }
@@ -1220,8 +1245,11 @@ rt_string rt_url_encode_query(void *map) {
     void *keys = rt_map_keys(map);
     int64_t len = rt_seq_len(keys);
 
-    if (len == 0)
+    if (len == 0) {
+        if (keys && rt_obj_release_check0(keys))
+            rt_obj_free(keys);
         return rt_str_empty();
+    }
 
     // Build query string
     size_t cap = 256;
@@ -1232,7 +1260,8 @@ rt_string rt_url_encode_query(void *map) {
         rt_string key = (rt_string)rt_seq_get(keys, i);
         void *value = rt_map_get(map, key);
 
-        const char *key_str = rt_string_cstr(key);
+        const char *key_str = key ? rt_string_cstr(key) : "";
+        size_t key_len = rt_url_string_len_or_trap(key, "URL.EncodeQuery: invalid key length");
         rt_string value_str_handle = NULL;
         if (value && rt_box_type(value) == RT_BOX_STR) {
             value_str_handle = rt_unbox_str(value);
@@ -1242,9 +1271,13 @@ rt_string rt_url_encode_query(void *map) {
                 rt_string_ref(value_str_handle);
         }
         const char *value_str = value_str_handle ? rt_string_cstr(value_str_handle) : "";
+        size_t value_len = rt_url_string_len_or_trap(value_str_handle,
+                                                     "URL.EncodeQuery: invalid value length");
 
-        char *enc_key = percent_encode(key_str, true);
-        char *enc_value = value_str ? percent_encode(value_str, true) : NULL;
+        size_t enc_key_len = 0;
+        size_t enc_value_len = 0;
+        char *enc_key = percent_encode_n(key_str, key_len, true, &enc_key_len);
+        char *enc_value = percent_encode_n(value_str, value_len, true, &enc_value_len);
 
         if (!enc_key || !enc_value) {
             if (value_str_handle)
@@ -1252,12 +1285,43 @@ rt_string rt_url_encode_query(void *map) {
             free(enc_key);
             free(enc_value);
             free(result);
+            if (keys && rt_obj_release_check0(keys))
+                rt_obj_free(keys);
             rt_url_trap_runtime("URL.EncodeQuery: allocation failed");
         }
 
-        size_t needed = strlen(enc_key) + 1 + strlen(enc_value) + 2; // key=value&
-        if (pos + needed >= cap) {
-            cap = (pos + needed) * 2;
+        if (enc_value_len > SIZE_MAX - 2 ||
+            enc_key_len > SIZE_MAX - enc_value_len - 2) {
+            if (value_str_handle)
+                rt_string_unref(value_str_handle);
+            free(enc_key);
+            free(enc_value);
+            free(result);
+            if (keys && rt_obj_release_check0(keys))
+                rt_obj_free(keys);
+            rt_url_trap_runtime("URL.EncodeQuery: length overflow");
+        }
+        size_t max_needed = enc_key_len + enc_value_len + 2;
+        if (pos > SIZE_MAX - max_needed) {
+            if (value_str_handle)
+                rt_string_unref(value_str_handle);
+            free(enc_key);
+            free(enc_value);
+            free(result);
+            if (keys && rt_obj_release_check0(keys))
+                rt_obj_free(keys);
+            rt_url_trap_runtime("URL.EncodeQuery: length overflow");
+        }
+        size_t needed = enc_key_len + 1 + enc_value_len + (i > 0 ? 1 : 0);
+        if (pos + needed + 1 > cap) {
+            size_t target = pos + needed + 1;
+            while (cap < target) {
+                if (cap > SIZE_MAX / 2) {
+                    cap = target;
+                    break;
+                }
+                cap *= 2;
+            }
             char *new_result = (char *)realloc(result, cap);
             if (!new_result) {
                 if (value_str_handle)
@@ -1265,6 +1329,8 @@ rt_string rt_url_encode_query(void *map) {
                 free(enc_key);
                 free(enc_value);
                 free(result);
+                if (keys && rt_obj_release_check0(keys))
+                    rt_obj_free(keys);
                 rt_url_trap_runtime("URL.EncodeQuery: allocation failed");
             }
             result = new_result;
@@ -1272,7 +1338,11 @@ rt_string rt_url_encode_query(void *map) {
 
         if (i > 0)
             result[pos++] = '&';
-        pos += snprintf(result + pos, cap - pos, "%s=%s", enc_key, enc_value);
+        memcpy(result + pos, enc_key, enc_key_len);
+        pos += enc_key_len;
+        result[pos++] = '=';
+        memcpy(result + pos, enc_value, enc_value_len);
+        pos += enc_value_len;
 
         free(enc_key);
         free(enc_value);
@@ -1284,6 +1354,8 @@ rt_string rt_url_encode_query(void *map) {
     rt_string str =
         rt_url_string_from_bytes_or_trap(result, pos, "URL.EncodeQuery: string allocation failed");
     free(result);
+    if (keys && rt_obj_release_check0(keys))
+        rt_obj_free(keys);
     return str;
 }
 
@@ -1292,70 +1364,41 @@ rt_string rt_url_encode_query(void *map) {
 void *rt_url_decode_query(rt_string query) {
     void *map = rt_map_new();
     const char *str = query ? rt_string_cstr(query) : NULL;
+    size_t query_len = rt_url_string_len_or_trap(query, "URL.DecodeQuery: invalid query length");
 
-    if (!str || *str == '\0')
+    if (!str || query_len == 0)
         return map;
 
     const char *p = str;
-    while (*p) {
-        // Find end of key
-        const char *eq = strchr(p, '=');
-        const char *amp = strchr(p, '&');
-
-        if (!eq || (amp && amp < eq)) {
-            // Key without value
-            const char *end = amp ? amp : p + strlen(p);
-            if (end > p) {
-                char *key = rt_url_dup_slice_or_trap_cleanup(
-                    NULL, p, (size_t)(end - p), "URL.DecodeQuery: key allocation failed");
-                char *dec_key = percent_decode_query_component(key);
-                if (!dec_key) {
-                    free(key);
-                    rt_url_trap_runtime("URL.DecodeQuery: key decode allocation failed");
-                }
-                rt_string key_str = rt_url_string_from_bytes_or_trap(
-                    dec_key, strlen(dec_key), "URL.DecodeQuery: key string allocation failed");
-                rt_map_set_str(map, key_str, rt_str_empty());
-                rt_string_unref(key_str);
-                free(dec_key);
-                free(key);
-            }
-            p = amp ? amp + 1 : p + strlen(p);
-        } else {
-            // Key=Value
-            size_t key_len = eq - p;
-            const char *val_start = eq + 1;
-            const char *val_end = amp ? amp : val_start + strlen(val_start);
-
-            char *key = rt_url_dup_slice_or_trap_cleanup(
-                NULL, p, key_len, "URL.DecodeQuery: key allocation failed");
-            char *val =
-                rt_url_dup_slice_or_trap_cleanup(NULL,
-                                                 val_start,
-                                                 (size_t)(val_end - val_start),
-                                                 "URL.DecodeQuery: value allocation failed");
-            char *dec_key = percent_decode_query_component(key);
-            char *dec_val = percent_decode_query_component(val);
+    const char *end = str + query_len;
+    while (p < end) {
+        const char *amp = (const char *)memchr(p, '&', (size_t)(end - p));
+        const char *part_end = amp ? amp : end;
+        if (part_end > p) {
+            const char *eq = (const char *)memchr(p, '=', (size_t)(part_end - p));
+            const char *val_start = eq ? eq + 1 : part_end;
+            size_t key_len = eq ? (size_t)(eq - p) : (size_t)(part_end - p);
+            size_t val_len = eq ? (size_t)(part_end - val_start) : 0;
+            size_t dec_key_len = 0;
+            size_t dec_val_len = 0;
+            char *dec_key = percent_decode_internal_n(p, key_len, true, &dec_key_len);
+            char *dec_val = percent_decode_internal_n(val_start, val_len, true, &dec_val_len);
             if (!dec_key || !dec_val) {
-                free(key);
-                free(val);
                 free(dec_key);
                 free(dec_val);
                 rt_url_trap_runtime("URL.DecodeQuery: decode allocation failed");
             }
             rt_string key_str = rt_url_string_from_bytes_or_trap(
-                dec_key, strlen(dec_key), "URL.DecodeQuery: key string allocation failed");
+                dec_key, dec_key_len, "URL.DecodeQuery: key string allocation failed");
             rt_string val_str = rt_url_string_from_bytes_or_trap(
-                dec_val, strlen(dec_val), "URL.DecodeQuery: value string allocation failed");
+                dec_val, dec_val_len, "URL.DecodeQuery: value string allocation failed");
             rt_map_set_str(map, key_str, val_str);
             rt_string_unref(key_str);
             rt_string_unref(val_str);
             free(dec_key);
             free(dec_val);
-            free(key);
-            free(val);
-            p = amp ? amp + 1 : val_end;
         }
+        p = amp ? amp + 1 : end;
     }
 
     return map;
@@ -1366,6 +1409,8 @@ void *rt_url_decode_query(rt_string query) {
 int8_t rt_url_is_valid(rt_string url_str) {
     const char *str = url_str ? rt_string_cstr(url_str) : NULL;
     if (!str || *str == '\0')
+        return 0;
+    if (rt_url_string_has_embedded_nul(url_str))
         return 0;
 
     // Reject strings with unencoded spaces (common non-URL indicator)

@@ -135,6 +135,28 @@ static void test_builder_preserves_empty_parts_and_final_boundary() {
     rt_string_unref(content_type);
 }
 
+static void test_field_value_preserves_embedded_nul() {
+    printf("\nTesting Multipart embedded-NUL field values:\n");
+
+    const char value_bytes[] = {'a', '\0', 'b'};
+    void *mp = rt_multipart_new();
+    rt_string value = rt_string_from_bytes(value_bytes, sizeof(value_bytes));
+    rt_multipart_add_field(mp, rt_const_cstr("field"), value);
+
+    rt_string content_type = rt_multipart_content_type(mp);
+    void *body = rt_multipart_build(mp);
+    void *parsed = rt_multipart_parse(content_type, body);
+    rt_string field = rt_multipart_get_field(parsed, rt_const_cstr("field"));
+
+    test_result("Embedded-NUL field value round-trips",
+                rt_str_len(field) == (int64_t)sizeof(value_bytes) &&
+                    memcmp(rt_string_cstr(field), value_bytes, sizeof(value_bytes)) == 0);
+
+    rt_string_unref(field);
+    rt_string_unref(content_type);
+    rt_string_unref(value);
+}
+
 int main() {
     printf("=== RT Multipart Tests ===\n\n");
 
@@ -142,6 +164,7 @@ int main() {
     test_parser_handles_quoted_and_escaped_params();
     test_parser_handles_bare_token_params();
     test_builder_preserves_empty_parts_and_final_boundary();
+    test_field_value_preserves_embedded_nul();
 
     printf("\nAll Multipart tests passed.\n");
     return 0;

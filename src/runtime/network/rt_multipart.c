@@ -31,6 +31,8 @@
 
 #include "rt_trap.h"
 
+#include <stdarg.h>
+
 //=============================================================================
 // Internal Structures
 //=============================================================================
@@ -83,6 +85,44 @@ static int multipart_size_add(size_t *total, size_t value) {
     if (!total || *total > SIZE_MAX - value)
         return 0;
     *total += value;
+    return 1;
+}
+
+static int multipart_string_has_embedded_nul(rt_string value) {
+    if (!value)
+        return 0;
+    const char *cstr = rt_string_cstr(value);
+    int64_t len64 = rt_str_len(value);
+    if (!cstr || len64 <= 0)
+        return 0;
+    return memchr(cstr, '\0', (size_t)len64) != NULL;
+}
+
+static const char *multipart_header_param_cstr(rt_string value,
+                                               const char *fallback,
+                                               const char *context,
+                                               int allow_null) {
+    if (!value) {
+        if (allow_null)
+            return fallback;
+        rt_trap(context);
+    }
+    const char *cstr = rt_string_cstr(value);
+    if (!cstr || multipart_string_has_embedded_nul(value))
+        rt_trap(context);
+    return cstr;
+}
+
+static int multipart_appendf(uint8_t *buf, size_t total, size_t *pos, const char *fmt, ...) {
+    if (!buf || !pos || *pos > total)
+        return 0;
+    va_list args;
+    va_start(args, fmt);
+    int written = vsnprintf((char *)buf + *pos, total + 1 - *pos, fmt, args);
+    va_end(args);
+    if (written < 0 || (size_t)written >= total + 1 - *pos)
+        return 0;
+    *pos += (size_t)written;
     return 1;
 }
 
@@ -337,9 +377,15 @@ void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
     if (mp->part_count >= MAX_PARTS)
         rt_trap("Multipart: too many parts (max 128)");
 
-    const char *n = rt_string_cstr(name);
+    const char *n =
+        multipart_header_param_cstr(name, "", "Multipart: invalid field name", 0);
+    if (!value)
+        rt_trap("Multipart: NULL field value");
     const char *v = rt_string_cstr(value);
-    size_t v_len = v ? strlen(v) : 0;
+    int64_t v_len64 = rt_str_len(value);
+    if (!v || v_len64 < 0 || (uint64_t)v_len64 > (uint64_t)SIZE_MAX)
+        rt_trap("Multipart: invalid field value");
+    size_t v_len = (size_t)v_len64;
 
     char *name_copy = n ? strdup(n) : strdup("");
     uint8_t *data_copy = (uint8_t *)malloc(v_len > 0 ? v_len : 1);
@@ -371,8 +417,10 @@ void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void 
     if (mp->part_count >= MAX_PARTS)
         rt_trap("Multipart: too many parts (max 128)");
 
-    const char *n = rt_string_cstr(name);
-    const char *fn = rt_string_cstr(filename);
+    const char *n =
+        multipart_header_param_cstr(name, "", "Multipart: invalid file field name", 0);
+    const char *fn =
+        multipart_header_param_cstr(filename, "file", "Multipart: invalid filename", 1);
     int64_t len = data ? bytes_len_impl(data) : 0;
     uint8_t *ptr = data ? bytes_data(data) : NULL;
     if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
@@ -468,22 +516,39 @@ void *rt_multipart_build(void *obj) {
         }
 
         // Boundary
-        pos += (size_t)snprintf((char *)buf + pos, total + 1 - pos, "--%s\r\n", mp->boundary);
+        if (!multipart_appendf(buf, total, &pos, "--%s\r\n", mp->boundary)) {
+            free(escaped_filename);
+            free(escaped_name);
+            free(buf);
+            return rt_bytes_new(0);
+        }
 
         // Headers
         if (part->is_file) {
-            pos += (size_t)snprintf((char *)buf + pos,
-                                    total + 1 - pos,
-                                    "Content-Disposition: form-data; name=\"%s\"; "
-                                    "filename=\"%s\"\r\n"
-                                    "Content-Type: application/octet-stream\r\n\r\n",
-                                    escaped_name,
-                                    escaped_filename);
+            if (!multipart_appendf(buf,
+                                   total,
+                                   &pos,
+                                   "Content-Disposition: form-data; name=\"%s\"; "
+                                   "filename=\"%s\"\r\n"
+                                   "Content-Type: application/octet-stream\r\n\r\n",
+                                   escaped_name,
+                                   escaped_filename)) {
+                free(escaped_filename);
+                free(escaped_name);
+                free(buf);
+                return rt_bytes_new(0);
+            }
         } else {
-            pos += (size_t)snprintf((char *)buf + pos,
-                                    total + 1 - pos,
-                                    "Content-Disposition: form-data; name=\"%s\"\r\n\r\n",
-                                    escaped_name);
+            if (!multipart_appendf(buf,
+                                   total,
+                                   &pos,
+                                   "Content-Disposition: form-data; name=\"%s\"\r\n\r\n",
+                                   escaped_name)) {
+                free(escaped_filename);
+                free(escaped_name);
+                free(buf);
+                return rt_bytes_new(0);
+            }
         }
         free(escaped_filename);
         free(escaped_name);
@@ -493,11 +558,17 @@ void *rt_multipart_build(void *obj) {
             memcpy(buf + pos, part->data, part->data_len);
             pos += part->data_len;
         }
-        pos += (size_t)snprintf((char *)buf + pos, total + 1 - pos, "\r\n");
+        if (!multipart_appendf(buf, total, &pos, "\r\n")) {
+            free(buf);
+            return rt_bytes_new(0);
+        }
     }
 
     // Final boundary
-    pos += (size_t)snprintf((char *)buf + pos, total + 1 - pos, "--%s--\r\n", mp->boundary);
+    if (!multipart_appendf(buf, total, &pos, "--%s--\r\n", mp->boundary)) {
+        free(buf);
+        return rt_bytes_new(0);
+    }
     if (pos > total) {
         free(buf);
         return rt_bytes_new(0);
@@ -530,8 +601,8 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
     if (!body)
         return rt_multipart_new();
 
-    const char *ct = rt_string_cstr(content_type);
-    if (!ct)
+    const char *ct = content_type ? rt_string_cstr(content_type) : NULL;
+    if (!ct || multipart_string_has_embedded_nul(content_type))
         return rt_multipart_new();
 
     // Extract boundary from content-type
@@ -598,6 +669,10 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         char *header_text = (char *)malloc(header_len + 1);
         if (!header_text)
             break;
+        if (memchr(p, '\0', header_len)) {
+            free(header_text);
+            break;
+        }
         memcpy(header_text, p, header_len);
         header_text[header_len] = '\0';
 
@@ -655,8 +730,8 @@ rt_string rt_multipart_get_field(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    const char *n = rt_string_cstr(name);
-    if (!n)
+    const char *n = name ? rt_string_cstr(name) : NULL;
+    if (!n || multipart_string_has_embedded_nul(name))
         return rt_string_from_bytes("", 0);
 
     for (int i = 0; i < mp->part_count; i++) {
@@ -673,8 +748,8 @@ void *rt_multipart_get_file(void *obj, rt_string name) {
     if (!obj)
         return rt_bytes_new(0);
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    const char *n = rt_string_cstr(name);
-    if (!n)
+    const char *n = name ? rt_string_cstr(name) : NULL;
+    if (!n || multipart_string_has_embedded_nul(name))
         return rt_bytes_new(0);
 
     for (int i = 0; i < mp->part_count; i++) {

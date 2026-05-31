@@ -104,6 +104,16 @@ static int http_contains_any_char(const char *text, const char *chars) {
     return 0;
 }
 
+static int http_rt_string_has_embedded_nul(rt_string text) {
+    if (!text)
+        return 0;
+    const char *cstr = rt_string_cstr(text);
+    int64_t len64 = rt_str_len(text);
+    if (!cstr || len64 <= 0)
+        return 0;
+    return memchr(cstr, '\0', (size_t)len64) != NULL;
+}
+
 static int http_host_is_valid(const char *host) {
     if (!host || !*host || http_contains_ctl_or_space(host))
         return 0;
@@ -1426,7 +1436,7 @@ int rt_http_transfer_encoding_supported_for_test(const char *value, int *chunked
 }
 
 static void set_request_body_from_string(rt_http_req_t *req, rt_string body) {
-    const char *body_str = rt_string_cstr(body);
+    const char *body_str = body ? rt_string_cstr(body) : NULL;
     int64_t body_len64 = 0;
     size_t body_len = 0;
 
@@ -3692,12 +3702,12 @@ void *rt_http_delete_bytes(rt_string url) {
 /// timeout, follow redirects with cap `HTTP_MAX_REDIRECTS`.
 /// @throws Err_InvalidUrl on bad URL, generic trap on null method.
 void *rt_http_req_new(rt_string method, rt_string url) {
-    const char *method_str = rt_string_cstr(method);
-    const char *url_str = rt_string_cstr(url);
+    const char *method_str = method ? rt_string_cstr(method) : NULL;
+    const char *url_str = url ? rt_string_cstr(url) : NULL;
 
-    if (!http_method_is_token(method_str))
+    if (!method_str || http_rt_string_has_embedded_nul(method) || !http_method_is_token(method_str))
         rt_trap("HTTP: invalid method");
-    if (!url_str || *url_str == '\0')
+    if (!url_str || *url_str == '\0' || http_rt_string_has_embedded_nul(url))
         rt_trap_net("HTTP: invalid URL", Err_InvalidUrl);
 
     // Must use rt_obj_new_i64 for GC management
@@ -3733,10 +3743,11 @@ void *rt_http_req_set_header(void *obj, rt_string name, rt_string value) {
         rt_trap("HTTP: NULL request");
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
-    const char *name_str = rt_string_cstr(name);
-    const char *value_str = rt_string_cstr(value);
+    const char *name_str = name ? rt_string_cstr(name) : NULL;
+    const char *value_str = value ? rt_string_cstr(value) : NULL;
 
-    if (name_str && value_str)
+    if (name_str && value_str && !http_rt_string_has_embedded_nul(name) &&
+        !http_rt_string_has_embedded_nul(value))
         add_header(req, name_str, value_str);
 
     return obj;
@@ -3784,7 +3795,7 @@ void *rt_http_req_set_body_str(void *obj, rt_string text) {
         rt_trap("HTTP: NULL request");
 
     rt_http_req_t *req = (rt_http_req_t *)obj;
-    const char *text_str = rt_string_cstr(text);
+    const char *text_str = text ? rt_string_cstr(text) : NULL;
 
     if (req->body) {
         free(req->body);
@@ -4027,8 +4038,8 @@ rt_string rt_http_res_header(void *obj, rt_string name) {
     rt_http_res_t *res = (rt_http_res_t *)obj;
 
     // Convert name to lowercase for lookup
-    const char *name_str = rt_string_cstr(name);
-    if (!name_str)
+    const char *name_str = name ? rt_string_cstr(name) : NULL;
+    if (!name_str || http_rt_string_has_embedded_nul(name))
         return rt_string_from_bytes("", 0);
 
     size_t len = strlen(name_str);
@@ -4053,9 +4064,13 @@ rt_string rt_http_res_header(void *obj, rt_string name) {
         return rt_string_from_bytes("", 0);
 
     rt_string value = rt_unbox_str(boxed);
-    const char *value_cstr = rt_string_cstr(value);
-    rt_string copy =
-        rt_string_from_bytes(value_cstr ? value_cstr : "", value_cstr ? strlen(value_cstr) : 0);
+    const char *value_cstr = value ? rt_string_cstr(value) : NULL;
+    int64_t value_len64 = value ? rt_str_len(value) : 0;
+    if (value_len64 < 0 || (uint64_t)value_len64 > (uint64_t)SIZE_MAX)
+        value_len64 = 0;
+    rt_string copy = rt_string_from_bytes(
+        value_cstr ? value_cstr : "",
+        (value_cstr && value_len64 > 0) ? (size_t)value_len64 : 0);
     rt_string_unref(value);
     return copy;
 }
