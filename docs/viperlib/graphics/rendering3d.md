@@ -1129,8 +1129,7 @@ A* edges. `AddObstacle` stores a finite world-space AABB and removes polygons
 whose triangle footprint intersects the obstacle volume. On tiled bakes, obstacle
 adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still
 refilter the preserved source mesh. This remains polygon-level AABB carving
-rather than clipped sub-polygons; full crowd path-quality work remains separate
-navigation-depth work.
+rather than clipped sub-polygons; `NavAgent3D` covers local crowd avoidance.
 
 ---
 
@@ -1153,8 +1152,8 @@ Pathfinding agent that moves along a `NavMesh3D` toward a target.
 | `StoppingDistance`  | Double  | Read/Write | Distance from goal at which to stop |
 | `DesiredSpeed`      | Double  | Read/Write | Maximum movement speed |
 | `AutoRepath`        | Boolean | Read/Write | Automatically repath when blocked |
-| `AvoidanceEnabled`  | Boolean | Read/Write | Enable same-NavMesh local separation against other enabled agents |
-| `AvoidanceRadius`   | Double  | Read/Write | Local separation radius; defaults to the agent radius and clamps to `>= 0` |
+| `AvoidanceEnabled`  | Boolean | Read/Write | Enable same-NavMesh RVO-style steering against other enabled agents |
+| `AvoidanceRadius`   | Double  | Read/Write | Local RVO radius; defaults to the agent radius and clamps to `>= 0` |
 
 #### Methods
 
@@ -1167,7 +1166,7 @@ Pathfinding agent that moves along a `NavMesh3D` toward a target.
 | `BindCharacter(character3D)` | `Void(Object)` | Drive a `Character3D` from agent velocity |
 | `BindNode(sceneNode)` | `Void(Object)` | Drive a `SceneNode3D` position from agent |
 
-Avoidance is local and opt-in. Agents on the same `NavMesh3D` with `AvoidanceEnabled=true` bias their desired velocity away from overlapping or imminent head-on neighbors before the update drives a character or node. It is not a replacement for tiled navmesh rebuilds, dynamic obstacle carving, off-mesh links, or full crowd simulation.
+Avoidance is local and opt-in. Agents on the same `NavMesh3D` with `AvoidanceEnabled=true` solve a deterministic reciprocal-velocity-obstacle candidate set over nearby grid peers before the update drives a character or node. The solver predicts collisions over a bounded horizon, prefers the path-following velocity, and has a named 200-agent CTest baseline.
 
 ```rust
 bind Viper.Graphics3D.NavMesh3D as NavMesh3D;

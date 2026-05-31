@@ -2818,7 +2818,7 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 
 `Build()` stores the source walkable geometry separately from the filtered navigation triangles. `Bake()` gathers every `Mesh3D` attached under a `Scene3D`, applies each node's world transform, and runs the voxel baker. `BakeTiled()` keeps retained voxel-cell source data for each tile; `RebuildTile()` refreshes only the requested tile's geometry, heights, and blocked state from that retained source instead of running a whole-scene bake. `SetMaxSlope()` refilters preserved source triangles. Slope tests use upward-facing triangle planes. Shared-edge portals narrower than `agentRadius * 2` are not linked, so wider agents do not path through narrow authored passages. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
 
-`AddOffMeshLink()` stores authored endpoint pairs such as jumps, ladders, and drop-downs. Both endpoints must resolve to current walkable polygons; pathfinding treats the link as an extra graph edge and emits the link endpoints as waypoints. `SetOffMeshLinkMetadata()` records the link kind, traversal-cost multiplier, and state flags; link cost contributes to A* and the final `LastPathCost`. `SetArea()` tags polygons whose exact XZ footprint intersects a finite volume, `GetArea()` / `GetTraversalCost()` query that metadata, and polygon traversal costs weight A* edges. `AddObstacle()` stores a finite world-space AABB and removes polygons whose triangle footprint intersects the obstacle volume. On tiled bakes, obstacle adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still refilter the preserved source mesh. This remains polygon-level AABB carving rather than clipped sub-polygons; full ORCA/RVO crowd planning remains deeper navigation work.
+`AddOffMeshLink()` stores authored endpoint pairs such as jumps, ladders, and drop-downs. Both endpoints must resolve to current walkable polygons; pathfinding treats the link as an extra graph edge and emits the link endpoints as waypoints. `SetOffMeshLinkMetadata()` records the link kind, traversal-cost multiplier, and state flags; link cost contributes to A* and the final `LastPathCost`. `SetArea()` tags polygons whose exact XZ footprint intersects a finite volume, `GetArea()` / `GetTraversalCost()` query that metadata, and polygon traversal costs weight A* edges. `AddObstacle()` stores a finite world-space AABB and removes polygons whose triangle footprint intersects the obstacle volume. On tiled bakes, obstacle adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still refilter the preserved source mesh. This remains polygon-level AABB carving rather than clipped sub-polygons; `NavAgent3D` covers local crowd avoidance.
 
 ### Zia Example
 
@@ -2874,8 +2874,8 @@ Goal-driven navigation agent built on top of `NavMesh3D`. `NavAgent3D` owns a ta
 | `StoppingDistance` | `Float` | read/write | Arrival radius around the final target |
 | `DesiredSpeed` | `Float` | read/write | Preferred movement speed in world units per second |
 | `AutoRepath` | `Boolean` | read/write | Periodically rebuild the path while a target is active |
-| `AvoidanceEnabled` | `Boolean` | read/write | Enable same-NavMesh local separation steering against other enabled agents |
-| `AvoidanceRadius` | `Float` | read/write | Radius used by local avoidance separation; defaults to the agent radius and clamps to `>= 0` |
+| `AvoidanceEnabled` | `Boolean` | read/write | Enable same-NavMesh RVO-style steering against other enabled agents |
+| `AvoidanceRadius` | `Float` | read/write | Radius used by local RVO avoidance; defaults to the agent radius and clamps to `>= 0` |
 
 ### Methods
 
@@ -2898,7 +2898,7 @@ Goal-driven navigation agent built on top of `NavMesh3D`. `NavAgent3D` owns a ta
 
 When both a `Character3D` and a `SceneNode3D` are bound, the character controller is authoritative and the node is updated to match it.
 
-`AvoidanceEnabled` is opt-in. When enabled on nearby agents sharing the same `NavMesh3D`, the path follower biases `DesiredVelocity` away from overlapping or imminent head-on neighbors before moving the bound character or node. This is a lightweight local separation pass; tiled navmesh rebuilds, dynamic carving, off-mesh links, and full ORCA/RVO-style crowd planning remain separate navigation-depth work.
+`AvoidanceEnabled` is opt-in. When enabled on nearby agents sharing the same `NavMesh3D`, the path follower solves a deterministic reciprocal-velocity-obstacle candidate set over nearby grid peers before moving the bound character or node. The solver predicts collisions over a bounded horizon, prefers the path-following velocity, and uses a stable right-side tie-break for symmetric passes. A named CTest fixture records a 200-agent pathing/avoidance baseline.
 
 ### Zia Example
 

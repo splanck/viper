@@ -92,6 +92,9 @@ static rt_navagent3d *g_navagent3d_registry = NULL;
 #define NAVAGENT_GRID_CELL 4.0
 #define NAVAGENT_GRID_BUCKETS 1024u /* power of two for mask-based modulo */
 #define NAVAGENT_GRID_MAX_RING 16   /* beyond this, fall back to a full registry scan */
+#define NAVAGENT_RVO_MIN_TIME_HORIZON 0.75
+#define NAVAGENT_RVO_MAX_TIME_HORIZON 2.0
+#define NAVAGENT_RVO_MAX_CANDIDATES 48
 static rt_navagent3d *g_navagent3d_grid[NAVAGENT_GRID_BUCKETS];
 /* Monotonic max of (effective avoidance radius + desired speed) across agents; bounds the cell
  * neighborhood a query must cover so the grid never misses a contributing peer. */
@@ -238,13 +241,13 @@ static double navagent_effective_avoidance_radius(const rt_navagent3d *agent) {
     return agent->avoidance_radius;
 }
 
-/// @brief An agent's interaction "reach": effective avoidance radius + its desired speed. Two agents
-///   can only influence each other within (reachA + reachB), which bounds the grid query.
+/// @brief An agent's interaction "reach": radius plus a bounded RVO time horizon of travel.
+///   Two agents can only influence each other within (reachA + reachB), which bounds the grid query.
 static double navagent_reach(const rt_navagent3d *agent) {
     double r = navagent_effective_avoidance_radius(agent);
     double s = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0) ? agent->desired_speed
                                                                               : 0.0;
-    return r + s;
+    return r + s * NAVAGENT_RVO_MAX_TIME_HORIZON;
 }
 
 /// @brief Quantize a world coordinate to its spatial-grid cell index (clamped to ±1e9; 0 if non-finite).
@@ -322,114 +325,202 @@ static void navagent_grid_refresh(rt_navagent3d *agent) {
     }
 }
 
-/// @brief Accumulate one peer's avoidance influence into (@p adjust_x, @p adjust_z). Skips self /
-///   disabled / different-navmesh peers and contributes zero outside interaction range, so visiting
-///   a superset of peers (as the grid does) yields the same result as a full registry scan, modulo
-///   floating-point summation order.
-static void navagent_accumulate_peer(rt_navagent3d *agent,
-                                     rt_navagent3d *other,
-                                     double agent_radius,
-                                     double lookahead,
-                                     double *adjust_x,
-                                     double *adjust_z) {
-    double other_radius;
-    double combined;
-    double dx;
-    double dz;
-    double dist_sq;
-    double dist;
-    double nx;
-    double nz;
-    double influence = 0.0;
-    if (other == agent || !other->avoidance_enabled || other->navmesh != agent->navmesh)
+/// @brief Estimate an agent's current preferred XZ velocity for reciprocal avoidance.
+/// @details During an update, `desired_velocity` already holds the freshly computed preferred
+///   velocity for the current agent. Peers may not have updated yet this frame, so fall back to
+///   their current path corner and desired speed before using their previous actual velocity.
+static void navagent_preferred_velocity_xz(const rt_navagent3d *agent, double *out_vx, double *out_vz) {
+    double speed;
+    if (!out_vx || !out_vz)
         return;
-    other_radius = navagent_effective_avoidance_radius(other);
-    combined = agent_radius + other_radius;
-    if (combined <= 0.0)
+    *out_vx = 0.0;
+    *out_vz = 0.0;
+    if (!agent)
         return;
-    dx = agent->position[0] - other->position[0];
-    dz = agent->position[2] - other->position[2];
-    dist_sq = dx * dx + dz * dz;
-    if (dist_sq <= 1e-10) {
-        if (fabs(agent->desired_velocity[0]) > fabs(agent->desired_velocity[2])) {
-            dx = -agent->desired_velocity[0];
-            dz = 0.0;
-        } else {
-            dx = 0.0;
-            dz = -agent->desired_velocity[2];
-        }
-        if (fabs(dx) + fabs(dz) <= 1e-10)
-            dx = 1.0;
-        dist_sq = dx * dx + dz * dz;
+    if (isfinite(agent->desired_velocity[0]) && isfinite(agent->desired_velocity[2]) &&
+        agent->desired_velocity[0] * agent->desired_velocity[0] +
+                agent->desired_velocity[2] * agent->desired_velocity[2] >
+            1e-10) {
+        *out_vx = agent->desired_velocity[0];
+        *out_vz = agent->desired_velocity[2];
+        return;
     }
-    dist = sqrt(dist_sq);
-    nx = dx / dist;
-    nz = dz / dist;
-    if (dist < combined) {
-        influence = ((combined - dist) / combined) + 0.5;
-    } else {
-        double rel_px = other->position[0] - agent->position[0];
-        double rel_pz = other->position[2] - agent->position[2];
-        double rel_vx = agent->desired_velocity[0] - other->desired_velocity[0];
-        double rel_vz = agent->desired_velocity[2] - other->desired_velocity[2];
-        double rel_v_sq = rel_vx * rel_vx + rel_vz * rel_vz;
-        double closing = rel_px * rel_vx + rel_pz * rel_vz;
-        if (closing > 0.0 && rel_v_sq > 1e-10) {
-            double t = closing / rel_v_sq;
-            if (t > 0.0 && t <= lookahead) {
-                double closest_x = rel_px - rel_vx * t;
-                double closest_z = rel_pz - rel_vz * t;
-                double closest_sq = closest_x * closest_x + closest_z * closest_z;
-                if (closest_sq < combined * combined) {
-                    double closest_dist = sqrt(closest_sq);
-                    double predictive =
-                        ((combined - closest_dist) / combined) * (1.0 - (t / lookahead));
-                    if (closest_sq > 1e-10) {
-                        double inv = 1.0 / sqrt(closest_sq);
-                        nx = -closest_x * inv;
-                        nz = -closest_z * inv;
-                    }
-                    influence = predictive * 0.75;
-                }
-            }
+    if (agent->has_path && agent->path_points_xyz && agent->path_point_count > 0) {
+        int32_t idx = agent->path_index;
+        const double *next;
+        double dx;
+        double dz;
+        double dist;
+        if (idx < 0)
+            idx = 0;
+        if (idx >= agent->path_point_count)
+            idx = agent->path_point_count - 1;
+        next = navagent_path_point(agent, idx);
+        dx = next[0] - agent->position[0];
+        dz = next[2] - agent->position[2];
+        dist = sqrt(dx * dx + dz * dz);
+        speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
+                    ? agent->desired_speed
+                    : 0.0;
+        if (dist > 1e-9 && speed > 0.0) {
+            *out_vx = dx / dist * speed;
+            *out_vz = dz / dist * speed;
+            return;
         }
     }
-    if (influence > 0.0) {
-        *adjust_x += nx * influence;
-        *adjust_z += nz * influence;
+    if (agent->has_target) {
+        double dx = agent->target[0] - agent->position[0];
+        double dz = agent->target[2] - agent->position[2];
+        double dist = sqrt(dx * dx + dz * dz);
+        speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
+                    ? agent->desired_speed
+                    : 0.0;
+        if (dist > 1e-9 && speed > 0.0) {
+            *out_vx = dx / dist * speed;
+            *out_vz = dz / dist * speed;
+            return;
+        }
+    }
+    if (isfinite(agent->velocity[0]) && isfinite(agent->velocity[2])) {
+        *out_vx = agent->velocity[0];
+        *out_vz = agent->velocity[2];
     }
 }
 
-/// @brief Compute the raw avoidance steering adjustment for @p agent. With @p use_grid it scans only
-///   the spatial-grid cell neighborhood sized to cover the interaction range (falling back to a full
-///   registry scan when reaches are pathologically large); otherwise it scans the whole registry.
-///   Both paths visit the same contributing peers, so results agree up to summation order.
-///   @return 1 if avoidance applies (outputs written), 0 otherwise.
-static int navagent_compute_avoidance_adjust(rt_navagent3d *agent,
-                                             double dt,
-                                             int use_grid,
-                                             double *out_ax,
-                                             double *out_az) {
-    double agent_radius;
-    double max_speed;
-    double lookahead;
-    double adjust_x = 0.0;
-    double adjust_z = 0.0;
-    rt_navagent3d *other;
-    if (!agent || !agent->avoidance_enabled)
-        return 0;
-    agent_radius = navagent_effective_avoidance_radius(agent);
-    max_speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
-                    ? agent->desired_speed
-                    : 0.0;
-    if (agent_radius <= 0.0 || max_speed <= 0.0)
-        return 0;
-    lookahead = (isfinite(dt) && dt > 0.0) ? dt * 4.0 : 0.5;
-    if (lookahead < 0.25)
-        lookahead = 0.25;
-    if (lookahead > 1.0)
-        lookahead = 1.0;
+/// @brief Add a velocity candidate after speed clamping and near-duplicate removal.
+static int navagent_add_velocity_candidate(double candidates[NAVAGENT_RVO_MAX_CANDIDATES][2],
+                                           int count,
+                                           double vx,
+                                           double vz,
+                                           double max_speed) {
+    double speed_sq;
+    if (!isfinite(vx) || !isfinite(vz) || !isfinite(max_speed) || max_speed < 0.0)
+        return count;
+    speed_sq = vx * vx + vz * vz;
+    if (speed_sq > max_speed * max_speed && speed_sq > 1e-12) {
+        double scale = max_speed / sqrt(speed_sq);
+        vx *= scale;
+        vz *= scale;
+    }
+    for (int i = 0; i < count; ++i) {
+        double dx = candidates[i][0] - vx;
+        double dz = candidates[i][1] - vz;
+        if (dx * dx + dz * dz <= 1e-10)
+            return count;
+    }
+    if (count >= NAVAGENT_RVO_MAX_CANDIDATES)
+        return count;
+    candidates[count][0] = vx;
+    candidates[count][1] = vz;
+    return count + 1;
+}
 
+/// @brief Build a deterministic RVO candidate set around the preferred velocity.
+static int navagent_build_velocity_candidates(double pref_x,
+                                              double pref_z,
+                                              double max_speed,
+                                              double candidates[NAVAGENT_RVO_MAX_CANDIDATES][2]) {
+    static const double speed_mults[] = {1.0, 0.75, 0.5};
+    static const double angle_offsets[] = {
+        0.0, 0.3490658503988659, -0.3490658503988659, 0.6981317007977318,
+        -0.6981317007977318, 1.0471975511965976, -1.0471975511965976,
+        1.5707963267948966, -1.5707963267948966, 2.356194490192345,
+        -2.356194490192345, 3.141592653589793};
+    double pref_len = sqrt(pref_x * pref_x + pref_z * pref_z);
+    double base_angle = pref_len > 1e-9 ? atan2(pref_z, pref_x) : 0.0;
+    int count = 0;
+    count = navagent_add_velocity_candidate(candidates, count, pref_x, pref_z, max_speed);
+    count = navagent_add_velocity_candidate(candidates, count, 0.0, 0.0, max_speed);
+    for (size_t s = 0; s < sizeof(speed_mults) / sizeof(speed_mults[0]); ++s) {
+        double speed = max_speed * speed_mults[s];
+        for (size_t a = 0; a < sizeof(angle_offsets) / sizeof(angle_offsets[0]); ++a) {
+            double theta = base_angle + angle_offsets[a];
+            count = navagent_add_velocity_candidate(
+                candidates, count, cos(theta) * speed, sin(theta) * speed, max_speed);
+        }
+    }
+    return count;
+}
+
+/// @brief Penalty for choosing candidate velocity (`cand_x`,`cand_z`) against one peer.
+/// @details This is a reciprocal velocity-obstacle test: it predicts relative motion over the
+///   bounded time horizon and penalizes candidates that enter the combined avoidance disk.
+static double navagent_rvo_peer_penalty(rt_navagent3d *agent,
+                                        rt_navagent3d *other,
+                                        double agent_radius,
+                                        double horizon,
+                                        double cand_x,
+                                        double cand_z) {
+    double other_radius;
+    double combined;
+    double rel_px;
+    double rel_pz;
+    double other_vx = 0.0;
+    double other_vz = 0.0;
+    double rel_vx;
+    double rel_vz;
+    double dist_sq;
+    double combined_sq;
+    double rel_speed_sq;
+    double dot;
+    double t;
+    double closest_x;
+    double closest_z;
+    double closest_sq;
+    if (other == agent || !other->avoidance_enabled || other->navmesh != agent->navmesh)
+        return 0.0;
+    other_radius = navagent_effective_avoidance_radius(other);
+    combined = agent_radius + other_radius;
+    if (combined <= 0.0)
+        return 0.0;
+    rel_px = other->position[0] - agent->position[0];
+    rel_pz = other->position[2] - agent->position[2];
+    dist_sq = rel_px * rel_px + rel_pz * rel_pz;
+    combined_sq = combined * combined;
+    navagent_preferred_velocity_xz(other, &other_vx, &other_vz);
+    rel_vx = other_vx - cand_x;
+    rel_vz = other_vz - cand_z;
+    rel_speed_sq = rel_vx * rel_vx + rel_vz * rel_vz;
+
+    if (dist_sq < combined_sq) {
+        double dist = dist_sq > 1e-12 ? sqrt(dist_sq) : 0.0;
+        double penetration = (combined - dist) / combined;
+        double sep_rate = 0.0;
+        if (dist > 1e-9)
+            sep_rate = (rel_px * rel_vx + rel_pz * rel_vz) / dist;
+        else
+            sep_rate = -sqrt(cand_x * cand_x + cand_z * cand_z);
+        return 2500.0 * penetration * penetration +
+               50.0 * fmax(0.0, (combined / horizon) - sep_rate);
+    }
+    if (rel_speed_sq <= 1e-10)
+        return 0.0;
+    dot = rel_px * rel_vx + rel_pz * rel_vz;
+    t = -dot / rel_speed_sq;
+    if (t < 0.0 || t > horizon)
+        return 0.0;
+    closest_x = rel_px + rel_vx * t;
+    closest_z = rel_pz + rel_vz * t;
+    closest_sq = closest_x * closest_x + closest_z * closest_z;
+    if (closest_sq >= combined_sq)
+        return 0.0;
+    {
+        double closest = closest_sq > 1e-12 ? sqrt(closest_sq) : 0.0;
+        double risk = (combined - closest) / combined;
+        double time_weight = 1.0 + (horizon - t) / horizon;
+        return 1000.0 * risk * risk * time_weight;
+    }
+}
+
+/// @brief Evaluate one candidate velocity against the grid or full registry.
+static double navagent_rvo_candidate_penalty(rt_navagent3d *agent,
+                                             double agent_radius,
+                                             double horizon,
+                                             int use_grid,
+                                             double cand_x,
+                                             double cand_z) {
+    rt_navagent3d *other;
+    double penalty = 0.0;
     if (use_grid && agent->in_grid) {
         double dmax = navagent_reach(agent) + g_navagent3d_max_reach;
         int ring = (int)ceil(dmax / NAVAGENT_GRID_CELL) + 1;
@@ -444,67 +535,120 @@ static int navagent_compute_avoidance_adjust(rt_navagent3d *agent,
                     int32_t qz = cz + dz;
                     uint32_t b = navagent_grid_bucket(qx, qz);
                     for (other = g_navagent3d_grid[b]; other; other = other->grid_next) {
-                        /* hash collisions can mix foreign cells into a bucket: match the exact cell
-                         * so each real cell (hence each agent) is visited at most once. */
-                        if (other->grid_cx == qx && other->grid_cz == qz)
-                            navagent_accumulate_peer(agent, other, agent_radius, lookahead,
-                                                     &adjust_x, &adjust_z);
+                        if (other->grid_cx == qx && other->grid_cz == qz) {
+                            penalty += navagent_rvo_peer_penalty(
+                                agent, other, agent_radius, horizon, cand_x, cand_z);
+                        }
                     }
                 }
             }
-            *out_ax = adjust_x;
-            *out_az = adjust_z;
-            return 1;
+            return penalty;
         }
         /* reach too large for a tight neighborhood: fall through to the full scan */
     }
     for (other = g_navagent3d_registry; other; other = other->registry_next)
-        navagent_accumulate_peer(agent, other, agent_radius, lookahead, &adjust_x, &adjust_z);
-    *out_ax = adjust_x;
-    *out_az = adjust_z;
+        penalty += navagent_rvo_peer_penalty(
+            agent, other, agent_radius, horizon, cand_x, cand_z);
+    return penalty;
+}
+
+/// @brief Compute a reciprocal velocity-obstacle steering adjustment for @p agent.
+/// @details The solver samples a deterministic set of admissible velocities around the preferred
+///   path-following velocity, scores each against predicted peer collisions over a bounded time
+///   horizon, and returns the delta from preferred to the best candidate. With @p use_grid it scans
+///   only the spatial-grid cell neighborhood sized to cover the RVO horizon.
+///   @return 1 if avoidance applies (outputs written), 0 otherwise.
+static int navagent_compute_avoidance_adjust(rt_navagent3d *agent,
+                                             double dt,
+                                             int use_grid,
+                                             double *out_ax,
+                                             double *out_az) {
+    double agent_radius;
+    double max_speed;
+    double horizon;
+    double pref_x;
+    double pref_z;
+    double pref_len;
+    double right_x = 0.0;
+    double right_z = 0.0;
+    double candidates[NAVAGENT_RVO_MAX_CANDIDATES][2];
+    int candidate_count;
+    double best_x;
+    double best_z;
+    double best_score = 1.0e300;
+    if (!agent || !agent->avoidance_enabled)
+        return 0;
+    agent_radius = navagent_effective_avoidance_radius(agent);
+    max_speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
+                    ? agent->desired_speed
+                    : 0.0;
+    if (agent_radius <= 0.0 || max_speed <= 0.0)
+        return 0;
+    horizon = (isfinite(dt) && dt > 0.0) ? dt * 12.0 : NAVAGENT_RVO_MIN_TIME_HORIZON;
+    if (horizon < NAVAGENT_RVO_MIN_TIME_HORIZON)
+        horizon = NAVAGENT_RVO_MIN_TIME_HORIZON;
+    if (horizon > NAVAGENT_RVO_MAX_TIME_HORIZON)
+        horizon = NAVAGENT_RVO_MAX_TIME_HORIZON;
+    pref_x = agent->desired_velocity[0];
+    pref_z = agent->desired_velocity[2];
+    if (!isfinite(pref_x) || !isfinite(pref_z))
+        return 0;
+    pref_len = sqrt(pref_x * pref_x + pref_z * pref_z);
+    if (pref_len <= 1e-9)
+        return 0;
+    right_x = pref_z / pref_len;
+    right_z = -pref_x / pref_len;
+    candidate_count = navagent_build_velocity_candidates(pref_x, pref_z, max_speed, candidates);
+    best_x = pref_x;
+    best_z = pref_z;
+    for (int i = 0; i < candidate_count; ++i) {
+        double cand_x = candidates[i][0];
+        double cand_z = candidates[i][1];
+        double dx = cand_x - pref_x;
+        double dz = cand_z - pref_z;
+        double cand_speed = sqrt(cand_x * cand_x + cand_z * cand_z);
+        double score = dx * dx + dz * dz;
+        double forward = cand_x * pref_x + cand_z * pref_z;
+        double side = cand_x * right_x + cand_z * right_z;
+        double speed_loss = max_speed - cand_speed;
+        score += navagent_rvo_candidate_penalty(
+            agent, agent_radius, horizon, use_grid, cand_x, cand_z);
+        if (speed_loss > 0.0)
+            score += speed_loss * speed_loss * 1.5;
+        if (forward < 0.0)
+            score += max_speed * max_speed * 2.0;
+        /* Stable reciprocal passing side: prefer the candidate to the agent's right only as a
+         * tie-breaker. Opposite headings therefore choose opposite world-space sides. */
+        score -= side * max_speed * 1e-4;
+        if (score < best_score) {
+            best_score = score;
+            best_x = cand_x;
+            best_z = cand_z;
+        }
+    }
+    *out_ax = best_x - pref_x;
+    *out_az = best_z - pref_z;
     return 1;
 }
 
-/// @brief Steer the agent's desired velocity to avoid nearby peers, with a head-on deadlock tie-break.
-/// @details Gathers peer influence via the spatial grid; when the avoidance vector points back along
-///          travel (a symmetric head-on), nudges rightward so both agents pass instead of stalling.
+/// @brief Steer the agent's desired velocity to avoid nearby peers.
+/// @details Gathers peers via the spatial grid and applies a reciprocal velocity-obstacle candidate
+///   solution. The selected candidate stays within DesiredSpeed, favors the preferred path velocity,
+///   and predicts peer collisions across a bounded time horizon instead of only pushing away after
+///   overlap.
 static void navagent_apply_local_avoidance(rt_navagent3d *agent, double dt) {
     double max_speed;
     double adjust_x = 0.0;
     double adjust_z = 0.0;
-    /* Gather peer influence through the spatial grid (full-registry fallback for large reaches). */
     if (!navagent_compute_avoidance_adjust(agent, dt, 1, &adjust_x, &adjust_z))
         return;
     max_speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
                     ? agent->desired_speed
                     : 0.0;
-
-    /* Head-on deadlock tie-break: a symmetric head-on collapses the avoidance vector to point
-     * straight back along travel, which only stalls the agent at the meeting point. When the
-     * avoidance opposes our heading, add a consistent rightward perpendicular so both agents veer
-     * to their own right and pass each other instead of deadlocking. Reciprocal: both peers run
-     * this and their headings are opposite, so they pick opposite world sides. */
-    {
-        double dvx = agent->desired_velocity[0];
-        double dvz = agent->desired_velocity[2];
-        double dv_len = sqrt(dvx * dvx + dvz * dvz);
-        double adj_len = sqrt(adjust_x * adjust_x + adjust_z * adjust_z);
-        if (dv_len > 1e-6 && adj_len > 1e-6) {
-            double ddx = dvx / dv_len;
-            double ddz = dvz / dv_len;
-            double adot = (adjust_x * ddx + adjust_z * ddz) / adj_len;
-            if (adot < -0.7) {
-                /* right of travel in XZ = (ddz, -ddx) */
-                adjust_x += ddz * adj_len;
-                adjust_z += -ddx * adj_len;
-            }
-        }
-    }
-
     if (fabs(adjust_x) + fabs(adjust_z) <= 1e-10)
         return;
-    agent->desired_velocity[0] += adjust_x * max_speed;
-    agent->desired_velocity[2] += adjust_z * max_speed;
+    agent->desired_velocity[0] += adjust_x;
+    agent->desired_velocity[2] += adjust_z;
     {
         double speed_sq = navagent_len_sq(agent->desired_velocity);
         double max_speed_sq = max_speed * max_speed;

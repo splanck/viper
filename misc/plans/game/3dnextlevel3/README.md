@@ -104,7 +104,7 @@
 
 - [x] **NL3-025 [P9] Add fine polygon-level carving plus traversal metadata.** Obstacle carving now tests exact triangle footprint overlap instead of triangle AABB overlap, `SetArea`/`GetArea`/`GetTraversalCost` assign and query polygon area/cost metadata, A* weights polygon traversal costs and publishes `LastPathCost`, and `SetOffMeshLinkMetadata` plus link getters store link kind/cost/state metadata that affects link cost. Evidence: `test_rt_navmesh_blend` covers footprint-only carving false positives, area/cost metadata, link metadata, and cost-weighted path queries; `test_graphics3d_abi_surface` and `test_rt_graphics_surface_link` guard the public surface.
 
-- [ ] **NL3-026 [P9, AC-009] Implement full ORCA/RVO-quality crowd avoidance and record an agent-count perf baseline.** The current avoidance grid and head-on tie-break prove O(N) local separation; add full crowd-solver quality, create the agent-count fixture, and record hundreds-of-agents pathing/avoidance inside budget.
+- [x] **NL3-026 [P9, AC-009] Implement full ORCA/RVO-quality crowd avoidance and record an agent-count perf baseline.** `NavAgent3D` avoidance now uses a deterministic reciprocal-velocity-obstacle candidate solver over the existing spatial grid, with path/target fallback peer intent, speed-preserving candidate scoring, and a stable passing-side tie-break. Evidence: `test_rt_navagent3d` covers lateral RVO passing, head-on deadlock avoidance, multi-lane crossing, grid/full-scan parity, and `NAVAGENT_CROWD_TARGET: agents=200 frames=180 update_us=564686 min_pair_distance=1.142 crossed=170` from the Release perf build.
 
 ### Phase 11 - Asset Pipeline Depth
 

@@ -16,6 +16,7 @@
 #include "rt_physics3d.h"
 #include "rt_scene3d.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -229,6 +230,8 @@ static void test_navagent_local_avoidance_reduces_head_on_velocity() {
     double plain_bx;
     double avoid_ax;
     double avoid_bx;
+    double avoid_az;
+    double avoid_bz;
 
     rt_navagent3d_set_desired_speed(plain_a, 2.0);
     rt_navagent3d_set_desired_speed(plain_b, 2.0);
@@ -251,21 +254,27 @@ static void test_navagent_local_avoidance_reduces_head_on_velocity() {
     rt_navagent3d_set_avoidance_enabled(avoid_b, 1);
     rt_navagent3d_set_avoidance_radius(avoid_a, 0.8);
     rt_navagent3d_set_avoidance_radius(avoid_b, 0.8);
-    rt_navagent3d_warp(avoid_a, rt_vec3_new(-0.4, 0.0, 0.0));
-    rt_navagent3d_warp(avoid_b, rt_vec3_new(0.4, 0.0, 0.0));
+    rt_navagent3d_warp(avoid_a, rt_vec3_new(-1.2, 0.0, 0.0));
+    rt_navagent3d_warp(avoid_b, rt_vec3_new(1.2, 0.0, 0.0));
     rt_navagent3d_set_target(avoid_a, rt_vec3_new(4.0, 0.0, 0.0));
     rt_navagent3d_set_target(avoid_b, rt_vec3_new(-4.0, 0.0, 0.0));
     rt_navagent3d_update(avoid_a, 0.1);
     rt_navagent3d_update(avoid_b, 0.1);
     avoid_ax = rt_vec3_x(rt_navagent3d_get_desired_velocity(avoid_a));
     avoid_bx = rt_vec3_x(rt_navagent3d_get_desired_velocity(avoid_b));
+    avoid_az = rt_vec3_z(rt_navagent3d_get_desired_velocity(avoid_a));
+    avoid_bz = rt_vec3_z(rt_navagent3d_get_desired_velocity(avoid_b));
 
     EXPECT_TRUE(plain_ax > 1.0, "NavAgent3D baseline agent steers toward its target");
     EXPECT_TRUE(plain_bx < -1.0, "NavAgent3D baseline peer steers toward its target");
-    EXPECT_TRUE(std::fabs(avoid_ax) < std::fabs(plain_ax) - 0.25,
-                "NavAgent3D avoidance reduces head-on desired velocity");
-    EXPECT_TRUE(std::fabs(avoid_bx) < std::fabs(plain_bx) - 0.25,
-                "NavAgent3D avoidance reduces peer head-on desired velocity");
+    EXPECT_TRUE(std::fabs(avoid_ax) <= std::fabs(plain_ax) + 0.01,
+                "NavAgent3D avoidance keeps agent within preferred forward speed");
+    EXPECT_TRUE(std::fabs(avoid_bx) <= std::fabs(plain_bx) + 0.01,
+                "NavAgent3D avoidance keeps peer within preferred forward speed");
+    EXPECT_TRUE(std::fabs(avoid_az) > 0.25,
+                "NavAgent3D RVO avoidance adds lateral passing velocity");
+    EXPECT_TRUE(std::fabs(avoid_az) + std::fabs(avoid_bz) > 0.25,
+                "NavAgent3D reciprocal avoidance creates a collision-free passing side");
 }
 
 static void test_navagent_avoidance_breaks_head_on_deadlock() {
@@ -380,6 +389,97 @@ static void test_navagent_avoidance_grid_matches_full_scan() {
                 "NavAgent grid avoidance matches full-scan after crowd converges");
 }
 
+static void test_navagent_agent_count_perf_target() {
+    void *mesh = rt_mesh3d_new_plane(240.0, 240.0);
+    void *navmesh = rt_navmesh3d_build(mesh, 0.35, 1.8);
+    const int lanes = 100;
+    const int pairs_per_lane = 1;
+    const int pair_count = lanes * pairs_per_lane;
+    const int agent_count = pair_count * 2;
+    const int frames = 180;
+    void *agents[agent_count];
+    double start_x[agent_count];
+    double min_pair_distance = 1.0e9;
+    int idx = 0;
+
+    for (int lane = 0; lane < lanes; ++lane) {
+        double z = ((double)lane - ((double)lanes - 1.0) * 0.5) * 2.0;
+        for (int col = 0; col < pairs_per_lane; ++col) {
+            double offset = (double)col * 0.75;
+            double left_start = -10.0 - offset;
+            double right_start = 10.0 + offset;
+            double left_goal = 10.0 - offset;
+            double right_goal = -10.0 + offset;
+            void *left = rt_navagent3d_new(navmesh, 0.35, 1.8);
+            void *right = rt_navagent3d_new(navmesh, 0.35, 1.8);
+            rt_navagent3d_set_desired_speed(left, 4.0);
+            rt_navagent3d_set_desired_speed(right, 4.0);
+            rt_navagent3d_set_stopping_distance(left, 0.2);
+            rt_navagent3d_set_stopping_distance(right, 0.2);
+            rt_navagent3d_set_avoidance_enabled(left, 1);
+            rt_navagent3d_set_avoidance_enabled(right, 1);
+            rt_navagent3d_set_avoidance_radius(left, 0.7);
+            rt_navagent3d_set_avoidance_radius(right, 0.7);
+            rt_navagent3d_warp(left, rt_vec3_new(left_start, 0.0, z));
+            rt_navagent3d_warp(right, rt_vec3_new(right_start, 0.0, z));
+            rt_navagent3d_set_target(left, rt_vec3_new(left_goal, 0.0, z));
+            rt_navagent3d_set_target(right, rt_vec3_new(right_goal, 0.0, z));
+            agents[idx] = left;
+            start_x[idx] = left_start;
+            idx++;
+            agents[idx] = right;
+            start_x[idx] = right_start;
+            idx++;
+        }
+    }
+
+    auto update_begin = std::chrono::steady_clock::now();
+    for (int frame = 0; frame < frames; ++frame) {
+        for (int i = 0; i < agent_count; ++i)
+            rt_navagent3d_update(agents[i], 1.0 / 30.0);
+        if (frame % 20 == 0) {
+            for (int i = 0; i < agent_count; ++i) {
+                void *pa = rt_navagent3d_get_position(agents[i]);
+                for (int j = i + 1; j < agent_count; ++j) {
+                    void *pb = rt_navagent3d_get_position(agents[j]);
+                    double dx = rt_vec3_x(pa) - rt_vec3_x(pb);
+                    double dz = rt_vec3_z(pa) - rt_vec3_z(pb);
+                    double d = std::sqrt(dx * dx + dz * dz);
+                    if (d < min_pair_distance)
+                        min_pair_distance = d;
+                }
+            }
+        }
+    }
+    auto update_end = std::chrono::steady_clock::now();
+
+    int crossed = 0;
+    for (int i = 0; i < agent_count; ++i) {
+        void *pos = rt_navagent3d_get_position(agents[i]);
+        double x = rt_vec3_x(pos);
+        if ((start_x[i] < 0.0 && x > 0.0) || (start_x[i] > 0.0 && x < 0.0))
+            crossed++;
+    }
+    long long update_us =
+        (long long)std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_begin)
+            .count();
+    std::printf("NAVAGENT_CROWD_TARGET: agents=%d frames=%d update_us=%lld "
+                "min_pair_distance=%.3f crossed=%d\n",
+                agent_count,
+                frames,
+                update_us,
+                min_pair_distance,
+                crossed);
+
+    EXPECT_TRUE(agent_count >= 200, "NavAgent crowd target uses hundreds of agents");
+    EXPECT_TRUE(crossed >= agent_count * 3 / 4,
+                "NavAgent crowd target: most agents cross through the crowd");
+    EXPECT_TRUE(min_pair_distance > 0.25,
+                "NavAgent crowd target: RVO keeps a bounded minimum pair distance");
+    EXPECT_TRUE(rt_navagent3d_check_avoidance_grid_parity() == 1,
+                "NavAgent crowd target: grid and full-scan RVO agree after the fixture");
+}
+
 static void test_navagent_rejects_wrong_handle_types() {
     void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
     void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
@@ -411,6 +511,7 @@ int main() {
     test_navagent_avoidance_breaks_head_on_deadlock();
     test_navagent_crowd_multiple_pairs_cross();
     test_navagent_avoidance_grid_matches_full_scan();
+    test_navagent_agent_count_perf_target();
     test_navagent_rejects_wrong_handle_types();
 
     std::printf("NavAgent3D tests: %d/%d passed\n", tests_passed, tests_run);

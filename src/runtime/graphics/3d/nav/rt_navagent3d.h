@@ -9,7 +9,7 @@
 // Purpose: Gameplay-facing single-agent navigation layer on top of NavMesh3D.
 //
 // Key invariants:
-//   - NavAgent3D owns a goal, sampled path corners, and simple steering state.
+//   - NavAgent3D owns a goal, sampled path corners, and local avoidance steering state.
 //   - Update() can drive a bound Character3D or directly reposition a SceneNode3D.
 //   - Auto-repath is intentionally simple in v1: periodic rebuilds while a goal
 //     remains active and the agent is not within the stopping distance.

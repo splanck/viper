@@ -557,9 +557,12 @@ of triangle AABB overlap. `RemoveObstacle` and `UpdateObstacle` edit that author
 obstacle list through the same tiled/non-tiled paths. `SetArea` tags polygons
 with area names and traversal-cost multipliers, `GetArea`/`GetTraversalCost`
 query that metadata, and `LastPathCost` reports the weighted latest path cost.
-`NavAgent3D` now has opt-in
-same-NavMesh local separation via `AvoidanceEnabled`/`AvoidanceRadius`; this is a
-working lightweight avoidance baseline, not the full ORCA/RVO crowd solver.
+`NavAgent3D` now has opt-in same-NavMesh reciprocal velocity-obstacle avoidance
+via `AvoidanceEnabled`/`AvoidanceRadius`; it scans nearby spatial-grid peers,
+predicts collision risk over a bounded horizon, and chooses a deterministic
+speed-preserving candidate velocity. The named Release target records
+`NAVAGENT_CROWD_TARGET: agents=200 frames=180 update_us=564686
+min_pair_distance=1.142 crossed=170`.
 
 **Change.**
 
@@ -570,8 +573,9 @@ working lightweight avoidance baseline, not the full ORCA/RVO crowd solver.
 - Extend off-mesh link metadata into traversal animation/state-machine hooks and
   replace the current portal-width gate with full `agent_radius`
   polygon/corridor erosion.
-- Implement local avoidance (ORCA/RVO-style) and pathfinding acceleration
-  (spatial find-tri, path cache, time-sliced/hierarchical A*), parallel via §1.
+- Implement local avoidance (RVO-style) and pathfinding acceleration (spatial
+  find-tri landed; path cache and time-sliced/hierarchical A* remain future
+  refinements), parallel via §1.
 
 **Tests.** Autogen vs. hand-baked equivalence; tile rebuild on obstacle change;
 avoidance interpenetration bounds; agent-count perf fixture.

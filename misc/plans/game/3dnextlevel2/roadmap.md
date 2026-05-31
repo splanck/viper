@@ -407,14 +407,14 @@ Goal: many NPCs navigating a large, changing world.
   obstacle carving (doors, placed objects) and runtime tile rebuild. `BakeTiled`
   now retains tile-local voxel source data and `RebuildTile` refreshes the
   requested tile; exact triangle-footprint carving and traversal metadata are
-  in place, while clipped sub-polygon carving and the crowd/perf exit remain.
+  in place, while clipped sub-polygon carving remains a future refinement.
 - Implement off-mesh links (jumps/ladders/drop-downs), traversal state metadata,
   and richer area/cost metadata. Link kind/cost/state metadata, polygon
   area/cost metadata, `agent_radius` erosion, and portal gating are in place for
   the current baker.
-- Implement local avoidance (ORCA/RVO-style) and pathfinding acceleration
-  (spatialized find-tri, path caching, time-sliced/hierarchical A*), parallelized
-  via Phase 1.
+- Implement local avoidance (RVO-style) and pathfinding acceleration
+  (spatialized find-tri landed; path caching and time-sliced/hierarchical A*
+  remain future refinements), parallelized via Phase 1.
 
 Exit:
 

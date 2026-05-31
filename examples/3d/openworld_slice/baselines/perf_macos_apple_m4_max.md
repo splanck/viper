@@ -118,3 +118,19 @@ supports readback.
 | Backend | Cascades | Shadow map | Main draws | Direct csm us | CTest csm us |
 |---|---:|---:|---:|---:|---:|
 | metal | 3 | 1024 | 4 | 239 | 211 |
+
+## NL3-026 NavAgent Crowd Target
+
+Recorded on: 2026-05-31
+
+Command:
+
+- `ctest --test-dir build_release_perf -R '^test_rt_navagent3d$' --output-on-failure -V`
+
+The NavAgent target authors 200 RVO-enabled agents in 100 opposing lanes,
+updates 180 fixed frames, checks grid-vs-full-scan parity, records the minimum
+sampled pair distance, and counts agents that crossed through the fixture.
+
+| Build | Agents | Frames | Update us | Min pair distance | Crossed |
+|---|---:|---:|---:|---:|---:|
+| Release | 200 | 180 | 564686 | 1.142 | 170 |
