@@ -361,8 +361,9 @@ void *rt_tcp_connect(rt_string host, int64_t port) {
 void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     rt_net_init_wsa();
 
-    const char *host_ptr = rt_string_cstr(host);
-    if (!host_ptr || *host_ptr == '\0') {
+    const char *host_ptr = NULL;
+    size_t host_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(host, &host_ptr, &host_len) || host_len == 0) {
         rt_trap("Network: invalid host");
     }
 
@@ -374,12 +375,12 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
         rt_trap("Network: invalid timeout");
 
     // Copy host string
-    size_t host_len = strlen(host_ptr);
     char *host_cstr = (char *)malloc(host_len + 1);
     if (!host_cstr) {
         rt_trap("Network: memory allocation failed");
     }
-    memcpy(host_cstr, host_ptr, host_len + 1);
+    memcpy(host_cstr, host_ptr, host_len);
+    host_cstr[host_len] = '\0';
 
     // Resolve hostname
     struct addrinfo hints, *res, *rp;
@@ -997,8 +998,9 @@ void *rt_tcp_server_listen(int64_t port) {
 
 /// @brief Listen on `port` bound to a specific local address (e.g. `"127.0.0.1"` or `"::1"`).
 void *rt_tcp_server_listen_at(rt_string address, int64_t port) {
-    const char *addr_ptr = rt_string_cstr(address);
-    if (!addr_ptr || *addr_ptr == '\0')
+    const char *addr_ptr = NULL;
+    size_t addr_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(address, &addr_ptr, &addr_len) || addr_len == 0)
         rt_trap("Network: invalid address");
     return rt_tcp_server_listen_impl(addr_ptr, port);
 }

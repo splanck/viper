@@ -92,6 +92,13 @@ static inline int64_t bytes_len(void *obj) {
     return rt_bytes_len(obj);
 }
 
+static void *cipher_bytes_new_or_trap(int64_t len, const char *op) {
+    void *bytes = rt_bytes_new(len);
+    if (!bytes)
+        rt_trap(op);
+    return bytes;
+}
+
 //=============================================================================
 // Key Derivation
 //=============================================================================
@@ -118,14 +125,18 @@ static const char *cipher_password_bytes(rt_string password, size_t *len, const 
     }
 
     int64_t len64 = rt_str_len(password);
-    if (len64 <= 0) {
+    if (len64 < 0) {
+        rt_trap("Cipher: invalid password length");
+        return "";
+    }
+    if (len64 == 0) {
         *len = 0;
         return "";
     }
 
     const char *pwd = rt_string_cstr(password);
     if (!pwd) {
-        *len = 0;
+        rt_trap("Cipher: password data is null");
         return "";
     }
 
@@ -343,7 +354,7 @@ void *rt_cipher_encrypt_aad(void *plaintext, rt_string password, void *aad) {
     uint8_t key[CIPHER_KEY_SIZE];
     derive_key_pbkdf2(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
 
-    void *result = rt_bytes_new(out_len);
+    void *result = cipher_bytes_new_or_trap(out_len, "Cipher.Encrypt: allocation failed");
     uint8_t *out_data = bytes_data(result);
 
     memcpy(
@@ -462,7 +473,7 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
                                        key,
                                        CIPHER_KEY_SIZE);
 
-        void *result = rt_bytes_new(plain_len);
+        void *result = cipher_bytes_new_or_trap(plain_len, "Cipher.Decrypt: allocation failed");
         uint8_t *plain_data = bytes_data(result);
         const uint8_t *aad_data;
         size_t aad_len;
@@ -511,7 +522,7 @@ void *rt_cipher_decrypt_aad(void *ciphertext, rt_string password, void *aad) {
     const uint8_t *encrypted = ct_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE;
     int64_t encrypted_len = ct_len - CIPHER_SALT_SIZE - CIPHER_NONCE_SIZE;
     int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
-    void *result = rt_bytes_new(plain_len);
+    void *result = cipher_bytes_new_or_trap(plain_len, "Cipher.Decrypt: allocation failed");
     uint8_t *plain_data = bytes_data(result);
 
     uint8_t key[CIPHER_KEY_SIZE];
@@ -594,7 +605,7 @@ void *rt_cipher_encrypt_with_key_aad(void *plaintext, void *key_bytes, void *aad
     uint8_t nonce[CIPHER_NONCE_SIZE];
     rt_crypto_random_bytes(nonce, CIPHER_NONCE_SIZE);
 
-    void *result = rt_bytes_new(out_len);
+    void *result = cipher_bytes_new_or_trap(out_len, "Cipher.EncryptWithKey: allocation failed");
     uint8_t *out_data = bytes_data(result);
 
     memcpy(out_data,
@@ -697,7 +708,8 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     int64_t encrypted_len = ct_len - header_len;
 
     int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
-    void *result = rt_bytes_new(plain_len);
+    void *result =
+        cipher_bytes_new_or_trap(plain_len, "Cipher.DecryptWithKey: allocation failed");
     uint8_t *plain_data = bytes_data(result);
 
     const uint8_t *aad_data = NULL;
@@ -736,7 +748,7 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
 ///          (arc4random on macOS, BCryptGenRandom on Windows, /dev/urandom on Linux).
 /// @return Bytes object containing 32 cryptographically random bytes.
 void *rt_cipher_generate_key(void) {
-    void *key = rt_bytes_new(CIPHER_KEY_SIZE);
+    void *key = cipher_bytes_new_or_trap(CIPHER_KEY_SIZE, "Cipher.GenerateKey: allocation failed");
     rt_crypto_random_bytes(bytes_data(key), CIPHER_KEY_SIZE);
     return key;
 }
@@ -773,7 +785,7 @@ void *rt_cipher_derive_key(rt_string password, void *salt_bytes) {
         return NULL;
     }
 
-    void *key = rt_bytes_new(CIPHER_KEY_SIZE);
+    void *key = cipher_bytes_new_or_trap(CIPHER_KEY_SIZE, "Cipher.DeriveKey: allocation failed");
     derive_key_pbkdf2(pwd, pwd_len, salt, (size_t)salt_len, bytes_data(key));
 
     return key;

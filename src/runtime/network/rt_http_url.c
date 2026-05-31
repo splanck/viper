@@ -1146,7 +1146,9 @@ void *rt_url_resolve(void *obj, rt_string relative) {
             rt_url_strdup_or_trap_cleanup(result, rel.host, "URL.Resolve: host allocation failed");
         result->port = rel.port;
         result->path =
-            rt_url_strdup_or_trap_cleanup(result, rel.path, "URL.Resolve: path allocation failed");
+            rel.path ? normalize_path(rel.path)
+                     : rt_url_strdup_or_trap_cleanup(
+                           result, rel.path, "URL.Resolve: path allocation failed");
         result->query = rt_url_strdup_or_trap_cleanup(
             result, rel.query, "URL.Resolve: query allocation failed");
     } else {
@@ -1161,8 +1163,10 @@ void *rt_url_resolve(void *obj, rt_string relative) {
             result->host = rt_url_strdup_or_trap_cleanup(
                 result, rel.host, "URL.Resolve: host allocation failed");
             result->port = rel.port;
-            result->path = rt_url_strdup_or_trap_cleanup(
-                result, rel.path, "URL.Resolve: path allocation failed");
+            result->path =
+                rel.path ? normalize_path(rel.path)
+                         : rt_url_strdup_or_trap_cleanup(
+                               result, rel.path, "URL.Resolve: path allocation failed");
             result->query = rt_url_strdup_or_trap_cleanup(
                 result, rel.query, "URL.Resolve: query allocation failed");
         } else {

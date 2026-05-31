@@ -38,6 +38,7 @@
 #include "rt_graphics3d_ids.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_platform.h"
 #include "rt_trap.h"
 
 #include <stdint.h>

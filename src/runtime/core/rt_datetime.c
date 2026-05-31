@@ -690,11 +690,10 @@ rt_string rt_datetime_to_local(int64_t timestamp) {
 /// Print "Days until Christmas: " & (diff / 86400)
 /// ```
 ///
-/// **Overflow handling:**
-/// The function normalizes overflow values. For example:
-/// - Month 13 → January of next year
-/// - Day 32 of January → February 1
-/// - Hour 25 → 1 AM next day
+/// **Validation handling:**
+/// The function rejects out-of-range or normalized component values.
+/// Examples rejected with -1 include month 13, day 32, invalid leap days,
+/// hour 24, minute 60, and second 60.
 ///
 /// @param year The year (e.g., 2023).
 /// @param month The month (1-12, where 1 = January).
@@ -741,14 +740,21 @@ int64_t rt_datetime_create(
     tm.tm_sec = tm_sec;
     tm.tm_isdst = -1; // Let the system determine DST
 
+    const int orig_tm_year = tm.tm_year;
+    const int orig_tm_mon = tm.tm_mon;
+    const int orig_tm_mday = tm.tm_mday;
+    const int orig_tm_hour = tm.tm_hour;
+    const int orig_tm_min = tm.tm_min;
+    const int orig_tm_sec = tm.tm_sec;
+
     time_t t = mktime(&tm);
     struct tm check_buf;
     struct tm *check = rt_localtime_r(&t, &check_buf);
     if (!check)
         return -1;
-    if (check->tm_year != tm.tm_year || check->tm_mon != tm.tm_mon ||
-        check->tm_mday != tm.tm_mday || check->tm_hour != tm.tm_hour ||
-        check->tm_min != tm.tm_min || check->tm_sec != tm.tm_sec)
+    if (check->tm_year != orig_tm_year || check->tm_mon != orig_tm_mon ||
+        check->tm_mday != orig_tm_mday || check->tm_hour != orig_tm_hour ||
+        check->tm_min != orig_tm_min || check->tm_sec != orig_tm_sec)
         return -1;
 
     int64_t result;
@@ -906,17 +912,47 @@ static int dt_is_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
+/// @brief Borrow a runtime string as bytes, rejecting embedded NULs for C-style parsers.
+static const char *dt_cstr_without_embedded_nul(rt_string s, size_t *len_out) {
+    if (!s || !len_out)
+        return NULL;
+    int64_t len64 = rt_str_len(s);
+    if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+        return NULL;
+    const char *str = rt_string_cstr(s);
+    if (!str && len64 > 0)
+        return NULL;
+    size_t len = (size_t)len64;
+    if (str && memchr(str, '\0', len) != NULL)
+        return NULL;
+    *len_out = len;
+    return str ? str : "";
+}
+
 /// @brief Helper to parse exactly N digits from a string.
 /// @return The parsed integer, or -1 if insufficient digits.
-static int dt_parse_digits(const char *s, int n, const char **end) {
+static int dt_parse_digits(const char *s, const char *limit, int n, const char **end) {
     int val = 0;
     for (int i = 0; i < n; ++i) {
-        if (s[i] == '\0' || !dt_is_digit(s[i]))
+        if (s + i >= limit || !dt_is_digit(s[i]))
             return -1;
         val = val * 10 + (s[i] - '0');
     }
     *end = s + n;
     return val;
+}
+
+/// @brief Consume an optional fractional seconds suffix. If '.' is present, at least one digit is
+/// required. Fractions are truncated because DateTime stores whole seconds.
+static int dt_parse_optional_fraction(const char **p, const char *limit) {
+    if (*p >= limit || **p != '.')
+        return 1;
+    (*p)++;
+    if (*p >= limit || !dt_is_digit(**p))
+        return 0;
+    while (*p < limit && dt_is_digit(**p))
+        (*p)++;
+    return 1;
 }
 
 /// @brief Gregorian leap-year predicate.
@@ -1021,88 +1057,120 @@ static int dt_make_local_timestamp(
 ///          1 with @p out populated on success, 0 on any malformed input. Used by the
 ///          DateTime parser entry points.
 static int dt_parse_iso_impl(rt_string s, int64_t *out) {
-    const char *str = rt_string_cstr(s);
+    size_t len = 0;
+    const char *str = dt_cstr_without_embedded_nul(s, &len);
     if (!str || !out)
         return 0;
 
     const char *p = str;
+    const char *limit = str + len;
     const char *end;
 
-    int year = dt_parse_digits(p, 4, &end);
-    if (year < 0 || *end != '-')
+    int year = dt_parse_digits(p, limit, 4, &end);
+    if (year < 0 || end >= limit || *end != '-')
         return 0;
     p = end + 1;
 
-    int month = dt_parse_digits(p, 2, &end);
-    if (month < 0 || *end != '-')
+    int month = dt_parse_digits(p, limit, 2, &end);
+    if (month < 0 || end >= limit || *end != '-')
         return 0;
     p = end + 1;
 
-    int day = dt_parse_digits(p, 2, &end);
+    int day = dt_parse_digits(p, limit, 2, &end);
     if (day < 0)
         return 0;
     p = end;
 
-    if (*p != 'T' && *p != 't' && *p != ' ')
+    if (p >= limit || (*p != 'T' && *p != 't' && *p != ' '))
         return 0;
     p++;
 
-    int hour = dt_parse_digits(p, 2, &end);
-    if (hour < 0 || *end != ':')
+    int hour = dt_parse_digits(p, limit, 2, &end);
+    if (hour < 0 || end >= limit || *end != ':')
         return 0;
     p = end + 1;
 
-    int minute = dt_parse_digits(p, 2, &end);
-    if (minute < 0 || *end != ':')
+    int minute = dt_parse_digits(p, limit, 2, &end);
+    if (minute < 0 || end >= limit || *end != ':')
         return 0;
     p = end + 1;
 
-    int second = dt_parse_digits(p, 2, &end);
+    int second = dt_parse_digits(p, limit, 2, &end);
     if (second < 0)
         return 0;
     p = end;
 
+    if (!dt_parse_optional_fraction(&p, limit))
+        return 0;
+
     int is_utc = 0;
-    if (*p == 'Z' || *p == 'z') {
+    int offset_seconds = 0;
+    if (p < limit && (*p == 'Z' || *p == 'z')) {
         is_utc = 1;
         p++;
+    } else if (p < limit && (*p == '+' || *p == '-')) {
+        int sign = *p == '-' ? -1 : 1;
+        int offset_hour;
+        int offset_minute;
+        p++;
+        offset_hour = dt_parse_digits(p, limit, 2, &end);
+        if (offset_hour < 0 || end >= limit || *end != ':')
+            return 0;
+        p = end + 1;
+        offset_minute = dt_parse_digits(p, limit, 2, &end);
+        if (offset_minute < 0)
+            return 0;
+        if (offset_hour > 23 || offset_minute > 59)
+            return 0;
+        p = end;
+        offset_seconds = sign * (offset_hour * 3600 + offset_minute * 60);
+        is_utc = 1;
     }
-    if (*p != '\0')
+    if (p != limit)
         return 0;
 
     if (!dt_is_valid_datetime(year, month, day, hour, minute, second))
         return 0;
 
-    if (is_utc)
-        return dt_make_utc_timestamp(year, month, day, hour, minute, second, out);
+    if (is_utc) {
+        int64_t utc_value;
+        if (!dt_make_utc_timestamp(year, month, day, hour, minute, second, &utc_value))
+            return 0;
+        if (offset_seconds != 0 && dt_checked_sub_i64(utc_value, offset_seconds, &utc_value))
+            return 0;
+        *out = utc_value;
+        return 1;
+    }
     return dt_make_local_timestamp(year, month, day, hour, minute, second, out);
 }
 
-/// @brief Parse `YYYY-MM-DD` into an epoch-seconds value (midnight UTC).
+/// @brief Parse `YYYY-MM-DD` into an epoch-seconds value (local midnight).
 /// @details Returns 1 with @p out populated on success, 0 on malformed input.
 static int dt_parse_date_impl(rt_string s, int64_t *out) {
-    const char *str = rt_string_cstr(s);
+    size_t len = 0;
+    const char *str = dt_cstr_without_embedded_nul(s, &len);
     if (!str || !out)
         return 0;
 
     const char *p = str;
+    const char *limit = str + len;
     const char *end;
 
-    int year = dt_parse_digits(p, 4, &end);
-    if (year < 0 || *end != '-')
+    int year = dt_parse_digits(p, limit, 4, &end);
+    if (year < 0 || end >= limit || *end != '-')
         return 0;
     p = end + 1;
 
-    int month = dt_parse_digits(p, 2, &end);
-    if (month < 0 || *end != '-')
+    int month = dt_parse_digits(p, limit, 2, &end);
+    if (month < 0 || end >= limit || *end != '-')
         return 0;
     p = end + 1;
 
-    int day = dt_parse_digits(p, 2, &end);
+    int day = dt_parse_digits(p, limit, 2, &end);
     if (day < 0)
         return 0;
     p = end;
-    if (*p != '\0')
+    if (p != limit)
         return 0;
 
     if (!dt_is_valid_datetime(year, month, day, 0, 0, 0))
@@ -1110,36 +1178,40 @@ static int dt_parse_date_impl(rt_string s, int64_t *out) {
     return dt_make_local_timestamp(year, month, day, 0, 0, 0, out);
 }
 
-/// @brief Parse `HH:MM:SS[.fff]` into a millisecond duration value.
+/// @brief Parse `HH:MM[:SS[.fff]]` into seconds since midnight.
 /// @details Returns 1 with @p out populated on success, 0 on malformed input.
 static int dt_parse_time_impl(rt_string s, int64_t *out) {
-    const char *str = rt_string_cstr(s);
+    size_t len = 0;
+    const char *str = dt_cstr_without_embedded_nul(s, &len);
     if (!str || !out)
         return 0;
 
     const char *p = str;
+    const char *limit = str + len;
     const char *end;
 
-    int hour = dt_parse_digits(p, 2, &end);
-    if (hour < 0 || *end != ':')
+    int hour = dt_parse_digits(p, limit, 2, &end);
+    if (hour < 0 || end >= limit || *end != ':')
         return 0;
     p = end + 1;
 
-    int minute = dt_parse_digits(p, 2, &end);
+    int minute = dt_parse_digits(p, limit, 2, &end);
     if (minute < 0)
         return 0;
     p = end;
 
     int second = 0;
-    if (*p == ':') {
+    if (p < limit && *p == ':') {
         p++;
-        second = dt_parse_digits(p, 2, &end);
+        second = dt_parse_digits(p, limit, 2, &end);
         if (second < 0)
             return 0;
         p = end;
+        if (!dt_parse_optional_fraction(&p, limit))
+            return 0;
     }
 
-    if (*p != '\0')
+    if (p != limit)
         return 0;
     if (hour > 23 || minute > 59 || second > 59)
         return 0;
@@ -1189,11 +1261,10 @@ int64_t rt_datetime_parse_time(rt_string s) {
 /// @param s Runtime string to parse.
 /// @return Unix timestamp on success, or 0 on parse failure.
 int64_t rt_datetime_try_parse(rt_string s) {
-    const char *str = rt_string_cstr(s);
-    if (!str || *str == '\0')
+    size_t len = 0;
+    const char *str = dt_cstr_without_embedded_nul(s, &len);
+    if (!str || len == 0)
         return 0;
-
-    size_t len = strlen(str);
 
     if (len >= 19) {
         int64_t result;
@@ -1207,7 +1278,7 @@ int64_t rt_datetime_try_parse(rt_string s) {
             return result;
     }
 
-    if ((len == 5 || len == 8) && str[2] == ':') {
+    if (len >= 5 && str[2] == ':') {
         int64_t result;
         if (dt_parse_time_impl(s, &result))
             return result;

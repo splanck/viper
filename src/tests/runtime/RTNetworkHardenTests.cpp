@@ -287,7 +287,56 @@ static void test_dns_nonexistent_domain() {
     printf("  PASS: DnsNonexistentDomain → Err_DnsError (%d)\n", code);
 }
 
-// ── Scenario 6: HTTP request with malformed URL ────────────────────────────
+// ── Scenario 6: Embedded NUL network inputs ────────────────────────────────
+// Runtime strings with embedded NUL bytes must not be truncated by OS APIs.
+static void test_embedded_nul_network_inputs_rejected() {
+    const char hidden_host[] = "127.0.0.1\0.example.invalid";
+    const char hidden_group[] = "224.0.0.1\0.example.invalid";
+    rt_string host = rt_string_from_bytes(hidden_host, sizeof(hidden_host) - 1);
+    rt_string group = rt_string_from_bytes(hidden_group, sizeof(hidden_group) - 1);
+
+    EXPECT_TRAP(rt_tcp_connect_for(host, 80, 1));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid host") != nullptr);
+    EXPECT_TRAP(rt_tcp_server_listen_at(host, 0));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid address") != nullptr);
+
+    EXPECT_TRAP(rt_dns_resolve(host));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid hostname") != nullptr);
+    EXPECT_TRAP(rt_dns_resolve_all(host));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid hostname") != nullptr);
+    EXPECT_TRAP(rt_dns_resolve4(host));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid hostname") != nullptr);
+    EXPECT_TRAP(rt_dns_resolve6(host));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid hostname") != nullptr);
+    EXPECT_TRAP(rt_dns_reverse(host));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid address") != nullptr);
+
+    assert(rt_dns_is_ipv4(host) == 0);
+    assert(rt_dns_is_ipv6(host) == 0);
+    assert(rt_dns_is_ip(host) == 0);
+
+    EXPECT_TRAP(rt_udp_bind_at(host, 0));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid address") != nullptr);
+
+    void *udp = rt_udp_new();
+    void *payload = rt_bytes_new(1);
+    EXPECT_TRAP(rt_udp_send_to(udp, host, 9, payload));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid host") != nullptr);
+    EXPECT_TRAP(rt_udp_send_to_str(udp, host, 9, rt_const_cstr("x")));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid host") != nullptr);
+    EXPECT_TRAP(rt_udp_join_group(udp, group));
+    assert(g_last_trap != nullptr && strstr(g_last_trap, "invalid multicast") != nullptr);
+
+    rt_udp_close(udp);
+    if (rt_obj_release_check0(payload))
+        rt_obj_free(payload);
+    rt_string_unref(host);
+    rt_string_unref(group);
+
+    printf("  PASS: EmbeddedNulNetworkInputs -> rejected before OS calls\n");
+}
+
+// ── Scenario 7: HTTP request with malformed URL ────────────────────────────
 // Note: This test is skipped if rt_http_get is not available (link-time check).
 // The HTTP functions wrap rt_tcp_connect which we've already tested, so we
 // verify the URL validation path specifically.
@@ -307,7 +356,7 @@ static void test_http_malformed_url() {
     printf("  PASS: HttpMalformedUrl → Err_InvalidUrl (%d)\n", code);
 }
 
-// ── Scenario 7: Connection stall mid-transfer (recv timeout) ───────────────
+// ── Scenario 8: Connection stall mid-transfer (recv timeout) ───────────────
 static void test_connection_stall_mid_transfer() {
     int port = 0;
     sock_t listener = make_listener(&port);
@@ -350,7 +399,7 @@ static void test_connection_stall_mid_transfer() {
     SOCK_CLOSE(listener);
 }
 
-// ── Scenario 8: Network unreachable (RFC 5737 TEST-NET) ────────────────────
+// ── Scenario 9: Network unreachable (RFC 5737 TEST-NET) ────────────────────
 static void test_network_unreachable() {
     // 192.0.2.1 is RFC 5737 TEST-NET-1 — should be unreachable on any real network.
     rt_string host = rt_string_from_bytes("192.0.2.1", 9);
@@ -364,7 +413,7 @@ static void test_network_unreachable() {
     printf("  PASS: NetworkUnreachable → code %d\n", code);
 }
 
-// ── Scenario 9: Resolve IPv4 for nonexistent domain ────────────────────────
+// ── Scenario 10: Resolve IPv4 for nonexistent domain ───────────────────────
 static void test_dns_resolve4_nonexistent() {
     rt_string domain = rt_string_from_bytes("nohost.invalid", 14);
     EXPECT_TRAP(rt_dns_resolve4(domain));
@@ -376,7 +425,7 @@ static void test_dns_resolve4_nonexistent() {
     printf("  PASS: DnsResolve4Nonexistent → Err_DnsError (%d)\n", code);
 }
 
-// ── Scenario 10: Reverse DNS for non-routable address ──────────────────────
+// ── Scenario 11: Reverse DNS for non-routable address ──────────────────────
 static void test_dns_reverse_invalid() {
     rt_string addr = rt_string_from_bytes("192.0.2.1", 9);
     EXPECT_TRAP(rt_dns_reverse(addr));
@@ -388,7 +437,7 @@ static void test_dns_reverse_invalid() {
     printf("  PASS: DnsReverseInvalid → Err_DnsError (%d)\n", code);
 }
 
-// ── Scenario 11: HTTP invalid Content-Length is rejected ───────────────────
+// ── Scenario 12: HTTP invalid Content-Length is rejected ───────────────────
 static void test_http_invalid_content_length() {
     int port = 0;
     sock_t listener = make_listener(&port);
@@ -433,7 +482,7 @@ static void test_http_invalid_content_length() {
     server.join();
 }
 
-// ── Scenario 12: HTTP unsupported Transfer-Encoding is rejected ────────────
+// ── Scenario 13: HTTP unsupported Transfer-Encoding is rejected ────────────
 static void test_http_unsupported_transfer_encoding() {
     int port = 0;
     sock_t listener = make_listener(&port);
@@ -480,7 +529,7 @@ static void test_http_unsupported_transfer_encoding() {
     server.join();
 }
 
-// ── Scenario 13: UDP oversized datagrams are not silently truncated ─────────
+// ── Scenario 14: UDP oversized datagrams are not silently truncated ────────
 static void test_udp_oversized_datagram_traps() {
     void *receiver = rt_udp_bind_at(rt_const_cstr("127.0.0.1"), 0);
     void *sender = rt_udp_bind_at(rt_const_cstr("127.0.0.1"), 0);
@@ -509,7 +558,7 @@ static void test_udp_oversized_datagram_traps() {
     rt_udp_close(receiver);
 }
 
-// ── Scenario 14: Async connect failure resolves as Future error ───────────
+// ── Scenario 15: Async connect failure resolves as Future error ───────────
 static void test_async_connect_failure_surfaces_as_future_error() {
     void *future = rt_async_connect_for(rt_const_cstr("127.0.0.1"), 1, 2000);
     assert(future != nullptr);
@@ -533,6 +582,7 @@ int main() {
     test_send_after_remote_close();
     test_recv_on_closed_connection();
     test_dns_nonexistent_domain();
+    test_embedded_nul_network_inputs_rejected();
     test_http_malformed_url();
     test_connection_stall_mid_transfer();
     test_network_unreachable();

@@ -2048,6 +2048,17 @@ static void test_url_resolve() {
     void *r3 = rt_url_resolve(base, rt_const_cstr("https://other.com/x"));
     const char *full3 = rt_string_cstr(rt_url_full(r3));
     test_result("Resolve different scheme", strcmp(full3, "https://other.com/x") == 0);
+
+    // RFC dot-segment removal also applies to schemed and authority references.
+    void *r4 = rt_url_resolve(base, rt_const_cstr("https://other.com/a/../x"));
+    const char *full4 = rt_string_cstr(rt_url_full(r4));
+    test_result("Resolve schemed path normalizes dot segments",
+                strcmp(full4, "https://other.com/x") == 0);
+
+    void *r5 = rt_url_resolve(base, rt_const_cstr("//other.com/a/../x?y=1#f"));
+    const char *full5 = rt_string_cstr(rt_url_full(r5));
+    test_result("Resolve authority path normalizes dot segments",
+                strcmp(full5, "http://other.com/x?y=1#f") == 0);
 }
 
 /// @brief Test percent encoding/decoding.

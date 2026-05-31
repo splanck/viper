@@ -1451,7 +1451,7 @@ var formatted = Time.DateTime.Format(ts, "%Y-%m-%d %H:%M:%S");
 func ParseISO(str: String) -> Integer
 ```
 
-Parses an ISO 8601 date/time String into a Unix timestamp.
+Parses an ISO 8601 date/time String into a Unix timestamp. Fractional seconds are accepted and truncated to whole seconds. A `Z` suffix or numeric `+HH:MM`/`-HH:MM` offset is interpreted as UTC; no suffix is interpreted as local time.
 
 **Example:**
 ```rust

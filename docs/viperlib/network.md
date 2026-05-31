@@ -80,6 +80,8 @@ network conditions and cannot be recovered from.
 
 URL parsers for HTTP, HTTPS, WS, WSS, and SSE reject empty hosts, malformed ports, malformed IPv6 authorities, port overflow, and control-character injection. HTTP chunked framing is parsed strictly; malformed chunk-size lines and non-empty chunk terminators fail as protocol errors instead of being partially accepted. HTTP request and response `Transfer-Encoding` handling supports a single final `chunked` coding; unsupported, duplicate, trailing-comma, or non-final transfer codings are rejected rather than falling back to `Content-Length`.
 
+Host, hostname, and local-address string inputs reject embedded `NUL` bytes before reaching OS networking APIs; payload string methods such as `SendStr` preserve embedded `NUL` bytes as data.
+
 ---
 
 ## Viper.Network.Tcp

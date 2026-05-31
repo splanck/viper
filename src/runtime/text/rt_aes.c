@@ -79,20 +79,22 @@ static void aes_secure_zero(void *ptr, size_t len) {
         *p++ = 0;
 }
 
-/// @brief Extract a raw byte pointer and byte count from an rt_string.
-///        Returns an empty C string and sets *len = 0 for null or zero-length input.
-static const uint8_t *aes_string_bytes(rt_string str, size_t *len) {
+/// @brief Extract a raw byte pointer and byte count from a required rt_string.
+///        Returns an empty C string and sets *len = 0 for real zero-length input.
+static const uint8_t *aes_string_bytes(rt_string str, size_t *len, const char *null_message) {
+    if (!str)
+        rt_trap(null_message);
     int64_t len64 = rt_str_len(str);
-    if (len64 <= 0) {
+    if (len64 < 0)
+        rt_trap("AES: invalid string length");
+    if (len64 == 0) {
         *len = 0;
         return (const uint8_t *)"";
     }
 
     const char *cstr = rt_string_cstr(str);
-    if (!cstr) {
-        *len = 0;
-        return (const uint8_t *)"";
-    }
+    if (!cstr)
+        rt_trap(null_message);
 
     *len = (size_t)len64;
     return (const uint8_t *)cstr;
@@ -806,6 +808,12 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
 void *rt_aes_encrypt(void *data, void *key, void *iv) {
     if (rt_crypto_module_is_approved_mode())
         rt_trap("AES.CBC is not an approved-mode Viper service; use AES-GCM");
+    if (!data)
+        rt_trap("AES: plaintext is null");
+    if (!key)
+        rt_trap("AES: key is null");
+    if (!iv)
+        rt_trap("AES: IV is null");
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -875,6 +883,12 @@ void *rt_aes_encrypt(void *data, void *key, void *iv) {
 void *rt_aes_decrypt(void *data, void *key, void *iv) {
     if (rt_crypto_module_is_approved_mode())
         rt_trap("AES.CBC is not an approved-mode Viper service; use AES-GCM");
+    if (!data)
+        rt_trap("AES: ciphertext is null");
+    if (!key)
+        rt_trap("AES: key is null");
+    if (!iv)
+        rt_trap("AES: IV is null");
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -953,6 +967,10 @@ void *rt_aes_decrypt(void *data, void *key, void *iv) {
 /// @param aad  Optional additional authenticated data; may be NULL.
 /// @return New bytes object owning the framed ciphertext, or NULL on bad key.
 void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
+    if (!data)
+        rt_trap("AES.Auth: plaintext is null");
+    if (!key)
+        rt_trap("AES.Auth: key is null");
     size_t data_len, key_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -1039,6 +1057,10 @@ void *rt_aes_encrypt_auth(void *data, void *key, void *aad) {
 /// @return New bytes object with the decrypted plaintext, or NULL on any
 ///         authentication failure.
 void *rt_aes_decrypt_auth(void *data, void *key, void *aad) {
+    if (!data)
+        rt_trap("AES.Auth: ciphertext is null");
+    if (!key)
+        rt_trap("AES.Auth: key is null");
     size_t data_len, key_len;
     uint8_t *encoded = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -1208,8 +1230,8 @@ static int aes_is_gcm_string_payload(const uint8_t *data, size_t len) {
 void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     size_t plain_len;
     size_t pass_len;
-    const uint8_t *data_bytes = aes_string_bytes(data, &plain_len);
-    const uint8_t *pass_bytes = aes_string_bytes(password, &pass_len);
+    const uint8_t *data_bytes = aes_string_bytes(data, &plain_len, "AES: plaintext is null");
+    const uint8_t *pass_bytes = aes_string_bytes(password, &pass_len, "AES: password is null");
     uint8_t salt[16];
     uint8_t nonce[12];
     uint8_t key[16];
@@ -1285,7 +1307,11 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password) {
 /// AES-256-CBC string format for backward compatibility.
 rt_string rt_aes_decrypt_str(void *data, rt_string password) {
     size_t pass_len;
-    const uint8_t *pass_bytes = aes_string_bytes(password, &pass_len);
+    if (!data) {
+        rt_trap("AES: encrypted data is null");
+        return rt_const_cstr("");
+    }
+    const uint8_t *pass_bytes = aes_string_bytes(password, &pass_len, "AES: password is null");
     if (pass_len == 0) {
         rt_trap("AES: password is empty");
         return rt_const_cstr("");

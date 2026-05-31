@@ -468,6 +468,41 @@ static void test_crypto_input_validation() {
         "KeyDerive rejects NULL password",
         expect_trap([&]() { (void)rt_keyderive_pbkdf2_sha256_str(nullptr, salt, 100000, 16); },
                     "KeyDerive: password must not be null"));
+    test_result("Password.Hash rejects NULL password",
+                expect_trap([]() { (void)rt_password_hash(nullptr); }, "password is null"));
+    test_result("Password.HashIters rejects NULL password",
+                expect_trap([]() { (void)rt_password_hash_with_iterations(nullptr, 100000); },
+                            "password is null"));
+    test_result("Password.HashScryptParams rejects NULL password",
+                expect_trap([]() {
+                    (void)rt_password_hash_scrypt_params(nullptr, 16384, 8, 1);
+                }, "password is null"));
+
+    uint8_t zero_key[16] = {0};
+    uint8_t zero_iv[16] = {0};
+    void *aes_key = make_bytes(zero_key, sizeof(zero_key));
+    void *aes_iv = make_bytes(zero_iv, sizeof(zero_iv));
+    test_result("AES CBC rejects NULL plaintext",
+                expect_trap([&]() { (void)rt_aes_encrypt(nullptr, aes_key, aes_iv); },
+                            "plaintext is null"));
+    test_result("AES CBC rejects NULL ciphertext",
+                expect_trap([&]() { (void)rt_aes_decrypt(nullptr, aes_key, aes_iv); },
+                            "ciphertext is null"));
+    test_result("AES auth rejects NULL plaintext",
+                expect_trap([&]() { (void)rt_aes_encrypt_auth(nullptr, aes_key, nullptr); },
+                            "plaintext is null"));
+    test_result("AES auth rejects NULL ciphertext",
+                expect_trap([&]() { (void)rt_aes_decrypt_auth(nullptr, aes_key, nullptr); },
+                            "ciphertext is null"));
+    test_result("AES string encrypt rejects NULL plaintext",
+                expect_trap([&]() { (void)rt_aes_encrypt_str(nullptr, rt_const_cstr("pw")); },
+                            "plaintext is null"));
+    test_result("AES string encrypt rejects NULL password",
+                expect_trap([&]() { (void)rt_aes_encrypt_str(empty, nullptr); },
+                            "password is null"));
+    test_result("AES string decrypt rejects NULL ciphertext",
+                expect_trap([&]() { (void)rt_aes_decrypt_str(nullptr, rt_const_cstr("pw")); },
+                            "encrypted data is null"));
 
     rt_crypto_random_bytes(nullptr, 0);
     test_result("Crypto random allows NULL zero-length output", true);

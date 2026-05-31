@@ -410,8 +410,9 @@ void *rt_udp_bind(int64_t port) {
 /// literals, and hostnames that resolve to a local interface address. When `port==0` the OS
 /// assigns a free port and the actual port is queried back via `getsockname`.
 void *rt_udp_bind_at(rt_string address, int64_t port) {
-    const char *addr_ptr = rt_string_cstr(address);
-    if (!addr_ptr || *addr_ptr == '\0')
+    const char *addr_ptr = NULL;
+    size_t addr_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(address, &addr_ptr, &addr_len) || addr_len == 0)
         rt_trap("Network: invalid address");
     return rt_udp_bind_impl(addr_ptr, port);
 }
@@ -471,8 +472,9 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
     if (!udp->is_open)
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
-    const char *host_ptr = rt_string_cstr(host);
-    if (!host_ptr || *host_ptr == '\0')
+    const char *host_ptr = NULL;
+    size_t host_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(host, &host_ptr, &host_len) || host_len == 0)
         rt_trap("Network: invalid host");
 
     if (port < 1 || port > 65535)
@@ -525,8 +527,9 @@ int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string te
     if (!udp->is_open)
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
-    const char *host_ptr = rt_string_cstr(host);
-    if (!host_ptr || *host_ptr == '\0')
+    const char *host_ptr = NULL;
+    size_t host_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(host, &host_ptr, &host_len) || host_len == 0)
         rt_trap("Network: invalid host");
 
     if (port < 1 || port > 65535)
@@ -635,7 +638,8 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
     // Return exact size received
     if (received < max_bytes) {
         void *exact = rt_bytes_new(received);
-        memcpy(bytes_data(exact), buf, received);
+        if (received > 0)
+            memcpy(bytes_data(exact), buf, received);
         // Release the over-allocated buffer
         if (rt_obj_release_check0(result))
             rt_obj_free(result);
@@ -728,8 +732,9 @@ void rt_udp_join_group(void *obj, rt_string group_addr) {
     if (!udp->is_open)
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
-    const char *addr_ptr = rt_string_cstr(group_addr);
-    if (!addr_ptr || *addr_ptr == '\0')
+    const char *addr_ptr = NULL;
+    size_t addr_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(group_addr, &addr_ptr, &addr_len) || addr_len == 0)
         rt_trap("Network: invalid multicast address");
 
     struct in_addr mcast_addr;
@@ -789,8 +794,9 @@ void rt_udp_leave_group(void *obj, rt_string group_addr) {
     if (!udp->is_open)
         return; // Silently ignore if closed
 
-    const char *addr_ptr = rt_string_cstr(group_addr);
-    if (!addr_ptr || *addr_ptr == '\0')
+    const char *addr_ptr = NULL;
+    size_t addr_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(group_addr, &addr_ptr, &addr_len) || addr_len == 0)
         return;
 
     struct in_addr mcast_addr;

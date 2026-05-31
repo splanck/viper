@@ -88,9 +88,10 @@ static bool parse_ipv6(const char *addr) {
 rt_string rt_dns_resolve(rt_string hostname) {
     rt_net_init_wsa();
 
-    const char *host_ptr = rt_string_cstr(hostname);
-    if (!host_ptr || *host_ptr == '\0')
-        rt_trap("Network: NULL hostname");
+    const char *host_ptr = NULL;
+    size_t host_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0)
+        rt_trap("Network: invalid hostname");
 
     struct addrinfo hints = {0};
     hints.ai_family = AF_UNSPEC;
@@ -126,9 +127,10 @@ rt_string rt_dns_resolve(rt_string hostname) {
 void *rt_dns_resolve_all(rt_string hostname) {
     rt_net_init_wsa();
 
-    const char *host_ptr = rt_string_cstr(hostname);
-    if (!host_ptr || *host_ptr == '\0')
-        rt_trap("Network: NULL hostname");
+    const char *host_ptr = NULL;
+    size_t host_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0)
+        rt_trap("Network: invalid hostname");
 
     struct addrinfo hints = {0};
     hints.ai_family = AF_UNSPEC; // Both IPv4 and IPv6
@@ -172,9 +174,10 @@ void *rt_dns_resolve_all(rt_string hostname) {
 rt_string rt_dns_resolve4(rt_string hostname) {
     rt_net_init_wsa();
 
-    const char *host_ptr = rt_string_cstr(hostname);
-    if (!host_ptr || *host_ptr == '\0')
-        rt_trap("Network: NULL hostname");
+    const char *host_ptr = NULL;
+    size_t host_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0)
+        rt_trap("Network: invalid hostname");
 
     struct addrinfo hints = {0};
     hints.ai_family = AF_INET; // IPv4 only
@@ -200,9 +203,10 @@ rt_string rt_dns_resolve4(rt_string hostname) {
 rt_string rt_dns_resolve6(rt_string hostname) {
     rt_net_init_wsa();
 
-    const char *host_ptr = rt_string_cstr(hostname);
-    if (!host_ptr || *host_ptr == '\0')
-        rt_trap("Network: NULL hostname");
+    const char *host_ptr = NULL;
+    size_t host_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(hostname, &host_ptr, &host_len) || host_len == 0)
+        rt_trap("Network: invalid hostname");
 
     struct addrinfo hints = {0};
     hints.ai_family = AF_INET6; // IPv6 only
@@ -230,9 +234,10 @@ rt_string rt_dns_resolve6(rt_string hostname) {
 rt_string rt_dns_reverse(rt_string ip_address) {
     rt_net_init_wsa();
 
-    const char *addr_ptr = rt_string_cstr(ip_address);
-    if (!addr_ptr || *addr_ptr == '\0')
-        rt_trap("Network: NULL address");
+    const char *addr_ptr = NULL;
+    size_t addr_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(ip_address, &addr_ptr, &addr_len) || addr_len == 0)
+        rt_trap("Network: invalid address");
 
     // Try IPv4 first
     struct sockaddr_in sa4;
@@ -267,8 +272,9 @@ rt_string rt_dns_reverse(rt_string ip_address) {
 
 /// @brief Returns 1 if `address` parses as a valid IPv4 dotted-quad. Pure parser, no DNS lookup.
 int8_t rt_dns_is_ipv4(rt_string address) {
-    const char *addr_ptr = rt_string_cstr(address);
-    if (!addr_ptr || *addr_ptr == '\0')
+    const char *addr_ptr = NULL;
+    size_t addr_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(address, &addr_ptr, &addr_len) || addr_len == 0)
         return 0;
 
     return parse_ipv4(addr_ptr) ? 1 : 0;
@@ -276,8 +282,9 @@ int8_t rt_dns_is_ipv4(rt_string address) {
 
 /// @brief Returns 1 if `address` parses as a valid IPv6 (delegates to `inet_pton(AF_INET6)`).
 int8_t rt_dns_is_ipv6(rt_string address) {
-    const char *addr_ptr = rt_string_cstr(address);
-    if (!addr_ptr || *addr_ptr == '\0')
+    const char *addr_ptr = NULL;
+    size_t addr_len = 0;
+    if (!rt_net_cstr_no_embedded_nul(address, &addr_ptr, &addr_len) || addr_len == 0)
         return 0;
 
     return parse_ipv6(addr_ptr) ? 1 : 0;

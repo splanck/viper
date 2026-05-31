@@ -112,8 +112,34 @@ static void test_parsing(void) {
           rt_datetime_parse_iso(rt_const_cstr("1970-01-01T00:00:00Z")) == 0);
     check("TryParse accepts epoch ISO",
           rt_datetime_try_parse(rt_const_cstr("1970-01-01T00:00:00Z")) == 0);
+    parsed = rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00.999Z"));
+    roundtrip = rt_datetime_to_iso(parsed);
+    check("ParseISO accepts fractional UTC seconds",
+          strcmp(rt_string_cstr(roundtrip), "2024-01-15T10:30:00Z") == 0);
+    rt_string_unref(roundtrip);
+
+    parsed = rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00+02:30"));
+    roundtrip = rt_datetime_to_iso(parsed);
+    check("ParseISO applies positive timezone offsets",
+          strcmp(rt_string_cstr(roundtrip), "2024-01-15T08:00:00Z") == 0);
+    rt_string_unref(roundtrip);
+
+    parsed = rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00-05:00"));
+    roundtrip = rt_datetime_to_iso(parsed);
+    check("ParseISO applies negative timezone offsets",
+          strcmp(rt_string_cstr(roundtrip), "2024-01-15T15:30:00Z") == 0);
+    rt_string_unref(roundtrip);
+
     check("ParseISO rejects trailing characters",
           rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00Zx")) == 0);
+    check("ParseISO rejects empty fractional seconds",
+          rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00.Z")) == 0);
+    check("ParseISO rejects malformed timezone offsets",
+          rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00+0230")) == 0);
+    check("ParseISO rejects out-of-range timezone hour",
+          rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00+24:00")) == 0);
+    check("ParseISO rejects out-of-range timezone minute",
+          rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00+02:60")) == 0);
     check("ParseISO rejects invalid calendar date",
           rt_datetime_parse_iso(rt_const_cstr("2024-02-30T00:00:00Z")) == 0);
     check("ParseISO rejects invalid time",
@@ -126,9 +152,32 @@ static void test_parsing(void) {
     check("ParseDate rejects too-short strings", rt_datetime_parse_date(rt_const_cstr("1")) == 0);
     check("ParseTime rejects trailing characters",
           rt_datetime_parse_time(rt_const_cstr("10:30:00x")) == -1);
+    check("ParseTime accepts fractional seconds",
+          rt_datetime_parse_time(rt_const_cstr("10:30:45.123")) == 37845);
+    check("TryParse accepts fractional time",
+          rt_datetime_try_parse(rt_const_cstr("10:30:45.123")) == 37845);
+    check("ParseTime rejects empty fractional seconds",
+          rt_datetime_parse_time(rt_const_cstr("10:30:45.")) == -1);
     check("ParseTime rejects out-of-range hour",
           rt_datetime_parse_time(rt_const_cstr("24:00:00")) == -1);
     check("ParseTime rejects too-short strings", rt_datetime_parse_time(rt_const_cstr("1")) == -1);
+
+    const char hidden_iso[] = "2024-01-15T10:30:00Z\0junk";
+    rt_string hidden_iso_s = rt_string_from_bytes(hidden_iso, sizeof(hidden_iso) - 1);
+    check("ParseISO rejects embedded NUL suffix", rt_datetime_parse_iso(hidden_iso_s) == 0);
+    check("TryParse rejects embedded NUL suffix", rt_datetime_try_parse(hidden_iso_s) == 0);
+    rt_string_unref(hidden_iso_s);
+
+    const char hidden_date[] = "2024-01-15\0junk";
+    rt_string hidden_date_s = rt_string_from_bytes(hidden_date, sizeof(hidden_date) - 1);
+    check("ParseDate rejects embedded NUL suffix", rt_datetime_parse_date(hidden_date_s) == 0);
+    rt_string_unref(hidden_date_s);
+
+    const char hidden_time[] = "10:30:00\0junk";
+    rt_string hidden_time_s = rt_string_from_bytes(hidden_time, sizeof(hidden_time) - 1);
+    check("ParseTime rejects embedded NUL suffix",
+          rt_datetime_parse_time(hidden_time_s) == -1);
+    rt_string_unref(hidden_time_s);
 }
 
 static void test_create_bounds(void) {
@@ -137,11 +186,12 @@ static void test_create_bounds(void) {
     check("Create rejects huge month", rt_datetime_create(2024, INT64_MAX, 1, 0, 0, 0) == -1);
     check("Create rejects huge day", rt_datetime_create(2024, 1, INT64_MAX, 0, 0, 0) == -1);
     check("Create rejects huge hour", rt_datetime_create(2024, 1, 1, INT64_MAX, 0, 0) == -1);
-
-    int64_t normalized = rt_datetime_create(2024, 13, 1, 0, 0, 0);
-    check("Create still normalizes in-range overflow components",
-          normalized != -1 && rt_datetime_year(normalized) == 2025 &&
-              rt_datetime_month(normalized) == 1);
+    check("Create rejects month overflow", rt_datetime_create(2024, 13, 1, 0, 0, 0) == -1);
+    check("Create rejects day overflow", rt_datetime_create(2024, 1, 32, 0, 0, 0) == -1);
+    check("Create rejects invalid leap day", rt_datetime_create(2023, 2, 29, 0, 0, 0) == -1);
+    check("Create rejects hour overflow", rt_datetime_create(2024, 1, 1, 24, 0, 0) == -1);
+    check("Create rejects minute overflow", rt_datetime_create(2024, 1, 1, 0, 60, 0) == -1);
+    check("Create rejects second overflow", rt_datetime_create(2024, 1, 1, 0, 0, 60) == -1);
 }
 
 static void test_checked_arithmetic(void) {

@@ -215,7 +215,7 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 ### Notes
 
 - `Create` interprets components in the **local time zone**
-- `Create` returns `-1` if components or the resulting local timestamp cannot be represented safely by the platform time APIs; otherwise it preserves platform `mktime` normalization such as month 13 becoming January of the next year
+- `Create` returns `-1` if components are out of range, normalize to a different value (for example month 13 or day 32), or the resulting local timestamp cannot be represented safely by the platform time APIs
 - `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second` extract components in the **local time zone**
 - `ToISO` formats in **UTC** (appends `Z` suffix)
 - `ToLocal` formats in the **local time zone** (no `Z` suffix) — use this for consistent round-trips with `Create`
@@ -228,14 +228,14 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 
 | Method       | Input Format                          | Returns                                |
 |--------------|---------------------------------------|----------------------------------------|
-| `ParseISO`   | `"2025-06-15T14:30:00Z"` or `"2025-06-15T14:30:00"` | Unix timestamp (seconds) |
+| `ParseISO`   | `"2025-06-15T14:30:00Z"`, `"2025-06-15T14:30:00.123Z"`, or `"2025-06-15T14:30:00+02:00"` | Unix timestamp (seconds) |
 | `ParseDate`  | `"2025-06-15"`                        | Unix timestamp (seconds, midnight)     |
-| `ParseTime`  | `"14:30:00"`                          | Seconds since midnight (0-86399)       |
+| `ParseTime`  | `"14:30"`, `"14:30:00"`, or `"14:30:00.123"` | Seconds since midnight (0-86399) |
 | `TryParse`   | Any of the above formats              | Unix timestamp, or 0 on failure        |
 
-- `ParseISO` accepts exact ISO 8601 datetime strings with or without the `Z` suffix; `Z` is interpreted as UTC, while no suffix means local time
+- `ParseISO` accepts exact ISO 8601 datetime strings with optional fractional seconds and optional `Z` or numeric `+HH:MM`/`-HH:MM` offsets; `Z` and numeric offsets are interpreted as UTC instants, while no suffix means local time
 - `ParseDate` parses exact `YYYY-MM-DD` strings and returns the timestamp at local midnight
-- `ParseTime` returns seconds since midnight (not a Unix timestamp) for exact `HH:MM` or `HH:MM:SS` strings
+- `ParseTime` returns seconds since midnight (not a Unix timestamp) for exact `HH:MM`, `HH:MM:SS`, or `HH:MM:SS.fraction` strings
 - Invalid calendar values, out-of-range times, and trailing characters are rejected
 - `TryParse` auto-detects the input format and returns 0 if the string cannot be parsed. A valid parse of the Unix epoch also returns 0, so callers that need to distinguish those cases should use a known format-specific parser and validate the input separately.
 

@@ -75,26 +75,24 @@ static void password_secure_zero(void *ptr, size_t len) {
 }
 
 /// @brief Extract a raw byte pointer and byte count from an rt_string password.
-///        Returns NULL for a null handle and an empty C string for zero-length input.
+///        Traps on NULL or invalid string handles. A real empty password is valid.
 static const uint8_t *password_string_bytes(rt_string password, size_t *len) {
     if (!len)
-        return NULL;
-    if (!password) {
-        *len = 0;
-        return NULL;
-    }
+        rt_trap("Password: internal length pointer is null");
+    if (!password)
+        rt_trap("Password: password is null");
 
     int64_t len64 = rt_str_len(password);
-    if (len64 <= 0) {
+    if (len64 < 0)
+        rt_trap("Password: invalid password length");
+    if (len64 == 0) {
         *len = 0;
         return (const uint8_t *)"";
     }
 
     const char *pwd = rt_string_cstr(password);
-    if (!pwd) {
-        *len = 0;
-        return NULL;
-    }
+    if (!pwd)
+        rt_trap("Password: password data is null");
 
     *len = (size_t)len64;
     return (const uint8_t *)pwd;
@@ -325,7 +323,10 @@ static rt_string password_format_hash(const char *prefix,
 
     free(salt_b64);
     free(hash_b64);
-    return rt_string_from_bytes(buffer, strlen(buffer));
+    rt_string result = rt_string_from_bytes(buffer, strlen(buffer));
+    if (!result)
+        rt_trap(op_name);
+    return result;
 }
 
 /// @brief Public Viper.Crypto.Password.Hash — hash with default scrypt parameters.
