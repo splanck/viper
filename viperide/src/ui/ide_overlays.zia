@@ -640,11 +640,11 @@ class IdeOverlays {
     }
 
     hide func logicalAppWidth(shell: app_shell.AppShell) -> Integer {
-        return physicalToLogical(shell.app.GetWidth(), shell.app.GetScale());
+        return shell.app.GetWidth();
     }
 
     hide func logicalAppHeight(shell: app_shell.AppShell) -> Integer {
-        return physicalToLogical(shell.app.GetHeight(), shell.app.GetScale());
+        return shell.app.GetHeight();
     }
 
     hide func physicalToLogical(value: Integer, scale: Number) -> Integer {

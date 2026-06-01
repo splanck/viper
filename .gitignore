@@ -131,6 +131,7 @@ __pycache__/
 *.img
 *.iso
 *.bin
+!examples/3d/openworld_slice/assets/models/skinned_agent.bin
 *.sys
 
 # --- Benchmark build artifacts ---

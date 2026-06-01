@@ -42,6 +42,10 @@
 #include <cstring>
 #include <string>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);

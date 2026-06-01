@@ -1566,6 +1566,12 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
                  rect.right - rect.left,
                  rect.bottom - rect.top,
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    RECT client = {0};
+    if (GetClientRect(data->hwnd, &client)) {
+        int client_w = (int)(client.right - client.left);
+        int client_h = (int)(client.bottom - client.top);
+        (void)win32_resize_backing_store(win, client_w, client_h, vgfx_platform_now_ms());
+    }
 }
 
 void *vgfx_get_native_display(vgfx_window_t window) {

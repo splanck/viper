@@ -2670,10 +2670,6 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.width > 0 && fb.height > 0) {
         initial_framebuffer_width = fb.width;
         initial_framebuffer_height = fb.height;
-        if (!vgfx_get_size(c->gfx_win, &initial_width, &initial_height)) {
-            initial_width = canvas3d_unscale_physical_size(c, fb.width);
-            initial_height = canvas3d_unscale_physical_size(c, fb.height);
-        }
     }
 
     c->width = initial_width;
