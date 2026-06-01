@@ -62,12 +62,12 @@ static void canvas3d_release_synthetic_input(rt_canvas3d *c);
 static void canvas3d_release_synthetic_state(rt_canvas3d *c);
 
 /// @brief Atomically swap the global synthetic-input owner to @p c, returning the previous owner.
-/// @details Only one canvas may drive synthetic (test/replay) input at a time; this enforces it with
+/// @details Only one canvas may drive synthetic (test/replay) input at a time; this enforces it
+/// with
 ///          an acquire-release exchange across MSVC and GCC/Clang atomics.
 static rt_canvas3d *canvas3d_synthetic_owner_exchange(rt_canvas3d *c) {
 #if RT_COMPILER_MSVC
-    return (rt_canvas3d *)rt_atomic_exchange_ptr(
-        &g_canvas3d_synthetic_owner, c, __ATOMIC_ACQ_REL);
+    return (rt_canvas3d *)rt_atomic_exchange_ptr(&g_canvas3d_synthetic_owner, c, __ATOMIC_ACQ_REL);
 #else
     return (rt_canvas3d *)__atomic_exchange_n(&g_canvas3d_synthetic_owner, c, __ATOMIC_ACQ_REL);
 #endif
@@ -88,11 +88,8 @@ static int canvas3d_synthetic_owner_compare_exchange(rt_canvas3d *expected_owner
                                                      rt_canvas3d *desired_owner) {
     void *expected = expected_owner;
 #if RT_COMPILER_MSVC
-    return rt_atomic_compare_exchange_ptr(&g_canvas3d_synthetic_owner,
-                                          &expected,
-                                          desired_owner,
-                                          __ATOMIC_ACQ_REL,
-                                          __ATOMIC_ACQUIRE);
+    return rt_atomic_compare_exchange_ptr(
+        &g_canvas3d_synthetic_owner, &expected, desired_owner, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
 #else
     return __atomic_compare_exchange_n(&g_canvas3d_synthetic_owner,
                                        &expected,
@@ -364,7 +361,8 @@ static int canvas3d_mat4_d2f_checked(const double *src, float *dst) {
 }
 
 /// @brief Whether the current frame uploads geometry relative to a camera origin (floating origin).
-/// @details Active only for 3D frames with the mode enabled; 2D and out-of-frame paths upload absolute.
+/// @details Active only for 3D frames with the mode enabled; 2D and out-of-frame paths upload
+/// absolute.
 static int canvas3d_uses_camera_relative_upload(const rt_canvas3d *c) {
     return c && c->camera_relative_upload && c->in_frame && !c->frame_is_2d;
 }
@@ -408,7 +406,8 @@ static int canvas3d_mat4_is_identity(const double *m) {
 }
 
 /// @brief Whether identity-transformed vertices should be rebased to the camera-relative origin.
-/// @details For an identity model matrix under camera-relative upload, the origin is subtracted from
+/// @details For an identity model matrix under camera-relative upload, the origin is subtracted
+/// from
 ///          the vertices directly (no matrix to fold it into).
 static int canvas3d_should_rebase_identity_vertices(const rt_canvas3d *c,
                                                     const double *model_matrix) {
@@ -437,11 +436,10 @@ static int canvas3d_model_mat4_d2f_checked(const rt_canvas3d *c, const double *s
 }
 
 /// @brief Copy a float 4x4 matrix, subtracting the camera-relative origin from its translation.
-/// @details Under floating-origin upload the translation is rebased (non-finite results clamp to 0);
+/// @details Under floating-origin upload the translation is rebased (non-finite results clamp to
+/// 0);
 ///          otherwise it is a plain copy.
-static void canvas3d_copy_mat4_f32_for_frame(const rt_canvas3d *c,
-                                             const float *src,
-                                             float *dst) {
+static void canvas3d_copy_mat4_f32_for_frame(const rt_canvas3d *c, const float *src, float *dst) {
     if (!src || !dst)
         return;
     memcpy(dst, src, sizeof(float) * 16);
@@ -597,7 +595,8 @@ static void rt_canvas3d_apply_resize(
         c->backend->resize(c->backend_ctx, physical_w, physical_h);
 }
 
-/// @brief Record an event type code into the canvas's per-frame event tally (for diagnostics/tests).
+/// @brief Record an event type code into the canvas's per-frame event tally (for
+/// diagnostics/tests).
 static void canvas3d_record_event_type(rt_canvas3d *c, int64_t type) {
     if (!c || type == VGFX_EVENT_NONE)
         return;
@@ -743,8 +742,7 @@ typedef struct {
 
 #define CANVAS3D_OCCLUSION_GRID_W 64
 #define CANVAS3D_OCCLUSION_GRID_H 64
-#define CANVAS3D_OCCLUSION_GRID_CELLS                                                           \
-    (CANVAS3D_OCCLUSION_GRID_W * CANVAS3D_OCCLUSION_GRID_H)
+#define CANVAS3D_OCCLUSION_GRID_CELLS (CANVAS3D_OCCLUSION_GRID_W * CANVAS3D_OCCLUSION_GRID_H)
 
 typedef struct {
     float depth[CANVAS3D_OCCLUSION_GRID_CELLS];
@@ -989,8 +987,7 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->normal_map_asset = rt_material3d_resolve_texture_native_asset(mat->normal_map);
     cmd->specular_map_asset = rt_material3d_resolve_texture_native_asset(mat->specular_map);
     cmd->emissive_map_asset = rt_material3d_resolve_texture_native_asset(mat->emissive_map);
-    cmd->metallic_roughness_map =
-        rt_material3d_resolve_texture_pixels(mat->metallic_roughness_map);
+    cmd->metallic_roughness_map = rt_material3d_resolve_texture_pixels(mat->metallic_roughness_map);
     cmd->ao_map = rt_material3d_resolve_texture_pixels(mat->ao_map);
     cmd->metallic_roughness_map_asset =
         rt_material3d_resolve_texture_native_asset(mat->metallic_roughness_map);
@@ -1069,7 +1066,8 @@ static void canvas3d_motion_hash_reset(rt_canvas3d *c) {
            (size_t)c->motion_history_hash_capacity * sizeof(*c->motion_history_hash));
 }
 
-/// @brief Ensure the motion-history hash has a power-of-two capacity sized for @p count_hint entries.
+/// @brief Ensure the motion-history hash has a power-of-two capacity sized for @p count_hint
+/// entries.
 /// @details Targets ~2x load headroom (min 32) and resets the table on growth.
 static int canvas3d_ensure_motion_hash_capacity(rt_canvas3d *c, int32_t count_hint) {
     if (!c)
@@ -1127,13 +1125,15 @@ static int canvas3d_rebuild_motion_hash(rt_canvas3d *c) {
     return 1;
 }
 
-/// @brief Look up the motion-history index for @p key, rebuilding the hash if it is stale/undersized.
+/// @brief Look up the motion-history index for @p key, rebuilding the hash if it is
+/// stale/undersized.
 /// @return The history index, or -1 if the key is absent.
 static int32_t canvas3d_motion_hash_find_index(rt_canvas3d *c, uintptr_t key) {
     if (!c || key == 0 || c->motion_history_count <= 0)
         return -1;
     if (!c->motion_history_hash ||
-        c->motion_history_hash_capacity < canvas3d_next_power_of_two_i32(c->motion_history_count * 2)) {
+        c->motion_history_hash_capacity <
+            canvas3d_next_power_of_two_i32(c->motion_history_count * 2)) {
         if (!canvas3d_rebuild_motion_hash(c))
             return -1;
     }
@@ -1638,7 +1638,8 @@ static void canvas3d_temp_object_set_clear(rt_canvas3d *c) {
     memset(c->temp_object_set, 0, (size_t)c->temp_object_set_capacity * sizeof(void *));
 }
 
-/// @brief Ensure the transient-object set has a power-of-two capacity sized for @p count_hint entries.
+/// @brief Ensure the transient-object set has a power-of-two capacity sized for @p count_hint
+/// entries.
 static int canvas3d_ensure_temp_object_set(rt_canvas3d *c, int32_t count_hint) {
     if (!c)
         return 0;
@@ -1672,7 +1673,8 @@ static int canvas3d_ensure_temp_object_set(rt_canvas3d *c, int32_t count_hint) {
     return 1;
 }
 
-/// @brief Whether @p obj is currently tracked as a per-frame transient object (linear-probe lookup).
+/// @brief Whether @p obj is currently tracked as a per-frame transient object (linear-probe
+/// lookup).
 static int canvas3d_temp_object_set_contains(rt_canvas3d *c, void *obj) {
     if (!c || !obj || c->temp_obj_count <= 0)
         return 0;
@@ -1718,7 +1720,8 @@ static int canvas3d_temp_object_set_insert(rt_canvas3d *c, void *obj) {
     return 0;
 }
 
-/// @brief Rebuild the transient-object hash set from the tracked-object list (after growth/removal).
+/// @brief Rebuild the transient-object hash set from the tracked-object list (after
+/// growth/removal).
 static void canvas3d_rebuild_temp_object_set(rt_canvas3d *c) {
     if (!c || !c->temp_object_set)
         return;
@@ -1830,8 +1833,7 @@ static void canvas3d_compute_vertices_aabb(const vgfx3d_vertex_t *vertices,
         out_max[0] = out_max[1] = out_max[2] = 0.0f;
         return;
     }
-    vgfx3d_compute_mesh_aabb(
-        vertices, vertex_count, sizeof(vgfx3d_vertex_t), out_min, out_max);
+    vgfx3d_compute_mesh_aabb(vertices, vertex_count, sizeof(vgfx3d_vertex_t), out_min, out_max);
 }
 
 /// @brief Snapshot a mesh while subtracting @p origin from vertex positions before float upload.
@@ -1886,9 +1888,8 @@ static int canvas3d_reserve_mesh_snapshot_cache(rt_canvas3d *c, int32_t needed) 
     }
     if ((size_t)new_cap > SIZE_MAX / sizeof(*c->mesh_snapshots))
         return 0;
-    rt_canvas3d_mesh_snapshot_entry *entries =
-        (rt_canvas3d_mesh_snapshot_entry *)realloc(c->mesh_snapshots,
-                                                   (size_t)new_cap * sizeof(*entries));
+    rt_canvas3d_mesh_snapshot_entry *entries = (rt_canvas3d_mesh_snapshot_entry *)realloc(
+        c->mesh_snapshots, (size_t)new_cap * sizeof(*entries));
     if (!entries)
         return 0;
     c->mesh_snapshots = entries;
@@ -1897,7 +1898,8 @@ static int canvas3d_reserve_mesh_snapshot_cache(rt_canvas3d *c, int32_t needed) 
 }
 
 /// @brief Snapshot a mesh's geometry for deferred upload, reusing the cache when unchanged.
-/// @details Keyed by the mesh's geometry revision: an unchanged mesh returns its cached snapshot, so
+/// @details Keyed by the mesh's geometry revision: an unchanged mesh returns its cached snapshot,
+/// so
 ///          repeated draws of the same mesh in a frame don't re-copy vertex data.
 static int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
                                                   const rt_mesh3d *mesh,
@@ -1909,7 +1911,8 @@ static int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
         for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
             rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[i];
             if (entry->source == mesh_obj && entry->geometry_revision == mesh->geometry_revision &&
-                entry->vertex_count == mesh->vertex_count && entry->index_count == mesh->index_count) {
+                entry->vertex_count == mesh->vertex_count &&
+                entry->index_count == mesh->index_count) {
                 *out_vertices = entry->vertices;
                 *out_indices = entry->indices;
                 return 1;
@@ -2097,6 +2100,7 @@ static float canvas3d_compute_instanced_batch_sort_key(const rt_canvas3d *c,
                                                        const float *local_bounds_min,
                                                        const float *local_bounds_max) {
     enum { CANVAS3D_INSTANCED_SORT_FULL_SCAN_LIMIT = 256 };
+
     float world_min[3] = {0.0f, 0.0f, 0.0f};
     float world_max[3] = {0.0f, 0.0f, 0.0f};
     int8_t has_bounds = 0;
@@ -2630,8 +2634,7 @@ static int canvas3d_compute_shadow_cascade_splits(const rt_canvas3d *c,
         return 0;
     for (int32_t i = 0; i < VGFX3D_MAX_SHADOW_LIGHTS; i++)
         out_splits[i] = 0.0f;
-    if (!canvas3d_world_bounds_view_depth_range(
-            c, world_min, world_max, &near_depth, &far_depth))
+    if (!canvas3d_world_bounds_view_depth_range(c, world_min, world_max, &near_depth, &far_depth))
         return 0;
     if (far_depth < near_depth) {
         float tmp = near_depth;
@@ -2739,10 +2742,10 @@ static int canvas3d_project_world_point_to_occlusion_grid(const rt_canvas3d *c,
 
     if (!c || !point || !out_x || !out_y)
         return 0;
-    clip[0] = c->cached_vp[0] * point[0] + c->cached_vp[1] * point[1] +
-              c->cached_vp[2] * point[2] + c->cached_vp[3];
-    clip[1] = c->cached_vp[4] * point[0] + c->cached_vp[5] * point[1] +
-              c->cached_vp[6] * point[2] + c->cached_vp[7];
+    clip[0] = c->cached_vp[0] * point[0] + c->cached_vp[1] * point[1] + c->cached_vp[2] * point[2] +
+              c->cached_vp[3];
+    clip[1] = c->cached_vp[4] * point[0] + c->cached_vp[5] * point[1] + c->cached_vp[6] * point[2] +
+              c->cached_vp[7];
     clip[2] = c->cached_vp[8] * point[0] + c->cached_vp[9] * point[1] +
               c->cached_vp[10] * point[2] + c->cached_vp[11];
     clip[3] = c->cached_vp[12] * point[0] + c->cached_vp[13] * point[1] +
@@ -2759,16 +2762,19 @@ static int canvas3d_project_world_point_to_occlusion_grid(const rt_canvas3d *c,
     return 1;
 }
 
-/// @brief Compute the occlusion-grid rectangle and nearest depth covered by a world-space AABB.
-/// @details Projects the box corners to grid space; the resulting cell rect and min depth are what
-///          gets tested/written. Returns 0 when the box is off-screen or behind the camera.
+/// @brief Compute the occlusion-grid rectangle and conservative depths for a world-space AABB.
+/// @details Projects the box corners to grid space. The candidate is tested at its nearest
+///          depth, but visible occluders are written at their farthest depth. Writing the far
+///          depth keeps large depth-spanning bounds such as floors from acting like near
+///          full-screen walls in the coarse grid.
 static int canvas3d_deferred_occlusion_rect(const rt_canvas3d *c,
                                             const deferred_draw_t *dd,
                                             int32_t *out_min_x,
                                             int32_t *out_min_y,
                                             int32_t *out_max_x,
                                             int32_t *out_max_y,
-                                            float *out_depth) {
+                                            float *out_test_depth,
+                                            float *out_write_depth) {
     float world_min[3] = {0.0f, 0.0f, 0.0f};
     float world_max[3] = {0.0f, 0.0f, 0.0f};
     int8_t has_bounds = 0;
@@ -2776,14 +2782,24 @@ static int canvas3d_deferred_occlusion_rect(const rt_canvas3d *c,
     float min_y = FLT_MAX;
     float max_x = -FLT_MAX;
     float max_y = -FLT_MAX;
+    float near_depth = 0.0f;
+    float far_depth = 0.0f;
 
-    if (!c || !dd || !out_min_x || !out_min_y || !out_max_x || !out_max_y || !out_depth)
+    if (!c || !dd || !out_min_x || !out_min_y || !out_max_x || !out_max_y || !out_test_depth ||
+        !out_write_depth)
         return 0;
     if (!isfinite(dd->sort_key))
         return 0;
     canvas3d_accumulate_deferred_world_bounds(dd, world_min, world_max, &has_bounds);
     if (!has_bounds)
         return 0;
+    if (!canvas3d_world_bounds_view_depth_range(c, world_min, world_max, &near_depth, &far_depth))
+        return 0;
+    if (far_depth < near_depth) {
+        float tmp = near_depth;
+        near_depth = far_depth;
+        far_depth = tmp;
+    }
 
     for (int xi = 0; xi < 2; ++xi) {
         for (int yi = 0; yi < 2; ++yi) {
@@ -2827,7 +2843,8 @@ static int canvas3d_deferred_occlusion_rect(const rt_canvas3d *c,
     *out_max_y = (int32_t)ceilf(max_y);
     if (*out_max_x < *out_min_x || *out_max_y < *out_min_y)
         return 0;
-    *out_depth = dd->sort_key;
+    *out_test_depth = near_depth;
+    *out_write_depth = far_depth;
     return 1;
 }
 
@@ -2869,8 +2886,10 @@ static void canvas3d_occlusion_grid_write(canvas3d_occlusion_grid_t *grid,
     }
 }
 
-/// @brief Test an object's bounds against the occlusion grid and, if visible, record it as an occluder.
-/// @details Combines the cover test with a write so a single pass both culls hidden objects and lets
+/// @brief Test an object's bounds against the occlusion grid and, if visible, record it as an
+/// occluder.
+/// @details Combines the cover test with a write so a single pass both culls hidden objects and
+/// lets
 ///          a visible one occlude later draws.
 /// @return Non-zero if the object is visible (not occluded), 0 if it can be culled.
 static int canvas3d_occlusion_test_and_write(rt_canvas3d *c,
@@ -2880,15 +2899,17 @@ static int canvas3d_occlusion_test_and_write(rt_canvas3d *c,
     int32_t min_y;
     int32_t max_x;
     int32_t max_y;
-    float depth;
+    float test_depth;
+    float write_depth;
     if (!c || !grid || !dd)
         return 0;
     c->last_occlusion_candidate_count++;
-    if (!canvas3d_deferred_occlusion_rect(c, dd, &min_x, &min_y, &max_x, &max_y, &depth))
+    if (!canvas3d_deferred_occlusion_rect(
+            c, dd, &min_x, &min_y, &max_x, &max_y, &test_depth, &write_depth))
         return 0;
-    if (canvas3d_occlusion_grid_covers(grid, min_x, min_y, max_x, max_y, depth))
+    if (canvas3d_occlusion_grid_covers(grid, min_x, min_y, max_x, max_y, test_depth))
         return 1;
-    canvas3d_occlusion_grid_write(grid, min_x, min_y, max_x, max_y, depth);
+    canvas3d_occlusion_grid_write(grid, min_x, min_y, max_x, max_y, write_depth);
     return 0;
 }
 
@@ -2920,7 +2941,8 @@ static int canvas3d_build_shadow_world_bounds(const deferred_draw_t *cmds,
     return has_bounds ? 1 : 0;
 }
 
-/// @brief Build the light's view-projection matrix that tightly bounds a world AABB for shadow mapping.
+/// @brief Build the light's view-projection matrix that tightly bounds a world AABB for shadow
+/// mapping.
 /// @details Fits an orthographic light frustum around the scene bounds so the shadow map covers the
 ///          visible geometry at maximum resolution.
 static int canvas3d_build_shadow_light_vp(const float *world_min,
@@ -4351,10 +4373,10 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     int rebase_identity_vertices = 0;
     int mesh_obj_tracked = 0;
     int material_obj_tracked = 0;
-    #if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
+#if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
     if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
         mesh = (rt_mesh3d *)mesh_obj;
-    #endif
+#endif
     if (!c)
         return;
     if (!mesh || !model_matrix || !mat) {
@@ -4436,7 +4458,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
             goto fail_after_refs;
         }
     } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
-               !canvas3d_snapshot_mesh_geometry_cached(c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
+               !canvas3d_snapshot_mesh_geometry_cached(
+                   c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
         goto fail_after_refs;
     }
 
@@ -4493,10 +4516,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->requires_blend = canvas3d_cmd_requires_blend(&dd->cmd);
     dd->has_local_bounds = 1;
     if (rebase_identity_vertices) {
-        canvas3d_compute_vertices_aabb(queued_vertices,
-                                       mesh->vertex_count,
-                                       dd->local_bounds_min,
-                                       dd->local_bounds_max);
+        canvas3d_compute_vertices_aabb(
+            queued_vertices, mesh->vertex_count, dd->local_bounds_min, dd->local_bounds_max);
     } else {
         memcpy(dd->local_bounds_min, mesh->aabb_min, sizeof(dd->local_bounds_min));
         memcpy(dd->local_bounds_max, mesh->aabb_max, sizeof(dd->local_bounds_max));
@@ -4561,166 +4582,120 @@ void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void 
 /// many copies of the same mesh. The matrix array is owned by the
 /// caller for the duration of the frame; the canvas keeps a
 /// reference until the deferred queue flushes.
-void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
-                                       void *mesh_obj,
-                                       void *material_obj,
-                                       const float *instance_matrices,
-                                       int32_t instance_count,
-                                       const float *prev_instance_matrices,
-                                       int8_t has_prev_instance_matrices) {
+/// @brief Owned per-batch references for an instanced draw, so the many failure
+///        exits release the tracked mesh/material temp-objects through one helper.
+typedef struct {
     rt_canvas3d *c;
     rt_mesh3d *mesh;
     rt_material3d *mat;
-    vgfx3d_draw_cmd_t base_cmd;
-    int mesh_obj_tracked = 0;
-    int material_obj_tracked = 0;
+    void *mesh_obj;
+    void *material_obj;
+    int mesh_obj_tracked;
+    int material_obj_tracked;
+} canvas3d_instanced_batch_t;
 
-    if (!instance_matrices || instance_count <= 0)
-        return;
-    if (instance_count > CANVAS3D_MAX_INSTANCES) {
-        rt_trap("Canvas3D.DrawMeshInstanced: instance count exceeds limit");
-        return;
-    }
-    c = rt_canvas3d_checked_or_stack(canvas_obj);
-    mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
-    #if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
-    if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
-        mesh = (rt_mesh3d *)mesh_obj;
-    #endif
-    mat = (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
-    if (!c || !mesh || !mat)
-        return;
-    if (!c->in_frame || !c->backend || !mesh->resident || mesh->vertex_count == 0 ||
-        mesh->index_count == 0)
-        return;
-    if (has_prev_instance_matrices && !prev_instance_matrices) {
-        rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrices pointer is required");
-        return;
-    }
+/// @brief Release the batch's tracked mesh/material temp-object references (material then mesh).
+static void canvas3d_instanced_release_refs(const canvas3d_instanced_batch_t *b) {
+    if (b->material_obj_tracked)
+        canvas3d_release_tracked_temp_object(b->c, b->material_obj);
+    if (b->mesh_obj_tracked)
+        canvas3d_release_tracked_temp_object(b->c, b->mesh_obj);
+}
 
-    int needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
-    rt_mesh3d_refresh_bounds(mesh);
-    memset(&base_cmd, 0, sizeof(base_cmd));
-    base_cmd.vertices = mesh->vertices;
-    base_cmd.vertex_count = mesh->vertex_count;
-    base_cmd.indices = mesh->indices;
-    base_cmd.index_count = mesh->index_count;
-    base_cmd.model_matrix[0] = base_cmd.model_matrix[5] = base_cmd.model_matrix[10] =
-        base_cmd.model_matrix[15] = 1.0f;
-    canvas3d_fill_material_cmd(mat, &base_cmd);
-    base_cmd.bone_palette = mesh->bone_palette;
-    base_cmd.prev_bone_palette = mesh->prev_bone_palette;
-    base_cmd.bone_count = mesh->bone_count;
-    base_cmd.morph_deltas = mesh->morph_deltas;
-    base_cmd.morph_normal_deltas = mesh->morph_normal_deltas;
-    base_cmd.morph_weights = mesh->morph_weights;
-    base_cmd.prev_morph_weights = mesh->prev_morph_weights;
-    base_cmd.morph_shape_count = mesh->morph_shape_count;
-    base_cmd.morph_key = mesh->morph_targets_ref;
-    base_cmd.morph_revision = mesh->morph_targets_ref
-                                  ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
-                                  : 0;
+/// @brief Populate the shared base draw command from a mesh's geometry/skin/morph state.
+static void canvas3d_build_instanced_base_cmd(rt_mesh3d *mesh,
+                                              rt_material3d *mat,
+                                              vgfx3d_draw_cmd_t *base_cmd) {
+    memset(base_cmd, 0, sizeof(*base_cmd));
+    base_cmd->vertices = mesh->vertices;
+    base_cmd->vertex_count = mesh->vertex_count;
+    base_cmd->indices = mesh->indices;
+    base_cmd->index_count = mesh->index_count;
+    base_cmd->model_matrix[0] = base_cmd->model_matrix[5] = base_cmd->model_matrix[10] =
+        base_cmd->model_matrix[15] = 1.0f;
+    canvas3d_fill_material_cmd(mat, base_cmd);
+    base_cmd->bone_palette = mesh->bone_palette;
+    base_cmd->prev_bone_palette = mesh->prev_bone_palette;
+    base_cmd->bone_count = mesh->bone_count;
+    base_cmd->morph_deltas = mesh->morph_deltas;
+    base_cmd->morph_normal_deltas = mesh->morph_normal_deltas;
+    base_cmd->morph_weights = mesh->morph_weights;
+    base_cmd->prev_morph_weights = mesh->prev_morph_weights;
+    base_cmd->morph_shape_count = mesh->morph_shape_count;
+    base_cmd->morph_key = mesh->morph_targets_ref;
+    base_cmd->morph_revision = mesh->morph_targets_ref
+                                   ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
+                                   : 0;
+}
 
-    int use_fallback_instances =
-        canvas3d_cmd_requires_blend(&base_cmd) || !c->backend->submit_draw_instanced;
-    if (use_fallback_instances && instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
-        rt_trap("Canvas3D.DrawMeshInstanced: fallback instance count exceeds limit");
-        return;
-    }
-    if (!canvas3d_matrices_f32_are_finite(instance_matrices, instance_count) ||
-        (has_prev_instance_matrices && prev_instance_matrices &&
-         !canvas3d_matrices_f32_are_finite(prev_instance_matrices, instance_count))) {
-        rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
-        return;
-    }
-    if (rt_heap_is_payload(mesh_obj)) {
-        if (!canvas3d_track_temp_object(c, mesh_obj))
+/// @brief Fallback instanced submission: enqueue each instance as an individual mesh draw.
+/// @details Used when the backend lacks hardware instancing or the material needs blending.
+static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *b,
+                                              const vgfx3d_draw_cmd_t *base_cmd,
+                                              const float *instance_matrices,
+                                              int32_t instance_count,
+                                              const float *prev_instance_matrices,
+                                              int8_t has_prev_instance_matrices) {
+    rt_canvas3d *c = b->c;
+    rt_mesh3d *mesh = b->mesh;
+    rt_material3d *mat = b->mat;
+    for (int32_t i = 0; i < instance_count; i++) {
+        vgfx3d_draw_cmd_t per_instance = *base_cmd;
+        canvas3d_copy_mat4_f32_for_frame(
+            c, &instance_matrices[(size_t)i * 16u], per_instance.model_matrix);
+        if (has_prev_instance_matrices && prev_instance_matrices) {
+            canvas3d_copy_mat4_f32_for_frame(
+                c, &prev_instance_matrices[(size_t)i * 16u], per_instance.prev_model_matrix);
+            per_instance.has_prev_model_matrix = 1;
+        } else {
+            canvas3d_resolve_previous_model(
+                c,
+                canvas3d_instance_motion_key(
+                    b->mesh_obj, b->material_obj, instance_matrices, instance_count, i),
+                per_instance.model_matrix,
+                per_instance.prev_model_matrix,
+                &per_instance.has_prev_model_matrix);
+        }
+        per_instance.prev_instance_matrices = NULL;
+        per_instance.has_prev_instance_matrices = 0;
+        if (!canvas3d_enqueue_draw(
+                c,
+                &per_instance,
+                DEFERRED_DRAW_MESH,
+                DEFERRED_PASS_MAIN,
+                NULL,
+                0,
+                1,
+                c->wireframe,
+                canvas3d_material_backface_cull(c, mat),
+                canvas3d_compute_sort_key(c,
+                                          per_instance.model_matrix,
+                                          mesh->aabb_min,
+                                          mesh->aabb_max,
+                                          1,
+                                          canvas3d_cmd_requires_blend(&per_instance)),
+                mesh->aabb_min,
+                mesh->aabb_max)) {
+            canvas3d_instanced_release_refs(b);
+            rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
             return;
-        mesh_obj_tracked = 1;
-    }
-    if (!canvas3d_track_temp_object(c, material_obj)) {
-        if (mesh_obj_tracked)
-            canvas3d_release_tracked_temp_object(c, mesh_obj);
-        return;
-    }
-    material_obj_tracked = 1;
-
-    vgfx3d_vertex_t *queued_vertices = mesh->vertices;
-    uint32_t *queued_indices = mesh->indices;
-    if (needs_generated_tangents) {
-        if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
-            goto fail_after_refs;
-        if (!canvas3d_generate_snapshot_tangents(mesh, queued_vertices, queued_indices)) {
-            canvas3d_release_tracked_temp_buffer(c, queued_vertices);
-            canvas3d_release_tracked_temp_buffer(c, queued_indices);
-            goto fail_after_refs;
         }
-    } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
-               !canvas3d_snapshot_mesh_geometry_cached(c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
-        goto fail_after_refs;
     }
-    base_cmd.vertices = queued_vertices;
-    base_cmd.indices = queued_indices;
-    base_cmd.geometry_key =
-        (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents) ? mesh_obj : NULL;
-    base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
+}
 
-    if (use_fallback_instances) {
-        for (int32_t i = 0; i < instance_count; i++) {
-            vgfx3d_draw_cmd_t per_instance = base_cmd;
-            canvas3d_copy_mat4_f32_for_frame(c,
-                                              &instance_matrices[(size_t)i * 16u],
-                                              per_instance.model_matrix);
-            if (has_prev_instance_matrices && prev_instance_matrices) {
-                canvas3d_copy_mat4_f32_for_frame(c,
-                                                  &prev_instance_matrices[(size_t)i * 16u],
-                                                  per_instance.prev_model_matrix);
-                per_instance.has_prev_model_matrix = 1;
-            } else {
-                canvas3d_resolve_previous_model(
-                    c,
-                    canvas3d_instance_motion_key(
-                        mesh_obj, material_obj, instance_matrices, instance_count, i),
-                    per_instance.model_matrix,
-                    per_instance.prev_model_matrix,
-                    &per_instance.has_prev_model_matrix);
-            }
-            per_instance.prev_instance_matrices = NULL;
-            per_instance.has_prev_instance_matrices = 0;
-            if (!canvas3d_enqueue_draw(
-                    c,
-                    &per_instance,
-                    DEFERRED_DRAW_MESH,
-                    DEFERRED_PASS_MAIN,
-                    NULL,
-                    0,
-                    1,
-                    c->wireframe,
-                    canvas3d_material_backface_cull(c, mat),
-                    canvas3d_compute_sort_key(c,
-                                              per_instance.model_matrix,
-                                              mesh->aabb_min,
-                                              mesh->aabb_max,
-                                              1,
-                                              canvas3d_cmd_requires_blend(&per_instance)),
-                    mesh->aabb_min,
-                    mesh->aabb_max)) {
-                if (material_obj_tracked)
-                    canvas3d_release_tracked_temp_object(c, material_obj);
-                if (mesh_obj_tracked)
-                    canvas3d_release_tracked_temp_object(c, mesh_obj);
-                rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
-                return;
-            }
-        }
-        return;
-    }
+/// @brief Hardware instanced submission: snapshot instance (and motion) matrices into
+///        frame-owned buffers and enqueue a single instanced draw command.
+static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *b,
+                                              vgfx3d_draw_cmd_t *base_cmd,
+                                              const float *instance_matrices,
+                                              int32_t instance_count,
+                                              const float *prev_instance_matrices,
+                                              int8_t has_prev_instance_matrices) {
+    rt_canvas3d *c = b->c;
+    rt_mesh3d *mesh = b->mesh;
 
     if ((size_t)instance_count > SIZE_MAX / (16u * sizeof(float))) {
-        if (material_obj_tracked)
-            canvas3d_release_tracked_temp_object(c, material_obj);
-        if (mesh_obj_tracked)
-            canvas3d_release_tracked_temp_object(c, mesh_obj);
+        canvas3d_instanced_release_refs(b);
         rt_trap("Canvas3D.DrawMeshInstanced: instance matrix allocation overflow");
         return;
     }
@@ -4728,24 +4703,17 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     float *queued_instance_matrices =
         (float *)malloc(matrix_float_count * sizeof(*queued_instance_matrices));
     if (!queued_instance_matrices) {
-        if (material_obj_tracked)
-            canvas3d_release_tracked_temp_object(c, material_obj);
-        if (mesh_obj_tracked)
-            canvas3d_release_tracked_temp_object(c, mesh_obj);
+        canvas3d_instanced_release_refs(b);
         rt_trap("Canvas3D.DrawMeshInstanced: instance matrix allocation failed");
         return;
     }
     for (int32_t i = 0; i < instance_count; ++i) {
-        canvas3d_copy_mat4_f32_for_frame(c,
-                                          &instance_matrices[(size_t)i * 16u],
-                                          &queued_instance_matrices[(size_t)i * 16u]);
+        canvas3d_copy_mat4_f32_for_frame(
+            c, &instance_matrices[(size_t)i * 16u], &queued_instance_matrices[(size_t)i * 16u]);
     }
     if (!canvas3d_track_temp_buffer(c, queued_instance_matrices)) {
         free(queued_instance_matrices);
-        if (material_obj_tracked)
-            canvas3d_release_tracked_temp_object(c, material_obj);
-        if (mesh_obj_tracked)
-            canvas3d_release_tracked_temp_object(c, mesh_obj);
+        canvas3d_instanced_release_refs(b);
         return;
     }
 
@@ -4756,28 +4724,21 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
             (float *)malloc(matrix_float_count * sizeof(*queued_prev_instance_matrices));
         if (!queued_prev_instance_matrices) {
             canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
-            if (material_obj_tracked)
-                canvas3d_release_tracked_temp_object(c, material_obj);
-            if (mesh_obj_tracked)
-                canvas3d_release_tracked_temp_object(c, mesh_obj);
+            canvas3d_instanced_release_refs(b);
             rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed");
             return;
         }
         if (has_prev_instance_matrices && prev_instance_matrices) {
             for (int32_t i = 0; i < instance_count; ++i) {
-                canvas3d_copy_mat4_f32_for_frame(
-                    c,
-                    &prev_instance_matrices[(size_t)i * 16u],
-                    &queued_prev_instance_matrices[(size_t)i * 16u]);
+                canvas3d_copy_mat4_f32_for_frame(c,
+                                                 &prev_instance_matrices[(size_t)i * 16u],
+                                                 &queued_prev_instance_matrices[(size_t)i * 16u]);
             }
         }
         if (!canvas3d_track_temp_buffer(c, queued_prev_instance_matrices)) {
             canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
             free(queued_prev_instance_matrices);
-            if (material_obj_tracked)
-                canvas3d_release_tracked_temp_object(c, material_obj);
-            if (mesh_obj_tracked)
-                canvas3d_release_tracked_temp_object(c, mesh_obj);
+            canvas3d_instanced_release_refs(b);
             return;
         }
     }
@@ -4791,7 +4752,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
             canvas3d_resolve_previous_model(
                 c,
                 canvas3d_instance_motion_key(
-                    mesh_obj, material_obj, instance_matrices, instance_count, i),
+                    b->mesh_obj, b->material_obj, instance_matrices, instance_count, i),
                 current,
                 ignored_prev,
                 &has_prev);
@@ -4800,7 +4761,7 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         canvas3d_resolve_previous_model(
             c,
             canvas3d_instance_motion_key(
-                mesh_obj, material_obj, instance_matrices, instance_count, i),
+                b->mesh_obj, b->material_obj, instance_matrices, instance_count, i),
             current,
             dst_prev,
             &has_prev);
@@ -4808,18 +4769,18 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
             memcpy(dst_prev, current, 16u * sizeof(float));
     }
 
-    base_cmd.prev_instance_matrices = queued_prev_instance_matrices;
-    base_cmd.has_prev_instance_matrices = queued_prev_instance_matrices ? 1 : 0;
+    base_cmd->prev_instance_matrices = queued_prev_instance_matrices;
+    base_cmd->has_prev_instance_matrices = queued_prev_instance_matrices ? 1 : 0;
     if (!canvas3d_enqueue_draw(
             c,
-            &base_cmd,
+            base_cmd,
             DEFERRED_DRAW_INSTANCED,
             DEFERRED_PASS_MAIN,
             queued_instance_matrices,
             instance_count,
             1,
             c->wireframe,
-            canvas3d_material_backface_cull(c, mat),
+            canvas3d_material_backface_cull(c, b->mat),
             canvas3d_compute_instanced_batch_sort_key(
                 c, queued_instance_matrices, instance_count, mesh->aabb_min, mesh->aabb_max),
             mesh->aabb_min,
@@ -4827,19 +4788,124 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
         canvas3d_release_tracked_temp_buffer(c, queued_prev_instance_matrices);
         canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
-        if (material_obj_tracked)
-            canvas3d_release_tracked_temp_object(c, material_obj);
-        if (mesh_obj_tracked)
-            canvas3d_release_tracked_temp_object(c, mesh_obj);
+        canvas3d_instanced_release_refs(b);
         return;
     }
-    return;
+}
 
-fail_after_refs:
-    if (material_obj_tracked)
-        canvas3d_release_tracked_temp_object(c, material_obj);
-    if (mesh_obj_tracked)
-        canvas3d_release_tracked_temp_object(c, mesh_obj);
+void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
+                                       void *mesh_obj,
+                                       void *material_obj,
+                                       const float *instance_matrices,
+                                       int32_t instance_count,
+                                       const float *prev_instance_matrices,
+                                       int8_t has_prev_instance_matrices) {
+    canvas3d_instanced_batch_t batch = {0};
+    rt_canvas3d *c;
+    rt_mesh3d *mesh;
+    rt_material3d *mat;
+    vgfx3d_draw_cmd_t base_cmd;
+    vgfx3d_vertex_t *queued_vertices;
+    uint32_t *queued_indices;
+    int needs_generated_tangents;
+    int use_fallback_instances;
+
+    if (!instance_matrices || instance_count <= 0)
+        return;
+    if (instance_count > CANVAS3D_MAX_INSTANCES) {
+        rt_trap("Canvas3D.DrawMeshInstanced: instance count exceeds limit");
+        return;
+    }
+    c = rt_canvas3d_checked_or_stack(canvas_obj);
+    mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+#if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
+    if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
+        mesh = (rt_mesh3d *)mesh_obj;
+#endif
+    mat = (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    if (!c || !mesh || !mat)
+        return;
+    if (!c->in_frame || !c->backend || !mesh->resident || mesh->vertex_count == 0 ||
+        mesh->index_count == 0)
+        return;
+    if (has_prev_instance_matrices && !prev_instance_matrices) {
+        rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrices pointer is required");
+        return;
+    }
+
+    needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
+    rt_mesh3d_refresh_bounds(mesh);
+    canvas3d_build_instanced_base_cmd(mesh, mat, &base_cmd);
+
+    use_fallback_instances =
+        canvas3d_cmd_requires_blend(&base_cmd) || !c->backend->submit_draw_instanced;
+    if (use_fallback_instances && instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
+        rt_trap("Canvas3D.DrawMeshInstanced: fallback instance count exceeds limit");
+        return;
+    }
+    if (!canvas3d_matrices_f32_are_finite(instance_matrices, instance_count) ||
+        (has_prev_instance_matrices && prev_instance_matrices &&
+         !canvas3d_matrices_f32_are_finite(prev_instance_matrices, instance_count))) {
+        rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
+        return;
+    }
+
+    batch.c = c;
+    batch.mesh = mesh;
+    batch.mat = mat;
+    batch.mesh_obj = mesh_obj;
+    batch.material_obj = material_obj;
+    if (rt_heap_is_payload(mesh_obj)) {
+        if (!canvas3d_track_temp_object(c, mesh_obj))
+            return;
+        batch.mesh_obj_tracked = 1;
+    }
+    if (!canvas3d_track_temp_object(c, material_obj)) {
+        canvas3d_instanced_release_refs(&batch);
+        return;
+    }
+    batch.material_obj_tracked = 1;
+
+    queued_vertices = mesh->vertices;
+    queued_indices = mesh->indices;
+    if (needs_generated_tangents) {
+        if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices)) {
+            canvas3d_instanced_release_refs(&batch);
+            return;
+        }
+        if (!canvas3d_generate_snapshot_tangents(mesh, queued_vertices, queued_indices)) {
+            canvas3d_release_tracked_temp_buffer(c, queued_vertices);
+            canvas3d_release_tracked_temp_buffer(c, queued_indices);
+            canvas3d_instanced_release_refs(&batch);
+            return;
+        }
+    } else if (canvas3d_should_snapshot_geometry(mesh, mesh_obj) &&
+               !canvas3d_snapshot_mesh_geometry_cached(
+                   c, mesh, mesh_obj, &queued_vertices, &queued_indices)) {
+        canvas3d_instanced_release_refs(&batch);
+        return;
+    }
+    base_cmd.vertices = queued_vertices;
+    base_cmd.indices = queued_indices;
+    base_cmd.geometry_key =
+        (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents) ? mesh_obj : NULL;
+    base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
+
+    if (use_fallback_instances) {
+        canvas3d_queue_instanced_fallback(&batch,
+                                          &base_cmd,
+                                          instance_matrices,
+                                          instance_count,
+                                          prev_instance_matrices,
+                                          has_prev_instance_matrices);
+        return;
+    }
+    canvas3d_queue_instanced_hardware(&batch,
+                                      &base_cmd,
+                                      instance_matrices,
+                                      instance_count,
+                                      prev_instance_matrices,
+                                      has_prev_instance_matrices);
 }
 
 /// @brief Recompute the canvas's pending/active texture-upload byte counters for this frame.
@@ -4852,6 +4918,232 @@ static void canvas3d_refresh_texture_upload_bytes(rt_canvas3d *c) {
         bytes = c->backend->get_texture_upload_bytes(c->backend_ctx);
     if (c)
         c->last_texture_upload_bytes = bytes > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)bytes;
+}
+
+/// @brief Render the directional/cascaded shadow-map pass for the queued 3D draws.
+///   Extracted from rt_canvas3d_end; populates c->shadow_rts and stamps shadow params
+///   onto the draw commands. Self-contained scratch (shadow_lights/cascades).
+static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
+    vgfx3d_light_params_t shadow_lights[VGFX3D_MAX_SHADOW_LIGHTS];
+
+    memset(shadow_lights, 0, sizeof(shadow_lights));
+
+    if (c->shadows_enabled && c->backend->shadow_begin && c->backend->shadow_draw &&
+        c->backend->shadow_end && canvas3d_ensure_shadow_targets(c, c->shadow_resolution)) {
+        int32_t selected_shadow_count = canvas3d_select_shadow_directional_lights_from_draws(
+            cmds, c->draw_count, shadow_lights, VGFX3D_MAX_SHADOW_LIGHTS);
+        float shadow_world_min[3];
+        float shadow_world_max[3];
+        int has_shadow_bounds = canvas3d_build_shadow_world_bounds(
+            cmds, c->draw_count, shadow_world_min, shadow_world_max);
+
+        if (has_shadow_bounds && selected_shadow_count > 0 && c->shadow_cascade_count > 1) {
+            vgfx3d_light_params_t primary_light = shadow_lights[0];
+            int32_t cascade_count = c->shadow_cascade_count;
+            float cascade_splits[VGFX3D_MAX_SHADOW_LIGHTS];
+            float cascade_near = 0.0f;
+            float cascade_far = 0.0f;
+
+            if (cascade_count > VGFX3D_MAX_SHADOW_LIGHTS)
+                cascade_count = VGFX3D_MAX_SHADOW_LIGHTS;
+            if (!canvas3d_compute_shadow_cascade_splits(c,
+                                                        shadow_world_min,
+                                                        shadow_world_max,
+                                                        cascade_count,
+                                                        cascade_splits,
+                                                        &cascade_near,
+                                                        &cascade_far))
+                cascade_count = 0;
+            primary_light.shadow_index = 0;
+            primary_light.shadow_cascade_count = cascade_count;
+            memcpy(primary_light.shadow_cascade_splits,
+                   cascade_splits,
+                   sizeof(primary_light.shadow_cascade_splits));
+            for (int32_t cascade = 0; cascade < cascade_count; cascade++) {
+                vgfx3d_rendertarget_t *shadow_rt;
+                float cascade_min[3];
+                float cascade_max[3];
+                float cascade_depth_near =
+                    cascade == 0 ? cascade_near : cascade_splits[cascade - 1];
+                float cascade_depth_far = cascade_splits[cascade];
+                float light_vp[16];
+
+                shadow_rt = c->shadow_rts[c->shadow_count];
+                if (!shadow_rt || !shadow_rt->depth_buf)
+                    continue;
+                if (!canvas3d_build_shadow_cascade_world_bounds(c,
+                                                                cmds,
+                                                                c->draw_count,
+                                                                cascade_depth_near,
+                                                                cascade_depth_far,
+                                                                shadow_world_min,
+                                                                shadow_world_max,
+                                                                cascade_min,
+                                                                cascade_max))
+                    continue;
+                if (!canvas3d_build_shadow_light_vp(
+                        cascade_min, cascade_max, &primary_light, light_vp))
+                    continue;
+
+                memcpy(c->shadow_light_vps[c->shadow_count], light_vp, sizeof(light_vp));
+                shadow_lights[c->shadow_count] = primary_light;
+                shadow_lights[c->shadow_count].shadow_index = c->shadow_count;
+                shadow_lights[c->shadow_count].shadow_cascade_count = cascade_count;
+                memcpy(shadow_lights[c->shadow_count].shadow_cascade_splits,
+                       cascade_splits,
+                       sizeof(shadow_lights[c->shadow_count].shadow_cascade_splits));
+                c->backend->shadow_begin(c->backend_ctx,
+                                         c->shadow_count,
+                                         shadow_rt->depth_buf,
+                                         shadow_rt->width,
+                                         shadow_rt->height,
+                                         light_vp);
+                for (int32_t i = 0; i < c->draw_count; i++) {
+                    if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || cmds[i].requires_blend)
+                        continue;
+                    canvas3d_shadow_deferred(c, &cmds[i]);
+                }
+                c->backend->shadow_end(c->backend_ctx, c->shadow_count, c->shadow_bias);
+                c->shadow_count++;
+            }
+            if (c->shadow_count > 0) {
+                shadow_lights[0] = primary_light;
+                shadow_lights[0].shadow_index = 0;
+            }
+        } else {
+            for (int32_t slot = 0; has_shadow_bounds && slot < selected_shadow_count; slot++) {
+                vgfx3d_rendertarget_t *shadow_rt;
+                vgfx3d_light_params_t selected_light = shadow_lights[slot];
+                float light_vp[16];
+
+                shadow_rt = c->shadow_rts[c->shadow_count];
+                if (!shadow_rt || !shadow_rt->depth_buf)
+                    continue;
+                if (!canvas3d_build_shadow_light_vp(
+                        shadow_world_min, shadow_world_max, &selected_light, light_vp))
+                    continue;
+
+                memcpy(c->shadow_light_vps[c->shadow_count], light_vp, sizeof(light_vp));
+                shadow_lights[c->shadow_count] = selected_light;
+                shadow_lights[c->shadow_count].shadow_index = c->shadow_count;
+                c->backend->shadow_begin(c->backend_ctx,
+                                         c->shadow_count,
+                                         shadow_rt->depth_buf,
+                                         shadow_rt->width,
+                                         shadow_rt->height,
+                                         light_vp);
+                for (int32_t i = 0; i < c->draw_count; i++) {
+                    if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || cmds[i].requires_blend)
+                        continue;
+                    canvas3d_shadow_deferred(c, &cmds[i]);
+                }
+                c->backend->shadow_end(c->backend_ctx, c->shadow_count, c->shadow_bias);
+                c->shadow_count++;
+            }
+        }
+    }
+
+    for (int32_t i = 0; i < c->draw_count; i++)
+        canvas3d_apply_shadow_light_params(
+            cmds[i].lights, cmds[i].light_count, shadow_lights, c->shadow_count);
+}
+
+/// @brief Render the main 3D pass: frustum/occlusion culling then opaque+blended draws.
+///   Extracted from rt_canvas3d_end; reads c->cached_vp and the queued draw commands.
+static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
+    vgfx3d_frustum_t visibility_frustum;
+    canvas3d_occlusion_grid_t occlusion_grid;
+    int use_occlusion_grid = c->occlusion_culling ? 1 : 0;
+
+    if (use_occlusion_grid)
+        canvas3d_occlusion_grid_clear(&occlusion_grid);
+
+    if (c->frustum_culling || c->occlusion_culling) {
+        vgfx3d_frustum_extract(&visibility_frustum, c->cached_vp);
+        for (int32_t i = 0; i < c->draw_count; i++) {
+            if (cmds[i].pass_kind == DEFERRED_PASS_MAIN) {
+                cmds[i].visible =
+                    (int8_t)canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum);
+                if (!cmds[i].visible)
+                    c->last_occluded_draw_count++;
+            }
+        }
+    } else {
+        for (int32_t i = 0; i < c->draw_count; i++) {
+            if (cmds[i].pass_kind == DEFERRED_PASS_MAIN)
+                cmds[i].visible = 1;
+        }
+    }
+
+    {
+        int32_t opaque_count = 0;
+        for (int32_t i = 0; i < c->draw_count; i++) {
+            if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && !cmds[i].requires_blend &&
+                cmds[i].visible)
+                opaque_count++;
+        }
+        if (opaque_count > 0) {
+            if (ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, opaque_count)) {
+                deferred_draw_t *opaque = (deferred_draw_t *)c->trans_cmds;
+                int32_t oi = 0;
+                for (int32_t i = 0; i < c->draw_count; i++) {
+                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && !cmds[i].requires_blend &&
+                        cmds[i].visible)
+                        opaque[oi++] = cmds[i];
+                }
+                qsort(opaque, (size_t)opaque_count, sizeof(deferred_draw_t), cmp_front_to_back);
+                for (int32_t i = 0; i < opaque_count; i++) {
+                    if (use_occlusion_grid &&
+                        canvas3d_occlusion_test_and_write(c, &occlusion_grid, &opaque[i])) {
+                        c->last_occluded_draw_count++;
+                        continue;
+                    }
+                    canvas3d_submit_deferred(c, &opaque[i]);
+                }
+            } else {
+                for (int32_t i = 0; i < c->draw_count; i++) {
+                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && !cmds[i].requires_blend &&
+                        cmds[i].visible) {
+                        if (use_occlusion_grid &&
+                            canvas3d_occlusion_test_and_write(c, &occlusion_grid, &cmds[i])) {
+                            c->last_occluded_draw_count++;
+                            continue;
+                        }
+                        canvas3d_submit_deferred(c, &cmds[i]);
+                    }
+                }
+            }
+        }
+    }
+
+    {
+        int32_t trans_count = 0;
+        for (int32_t i = 0; i < c->draw_count; i++) {
+            if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].requires_blend &&
+                cmds[i].visible)
+                trans_count++;
+        }
+        if (trans_count > 0) {
+            if (ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, trans_count)) {
+                deferred_draw_t *trans = (deferred_draw_t *)c->trans_cmds;
+                int32_t ti = 0;
+                for (int32_t i = 0; i < c->draw_count; i++) {
+                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].requires_blend &&
+                        cmds[i].visible)
+                        trans[ti++] = cmds[i];
+                }
+                qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
+                for (int32_t i = 0; i < trans_count; i++)
+                    canvas3d_submit_deferred(c, &trans[i]);
+            } else {
+                for (int32_t i = 0; i < c->draw_count; i++) {
+                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].requires_blend &&
+                        cmds[i].visible)
+                        canvas3d_submit_deferred(c, &cmds[i]);
+                }
+            }
+        }
+    }
 }
 
 /// @brief End drawing for the current scene or 2D pass and flush deferred draws.
@@ -4954,224 +5246,11 @@ void rt_canvas3d_end(void *obj) {
     c->shadow_count = 0;
     memset(c->shadow_light_vps, 0, sizeof(c->shadow_light_vps));
     if (!c->frame_is_2d && main_count > 0) {
-        vgfx3d_light_params_t shadow_lights[VGFX3D_MAX_SHADOW_LIGHTS];
-
-        memset(shadow_lights, 0, sizeof(shadow_lights));
-
-        if (c->shadows_enabled && c->backend->shadow_begin && c->backend->shadow_draw &&
-            c->backend->shadow_end && canvas3d_ensure_shadow_targets(c, c->shadow_resolution)) {
-            int32_t selected_shadow_count = canvas3d_select_shadow_directional_lights_from_draws(
-                cmds, c->draw_count, shadow_lights, VGFX3D_MAX_SHADOW_LIGHTS);
-            float shadow_world_min[3];
-            float shadow_world_max[3];
-            int has_shadow_bounds =
-                canvas3d_build_shadow_world_bounds(cmds, c->draw_count, shadow_world_min, shadow_world_max);
-
-            if (has_shadow_bounds && selected_shadow_count > 0 && c->shadow_cascade_count > 1) {
-                vgfx3d_light_params_t primary_light = shadow_lights[0];
-                int32_t cascade_count = c->shadow_cascade_count;
-                float cascade_splits[VGFX3D_MAX_SHADOW_LIGHTS];
-                float cascade_near = 0.0f;
-                float cascade_far = 0.0f;
-
-                if (cascade_count > VGFX3D_MAX_SHADOW_LIGHTS)
-                    cascade_count = VGFX3D_MAX_SHADOW_LIGHTS;
-                if (!canvas3d_compute_shadow_cascade_splits(c,
-                                                            shadow_world_min,
-                                                            shadow_world_max,
-                                                            cascade_count,
-                                                            cascade_splits,
-                                                            &cascade_near,
-                                                            &cascade_far))
-                    cascade_count = 0;
-                primary_light.shadow_index = 0;
-                primary_light.shadow_cascade_count = cascade_count;
-                memcpy(primary_light.shadow_cascade_splits,
-                       cascade_splits,
-                       sizeof(primary_light.shadow_cascade_splits));
-                for (int32_t cascade = 0; cascade < cascade_count; cascade++) {
-                    vgfx3d_rendertarget_t *shadow_rt;
-                    float cascade_min[3];
-                    float cascade_max[3];
-                    float cascade_depth_near =
-                        cascade == 0 ? cascade_near : cascade_splits[cascade - 1];
-                    float cascade_depth_far = cascade_splits[cascade];
-                    float light_vp[16];
-
-                    shadow_rt = c->shadow_rts[c->shadow_count];
-                    if (!shadow_rt || !shadow_rt->depth_buf)
-                        continue;
-                    if (!canvas3d_build_shadow_cascade_world_bounds(c,
-                                                                    cmds,
-                                                                    c->draw_count,
-                                                                    cascade_depth_near,
-                                                                    cascade_depth_far,
-                                                                    shadow_world_min,
-                                                                    shadow_world_max,
-                                                                    cascade_min,
-                                                                    cascade_max))
-                        continue;
-                    if (!canvas3d_build_shadow_light_vp(
-                            cascade_min, cascade_max, &primary_light, light_vp))
-                        continue;
-
-                    memcpy(c->shadow_light_vps[c->shadow_count], light_vp, sizeof(light_vp));
-                    shadow_lights[c->shadow_count] = primary_light;
-                    shadow_lights[c->shadow_count].shadow_index = c->shadow_count;
-                    shadow_lights[c->shadow_count].shadow_cascade_count = cascade_count;
-                    memcpy(shadow_lights[c->shadow_count].shadow_cascade_splits,
-                           cascade_splits,
-                           sizeof(shadow_lights[c->shadow_count].shadow_cascade_splits));
-                    c->backend->shadow_begin(c->backend_ctx,
-                                             c->shadow_count,
-                                             shadow_rt->depth_buf,
-                                             shadow_rt->width,
-                                             shadow_rt->height,
-                                             light_vp);
-                    for (int32_t i = 0; i < c->draw_count; i++) {
-                        if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || cmds[i].requires_blend)
-                            continue;
-                        canvas3d_shadow_deferred(c, &cmds[i]);
-                    }
-                    c->backend->shadow_end(c->backend_ctx, c->shadow_count, c->shadow_bias);
-                    c->shadow_count++;
-                }
-                if (c->shadow_count > 0) {
-                    shadow_lights[0] = primary_light;
-                    shadow_lights[0].shadow_index = 0;
-                }
-            } else {
-            for (int32_t slot = 0; has_shadow_bounds && slot < selected_shadow_count; slot++) {
-                vgfx3d_rendertarget_t *shadow_rt;
-                vgfx3d_light_params_t selected_light = shadow_lights[slot];
-                float light_vp[16];
-
-                shadow_rt = c->shadow_rts[c->shadow_count];
-                if (!shadow_rt || !shadow_rt->depth_buf)
-                    continue;
-                if (!canvas3d_build_shadow_light_vp(
-                        shadow_world_min, shadow_world_max, &selected_light, light_vp))
-                    continue;
-
-                memcpy(c->shadow_light_vps[c->shadow_count], light_vp, sizeof(light_vp));
-                shadow_lights[c->shadow_count] = selected_light;
-                shadow_lights[c->shadow_count].shadow_index = c->shadow_count;
-                c->backend->shadow_begin(c->backend_ctx,
-                                         c->shadow_count,
-                                         shadow_rt->depth_buf,
-                                         shadow_rt->width,
-                                         shadow_rt->height,
-                                         light_vp);
-                for (int32_t i = 0; i < c->draw_count; i++) {
-                    if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || cmds[i].requires_blend)
-                        continue;
-                    canvas3d_shadow_deferred(c, &cmds[i]);
-                }
-                c->backend->shadow_end(c->backend_ctx, c->shadow_count, c->shadow_bias);
-                c->shadow_count++;
-            }
-            }
-        }
-
-        for (int32_t i = 0; i < c->draw_count; i++)
-            canvas3d_apply_shadow_light_params(
-                cmds[i].lights, cmds[i].light_count, shadow_lights, c->shadow_count);
+        canvas3d_render_shadow_pass(c, cmds);
     }
 
     if (main_count > 0) {
-        vgfx3d_frustum_t visibility_frustum;
-        canvas3d_occlusion_grid_t occlusion_grid;
-        int use_occlusion_grid = c->occlusion_culling ? 1 : 0;
-
-        if (use_occlusion_grid)
-            canvas3d_occlusion_grid_clear(&occlusion_grid);
-
-        if (c->frustum_culling || c->occlusion_culling) {
-            vgfx3d_frustum_extract(&visibility_frustum, c->cached_vp);
-            for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN) {
-                    cmds[i].visible =
-                        (int8_t)canvas3d_deferred_intersects_frustum(&cmds[i], &visibility_frustum);
-                    if (!cmds[i].visible)
-                        c->last_occluded_draw_count++;
-                }
-            }
-        } else {
-            for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN)
-                    cmds[i].visible = 1;
-            }
-        }
-
-        {
-            int32_t opaque_count = 0;
-            for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                    !cmds[i].requires_blend && cmds[i].visible)
-                    opaque_count++;
-            }
-            if (opaque_count > 0) {
-                if (ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, opaque_count)) {
-                    deferred_draw_t *opaque = (deferred_draw_t *)c->trans_cmds;
-                    int32_t oi = 0;
-                    for (int32_t i = 0; i < c->draw_count; i++) {
-                        if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                            !cmds[i].requires_blend && cmds[i].visible)
-                            opaque[oi++] = cmds[i];
-                    }
-                    qsort(opaque, (size_t)opaque_count, sizeof(deferred_draw_t), cmp_front_to_back);
-                    for (int32_t i = 0; i < opaque_count; i++) {
-                        if (use_occlusion_grid &&
-                            canvas3d_occlusion_test_and_write(c, &occlusion_grid, &opaque[i])) {
-                            c->last_occluded_draw_count++;
-                            continue;
-                        }
-                        canvas3d_submit_deferred(c, &opaque[i]);
-                    }
-                } else {
-                    for (int32_t i = 0; i < c->draw_count; i++) {
-                        if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                            !cmds[i].requires_blend && cmds[i].visible) {
-                            if (use_occlusion_grid &&
-                                canvas3d_occlusion_test_and_write(c, &occlusion_grid, &cmds[i])) {
-                                c->last_occluded_draw_count++;
-                                continue;
-                            }
-                            canvas3d_submit_deferred(c, &cmds[i]);
-                        }
-                    }
-                }
-            }
-        }
-
-        {
-            int32_t trans_count = 0;
-            for (int32_t i = 0; i < c->draw_count; i++) {
-                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                    cmds[i].requires_blend && cmds[i].visible)
-                    trans_count++;
-            }
-            if (trans_count > 0) {
-                if (ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, trans_count)) {
-                    deferred_draw_t *trans = (deferred_draw_t *)c->trans_cmds;
-                    int32_t ti = 0;
-                    for (int32_t i = 0; i < c->draw_count; i++) {
-                        if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                            cmds[i].requires_blend && cmds[i].visible)
-                            trans[ti++] = cmds[i];
-                    }
-                    qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
-                    for (int32_t i = 0; i < trans_count; i++)
-                        canvas3d_submit_deferred(c, &trans[i]);
-                } else {
-                    for (int32_t i = 0; i < c->draw_count; i++) {
-                        if (cmds[i].pass_kind == DEFERRED_PASS_MAIN &&
-                            cmds[i].requires_blend && cmds[i].visible)
-                            canvas3d_submit_deferred(c, &cmds[i]);
-                    }
-                }
-            }
-        }
+        canvas3d_render_main_pass(c, cmds);
     }
 
     c->backend->end_frame(c->backend_ctx);

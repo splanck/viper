@@ -40,7 +40,10 @@ void rt_ik_solver3d_solve(void *solver);
 /// @brief Return the Skeleton3D handle retained by this solver.
 void *rt_ik_solver3d_get_skeleton(void *solver);
 /// @brief Apply the solver in place to a controller local-pose buffer and refresh globals.
-int8_t rt_ik_solver3d_apply_to_pose(void *solver, float *locals, float *globals, int32_t bone_count);
+int8_t rt_ik_solver3d_apply_to_pose(void *solver,
+                                    float *locals,
+                                    float *globals,
+                                    int32_t bone_count);
 
 #ifdef __cplusplus
 }

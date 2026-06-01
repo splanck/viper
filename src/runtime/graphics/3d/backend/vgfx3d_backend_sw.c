@@ -207,11 +207,8 @@ static float sw_sample_shadow_visibility(
 }
 
 /// @brief Resolve the concrete shadow-map slot for a light at the given world position.
-static int32_t sw_resolve_shadow_slot(const sw_context_t *ctx,
-                                      const vgfx3d_light_params_t *light,
-                                      float wx,
-                                      float wy,
-                                      float wz) {
+static int32_t sw_resolve_shadow_slot(
+    const sw_context_t *ctx, const vgfx3d_light_params_t *light, float wx, float wy, float wz) {
     int32_t base_slot;
     int32_t cascade_count;
     float view_depth;

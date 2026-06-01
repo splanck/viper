@@ -449,8 +449,7 @@ int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
     if (caps & RT_CANVAS3D_BACKEND_CAP_SOFTWARE)
         caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY;
     if (backend->present_postfx && backend->apply_postfx && backend->present)
-        caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY |
-                RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY;
+        caps |= RT_CANVAS3D_BACKEND_CAP_POSTFX_OVERLAY | RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY;
     if (caps & RT_CANVAS3D_BACKEND_CAP_WINDOW_READBACK)
         caps |= RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT;
     if (canvas3d_backend_supports_clustered_lighting(backend))
@@ -665,7 +664,10 @@ void *rt_canvas3d_screenshot(void *obj) {
 }
 
 /// @brief Draw an axis-aligned bounding box as 12 wireframe edges from raw min/max corner arrays.
-void rt_canvas3d_draw_aabb_wire_raw(void *obj, const double *min_v, const double *max_v, int64_t color) {
+void rt_canvas3d_draw_aabb_wire_raw(void *obj,
+                                    const double *min_v,
+                                    const double *max_v,
+                                    int64_t color) {
     if (!obj || !min_v || !max_v)
         return;
     double mn[3] = {min_v[0], min_v[1], min_v[2]};

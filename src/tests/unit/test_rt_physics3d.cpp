@@ -1314,8 +1314,7 @@ static void test_convex_hull_gjk_handles_box_capsule_and_simple_edge_cases() {
         if (rt_world3d_get_collision_count(world) > 0) {
             void *normal = rt_world3d_get_collision_normal(world, 0);
             EXPECT_TRUE(normal != nullptr && std::isfinite(rt_vec3_x(normal)) &&
-                            std::isfinite(rt_vec3_y(normal)) &&
-                            std::isfinite(rt_vec3_z(normal)),
+                            std::isfinite(rt_vec3_y(normal)) && std::isfinite(rt_vec3_z(normal)),
                         "convex hull GJK reports a finite box contact normal");
             EXPECT_TRUE(rt_world3d_get_collision_depth(world, 0) > 0.0,
                         "convex hull GJK reports positive box penetration");
@@ -1699,7 +1698,8 @@ static void test_world_overlap_hit_list_reports_truncation() {
         double x = ((double)(i % 26) - 13.0) * 0.25;
         double z = (double)(i / 26) * 0.25;
         rt_body3d_set_position(body, x, 0.0, z);
-        EXPECT_TRUE(rt_world3d_try_add(world, body) != 0, "TryAdd succeeds while filling overlap set");
+        EXPECT_TRUE(rt_world3d_try_add(world, body) != 0,
+                    "TryAdd succeeds while filling overlap set");
     }
 
     void *hits = rt_world3d_overlap_sphere(world, center, 100.0, 1);
@@ -1825,8 +1825,8 @@ static void test_world_rebase_origin_shifts_body_contact_and_query_state() {
 
     event = rt_world3d_get_collision_event(world, 0);
     point = rt_collision_event3d_get_contact_point(event, 0);
-    EXPECT_NEAR(rt_vec3_x(point), before_x - 1000.0, 0.000001,
-                "RebaseOrigin shifts cached contact points");
+    EXPECT_NEAR(
+        rt_vec3_x(point), before_x - 1000.0, 0.000001, "RebaseOrigin shifts cached contact points");
 }
 
 static void test_collision_events_enter_stay_exit() {
@@ -2191,10 +2191,8 @@ static void test_joints_retain_bodies_and_sanitize_parameters() {
                 0.01,
                 "RopeJoint3D converts infinite max length to zero");
     rt_rope_joint3d_set_max_length(rope, 1.0e100);
-    EXPECT_NEAR(rt_rope_joint3d_get_max_length(rope),
-                1.0e9,
-                1.0,
-                "RopeJoint3D clamps huge max length");
+    EXPECT_NEAR(
+        rt_rope_joint3d_get_max_length(rope), 1.0e9, 1.0, "RopeJoint3D clamps huge max length");
 }
 
 static void test_distance_joint_constraint() {
@@ -2248,7 +2246,7 @@ static void test_spring_joint_force() {
 }
 
 static void test_hinge_joint_motor_drives_rotation() {
-    void *world = rt_world3d_new(0, 0, 0); /* no gravity */
+    void *world = rt_world3d_new(0, 0, 0);                /* no gravity */
     void *base = rt_body3d_new_aabb(0.5, 0.5, 0.5, 0.0);  /* static anchor */
     void *wheel = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0); /* dynamic */
     rt_body3d_set_position(base, 0, 0, 0);
@@ -2285,7 +2283,9 @@ static void test_hinge_joint_get_angle() {
     EXPECT_NEAR(rt_hinge_joint3d_get_angle(hinge), 0.0, 0.01, "Fresh hinge reads a zero angle");
     /* Rotate the arm 0.5 rad about the hinge axis; the measured angle follows. */
     rt_body3d_set_orientation(arm, rt_quat_from_axis_angle(rt_vec3_new(0, 1, 0), 0.5));
-    EXPECT_NEAR(fabs(rt_hinge_joint3d_get_angle(hinge)), 0.5, 0.02,
+    EXPECT_NEAR(fabs(rt_hinge_joint3d_get_angle(hinge)),
+                0.5,
+                0.02,
                 "Hinge angle tracks rotation about the axis");
 }
 
@@ -2391,7 +2391,8 @@ static void test_sixdof_joint_linear_motor() {
         rt_world3d_step(world, 1.0 / 60.0);
 
     void *vel = rt_body3d_get_velocity(slider);
-    EXPECT_NEAR(rt_vec3_x(vel), 2.0, 0.1, "SixDof linear motor drives the slider along the free axis");
+    EXPECT_NEAR(
+        rt_vec3_x(vel), 2.0, 0.1, "SixDof linear motor drives the slider along the free axis");
     EXPECT_TRUE(fabs(rt_vec3_y(vel)) < 0.1, "SixDof keeps the locked axis still");
 }
 
@@ -2513,8 +2514,8 @@ static void test_sixdof_joint_linear_motor_preserves_angular_pose_limits() {
 
     void *vel = rt_body3d_get_velocity(slider);
     void *rot = rt_body3d_get_orientation(slider);
-    EXPECT_NEAR(rt_vec3_x(vel), 1.5, 0.1,
-                "SixDof linear motor keeps driving while angular limits solve");
+    EXPECT_NEAR(
+        rt_vec3_x(vel), 1.5, 0.1, "SixDof linear motor keeps driving while angular limits solve");
     EXPECT_TRUE(fabs(quat_rotation_component(rot, 0)) <= 0.20,
                 "SixDof angular pose limit remains stable with an active linear motor");
     EXPECT_TRUE(fabs(quat_rotation_component(rot, 1)) <= 0.04,
@@ -2528,14 +2529,11 @@ static void test_joint_type_validation_for_new_joint_classes() {
     void *anchor = rt_vec3_new(0.0, 0.0, 0.0);
     void *axis = rt_vec3_new(0.0, 1.0, 0.0);
     void *hinge = rt_hinge_joint3d_new(a, b, anchor, axis);
-    EXPECT_TRUE(expect_trap_contains(
-                    [&]() { rt_world3d_add_joint(world, hinge, RT_JOINT_ROPE); },
-                    "joint object does not match joint type"),
+    EXPECT_TRUE(expect_trap_contains([&]() { rt_world3d_add_joint(world, hinge, RT_JOINT_ROPE); },
+                                     "joint object does not match joint type"),
                 "World.AddJoint rejects mismatched new joint type tags");
     EXPECT_TRUE(expect_trap_contains(
-                    [&]() {
-                        rt_hinge_joint3d_new(a, b, anchor, rt_vec3_new(0.0, 0.0, 0.0));
-                    },
+                    [&]() { rt_hinge_joint3d_new(a, b, anchor, rt_vec3_new(0.0, 0.0, 0.0)); },
                     "axis must be a non-zero finite Vec3"),
                 "HingeJoint3D rejects zero axes");
 }

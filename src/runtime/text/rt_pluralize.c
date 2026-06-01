@@ -155,11 +155,8 @@ static rt_string inflection_with_input_case(const char *src,
     return result;
 }
 
-static void copy_suffix_with_input_case(char *dst,
-                                        const char *src,
-                                        size_t src_len,
-                                        const char *suffix,
-                                        size_t suffix_len) {
+static void copy_suffix_with_input_case(
+    char *dst, const char *src, size_t src_len, const char *suffix, size_t suffix_len) {
     memcpy(dst, suffix, suffix_len);
     if (is_ascii_all_caps_word(src, src_len)) {
         for (size_t i = 0; i < suffix_len; i++)

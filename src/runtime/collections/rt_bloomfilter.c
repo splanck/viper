@@ -240,7 +240,8 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
 int64_t rt_bloomfilter_count(void *filter) {
     if (!filter)
         return 0;
-    rt_bloomfilter_impl *bf = as_bloomfilter(filter, "BloomFilter.Count: invalid BloomFilter object");
+    rt_bloomfilter_impl *bf =
+        as_bloomfilter(filter, "BloomFilter.Count: invalid BloomFilter object");
     return bf ? bf->item_count : 0;
 }
 

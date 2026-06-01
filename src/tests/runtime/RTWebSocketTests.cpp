@@ -636,7 +636,8 @@ static void test_ws_text_frames_preserve_embedded_nul() {
     rt_string reply = rt_ws_recv_for(ws, 2000);
     test_result("Embedded NUL echo reply received", reply != nullptr);
     if (reply) {
-        test_result("Embedded NUL echo length preserved", rt_str_len(reply) == (int64_t)sizeof(payload));
+        test_result("Embedded NUL echo length preserved",
+                    rt_str_len(reply) == (int64_t)sizeof(payload));
         test_result("Embedded NUL echo bytes preserved",
                     memcmp(rt_string_cstr(reply), payload, sizeof(payload)) == 0);
     }

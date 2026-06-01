@@ -88,7 +88,7 @@ typedef struct {
     int8_t resident;            /* false when stream residency has dropped this mesh payload */
     uint8_t geometry_batch_depth;
     int8_t geometry_batch_dirty;
-    void *physics_bvh_nodes;          /* rt_physics_mesh_bvh_node[], owned by mesh */
+    void *physics_bvh_nodes;           /* rt_physics_mesh_bvh_node[], owned by mesh */
     uint32_t *physics_bvh_tri_indices; /* triangle indices into indices[] / 3 */
     uint32_t physics_bvh_revision;
     int32_t physics_bvh_node_count;
@@ -250,23 +250,24 @@ typedef struct {
     double diffuse[4]; /* RGBA diffuse color */
     double specular[3];
     double shininess;
-    int32_t workflow;             /* 0=legacy/Blinn-Phong surface, 1=PBR metallic-roughness */
-    void *texture;                /* Pixels or TextureAsset3D source (diffuse, slot 0) */
-    void *normal_map;             /* Pixels or TextureAsset3D source (normal map, slot 1) */
-    void *specular_map;           /* Pixels or TextureAsset3D source (specular map, slot 2) */
-    void *emissive_map;           /* Pixels or TextureAsset3D source (emissive map, slot 3) */
-    void *metallic_roughness_map; /* Pixels or TextureAsset3D source (glTF metallic/roughness map) */
-    void *ao_map;                 /* Pixels or TextureAsset3D source (ambient occlusion map) */
-    double emissive[3];           /* emissive color multiplier */
-    double metallic;              /* [0,1] dielectric->metal */
-    double roughness;             /* [0,1] smooth->rough */
-    double ao;                    /* [0,1] ambient occlusion multiplier */
-    double emissive_intensity;    /* scalar multiplier applied after emissive color/map */
-    double normal_scale;          /* scales tangent-space XY perturbation */
-    double alpha;                 /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
-    double alpha_cutoff;          /* alpha-mask cutoff, default 0.5 */
-    void *env_map;                /* CubeMap3D for environment reflections (or NULL) */
-    double reflectivity;          /* [0.0=no reflection, 1.0=mirror], default 0.0 */
+    int32_t workflow;   /* 0=legacy/Blinn-Phong surface, 1=PBR metallic-roughness */
+    void *texture;      /* Pixels or TextureAsset3D source (diffuse, slot 0) */
+    void *normal_map;   /* Pixels or TextureAsset3D source (normal map, slot 1) */
+    void *specular_map; /* Pixels or TextureAsset3D source (specular map, slot 2) */
+    void *emissive_map; /* Pixels or TextureAsset3D source (emissive map, slot 3) */
+    void
+        *metallic_roughness_map; /* Pixels or TextureAsset3D source (glTF metallic/roughness map) */
+    void *ao_map;                /* Pixels or TextureAsset3D source (ambient occlusion map) */
+    double emissive[3];          /* emissive color multiplier */
+    double metallic;             /* [0,1] dielectric->metal */
+    double roughness;            /* [0,1] smooth->rough */
+    double ao;                   /* [0,1] ambient occlusion multiplier */
+    double emissive_intensity;   /* scalar multiplier applied after emissive color/map */
+    double normal_scale;         /* scales tangent-space XY perturbation */
+    double alpha;                /* opacity [0.0=invisible, 1.0=opaque], default 1.0 */
+    double alpha_cutoff;         /* alpha-mask cutoff, default 0.5 */
+    void *env_map;               /* CubeMap3D for environment reflections (or NULL) */
+    double reflectivity;         /* [0.0=no reflection, 1.0=mirror], default 0.0 */
     int8_t unlit;
     int8_t double_sided;
     int8_t additive_blend;  /* internal-only: route through additive blend state when true */

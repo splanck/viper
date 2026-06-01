@@ -587,13 +587,15 @@ static void test_animation_retarget_scales_by_proportion() {
     /* Source skeleton: arm offset 1 unit from root (bone length 1). */
     void *src = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(src, rt_const_cstr("root"), -1, rt_mat4_identity());
-    int64_t src_arm = rt_skeleton3d_add_bone(src, rt_const_cstr("arm"), 0, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t src_arm =
+        rt_skeleton3d_add_bone(src, rt_const_cstr("arm"), 0, rt_mat4_translate(1.0, 0.0, 0.0));
     rt_skeleton3d_compute_inverse_bind(src);
 
     /* Target skeleton: arm twice as long (bone length 2). */
     void *dst = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(dst, rt_const_cstr("root"), -1, rt_mat4_identity());
-    int64_t dst_arm = rt_skeleton3d_add_bone(dst, rt_const_cstr("arm"), 0, rt_mat4_translate(2.0, 0.0, 0.0));
+    int64_t dst_arm =
+        rt_skeleton3d_add_bone(dst, rt_const_cstr("arm"), 0, rt_mat4_translate(2.0, 0.0, 0.0));
     rt_skeleton3d_compute_inverse_bind(dst);
 
     void *anim = rt_animation3d_new(rt_const_cstr("reach"), 2.0);
@@ -608,9 +610,11 @@ static void test_animation_retarget_scales_by_proportion() {
     void *player = rt_anim_player3d_new(dst);
     rt_anim_player3d_play(player, retargeted);
     rt_anim_player3d_update(player, 1.0); /* sample at t=1 -> source mid pos (1,0,0) */
+
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *arm_mat = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, dst_arm);
     /* Source mid-translation is 1.0; the 2x-longer target scales it to 2.0. */
     EXPECT_NEAR(arm_mat->m[3], 2.0, 0.05, "Retarget scales translation by bone-length ratio");
@@ -620,8 +624,8 @@ static void test_animation_retarget_maps_humanoid_roles() {
     /* Source: mixamo-style leg chain. */
     void *src = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(src, rt_const_cstr("root"), -1, rt_mat4_identity());
-    int64_t s_thigh =
-        rt_skeleton3d_add_bone(src, rt_const_cstr("LeftUpLeg"), 0, rt_mat4_translate(0.0, -1.0, 0.0));
+    int64_t s_thigh = rt_skeleton3d_add_bone(
+        src, rt_const_cstr("LeftUpLeg"), 0, rt_mat4_translate(0.0, -1.0, 0.0));
     int64_t s_calf = rt_skeleton3d_add_bone(
         src, rt_const_cstr("LeftLeg"), (int64_t)s_thigh, rt_mat4_translate(0.0, -1.0, 0.0));
     rt_skeleton3d_add_bone(
@@ -656,9 +660,11 @@ static void test_animation_retarget_maps_humanoid_roles() {
     void *player = rt_anim_player3d_new(dst);
     rt_anim_player3d_play(player, retargeted);
     rt_anim_player3d_update(player, 1.0); /* sample at t=1 -> thigh Z = 0.5 */
+
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *thigh = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, d_thigh);
     mat4_view *spine = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, d_spine);
     /* Role mapping lands LeftUpLeg's channel on thigh_l (Z animates to 0.5), not on the
@@ -676,7 +682,8 @@ static void test_animation_retarget_matches_bone_names() {
 
     void *dst = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(dst, rt_const_cstr("root"), -1, rt_mat4_identity());
-    int64_t dst_unused = rt_skeleton3d_add_bone(dst, rt_const_cstr("unused"), 0, rt_mat4_identity());
+    int64_t dst_unused =
+        rt_skeleton3d_add_bone(dst, rt_const_cstr("unused"), 0, rt_mat4_identity());
     int64_t dst_arm = rt_skeleton3d_add_bone(dst, rt_const_cstr("arm"), 0, rt_mat4_identity());
     rt_skeleton3d_compute_inverse_bind(dst);
 
@@ -701,9 +708,11 @@ static void test_animation_retarget_matches_bone_names() {
     void *player = rt_anim_player3d_new(dst);
     rt_anim_player3d_play(player, retargeted);
     rt_anim_player3d_update(player, 1.0);
+
     typedef struct {
         double m[16];
     } mat4_view;
+
     mat4_view *arm_mat = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, dst_arm);
     mat4_view *unused_mat = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, dst_unused);
     EXPECT_NEAR(arm_mat->m[3], 4.0, 0.1, "Animation3D.Retarget maps keyed bone by name");

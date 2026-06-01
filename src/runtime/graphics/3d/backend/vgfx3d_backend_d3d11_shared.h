@@ -266,8 +266,8 @@ int vgfx3d_d3d11_should_composite_to_swapchain(int8_t rtt_active,
 int vgfx3d_d3d11_should_reset_composited_swapchain_for_frame(int8_t rtt_active,
                                                              int8_t load_existing_color);
 /// @brief Decide whether a post-FX enable update invalidates a prior swapchain composite.
-int vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(
-    int8_t current_enabled, int8_t requested_enabled);
+int vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(int8_t current_enabled,
+                                                                     int8_t requested_enabled);
 /// @brief Decide whether a begin-frame should preserve scene temporal history as an overlay pass.
 int vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
     vgfx3d_d3d11_target_kind_t resolved_target_kind, int8_t requested_load_existing_color);

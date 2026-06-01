@@ -119,7 +119,7 @@ class Renderer {
             PostFX3D.AddBloom(postfx, 0.88, 0.08, 3);
             PostFX3D.AddFXAA(postfx);
             PostFX3D.AddColorGrade(postfx, 0.005, 1.06, 1.04);
-            PostFX3D.AddVignette(postfx, 0.86, 0.04);
+            PostFX3D.AddVignette(postfx, 0.96, 0.28);
         } else {
             PostFX3D.AddTonemap(postfx, 1, 1.18);
             PostFX3D.AddBloom(postfx, 0.90, 0.06, 1);

@@ -62,20 +62,20 @@ typedef struct {
     void *normal_map_asset;
     void *specular_map_asset;
     void *emissive_map_asset;
-    float emissive_color[3];     /* emissive color multiplier */
-    float metallic;              /* [0,1] dielectric->metal */
-    float roughness;             /* [0,1] smooth->rough */
-    float ao;                    /* [0,1] ambient occlusion multiplier */
-    float emissive_intensity;    /* scalar multiplier applied after emissive color/map */
-    float normal_scale;          /* scales tangent-space XY perturbation */
-    int8_t additive_blend;       /* use additive blending instead of standard alpha */
-    int32_t workflow;            /* RT_MATERIAL3D_WORKFLOW_* */
-    int32_t alpha_mode;          /* RT_MATERIAL3D_ALPHA_MODE_* */
-    float alpha_cutoff;          /* alpha-mask cutoff */
-    int32_t double_sided;        /* culling disabled when true */
-    int32_t texture_wrap_s;      /* RT_MATERIAL3D_TEXTURE_WRAP_* */
-    int32_t texture_wrap_t;      /* RT_MATERIAL3D_TEXTURE_WRAP_* */
-    int32_t texture_filter;      /* RT_MATERIAL3D_TEXTURE_FILTER_* */
+    float emissive_color[3];  /* emissive color multiplier */
+    float metallic;           /* [0,1] dielectric->metal */
+    float roughness;          /* [0,1] smooth->rough */
+    float ao;                 /* [0,1] ambient occlusion multiplier */
+    float emissive_intensity; /* scalar multiplier applied after emissive color/map */
+    float normal_scale;       /* scales tangent-space XY perturbation */
+    int8_t additive_blend;    /* use additive blending instead of standard alpha */
+    int32_t workflow;         /* RT_MATERIAL3D_WORKFLOW_* */
+    int32_t alpha_mode;       /* RT_MATERIAL3D_ALPHA_MODE_* */
+    float alpha_cutoff;       /* alpha-mask cutoff */
+    int32_t double_sided;     /* culling disabled when true */
+    int32_t texture_wrap_s;   /* RT_MATERIAL3D_TEXTURE_WRAP_* */
+    int32_t texture_wrap_t;   /* RT_MATERIAL3D_TEXTURE_WRAP_* */
+    int32_t texture_filter;   /* RT_MATERIAL3D_TEXTURE_FILTER_* */
     int32_t texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
@@ -85,8 +85,8 @@ typedef struct {
     const void *ao_map;                 /* Pixels fallback (ambient occlusion map) or NULL */
     void *metallic_roughness_map_asset;
     void *ao_map_asset;
-    const void *env_map;                /* CubeMap3D (environment reflections) or NULL */
-    float reflectivity;                 /* [0.0=no reflection, 1.0=mirror] */
+    const void *env_map; /* CubeMap3D (environment reflections) or NULL */
+    float reflectivity;  /* [0.0=no reflection, 1.0=mirror] */
     /* Terrain splat mapping (populated by terrain draw path, NULL otherwise) */
     const void *splat_map;       /* RGBA weight texture (NULL = not terrain) */
     const void *splat_layers[4]; /* Layer textures */

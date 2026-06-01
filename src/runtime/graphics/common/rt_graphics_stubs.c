@@ -6848,8 +6848,7 @@ void rt_sound3d_set_active_listener_state(const rt_sound3d_listener_state *state
     (void)state;
 }
 
-void rt_sound3d_clear_active_listener_state(void) {
-}
+void rt_sound3d_clear_active_listener_state(void) {}
 
 void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listener,
                                         const double *source_position,
@@ -8360,7 +8359,10 @@ void *rt_hinge_joint3d_new(void *a, void *b, void *anchor, void *axis) {
     return NULL;
 }
 
-void rt_hinge_joint3d_set_motor(void *joint, int8_t enabled, double target_velocity, double max_impulse) {
+void rt_hinge_joint3d_set_motor(void *joint,
+                                int8_t enabled,
+                                double target_velocity,
+                                double max_impulse) {
     (void)joint;
     (void)enabled;
     (void)target_velocity;
@@ -8429,7 +8431,10 @@ void rt_sixdof_joint3d_set_angular_limits(void *j, void *min, void *max) {
     (void)max;
 }
 
-void rt_sixdof_joint3d_set_linear_motor(void *j, int8_t enabled, void *velocity, double max_impulse) {
+void rt_sixdof_joint3d_set_linear_motor(void *j,
+                                        int8_t enabled,
+                                        void *velocity,
+                                        double max_impulse) {
     (void)j;
     (void)enabled;
     (void)velocity;
@@ -8980,7 +8985,10 @@ void *rt_body3d_get_orientation(void *o) {
     return NULL;
 }
 
-void rt_body3d_get_pose_raw(void *o, double *position_out, double *rotation_out, double *scale_out) {
+void rt_body3d_get_pose_raw(void *o,
+                            double *position_out,
+                            double *rotation_out,
+                            double *scale_out) {
     (void)o;
     if (position_out) {
         position_out[0] = 0.0;
@@ -9077,8 +9085,8 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     (void)fz;
 }
 
-void rt_body3d_apply_force_at_point(void *o, double fx, double fy, double fz,
-                                    double px, double py, double pz) {
+void rt_body3d_apply_force_at_point(
+    void *o, double fx, double fy, double fz, double px, double py, double pz) {
     (void)o;
     (void)fx;
     (void)fy;
@@ -9105,8 +9113,8 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
     (void)iz;
 }
 
-void rt_body3d_apply_impulse_at_point(void *o, double ix, double iy, double iz,
-                                      double px, double py, double pz) {
+void rt_body3d_apply_impulse_at_point(
+    void *o, double ix, double iy, double iz, double px, double py, double pz) {
     (void)o;
     (void)ix;
     (void)iy;
@@ -10438,8 +10446,7 @@ void *rt_navmesh3d_bake(void *s, double r, double h, double slope, double cell) 
 /// @brief Stub for `NavMesh3D.BakeTiled` — tiled scene bake entry point.
 ///
 /// Silent stub returning NULL.
-void *rt_navmesh3d_bake_tiled(
-    void *s, double tile, double r, double h, double slope, double cell) {
+void *rt_navmesh3d_bake_tiled(void *s, double tile, double r, double h, double slope, double cell) {
     (void)s;
     (void)tile;
     (void)r;
@@ -10549,11 +10556,8 @@ int64_t rt_navmesh3d_get_offmesh_link_count(void *n) {
     return 0;
 }
 
-int8_t rt_navmesh3d_set_offmesh_link_metadata(void *n,
-                                              int64_t index,
-                                              rt_string kind,
-                                              double traversal_cost,
-                                              int64_t state_flags) {
+int8_t rt_navmesh3d_set_offmesh_link_metadata(
+    void *n, int64_t index, rt_string kind, double traversal_cost, int64_t state_flags) {
     (void)n;
     (void)index;
     (void)kind;
@@ -11194,7 +11198,10 @@ void *rt_ik_solver3d_get_skeleton(void *solver) {
     return NULL;
 }
 
-int8_t rt_ik_solver3d_apply_to_pose(void *solver, float *locals, float *globals, int32_t bone_count) {
+int8_t rt_ik_solver3d_apply_to_pose(void *solver,
+                                    float *locals,
+                                    float *globals,
+                                    int32_t bone_count) {
     (void)solver;
     (void)locals;
     (void)globals;
@@ -11622,10 +11629,7 @@ int8_t rt_anim_controller3d_crossfade_layer(void *c, int64_t l, rt_string s, dou
 ///        toward state `s` over `d` seconds and compose it as a bind-pose delta.
 ///
 /// Silent stub returning `0`.
-int8_t rt_anim_controller3d_crossfade_layer_additive(void *c,
-                                                     int64_t l,
-                                                     rt_string s,
-                                                     double d) {
+int8_t rt_anim_controller3d_crossfade_layer_additive(void *c, int64_t l, rt_string s, double d) {
     (void)c;
     (void)l;
     (void)s;

@@ -168,11 +168,8 @@ static void seq_save_trap_error(char *buffer, size_t buffer_size, const char *fa
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
 }
 
-static int seq_ensure_capacity_or_release(rt_seq_impl *seq,
-                                           int64_t needed,
-                                           void *retained_value,
-                                           int retained,
-                                           const char *fallback) {
+static int seq_ensure_capacity_or_release(
+    rt_seq_impl *seq, int64_t needed, void *retained_value, int retained, const char *fallback) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -632,7 +629,8 @@ void rt_seq_push(void *obj, void *val) {
         rt_obj_retain_maybe(val);
         retained = 1;
     }
-    if (!seq_ensure_capacity_or_release(seq, seq->len + 1, val, retained, "Seq.Push: capacity failed"))
+    if (!seq_ensure_capacity_or_release(
+            seq, seq->len + 1, val, retained, "Seq.Push: capacity failed"))
         return;
     seq->items[seq->len] = val;
     seq->len++;

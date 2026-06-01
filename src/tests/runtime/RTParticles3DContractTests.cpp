@@ -377,6 +377,7 @@ static void test_rebase_origin_shifts_emitter_and_live_particles() {
     assert(std::fabs(pos[1] - 2.0) < 1e-9);
     assert(std::fabs(pos[2] - 15.0) < 1e-9);
     assert(view->particles != nullptr);
+
     struct ParticleView {
         double pos[3];
         double vel[3];
@@ -389,6 +390,7 @@ static void test_rebase_origin_shifts_emitter_and_live_particles() {
         double alpha0;
         double alpha1;
     };
+
     ParticleView *particle = static_cast<ParticleView *>(view->particles);
     assert(std::fabs(particle[0].pos[0] - 10.0) < 1e-9);
     assert(std::fabs(particle[0].pos[1] - 2.0) < 1e-9);

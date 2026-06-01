@@ -601,7 +601,7 @@ class IdeOverlays {
 
     hide func layoutSettingsPanel(shell: app_shell.AppShell) {
         if settingsPanel == null { return; }
-        var rootW = shell.app.GetWidth();
+        var rootW = logicalAppWidth(shell);
         if rootW <= 0 { rootW = 1280; }
         var panelW = SETTINGS_DOCK_WIDTH;
         if rootW < 760 { panelW = SETTINGS_DOCK_MIN_WIDTH; }
@@ -619,8 +619,8 @@ class IdeOverlays {
 
     hide func layoutAboutPanel(shell: app_shell.AppShell) {
         if aboutPanel == null { return; }
-        var rootW = shell.app.GetWidth();
-        var rootH = shell.app.GetHeight();
+        var rootW = logicalAppWidth(shell);
+        var rootH = logicalAppHeight(shell);
         if rootW <= 0 { rootW = 1280; }
         if rootH <= 0 { rootH = 800; }
         var panelW = ABOUT_PANEL_WIDTH;
@@ -637,5 +637,19 @@ class IdeOverlays {
         if x < PANEL_SCREEN_MARGIN { x = PANEL_SCREEN_MARGIN; }
         if y < PANEL_SCREEN_MARGIN { y = PANEL_SCREEN_MARGIN; }
         aboutPanel.SetPosition(x, y);
+    }
+
+    hide func logicalAppWidth(shell: app_shell.AppShell) -> Integer {
+        return physicalToLogical(shell.app.GetWidth(), shell.app.GetScale());
+    }
+
+    hide func logicalAppHeight(shell: app_shell.AppShell) -> Integer {
+        return physicalToLogical(shell.app.GetHeight(), shell.app.GetScale());
+    }
+
+    hide func physicalToLogical(value: Integer, scale: Number) -> Integer {
+        if value <= 0 { return value; }
+        if scale <= 1.0 { return value; }
+        return Convert.NumToInt((value / scale) + 0.5);
     }
 }

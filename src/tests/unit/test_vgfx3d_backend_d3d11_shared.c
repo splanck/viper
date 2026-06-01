@@ -526,114 +526,57 @@ static void test_postfx_readback_policy_helpers(void) {
                 "A load-existing overlay pass can keep drawing over the composited swapchain");
     EXPECT_TRUE(vgfx3d_d3d11_should_reset_composited_swapchain_for_frame(1, 1) == 1,
                 "RTT begin-frame state never preserves a window-swapchain composite");
-    EXPECT_TRUE(vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(1, 1) ==
-                    0,
+    EXPECT_TRUE(vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(1, 1) == 0,
                 "Reapplying the same GPU postfx state preserves the composited swapchain");
-    EXPECT_TRUE(vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(1, 0) ==
-                    1,
+    EXPECT_TRUE(vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(1, 0) == 1,
                 "Disabling GPU postfx invalidates the composited swapchain");
-    EXPECT_TRUE(vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(0, 1) ==
-                    1,
+    EXPECT_TRUE(vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(0, 1) == 1,
                 "Enabling GPU postfx invalidates any direct-swapchain contents");
-    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
-                    VGFX3D_D3D11_TARGET_OVERLAY, 1) == 1,
-                "Separate overlay passes preserve scene temporal history");
-    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
-                    VGFX3D_D3D11_TARGET_SWAPCHAIN, 1) == 1,
-                "Final overlays after apply_postfx preserve scene temporal history");
-    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(
-                    VGFX3D_D3D11_TARGET_RTT, 1) == 0,
-                "RTT load-existing passes do not preserve scene temporal history");
-    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(VGFX3D_D3D11_TARGET_SCENE,
-                                                                 0) == 0,
-                "Main scene passes refresh scene temporal history");
-    EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_OVERLAY, 1) ==
+    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(VGFX3D_D3D11_TARGET_OVERLAY, 1) ==
                     1,
+                "Separate overlay passes preserve scene temporal history");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_should_treat_begin_frame_as_overlay(VGFX3D_D3D11_TARGET_SWAPCHAIN, 1) == 1,
+        "Final overlays after apply_postfx preserve scene temporal history");
+    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(VGFX3D_D3D11_TARGET_RTT, 1) == 0,
+                "RTT load-existing passes do not preserve scene temporal history");
+    EXPECT_TRUE(vgfx3d_d3d11_should_treat_begin_frame_as_overlay(VGFX3D_D3D11_TARGET_SCENE, 0) == 0,
+                "Main scene passes refresh scene temporal history");
+    EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_OVERLAY, 1) == 1,
                 "Overlay target passes mark the separate overlay target as used");
-    EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_SWAPCHAIN, 1) ==
-                    0,
+    EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_SWAPCHAIN, 1) == 0,
                 "Direct swapchain overlays do not reuse stale separate overlay target state");
-    EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_OVERLAY, 0) ==
-                    0,
+    EXPECT_TRUE(vgfx3d_d3d11_uses_separate_overlay_target(VGFX3D_D3D11_TARGET_OVERLAY, 0) == 0,
                 "Incomplete overlay resources do not mark a separate overlay target as used");
 
-    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(1,
-                                                  0,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  VGFX3D_D3D11_TARGET_SCENE) ==
-                    VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT,
-                "Readback uses the pre-present snapshot after a finalized swapchain frame");
-    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(0,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  VGFX3D_D3D11_TARGET_SCENE) ==
-                    VGFX3D_D3D11_READBACK_BACKBUFFER,
-                "Readback uses the visible backbuffer after apply_postfx already composited");
-    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(0,
-                                                  0,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  2,
-                                                  1,
-                                                  1,
-                                                  VGFX3D_D3D11_TARGET_SCENE) ==
-                    VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE,
-                "Readback replays a valid GPU postfx chain when the scene is not composited");
-    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(0,
-                                                  0,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  2,
-                                                  0,
-                                                  1,
-                                                  VGFX3D_D3D11_TARGET_SCENE) ==
-                    VGFX3D_D3D11_READBACK_SCENE_COLOR,
-                "Readback avoids replaying malformed postfx snapshots without effects storage");
-    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(0,
-                                                  0,
-                                                  1,
-                                                  1,
-                                                  1,
-                                                  2,
-                                                  1,
-                                                  0,
-                                                  VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
-                    VGFX3D_D3D11_READBACK_BACKBUFFER,
-                "Readback avoids replaying postfx snapshots when scene targets are unavailable");
-    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  1,
-                                                  VGFX3D_D3D11_TARGET_SCENE) ==
-                    VGFX3D_D3D11_READBACK_SCENE_COLOR,
-                "Readback can source the offscreen scene when it is still the active target");
-    EXPECT_TRUE(vgfx3d_d3d11_choose_readback_kind(0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  0,
-                                                  1,
-                                                  VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
-                    VGFX3D_D3D11_READBACK_BACKBUFFER,
-                "Readback falls back to the swapchain when the current target is the backbuffer");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(1, 0, 1, 1, 1, 1, 1, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+            VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT,
+        "Readback uses the pre-present snapshot after a finalized swapchain frame");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(0, 1, 1, 1, 1, 1, 1, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+            VGFX3D_D3D11_READBACK_BACKBUFFER,
+        "Readback uses the visible backbuffer after apply_postfx already composited");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 1, 1, 1, 2, 1, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+            VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE,
+        "Readback replays a valid GPU postfx chain when the scene is not composited");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 1, 1, 1, 2, 0, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+            VGFX3D_D3D11_READBACK_SCENE_COLOR,
+        "Readback avoids replaying malformed postfx snapshots without effects storage");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 1, 1, 1, 2, 1, 0, VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
+            VGFX3D_D3D11_READBACK_BACKBUFFER,
+        "Readback avoids replaying postfx snapshots when scene targets are unavailable");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SCENE) ==
+            VGFX3D_D3D11_READBACK_SCENE_COLOR,
+        "Readback can source the offscreen scene when it is still the active target");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_choose_readback_kind(0, 0, 0, 0, 0, 0, 0, 1, VGFX3D_D3D11_TARGET_SWAPCHAIN) ==
+            VGFX3D_D3D11_READBACK_BACKBUFFER,
+        "Readback falls back to the swapchain when the current target is the backbuffer");
 }
 
 int main(void) {

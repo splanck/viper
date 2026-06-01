@@ -231,7 +231,10 @@ void rt_body3d_set_orientation(void *body, void *quat);
 /// @brief Get the body's current orientation as a Quaternion.
 void *rt_body3d_get_orientation(void *body);
 /// @brief Copy raw position, orientation, and scale arrays without allocating wrapper objects.
-void rt_body3d_get_pose_raw(void *body, double *position_out, double *rotation_out, double *scale_out);
+void rt_body3d_get_pose_raw(void *body,
+                            double *position_out,
+                            double *rotation_out,
+                            double *scale_out);
 /// @brief Set the linear velocity in m/s.
 void rt_body3d_set_velocity(void *body, double vx, double vy, double vz);
 /// @brief Get the linear velocity as a Vec3.
@@ -244,14 +247,14 @@ void *rt_body3d_get_angular_velocity(void *body);
 void rt_body3d_apply_force(void *body, double fx, double fy, double fz);
 /// @brief Apply a continuous force at a world point — adds force and torque
 ///   (r x force), e.g. a thruster. Cleared each step like ApplyForce.
-void rt_body3d_apply_force_at_point(void *body, double fx, double fy, double fz,
-                                    double px, double py, double pz);
+void rt_body3d_apply_force_at_point(
+    void *body, double fx, double fy, double fz, double px, double py, double pz);
 /// @brief Apply an instantaneous impulse (kg·m/s) — changes velocity immediately.
 void rt_body3d_apply_impulse(void *body, double ix, double iy, double iz);
 /// @brief Apply a linear impulse at a world point — adds linear and (via the lever
 ///   arm) angular velocity, so off-center hits spin the body.
-void rt_body3d_apply_impulse_at_point(void *body, double ix, double iy, double iz,
-                                      double px, double py, double pz);
+void rt_body3d_apply_impulse_at_point(
+    void *body, double ix, double iy, double iz, double px, double py, double pz);
 /// @brief Apply a continuous torque (N·m) about each axis.
 void rt_body3d_apply_torque(void *body, double tx, double ty, double tz);
 /// @brief Apply an instantaneous angular impulse — changes angular velocity immediately.

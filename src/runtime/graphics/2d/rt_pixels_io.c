@@ -669,7 +669,8 @@ int rt_png_decode_buffer_rgba32(const uint8_t *file_data,
     uint32_t *pixels = NULL;
     int success = 0;
 
-    if (!rt_compress_inflate_raw(idat_buf + 2, deflate_len, 256u * 1024u * 1024u, &raw_data, &raw_len)) {
+    if (!rt_compress_inflate_raw(
+            idat_buf + 2, deflate_len, 256u * 1024u * 1024u, &raw_data, &raw_len)) {
         free(idat_buf);
         return 0;
     }
@@ -2150,8 +2151,8 @@ int rt_jpeg_decode_buffer_rgba32(const uint8_t *data,
     }
 
     // Apply EXIF orientation transform without creating GC-managed Pixels.
-    if (pixels && !jpeg_rgba_apply_orientation(
-                      &pixels, &decoded_width, &decoded_height, exif_orientation))
+    if (pixels &&
+        !jpeg_rgba_apply_orientation(&pixels, &decoded_width, &decoded_height, exif_orientation))
         goto jpeg_fail;
 
     // Cleanup

@@ -27,6 +27,11 @@
 #define RT_NODE_ANIM_INTERP_STEP 1
 #define RT_NODE_ANIM_INTERP_CUBICSPLINE 2
 
+#define NODE_INIT_CHILDREN 4
+#define SCENE3D_ABS_MAX 1000000000000.0
+#define SCENE3D_FLOAT_ABS_MAX 3.40282346638528859812e38
+#define SCENE3D_PI 3.14159265358979323846
+
 /// @brief One node-animation channel (glTF-style): the target node name, the animated
 ///   path (TRS/weights), interpolation mode, and the keyframe times/values plus optional
 ///   cubic-spline in/out tangents.
@@ -230,6 +235,100 @@ void rt_scene_node3d_bind_node_animator(void *obj, void *animator);
 void rt_scene_node3d_set_light(void *obj, void *light);
 /// @brief Get the Light3D attached to a scene node (NULL if none).
 void *rt_scene_node3d_get_light(void *obj);
+
+// Shared internal helpers exposed for the split rt_scene3d_*.c sibling TUs.
+rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target);
+void mark_dirty(rt_scene_node3d *node);
+void mat4d_identity(double *out);
+void node_animator_update(rt_node_animator3d *animator, double dt);
+int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target);
+void scene3d_quat_normalize_local(double *q);
+void recompute_world_matrix(rt_scene_node3d *node);
+void scene_bounds_reset(float out_min[3], float out_max[3]);
+void scene_mesh_bounds(rt_mesh3d *mesh, float out_min[3], float out_max[3], float *out_radius);
+void scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner);
+void scene_node_clear_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner);
+int scene_node_collect_subtree_bounds(rt_scene_node3d *node,
+                                      const double *node_to_root,
+                                      float out_min[3],
+                                      float out_max[3]);
+void scene_node_get_world_position(rt_scene_node3d *node, double *x, double *y, double *z);
+void scene_node_get_world_rotation(rt_scene_node3d *node, double *out_quat);
+rt_scene_node3d *scene_node3d_checked(void *obj);
+double scene3d_clamp_abs_or(double value, double fallback);
+void scene3d_mark_spatial_dirty(rt_scene3d *scene);
+void scene3d_release_ref(void **slot);
+double scene3d_scale_or_unit(double value);
+int scene_node_stack_push(rt_scene_node3d ***stack,
+                          size_t *count,
+                          size_t *capacity,
+                          rt_scene_node3d *node);
+
+typedef struct {
+    rt_scene_node3d *node;
+    void *inherited_animator;
+} scene_index_build_stack_item_t;
+
+typedef struct {
+    rt_scene3d_spatial_entry **items;
+    int32_t count;
+    int32_t capacity;
+} scene3d_spatial_candidate_list_t;
+
+void scene_bounds_include_point_d(double bounds_min[3],
+                                  double bounds_max[3],
+                                  const double point[3]);
+void scene_bounds_reset_d(double out_min[3], double out_max[3]);
+int scene_index_build_stack_push(scene_index_build_stack_item_t **stack,
+                                 size_t *count,
+                                 size_t *capacity,
+                                 rt_scene_node3d *node,
+                                 void *inherited_animator);
+rt_scene3d *scene3d_checked(void *obj);
+int scene3d_read_vec3d(void *obj, double out[3], const char *trap_message);
+int scene3d_node_world_mesh_aabb(rt_scene_node3d *node,
+                                 double world_min[3],
+                                 double world_max[3]);
+int scene3d_aabb_intersects_aabb(const double a_min[3],
+                                 const double a_max[3],
+                                 const double b_min[3],
+                                 const double b_max[3]);
+int scene3d_aabb_intersects_sphere(const double aabb_min[3],
+                                   const double aabb_max[3],
+                                   const double center[3],
+                                   double radius);
+int scene3d_ray_intersects_aabb(const double origin[3],
+                                const double direction[3],
+                                const double aabb_min[3],
+                                const double aabb_max[3],
+                                double max_distance,
+                                double *out_t);
+int scene3d_ray_sweep_bounds(const double origin[3],
+                             const double direction[3],
+                             double max_distance,
+                             double out_min[3],
+                             double out_max[3]);
+float scene3d_float_or_zero(double value);
+int scene3d_transform_aabb_d(const float obj_min[3],
+                             const float obj_max[3],
+                             const double world_matrix[16],
+                             double out_min[3],
+                             double out_max[3]);
+int scene3d_spatial_collect_aabb(rt_scene3d *scene,
+                                 const double query_min[3],
+                                 const double query_max[3],
+                                 scene3d_spatial_candidate_list_t *out,
+                                 int count_cullable_prefilter);
+int scene3d_spatial_collect_all(rt_scene3d *scene, scene3d_spatial_candidate_list_t *out);
+int scene3d_mesh_has_dynamic_deformation(rt_mesh3d *mesh, void *effective_animator);
+
+typedef struct {
+    int32_t *items;
+    int32_t count;
+    int32_t capacity;
+} scene3d_spatial_node_stack_t;
+
+void *scene3d_effective_animator(rt_scene_node3d *node);
 
 #ifdef __cplusplus
 }

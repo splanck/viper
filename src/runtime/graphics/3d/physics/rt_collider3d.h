@@ -97,8 +97,10 @@ void rt_collider3d_get_child_transform_raw(
 int8_t rt_collider3d_sample_heightfield_raw(
     void *collider, double local_x, double local_z, double *height_out, double *normal_out);
 /// @brief Heightfield collider: expose grid dimensions and local cell scale to physics queries.
-int8_t rt_collider3d_get_heightfield_info_raw(
-    void *collider, int32_t *width_out, int32_t *depth_out, double *scale_out);
+int8_t rt_collider3d_get_heightfield_info_raw(void *collider,
+                                              int32_t *width_out,
+                                              int32_t *depth_out,
+                                              double *scale_out);
 
 #ifdef __cplusplus
 }

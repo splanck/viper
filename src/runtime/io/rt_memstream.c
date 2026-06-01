@@ -126,8 +126,8 @@ static void memstream_release_object(void *obj) {
 }
 
 static int memstream_ensure_capacity_or_release(rt_memstream_impl *ms,
-                                                 int64_t required,
-                                                 const char *fallback) {
+                                                int64_t required,
+                                                const char *fallback) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
@@ -223,9 +223,8 @@ void *rt_memstream_new_capacity(int64_t capacity) {
     ms->pos = 0;
     rt_obj_set_finalizer(ms, rt_memstream_finalize);
 
-    if (capacity > 0 &&
-        !memstream_ensure_capacity_or_release(
-            ms, capacity, "MemStream.NewCapacity: memory allocation failed"))
+    if (capacity > 0 && !memstream_ensure_capacity_or_release(
+                            ms, capacity, "MemStream.NewCapacity: memory allocation failed"))
         return NULL;
 
     return ms;

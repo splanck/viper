@@ -701,9 +701,8 @@ void rt_particles3d_rebase_origin(void *o, double dx, double dy, double dz) {
     rt_particles3d *ps = particles3d_checked(o);
     if (!ps)
         return;
-    double delta[3] = {particles_finite_or(dx, 0.0),
-                       particles_finite_or(dy, 0.0),
-                       particles_finite_or(dz, 0.0)};
+    double delta[3] = {
+        particles_finite_or(dx, 0.0), particles_finite_or(dy, 0.0), particles_finite_or(dz, 0.0)};
     if (delta[0] == 0.0 && delta[1] == 0.0 && delta[2] == 0.0)
         return;
 
@@ -718,9 +717,8 @@ void rt_particles3d_rebase_origin(void *o, double dx, double dy, double dz) {
         double x = ps->particles[i].pos[0] - delta[0];
         double y = ps->particles[i].pos[1] - delta[1];
         double z = ps->particles[i].pos[2] - delta[2];
-        if (!isfinite(x) || !isfinite(y) || !isfinite(z) ||
-            fabs(x) > PARTICLES3D_WORLD_ABS_MAX || fabs(y) > PARTICLES3D_WORLD_ABS_MAX ||
-            fabs(z) > PARTICLES3D_WORLD_ABS_MAX) {
+        if (!isfinite(x) || !isfinite(y) || !isfinite(z) || fabs(x) > PARTICLES3D_WORLD_ABS_MAX ||
+            fabs(y) > PARTICLES3D_WORLD_ABS_MAX || fabs(z) > PARTICLES3D_WORLD_ABS_MAX) {
             ps->particles[i] = ps->particles[--ps->count];
             continue;
         }
@@ -893,8 +891,7 @@ static int particles3d_acquire_draw_storage(rt_particles3d *ps,
             uint32_t *grown;
             if ((size_t)idx_count > SIZE_MAX / sizeof(*grown))
                 return 0;
-            grown =
-                (uint32_t *)realloc(ps->draw_indices[slot], (size_t)idx_count * sizeof(*grown));
+            grown = (uint32_t *)realloc(ps->draw_indices[slot], (size_t)idx_count * sizeof(*grown));
             if (!grown)
                 return 0;
             ps->draw_indices[slot] = grown;
@@ -931,10 +928,22 @@ static int particles3d_acquire_draw_storage(rt_particles3d *ps,
 /// @brief Build a row-major model matrix that translates by @p origin (identity rotation/scale).
 static void particles3d_origin_model_matrix(const double origin[3], double out[16]) {
     static const double identity[16] = {
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     };
     memcpy(out, identity, sizeof(identity));
     if (origin) {

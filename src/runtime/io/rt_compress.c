@@ -38,9 +38,9 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -999,8 +999,8 @@ static void *inflate_data_limited_ex(const uint8_t *data,
                                      size_t *consumed_bytes,
                                      bool allow_trailing) {
     size_t raw_len = 0;
-    uint8_t *raw = inflate_raw_limited_ex(
-        data, len, max_output, &raw_len, consumed_bytes, allow_trailing);
+    uint8_t *raw =
+        inflate_raw_limited_ex(data, len, max_output, &raw_len, consumed_bytes, allow_trailing);
     if (!raw)
         return NULL;
     void *result = rt_bytes_new(raw_len);
@@ -1204,8 +1204,8 @@ static int deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len) {
             return 0;
 
         // LEN = 0 and NLEN = 0xFFFF
-        if (!bw_write(bw, 0x00, 8) || !bw_write(bw, 0x00, 8) ||
-            !bw_write(bw, 0xFF, 8) || !bw_write(bw, 0xFF, 8))
+        if (!bw_write(bw, 0x00, 8) || !bw_write(bw, 0x00, 8) || !bw_write(bw, 0xFF, 8) ||
+            !bw_write(bw, 0xFF, 8))
             return 0;
         return 1;
     }
@@ -1228,9 +1228,8 @@ static int deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len) {
 
         // LEN and NLEN
         uint16_t nlen = ~(uint16_t)block_len;
-        if (!bw_write(bw, block_len & 0xFF, 8) ||
-            !bw_write(bw, (block_len >> 8) & 0xFF, 8) || !bw_write(bw, nlen & 0xFF, 8) ||
-            !bw_write(bw, (nlen >> 8) & 0xFF, 8))
+        if (!bw_write(bw, block_len & 0xFF, 8) || !bw_write(bw, (block_len >> 8) & 0xFF, 8) ||
+            !bw_write(bw, nlen & 0xFF, 8) || !bw_write(bw, (nlen >> 8) & 0xFF, 8))
             return 0;
 
         // Data
@@ -1316,8 +1315,7 @@ static int deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int 
 
             // Extra distance bits
             if (dist_extra_bits[dist_code] > 0) {
-                if (!bw_write(
-                        bw, match_dist - dist_base[dist_code], dist_extra_bits[dist_code])) {
+                if (!bw_write(bw, match_dist - dist_base[dist_code], dist_extra_bits[dist_code])) {
                     lz77_free(&lz);
                     return 0;
                 }
@@ -1716,11 +1714,8 @@ void *rt_compress_inflate_limit(void *data, int64_t max_output) {
     return inflate_data_limited(bytes_data(data), bytes_len(data), (size_t)max_output);
 }
 
-int rt_compress_inflate_raw(const uint8_t *data,
-                            size_t len,
-                            size_t max_output,
-                            uint8_t **out_data,
-                            size_t *out_len) {
+int rt_compress_inflate_raw(
+    const uint8_t *data, size_t len, size_t max_output, uint8_t **out_data, size_t *out_len) {
     jmp_buf recovery;
     uint8_t *raw = NULL;
     size_t raw_len = 0;

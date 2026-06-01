@@ -133,7 +133,8 @@ static float ik3d_len3(const float *v) {
     return isfinite(len) ? len : 0.0f;
 }
 
-/// @brief Normalize a 3-vector in place; returns 0 (leaving it unchanged) if degenerate (len <= 1e-6).
+/// @brief Normalize a 3-vector in place; returns 0 (leaving it unchanged) if degenerate (len <=
+/// 1e-6).
 static int ik3d_normalize3(float *v) {
     float len = ik3d_len3(v);
     if (len <= 1e-6f)
@@ -405,7 +406,9 @@ static void ik3d_build_trs(const float *pos, const float *quat, const float *scl
 /// @brief Validate that @p chain is a strict parent -> child path of in-range bone indices.
 /// @details Each entry must be a valid bone, and every entry after the first must have the
 ///          previous entry as its direct parent — the precondition every solver relies on.
-static int ik3d_chain_is_parented(const rt_skeleton3d *skeleton, const int32_t *chain, int32_t count) {
+static int ik3d_chain_is_parented(const rt_skeleton3d *skeleton,
+                                  const int32_t *chain,
+                                  int32_t count) {
     if (!skeleton || !chain || count <= 0)
         return 0;
     for (int32_t i = 0; i < count; i++) {
@@ -442,8 +445,8 @@ static void *ik_solver3d_new(rt_skeleton3d *skeleton,
         return NULL;
     if (!ik3d_chain_is_parented(skeleton, chain, chain_count))
         return NULL;
-    rt_ik_solver3d *solver = (rt_ik_solver3d *)rt_obj_new_i64(RT_G3D_IKSOLVER3D_CLASS_ID,
-                                                              (int64_t)sizeof(*solver));
+    rt_ik_solver3d *solver =
+        (rt_ik_solver3d *)rt_obj_new_i64(RT_G3D_IKSOLVER3D_CLASS_ID, (int64_t)sizeof(*solver));
     if (!solver) {
         rt_trap("IKSolver3D.New: allocation failed");
         return NULL;
@@ -474,8 +477,10 @@ static void *ik_solver3d_new(rt_skeleton3d *skeleton,
                    skeleton->bones[bone].bind_pose_local,
                    16 * sizeof(float));
         }
-        ik3d_build_globals(skeleton, solver->solved_locals, solver->solved_globals, skeleton->bone_count);
-        ik3d_global_position(solver->solved_globals, solver->chain[solver->chain_count - 1], solver->target);
+        ik3d_build_globals(
+            skeleton, solver->solved_locals, solver->solved_globals, skeleton->bone_count);
+        ik3d_global_position(
+            solver->solved_globals, solver->chain[solver->chain_count - 1], solver->target);
     }
     rt_obj_set_finalizer(solver, ik_solver3d_finalize);
     rt_ik_solver3d_solve(solver);
@@ -543,7 +548,8 @@ void rt_ik_solver3d_set_weight(void *obj, double weight) {
         solver->weight = ik3d_clamp01(weight);
 }
 
-/// @brief Set a world-space pole target that swings a two-bone chain's mid joint (non-Vec3 ignored).
+/// @brief Set a world-space pole target that swings a two-bone chain's mid joint (non-Vec3
+/// ignored).
 void rt_ik_solver3d_set_pole(void *obj, void *pole) {
     rt_ik_solver3d *solver = ik_solver3d_checked(obj);
     if (!solver || !rt_g3d_is_vec3(pole))
@@ -658,9 +664,8 @@ static int ik3d_apply_chain(rt_ik_solver3d *solver,
         return 1;
 
     float root[3] = {positions[0][0], positions[0][1], positions[0][2]};
-    float to_target[3] = {solver->target[0] - root[0],
-                          solver->target[1] - root[1],
-                          solver->target[2] - root[2]};
+    float to_target[3] = {
+        solver->target[0] - root[0], solver->target[1] - root[1], solver->target[2] - root[2]};
     float root_dist = ik3d_len3(to_target);
     if (root_dist >= total) {
         if (!ik3d_normalize3(to_target))
@@ -738,7 +743,8 @@ static int ik3d_apply_chain(rt_ik_solver3d *solver,
         float blended[3];
         int32_t bone = solver->chain[i];
         for (int lane = 0; lane < 3; lane++)
-            blended[lane] = original[i][lane] + (positions[i][lane] - original[i][lane]) * solver->weight;
+            blended[lane] =
+                original[i][lane] + (positions[i][lane] - original[i][lane]) * solver->weight;
         ik3d_set_global_position(solver, locals, globals, bone_count, bone, blended);
     }
     if (solver->has_ground_normal)

@@ -474,9 +474,8 @@ static void test_crypto_input_validation() {
                 expect_trap([]() { (void)rt_password_hash_with_iterations(nullptr, 100000); },
                             "password is null"));
     test_result("Password.HashScryptParams rejects NULL password",
-                expect_trap([]() {
-                    (void)rt_password_hash_scrypt_params(nullptr, 16384, 8, 1);
-                }, "password is null"));
+                expect_trap([]() { (void)rt_password_hash_scrypt_params(nullptr, 16384, 8, 1); },
+                            "password is null"));
 
     uint8_t zero_key[16] = {0};
     uint8_t zero_iv[16] = {0};
@@ -497,9 +496,9 @@ static void test_crypto_input_validation() {
     test_result("AES string encrypt rejects NULL plaintext",
                 expect_trap([&]() { (void)rt_aes_encrypt_str(nullptr, rt_const_cstr("pw")); },
                             "plaintext is null"));
-    test_result("AES string encrypt rejects NULL password",
-                expect_trap([&]() { (void)rt_aes_encrypt_str(empty, nullptr); },
-                            "password is null"));
+    test_result(
+        "AES string encrypt rejects NULL password",
+        expect_trap([&]() { (void)rt_aes_encrypt_str(empty, nullptr); }, "password is null"));
     test_result("AES string decrypt rejects NULL ciphertext",
                 expect_trap([&]() { (void)rt_aes_decrypt_str(nullptr, rt_const_cstr("pw")); },
                             "encrypted data is null"));

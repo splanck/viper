@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_object.h"
 #include "rt_heap.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_threads.h"

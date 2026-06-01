@@ -139,7 +139,18 @@ static bool write_test_ktx2_mips(const char *path,
                                  const uint64_t *level_bytes,
                                  uint32_t level_count) {
     static const uint8_t identifier[12] = {
-        0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A,
+        0xAB,
+        0x4B,
+        0x54,
+        0x58,
+        0x20,
+        0x32,
+        0x30,
+        0xBB,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
     };
     const size_t level_table_offset = 80u;
     const size_t level_entry_size = 24u;
@@ -555,15 +566,11 @@ static void test_mesh_clone_deep_copies_morph_targets() {
     assert(clone != NULL);
     EXPECT_TRUE(clone->morph_targets_ref != nullptr, "clone keeps morph targets");
     EXPECT_TRUE(clone->morph_targets_ref != morph, "clone does not share morph target payload");
-    EXPECT_NEAR(rt_morphtarget3d_get_weight(clone->morph_targets_ref, shape),
-                0.25,
-                0.001);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(clone->morph_targets_ref, shape), 0.25, 0.001);
 
     rt_morphtarget3d_set_weight(morph, shape, 0.75);
     rt_morphtarget3d_set_delta(morph, shape, 0, 9.0, 9.0, 9.0);
-    EXPECT_NEAR(rt_morphtarget3d_get_weight(clone->morph_targets_ref, shape),
-                0.25,
-                0.001);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(clone->morph_targets_ref, shape), 0.25, 0.001);
     const float *clone_deltas = rt_morphtarget3d_get_packed_deltas(clone->morph_targets_ref);
     EXPECT_NEAR(clone_deltas[0], 1.0, 0.001);
     EXPECT_NEAR(clone_deltas[1], 2.0, 0.001);
@@ -1048,20 +1055,17 @@ static void test_material_texture_setters_reject_invalid_handles() {
     rt_material3d_set_texture(mat, pixels);
     EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_texture(mat, fake); }, "Pixels"),
                 "SetTexture rejects non-Pixels handles");
-    EXPECT_TRUE(
-        expect_trap_contains([&] { rt_material3d_set_normal_map(mat, fake); }, "Pixels"),
-        "SetNormalMap rejects non-Pixels handles");
-    EXPECT_TRUE(expect_trap_contains(
-                    [&] { rt_material3d_set_metallic_roughness_map(mat, fake); }, "Pixels"),
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_normal_map(mat, fake); }, "Pixels"),
+                "SetNormalMap rejects non-Pixels handles");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_metallic_roughness_map(mat, fake); },
+                                     "Pixels"),
                 "SetMetallicRoughnessMap rejects non-Pixels handles");
     EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_ao_map(mat, fake); }, "Pixels"),
                 "SetAOMap rejects non-Pixels handles");
-    EXPECT_TRUE(
-        expect_trap_contains([&] { rt_material3d_set_specular_map(mat, fake); }, "Pixels"),
-        "SetSpecularMap rejects non-Pixels handles");
-    EXPECT_TRUE(
-        expect_trap_contains([&] { rt_material3d_set_emissive_map(mat, fake); }, "Pixels"),
-        "SetEmissiveMap rejects non-Pixels handles");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_specular_map(mat, fake); }, "Pixels"),
+                "SetSpecularMap rejects non-Pixels handles");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_emissive_map(mat, fake); }, "Pixels"),
+                "SetEmissiveMap rejects non-Pixels handles");
     PASS();
 }
 
@@ -1070,12 +1074,40 @@ static void test_textureasset3d_ktx2_material_bridge() {
     const char *rgba_path = "/tmp/viper_textureasset3d_rgba8_test.ktx2";
     const char *bc7_path = "/tmp/viper_textureasset3d_bc7_test.ktx2";
     const uint8_t rgba_level0[] = {
-        0x01, 0x02, 0x03, 0x04, 0x10, 0x20, 0x30, 0x40,
-        0x55, 0x66, 0x77, 0x88, 0xA0, 0xB0, 0xC0, 0xD0,
+        0x01,
+        0x02,
+        0x03,
+        0x04,
+        0x10,
+        0x20,
+        0x30,
+        0x40,
+        0x55,
+        0x66,
+        0x77,
+        0x88,
+        0xA0,
+        0xB0,
+        0xC0,
+        0xD0,
     };
     const uint8_t bc7_level0[] = {
-        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
-        0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF0, 0x0F,
+        0x11,
+        0x22,
+        0x33,
+        0x44,
+        0x55,
+        0x66,
+        0x77,
+        0x88,
+        0x99,
+        0xAA,
+        0xBB,
+        0xCC,
+        0xDD,
+        0xEE,
+        0xF0,
+        0x0F,
     };
     rt_string rgba_path_s;
     rt_string bc7_path_s;
@@ -1167,7 +1199,8 @@ static void test_textureasset3d_ktx2_material_bridge() {
     EXPECT_TRUE(rt_textureasset3d_get_native_cache_key(bc7_asset) != 0,
                 "compressed KTX2 exposes a native cache key");
     EXPECT_TRUE(rt_textureasset3d_get_native_mip_info(
-                    bc7_asset, 1, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr) == 0,
+                    bc7_asset, 1, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr) ==
+                    0,
                 "native mip query rejects out-of-range mips");
     rt_material3d_set_texture(mat, bc7_asset);
     EXPECT_EQ(rt_material3d_get_has_texture(mat), 1);
@@ -1183,14 +1216,15 @@ static void test_textureasset3d_ktx2_material_bridge() {
 static void test_textureasset3d_bc3_software_decode() {
     /* Build one BC3 block: colour0 = red (565 0xF800), colour1 = blue (0x001F); alpha0=255,
      * alpha1=0 (8-alpha mode). Texel 0 uses colour/alpha index 0 -> opaque red; texel 1 uses
-     * index 1 -> transparent blue. Verifies endpoint expansion + index selection on both channels. */
+     * index 1 -> transparent blue. Verifies endpoint expansion + index selection on both channels.
+     */
     uint8_t block[16];
     std::memset(block, 0, sizeof(block));
-    block[0] = 0xFF; /* alpha0 = 255 */
-    block[1] = 0x00; /* alpha1 = 0 */
-    block[2] = 0x08; /* alpha indices: texel0 -> 0, texel1 -> 1 */
-    block[8] = 0x00; /* colour0 low  (0xF800 = red) */
-    block[9] = 0xF8; /* colour0 high */
+    block[0] = 0xFF;  /* alpha0 = 255 */
+    block[1] = 0x00;  /* alpha1 = 0 */
+    block[2] = 0x08;  /* alpha indices: texel0 -> 0, texel1 -> 1 */
+    block[8] = 0x00;  /* colour0 low  (0xF800 = red) */
+    block[9] = 0xF8;  /* colour0 high */
     block[10] = 0x1F; /* colour1 low (0x001F = blue) */
     block[11] = 0x00; /* colour1 high */
     block[12] = 0x04; /* colour indices: texel0 -> 0, texel1 -> 1 */
@@ -1215,6 +1249,7 @@ static void test_textureasset3d_bc3_software_decode() {
 struct Bc7BitWriter {
     uint8_t *buf;
     int pos;
+
     void put(uint32_t v, int n) {
         for (int i = 0; i < n; i++) {
             if ((v >> i) & 1u)
@@ -1240,38 +1275,38 @@ static void write_bc7_constant_white_block(uint8_t *block, int mode, uint32_t pa
     w.put(1, 1);
 
     switch (mode) {
-    case 0:
-        subsets = 3;
-        partition_bits = 4;
-        color_bits = 4;
-        endpoint_pbits = 1;
-        break;
-    case 1:
-        subsets = 2;
-        partition_bits = 6;
-        color_bits = 6;
-        shared_pbits = 1;
-        break;
-    case 2:
-        subsets = 3;
-        partition_bits = 6;
-        color_bits = 5;
-        break;
-    case 3:
-        subsets = 2;
-        partition_bits = 6;
-        color_bits = 7;
-        endpoint_pbits = 1;
-        break;
-    case 7:
-        subsets = 2;
-        partition_bits = 6;
-        color_bits = 5;
-        alpha_bits = 5;
-        endpoint_pbits = 1;
-        break;
-    default:
-        return;
+        case 0:
+            subsets = 3;
+            partition_bits = 4;
+            color_bits = 4;
+            endpoint_pbits = 1;
+            break;
+        case 1:
+            subsets = 2;
+            partition_bits = 6;
+            color_bits = 6;
+            shared_pbits = 1;
+            break;
+        case 2:
+            subsets = 3;
+            partition_bits = 6;
+            color_bits = 5;
+            break;
+        case 3:
+            subsets = 2;
+            partition_bits = 6;
+            color_bits = 7;
+            endpoint_pbits = 1;
+            break;
+        case 7:
+            subsets = 2;
+            partition_bits = 6;
+            color_bits = 5;
+            alpha_bits = 5;
+            endpoint_pbits = 1;
+            break;
+        default:
+            return;
     }
 
     if (partition_bits)
@@ -1309,7 +1344,7 @@ static void test_textureasset3d_bc7_software_decode() {
             w.put(0x7F, 7);
         } /* R0R1 G0G1 B0B1 A0A1 */
         w.put(0, 1);
-        w.put(1, 1); /* p0=0 p1=1 */
+        w.put(1, 1);  /* p0=0 p1=1 */
         w.put(0, 3);  /* texel 0 (anchor, 3 bits) -> 0 */
         w.put(15, 4); /* texel 1 -> 15 */
         w.put(8, 4);  /* texel 2 -> 8 */
@@ -1367,9 +1402,9 @@ static void test_textureasset3d_bc7_software_decode() {
         for (int c = 0; c < 3; c++) {
             w.put(0, 7);
             w.put(0, 7);
-        }                /* RGB endpoints all 0 */
+        } /* RGB endpoints all 0 */
         w.put(255, 8);
-        w.put(255, 8);   /* A0 = A1 = 255 */
+        w.put(255, 8); /* A0 = A1 = 255 */
         for (int s = 0; s < 2; s++) {
             w.put(0, 1);
             for (int t = 1; t < 16; t++)
@@ -1429,12 +1464,40 @@ static void test_textureasset3d_etc2_astc_software_decode() {
     const char *etc2_path = "/tmp/viper_textureasset3d_etc2_test.ktx2";
     const char *astc_path = "/tmp/viper_textureasset3d_astc_test.ktx2";
     const uint8_t etc2_block[16] = {
-        0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x80,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0xFF,
+        0xFF,
+        0xFF,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
     };
     const uint8_t astc_block[16] = {
-        0xFC, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0x00, 0x00, 0x00, 0x80, 0xFF, 0xFF,
+        0xFC,
+        0xFD,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0x00,
+        0x00,
+        0x00,
+        0x80,
+        0xFF,
+        0xFF,
     };
     uint8_t out[12 * 12 * 4];
     rt_string path_s;
@@ -1565,12 +1628,14 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_TRUE(rt_material3d_resolve_texture_pixels(material_impl->texture) == nullptr,
                 "Material3D resolves empty TextureAsset3D residency to no drawable texture");
     EXPECT_EQ(rt_material3d_get_has_texture(material), 0);
-    EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_set_resident_mip_range(asset, -1, 1); },
-                                     "negative mip range"),
-                "SetResidentMipRange rejects a negative first mip");
-    EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_set_resident_mip_range(asset, 0, -1); },
-                                     "negative mip range"),
-                "SetResidentMipRange rejects a negative mip count");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_textureasset3d_set_resident_mip_range(asset, -1, 1); },
+                             "negative mip range"),
+        "SetResidentMipRange rejects a negative first mip");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_textureasset3d_set_resident_mip_range(asset, 0, -1); },
+                             "negative mip range"),
+        "SetResidentMipRange rejects a negative mip count");
 
     std::remove(path);
     PASS();
@@ -2895,8 +2960,7 @@ static void tracked_submit_draw(void *,
                                 int8_t,
                                 int8_t) {
     g_canvas_submit_draw_calls++;
-    g_last_draw_light_count =
-        light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count;
+    g_last_draw_light_count = light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count;
     if (lights && g_last_draw_light_count > 0) {
         memcpy(g_last_draw_lights,
                lights,
@@ -2905,8 +2969,8 @@ static void tracked_submit_draw(void *,
     if (cmd) {
         g_last_draw_cmd = *cmd;
         g_last_draw_vertex_count =
-            cmd->vertex_count > (uint32_t)(sizeof(g_last_draw_vertices) /
-                                           sizeof(g_last_draw_vertices[0]))
+            cmd->vertex_count >
+                    (uint32_t)(sizeof(g_last_draw_vertices) / sizeof(g_last_draw_vertices[0]))
                 ? (uint32_t)(sizeof(g_last_draw_vertices) / sizeof(g_last_draw_vertices[0]))
                 : cmd->vertex_count;
         if (cmd->vertices && g_last_draw_vertex_count > 0) {
@@ -2915,8 +2979,8 @@ static void tracked_submit_draw(void *,
                    (size_t)g_last_draw_vertex_count * sizeof(g_last_draw_vertices[0]));
         }
         if (cmd->has_prev_model_matrix &&
-            g_tracked_prev_model_count < (int)(sizeof(g_tracked_prev_model_x) /
-                                               sizeof(g_tracked_prev_model_x[0]))) {
+            g_tracked_prev_model_count <
+                (int)(sizeof(g_tracked_prev_model_x) / sizeof(g_tracked_prev_model_x[0]))) {
             g_tracked_prev_model_x[g_tracked_prev_model_count++] = cmd->prev_model_matrix[3];
         }
     }
@@ -3105,17 +3169,15 @@ static void test_canvas_light_rejects_invalid_inputs() {
     assert(light != NULL && fake != NULL);
 
     EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_set_light(&canvas, -1, light); },
-                                    "index out of range"),
+                                     "index out of range"),
                 "SetLight rejects negative slots");
-    EXPECT_TRUE(expect_trap_contains([&] {
-                    rt_canvas3d_set_light(&canvas, VGFX3D_MAX_LIGHTS, light);
-                },
-                                    "index out of range"),
-                "SetLight rejects slots past the light table");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_canvas3d_set_light(&canvas, VGFX3D_MAX_LIGHTS, light); },
+                             "index out of range"),
+        "SetLight rejects slots past the light table");
 
     rt_canvas3d_set_light(&canvas, 0, light);
-    EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_set_light(&canvas, 0, fake); },
-                                    "Light3D"),
+    EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_set_light(&canvas, 0, fake); }, "Light3D"),
                 "SetLight rejects non-Light3D handles");
     EXPECT_TRUE(canvas.lights[0] == light, "rejected light handle leaves slot unchanged");
     rt_canvas3d_set_light(&canvas, 0, NULL);
@@ -3163,8 +3225,8 @@ static void test_canvas_clustered_lighting_capability_gate() {
                 "backend without clustered capability does not advertise clustered lighting");
     rt_canvas3d_set_clustered_lighting(&canvas, 0);
     EXPECT_TRUE(canvas.clustered_lighting == 0, "disabling clustered lighting is a no-op");
-    EXPECT_TRUE(expect_trap_contains(
-                    [&] { rt_canvas3d_set_clustered_lighting(&canvas, 1); }, "not supported"),
+    EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_set_clustered_lighting(&canvas, 1); },
+                                     "not supported"),
                 "enabling clustered lighting traps when the backend lacks support");
     EXPECT_TRUE(canvas.clustered_lighting == 0,
                 "unsupported clustered lighting does not mutate the active path");
@@ -3205,9 +3267,8 @@ static void test_canvas_software_clustered_lighting_submits_many_lights() {
     void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
     void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     void *material = rt_material3d_new();
-    void *xf =
-        rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -4.0, 0.0,
-                    0.0, 0.0, 1.0);
+    void *xf = rt_mat4_new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -4.0, 0.0, 0.0, 0.0, 1.0);
 
     backend.name = "software";
     backend.begin_frame = tracked_begin_frame;
@@ -3242,7 +3303,8 @@ static void test_canvas_software_clustered_lighting_submits_many_lights() {
     EXPECT_EQ(g_canvas_submit_draw_calls, 1);
     EXPECT_EQ(g_last_draw_light_count, light_count);
     EXPECT_NEAR(g_last_draw_lights[light_count - 1].position[0], (double)(light_count - 1), 0.001);
-    EXPECT_NEAR(g_last_draw_lights[light_count - 1].intensity, 1.0 + (double)(light_count - 1), 0.001);
+    EXPECT_NEAR(
+        g_last_draw_lights[light_count - 1].intensity, 1.0 + (double)(light_count - 1), 0.001);
     PASS();
 }
 
@@ -3267,9 +3329,9 @@ static void test_canvas_shadow_cascades_capability_gate() {
     canvas.shadow_cascade_count = 1;
     EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("shadow-csm")) == 0,
                 "fake backends do not advertise cascaded shadows");
-    EXPECT_TRUE(expect_trap_contains(
-                    [&] { rt_canvas3d_set_shadow_cascades(&canvas, 2); }, "not supported"),
-                "CSM counts above one trap when the backend lacks support");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_canvas3d_set_shadow_cascades(&canvas, 2); }, "not supported"),
+        "CSM counts above one trap when the backend lacks support");
     EXPECT_EQ(canvas.shadow_cascade_count, 1);
     PASS();
 }
@@ -3286,11 +3348,9 @@ static void test_canvas_occlusion_culling_skips_covered_opaque_draws() {
     void *mesh = rt_mesh3d_new_box(2.0, 2.0, 0.2);
     void *material = rt_material3d_new();
     void *near_xf =
-        rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-                    0.0, 0.0, 1.0);
-    void *far_xf =
-        rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -2.0, 0.0,
-                    0.0, 0.0, 1.0);
+        rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+    void *far_xf = rt_mat4_new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -2.0, 0.0, 0.0, 0.0, 1.0);
 
     backend.name = "opengl";
     backend.begin_frame = tracked_begin_frame;
@@ -3549,10 +3609,22 @@ static void test_canvas_camera_relative_upload_rebases_frame_payloads() {
     void *light_pos = rt_vec3_new(kBase + 8.0, 2.0, -3.0);
     void *light = rt_light3d_new_point(light_pos, 1.0, 1.0, 1.0, 2.0);
     double model[16] = {
-        1.0, 0.0, 0.0, kBase + 4.0,
-        0.0, 1.0, 0.0, 1.0,
-        0.0, 0.0, 1.0, -10.0,
-        0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        kBase + 4.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        -10.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     };
 
     backend.name = "software";
@@ -3608,10 +3680,22 @@ static void test_canvas_camera_relative_upload_rebases_raw_and_generated_vertice
     void *particles = rt_particles3d_new(4);
     void *sprite = rt_sprite3d_new(NULL);
     static const double identity[16] = {
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     };
 
     backend.name = "software";
@@ -4164,7 +4248,8 @@ static void test_canvas_material_textureasset_resolves_resident_mip_on_draw() {
     path_s = rt_string_from_bytes(path, std::strlen(path));
     asset = rt_textureasset3d_load_ktx2(path_s);
     rt_string_unref(path_s);
-    assert(asset != nullptr && cam != nullptr && mesh != nullptr && mat != nullptr && xf != nullptr);
+    assert(asset != nullptr && cam != nullptr && mesh != nullptr && mat != nullptr &&
+           xf != nullptr);
 
     rt_material3d_set_texture(mat, asset);
     mip0 = rt_textureasset3d_get_pixels(asset);
@@ -4212,8 +4297,22 @@ static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
     TEST("Canvas3D forwards native TextureAsset3D material slots at draw time");
     const char *path = "/tmp/viper_textureasset3d_draw_native_astc_test.ktx2";
     const uint8_t astc_level0[] = {
-        0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
-        0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF0, 0x0F,
+        0x11,
+        0x22,
+        0x33,
+        0x44,
+        0x55,
+        0x66,
+        0x77,
+        0x88,
+        0x99,
+        0xAA,
+        0xBB,
+        0xCC,
+        0xDD,
+        0xEE,
+        0xF0,
+        0x0F,
     };
     rt_string path_s;
     void *asset;
@@ -4229,7 +4328,8 @@ static void test_canvas_material_textureasset_forwards_native_blocks_on_draw() {
     path_s = rt_string_from_bytes(path, std::strlen(path));
     asset = rt_textureasset3d_load_ktx2(path_s);
     rt_string_unref(path_s);
-    assert(asset != nullptr && cam != nullptr && mesh != nullptr && mat != nullptr && xf != nullptr);
+    assert(asset != nullptr && cam != nullptr && mesh != nullptr && mat != nullptr &&
+           xf != nullptr);
 
     rt_material3d_set_texture(mat, asset);
     EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
@@ -4596,9 +4696,9 @@ static void test_mesh_validation_errors_mark_build_failed() {
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 0, 1, 0, 0);
     rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 0, 1, 1, 0);
     rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 0, 1, 0, 1);
-    EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 0, 1); },
-                                     "degenerate triangle"),
-                "Mesh3D.AddTriangle traps on degenerate triangle");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_mesh3d_add_triangle(m, 0, 0, 1); }, "degenerate triangle"),
+        "Mesh3D.AddTriangle traps on degenerate triangle");
     EXPECT_TRUE(m->build_failed != 0, "Mesh3D marks failed after validation trap");
     uint32_t before = m->index_count;
     rt_mesh3d_add_triangle(m, 0, 1, 2);

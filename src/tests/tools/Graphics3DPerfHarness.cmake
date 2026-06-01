@@ -7,41 +7,41 @@
 #   BACKEND      VIPER_3D_BACKEND value
 #   NAME         Stable fixture/probe name for log output
 
-foreach(required_var IN ITEMS VIPER_EXE WORKING_DIR SCRIPT BACKEND NAME)
-    if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
+foreach (required_var IN ITEMS VIPER_EXE WORKING_DIR SCRIPT BACKEND NAME)
+    if (NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "Graphics3DPerfHarness: missing ${required_var}")
-    endif()
-endforeach()
+    endif ()
+endforeach ()
 
 execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E env "VIPER_3D_BACKEND=${BACKEND}" "${VIPER_EXE}" run "${SCRIPT}"
-    WORKING_DIRECTORY "${WORKING_DIR}"
-    RESULT_VARIABLE probe_result
-    OUTPUT_VARIABLE probe_stdout
-    ERROR_VARIABLE probe_stderr
-    TIMEOUT 45
+        COMMAND "${CMAKE_COMMAND}" -E env "VIPER_3D_BACKEND=${BACKEND}" "${VIPER_EXE}" run "${SCRIPT}"
+        WORKING_DIRECTORY "${WORKING_DIR}"
+        RESULT_VARIABLE probe_result
+        OUTPUT_VARIABLE probe_stdout
+        ERROR_VARIABLE probe_stderr
+        TIMEOUT 45
 )
 
-if(NOT "${probe_stdout}" STREQUAL "")
+if (NOT "${probe_stdout}" STREQUAL "")
     message(STATUS "${probe_stdout}")
-endif()
-if(NOT "${probe_stderr}" STREQUAL "")
+endif ()
+if (NOT "${probe_stderr}" STREQUAL "")
     message(STATUS "${probe_stderr}")
-endif()
-if(NOT probe_result EQUAL 0)
+endif ()
+if (NOT probe_result EQUAL 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: probe exited with ${probe_result}")
-endif()
+endif ()
 
 string(REGEX MATCH "PERF: [^\r\n]*" perf_line "${probe_stdout}")
-if("${perf_line}" STREQUAL "")
+if ("${perf_line}" STREQUAL "")
     message(FATAL_ERROR "Graphics3DPerfHarness: missing PERF line")
-endif()
+endif ()
 
 function(extract_metric metric_name out_var)
     string(REGEX MATCH "(^| )${metric_name}=([^ ]+)" metric_match "${perf_line}")
-    if("${metric_match}" STREQUAL "")
+    if ("${metric_match}" STREQUAL "")
         message(FATAL_ERROR "Graphics3DPerfHarness: missing ${metric_name} in '${perf_line}'")
-    endif()
+    endif ()
     set(${out_var} "${CMAKE_MATCH_2}" PARENT_SCOPE)
 endfunction()
 
@@ -57,36 +57,36 @@ extract_metric("entities" entities)
 extract_metric("bodies" bodies)
 extract_metric("stream_bytes" stream_bytes)
 
-if(NOT "${reported_backend}" STREQUAL "${BACKEND}")
+if (NOT "${reported_backend}" STREQUAL "${BACKEND}")
     message(FATAL_ERROR
-        "Graphics3DPerfHarness: backend mismatch, got ${reported_backend}, expected ${BACKEND}")
-endif()
-if(NOT frames GREATER 0)
+            "Graphics3DPerfHarness: backend mismatch, got ${reported_backend}, expected ${BACKEND}")
+endif ()
+if (NOT frames GREATER 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: frames must be positive")
-endif()
-if(NOT elapsed_ms GREATER 0)
+endif ()
+if (NOT elapsed_ms GREATER 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: elapsed_ms must be positive")
-endif()
-if(NOT avg_ms GREATER 0)
+endif ()
+if (NOT avg_ms GREATER 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: avg_ms must be positive")
-endif()
-if(NOT fps GREATER 0)
+endif ()
+if (NOT fps GREATER 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: fps must be positive")
-endif()
-if(NOT draw_count GREATER 0)
+endif ()
+if (NOT draw_count GREATER 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: draw_count must be positive")
-endif()
-if(NOT visible_nodes GREATER 0)
+endif ()
+if (NOT visible_nodes GREATER 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: visible_nodes must be positive")
-endif()
-if(NOT entities GREATER 0)
+endif ()
+if (NOT entities GREATER 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: entities must be positive")
-endif()
-if(NOT bodies GREATER 0)
+endif ()
+if (NOT bodies GREATER 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: bodies must be positive")
-endif()
-if(NOT stream_bytes GREATER 0)
+endif ()
+if (NOT stream_bytes GREATER 0)
     message(FATAL_ERROR "Graphics3DPerfHarness: stream_bytes must be positive")
-endif()
+endif ()
 
 message("HARNESS: name=${NAME} backend=${reported_backend} frames=${frames} avg_ms=${avg_ms} fps=${fps} draw_count=${draw_count} visible_nodes=${visible_nodes} entities=${entities} bodies=${bodies} stream_bytes=${stream_bytes}")

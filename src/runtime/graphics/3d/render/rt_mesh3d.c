@@ -222,8 +222,10 @@ static double mesh_triangle_area_sq_f32(const float *a, const float *b, const fl
     return nx * nx + ny * ny + nz * nz;
 }
 
-/// @brief Squared area of triangle (a, b, c) in double precision (half the cross-product magnitude²).
-/// @details Used as a degeneracy test that avoids a sqrt; near-zero means a sliver/collinear triangle.
+/// @brief Squared area of triangle (a, b, c) in double precision (half the cross-product
+/// magnitude²).
+/// @details Used as a degeneracy test that avoids a sqrt; near-zero means a sliver/collinear
+/// triangle.
 static double mesh_triangle_area_sq_f64(const double *a, const double *b, const double *c) {
     double abx = b[0] - a[0];
     double aby = b[1] - a[1];
@@ -331,8 +333,8 @@ static int mesh3d_reserve_storage(rt_mesh3d *m,
                 return 0;
             }
         }
-        nv = (vgfx3d_vertex_t *)realloc(
-            m->vertices, (size_t)vertex_capacity * sizeof(vgfx3d_vertex_t));
+        nv = (vgfx3d_vertex_t *)realloc(m->vertices,
+                                        (size_t)vertex_capacity * sizeof(vgfx3d_vertex_t));
         if (!nv) {
             snprintf(msg, sizeof(msg), "%s: memory allocation failed", label);
             rt_trap(msg);
@@ -539,8 +541,7 @@ void rt_mesh3d_reserve(void *obj, int64_t vertex_count, int64_t triangle_count) 
         rt_trap("Mesh3D.Reserve: capacities must be non-negative");
         return;
     }
-    if ((uint64_t)vertex_count > UINT32_MAX ||
-        (uint64_t)triangle_count > (UINT32_MAX / 3u)) {
+    if ((uint64_t)vertex_count > UINT32_MAX || (uint64_t)triangle_count > (UINT32_MAX / 3u)) {
         rt_trap("Mesh3D.Reserve: capacity overflow");
         return;
     }
@@ -926,12 +927,10 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         }
         model_matrix[i] = (float)xform->m[i];
     }
-    det = model_matrix[0] *
-              (model_matrix[5] * model_matrix[10] - model_matrix[6] * model_matrix[9]) -
-          model_matrix[1] *
-              (model_matrix[4] * model_matrix[10] - model_matrix[6] * model_matrix[8]) +
-          model_matrix[2] *
-              (model_matrix[4] * model_matrix[9] - model_matrix[5] * model_matrix[8]);
+    det =
+        model_matrix[0] * (model_matrix[5] * model_matrix[10] - model_matrix[6] * model_matrix[9]) -
+        model_matrix[1] * (model_matrix[4] * model_matrix[10] - model_matrix[6] * model_matrix[8]) +
+        model_matrix[2] * (model_matrix[4] * model_matrix[9] - model_matrix[5] * model_matrix[8]);
     if (!isfinite(det) || fabsf(det) <= 1e-12f) {
         rt_trap("Mesh3D.Transform: matrix upper 3x3 must be invertible for normal transform");
         return;
@@ -945,12 +944,12 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         handedness_sign = -1.0f;
 
     for (uint32_t i = 0; i < m->vertex_count; i++) {
-        double x = m->positions64 ? m->positions64[(size_t)i * 3u + 0]
-                                  : (double)m->vertices[i].pos[0];
-        double y = m->positions64 ? m->positions64[(size_t)i * 3u + 1]
-                                  : (double)m->vertices[i].pos[1];
-        double z = m->positions64 ? m->positions64[(size_t)i * 3u + 2]
-                                  : (double)m->vertices[i].pos[2];
+        double x =
+            m->positions64 ? m->positions64[(size_t)i * 3u + 0] : (double)m->vertices[i].pos[0];
+        double y =
+            m->positions64 ? m->positions64[(size_t)i * 3u + 1] : (double)m->vertices[i].pos[1];
+        double z =
+            m->positions64 ? m->positions64[(size_t)i * 3u + 2] : (double)m->vertices[i].pos[2];
         double tx = xform->m[0] * x + xform->m[1] * y + xform->m[2] * z + xform->m[3];
         double ty = xform->m[4] * x + xform->m[5] * y + xform->m[6] * z + xform->m[7];
         double tz = xform->m[8] * x + xform->m[9] * y + xform->m[10] * z + xform->m[11];
@@ -1639,14 +1638,12 @@ static int obj_get_or_add_mesh_vertex(void *mesh,
     return 1;
 }
 
-/// @brief Signed area (×2) of a polygon projected onto axes (@p ax0, @p ax1) via the shoelace formula.
+/// @brief Signed area (×2) of a polygon projected onto axes (@p ax0, @p ax1) via the shoelace
+/// formula.
 /// @details Its sign gives the polygon's winding in that projection, which the ear-clip uses to
 ///          orient inside/outside tests.
-static double obj_projected_area2(const rt_mesh3d *mesh,
-                                  const uint32_t *indices,
-                                  int count,
-                                  int ax0,
-                                  int ax1) {
+static double obj_projected_area2(
+    const rt_mesh3d *mesh, const uint32_t *indices, int count, int ax0, int ax1) {
     double area = 0.0;
     for (int i = 0; i < count; ++i) {
         const float *a = mesh->vertices[indices[i]].pos;
@@ -1658,12 +1655,10 @@ static double obj_projected_area2(const rt_mesh3d *mesh,
 
 /// @brief Pick the two axes to project a planar polygon onto for 2D triangulation.
 /// @details Computes the polygon's Newell normal and drops the axis with the largest |normal|
-///          component, keeping the projection that preserves the most area (avoids edge-on degeneracy).
-static void obj_choose_projection_axes(const rt_mesh3d *mesh,
-                                       const uint32_t *indices,
-                                       int count,
-                                       int *ax0,
-                                       int *ax1) {
+///          component, keeping the projection that preserves the most area (avoids edge-on
+///          degeneracy).
+static void obj_choose_projection_axes(
+    const rt_mesh3d *mesh, const uint32_t *indices, int count, int *ax0, int *ax1) {
     double normal[3] = {0.0, 0.0, 0.0};
     for (int i = 0; i < count; ++i) {
         const float *a = mesh->vertices[indices[i]].pos;
@@ -1686,12 +1681,8 @@ static void obj_choose_projection_axes(const rt_mesh3d *mesh,
 
 /// @brief 2D orientation of points (ia, ib, ic) in the (@p ax0, @p ax1) projection.
 /// @details The signed cross product (b-a)×(c-a); >0 is CCW, <0 CW, ~0 collinear.
-static double obj_orient2(const rt_mesh3d *mesh,
-                          uint32_t ia,
-                          uint32_t ib,
-                          uint32_t ic,
-                          int ax0,
-                          int ax1) {
+static double obj_orient2(
+    const rt_mesh3d *mesh, uint32_t ia, uint32_t ib, uint32_t ic, int ax0, int ax1) {
     const float *a = mesh->vertices[ia].pos;
     const float *b = mesh->vertices[ib].pos;
     const float *c = mesh->vertices[ic].pos;
@@ -1702,9 +1693,12 @@ static double obj_orient2(const rt_mesh3d *mesh,
     return ab0 * ac1 - ab1 * ac0;
 }
 
-/// @brief Whether projected point @p p lies strictly inside triangle (a, b, c) for the given winding.
-/// @details Checks @p p is on the interior side of all three edges (scaled by @p winding so it works
-///          for either orientation); the 1e-12 epsilon excludes on-edge points so ears don't overlap.
+/// @brief Whether projected point @p p lies strictly inside triangle (a, b, c) for the given
+/// winding.
+/// @details Checks @p p is on the interior side of all three edges (scaled by @p winding so it
+/// works
+///          for either orientation); the 1e-12 epsilon excludes on-edge points so ears don't
+///          overlap.
 static int obj_point_in_triangle2(const rt_mesh3d *mesh,
                                   uint32_t p,
                                   uint32_t a,
@@ -1720,10 +1714,12 @@ static int obj_point_in_triangle2(const rt_mesh3d *mesh,
     return o0 > eps && o1 > eps && o2 > eps;
 }
 
-/// @brief Triangulate an OBJ n-gon face into the mesh via ear-clipping (fan fallback for triangles).
-/// @details Projects the face to its best 2D plane, determines winding, then repeatedly clips a valid
-///          ear (a convex corner whose triangle contains no other vertex), emitting one triangle each
-///          step. A guard counter bounds the loop against degenerate/self-intersecting faces.
+/// @brief Triangulate an OBJ n-gon face into the mesh via ear-clipping (fan fallback for
+/// triangles).
+/// @details Projects the face to its best 2D plane, determines winding, then repeatedly clips a
+/// valid
+///          ear (a convex corner whose triangle contains no other vertex), emitting one triangle
+///          each step. A guard counter bounds the loop against degenerate/self-intersecting faces.
 /// @return Non-zero on success; 0 if the face is invalid or a triangle add failed.
 static int obj_triangulate_face(void *mesh_obj, const uint32_t *mesh_indices, int face_count) {
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
@@ -2048,52 +2044,34 @@ static int obj_read_line(FILE *f, char **line, size_t *cap) {
     return 1;
 }
 
-/// @brief Load a mesh from a Wavefront OBJ file (positions, normals, UVs, faces).
-/// @details Parses v/vn/vt/f lines from the OBJ text format. Supports
-///          triangulated and quad faces (quads are split into two triangles).
-///          Vertex data is de-duplicated by unique (position, normal, UV) tuples.
-/// @param path File path to the .obj file (runtime string).
-/// @return Mesh handle, or NULL on parse/load failure.
-void *rt_mesh3d_from_obj(rt_string path) {
-    if (!path) {
-        rt_trap("Mesh3D.FromOBJ: path must not be null");
-        return NULL;
-    }
-    const char *filepath = rt_string_cstr(path);
-    if (!filepath)
-        return NULL;
-
-    FILE *f = fopen(filepath, "r");
-    if (!f) {
-        rt_trap("Mesh3D.FromOBJ: failed to open file");
-        return NULL;
-    }
-
-    /* Temporary arrays for positions, normals, UVs */
-    int cap_p = 256, cap_n = 256, cap_t = 256;
-    int cnt_p = 0, cnt_n = 0, cnt_t = 0;
-    int parse_failed = 0;
-    int missing_normals = 0;
-    float *positions = (float *)malloc((size_t)cap_p * 3 * sizeof(float));
-    float *normals = (float *)malloc((size_t)cap_n * 3 * sizeof(float));
-    float *texcoords = (float *)malloc((size_t)cap_t * 2 * sizeof(float));
-    obj_vertex_cache_t vertex_cache;
-    memset(&vertex_cache, 0, sizeof(vertex_cache));
-
-    void *mesh = rt_mesh3d_new();
-    if (!mesh || !positions || !normals || !texcoords ||
-        !obj_vertex_cache_init(&vertex_cache, 1024)) {
-        fclose(f);
-        free(positions);
-        free(normals);
-        free(texcoords);
-        obj_vertex_cache_free(&vertex_cache);
-        if (mesh && rt_obj_release_check0(mesh))
-            rt_obj_free(mesh);
-        return NULL;
-    }
-    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
-
+/// @brief Parse an opened OBJ stream into `mesh`, accumulating v/vn/vt into the temp
+///   arrays (grown in place) and emitting de-duplicated faces. Extracted parse loop of
+///   rt_mesh3d_from_obj; owns the line buffer. Sets *p_parse_failed on malformed input.
+static void obj_parse_into_mesh(FILE *f,
+                                void *mesh,
+                                obj_vertex_cache_t *vertex_cache,
+                                float **p_positions,
+                                int *p_cnt_p,
+                                int *p_cap_p,
+                                float **p_normals,
+                                int *p_cnt_n,
+                                int *p_cap_n,
+                                float **p_texcoords,
+                                int *p_cnt_t,
+                                int *p_cap_t,
+                                int *p_parse_failed,
+                                int *p_missing_normals) {
+    float *positions = *p_positions;
+    int cnt_p = *p_cnt_p;
+    int cap_p = *p_cap_p;
+    float *normals = *p_normals;
+    int cnt_n = *p_cnt_n;
+    int cap_n = *p_cap_n;
+    float *texcoords = *p_texcoords;
+    int cnt_t = *p_cnt_t;
+    int cap_t = *p_cap_t;
+    int parse_failed = *p_parse_failed;
+    int missing_normals = *p_missing_normals;
     char *line = NULL;
     size_t line_cap = 0;
     int line_status;
@@ -2289,7 +2267,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
                     !obj_resolve_index(ti, cnt_t, 1, &ti) ||
                     !obj_resolve_index(ni, cnt_n, 1, &ni) ||
                     !obj_get_or_add_mesh_vertex(mesh,
-                                                &vertex_cache,
+                                                vertex_cache,
                                                 positions,
                                                 cnt_p,
                                                 normals,
@@ -2330,9 +2308,82 @@ void *rt_mesh3d_from_obj(rt_string path) {
     }
     if (line_status < 0)
         parse_failed = 1;
+    free(line);
+    *p_positions = positions;
+    *p_cnt_p = cnt_p;
+    *p_cap_p = cap_p;
+    *p_normals = normals;
+    *p_cnt_n = cnt_n;
+    *p_cap_n = cap_n;
+    *p_texcoords = texcoords;
+    *p_cnt_t = cnt_t;
+    *p_cap_t = cap_t;
+    *p_parse_failed = parse_failed;
+    *p_missing_normals = missing_normals;
+}
+
+/// @brief Load a mesh from a Wavefront OBJ file (positions, normals, UVs, faces).
+/// @details Parses v/vn/vt/f lines from the OBJ text format. Supports
+///          triangulated and quad faces (quads are split into two triangles).
+///          Vertex data is de-duplicated by unique (position, normal, UV) tuples.
+/// @param path File path to the .obj file (runtime string).
+/// @return Mesh handle, or NULL on parse/load failure.
+void *rt_mesh3d_from_obj(rt_string path) {
+    if (!path) {
+        rt_trap("Mesh3D.FromOBJ: path must not be null");
+        return NULL;
+    }
+    const char *filepath = rt_string_cstr(path);
+    if (!filepath)
+        return NULL;
+
+    FILE *f = fopen(filepath, "r");
+    if (!f) {
+        rt_trap("Mesh3D.FromOBJ: failed to open file");
+        return NULL;
+    }
+
+    /* Temporary arrays for positions, normals, UVs */
+    int cap_p = 256, cap_n = 256, cap_t = 256;
+    int cnt_p = 0, cnt_n = 0, cnt_t = 0;
+    int parse_failed = 0;
+    int missing_normals = 0;
+    float *positions = (float *)malloc((size_t)cap_p * 3 * sizeof(float));
+    float *normals = (float *)malloc((size_t)cap_n * 3 * sizeof(float));
+    float *texcoords = (float *)malloc((size_t)cap_t * 2 * sizeof(float));
+    obj_vertex_cache_t vertex_cache;
+    memset(&vertex_cache, 0, sizeof(vertex_cache));
+
+    void *mesh = rt_mesh3d_new();
+    if (!mesh || !positions || !normals || !texcoords ||
+        !obj_vertex_cache_init(&vertex_cache, 1024)) {
+        fclose(f);
+        free(positions);
+        free(normals);
+        free(texcoords);
+        obj_vertex_cache_free(&vertex_cache);
+        if (mesh && rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return NULL;
+    }
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
+
+    obj_parse_into_mesh(f,
+                        mesh,
+                        &vertex_cache,
+                        &positions,
+                        &cnt_p,
+                        &cap_p,
+                        &normals,
+                        &cnt_n,
+                        &cap_n,
+                        &texcoords,
+                        &cnt_t,
+                        &cap_t,
+                        &parse_failed,
+                        &missing_normals);
 
     fclose(f);
-    free(line);
     free(positions);
     free(normals);
     free(texcoords);
@@ -2408,7 +2459,7 @@ static int stl_normal_is_usable(const float *normal) {
 ///          actually read.
 static uint32_t stl_initial_reserve_triangles(uint32_t tri_count) {
     return tri_count < STL_BINARY_INITIAL_RESERVE_TRIANGLES ? tri_count
-                                                           : STL_BINARY_INITIAL_RESERVE_TRIANGLES;
+                                                            : STL_BINARY_INITIAL_RESERVE_TRIANGLES;
 }
 
 /// @brief Return non-zero when STL vertex order should be flipped to match facet normal.
@@ -2478,10 +2529,8 @@ static void *stl_load_binary(const uint8_t *data, size_t len) {
     if (!mesh)
         return NULL;
     reserve_triangles = stl_initial_reserve_triangles(tri_count);
-    if (!mesh3d_reserve_storage((rt_mesh3d *)mesh,
-                                reserve_triangles * 3u,
-                                reserve_triangles * 3u,
-                                "Mesh3D.FromSTL")) {
+    if (!mesh3d_reserve_storage(
+            (rt_mesh3d *)mesh, reserve_triangles * 3u, reserve_triangles * 3u, "Mesh3D.FromSTL")) {
         mesh_mark_build_failed((rt_mesh3d *)mesh);
         return mesh_return_null_if_build_failed(mesh);
     }
@@ -2541,10 +2590,8 @@ static void *stl_load_binary_stream(FILE *f, uint32_t tri_count) {
     if (!mesh)
         return NULL;
     reserve_triangles = stl_initial_reserve_triangles(tri_count);
-    if (!mesh3d_reserve_storage((rt_mesh3d *)mesh,
-                                reserve_triangles * 3u,
-                                reserve_triangles * 3u,
-                                "Mesh3D.FromSTL")) {
+    if (!mesh3d_reserve_storage(
+            (rt_mesh3d *)mesh, reserve_triangles * 3u, reserve_triangles * 3u, "Mesh3D.FromSTL")) {
         mesh_mark_build_failed((rt_mesh3d *)mesh);
         return mesh_return_null_if_build_failed(mesh);
     }
@@ -2819,6 +2866,7 @@ static void *stl_load_ascii_stream(FILE *f) {
         STL_ASCII_IN_LOOP = 2,
         STL_ASCII_EXPECT_ENDFACET = 3
     };
+
     void *mesh;
     char *line_buf = NULL;
     size_t line_cap = 0;

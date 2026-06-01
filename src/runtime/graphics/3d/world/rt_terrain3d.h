@@ -50,6 +50,7 @@ void *rt_terrain3d_get_normal_at(void *terrain, double x, double z);
 void rt_terrain3d_set_lod_distances(void *terrain, double near_dist, double far_dist);
 /// @brief Set the depth of skirts dropped from chunk edges (hides cracks between LOD seams).
 void rt_terrain3d_set_skirt_depth(void *terrain, double depth);
+
 /// @brief Internal edge identifiers used by streaming terrain seam stitching.
 enum {
     RT_TERRAIN3D_EDGE_WEST = 0,
@@ -57,8 +58,12 @@ enum {
     RT_TERRAIN3D_EDGE_NORTH = 2,
     RT_TERRAIN3D_EDGE_SOUTH = 3,
 };
+
 /// @brief Internal helper: average two terrain border edges in world-height space.
-int64_t rt_terrain3d_stitch_edge(void *terrain, int64_t edge, void *neighbor, int64_t neighbor_edge);
+int64_t rt_terrain3d_stitch_edge(void *terrain,
+                                 int64_t edge,
+                                 void *neighbor,
+                                 int64_t neighbor_edge);
 /// @brief Internal helper: build a Pixels heightmap from the terrain's current height grid.
 void *rt_terrain3d_build_heightmap_pixels(void *terrain);
 /// @brief Internal helper: build a Mesh3D approximation of the terrain for nav baking.

@@ -553,8 +553,7 @@ int vgfx3d_d3d11_should_composite_to_swapchain(int8_t rtt_active,
                                                int8_t gpu_postfx_enabled,
                                                int has_scene_targets,
                                                int8_t scene_composited_to_swapchain) {
-    return !rtt_active && gpu_postfx_enabled && has_scene_targets &&
-           !scene_composited_to_swapchain;
+    return !rtt_active && gpu_postfx_enabled && has_scene_targets && !scene_composited_to_swapchain;
 }
 
 /// @brief Decide whether a new begin-frame invalidates a prior swapchain composite.
@@ -564,8 +563,8 @@ int vgfx3d_d3d11_should_reset_composited_swapchain_for_frame(int8_t rtt_active,
 }
 
 /// @brief Decide whether a post-FX enable update invalidates a prior swapchain composite.
-int vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(
-    int8_t current_enabled, int8_t requested_enabled) {
+int vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(int8_t current_enabled,
+                                                                     int8_t requested_enabled) {
     return (current_enabled ? 1 : 0) != (requested_enabled ? 1 : 0);
 }
 

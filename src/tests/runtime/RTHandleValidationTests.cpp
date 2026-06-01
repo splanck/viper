@@ -30,23 +30,24 @@ extern "C" {
 #include "rt_concmap.h"
 #include "rt_concqueue.h"
 #include "rt_countmap.h"
+#include "rt_debounce.h"
 #include "rt_defaultmap.h"
 #include "rt_deque.h"
-#include "rt_debounce.h"
 #include "rt_frozenmap.h"
 #include "rt_frozenset.h"
 #include "rt_future.h"
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_intmap.h"
-#include "rt_iter.h"
 #include "rt_io_class_ids.h"
+#include "rt_iter.h"
 #include "rt_json.h"
 #include "rt_list.h"
 #include "rt_lrucache.h"
 #include "rt_map.h"
 #include "rt_msgbus.h"
 #include "rt_multimap.h"
+#include "rt_musicgen.h"
 #include "rt_object.h"
 #include "rt_orderedmap.h"
 #include "rt_playlist.h"
@@ -70,7 +71,6 @@ extern "C" {
 #include "rt_weakmap.h"
 #include "rt_xml.h"
 #include "rt_yaml.h"
-#include "rt_musicgen.h"
 
 void rt_trap_set_recovery(jmp_buf *buf);
 void rt_trap_clear_recovery(void);
@@ -419,8 +419,10 @@ int main() {
     expect_invalid_handle(call_ring_len, RT_RING_CLASS_ID, 1, "Ring: invalid Ring object");
     expect_invalid_handle(call_deque_len, RT_DEQUE_CLASS_ID, 1, "Deque: invalid Deque object");
     expect_invalid_handle(call_bag_len, RT_BAG_CLASS_ID, 1, "Bag.Len: invalid Bag object");
-    expect_invalid_handle(
-        call_orderedmap_len, RT_ORDEREDMAP_CLASS_ID, 1, "OrderedMap.Len: invalid OrderedMap object");
+    expect_invalid_handle(call_orderedmap_len,
+                          RT_ORDEREDMAP_CLASS_ID,
+                          1,
+                          "OrderedMap.Len: invalid OrderedMap object");
     expect_invalid_handle(
         call_treemap_len, RT_TREEMAP_CLASS_ID, 1, "TreeMap: invalid TreeMap object");
     expect_invalid_handle(
@@ -431,17 +433,22 @@ int main() {
         call_sparse_len, RT_SPARSEARRAY_CLASS_ID, 1, "SparseArray.Len: invalid SparseArray object");
     expect_invalid_handle(
         call_intmap_len, RT_INTMAP_CLASS_ID, 1, "IntMap.Len: invalid IntMap object");
-    expect_invalid_handle(
-        call_defaultmap_len, RT_DEFAULTMAP_CLASS_ID, 1, "DefaultMap.Len: invalid DefaultMap object");
+    expect_invalid_handle(call_defaultmap_len,
+                          RT_DEFAULTMAP_CLASS_ID,
+                          1,
+                          "DefaultMap.Len: invalid DefaultMap object");
     expect_invalid_handle(
         call_multimap_len, RT_MULTIMAP_CLASS_ID, 1, "MultiMap.Len: invalid MultiMap object");
     expect_invalid_handle(
         call_lrucache_len, RT_LRUCACHE_CLASS_ID, 1, "LRUCache.Len: invalid LRUCache object");
     expect_invalid_handle(call_trie_len, RT_TRIE_CLASS_ID, 1, "Trie.Len: invalid Trie object");
     expect_invalid_handle(call_bimap_len, RT_BIMAP_CLASS_ID, 1, "BiMap.Len: invalid BiMap object");
-    expect_invalid_handle(call_bitset_len, RT_BITSET_CLASS_ID, 1, "BitSet.Len: invalid BitSet object");
     expect_invalid_handle(
-        call_bloomfilter_count, RT_BLOOMFILTER_CLASS_ID, 1, "BloomFilter.Count: invalid BloomFilter object");
+        call_bitset_len, RT_BITSET_CLASS_ID, 1, "BitSet.Len: invalid BitSet object");
+    expect_invalid_handle(call_bloomfilter_count,
+                          RT_BLOOMFILTER_CLASS_ID,
+                          1,
+                          "BloomFilter.Count: invalid BloomFilter object");
     expect_invalid_handle(
         call_countmap_len, RT_COUNTMAP_CLASS_ID, 1, "CountMap.Len: invalid CountMap object");
     expect_invalid_handle(call_pqueue_len, RT_PQUEUE_CLASS_ID, 1, "Heap: invalid Heap object");
@@ -449,8 +456,10 @@ int main() {
         call_iter_count, RT_ITERATOR_CLASS_ID, 1, "Iterator.Count: invalid Iterator object");
     expect_invalid_handle(
         call_sortedset_len, RT_SORTEDSET_CLASS_ID, 1, "SortedSet.Len: invalid SortedSet object");
-    expect_invalid_handle(
-        call_unionfind_count, RT_UNIONFIND_CLASS_ID, 1, "UnionFind.Count: invalid UnionFind object");
+    expect_invalid_handle(call_unionfind_count,
+                          RT_UNIONFIND_CLASS_ID,
+                          1,
+                          "UnionFind.Count: invalid UnionFind object");
     expect_invalid_handle(
         call_weakmap_len, RT_WEAKMAP_CLASS_ID, 1, "WeakMap.Len: invalid WeakMap object");
     expect_invalid_handle(call_map_len, RT_MAP_CLASS_ID, 1, "Map: invalid Map object");

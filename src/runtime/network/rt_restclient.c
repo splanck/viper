@@ -103,8 +103,7 @@ static int rest_header_value_is_safe(rt_string text) {
     if (!cstr || len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
         return 0;
     size_t len = (size_t)len64;
-    return !memchr(cstr, '\0', len) && !memchr(cstr, '\r', len) &&
-           !memchr(cstr, '\n', len);
+    return !memchr(cstr, '\0', len) && !memchr(cstr, '\r', len) && !memchr(cstr, '\n', len);
 }
 
 //=============================================================================
@@ -140,8 +139,7 @@ static void rest_client_finalize(void *obj) {
 static rt_string join_url(rt_string base, rt_string path) {
     size_t base_len = 0;
     size_t path_len = 0;
-    const char *base_str =
-        rest_string_bytes(base, &base_len, "RestClient: invalid base URL", 1);
+    const char *base_str = rest_string_bytes(base, &base_len, "RestClient: invalid base URL", 1);
     const char *path_str = rest_string_bytes(path, &path_len, "RestClient: invalid path", 1);
 
     // Remove trailing slash from base if present
@@ -243,8 +241,7 @@ void *rt_restclient_new(rt_string base_url) {
     memset(client, 0, sizeof(rest_client));
 
     size_t url_len = 0;
-    const char *url_str =
-        rest_string_bytes(base_url, &url_len, "RestClient: invalid base URL", 1);
+    const char *url_str = rest_string_bytes(base_url, &url_len, "RestClient: invalid base URL", 1);
     client->base_url = rt_string_from_bytes(url_str, url_len);
     if (!client->base_url)
         rt_trap("RestClient: memory allocation failed");

@@ -486,7 +486,10 @@ void rt_canvas3d_draw_text2d(void *canvas, int64_t x, int64_t y, rt_string text,
 void rt_canvas3d_draw_aabb_wire(void *canvas, void *min_v, void *max_v, int64_t color);
 /// @brief Raw-array form of rt_canvas3d_draw_aabb_wire: @p min_v and @p max_v are
 ///   double[3] corner coordinates instead of boxed Vec3 objects.
-void rt_canvas3d_draw_aabb_wire_raw(void *canvas, const double *min_v, const double *max_v, int64_t color);
+void rt_canvas3d_draw_aabb_wire_raw(void *canvas,
+                                    const double *min_v,
+                                    const double *max_v,
+                                    int64_t color);
 /// @brief Draw a wireframe sphere as great circles (3 orthogonal rings).
 void rt_canvas3d_draw_sphere_wire(void *canvas, void *center, double radius, int64_t color);
 /// @brief Draw a ray with optional arrowhead, capped at @p length world units.

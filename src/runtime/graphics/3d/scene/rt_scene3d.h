@@ -100,6 +100,8 @@ void *rt_scene_node3d_get_scale(void *node);
 void *rt_scene_node3d_get_world_matrix(void *node);
 /// @brief Get the node's world-space position as a Vec3.
 void *rt_scene_node3d_get_world_position(void *node);
+/// @brief Get the node's world-space position as raw components (1 on success, 0 on null node).
+int8_t rt_scene_node3d_get_world_position_components(void *node, double *x, double *y, double *z);
 /// @brief Get the node's world-space orientation as a Quaternion.
 void *rt_scene_node3d_get_world_rotation(void *node);
 /// @brief Get the node's world-space scale magnitudes as a Vec3.

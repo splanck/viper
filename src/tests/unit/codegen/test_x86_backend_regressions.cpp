@@ -1187,10 +1187,9 @@ TEST(X86BackendRegressions, AssemblyEmitterRejectsNonLabelConditionalBranchTarge
 }
 
 TEST(X86BackendRegressions, AssemblyEmitterAcceptsLabelFirstConditionalBranch) {
-    const MFunction fn =
-        rawFunction("label_first_jcc",
-                    {MInstr::make(MOpcode::JCC,
-                                  {makeLabelOperand(".L_label_first_done"), makeImmOperand(1)})});
+    const MFunction fn = rawFunction(
+        "label_first_jcc",
+        {MInstr::make(MOpcode::JCC, {makeLabelOperand(".L_label_first_done"), makeImmOperand(1)})});
 
     const CodegenResult result = emitRawAssembly(fn);
     EXPECT_TRUE(result.errors.empty());

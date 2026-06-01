@@ -665,8 +665,11 @@ void rt_soundlistener3d_set_forward(void *obj, void *forward) {
         return;
     if (!sound3d_vec_from_obj(forward, fwd))
         return;
-    rt_sound3d_listener_state_set_pose(
-        &listener->state, listener->state.position, fwd, listener->state.up, listener->state.velocity);
+    rt_sound3d_listener_state_set_pose(&listener->state,
+                                       listener->state.position,
+                                       fwd,
+                                       listener->state.up,
+                                       listener->state.velocity);
     sound3d_listener_push_active_state(listener);
 }
 

@@ -637,11 +637,8 @@ int gif_decode_file(const char *filepath,
     return frame_count;
 }
 
-int rt_gif_decode_memory_first_rgba32(const uint8_t *data,
-                                      size_t len,
-                                      uint32_t **out_pixels,
-                                      int *out_width,
-                                      int *out_height) {
+int rt_gif_decode_memory_first_rgba32(
+    const uint8_t *data, size_t len, uint32_t **out_pixels, int *out_width, int *out_height) {
     gif_reader_t reader;
     gif_reader_t *r = &reader;
     uint8_t sig[6];

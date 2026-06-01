@@ -195,7 +195,8 @@ bool check_class_ids() {
 bool check_runtime_surface_names() {
     const std::string runtime_def = read_file("src/il/runtime/runtime.def");
     const std::string canvas_header = read_file("src/runtime/graphics/3d/render/rt_canvas3d.h");
-    const std::string canvas_overlay = read_file("src/runtime/graphics/3d/render/rt_canvas3d_overlay.c");
+    const std::string canvas_overlay =
+        read_file("src/runtime/graphics/3d/render/rt_canvas3d_overlay.c");
     bool ok = true;
 
     ok = require(contains(runtime_def, "\"Viper.Game3D.World3D.get_workerCount\""),
@@ -261,8 +262,7 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"worldOrigin\""),
                  "World3D.worldOrigin property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_PROP(\"stream\""),
-                 "World3D.stream property missing") &&
+    ok = require(contains(runtime_def, "RT_PROP(\"stream\""), "World3D.stream property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"entityCount\""),
                  "World3D.entityCount property missing") &&
@@ -338,9 +338,10 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadModelTemplateAsync\""),
                  "Assets3D.LoadModelTemplateAsync must use Game3D PascalCase factory naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadModelTemplateAssetAsync\""),
-                 "Assets3D.LoadModelTemplateAssetAsync must use Game3D PascalCase factory naming") &&
-         ok;
+    ok =
+        require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadModelTemplateAssetAsync\""),
+                "Assets3D.LoadModelTemplateAssetAsync must use Game3D PascalCase factory naming") &&
+        ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.SetResidencyBudget\""),
                  "Assets3D.SetResidencyBudget must use Game3D PascalCase method naming") &&
          ok;
@@ -389,8 +390,7 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"SetResidencyHint\""),
                  "Assets3D.SetResidencyHint method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"Evict\""),
-                 "Assets3D.Evict method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"Evict\""), "Assets3D.Evict method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"getEntity\""),
                  "AssetHandle3D.getEntity method missing") &&
@@ -453,14 +453,14 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileMaterial\""),
                  "WorldStream3D.getTerrainTileMaterial must use Game3D lower/camel naming") &&
          ok;
-    ok = require(contains(runtime_def,
-                         "\"Viper.Game3D.WorldStream3D.getTerrainTileCollisionMask\""),
-                 "WorldStream3D.getTerrainTileCollisionMask must use Game3D lower/camel naming") &&
-         ok;
-    ok = require(contains(runtime_def,
-                         "\"Viper.Game3D.WorldStream3D.getTerrainTileTraversalCost\""),
-                 "WorldStream3D.getTerrainTileTraversalCost must use Game3D lower/camel naming") &&
-         ok;
+    ok =
+        require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileCollisionMask\""),
+                "WorldStream3D.getTerrainTileCollisionMask must use Game3D lower/camel naming") &&
+        ok;
+    ok =
+        require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.getTerrainTileTraversalCost\""),
+                "WorldStream3D.getTerrainTileTraversalCost must use Game3D lower/camel naming") &&
+        ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.WorldStream3D.get_pendingRequestCount\""),
                  "WorldStream3D.pendingRequestCount getter must use Game3D lower/camel naming") &&
          ok;
@@ -701,9 +701,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"SampleCount\""),
                  "BlendTree3D.SampleCount property missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"New2D\""),
-                 "BlendTree3D.New2D method missing") &&
-         ok;
+    ok =
+        require(contains(runtime_def, "RT_METHOD(\"New2D\""), "BlendTree3D.New2D method missing") &&
+        ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"AddSample\""),
                  "BlendTree3D.AddSample method missing") &&
          ok;
@@ -731,8 +731,7 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"SetWeight\""),
                  "IKSolver3D.SetWeight method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"Solve\""),
-                 "IKSolver3D.Solve method missing") &&
+    ok = require(contains(runtime_def, "RT_METHOD(\"Solve\""), "IKSolver3D.Solve method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetIKSolver\""),
                  "AnimController3D.SetIKSolver method missing") &&
@@ -749,9 +748,10 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkKind\""),
                  "NavMesh3D.GetOffMeshLinkKind must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkTraversalCost\""),
-                 "NavMesh3D.GetOffMeshLinkTraversalCost must use Graphics3D PascalCase naming") &&
-         ok;
+    ok =
+        require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkTraversalCost\""),
+                "NavMesh3D.GetOffMeshLinkTraversalCost must use Graphics3D PascalCase naming") &&
+        ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.NavMesh3D.GetOffMeshLinkState\""),
                  "NavMesh3D.GetOffMeshLinkState must use Graphics3D PascalCase naming") &&
          ok;
@@ -830,9 +830,8 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"GetTraversalCost\""),
                  "NavMesh3D.GetTraversalCost method missing") &&
          ok;
-    ok = require(contains(runtime_def, "RT_METHOD(\"Bake\""),
-                 "NavMesh3D.Bake method missing") &&
-         ok;
+    ok =
+        require(contains(runtime_def, "RT_METHOD(\"Bake\""), "NavMesh3D.Bake method missing") && ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"BakeTiled\""),
                  "NavMesh3D.BakeTiled method missing") &&
          ok;
@@ -878,15 +877,20 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_SolverIterations\""),
                  "Physics3DWorld.SolverIterations getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverIslandCount\""),
-                 "Physics3DWorld.LastSolverIslandCount getter must use Graphics3D PascalCase naming") &&
+    ok = require(
+             contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverIslandCount\""),
+             "Physics3DWorld.LastSolverIslandCount getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverActiveBodyCount\""),
-                 "Physics3DWorld.LastSolverActiveBodyCount getter must use Graphics3D PascalCase naming") &&
+    ok = require(contains(runtime_def,
+                          "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverActiveBodyCount\""),
+                 "Physics3DWorld.LastSolverActiveBodyCount getter must use Graphics3D PascalCase "
+                 "naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverContactCount\""),
-                 "Physics3DWorld.LastSolverContactCount getter must use Graphics3D PascalCase naming") &&
-         ok;
+    ok =
+        require(
+            contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.get_LastSolverContactCount\""),
+            "Physics3DWorld.LastSolverContactCount getter must use Graphics3D PascalCase naming") &&
+        ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Physics3DWorld.SetSolverIterations\""),
                  "Physics3DWorld.SetSolverIterations must use Graphics3D PascalCase naming") &&
          ok;
@@ -920,8 +924,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.PlayLayerAdditive\""),
                  "AnimController3D.PlayLayerAdditive must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.CrossfadeLayerAdditive\""),
-                 "AnimController3D.CrossfadeLayerAdditive must use Graphics3D PascalCase naming") &&
+    ok = require(
+             contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.CrossfadeLayerAdditive\""),
+             "AnimController3D.CrossfadeLayerAdditive must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.AnimController3D.SetAnimationLOD\""),
                  "AnimController3D.SetAnimationLOD must use Graphics3D PascalCase naming") &&
@@ -1049,8 +1054,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasEmissiveMap\""),
                  "Material3D.HasEmissiveMap getter must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasMetallicRoughnessMap\""),
-                 "Material3D.HasMetallicRoughnessMap getter must use Graphics3D PascalCase naming") &&
+    ok = require(
+             contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasMetallicRoughnessMap\""),
+             "Material3D.HasMetallicRoughnessMap getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Material3D.get_HasAOMap\""),
                  "Material3D.HasAOMap getter must use Graphics3D PascalCase naming") &&
@@ -1088,8 +1094,9 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.SetTextureUploadBudget\""),
                  "Canvas3D.SetTextureUploadBudget must use Graphics3D PascalCase naming") &&
          ok;
-    ok = require(contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_TextureUploadPendingBytes\""),
-                 "Canvas3D.TextureUploadPendingBytes getter must use Graphics3D PascalCase naming") &&
+    ok = require(
+             contains(runtime_def, "\"Viper.Graphics3D.Canvas3D.get_TextureUploadPendingBytes\""),
+             "Canvas3D.TextureUploadPendingBytes getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Viper.Graphics3D.Scene3D.AddVisibilityZone\""),
                  "Scene3D.AddVisibilityZone must use Graphics3D PascalCase naming") &&
@@ -1313,7 +1320,8 @@ bool check_runtime_surface_names() {
         "SelectScene",
     };
     for (const char *needle : forbidden)
-        ok = require(!contains(runtime_def, needle), std::string("forbidden 3D API name: ") + needle) &&
+        ok = require(!contains(runtime_def, needle),
+                     std::string("forbidden 3D API name: ") + needle) &&
              ok;
     return ok;
 }

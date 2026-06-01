@@ -307,11 +307,9 @@ static void test_unpack_cubemap_rows_and_extent(void) {
     EXPECT_TRUE(vgfx3d_unpack_cubemap_rgba_rows(&cubemap, 2, 1, 1, 0, &face_size, &rows, &rgba) ==
                     0,
                 "Cubemap row-slice unpack succeeds");
-    EXPECT_TRUE(face_size == 2 && rows == 1,
-                "Cubemap row-slice reports face size and row count");
+    EXPECT_TRUE(face_size == 2 && rows == 1, "Cubemap row-slice reports face size and row count");
     if (rgba) {
-        EXPECT_TRUE(rgba[0] == 0xA1 && rgba[1] == 0xA2 && rgba[2] == 0xA3 &&
-                        rgba[3] == 0xA4,
+        EXPECT_TRUE(rgba[0] == 0xA1 && rgba[1] == 0xA2 && rgba[2] == 0xA3 && rgba[3] == 0xA4,
                     "Cubemap row-slice starts at the requested face row");
     }
     free(rgba);
@@ -321,8 +319,7 @@ static void test_unpack_cubemap_rows_and_extent(void) {
                     0,
                 "Cubemap flipped row-slice unpack succeeds");
     if (rgba) {
-        EXPECT_TRUE(rgba[0] == 0x70 && rgba[1] == 0x80 && rgba[2] == 0x90 &&
-                        rgba[3] == 0xA0,
+        EXPECT_TRUE(rgba[0] == 0x70 && rgba[1] == 0x80 && rgba[2] == 0x90 && rgba[3] == 0xA0,
                     "Cubemap flipped row-slice reads from the bottom source row");
     }
     free(rgba);
@@ -532,8 +529,22 @@ static void test_compute_normal_matrix_singular_fallback(void) {
  * the transpose of the true inverse: normal[i][j] == inv[j][i]. */
 static void test_compute_normal_matrix_inverse_transpose_offdiagonal(void) {
     const float model[16] = {
-        1.0f, 2.0f, 0.0f, 0.0f, 0.0f, 1.0f, 3.0f, 0.0f,
-        4.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+        1.0f,
+        2.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        3.0f,
+        0.0f,
+        4.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
     };
     float normal[16];
     float inv[16];
@@ -809,8 +820,8 @@ static void test_skinning_multibone_reuses_normal_palette(void) {
 
     memset(src, 0, sizeof(src));
     set_identity4x4(&palette[0]);
-    palette[0] = 2.0f;   /* bone 0: scale x by 2 */
-    palette[10] = 0.5f;  /* bone 0: scale z by 0.5 */
+    palette[0] = 2.0f;             /* bone 0: scale x by 2 */
+    palette[10] = 0.5f;            /* bone 0: scale z by 0.5 */
     set_identity4x4(&palette[16]); /* bone 1: identity (normals pass through) */
 
     for (int v = 0; v < 3; v++) {

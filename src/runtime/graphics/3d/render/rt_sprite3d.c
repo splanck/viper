@@ -100,10 +100,22 @@ static double sprite3d_clamp01(double value) {
 /// @brief Build a row-major model matrix that translates by @p origin (identity rotation/scale).
 static void sprite3d_origin_model_matrix(const double origin[3], double out[16]) {
     static const double identity[16] = {
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     };
     memcpy(out, identity, sizeof(identity));
     if (origin) {

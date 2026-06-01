@@ -175,8 +175,7 @@ static void test_parsing(void) {
 
     const char hidden_time[] = "10:30:00\0junk";
     rt_string hidden_time_s = rt_string_from_bytes(hidden_time, sizeof(hidden_time) - 1);
-    check("ParseTime rejects embedded NUL suffix",
-          rt_datetime_parse_time(hidden_time_s) == -1);
+    check("ParseTime rejects embedded NUL suffix", rt_datetime_parse_time(hidden_time_s) == -1);
     rt_string_unref(hidden_time_s);
 }
 

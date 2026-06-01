@@ -128,10 +128,8 @@ static void test_lerp() {
     test_result("lerp(0, 10, 1) = 10", approx_eq(rt_lerp(0.0, 10.0, 1.0), 10.0));
     test_result("lerp(0, 10, 0.5) = 5", approx_eq(rt_lerp(0.0, 10.0, 0.5), 5.0));
     test_result("lerp(10, 20, 0.25) = 12.5", approx_eq(rt_lerp(10.0, 20.0, 0.25), 12.5));
-    test_result("lerp(max, -max, 0) = max",
-                rt_lerp(DBL_MAX, -DBL_MAX, 0.0) == DBL_MAX);
-    test_result("lerp(max, -max, 1) = -max",
-                rt_lerp(DBL_MAX, -DBL_MAX, 1.0) == -DBL_MAX);
+    test_result("lerp(max, -max, 0) = max", rt_lerp(DBL_MAX, -DBL_MAX, 0.0) == DBL_MAX);
+    test_result("lerp(max, -max, 1) = -max", rt_lerp(DBL_MAX, -DBL_MAX, 1.0) == -DBL_MAX);
     double midpoint = rt_lerp(DBL_MAX, -DBL_MAX, 0.5);
     test_result("lerp(max, -max, 0.5) remains finite",
                 std::isfinite(midpoint) && approx_eq(midpoint, 0.0));
@@ -156,10 +154,8 @@ static void test_wrap() {
     test_result("wrapInt(12, 0, 10) = 2", rt_wrap_i64(12, 0, 10) == 2);
     test_result("wrapInt(-3, 0, 10) = 7", rt_wrap_i64(-3, 0, 10) == 7);
     test_result("wrapInt(-6, -5, 5) = 4", rt_wrap_i64(-6, -5, 5) == 4);
-    test_result("wrapInt(LLONG_MIN, -5, 5) = 2",
-                rt_wrap_i64(LLONG_MIN, -5, 5) == 2);
-    test_result("wrapInt(0, LLONG_MIN, LLONG_MAX) = 0",
-                rt_wrap_i64(0, LLONG_MIN, LLONG_MAX) == 0);
+    test_result("wrapInt(LLONG_MIN, -5, 5) = 2", rt_wrap_i64(LLONG_MIN, -5, 5) == 2);
+    test_result("wrapInt(0, LLONG_MIN, LLONG_MAX) = 0", rt_wrap_i64(0, LLONG_MIN, LLONG_MAX) == 0);
     test_result("wrapInt(LLONG_MAX, LLONG_MIN, LLONG_MAX) = LLONG_MIN",
                 rt_wrap_i64(LLONG_MAX, LLONG_MIN, LLONG_MAX) == LLONG_MIN);
 

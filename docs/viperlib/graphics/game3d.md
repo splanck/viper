@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-29
+last-verified: 2026-06-01
 ---
 
 # Game3D
@@ -307,9 +307,10 @@ path and leaves the final frame capturable. `runFrames` / `runFramesOnly`
 temporarily switch the backing canvas to synthetic input and fixed-clock timing
 for callback, simulation, and render work, keep synthetic-held keys/buttons down
 across the whole deterministic run, then restore the previous canvas input
-source, clock source, and synthetic delta after the run completes. The built-in
-run loops avoid double-counting time because `tick()` / `runFrames()` own frame
-and elapsed-time accounting.
+source, clock source, and synthetic delta after the run completes. If a native
+`runFrames` callback traps, the synthetic canvas state is restored before the
+original trap is rethrown. The built-in run loops avoid double-counting time
+because `tick()` / `runFrames()` own frame and elapsed-time accounting.
 
 For worker-parity probes, set `World3D.setWorkerCount(world, 1)` and a
 multi-worker value before separate `runFramesOnly` replays and compare the final
@@ -410,7 +411,9 @@ then simulation owns the body and writes the resulting pose back to the node.
 Use `BodyFromNode` for scripted/authoritative transforms that should push into
 physics on every transform setter. A raw body can only belong to one spawned
 entity in a world; `spawn` and `attachBody` reject attempts to share it so
-collision events and physics ownership stay unambiguous.
+collision events and physics ownership stay unambiguous. Reattaching the same
+spawned raw body to the same entity is a no-op for world registration; it keeps
+the existing physics-world body and body index stable.
 
 ---
 
@@ -847,6 +850,10 @@ properties. Dynamic body definitions inherit the entity's current layer unless
 `withLayer` or `set_layer` is used. `StaticBox` and `StaticPlane` default to
 `Game3D.Layers.World`. `StaticPlane(size)` is centered on the entity node, spans
 `size` on X/Z, and uses a total thickness of `0.1` world units.
+Setting `isStatic` true clears `isKinematic` and sets mass to zero. Setting it
+back to false restores a positive default mass when the definition does not
+already have one, so a static definition can be toggled back to a usable dynamic
+body without an extra `set_mass` call.
 
 `World3D.collisionEventCount(phase)` and `collisionEvent(phase, index)` expose
 the runtime enter/stay/exit buffers through `Collision3DEvent`:
@@ -907,6 +914,9 @@ codes in game code.
 Install a built-in controller with `World3D.setCameraController(controller)`.
 The current runtime accepts the built-in Game3D controller objects listed here;
 it does not yet invoke interpreted Zia interface objects as native C callbacks.
+A controller can be installed on only one world at a time. Installing the same
+controller on a second world detaches it from the previous world's controller
+slot before binding it to the new world.
 
 ```zia
 var world = Game3D.World3D.New("Controller Demo", 960, 540);

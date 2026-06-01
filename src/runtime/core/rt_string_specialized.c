@@ -467,7 +467,10 @@ static int split_words(
     return wcount;
 }
 
-static int split_words_dynamic(const char *src, size_t len, char **buf_out, const char ***words_out) {
+static int split_words_dynamic(const char *src,
+                               size_t len,
+                               char **buf_out,
+                               const char ***words_out) {
     if (len > (size_t)INT_MAX || len > SIZE_MAX - 256)
         rt_trap("string_ops: input too large");
 

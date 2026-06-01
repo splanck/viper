@@ -78,7 +78,8 @@ typedef struct rt_navagent3d {
     int8_t avoidance_enabled;
     struct rt_navagent3d *registry_next;
     /* Uniform spatial-hash grid links for O(1)-ish neighbor queries during avoidance. The agent is
-     * present in exactly one cell (grid_cx,grid_cz); the cell is refreshed whenever position syncs. */
+     * present in exactly one cell (grid_cx,grid_cz); the cell is refreshed whenever position syncs.
+     */
     struct rt_navagent3d *grid_next;
     int32_t grid_cx;
     int32_t grid_cz;
@@ -242,15 +243,17 @@ static double navagent_effective_avoidance_radius(const rt_navagent3d *agent) {
 }
 
 /// @brief An agent's interaction "reach": radius plus a bounded RVO time horizon of travel.
-///   Two agents can only influence each other within (reachA + reachB), which bounds the grid query.
+///   Two agents can only influence each other within (reachA + reachB), which bounds the grid
+///   query.
 static double navagent_reach(const rt_navagent3d *agent) {
     double r = navagent_effective_avoidance_radius(agent);
-    double s = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0) ? agent->desired_speed
-                                                                              : 0.0;
+    double s =
+        (isfinite(agent->desired_speed) && agent->desired_speed > 0.0) ? agent->desired_speed : 0.0;
     return r + s * NAVAGENT_RVO_MAX_TIME_HORIZON;
 }
 
-/// @brief Quantize a world coordinate to its spatial-grid cell index (clamped to ±1e9; 0 if non-finite).
+/// @brief Quantize a world coordinate to its spatial-grid cell index (clamped to ±1e9; 0 if
+/// non-finite).
 static int32_t navagent_grid_coord(double v) {
     double c;
     if (!isfinite(v))
@@ -270,7 +273,8 @@ static uint32_t navagent_grid_bucket(int32_t cx, int32_t cz) {
     return h & (NAVAGENT_GRID_BUCKETS - 1u);
 }
 
-/// @brief Insert an agent into the spatial grid bucket for its current XZ cell (no-op if already in).
+/// @brief Insert an agent into the spatial grid bucket for its current XZ cell (no-op if already
+/// in).
 static void navagent_grid_insert(rt_navagent3d *agent) {
     uint32_t b;
     if (!agent || agent->in_grid)
@@ -329,7 +333,9 @@ static void navagent_grid_refresh(rt_navagent3d *agent) {
 /// @details During an update, `desired_velocity` already holds the freshly computed preferred
 ///   velocity for the current agent. Peers may not have updated yet this frame, so fall back to
 ///   their current path corner and desired speed before using their previous actual velocity.
-static void navagent_preferred_velocity_xz(const rt_navagent3d *agent, double *out_vx, double *out_vz) {
+static void navagent_preferred_velocity_xz(const rt_navagent3d *agent,
+                                           double *out_vx,
+                                           double *out_vz) {
     double speed;
     if (!out_vx || !out_vz)
         return;
@@ -421,11 +427,18 @@ static int navagent_build_velocity_candidates(double pref_x,
                                               double max_speed,
                                               double candidates[NAVAGENT_RVO_MAX_CANDIDATES][2]) {
     static const double speed_mults[] = {1.0, 0.75, 0.5};
-    static const double angle_offsets[] = {
-        0.0, 0.3490658503988659, -0.3490658503988659, 0.6981317007977318,
-        -0.6981317007977318, 1.0471975511965976, -1.0471975511965976,
-        1.5707963267948966, -1.5707963267948966, 2.356194490192345,
-        -2.356194490192345, 3.141592653589793};
+    static const double angle_offsets[] = {0.0,
+                                           0.3490658503988659,
+                                           -0.3490658503988659,
+                                           0.6981317007977318,
+                                           -0.6981317007977318,
+                                           1.0471975511965976,
+                                           -1.0471975511965976,
+                                           1.5707963267948966,
+                                           -1.5707963267948966,
+                                           2.356194490192345,
+                                           -2.356194490192345,
+                                           3.141592653589793};
     double pref_len = sqrt(pref_x * pref_x + pref_z * pref_z);
     double base_angle = pref_len > 1e-9 ? atan2(pref_z, pref_x) : 0.0;
     int count = 0;
@@ -547,8 +560,7 @@ static double navagent_rvo_candidate_penalty(rt_navagent3d *agent,
         /* reach too large for a tight neighborhood: fall through to the full scan */
     }
     for (other = g_navagent3d_registry; other; other = other->registry_next)
-        penalty += navagent_rvo_peer_penalty(
-            agent, other, agent_radius, horizon, cand_x, cand_z);
+        penalty += navagent_rvo_peer_penalty(agent, other, agent_radius, horizon, cand_x, cand_z);
     return penalty;
 }
 
@@ -558,11 +570,8 @@ static double navagent_rvo_candidate_penalty(rt_navagent3d *agent,
 ///   horizon, and returns the delta from preferred to the best candidate. With @p use_grid it scans
 ///   only the spatial-grid cell neighborhood sized to cover the RVO horizon.
 ///   @return 1 if avoidance applies (outputs written), 0 otherwise.
-static int navagent_compute_avoidance_adjust(rt_navagent3d *agent,
-                                             double dt,
-                                             int use_grid,
-                                             double *out_ax,
-                                             double *out_az) {
+static int navagent_compute_avoidance_adjust(
+    rt_navagent3d *agent, double dt, int use_grid, double *out_ax, double *out_az) {
     double agent_radius;
     double max_speed;
     double horizon;
@@ -579,9 +588,8 @@ static int navagent_compute_avoidance_adjust(rt_navagent3d *agent,
     if (!agent || !agent->avoidance_enabled)
         return 0;
     agent_radius = navagent_effective_avoidance_radius(agent);
-    max_speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
-                    ? agent->desired_speed
-                    : 0.0;
+    max_speed =
+        (isfinite(agent->desired_speed) && agent->desired_speed > 0.0) ? agent->desired_speed : 0.0;
     if (agent_radius <= 0.0 || max_speed <= 0.0)
         return 0;
     horizon = (isfinite(dt) && dt > 0.0) ? dt * 12.0 : NAVAGENT_RVO_MIN_TIME_HORIZON;
@@ -611,8 +619,8 @@ static int navagent_compute_avoidance_adjust(rt_navagent3d *agent,
         double forward = cand_x * pref_x + cand_z * pref_z;
         double side = cand_x * right_x + cand_z * right_z;
         double speed_loss = max_speed - cand_speed;
-        score += navagent_rvo_candidate_penalty(
-            agent, agent_radius, horizon, use_grid, cand_x, cand_z);
+        score +=
+            navagent_rvo_candidate_penalty(agent, agent_radius, horizon, use_grid, cand_x, cand_z);
         if (speed_loss > 0.0)
             score += speed_loss * speed_loss * 1.5;
         if (forward < 0.0)
@@ -633,18 +641,17 @@ static int navagent_compute_avoidance_adjust(rt_navagent3d *agent,
 
 /// @brief Steer the agent's desired velocity to avoid nearby peers.
 /// @details Gathers peers via the spatial grid and applies a reciprocal velocity-obstacle candidate
-///   solution. The selected candidate stays within DesiredSpeed, favors the preferred path velocity,
-///   and predicts peer collisions across a bounded time horizon instead of only pushing away after
-///   overlap.
+///   solution. The selected candidate stays within DesiredSpeed, favors the preferred path
+///   velocity, and predicts peer collisions across a bounded time horizon instead of only pushing
+///   away after overlap.
 static void navagent_apply_local_avoidance(rt_navagent3d *agent, double dt) {
     double max_speed;
     double adjust_x = 0.0;
     double adjust_z = 0.0;
     if (!navagent_compute_avoidance_adjust(agent, dt, 1, &adjust_x, &adjust_z))
         return;
-    max_speed = (isfinite(agent->desired_speed) && agent->desired_speed > 0.0)
-                    ? agent->desired_speed
-                    : 0.0;
+    max_speed =
+        (isfinite(agent->desired_speed) && agent->desired_speed > 0.0) ? agent->desired_speed : 0.0;
     if (fabs(adjust_x) + fabs(adjust_z) <= 1e-10)
         return;
     agent->desired_velocity[0] += adjust_x;

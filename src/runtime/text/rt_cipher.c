@@ -708,8 +708,7 @@ void *rt_cipher_decrypt_with_key_aad(void *ciphertext, void *key_bytes, void *aa
     int64_t encrypted_len = ct_len - header_len;
 
     int64_t plain_len = encrypted_len - CIPHER_TAG_SIZE;
-    void *result =
-        cipher_bytes_new_or_trap(plain_len, "Cipher.DecryptWithKey: allocation failed");
+    void *result = cipher_bytes_new_or_trap(plain_len, "Cipher.DecryptWithKey: allocation failed");
     uint8_t *plain_data = bytes_data(result);
 
     const uint8_t *aad_data = NULL;

@@ -107,7 +107,8 @@ static double joint3d_vec3_len(const double *v) {
     return sqrt(joint3d_vec3_dot(v, v));
 }
 
-/// @brief Normalize a 3-vector in place; returns 0 (leaving it unchanged) if non-finite or near-zero.
+/// @brief Normalize a 3-vector in place; returns 0 (leaving it unchanged) if non-finite or
+/// near-zero.
 static int joint3d_vec3_normalize(double *v) {
     double len;
     if (!joint3d_vec3_all_finite(v))
@@ -121,7 +122,8 @@ static int joint3d_vec3_normalize(double *v) {
     return 1;
 }
 
-/// @brief Read a boxed Vec3 handle into @p out; returns 0 if not a Vec3 or any component is non-finite.
+/// @brief Read a boxed Vec3 handle into @p out; returns 0 if not a Vec3 or any component is
+/// non-finite.
 static int joint3d_read_vec3(void *obj, double *out) {
     if (!out || !rt_g3d_is_vec3(obj))
         return 0;
@@ -227,9 +229,7 @@ static void joint3d_quat_from_axis_angle(const double *axis, double angle, doubl
 }
 
 /// @brief Prepend a world-axis rotation to an orientation quaternion.
-static void joint3d_quat_prepend_axis_angle(double *orientation,
-                                            const double *axis,
-                                            double angle) {
+static void joint3d_quat_prepend_axis_angle(double *orientation, const double *axis, double angle) {
     double delta[4];
     double out[4];
     if (!orientation || !axis || fabs(angle) < 1e-12)
@@ -287,7 +287,8 @@ static void joint3d_quat_rotate_vec3(const double *q, const double *v, double *o
     out[2] = rotated[2];
 }
 
-/// @brief Transform a body-local anchor point into world space (rotate by orientation, add position).
+/// @brief Transform a body-local anchor point into world space (rotate by orientation, add
+/// position).
 static void joint3d_world_anchor(const rt_body3d_kinematics *body,
                                  const double *local_anchor,
                                  double *out) {
@@ -320,7 +321,8 @@ static void joint3d_local_from_world(const rt_body3d_kinematics *body,
     joint3d_quat_rotate_vec3(inv_rotation, delta, out);
 }
 
-/// @brief Rotate a body-local axis into world space and normalize it (defaults to +Y if degenerate).
+/// @brief Rotate a body-local axis into world space and normalize it (defaults to +Y if
+/// degenerate).
 static void joint3d_world_axis_from_local(const rt_body3d_kinematics *body,
                                           const double *local_axis,
                                           double *out) {
@@ -334,7 +336,8 @@ static void joint3d_world_axis_from_local(const rt_body3d_kinematics *body,
         joint3d_vec3_set(out, 0.0, 1.0, 0.0);
 }
 
-/// @brief Positionally pull two bodies' world anchors together (a ball-socket positional constraint).
+/// @brief Positionally pull two bodies' world anchors together (a ball-socket positional
+/// constraint).
 /// @details Splits the anchor gap between the bodies in inverse-mass proportion, scaled by
 ///          @p stiffness (clamped to (0, 1]). No-op for non-finite bodies or two immovable bodies.
 static void joint3d_correct_anchor_pair(rt_body3d_kinematics *body_a,
@@ -370,7 +373,8 @@ static void joint3d_correct_anchor_pair(rt_body3d_kinematics *body_a,
 
 /// @brief Positionally correct only the per-axis anchor-gap components that exceed [min, max].
 /// @details Like joint3d_correct_anchor_pair but the constraint is a box: an axis within its
-///          linear limits is left free; only the limit overshoot is projected out (inverse-mass split).
+///          linear limits is left free; only the limit overshoot is projected out (inverse-mass
+///          split).
 static void joint3d_correct_anchor_pair_limited(rt_body3d_kinematics *body_a,
                                                 rt_body3d_kinematics *body_b,
                                                 const double *local_anchor_a,
@@ -464,7 +468,8 @@ static void joint3d_remove_relative_linear_velocity_locked_axes(rt_body3d_kinema
 
 /// @brief Cancel the bodies' relative angular velocity except the component along @p allowed_axis.
 /// @details Implements a hinge's angular constraint: spin about the hinge axis is preserved while
-///          all off-axis relative rotation is removed (inverse-mass weighted). A NULL axis removes all.
+///          all off-axis relative rotation is removed (inverse-mass weighted). A NULL axis removes
+///          all.
 static void joint3d_remove_relative_angular_velocity(rt_body3d_kinematics *body_a,
                                                      rt_body3d_kinematics *body_b,
                                                      const double *allowed_axis) {
@@ -834,9 +839,11 @@ static void hinge_joint_finalizer(void *obj) {
     joint3d_release_body_ref(&j->body_b);
 }
 
-/// @brief Create a hinge joint pinning two bodies at @p anchor and constraining rotation to @p axis.
+/// @brief Create a hinge joint pinning two bodies at @p anchor and constraining rotation to @p
+/// axis.
 /// @details Validates the bodies/anchor/axis, then stores the anchor and (normalized) axis in each
-///          body's local frame so the constraint follows the bodies as they move. Traps on bad input.
+///          body's local frame so the constraint follows the bodies as they move. Traps on bad
+///          input.
 /// @return Opaque HingeJoint3D handle, or NULL on validation failure.
 void *rt_hinge_joint3d_new(void *body_a, void *body_b, void *anchor, void *axis) {
     double anchor_world[3];
@@ -856,8 +863,8 @@ void *rt_hinge_joint3d_new(void *body_a, void *body_b, void *anchor, void *axis)
         return NULL;
     }
 
-    rt_hinge_joint3d *j = (rt_hinge_joint3d *)rt_obj_new_i64(
-        RT_G3D_HINGEJOINT3D_CLASS_ID, (int64_t)sizeof(rt_hinge_joint3d));
+    rt_hinge_joint3d *j = (rt_hinge_joint3d *)rt_obj_new_i64(RT_G3D_HINGEJOINT3D_CLASS_ID,
+                                                             (int64_t)sizeof(rt_hinge_joint3d));
     if (!j) {
         rt_trap("HingeJoint3D.New: allocation failed");
         return NULL;
@@ -999,7 +1006,8 @@ static void hinge_joint_apply_motor(rt_hinge_joint3d *j, const double *axis_worl
     }
 }
 
-/// @brief Solve one hinge constraint step: keep anchors coincident, lock off-axis rotation, apply motor/limits.
+/// @brief Solve one hinge constraint step: keep anchors coincident, lock off-axis rotation, apply
+/// motor/limits.
 /// @details Runs positional + linear-velocity anchor correction, removes relative angular velocity
 ///          except about the world hinge axis, then applies the optional motor and angle limits.
 static void solve_hinge(rt_hinge_joint3d *j, double dt) {
@@ -1092,8 +1100,8 @@ void *rt_rope_joint3d_new(void *body_a, void *body_b, double max_length) {
         rt_trap("RopeJoint3D.New: both bodies must be non-null");
         return NULL;
     }
-    rt_rope_joint3d *j = (rt_rope_joint3d *)rt_obj_new_i64(
-        RT_G3D_ROPEJOINT3D_CLASS_ID, (int64_t)sizeof(rt_rope_joint3d));
+    rt_rope_joint3d *j = (rt_rope_joint3d *)rt_obj_new_i64(RT_G3D_ROPEJOINT3D_CLASS_ID,
+                                                           (int64_t)sizeof(rt_rope_joint3d));
     if (!j) {
         rt_trap("RopeJoint3D.New: allocation failed");
         return NULL;
@@ -1124,7 +1132,8 @@ void rt_rope_joint3d_set_max_length(void *joint, double max_length) {
 }
 
 /// @brief Solve one rope constraint step: only acts when the bodies are stretched past max_length.
-/// @details Projects the bodies back to the rope length and removes the separating relative velocity
+/// @details Projects the bodies back to the rope length and removes the separating relative
+/// velocity
 ///          along the rope direction (inverse-mass weighted); does nothing while the rope is slack.
 static void solve_rope(rt_rope_joint3d *j, double dt) {
     double delta[3];
@@ -1197,7 +1206,8 @@ static void sixdof_joint_finalizer(void *obj) {
 }
 
 /// @brief Create a 6-DOF joint anchoring two bodies at the translations of @p frame_a / @p frame_b.
-/// @details Reads each Mat4 frame's translation as the per-body local anchor and starts with all six
+/// @details Reads each Mat4 frame's translation as the per-body local anchor and starts with all
+/// six
 ///          axes locked (zero linear/angular range), to be relaxed via the set-limits calls. Traps
 ///          on non-body inputs or non-finite frames.
 /// @return Opaque SixDofJoint3D handle, or NULL on failure.
@@ -1214,8 +1224,8 @@ void *rt_sixdof_joint3d_new(void *body_a, void *body_b, void *frame_a, void *fra
         rt_trap("SixDofJoint3D.New: frames must be finite Mat4 values");
         return NULL;
     }
-    rt_sixdof_joint3d *j = (rt_sixdof_joint3d *)rt_obj_new_i64(
-        RT_G3D_SIXDOFJOINT3D_CLASS_ID, (int64_t)sizeof(rt_sixdof_joint3d));
+    rt_sixdof_joint3d *j = (rt_sixdof_joint3d *)rt_obj_new_i64(RT_G3D_SIXDOFJOINT3D_CLASS_ID,
+                                                               (int64_t)sizeof(rt_sixdof_joint3d));
     if (!j) {
         rt_trap("SixDofJoint3D.New: allocation failed");
         return NULL;
@@ -1274,8 +1284,7 @@ static void sixdof_joint_world_axis(const rt_sixdof_joint3d *j, int axis, double
     local[axis] = 1.0;
     joint3d_quat_rotate_vec3(j->body_a->orientation, local, out);
     if (!joint3d_vec3_normalize(out))
-        joint3d_vec3_set(out, axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0,
-                         axis == 2 ? 1.0 : 0.0);
+        joint3d_vec3_set(out, axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0);
 }
 
 /// @brief Correct relative orientation when the SixDof pose-angle exits an angular limit.
@@ -1283,8 +1292,8 @@ static void sixdof_joint_apply_pose_angle_correction(rt_sixdof_joint3d *j,
                                                      const double *axis_world,
                                                      double violation) {
     double inv_sum;
-    if (!j || !axis_world || fabs(violation) < 1e-12 ||
-        !joint3d_body_is_finite(j->body_a) || !joint3d_body_is_finite(j->body_b))
+    if (!j || !axis_world || fabs(violation) < 1e-12 || !joint3d_body_is_finite(j->body_a) ||
+        !joint3d_body_is_finite(j->body_b))
         return;
     inv_sum = j->body_a->inv_mass + j->body_b->inv_mass;
     if (!isfinite(inv_sum) || inv_sum < 1e-12)
@@ -1452,7 +1461,8 @@ void rt_sixdof_joint3d_set_angular_limits(void *joint, void *min_obj, void *max_
 }
 
 /// @brief Solve one 6DOF constraint step: enforce linear/pose-angular box limits and any motor.
-/// @details Projects the anchor gap back inside the linear limits, zeroes relative velocity on locked
+/// @details Projects the anchor gap back inside the linear limits, zeroes relative velocity on
+/// locked
 ///          linear axes, holds relative pose angles inside angular limits, then drives the motor.
 static void solve_sixdof(rt_sixdof_joint3d *j, double dt) {
     (void)dt;
@@ -1485,11 +1495,9 @@ void rt_joint3d_solve(void *joint, int32_t joint_type, double dt) {
     else if (joint_type == RT_JOINT_SPRING &&
              rt_g3d_has_class(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID))
         solve_spring((rt_spring_joint3d *)joint, dt);
-    else if (joint_type == RT_JOINT_HINGE &&
-             rt_g3d_has_class(joint, RT_G3D_HINGEJOINT3D_CLASS_ID))
+    else if (joint_type == RT_JOINT_HINGE && rt_g3d_has_class(joint, RT_G3D_HINGEJOINT3D_CLASS_ID))
         solve_hinge((rt_hinge_joint3d *)joint, dt);
-    else if (joint_type == RT_JOINT_ROPE &&
-             rt_g3d_has_class(joint, RT_G3D_ROPEJOINT3D_CLASS_ID))
+    else if (joint_type == RT_JOINT_ROPE && rt_g3d_has_class(joint, RT_G3D_ROPEJOINT3D_CLASS_ID))
         solve_rope((rt_rope_joint3d *)joint, dt);
     else if (joint_type == RT_JOINT_SIXDOF &&
              rt_g3d_has_class(joint, RT_G3D_SIXDOFJOINT3D_CLASS_ID))

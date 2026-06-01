@@ -52,19 +52,6 @@
 #define VSCN_MAX_NODE_DEPTH 1024
 #define VSCN_ABS_MAX 1.0e12
 
-/// @brief Release the GC reference held in `*slot` and null the pointer.
-///
-/// Safe on NULL slots and slots that already hold NULL. Used by
-/// the scene loader to roll back partial state on error and by
-/// the destructor to drop owned mesh / material / texture refs.
-static void scene3d_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
-}
-
 /// @brief Count the total number of nodes in the subtree rooted at `node` (inclusive).
 /// @details Iterative so adversarially deep loaded hierarchies cannot overflow the C stack.
 static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
@@ -1943,6 +1930,82 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
 /// document with shared assets first, then nodes referencing them
 /// by index. Output is pretty-printed for diff-friendliness.
 /// @return 1 on success, 0 on any failure (open, alloc, write).
+/// @brief Free the four shared-asset pointer tables collected for a save (every failure exit).
+static void vscn_save_free_ctx(vscn_save_context_t *ctx) {
+    vscn_free_ptr_table(&ctx->meshes);
+    vscn_free_ptr_table(&ctx->materials);
+    vscn_free_ptr_table(&ctx->textures);
+    vscn_free_ptr_table(&ctx->cubemaps);
+}
+
+/// @brief Emit the `"textures": [ ... ],` array. @return 1 on success, 0 on append failure.
+static int vscn_save_emit_textures(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
+    if (!vscn_append(buf, len, cap, "  \"textures\": [\n"))
+        return 0;
+    for (int32_t i = 0; i < ctx->textures.count; i++) {
+        if (!vscn_serialize_texture((rt_pixels_impl *)ctx->textures.items[i], buf, len, cap, 2) ||
+            (i < ctx->textures.count - 1 && !vscn_append(buf, len, cap, ",")) ||
+            !vscn_append(buf, len, cap, "\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ],\n");
+}
+
+/// @brief Emit the `"cubemaps": [ ... ],` array. @return 1 on success, 0 on append failure.
+static int vscn_save_emit_cubemaps(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
+    if (!vscn_append(buf, len, cap, "  \"cubemaps\": [\n"))
+        return 0;
+    for (int32_t i = 0; i < ctx->cubemaps.count; i++) {
+        if (!vscn_serialize_cubemap((rt_cubemap3d *)ctx->cubemaps.items[i], ctx, buf, len, cap, 2) ||
+            (i < ctx->cubemaps.count - 1 && !vscn_append(buf, len, cap, ",")) ||
+            !vscn_append(buf, len, cap, "\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ],\n");
+}
+
+/// @brief Emit the `"materials": [ ... ],` array. @return 1 on success, 0 on append failure.
+static int vscn_save_emit_materials(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
+    if (!vscn_append(buf, len, cap, "  \"materials\": [\n"))
+        return 0;
+    for (int32_t i = 0; i < ctx->materials.count; i++) {
+        if (!vscn_serialize_material(
+                (rt_material3d *)ctx->materials.items[i], ctx, buf, len, cap, 2) ||
+            (i < ctx->materials.count - 1 && !vscn_append(buf, len, cap, ",")) ||
+            !vscn_append(buf, len, cap, "\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ],\n");
+}
+
+/// @brief Emit the `"meshes": [ ... ],` array. @return 1 on success, 0 on append failure.
+static int vscn_save_emit_meshes(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
+    if (!vscn_append(buf, len, cap, "  \"meshes\": [\n"))
+        return 0;
+    for (int32_t i = 0; i < ctx->meshes.count; i++) {
+        if (!vscn_serialize_mesh((rt_mesh3d *)ctx->meshes.items[i], buf, len, cap, 2) ||
+            (i < ctx->meshes.count - 1 && !vscn_append(buf, len, cap, ",")) ||
+            !vscn_append(buf, len, cap, "\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ],\n");
+}
+
+/// @brief Emit the closing `"nodes": [ ... ]` array (root's children; root is implicit).
+/// @return 1 on success, 0 on append failure.
+static int vscn_save_emit_nodes(
+    char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx, rt_scene_node3d *root) {
+    if (!vscn_append(buf, len, cap, "  \"nodes\": [\n"))
+        return 0;
+    for (int32_t i = 0; i < root->child_count; i++) {
+        if (!vscn_serialize_node(root->children[i], ctx, buf, len, cap, 2) ||
+            (i < root->child_count - 1 && !vscn_append(buf, len, cap, ",")) ||
+            !vscn_append(buf, len, cap, "\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ]\n");
+}
+
 int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     if (!scene_obj || !path)
         return 0;
@@ -1959,13 +2022,12 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     vscn_save_context_t ctx = {0};
     char *buf = NULL;
     size_t len = 0, cap = 0;
+    FILE *f;
+    size_t written = 0;
 
     for (int32_t i = 0; i < scene->root->child_count; i++) {
         if (!vscn_collect_node_assets(scene->root->children[i], &ctx)) {
-            vscn_free_ptr_table(&ctx.meshes);
-            vscn_free_ptr_table(&ctx.materials);
-            vscn_free_ptr_table(&ctx.textures);
-            vscn_free_ptr_table(&ctx.cubemaps);
+            vscn_save_free_ctx(&ctx);
             return 0;
         }
     }
@@ -1973,167 +2035,39 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     if (!vscn_append(&buf, &len, &cap, "{\n") ||
         !vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n") ||
         !vscn_append(&buf, &len, &cap, "  \"version\": 2,\n") ||
-        !vscn_append(&buf, &len, &cap, "  \"textures\": [\n")) {
-        vscn_free_ptr_table(&ctx.meshes);
-        vscn_free_ptr_table(&ctx.materials);
-        vscn_free_ptr_table(&ctx.textures);
-        vscn_free_ptr_table(&ctx.cubemaps);
+        !vscn_save_emit_textures(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_cubemaps(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_materials(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_meshes(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_nodes(&buf, &len, &cap, &ctx, scene->root) ||
+        !vscn_append(&buf, &len, &cap, "}\n")) {
+        vscn_save_free_ctx(&ctx);
         free(buf);
         return 0;
     }
 
-    for (int32_t i = 0; i < ctx.textures.count; i++) {
-        if (!vscn_serialize_texture((rt_pixels_impl *)ctx.textures.items[i], &buf, &len, &cap, 2) ||
-            (i < ctx.textures.count - 1 && !vscn_append(&buf, &len, &cap, ",")) ||
-            !vscn_append(&buf, &len, &cap, "\n")) {
-            vscn_free_ptr_table(&ctx.meshes);
-            vscn_free_ptr_table(&ctx.materials);
-            vscn_free_ptr_table(&ctx.textures);
-            vscn_free_ptr_table(&ctx.cubemaps);
-            free(buf);
-            return 0;
-        }
-    }
-
-    if (!vscn_append(&buf, &len, &cap, "  ],\n") ||
-        !vscn_append(&buf, &len, &cap, "  \"cubemaps\": [\n")) {
-        vscn_free_ptr_table(&ctx.meshes);
-        vscn_free_ptr_table(&ctx.materials);
-        vscn_free_ptr_table(&ctx.textures);
-        vscn_free_ptr_table(&ctx.cubemaps);
-        free(buf);
-        return 0;
-    }
-
-    for (int32_t i = 0; i < ctx.cubemaps.count; i++) {
-        if (!vscn_serialize_cubemap(
-                (rt_cubemap3d *)ctx.cubemaps.items[i], &ctx, &buf, &len, &cap, 2) ||
-            (i < ctx.cubemaps.count - 1 && !vscn_append(&buf, &len, &cap, ",")) ||
-            !vscn_append(&buf, &len, &cap, "\n")) {
-            vscn_free_ptr_table(&ctx.meshes);
-            vscn_free_ptr_table(&ctx.materials);
-            vscn_free_ptr_table(&ctx.textures);
-            vscn_free_ptr_table(&ctx.cubemaps);
-            free(buf);
-            return 0;
-        }
-    }
-
-    if (!vscn_append(&buf, &len, &cap, "  ],\n") ||
-        !vscn_append(&buf, &len, &cap, "  \"materials\": [\n")) {
-        vscn_free_ptr_table(&ctx.meshes);
-        vscn_free_ptr_table(&ctx.materials);
-        vscn_free_ptr_table(&ctx.textures);
-        vscn_free_ptr_table(&ctx.cubemaps);
-        free(buf);
-        return 0;
-    }
-
-    for (int32_t i = 0; i < ctx.materials.count; i++) {
-        if (!vscn_serialize_material(
-                (rt_material3d *)ctx.materials.items[i], &ctx, &buf, &len, &cap, 2) ||
-            (i < ctx.materials.count - 1 && !vscn_append(&buf, &len, &cap, ",")) ||
-            !vscn_append(&buf, &len, &cap, "\n")) {
-            vscn_free_ptr_table(&ctx.meshes);
-            vscn_free_ptr_table(&ctx.materials);
-            vscn_free_ptr_table(&ctx.textures);
-            vscn_free_ptr_table(&ctx.cubemaps);
-            free(buf);
-            return 0;
-        }
-    }
-
-    if (!vscn_append(&buf, &len, &cap, "  ],\n") ||
-        !vscn_append(&buf, &len, &cap, "  \"meshes\": [\n")) {
-        vscn_free_ptr_table(&ctx.meshes);
-        vscn_free_ptr_table(&ctx.materials);
-        vscn_free_ptr_table(&ctx.textures);
-        vscn_free_ptr_table(&ctx.cubemaps);
-        free(buf);
-        return 0;
-    }
-
-    for (int32_t i = 0; i < ctx.meshes.count; i++) {
-        if (!vscn_serialize_mesh((rt_mesh3d *)ctx.meshes.items[i], &buf, &len, &cap, 2) ||
-            (i < ctx.meshes.count - 1 && !vscn_append(&buf, &len, &cap, ",")) ||
-            !vscn_append(&buf, &len, &cap, "\n")) {
-            vscn_free_ptr_table(&ctx.meshes);
-            vscn_free_ptr_table(&ctx.materials);
-            vscn_free_ptr_table(&ctx.textures);
-            vscn_free_ptr_table(&ctx.cubemaps);
-            free(buf);
-            return 0;
-        }
-    }
-
-    if (!vscn_append(&buf, &len, &cap, "  ],\n") ||
-        !vscn_append(&buf, &len, &cap, "  \"nodes\": [\n")) {
-        vscn_free_ptr_table(&ctx.meshes);
-        vscn_free_ptr_table(&ctx.materials);
-        vscn_free_ptr_table(&ctx.textures);
-        vscn_free_ptr_table(&ctx.cubemaps);
-        free(buf);
-        return 0;
-    }
-
-    // Serialize root's children (root itself is implicit)
-    for (int32_t i = 0; i < scene->root->child_count; i++) {
-        if (!vscn_serialize_node(scene->root->children[i], &ctx, &buf, &len, &cap, 2) ||
-            (i < scene->root->child_count - 1 && !vscn_append(&buf, &len, &cap, ",")) ||
-            !vscn_append(&buf, &len, &cap, "\n")) {
-            vscn_free_ptr_table(&ctx.meshes);
-            vscn_free_ptr_table(&ctx.materials);
-            vscn_free_ptr_table(&ctx.textures);
-            vscn_free_ptr_table(&ctx.cubemaps);
-            free(buf);
-            return 0;
-        }
-    }
-
-    if (!vscn_append(&buf, &len, &cap, "  ]\n") || !vscn_append(&buf, &len, &cap, "}\n")) {
-        vscn_free_ptr_table(&ctx.meshes);
-        vscn_free_ptr_table(&ctx.materials);
-        vscn_free_ptr_table(&ctx.textures);
-        vscn_free_ptr_table(&ctx.cubemaps);
-        free(buf);
-        return 0;
-    }
-
-    FILE *f = fopen(filepath, "wb");
+    f = fopen(filepath, "wb");
     if (!f) {
-        vscn_free_ptr_table(&ctx.meshes);
-        vscn_free_ptr_table(&ctx.materials);
-        vscn_free_ptr_table(&ctx.textures);
-        vscn_free_ptr_table(&ctx.cubemaps);
+        vscn_save_free_ctx(&ctx);
         free(buf);
         return 0;
     }
-    size_t written = 0;
     while (written < len) {
         size_t chunk = fwrite(buf + written, 1, len - written, f);
         if (chunk == 0) {
             fclose(f);
-            vscn_free_ptr_table(&ctx.meshes);
-            vscn_free_ptr_table(&ctx.materials);
-            vscn_free_ptr_table(&ctx.textures);
-            vscn_free_ptr_table(&ctx.cubemaps);
+            vscn_save_free_ctx(&ctx);
             free(buf);
             return 0;
         }
         written += chunk;
     }
     if (fflush(f) != 0 || fclose(f) != 0) {
-        vscn_free_ptr_table(&ctx.meshes);
-        vscn_free_ptr_table(&ctx.materials);
-        vscn_free_ptr_table(&ctx.textures);
-        vscn_free_ptr_table(&ctx.cubemaps);
+        vscn_save_free_ctx(&ctx);
         free(buf);
         return 0;
     }
-    vscn_free_ptr_table(&ctx.meshes);
-    vscn_free_ptr_table(&ctx.materials);
-    vscn_free_ptr_table(&ctx.textures);
-    vscn_free_ptr_table(&ctx.cubemaps);
+    vscn_save_free_ctx(&ctx);
     free(buf);
     return 1;
 }
@@ -2146,9 +2080,72 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
 /// node tree wiring index references back to the freshly-loaded
 /// objects. On any failure all partially-loaded refs are released
 /// and NULL is returned.
+/// @brief Read an entire file into a newly-malloc'd, NUL-terminated buffer.
+/// @return The buffer (caller frees) with its byte length in @p out_size, or NULL on I/O error.
+static char *vscn_read_file(const char *filepath, long *out_size) {
+    FILE *f = fopen(filepath, "rb");
+    long file_size;
+    char *json;
+    if (!f)
+        return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    file_size = ftell(f);
+    if (file_size < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    if ((uint64_t)file_size > SIZE_MAX - 1) {
+        fclose(f);
+        return NULL;
+    }
+    json = (char *)malloc((size_t)file_size + 1);
+    if (!json) {
+        fclose(f);
+        return NULL;
+    }
+    if (file_size > 0 && fread(json, 1, (size_t)file_size, f) != (size_t)file_size) {
+        fclose(f);
+        free(json);
+        return NULL;
+    }
+    fclose(f);
+    json[file_size] = '\0';
+    *out_size = file_size;
+    return json;
+}
+
+/// @brief Parse `nodes_arr` into scene-graph children of @p scene's root (no-op when array absent).
+/// @return 1 on success, 0 on a node parse failure (the offending node is released).
+static int vscn_load_nodes(rt_scene3d *scene,
+                           void *nodes_arr,
+                           rt_mesh3d **meshes,
+                           int mesh_count,
+                           rt_material3d **materials,
+                           int material_count) {
+    if (!nodes_arr)
+        return 1;
+    for (int64_t i = 0; i < vjson_len(nodes_arr); i++) {
+        int parse_error = 0;
+        rt_scene_node3d *node = vscn_parse_node(
+            rt_seq_get(nodes_arr, i), meshes, mesh_count, materials, material_count, &parse_error, 0);
+        if (parse_error || !node) {
+            scene3d_release_ref((void **)&node);
+            return 0;
+        }
+        rt_scene_node3d_add_child(scene->root, node);
+        {
+            void *tmp = node;
+            scene3d_release_ref(&tmp);
+        }
+    }
+    return 1;
+}
+
 void *rt_scene3d_load(rt_string path) {
     const char *filepath;
-    FILE *f;
     char *json = NULL;
     rt_string json_text = NULL;
     long file_size;
@@ -2174,35 +2171,9 @@ void *rt_scene3d_load(rt_string path) {
     if (!filepath)
         return NULL;
 
-    f = fopen(filepath, "rb");
-    if (!f)
+    json = vscn_read_file(filepath, &file_size);
+    if (!json)
         return NULL;
-    if (fseek(f, 0, SEEK_END) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    file_size = ftell(f);
-    if (file_size < 0 || fseek(f, 0, SEEK_SET) != 0) {
-        fclose(f);
-        return NULL;
-    }
-    if ((uint64_t)file_size > SIZE_MAX - 1) {
-        fclose(f);
-        return NULL;
-    }
-
-    json = (char *)malloc((size_t)file_size + 1);
-    if (!json) {
-        fclose(f);
-        return NULL;
-    }
-    if (file_size > 0 && fread(json, 1, (size_t)file_size, f) != (size_t)file_size) {
-        fclose(f);
-        free(json);
-        return NULL;
-    }
-    fclose(f);
-    json[file_size] = '\0';
 
     json_text = rt_string_from_bytes(json, (size_t)file_size);
     free(json);
@@ -2300,27 +2271,8 @@ void *rt_scene3d_load(rt_string path) {
     if (!scene)
         goto fail;
 
-    if (nodes_arr) {
-        for (int64_t i = 0; i < vjson_len(nodes_arr); i++) {
-            int parse_error = 0;
-            rt_scene_node3d *node = vscn_parse_node(rt_seq_get(nodes_arr, i),
-                                                    meshes,
-                                                    mesh_count,
-                                                    materials,
-                                                    material_count,
-                                                    &parse_error,
-                                                    0);
-            if (parse_error || !node) {
-                scene3d_release_ref((void **)&node);
-                goto fail;
-            }
-            rt_scene_node3d_add_child(scene->root, node);
-            {
-                void *tmp = node;
-                scene3d_release_ref(&tmp);
-            }
-        }
-    }
+    if (!vscn_load_nodes(scene, nodes_arr, meshes, mesh_count, materials, material_count))
+        goto fail;
     scene->node_count = scene3d_count_subtree(scene->root);
     if (scene->node_count <= 0)
         goto fail;

@@ -129,9 +129,7 @@ static void thread_save_trap_error(char *buffer, size_t buffer_size, const char 
     snprintf(buffer, buffer_size, "%s", err);
 }
 
-static void thread_retain_owned_arg_or_release(void *arg,
-                                               void *cleanup_obj,
-                                               const char *fallback) {
+static void thread_retain_owned_arg_or_release(void *arg, void *cleanup_obj, const char *fallback) {
     if (!arg)
         return;
 
@@ -1479,7 +1477,8 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
     jmp_buf start_recovery;
     rt_trap_set_recovery(&start_recovery);
     if (setjmp(start_recovery) != 0) {
-        thread_save_trap_error(saved_error, sizeof(saved_error), "Thread.StartSafe: failed to start");
+        thread_save_trap_error(
+            saved_error, sizeof(saved_error), "Thread.StartSafe: failed to start");
         rt_trap_clear_recovery();
         if (rt_obj_release_check0(ctx))
             rt_obj_free(ctx);

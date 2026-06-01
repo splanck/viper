@@ -27,13 +27,15 @@
 #include "rt_morphtarget3d.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
-#include "rt_seq.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
+#include "rt_seq.h"
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
 #include <cassert>
+#include <csetjmp>
+#include <cstdlib>
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <cstdio>
@@ -69,6 +71,17 @@ extern int64_t rt_scene_node3d_get_lod_resident_bytes(void *node, int64_t index)
 
 static int tests_passed = 0;
 static int tests_run = 0;
+static std::jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_expect_trap = false;
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
+    std::fprintf(stderr, "unexpected runtime trap: %s\n", msg ? msg : "(null)");
+    std::abort();
+}
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
@@ -89,6 +102,18 @@ static int tests_run = 0;
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
+
+template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *needle) {
+    g_last_trap = nullptr;
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        fn();
+        g_expect_trap = false;
+        return false;
+    }
+    g_expect_trap = false;
+    return g_last_trap && (!needle || std::strstr(g_last_trap, needle) != nullptr);
+}
 
 static bool read_text_file(const char *path, std::string &out) {
     out.clear();
@@ -161,8 +186,7 @@ static void test_try_add_reports_parenting_success() {
     EXPECT_TRUE(rt_scene3d_try_add(scene, parent) != 0, "Scene3D.TryAdd succeeds for a node");
     EXPECT_TRUE(rt_scene_node3d_get_parent(parent) == rt_scene3d_get_root(scene),
                 "Scene3D.TryAdd parents node under root");
-    EXPECT_TRUE(rt_scene3d_try_add(scene, scene) == 0,
-                "Scene3D.TryAdd rejects non-node handles");
+    EXPECT_TRUE(rt_scene3d_try_add(scene, scene) == 0, "Scene3D.TryAdd rejects non-node handles");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 2,
                 "Scene3D.TryAdd failure leaves node count unchanged");
 
@@ -228,12 +252,31 @@ static void test_world_position_and_scale_getters() {
 
     void *world_pos = rt_scene_node3d_get_world_position(child);
     void *world_scale = rt_scene_node3d_get_world_scale(child);
+    double component_x = -9.0;
+    double component_y = -9.0;
+    double component_z = -9.0;
+    EXPECT_TRUE(rt_scene_node3d_get_world_position_components(
+                    child, &component_x, &component_y, &component_z) != 0,
+                "WorldPosition components helper succeeds for nodes");
     EXPECT_NEAR(rt_vec3_x(world_pos), 7.0, 0.001, "WorldPosition includes parent scaled X");
     EXPECT_NEAR(rt_vec3_y(world_pos), 2.0, 0.001, "WorldPosition includes parent Y");
     EXPECT_NEAR(rt_vec3_z(world_pos), 1.0, 0.001, "WorldPosition includes parent scaled Z");
+    EXPECT_NEAR(component_x, 7.0, 0.001, "WorldPosition component X matches Vec3 getter");
+    EXPECT_NEAR(component_y, 2.0, 0.001, "WorldPosition component Y matches Vec3 getter");
+    EXPECT_NEAR(component_z, 1.0, 0.001, "WorldPosition component Z matches Vec3 getter");
     EXPECT_NEAR(rt_vec3_x(world_scale), 1.0, 0.001, "WorldScale X composes parent/child");
     EXPECT_NEAR(rt_vec3_y(world_scale), 6.0, 0.001, "WorldScale Y composes parent/child");
     EXPECT_NEAR(rt_vec3_z(world_scale), 1.0, 0.001, "WorldScale Z composes parent/child");
+
+    component_x = 77.0;
+    component_y = 88.0;
+    component_z = 99.0;
+    EXPECT_TRUE(rt_scene_node3d_get_world_position_components(
+                    nullptr, &component_x, &component_y, &component_z) == 0,
+                "WorldPosition components helper rejects invalid nodes");
+    EXPECT_NEAR(component_x, 77.0, 0.001, "Invalid component helper leaves X untouched");
+    EXPECT_NEAR(component_y, 88.0, 0.001, "Invalid component helper leaves Y untouched");
+    EXPECT_NEAR(component_z, 99.0, 0.001, "Invalid component helper leaves Z untouched");
 }
 
 static void test_scene_rebase_origin_shifts_root_subtrees() {
@@ -703,8 +746,8 @@ static void test_scene_spatial_queries_flat_walk_reference() {
     EXPECT_TRUE(rt_seq_len(sphere_hits) == 1, "QuerySphere returns one matching visible node");
     EXPECT_TRUE(rt_seq_get(sphere_hits, 0) == far_node, "QuerySphere returns the far node");
 
-    void *hidden_hits = rt_scene3d_query_aabb(
-        scene, rt_vec3_new(2.0, -1.0, -5.0), rt_vec3_new(4.0, 1.0, -3.0));
+    void *hidden_hits =
+        rt_scene3d_query_aabb(scene, rt_vec3_new(2.0, -1.0, -5.0), rt_vec3_new(4.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(hidden_hits) == 0, "Scene queries skip hidden subtrees");
 
     void *hit = rt_scene3d_raycast_nodes(
@@ -730,6 +773,23 @@ static void test_scene_spatial_queries_flat_walk_reference() {
                 "VisibleNodeCount tracks submitted drawable nodes from the last draw");
 }
 
+static void test_scene_spatial_queries_validate_vec3_args_before_result_alloc() {
+    void *scene = rt_scene3d_new();
+    void *min = rt_vec3_new(-1.0, -1.0, -1.0);
+    void *max = rt_vec3_new(1.0, 1.0, 1.0);
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { (void)rt_scene3d_query_aabb(scene, scene, max); }, "min must be Vec3"),
+                "QueryAABB traps with a clear message for non-Vec3 min");
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { (void)rt_scene3d_query_aabb(scene, min, scene); }, "max must be Vec3"),
+                "QueryAABB traps with a clear message for non-Vec3 max");
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { (void)rt_scene3d_query_sphere(scene, scene, 1.0); },
+                    "center must be Vec3"),
+                "QuerySphere traps with a clear message for non-Vec3 center");
+}
+
 static void test_scene_spatial_index_rebuilds_on_dirty_node() {
     void *scene = rt_scene3d_new();
     auto *scene_impl = (rt_scene3d *)scene;
@@ -742,19 +802,21 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
     rt_scene_node3d_set_material(node, material);
     rt_scene3d_add(scene, node);
 
-    void *first_hits = rt_scene3d_query_aabb(
-        scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
+    void *first_hits =
+        rt_scene3d_query_aabb(scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(first_hits) == 1, "Indexed QueryAABB returns the initial node");
     EXPECT_TRUE(scene_impl->spatial_index.valid == 1, "Scene3D spatial index is valid after query");
-    EXPECT_TRUE(scene_impl->spatial_index.count == 1, "Scene3D spatial index tracks drawable nodes");
-    EXPECT_TRUE(scene_impl->spatial_index.root_node >= 0, "Scene3D spatial index builds a BVH root");
+    EXPECT_TRUE(scene_impl->spatial_index.count == 1,
+                "Scene3D spatial index tracks drawable nodes");
+    EXPECT_TRUE(scene_impl->spatial_index.root_node >= 0,
+                "Scene3D spatial index builds a BVH root");
     EXPECT_TRUE(scene_impl->spatial_index.node_count == 1,
                 "Scene3D spatial index uses a single BVH leaf for one drawable");
     uint32_t first_build_count = scene_impl->spatial_index.build_count;
     uint32_t first_refit_count = scene_impl->spatial_index.refit_count;
 
-    void *second_hits = rt_scene3d_query_aabb(
-        scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
+    void *second_hits =
+        rt_scene3d_query_aabb(scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(second_hits) == 1, "Indexed QueryAABB remains stable across reuse");
     EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count,
                 "Scene3D spatial index reuses a clean build");
@@ -762,21 +824,22 @@ static void test_scene_spatial_index_rebuilds_on_dirty_node() {
                 "Scene3D spatial index does not refit a clean build");
 
     rt_scene_node3d_set_position(node, 10.0, 0.0, -4.0);
-    void *old_hits = rt_scene3d_query_aabb(
-        scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
-    EXPECT_TRUE(rt_seq_len(old_hits) == 0, "Dirty spatial index drops the moved node from old bounds");
+    void *old_hits =
+        rt_scene3d_query_aabb(scene, rt_vec3_new(-1.0, -1.0, -5.0), rt_vec3_new(1.0, 1.0, -3.0));
+    EXPECT_TRUE(rt_seq_len(old_hits) == 0,
+                "Dirty spatial index drops the moved node from old bounds");
     EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count,
                 "Scene3D spatial index refits instead of rebuilding after a transform change");
     EXPECT_TRUE(scene_impl->spatial_index.refit_count == first_refit_count + 1,
                 "Scene3D spatial index records the transform-only refit");
 
-    void *new_hits = rt_scene3d_query_aabb(
-        scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
+    void *new_hits =
+        rt_scene3d_query_aabb(scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(new_hits) == 1, "Dirty spatial index returns the moved node");
 
     rt_scene_node3d_set_visible(node, 0);
-    void *hidden_hits = rt_scene3d_query_aabb(
-        scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
+    void *hidden_hits =
+        rt_scene3d_query_aabb(scene, rt_vec3_new(9.0, -1.0, -5.0), rt_vec3_new(11.0, 1.0, -3.0));
     EXPECT_TRUE(rt_seq_len(hidden_hits) == 0, "Topology-dirty spatial index drops hidden nodes");
     EXPECT_TRUE(scene_impl->spatial_index.build_count == first_build_count + 1,
                 "Scene3D spatial index rebuilds after visibility topology changes");
@@ -869,10 +932,8 @@ static void test_scene_spatial_index_10k_scaling_fixture() {
     for (int row = 0; row < kRows; ++row) {
         for (int col = 0; col < kColumns; ++col) {
             void *node = rt_scene_node3d_new();
-            rt_scene_node3d_set_position(node,
-                                         (double)col * kSpacing,
-                                         0.0,
-                                         -10.0 - (double)row * kSpacing);
+            rt_scene_node3d_set_position(
+                node, (double)col * kSpacing, 0.0, -10.0 - (double)row * kSpacing);
             rt_scene_node3d_set_mesh(node, mesh);
             rt_scene_node3d_set_material(node, material);
             rt_scene3d_add(scene, node);
@@ -885,7 +946,8 @@ static void test_scene_spatial_index_10k_scaling_fixture() {
                                        rt_vec3_new(target_x - 0.75, -1.0, target_z - 0.75),
                                        rt_vec3_new(target_x + 0.75, 1.0, target_z + 0.75));
     EXPECT_TRUE(rt_seq_len(hits) == 1, "10k QueryAABB fixture returns the isolated target node");
-    EXPECT_TRUE(rt_seq_get(hits, 0) == target_node, "10k QueryAABB fixture preserves node identity");
+    EXPECT_TRUE(rt_seq_get(hits, 0) == target_node,
+                "10k QueryAABB fixture preserves node identity");
     EXPECT_TRUE(scene_impl->spatial_index.valid == 1, "10k fixture builds a valid spatial index");
     EXPECT_TRUE(scene_impl->spatial_index.count == kNodeCount,
                 "10k fixture indexes every visible drawable node");
@@ -946,10 +1008,8 @@ static void test_scene_occlusion_grid_uses_spatial_candidates() {
     void *mesh = rt_mesh3d_new_box(2.0, 2.0, 0.2);
     void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
     void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
-    rt_camera3d_look_at(camera,
-                        rt_vec3_new(0.0, 0.0, 5.0),
-                        rt_vec3_new(0.0, 0.0, 0.0),
-                        rt_vec3_new(0.0, 1.0, 0.0));
+    rt_camera3d_look_at(
+        camera, rt_vec3_new(0.0, 0.0, 5.0), rt_vec3_new(0.0, 0.0, 0.0), rt_vec3_new(0.0, 1.0, 0.0));
 
     void *front = rt_scene_node3d_new();
     rt_scene_node3d_set_position(front, 0.0, 0.0, 0.0);
@@ -1008,18 +1068,12 @@ static void test_scene_portal_pvs_culls_unlinked_interior_zones() {
                         rt_vec3_new(10.0, 0.0, 0.0),
                         rt_vec3_new(0.0, 1.0, 0.0));
 
-    int64_t zone_a = rt_scene3d_add_visibility_zone(scene,
-                                                    rt_const_cstr("room-a"),
-                                                    rt_vec3_new(-5.0, -5.0, -5.0),
-                                                    rt_vec3_new(5.0, 5.0, 5.0));
-    int64_t zone_b = rt_scene3d_add_visibility_zone(scene,
-                                                    rt_const_cstr("room-b"),
-                                                    rt_vec3_new(8.0, -5.0, -5.0),
-                                                    rt_vec3_new(16.0, 5.0, 5.0));
-    int64_t zone_c = rt_scene3d_add_visibility_zone(scene,
-                                                    rt_const_cstr("room-c"),
-                                                    rt_vec3_new(28.0, -5.0, -5.0),
-                                                    rt_vec3_new(36.0, 5.0, 5.0));
+    int64_t zone_a = rt_scene3d_add_visibility_zone(
+        scene, rt_const_cstr("room-a"), rt_vec3_new(-5.0, -5.0, -5.0), rt_vec3_new(5.0, 5.0, 5.0));
+    int64_t zone_b = rt_scene3d_add_visibility_zone(
+        scene, rt_const_cstr("room-b"), rt_vec3_new(8.0, -5.0, -5.0), rt_vec3_new(16.0, 5.0, 5.0));
+    int64_t zone_c = rt_scene3d_add_visibility_zone(
+        scene, rt_const_cstr("room-c"), rt_vec3_new(28.0, -5.0, -5.0), rt_vec3_new(36.0, 5.0, 5.0));
     EXPECT_TRUE(zone_a == 0 && zone_b == 1 && zone_c == 2,
                 "Scene3D visibility zones return stable zero-based indexes");
     EXPECT_TRUE(rt_scene3d_add_visibility_portal(scene, zone_a, zone_b, 1) == 0,
@@ -1039,8 +1093,7 @@ static void test_scene_portal_pvs_culls_unlinked_interior_zones() {
 
     reset_scene_capture();
     rt_scene3d_draw(scene, &canvas, camera);
-    EXPECT_TRUE(g_scene_submit_count == 2,
-                "Scene3D portal/PVS culls the unlinked interior room");
+    EXPECT_TRUE(g_scene_submit_count == 2, "Scene3D portal/PVS culls the unlinked interior room");
     EXPECT_TRUE(rt_scene3d_get_pvs_culled_count(scene) == 1,
                 "Scene3D.PvsCulledCount reports portal/PVS skips");
     EXPECT_TRUE(rt_scene3d_get_visible_node_count(scene) == 2,
@@ -1072,9 +1125,8 @@ static void test_scene_spatial_index_preserves_far_origin_precision() {
     rt_scene_node3d_set_mesh(offset_node, mesh);
     rt_scene3d_add(scene, offset_node);
 
-    void *aabb_hits = rt_scene3d_query_aabb(scene,
-                                            rt_vec3_new(kBase - 0.5, -1.0, -10.5),
-                                            rt_vec3_new(kBase + 0.5, 1.0, -9.5));
+    void *aabb_hits = rt_scene3d_query_aabb(
+        scene, rt_vec3_new(kBase - 0.5, -1.0, -10.5), rt_vec3_new(kBase + 0.5, 1.0, -9.5));
     EXPECT_TRUE(rt_seq_len(aabb_hits) == 1,
                 "Far-origin QueryAABB keeps sub-float-spaced nodes distinct");
     EXPECT_TRUE(rt_seq_get(aabb_hits, 0) == target_node,
@@ -1920,8 +1972,7 @@ static void test_lod_residency_falls_back_and_reports_bytes() {
 
     EXPECT_TRUE(rt_mesh3d_get_resident_bytes(base_mesh) > 0,
                 "Mesh3D.ResidentBytes reports base mesh payload bytes");
-    EXPECT_TRUE(rt_scene_node3d_get_lod_resident(node, 0) == 1,
-                "new LOD meshes start resident");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_resident(node, 0) == 1, "new LOD meshes start resident");
     EXPECT_TRUE(rt_scene_node3d_get_lod_resident_bytes(node, 0) > 0,
                 "SceneNode3D exposes LOD resident bytes");
 
@@ -1933,16 +1984,14 @@ static void test_lod_residency_falls_back_and_reports_bytes() {
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 1,
                 "Scene3D falls back to the base mesh when selected LOD is nonresident");
-    EXPECT_TRUE(g_scene_last_vertex_count != 3,
-                "Scene3D did not submit the nonresident LOD mesh");
+    EXPECT_TRUE(g_scene_last_vertex_count != 3, "Scene3D did not submit the nonresident LOD mesh");
 
     reset_scene_capture();
     rt_scene_node3d_set_lod_resident(node, 0, 1);
     rt_scene3d_draw(scene, &canvas, camera);
     EXPECT_TRUE(g_scene_submit_count == 1,
                 "Scene3D redraws after the LOD payload becomes resident");
-    EXPECT_TRUE(g_scene_last_vertex_count == 3,
-                "Scene3D selects the resident LOD mesh");
+    EXPECT_TRUE(g_scene_last_vertex_count == 3, "Scene3D selects the resident LOD mesh");
 
     reset_scene_capture();
     rt_scene_node3d_set_lod_resident(node, 0, 0);
@@ -2159,8 +2208,7 @@ static void test_scene_roundtrip_preserves_node_lights() {
     EXPECT_NEAR(loaded_light->color[2], 0.9, 0.001, "Scene3D.Load restores light color");
     EXPECT_NEAR(loaded_light->intensity, 4.0, 0.001, "Scene3D.Load restores light intensity");
     EXPECT_NEAR(loaded_light->attenuation, 0.25, 0.001, "Scene3D.Load restores light attenuation");
-    EXPECT_TRUE(loaded_light->casts_shadows == 0,
-                "Scene3D.Load restores light shadow-caster flag");
+    EXPECT_TRUE(loaded_light->casts_shadows == 0, "Scene3D.Load restores light shadow-caster flag");
     EXPECT_TRUE(loaded_light->inner_cos > loaded_light->outer_cos,
                 "Scene3D.Load restores spot cone cosines");
 }
@@ -2286,6 +2334,7 @@ int main() {
     test_dynamic_deformation_uses_conservative_frustum_culling();
     test_parent_animator_drives_child_skinned_meshes();
     test_scene_spatial_queries_flat_walk_reference();
+    test_scene_spatial_queries_validate_vec3_args_before_result_alloc();
     test_scene_spatial_index_rebuilds_on_dirty_node();
     test_scene_draw_spatial_index_matches_flat_reference();
     test_scene_spatial_index_10k_scaling_fixture();

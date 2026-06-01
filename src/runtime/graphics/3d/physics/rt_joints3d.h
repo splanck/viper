@@ -58,7 +58,10 @@ double rt_spring_joint3d_get_rest_length(void *joint);
 void *rt_hinge_joint3d_new(void *body_a, void *body_b, void *anchor, void *axis);
 /// @brief Configure a hinge motor driving rotation about the axis toward a target
 ///   angular velocity (rad/s), bounded by a max-impulse strength.
-void rt_hinge_joint3d_set_motor(void *joint, int8_t enabled, double target_velocity, double max_impulse);
+void rt_hinge_joint3d_set_motor(void *joint,
+                                int8_t enabled,
+                                double target_velocity,
+                                double max_impulse);
 /// @brief Current signed hinge angle (radians) about the axis; 0 at creation.
 double rt_hinge_joint3d_get_angle(void *joint);
 /// @brief Constrain the hinge to [min, max] radians; non-finite values disable the limit.
@@ -81,7 +84,10 @@ void rt_sixdof_joint3d_set_linear_limits(void *joint, void *min, void *max);
 void rt_sixdof_joint3d_set_angular_limits(void *joint, void *min, void *max);
 /// @brief Configure a linear motor driving relative velocity (Vec3 per world axis)
 ///   along unlocked axes, bounded by a max-impulse strength.
-void rt_sixdof_joint3d_set_linear_motor(void *joint, int8_t enabled, void *velocity, double max_impulse);
+void rt_sixdof_joint3d_set_linear_motor(void *joint,
+                                        int8_t enabled,
+                                        void *velocity,
+                                        double max_impulse);
 
 /* Joint solving (called from physics world step) */
 /// @brief Solve one substep of a joint constraint (called internally from `world_step`).

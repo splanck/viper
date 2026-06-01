@@ -233,8 +233,7 @@ static void test_cost_budget_drain() {
                 "enqueue positive-cost item should succeed");
     expect_true(rt_g3d_commit_queue_drain_budget(queue, 0, 0) == 1,
                 "zero budget drains zero-cost work only");
-    expect_true(ctx.count == 5 && ctx.values[4] == 50,
-                "zero budget ran the zero-cost callback");
+    expect_true(ctx.count == 5 && ctx.values[4] == 50, "zero budget ran the zero-cost callback");
     expect_true(rt_g3d_commit_queue_pending(queue) == 1,
                 "zero budget leaves positive-cost work pending");
 

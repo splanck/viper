@@ -182,8 +182,7 @@ static void test_software_backend_reports_canvas_fallback_features() {
                 "BackendSupports accepts postfx-overlay alias");
     EXPECT_TRUE(backend_supports(&canvas, "final_screenshot"),
                 "BackendSupports accepts final_screenshot alias");
-    EXPECT_TRUE(backend_supports(&canvas, "hlod"),
-                "BackendSupports accepts hlod capability alias");
+    EXPECT_TRUE(backend_supports(&canvas, "hlod"), "BackendSupports accepts hlod capability alias");
     EXPECT_TRUE(backend_supports(&canvas, "occlusion"),
                 "BackendSupports accepts occlusion capability alias");
     EXPECT_TRUE(!backend_supports(&canvas, "bc7"),
@@ -221,8 +220,9 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "GPU backend advertises final overlay after split GPU postfx");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_FINAL_SCREENSHOT) != 0,
                 "GPU backend advertises final screenshots when readback hook exists");
-    EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY) != 0,
-                "GPU backend advertises GPU postfx overlay composition when split apply/present exists");
+    EXPECT_TRUE(
+        (caps & RT_CANVAS3D_BACKEND_CAP_GPU_POSTFX_OVERLAY) != 0,
+        "GPU backend advertises GPU postfx overlay composition when split apply/present exists");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_HLOD) != 0,
                 "GPU backend advertises runtime HLOD/impostor proxies");
     EXPECT_TRUE((caps & RT_CANVAS3D_BACKEND_CAP_BC7) == 0,
@@ -241,8 +241,9 @@ static void test_gpu_backend_capability_bits_and_names() {
                 "BackendSupports accepts gpu_post_fx alias");
     EXPECT_TRUE(backend_supports(&canvas, "final-screenshot"),
                 "BackendSupports accepts final-screenshot alias");
-    EXPECT_TRUE(backend_supports(&canvas, "gpu-postfx-overlay"),
-                "BackendSupports reports GPU postfx overlay support when split apply/present exists");
+    EXPECT_TRUE(
+        backend_supports(&canvas, "gpu-postfx-overlay"),
+        "BackendSupports reports GPU postfx overlay support when split apply/present exists");
     EXPECT_TRUE(backend_supports(&canvas, "impostor"),
                 "BackendSupports accepts impostor alias for HLOD proxies");
     EXPECT_TRUE(!backend_supports(&canvas, "bc7"),
@@ -290,7 +291,8 @@ static void test_frustum_culling_aliases_share_state() {
 
     rt_canvas3d_set_frustum_culling(&canvas, 0);
     EXPECT_EQ_I64(canvas.frustum_culling, 0, "SetFrustumCulling(false) disables frustum state");
-    EXPECT_EQ_I64(canvas.occlusion_culling, 0, "SetFrustumCulling(false) disables dependent occlusion");
+    EXPECT_EQ_I64(
+        canvas.occlusion_culling, 0, "SetFrustumCulling(false) disables dependent occlusion");
 
     rt_canvas3d_set_frustum_culling(nullptr, 1);
     rt_canvas3d_set_occlusion_culling(nullptr, 1);

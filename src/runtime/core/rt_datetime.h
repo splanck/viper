@@ -97,7 +97,8 @@ rt_string rt_datetime_to_local(int64_t timestamp);
 /// @param hour Hour (0-23).
 /// @param minute Minute (0-59).
 /// @param second Second (0-59).
-/// @return Unix timestamp in seconds, or -1 if components are invalid or the local time is not representable.
+/// @return Unix timestamp in seconds, or -1 if components are invalid or the local time is not
+/// representable.
 int64_t rt_datetime_create(
     int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second);
 

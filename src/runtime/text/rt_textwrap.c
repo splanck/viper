@@ -460,7 +460,8 @@ rt_string rt_textwrap_left(rt_string text, int64_t width) {
     if (!text) {
         if (width <= 0)
             return rt_string_from_bytes("", 0);
-        char *spaces = checked_malloc((size_t)width + 1, "TextWrapper.Left: memory allocation failed");
+        char *spaces =
+            checked_malloc((size_t)width + 1, "TextWrapper.Left: memory allocation failed");
         memset(spaces, ' ', (size_t)width);
         spaces[width] = '\0';
         rt_string result = rt_string_from_bytes(spaces, width);
@@ -489,7 +490,8 @@ rt_string rt_textwrap_right(rt_string text, int64_t width) {
     if (!text) {
         if (width <= 0)
             return rt_string_from_bytes("", 0);
-        char *spaces = checked_malloc((size_t)width + 1, "TextWrapper.Right: memory allocation failed");
+        char *spaces =
+            checked_malloc((size_t)width + 1, "TextWrapper.Right: memory allocation failed");
         memset(spaces, ' ', (size_t)width);
         spaces[width] = '\0';
         rt_string result = rt_string_from_bytes(spaces, width);
@@ -520,7 +522,8 @@ rt_string rt_textwrap_center(rt_string text, int64_t width) {
     if (!text) {
         if (width <= 0)
             return rt_string_from_bytes("", 0);
-        char *spaces = checked_malloc((size_t)width + 1, "TextWrapper.Center: memory allocation failed");
+        char *spaces =
+            checked_malloc((size_t)width + 1, "TextWrapper.Center: memory allocation failed");
         memset(spaces, ' ', (size_t)width);
         spaces[width] = '\0';
         rt_string result = rt_string_from_bytes(spaces, width);

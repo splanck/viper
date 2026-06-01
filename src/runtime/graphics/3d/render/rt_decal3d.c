@@ -208,9 +208,8 @@ void rt_decal3d_rebase_origin(void *obj, double dx, double dy, double dz) {
     rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
     if (!d)
         return;
-    double delta[3] = {decal3d_finite_or(dx, 0.0),
-                       decal3d_finite_or(dy, 0.0),
-                       decal3d_finite_or(dz, 0.0)};
+    double delta[3] = {
+        decal3d_finite_or(dx, 0.0), decal3d_finite_or(dy, 0.0), decal3d_finite_or(dz, 0.0)};
     if (delta[0] == 0.0 && delta[1] == 0.0 && delta[2] == 0.0)
         return;
     d->position[0] = decal3d_finite_or(d->position[0] - delta[0], 0.0);

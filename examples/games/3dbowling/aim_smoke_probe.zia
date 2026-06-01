@@ -67,6 +67,10 @@ func main() {
         Terminal.Say("RESULT: fail scene visibility");
         return;
     }
+    if (smoke_checks.HasReadableEdges(snap, render.getWidth(), render.getHeight()) == false) {
+        Terminal.Say("RESULT: fail edge vignette");
+        return;
+    }
 
     render.flip();
     Terminal.Say("RESULT: ok");

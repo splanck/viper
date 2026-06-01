@@ -699,8 +699,7 @@ void rt_url_set_scheme(void *obj, rt_string scheme) {
         url->scheme = NULL;
         return;
     }
-    if (memchr(scheme_str, '\0', scheme_len) ||
-        !rt_url_scheme_is_valid(scheme_str, scheme_len))
+    if (memchr(scheme_str, '\0', scheme_len) || !rt_url_scheme_is_valid(scheme_str, scheme_len))
         rt_trap_net("URL.set_Scheme: invalid scheme", Err_InvalidUrl);
     rt_url_replace_field(&url->scheme, scheme, "URL.set_Scheme: allocation failed", 1);
 }
@@ -839,17 +838,15 @@ rt_string rt_url_authority(void *obj) {
         rt_url_size_add_or_trap(&size, strlen(url->user), "URL.Authority: length overflow");
         if (url->pass) {
             rt_url_size_add_or_trap(&size, 1, "URL.Authority: length overflow"); // :
-            rt_url_size_add_or_trap(
-                &size, strlen(url->pass), "URL.Authority: length overflow");
+            rt_url_size_add_or_trap(&size, strlen(url->pass), "URL.Authority: length overflow");
         }
-        rt_url_size_add_or_trap(&size, 1, "URL.Authority: length overflow");     // @
+        rt_url_size_add_or_trap(&size, 1, "URL.Authority: length overflow"); // @
     }
     if (url->host)
         rt_url_size_add_or_trap(
             &size, rt_url_formatted_host_len(url->host), "URL.Authority: length overflow");
     if (url->port > 0)
-        rt_url_size_add_or_trap(
-            &size, 22, "URL.Authority: length overflow"); // :PORT
+        rt_url_size_add_or_trap(&size, 22, "URL.Authority: length overflow"); // :PORT
 
     if (size == 0)
         return rt_str_empty();
@@ -1145,10 +1142,9 @@ void *rt_url_resolve(void *obj, rt_string relative) {
         result->host =
             rt_url_strdup_or_trap_cleanup(result, rel.host, "URL.Resolve: host allocation failed");
         result->port = rel.port;
-        result->path =
-            rel.path ? normalize_path(rel.path)
-                     : rt_url_strdup_or_trap_cleanup(
-                           result, rel.path, "URL.Resolve: path allocation failed");
+        result->path = rel.path ? normalize_path(rel.path)
+                                : rt_url_strdup_or_trap_cleanup(
+                                      result, rel.path, "URL.Resolve: path allocation failed");
         result->query = rt_url_strdup_or_trap_cleanup(
             result, rel.query, "URL.Resolve: query allocation failed");
     } else {
@@ -1163,10 +1159,9 @@ void *rt_url_resolve(void *obj, rt_string relative) {
             result->host = rt_url_strdup_or_trap_cleanup(
                 result, rel.host, "URL.Resolve: host allocation failed");
             result->port = rel.port;
-            result->path =
-                rel.path ? normalize_path(rel.path)
-                         : rt_url_strdup_or_trap_cleanup(
-                               result, rel.path, "URL.Resolve: path allocation failed");
+            result->path = rel.path ? normalize_path(rel.path)
+                                    : rt_url_strdup_or_trap_cleanup(
+                                          result, rel.path, "URL.Resolve: path allocation failed");
             result->query = rt_url_strdup_or_trap_cleanup(
                 result, rel.query, "URL.Resolve: query allocation failed");
         } else {
@@ -1343,8 +1338,8 @@ rt_string rt_url_encode_query(void *map) {
                 rt_string_ref(value_str_handle);
         }
         const char *value_str = value_str_handle ? rt_string_cstr(value_str_handle) : "";
-        size_t value_len = rt_url_string_len_or_trap(value_str_handle,
-                                                     "URL.EncodeQuery: invalid value length");
+        size_t value_len =
+            rt_url_string_len_or_trap(value_str_handle, "URL.EncodeQuery: invalid value length");
 
         size_t enc_key_len = 0;
         size_t enc_value_len = 0;
@@ -1362,8 +1357,7 @@ rt_string rt_url_encode_query(void *map) {
             rt_url_trap_runtime("URL.EncodeQuery: allocation failed");
         }
 
-        if (enc_value_len > SIZE_MAX - 2 ||
-            enc_key_len > SIZE_MAX - enc_value_len - 2) {
+        if (enc_value_len > SIZE_MAX - 2 || enc_key_len > SIZE_MAX - enc_value_len - 2) {
             if (value_str_handle)
                 rt_string_unref(value_str_handle);
             free(enc_key);

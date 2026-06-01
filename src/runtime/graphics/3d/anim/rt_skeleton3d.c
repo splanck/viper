@@ -854,10 +854,10 @@ rt_string rt_animation3d_get_name(void *obj) {
 
 /// @brief Infer a canonical humanoid-joint id from a bone name so a clip can retarget across
 ///   skeletons that use different naming conventions (mixamo, Unreal, Blender). @details Lowercases
-///   the name, drops separators and a `mixamorig` prefix, detects side (left/right, incl. a trailing
-///   l/r on limbs), and matches a base joint by keyword. Returns 0 for unrecognized names (caller
-///   falls back to exact-name then index matching). Bare `leg`/`arm` follow mixamo, where `Leg` is
-///   the calf and `Arm` the upper arm (`UpLeg`/`ForeArm` disambiguate the others).
+///   the name, drops separators and a `mixamorig` prefix, detects side (left/right, incl. a
+///   trailing l/r on limbs), and matches a base joint by keyword. Returns 0 for unrecognized names
+///   (caller falls back to exact-name then index matching). Bare `leg`/`arm` follow mixamo, where
+///   `Leg` is the calf and `Arm` the upper arm (`UpLeg`/`ForeArm` disambiguate the others).
 static int animation3d_humanoid_role(const char *raw) {
     char b[64];
     int n = 0;
@@ -971,8 +971,10 @@ static float animation3d_bone_bind_length(const rt_skeleton3d *skel, int32_t bon
 }
 
 /// @brief Copy an animation channel onto @p dst_bone, scaling its translation keys by @p pos_scale.
-/// @details Duplicates the source keyframes; translation keys are multiplied by the bone-length ratio
-///          (rotations/scales transfer unchanged) so motion fits a differently-proportioned skeleton.
+/// @details Duplicates the source keyframes; translation keys are multiplied by the bone-length
+/// ratio
+///          (rotations/scales transfer unchanged) so motion fits a differently-proportioned
+///          skeleton.
 /// @return 1 on success, 0 if the channel table is full or a keyframe copy fails.
 static int animation3d_retarget_copy_channel(rt_animation3d *dst,
                                              const vgfx3d_anim_channel_t *src,
@@ -991,8 +993,8 @@ static int animation3d_retarget_copy_channel(rt_animation3d *dst,
         return 1;
     if (!src->keyframes)
         return 0;
-    out->keyframes = (vgfx3d_keyframe_t *)malloc((size_t)src->keyframe_count *
-                                                 sizeof(vgfx3d_keyframe_t));
+    out->keyframes =
+        (vgfx3d_keyframe_t *)malloc((size_t)src->keyframe_count * sizeof(vgfx3d_keyframe_t));
     if (!out->keyframes) {
         out->keyframe_count = 0;
         out->keyframe_capacity = 0;

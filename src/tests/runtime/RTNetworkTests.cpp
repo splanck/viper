@@ -2140,8 +2140,7 @@ static void test_url_encode_decode_query() {
     rt_string roundtrip_value = rt_map_get_str(binary_decoded_map, binary_key);
     test_result("DecodeQuery restores embedded NUL key/value",
                 roundtrip_value && rt_str_len(roundtrip_value) == (int64_t)sizeof(value_bytes) &&
-                    memcmp(rt_string_cstr(roundtrip_value), value_bytes, sizeof(value_bytes)) ==
-                        0);
+                    memcmp(rt_string_cstr(roundtrip_value), value_bytes, sizeof(value_bytes)) == 0);
 }
 
 /// @brief Test URL validation.

@@ -192,7 +192,8 @@ static void test_truncate() {
         test_result("Truncate NULL text returns empty", strcmp(rt_string_cstr(result), "") == 0);
 
         result = rt_textwrap_truncate_with(text, 5, NULL);
-        test_result("Truncate NULL suffix keeps prefix", strcmp(rt_string_cstr(result), "Hello") == 0);
+        test_result("Truncate NULL suffix keeps prefix",
+                    strcmp(rt_string_cstr(result), "Hello") == 0);
     }
 
     printf("\n");

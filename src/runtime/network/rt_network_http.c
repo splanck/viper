@@ -4086,8 +4086,7 @@ rt_string rt_http_res_header(void *obj, rt_string name) {
     if (value_len64 < 0 || (uint64_t)value_len64 > (uint64_t)SIZE_MAX)
         value_len64 = 0;
     rt_string copy = rt_string_from_bytes(
-        value_cstr ? value_cstr : "",
-        (value_cstr && value_len64 > 0) ? (size_t)value_len64 : 0);
+        value_cstr ? value_cstr : "", (value_cstr && value_len64 > 0) ? (size_t)value_len64 : 0);
     rt_string_unref(value);
     return copy;
 }

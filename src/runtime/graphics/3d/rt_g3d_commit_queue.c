@@ -124,8 +124,7 @@ int64_t rt_g3d_commit_queue_drain_budget(void *obj, int64_t max_items, uint64_t 
     int64_t count = 0;
     uint64_t cost = 0;
     while (max_items <= 0 || count < max_items) {
-        rt_g3d_commit_item *peek =
-            (rt_g3d_commit_item *)rt_concqueue_peek(queue->items);
+        rt_g3d_commit_item *peek = (rt_g3d_commit_item *)rt_concqueue_peek(queue->items);
         if (!peek)
             break;
         uint64_t item_cost = peek->cost;

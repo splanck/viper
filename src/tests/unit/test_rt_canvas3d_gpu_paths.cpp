@@ -1200,13 +1200,12 @@ static void test_metal_robustness_probe_accepts_degenerate_basis_and_skybox_forw
                 "Normal-mapped degenerate tangents are repaired on a queued snapshot");
     if (draws[0].cmd.vertices) {
         const vgfx3d_vertex_t *v = &draws[0].cmd.vertices[0];
-        float tangent_len2 =
-            v->tangent[0] * v->tangent[0] + v->tangent[1] * v->tangent[1] +
-            v->tangent[2] * v->tangent[2];
+        float tangent_len2 = v->tangent[0] * v->tangent[0] + v->tangent[1] * v->tangent[1] +
+                             v->tangent[2] * v->tangent[2];
         EXPECT_TRUE(v->normal[0] == 0.0f && v->normal[1] == 0.0f && v->normal[2] == 0.0f,
                     "Degenerate authored normals remain a shader-guard responsibility");
-        EXPECT_TRUE(std::isfinite(tangent_len2) && tangent_len2 > 0.5f &&
-                        tangent_len2 < 1.5f && std::isfinite(v->tangent[3]),
+        EXPECT_TRUE(std::isfinite(tangent_len2) && tangent_len2 > 0.5f && tangent_len2 < 1.5f &&
+                        std::isfinite(v->tangent[3]),
                     "Queued tangent fallback is finite and non-zero");
     }
     EXPECT_TRUE(mesh_view->vertices[0].tangent[0] == 0.0f &&
@@ -1300,10 +1299,10 @@ static void test_mesh_draw_traps_when_deferred_queue_cannot_grow(void) {
     void *transform = rt_mat4_identity();
 
     canvas.draw_count = INT_MAX;
-    EXPECT_TRUE(expect_trap_contains(
-                    [&] { rt_canvas3d_draw_mesh(&canvas, mesh, transform, material); },
-                    "deferred draw queue allocation failed"),
-                "Mesh draw traps when the deferred queue cannot grow");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_canvas3d_draw_mesh(&canvas, mesh, transform, material); },
+                             "deferred draw queue allocation failed"),
+        "Mesh draw traps when the deferred queue cannot grow");
     EXPECT_TRUE(draw_submit_calls == 0,
                 "Mesh draw does not bypass the sorted deferred queue after allocation failure");
     EXPECT_TRUE(canvas.draw_cmds == nullptr,
@@ -2046,7 +2045,7 @@ static void test_shadow_cascades_render_primary_directional_light_slots(void) {
                     last_draw_lights[0].shadow_cascade_count == 3,
                 "Main-pass primary light receives the first cascade slot and cascade count");
     EXPECT_TRUE(last_draw_lights[0].shadow_cascade_splits[0] <
-                    last_draw_lights[0].shadow_cascade_splits[1] &&
+                        last_draw_lights[0].shadow_cascade_splits[1] &&
                     last_draw_lights[0].shadow_cascade_splits[1] <
                         last_draw_lights[0].shadow_cascade_splits[2],
                 "CSM publishes monotonic camera-depth split distances to backends");
@@ -2223,8 +2222,7 @@ static void test_draw_mesh_preserves_forward_light_capacity(void) {
                           (float)(VGFX3D_FORWARD_LIGHT_LIMIT - 1)) < 0.001f,
                 "Deferred draw includes the last forward light slot position");
     EXPECT_TRUE(std::fabs(draws[0].lights[VGFX3D_FORWARD_LIGHT_LIMIT - 1].intensity -
-                          (float)(1.0 + 0.25 * (double)(VGFX3D_FORWARD_LIGHT_LIMIT - 1))) <
-                    0.001f,
+                          (float)(1.0 + 0.25 * (double)(VGFX3D_FORWARD_LIGHT_LIMIT - 1))) < 0.001f,
                 "Deferred draw includes the last forward light slot intensity");
 
     cleanup_fake_canvas(&canvas);
@@ -2660,8 +2658,7 @@ static void test_synthetic_input_and_clock_advance_through_public_canvas_api(voi
 
     int64_t poll_open = rt_canvas3d_poll(&canvas);
 
-    EXPECT_TRUE(poll_open == 1,
-                "Synthetic-only Canvas3D.Poll stays open without platform events");
+    EXPECT_TRUE(poll_open == 1, "Synthetic-only Canvas3D.Poll stays open without platform events");
     EXPECT_TRUE(rt_keyboard_was_pressed(VIPER_KEY_W) == 1,
                 "Canvas3D synthetic key down records a pressed edge");
     EXPECT_TRUE(rt_keyboard_is_down(VIPER_KEY_W) == 1,

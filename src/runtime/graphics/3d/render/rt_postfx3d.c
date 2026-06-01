@@ -861,8 +861,8 @@ void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, 
     e->p.color_grade.saturation = clampf(sanitize_f32(saturation, 1.0f), 0.0f, 4.0f);
 }
 
-/// @brief Append a vignette (radial darkening toward edges). `radius` is the bright-circle
-/// fraction of half-screen-min-axis (typical 0.5–0.8); `softness` controls the falloff width.
+/// @brief Append a vignette (radial darkening toward edges). `radius` is the bright region
+/// before corner-normalized falloff starts; `softness` controls the falloff width.
 void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
     postfx_entry_t *e;
     rt_postfx3d *fx = postfx3d_checked(obj);
@@ -996,7 +996,7 @@ static void postfx3d_configure_quality_profile(rt_postfx3d *fx,
             rt_postfx3d_add_tonemap(fx, 2, 1.10);
             rt_postfx3d_add_fxaa(fx);
             rt_postfx3d_add_color_grade(fx, 0.015, 1.08, 1.06);
-            rt_postfx3d_add_vignette(fx, 0.88, 0.22);
+            rt_postfx3d_add_vignette(fx, 0.96, 0.28);
             if (gpu_scene_effects) {
                 rt_postfx3d_add_ssao(fx, 0.5, 0.65, 16);
                 rt_postfx3d_add_dof(fx, 10.0, 0.08, 3.0);

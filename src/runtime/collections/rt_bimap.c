@@ -319,11 +319,11 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
 
     // Check load factor on forward table
     if ((long double)bm->count * (long double)BM_LOAD_FACTOR_DEN >=
-        (long double)bm->fwd_capacity * (long double)BM_LOAD_FACTOR_NUM &&
+            (long double)bm->fwd_capacity * (long double)BM_LOAD_FACTOR_NUM &&
         !resize_fwd(bm))
         return;
     if ((long double)bm->count * (long double)BM_LOAD_FACTOR_DEN >=
-        (long double)bm->inv_capacity * (long double)BM_LOAD_FACTOR_NUM &&
+            (long double)bm->inv_capacity * (long double)BM_LOAD_FACTOR_NUM &&
         !resize_inv(bm))
         return;
 

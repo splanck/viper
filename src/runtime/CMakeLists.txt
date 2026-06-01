@@ -259,6 +259,15 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/backend/vgfx3d_backend_sw.c
         graphics/3d/rt_g3d_commit_queue.c
         graphics/3d/rt_game3d.c
+        graphics/3d/rt_game3d_enums.c
+        graphics/3d/rt_game3d_controllers.c
+        graphics/3d/rt_game3d_bodydef.c
+        graphics/3d/rt_game3d_audio.c
+        graphics/3d/rt_game3d_effects.c
+        graphics/3d/rt_game3d_animator.c
+        graphics/3d/rt_game3d_entity.c
+        graphics/3d/rt_game3d_input.c
+        graphics/3d/rt_game3d_presets.c
         graphics/3d/render/rt_mesh3d.c
         graphics/3d/render/rt_camera3d.c
         graphics/3d/render/rt_material3d.c
@@ -266,6 +275,10 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/render/rt_cubemap3d.c
         graphics/3d/render/rt_rendertarget3d.c
         graphics/3d/scene/rt_scene3d.c
+        graphics/3d/scene/rt_scene3d_node.c
+        graphics/3d/scene/rt_scene3d_nodeanim.c
+        graphics/3d/scene/rt_scene3d_query.c
+        graphics/3d/scene/rt_scene3d_spatial.c
         graphics/3d/scene/rt_scene3d_vscn.c
         graphics/3d/anim/rt_animcontroller3d.c
         graphics/3d/anim/rt_blendtree3d.c

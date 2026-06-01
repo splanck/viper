@@ -311,9 +311,12 @@ static void test_navagent_avoidance_breaks_head_on_deadlock() {
     void *pa = rt_navagent3d_get_position(a);
     void *pb = rt_navagent3d_get_position(b);
     /* Without a tie-break the symmetric head-on stalls both agents at x~0; the perpendicular
-     * tie-break lets them veer to opposite sides and cross past each other to their swapped goals. */
-    EXPECT_TRUE(rt_vec3_x(pa) > 1.0, "Head-on agent A crosses past the meeting point (no deadlock)");
-    EXPECT_TRUE(rt_vec3_x(pb) < -1.0, "Head-on agent B crosses past the meeting point (no deadlock)");
+     * tie-break lets them veer to opposite sides and cross past each other to their swapped goals.
+     */
+    EXPECT_TRUE(rt_vec3_x(pa) > 1.0,
+                "Head-on agent A crosses past the meeting point (no deadlock)");
+    EXPECT_TRUE(rt_vec3_x(pb) < -1.0,
+                "Head-on agent B crosses past the meeting point (no deadlock)");
     EXPECT_TRUE(min_dist > 0.4, "Head-on agents avoid deep interpenetration while passing");
 }
 
@@ -374,7 +377,8 @@ static void test_navagent_avoidance_grid_matches_full_scan() {
         rt_navagent3d_set_avoidance_enabled(agents[i], 1);
         rt_navagent3d_set_avoidance_radius(agents[i], 0.6);
         rt_navagent3d_warp(agents[i], rt_vec3_new(x, 0.0, z));
-        rt_navagent3d_set_target(agents[i], rt_vec3_new(-x, 0.0, -z)); /* cross through the middle */
+        rt_navagent3d_set_target(agents[i],
+                                 rt_vec3_new(-x, 0.0, -z)); /* cross through the middle */
     }
     EXPECT_TRUE(rt_navagent3d_check_avoidance_grid_parity() == 1,
                 "NavAgent grid avoidance matches full-scan at rest");

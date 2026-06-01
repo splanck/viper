@@ -107,7 +107,18 @@ typedef struct {
 } rt_textureasset3d;
 
 static const uint8_t ktx2_identifier[12] = {
-    0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A,
+    0xAB,
+    0x4B,
+    0x54,
+    0x58,
+    0x20,
+    0x32,
+    0x30,
+    0xBB,
+    0x0D,
+    0x0A,
+    0x1A,
+    0x0A,
 };
 
 static volatile uint64_t g_next_textureasset3d_cache_identity = 1;
@@ -136,7 +147,8 @@ static void textureasset3d_bump_native_revision(rt_textureasset3d *asset) {
         asset->native_revision = 1;
 }
 
-/// @brief Validate @p obj as a TextureAsset3D handle and return its typed pointer (NULL on mismatch).
+/// @brief Validate @p obj as a TextureAsset3D handle and return its typed pointer (NULL on
+/// mismatch).
 static rt_textureasset3d *textureasset3d_checked(void *obj) {
     return (rt_textureasset3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREASSET3D_CLASS_ID);
 }
@@ -174,8 +186,7 @@ static void textureasset3d_finalize(void *obj) {
 
 /// @brief Read a little-endian uint32 from @p p (KTX2 is little-endian on all hosts).
 static uint32_t textureasset3d_read_u32le(const uint8_t *p) {
-    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 /// @brief Read a little-endian uint64 from @p p.
@@ -198,20 +209,18 @@ static textureasset3d_format_info textureasset3d_format_from_vk(uint32_t vk_form
     if (vk_format == VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK ||
         vk_format == VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK)
         return (textureasset3d_format_info){"etc2", 1, 4, 4, 16};
-    if (vk_format >= VK_FORMAT_ASTC_4X4_UNORM_BLOCK && vk_format <= VK_FORMAT_ASTC_12X12_SRGB_BLOCK) {
+    if (vk_format >= VK_FORMAT_ASTC_4X4_UNORM_BLOCK &&
+        vk_format <= VK_FORMAT_ASTC_12X12_SRGB_BLOCK) {
         static const int8_t astc_dims[][2] = {
-            {4, 4},  {4, 4},  {5, 4},  {5, 4},  {5, 5},   {5, 5},  {6, 5},
-            {6, 5},  {6, 6},  {6, 6},  {8, 5},  {8, 5},   {8, 6},  {8, 6},
-            {8, 8},  {8, 8},  {10, 5}, {10, 5}, {10, 6},  {10, 6}, {10, 8},
+            {4, 4},  {4, 4},   {5, 4},   {5, 4},   {5, 5},   {5, 5},   {6, 5},
+            {6, 5},  {6, 6},   {6, 6},   {8, 5},   {8, 5},   {8, 6},   {8, 6},
+            {8, 8},  {8, 8},   {10, 5},  {10, 5},  {10, 6},  {10, 6},  {10, 8},
             {10, 8}, {10, 10}, {10, 10}, {12, 10}, {12, 10}, {12, 12}, {12, 12},
         };
         uint32_t index = vk_format - VK_FORMAT_ASTC_4X4_UNORM_BLOCK;
         if (index < (uint32_t)(sizeof(astc_dims) / sizeof(astc_dims[0]))) {
-            return (textureasset3d_format_info){"astc",
-                                                1,
-                                                astc_dims[index][0],
-                                                astc_dims[index][1],
-                                                16};
+            return (textureasset3d_format_info){
+                "astc", 1, astc_dims[index][0], astc_dims[index][1], 16};
         }
     }
     return (textureasset3d_format_info){"unknown", 1, 0, 0, 0};
@@ -228,8 +237,10 @@ static uint32_t textureasset3d_mip_dimension(uint32_t base, uint32_t level) {
 ///          to INT64_MAX), and points `pixels` at the first resident decoded mip. Bumps the
 ///          native revision only when the start/count actually changed. Traps via @p api_name
 ///          on a negative range. Returns 1 on success, 0 for a NULL asset.
-static int textureasset3d_set_resident_mip_range_internal(
-    rt_textureasset3d *asset, int64_t first_mip, int64_t mip_count, const char *api_name) {
+static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *asset,
+                                                          int64_t first_mip,
+                                                          int64_t mip_count,
+                                                          const char *api_name) {
     uint64_t total = 0;
     int64_t old_start;
     int64_t old_count;
@@ -266,9 +277,8 @@ static int textureasset3d_set_resident_mip_range_internal(
     asset->resident_mip_start = first_mip;
     asset->resident_mip_count = mip_count;
     asset->resident_bytes = total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
-    asset->pixels = (asset->mip_pixels && first_mip < asset->mip_count)
-                        ? asset->mip_pixels[first_mip]
-                        : NULL;
+    asset->pixels =
+        (asset->mip_pixels && first_mip < asset->mip_count) ? asset->mip_pixels[first_mip] : NULL;
     if (old_start != asset->resident_mip_start || old_count != asset->resident_mip_count)
         textureasset3d_bump_native_revision(asset);
     return 1;
@@ -320,8 +330,9 @@ static uint8_t *textureasset3d_read_file_bytes(const char *path, size_t *out_siz
 
 /// @brief Compute width*height*4 RGBA8 bytes with overflow checks.
 /// @return 1 with @p out_byte_count set, or 0 on zero dimension or multiplication overflow.
-static int textureasset3d_rgba8_byte_count(
-    uint32_t width, uint32_t height, uint64_t *out_byte_count) {
+static int textureasset3d_rgba8_byte_count(uint32_t width,
+                                           uint32_t height,
+                                           uint64_t *out_byte_count) {
     uint64_t pixels;
     if (out_byte_count)
         *out_byte_count = 0;
@@ -341,8 +352,12 @@ static int textureasset3d_rgba8_byte_count(
 /// @details Validates the byte budget and that [offset, offset+needed) lies within @p size,
 ///          then repacks the source bytes into the Pixels RGBA word order.
 /// @return New Pixels handle, or NULL on bounds/budget failure.
-static void *textureasset3d_decode_rgba8_fallback(
-    const uint8_t *data, size_t size, uint32_t width, uint32_t height, uint64_t offset, uint64_t length) {
+static void *textureasset3d_decode_rgba8_fallback(const uint8_t *data,
+                                                  size_t size,
+                                                  uint32_t width,
+                                                  uint32_t height,
+                                                  uint64_t offset,
+                                                  uint64_t length) {
     uint64_t needed = 0;
     void *pixels;
 
@@ -362,9 +377,8 @@ static void *textureasset3d_decode_rgba8_fallback(
         for (uint32_t x = 0; x < width; x++) {
             uint64_t index = ((uint64_t)y * (uint64_t)width + (uint64_t)x) * 4u;
             const uint8_t *p = data + offset + index;
-            uint32_t rgba =
-                ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) |
-                (uint32_t)p[3];
+            uint32_t rgba = ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+                            ((uint32_t)p[2] << 8) | (uint32_t)p[3];
             rt_pixels_set_rgba(pixels, (int64_t)x, (int64_t)y, (int64_t)rgba);
         }
     }
@@ -392,8 +406,10 @@ static void textureasset3d_release_mip_payloads(uint8_t **mip_payloads, int64_t 
 /// @brief Copy each compressed mip's native bytes out of the file into owned per-mip buffers.
 /// @details Bounds-checks every mip against @p size; on any failure releases all buffers
 ///          allocated so far and returns NULL. Zero-length mips leave a NULL slot.
-static uint8_t **textureasset3d_copy_native_mip_payloads(
-    const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
+static uint8_t **textureasset3d_copy_native_mip_payloads(const uint8_t *data,
+                                                         size_t size,
+                                                         const textureasset3d_mip *mips,
+                                                         int64_t mip_count) {
     uint8_t **mip_payloads;
 
     if (!data || !mips || mip_count <= 0)
@@ -424,8 +440,10 @@ static uint8_t **textureasset3d_copy_native_mip_payloads(
 }
 
 /// @brief Decode all mips of a raw RGBA8 texture into a Pixels array (NULL if any mip fails).
-static void **textureasset3d_decode_rgba8_mips(
-    const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
+static void **textureasset3d_decode_rgba8_mips(const uint8_t *data,
+                                               size_t size,
+                                               const textureasset3d_mip *mips,
+                                               int64_t mip_count) {
     void **mip_pixels;
 
     if (!data || !mips || mip_count <= 0)
@@ -450,6 +468,7 @@ static void **textureasset3d_decode_rgba8_mips(
 static uint8_t textureasset3d_expand5(uint32_t v) {
     return (uint8_t)((v << 3) | (v >> 2));
 }
+
 /* Expand a 6-bit color component to 8 bits by bit replication (BC1/BC3 green endpoints). */
 static uint8_t textureasset3d_expand6(uint32_t v) {
     return (uint8_t)((v << 2) | (v >> 4));
@@ -560,8 +579,10 @@ static void *textureasset3d_decode_bc3_fallback(const uint8_t *data,
 }
 
 /// @brief Decode all mips of a BC3 texture into a Pixels array (NULL if any mip fails).
-static void **textureasset3d_decode_bc3_mips(
-    const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
+static void **textureasset3d_decode_bc3_mips(const uint8_t *data,
+                                             size_t size,
+                                             const textureasset3d_mip *mips,
+                                             int64_t mip_count) {
     void **mip_pixels;
     if (!data || !mips || mip_count <= 0)
         return NULL;
@@ -592,8 +613,7 @@ static void **textureasset3d_decode_bc3_mips(
 /* Interpolation weights (numerator over 64) for 2-, 3-, and 4-bit indices. */
 static const uint8_t BC7_W2[4] = {0, 21, 43, 64};
 static const uint8_t BC7_W3[8] = {0, 9, 18, 27, 37, 46, 55, 64};
-static const uint8_t BC7_W4[16] = {0, 4,  9,  13, 17, 21, 26, 30,
-                                   34, 38, 43, 47, 51, 55, 60, 64};
+static const uint8_t BC7_W4[16] = {0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64};
 
 typedef struct {
     uint8_t subset_count;
@@ -610,101 +630,166 @@ typedef struct {
 } bc7_mode_info;
 
 static const bc7_mode_info BC7_MODES[8] = {
-    {3, 4, 0, 0, 4, 0, 1, 0, 3, 45, 0}, {2, 6, 0, 0, 6, 0, 0, 1, 3, 46, 0},
-    {3, 6, 0, 0, 5, 0, 0, 0, 2, 29, 0}, {2, 6, 0, 0, 7, 0, 1, 0, 2, 30, 0},
-    {1, 0, 2, 1, 5, 6, 0, 0, 2, 31, 3}, {1, 0, 2, 0, 7, 8, 0, 0, 2, 31, 2},
-    {1, 0, 0, 0, 7, 7, 1, 0, 4, 63, 0}, {2, 6, 0, 0, 5, 5, 1, 0, 2, 30, 0},
+    {3, 4, 0, 0, 4, 0, 1, 0, 3, 45, 0},
+    {2, 6, 0, 0, 6, 0, 0, 1, 3, 46, 0},
+    {3, 6, 0, 0, 5, 0, 0, 0, 2, 29, 0},
+    {2, 6, 0, 0, 7, 0, 1, 0, 2, 30, 0},
+    {1, 0, 2, 1, 5, 6, 0, 0, 2, 31, 3},
+    {1, 0, 2, 0, 7, 8, 0, 0, 2, 31, 2},
+    {1, 0, 0, 0, 7, 7, 1, 0, 4, 63, 0},
+    {2, 6, 0, 0, 5, 5, 1, 0, 2, 30, 0},
 };
 
 static const uint8_t BC7_PARTITION2[64][16] = {
-    {0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1}, {0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1},
-    {0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1}, {0,0,0,1,0,0,1,1,0,0,1,1,0,1,1,1},
-    {0,0,0,0,0,0,0,1,0,0,0,1,0,0,1,1}, {0,0,1,1,0,1,1,1,0,1,1,1,1,1,1,1},
-    {0,0,0,1,0,0,1,1,0,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,1,0,0,1,1,0,1,1,1},
-    {0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1}, {0,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1},
-    {0,0,0,0,0,0,0,1,0,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1},
-    {0,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1},
-    {0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1}, {0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1},
-    {0,0,0,0,1,0,0,0,1,1,1,0,1,1,1,1}, {0,1,1,1,0,0,0,1,0,0,0,0,0,0,0,0},
-    {0,0,0,0,0,0,0,0,1,0,0,0,1,1,1,0}, {0,1,1,1,0,0,1,1,0,0,0,1,0,0,0,0},
-    {0,0,1,1,0,0,0,1,0,0,0,0,0,0,0,0}, {0,0,0,0,1,0,0,0,1,1,0,0,1,1,1,0},
-    {0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0}, {0,1,1,1,0,0,1,1,0,0,1,1,0,0,0,1},
-    {0,0,1,1,0,0,0,1,0,0,0,1,0,0,0,0}, {0,0,0,0,1,0,0,0,1,0,0,0,1,1,0,0},
-    {0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0}, {0,0,1,1,0,1,1,0,0,1,1,0,1,1,0,0},
-    {0,0,0,1,0,1,1,1,1,1,1,0,1,0,0,0}, {0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0},
-    {0,1,1,1,0,0,0,1,1,0,0,0,1,1,1,0}, {0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0},
-    {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1}, {0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1},
-    {0,1,0,1,1,0,1,0,0,1,0,1,1,0,1,0}, {0,0,1,1,0,0,1,1,1,1,0,0,1,1,0,0},
-    {0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0}, {0,1,0,1,0,1,0,1,1,0,1,0,1,0,1,0},
-    {0,1,1,0,1,0,0,1,0,1,1,0,1,0,0,1}, {0,1,0,1,1,0,1,0,1,0,1,0,0,1,0,1},
-    {0,1,1,1,0,0,1,1,1,1,0,0,1,1,1,0}, {0,0,0,1,0,0,1,1,1,1,0,0,1,0,0,0},
-    {0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0}, {0,0,1,1,1,0,1,1,1,1,0,1,1,1,0,0},
-    {0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0}, {0,0,1,1,1,1,0,0,1,1,0,0,0,0,1,1},
-    {0,1,1,0,0,1,1,0,1,0,0,1,1,0,0,1}, {0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0},
-    {0,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0}, {0,0,1,0,0,1,1,1,0,0,1,0,0,0,0,0},
-    {0,0,0,0,0,0,1,0,0,1,1,1,0,0,1,0}, {0,0,0,0,0,1,0,0,1,1,1,0,0,1,0,0},
-    {0,1,1,0,1,1,0,0,1,0,0,1,0,0,1,1}, {0,0,1,1,0,1,1,0,1,1,0,0,1,0,0,1},
-    {0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0}, {0,0,1,1,1,0,0,1,1,1,0,0,0,1,1,0},
-    {0,1,1,0,1,1,0,0,1,1,0,0,1,0,0,1}, {0,1,1,0,0,0,1,1,0,0,1,1,1,0,0,1},
-    {0,1,1,1,1,1,1,0,1,0,0,0,0,0,0,1}, {0,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1},
-    {0,0,0,0,1,1,1,1,0,0,1,1,0,0,1,1}, {0,0,1,1,0,0,1,1,1,1,1,1,0,0,0,0},
-    {0,0,1,0,0,0,1,0,1,1,1,0,1,1,1,0}, {0,1,0,0,0,1,0,0,0,1,1,1,0,1,1,1},
+    {0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1},
+    {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1},
+    {0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1},
+    {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1},
+    {0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1},
+    {0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1},
+    {0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1},
+    {0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1},
+    {0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+    {0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1},
+    {0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+    {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1},
+    {0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1},
+    {0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1},
+    {0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0},
+    {0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0},
+    {0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0},
+    {0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1},
+    {0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0},
+    {0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0},
+    {0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0},
+    {0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0},
+    {0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0},
+    {0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+    {0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0},
+    {0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0},
+    {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1},
+    {0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1},
+    {0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0},
+    {0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0},
+    {0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0},
+    {0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0},
+    {0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1},
+    {0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1},
+    {0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0},
+    {0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0},
+    {0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0},
+    {0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0},
+    {0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0},
+    {0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1},
+    {0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1},
+    {0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0},
+    {0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0},
+    {0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0},
+    {0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0},
+    {0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1},
+    {0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1},
+    {0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0},
+    {0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0},
+    {0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1},
+    {0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1},
+    {0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1},
+    {0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1},
+    {0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1},
+    {0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
+    {0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0},
+    {0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1},
 };
 
 static const uint8_t BC7_PARTITION3[64][16] = {
-    {0,0,1,1,0,0,1,1,0,2,2,1,2,2,2,2}, {0,0,0,1,0,0,1,1,2,2,1,1,2,2,2,1},
-    {0,0,0,0,2,0,0,1,2,2,1,1,2,2,1,1}, {0,2,2,2,0,0,2,2,0,0,1,1,0,1,1,1},
-    {0,0,0,0,0,0,0,0,1,1,2,2,1,1,2,2}, {0,0,1,1,0,0,1,1,0,0,2,2,0,0,2,2},
-    {0,0,2,2,0,0,2,2,1,1,1,1,1,1,1,1}, {0,0,1,1,0,0,1,1,2,2,1,1,2,2,1,1},
-    {0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2}, {0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2},
-    {0,0,0,0,1,1,1,1,2,2,2,2,2,2,2,2}, {0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2},
-    {0,1,1,2,0,1,1,2,0,1,1,2,0,1,1,2}, {0,1,2,2,0,1,2,2,0,1,2,2,0,1,2,2},
-    {0,0,1,1,0,1,1,2,1,1,2,2,1,2,2,2}, {0,0,1,1,2,0,0,1,2,2,0,0,2,2,2,0},
-    {0,0,0,1,0,0,1,1,0,1,1,2,1,1,2,2}, {0,1,1,1,0,0,1,1,2,0,0,1,2,2,0,0},
-    {0,0,0,0,1,1,2,2,1,1,2,2,1,1,2,2}, {0,0,2,2,0,0,2,2,0,0,2,2,1,1,1,1},
-    {0,1,1,1,0,1,1,1,0,2,2,2,0,2,2,2}, {0,0,0,1,0,0,0,1,2,2,2,1,2,2,2,1},
-    {0,0,0,0,0,0,1,1,0,1,2,2,0,1,2,2}, {0,0,0,0,1,1,0,0,2,2,1,0,2,2,1,0},
-    {0,1,2,2,0,1,2,2,0,0,1,1,0,0,0,0}, {0,0,1,2,0,0,1,2,1,1,2,2,2,2,2,2},
-    {0,1,1,0,1,2,2,1,1,2,2,1,0,1,1,0}, {0,0,0,0,0,1,1,0,1,2,2,1,1,2,2,1},
-    {0,0,2,2,1,1,0,2,1,1,0,2,0,0,2,2}, {0,1,1,0,0,1,1,0,2,0,0,2,2,2,2,2},
-    {0,0,1,1,0,1,2,2,0,1,2,2,0,0,1,1}, {0,0,0,0,2,0,0,0,2,2,1,1,2,2,2,1},
-    {0,0,0,0,0,0,0,2,1,1,2,2,1,2,2,2}, {0,2,2,2,0,0,2,2,0,0,1,2,0,0,1,1},
-    {0,0,1,1,0,0,1,2,0,0,2,2,0,2,2,2}, {0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0},
-    {0,0,0,0,1,1,1,1,2,2,2,2,0,0,0,0}, {0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0},
-    {0,1,2,0,2,0,1,2,1,2,0,1,0,1,2,0}, {0,0,1,1,2,2,0,0,1,1,2,2,0,0,1,1},
-    {0,0,1,1,1,1,2,2,2,2,0,0,0,0,1,1}, {0,1,0,1,0,1,0,1,2,2,2,2,2,2,2,2},
-    {0,0,0,0,0,0,0,0,2,1,2,1,2,1,2,1}, {0,0,2,2,1,1,2,2,0,0,2,2,1,1,2,2},
-    {0,0,2,2,0,0,1,1,0,0,2,2,0,0,1,1}, {0,2,2,0,1,2,2,1,0,2,2,0,1,2,2,1},
-    {0,1,0,1,2,2,2,2,2,2,2,2,0,1,0,1}, {0,0,0,0,2,1,2,1,2,1,2,1,2,1,2,1},
-    {0,1,0,1,0,1,0,1,0,1,0,1,2,2,2,2}, {0,2,2,2,0,1,1,1,0,2,2,2,0,1,1,1},
-    {0,0,0,2,1,1,1,2,0,0,0,2,1,1,1,2}, {0,0,0,0,2,1,1,2,2,1,1,2,2,1,1,2},
-    {0,2,2,2,0,1,1,1,0,1,1,1,0,2,2,2}, {0,0,0,2,1,1,1,2,1,1,1,2,0,0,0,2},
-    {0,1,1,0,0,1,1,0,0,1,1,0,2,2,2,2}, {0,0,0,0,0,0,0,0,2,1,1,2,2,1,1,2},
-    {0,1,1,0,0,1,1,0,2,2,2,2,2,2,2,2}, {0,0,2,2,0,0,1,1,0,0,1,1,0,0,2,2},
-    {0,0,2,2,1,1,2,2,1,1,2,2,0,0,2,2}, {0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,2},
-    {0,0,0,2,0,0,0,1,0,0,0,2,0,0,0,1}, {0,2,2,2,1,2,2,2,0,2,2,2,1,2,2,2},
-    {0,1,0,1,2,2,2,2,2,2,2,2,2,2,2,2}, {0,1,1,1,2,0,1,1,2,2,0,1,2,2,2,0},
+    {0, 0, 1, 1, 0, 0, 1, 1, 0, 2, 2, 1, 2, 2, 2, 2},
+    {0, 0, 0, 1, 0, 0, 1, 1, 2, 2, 1, 1, 2, 2, 2, 1},
+    {0, 0, 0, 0, 2, 0, 0, 1, 2, 2, 1, 1, 2, 2, 1, 1},
+    {0, 2, 2, 2, 0, 0, 2, 2, 0, 0, 1, 1, 0, 1, 1, 1},
+    {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 1, 1, 2, 2},
+    {0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 2, 2, 0, 0, 2, 2},
+    {0, 0, 2, 2, 0, 0, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1},
+    {0, 0, 1, 1, 0, 0, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1},
+    {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2},
+    {0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2},
+    {0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2},
+    {0, 0, 1, 2, 0, 0, 1, 2, 0, 0, 1, 2, 0, 0, 1, 2},
+    {0, 1, 1, 2, 0, 1, 1, 2, 0, 1, 1, 2, 0, 1, 1, 2},
+    {0, 1, 2, 2, 0, 1, 2, 2, 0, 1, 2, 2, 0, 1, 2, 2},
+    {0, 0, 1, 1, 0, 1, 1, 2, 1, 1, 2, 2, 1, 2, 2, 2},
+    {0, 0, 1, 1, 2, 0, 0, 1, 2, 2, 0, 0, 2, 2, 2, 0},
+    {0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 2, 1, 1, 2, 2},
+    {0, 1, 1, 1, 0, 0, 1, 1, 2, 0, 0, 1, 2, 2, 0, 0},
+    {0, 0, 0, 0, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2},
+    {0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 2, 2, 1, 1, 1, 1},
+    {0, 1, 1, 1, 0, 1, 1, 1, 0, 2, 2, 2, 0, 2, 2, 2},
+    {0, 0, 0, 1, 0, 0, 0, 1, 2, 2, 2, 1, 2, 2, 2, 1},
+    {0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 2, 2, 0, 1, 2, 2},
+    {0, 0, 0, 0, 1, 1, 0, 0, 2, 2, 1, 0, 2, 2, 1, 0},
+    {0, 1, 2, 2, 0, 1, 2, 2, 0, 0, 1, 1, 0, 0, 0, 0},
+    {0, 0, 1, 2, 0, 0, 1, 2, 1, 1, 2, 2, 2, 2, 2, 2},
+    {0, 1, 1, 0, 1, 2, 2, 1, 1, 2, 2, 1, 0, 1, 1, 0},
+    {0, 0, 0, 0, 0, 1, 1, 0, 1, 2, 2, 1, 1, 2, 2, 1},
+    {0, 0, 2, 2, 1, 1, 0, 2, 1, 1, 0, 2, 0, 0, 2, 2},
+    {0, 1, 1, 0, 0, 1, 1, 0, 2, 0, 0, 2, 2, 2, 2, 2},
+    {0, 0, 1, 1, 0, 1, 2, 2, 0, 1, 2, 2, 0, 0, 1, 1},
+    {0, 0, 0, 0, 2, 0, 0, 0, 2, 2, 1, 1, 2, 2, 2, 1},
+    {0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 2, 2, 1, 2, 2, 2},
+    {0, 2, 2, 2, 0, 0, 2, 2, 0, 0, 1, 2, 0, 0, 1, 1},
+    {0, 0, 1, 1, 0, 0, 1, 2, 0, 0, 2, 2, 0, 2, 2, 2},
+    {0, 1, 2, 0, 0, 1, 2, 0, 0, 1, 2, 0, 0, 1, 2, 0},
+    {0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0},
+    {0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0},
+    {0, 1, 2, 0, 2, 0, 1, 2, 1, 2, 0, 1, 0, 1, 2, 0},
+    {0, 0, 1, 1, 2, 2, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1},
+    {0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0, 1, 1},
+    {0, 1, 0, 1, 0, 1, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2},
+    {0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 2, 1, 2, 1, 2, 1},
+    {0, 0, 2, 2, 1, 1, 2, 2, 0, 0, 2, 2, 1, 1, 2, 2},
+    {0, 0, 2, 2, 0, 0, 1, 1, 0, 0, 2, 2, 0, 0, 1, 1},
+    {0, 2, 2, 0, 1, 2, 2, 1, 0, 2, 2, 0, 1, 2, 2, 1},
+    {0, 1, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 0, 1, 0, 1},
+    {0, 0, 0, 0, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1},
+    {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 2, 2, 2, 2},
+    {0, 2, 2, 2, 0, 1, 1, 1, 0, 2, 2, 2, 0, 1, 1, 1},
+    {0, 0, 0, 2, 1, 1, 1, 2, 0, 0, 0, 2, 1, 1, 1, 2},
+    {0, 0, 0, 0, 2, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2},
+    {0, 2, 2, 2, 0, 1, 1, 1, 0, 1, 1, 1, 0, 2, 2, 2},
+    {0, 0, 0, 2, 1, 1, 1, 2, 1, 1, 1, 2, 0, 0, 0, 2},
+    {0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 2, 2, 2, 2},
+    {0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 2, 2, 1, 1, 2},
+    {0, 1, 1, 0, 0, 1, 1, 0, 2, 2, 2, 2, 2, 2, 2, 2},
+    {0, 0, 2, 2, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 2, 2},
+    {0, 0, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2, 0, 0, 2, 2},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 2},
+    {0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1},
+    {0, 2, 2, 2, 1, 2, 2, 2, 0, 2, 2, 2, 1, 2, 2, 2},
+    {0, 1, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
+    {0, 1, 1, 1, 2, 0, 1, 1, 2, 2, 0, 1, 2, 2, 2, 0},
 };
 
 static const uint8_t BC7_ANCHOR2[64] = {
-    15,15,15,15,15,15,15,15, 15,15,15,15,15,15,15,15,
-    15, 2, 8, 2, 2, 8, 8,15,  2, 8, 2, 2, 8, 8, 2, 2,
-    15,15, 6, 8, 2, 8,15,15,  2, 8, 2, 2, 2,15,15, 6,
-     6, 2, 6, 8,15,15, 2, 2, 15,15,15,15,15, 2, 2,15,
+    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 2,  8, 2,  2, 8,
+    8,  15, 2,  8,  2,  2,  8,  8,  2,  2,  15, 15, 6,  8,  2,  8,  15, 15, 2, 8,  2, 2,
+    2,  15, 15, 6,  6,  2,  6,  8,  15, 15, 2,  2,  15, 15, 15, 15, 15, 2,  2, 15,
 };
 
 static const uint8_t BC7_ANCHOR3A[64] = {
-     3, 3,15,15, 8, 3,15,15, 8, 8, 6, 6, 6, 5, 3, 3,
-     3, 3, 8,15, 3, 3, 6,10, 5, 8, 8, 6, 8, 5,15,15,
-     8,15, 3, 5, 6,10, 8,15,15, 3,15, 5,15,15,15,15,
-     3,15, 5, 5, 5, 8, 5,10, 5,10, 8,13,15,12, 3, 3,
+    3,  3,  15, 15, 8, 3,  15, 15, 8,  8,  6, 6,  6, 5,  3, 3,  3,  3,  8,  15, 3,  3,
+    6,  10, 5,  8,  8, 6,  8,  5,  15, 15, 8, 15, 3, 5,  6, 10, 8,  15, 15, 3,  15, 5,
+    15, 15, 15, 15, 3, 15, 5,  5,  5,  8,  5, 10, 5, 10, 8, 13, 15, 12, 3,  3,
 };
 
 static const uint8_t BC7_ANCHOR3B[64] = {
-    15, 8, 8, 3,15,15, 3, 8,15,15,15,15,15,15,15, 8,
-    15, 8,15, 3,15, 8,15, 8, 3,15, 6,10,15,15,10, 8,
-    15, 3,15,10,10, 8, 9,10, 6,15, 8,15, 3, 6, 6, 8,
-    15, 3,15,15,15,15,15,15,15,15,15,15, 3,15,15, 8,
+    15, 8, 8, 3,  15, 15, 3,  8,  15, 15, 15, 15, 15, 15, 15, 8,  15, 8,  15, 3,  15, 8,
+    15, 8, 3, 15, 6,  10, 15, 15, 10, 8,  15, 3,  15, 10, 10, 8,  9,  10, 6,  15, 8,  15,
+    3,  6, 6, 8,  15, 3,  15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 3,  15, 15, 8,
 };
 
 /* Read `n` bits at a fixed bit offset, LSB-first within each byte. */
@@ -779,7 +864,8 @@ static int bc7_alpha_offset(int mode, const bc7_mode_info *info, int endpoint) {
 }
 
 static int bc7_endpoint_pbit_offset(int mode, const bc7_mode_info *info, int endpoint) {
-    return bc7_alpha_offset(mode, info, bc7_num_colors(info)) + (int)info->endpoint_pbits * endpoint;
+    return bc7_alpha_offset(mode, info, bc7_num_colors(info)) +
+           (int)info->endpoint_pbits * endpoint;
 }
 
 static int bc7_shared_pbit_offset(int mode, const bc7_mode_info *info, int subset) {
@@ -816,11 +902,12 @@ static uint32_t bc7_index_value(const uint8_t *b,
                                 int *out_bits) {
     int selection_offset = mode + 1 + (int)info->partition_bits + (int)info->rotation_bits;
     int selection = info->index_selection_bits ? (int)bc7_get_bits_at(b, selection_offset, 1) : 0;
-    int secondary = color_channel ? selection == 1 : (info->secondary_index_bits != 0 && selection == 0);
+    int secondary =
+        color_channel ? selection == 1 : (info->secondary_index_bits != 0 && selection == 0);
     int bits = secondary ? (int)info->secondary_index_bits : (int)info->primary_index_bits;
     int read_bits = bits - (anchor ? 1 : 0);
-    int base = bc7_index_base(mode, info) +
-               (secondary ? (int)info->primary_index_total_bits : 0) + *bit_offset;
+    int base = bc7_index_base(mode, info) + (secondary ? (int)info->primary_index_total_bits : 0) +
+               *bit_offset;
     uint32_t value = read_bits > 0 ? bc7_get_bits_at(b, base, read_bits) : 0;
     *bit_offset += read_bits;
     if (out_bits)
@@ -850,11 +937,15 @@ int rt_textureasset3d_decode_bc7_block(const uint8_t *b, uint8_t *out_rgba) {
     {
         const bc7_mode_info *info = &BC7_MODES[mode];
         uint8_t endpoint[3][2][4];
-        int color_bits = (int)info->color_bits + (int)info->endpoint_pbits + (int)info->shared_pbits;
-        int alpha_bits = (int)info->alpha_bits + (int)info->endpoint_pbits + (int)info->shared_pbits;
-        int partition = info->partition_bits ? (int)bc7_get_bits_at(b, mode + 1, info->partition_bits) : 0;
+        int color_bits =
+            (int)info->color_bits + (int)info->endpoint_pbits + (int)info->shared_pbits;
+        int alpha_bits =
+            (int)info->alpha_bits + (int)info->endpoint_pbits + (int)info->shared_pbits;
+        int partition =
+            info->partition_bits ? (int)bc7_get_bits_at(b, mode + 1, info->partition_bits) : 0;
         int rotation_offset = mode + 1 + (int)info->partition_bits;
-        uint32_t rotation = info->rotation_bits ? bc7_get_bits_at(b, rotation_offset, info->rotation_bits) : 0;
+        uint32_t rotation =
+            info->rotation_bits ? bc7_get_bits_at(b, rotation_offset, info->rotation_bits) : 0;
         int color_index_offset = 0;
         int alpha_index_offset = 0;
 
@@ -867,11 +958,11 @@ int rt_textureasset3d_decode_bc7_block(const uint8_t *b, uint8_t *out_rgba) {
                     b, bc7_green_offset(mode, info, endpoint_index), info->color_bits);
                 endpoint[s][e][2] = (uint8_t)bc7_get_bits_at(
                     b, bc7_blue_offset(mode, info, endpoint_index), info->color_bits);
-                endpoint[s][e][3] = info->alpha_bits ? (uint8_t)bc7_get_bits_at(
-                                                          b,
-                                                          bc7_alpha_offset(mode, info, endpoint_index),
-                                                          info->alpha_bits)
-                                                      : 255;
+                endpoint[s][e][3] =
+                    info->alpha_bits
+                        ? (uint8_t)bc7_get_bits_at(
+                              b, bc7_alpha_offset(mode, info, endpoint_index), info->alpha_bits)
+                        : 255;
             }
         }
 
@@ -887,8 +978,8 @@ int rt_textureasset3d_decode_bc7_block(const uint8_t *b, uint8_t *out_rgba) {
             for (int s = 0; s < (int)info->subset_count; s++) {
                 for (int e = 0; e < 2; e++) {
                     int endpoint_index = s * 2 + e;
-                    uint8_t p =
-                        (uint8_t)bc7_get_bits_at(b, bc7_endpoint_pbit_offset(mode, info, endpoint_index), 1);
+                    uint8_t p = (uint8_t)bc7_get_bits_at(
+                        b, bc7_endpoint_pbit_offset(mode, info, endpoint_index), 1);
                     for (int c = 0; c < 3; c++)
                         endpoint[s][e][c] = (uint8_t)((endpoint[s][e][c] << 1) | p);
                     if (info->alpha_bits)
@@ -910,17 +1001,15 @@ int rt_textureasset3d_decode_bc7_block(const uint8_t *b, uint8_t *out_rgba) {
             int anchor = bc7_anchor_index(info, partition, subset) == t;
             int c_bits = 0;
             int a_bits = 0;
-            uint32_t cidx = bc7_index_value(
-                b, mode, info, anchor, 1, &color_index_offset, &c_bits);
-            uint32_t aidx = bc7_index_value(
-                b, mode, info, anchor, 0, &alpha_index_offset, &a_bits);
+            uint32_t cidx = bc7_index_value(b, mode, info, anchor, 1, &color_index_offset, &c_bits);
+            uint32_t aidx = bc7_index_value(b, mode, info, anchor, 0, &alpha_index_offset, &a_bits);
             uint8_t cw = bc7_index_weight(cidx, c_bits);
             uint8_t aw = bc7_index_weight(aidx, a_bits);
 
             for (int c = 0; c < 3; c++)
-                out_rgba[t * 4 + c] = bc7_interp(endpoint[subset][0][c], endpoint[subset][1][c], cw);
-            out_rgba[t * 4 + 3] =
-                bc7_interp(endpoint[subset][0][3], endpoint[subset][1][3], aw);
+                out_rgba[t * 4 + c] =
+                    bc7_interp(endpoint[subset][0][c], endpoint[subset][1][c], cw);
+            out_rgba[t * 4 + 3] = bc7_interp(endpoint[subset][0][3], endpoint[subset][1][3], aw);
             bc7_apply_rotation(rotation, &out_rgba[t * 4]);
         }
         return 1;
@@ -990,8 +1079,10 @@ static void *textureasset3d_decode_bc7_fallback(const uint8_t *data,
 /// @brief Decode all mips of a BC7 texture into a Pixels array.
 /// @details Returns NULL if any mip contains a reserved/unsupported block, so a texture is either
 ///          fully software-decoded or left native-only — never a mix.
-static void **textureasset3d_decode_bc7_mips(
-    const uint8_t *data, size_t size, const textureasset3d_mip *mips, int64_t mip_count) {
+static void **textureasset3d_decode_bc7_mips(const uint8_t *data,
+                                             size_t size,
+                                             const textureasset3d_mip *mips,
+                                             int64_t mip_count) {
     void **mip_pixels;
     if (!data || !mips || mip_count <= 0)
         return NULL;
@@ -1031,19 +1122,33 @@ static uint8_t textureasset3d_unorm16_to_u8(uint32_t v) {
 }
 
 static const int8_t ETC2_ALPHA_MODIFIERS[16][8] = {
-    {-3,-6,-9,-15, 2, 5, 8,14}, {-3,-7,-10,-13, 2, 6, 9,12},
-    {-2,-5,-8,-13, 1, 4, 7,12}, {-2,-4, -6,-13, 1, 3, 5,12},
-    {-3,-6,-8,-12, 2, 5, 7,11}, {-3,-7, -9,-11, 2, 6, 8,10},
-    {-4,-7,-8,-11, 3, 6, 7,10}, {-3,-5, -8,-11, 2, 4, 7,10},
-    {-2,-6,-8,-10, 1, 5, 7, 9}, {-2,-5, -8,-10, 1, 4, 7, 9},
-    {-2,-4,-8,-10, 1, 3, 7, 9}, {-2,-5, -7,-10, 1, 4, 6, 9},
-    {-3,-4,-7,-10, 2, 3, 6, 9}, {-1,-2, -3,-10, 0, 1, 2, 9},
-    {-4,-6,-8, -9, 3, 5, 7, 8}, {-3,-5, -7, -9, 2, 4, 6, 8},
+    {-3, -6, -9, -15, 2, 5, 8, 14},
+    {-3, -7, -10, -13, 2, 6, 9, 12},
+    {-2, -5, -8, -13, 1, 4, 7, 12},
+    {-2, -4, -6, -13, 1, 3, 5, 12},
+    {-3, -6, -8, -12, 2, 5, 7, 11},
+    {-3, -7, -9, -11, 2, 6, 8, 10},
+    {-4, -7, -8, -11, 3, 6, 7, 10},
+    {-3, -5, -8, -11, 2, 4, 7, 10},
+    {-2, -6, -8, -10, 1, 5, 7, 9},
+    {-2, -5, -8, -10, 1, 4, 7, 9},
+    {-2, -4, -8, -10, 1, 3, 7, 9},
+    {-2, -5, -7, -10, 1, 4, 6, 9},
+    {-3, -4, -7, -10, 2, 3, 6, 9},
+    {-1, -2, -3, -10, 0, 1, 2, 9},
+    {-4, -6, -8, -9, 3, 5, 7, 8},
+    {-3, -5, -7, -9, 2, 4, 6, 8},
 };
 
 static const int16_t ETC2_COLOR_MODIFIERS[8][4] = {
-    {-8, -2, 2, 8}, {-17, -5, 5, 17}, {-29, -9, 9, 29}, {-42, -13, 13, 42},
-    {-60, -18, 18, 60}, {-80, -24, 24, 80}, {-106, -33, 33, 106}, {-183, -47, 47, 183},
+    {-8, -2, 2, 8},
+    {-17, -5, 5, 17},
+    {-29, -9, 9, 29},
+    {-42, -13, 13, 42},
+    {-60, -18, 18, 60},
+    {-80, -24, 24, 80},
+    {-106, -33, 33, 106},
+    {-183, -47, 47, 183},
 };
 
 static uint64_t textureasset3d_read_u48be(const uint8_t *p) {
@@ -1062,7 +1167,8 @@ static int etc2_color_index(const uint8_t *c, int x, int y) {
 
 /// @brief Decode one ETC2 RGBA8/EAC 16-byte block into 16 row-major RGBA texels.
 /// @details Supports the ETC2 individual and differential color modes plus EAC alpha. T/H/planar
-///          color modes return 0 so the texture can remain native-only rather than partially decode.
+///          color modes return 0 so the texture can remain native-only rather than partially
+///          decode.
 int rt_textureasset3d_decode_etc2_rgba8_block(const uint8_t *b, uint8_t *out_rgba) {
     uint8_t alpha[16];
     uint64_t alpha_bits;
@@ -1080,7 +1186,8 @@ int rt_textureasset3d_decode_etc2_rgba8_block(const uint8_t *b, uint8_t *out_rgb
         int idx = (int)((alpha_bits >> (45 - t * 3)) & 7u);
         int table_index = b[1] & 0x0F;
         int multiplier = (b[1] >> 4) & 0x0F;
-        alpha[t] = textureasset3d_clamp_u8((int)b[0] + ETC2_ALPHA_MODIFIERS[table_index][idx] * multiplier);
+        alpha[t] = textureasset3d_clamp_u8((int)b[0] +
+                                           ETC2_ALPHA_MODIFIERS[table_index][idx] * multiplier);
     }
 
     c = b + 8;
@@ -1138,7 +1245,8 @@ int rt_textureasset3d_decode_astc_ldr_block(const uint8_t *b,
     uint64_t low;
     uint8_t rgba[4];
 
-    if (!b || !out_rgba || block_width <= 0 || block_height <= 0 || block_width > 12 || block_height > 12)
+    if (!b || !out_rgba || block_width <= 0 || block_height <= 0 || block_width > 12 ||
+        block_height > 12)
         return 0;
     low = textureasset3d_read_u64le(b);
     if ((low & UINT64_C(0xFFF)) != UINT64_C(0xDFC))
@@ -1158,29 +1266,35 @@ int rt_textureasset3d_decode_astc_ldr_block(const uint8_t *b,
     return 1;
 }
 
-typedef int (*textureasset3d_block_decode_fn)(
-    const uint8_t *block, int32_t block_width, int32_t block_height, uint8_t *out_rgba);
+typedef int (*textureasset3d_block_decode_fn)(const uint8_t *block,
+                                              int32_t block_width,
+                                              int32_t block_height,
+                                              uint8_t *out_rgba);
 
-static int textureasset3d_decode_etc2_block_adapter(
-    const uint8_t *block, int32_t block_width, int32_t block_height, uint8_t *out_rgba) {
+static int textureasset3d_decode_etc2_block_adapter(const uint8_t *block,
+                                                    int32_t block_width,
+                                                    int32_t block_height,
+                                                    uint8_t *out_rgba) {
     (void)block_width;
     (void)block_height;
     return rt_textureasset3d_decode_etc2_rgba8_block(block, out_rgba);
 }
 
-static int textureasset3d_decode_astc_block_adapter(
-    const uint8_t *block, int32_t block_width, int32_t block_height, uint8_t *out_rgba) {
+static int textureasset3d_decode_astc_block_adapter(const uint8_t *block,
+                                                    int32_t block_width,
+                                                    int32_t block_height,
+                                                    uint8_t *out_rgba) {
     return rt_textureasset3d_decode_astc_ldr_block(block, block_width, block_height, out_rgba);
 }
 
 static int textureasset3d_compressed_block_bytes(uint32_t width,
-                                                uint32_t height,
-                                                int32_t block_width,
-                                                int32_t block_height,
-                                                int32_t block_bytes,
-                                                uint64_t *out_needed,
-                                                uint32_t *out_blocks_x,
-                                                uint32_t *out_blocks_y) {
+                                                 uint32_t height,
+                                                 int32_t block_width,
+                                                 int32_t block_height,
+                                                 int32_t block_bytes,
+                                                 uint64_t *out_needed,
+                                                 uint32_t *out_blocks_x,
+                                                 uint32_t *out_blocks_y) {
     uint32_t blocks_x;
     uint32_t blocks_y;
     uint64_t block_count;
@@ -1241,19 +1355,22 @@ static void *textureasset3d_decode_compressed_fallback(const uint8_t *data,
 
     for (uint32_t by = 0; by < blocks_y; by++)
         for (uint32_t bx = 0; bx < blocks_x; bx++) {
-            const uint8_t *block = data + offset + ((uint64_t)by * blocks_x + bx) * (uint64_t)block_bytes;
+            const uint8_t *block =
+                data + offset + ((uint64_t)by * blocks_x + bx) * (uint64_t)block_bytes;
             if (!decode(block, block_width, block_height, texels))
                 return NULL;
         }
 
     pixels = rt_pixels_new((int64_t)width, (int64_t)height);
     if (!pixels) {
-        rt_trap(alloc_error ? alloc_error : "TextureAsset3D.LoadKTX2: Pixels fallback allocation failed");
+        rt_trap(alloc_error ? alloc_error
+                            : "TextureAsset3D.LoadKTX2: Pixels fallback allocation failed");
         return NULL;
     }
     for (uint32_t by = 0; by < blocks_y; by++) {
         for (uint32_t bx = 0; bx < blocks_x; bx++) {
-            const uint8_t *block = data + offset + ((uint64_t)by * blocks_x + bx) * (uint64_t)block_bytes;
+            const uint8_t *block =
+                data + offset + ((uint64_t)by * blocks_x + bx) * (uint64_t)block_bytes;
             if (!decode(block, block_width, block_height, texels))
                 continue;
             for (int32_t ty = 0; ty < block_height; ty++) {
@@ -1362,8 +1479,8 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     }
     mip_count = level_count > 0 ? (int64_t)level_count : 1;
     if (level_count > 0) {
-        if ((uint64_t)level_count > (UINT64_MAX - TEXTUREASSET3D_KTX2_HEADER_SIZE) /
-                                        TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE) {
+        if ((uint64_t)level_count >
+            (UINT64_MAX - TEXTUREASSET3D_KTX2_HEADER_SIZE) / TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE) {
             rt_trap("TextureAsset3D.LoadKTX2: level index overflow");
             return NULL;
         }
@@ -1384,13 +1501,13 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         mips[i].width = textureasset3d_mip_dimension(pixel_width, (uint32_t)i);
         mips[i].height = textureasset3d_mip_dimension(pixel_height, (uint32_t)i);
         if (level_count > 0) {
-            const uint8_t *entry =
-                data + TEXTUREASSET3D_KTX2_HEADER_SIZE + (uint64_t)i * TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE;
+            const uint8_t *entry = data + TEXTUREASSET3D_KTX2_HEADER_SIZE +
+                                   (uint64_t)i * TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE;
             mips[i].offset = textureasset3d_read_u64le(entry);
             mips[i].length = textureasset3d_read_u64le(entry + 8u);
             mips[i].uncompressed_length = textureasset3d_read_u64le(entry + 16u);
-            if (mips[i].length > 0 &&
-                (mips[i].offset > (uint64_t)size || mips[i].length > (uint64_t)size - mips[i].offset)) {
+            if (mips[i].length > 0 && (mips[i].offset > (uint64_t)size ||
+                                       mips[i].length > (uint64_t)size - mips[i].offset)) {
                 free(mips);
                 rt_trap("TextureAsset3D.LoadKTX2: truncated mip payload");
                 return NULL;
@@ -1409,25 +1526,27 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     if (strcmp(format.name, "bc7") == 0 && supercompression_scheme == 0 && level_count > 0)
         mip_pixels = textureasset3d_decode_bc7_mips(data, size, mips, mip_count);
     if (strcmp(format.name, "etc2") == 0 && supercompression_scheme == 0 && level_count > 0)
-        mip_pixels = textureasset3d_decode_compressed_mips(data,
-                                                          size,
-                                                          mips,
-                                                          mip_count,
-                                                          format.block_width,
-                                                          format.block_height,
-                                                          format.block_bytes,
-                                                          textureasset3d_decode_etc2_block_adapter,
-                                                          "TextureAsset3D.LoadKTX2: ETC2 Pixels fallback allocation failed");
+        mip_pixels = textureasset3d_decode_compressed_mips(
+            data,
+            size,
+            mips,
+            mip_count,
+            format.block_width,
+            format.block_height,
+            format.block_bytes,
+            textureasset3d_decode_etc2_block_adapter,
+            "TextureAsset3D.LoadKTX2: ETC2 Pixels fallback allocation failed");
     if (strcmp(format.name, "astc") == 0 && supercompression_scheme == 0 && level_count > 0)
-        mip_pixels = textureasset3d_decode_compressed_mips(data,
-                                                          size,
-                                                          mips,
-                                                          mip_count,
-                                                          format.block_width,
-                                                          format.block_height,
-                                                          format.block_bytes,
-                                                          textureasset3d_decode_astc_block_adapter,
-                                                          "TextureAsset3D.LoadKTX2: ASTC Pixels fallback allocation failed");
+        mip_pixels = textureasset3d_decode_compressed_mips(
+            data,
+            size,
+            mips,
+            mip_count,
+            format.block_width,
+            format.block_height,
+            format.block_bytes,
+            textureasset3d_decode_astc_block_adapter,
+            "TextureAsset3D.LoadKTX2: ASTC Pixels fallback allocation failed");
     if (format.compressed && supercompression_scheme == 0 && level_count > 0) {
         mip_payloads = textureasset3d_copy_native_mip_payloads(data, size, mips, mip_count);
         if (!mip_payloads) {
@@ -1439,7 +1558,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     }
 
     asset = (rt_textureasset3d *)rt_obj_new_i64(RT_G3D_TEXTUREASSET3D_CLASS_ID,
-                                               (int64_t)sizeof(rt_textureasset3d));
+                                                (int64_t)sizeof(rt_textureasset3d));
     if (!asset) {
         textureasset3d_release_mip_pixels(mip_pixels, mip_count);
         textureasset3d_release_mip_payloads(mip_payloads, mip_count);
@@ -1572,15 +1691,18 @@ void *rt_textureasset3d_get_pixels(void *obj) {
 /// @brief Compute the backend texture-cache key for this asset's resident native blocks.
 /// @details Folds the asset's cache identity, native revision, and resident mip range into a
 ///          single hash (FNV offset basis seed, golden-ratio mix per term). Returns 0 when there
-///          is nothing to cache (no native payloads or no resident mips); never returns 0 otherwise.
+///          is nothing to cache (no native payloads or no resident mips); never returns 0
+///          otherwise.
 uint64_t rt_textureasset3d_get_native_cache_key(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     uint64_t signature = 1469598103934665603ull;
 
     if (!asset || !asset->compressed || !asset->mip_payloads || asset->resident_mip_count <= 0)
         return 0;
-    signature ^= asset->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
-    signature ^= asset->native_revision + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
+    signature ^=
+        asset->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
+    signature ^=
+        asset->native_revision + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
     signature ^= (uint64_t)asset->resident_mip_start + 0x9e3779b97f4a7c15ull + (signature << 6) +
                  (signature >> 2);
     signature ^= (uint64_t)asset->resident_mip_count + 0x9e3779b97f4a7c15ull + (signature << 6) +
@@ -1635,9 +1757,9 @@ int rt_textureasset3d_get_native_mip_info(void *obj,
         *out_block_height = 0;
     if (out_block_bytes)
         *out_block_bytes = 0;
-    if (!asset || !asset->compressed || !asset->mip_payloads || mip < 0 || mip >= asset->mip_count ||
-        !asset->mip_payloads[mip] || asset->mips[mip].length == 0 || asset->block_width <= 0 ||
-        asset->block_height <= 0 || asset->block_bytes <= 0)
+    if (!asset || !asset->compressed || !asset->mip_payloads || mip < 0 ||
+        mip >= asset->mip_count || !asset->mip_payloads[mip] || asset->mips[mip].length == 0 ||
+        asset->block_width <= 0 || asset->block_height <= 0 || asset->block_bytes <= 0)
         return 0;
 
     if (out_data)

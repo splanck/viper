@@ -45,8 +45,8 @@
 #include <string.h>
 
 #ifdef _WIN32
-#include <windows.h>
 #include <shellapi.h>
+#include <windows.h>
 #elif defined(__APPLE__)
 #include <crt_externs.h>
 #endif

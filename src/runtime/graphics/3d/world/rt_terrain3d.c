@@ -496,14 +496,14 @@ static int32_t terrain_edge_sample_count(const rt_terrain3d *t, int64_t edge) {
     if (!t)
         return 0;
     switch (edge) {
-    case RT_TERRAIN3D_EDGE_WEST:
-    case RT_TERRAIN3D_EDGE_EAST:
-        return t->depth;
-    case RT_TERRAIN3D_EDGE_NORTH:
-    case RT_TERRAIN3D_EDGE_SOUTH:
-        return t->width;
-    default:
-        return 0;
+        case RT_TERRAIN3D_EDGE_WEST:
+        case RT_TERRAIN3D_EDGE_EAST:
+            return t->depth;
+        case RT_TERRAIN3D_EDGE_NORTH:
+        case RT_TERRAIN3D_EDGE_SOUTH:
+            return t->width;
+        default:
+            return 0;
     }
 }
 
@@ -512,24 +512,24 @@ static float *terrain_edge_height_slot(rt_terrain3d *t, int64_t edge, int32_t sa
     if (!t || !t->heights)
         return NULL;
     switch (edge) {
-    case RT_TERRAIN3D_EDGE_WEST:
-        if (sample < 0 || sample >= t->depth)
+        case RT_TERRAIN3D_EDGE_WEST:
+            if (sample < 0 || sample >= t->depth)
+                return NULL;
+            return &t->heights[(int64_t)sample * t->width];
+        case RT_TERRAIN3D_EDGE_EAST:
+            if (sample < 0 || sample >= t->depth)
+                return NULL;
+            return &t->heights[(int64_t)sample * t->width + (t->width - 1)];
+        case RT_TERRAIN3D_EDGE_NORTH:
+            if (sample < 0 || sample >= t->width)
+                return NULL;
+            return &t->heights[sample];
+        case RT_TERRAIN3D_EDGE_SOUTH:
+            if (sample < 0 || sample >= t->width)
+                return NULL;
+            return &t->heights[(int64_t)(t->depth - 1) * t->width + sample];
+        default:
             return NULL;
-        return &t->heights[(int64_t)sample * t->width];
-    case RT_TERRAIN3D_EDGE_EAST:
-        if (sample < 0 || sample >= t->depth)
-            return NULL;
-        return &t->heights[(int64_t)sample * t->width + (t->width - 1)];
-    case RT_TERRAIN3D_EDGE_NORTH:
-        if (sample < 0 || sample >= t->width)
-            return NULL;
-        return &t->heights[sample];
-    case RT_TERRAIN3D_EDGE_SOUTH:
-        if (sample < 0 || sample >= t->width)
-            return NULL;
-        return &t->heights[(int64_t)(t->depth - 1) * t->width + sample];
-    default:
-        return NULL;
     }
 }
 
@@ -628,9 +628,7 @@ void *rt_terrain3d_build_heightmap_pixels(void *terrain_obj) {
             uint32_t sample = (uint32_t)llround(h * 65535.0);
             if (sample > 65535u)
                 sample = 65535u;
-            uint32_t rgba = ((sample >> 8) & 0xFFu) << 24 |
-                            (sample & 0xFFu) << 16 |
-                            0x000000FFu;
+            uint32_t rgba = ((sample >> 8) & 0xFFu) << 24 | (sample & 0xFFu) << 16 | 0x000000FFu;
             rt_pixels_set(pixels, x, z, (int64_t)rgba);
         }
     }
@@ -1108,8 +1106,12 @@ static int32_t terrain_nav_sample_count(int32_t max_index, int32_t step) {
     return count;
 }
 
-/// @brief Map a decimated nav sample @p index to its grid coordinate, snapping the ends to 0/max_index.
-static int32_t terrain_nav_sample_coord(int32_t index, int32_t count, int32_t max_index, int32_t step) {
+/// @brief Map a decimated nav sample @p index to its grid coordinate, snapping the ends to
+/// 0/max_index.
+static int32_t terrain_nav_sample_coord(int32_t index,
+                                        int32_t count,
+                                        int32_t max_index,
+                                        int32_t step) {
     if (index <= 0)
         return 0;
     if (index >= count - 1)
@@ -1174,7 +1176,8 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
 /// @details Lazily builds chunk meshes on first draw, bakes the splat texture if needed, then
 ///   for each chunk: frustum-cull the translated AABB, pick LOD by translated chunk distance
 ///   to camera (XZ), and enqueue the chosen mesh with a translated model matrix.
-void rt_canvas3d_draw_terrain_at(void *canvas_obj, void *terrain_obj, double tx, double ty, double tz) {
+void rt_canvas3d_draw_terrain_at(
+    void *canvas_obj, void *terrain_obj, double tx, double ty, double tz) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas_obj);
     rt_terrain3d *t =
         (rt_terrain3d *)rt_g3d_checked_or_null(terrain_obj, RT_G3D_TERRAIN3D_CLASS_ID);

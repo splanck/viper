@@ -153,13 +153,11 @@ static int tag_name_matches_at(
 }
 
 static int tag_is_text_separator(const char *tag_start, const char *tag_end) {
-    static const char *const separators[] = {"address", "article", "aside", "blockquote", "br",
-                                             "dd",      "div",     "dl",    "dt",         "figcaption",
-                                             "figure",  "footer",  "h1",    "h2",         "h3",
-                                             "h4",      "h5",      "h6",    "header",     "hr",
-                                             "li",      "main",    "nav",   "ol",         "p",
-                                             "pre",     "section", "table", "td",         "th",
-                                             "tr",      "ul",      NULL};
+    static const char *const separators[] = {
+        "address",    "article", "aside",  "blockquote", "br",  "dd", "div", "dl",  "dt",
+        "figcaption", "figure",  "footer", "h1",         "h2",  "h3", "h4",  "h5",  "h6",
+        "header",     "hr",      "li",     "main",       "nav", "ol", "p",   "pre", "section",
+        "table",      "td",      "th",     "tr",         "ul",  NULL};
 
     const char *p = tag_start;
     while (p < tag_end && (*p == '<' || *p == '/' || isspace((unsigned char)*p)))
@@ -293,8 +291,7 @@ static void parse_attrs(void *attrs_map, const char *start, const char *end) {
                     p++; // skip closing quote
             } else {
                 val_start = p;
-                while (p < end && *p != ' ' && *p != '\t' && *p != '>' &&
-                       !slash_closes_tag(p, end))
+                while (p < end && *p != ' ' && *p != '\t' && *p != '>' && !slash_closes_tag(p, end))
                     p++;
                 val_len = (size_t)(p - val_start);
             }
@@ -714,8 +711,7 @@ rt_string rt_html_strip_tags(rt_string str) {
         } else if (src[i] == '>') {
             in_tag = 0;
             // Separate block-like tags without inventing spaces around inline tags.
-            if (pos > 0 && out[pos - 1] != ' ' &&
-                tag_is_text_separator(src + tag_start, src + i))
+            if (pos > 0 && out[pos - 1] != ' ' && tag_is_text_separator(src + tag_start, src + i))
                 out[pos++] = ' ';
         } else if (!in_tag) {
             out[pos++] = src[i];
@@ -791,8 +787,8 @@ void *rt_html_extract_links(rt_string str) {
                             attr++;
                     } else {
                         value_start = attr;
-                        while (attr < tag_end && !isspace((unsigned char)*attr) &&
-                               *attr != '>' && !slash_closes_tag(attr, tag_end))
+                        while (attr < tag_end && !isspace((unsigned char)*attr) && *attr != '>' &&
+                               !slash_closes_tag(attr, tag_end))
                             attr++;
                         value_end = attr;
                     }

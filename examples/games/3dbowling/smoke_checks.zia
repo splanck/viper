@@ -53,3 +53,22 @@ func HasVisible3DScene(img: Pixels, width: Integer, height: Integer) -> Bool {
     }
     return total > 0 && visible * 5 > total;
 }
+
+func EdgeSampleReadable(img: Pixels, x: Integer, y: Integer) -> Bool {
+    var px = Pixels.Get(img, x, y);
+    var r = Bits.And(px >> 24, 0xFF);
+    var g = Bits.And(px >> 16, 0xFF);
+    var b = Bits.And(px >> 8, 0xFF);
+    var lum = (r * 30 + g * 59 + b * 11) / 100;
+    return lum > 32;
+}
+
+/// @brief Guard against a hard circular vignette masking the playable frame.
+func HasReadableEdges(img: Pixels, width: Integer, height: Integer) -> Bool {
+    var readable: Integer = 0;
+    if (EdgeSampleReadable(img, 8, 8)) { readable = readable + 1; }
+    if (EdgeSampleReadable(img, width - 9, 8)) { readable = readable + 1; }
+    if (EdgeSampleReadable(img, 8, height - 9)) { readable = readable + 1; }
+    if (EdgeSampleReadable(img, width - 9, height - 9)) { readable = readable + 1; }
+    return readable >= 3;
+}

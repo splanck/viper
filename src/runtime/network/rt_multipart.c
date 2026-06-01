@@ -396,8 +396,7 @@ void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
     if (mp->part_count >= MAX_PARTS)
         rt_trap("Multipart: too many parts (max 128)");
 
-    const char *n =
-        multipart_header_param_cstr(name, "", "Multipart: invalid field name", 0);
+    const char *n = multipart_header_param_cstr(name, "", "Multipart: invalid field name", 0);
     if (!value)
         rt_trap("Multipart: NULL field value");
     const char *v = rt_string_cstr(value);
@@ -436,8 +435,7 @@ void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void 
     if (mp->part_count >= MAX_PARTS)
         rt_trap("Multipart: too many parts (max 128)");
 
-    const char *n =
-        multipart_header_param_cstr(name, "", "Multipart: invalid file field name", 0);
+    const char *n = multipart_header_param_cstr(name, "", "Multipart: invalid file field name", 0);
     const char *fn =
         multipart_header_param_cstr(filename, "file", "Multipart: invalid filename", 1);
     int64_t len = data ? bytes_len_impl(data) : 0;

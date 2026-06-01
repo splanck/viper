@@ -584,8 +584,9 @@ static void camera3d_look_at_values(rt_camera3d *cam,
     static const double fallback_target[3] = {0.0, 0.0, -1.0};
     static const double fallback_up[3] = {0.0, 1.0, 0.0};
     double eye[3] = {eye_in ? eye_in[0] : 0.0, eye_in ? eye_in[1] : 0.0, eye_in ? eye_in[2] : 0.0};
-    double target[3] = {
-        target_in ? target_in[0] : 0.0, target_in ? target_in[1] : 0.0, target_in ? target_in[2] : -1.0};
+    double target[3] = {target_in ? target_in[0] : 0.0,
+                        target_in ? target_in[1] : 0.0,
+                        target_in ? target_in[2] : -1.0};
     double up[3] = {up_in ? up_in[0] : 0.0, up_in ? up_in[1] : 1.0, up_in ? up_in[2] : 0.0};
 
     if (!cam)
@@ -645,13 +646,8 @@ void rt_camera3d_look_at_components(void *obj,
 /// @brief Core orbit: place the camera at (yaw, pitch, distance) around a target, then look at it.
 /// @details Shared implementation behind the Vec3 and scalar-component orbit entry points; clamps
 ///          pitch to avoid gimbal flip at the poles.
-static void camera3d_orbit_values(rt_camera3d *cam,
-                                  double tx,
-                                  double ty,
-                                  double tz,
-                                  double distance,
-                                  double yaw,
-                                  double pitch) {
+static void camera3d_orbit_values(
+    rt_camera3d *cam, double tx, double ty, double tz, double distance, double yaw, double pitch) {
     if (!cam)
         return;
 
@@ -704,13 +700,8 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
         return;
     }
 
-    camera3d_orbit_values(cam,
-                          rt_vec3_x(target_v),
-                          rt_vec3_y(target_v),
-                          rt_vec3_z(target_v),
-                          distance,
-                          yaw,
-                          pitch);
+    camera3d_orbit_values(
+        cam, rt_vec3_x(target_v), rt_vec3_y(target_v), rt_vec3_z(target_v), distance, yaw, pitch);
 }
 
 /// @brief Orbit the camera around a target using scalar components (no Vec3 boxing required).
@@ -786,7 +777,8 @@ void *rt_camera3d_get_position(void *obj) {
         finite_or(cam->eye[0], 0.0), finite_or(cam->eye[1], 0.0), finite_or(cam->eye[2], 0.0));
 }
 
-/// @brief Read the camera's world position into @p x / @p y / @p z (returns 0 with no writes if invalid).
+/// @brief Read the camera's world position into @p x / @p y / @p z (returns 0 with no writes if
+/// invalid).
 int8_t rt_camera3d_get_position_components(void *obj, double *x, double *y, double *z) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (x)

@@ -52,9 +52,9 @@
 #endif
 
 #include <errno.h>
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -751,7 +751,8 @@ static void archive_write_bytes_to_path(const char *cpath, void *data) {
 
     const uint8_t *src = bytes_data(data);
     size_t total = (size_t)bytes_len(data);
-    (void)archive_write_file_all_utf8(cpath, src, total, "Archive: failed to write destination file");
+    (void)archive_write_file_all_utf8(
+        cpath, src, total, "Archive: failed to write destination file");
 }
 
 #if !defined(_WIN32) && !defined(__viperdos__)
@@ -2918,8 +2919,8 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
         return;
     }
 
-    void *data =
-        archive_bytes_new_posix_or_close(fd, (int64_t)st.st_size, "Archive: memory allocation failed");
+    void *data = archive_bytes_new_posix_or_close(
+        fd, (int64_t)st.st_size, "Archive: memory allocation failed");
     if (!data)
         return;
     if (!archive_read_exact_posix_or_release_object(
@@ -3072,7 +3073,8 @@ void rt_archive_finish(void *obj) {
         rt_trap("Archive: archive already finished");
         return;
     }
-    if (!archive_require_zip16_count(ar->write_entry_count, "Archive: ZIP64 archives are not supported") ||
+    if (!archive_require_zip16_count(ar->write_entry_count,
+                                     "Archive: ZIP64 archives are not supported") ||
         !archive_require_zip32_size(ar->write_len, "Archive: ZIP64 archives are not supported"))
         return;
 

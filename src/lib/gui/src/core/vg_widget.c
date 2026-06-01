@@ -1267,8 +1267,10 @@ void vg_widget_measure(vg_widget_t *root, float available_width, float available
         float child_w = 0.0f;
         float child_h = 0.0f;
         VG_FOREACH_VISIBLE_CHILD(root, child) {
-            float w = child->measured_width + child->layout.margin_left + child->layout.margin_right;
-            float h = child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
+            float w =
+                child->measured_width + child->layout.margin_left + child->layout.margin_right;
+            float h =
+                child->measured_height + child->layout.margin_top + child->layout.margin_bottom;
             if (w > child_w)
                 child_w = w;
             child_h += h;

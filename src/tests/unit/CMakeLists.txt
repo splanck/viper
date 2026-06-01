@@ -1319,7 +1319,7 @@ function(viper_add_runtime_tests)
             RT_G3D_ALLOW_STACK_FIXTURES=1)
 
     viper_add_test(test_rt_graphics3d_robustness
-        ${VIPER_TESTS_DIR}/runtime/RTGraphics3DRobustnessTests.cpp)
+            ${VIPER_TESTS_DIR}/runtime/RTGraphics3DRobustnessTests.cpp)
     target_link_libraries(test_rt_graphics3d_robustness PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_graphics3d_robustness test_rt_graphics3d_robustness)
     viper_add_test_labels(test_rt_graphics3d_robustness graphics3d runtime)

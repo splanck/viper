@@ -512,8 +512,7 @@ static void test_navmesh_bake_scene_flattens_transformed_nodes() {
                 "NavMesh Bake: points outside transformed world bounds are not walkable");
     EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr,
                 "NavMesh Bake: pathfinding works across baked scene geometry");
-    EXPECT_TRUE(rt_navmesh3d_bake(rt_mesh3d_new_plane(2.0, 2.0), 0.4, 1.8, 45.0, 0.3) ==
-                    nullptr,
+    EXPECT_TRUE(rt_navmesh3d_bake(rt_mesh3d_new_plane(2.0, 2.0), 0.4, 1.8, 45.0, 0.3) == nullptr,
                 "NavMesh Bake: rejects non-Scene3D handles");
 }
 
@@ -547,7 +546,8 @@ static void test_navmesh_rebuild_tile_is_tile_local() {
 
     /* The transformed plane center is walkable (same point the bake-fixture test checks). */
     void *p = rt_vec3_new(3.0, 0.0, -1.0);
-    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, p) != 0, "RebuildTile local: target cell starts walkable");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, p) != 0,
+                "RebuildTile local: target cell starts walkable");
 
     int64_t ptx = 0, ptz = 0;
     EXPECT_TRUE(rt_navmesh3d_test_tile_of_point(nm, 3.0, -1.0, &ptx, &ptz) != 0,
@@ -597,13 +597,13 @@ static void test_navmesh_rebuild_tile_refreshes_retained_geometry_source() {
     EXPECT_TRUE(rt_navmesh3d_test_set_tile_source(nm, tx, tz, 2.0, 1) != 0,
                 "RebuildTile source: retained tile geometry source can be edited");
     void *stale = rt_navmesh3d_sample_position(nm, p);
-    EXPECT_NEAR(rt_vec3_y(stale), 0.0, 0.05,
-                "RebuildTile source: source edit stays stale before rebuild");
+    EXPECT_NEAR(
+        rt_vec3_y(stale), 0.0, 0.05, "RebuildTile source: source edit stays stale before rebuild");
     EXPECT_TRUE(rt_navmesh3d_rebuild_tile(nm, tx + 5, tz + 5) != 0,
                 "RebuildTile source: far tile rebuild succeeds");
     void *far = rt_navmesh3d_sample_position(nm, p);
-    EXPECT_NEAR(rt_vec3_y(far), 0.0, 0.05,
-                "RebuildTile source: far tile rebuild leaves edited tile stale");
+    EXPECT_NEAR(
+        rt_vec3_y(far), 0.0, 0.05, "RebuildTile source: far tile rebuild leaves edited tile stale");
 
     EXPECT_TRUE(rt_navmesh3d_rebuild_tile(nm, tx, tz) != 0,
                 "RebuildTile source: own tile rebuild succeeds");
@@ -790,7 +790,8 @@ static void test_blendtree_1d_weights() {
     EXPECT_TRUE(rt_blend_tree3d_add_sample(tree, make_blendtree_test_animation("run"), 1.0, 0.0) ==
                     1,
                 "BlendTree3D.AddSample returns second sample index");
-    EXPECT_TRUE(rt_blend_tree3d_get_sample_count(tree) == 2, "BlendTree3D.SampleCount tracks samples");
+    EXPECT_TRUE(rt_blend_tree3d_get_sample_count(tree) == 2,
+                "BlendTree3D.SampleCount tracks samples");
 
     rt_blend_tree3d_set_param(tree, 0.25, 0.0);
     rt_blend_tree3d_update(tree, 0.0);

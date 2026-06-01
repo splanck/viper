@@ -59,6 +59,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+
 static LONG *parallel_win_remaining_new(int64_t count) {
     LONG *remaining = (LONG *)malloc(sizeof(LONG));
     if (!remaining)

@@ -441,7 +441,8 @@ void rt_list_remove_at(void *list, int64_t index) {
 
     void *removed = L->arr[index];
     if ((size_t)index + 1 < len) {
-        memmove(&L->arr[index], &L->arr[(size_t)index + 1], (len - (size_t)index - 1) * sizeof(void *));
+        memmove(
+            &L->arr[index], &L->arr[(size_t)index + 1], (len - (size_t)index - 1) * sizeof(void *));
     }
     L->arr[len - 1] = NULL;
     release_temp_obj(removed);

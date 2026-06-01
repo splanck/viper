@@ -165,7 +165,8 @@ static int material_texture_ref_valid_or_trap(void *texture, const char *method)
     return 0;
 }
 
-/// @brief Validate then retain-swap a texture reference into @p *slot; no-op-fails on invalid input.
+/// @brief Validate then retain-swap a texture reference into @p *slot; no-op-fails on invalid
+/// input.
 /// @return 1 on a successful assignment (including clearing with NULL), 0 if validation trapped.
 static int material_assign_texture_ref_checked(void **slot, void *texture, const char *method) {
     if (!material_texture_ref_valid_or_trap(texture, method))
@@ -422,7 +423,9 @@ void *rt_material3d_new_textured(void *pixels) {
     if (!mat)
         return NULL;
     if (!material_assign_texture_ref_checked(
-            &mat->texture, pixels, "Material3D.SetTexture: texture must be Pixels or TextureAsset3D")) {
+            &mat->texture,
+            pixels,
+            "Material3D.SetTexture: texture must be Pixels or TextureAsset3D")) {
         if (rt_obj_release_check0(mat))
             rt_obj_free(mat);
         return NULL;
@@ -741,7 +744,9 @@ void rt_material3d_set_normal_map(void *obj, void *pixels) {
     if (!mat)
         return;
     (void)material_assign_texture_ref_checked(
-        &mat->normal_map, pixels, "Material3D.SetNormalMap: texture must be Pixels or TextureAsset3D");
+        &mat->normal_map,
+        pixels,
+        "Material3D.SetNormalMap: texture must be Pixels or TextureAsset3D");
 }
 
 /// @brief Return whether the base-color/albedo texture slot is populated.
@@ -798,7 +803,9 @@ void rt_material3d_set_specular_map(void *obj, void *pixels) {
     if (!mat)
         return;
     (void)material_assign_texture_ref_checked(
-        &mat->specular_map, pixels, "Material3D.SetSpecularMap: texture must be Pixels or TextureAsset3D");
+        &mat->specular_map,
+        pixels,
+        "Material3D.SetSpecularMap: texture must be Pixels or TextureAsset3D");
 }
 
 /// @brief Return whether the specular texture slot is populated.
@@ -813,7 +820,9 @@ void rt_material3d_set_emissive_map(void *obj, void *pixels) {
     if (!mat)
         return;
     (void)material_assign_texture_ref_checked(
-        &mat->emissive_map, pixels, "Material3D.SetEmissiveMap: texture must be Pixels or TextureAsset3D");
+        &mat->emissive_map,
+        pixels,
+        "Material3D.SetEmissiveMap: texture must be Pixels or TextureAsset3D");
 }
 
 /// @brief Return whether the emissive texture slot is populated.

@@ -364,8 +364,7 @@ static int world3d_reserve_contacts(rt_world3d *w, int32_t needed) {
 ///          very brief substep contacts still participate in the frame's
 ///          enter/stay/exit event diff.
 static int world3d_reserve_frame_contacts(rt_world3d *w, int32_t needed) {
-    return world3d_reserve_contact_array(
-        &w->frame_contacts, &w->frame_contact_capacity, needed);
+    return world3d_reserve_contact_array(&w->frame_contacts, &w->frame_contact_capacity, needed);
 }
 
 /// @brief Grow w->previous_contacts to hold at least @p needed entries.
@@ -511,7 +510,8 @@ static void ph3d_vec3_sanitize_state(double *v) {
     v[2] = ph3d_saturate_state_value(v[2]);
 }
 
-/// @brief Add (x, y, z) into @p dst, sanitizing the addends and saturating the result per component.
+/// @brief Add (x, y, z) into @p dst, sanitizing the addends and saturating the result per
+/// component.
 static void ph3d_vec3_accumulate_state(double *dst, double x, double y, double z) {
     if (!dst)
         return;
@@ -1313,8 +1313,7 @@ static void body3d_apply_world_angular_impulse(rt_body3d *b, const double *angul
     local_delta[1] = local_impulse[1] * b->inv_inertia[1];
     local_delta[2] = local_impulse[2] * b->inv_inertia[2];
     quat_rotate_vec3(b->orientation, local_delta, world_delta);
-    ph3d_vec3_accumulate_state(
-        b->angular_velocity, world_delta[0], world_delta[1], world_delta[2]);
+    ph3d_vec3_accumulate_state(b->angular_velocity, world_delta[0], world_delta[1], world_delta[2]);
 }
 
 /// @brief Return `I^-1 * v` in world space using the body's local diagonal inertia.
@@ -1370,10 +1369,8 @@ static void body3d_apply_contact_impulse(rt_body3d *b, const double *impulse, co
         return;
     if (!ph3d_vec3_all_finite(impulse))
         return;
-    ph3d_vec3_accumulate_state(b->velocity,
-                               impulse[0] * b->inv_mass,
-                               impulse[1] * b->inv_mass,
-                               impulse[2] * b->inv_mass);
+    ph3d_vec3_accumulate_state(
+        b->velocity, impulse[0] * b->inv_mass, impulse[1] * b->inv_mass, impulse[2] * b->inv_mass);
     vec3_cross(r, impulse, angular_impulse);
     body3d_apply_world_angular_impulse(b, angular_impulse);
 }
@@ -1761,7 +1758,9 @@ static void contact3d_try_add_manifold_point(rt_contact3d *contact,
 /// @brief Promote a single-point box/box contact to a multi-point manifold over the AABB overlap.
 /// @details Samples the corners of the two bodies' overlapping AABB region as extra contact points,
 ///          giving the solver a stable contact patch (resting boxes don't wobble on one point).
-static void contact3d_expand_aabb_manifold(rt_contact3d *contact, const rt_body3d *a, const rt_body3d *b) {
+static void contact3d_expand_aabb_manifold(rt_contact3d *contact,
+                                           const rt_body3d *a,
+                                           const rt_body3d *b) {
     double a_min[3];
     double a_max[3];
     double b_min[3];
@@ -1790,7 +1789,8 @@ static void contact3d_expand_aabb_manifold(rt_contact3d *contact, const rt_body3
         b_max[i] = b->position[i] + b->half_extents[i];
         overlap_min[i] = a_min[i] > b_min[i] ? a_min[i] : b_min[i];
         overlap_max[i] = a_max[i] < b_max[i] ? a_max[i] : b_max[i];
-        if (!isfinite(overlap_min[i]) || !isfinite(overlap_max[i]) || overlap_min[i] > overlap_max[i])
+        if (!isfinite(overlap_min[i]) || !isfinite(overlap_max[i]) ||
+            overlap_min[i] > overlap_max[i])
             return;
     }
 
@@ -2007,7 +2007,8 @@ static void ph3d_obb_select_candidate(const ph3d_obb_contact_candidate *candidat
     }
 }
 
-/// @brief Expand a single-point OBB/OBB contact into a stable multi-point manifold via face clipping.
+/// @brief Expand a single-point OBB/OBB contact into a stable multi-point manifold via face
+/// clipping.
 /// @details Reconstructs both boxes, picks the most-aligned face as the reference and the opposing
 ///          box's most anti-aligned face as the incident polygon, then clips the incident face
 ///          against the reference face's four side planes (ph3d_clip_poly_to_extent). Surviving
@@ -2074,9 +2075,8 @@ static int contact3d_expand_obb_manifold(rt_contact3d *contact,
     vec3_copy(final_normal, toward_b);
 
     for (int i = 0; i < 3; ++i)
-        ref_face_center[i] =
-            ref_box->center[i] + ref_box->axes[ref_axis][i] * ref_box->half_extents[ref_axis] *
-                                     ref_sign;
+        ref_face_center[i] = ref_box->center[i] + ref_box->axes[ref_axis][i] *
+                                                      ref_box->half_extents[ref_axis] * ref_sign;
 
     {
         double best_inc_alignment = -1.0;
@@ -2102,12 +2102,20 @@ static int contact3d_expand_obb_manifold(rt_contact3d *contact,
         double neg_v[3];
         vec3_negate(ref_box->axes[u], neg_u);
         vec3_negate(ref_box->axes[v], neg_v);
-        clipped_count = ph3d_clip_poly_to_extent(
-            poly_a, clipped_count, ref_face_center, ref_box->axes[u], ref_box->half_extents[u], poly_b);
+        clipped_count = ph3d_clip_poly_to_extent(poly_a,
+                                                 clipped_count,
+                                                 ref_face_center,
+                                                 ref_box->axes[u],
+                                                 ref_box->half_extents[u],
+                                                 poly_b);
         clipped_count = ph3d_clip_poly_to_extent(
             poly_b, clipped_count, ref_face_center, neg_u, ref_box->half_extents[u], poly_a);
-        clipped_count = ph3d_clip_poly_to_extent(
-            poly_a, clipped_count, ref_face_center, ref_box->axes[v], ref_box->half_extents[v], poly_b);
+        clipped_count = ph3d_clip_poly_to_extent(poly_a,
+                                                 clipped_count,
+                                                 ref_face_center,
+                                                 ref_box->axes[v],
+                                                 ref_box->half_extents[v],
+                                                 poly_b);
         clipped_count = ph3d_clip_poly_to_extent(
             poly_b, clipped_count, ref_face_center, neg_v, ref_box->half_extents[v], poly_a);
     }
@@ -2121,12 +2129,9 @@ static int contact3d_expand_obb_manifold(rt_contact3d *contact,
         vec3_sub(poly_a[i], ref_face_center, rel);
         separation = vec3_dot(rel, ref_normal);
         if (separation <= 1e-6 && candidate_count < PH3D_OBB_CLIP_MAX_POINTS) {
-            candidates[candidate_count].point[0] =
-                poly_a[i][0] - 0.5 * separation * ref_normal[0];
-            candidates[candidate_count].point[1] =
-                poly_a[i][1] - 0.5 * separation * ref_normal[1];
-            candidates[candidate_count].point[2] =
-                poly_a[i][2] - 0.5 * separation * ref_normal[2];
+            candidates[candidate_count].point[0] = poly_a[i][0] - 0.5 * separation * ref_normal[0];
+            candidates[candidate_count].point[1] = poly_a[i][1] - 0.5 * separation * ref_normal[1];
+            candidates[candidate_count].point[2] = poly_a[i][2] - 0.5 * separation * ref_normal[2];
             candidates[candidate_count].separation = separation;
             candidate_count++;
         }
@@ -2182,10 +2187,10 @@ static int contact3d_expand_obb_manifold(rt_contact3d *contact,
 static int contact_pair_equals(const rt_contact3d *a, const rt_contact3d *b) {
     if (!a || !b)
         return 0;
-    return (a->body_a == b->body_a && a->body_b == b->body_b &&
-            a->collider_a == b->collider_a && a->collider_b == b->collider_b) ||
-           (a->body_a == b->body_b && a->body_b == b->body_a &&
-            a->collider_a == b->collider_b && a->collider_b == b->collider_a);
+    return (a->body_a == b->body_a && a->body_b == b->body_b && a->collider_a == b->collider_a &&
+            a->collider_b == b->collider_b) ||
+           (a->body_a == b->body_b && a->body_b == b->body_a && a->collider_a == b->collider_b &&
+            a->collider_b == b->collider_a);
 }
 
 typedef struct contact_pair_hash_entry {
@@ -3224,8 +3229,11 @@ typedef struct rt_physics_mesh_bvh_node {
 } rt_physics_mesh_bvh_node;
 
 static int mesh_physics_bvh_rebuild(rt_mesh3d *mesh);
-static void transform_local_aabb_to_world(
-    const rt_collider_pose *pose, const float *mn, const float *mx, double *out_min, double *out_max);
+static void transform_local_aabb_to_world(const rt_collider_pose *pose,
+                                          const float *mn,
+                                          const float *mx,
+                                          double *out_min,
+                                          double *out_max);
 
 /// @brief Whether a sphere overlaps an axis-aligned box, via closest-point squared distance.
 /// @details Sums squared distance only on axes where the center lies outside [mn, mx] and compares
@@ -3299,7 +3307,8 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
                 uint32_t i2 = mesh->indices[tri * 3u + 2u];
                 double a[3], b[3], c[3], closest[3];
                 double dx, dy, dz, dist_sq;
-                if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+                if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count ||
+                    i2 >= mesh->vertex_count)
                     continue;
                 {
                     double local[3];
@@ -3634,7 +3643,8 @@ static int test_meshlike_box(rt_mesh3d *mesh,
                 uint32_t i1 = mesh->indices[tri * 3u + 1u];
                 uint32_t i2 = mesh->indices[tri * 3u + 2u];
                 double a[3], b[3], c[3], local[3], cur_normal[3], cur_depth;
-                if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+                if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count ||
+                    i2 >= mesh->vertex_count)
                     continue;
                 local[0] = mesh->vertices[i0].pos[0];
                 local[1] = mesh->vertices[i0].pos[1];
@@ -3719,9 +3729,7 @@ typedef struct {
     int32_t b;
 } epa_edge;
 
-typedef void (*ph3d_gjk_support_fn)(void *ctx,
-                                    const double *direction,
-                                    gjk_support_point *out);
+typedef void (*ph3d_gjk_support_fn)(void *ctx, const double *direction, gjk_support_point *out);
 
 typedef struct {
     void *a_collider;
@@ -3737,8 +3745,10 @@ typedef struct {
 } ph3d_triangle_hull_support_ctx;
 
 /// @brief Triple cross product out = (a × b) × c, with a stable fallback when it degenerates.
-/// @details GJK uses this to get a direction lying in an edge's plane and pointing toward the origin;
-///          when the inputs are collinear (near-zero result) it substitutes an arbitrary perpendicular.
+/// @details GJK uses this to get a direction lying in an edge's plane and pointing toward the
+/// origin;
+///          when the inputs are collinear (near-zero result) it substitutes an arbitrary
+///          perpendicular.
 static void vec3_triple_cross(const double *a, const double *b, const double *c, double *out) {
     double tmp[3];
     vec3_cross(a, b, tmp);
@@ -3769,14 +3779,11 @@ static void gjk_support(void *a_collider,
     vec3_sub(pa, pb, out->v);
 }
 
-static void gjk_support_collider_pair(void *ctx,
-                                      const double *direction,
-                                      gjk_support_point *out) {
+static void gjk_support_collider_pair(void *ctx, const double *direction, gjk_support_point *out) {
     ph3d_collider_pair_support_ctx *pair = (ph3d_collider_pair_support_ctx *)ctx;
     if (!pair || !out)
         return;
-    gjk_support(
-        pair->a_collider, pair->a_pose, pair->b_collider, pair->b_pose, direction, out);
+    gjk_support(pair->a_collider, pair->a_pose, pair->b_collider, pair->b_pose, direction, out);
 }
 
 static void triangle_support_point(const double tri[3][3], const double *direction, double *out) {
@@ -3792,9 +3799,7 @@ static void triangle_support_point(const double tri[3][3], const double *directi
     vec3_copy(out, tri[best]);
 }
 
-static void gjk_support_triangle_hull(void *ctx,
-                                      const double *direction,
-                                      gjk_support_point *out) {
+static void gjk_support_triangle_hull(void *ctx, const double *direction, gjk_support_point *out) {
     ph3d_triangle_hull_support_ctx *pair = (ph3d_triangle_hull_support_ctx *)ctx;
     double tri_point[3];
     double hull_point[3];
@@ -3922,8 +3927,10 @@ static void gjk_face_normal_away_from_point(const gjk_support_point *a,
 }
 
 /// @brief Evolve a 4-point (tetrahedron) simplex; report whether it encloses the origin.
-/// @details Checks the origin against each of the three faces touching the newest vertex; if it lies
-///          outside one, drops to that face and continues. If inside all three, the origin is enclosed.
+/// @details Checks the origin against each of the three faces touching the newest vertex; if it
+/// lies
+///          outside one, drops to that face and continues. If inside all three, the origin is
+///          enclosed.
 /// @return 1 if the origin is inside the tetrahedron (collision), 0 to keep searching.
 static int gjk_update_tetrahedron(gjk_simplex *simplex, double *direction) {
     gjk_support_point a = simplex->p[3];
@@ -3977,11 +3984,8 @@ static int gjk_update_simplex(gjk_simplex *simplex, double *direction) {
 /// @brief Build an EPA polytope face from three vertex indices, oriented outward from the origin.
 /// @details Computes the unit normal and its signed distance from the origin; flips the winding so
 ///          the normal faces away from the origin (distance >= 0). Returns 0 for a degenerate face.
-static int epa_make_face(const gjk_support_point *vertices,
-                         int32_t a,
-                         int32_t b,
-                         int32_t c,
-                         epa_face *face) {
+static int epa_make_face(
+    const gjk_support_point *vertices, int32_t a, int32_t b, int32_t c, epa_face *face) {
     double ab[3];
     double ac[3];
     if (!vertices || !face)
@@ -4044,10 +4048,11 @@ static int epa_add_face(const gjk_support_point *vertices,
 }
 
 /// @brief Run EPA on GJK's enclosing tetrahedron to find the penetration normal and depth.
-/// @details Iteratively expands the polytope toward the Minkowski surface: each step takes a support
-///          point past the closest face, removes all faces it can "see", and re-closes the resulting
-///          horizon, until the closest face stops moving (within @p tolerance). Writes the outward
-///          contact @p normal and penetration @p depth.
+/// @details Iteratively expands the polytope toward the Minkowski surface: each step takes a
+/// support
+///          point past the closest face, removes all faces it can "see", and re-closes the
+///          resulting horizon, until the closest face stops moving (within @p tolerance). Writes
+///          the outward contact @p normal and penetration @p depth.
 /// @return 1 on success, 0 if the input simplex is not a tetrahedron or the polytope degenerates.
 static int epa_solve_with_support(ph3d_gjk_support_fn support_fn,
                                   void *support_ctx,
@@ -4570,6 +4575,100 @@ static int test_collider_pair(const rt_body3d *a_body,
                               void **leaf_a_out,
                               rt_collider_pose *leaf_a_pose_out,
                               void **leaf_b_out,
+                              rt_collider_pose *leaf_b_pose_out);
+
+/// @brief Collide a compound collider (the @p compound_is_a side) against the other collider by
+///        testing each child shape and keeping the deepest penetration. Mirrors the two formerly
+///        duplicated compound branches of test_collider_pair; recurses back into it per child.
+static int test_compound_collider(const rt_body3d *a_body,
+                                  void *a_collider,
+                                  const rt_collider_pose *a_pose,
+                                  const rt_body3d *b_body,
+                                  void *b_collider,
+                                  const rt_collider_pose *b_pose,
+                                  int compound_is_a,
+                                  double *normal,
+                                  double *depth,
+                                  void **leaf_a_out,
+                                  rt_collider_pose *leaf_a_pose_out,
+                                  void **leaf_b_out,
+                                  rt_collider_pose *leaf_b_pose_out) {
+    void *compound = compound_is_a ? a_collider : b_collider;
+    const rt_collider_pose *compound_pose = compound_is_a ? a_pose : b_pose;
+    double best_depth = 0.0;
+    double best_normal[3] = {0.0, 1.0, 0.0};
+    int hit = 0;
+    int64_t child_count = rt_collider3d_get_child_count_raw(compound);
+    for (int64_t i = 0; i < child_count; ++i) {
+        void *child = rt_collider3d_get_child_raw(compound, i);
+        double child_pos[3], child_rot[4], child_scale[3];
+        rt_collider_pose child_pose;
+        rt_collider3d_get_child_transform_raw(compound, i, child_pos, child_rot, child_scale);
+        collider_pose_compose(compound_pose, child_pos, child_rot, child_scale, &child_pose);
+        {
+            double cur_normal[3];
+            double cur_depth = 0.0;
+            void *cur_leaf_a = NULL;
+            void *cur_leaf_b = NULL;
+            rt_collider_pose cur_leaf_a_pose;
+            rt_collider_pose cur_leaf_b_pose;
+            int sub = compound_is_a ? test_collider_pair(a_body,
+                                                         child,
+                                                         &child_pose,
+                                                         b_body,
+                                                         b_collider,
+                                                         b_pose,
+                                                         cur_normal,
+                                                         &cur_depth,
+                                                         &cur_leaf_a,
+                                                         &cur_leaf_a_pose,
+                                                         &cur_leaf_b,
+                                                         &cur_leaf_b_pose)
+                                    : test_collider_pair(a_body,
+                                                         a_collider,
+                                                         a_pose,
+                                                         b_body,
+                                                         child,
+                                                         &child_pose,
+                                                         cur_normal,
+                                                         &cur_depth,
+                                                         &cur_leaf_a,
+                                                         &cur_leaf_a_pose,
+                                                         &cur_leaf_b,
+                                                         &cur_leaf_b_pose);
+            if (sub && cur_depth > best_depth) {
+                best_depth = cur_depth;
+                vec3_copy(best_normal, cur_normal);
+                if (leaf_a_out)
+                    *leaf_a_out = cur_leaf_a;
+                if (leaf_a_pose_out)
+                    *leaf_a_pose_out = cur_leaf_a_pose;
+                if (leaf_b_out)
+                    *leaf_b_out = cur_leaf_b;
+                if (leaf_b_pose_out)
+                    *leaf_b_pose_out = cur_leaf_b_pose;
+                hit = 1;
+            }
+        }
+    }
+    if (hit) {
+        vec3_copy(normal, best_normal);
+        *depth = best_depth;
+    }
+    return hit;
+}
+
+static int test_collider_pair(const rt_body3d *a_body,
+                              void *a_collider,
+                              const rt_collider_pose *a_pose,
+                              const rt_body3d *b_body,
+                              void *b_collider,
+                              const rt_collider_pose *b_pose,
+                              double *normal,
+                              double *depth,
+                              void **leaf_a_out,
+                              rt_collider_pose *leaf_a_pose_out,
+                              void **leaf_b_out,
                               rt_collider_pose *leaf_b_pose_out) {
     double amn[3], amx[3], bmn[3], bmx[3];
     double a_center[3], b_center[3];
@@ -4595,109 +4694,35 @@ static int test_collider_pair(const rt_body3d *a_body,
     a_type = rt_collider3d_get_type(a_collider);
     b_type = rt_collider3d_get_type(b_collider);
 
-    if (a_type == RT_COLLIDER3D_TYPE_COMPOUND) {
-        double best_depth = 0.0;
-        double best_normal[3] = {0.0, 1.0, 0.0};
-        int hit = 0;
-        int64_t child_count = rt_collider3d_get_child_count_raw(a_collider);
-        for (int64_t i = 0; i < child_count; ++i) {
-            void *child = rt_collider3d_get_child_raw(a_collider, i);
-            double child_pos[3], child_rot[4], child_scale[3];
-            rt_collider_pose child_pose;
-            rt_collider3d_get_child_transform_raw(a_collider, i, child_pos, child_rot, child_scale);
-            collider_pose_compose(a_pose, child_pos, child_rot, child_scale, &child_pose);
-            {
-                double cur_normal[3];
-                double cur_depth = 0.0;
-                void *cur_leaf_a = NULL;
-                void *cur_leaf_b = NULL;
-                rt_collider_pose cur_leaf_a_pose;
-                rt_collider_pose cur_leaf_b_pose;
-                if (test_collider_pair(a_body,
-                                       child,
-                                       &child_pose,
-                                       b_body,
-                                       b_collider,
-                                       b_pose,
-                                       cur_normal,
-                                       &cur_depth,
-                                       &cur_leaf_a,
-                                       &cur_leaf_a_pose,
-                                       &cur_leaf_b,
-                                       &cur_leaf_b_pose) &&
-                    cur_depth > best_depth) {
-                    best_depth = cur_depth;
-                    vec3_copy(best_normal, cur_normal);
-                    if (leaf_a_out)
-                        *leaf_a_out = cur_leaf_a;
-                    if (leaf_a_pose_out)
-                        *leaf_a_pose_out = cur_leaf_a_pose;
-                    if (leaf_b_out)
-                        *leaf_b_out = cur_leaf_b;
-                    if (leaf_b_pose_out)
-                        *leaf_b_pose_out = cur_leaf_b_pose;
-                    hit = 1;
-                }
-            }
-        }
-        if (hit) {
-            vec3_copy(normal, best_normal);
-            *depth = best_depth;
-        }
-        return hit;
-    }
+    if (a_type == RT_COLLIDER3D_TYPE_COMPOUND)
+        return test_compound_collider(a_body,
+                                      a_collider,
+                                      a_pose,
+                                      b_body,
+                                      b_collider,
+                                      b_pose,
+                                      1,
+                                      normal,
+                                      depth,
+                                      leaf_a_out,
+                                      leaf_a_pose_out,
+                                      leaf_b_out,
+                                      leaf_b_pose_out);
 
-    if (b_type == RT_COLLIDER3D_TYPE_COMPOUND) {
-        double best_depth = 0.0;
-        double best_normal[3] = {0.0, 1.0, 0.0};
-        int hit = 0;
-        int64_t child_count = rt_collider3d_get_child_count_raw(b_collider);
-        for (int64_t i = 0; i < child_count; ++i) {
-            void *child = rt_collider3d_get_child_raw(b_collider, i);
-            double child_pos[3], child_rot[4], child_scale[3];
-            rt_collider_pose child_pose;
-            rt_collider3d_get_child_transform_raw(b_collider, i, child_pos, child_rot, child_scale);
-            collider_pose_compose(b_pose, child_pos, child_rot, child_scale, &child_pose);
-            {
-                double cur_normal[3];
-                double cur_depth = 0.0;
-                void *cur_leaf_a = NULL;
-                void *cur_leaf_b = NULL;
-                rt_collider_pose cur_leaf_a_pose;
-                rt_collider_pose cur_leaf_b_pose;
-                if (test_collider_pair(a_body,
-                                       a_collider,
-                                       a_pose,
-                                       b_body,
-                                       child,
-                                       &child_pose,
-                                       cur_normal,
-                                       &cur_depth,
-                                       &cur_leaf_a,
-                                       &cur_leaf_a_pose,
-                                       &cur_leaf_b,
-                                       &cur_leaf_b_pose) &&
-                    cur_depth > best_depth) {
-                    best_depth = cur_depth;
-                    vec3_copy(best_normal, cur_normal);
-                    if (leaf_a_out)
-                        *leaf_a_out = cur_leaf_a;
-                    if (leaf_a_pose_out)
-                        *leaf_a_pose_out = cur_leaf_a_pose;
-                    if (leaf_b_out)
-                        *leaf_b_out = cur_leaf_b;
-                    if (leaf_b_pose_out)
-                        *leaf_b_pose_out = cur_leaf_b_pose;
-                    hit = 1;
-                }
-            }
-        }
-        if (hit) {
-            vec3_copy(normal, best_normal);
-            *depth = best_depth;
-        }
-        return hit;
-    }
+    if (b_type == RT_COLLIDER3D_TYPE_COMPOUND)
+        return test_compound_collider(a_body,
+                                      a_collider,
+                                      a_pose,
+                                      b_body,
+                                      b_collider,
+                                      b_pose,
+                                      0,
+                                      normal,
+                                      depth,
+                                      leaf_a_out,
+                                      leaf_a_pose_out,
+                                      leaf_b_out,
+                                      leaf_b_pose_out);
 
     if (collider_type_is_simple(a_type) && collider_type_is_simple(b_type)) {
         if (!test_simple_collider_pose_collision(
@@ -4758,8 +4783,7 @@ static int test_collider_pair(const rt_body3d *a_body,
 
     if (a_type == RT_COLLIDER3D_TYPE_MESH && b_type == RT_COLLIDER3D_TYPE_CONVEX_HULL) {
         rt_mesh3d *mesh = (rt_mesh3d *)rt_collider3d_get_mesh_raw(a_collider);
-        if (!mesh || !test_meshlike_convex_hull(
-                         mesh, a_pose, b_collider, b_pose, normal, depth))
+        if (!mesh || !test_meshlike_convex_hull(mesh, a_pose, b_collider, b_pose, normal, depth))
             return 0;
         if (leaf_a_out)
             *leaf_a_out = a_collider;
@@ -4816,8 +4840,7 @@ static int test_collider_pair(const rt_body3d *a_body,
         return hit;
     }
 
-    if (a_type == RT_COLLIDER3D_TYPE_CONVEX_HULL &&
-        b_type == RT_COLLIDER3D_TYPE_CONVEX_HULL) {
+    if (a_type == RT_COLLIDER3D_TYPE_CONVEX_HULL && b_type == RT_COLLIDER3D_TYPE_CONVEX_HULL) {
         if (!test_convex_hull_gjk_epa(
                 a_collider, a_pose, b_collider, b_pose, a_center, b_center, normal, depth))
             return 0;
@@ -4955,7 +4978,7 @@ static int test_collision(const rt_body3d *a,
 
 #define PH3D_RESTITUTION_THRESHOLD 0.5 /* min approach speed (m/s) to bounce */
 #define PH3D_PENETRATION_SLOP 0.005
-#define PH3D_BAUMGARTE_BETA 0.8 /* positional recovery fraction per step */
+#define PH3D_BAUMGARTE_BETA 0.8          /* positional recovery fraction per step */
 #define PH3D_MAX_POSITION_CORRECTION 0.2 /* clamp on per-step positional push (m) */
 /* Carry <100% of the prior impulse so an uneven manifold (Gauss-Seidel tends to
  * load the first-solved point) cannot compound its torque frame-over-frame into
@@ -4980,8 +5003,10 @@ static void ph3d_contact_tangents(const double *n, double *t1, double *t2) {
 
 /// @brief Effective mass (1 / scalar inverse-mass) for a unit constraint @p axis
 ///   at the given per-body contact arms, including the angular term.
-static double ph3d_contact_effective_mass(const rt_body3d *a, const double *r_a,
-                                          const rt_body3d *b, const double *r_b,
+static double ph3d_contact_effective_mass(const rt_body3d *a,
+                                          const double *r_a,
+                                          const rt_body3d *b,
+                                          const double *r_b,
                                           const double *axis) {
     double denom = body3d_contact_impulse_denominator(a, r_a, axis) +
                    body3d_contact_impulse_denominator(b, r_b, axis);
@@ -4989,8 +5014,10 @@ static double ph3d_contact_effective_mass(const rt_body3d *a, const double *r_a,
 }
 
 /// @brief Relative velocity at a contact arm pair projected onto @p axis.
-static double ph3d_contact_relative_velocity(const rt_body3d *a, const double *r_a,
-                                             const rt_body3d *b, const double *r_b,
+static double ph3d_contact_relative_velocity(const rt_body3d *a,
+                                             const double *r_a,
+                                             const rt_body3d *b,
+                                             const double *r_b,
                                              const double *axis) {
     double vel_a[3];
     double vel_b[3];
@@ -5003,9 +5030,12 @@ static double ph3d_contact_relative_velocity(const rt_body3d *a, const double *r
 
 /// @brief Apply impulse @p magnitude along @p dir at the contact arms (b gets +,
 ///   a gets -, matching the a→b normal convention).
-static void ph3d_apply_contact_axis_impulse(rt_body3d *a, const double *r_a,
-                                            rt_body3d *b, const double *r_b,
-                                            const double *dir, double magnitude) {
+static void ph3d_apply_contact_axis_impulse(rt_body3d *a,
+                                            const double *r_a,
+                                            rt_body3d *b,
+                                            const double *r_b,
+                                            const double *dir,
+                                            double magnitude) {
     double p[3];
     double neg[3];
     if (magnitude == 0.0)
@@ -5145,9 +5175,9 @@ static int ph3d_contact_solver_body_indices(const rt_world3d *w,
 /// @brief Partition active bodies into solver islands and bucket each contact under its island.
 /// @details Uses union-find over solvable contacts to group connected active bodies into islands,
 ///          assigns each island a dense id, then builds a CSR-style layout: `island_offsets` holds
-///          the per-island prefix sums and `contact_indices` the contacts flattened in island order.
-///          Solving islands independently decouples unrelated groups and is the prerequisite for
-///          parallelizing the velocity/position solve. The batch must be released with
+///          the per-island prefix sums and `contact_indices` the contacts flattened in island
+///          order. Solving islands independently decouples unrelated groups and is the prerequisite
+///          for parallelizing the velocity/position solve. The batch must be released with
 ///          ph3d_solver_island_batch_free.
 /// @return 1 on success (including the empty-world no-op); 0 after trapping on allocation failure.
 static int world3d_build_solver_island_batch(rt_world3d *w, ph3d_solver_island_batch *batch) {
@@ -5278,8 +5308,8 @@ static void world3d_warm_start_contact(rt_world3d *w, rt_contact3d *c) {
     /* Identical body/collider ordering keeps stored impulse directions valid. */
     for (int32_t p = 0; p < w->previous_contact_count; ++p) {
         const rt_contact3d *q = &w->previous_contacts[p];
-        if (q->body_a == c->body_a && q->body_b == c->body_b &&
-            q->collider_a == c->collider_a && q->collider_b == c->collider_b) {
+        if (q->body_a == c->body_a && q->body_b == c->body_b && q->collider_a == c->collider_a &&
+            q->collider_b == c->collider_b) {
             prev = q;
             break;
         }
@@ -6852,10 +6882,8 @@ void *rt_world3d_get_enter_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->enter_event_count)
         return NULL;
-    return world3d_cached_event_from_contact(&w->enter_event_objects,
-                                             &w->enter_event_object_capacity,
-                                             index,
-                                             &w->enter_events[index]);
+    return world3d_cached_event_from_contact(
+        &w->enter_event_objects, &w->enter_event_object_capacity, index, &w->enter_events[index]);
 }
 
 /// @brief `World3D.StayEventCount` — contacts that persisted from the previous frame.
@@ -6869,10 +6897,8 @@ void *rt_world3d_get_stay_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->stay_event_count)
         return NULL;
-    return world3d_cached_event_from_contact(&w->stay_event_objects,
-                                             &w->stay_event_object_capacity,
-                                             index,
-                                             &w->stay_events[index]);
+    return world3d_cached_event_from_contact(
+        &w->stay_event_objects, &w->stay_event_object_capacity, index, &w->stay_events[index]);
 }
 
 /// @brief `World3D.ExitEventCount` — contacts that ended this frame.
@@ -6886,10 +6912,8 @@ void *rt_world3d_get_exit_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->exit_event_count)
         return NULL;
-    return world3d_cached_event_from_contact(&w->exit_event_objects,
-                                             &w->exit_event_object_capacity,
-                                             index,
-                                             &w->exit_events[index]);
+    return world3d_cached_event_from_contact(
+        &w->exit_event_objects, &w->exit_event_object_capacity, index, &w->exit_events[index]);
 }
 
 /// @brief Clear all collision buffers currently visible to event/query APIs.
@@ -6998,7 +7022,8 @@ void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     if (!event || index < 0 || index >= event->contact_count)
         return rt_vec3_new(0.0, 1.0, 0.0);
-    return rt_vec3_new(event->normals[index][0], event->normals[index][1], event->normals[index][2]);
+    return rt_vec3_new(
+        event->normals[index][0], event->normals[index][1], event->normals[index][2]);
 }
 
 /// @brief `CollisionEvent3D.ContactSeparation(i)` — signed separation distance.
@@ -7130,7 +7155,8 @@ static int query_hit_insert_sorted(rt_query_hit3d *hits, int32_t count, const rt
     return count + 1;
 }
 
-/// @brief Insert a query hit into a distance-sorted array capped at @p capacity (keeps the nearest).
+/// @brief Insert a query hit into a distance-sorted array capped at @p capacity (keeps the
+/// nearest).
 /// @details Below capacity it inserts in order; when full, a hit nearer than the current farthest
 ///          displaces it (bounded insertion sort), so the array always holds the K closest results.
 /// @return The new hit count.
@@ -7164,9 +7190,8 @@ static uint64_t world3d_query_broadphase_signature(rt_world3d *w) {
     hash *= UINT64_C(1099511628211);
     for (int32_t i = 0; i < w->body_count; ++i) {
         rt_body3d *body = w->bodies[i];
-        uint64_t collider_revision = body && body->collider
-                                          ? rt_collider3d_get_bounds_revision_raw(body->collider)
-                                          : 0;
+        uint64_t collider_revision =
+            body && body->collider ? rt_collider3d_get_bounds_revision_raw(body->collider) : 0;
         hash ^= (uint64_t)(uintptr_t)body;
         hash *= UINT64_C(1099511628211);
         hash ^= body ? body->broadphase_revision : 0;
@@ -7307,15 +7332,22 @@ static int sweep_sphere_against_simple_body(const double *start_center,
         return 0;
     if (other->shape == PH3D_SHAPE_SPHERE) {
         double combined_radius = radius + other->radius;
-        if (!raycast_sphere_raw(
-                start_center, dir, other->position, combined_radius, max_distance, &t, normal, &started))
+        if (!raycast_sphere_raw(start_center,
+                                dir,
+                                other->position,
+                                combined_radius,
+                                max_distance,
+                                &t,
+                                normal,
+                                &started))
             return 0;
         if (started)
             return 0;
         sweep_sphere_fill_hit(other, start_center, dir, radius, t, max_distance, normal, out_hit);
         return 1;
     }
-    if (other->shape == PH3D_SHAPE_AABB && rt_collider3d_get_type(other->collider) == RT_COLLIDER3D_TYPE_BOX) {
+    if (other->shape == PH3D_SHAPE_AABB &&
+        rt_collider3d_get_type(other->collider) == RT_COLLIDER3D_TYPE_BOX) {
         rt_collider_pose pose;
         collider_pose_from_body(other, &pose);
         if (!raycast_box_pose_raw(other->collider,
@@ -8125,8 +8157,8 @@ static int mesh_bvh_build_node(rt_mesh3d *mesh,
         }
         if (lo == start || lo == start + count)
             lo = start + count / 2;
-        node->left =
-            mesh_bvh_build_node(mesh, nodes, node_count, node_capacity, tri_indices, start, lo - start);
+        node->left = mesh_bvh_build_node(
+            mesh, nodes, node_count, node_capacity, tri_indices, start, lo - start);
         node->right = mesh_bvh_build_node(
             mesh, nodes, node_count, node_capacity, tri_indices, lo, start + count - lo);
         if (node->left < 0 || node->right < 0) {
@@ -8141,7 +8173,8 @@ static int mesh_bvh_build_node(rt_mesh3d *mesh,
 }
 
 /// @brief Rebuild the mesh's physics BVH acceleration structure for ray/shape queries.
-/// @details Allocates the node/index arrays and builds the tree from the current geometry; cached so
+/// @details Allocates the node/index arrays and builds the tree from the current geometry; cached
+/// so
 ///          repeated queries against an unchanged mesh skip the rebuild.
 /// @return 1 on success, 0 on allocation failure or empty geometry.
 static int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
@@ -8186,7 +8219,8 @@ static int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
         free(tri_indices);
         return 0;
     }
-    if (mesh_bvh_build_node(mesh, nodes, &node_count, node_capacity, tri_indices, 0, tri_count) < 0) {
+    if (mesh_bvh_build_node(mesh, nodes, &node_count, node_capacity, tri_indices, 0, tri_count) <
+        0) {
         free(nodes);
         free(tri_indices);
         return 0;
@@ -8202,16 +8236,18 @@ static int mesh_physics_bvh_rebuild(rt_mesh3d *mesh) {
 /// @brief Transform a local-space AABB through a collider pose into a world-space AABB.
 /// @details Rotates and translates all eight corners and takes their min/max, so the result tightly
 ///          bounds the oriented box (a plain min/max of the rotated extents would over-grow it).
-static void transform_local_aabb_to_world(
-    const rt_collider_pose *pose, const float *mn, const float *mx, double *out_min, double *out_max) {
+static void transform_local_aabb_to_world(const rt_collider_pose *pose,
+                                          const float *mn,
+                                          const float *mx,
+                                          double *out_min,
+                                          double *out_max) {
     for (int axis = 0; axis < 3; axis++) {
         out_min[axis] = DBL_MAX;
         out_max[axis] = -DBL_MAX;
     }
     for (int i = 0; i < 8; i++) {
-        double local[3] = {(i & 1) ? mx[0] : mn[0],
-                           (i & 2) ? mx[1] : mn[1],
-                           (i & 4) ? mx[2] : mn[2]};
+        double local[3] = {
+            (i & 1) ? mx[0] : mn[0], (i & 2) ? mx[1] : mn[1], (i & 4) ? mx[2] : mn[2]};
         double world[3];
         transform_point_from_pose(pose, local, world);
         for (int axis = 0; axis < 3; axis++) {
@@ -8275,7 +8311,8 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
                 uint32_t i1 = mesh->indices[tri * 3u + 1u];
                 uint32_t i2 = mesh->indices[tri * 3u + 2u];
                 double a[3], b[3], c[3], local[3], t, n[3];
-                if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count || i2 >= mesh->vertex_count)
+                if (i0 >= mesh->vertex_count || i1 >= mesh->vertex_count ||
+                    i2 >= mesh->vertex_count)
                     continue;
                 local[0] = mesh->vertices[i0].pos[0];
                 local[1] = mesh->vertices[i0].pos[1];
@@ -8686,8 +8723,7 @@ void *rt_world3d_raycast_all(
             continue;
         if (raycast_body(body, origin, dir, max_distance, &hit)) {
             total_count++;
-            hit_count =
-                query_hit_insert_sorted_bounded(hits, hit_count, PH3D_MAX_QUERY_HITS, &hit);
+            hit_count = query_hit_insert_sorted_bounded(hits, hit_count, PH3D_MAX_QUERY_HITS, &hit);
         }
     }
     return physics_hit_list3d_new_ex(
@@ -8939,7 +8975,10 @@ void *rt_body3d_get_orientation(void *o) {
 /// @brief Read a body's full pose — position, orientation quaternion, and scale — into raw arrays.
 /// @details Out-params are optional (NULL-skippable). Used by the renderer/scene sync to mirror the
 ///          simulated body transform without boxing Vec3/Quat values.
-void rt_body3d_get_pose_raw(void *o, double *position_out, double *rotation_out, double *scale_out) {
+void rt_body3d_get_pose_raw(void *o,
+                            double *position_out,
+                            double *rotation_out,
+                            double *scale_out) {
     rt_body3d *b = body3d_checked(o);
     if (position_out)
         vec3_set(position_out, 0.0, 0.0, 0.0);
@@ -9023,13 +9062,8 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
 /// @brief Apply a continuous force at a world-space point this step, adding both
 ///   force and torque (r x force) — e.g. a thruster or off-center wind. Like
 ///   ApplyForce, it is cleared at the end of the step. Dynamic bodies only.
-void rt_body3d_apply_force_at_point(void *o,
-                                    double fx,
-                                    double fy,
-                                    double fz,
-                                    double px,
-                                    double py,
-                                    double pz) {
+void rt_body3d_apply_force_at_point(
+    void *o, double fx, double fy, double fz, double px, double py, double pz) {
     rt_body3d *b = body3d_checked(o);
     double force[3];
     double r[3];
@@ -9071,13 +9105,8 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
 /// @brief Apply a linear impulse at a world-space point, producing both linear
 ///   and angular velocity via the lever arm from the center of mass — e.g. a hit
 ///   at a box corner makes it spin. Dynamic bodies only.
-void rt_body3d_apply_impulse_at_point(void *o,
-                                      double ix,
-                                      double iy,
-                                      double iz,
-                                      double px,
-                                      double py,
-                                      double pz) {
+void rt_body3d_apply_impulse_at_point(
+    void *o, double ix, double iy, double iz, double px, double py, double pz) {
     rt_body3d *b = body3d_checked(o);
     double impulse[3];
     double r[3];

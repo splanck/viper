@@ -122,7 +122,8 @@ static void savedata_retain_pair_or_trap(rt_string key,
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
         char saved_error[256];
-        savedata_save_trap_error(saved_error, sizeof(saved_error), "SaveData: string retain failed");
+        savedata_save_trap_error(
+            saved_error, sizeof(saved_error), "SaveData: string retain failed");
         rt_trap_clear_recovery();
         if (value_retained)
             rt_string_unref(value);

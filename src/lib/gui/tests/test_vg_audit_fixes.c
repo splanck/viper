@@ -75,8 +75,10 @@ static void test_make_temp_path(char *out, size_t out_size, const char *stem, co
         dir = "/tmp";
 
     size_t dir_len = strlen(dir);
-    const char *sep = (dir_len > 0 && (dir[dir_len - 1] == '/' || dir[dir_len - 1] == '\\')) ? "" : "/";
-    snprintf(out, out_size, "%s%s%s_%ld%s", dir, sep, stem, (long)TEST_PROCESS_ID(), ext ? ext : "");
+    const char *sep =
+        (dir_len > 0 && (dir[dir_len - 1] == '/' || dir[dir_len - 1] == '\\')) ? "" : "/";
+    snprintf(
+        out, out_size, "%s%s%s_%ld%s", dir, sep, stem, (long)TEST_PROCESS_ID(), ext ? ext : "");
     out[out_size - 1] = '\0';
 }
 

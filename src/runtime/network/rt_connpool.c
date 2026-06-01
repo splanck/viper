@@ -25,8 +25,8 @@
 #include "rt_string.h"
 
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -375,8 +375,8 @@ void rt_connpool_release(void *obj, void *conn) {
         const char *host_str = rt_string_cstr(h);
         size_t host_len = connpool_host_len_or_zero(h);
         bool valid_key = host_str && host_len > 0 &&
-                         !connpool_has_embedded_nul(host_str, host_len) && p >= 1 &&
-                         p <= 65535 && make_key(host_str, (int)p, key, sizeof(key));
+                         !connpool_has_embedded_nul(host_str, host_len) && p >= 1 && p <= 65535 &&
+                         make_key(host_str, (int)p, key, sizeof(key));
         if (valid_key && track_connection(pool, conn, key, false, time(NULL))) {
             rt_string_unref(h);
             POOL_MUTEX_UNLOCK(&pool->lock);

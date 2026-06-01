@@ -767,9 +767,9 @@ static void test_model3d_adapts_gltf_scene_graphs() {
                 "Model3D exposes glTF active and secondary immutable scenes");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 0)), "default") == 0,
                 "Model3D.GetSceneName names the default scene");
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 1)), "SecondaryScene") ==
-                    0,
-                "Model3D.GetSceneName preserves secondary glTF scene names");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 1)), "SecondaryScene") == 0,
+        "Model3D.GetSceneName preserves secondary glTF scene names");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 2)), "") == 0,
                 "Model3D.GetSceneName returns empty for invalid scene indices");
     EXPECT_TRUE(rt_model3d_get_camera_count(model, 0) == 2,
@@ -780,7 +780,8 @@ static void test_model3d_adapts_gltf_scene_graphs() {
                 "Model3D.GetCameraCount returns zero for invalid scene indices");
     void *perspective_camera = rt_model3d_get_camera(model, 0, 0);
     void *ortho_camera = rt_model3d_get_camera(model, 0, 1);
-    EXPECT_TRUE(perspective_camera != nullptr, "Model3D.GetCamera returns glTF perspective cameras");
+    EXPECT_TRUE(perspective_camera != nullptr,
+                "Model3D.GetCamera returns glTF perspective cameras");
     EXPECT_TRUE(ortho_camera != nullptr, "Model3D.GetCamera returns glTF orthographic cameras");
     EXPECT_TRUE(rt_model3d_get_camera(model, 0, 2) == nullptr,
                 "Model3D.GetCamera rejects out-of-range camera indices");
@@ -799,18 +800,12 @@ static void test_model3d_adapts_gltf_scene_graphs() {
     void *perspective_pos = rt_camera3d_get_position(perspective_camera);
     void *perspective_forward = rt_camera3d_get_forward(perspective_camera);
     void *ortho_pos = rt_camera3d_get_position(ortho_camera);
-    EXPECT_NEAR(rt_vec3_x(perspective_pos),
-                1.0,
-                0.001,
-                "glTF camera inherits parent world translation");
-    EXPECT_NEAR(rt_vec3_z(perspective_forward),
-                -1.0,
-                0.001,
-                "glTF camera uses local -Z as world forward");
-    EXPECT_NEAR(rt_vec3_y(ortho_pos),
-                2.0,
-                0.001,
-                "glTF orthographic camera preserves node translation");
+    EXPECT_NEAR(
+        rt_vec3_x(perspective_pos), 1.0, 0.001, "glTF camera inherits parent world translation");
+    EXPECT_NEAR(
+        rt_vec3_z(perspective_forward), -1.0, 0.001, "glTF camera uses local -Z as world forward");
+    EXPECT_NEAR(
+        rt_vec3_y(ortho_pos), 2.0, 0.001, "glTF orthographic camera preserves node translation");
 
     void *parent = rt_model3d_find_node(model, rt_const_cstr("GltfParent"));
     void *child = rt_model3d_find_node(model, rt_const_cstr("GltfChild"));
@@ -841,7 +836,8 @@ static void test_model3d_adapts_gltf_scene_graphs() {
     void *indexed_scene = rt_model3d_instantiate_scene_at(model, 0);
     EXPECT_TRUE(indexed_scene != nullptr, "Model3D.InstantiateSceneAt clones the default scene");
     void *secondary_scene = rt_model3d_instantiate_scene_at(model, 1);
-    EXPECT_TRUE(secondary_scene != nullptr, "Model3D.InstantiateSceneAt clones secondary glTF scenes");
+    EXPECT_TRUE(secondary_scene != nullptr,
+                "Model3D.InstantiateSceneAt clones secondary glTF scenes");
     EXPECT_TRUE(rt_model3d_instantiate_scene_at(model, 2) == nullptr,
                 "Model3D.InstantiateSceneAt rejects invalid scene indices");
     if (!indexed_scene)

@@ -164,7 +164,7 @@ static rt_string render_internal(const char *tmpl,
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-#define TEMPLATE_APPEND_OR_TRAP(expr)                                                             \
+#define TEMPLATE_APPEND_OR_TRAP(expr)                                                              \
     do {                                                                                           \
         if ((expr) != RT_SB_OK) {                                                                  \
             rt_sb_free(&sb);                                                                       \

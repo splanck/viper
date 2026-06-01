@@ -82,13 +82,15 @@ int main() {
     assert(rt_map_get_bool(expand, rt_const_cstr("needsPopulate")) == 1);
 
     void *tree2 = rt_virtual_tree_new();
-    rt_virtual_tree_add_node(tree2, rt_const_cstr(""), rt_const_cstr("root"), rt_const_cstr("Root"));
+    rt_virtual_tree_add_node(
+        tree2, rt_const_cstr(""), rt_const_cstr("root"), rt_const_cstr("Root"));
     rt_virtual_tree_add_node(tree2, rt_const_cstr("root"), rt_const_cstr("a"), rt_const_cstr("A"));
     rt_virtual_tree_add_node(tree2, rt_const_cstr("root"), rt_const_cstr("b"), rt_const_cstr("B"));
     expand = rt_virtual_tree_expand(tree2, rt_const_cstr("root"));
     assert(rt_map_get_bool(expand, rt_const_cstr("expanded")) == 1);
     assert(visible_count(tree2) == 3);
-    rt_virtual_tree_add_node(tree2, rt_const_cstr("b"), rt_const_cstr("a"), rt_const_cstr("A moved"));
+    rt_virtual_tree_add_node(
+        tree2, rt_const_cstr("b"), rt_const_cstr("a"), rt_const_cstr("A moved"));
     assert(visible_count(tree2) == 2);
     expand = rt_virtual_tree_expand(tree2, rt_const_cstr("b"));
     assert(rt_map_get_bool(expand, rt_const_cstr("expanded")) == 1);

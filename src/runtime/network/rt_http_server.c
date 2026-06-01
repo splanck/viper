@@ -1401,7 +1401,7 @@ rt_string rt_server_req_header(void *obj, rt_string name) {
     const char *header_cstr = rt_string_cstr(header);
     int64_t header_len = header ? rt_str_len(header) : 0;
     return header_cstr && header_len >= 0 ? rt_string_from_bytes(header_cstr, (size_t)header_len)
-                       : rt_string_from_bytes("", 0);
+                                          : rt_string_from_bytes("", 0);
 }
 
 /// @brief `ServerReq.Param(name)` — read a captured route parameter.

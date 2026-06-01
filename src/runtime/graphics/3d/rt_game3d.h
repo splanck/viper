@@ -981,11 +981,8 @@ void rt_game3d_world_set_fog(
 /// @brief Apply a render quality preset (RT_GAME3D_QUALITY_*) to the world.
 void rt_game3d_world_set_quality(void *world, int64_t quality);
 /// @brief Bake a NavMesh3D from the world's current Scene3D.
-void *rt_game3d_world_bake_nav_mesh(void *world,
-                                    double agent_radius,
-                                    double agent_height,
-                                    double max_slope,
-                                    double cell_size);
+void *rt_game3d_world_bake_nav_mesh(
+    void *world, double agent_radius, double agent_height, double max_slope, double cell_size);
 /// @brief Bake a tiled NavMesh3D from the world's current Scene3D.
 void *rt_game3d_world_bake_tiled_nav_mesh(void *world,
                                           double tile_size,
@@ -1075,7 +1072,8 @@ double rt_game3d_world_stream_get_cell_traversal_cost(void *stream, int64_t inde
 int64_t rt_game3d_world_stream_get_terrain_tile_count(void *stream);
 /// @brief Get a parsed terrain-tile name, or "" for an invalid index.
 rt_string rt_game3d_world_stream_get_terrain_tile_name(void *stream, int64_t index);
-/// @brief Get a parsed terrain-tile heightmap sidecar path, or "" for an invalid index/missing path.
+/// @brief Get a parsed terrain-tile heightmap sidecar path, or "" for an invalid index/missing
+/// path.
 rt_string rt_game3d_world_stream_get_terrain_tile_heightmap(void *stream, int64_t index);
 /// @brief Get a parsed terrain-tile center, or NULL for an invalid index.
 void *rt_game3d_world_stream_get_terrain_tile_center(void *stream, int64_t index);

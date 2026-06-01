@@ -1733,12 +1733,12 @@ if (EXISTS "${GAME3D_OPENWORLD_SLICE_PROBE}")
 
     add_test(NAME g3d_openworld_slice_perf_harness
             COMMAND "${CMAKE_COMMAND}"
-                    -D "VIPER_EXE=$<TARGET_FILE:viper>"
-                    -D "WORKING_DIR=${GAME3D_OPENWORLD_SLICE_DIR}"
-                    -D "SCRIPT=perf_probe.zia"
-                    -D "BACKEND=software"
-                    -D "NAME=openworld_slice"
-                    -P "${CMAKE_SOURCE_DIR}/src/tests/tools/Graphics3DPerfHarness.cmake")
+            -D "VIPER_EXE=$<TARGET_FILE:viper>"
+            -D "WORKING_DIR=${GAME3D_OPENWORLD_SLICE_DIR}"
+            -D "SCRIPT=perf_probe.zia"
+            -D "BACKEND=software"
+            -D "NAME=openworld_slice"
+            -P "${CMAKE_SOURCE_DIR}/src/tests/tools/Graphics3DPerfHarness.cmake")
     set_tests_properties(g3d_openworld_slice_perf_harness PROPERTIES
             PASS_REGULAR_EXPRESSION "HARNESS: name=openworld_slice"
             LABELS "runtime;graphics3d;zia;requires_display;perf"

@@ -70,7 +70,8 @@ typedef struct {
     int32_t neighbors[3]; /* adjacent tri per edge, -1 = boundary */
     float centroid[3];
     float normal[3];
-    int8_t blocked; /* 1 = carved out by a dynamic obstacle; kept in the array but skipped by every query */
+    int8_t blocked;  /* 1 = carved out by a dynamic obstacle; kept in the array but skipped by every
+                        query */
     int32_t area_id; /* 0 = default, >0 indexes nm->area_names[id-1] */
     float traversal_cost; /* >=1 multiplier used by A* */
 } nav_triangle_t;
@@ -83,7 +84,7 @@ typedef struct {
     int8_t bidirectional;
     int64_t state_flags;
     float traversal_cost; /* >=1 multiplier over endpoint distance */
-    rt_string kind; /* optional authored traversal kind/state name */
+    rt_string kind;       /* optional authored traversal kind/state name */
 } nav_offmesh_link_t;
 
 typedef struct {
@@ -111,7 +112,7 @@ typedef struct {
     double last_path_cost;
     double agent_radius;
     double agent_height;
-    double max_slope; /* degrees */
+    double max_slope;              /* degrees */
     int8_t skip_portal_width_gate; /* voxel bake enforces clearance via erosion, not portal width */
     /* >0 => tiled bake: RebuildTile / tiled AddObstacle re-flag one tile's triangles in place
      * (O(tile), no adjacency/grid rebuild). 0 => non-tiled: obstacle edits whole-mesh refilter.
@@ -139,16 +140,10 @@ typedef struct {
 
 static void navmesh3d_refresh_offmesh_links(rt_navmesh3d *nm);
 static int point_in_tri_xz(float px, float pz, const float *v0, const float *v1, const float *v2);
-static void navmesh3d_voxel_emit_tri(rt_navmesh3d *nm,
-                                     int32_t a,
-                                     int32_t b,
-                                     int32_t c,
-                                     int8_t blocked);
-static void *navmesh3d_voxel_bake(rt_mesh3d *src,
-                                  double agent_radius,
-                                  double agent_height,
-                                  double max_slope,
-                                  double cell_size);
+static void navmesh3d_voxel_emit_tri(
+    rt_navmesh3d *nm, int32_t a, int32_t b, int32_t c, int8_t blocked);
+static void *navmesh3d_voxel_bake(
+    rt_mesh3d *src, double agent_radius, double agent_height, double max_slope, double cell_size);
 
 /// @brief GC finalizer for NavMesh3D. Frees the baked vertex and triangle arrays
 /// (heap-allocated during `Build`) and nulls the slots so a stale handle would crash
@@ -221,7 +216,8 @@ static double navmesh3d_sanitize_slope(double degrees) {
 
 /// @brief Whether the shared edge is wide enough for the configured agent radius.
 static int navmesh3d_portal_allows_agent(const rt_navmesh3d *nm, int32_t va, int32_t vb) {
-    if (!nm || !nm->vertices || va < 0 || vb < 0 || va >= nm->vertex_count || vb >= nm->vertex_count)
+    if (!nm || !nm->vertices || va < 0 || vb < 0 || va >= nm->vertex_count ||
+        vb >= nm->vertex_count)
         return 0;
     /* Voxel-baked navmeshes already eroded the walkable set by the agent radius, so every surviving
      * grid edge is agent-safe; gating those (cell_size-wide) portals by 2*radius would fragment the
@@ -249,36 +245,24 @@ static float navmesh3d_sanitize_traversal_cost(double cost) {
 /// @brief Return true when point (x,z) lies inside an axis-aligned XZ rectangle.
 static int navmesh3d_point_in_rect_xz(float x, float z, const float *min, const float *max) {
     const float eps = 1e-5f;
-    return x >= min[0] - eps && x <= max[0] + eps && z >= min[2] - eps &&
-           z <= max[2] + eps;
+    return x >= min[0] - eps && x <= max[0] + eps && z >= min[2] - eps && z <= max[2] + eps;
 }
 
 static float navmesh3d_orient_xz(float ax, float az, float bx, float bz, float cx, float cz) {
     return (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
 }
 
-static int navmesh3d_on_segment_xz(float ax,
-                                   float az,
-                                   float bx,
-                                   float bz,
-                                   float px,
-                                   float pz) {
+static int navmesh3d_on_segment_xz(float ax, float az, float bx, float bz, float px, float pz) {
     const float eps = 1e-5f;
     if (fabsf(navmesh3d_orient_xz(ax, az, bx, bz, px, pz)) > eps)
         return 0;
-    return px >= fminf(ax, bx) - eps && px <= fmaxf(ax, bx) + eps &&
-           pz >= fminf(az, bz) - eps && pz <= fmaxf(az, bz) + eps;
+    return px >= fminf(ax, bx) - eps && px <= fmaxf(ax, bx) + eps && pz >= fminf(az, bz) - eps &&
+           pz <= fmaxf(az, bz) + eps;
 }
 
 /// @brief Closed segment intersection in the XZ plane.
-static int navmesh3d_segments_intersect_xz(float ax,
-                                           float az,
-                                           float bx,
-                                           float bz,
-                                           float cx,
-                                           float cz,
-                                           float dx,
-                                           float dz) {
+static int navmesh3d_segments_intersect_xz(
+    float ax, float az, float bx, float bz, float cx, float cz, float dx, float dz) {
     float o1 = navmesh3d_orient_xz(ax, az, bx, bz, cx, cz);
     float o2 = navmesh3d_orient_xz(ax, az, bx, bz, dx, dz);
     float o3 = navmesh3d_orient_xz(cx, cz, dx, dz, ax, az);
@@ -318,8 +302,8 @@ static int navmesh3d_triangle_overlaps_bounds(const rt_navmesh3d *nm,
         fmaxf(p0[1], fmaxf(p1[1], p2[1])),
         fmaxf(p0[2], fmaxf(p1[2], p2[2])),
     };
-    if (tri_max[0] < min[0] || tri_min[0] > max[0] || tri_max[1] < min[1] ||
-        tri_min[1] > max[1] || tri_max[2] < min[2] || tri_min[2] > max[2])
+    if (tri_max[0] < min[0] || tri_min[0] > max[0] || tri_max[1] < min[1] || tri_min[1] > max[1] ||
+        tri_max[2] < min[2] || tri_min[2] > max[2])
         return 0;
 
     if (navmesh3d_point_in_rect_xz(p0[0], p0[2], min, max) ||
@@ -331,10 +315,8 @@ static int navmesh3d_triangle_overlaps_bounds(const rt_navmesh3d *nm,
     float r1[2] = {max[0], min[2]};
     float r2[2] = {max[0], max[2]};
     float r3[2] = {min[0], max[2]};
-    if (point_in_tri_xz(r0[0], r0[1], p0, p1, p2) ||
-        point_in_tri_xz(r1[0], r1[1], p0, p1, p2) ||
-        point_in_tri_xz(r2[0], r2[1], p0, p1, p2) ||
-        point_in_tri_xz(r3[0], r3[1], p0, p1, p2))
+    if (point_in_tri_xz(r0[0], r0[1], p0, p1, p2) || point_in_tri_xz(r1[0], r1[1], p0, p1, p2) ||
+        point_in_tri_xz(r2[0], r2[1], p0, p1, p2) || point_in_tri_xz(r3[0], r3[1], p0, p1, p2))
         return 1;
 
     const float *tv[3] = {p0, p1, p2};
@@ -646,8 +628,7 @@ static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
         tri.neighbors[0] = tri.neighbors[1] = tri.neighbors[2] = -1;
         /* Keep unwalkable/source-carved and obstacle-carved triangles in the set but flag them
          * blocked, so a per-tile rebuild can flip flags/geometry without recompacting arrays. */
-        tri.blocked =
-            (tri.blocked || navmesh3d_triangle_blocked_by_obstacle(nm, &tri)) ? 1 : 0;
+        tri.blocked = (tri.blocked || navmesh3d_triangle_blocked_by_obstacle(nm, &tri)) ? 1 : 0;
         tri.traversal_cost = navmesh3d_sanitize_traversal_cost((double)tri.traversal_cost);
         nm->triangles[nm->triangle_count++] = tri;
     }
@@ -665,8 +646,8 @@ static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
 ///          the query-grid minimum (the mesh's min XZ). Floor keeps negative coordinates on the
 ///          correct side of the origin. Returns 0 (outputs untouched) when the mesh is not tiled or
 ///          has no spatial grid yet.
-static int navmesh3d_tile_of_point(const rt_navmesh3d *nm, double px, double pz, int64_t *out_tx,
-                                   int64_t *out_tz) {
+static int navmesh3d_tile_of_point(
+    const rt_navmesh3d *nm, double px, double pz, int64_t *out_tx, int64_t *out_tz) {
     if (!nm || nm->tile_size <= 0.0 || nm->qgrid_nx <= 0)
         return 0;
     double inv = 1.0 / nm->tile_size;
@@ -698,10 +679,10 @@ static int32_t navmesh3d_reflag_tile(rt_navmesh3d *nm, int64_t tile_x, int64_t t
         double cz = (double)t->centroid[2];
         if (cx < x0 || cx >= x1 || cz < z0 || cz >= z1)
             continue;
-        int8_t source_blocked =
-            (nm->source_triangles && i < nm->source_triangle_count && nm->source_triangles[i].blocked)
-                ? 1
-                : 0;
+        int8_t source_blocked = (nm->source_triangles && i < nm->source_triangle_count &&
+                                 nm->source_triangles[i].blocked)
+                                    ? 1
+                                    : 0;
         t->blocked = (source_blocked || navmesh3d_triangle_blocked_by_obstacle(nm, t)) ? 1 : 0;
         touched++;
     }
@@ -709,7 +690,9 @@ static int32_t navmesh3d_reflag_tile(rt_navmesh3d *nm, int64_t tile_x, int64_t t
 }
 
 /// @brief Re-evaluate dynamic obstacle blocking for all tiles overlapped by an AABB.
-static void navmesh3d_reflag_obstacle_tiles(rt_navmesh3d *nm, const float *omin, const float *omax) {
+static void navmesh3d_reflag_obstacle_tiles(rt_navmesh3d *nm,
+                                            const float *omin,
+                                            const float *omax) {
     if (!nm || !omin || !omax || nm->tile_size <= 0.0 || nm->qgrid_nx <= 0)
         return;
     int64_t tx0 = 0, tz0 = 0, tx1 = 0, tz1 = 0;
@@ -796,8 +779,7 @@ static void navmesh3d_voxel_refresh_cell(rt_navmesh3d *nm, int32_t cx, int32_t c
     if (a < 0 || b < 0 || c < 0 || d < 0)
         return;
     size_t cell = navmesh3d_voxel_cell_index(nm, cx, cz);
-    int8_t source_blocked =
-        (cell == SIZE_MAX || !nm->voxel_cell_walkable[cell]) ? 1 : 0;
+    int8_t source_blocked = (cell == SIZE_MAX || !nm->voxel_cell_walkable[cell]) ? 1 : 0;
     int32_t old_source_count = nm->source_triangle_count;
     nav_triangle_t updated[2];
     int32_t old_area[2] = {nm->source_triangles[tri_start].area_id,
@@ -820,8 +802,7 @@ static void navmesh3d_voxel_refresh_cell(rt_navmesh3d *nm, int32_t cx, int32_t c
         tri.neighbors[1] = nm->triangles[tri_start + i].neighbors[1];
         tri.neighbors[2] = nm->triangles[tri_start + i].neighbors[2];
         nm->source_triangles[tri_start + i] = updated[i];
-        tri.blocked =
-            (source_blocked || navmesh3d_triangle_blocked_by_obstacle(nm, &tri)) ? 1 : 0;
+        tri.blocked = (source_blocked || navmesh3d_triangle_blocked_by_obstacle(nm, &tri)) ? 1 : 0;
         nm->triangles[tri_start + i] = tri;
     }
 }
@@ -840,14 +821,14 @@ static int navmesh3d_voxel_tile_cell_range(const rt_navmesh3d *nm,
     double x1 = x0 + nm->tile_size;
     double z0 = nm->qgrid_min_z + (double)tile_z * nm->tile_size;
     double z1 = z0 + nm->tile_size;
-    int32_t cx0 = (int32_t)ceil((x0 - nm->voxel_min_x - nm->voxel_cell_size * 0.5) /
-                                nm->voxel_cell_size);
-    int32_t cx1 = (int32_t)floor((x1 - nm->voxel_min_x - nm->voxel_cell_size * 0.5) /
-                                 nm->voxel_cell_size);
-    int32_t cz0 = (int32_t)ceil((z0 - nm->voxel_min_z - nm->voxel_cell_size * 0.5) /
-                                nm->voxel_cell_size);
-    int32_t cz1 = (int32_t)floor((z1 - nm->voxel_min_z - nm->voxel_cell_size * 0.5) /
-                                 nm->voxel_cell_size);
+    int32_t cx0 =
+        (int32_t)ceil((x0 - nm->voxel_min_x - nm->voxel_cell_size * 0.5) / nm->voxel_cell_size);
+    int32_t cx1 =
+        (int32_t)floor((x1 - nm->voxel_min_x - nm->voxel_cell_size * 0.5) / nm->voxel_cell_size);
+    int32_t cz0 =
+        (int32_t)ceil((z0 - nm->voxel_min_z - nm->voxel_cell_size * 0.5) / nm->voxel_cell_size);
+    int32_t cz1 =
+        (int32_t)floor((z1 - nm->voxel_min_z - nm->voxel_cell_size * 0.5) / nm->voxel_cell_size);
     if (cx0 < 0)
         cx0 = 0;
     if (cz0 < 0)
@@ -1011,8 +992,7 @@ static void *navmesh3d_build_scene_source_mesh(void *scene_obj) {
                     return NULL;
                 }
                 next_capacity = stack_capacity * 2;
-                grown =
-                    (rt_scene_node3d **)realloc(stack, (size_t)next_capacity * sizeof(*stack));
+                grown = (rt_scene_node3d **)realloc(stack, (size_t)next_capacity * sizeof(*stack));
                 if (!grown) {
                     free(stack);
                     navmesh3d_release_local(mesh);
@@ -1150,11 +1130,8 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
 /// rasterized into a `cell_size` heightfield grid, eroded by the agent radius, and re-emitted as a
 /// shared-corner grid mesh. Unlike `Build`, the result is decoupled from the input triangle density
 /// and honors the agent radius, which is what `Scene3D`/`World3D` auto-bake expects.
-void *rt_navmesh3d_bake(void *scene,
-                        double agent_radius,
-                        double agent_height,
-                        double max_slope,
-                        double cell_size) {
+void *rt_navmesh3d_bake(
+    void *scene, double agent_radius, double agent_height, double max_slope, double cell_size) {
     void *source_mesh = navmesh3d_build_scene_source_mesh(scene);
     rt_navmesh3d *nm;
     if (!source_mesh)
@@ -1265,11 +1242,8 @@ static int32_t navmesh3d_voxel_corner_vertex(rt_navmesh3d *nm,
 ///   navmesh source-triangle set, computing an up-facing face normal and centroid. Winding does
 ///   not matter to the downstream point-in-triangle / A* queries; the normal is forced to +Y so the
 ///   slope filter retains the surface.
-static void navmesh3d_voxel_emit_tri(rt_navmesh3d *nm,
-                                     int32_t a,
-                                     int32_t b,
-                                     int32_t c,
-                                     int8_t blocked) {
+static void navmesh3d_voxel_emit_tri(
+    rt_navmesh3d *nm, int32_t a, int32_t b, int32_t c, int8_t blocked) {
     const float *p0 = nm->vertices[a].position;
     const float *p1 = nm->vertices[b].position;
     const float *p2 = nm->vertices[c].position;
@@ -1323,11 +1297,131 @@ static void navmesh3d_voxel_emit_tri(rt_navmesh3d *nm,
 ///   density, and corridors honor the agent radius.
 /// @return a NavMesh3D handle, or NULL on degenerate input / no walkable surface / allocation
 ///   failure.
-static void *navmesh3d_voxel_bake(rt_mesh3d *src,
-                                  double agent_radius,
-                                  double agent_height,
-                                  double max_slope,
-                                  double cell_size) {
+/// @brief Rasterize slope-walkable source triangles into the voxel grid, keeping the highest
+///        walkable surface height per cell. Fills @p cell_h / @p cell_walk (caller-allocated).
+static void navmesh3d_voxel_rasterize(rt_mesh3d *src,
+                                      double min_x,
+                                      double min_z,
+                                      double cell_size,
+                                      int32_t nx,
+                                      int32_t nz,
+                                      double walkable_cos,
+                                      float *cell_h,
+                                      uint8_t *cell_walk) {
+    for (uint32_t t = 0; t + 2 < src->index_count; t += 3) {
+        uint32_t i0 = src->indices[t], i1 = src->indices[t + 1], i2 = src->indices[t + 2];
+        if (i0 >= src->vertex_count || i1 >= src->vertex_count || i2 >= src->vertex_count)
+            continue;
+        const float *p0 = src->vertices[i0].pos;
+        const float *p1 = src->vertices[i1].pos;
+        const float *p2 = src->vertices[i2].pos;
+        float e1x = p1[0] - p0[0], e1y = p1[1] - p0[1], e1z = p1[2] - p0[2];
+        float e2x = p2[0] - p0[0], e2y = p2[1] - p0[1], e2z = p2[2] - p0[2];
+        float fnx = e1y * e2z - e1z * e2y;
+        float fny = e1z * e2x - e1x * e2z;
+        float fnz = e1x * e2y - e1y * e2x;
+        float flen = sqrtf(fnx * fnx + fny * fny + fnz * fnz);
+        if (flen < 1e-8f)
+            continue;
+        if (fabsf(fny / flen) < (float)walkable_cos)
+            continue; /* face too steep to walk */
+        float tminx = fminf(p0[0], fminf(p1[0], p2[0]));
+        float tmaxx = fmaxf(p0[0], fmaxf(p1[0], p2[0]));
+        float tminz = fminf(p0[2], fminf(p1[2], p2[2]));
+        float tmaxz = fmaxf(p0[2], fmaxf(p1[2], p2[2]));
+        int cx0 = (int)((tminx - min_x) / cell_size);
+        int cx1 = (int)((tmaxx - min_x) / cell_size);
+        int cz0 = (int)((tminz - min_z) / cell_size);
+        int cz1 = (int)((tmaxz - min_z) / cell_size);
+        if (cx0 < 0)
+            cx0 = 0;
+        if (cz0 < 0)
+            cz0 = 0;
+        if (cx1 >= nx)
+            cx1 = nx - 1;
+        if (cz1 >= nz)
+            cz1 = nz - 1;
+        for (int cz = cz0; cz <= cz1; cz++) {
+            for (int cx = cx0; cx <= cx1; cx++) {
+                float px = (float)(min_x + ((double)cx + 0.5) * cell_size);
+                float pz = (float)(min_z + ((double)cz + 0.5) * cell_size);
+                if (!point_in_tri_xz(px, pz, p0, p1, p2))
+                    continue;
+                float y = triangle_y_at_xz(px, pz, p0, p1, p2);
+                size_t idx = (size_t)cz * (size_t)nx + (size_t)cx;
+                if (!cell_walk[idx] || y > cell_h[idx]) {
+                    cell_h[idx] = y;
+                    cell_walk[idx] = 1;
+                }
+            }
+        }
+    }
+}
+
+/// @brief Erode the walkable set by @p erode_r cells; grid edges count as boundaries so the
+///        navmesh insets by the agent radius. @return new walkable buffer (caller owns), or NULL.
+static uint8_t *navmesh3d_voxel_erode(const uint8_t *cell_walk, int32_t nx, int32_t nz, int erode_r) {
+    size_t cell_count = (size_t)nx * (size_t)nz;
+    uint8_t *eroded = (uint8_t *)malloc(cell_count);
+    if (!eroded)
+        return NULL;
+    memcpy(eroded, cell_walk, cell_count);
+    for (int32_t cz = 0; cz < nz; cz++) {
+        for (int32_t cx = 0; cx < nx; cx++) {
+            size_t idx = (size_t)cz * (size_t)nx + (size_t)cx;
+            if (!cell_walk[idx])
+                continue;
+            int blocked = 0;
+            for (int dz = -erode_r; dz <= erode_r && !blocked; dz++) {
+                for (int dx = -erode_r; dx <= erode_r; dx++) {
+                    int sx = cx + dx, sz = cz + dz;
+                    if (sx < 0 || sz < 0 || sx >= nx || sz >= nz) {
+                        blocked = 1;
+                        break;
+                    }
+                    if (!cell_walk[(size_t)sz * (size_t)nx + (size_t)sx]) {
+                        blocked = 1;
+                        break;
+                    }
+                }
+            }
+            if (blocked)
+                eroded[idx] = 0;
+        }
+    }
+    return eroded;
+}
+
+/// @brief Emit two triangles per grid cell into @p nm, sharing corner vertices via @p corner_vid.
+static void navmesh3d_voxel_emit_grid_mesh(rt_navmesh3d *nm,
+                                           int32_t *corner_vid,
+                                           float *cell_h,
+                                           uint8_t *cell_walk,
+                                           int32_t nx,
+                                           int32_t nz,
+                                           double min_x,
+                                           double min_z,
+                                           double cell_size) {
+    for (int32_t cz = 0; cz < nz; cz++) {
+        for (int32_t cx = 0; cx < nx; cx++) {
+            size_t cell_idx = (size_t)cz * (size_t)nx + (size_t)cx;
+            int8_t blocked = cell_walk[cell_idx] ? 0 : 1;
+            int32_t a = navmesh3d_voxel_corner_vertex(
+                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx, cz);
+            int32_t b = navmesh3d_voxel_corner_vertex(
+                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx + 1, cz);
+            int32_t c = navmesh3d_voxel_corner_vertex(
+                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx + 1, cz + 1);
+            int32_t d = navmesh3d_voxel_corner_vertex(
+                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx, cz + 1);
+            navmesh3d_voxel_emit_tri(nm, a, c, b, blocked);
+            navmesh3d_voxel_emit_tri(nm, a, d, c, blocked);
+        }
+    }
+}
+
+static void *navmesh3d_voxel_bake(
+    rt_mesh3d *src, double agent_radius, double agent_height, double max_slope, double cell_size) {
     if (!src || src->vertex_count == 0 || src->index_count < 3)
         return NULL;
 
@@ -1386,88 +1480,17 @@ static void *navmesh3d_voxel_bake(rt_mesh3d *src,
     }
 
     /* 3. Rasterize slope-walkable surfaces into the grid, keeping the highest surface per cell. */
-    for (uint32_t t = 0; t + 2 < src->index_count; t += 3) {
-        uint32_t i0 = src->indices[t], i1 = src->indices[t + 1], i2 = src->indices[t + 2];
-        if (i0 >= src->vertex_count || i1 >= src->vertex_count || i2 >= src->vertex_count)
-            continue;
-        const float *p0 = src->vertices[i0].pos;
-        const float *p1 = src->vertices[i1].pos;
-        const float *p2 = src->vertices[i2].pos;
-        float e1x = p1[0] - p0[0], e1y = p1[1] - p0[1], e1z = p1[2] - p0[2];
-        float e2x = p2[0] - p0[0], e2y = p2[1] - p0[1], e2z = p2[2] - p0[2];
-        float fnx = e1y * e2z - e1z * e2y;
-        float fny = e1z * e2x - e1x * e2z;
-        float fnz = e1x * e2y - e1y * e2x;
-        float flen = sqrtf(fnx * fnx + fny * fny + fnz * fnz);
-        if (flen < 1e-8f)
-            continue;
-        if (fabsf(fny / flen) < (float)walkable_cos)
-            continue; /* face too steep to walk */
-        float tminx = fminf(p0[0], fminf(p1[0], p2[0]));
-        float tmaxx = fmaxf(p0[0], fmaxf(p1[0], p2[0]));
-        float tminz = fminf(p0[2], fminf(p1[2], p2[2]));
-        float tmaxz = fmaxf(p0[2], fmaxf(p1[2], p2[2]));
-        int cx0 = (int)((tminx - min_x) / cell_size);
-        int cx1 = (int)((tmaxx - min_x) / cell_size);
-        int cz0 = (int)((tminz - min_z) / cell_size);
-        int cz1 = (int)((tmaxz - min_z) / cell_size);
-        if (cx0 < 0)
-            cx0 = 0;
-        if (cz0 < 0)
-            cz0 = 0;
-        if (cx1 >= nx)
-            cx1 = nx - 1;
-        if (cz1 >= nz)
-            cz1 = nz - 1;
-        for (int cz = cz0; cz <= cz1; cz++) {
-            for (int cx = cx0; cx <= cx1; cx++) {
-                float px = (float)(min_x + ((double)cx + 0.5) * cell_size);
-                float pz = (float)(min_z + ((double)cz + 0.5) * cell_size);
-                if (!point_in_tri_xz(px, pz, p0, p1, p2))
-                    continue;
-                float y = triangle_y_at_xz(px, pz, p0, p1, p2);
-                size_t idx = (size_t)cz * (size_t)nx + (size_t)cx;
-                if (!cell_walk[idx] || y > cell_h[idx]) {
-                    cell_h[idx] = y;
-                    cell_walk[idx] = 1;
-                }
-            }
-        }
-    }
+    navmesh3d_voxel_rasterize(src, min_x, min_z, cell_size, nx, nz, walkable_cos, cell_h, cell_walk);
 
     /* 4. Erode the walkable set by the agent radius; the grid edge counts as a boundary so the
      *    navmesh is inset by the radius and corridors narrower than 2*radius drop out. */
     int erode_r = (int)ceil(radius / cell_size);
     if (erode_r > 0) {
-        uint8_t *eroded = (uint8_t *)malloc(cell_count);
+        uint8_t *eroded = navmesh3d_voxel_erode(cell_walk, nx, nz, erode_r);
         if (!eroded) {
             free(cell_h);
             free(cell_walk);
             return NULL;
-        }
-        memcpy(eroded, cell_walk, cell_count);
-        for (int32_t cz = 0; cz < nz; cz++) {
-            for (int32_t cx = 0; cx < nx; cx++) {
-                size_t idx = (size_t)cz * (size_t)nx + (size_t)cx;
-                if (!cell_walk[idx])
-                    continue;
-                int blocked = 0;
-                for (int dz = -erode_r; dz <= erode_r && !blocked; dz++) {
-                    for (int dx = -erode_r; dx <= erode_r; dx++) {
-                        int sx = cx + dx, sz = cz + dz;
-                        if (sx < 0 || sz < 0 || sx >= nx || sz >= nz) {
-                            blocked = 1;
-                            break;
-                        }
-                        if (!cell_walk[(size_t)sz * (size_t)nx + (size_t)sx]) {
-                            blocked = 1;
-                            break;
-                        }
-                    }
-                }
-                if (blocked)
-                    eroded[idx] = 0;
-            }
         }
         free(cell_walk);
         cell_walk = eroded;
@@ -1536,22 +1559,7 @@ static void *navmesh3d_voxel_bake(rt_mesh3d *src,
     nm->source_triangle_count = 0;
     nm->triangle_count = 0;
 
-    for (int32_t cz = 0; cz < nz; cz++) {
-        for (int32_t cx = 0; cx < nx; cx++) {
-            size_t cell_idx = (size_t)cz * (size_t)nx + (size_t)cx;
-            int8_t blocked = cell_walk[cell_idx] ? 0 : 1;
-            int32_t a = navmesh3d_voxel_corner_vertex(
-                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx, cz);
-            int32_t b = navmesh3d_voxel_corner_vertex(
-                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx + 1, cz);
-            int32_t c = navmesh3d_voxel_corner_vertex(
-                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx + 1, cz + 1);
-            int32_t d = navmesh3d_voxel_corner_vertex(
-                nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size, cx, cz + 1);
-            navmesh3d_voxel_emit_tri(nm, a, c, b, blocked);
-            navmesh3d_voxel_emit_tri(nm, a, d, c, blocked);
-        }
-    }
+    navmesh3d_voxel_emit_grid_mesh(nm, corner_vid, cell_h, cell_walk, nx, nz, min_x, min_z, cell_size);
     memcpy(nm->voxel_corner_vertices, corner_vid, corner_count * sizeof(int32_t));
 
     free(cell_h);
@@ -1731,7 +1739,8 @@ int8_t rt_navmesh3d_check_query_grid_parity(void *obj) {
         }
         mid_y = 0.5f * (min_y + max_y);
     }
-    /* Sample a lattice spanning the bounds (slightly padded so out-of-bounds points are covered). */
+    /* Sample a lattice spanning the bounds (slightly padded so out-of-bounds points are covered).
+     */
     for (int iz = 0; iz <= N; iz++) {
         for (int ix = 0; ix <= N; ix++) {
             float fx = (float)ix / (float)N;
@@ -1869,6 +1878,210 @@ static float navmesh3d_offmesh_cost(const nav_offmesh_link_t *link) {
 /// @brief Internal: compute the path from `from_v` to `to_v` and copy the waypoints into a
 /// freshly malloc'd `*out_points_xyz` (interleaved x,y,z). Returns the point count, or 0 on
 /// failure. Caller frees `*out_points_xyz`.
+/// @brief A* search over the navmesh triangle graph (edges + off-mesh links).
+/// @details Caller owns the @p g_cost / @p parent / @p closed / @p heap buffers; this fills
+///          @p parent and @p g_cost. @return 1 if @p goal was reached, 0 otherwise.
+static int navmesh3d_astar_search(rt_navmesh3d *nm,
+                                  int32_t start,
+                                  int32_t goal,
+                                  float *g_cost,
+                                  int32_t *parent,
+                                  int8_t *closed,
+                                  heap_entry_t *heap,
+                                  int32_t heap_cap) {
+    int32_t tc = nm->triangle_count;
+    int32_t heap_size = 0;
+    g_cost[start] = 0;
+    heap_push(heap, &heap_size, heap_cap, start, centroid_dist(nm, start, goal));
+    while (heap_size > 0) {
+        int32_t cur = heap_pop(heap, &heap_size);
+        if (cur == goal)
+            return 1;
+        if (closed[cur])
+            continue;
+        closed[cur] = 1;
+
+        for (int e = 0; e < 3; e++) {
+            int32_t next = nm->triangles[cur].neighbors[e];
+            if (next < 0 || closed[next] || nm->triangles[next].blocked)
+                continue;
+
+            float new_g = g_cost[cur] + navmesh3d_edge_cost(nm, cur, next);
+            if (new_g < g_cost[next]) {
+                g_cost[next] = new_g;
+                parent[next] = cur;
+                heap_push(heap, &heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
+            }
+        }
+
+        for (int32_t li = 0; li < nm->offmesh_link_count; li++) {
+            const nav_offmesh_link_t *link = &nm->offmesh_links[li];
+            int32_t next = -1;
+            if (link->from_tri == cur)
+                next = link->to_tri;
+            else if (link->bidirectional && link->to_tri == cur)
+                next = link->from_tri;
+            if (next < 0 || next >= tc || closed[next] || nm->triangles[next].blocked)
+                continue;
+
+            float new_g = g_cost[cur] + navmesh3d_offmesh_cost(link);
+            if (new_g < g_cost[next]) {
+                g_cost[next] = new_g;
+                parent[next] = cur;
+                heap_push(heap, &heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
+            }
+        }
+    }
+    return 0;
+}
+
+/// @brief Emit the funnel waypoint(s) for one triangle transition @p ti -> @p tn, advancing @p apex.
+/// @details Prefers the shared-edge portal midpoint; falls back to an off-mesh link's endpoints,
+///          then to the destination triangle's centroid. Appends into @p points / @p point_count.
+static void navmesh3d_pull_segment(rt_navmesh3d *nm,
+                                   int32_t ti,
+                                   int32_t tn,
+                                   float apex[3],
+                                   double *points,
+                                   int64_t *point_count) {
+    /* Find the shared edge (portal) between consecutive triangles */
+    nav_triangle_t *ta = &nm->triangles[ti];
+    for (int e = 0; e < 3; e++) {
+        if (ta->neighbors[e] == tn) {
+            /* Shared edge vertices: v[e] and v[(e+1)%3] */
+            int32_t vi0 = ta->v[e];
+            int32_t vi1 = ta->v[(e + 1) % 3];
+            float *p0 = nm->vertices[vi0].position;
+            float *p1 = nm->vertices[vi1].position;
+            /* Use the midpoint of the portal as a waypoint.
+             * A full funnel algorithm would track left/right boundaries
+             * and only emit waypoints at funnel constrictions. For now,
+             * the midpoint produces much smoother paths than centroids. */
+            float mx = (p0[0] + p1[0]) * 0.5f;
+            float my = (p0[1] + p1[1]) * 0.5f;
+            float mz = (p0[2] + p1[2]) * 0.5f;
+            /* Only add waypoint if it's far enough from the last one
+             * (avoids redundant collinear points) */
+            float dx = mx - apex[0], dy = my - apex[1], dz = mz - apex[2];
+            if (dx * dx + dy * dy + dz * dz > 0.01f) {
+                points[*point_count * 3 + 0] = mx;
+                points[*point_count * 3 + 1] = my;
+                points[*point_count * 3 + 2] = mz;
+                (*point_count)++;
+                apex[0] = mx;
+                apex[1] = my;
+                apex[2] = mz;
+            }
+            return;
+        }
+    }
+    int reverse = 0;
+    const nav_offmesh_link_t *link = navmesh3d_find_offmesh_link(nm, ti, tn, &reverse);
+    if (link) {
+        const float *a = reverse ? link->to : link->from;
+        const float *b = reverse ? link->from : link->to;
+        float dax = a[0] - apex[0];
+        float day = a[1] - apex[1];
+        float daz = a[2] - apex[2];
+        if (dax * dax + day * day + daz * daz > 0.01f) {
+            points[*point_count * 3 + 0] = a[0];
+            points[*point_count * 3 + 1] = a[1];
+            points[*point_count * 3 + 2] = a[2];
+            (*point_count)++;
+        }
+        points[*point_count * 3 + 0] = b[0];
+        points[*point_count * 3 + 1] = b[1];
+        points[*point_count * 3 + 2] = b[2];
+        (*point_count)++;
+        apex[0] = b[0];
+        apex[1] = b[1];
+        apex[2] = b[2];
+    } else {
+        /* Fallback to centroid if shared edge not found */
+        float *cen = nm->triangles[tn].centroid;
+        points[*point_count * 3 + 0] = cen[0];
+        points[*point_count * 3 + 1] = cen[1];
+        points[*point_count * 3 + 2] = cen[2];
+        (*point_count)++;
+        apex[0] = cen[0];
+        apex[1] = cen[1];
+        apex[2] = cen[2];
+    }
+}
+
+/// @brief Reconstruct the smoothed waypoint list from an A* @p parent chain ending at @p goal.
+/// @return Newly malloc'd points buffer (caller owns) with @p out_point_count entries, or NULL on
+///         allocation failure (then @p out_point_count is 0).
+static double *navmesh3d_reconstruct_path(rt_navmesh3d *nm,
+                                          const int32_t *parent,
+                                          int32_t goal,
+                                          float fx,
+                                          float fy,
+                                          float fz,
+                                          double fdx,
+                                          double fdy,
+                                          double fdz,
+                                          double tdx,
+                                          double tdy,
+                                          double tdz,
+                                          int64_t *out_point_count) {
+    int64_t point_count = 0;
+    int32_t count = 0;
+    double *points;
+    int32_t *seq;
+    int32_t idx;
+    int32_t max_points;
+
+    *out_point_count = 0;
+    for (int32_t c = goal; c != -1; c = parent[c])
+        count++;
+
+    seq = (int32_t *)malloc((size_t)count * sizeof(int32_t));
+    if (!seq)
+        return NULL;
+    idx = count - 1;
+    for (int32_t c = goal; c != -1; c = parent[c])
+        seq[idx--] = c;
+
+    if (count > (INT32_MAX - 2) / 3) {
+        free(seq);
+        return NULL;
+    }
+    max_points = count * 3 + 2;
+    points = (double *)malloc((size_t)max_points * 3u * sizeof(double));
+    if (!points) {
+        free(seq);
+        return NULL;
+    }
+    points[point_count * 3 + 0] = fdx;
+    points[point_count * 3 + 1] = fdy;
+    points[point_count * 3 + 2] = fdz;
+    point_count++;
+
+    /* Simple string-pulling: find portals between adjacent triangles and
+     * walk the funnel to produce smooth waypoints. If portal extraction
+     * fails for any edge, fall back to the centroid for that segment. */
+    if (count >= 2) {
+        float apex[3] = {fx, fy, fz};
+        for (int32_t i = 0; i < count - 1; i++)
+            navmesh3d_pull_segment(nm, seq[i], seq[i + 1], apex, points, &point_count);
+    } else if (count == 1) {
+        float *cen = nm->triangles[seq[0]].centroid;
+        points[point_count * 3 + 0] = cen[0];
+        points[point_count * 3 + 1] = cen[1];
+        points[point_count * 3 + 2] = cen[2];
+        point_count++;
+    }
+
+    points[point_count * 3 + 0] = tdx;
+    points[point_count * 3 + 1] = tdy;
+    points[point_count * 3 + 2] = tdz;
+    point_count++;
+    free(seq);
+    *out_point_count = point_count;
+    return points;
+}
+
 int64_t rt_navmesh3d_copy_path_points(void *obj,
                                       void *from_v,
                                       void *to_v,
@@ -1903,7 +2116,8 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
         if (!points)
             return 0;
         double dx = tdx - fdx, dy = tdy - fdy, dz = tdz - fdz;
-        nm->last_path_cost = sqrt(dx * dx + dy * dy + dz * dz) * (double)navmesh3d_tri_cost(nm, start);
+        nm->last_path_cost =
+            sqrt(dx * dx + dy * dy + dz * dz) * (double)navmesh3d_tri_cost(nm, start);
         points[0] = fdx;
         points[1] = fdy;
         points[2] = fdz;
@@ -1945,189 +2159,10 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
     for (int32_t i = 0; i < tc; i++)
         g_cost[i] = FLT_MAX;
 
-    int32_t heap_size = 0;
-
-    g_cost[start] = 0;
-    heap_push(heap, &heap_size, heap_cap, start, centroid_dist(nm, start, goal));
-
-    int found = 0;
-    while (heap_size > 0) {
-        int32_t cur = heap_pop(heap, &heap_size);
-        if (cur == goal) {
-            found = 1;
-            break;
-        }
-        if (closed[cur])
-            continue;
-        closed[cur] = 1;
-
-        for (int e = 0; e < 3; e++) {
-            int32_t next = nm->triangles[cur].neighbors[e];
-            if (next < 0 || closed[next] || nm->triangles[next].blocked)
-                continue;
-
-            float new_g = g_cost[cur] + navmesh3d_edge_cost(nm, cur, next);
-            if (new_g < g_cost[next]) {
-                g_cost[next] = new_g;
-                parent[next] = cur;
-                heap_push(heap, &heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
-            }
-        }
-
-        for (int32_t li = 0; li < nm->offmesh_link_count; li++) {
-            const nav_offmesh_link_t *link = &nm->offmesh_links[li];
-            int32_t next = -1;
-            if (link->from_tri == cur)
-                next = link->to_tri;
-            else if (link->bidirectional && link->to_tri == cur)
-                next = link->from_tri;
-            if (next < 0 || next >= tc || closed[next] || nm->triangles[next].blocked)
-                continue;
-
-            float new_g = g_cost[cur] + navmesh3d_offmesh_cost(link);
-            if (new_g < g_cost[next]) {
-                g_cost[next] = new_g;
-                parent[next] = cur;
-                heap_push(heap, &heap_size, heap_cap, next, new_g + centroid_dist(nm, next, goal));
-            }
-        }
-    }
-
-    if (found) {
+    if (navmesh3d_astar_search(nm, start, goal, g_cost, parent, closed, heap, heap_cap)) {
         nm->last_path_cost = (double)g_cost[goal];
-        /* Reconstruct: collect centroids from goal back to start */
-        int32_t count = 0;
-        for (int32_t c = goal; c != -1; c = parent[c])
-            count++;
-
-        int32_t *seq = (int32_t *)malloc((size_t)count * sizeof(int32_t));
-        if (!seq) {
-            free(g_cost);
-            free(parent);
-            free(closed);
-            free(heap);
-            return 0;
-        }
-        int32_t idx = count - 1;
-        for (int32_t c = goal; c != -1; c = parent[c])
-            seq[idx--] = c;
-
-        if (count > (INT32_MAX - 2) / 3) {
-            free(seq);
-            free(g_cost);
-            free(parent);
-            free(closed);
-            free(heap);
-            return 0;
-        }
-        int32_t max_points = count * 3 + 2;
-        points = (double *)malloc((size_t)max_points * 3u * sizeof(double));
-        if (!points) {
-            free(seq);
-            free(g_cost);
-            free(parent);
-            free(closed);
-            free(heap);
-            return 0;
-        }
-        points[point_count * 3 + 0] = fdx;
-        points[point_count * 3 + 1] = fdy;
-        points[point_count * 3 + 2] = fdz;
-        point_count++;
-
-        /* Simple string-pulling: find portals between adjacent triangles and
-         * walk the funnel to produce smooth waypoints. If portal extraction
-         * fails for any edge, fall back to the centroid for that segment. */
-        if (count >= 2) {
-            float apex[3];
-            apex[0] = fx;
-            apex[1] = fy;
-            apex[2] = fz;
-
-            for (int32_t i = 0; i < count - 1; i++) {
-                int32_t ti = seq[i];
-                int32_t tn = seq[i + 1];
-                /* Find the shared edge (portal) between consecutive triangles */
-                nav_triangle_t *ta = &nm->triangles[ti];
-                int portal_found = 0;
-                for (int e = 0; e < 3; e++) {
-                    if (ta->neighbors[e] == tn) {
-                        /* Shared edge vertices: v[e] and v[(e+1)%3] */
-                        int32_t vi0 = ta->v[e];
-                        int32_t vi1 = ta->v[(e + 1) % 3];
-                        float *p0 = nm->vertices[vi0].position;
-                        float *p1 = nm->vertices[vi1].position;
-                        /* Use the midpoint of the portal as a waypoint.
-                         * A full funnel algorithm would track left/right boundaries
-                         * and only emit waypoints at funnel constrictions. For now,
-                         * the midpoint produces much smoother paths than centroids. */
-                        float mx = (p0[0] + p1[0]) * 0.5f;
-                        float my = (p0[1] + p1[1]) * 0.5f;
-                        float mz = (p0[2] + p1[2]) * 0.5f;
-                        /* Only add waypoint if it's far enough from the last one
-                         * (avoids redundant collinear points) */
-                        float dx = mx - apex[0], dy = my - apex[1], dz = mz - apex[2];
-                        if (dx * dx + dy * dy + dz * dz > 0.01f) {
-                            points[point_count * 3 + 0] = mx;
-                            points[point_count * 3 + 1] = my;
-                            points[point_count * 3 + 2] = mz;
-                            point_count++;
-                            apex[0] = mx;
-                            apex[1] = my;
-                            apex[2] = mz;
-                        }
-                        portal_found = 1;
-                        break;
-                    }
-                }
-                if (!portal_found) {
-                    int reverse = 0;
-                    const nav_offmesh_link_t *link = navmesh3d_find_offmesh_link(nm, ti, tn, &reverse);
-                    if (link) {
-                        const float *a = reverse ? link->to : link->from;
-                        const float *b = reverse ? link->from : link->to;
-                        float dax = a[0] - apex[0];
-                        float day = a[1] - apex[1];
-                        float daz = a[2] - apex[2];
-                        if (dax * dax + day * day + daz * daz > 0.01f) {
-                            points[point_count * 3 + 0] = a[0];
-                            points[point_count * 3 + 1] = a[1];
-                            points[point_count * 3 + 2] = a[2];
-                            point_count++;
-                        }
-                        points[point_count * 3 + 0] = b[0];
-                        points[point_count * 3 + 1] = b[1];
-                        points[point_count * 3 + 2] = b[2];
-                        point_count++;
-                        apex[0] = b[0];
-                        apex[1] = b[1];
-                        apex[2] = b[2];
-                    } else {
-                        /* Fallback to centroid if shared edge not found */
-                        float *cen = nm->triangles[tn].centroid;
-                        points[point_count * 3 + 0] = cen[0];
-                        points[point_count * 3 + 1] = cen[1];
-                        points[point_count * 3 + 2] = cen[2];
-                        point_count++;
-                        apex[0] = cen[0];
-                        apex[1] = cen[1];
-                        apex[2] = cen[2];
-                    }
-                }
-            }
-        } else if (count == 1) {
-            float *cen = nm->triangles[seq[0]].centroid;
-            points[point_count * 3 + 0] = cen[0];
-            points[point_count * 3 + 1] = cen[1];
-            points[point_count * 3 + 2] = cen[2];
-            point_count++;
-        }
-
-        points[point_count * 3 + 0] = tdx;
-        points[point_count * 3 + 1] = tdy;
-        points[point_count * 3 + 2] = tdz;
-        point_count++;
-        free(seq);
+        points = navmesh3d_reconstruct_path(
+            nm, parent, goal, fx, fy, fz, fdx, fdy, fdz, tdx, tdy, tdz, &point_count);
     }
 
     free(g_cost);
@@ -2314,11 +2349,8 @@ int8_t rt_navmesh3d_add_offmesh_link(void *obj, void *from, void *to, int8_t bid
     return 1;
 }
 
-int8_t rt_navmesh3d_set_offmesh_link_metadata(void *obj,
-                                              int64_t index,
-                                              rt_string kind,
-                                              double traversal_cost,
-                                              int64_t state_flags) {
+int8_t rt_navmesh3d_set_offmesh_link_metadata(
+    void *obj, int64_t index, rt_string kind, double traversal_cost, int64_t state_flags) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || index < 0 || index >= nm->offmesh_link_count || !kind || !rt_string_is_handle(kind))
         return 0;
@@ -2496,11 +2528,8 @@ int64_t rt_navmesh3d_get_obstacle_count(void *obj) {
     return nm ? nm->obstacle_count : 0;
 }
 
-int8_t rt_navmesh3d_set_area(void *obj,
-                             void *min_v,
-                             void *max_v,
-                             rt_string area,
-                             double traversal_cost) {
+int8_t rt_navmesh3d_set_area(
+    void *obj, void *min_v, void *max_v, rt_string area, double traversal_cost) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || !nm->source_triangles || !nm->triangles || !area || !rt_string_is_handle(area))
         return 0;
@@ -2628,8 +2657,8 @@ int8_t rt_navmesh3d_test_inject_obstacle(void *obj, void *min_v, void *max_v) {
 
 /// @brief Test-only: map a world XZ position to its tile coords (see navmesh3d_tile_of_point).
 /// Returns 0 if the mesh is not tiled. Not part of the scripting surface.
-int8_t rt_navmesh3d_test_tile_of_point(void *obj, double px, double pz, int64_t *out_tx,
-                                       int64_t *out_tz) {
+int8_t rt_navmesh3d_test_tile_of_point(
+    void *obj, double px, double pz, int64_t *out_tx, int64_t *out_tz) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     return (int8_t)(navmesh3d_tile_of_point(nm, px, pz, out_tx, out_tz) ? 1 : 0);
 }
@@ -2638,11 +2667,8 @@ int8_t rt_navmesh3d_test_tile_of_point(void *obj, double px, double pz, int64_t 
 /// @details This simulates a tile-local geometry source change. A far-tile RebuildTile must leave
 /// the live mesh stale; rebuilding this tile must refresh its geometry/blocking from the retained
 /// source. Not part of the scripting surface.
-int8_t rt_navmesh3d_test_set_tile_source(void *obj,
-                                         int64_t tile_x,
-                                         int64_t tile_z,
-                                         double height,
-                                         int8_t walkable) {
+int8_t rt_navmesh3d_test_set_tile_source(
+    void *obj, int64_t tile_x, int64_t tile_z, double height, int8_t walkable) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     int32_t cx0, cx1, cz0, cz1;
     if (!navmesh3d_voxel_tile_cell_range(nm, tile_x, tile_z, &cx0, &cx1, &cz0, &cz1) ||

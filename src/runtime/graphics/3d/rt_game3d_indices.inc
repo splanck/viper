@@ -59,7 +59,8 @@ static int game3d_world_grow_body_index(rt_game3d_world *world, int32_t need) {
         return 0;
     if (need < 0 || need > INT32_MAX / 2)
         return 0;
-    if (world->body_index_capacity > 0 && world->body_index_count * 2 < world->body_index_capacity &&
+    if (world->body_index_capacity > 0 &&
+        world->body_index_count * 2 < world->body_index_capacity &&
         need * 2 < world->body_index_capacity)
         return 1;
     while (new_cap < need * 2) {
@@ -79,9 +80,8 @@ static int game3d_world_grow_body_index(rt_game3d_world *world, int32_t need) {
     world->body_index_capacity = new_cap;
     world->body_index_count = 0;
     for (int32_t i = 0; i < old_capacity; ++i) {
-        if (old_entries[i].body &&
-            !game3d_world_body_index_insert_no_grow(
-                world, old_entries[i].body, old_entries[i].entity)) {
+        if (old_entries[i].body && !game3d_world_body_index_insert_no_grow(
+                                       world, old_entries[i].body, old_entries[i].entity)) {
             free(new_entries);
             world->body_index_entries = old_entries;
             world->body_index_capacity = old_capacity;
@@ -94,7 +94,7 @@ static int game3d_world_grow_body_index(rt_game3d_world *world, int32_t need) {
 }
 
 /// @brief Remove the entry for physics `body` from the open-addressed body→entity index.
-static void game3d_world_body_index_remove(rt_game3d_world *world, void *body) {
+void game3d_world_body_index_remove(rt_game3d_world *world, void *body) {
     int found = 0;
     int slot;
     if (!world || !body || world->body_index_capacity <= 0)
@@ -120,7 +120,7 @@ static void game3d_world_body_index_remove(rt_game3d_world *world, void *body) {
 }
 
 /// @brief Index `entity` under its physics body for O(1) body→entity lookup.
-static int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity *entity) {
+int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity *entity) {
     if (!world || !entity || !entity->body)
         return 1;
     if (!game3d_world_grow_body_index(world, world->body_index_count + 1))
@@ -179,8 +179,7 @@ static int game3d_world_grow_name_index(rt_game3d_world *world, int32_t need) {
 static void game3d_world_clear_name_index(rt_game3d_world *world) {
     if (!world)
         return;
-    if (world->name_index_capacity > 0 && world->name_index_hashes &&
-        world->name_index_entities) {
+    if (world->name_index_capacity > 0 && world->name_index_hashes && world->name_index_entities) {
         memset(world->name_index_hashes,
                0,
                (size_t)world->name_index_capacity * sizeof(*world->name_index_hashes));
@@ -247,7 +246,7 @@ static void game3d_world_rebuild_name_index(rt_game3d_world *world) {
 
 /// @brief Incrementally add the newest entity to the name index, rebuilding only when growth
 ///   replaced the open-addressing table.
-static int game3d_world_name_index_add_entity(rt_game3d_world *world, rt_game3d_entity *entity) {
+int game3d_world_name_index_add_entity(rt_game3d_world *world, rt_game3d_entity *entity) {
     int32_t old_capacity;
     if (!world || !entity)
         return 1;
@@ -276,7 +275,7 @@ static int game3d_world_name_index_add_entity(rt_game3d_world *world, rt_game3d_
 /// @brief Look up an entity by name via the hash table; returns NULL if not present.
 /// @details Linear-probes from the name's hash slot, comparing full strings on a hash
 ///   match; stops at the first empty slot (open-addressing absence proof).
-static rt_game3d_entity *game3d_world_name_index_find(rt_game3d_world *world, const char *name) {
+rt_game3d_entity *game3d_world_name_index_find(rt_game3d_world *world, const char *name) {
     uint64_t hash;
     int32_t mask;
     if (!world || !world->name_index_valid || !name || !*name || world->name_index_capacity <= 0)

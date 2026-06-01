@@ -42,8 +42,8 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>
 #include <bcrypt.h>
+#include <windows.h>
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif

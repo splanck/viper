@@ -32,11 +32,8 @@ extern "C" {
 ///        given radius/height. @return a navmesh handle, or NULL.
 void *rt_navmesh3d_build(void *mesh, double agent_radius, double agent_height);
 /// @brief Bake a navigation mesh from all Mesh3D nodes in a Scene3D.
-void *rt_navmesh3d_bake(void *scene,
-                        double agent_radius,
-                        double agent_height,
-                        double max_slope,
-                        double cell_size);
+void *rt_navmesh3d_bake(
+    void *scene, double agent_radius, double agent_height, double max_slope, double cell_size);
 /// @brief Bake a scene navmesh using the tiled API shape. Current baseline bakes the full scene.
 void *rt_navmesh3d_bake_tiled(void *scene,
                               double tile_size,
@@ -60,11 +57,8 @@ int8_t rt_navmesh3d_add_offmesh_link(void *navmesh, void *from, void *to, int8_t
 /// @brief Number of authored off-mesh traversal links.
 int64_t rt_navmesh3d_get_offmesh_link_count(void *navmesh);
 /// @brief Attach kind/cost/state metadata to an authored off-mesh link by index.
-int8_t rt_navmesh3d_set_offmesh_link_metadata(void *navmesh,
-                                              int64_t index,
-                                              rt_string kind,
-                                              double traversal_cost,
-                                              int64_t state_flags);
+int8_t rt_navmesh3d_set_offmesh_link_metadata(
+    void *navmesh, int64_t index, rt_string kind, double traversal_cost, int64_t state_flags);
 /// @brief Read off-mesh link metadata by index.
 rt_string rt_navmesh3d_get_offmesh_link_kind(void *navmesh, int64_t index);
 double rt_navmesh3d_get_offmesh_link_traversal_cost(void *navmesh, int64_t index);
@@ -78,11 +72,8 @@ int8_t rt_navmesh3d_update_obstacle(void *navmesh, int64_t index, void *min, voi
 /// @brief Number of authored coarse AABB obstacles.
 int64_t rt_navmesh3d_get_obstacle_count(void *navmesh);
 /// @brief Assign nav area and traversal cost metadata to polygons overlapping an AABB volume.
-int8_t rt_navmesh3d_set_area(void *navmesh,
-                             void *min,
-                             void *max,
-                             rt_string area,
-                             double traversal_cost);
+int8_t rt_navmesh3d_set_area(
+    void *navmesh, void *min, void *max, rt_string area, double traversal_cost);
 /// @brief Read nav area and traversal cost metadata at a walkable position.
 rt_string rt_navmesh3d_get_area(void *navmesh, void *point);
 double rt_navmesh3d_get_traversal_cost(void *navmesh, void *point);
@@ -111,14 +102,11 @@ int8_t rt_navmesh3d_check_query_grid_parity(void *navmesh);
 int8_t rt_navmesh3d_test_inject_obstacle(void *navmesh, void *min, void *max);
 /// @brief Test-only: map a world XZ position to its tile coordinates. @return 1 if tiled (outputs
 ///        written), 0 otherwise.
-int8_t rt_navmesh3d_test_tile_of_point(void *navmesh, double px, double pz, int64_t *out_tx,
-                                       int64_t *out_tz);
+int8_t rt_navmesh3d_test_tile_of_point(
+    void *navmesh, double px, double pz, int64_t *out_tx, int64_t *out_tz);
 /// @brief Test-only: edit retained tiled voxel source for one tile without rebuilding it.
-int8_t rt_navmesh3d_test_set_tile_source(void *navmesh,
-                                         int64_t tile_x,
-                                         int64_t tile_z,
-                                         double height,
-                                         int8_t walkable);
+int8_t rt_navmesh3d_test_set_tile_source(
+    void *navmesh, int64_t tile_x, int64_t tile_z, double height, int8_t walkable);
 
 #ifdef __cplusplus
 }

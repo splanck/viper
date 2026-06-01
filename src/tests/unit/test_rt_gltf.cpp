@@ -382,8 +382,8 @@ static void test_gltf_preload_bundle_supplies_external_buffers() {
     std::memcpy(owned_root, root.data(), root.size());
 
     char error[128] = {0};
-    rt_gltf_preload_bundle *bundle =
-        rt_gltf_preload_bundle_create(rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
     EXPECT_TRUE(bundle != nullptr, "Preload bundle can be built from root bytes");
     EXPECT_TRUE(error[0] == '\0', "Preload bundle build has no terminal error");
     EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 2,
@@ -395,7 +395,8 @@ static void test_gltf_preload_bundle_supplies_external_buffers() {
 
     std::remove(bin_path);
     void *asset = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
-    EXPECT_TRUE(asset != nullptr, "Preloaded bundle supplies external buffer after source deletion");
+    EXPECT_TRUE(asset != nullptr,
+                "Preloaded bundle supplies external buffer after source deletion");
     if (!asset)
         return;
     auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
@@ -448,17 +449,16 @@ static void test_gltf_preload_bundle_validates_accessor_ranges() {
         append_bytes(gltf_buffer, v);
 
     std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
-    std::string gltf_json =
-        "{"
-        "\"asset\":{\"version\":\"2.0\"},"
-        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
-        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
-        "}],"
-        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":24}],"
-        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
-        "\"type\":\"VEC3\"}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}]"
-        "}";
+    std::string gltf_json = "{"
+                            "\"asset\":{\"version\":\"2.0\"},"
+                            "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+                            buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+                            "}],"
+                            "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":24}],"
+                            "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+                            "\"type\":\"VEC3\"}],"
+                            "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}]"
+                            "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "Invalid-accessor preload glTF fixture can be written");
 
@@ -738,8 +738,7 @@ static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
         "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
         "\"material\":0}]}]"
         "}";
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
-                "Preload data-uri JPEG glTF can be written");
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload data-uri JPEG glTF can be written");
 
     std::vector<uint8_t> root;
     EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload data-uri JPEG root bytes can be read");
@@ -778,8 +777,8 @@ static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
     int green = (int)((rgba >> 16) & 0xFF);
     int blue = (int)((rgba >> 8) & 0xFF);
     int alpha = (int)(rgba & 0xFF);
-    EXPECT_TRUE(material != nullptr && material->texture != nullptr && red >= 140 &&
-                    green >= 60 && green <= 200 && blue <= 160 && alpha == 0xFF,
+    EXPECT_TRUE(material != nullptr && material->texture != nullptr && red >= 140 && green >= 60 &&
+                    green <= 200 && blue <= 160 && alpha == 0xFF,
                 "Preloaded worker-decoded JPEG image builds the expected material texture");
     if (mesh) {
         EXPECT_NEAR(mesh->vertices[1].pos[0], 16.0, 0.001, "JPEG preload vertex X loads");
@@ -789,19 +788,10 @@ static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
 
 static void test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod() {
     const char *gltf_path = "/tmp/viper_gltf_preload_data_uri_gif.gltf";
-    const uint8_t gif_bytes[] = {
-        'G',  'I',  'F',  '8',  '7',  'a',
-        0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00,
-        0xFF, 0x00, 0x00,
-        0x00, 0x00, 0x00,
-        0x2C,
-        0x00, 0x00, 0x00, 0x00,
-        0x01, 0x00, 0x01, 0x00,
-        0x00,
-        0x02,
-        0x02, 0x44, 0x01,
-        0x00,
-        0x3B};
+    const uint8_t gif_bytes[] = {'G',  'I',  'F',  '8',  '7',  'a',  0x01, 0x00, 0x01,
+                                 0x00, 0x80, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00,
+                                 0x00, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
+                                 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3B};
 
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 18.0f, 0.0f, 0.0f, 0.0f, 19.0f, 0.0f};
@@ -835,8 +825,7 @@ static void test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod() {
         "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
         "\"material\":0}]}]"
         "}";
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
-                "Preload data-uri GIF glTF can be written");
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload data-uri GIF glTF can be written");
 
     std::vector<uint8_t> root;
     EXPECT_TRUE(read_file_bytes(gltf_path, root), "Preload data-uri GIF root bytes can be read");
@@ -964,12 +953,32 @@ static void test_gltf_preload_bundle_decodes_strip_and_fan_without_normals_to_po
     const char *gltf_path = "/tmp/viper_gltf_preload_topology_mesh_pod.gltf";
     std::vector<uint8_t> gltf_buffer;
     const float strip_positions[12] = {
-        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        0.0f,
     };
     const float fan_positions[12] = {
-        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-        1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        1.0f,
+        0.0f,
     };
     const float uvs[8] = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f};
 
@@ -1135,8 +1144,9 @@ static void test_gltf_preload_bundle_stages_buffer_view_images() {
         rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
     EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage bufferView image payloads");
     EXPECT_TRUE(error[0] == '\0', "Preload bufferView bundle build has no terminal error");
-    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
-                "Preload bundle stages data-uri buffer, decoded bufferView PNG image, and mesh POD");
+    EXPECT_TRUE(
+        rt_gltf_preload_bundle_dependency_count(bundle) == 3,
+        "Preload bundle stages data-uri buffer, decoded bufferView PNG image, and mesh POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
                 "Preload bundle worker-decodes bufferView PNG image bytes to raw RGBA POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
@@ -1901,13 +1911,13 @@ static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
             char error[128] = {0};
             rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
                 rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
-            EXPECT_TRUE(bundle != nullptr,
-                        "Preload bundle can stage JOINTS_1 mesh payloads");
+            EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage JOINTS_1 mesh payloads");
             EXPECT_TRUE(error[0] == '\0', "JOINTS_1 preload bundle build has no terminal error");
             EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
                         "Preload bundle worker-decodes JOINTS_1 attributes to mesh POD");
             if (bundle) {
-                void *preloaded = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+                void *preloaded =
+                    rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
                 EXPECT_TRUE(preloaded != nullptr, "Preloaded JOINTS_1 bundle builds an asset");
                 auto *preloaded_mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(preloaded, 0));
                 EXPECT_TRUE(preloaded_mesh != nullptr,
@@ -2178,7 +2188,8 @@ static void test_gltf_imports_skins_and_animation_clips() {
             EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
                         "Preload bundle worker-decodes skinned mesh attributes to POD");
             if (bundle) {
-                void *preloaded = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+                void *preloaded =
+                    rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
                 EXPECT_TRUE(preloaded != nullptr, "Preloaded skinned bundle builds an asset");
                 auto *preloaded_mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(preloaded, 0));
                 EXPECT_TRUE(preloaded_mesh != nullptr,
@@ -2410,10 +2421,10 @@ static void test_gltf_applies_sparse_accessors() {
             EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
                         "Preload bundle worker-decodes sparse accessor mesh to POD");
             if (bundle) {
-                void *preloaded = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+                void *preloaded =
+                    rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
                 EXPECT_TRUE(preloaded != nullptr, "Preloaded sparse bundle builds an asset");
-                auto *preloaded_mesh =
-                    static_cast<rt_mesh3d *>(rt_gltf_get_mesh(preloaded, 0));
+                auto *preloaded_mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(preloaded, 0));
                 EXPECT_TRUE(preloaded_mesh != nullptr,
                             "Preloaded sparse bundle exposes sparse accessor mesh");
                 if (preloaded_mesh) {
@@ -2552,29 +2563,28 @@ static void test_gltf_imports_morph_targets() {
             EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
                         "Preload bundle worker-decodes morph-target meshes to POD");
             if (bundle) {
-                void *preloaded = rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
+                void *preloaded =
+                    rt_gltf_load_preloaded_bundle(rt_const_cstr(gltf_path), bundle, 0);
                 EXPECT_TRUE(preloaded != nullptr, "Preloaded morph bundle builds an asset");
                 auto *preloaded_mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(preloaded, 0));
                 EXPECT_TRUE(preloaded_mesh != nullptr &&
                                 preloaded_mesh->morph_targets_ref != nullptr,
                             "Preloaded morph bundle exposes attached morph targets");
                 if (preloaded_mesh && preloaded_mesh->morph_targets_ref) {
-                    EXPECT_TRUE(rt_morphtarget3d_get_shape_count(
-                                    preloaded_mesh->morph_targets_ref) == 1,
-                                "Preloaded morph bundle imports one blend shape");
-                    EXPECT_TRUE(rt_morphtarget3d_has_tangent_deltas(
-                                    preloaded_mesh->morph_targets_ref) == 1,
-                                "Preloaded morph bundle imports tangent deltas");
-                    EXPECT_NEAR(rt_morphtarget3d_get_weight(
-                                    preloaded_mesh->morph_targets_ref, 0),
+                    EXPECT_TRUE(
+                        rt_morphtarget3d_get_shape_count(preloaded_mesh->morph_targets_ref) == 1,
+                        "Preloaded morph bundle imports one blend shape");
+                    EXPECT_TRUE(
+                        rt_morphtarget3d_has_tangent_deltas(preloaded_mesh->morph_targets_ref) == 1,
+                        "Preloaded morph bundle imports tangent deltas");
+                    EXPECT_NEAR(rt_morphtarget3d_get_weight(preloaded_mesh->morph_targets_ref, 0),
                                 0.25,
                                 0.001,
                                 "Preloaded morph bundle preserves default weight");
                     const float *preloaded_pos =
                         rt_morphtarget3d_get_packed_deltas(preloaded_mesh->morph_targets_ref);
-                    const float *preloaded_norm =
-                        rt_morphtarget3d_get_packed_normal_deltas(
-                            preloaded_mesh->morph_targets_ref);
+                    const float *preloaded_norm = rt_morphtarget3d_get_packed_normal_deltas(
+                        preloaded_mesh->morph_targets_ref);
                     EXPECT_TRUE(preloaded_pos != nullptr,
                                 "Preloaded morph bundle packs position deltas");
                     EXPECT_TRUE(preloaded_norm != nullptr,
@@ -2598,11 +2608,11 @@ static void test_gltf_imports_morph_targets() {
                         ? static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(preloaded_node))
                         : nullptr;
                 if (preloaded_scene_mesh && preloaded_scene_mesh->morph_targets_ref) {
-                    EXPECT_NEAR(rt_morphtarget3d_get_weight(
-                                    preloaded_scene_mesh->morph_targets_ref, 0),
-                                0.75,
-                                0.001,
-                                "Preloaded morph bundle applies node morph weights");
+                    EXPECT_NEAR(
+                        rt_morphtarget3d_get_weight(preloaded_scene_mesh->morph_targets_ref, 0),
+                        0.75,
+                        0.001,
+                        "Preloaded morph bundle applies node morph weights");
                 }
             }
         }

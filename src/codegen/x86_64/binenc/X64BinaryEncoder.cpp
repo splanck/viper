@@ -191,8 +191,7 @@ struct CheckedJccOperands {
     const OpLabel *label{nullptr};
 };
 
-static CheckedJccOperands checkedJccOperands(const std::vector<Operand> &ops,
-                                             const char *context) {
+static CheckedJccOperands checkedJccOperands(const std::vector<Operand> &ops, const char *context) {
     const OpImm *condition = nullptr;
     const OpLabel *label = nullptr;
     for (const auto &operand : ops) {

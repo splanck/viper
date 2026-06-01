@@ -89,7 +89,8 @@ uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr) {
 }
 
 /// @brief Whether a texture asset's native compressed format can be uploaded under @p native_caps.
-/// @details Maps the asset's native format id (BC7/ASTC/ETC2) to the matching backend capability bit;
+/// @details Maps the asset's native format id (BC7/ASTC/ETC2) to the matching backend capability
+/// bit;
 ///          returns 0 for uncompressed assets or formats the backend cannot upload natively.
 int vgfx3d_textureasset_native_supported(void *asset, int64_t native_caps) {
     int32_t format_id;
@@ -106,8 +107,10 @@ int vgfx3d_textureasset_native_supported(void *asset, int64_t native_caps) {
     return 0;
 }
 
-/// @brief Fill @p out_mip with the native compressed payload for the resident mip at @p relative_mip.
-/// @details @p relative_mip is offset from the asset's first resident mip. Validates that the payload,
+/// @brief Fill @p out_mip with the native compressed payload for the resident mip at @p
+/// relative_mip.
+/// @details @p relative_mip is offset from the asset's first resident mip. Validates that the
+/// payload,
 ///          dimensions, block geometry, and format are all usable before reporting success.
 /// @return 1 with @p out_mip populated, or 0 (out_mip zeroed) if out of range or incomplete.
 int vgfx3d_textureasset_get_native_resident_mip(void *asset,
@@ -224,8 +227,8 @@ int vgfx3d_get_pixels_extent(const void *pixels_ptr, int32_t *out_w, int32_t *ou
 
 /// @brief Decode a horizontal band of a Pixels object into a fresh RGBA8 buffer (caller frees).
 /// @details Unpacks @p row_count rows from @p start_row (clamped to the image), optionally flipping
-///          vertically (@p flip_y) for backends with a bottom-left origin. Enables streaming a large
-///          texture upload row-band by row-band.
+///          vertically (@p flip_y) for backends with a bottom-left origin. Enables streaming a
+///          large texture upload row-band by row-band.
 /// @return 0 on success with out-params set, -1 on invalid args or allocation failure.
 int vgfx3d_unpack_pixels_rgba_rows(const void *pixels_ptr,
                                    int32_t start_row,
@@ -361,7 +364,8 @@ uint64_t vgfx3d_pending_rgba_upload_bytes(int32_t width,
 }
 
 /// @brief Bytes still to upload across all remaining cubemap faces and rows.
-/// @details Counts the rows left in the current face plus every row of the faces after it (faces are
+/// @details Counts the rows left in the current face plus every row of the faces after it (faces
+/// are
 ///          uploaded in order 0..5). Returns 0 when idle; saturates at UINT64_MAX.
 uint64_t vgfx3d_pending_cubemap_rgba_upload_bytes(int32_t face_size,
                                                   int32_t upload_face,
@@ -418,7 +422,8 @@ static int vgfx3d_block_upload_shape(int32_t width,
 
 /// @brief How many block-rows from @p next_block_row fit in the remaining per-frame upload budget.
 /// @details Block-compressed analogue of vgfx3d_upload_rows_for_budget; UINT64_MAX budget means all
-///          remaining block-rows, and at least one block-row is always returned so uploads progress.
+///          remaining block-rows, and at least one block-row is always returned so uploads
+///          progress.
 int32_t vgfx3d_upload_block_rows_for_budget(int32_t width,
                                             int32_t height,
                                             int32_t block_width,
@@ -560,17 +565,12 @@ int vgfx3d_unpack_cubemap_rgba_rows(const void *cubemap_ptr,
         *out_rows = 0;
     if (out_rgba)
         *out_rgba = NULL;
-    if (!cubemap || !out_face_size || !out_rows || !out_rgba || face_index < 0 ||
-        face_index >= 6 || !vgfx3d_get_cubemap_face_size(cubemap, &face_size))
+    if (!cubemap || !out_face_size || !out_rows || !out_rgba || face_index < 0 || face_index >= 6 ||
+        !vgfx3d_get_cubemap_face_size(cubemap, &face_size))
         return -1;
 
-    if (vgfx3d_unpack_pixels_rgba_rows(cubemap->faces[face_index],
-                                       start_row,
-                                       row_count,
-                                       flip_y,
-                                       &w,
-                                       &rows,
-                                       &rgba) != 0 ||
+    if (vgfx3d_unpack_pixels_rgba_rows(
+            cubemap->faces[face_index], start_row, row_count, flip_y, &w, &rows, &rgba) != 0 ||
         !rgba || w != face_size || rows <= 0) {
         free(rgba);
         return -1;

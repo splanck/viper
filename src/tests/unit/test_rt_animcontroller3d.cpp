@@ -259,13 +259,13 @@ static void test_controller_true_additive_layer_uses_bind_pose_delta() {
     void *additive_arm_mat;
 
     rt_skeleton3d_add_bone(skel_replace, rt_const_cstr("root"), -1, rt_mat4_identity());
-    replace_arm =
-        rt_skeleton3d_add_bone(skel_replace, rt_const_cstr("arm"), 0, rt_mat4_translate(0.0, 1.0, 0.0));
+    replace_arm = rt_skeleton3d_add_bone(
+        skel_replace, rt_const_cstr("arm"), 0, rt_mat4_translate(0.0, 1.0, 0.0));
     rt_skeleton3d_compute_inverse_bind(skel_replace);
 
     rt_skeleton3d_add_bone(skel_additive, rt_const_cstr("root"), -1, rt_mat4_identity());
-    additive_arm =
-        rt_skeleton3d_add_bone(skel_additive, rt_const_cstr("arm"), 0, rt_mat4_translate(0.0, 1.0, 0.0));
+    additive_arm = rt_skeleton3d_add_bone(
+        skel_additive, rt_const_cstr("arm"), 0, rt_mat4_translate(0.0, 1.0, 0.0));
     rt_skeleton3d_compute_inverse_bind(skel_additive);
 
     base_replace = make_anim("base", replace_arm, 0.0, 2.0, 0.0, 0.0, 2.0, 0.0);
@@ -301,10 +301,8 @@ static void test_controller_true_additive_layer_uses_bind_pose_delta() {
     rt_anim_controller3d_update(additive_controller, 0.0);
     additive_arm_mat = rt_anim_controller3d_get_bone_matrix(additive_controller, additive_arm);
 
-    EXPECT_NEAR(rt_mat4_get(replace_arm_mat, 1, 3),
-                3.0,
-                0.1,
-                "PlayLayer replaces the masked local pose");
+    EXPECT_NEAR(
+        rt_mat4_get(replace_arm_mat, 1, 3), 3.0, 0.1, "PlayLayer replaces the masked local pose");
     EXPECT_NEAR(rt_mat4_get(additive_arm_mat, 1, 3),
                 4.0,
                 0.1,
@@ -363,8 +361,10 @@ static void test_controller_blend_tree_drives_base_pose() {
 static void test_two_bone_ik_pole_vector() {
     void *skel = rt_skeleton3d_new();
     int64_t root = rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
-    int64_t knee = rt_skeleton3d_add_bone(skel, rt_const_cstr("knee"), root, rt_mat4_translate(1.0, 0.0, 0.0));
-    int64_t foot = rt_skeleton3d_add_bone(skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t knee =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("knee"), root, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t foot =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
     rt_skeleton3d_compute_inverse_bind(skel);
 
     void *controller = rt_anim_controller3d_new(skel);
@@ -395,8 +395,10 @@ static void test_two_bone_ik_pole_vector() {
 static void test_controller_ik_solver_drives_end_effector() {
     void *skel = rt_skeleton3d_new();
     int64_t root = rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
-    int64_t knee = rt_skeleton3d_add_bone(skel, rt_const_cstr("knee"), root, rt_mat4_translate(1.0, 0.0, 0.0));
-    int64_t foot = rt_skeleton3d_add_bone(skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t knee =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("knee"), root, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t foot =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
     rt_skeleton3d_compute_inverse_bind(skel);
 
     void *controller = rt_anim_controller3d_new(skel);
@@ -467,7 +469,8 @@ static void test_two_bone_ik_foot_aligns_to_ground_normal() {
 
 static void test_ik_solver_look_at_and_fabrik_factories() {
     void *look_skel = rt_skeleton3d_new();
-    int64_t look_bone = rt_skeleton3d_add_bone(look_skel, rt_const_cstr("head"), -1, rt_mat4_identity());
+    int64_t look_bone =
+        rt_skeleton3d_add_bone(look_skel, rt_const_cstr("head"), -1, rt_mat4_identity());
     rt_skeleton3d_compute_inverse_bind(look_skel);
     void *look_controller = rt_anim_controller3d_new(look_skel);
     void *look_solver = rt_ik_solver3d_look_at(look_skel, look_bone);
@@ -482,9 +485,12 @@ static void test_ik_solver_look_at_and_fabrik_factories() {
 
     void *skel = rt_skeleton3d_new();
     int64_t b0 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b0"), -1, rt_mat4_identity());
-    int64_t b1 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b1"), b0, rt_mat4_translate(1.0, 0.0, 0.0));
-    int64_t b2 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b2"), b1, rt_mat4_translate(1.0, 0.0, 0.0));
-    int64_t b3 = rt_skeleton3d_add_bone(skel, rt_const_cstr("b3"), b2, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t b1 =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("b1"), b0, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t b2 =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("b2"), b1, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t b3 =
+        rt_skeleton3d_add_bone(skel, rt_const_cstr("b3"), b2, rt_mat4_translate(1.0, 0.0, 0.0));
     rt_skeleton3d_compute_inverse_bind(skel);
     void *chain = rt_seq_new_owned();
     rt_seq_push(chain, rt_box_i64(b0));

@@ -17,8 +17,8 @@
 #include "rt.hpp"
 #include "rt_animcontroller3d.h"
 #include "rt_asset.h"
-#include "rt_blendtree3d.h"
 #include "rt_audio.h"
+#include "rt_blendtree3d.h"
 #include "rt_canvas3d.h"
 #include "rt_decal3d.h"
 #include "rt_game3d.h"
@@ -160,13 +160,10 @@ static bool write_text_file(const char *path, const char *text) {
     return std::fclose(file) == 0 && ok;
 }
 
-static std::string terrain_heightmap_fixture(int width,
-                                             int depth,
-                                             double west_edge,
-                                             double east_edge,
-                                             double interior) {
-    std::string text = "viper-heightmap-v1 " + std::to_string(width) + " " +
-                       std::to_string(depth) + "\n";
+static std::string terrain_heightmap_fixture(
+    int width, int depth, double west_edge, double east_edge, double interior) {
+    std::string text =
+        "viper-heightmap-v1 " + std::to_string(width) + " " + std::to_string(depth) + "\n";
     char sample[32];
     for (int z = 0; z < depth; ++z) {
         for (int x = 0; x < width; ++x) {
@@ -346,7 +343,7 @@ extern "C" void game3d_test_observing_update(double dt) {
 }
 
 extern "C" void game3d_test_trapping_update(double) {
-    vm_trap("runFrames callback trap");
+    rt_trap("runFrames callback trap");
 }
 
 extern "C" void game3d_test_fixed_update(double dt) {
@@ -417,8 +414,7 @@ static bool game3d_test_read_file_bytes(const char *path, std::vector<uint8_t> &
 }
 
 static std::string game3d_test_base64_encode(const uint8_t *data, size_t len) {
-    static const char table[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string out;
     out.reserve(((len + 2u) / 3u) * 4u);
     for (size_t i = 0; i < len; i += 3u) {
@@ -438,8 +434,8 @@ static std::string game3d_test_base64_encode(const uint8_t *data, size_t len) {
 
 static bool write_game3d_embedded_triangle_gltf(const char *path, float x_offset) {
     std::vector<uint8_t> gltf_buffer;
-    const float positions[9] = {x_offset, 0.0f, 0.0f, x_offset + 1.0f, 0.0f,
-                                0.0f,     x_offset, 1.0f, 0.0f};
+    const float positions[9] = {
+        x_offset, 0.0f, 0.0f, x_offset + 1.0f, 0.0f, 0.0f, x_offset, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
     for (float v : positions)
         append_game3d_test_bytes(gltf_buffer, v);
@@ -618,11 +614,13 @@ static bool test_world_worker_controls() {
 
     rt_game3d_world_set_worker_count(world, 0);
     EXPECT_EQ_INT(rt_game3d_world_get_worker_count(world), 1, "zero worker count clamps to one");
-    EXPECT_EQ_INT(rt_game3d_world_get_jobs_enabled(world), 0, "clamped single worker disables jobs");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_jobs_enabled(world), 0, "clamped single worker disables jobs");
 
     rt_game3d_world_set_worker_count(world, 4096);
     EXPECT_EQ_INT(rt_game3d_world_get_worker_count(world), 64, "worker count clamps to max");
-    EXPECT_EQ_INT(rt_game3d_world_get_jobs_enabled(world), 1, "clamped multi-worker count enables jobs");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_jobs_enabled(world), 1, "clamped multi-worker count enables jobs");
 
     rt_game3d_world_destroy(world);
     PASS();
@@ -729,15 +727,12 @@ static bool test_world_entity_registry_and_collision_clear() {
     EXPECT_EQ_INT(rt_game3d_world_get_entity_count(world), 0, "entityCount starts empty");
     EXPECT_EQ_INT(rt_game3d_world_get_body_count(world), 0, "bodyCount starts empty");
     EXPECT_EQ_INT(rt_game3d_world_get_draw_count(world), 0, "drawCount starts empty");
-    EXPECT_EQ_INT(rt_game3d_world_get_visible_node_count(world),
-                  0,
-                  "visibleNodeCount starts empty");
-    EXPECT_EQ_INT(rt_game3d_world_get_occluded_draw_count(world),
-                  0,
-                  "occludedDrawCount starts empty");
-    EXPECT_EQ_INT(rt_game3d_world_get_stream_resident_bytes(world),
-                  0,
-                  "streamResidentBytes starts empty");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_visible_node_count(world), 0, "visibleNodeCount starts empty");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_occluded_draw_count(world), 0, "occludedDrawCount starts empty");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_stream_resident_bytes(world), 0, "streamResidentBytes starts empty");
 
     void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     void *material = rt_material3d_new_color(0.8, 0.2, 0.1);
@@ -767,12 +762,10 @@ static bool test_world_entity_registry_and_collision_clear() {
     EXPECT_EQ_INT(rt_game3d_entity_get_id(child), 2, "spawn assigns child id");
     EXPECT_TRUE(rt_game3d_entity_is_spawned(parent) != 0, "parent is spawned");
     EXPECT_TRUE(rt_game3d_entity_is_spawned(child) != 0, "child is spawned");
-    EXPECT_EQ_INT(rt_game3d_world_get_entity_count(world),
-                  3,
-                  "entityCount tracks spawned entity tree");
-    EXPECT_EQ_INT(rt_game3d_world_get_body_count(world),
-                  2,
-                  "bodyCount tracks spawned entity bodies");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_entity_count(world), 3, "entityCount tracks spawned entity tree");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_body_count(world), 2, "bodyCount tracks spawned entity bodies");
     EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
                   2,
                   "spawn registers entity bodies with physics");
@@ -839,12 +832,10 @@ static bool test_world_entity_registry_and_collision_clear() {
     rt_game3d_world_despawn(world, parent);
     EXPECT_TRUE(rt_game3d_entity_is_spawned(parent) == 0, "despawn clears parent spawned flag");
     EXPECT_TRUE(rt_game3d_entity_is_spawned(child) == 0, "despawn clears child spawned flag");
-    EXPECT_EQ_INT(rt_game3d_world_get_entity_count(world),
-                  1,
-                  "entityCount drops despawned subtree");
-    EXPECT_EQ_INT(rt_game3d_world_get_body_count(world),
-                  1,
-                  "bodyCount drops despawned subtree body");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_entity_count(world), 1, "entityCount drops despawned subtree");
+    EXPECT_EQ_INT(
+        rt_game3d_world_get_body_count(world), 1, "bodyCount drops despawned subtree body");
     EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
                   1,
                   "despawn removes entity body from physics");
@@ -862,9 +853,9 @@ static bool test_world_entity_registry_and_collision_clear() {
     EXPECT_TRUE(rt_game3d_world_is_destroyed(world) != 0, "destroy marks world destroyed");
     EXPECT_TRUE(rt_game3d_entity_is_destroyed(other) != 0,
                 "destroy marks still-spawned entities destroyed");
-    EXPECT_TRUE(expect_trap_contains([&] { (void)rt_game3d_world_get_frame(world); },
-                                     "world is destroyed"),
-                "destroyed world handles trap with a clear diagnostic");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { (void)rt_game3d_world_get_frame(world); }, "world is destroyed"),
+        "destroyed world handles trap with a clear diagnostic");
     EXPECT_TRUE(expect_trap_contains([&] { (void)rt_game3d_entity_position(other); },
                                      "entity is destroyed"),
                 "destroyed entity handles trap with a clear diagnostic");
@@ -914,8 +905,7 @@ static bool test_entity_from_node_wraps_imported_subtree() {
     EXPECT_TRUE(entity != nullptr, "FromNode returns an Entity3D");
     EXPECT_TRUE(rt_game3d_entity_is_group(entity) != 0, "FromNode marks the wrapper as a group");
     EXPECT_TRUE(rt_game3d_entity_get_node(entity) == root, "FromNode uses the provided root node");
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_entity_get_name(entity)), "ImportedRoot") ==
-                    0,
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_entity_get_name(entity)), "ImportedRoot") == 0,
                 "FromNode inherits a non-empty root node name");
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D FromNode Unit"), 80, 60);
@@ -1009,9 +999,11 @@ static bool test_frame_loop_manual_frame_and_final_capture() {
                     },
                     "runFrames callback trap"),
                 "runFrames propagates callback traps");
-    rt_canvas3d_set_input_source(canvas_state, 2);
-    rt_canvas3d_set_clock_source(canvas_state, 0);
-    rt_canvas3d_set_synthetic_delta_time_sec(canvas_state, 0.123);
+    EXPECT_EQ_INT(canvas_state->input_source, 2, "runFrames restores input source after trap");
+    EXPECT_EQ_INT(canvas_state->clock_source, 0, "runFrames restores clock source after trap");
+    EXPECT_EQ_INT(canvas_state->synthetic_dt_us,
+                  123000,
+                  "runFrames restores synthetic delta after trap");
 
     g_overlay_calls = 0;
     rt_game3d_world_begin_frame(world);
@@ -1219,8 +1211,10 @@ static bool test_world_floating_origin_controls_and_rebase() {
     rt_game3d_world_spawn(world, entity);
     rt_game3d_world_set_gravity(world, 0.0, 0.0, 0.0);
     rt_game3d_world_step_simulation(world, 1.0 / 60.0);
-    EXPECT_NEAR(rt_vec3_x(rt_camera3d_get_position(camera)), 20.0, 0.000001, "flag-off camera unchanged");
-    EXPECT_NEAR(rt_vec3_x(rt_game3d_entity_position(entity)), 23.0, 0.000001, "flag-off entity unchanged");
+    EXPECT_NEAR(
+        rt_vec3_x(rt_camera3d_get_position(camera)), 20.0, 0.000001, "flag-off camera unchanged");
+    EXPECT_NEAR(
+        rt_vec3_x(rt_game3d_entity_position(entity)), 23.0, 0.000001, "flag-off entity unchanged");
     EXPECT_NEAR(rt_vec3_x(rt_game3d_world_get_world_origin(world)),
                 0.0,
                 0.000001,
@@ -1229,8 +1223,12 @@ static bool test_world_floating_origin_controls_and_rebase() {
     rt_game3d_world_set_floating_origin(world, 1);
     EXPECT_EQ_INT(rt_game3d_world_get_floating_origin(world), 1, "floatingOrigin setter enables");
     rt_game3d_world_step_simulation(world, 1.0 / 60.0);
-    EXPECT_NEAR(rt_vec3_x(rt_camera3d_get_position(camera)), 0.0, 0.000001, "camera rebased to origin");
-    EXPECT_NEAR(rt_vec3_x(rt_game3d_entity_position(entity)), 3.0, 0.000001, "entity shifted by rebase delta");
+    EXPECT_NEAR(
+        rt_vec3_x(rt_camera3d_get_position(camera)), 0.0, 0.000001, "camera rebased to origin");
+    EXPECT_NEAR(rt_vec3_x(rt_game3d_entity_position(entity)),
+                3.0,
+                0.000001,
+                "entity shifted by rebase delta");
     EXPECT_NEAR(rt_vec3_x(rt_body3d_get_position(rt_game3d_entity_get_body(entity))),
                 3.0,
                 0.000001,
@@ -1261,10 +1259,8 @@ static bool test_world_floating_origin_controls_and_rebase() {
     rt_particles3d_set_size(far_particles, 1.0, 1.0);
     rt_particles3d_burst(far_particles, 1);
     rt_game3d_effects_add_particles(effects, far_particles, -1.0);
-    void *far_decal = rt_decal3d_new(rt_vec3_new(50006.0, -4.0, 6999.0),
-                                     rt_vec3_new(0.0, 1.0, 0.0),
-                                     1.0,
-                                     nullptr);
+    void *far_decal = rt_decal3d_new(
+        rt_vec3_new(50006.0, -4.0, 6999.0), rt_vec3_new(0.0, 1.0, 0.0), 1.0, nullptr);
     rt_game3d_effects_add_decal(effects, far_decal);
 
     rt_canvas3d *canvas_state = (rt_canvas3d *)rt_game3d_world_get_canvas(world);
@@ -1286,12 +1282,18 @@ static bool test_world_floating_origin_controls_and_rebase() {
     EXPECT_NEAR(decal_pos[2], 6999.0, 0.000001, "pre-rebase decal at far world Z");
 
     rt_game3d_world_step_simulation(world, 1.0 / 60.0);
-    EXPECT_NEAR(rt_vec3_x(rt_camera3d_get_position(camera)), 0.0, 0.000001, "50km camera X rebased");
-    EXPECT_NEAR(rt_vec3_y(rt_camera3d_get_position(camera)), 0.0, 0.000001, "50km camera Y rebased");
-    EXPECT_NEAR(rt_vec3_z(rt_camera3d_get_position(camera)), 0.0, 0.000001, "50km camera Z rebased");
-    EXPECT_NEAR(rt_vec3_x(rt_game3d_entity_position(entity)), 4.0, 0.000001, "50km entity X shifted");
-    EXPECT_NEAR(rt_vec3_y(rt_game3d_entity_position(entity)), 2.0, 0.000001, "50km entity Y shifted");
-    EXPECT_NEAR(rt_vec3_z(rt_game3d_entity_position(entity)), -2.0, 0.000001, "50km entity Z shifted");
+    EXPECT_NEAR(
+        rt_vec3_x(rt_camera3d_get_position(camera)), 0.0, 0.000001, "50km camera X rebased");
+    EXPECT_NEAR(
+        rt_vec3_y(rt_camera3d_get_position(camera)), 0.0, 0.000001, "50km camera Y rebased");
+    EXPECT_NEAR(
+        rt_vec3_z(rt_camera3d_get_position(camera)), 0.0, 0.000001, "50km camera Z rebased");
+    EXPECT_NEAR(
+        rt_vec3_x(rt_game3d_entity_position(entity)), 4.0, 0.000001, "50km entity X shifted");
+    EXPECT_NEAR(
+        rt_vec3_y(rt_game3d_entity_position(entity)), 2.0, 0.000001, "50km entity Y shifted");
+    EXPECT_NEAR(
+        rt_vec3_z(rt_game3d_entity_position(entity)), -2.0, 0.000001, "50km entity Z shifted");
     void *far_body_pos = rt_body3d_get_position(rt_game3d_entity_get_body(entity));
     EXPECT_NEAR(rt_vec3_x(far_body_pos), 4.0, 0.000001, "50km body X shifted");
     EXPECT_NEAR(rt_vec3_y(far_body_pos), 2.0, 0.000001, "50km body Y shifted");
@@ -1314,9 +1316,12 @@ static bool test_world_floating_origin_controls_and_rebase() {
                 "worldOrigin accumulates 50km Z delta");
     rt_particles3d_get_position(far_particles, particle_pos);
     rt_decal3d_get_position(far_decal, decal_pos);
-    EXPECT_NEAR(particle_pos[0], 3.0, 0.000001, "50km rebase shifts particle emitter near origin X");
-    EXPECT_NEAR(particle_pos[1], 1.0, 0.000001, "50km rebase shifts particle emitter near origin Y");
-    EXPECT_NEAR(particle_pos[2], 2.0, 0.000001, "50km rebase shifts particle emitter near origin Z");
+    EXPECT_NEAR(
+        particle_pos[0], 3.0, 0.000001, "50km rebase shifts particle emitter near origin X");
+    EXPECT_NEAR(
+        particle_pos[1], 1.0, 0.000001, "50km rebase shifts particle emitter near origin Y");
+    EXPECT_NEAR(
+        particle_pos[2], 2.0, 0.000001, "50km rebase shifts particle emitter near origin Z");
     EXPECT_NEAR(decal_pos[0], 6.0, 0.000001, "50km rebase shifts decal near origin X");
     EXPECT_NEAR(decal_pos[1], 1.0, 0.000001, "50km rebase shifts decal near origin Y");
     EXPECT_NEAR(decal_pos[2], -1.0, 0.000001, "50km rebase shifts decal near origin Z");
@@ -1489,6 +1494,43 @@ static bool test_run_frames_only_preserves_synthetic_holds() {
     EXPECT_TRUE(rt_vec3_z(after) < rt_vec3_z(before) - 1.5,
                 "held W remains down for both deterministic frames");
     rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static bool test_camera_controller_moves_between_worlds() {
+    TEST("World3D.setCameraController moves a controller between worlds");
+    void *world_a = rt_game3d_world_new(rt_const_cstr("Game3D Controller World A"), 64, 48);
+    void *world_b = rt_game3d_world_new(rt_const_cstr("Game3D Controller World B"), 64, 48);
+    void *canvas_a = rt_game3d_world_get_canvas(world_a);
+    void *canvas_b = rt_game3d_world_get_canvas(world_b);
+    void *camera_a = rt_game3d_world_get_camera(world_a);
+    void *camera_b = rt_game3d_world_get_camera(world_b);
+    void *controller = rt_game3d_free_fly_controller_new(world_a);
+    rt_game3d_free_fly_controller_set_speed(controller, 10.0);
+
+    rt_game3d_world_set_camera_controller(world_a, controller);
+    rt_game3d_world_set_camera_controller(world_b, controller);
+
+    void *before_a = rt_camera3d_get_position(camera_a);
+    rt_canvas3d_push_synthetic_key(canvas_a, rt_game3d_key_w(), 1);
+    rt_game3d_world_run_frames_only(world_a, 1, 0.1);
+    void *after_a = rt_camera3d_get_position(camera_a);
+    EXPECT_NEAR(rt_vec3_z(after_a),
+                rt_vec3_z(before_a),
+                0.0001,
+                "moving a controller detaches it from the previous world");
+    rt_canvas3d_clear_synthetic_input(canvas_a);
+    rt_game3d_world_destroy(world_a);
+
+    void *before_b = rt_camera3d_get_position(camera_b);
+    rt_canvas3d_push_synthetic_key(canvas_b, rt_game3d_key_w(), 1);
+    rt_game3d_world_run_frames_only(world_b, 1, 0.1);
+    void *after_b = rt_camera3d_get_position(camera_b);
+    EXPECT_TRUE(rt_vec3_z(after_b) < rt_vec3_z(before_b) - 0.05,
+                "moved controller drives the new world");
+
+    rt_canvas3d_clear_synthetic_input(canvas_b);
+    rt_game3d_world_destroy(world_b);
     PASS();
 }
 
@@ -1689,8 +1731,8 @@ static bool test_phase3_world_presets_environment_and_debug() {
     int found_subtle_vignette = 0;
     for (int32_t i = 0; i < chain.effect_count; i++) {
         if (chain.effects[i].type == VGFX3D_POSTFX_EFFECT_VIGNETTE &&
-            chain.effects[i].snapshot.vignette_radius >= 0.85f &&
-            chain.effects[i].snapshot.vignette_softness >= 0.20f) {
+            chain.effects[i].snapshot.vignette_radius >= 0.95f &&
+            chain.effects[i].snapshot.vignette_softness >= 0.25f) {
             found_subtle_vignette = 1;
         }
     }
@@ -1839,8 +1881,7 @@ static bool test_phase4_assets3d_model_templates() {
     rt_game3d_asset_handle_cancel(cancelled_handle);
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(cancelled_handle) != 0,
                 "pre-observation cancelled AssetHandle3D becomes terminal");
-    EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(cancelled_handle) - 1.0) <
-                    0.000001,
+    EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(cancelled_handle) - 1.0) < 0.000001,
                 "cancelled AssetHandle3D reports terminal progress");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(cancelled_handle)),
                             "cancelled") == 0,
@@ -1866,8 +1907,7 @@ static bool test_phase4_assets3d_model_templates() {
                 "missing-path AssetHandle3D has no entity result");
     rt_string_unref(missing_path_s);
 
-    rt_string missing_asset_s =
-        rt_string_from_bytes("viper/missing/async_model_template.gltf", 39);
+    rt_string missing_asset_s = rt_string_from_bytes("viper/missing/async_model_template.gltf", 39);
     void *missing_asset_handle = rt_game3d_assets_load_model_template_asset_async(missing_asset_s);
     EXPECT_TRUE(missing_asset_handle != nullptr,
                 "LoadModelTemplateAssetAsync returns a handle for a missing asset path");
@@ -1918,10 +1958,10 @@ static bool test_phase4_assets3d_model_templates() {
                 "corrupt texture AssetHandle3D schedules worker validation");
     EXPECT_TRUE(wait_asset_ready(corrupt_texture_handle),
                 "corrupt texture AssetHandle3D becomes terminal after worker preload");
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(
-                                rt_game3d_asset_handle_get_error(corrupt_texture_handle)),
-                            "invalid glTF image payload") == 0,
-                "corrupt texture AssetHandle3D exposes the worker image error");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(corrupt_texture_handle)),
+                    "invalid glTF image payload") == 0,
+        "corrupt texture AssetHandle3D exposes the worker image error");
     EXPECT_TRUE(rt_game3d_asset_handle_get_entity(corrupt_texture_handle) == nullptr,
                 "corrupt texture AssetHandle3D has no entity result");
     rt_string_unref(corrupt_texture_s);
@@ -2001,7 +2041,8 @@ static bool test_phase4_assets3d_model_templates() {
         rt_thread_sleep(5);
     }
     void *preloaded_handle = rt_game3d_assets_load_model_template_async(path);
-    EXPECT_TRUE(preloaded_handle != nullptr, "LoadModelTemplateAsync returns a handle after Preload");
+    EXPECT_TRUE(preloaded_handle != nullptr,
+                "LoadModelTemplateAsync returns a handle after Preload");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(preloaded_handle) != 0,
                 "Assets3D.Preload warms the template cache through world commit draining");
     EXPECT_TRUE(rt_game3d_asset_handle_get_template(preloaded_handle) != nullptr,
@@ -2064,8 +2105,7 @@ static bool test_phase4_assets3d_resident_bytes_returns_to_baseline() {
         EXPECT_TRUE(async_handle != nullptr, "async template load returns a handle during churn");
         EXPECT_TRUE(rt_game3d_asset_handle_get_ready(async_handle) == 0,
                     "async template load is scheduled instead of completed synchronously");
-        EXPECT_TRUE(wait_asset_ready(async_handle),
-                    "async template load completes during churn");
+        EXPECT_TRUE(wait_asset_ready(async_handle), "async template load completes during churn");
         EXPECT_TRUE(rt_game3d_asset_handle_get_template(async_handle) != nullptr,
                     "async template handle exposes a cached ModelTemplate");
         EXPECT_TRUE(rt_game3d_assets_get_resident_bytes() > 0,
@@ -2139,14 +2179,12 @@ static bool test_phase4_assets3d_texture_residency_budget() {
                 "budget texture PNG can be written");
 
     std::vector<uint8_t> png_bytes;
-    EXPECT_TRUE(game3d_test_read_file_bytes(png_path, png_bytes),
-                "budget texture PNG can be read");
+    EXPECT_TRUE(game3d_test_read_file_bytes(png_path, png_bytes), "budget texture PNG can be read");
     if (png_bytes.empty())
         FAIL("budget texture PNG is empty");
 
     std::vector<uint8_t> gltf_buffer;
-    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                0.0f, 0.0f, 1.0f, 0.0f};
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
     for (float v : positions)
         append_game3d_test_bytes(gltf_buffer, v);
@@ -2237,8 +2275,7 @@ static bool test_assets3d_loads_packaged_gltf_hierarchy() {
     TEST("Assets3D.LoadModelAsset preserves packaged glTF hierarchy");
     const char *pack_path = "/tmp/viper_game3d_packaged_hierarchy.vpa";
     std::vector<uint8_t> gltf_buffer;
-    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                0.0f, 0.0f, 1.0f, 0.0f};
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     for (float v : positions)
         append_game3d_test_bytes(gltf_buffer, v);
 
@@ -2280,8 +2317,8 @@ static bool test_assets3d_loads_packaged_gltf_hierarchy() {
         rt_game3d_world_step_simulation(preload_world, 1.0 / 60.0);
         rt_thread_sleep(5);
     }
-    void *preloaded_asset_handle =
-        rt_game3d_assets_load_model_template_asset_async(rt_const_cstr("assets/models/hierarchy.gltf"));
+    void *preloaded_asset_handle = rt_game3d_assets_load_model_template_asset_async(
+        rt_const_cstr("assets/models/hierarchy.gltf"));
     EXPECT_TRUE(preloaded_asset_handle != nullptr,
                 "LoadModelTemplateAssetAsync returns a handle after PreloadAsset");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(preloaded_asset_handle) != 0,
@@ -2293,8 +2330,7 @@ static bool test_assets3d_loads_packaged_gltf_hierarchy() {
                 "PreloadAsset cache entries preserve asset-path identity");
     rt_game3d_world_destroy(preload_world);
 
-    void *entity =
-        rt_game3d_assets_load_model_asset(rt_const_cstr("assets/models/hierarchy.gltf"));
+    void *entity = rt_game3d_assets_load_model_asset(rt_const_cstr("assets/models/hierarchy.gltf"));
     EXPECT_TRUE(entity != nullptr, "LoadModelAsset loads a packaged glTF hierarchy");
     EXPECT_TRUE(rt_game3d_entity_is_group(entity) != 0, "packaged glTF imports as group entity");
     EXPECT_TRUE(rt_scene_node3d_child_count(rt_game3d_entity_get_node(entity)) > 0,
@@ -2392,25 +2428,24 @@ static bool test_phase5_world_stream3d_terrain_manifest() {
     const char *manifest_path = "/tmp/viper_game3d_terrain_tiles_manifest.json";
     const char *near_height_path = "/tmp/viper_game3d_terrain_near.height";
     const char *far_height_path = "/tmp/viper_game3d_terrain_far.height";
-    const char *near_heights =
-        "viper-heightmap-v1 3 3\n"
-        "0.25 0.35 0.45\n"
-        "0.30 0.40 0.50\n"
-        "0.35 0.45 0.55\n";
-    const char *far_heights =
-        "viper-heightmap-v1 3 3\n"
-        "0.45 0.55 0.65\n"
-        "0.50 0.60 0.70\n"
-        "0.55 0.65 0.75\n";
-    const char *manifest =
-        "{\"tiles\":["
-        "{\"name\":\"near\",\"path\":\"terrain/near.tile\",\"heightmap\":\"viper_game3d_terrain_near.height\","
-        "\"center\":[0,0,0],\"radius\":32,\"bytes\":1000,"
-        "\"width\":4,\"depth\":4,\"scale\":[2,3,4]},"
-        "{\"name\":\"far\",\"path\":\"terrain/far.tile\",\"heightmap\":\"viper_game3d_terrain_far.height\","
-        "\"center\":[512,0,0],\"radius\":32,\"bytes\":1000,"
-        "\"width\":8,\"depth\":8,\"scale\":[4,3,8]}"
-        "]}";
+    const char *near_heights = "viper-heightmap-v1 3 3\n"
+                               "0.25 0.35 0.45\n"
+                               "0.30 0.40 0.50\n"
+                               "0.35 0.45 0.55\n";
+    const char *far_heights = "viper-heightmap-v1 3 3\n"
+                              "0.45 0.55 0.65\n"
+                              "0.50 0.60 0.70\n"
+                              "0.55 0.65 0.75\n";
+    const char *manifest = "{\"tiles\":["
+                           "{\"name\":\"near\",\"path\":\"terrain/"
+                           "near.tile\",\"heightmap\":\"viper_game3d_terrain_near.height\","
+                           "\"center\":[0,0,0],\"radius\":32,\"bytes\":1000,"
+                           "\"width\":4,\"depth\":4,\"scale\":[2,3,4]},"
+                           "{\"name\":\"far\",\"path\":\"terrain/"
+                           "far.tile\",\"heightmap\":\"viper_game3d_terrain_far.height\","
+                           "\"center\":[512,0,0],\"radius\":32,\"bytes\":1000,"
+                           "\"width\":8,\"depth\":8,\"scale\":[4,3,8]}"
+                           "]}";
     EXPECT_TRUE(write_text_file(near_height_path, near_heights),
                 "near terrain height sidecar is writable");
     EXPECT_TRUE(write_text_file(far_height_path, far_heights),
@@ -2432,9 +2467,10 @@ static bool test_phase5_world_stream3d_terrain_manifest() {
     EXPECT_TRUE(near_terrain != nullptr, "resident terrain tile exposes a Terrain3D payload");
     EXPECT_TRUE(rt_game3d_world_stream_get_resident_terrain_tile(stream, 1) == nullptr,
                 "out-of-range resident terrain tile query returns null");
-    EXPECT_TRUE(std::strstr(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_heightmap(stream, 0)),
-                            "viper_game3d_terrain_near.height") != nullptr,
-                "terrain tile heightmap inspection returns the resolved sidecar path");
+    EXPECT_TRUE(
+        std::strstr(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_heightmap(stream, 0)),
+                    "viper_game3d_terrain_near.height") != nullptr,
+        "terrain tile heightmap inspection returns the resolved sidecar path");
     EXPECT_NEAR(rt_terrain3d_get_height_at(near_terrain, 1.0, 1.0),
                 0.75,
                 0.001,
@@ -2580,10 +2616,8 @@ static bool test_phase5_world_stream3d_terrain_lod_seams_large_world() {
                 "both adjacent terrain payloads are resident for seam sampling");
     double west_edge = rt_terrain3d_get_height_at(west, tile_extent, tile_extent * 0.5);
     double east_edge = rt_terrain3d_get_height_at(east, 0.0, tile_extent * 0.5);
-    EXPECT_NEAR(west_edge,
-                east_edge,
-                0.001,
-                "adjacent resident tiles average mismatched heightmap edges");
+    EXPECT_NEAR(
+        west_edge, east_edge, 0.001, "adjacent resident tiles average mismatched heightmap edges");
     EXPECT_NEAR(west_edge,
                 5.0,
                 0.02,
@@ -2600,8 +2634,9 @@ static bool test_phase5_world_stream3d_terrain_lod_seams_large_world() {
     rt_game3d_world_begin_frame(world);
     rt_game3d_world_draw_scene(world);
     rt_game3d_world_end_scene(world);
-    EXPECT_TRUE(rt_game3d_world_get_draw_count(world) > 0,
-                "World3D.drawScene renders stitched terrain while adjacent tiles use different LODs");
+    EXPECT_TRUE(
+        rt_game3d_world_get_draw_count(world) > 0,
+        "World3D.drawScene renders stitched terrain while adjacent tiles use different LODs");
 
     rt_game3d_world_destroy(world);
     std::remove(manifest_path);
@@ -2656,7 +2691,8 @@ static bool test_phase5_world_stream3d_manifest_cells() {
     const char *manifest_path = "/tmp/viper_game3d_stream_cells_manifest.vscn";
     EXPECT_TRUE(write_stream_cell_scene(near_path, "stream_near_marker"),
                 "near stream cell fixture saves");
-    EXPECT_TRUE(write_stream_cell_scene(far_path, "stream_far_marker"), "far stream cell fixture saves");
+    EXPECT_TRUE(write_stream_cell_scene(far_path, "stream_far_marker"),
+                "far stream cell fixture saves");
 
     char manifest[2048];
     std::snprintf(manifest,
@@ -2747,8 +2783,8 @@ static bool test_phase5_world_stream3d_measures_lod_residency() {
     EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
                   1,
                   "LOD stream loads the authored cell");
-    EXPECT_TRUE(rt_game3d_world_find_node(world,
-                                          rt_const_cstr("stream_lod_residency_marker")) != nullptr,
+    EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("stream_lod_residency_marker")) !=
+                    nullptr,
                 "LOD cell scene subtree is attached to the world scene");
     int64_t measured_cell_bytes = rt_game3d_world_stream_get_cell_bytes(stream, 0);
     EXPECT_TRUE(measured_cell_bytes > 4096,
@@ -2787,8 +2823,8 @@ static bool test_phase5_world_stream3d_measures_lod_residency() {
     EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
                   0,
                   "undersized budget evicts measured-over-manifest cell");
-    EXPECT_TRUE(rt_game3d_world_find_node(world,
-                                          rt_const_cstr("stream_lod_residency_marker")) == nullptr,
+    EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("stream_lod_residency_marker")) ==
+                    nullptr,
                 "measured residency eviction detaches the authored cell subtree");
     EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_bytes(stream, 0),
                   4096,
@@ -2970,10 +3006,8 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
                 "inspection hooks expose terrain tile names");
     void *near_cell_center = rt_game3d_world_stream_get_cell_center(stream, 0);
     void *far_tile_center = rt_game3d_world_stream_get_terrain_tile_center(stream, 1);
-    EXPECT_NEAR(rt_vec3_x(near_cell_center),
-                0.0,
-                0.000001,
-                "inspection hook returns cell center x");
+    EXPECT_NEAR(
+        rt_vec3_x(near_cell_center), 0.0, 0.000001, "inspection hook returns cell center x");
     EXPECT_NEAR(rt_vec3_x(far_tile_center),
                 512.0,
                 0.000001,
@@ -3008,9 +3042,10 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
     EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_bytes(stream, 1),
                   4444,
                   "inspection hooks expose terrain tile byte estimates");
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_material(stream, 0)),
-                            "grass") == 0,
-                "inspection hooks expose terrain material metadata");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_material(stream, 0)),
+                    "grass") == 0,
+        "inspection hooks expose terrain material metadata");
     EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_layer(stream, 0),
                   rt_game3d_layers_world(),
                   "inspection hooks expose terrain collision layer metadata");
@@ -3019,22 +3054,22 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
                   "inspection hooks expose terrain collision mask metadata");
     EXPECT_TRUE(rt_game3d_world_stream_get_terrain_tile_collision_enabled(stream, 1) == 0,
                 "inspection hooks expose nested terrain collision-enabled metadata");
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_nav_area(stream, 1)),
-                            "cliff") == 0,
-                "inspection hooks expose terrain nav-area metadata");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_nav_area(stream, 1)),
+                    "cliff") == 0,
+        "inspection hooks expose terrain nav-area metadata");
     EXPECT_NEAR(rt_game3d_world_stream_get_terrain_tile_traversal_cost(stream, 0),
                 1.5,
                 0.0001,
                 "inspection hooks expose terrain traversal-cost metadata");
-    EXPECT_TRUE(std::strstr(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_sidecar(stream, 1)),
-                            "terrain/far.meta") != nullptr,
-                "inspection hooks expose resolved terrain binary sidecar metadata");
-    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_resident(stream, 0),
-                  1,
-                  "near cell starts resident");
-    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_resident(stream, 1),
-                  0,
-                  "far cell starts nonresident");
+    EXPECT_TRUE(
+        std::strstr(rt_string_cstr(rt_game3d_world_stream_get_terrain_tile_sidecar(stream, 1)),
+                    "terrain/far.meta") != nullptr,
+        "inspection hooks expose resolved terrain binary sidecar metadata");
+    EXPECT_EQ_INT(
+        rt_game3d_world_stream_get_cell_resident(stream, 0), 1, "near cell starts resident");
+    EXPECT_EQ_INT(
+        rt_game3d_world_stream_get_cell_resident(stream, 1), 0, "far cell starts nonresident");
     EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_resident(stream, 0),
                   1,
                   "near terrain tile starts resident");
@@ -3068,8 +3103,8 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
                   0,
                   "inspection-center stream work drains after a second update");
 
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_cell_name(stream, -1)),
-                            "") == 0,
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_cell_name(stream, -1)), "") ==
+                    0,
                 "invalid cell name query returns empty string");
     EXPECT_TRUE(rt_game3d_world_stream_get_cell_center(stream, 99) == nullptr,
                 "invalid cell center query returns null");
@@ -3145,6 +3180,13 @@ static bool test_phase4_body_def_attach_body() {
     EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
                   1,
                   "spawning BodyDef-attached entity registers the body");
+    EXPECT_TRUE(rt_game3d_entity_attach_body(entity, body) == entity,
+                "reattaching the same spawned body is a no-op");
+    EXPECT_TRUE(rt_game3d_entity_get_body(entity) == body,
+                "reattaching the same spawned body preserves the body");
+    EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
+                  1,
+                  "reattaching the same spawned body does not duplicate physics membership");
 
     void *zero_def = rt_game3d_body_def_box(1.0, 1.0, 1.0, 1.0);
     rt_game3d_body_def_set_mass(zero_def, 0.0);
@@ -3173,6 +3215,25 @@ static bool test_phase4_body_def_attach_body() {
                 "kinematic BodyDef creates a kinematic body");
     EXPECT_TRUE(rt_body3d_is_static(rt_game3d_entity_get_body(kinematic_entity)) == 0,
                 "kinematic BodyDef body is not static");
+
+    void *toggle_def = rt_game3d_body_def_sphere(0.5, 1.0);
+    rt_game3d_body_def_set_kinematic(toggle_def, 1);
+    rt_game3d_body_def_set_static(toggle_def, 1);
+    EXPECT_TRUE(rt_game3d_body_def_get_static(toggle_def) != 0,
+                "BodyDef static setter enables static mode");
+    EXPECT_TRUE(rt_game3d_body_def_get_kinematic(toggle_def) == 0,
+                "BodyDef static setter clears kinematic mode");
+    EXPECT_NEAR(rt_game3d_body_def_get_mass(toggle_def),
+                0.0,
+                0.0001,
+                "BodyDef static setter zeroes mass");
+    rt_game3d_body_def_set_static(toggle_def, 0);
+    EXPECT_TRUE(rt_game3d_body_def_get_static(toggle_def) == 0,
+                "BodyDef static setter can restore dynamic mode");
+    EXPECT_NEAR(rt_game3d_body_def_get_mass(toggle_def),
+                1.0,
+                0.0001,
+                "BodyDef dynamic restore keeps a positive default mass");
 
     void *trigger = rt_game3d_entity_new();
     void *trigger_def = rt_game3d_body_def_static_box(1.0, 1.0, 1.0);
@@ -3214,9 +3275,9 @@ static bool test_shared_body_attachment_rejected_without_state_leak() {
 
     void *pending = rt_game3d_entity_new();
     rt_game3d_entity_attach_body(pending, shared);
-    EXPECT_TRUE(expect_trap_contains(
-                    [&]() { rt_game3d_world_spawn(world, pending); }, "already attached"),
-                "spawn rejects a body already owned by another entity");
+    EXPECT_TRUE(
+        expect_trap_contains([&]() { rt_game3d_world_spawn(world, pending); }, "already attached"),
+        "spawn rejects a body already owned by another entity");
     EXPECT_TRUE(rt_game3d_entity_is_spawned(pending) == 0,
                 "failed shared-body spawn rolls back spawned flag");
     EXPECT_EQ_INT(rt_world3d_body_count(rt_game3d_world_get_physics(world)),
@@ -3225,8 +3286,8 @@ static bool test_shared_body_attachment_rejected_without_state_leak() {
 
     void *spawned = rt_game3d_entity_new();
     rt_game3d_world_spawn(world, spawned);
-    EXPECT_TRUE(expect_trap_contains(
-                    [&]() { rt_game3d_entity_attach_body(spawned, shared); }, "already attached"),
+    EXPECT_TRUE(expect_trap_contains([&]() { rt_game3d_entity_attach_body(spawned, shared); },
+                                     "already attached"),
                 "attachBody rejects a body already owned by another spawned entity");
     EXPECT_TRUE(rt_game3d_entity_get_body(spawned) == nullptr,
                 "failed attachBody leaves the spawned entity bodyless");
@@ -3347,19 +3408,31 @@ static bool test_phase4_collision_events_wrapped_with_entities() {
                 "Collision3DEvent exposes at least one contact for an overlap");
     void *first_point = rt_game3d_collision_event_point(enter);
     void *indexed_point = rt_game3d_collision_event_contact_point(enter, 0);
-    EXPECT_NEAR(rt_vec3_x(indexed_point), rt_vec3_x(first_point), 0.0001,
+    EXPECT_NEAR(rt_vec3_x(indexed_point),
+                rt_vec3_x(first_point),
+                0.0001,
                 "contactPoint(0) matches point() X");
-    EXPECT_NEAR(rt_vec3_y(indexed_point), rt_vec3_y(first_point), 0.0001,
+    EXPECT_NEAR(rt_vec3_y(indexed_point),
+                rt_vec3_y(first_point),
+                0.0001,
                 "contactPoint(0) matches point() Y");
-    EXPECT_NEAR(rt_vec3_z(indexed_point), rt_vec3_z(first_point), 0.0001,
+    EXPECT_NEAR(rt_vec3_z(indexed_point),
+                rt_vec3_z(first_point),
+                0.0001,
                 "contactPoint(0) matches point() Z");
     void *first_normal = rt_game3d_collision_event_normal(enter);
     void *indexed_normal = rt_game3d_collision_event_contact_normal(enter, 0);
-    EXPECT_NEAR(rt_vec3_x(indexed_normal), rt_vec3_x(first_normal), 0.0001,
+    EXPECT_NEAR(rt_vec3_x(indexed_normal),
+                rt_vec3_x(first_normal),
+                0.0001,
                 "contactNormal(0) matches normal() X");
-    EXPECT_NEAR(rt_vec3_y(indexed_normal), rt_vec3_y(first_normal), 0.0001,
+    EXPECT_NEAR(rt_vec3_y(indexed_normal),
+                rt_vec3_y(first_normal),
+                0.0001,
                 "contactNormal(0) matches normal() Y");
-    EXPECT_NEAR(rt_vec3_z(indexed_normal), rt_vec3_z(first_normal), 0.0001,
+    EXPECT_NEAR(rt_vec3_z(indexed_normal),
+                rt_vec3_z(first_normal),
+                0.0001,
                 "contactNormal(0) matches normal() Z");
     EXPECT_TRUE(rt_game3d_collision_event_contact_separation(enter, 0) <= 0.0,
                 "contactSeparation(0) reports penetration for overlap");
@@ -3371,7 +3444,9 @@ static bool test_phase4_collision_events_wrapped_with_entities() {
     EXPECT_NEAR(rt_vec3_x(missing_normal), 0.0, 0.0001, "missing contact normal X fallback");
     EXPECT_NEAR(rt_vec3_y(missing_normal), 1.0, 0.0001, "missing contact normal Y fallback");
     EXPECT_NEAR(rt_vec3_z(missing_normal), 0.0, 0.0001, "missing contact normal Z fallback");
-    EXPECT_NEAR(rt_game3d_collision_event_contact_separation(enter, 99), 0.0, 0.0001,
+    EXPECT_NEAR(rt_game3d_collision_event_contact_separation(enter, 99),
+                0.0,
+                0.0001,
                 "missing contact separation fallback");
     EXPECT_TRUE(rt_game3d_world_collision_event_count(world, rt_game3d_collision_any()) >=
                     rt_game3d_world_collision_event_count(world, rt_game3d_collision_enter()),
@@ -3448,8 +3523,8 @@ static bool test_phase5_animator3d_events_and_root_motion() {
 
     void *layer_skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(layer_skel, rt_const_cstr("root"), -1, rt_mat4_identity());
-    int64_t arm_bone =
-        rt_skeleton3d_add_bone(layer_skel, rt_const_cstr("arm"), 0, rt_mat4_translate(0.0, 1.0, 0.0));
+    int64_t arm_bone = rt_skeleton3d_add_bone(
+        layer_skel, rt_const_cstr("arm"), 0, rt_mat4_translate(0.0, 1.0, 0.0));
     rt_skeleton3d_compute_inverse_bind(layer_skel);
     void *base = make_game3d_test_anim("base", arm_bone, 0.0, 2.0, 0.0, 0.0, 2.0, 0.0);
     void *raise = make_game3d_test_anim("raise", arm_bone, 0.0, 3.0, 0.0, 0.0, 3.0, 0.0);
@@ -3466,18 +3541,17 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     rt_game3d_animator_play(layer_animator, rt_const_cstr("base"));
     rt_anim_controller3d_set_layer_mask(layer_controller, 1, arm_bone);
     rt_anim_controller3d_set_layer_weight(layer_controller, 1, 1.0);
-    EXPECT_TRUE(rt_game3d_animator_play_layer_additive(
-                    layer_animator, 0, rt_const_cstr("raise")) == 0,
+    EXPECT_TRUE(rt_game3d_animator_play_layer_additive(layer_animator, 0, rt_const_cstr("raise")) ==
+                    0,
                 "Animator3D.playLayerAdditive rejects the base layer");
-    EXPECT_TRUE(rt_game3d_animator_play_layer_additive(
-                    layer_animator, 1, rt_const_cstr("raise")) != 0,
+    EXPECT_TRUE(rt_game3d_animator_play_layer_additive(layer_animator, 1, rt_const_cstr("raise")) !=
+                    0,
                 "Animator3D.playLayerAdditive forwards to the wrapped controller");
     EXPECT_EQ_INT(rt_game3d_animator_event_count(layer_animator),
                   1,
                   "Animator3D.playLayerAdditive captures layer entry events");
-    EXPECT_TRUE(std::strcmp(
-                    rt_string_cstr(rt_game3d_animator_event_name(layer_animator, 0)),
-                    "raiseEnter") == 0,
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(layer_animator, 0)),
+                            "raiseEnter") == 0,
                 "Animator3D.playLayerAdditive preserves layer event names");
     rt_game3d_animator_update(layer_animator, 0.0);
     void *arm_mat = rt_anim_controller3d_get_bone_matrix(layer_controller, arm_bone);
@@ -3494,9 +3568,8 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     EXPECT_EQ_INT(rt_game3d_animator_event_count(layer_animator),
                   1,
                   "Animator3D.crossfadeLayerAdditive captures layer entry events");
-    EXPECT_TRUE(std::strcmp(
-                    rt_string_cstr(rt_game3d_animator_event_name(layer_animator, 0)),
-                    "reachEnter") == 0,
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(layer_animator, 0)),
+                            "reachEnter") == 0,
                 "Animator3D.crossfadeLayerAdditive preserves layer event names");
     rt_game3d_animator_update(layer_animator, 0.5);
     arm_mat = rt_anim_controller3d_get_bone_matrix(layer_controller, arm_bone);
@@ -3524,8 +3597,10 @@ static bool test_phase5_animator3d_events_and_root_motion() {
 
     void *ik_skel = rt_skeleton3d_new();
     int64_t hip = rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("hip"), -1, rt_mat4_identity());
-    int64_t knee = rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("knee"), hip, rt_mat4_translate(1.0, 0.0, 0.0));
-    int64_t foot = rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t knee = rt_skeleton3d_add_bone(
+        ik_skel, rt_const_cstr("knee"), hip, rt_mat4_translate(1.0, 0.0, 0.0));
+    int64_t foot = rt_skeleton3d_add_bone(
+        ik_skel, rt_const_cstr("foot"), knee, rt_mat4_translate(1.0, 0.0, 0.0));
     rt_skeleton3d_compute_inverse_bind(ik_skel);
     void *ik_controller = rt_anim_controller3d_new(ik_skel);
     void *ik_animator = rt_game3d_animator_new(ik_controller);
@@ -3739,6 +3814,7 @@ int main() {
     ok = test_step_simulation_clamps_invalid_dt() && ok;
     ok = test_free_fly_controller_synthetic_input() && ok;
     ok = test_run_frames_only_preserves_synthetic_holds() && ok;
+    ok = test_camera_controller_moves_between_worlds() && ok;
     ok = test_character_controller_syncs_world_position_under_parent() && ok;
     ok = test_orbit_and_follow_controllers() && ok;
     ok = test_first_person_character_controller_same_frame_motion() && ok;

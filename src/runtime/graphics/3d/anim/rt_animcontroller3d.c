@@ -836,7 +836,8 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
     if (controller->blend_tree) {
         void *blend = rt_blend_tree3d_get_blend(controller->blend_tree);
         int32_t blend_bone_count = 0;
-        const float *blend_locals = rt_anim_blend3d_get_local_transform_data(blend, &blend_bone_count);
+        const float *blend_locals =
+            rt_anim_blend3d_get_local_transform_data(blend, &blend_bone_count);
         if (blend_locals && blend_bone_count >= bone_count) {
             memcpy(final_locals, blend_locals, (size_t)bone_count * 16 * sizeof(float));
         } else {
@@ -933,10 +934,8 @@ static void controller_compute_final_palette(rt_anim_controller3d *controller) {
     }
 
     if (controller->ik_solver) {
-        (void)rt_ik_solver3d_apply_to_pose(controller->ik_solver,
-                                           final_locals,
-                                           controller->final_globals,
-                                           bone_count);
+        (void)rt_ik_solver3d_apply_to_pose(
+            controller->ik_solver, final_locals, controller->final_globals, bone_count);
     }
 
     /* Bone-count animation LOD: for distant characters, freeze bones at/after the LOD index to
@@ -1678,7 +1677,8 @@ int8_t rt_anim_controller3d_set_blend_tree(void *obj, void *blend_tree) {
         void *blend = rt_blend_tree3d_get_blend(blend_tree);
         int32_t blend_bone_count = 0;
         const float *locals = rt_anim_blend3d_get_local_transform_data(blend, &blend_bone_count);
-        if (!locals || !controller->skeleton || blend_bone_count != controller->skeleton->bone_count)
+        if (!locals || !controller->skeleton ||
+            blend_bone_count != controller->skeleton->bone_count)
             return 0;
     }
     if (controller->blend_tree != blend_tree) {

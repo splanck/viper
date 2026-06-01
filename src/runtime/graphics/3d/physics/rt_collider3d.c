@@ -498,7 +498,8 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
             vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
             break;
     }
-    collider->bounds_revision = collider->bounds_revision == UINT64_MAX ? 1u : collider->bounds_revision + 1u;
+    collider->bounds_revision =
+        collider->bounds_revision == UINT64_MAX ? 1u : collider->bounds_revision + 1u;
 }
 
 /// @brief Construct an axis-aligned box collider with half-extents (hx, hy, hz). Negative
@@ -1031,8 +1032,10 @@ int8_t rt_collider3d_sample_heightfield_raw(
 
 /// @brief Report a heightfield collider's grid width, depth, and horizontal scale.
 /// @return 1 with the out-params set, or 0 if the collider is not a heightfield.
-int8_t rt_collider3d_get_heightfield_info_raw(
-    void *collider, int32_t *width_out, int32_t *depth_out, double *scale_out) {
+int8_t rt_collider3d_get_heightfield_info_raw(void *collider,
+                                              int32_t *width_out,
+                                              int32_t *depth_out,
+                                              double *scale_out) {
     rt_collider3d *shape = collider3d_checked(collider);
     if (!shape || shape->type != RT_COLLIDER3D_TYPE_HEIGHTFIELD || !shape->heightfield_heights)
         return 0;

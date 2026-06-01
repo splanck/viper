@@ -53,11 +53,8 @@ int gif_decode_file(const char *filepath,
 /// @details Internal worker-safe helper. The returned buffer stores 0xRRGGBBAA
 ///          pixels in row-major order; caller frees it with free().
 /// @return 1 on success, 0 on failure.
-int rt_gif_decode_memory_first_rgba32(const uint8_t *data,
-                                      size_t len,
-                                      uint32_t **out_pixels,
-                                      int *out_width,
-                                      int *out_height);
+int rt_gif_decode_memory_first_rgba32(
+    const uint8_t *data, size_t len, uint32_t **out_pixels, int *out_width, int *out_height);
 
 #ifdef __cplusplus
 }

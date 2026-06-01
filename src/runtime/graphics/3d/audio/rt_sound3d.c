@@ -472,8 +472,8 @@ void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listene
          * basis is reflected in stereo balance — as the file's invariant
          * promises — and elevated sources are not wrongly pulled toward center
          * by projecting onto x/z while still dividing by the 3D distance. */
-        double dot_right = ndx * effective->right[0] + ndy * effective->right[1] +
-                           ndz * effective->right[2];
+        double dot_right =
+            ndx * effective->right[0] + ndy * effective->right[1] + ndz * effective->right[2];
         *out_pan = isfinite(dot_right) ? clamp_i64((int64_t)(dot_right * 100.0), -100, 100) : 0;
     } else {
         *out_pan = 0;
@@ -567,9 +567,11 @@ void rt_sound3d_update_voice(int64_t voice, void *position, double max_distance)
     rt_sound3d_update_voice_ex(voice, position, NULL, 0.0, max_distance);
 }
 
-/// @brief Update a playing voice's 3D position (and optionally velocity/distances) for respatialization.
+/// @brief Update a playing voice's 3D position (and optionally velocity/distances) for
+/// respatialization.
 /// @details Extended form of rt_sound3d_update_voice: @p source_velocity drives Doppler, and
-///          @p ref_distance / @p max_distance override the attenuation range (0 keeps prior values).
+///          @p ref_distance / @p max_distance override the attenuation range (0 keeps prior
+///          values).
 void rt_sound3d_update_voice_ex(int64_t voice,
                                 void *position,
                                 const double *source_velocity,

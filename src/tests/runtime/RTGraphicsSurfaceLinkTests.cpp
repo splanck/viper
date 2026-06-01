@@ -12,14 +12,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_animcontroller3d.h"
-#include "rt_blendtree3d.h"
 #include "rt_audio.h"
+#include "rt_blendtree3d.h"
 #include "rt_canvas3d.h"
 #include "rt_collider3d.h"
 #include "rt_fbx_loader.h"
+#include "rt_game3d.h"
 #include "rt_gltf.h"
 #include "rt_graphics.h"
-#include "rt_game3d.h"
 #include "rt_iksolver3d.h"
 #include "rt_joints3d.h"
 #include "rt_model3d.h"
