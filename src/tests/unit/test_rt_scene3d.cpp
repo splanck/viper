@@ -1595,7 +1595,7 @@ static void test_node_animator_handles_large_morph_weight_channels() {
                 "Node animation applies morph weights beyond the old fixed scratch limit");
 }
 
-static void test_node_animator_weights_only_matching_morph_set() {
+static void test_node_animator_weights_all_morph_primitives_in_subtree() {
     void *scene = rt_scene3d_new();
     void *target = rt_scene_node3d_new();
     void *child_a = rt_scene_node3d_new();
@@ -1645,11 +1645,11 @@ static void test_node_animator_weights_only_matching_morph_set() {
     EXPECT_NEAR(rt_morphtarget3d_get_weight(morph_a, 0),
                 0.5,
                 0.001,
-                "Node animation applies weights to the first matching morph set");
+                "Node animation applies weights to the first primitive morph set");
     EXPECT_NEAR(rt_morphtarget3d_get_weight(morph_b, 0),
-                0.0,
+                0.5,
                 0.001,
-                "Node animation leaves unrelated descendant morph sets unchanged");
+                "Node animation applies weights to sibling primitive morph sets");
 }
 
 static void test_node_animator_samples_cubic_translation_channels() {
@@ -2076,6 +2076,42 @@ static void test_dynamic_deformation_uses_conservative_frustum_culling() {
                 "Scene3D records frustum culls for dynamic-deformation meshes");
 }
 
+static void test_morph_delta_bounds_keep_deformed_mesh_visible() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *morph = rt_morphtarget3d_new(((rt_mesh3d *)mesh)->vertex_count);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+
+    int64_t shape = rt_morphtarget3d_add_shape(morph, rt_const_cstr("reach"));
+    rt_morphtarget3d_set_delta(morph, shape, 0, -4.0, 0.0, 0.0);
+    rt_mesh3d_set_morph_targets(mesh, morph);
+    rt_scene_node3d_set_position(node, 4.0, 0.0, 0.0);
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D keeps morph-deformed meshes visible using authored delta bounds");
+}
+
 static void test_parent_animator_drives_child_skinned_meshes() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
@@ -2353,6 +2389,7 @@ int main() {
     test_lod_residency_falls_back_and_reports_bytes();
     test_impostor_proxy_draws_textured_quad();
     test_dynamic_deformation_uses_conservative_frustum_culling();
+    test_morph_delta_bounds_keep_deformed_mesh_visible();
     test_parent_animator_drives_child_skinned_meshes();
     test_scene_spatial_queries_flat_walk_reference();
     test_scene_spatial_queries_validate_vec3_args_before_result_alloc();
@@ -2368,7 +2405,7 @@ int main() {
     test_scene_save_serializes_visibility_and_lod_metadata();
     test_scene_roundtrip_loads_shared_assets();
     test_node_animator_handles_large_morph_weight_channels();
-    test_node_animator_weights_only_matching_morph_set();
+    test_node_animator_weights_all_morph_primitives_in_subtree();
     test_node_animator_samples_cubic_translation_channels();
     test_node_animator_slerps_linear_rotation_channels();
     test_node_animation_rejects_invalid_channel_data();

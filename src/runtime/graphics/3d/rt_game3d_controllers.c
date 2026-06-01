@@ -68,6 +68,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief GC finalizer for a character controller: release its world, entity, and
+///   underlying character references.
 static void game3d_character_controller_finalize(void *obj) {
     rt_game3d_character_controller *controller = (rt_game3d_character_controller *)obj;
     if (!controller)

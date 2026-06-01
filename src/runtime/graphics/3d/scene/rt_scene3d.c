@@ -83,6 +83,8 @@ void scene3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Grow a traversal-stack buffer by doubling (min 64 elements), overflow-checked.
+/// @return 1 with @p buffer / @p capacity updated, 0 on overflow or allocation failure.
 int scene3d_grow_stack_storage(void **buffer, size_t *capacity, size_t elem_size) {
     size_t new_capacity;
     void *grown;
@@ -99,6 +101,9 @@ int scene3d_grow_stack_storage(void **buffer, size_t *capacity, size_t elem_size
     return 1;
 }
 
+/// @brief Grow an int32-indexed array to hold at least @p needed elements (floor
+///   @p min_capacity, doubling thereafter), optionally zeroing the newly added tail.
+/// @return 1 on success (including when already large enough), 0 on bad args or allocation failure.
 int scene3d_grow_array_i32(void **buffer,
                            int32_t *capacity,
                            int32_t needed,
@@ -1877,7 +1882,8 @@ static int scene3d_node_cull_test(rt_scene_node3d *current,
         float world_min[3], world_max[3];
         double world_min_d[3], world_max_d[3];
         if (has_dynamic_deformation) {
-            float pad = draw_radius > 0.0f ? draw_radius * 0.5f : 0.0f;
+            float pad = (float)scene3d_mesh_dynamic_bound_pad(
+                draw_mesh_impl, effective_animator, (double)draw_radius);
             cull_min[0] -= pad;
             cull_min[1] -= pad;
             cull_min[2] -= pad;
@@ -1908,6 +1914,9 @@ static int scene3d_node_cull_test(rt_scene_node3d *current,
     return 1;
 }
 
+/// @brief Cull-test a node using its cached world-space AABB against the PVS and view frustum,
+///   incrementing @p culled when the node is rejected.
+/// @return Non-zero if the node is culled (the caller should skip it); 0 if potentially visible.
 static int scene3d_cached_world_bounds_cull_test(rt_scene_node3d *current,
                                                  const vgfx3d_frustum_t *frustum,
                                                  const scene3d_pvs_context_t *pvs,
@@ -1957,10 +1966,14 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
     int32_t mesh_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
 
     if (effective_animator) {
-        anim_palette =
-            rt_anim_controller3d_get_final_palette_data(effective_animator, &anim_bone_count);
-        anim_prev_palette =
-            rt_anim_controller3d_get_previous_palette_data(effective_animator, &anim_bone_count);
+        void *anim_skeleton = rt_anim_controller3d_get_skeleton(effective_animator);
+        rt_mesh3d *mesh_impl = (rt_mesh3d *)draw_mesh;
+        if (!mesh_impl->skeleton_ref || mesh_impl->skeleton_ref == anim_skeleton) {
+            anim_palette =
+                rt_anim_controller3d_get_final_palette_data(effective_animator, &anim_bone_count);
+            anim_prev_palette =
+                rt_anim_controller3d_get_previous_palette_data(effective_animator, &anim_bone_count);
+        }
     }
     if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {
         int32_t draw_bone_count =
@@ -2020,6 +2033,9 @@ static void scene3d_draw_node_self(rt_scene_node3d *current,
         current, canvas3d, draw_mesh, draw_material, effective_animator, visible_nodes);
 }
 
+/// @brief Draw one spatial-index entry's node through @p canvas with the active camera,
+///   applying frustum/PVS culling (updating @p culled / @p visible_nodes) and resolving the
+///   node's effective animator.
 static void scene3d_draw_spatial_entry(rt_scene3d_spatial_entry *entry,
                                        void *canvas3d,
                                        rt_canvas3d *canvas,

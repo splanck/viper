@@ -102,6 +102,8 @@ static double joint3d_vec3_dot(const double *a, const double *b) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
+/// @brief Euclidean length of the vector (x, y, z); returns INFINITY for non-finite inputs
+///   or overflow so callers can reject degenerate joint geometry.
 static double joint3d_len3(double x, double y, double z) {
     double len_sq;
     if (!isfinite(x) || !isfinite(y) || !isfinite(z))

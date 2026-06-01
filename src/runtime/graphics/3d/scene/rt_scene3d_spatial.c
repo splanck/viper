@@ -46,6 +46,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Ensure the spatial index can hold @p needed entries, growing by doubling (min 64).
+/// @return 1 on success, 0 on bad args, overflow, or allocation failure.
 static int scene3d_spatial_ensure_capacity(rt_scene3d_spatial_index *index, int32_t needed) {
     int32_t new_capacity;
     rt_scene3d_spatial_entry *grown;
@@ -351,6 +353,39 @@ int scene3d_mesh_has_dynamic_deformation(rt_mesh3d *mesh, void *effective_animat
                     mesh->morph_shape_count > 0);
 }
 
+/// @brief Conservative local-space padding for runtime-deformed mesh bounds.
+double scene3d_mesh_dynamic_bound_pad(rt_mesh3d *mesh,
+                                      void *effective_animator,
+                                      double base_radius) {
+    double pad = 0.0;
+    if (!scene3d_mesh_has_dynamic_deformation(mesh, effective_animator))
+        return 0.0;
+    if (mesh && mesh->morph_targets_ref) {
+        double morph_pad = rt_morphtarget3d_get_max_position_delta(mesh->morph_targets_ref);
+        if (isfinite(morph_pad) && morph_pad > pad)
+            pad = morph_pad;
+    }
+    if (mesh && mesh->morph_deltas && mesh->morph_shape_count > 0 && mesh->vertex_count > 0) {
+        size_t total = (size_t)mesh->morph_shape_count * (size_t)mesh->vertex_count;
+        double max_len2 = 0.0;
+        for (size_t i = 0; i < total; i++) {
+            const float *d = mesh->morph_deltas + i * 3u;
+            double len2 = (double)d[0] * (double)d[0] + (double)d[1] * (double)d[1] +
+                          (double)d[2] * (double)d[2];
+            if (isfinite(len2) && len2 > max_len2)
+                max_len2 = len2;
+        }
+        if (max_len2 > 0.0 && sqrt(max_len2) > pad)
+            pad = sqrt(max_len2);
+    }
+    if (effective_animator || (mesh && mesh->morph_shape_count > 0 && pad <= 0.0)) {
+        double fallback = base_radius > 0.0 ? base_radius : 0.0;
+        if (fallback > pad)
+            pad = fallback;
+    }
+    return pad;
+}
+
 /// @brief Expand world AABB [out_min, out_max] in place to also contain [in_min, in_max].
 static void scene3d_bounds_include_world_aabb(double out_min[3],
                                               double out_max[3],
@@ -381,7 +416,7 @@ static int scene3d_include_mesh_world_bounds(rt_scene_node3d *node,
     scene_mesh_bounds(mesh, local_min, local_max, &radius_f);
     radius = (double)radius_f;
     if (scene3d_mesh_has_dynamic_deformation(mesh, effective_animator)) {
-        double pad = radius > 0.0 ? radius * 0.5 : 0.0;
+        double pad = scene3d_mesh_dynamic_bound_pad(mesh, effective_animator, radius);
         local_min[0] = scene3d_float_or_zero((double)local_min[0] - pad);
         local_min[1] = scene3d_float_or_zero((double)local_min[1] - pad);
         local_min[2] = scene3d_float_or_zero((double)local_min[2] - pad);
@@ -448,6 +483,8 @@ static int scene3d_spatial_refresh_entry_bounds(rt_scene3d_spatial_entry *entry)
     return 1;
 }
 
+/// @brief True if @p node or any ancestor has a dirty world transform (its cached world
+///   bounds cannot be trusted until the transforms are refreshed).
 static int scene3d_spatial_node_or_ancestor_dirty(const rt_scene_node3d *node) {
     const rt_scene_node3d *current = node;
     while (current) {

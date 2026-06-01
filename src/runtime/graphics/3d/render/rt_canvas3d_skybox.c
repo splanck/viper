@@ -29,6 +29,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Free and reset the canvas's cached CPU-rendered skybox, forcing a re-render on the
+///   next software skybox draw (call when the skybox texture or view parameters change).
 void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *c) {
     if (!c)
         return;

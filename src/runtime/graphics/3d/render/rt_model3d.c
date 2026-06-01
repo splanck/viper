@@ -55,6 +55,7 @@
 #include <string.h>
 
 extern void *rt_fbx_get_scene_root(void *fbx);
+extern void *rt_pixels_load(void *path);
 
 typedef struct {
     rt_scene_node3d *root;
@@ -481,6 +482,7 @@ static rt_scene_node3d *model_clone_node_shallow(const rt_scene_node3d *src,
     dst->scale_xyz[1] = src->scale_xyz[1];
     dst->scale_xyz[2] = src->scale_xyz[2];
     dst->world_dirty = 1;
+    dst->import_index = src->import_index;
     dst->visible = src->visible;
     dst->auto_lod_enabled = src->auto_lod_enabled;
     dst->auto_lod_screen_error_px = src->auto_lod_screen_error_px;
@@ -840,6 +842,8 @@ typedef struct {
     int32_t capacity;
 } model_obj_material_table;
 
+/// @brief Duplicate the substring [@p start, @p end), trimming leading/trailing ASCII
+///   whitespace. Returns NULL on allocation failure.
 static char *model_strdup_range(const char *start, const char *end) {
     size_t len;
     char *copy;
@@ -861,6 +865,8 @@ static char *model_strdup_range(const char *start, const char *end) {
     return copy;
 }
 
+/// @brief Free an OBJ material table: release each entry's name and material reference, then
+///   the entry array, and zero the table.
 static void model_obj_material_table_free(model_obj_material_table *table) {
     if (!table || !table->entries)
         return;
@@ -872,6 +878,10 @@ static void model_obj_material_table_free(model_obj_material_table *table) {
     memset(table, 0, sizeof(*table));
 }
 
+/// @brief Append a (name, material) entry, de-duplicating by name (on a duplicate, frees the
+///   passed @p name and releases @p material). Takes ownership of @p name and the material
+///   reference and grows the table as needed.
+/// @return 1 on success or a harmless duplicate; 0 on allocation failure.
 static int model_obj_material_table_append(model_obj_material_table *table,
                                            char *name,
                                            void *material) {
@@ -906,6 +916,7 @@ static int model_obj_material_table_append(model_obj_material_table *table,
     return 1;
 }
 
+/// @brief Find a material by name in the OBJ material table; NULL if absent.
 static void *model_obj_material_lookup(const model_obj_material_table *table, const char *name) {
     if (!table || !name || !*name)
         return NULL;
@@ -916,6 +927,8 @@ static void *model_obj_material_lookup(const model_obj_material_table *table, co
     return NULL;
 }
 
+/// @brief Write the parent-directory portion of @p path (up to the last '/' or '\\') into
+///   @p out; empty if @p path has no separator.
 static void model_parent_dir(char *out, size_t out_size, const char *path) {
     const char *last;
     size_t len;
@@ -924,7 +937,11 @@ static void model_parent_dir(char *out, size_t out_size, const char *path) {
     out[0] = '\0';
     if (!path)
         return;
-    last = strrchr(path, '/');
+    {
+        const char *slash = strrchr(path, '/');
+        const char *backslash = strrchr(path, '\\');
+        last = (!slash || (backslash && backslash > slash)) ? backslash : slash;
+    }
     if (!last)
         return;
     len = (size_t)(last - path);
@@ -934,6 +951,7 @@ static void model_parent_dir(char *out, size_t out_size, const char *path) {
     out[len] = '\0';
 }
 
+/// @brief True if @p path is absolute: a leading '/' or '\\', or a Windows drive letter ("C:").
 static int model_is_absolute_path(const char *path) {
     if (!path || !*path)
         return 0;
@@ -942,6 +960,10 @@ static int model_is_absolute_path(const char *path) {
     return isalpha((unsigned char)path[0]) && path[1] == ':';
 }
 
+/// @brief Sanitize an asset reference into a safe relative path in @p out (path-traversal
+///   guard): converts '\\' to '/', then rejects absolute paths, scheme URIs ("://"), and any
+///   ".." segment, collapsing "." and redundant slashes.
+/// @return Non-zero if a non-empty safe path was written; 0 if empty, unsafe, or overflowing.
 static int model_normalize_relative_asset_ref(const char *src, char *out, size_t out_size) {
     char normalized[1024];
     const char *p;
@@ -989,6 +1011,8 @@ static int model_normalize_relative_asset_ref(const char *src, char *out, size_t
     return wrote_segment;
 }
 
+/// @brief Join @p dir and @p leaf with a '/' separator into @p out (just @p leaf when @p dir
+///   is empty), bounds-checked. @return 1 on success, 0 on bad input or overflow.
 static int model_join_path(char *out, size_t out_size, const char *dir, const char *leaf) {
     size_t dir_len;
     if (!out || out_size == 0 || !leaf || !*leaf)
@@ -1008,11 +1032,78 @@ static int model_join_path(char *out, size_t out_size, const char *dir, const ch
     return 1;
 }
 
+/// @brief Extract the texture filename from an MTL map directive value, taking the last
+///   whitespace-delimited token (after trimming) so leading option flags (e.g. "-o 1 1") are
+///   skipped. @return A malloc'd copy of the path, or NULL.
+static char *model_obj_extract_map_path(const char *value) {
+    const char *start;
+    const char *end;
+    const char *last;
+    if (!value)
+        return NULL;
+    start = value;
+    while (*start == ' ' || *start == '\t')
+        start++;
+    end = start + strlen(start);
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' ||
+                           end[-1] == '\r'))
+        end--;
+    last = end;
+    while (last > start && last[-1] != ' ' && last[-1] != '\t')
+        last--;
+    return model_strdup_range(last, end);
+}
+
+/// @brief Load the texture named by an MTL map directive (sanitized via the path-traversal
+///   guard and joined to @p mtl_dir) and assign it to @p material's @p slot
+///   (normal/specular/emissive, else base color). No-op on a missing/unsafe/unloadable path.
+static void model_obj_set_texture_from_map(void *material,
+                                           const char *mtl_dir,
+                                           const char *map_value,
+                                           int32_t slot) {
+    char *map_ref;
+    char safe_ref[1024];
+    char path[1024];
+    void *pixels;
+    if (!material)
+        return;
+    map_ref = model_obj_extract_map_path(map_value);
+    if (!map_ref)
+        return;
+    if (!model_normalize_relative_asset_ref(map_ref, safe_ref, sizeof(safe_ref)) ||
+        !model_join_path(path, sizeof(path), mtl_dir, safe_ref)) {
+        free(map_ref);
+        return;
+    }
+    free(map_ref);
+    pixels = rt_pixels_load(rt_const_cstr(path));
+    if (!pixels)
+        return;
+    switch (slot) {
+        case RT_MATERIAL3D_TEXTURE_SLOT_NORMAL:
+            rt_material3d_set_normal_map(material, pixels);
+            break;
+        case RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR:
+            rt_material3d_set_specular_map(material, pixels);
+            break;
+        case RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE:
+            rt_material3d_set_emissive_map(material, pixels);
+            break;
+        default:
+            rt_material3d_set_texture(material, pixels);
+            break;
+    }
+    model_release_local(pixels);
+}
+
+/// @brief Parse the .mtl library referenced by @p mtllib_ref (relative to @p obj_dir), adding
+///   each "newmtl" material — with its colors and map_* textures — to @p table.
 static void model_obj_parse_mtl_file(model_obj_material_table *table,
                                      const char *obj_dir,
                                      const char *mtllib_ref) {
     char safe_ref[1024];
     char path[1024];
+    char mtl_dir[1024];
     FILE *f;
     char line[1024];
     char *current_name = NULL;
@@ -1021,6 +1112,7 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
         return;
     if (!model_join_path(path, sizeof(path), obj_dir, safe_ref))
         return;
+    model_parent_dir(mtl_dir, sizeof(mtl_dir), path);
     f = fopen(path, "r");
     if (!f)
         return;
@@ -1049,6 +1141,39 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
             p += 3;
             if (sscanf(p, "%lf %lf %lf", &r, &g, &b) == 3)
                 rt_material3d_set_color(current_material, r, g, b);
+        } else if (current_material && strncmp(p, "Ks ", 3) == 0) {
+            double r, g, b;
+            p += 3;
+            if (sscanf(p, "%lf %lf %lf", &r, &g, &b) == 3) {
+                ((rt_material3d *)current_material)->specular[0] = r;
+                ((rt_material3d *)current_material)->specular[1] = g;
+                ((rt_material3d *)current_material)->specular[2] = b;
+            }
+        } else if (current_material && strncmp(p, "Ke ", 3) == 0) {
+            double r, g, b;
+            p += 3;
+            if (sscanf(p, "%lf %lf %lf", &r, &g, &b) == 3)
+                rt_material3d_set_emissive_color(current_material, r, g, b);
+        } else if (current_material && strncmp(p, "Ns ", 3) == 0) {
+            double ns;
+            p += 3;
+            if (sscanf(p, "%lf", &ns) == 1)
+                rt_material3d_set_shininess(current_material, ns);
+        } else if (current_material && strncmp(p, "map_Kd ", 7) == 0) {
+            model_obj_set_texture_from_map(
+                current_material, mtl_dir, p + 7, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
+        } else if (current_material && strncmp(p, "map_Ks ", 7) == 0) {
+            model_obj_set_texture_from_map(
+                current_material, mtl_dir, p + 7, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR);
+        } else if (current_material && strncmp(p, "map_Ke ", 7) == 0) {
+            model_obj_set_texture_from_map(
+                current_material, mtl_dir, p + 7, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE);
+        } else if (current_material &&
+                   (strncmp(p, "map_Bump ", 9) == 0 || strncmp(p, "map_bump ", 9) == 0 ||
+                    strncmp(p, "bump ", 5) == 0)) {
+            const char *map_value = p[0] == 'b' ? p + 5 : p + 9;
+            model_obj_set_texture_from_map(
+                current_material, mtl_dir, map_value, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL);
         } else if (current_material && (strncmp(p, "d ", 2) == 0 || strncmp(p, "Tr ", 3) == 0)) {
             double a;
             const char *value = p + (p[0] == 'T' ? 3 : 2);
@@ -1067,6 +1192,8 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
     }
 }
 
+/// @brief Scan the OBJ file at @p obj_path for "mtllib" directives and parse each referenced
+///   .mtl library into @p table.
 static void model_obj_load_material_libraries(const char *obj_path, model_obj_material_table *table) {
     char obj_dir[1024];
     FILE *f;
@@ -1082,16 +1209,32 @@ static void model_obj_load_material_libraries(const char *obj_path, model_obj_ma
         while (*p == ' ' || *p == '\t')
             p++;
         if (strncmp(p, "mtllib ", 7) == 0) {
-            char *name = model_strdup_range(p + 7, NULL);
-            if (name) {
-                model_obj_parse_mtl_file(table, obj_dir, name);
-                free(name);
+            const char *cursor = p + 7;
+            while (*cursor && *cursor != '\n' && *cursor != '\r') {
+                const char *start;
+                char *name;
+                while (*cursor == ' ' || *cursor == '\t')
+                    cursor++;
+                start = cursor;
+                while (*cursor && *cursor != ' ' && *cursor != '\t' && *cursor != '\n' &&
+                       *cursor != '\r')
+                    cursor++;
+                if (cursor == start)
+                    break;
+                name = model_strdup_range(start, cursor);
+                if (name) {
+                    model_obj_parse_mtl_file(table, obj_dir, name);
+                    free(name);
+                }
             }
         }
     }
     fclose(f);
 }
 
+/// @brief Load a Wavefront OBJ file into @p model: parse vertices/normals/UVs and faces
+///   (grouped by material), resolve materials from referenced .mtl libraries, and build the
+///   model's per-material meshes. @return 1 on success, 0 on failure.
 static int model3d_load_from_obj(rt_model3d *model, rt_string path, const char *path_cstr) {
     rt_mesh3d_obj_group_t *groups = NULL;
     int32_t group_count = 0;

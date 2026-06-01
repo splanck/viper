@@ -63,6 +63,9 @@ static rt_mesh3d *mesh3d_checked(void *obj) {
     return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
 }
 
+/// @brief Bump the mesh's geometry-revision counter to invalidate cached GPU/derived data
+///   (wrapping past UINT32_MAX to 1, since 0 marks "never set"); optionally also drops the
+///   cached tangents so they are recomputed.
 static void mesh3d_bump_vertex_revision(rt_mesh3d *m, int invalidate_tangents) {
     if (!m)
         return;
@@ -848,6 +851,9 @@ void rt_mesh3d_recalc_normals(void *obj) {
     mesh3d_bump_vertex_revision(m, 1);
 }
 
+/// @brief Compute per-vertex normals from the mesh's triangle faces when the source provided
+///   none, accumulating area-weighted face normals and normalizing. Traps on accumulator
+///   allocation overflow.
 static void mesh3d_fill_missing_normals(rt_mesh3d *m) {
     if (!m || m->index_count < 3u)
         return;
@@ -943,10 +949,10 @@ void *rt_mesh3d_clone(void *obj) {
     }
 
     dst->vertex_capacity = src->vertex_count;
-    dst->vertices = dst->vertex_capacity > 0
-                        ? (vgfx3d_vertex_t *)malloc((size_t)dst->vertex_capacity *
-                                                    sizeof(vgfx3d_vertex_t))
-                        : NULL;
+    dst->vertices =
+        dst->vertex_capacity > 0
+            ? (vgfx3d_vertex_t *)malloc((size_t)dst->vertex_capacity * sizeof(vgfx3d_vertex_t))
+            : NULL;
     if (src->positions64)
         dst->positions64 = (double *)malloc((size_t)dst->vertex_capacity * 3u * sizeof(double));
     dst->index_capacity = src->index_count;
@@ -2209,6 +2215,151 @@ static int mesh3d_read_text_line(FILE *f, char **line, size_t *cap, size_t max_b
     return 1;
 }
 
+/// @brief Parse `components` (2 or 3) floats from *p into array[*cnt * components],
+///   growing the array as needed. Matches the v/vn/vt directive semantics: all
+///   components are parsed, then range-checked, then stored. Returns 1 on success,
+///   0 on a parse, overflow, or non-finite-value failure.
+static int obj_parse_float_attrib(
+    const char **p, float **array, int *cnt, int *cap, int components) {
+    if (*cnt >= *cap) {
+        if (!obj_grow_float_array(array, cap, components))
+            return 0;
+    }
+    double vals[3];
+    for (int i = 0; i < components; i++) {
+        if (!obj_parse_double(p, &vals[i]))
+            return 0;
+    }
+    for (int i = 0; i < components; i++) {
+        if (!mesh_value_fits_float(vals[i]))
+            return 0;
+    }
+    for (int i = 0; i < components; i++)
+        (*array)[(*cnt) * components + i] = (float)vals[i];
+    (*cnt)++;
+    return 1;
+}
+
+/// @brief Parse one OBJ `f` face (p points just past "f "): collect its v/vt/vn
+///   vertices, resolve and emit/reuse mesh vertices, then ear-clip triangulate.
+///   Sets *out_missing_normals when any vertex lacked a normal. Returns 1 to keep
+///   parsing (including faces skipped for having < 3 vertices), 0 on a fatal
+///   parse/allocation failure.
+static int obj_parse_face_line(const char *p,
+                               void *mesh,
+                               obj_vertex_cache_t *vertex_cache,
+                               const float *positions,
+                               int cnt_p,
+                               const float *normals,
+                               int cnt_n,
+                               const float *texcoords,
+                               int cnt_t,
+                               int *out_missing_normals) {
+    size_t face_capacity = 8;
+    obj_face_vert_t face_stack[8];
+    uint32_t mesh_indices_stack[8];
+    obj_face_vert_t *face = face_stack;
+    uint32_t *mesh_indices = mesh_indices_stack;
+    int face_count = 0;
+    int parse_failed = 0;
+
+    while (*p && *p != '\n' && *p != '\r') {
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (!*p || *p == '\n' || *p == '\r' || *p == '#')
+            break;
+        if (face_count >= MESH3D_OBJ_MAX_FACE_VERTS) {
+            parse_failed = 1;
+            break;
+        }
+
+        if ((size_t)face_count >= face_capacity) {
+            if (face_capacity > SIZE_MAX / 2u || face_capacity * 2u > SIZE_MAX / sizeof(*face)) {
+                parse_failed = 1;
+                break;
+            }
+            size_t new_capacity = face_capacity * 2u;
+            obj_face_vert_t *new_face = (obj_face_vert_t *)malloc(new_capacity * sizeof(*new_face));
+            if (!new_face) {
+                parse_failed = 1;
+                break;
+            }
+            memcpy(new_face, face, (size_t)face_count * sizeof(*face));
+            if (face != face_stack)
+                free(face);
+            face = new_face;
+            face_capacity = new_capacity;
+        }
+
+        const char *before = p;
+        if (!obj_parse_face_vert(
+                &p, &face[face_count].vi, &face[face_count].ti, &face[face_count].ni) ||
+            p == before || face[face_count].vi == 0) {
+            parse_failed = 1;
+            break;
+        }
+        face_count++;
+    }
+
+    if (parse_failed) {
+        if (face != face_stack)
+            free(face);
+        return 0;
+    }
+
+    if (face_count < 3) {
+        if (face != face_stack)
+            free(face);
+        return 1;
+    }
+
+    if (face_count > (int)(sizeof(mesh_indices_stack) / sizeof(mesh_indices_stack[0]))) {
+        mesh_indices = (uint32_t *)malloc((size_t)face_count * sizeof(uint32_t));
+        if (!mesh_indices) {
+            if (face != face_stack)
+                free(face);
+            return 0;
+        }
+    }
+
+    /* Resolve indices and emit or reuse vertices */
+    for (int fi = 0; fi < face_count; fi++) {
+        int64_t vi = face[fi].vi;
+        int64_t ti = face[fi].ti;
+        int64_t ni = face[fi].ni;
+        if (!obj_resolve_index(vi, cnt_p, 0, &vi) || !obj_resolve_index(ti, cnt_t, 1, &ti) ||
+            !obj_resolve_index(ni, cnt_n, 1, &ni) ||
+            !obj_get_or_add_mesh_vertex(mesh,
+                                        vertex_cache,
+                                        positions,
+                                        cnt_p,
+                                        normals,
+                                        cnt_n,
+                                        texcoords,
+                                        cnt_t,
+                                        vi,
+                                        ti,
+                                        ni,
+                                        &mesh_indices[fi])) {
+            parse_failed = 1;
+            break;
+        }
+        if (ni == 0)
+            *out_missing_normals = 1;
+    }
+
+    /* Ear-clip triangulation preserves concave n-gons. */
+    if (!parse_failed) {
+        if (!obj_triangulate_face(mesh, mesh_indices, face_count))
+            parse_failed = 1;
+    }
+    if (face != face_stack)
+        free(face);
+    if (mesh_indices != mesh_indices_stack)
+        free(mesh_indices);
+    return !parse_failed;
+}
+
 /// @brief Parse an opened OBJ stream into `mesh`, accumulating v/vn/vt into the temp
 ///   arrays (grown in place) and emitting de-duplicated faces. Extracted parse loop of
 ///   rt_mesh3d_from_obj; owns the line buffer. Sets *p_parse_failed on malformed input.
@@ -2253,190 +2404,40 @@ static void obj_parse_into_mesh(FILE *f,
         if (p[0] == 'v' && p[1] == ' ') {
             /* Vertex position: v x y z */
             p += 2;
-            if (cnt_p >= cap_p) {
-                if (!obj_grow_float_array(&positions, &cap_p, 3)) {
-                    parse_failed = 1;
-                    break;
-                }
+            if (!obj_parse_float_attrib(&p, &positions, &cnt_p, &cap_p, 3)) {
+                parse_failed = 1;
+                break;
             }
-            {
-                double x, y, z;
-                if (!obj_parse_double(&p, &x) || !obj_parse_double(&p, &y) ||
-                    !obj_parse_double(&p, &z)) {
-                    parse_failed = 1;
-                    break;
-                }
-                if (!mesh_value_fits_float(x) || !mesh_value_fits_float(y) ||
-                    !mesh_value_fits_float(z)) {
-                    parse_failed = 1;
-                    break;
-                }
-                positions[cnt_p * 3 + 0] = (float)x;
-                positions[cnt_p * 3 + 1] = (float)y;
-                positions[cnt_p * 3 + 2] = (float)z;
-            }
-            cnt_p++;
         } else if (p[0] == 'v' && p[1] == 'n' && p[2] == ' ') {
             /* Vertex normal: vn x y z */
             p += 3;
-            if (cnt_n >= cap_n) {
-                if (!obj_grow_float_array(&normals, &cap_n, 3)) {
-                    parse_failed = 1;
-                    break;
-                }
+            if (!obj_parse_float_attrib(&p, &normals, &cnt_n, &cap_n, 3)) {
+                parse_failed = 1;
+                break;
             }
-            {
-                double x, y, z;
-                if (!obj_parse_double(&p, &x) || !obj_parse_double(&p, &y) ||
-                    !obj_parse_double(&p, &z)) {
-                    parse_failed = 1;
-                    break;
-                }
-                if (!mesh_value_fits_float(x) || !mesh_value_fits_float(y) ||
-                    !mesh_value_fits_float(z)) {
-                    parse_failed = 1;
-                    break;
-                }
-                normals[cnt_n * 3 + 0] = (float)x;
-                normals[cnt_n * 3 + 1] = (float)y;
-                normals[cnt_n * 3 + 2] = (float)z;
-            }
-            cnt_n++;
         } else if (p[0] == 'v' && p[1] == 't' && p[2] == ' ') {
             /* Texture coordinate: vt u v */
             p += 3;
-            if (cnt_t >= cap_t) {
-                if (!obj_grow_float_array(&texcoords, &cap_t, 2)) {
-                    parse_failed = 1;
-                    break;
-                }
+            if (!obj_parse_float_attrib(&p, &texcoords, &cnt_t, &cap_t, 2)) {
+                parse_failed = 1;
+                break;
             }
-            {
-                double u, v;
-                if (!obj_parse_double(&p, &u) || !obj_parse_double(&p, &v)) {
-                    parse_failed = 1;
-                    break;
-                }
-                if (!mesh_value_fits_float(u) || !mesh_value_fits_float(v)) {
-                    parse_failed = 1;
-                    break;
-                }
-                texcoords[cnt_t * 2 + 0] = (float)u;
-                texcoords[cnt_t * 2 + 1] = (float)v;
-            }
-            cnt_t++;
         } else if (p[0] == 'f' && p[1] == ' ') {
             /* Face: f v1[/vt1[/vn1]] v2[/vt2[/vn2]] ... */
             p += 2;
-            size_t face_capacity = 8;
-            obj_face_vert_t face_stack[8];
-            uint32_t mesh_indices_stack[8];
-            obj_face_vert_t *face = face_stack;
-            uint32_t *mesh_indices = mesh_indices_stack;
-            int face_count = 0;
-
-            while (*p && *p != '\n' && *p != '\r') {
-                while (*p == ' ' || *p == '\t')
-                    p++;
-                if (!*p || *p == '\n' || *p == '\r' || *p == '#')
-                    break;
-                if (face_count >= MESH3D_OBJ_MAX_FACE_VERTS) {
-                    parse_failed = 1;
-                    break;
-                }
-
-                if ((size_t)face_count >= face_capacity) {
-                    if (face_capacity > SIZE_MAX / 2u ||
-                        face_capacity * 2u > SIZE_MAX / sizeof(*face)) {
-                        parse_failed = 1;
-                        break;
-                    }
-                    size_t new_capacity = face_capacity * 2u;
-                    obj_face_vert_t *new_face =
-                        (obj_face_vert_t *)malloc(new_capacity * sizeof(*new_face));
-                    if (!new_face) {
-                        parse_failed = 1;
-                        break;
-                    }
-                    memcpy(new_face, face, (size_t)face_count * sizeof(*face));
-                    if (face != face_stack)
-                        free(face);
-                    face = new_face;
-                    face_capacity = new_capacity;
-                }
-
-                const char *before = p;
-                if (!obj_parse_face_vert(&p,
-                                         &face[face_count].vi,
-                                         &face[face_count].ti,
-                                         &face[face_count].ni) ||
-                    p == before || face[face_count].vi == 0) {
-                    parse_failed = 1;
-                    break;
-                }
-                face_count++;
-            }
-
-            if (parse_failed) {
-                if (face != face_stack)
-                    free(face);
+            if (!obj_parse_face_line(p,
+                                     mesh,
+                                     vertex_cache,
+                                     positions,
+                                     cnt_p,
+                                     normals,
+                                     cnt_n,
+                                     texcoords,
+                                     cnt_t,
+                                     &missing_normals)) {
+                parse_failed = 1;
                 break;
             }
-
-            if (face_count < 3) {
-                if (face != face_stack)
-                    free(face);
-                continue;
-            }
-
-            if (face_count > (int)(sizeof(mesh_indices_stack) / sizeof(mesh_indices_stack[0]))) {
-                mesh_indices = (uint32_t *)malloc((size_t)face_count * sizeof(uint32_t));
-                if (!mesh_indices) {
-                    if (face != face_stack)
-                        free(face);
-                    parse_failed = 1;
-                    break;
-                }
-            }
-
-            /* Resolve indices and emit or reuse vertices */
-            for (int fi = 0; fi < face_count; fi++) {
-                int64_t vi = face[fi].vi;
-                int64_t ti = face[fi].ti;
-                int64_t ni = face[fi].ni;
-                if (!obj_resolve_index(vi, cnt_p, 0, &vi) ||
-                    !obj_resolve_index(ti, cnt_t, 1, &ti) ||
-                    !obj_resolve_index(ni, cnt_n, 1, &ni) ||
-                    !obj_get_or_add_mesh_vertex(mesh,
-                                                vertex_cache,
-                                                positions,
-                                                cnt_p,
-                                                normals,
-                                                cnt_n,
-                                                texcoords,
-                                                cnt_t,
-                                                vi,
-                                                ti,
-                                                ni,
-                                                &mesh_indices[fi])) {
-                    parse_failed = 1;
-                    break;
-                }
-                if (ni == 0)
-                    missing_normals = 1;
-            }
-
-            /* Ear-clip triangulation preserves concave n-gons. */
-            if (!parse_failed) {
-                if (!obj_triangulate_face(mesh, mesh_indices, face_count))
-                    parse_failed = 1;
-            }
-            if (face != face_stack)
-                free(face);
-            if (mesh_indices != mesh_indices_stack)
-                free(mesh_indices);
-            if (parse_failed)
-                break;
         } else if (strncmp(p, "mtllib ", 7) == 0 || strncmp(p, "usemtl ", 7) == 0 ||
                    strncmp(p, "g ", 2) == 0 || strncmp(p, "o ", 2) == 0) {
             continue;
@@ -2564,6 +2565,8 @@ typedef struct {
     int missing_normals;
 } obj_group_builder_t;
 
+/// @brief Free an array of in-progress OBJ group builders: each group's material name, vertex
+///   cache, and partially built mesh, then the array.
 static void obj_group_builders_free(obj_group_builder_t *groups, int32_t count) {
     if (!groups)
         return;
@@ -2578,6 +2581,8 @@ static void obj_group_builders_free(obj_group_builder_t *groups, int32_t count) 
     free(groups);
 }
 
+/// @brief Free an array of OBJ mesh groups (each group's material name and Mesh3D) plus the
+///   array itself. Pairs with rt_mesh3d_from_obj_groups.
 void rt_mesh3d_obj_groups_free(rt_mesh3d_obj_group_t *groups, int32_t count) {
     if (!groups)
         return;
@@ -2591,6 +2596,8 @@ void rt_mesh3d_obj_groups_free(rt_mesh3d_obj_group_t *groups, int32_t count) {
     free(groups);
 }
 
+/// @brief Copy an OBJ/MTL directive's value with surrounding whitespace trimmed; NULL on
+///   allocation failure.
 static char *obj_copy_directive_value(const char *p) {
     const char *start;
     const char *end;
@@ -2602,8 +2609,7 @@ static char *obj_copy_directive_value(const char *p) {
         p++;
     start = p;
     end = p + strlen(p);
-    while (end > start && (end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' ' ||
-                           end[-1] == '\t'))
+    while (end > start && (end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' ' || end[-1] == '\t'))
         end--;
     len = (size_t)(end - start);
     copy = (char *)malloc(len + 1u);
@@ -2614,6 +2620,9 @@ static char *obj_copy_directive_value(const char *p) {
     return copy;
 }
 
+/// @brief Find the OBJ group builder for @p material_name, or create one (with a fresh mesh
+///   and vertex cache) and append it, growing the array as needed.
+/// @return 1 with @p out_group set, 0 on allocation failure.
 static int obj_group_find_or_create(obj_group_builder_t **groups,
                                     int32_t *count,
                                     int32_t *capacity,
@@ -2634,8 +2643,7 @@ static int obj_group_find_or_create(obj_group_builder_t **groups,
     }
     if (*count >= *capacity) {
         int32_t new_capacity = *capacity > 0 ? *capacity * 2 : 4;
-        if (*capacity > INT32_MAX / 2 ||
-            (size_t)new_capacity > SIZE_MAX / sizeof(**groups))
+        if (*capacity > INT32_MAX / 2 || (size_t)new_capacity > SIZE_MAX / sizeof(**groups))
             return 0;
         grown = (obj_group_builder_t *)realloc(*groups, (size_t)new_capacity * sizeof(**groups));
         if (!grown)
@@ -2666,6 +2674,9 @@ static int obj_group_find_or_create(obj_group_builder_t **groups,
     return 1;
 }
 
+/// @brief Move the finished meshes and material names from the internal @p builders into a
+///   newly allocated public group array (@p out_groups / @p out_count), transferring ownership.
+/// @return 1 on success, 0 on allocation failure.
 static int obj_groups_transfer(obj_group_builder_t *builders,
                                int32_t builder_count,
                                rt_mesh3d_obj_group_t **out_groups,
@@ -2693,7 +2704,163 @@ static int obj_groups_transfer(obj_group_builder_t *builders,
     return 1;
 }
 
-int rt_mesh3d_from_obj_groups(rt_string path, rt_mesh3d_obj_group_t **out_groups, int32_t *out_count) {
+/// @brief Parse one OBJ `f` face (p just past "f ") into the material group named
+///   by `current_material`, creating the group on demand. Collects v/vt/vn
+///   vertices, resolves and emits/reuses mesh vertices, then ear-clip
+///   triangulates. Returns 1 to keep parsing (including < 3-vertex faces, which
+///   are skipped), 0 on a fatal parse/allocation failure.
+static int obj_parse_face_line_grouped(const char *p,
+                                       obj_group_builder_t **groups,
+                                       int32_t *group_count,
+                                       int32_t *group_capacity,
+                                       const char *current_material,
+                                       const float *positions,
+                                       int cnt_p,
+                                       const float *normals,
+                                       int cnt_n,
+                                       const float *texcoords,
+                                       int cnt_t) {
+    size_t face_capacity = 8;
+    obj_face_vert_t face_stack[8];
+    uint32_t mesh_indices_stack[8];
+    obj_face_vert_t *face = face_stack;
+    uint32_t *mesh_indices = mesh_indices_stack;
+    int face_count = 0;
+    int parse_failed = 0;
+    obj_group_builder_t *group = NULL;
+
+    while (*p && *p != '\n' && *p != '\r') {
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (!*p || *p == '\n' || *p == '\r' || *p == '#')
+            break;
+        if (face_count >= MESH3D_OBJ_MAX_FACE_VERTS) {
+            parse_failed = 1;
+            break;
+        }
+        if ((size_t)face_count >= face_capacity) {
+            size_t new_capacity;
+            obj_face_vert_t *new_face;
+            if (face_capacity > SIZE_MAX / 2u || face_capacity * 2u > SIZE_MAX / sizeof(*face)) {
+                parse_failed = 1;
+                break;
+            }
+            new_capacity = face_capacity * 2u;
+            new_face = (obj_face_vert_t *)malloc(new_capacity * sizeof(*new_face));
+            if (!new_face) {
+                parse_failed = 1;
+                break;
+            }
+            memcpy(new_face, face, (size_t)face_count * sizeof(*face));
+            if (face != face_stack)
+                free(face);
+            face = new_face;
+            face_capacity = new_capacity;
+        }
+        {
+            const char *before = p;
+            if (!obj_parse_face_vert(
+                    &p, &face[face_count].vi, &face[face_count].ti, &face[face_count].ni) ||
+                p == before || face[face_count].vi == 0) {
+                parse_failed = 1;
+                break;
+            }
+        }
+        face_count++;
+    }
+    if (!parse_failed && face_count >= 3) {
+        if (face_count > (int)(sizeof(mesh_indices_stack) / sizeof(mesh_indices_stack[0]))) {
+            mesh_indices = (uint32_t *)malloc((size_t)face_count * sizeof(uint32_t));
+            if (!mesh_indices)
+                parse_failed = 1;
+        }
+        if (!parse_failed && !obj_group_find_or_create(
+                                 groups, group_count, group_capacity, current_material, &group)) {
+            parse_failed = 1;
+        }
+        for (int fi = 0; !parse_failed && fi < face_count; fi++) {
+            int64_t vi = face[fi].vi;
+            int64_t ti = face[fi].ti;
+            int64_t ni = face[fi].ni;
+            if (!obj_resolve_index(vi, cnt_p, 0, &vi) || !obj_resolve_index(ti, cnt_t, 1, &ti) ||
+                !obj_resolve_index(ni, cnt_n, 1, &ni) ||
+                !obj_get_or_add_mesh_vertex(group->group.mesh,
+                                            &group->vertex_cache,
+                                            positions,
+                                            cnt_p,
+                                            normals,
+                                            cnt_n,
+                                            texcoords,
+                                            cnt_t,
+                                            vi,
+                                            ti,
+                                            ni,
+                                            &mesh_indices[fi])) {
+                parse_failed = 1;
+                break;
+            }
+            if (ni == 0)
+                group->missing_normals = 1;
+        }
+        if (!parse_failed && !obj_triangulate_face(group->group.mesh, mesh_indices, face_count))
+            parse_failed = 1;
+    }
+    if (face != face_stack)
+        free(face);
+    if (mesh_indices != mesh_indices_stack)
+        free(mesh_indices);
+    return !parse_failed;
+}
+
+/// @brief Finalize each material group's mesh: end its geometry batch, drop empty
+///   groups, recompute or backfill missing normals, and compact survivors to the
+///   front of `groups`. Returns the surviving group count; sets *p_parse_failed if
+///   any group's geometry build failed.
+static int32_t obj_finalize_groups(obj_group_builder_t *groups,
+                                   int32_t group_count,
+                                   int cnt_n,
+                                   int *p_parse_failed) {
+    int parse_failed = *p_parse_failed;
+    int32_t original_group_count = group_count;
+    int32_t write_count = 0;
+    for (int32_t i = 0; i < group_count; i++) {
+        rt_mesh3d *mesh = (rt_mesh3d *)groups[i].group.mesh;
+        if (!mesh)
+            continue;
+        rt_mesh3d_end_geometry_batch(mesh);
+        if (mesh->build_failed) {
+            parse_failed = 1;
+            break;
+        }
+        if (mesh->index_count < 3u) {
+            free(groups[i].group.material_name);
+            groups[i].group.material_name = NULL;
+            obj_vertex_cache_free(&groups[i].vertex_cache);
+            if (groups[i].group.mesh && rt_obj_release_check0(groups[i].group.mesh))
+                rt_obj_free(groups[i].group.mesh);
+            groups[i].group.mesh = NULL;
+            continue;
+        }
+        if (!parse_failed && cnt_n == 0 && mesh->vertex_count > 0)
+            rt_mesh3d_recalc_normals(mesh);
+        else if (!parse_failed && groups[i].missing_normals && mesh->vertex_count > 0)
+            mesh3d_fill_missing_normals(mesh);
+        if (write_count != i) {
+            groups[write_count] = groups[i];
+            memset(&groups[i], 0, sizeof(groups[i]));
+        }
+        write_count++;
+    }
+    *p_parse_failed = parse_failed;
+    return parse_failed ? original_group_count : write_count;
+}
+
+/// @brief Parse the Wavefront OBJ file at @p path into one Mesh3D per material, returned via
+///   @p out_groups / @p out_count (caller frees with rt_mesh3d_obj_groups_free).
+/// @return 1 on success, 0 on open/parse/allocation failure.
+int rt_mesh3d_from_obj_groups(rt_string path,
+                              rt_mesh3d_obj_group_t **out_groups,
+                              int32_t *out_count) {
     const char *filepath;
     FILE *f;
     int cap_p = 256, cap_n = 256, cap_t = 256;
@@ -2744,54 +2911,23 @@ int rt_mesh3d_from_obj_groups(rt_string path, rt_mesh3d_obj_group_t **out_groups
         if (*p == '#' || *p == '\n' || *p == '\r' || *p == '\0')
             continue;
         if (p[0] == 'v' && p[1] == ' ') {
-            double x, y, z;
             p += 2;
-            if (cnt_p >= cap_p && !obj_grow_float_array(&positions, &cap_p, 3)) {
+            if (!obj_parse_float_attrib(&p, &positions, &cnt_p, &cap_p, 3)) {
                 parse_failed = 1;
                 break;
             }
-            if (!obj_parse_double(&p, &x) || !obj_parse_double(&p, &y) ||
-                !obj_parse_double(&p, &z) || !mesh_value_fits_float(x) ||
-                !mesh_value_fits_float(y) || !mesh_value_fits_float(z)) {
-                parse_failed = 1;
-                break;
-            }
-            positions[cnt_p * 3 + 0] = (float)x;
-            positions[cnt_p * 3 + 1] = (float)y;
-            positions[cnt_p * 3 + 2] = (float)z;
-            cnt_p++;
         } else if (p[0] == 'v' && p[1] == 'n' && p[2] == ' ') {
-            double x, y, z;
             p += 3;
-            if (cnt_n >= cap_n && !obj_grow_float_array(&normals, &cap_n, 3)) {
+            if (!obj_parse_float_attrib(&p, &normals, &cnt_n, &cap_n, 3)) {
                 parse_failed = 1;
                 break;
             }
-            if (!obj_parse_double(&p, &x) || !obj_parse_double(&p, &y) ||
-                !obj_parse_double(&p, &z) || !mesh_value_fits_float(x) ||
-                !mesh_value_fits_float(y) || !mesh_value_fits_float(z)) {
-                parse_failed = 1;
-                break;
-            }
-            normals[cnt_n * 3 + 0] = (float)x;
-            normals[cnt_n * 3 + 1] = (float)y;
-            normals[cnt_n * 3 + 2] = (float)z;
-            cnt_n++;
         } else if (p[0] == 'v' && p[1] == 't' && p[2] == ' ') {
-            double u, v;
             p += 3;
-            if (cnt_t >= cap_t && !obj_grow_float_array(&texcoords, &cap_t, 2)) {
+            if (!obj_parse_float_attrib(&p, &texcoords, &cnt_t, &cap_t, 2)) {
                 parse_failed = 1;
                 break;
             }
-            if (!obj_parse_double(&p, &u) || !obj_parse_double(&p, &v) ||
-                !mesh_value_fits_float(u) || !mesh_value_fits_float(v)) {
-                parse_failed = 1;
-                break;
-            }
-            texcoords[cnt_t * 2 + 0] = (float)u;
-            texcoords[cnt_t * 2 + 1] = (float)v;
-            cnt_t++;
         } else if (strncmp(p, "usemtl ", 7) == 0) {
             char *next = obj_copy_directive_value(p + 7);
             if (!next) {
@@ -2801,104 +2937,21 @@ int rt_mesh3d_from_obj_groups(rt_string path, rt_mesh3d_obj_group_t **out_groups
             free(current_material);
             current_material = next;
         } else if (p[0] == 'f' && p[1] == ' ') {
-            size_t face_capacity = 8;
-            obj_face_vert_t face_stack[8];
-            uint32_t mesh_indices_stack[8];
-            obj_face_vert_t *face = face_stack;
-            uint32_t *mesh_indices = mesh_indices_stack;
-            int face_count = 0;
-            obj_group_builder_t *group = NULL;
             p += 2;
-            while (*p && *p != '\n' && *p != '\r') {
-                while (*p == ' ' || *p == '\t')
-                    p++;
-                if (!*p || *p == '\n' || *p == '\r' || *p == '#')
-                    break;
-                if (face_count >= MESH3D_OBJ_MAX_FACE_VERTS) {
-                    parse_failed = 1;
-                    break;
-                }
-                if ((size_t)face_count >= face_capacity) {
-                    size_t new_capacity;
-                    obj_face_vert_t *new_face;
-                    if (face_capacity > SIZE_MAX / 2u ||
-                        face_capacity * 2u > SIZE_MAX / sizeof(*face)) {
-                        parse_failed = 1;
-                        break;
-                    }
-                    new_capacity = face_capacity * 2u;
-                    new_face = (obj_face_vert_t *)malloc(new_capacity * sizeof(*new_face));
-                    if (!new_face) {
-                        parse_failed = 1;
-                        break;
-                    }
-                    memcpy(new_face, face, (size_t)face_count * sizeof(*face));
-                    if (face != face_stack)
-                        free(face);
-                    face = new_face;
-                    face_capacity = new_capacity;
-                }
-                {
-                    const char *before = p;
-                    if (!obj_parse_face_vert(&p,
-                                             &face[face_count].vi,
-                                             &face[face_count].ti,
-                                             &face[face_count].ni) ||
-                        p == before || face[face_count].vi == 0) {
-                        parse_failed = 1;
-                        break;
-                    }
-                }
-                face_count++;
-            }
-            if (!parse_failed && face_count >= 3) {
-                if (face_count > (int)(sizeof(mesh_indices_stack) / sizeof(mesh_indices_stack[0]))) {
-                    mesh_indices = (uint32_t *)malloc((size_t)face_count * sizeof(uint32_t));
-                    if (!mesh_indices)
-                        parse_failed = 1;
-                }
-                if (!parse_failed &&
-                    !obj_group_find_or_create(&groups,
-                                              &group_count,
-                                              &group_capacity,
-                                              current_material,
-                                              &group)) {
-                    parse_failed = 1;
-                }
-                for (int fi = 0; !parse_failed && fi < face_count; fi++) {
-                    int64_t vi = face[fi].vi;
-                    int64_t ti = face[fi].ti;
-                    int64_t ni = face[fi].ni;
-                    if (!obj_resolve_index(vi, cnt_p, 0, &vi) ||
-                        !obj_resolve_index(ti, cnt_t, 1, &ti) ||
-                        !obj_resolve_index(ni, cnt_n, 1, &ni) ||
-                        !obj_get_or_add_mesh_vertex(group->group.mesh,
-                                                    &group->vertex_cache,
-                                                    positions,
-                                                    cnt_p,
-                                                    normals,
-                                                    cnt_n,
-                                                    texcoords,
-                                                    cnt_t,
-                                                    vi,
-                                                    ti,
-                                                    ni,
-                                                    &mesh_indices[fi])) {
-                        parse_failed = 1;
-                        break;
-                    }
-                    if (ni == 0)
-                        group->missing_normals = 1;
-                }
-                if (!parse_failed && !obj_triangulate_face(group->group.mesh, mesh_indices, face_count))
-                    parse_failed = 1;
-            }
-            if (face != face_stack)
-                free(face);
-            if (mesh_indices != mesh_indices_stack)
-                free(mesh_indices);
-            if (parse_failed)
+            if (!obj_parse_face_line_grouped(p,
+                                             &groups,
+                                             &group_count,
+                                             &group_capacity,
+                                             current_material,
+                                             positions,
+                                             cnt_p,
+                                             normals,
+                                             cnt_n,
+                                             texcoords,
+                                             cnt_t)) {
+                parse_failed = 1;
                 break;
+            }
         }
     }
     if (line_status == -2) {
@@ -2916,18 +2969,8 @@ done_reading:
     free(normals);
     free(texcoords);
 
-    for (int32_t i = 0; i < group_count; i++) {
-        rt_mesh3d *mesh = (rt_mesh3d *)groups[i].group.mesh;
-        if (!mesh)
-            continue;
-        rt_mesh3d_end_geometry_batch(mesh);
-        if (mesh->build_failed || mesh->index_count < 3u)
-            parse_failed = 1;
-        if (!parse_failed && cnt_n == 0 && mesh->vertex_count > 0)
-            rt_mesh3d_recalc_normals(mesh);
-        else if (!parse_failed && groups[i].missing_normals && mesh->vertex_count > 0)
-            mesh3d_fill_missing_normals(mesh);
-    }
+    group_count = obj_finalize_groups(groups, group_count, cnt_n, &parse_failed);
+
     if (parse_failed || group_count <= 0) {
         obj_group_builders_free(groups, group_count);
         rt_trap(line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"

@@ -45,6 +45,7 @@ typedef struct {
     float *values;
     float *in_tangents;
     float *out_tangents;
+    int32_t target_node_index;
     struct rt_scene_node3d *cached_root;
     struct rt_scene_node3d *cached_target;
 } rt_node_anim_channel3d;
@@ -154,6 +155,7 @@ typedef struct rt_scene_node3d {
     void *bound_animator;
     void *bound_node_animator;
     int32_t sync_mode;
+    int32_t import_index;
 
     int8_t visible;
     rt_string name;
@@ -229,6 +231,10 @@ int64_t rt_node_animation3d_add_cubic_channel(void *obj,
                                               const float *values,
                                               const float *in_tangents,
                                               const float *out_tangents);
+/// @brief Internal importer hook: bind a channel to a stable source node index.
+void rt_node_animation3d_set_channel_target_node_index(void *obj,
+                                                       int64_t channel_index,
+                                                       int64_t node_index);
 /// @brief Build a node animator that blends/sequences the given clips.
 void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count);
 /// @brief Attach a node animator to a scene node so it drives its transform.
@@ -330,6 +336,9 @@ int scene3d_spatial_collect_aabb(rt_scene3d *scene,
                                  int count_cullable_prefilter);
 int scene3d_spatial_collect_all(rt_scene3d *scene, scene3d_spatial_candidate_list_t *out);
 int scene3d_mesh_has_dynamic_deformation(rt_mesh3d *mesh, void *effective_animator);
+double scene3d_mesh_dynamic_bound_pad(rt_mesh3d *mesh,
+                                      void *effective_animator,
+                                      double base_radius);
 
 typedef struct {
     int32_t *items;

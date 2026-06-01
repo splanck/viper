@@ -249,6 +249,7 @@ static int64_t node_animation_add_channel_impl(void *obj,
                                      : RT_NODE_ANIM_INTERP_LINEAR;
     channel->key_count = (int32_t)key_count;
     channel->value_width = (int32_t)value_width;
+    channel->target_node_index = -1;
     return anim->channel_count++;
 }
 
@@ -314,6 +315,23 @@ int64_t rt_node_animation3d_add_cubic_channel(void *obj,
                                            values,
                                            in_tangents,
                                            out_tangents);
+}
+
+/// @brief Bind animation channel @p channel_index to scene-node @p node_index; an out-of-range
+///   channel index is ignored, and an invalid @p node_index unbinds the channel (sets it to -1).
+void rt_node_animation3d_set_channel_target_node_index(void *obj,
+                                                       int64_t channel_index,
+                                                       int64_t node_index) {
+    rt_node_animation3d *anim =
+        (rt_node_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_NODEANIMATION3D_CLASS_ID);
+    if (!anim || channel_index < 0 || channel_index >= anim->channel_count)
+        return;
+    if (node_index < 0 || node_index > INT32_MAX)
+        anim->channels[channel_index].target_node_index = -1;
+    else
+        anim->channels[channel_index].target_node_index = (int32_t)node_index;
+    anim->channels[channel_index].cached_root = NULL;
+    anim->channels[channel_index].cached_target = NULL;
 }
 
 /// @brief GC finalizer for a NodeAnimator3D — releases retained clip references
@@ -563,56 +581,17 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
     }
 }
 
-/// @brief Propagate morph-target weights from a WEIGHTS channel through a matching subtree.
-/// @details glTF WEIGHTS targets one node's morph set. Imported multi-primitive nodes may
-///   represent that set on child mesh nodes, so this walk first picks the target subtree's
-///   first morph-target object and then applies weights only to meshes sharing that exact
-///   object. Unrelated morphed descendants are left untouched.
-/// @param node         Root of the subtree to drive.
-/// @param weights      Array of weight values from the sampled WEIGHTS channel.
-/// @param weight_count Number of values in @p weights.
-static void *node_anim_find_first_morph_targets(rt_scene_node3d *node) {
-    rt_scene_node3d **stack = NULL;
-    size_t count = 0;
-    size_t capacity = 0;
-    void *result = NULL;
-    if (!node)
-        return NULL;
-    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
-        rt_trap("NodeAnimation3D: traversal stack allocation failed");
-        return NULL;
-    }
-    while (count > 0) {
-        rt_scene_node3d *current = stack[--count];
-        rt_mesh3d *mesh = (rt_mesh3d *)current->mesh;
-        if (mesh && mesh->morph_targets_ref) {
-            result = mesh->morph_targets_ref;
-            break;
-        }
-        for (int32_t i = current->child_count - 1; i >= 0; i--) {
-            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
-                rt_trap("NodeAnimation3D: traversal stack allocation failed");
-                free(stack);
-                return NULL;
-            }
-        }
-    }
-    free(stack);
-    return result;
-}
-
 /// @brief Apply morph-target weights from an animation down a node subtree (recursive).
+/// @details A glTF node can expand into several primitive child nodes during import. Each
+///   primitive owns its own MorphTarget3D object, so weights must be copied to every morphed mesh
+///   under the animated node rather than only the first morph payload encountered.
 static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
                                               const float *weights,
                                               int32_t weight_count) {
     rt_scene_node3d **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
-    void *target_morphs;
     if (!node || !weights || weight_count <= 0)
-        return;
-    target_morphs = node_anim_find_first_morph_targets(node);
-    if (!target_morphs)
         return;
     if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
         rt_trap("NodeAnimation3D: traversal stack allocation failed");
@@ -621,7 +600,7 @@ static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
     while (count > 0) {
         rt_scene_node3d *current = stack[--count];
         rt_mesh3d *mesh = (rt_mesh3d *)current->mesh;
-        if (mesh && mesh->morph_targets_ref == target_morphs) {
+        if (mesh && mesh->morph_targets_ref) {
             int64_t shape_count = rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref);
             int32_t limit = (int32_t)((shape_count < weight_count) ? shape_count : weight_count);
             for (int32_t i = 0; i < limit; i++)
@@ -648,6 +627,38 @@ static int scene_node_is_descendant_of(rt_scene_node3d *root, rt_scene_node3d *n
     return 0;
 }
 
+/// @brief Depth-first search the subtree rooted at @p root for the node whose import index
+///   equals @p import_index (used to bind animation channels to imported nodes); NULL if none.
+static rt_scene_node3d *node_anim_find_by_import_index(rt_scene_node3d *root,
+                                                       int32_t import_index) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    rt_scene_node3d *result = NULL;
+    if (!root || import_index < 0)
+        return NULL;
+    if (!scene_node_stack_push(&stack, &count, &capacity, root)) {
+        rt_trap("NodeAnimation3D: traversal stack allocation failed");
+        return NULL;
+    }
+    while (count > 0) {
+        rt_scene_node3d *current = stack[--count];
+        if (current->import_index == import_index) {
+            result = current;
+            break;
+        }
+        for (int32_t i = current->child_count - 1; i >= 0; i--) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
+                rt_trap("NodeAnimation3D: traversal stack allocation failed");
+                free(stack);
+                return NULL;
+            }
+        }
+    }
+    free(stack);
+    return result;
+}
+
 /// @brief Resolve an animation channel's target node within @p root's subtree, by name.
 /// @details Caches the resolved node on the channel keyed by the target name, so repeated frames
 /// skip
@@ -658,6 +669,17 @@ static rt_scene_node3d *node_anim_resolve_target(rt_scene_node3d *root,
     const char *cached_name;
     if (!root || !channel || !channel->target_name)
         return NULL;
+    if (channel->target_node_index >= 0) {
+        if (channel->cached_root == root && channel->cached_target &&
+            channel->cached_target->import_index == channel->target_node_index &&
+            scene_node_is_descendant_of(root, channel->cached_target))
+            return channel->cached_target;
+        channel->cached_target =
+            node_anim_find_by_import_index(root, channel->target_node_index);
+        channel->cached_root = channel->cached_target ? root : NULL;
+        if (channel->cached_target)
+            return channel->cached_target;
+    }
     target_name = rt_string_cstr(channel->target_name);
     if (!target_name)
         return NULL;

@@ -50,6 +50,8 @@ int rt_textureasset3d_decode_astc_ldr_block(const uint8_t *block16,
 void *rt_textureasset3d_load_ktx2(rt_string path);
 /// @brief Load a KTX2 texture through the runtime asset manager.
 void *rt_textureasset3d_load_ktx2_asset(rt_string path);
+/// @brief Internal importer bridge: decode a KTX2 byte stream into a TextureAsset3D.
+void *rt_textureasset3d_load_ktx2_memory(const uint8_t *data, uint64_t size);
 /// @brief Texture width in pixels.
 int64_t rt_textureasset3d_get_width(void *obj);
 /// @brief Texture height in pixels.

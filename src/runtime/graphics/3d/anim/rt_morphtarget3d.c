@@ -610,6 +610,27 @@ const float *rt_morphtarget3d_get_packed_deltas(void *obj) {
     return mt->packed_pos_deltas;
 }
 
+/// @brief Largest authored position delta length across all shapes.
+double rt_morphtarget3d_get_max_position_delta(void *obj) {
+    rt_morphtarget3d *mt = morphtarget_checked(obj);
+    double max_len2 = 0.0;
+    if (!mt || mt->vertex_count <= 0)
+        return 0.0;
+    for (int32_t s = 0; s < mt->shape_count; s++) {
+        const float *deltas = mt->shapes[s].pos_deltas;
+        if (!deltas)
+            continue;
+        for (int32_t v = 0; v < mt->vertex_count; v++) {
+            const float *d = deltas + (size_t)v * 3u;
+            double len2 = (double)d[0] * (double)d[0] + (double)d[1] * (double)d[1] +
+                          (double)d[2] * (double)d[2];
+            if (isfinite(len2) && len2 > max_len2)
+                max_len2 = len2;
+        }
+    }
+    return max_len2 > 0.0 ? sqrt(max_len2) : 0.0;
+}
+
 /// @brief Borrow the packed normal-delta payload for GPU upload, or NULL when no
 /// shape has normal deltas. Same layout as `_get_packed_deltas`.
 const float *rt_morphtarget3d_get_packed_normal_deltas(void *obj) {

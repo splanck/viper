@@ -242,6 +242,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/2d/rt_pixels_draw.c
         graphics/media/rt_gif.c
         graphics/3d/assets/rt_gltf.c
+        graphics/3d/assets/rt_gltf_json.c
         graphics/3d/assets/rt_textureasset3d.c
         graphics/2d/rt_sprite.c
         graphics/2d/rt_spritesheet.c

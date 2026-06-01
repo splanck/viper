@@ -61,6 +61,9 @@ static int rt_checked_mul_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
+/// @brief Estimate the GPU memory (color + depth) of a @p w×@p h render target for the given
+///   color format (8 bytes/texel for HDR16F, otherwise 4), using overflow-checked products.
+/// @return 1 with @p out_bytes set on success; 0 for non-positive dimensions or on overflow.
 static int rt_rendertarget_estimate_bytes(int32_t w,
                                           int32_t h,
                                           vgfx3d_rendertarget_color_format_t color_format,

@@ -61,7 +61,9 @@ int8_t rt_navmesh3d_set_offmesh_link_metadata(
     void *navmesh, int64_t index, rt_string kind, double traversal_cost, int64_t state_flags);
 /// @brief Read off-mesh link metadata by index.
 rt_string rt_navmesh3d_get_offmesh_link_kind(void *navmesh, int64_t index);
+/// @brief Read the traversal-cost metadata of an authored off-mesh link by index.
 double rt_navmesh3d_get_offmesh_link_traversal_cost(void *navmesh, int64_t index);
+/// @brief Read the state-flag metadata of an authored off-mesh link by index.
 int64_t rt_navmesh3d_get_offmesh_link_state(void *navmesh, int64_t index);
 /// @brief Add a coarse AABB obstacle that removes overlapping walkable triangles.
 int8_t rt_navmesh3d_add_obstacle(void *navmesh, void *min, void *max);
@@ -76,6 +78,7 @@ int8_t rt_navmesh3d_set_area(
     void *navmesh, void *min, void *max, rt_string area, double traversal_cost);
 /// @brief Read nav area and traversal cost metadata at a walkable position.
 rt_string rt_navmesh3d_get_area(void *navmesh, void *point);
+/// @brief Read the traversal-cost metadata at a walkable position.
 double rt_navmesh3d_get_traversal_cost(void *navmesh, void *point);
 /// @brief Re-carve a single tile of a tiled bake in place (O(tile): no adjacency/grid rebuild).
 ///        Falls back to a whole-mesh refilter for non-tiled meshes. Tile (tx,tz) covers world XZ

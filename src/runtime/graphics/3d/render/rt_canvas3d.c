@@ -514,6 +514,7 @@ float canvas3d_clamp_f64_to_float(double value, double lo, double hi, float fall
     return (float)value;
 }
 
+/// @brief Floor a float to int32, clamped to [@p lo, @p hi]; non-finite input returns @p lo.
 static int32_t canvas3d_floor_to_i32_clamped(float value, int32_t lo, int32_t hi) {
     if (!isfinite(value))
         return lo;
@@ -524,6 +525,7 @@ static int32_t canvas3d_floor_to_i32_clamped(float value, int32_t lo, int32_t hi
     return (int32_t)floorf(value);
 }
 
+/// @brief Ceil a float to int32, clamped to [@p lo, @p hi]; non-finite input returns @p lo.
 static int32_t canvas3d_ceil_to_i32_clamped(float value, int32_t lo, int32_t hi) {
     if (!isfinite(value))
         return lo;
@@ -947,7 +949,9 @@ static int canvas3d_mesh_has_complete_tangents(const rt_mesh3d *mesh) {
 ///   are already present, mark the source mesh cache state. If tangents must be
 ///   generated, callers snapshot the geometry and generate them on that copy.
 static int canvas3d_prepare_normal_map_tangent_state(rt_mesh3d *mesh, const rt_material3d *mat) {
-    if (!mesh || !mat || !rt_material3d_resolve_texture_pixels(mat->normal_map))
+    if (!mesh || !mat ||
+        (!rt_material3d_resolve_texture_pixels(mat->normal_map) &&
+         !rt_material3d_resolve_texture_native_asset(mat->normal_map)))
         return 0;
     if (mesh->tangents_ready && mesh->tangent_revision == mesh->geometry_revision)
         return 0;
@@ -3763,6 +3767,10 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
     }
 }
 
+/// @brief Allocate a canvas-tracked temp buffer and copy @p instance_count 4×4 instance
+///   matrices into it (overflow-checked), used when deferring an instanced draw. Traps with
+///   @p trap_message on allocation failure.
+/// @return The snapshot buffer, or NULL for invalid arguments.
 static float *canvas3d_alloc_instance_matrix_snapshot(rt_canvas3d *c,
                                                       const float *matrices,
                                                       int32_t instance_count,
@@ -3893,6 +3901,8 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
     }
 }
 
+/// @brief Queue an instanced-mesh draw (mesh + material + @p instance_count transforms, with
+///   optional previous-frame matrices for motion vectors) into the canvas's deferred draw queue.
 void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                        void *mesh_obj,
                                        void *material_obj,

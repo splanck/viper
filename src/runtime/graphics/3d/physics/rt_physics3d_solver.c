@@ -162,6 +162,9 @@ void ph3d_solver_island_batch_free(ph3d_solver_island_batch *batch) {
     memset(batch, 0, sizeof(*batch));
 }
 
+/// @brief Allocate an int32 array of @p count elements — zero-filled when @p zeroed, else
+///   uninitialized — with overflow checks, writing the buffer to @p out.
+/// @return 1 on success (including count==0, which yields a NULL buffer), 0 on overflow or OOM.
 static int ph3d_alloc_i32_array(int32_t count, int zeroed, int32_t **out) {
     size_t bytes;
     if (!out)
@@ -176,6 +179,9 @@ static int ph3d_alloc_i32_array(int32_t count, int zeroed, int32_t **out) {
     return *out || count == 0;
 }
 
+/// @brief Push a non-negative @p value onto a growable int32 stack (initial capacity 128,
+///   doubling thereafter), with overflow checks.
+/// @return 1 on success, 0 on invalid args, a negative value, or allocation failure.
 int ph3d_i32_stack_push(int32_t **items, int32_t *count, int32_t *capacity, int32_t value) {
     int32_t new_capacity;
     int32_t *grown;
@@ -198,6 +204,10 @@ int ph3d_i32_stack_push(int32_t **items, int32_t *count, int32_t *capacity, int3
     return 1;
 }
 
+/// @brief Allocate the per-body and per-contact scratch arrays for one island-solver batch:
+///   union-find parent, active-body flags, root/body→island maps, per-island contact counts
+///   and write offsets, the island offset table, and the contact-index buffer.
+/// @return 1 if every allocation succeeds, 0 on bad world state or any allocation failure.
 static int ph3d_solver_island_batch_alloc(rt_world3d *w, ph3d_solver_island_batch *batch) {
     int32_t island_offset_count;
     if (!w || !batch || w->body_count < 0 || w->contact_count < 0)

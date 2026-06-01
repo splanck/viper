@@ -965,8 +965,19 @@ static bool test_entity_from_node_wraps_imported_subtree() {
     TEST("Entity3D.FromNode wraps a raw SceneNode3D subtree");
     void *root = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
+    void *grandchild = rt_scene_node3d_new();
+    void *mesh_a = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mesh_b = rt_mesh3d_new_sphere(0.5, 8);
+    void *material_a = rt_material3d_new_color(0.8, 0.2, 0.1);
+    void *material_b = rt_material3d_new_color(0.1, 0.5, 0.9);
     rt_scene_node3d_set_name(root, rt_const_cstr("ImportedRoot"));
     rt_scene_node3d_set_name(child, rt_const_cstr("ImportedChild"));
+    rt_scene_node3d_set_name(grandchild, rt_const_cstr("ImportedGrandchild"));
+    rt_scene_node3d_set_mesh(child, mesh_a);
+    rt_scene_node3d_set_material(child, material_a);
+    rt_scene_node3d_set_mesh(grandchild, mesh_a);
+    rt_scene_node3d_set_material(grandchild, material_a);
+    rt_scene_node3d_add_child(child, grandchild);
     rt_scene_node3d_add_child(root, child);
 
     void *entity = rt_game3d_entity_from_node(root);
@@ -975,6 +986,20 @@ static bool test_entity_from_node_wraps_imported_subtree() {
     EXPECT_TRUE(rt_game3d_entity_get_node(entity) == root, "FromNode uses the provided root node");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_entity_get_name(entity)), "ImportedRoot") == 0,
                 "FromNode inherits a non-empty root node name");
+    rt_game3d_entity_set_material_recursive(entity, material_b);
+    EXPECT_TRUE(rt_scene_node3d_get_material(root) == material_b,
+                "setMaterialRecursive applies to the imported root node");
+    EXPECT_TRUE(rt_scene_node3d_get_material(child) == material_b,
+                "setMaterialRecursive applies to imported child nodes");
+    EXPECT_TRUE(rt_scene_node3d_get_material(grandchild) == material_b,
+                "setMaterialRecursive applies to imported grandchildren");
+    rt_game3d_entity_set_mesh_recursive(entity, mesh_b);
+    EXPECT_TRUE(rt_scene_node3d_get_mesh(root) == nullptr,
+                "setMeshRecursive leaves non-renderable imported group roots untouched");
+    EXPECT_TRUE(rt_scene_node3d_get_mesh(child) == mesh_b,
+                "setMeshRecursive updates drawable imported children");
+    EXPECT_TRUE(rt_scene_node3d_get_mesh(grandchild) == mesh_b,
+                "setMeshRecursive updates drawable imported grandchildren");
 
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D FromNode Unit"), 80, 60);
     rt_game3d_world_spawn(world, entity);
@@ -984,8 +1009,10 @@ static bool test_entity_from_node_wraps_imported_subtree() {
                 "findNode sees the imported root node");
     EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("ImportedChild")) == child,
                 "findNode sees raw children in the imported subtree");
+    EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("ImportedGrandchild")) == grandchild,
+                "findNode sees deeper raw children in the imported subtree");
     EXPECT_EQ_INT(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)),
-                  3,
+                  4,
                   "scene contains world root plus imported raw subtree");
 
     rt_game3d_world_despawn(world, entity);
@@ -2108,14 +2135,14 @@ static bool test_phase4_assets3d_model_templates() {
         rt_string_from_bytes(sync_only_path, std::strlen(sync_only_path));
     void *sync_only_handle = rt_game3d_assets_load_model_template_async(sync_only_path_s);
     EXPECT_TRUE(sync_only_handle != nullptr,
-                "LoadModelTemplateAsync returns a handle for a sync-only model format");
-    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(sync_only_handle) != 0,
-                "sync-only AssetHandle3D fails preflight instead of main-thread loading");
+                "LoadModelTemplateAsync returns a handle for an OBJ model format");
+    EXPECT_TRUE(wait_asset_ready(sync_only_handle),
+                "OBJ AssetHandle3D completes through the async model path");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(sync_only_handle)),
-                            "async model loading supports glTF/GLB only") == 0,
-                "sync-only AssetHandle3D reports the async format policy");
-    EXPECT_TRUE(rt_game3d_asset_handle_get_template(sync_only_handle) == nullptr,
-                "sync-only AssetHandle3D has no template result");
+                            "") == 0,
+                "OBJ AssetHandle3D has no async format policy error");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_template(sync_only_handle) != nullptr,
+                "OBJ AssetHandle3D exposes the loaded template result");
     rt_string_unref(sync_only_path_s);
     std::remove(sync_only_path);
 

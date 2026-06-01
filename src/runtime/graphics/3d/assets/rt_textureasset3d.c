@@ -838,45 +838,57 @@ static int bc7_block_mode(const uint8_t *b) {
     return mode;
 }
 
+/* Endpoint color-value count for a block: two endpoints per subset. */
 static int bc7_num_colors(const bc7_mode_info *info) {
     return (int)info->subset_count * 2;
 }
 
+/* Bit offset of the first color-endpoint field, past the mode/partition/rotation/
+   index-selection header bits. */
 static int bc7_endpoint_base(int mode, const bc7_mode_info *info) {
     return mode + 1 + (int)info->partition_bits + (int)info->rotation_bits +
            (int)info->index_selection_bits;
 }
 
+/* Bit offset of endpoint `endpoint`'s red component (all reds are packed first). */
 static int bc7_red_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_endpoint_base(mode, info) + (int)info->color_bits * endpoint;
 }
 
+/* Bit offset of endpoint `endpoint`'s green component (greens follow all reds). */
 static int bc7_green_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_red_offset(mode, info, bc7_num_colors(info)) + (int)info->color_bits * endpoint;
 }
 
+/* Bit offset of endpoint `endpoint`'s blue component (blues follow all greens). */
 static int bc7_blue_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_green_offset(mode, info, bc7_num_colors(info)) + (int)info->color_bits * endpoint;
 }
 
+/* Bit offset of endpoint `endpoint`'s alpha component (alphas follow all blues). */
 static int bc7_alpha_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_blue_offset(mode, info, bc7_num_colors(info)) + (int)info->alpha_bits * endpoint;
 }
 
+/* Bit offset of per-endpoint p-bit `endpoint` (p-bits follow the alpha endpoints). */
 static int bc7_endpoint_pbit_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_alpha_offset(mode, info, bc7_num_colors(info)) +
            (int)info->endpoint_pbits * endpoint;
 }
 
+/* Bit offset of shared (per-subset) p-bit `subset`, used by modes with shared p-bits. */
 static int bc7_shared_pbit_offset(int mode, const bc7_mode_info *info, int subset) {
     return bc7_endpoint_pbit_offset(mode, info, bc7_num_colors(info)) +
            (int)info->shared_pbits * subset;
 }
 
+/* Bit offset where per-texel index data begins, past all endpoint and p-bit fields. */
 static int bc7_index_base(int mode, const bc7_mode_info *info) {
     return bc7_shared_pbit_offset(mode, info, 2);
 }
 
+/* Subset (partition region) that `texel` belongs to, read from the 2-/3-subset
+   partition tables; 0 for single-subset modes. */
 static int bc7_subset_index(const bc7_mode_info *info, int partition, int texel) {
     if (info->subset_count == 2)
         return BC7_PARTITION2[partition][texel];
@@ -885,6 +897,8 @@ static int bc7_subset_index(const bc7_mode_info *info, int partition, int texel)
     return 0;
 }
 
+/* Texel position of subset `subset`'s anchor index (the index whose high bit is
+   implicitly 0); 0 for subset 0. */
 static int bc7_anchor_index(const bc7_mode_info *info, int partition, int subset) {
     if (subset == 1)
         return info->subset_count == 2 ? BC7_ANCHOR2[partition] : BC7_ANCHOR3A[partition];
@@ -893,6 +907,9 @@ static int bc7_anchor_index(const bc7_mode_info *info, int partition, int subset
     return 0;
 }
 
+/* Read texel `anchor`'s color index: selects the primary or secondary index set per the
+   block's index-selection bit / color rotation, drops the implicit MSB for anchor texels,
+   advances *bit_offset past the bits read, and reports the index bit-width in *out_bits. */
 static uint32_t bc7_index_value(const uint8_t *b,
                                 int mode,
                                 const bc7_mode_info *info,
@@ -915,6 +932,7 @@ static uint32_t bc7_index_value(const uint8_t *b,
     return value;
 }
 
+/* Interpolation weight (out of 64) for a 2-, 3-, or 4-bit BC7 index. */
 static uint8_t bc7_index_weight(uint32_t index, int bits) {
     if (bits == 2)
         return BC7_W2[index & 3u];
@@ -1101,10 +1119,12 @@ static void **textureasset3d_decode_bc7_mips(const uint8_t *data,
     return mip_pixels;
 }
 
+/* Expand a 4-bit value to 8 bits by bit replication (v<<4 | v). */
 static uint8_t textureasset3d_expand4(uint32_t v) {
     return (uint8_t)((v << 4) | v);
 }
 
+/* Clamp a signed integer to the unsigned 8-bit range [0, 255]. */
 static uint8_t textureasset3d_clamp_u8(int v) {
     if (v < 0)
         return 0;
@@ -1113,10 +1133,12 @@ static uint8_t textureasset3d_clamp_u8(int v) {
     return (uint8_t)v;
 }
 
+/* Sign-extend a 3-bit two's-complement value to a host int. */
 static int textureasset3d_sign3(uint32_t v) {
     return (v & 4u) ? (int)v - 8 : (int)v;
 }
 
+/* Requantize a 16-bit unorm to 8-bit with round-to-nearest. */
 static uint8_t textureasset3d_unorm16_to_u8(uint32_t v) {
     return (uint8_t)((v * 255u + 32767u) / 65535u);
 }
@@ -1151,6 +1173,7 @@ static const int16_t ETC2_COLOR_MODIFIERS[8][4] = {
     {-183, -47, 47, 183},
 };
 
+/* Read a 48-bit big-endian unsigned integer from the first 6 bytes of `p`. */
 static uint64_t textureasset3d_read_u48be(const uint8_t *p) {
     uint64_t v = 0;
     for (int i = 0; i < 6; i++)
@@ -1158,6 +1181,8 @@ static uint64_t textureasset3d_read_u48be(const uint8_t *p) {
     return v;
 }
 
+/* Two-bit pixel index for texel (x, y) of an ETC2 color block, gathered from the MSB and
+   LSB index bit-planes packed in bytes 4-7. */
 static int etc2_color_index(const uint8_t *c, int x, int y) {
     int bit = x * 4 + y;
     uint16_t msb = ((uint16_t)c[4] << 8) | (uint16_t)c[5];
@@ -1271,6 +1296,8 @@ typedef int (*textureasset3d_block_decode_fn)(const uint8_t *block,
                                               int32_t block_height,
                                               uint8_t *out_rgba);
 
+/// @brief Block-decode adapter for ETC2 RGBA8: ignores the (fixed 4×4) block dimensions and
+///   forwards to the ETC2 block decoder, matching the generic block-decode function pointer.
 static int textureasset3d_decode_etc2_block_adapter(const uint8_t *block,
                                                     int32_t block_width,
                                                     int32_t block_height,
@@ -1280,6 +1307,8 @@ static int textureasset3d_decode_etc2_block_adapter(const uint8_t *block,
     return rt_textureasset3d_decode_etc2_rgba8_block(block, out_rgba);
 }
 
+/// @brief Block-decode adapter for ASTC LDR: forwards the block dimensions to the ASTC
+///   decoder, matching the generic block-decode function pointer.
 static int textureasset3d_decode_astc_block_adapter(const uint8_t *block,
                                                     int32_t block_width,
                                                     int32_t block_height,
@@ -1287,6 +1316,10 @@ static int textureasset3d_decode_astc_block_adapter(const uint8_t *block,
     return rt_textureasset3d_decode_astc_ldr_block(block, block_width, block_height, out_rgba);
 }
 
+/// @brief Compute the total byte size and block-grid dimensions of a block-compressed image
+///   from its pixel and block dimensions, with overflow checks. Outputs are written through
+///   @p out_needed / @p out_blocks_x / @p out_blocks_y.
+/// @return 1 on success, 0 for zero/negative parameters or on overflow.
 static int textureasset3d_compressed_block_bytes(uint32_t width,
                                                  uint32_t height,
                                                  int32_t block_width,
@@ -1323,6 +1356,10 @@ static int textureasset3d_compressed_block_bytes(uint32_t width,
     return 1;
 }
 
+/// @brief CPU-decode one block-compressed mip level into a new RGBA Pixels object by walking
+///   its block grid with @p decode and writing each 4×4 (or @p block_width×@p block_height)
+///   tile. Traps with @p alloc_error on allocation failure.
+/// @return The decoded Pixels object, or NULL on bad input / out-of-range level data.
 static void *textureasset3d_decode_compressed_fallback(const uint8_t *data,
                                                        size_t size,
                                                        uint32_t width,
@@ -1391,6 +1428,10 @@ static void *textureasset3d_decode_compressed_fallback(const uint8_t *data,
     return pixels;
 }
 
+/// @brief Decode every mip level of a block-compressed texture into a newly allocated array
+///   of Pixels objects (one per level) via textureasset3d_decode_compressed_fallback,
+///   releasing all on any failure.
+/// @return The Pixels array (caller owns), or NULL on bad input or a decode failure.
 static void **textureasset3d_decode_compressed_mips(const uint8_t *data,
                                                     size_t size,
                                                     const textureasset3d_mip *mips,
@@ -1584,6 +1625,15 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     textureasset3d_set_resident_mip_range_internal(asset, 0, asset->mip_count, NULL);
     (void)api_name;
     return asset;
+}
+
+/// @brief Decode a caller-owned KTX2 byte stream into a TextureAsset3D.
+void *rt_textureasset3d_load_ktx2_memory(const uint8_t *data, uint64_t size) {
+    if (!data || size == 0 || size > (uint64_t)SIZE_MAX) {
+        rt_trap("TextureAsset3D.LoadKTX2Memory: invalid payload");
+        return NULL;
+    }
+    return textureasset3d_parse_ktx2(data, (size_t)size, "TextureAsset3D.LoadKTX2Memory");
 }
 
 /// @brief Load a KTX2 texture from a filesystem path. Traps on bad path or read failure.

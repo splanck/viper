@@ -207,6 +207,7 @@ static char *vscn_base64_encode(const uint8_t *data, size_t len, size_t *out_len
     return output;
 }
 
+/// @brief Raise a Scene3D.Load trap reporting invalid base64 in @p field at byte @p offset.
 static void vscn_trap_base64_error(const char *field, size_t offset) {
     char msg[160];
     snprintf(msg,
@@ -2073,6 +2074,7 @@ static int vscn_save_emit_nodes(
     return vscn_append(buf, len, cap, "  ]\n");
 }
 
+/// @brief Serialize the scene to a .vscn file. @return 1 on success, 0 on failure.
 int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     if (!scene_obj || !path)
         return 0;
@@ -2211,6 +2213,7 @@ static int vscn_load_nodes(rt_scene3d *scene,
     return 1;
 }
 
+/// @brief Deserialize a scene from a .vscn / .gltf / .glb / .fbx file; NULL on failure.
 void *rt_scene3d_load(rt_string path) {
     const char *filepath;
     char *json = NULL;

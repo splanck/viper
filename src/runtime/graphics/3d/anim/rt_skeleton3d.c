@@ -956,6 +956,9 @@ static int32_t *animation3d_build_humanoid_role_cache(const rt_skeleton3d *skel)
     return roles;
 }
 
+/// @brief Map a source-skeleton bone to the best destination bone for retargeting: exact
+///   name match first, then humanoid-role mapping (which handles cross-convention skeletons).
+/// @return Destination bone index, or -1 if @p src_bone is invalid or has no match.
 static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
                                               const rt_skeleton3d *dst,
                                               const int32_t *src_roles,

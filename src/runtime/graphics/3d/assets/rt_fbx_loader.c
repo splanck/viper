@@ -40,10 +40,12 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_compress.h"
+#include "rt_gif.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_quat.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
@@ -202,6 +204,10 @@ static void fbx_join_path(char *out, size_t out_size, const char *dir, const cha
     }
 }
 
+/// @brief Sanitize a texture reference into a safe relative path in @p out (path-traversal
+///   guard): normalizes separators, then rejects absolute paths, scheme URIs ("://"), and any
+///   ".." segment, collapsing "." and redundant slashes into forward-slash-joined segments.
+/// @return Non-zero if a non-empty safe path was written; 0 if empty, unsafe, or overflowing.
 static int fbx_normalize_relative_texture_ref(const char *src, char *out, size_t out_size) {
     char normalized[1024];
     const char *p;
@@ -244,7 +250,8 @@ static int fbx_normalize_relative_texture_ref(const char *src, char *out, size_t
     return wrote_segment;
 }
 
-/// @brief Try a safe relative texture reference, then fall back to its basename beside the FBX file.
+/// @brief Try a safe relative texture reference, then fall back to its basename beside the FBX
+/// file.
 static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture_ref) {
     char normalized_ref[1024];
     char dir[1024];
@@ -279,6 +286,100 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
     else
         fbx_normalize_path(candidate, sizeof(candidate), basename);
     return rt_pixels_load(rt_const_cstr(candidate));
+}
+
+/// @brief Case-insensitive test (ASCII) for whether @p text ends with @p suffix.
+static int fbx_ascii_ends_with_i(const char *text, const char *suffix) {
+    size_t text_len;
+    size_t suffix_len;
+    if (!text || !suffix)
+        return 0;
+    text_len = strlen(text);
+    suffix_len = strlen(suffix);
+    if (suffix_len > text_len)
+        return 0;
+    text += text_len - suffix_len;
+    for (size_t i = 0; i < suffix_len; i++) {
+        if (tolower((unsigned char)text[i]) != tolower((unsigned char)suffix[i]))
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Build a Pixels object from a width×height RGBA32 buffer (copied), with
+///   overflow-checked sizing. Returns NULL on bad dimensions or allocation failure.
+static void *fbx_pixels_from_rgba32(uint32_t *rgba32, int64_t width, int64_t height) {
+    rt_pixels_impl *pixels;
+    size_t pixel_count;
+    size_t pixel_bytes;
+    if (!rgba32 || width <= 0 || height <= 0)
+        return NULL;
+    if ((uint64_t)width > SIZE_MAX || (uint64_t)height > SIZE_MAX)
+        return NULL;
+    if ((size_t)width > SIZE_MAX / (size_t)height)
+        return NULL;
+    pixel_count = (size_t)width * (size_t)height;
+    if (pixel_count > SIZE_MAX / sizeof(uint32_t))
+        return NULL;
+    pixel_bytes = pixel_count * sizeof(uint32_t);
+    pixels = pixels_alloc(width, height);
+    if (!pixels)
+        return NULL;
+    memcpy(pixels->data, rgba32, pixel_bytes);
+    if (pixel_count > 0)
+        pixels_touch(pixels);
+    return pixels;
+}
+
+/// @brief Sniff a PNG payload by its 8-byte signature.
+static int fbx_payload_looks_png(const uint8_t *data, size_t len) {
+    static const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    return data && len >= sizeof(sig) && memcmp(data, sig, sizeof(sig)) == 0;
+}
+
+/// @brief Sniff a JPEG payload by its 0xFFD8 start-of-image marker.
+static int fbx_payload_looks_jpeg(const uint8_t *data, size_t len) {
+    return data && len >= 2u && data[0] == 0xff && data[1] == 0xd8;
+}
+
+/// @brief Sniff a GIF payload by its "GIF87a"/"GIF89a" header.
+static int fbx_payload_looks_gif(const uint8_t *data, size_t len) {
+    return data && len >= 6u &&
+           (memcmp(data, "GIF87a", 6) == 0 || memcmp(data, "GIF89a", 6) == 0);
+}
+
+/// @brief Decode an embedded texture payload into a Pixels object, selecting the codec by
+///   magic bytes or by @p name's extension (PNG/JPEG/GIF/...). NULL if unrecognized or
+///   undecodable.
+static void *fbx_decode_texture_payload(const char *name, const uint8_t *data, size_t len) {
+    uint32_t *rgba32 = NULL;
+    int64_t width = 0;
+    int64_t height = 0;
+    void *pixels = NULL;
+    if (!data || len == 0)
+        return NULL;
+    if (fbx_payload_looks_png(data, len) || fbx_ascii_ends_with_i(name, ".png")) {
+        if (rt_png_decode_buffer_rgba32(data, len, &rgba32, &width, &height))
+            pixels = fbx_pixels_from_rgba32(rgba32, width, height);
+        free(rgba32);
+        return pixels;
+    }
+    if (fbx_payload_looks_jpeg(data, len) || fbx_ascii_ends_with_i(name, ".jpg") ||
+        fbx_ascii_ends_with_i(name, ".jpeg")) {
+        if (rt_jpeg_decode_buffer_rgba32(data, len, &rgba32, &width, &height))
+            pixels = fbx_pixels_from_rgba32(rgba32, width, height);
+        free(rgba32);
+        return pixels;
+    }
+    if (fbx_payload_looks_gif(data, len) || fbx_ascii_ends_with_i(name, ".gif")) {
+        int gif_width = 0;
+        int gif_height = 0;
+        if (rt_gif_decode_memory_first_rgba32(data, len, &rgba32, &gif_width, &gif_height))
+            pixels = fbx_pixels_from_rgba32(rgba32, (int64_t)gif_width, (int64_t)gif_height);
+        free(rgba32);
+        return pixels;
+    }
+    return NULL;
 }
 
 // ---------------------------------------------------------------------------
@@ -1014,6 +1115,7 @@ static const fbx_mesh_remap_t *fbx_find_mesh_remap(const fbx_mesh_remap_t *remap
     return NULL;
 }
 
+/// @brief Free a mesh's per-triangle material-slot map and zero the struct.
 static void fbx_mesh_material_map_free(fbx_mesh_material_map_t *map) {
     if (!map)
         return;
@@ -1021,6 +1123,7 @@ static void fbx_mesh_material_map_free(fbx_mesh_material_map_t *map) {
     memset(map, 0, sizeof(*map));
 }
 
+/// @brief Free an array of mesh bindings, releasing each binding's material map first.
 static void fbx_mesh_bindings_free(fbx_mesh_binding_t *bindings, int32_t count) {
     if (!bindings)
         return;
@@ -1029,6 +1132,10 @@ static void fbx_mesh_bindings_free(fbx_mesh_binding_t *bindings, int32_t count) 
     free(bindings);
 }
 
+/// @brief Append @p triangle_count triangles, all assigned to @p material_slot, to the
+///   map's per-triangle slot array (growing it with overflow checks) and widen the tracked
+///   slot count. Negative slots are clamped to 0.
+/// @return 1 on success or no-op (zero triangles); 0 on overflow or allocation failure.
 static int fbx_mesh_material_map_append(fbx_mesh_material_map_t *map,
                                         int32_t material_slot,
                                         uint32_t triangle_count) {
@@ -1058,6 +1165,9 @@ static int fbx_mesh_material_map_append(fbx_mesh_material_map_t *map,
     return 1;
 }
 
+/// @brief Resolve the material-slot index for polygon @p polygon_index per the FBX mapping
+///   mode (@p by_polygon → per-polygon lookup, @p all_same → slot 0, else per-index).
+///   Returns 0 for an out-of-range index or a negative slot value.
 static int32_t fbx_material_slot_for_polygon(const int32_t *slots,
                                              uint32_t slot_count,
                                              int by_polygon,
@@ -1082,6 +1192,130 @@ static int32_t fbx_material_slot_for_polygon(const int32_t *slots,
 /*==========================================================================
  * Geometry extraction
  *=========================================================================*/
+
+/// @brief A parsed FBX vertex-attribute layer (LayerElementNormal / -UV): the raw
+///   value array plus its optional index array and mapping/reference modes.
+typedef struct {
+    double *data;
+    int32_t *indices;
+    uint32_t count;
+    uint32_t index_count;
+    int by_polygon_vertex;
+    int by_polygon;
+    int index_to_direct;
+} fbx_vertex_layer_t;
+
+/// @brief A parsed FBX LayerElementMaterial: per-polygon material slot indices and
+///   the mapping mode that selects how they apply.
+typedef struct {
+    int32_t *slots;
+    uint32_t slot_count;
+    int by_polygon;
+    int all_same;
+} fbx_material_layer_t;
+
+/// @brief Parse a vertex-attribute layer (e.g. LayerElementNormal/-UV) of
+///   `components` floats per element from @p geom_node into *out. @p index_name_alt
+///   is an optional fallback index-array name (or NULL). All fields are zeroed when
+///   the layer is absent or malformed.
+static void fbx_parse_vertex_layer(fbx_node_t *geom_node,
+                                   const char *layer_name,
+                                   const char *data_name,
+                                   const char *index_name,
+                                   const char *index_name_alt,
+                                   int components,
+                                   fbx_vertex_layer_t *out) {
+    memset(out, 0, sizeof(*out));
+    fbx_node_t *layer = fbx_find_child(geom_node, layer_name);
+    if (!layer)
+        return;
+    fbx_node_t *d_node = fbx_find_child(layer, data_name);
+    if (d_node && d_node->prop_count >= 1 && d_node->props[0].type == 'd') {
+        out->data = (double *)d_node->props[0].v.array.data;
+        out->count = d_node->props[0].v.array.count / (uint32_t)components;
+        if (out->count > (uint32_t)INT32_MAX) {
+            out->data = NULL;
+            out->count = 0;
+        }
+    }
+    fbx_node_t *mm = fbx_find_child(layer, "MappingInformationType");
+    if (mm && mm->prop_count >= 1) {
+        out->by_polygon_vertex = strcmp(fbx_prop_str(mm, 0), "ByPolygonVertex") == 0;
+        out->by_polygon = strcmp(fbx_prop_str(mm, 0), "ByPolygon") == 0;
+    }
+    fbx_node_t *rm = fbx_find_child(layer, "ReferenceInformationType");
+    if (rm && rm->prop_count >= 1)
+        out->index_to_direct = strcmp(fbx_prop_str(rm, 0), "IndexToDirect") == 0 ||
+                               strcmp(fbx_prop_str(rm, 0), "Index") == 0;
+    if (out->index_to_direct) {
+        fbx_node_t *ni = fbx_find_child(layer, index_name);
+        if (!ni && index_name_alt)
+            ni = fbx_find_child(layer, index_name_alt);
+        if (ni && ni->prop_count >= 1 && ni->props[0].type == 'i') {
+            out->indices = (int32_t *)ni->props[0].v.array.data;
+            out->index_count = ni->props[0].v.array.count;
+        }
+    }
+}
+
+/// @brief Parse the LayerElementMaterial of @p geom_node into *out (zeroed when
+///   absent or malformed).
+static void fbx_parse_material_layer(fbx_node_t *geom_node, fbx_material_layer_t *out) {
+    memset(out, 0, sizeof(*out));
+    fbx_node_t *mat_layer = fbx_find_child(geom_node, "LayerElementMaterial");
+    if (!mat_layer)
+        return;
+    fbx_node_t *m_node = fbx_find_child(mat_layer, "Materials");
+    fbx_node_t *mm = fbx_find_child(mat_layer, "MappingInformationType");
+    if (mm && mm->prop_count >= 1) {
+        const char *mapping = fbx_prop_str(mm, 0);
+        out->by_polygon = strcmp(mapping, "ByPolygon") == 0;
+        out->all_same = strcmp(mapping, "AllSame") == 0;
+    }
+    if (m_node && m_node->prop_count >= 1 && m_node->props[0].type == 'i' &&
+        m_node->props[0].v.array.data) {
+        out->slots = (int32_t *)m_node->props[0].v.array.data;
+        out->slot_count = m_node->props[0].v.array.count;
+        if (out->slot_count > (uint32_t)INT32_MAX) {
+            out->slots = NULL;
+            out->slot_count = 0;
+        }
+    }
+}
+
+/// @brief Resolve the direct value index for one polygon-vertex within a vertex
+///   layer, honoring its mapping (ByPolygonVertex/ByPolygon/ByVertex) and optional
+///   IndexToDirect indirection. Returns -1 when out of range or unmapped.
+static int32_t fbx_resolve_layer_index(const fbx_vertex_layer_t *layer,
+                                       int32_t polygon_vertex_idx,
+                                       uint32_t polygon_idx,
+                                       int32_t vi) {
+    uint32_t source_index = layer->by_polygon_vertex ? (uint32_t)polygon_vertex_idx
+                            : layer->by_polygon      ? polygon_idx
+                                                     : (uint32_t)vi;
+    int32_t idx;
+    if (layer->index_to_direct) {
+        if (layer->indices && source_index < layer->index_count)
+            idx = layer->indices[source_index];
+        else
+            idx = -1;
+    } else {
+        idx = (int32_t)source_index;
+    }
+    if (idx >= 0 && idx < (int32_t)layer->count)
+        return idx;
+    return -1;
+}
+
+/// @brief Common geometry-extraction failure cleanup: free a heap-grown polygon
+///   buffer, release the partially-built mesh, and return NULL.
+static void *fbx_geom_fail(int32_t *polygon, int32_t *polygon_stack, void *mesh) {
+    if (polygon != polygon_stack)
+        free(polygon);
+    if (rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
+    return NULL;
+}
 
 /// @brief Convert an FBX `Geometry` node into a Viper `rt_mesh3d_t`.
 ///
@@ -1123,91 +1357,14 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
     if (material_map)
         memset(material_map, 0, sizeof(*material_map));
 
-    /* Find normals (optional) */
-    fbx_node_t *norm_layer = fbx_find_child(geom_node, "LayerElementNormal");
-    double *normals = NULL;
-    int32_t *norm_indices = NULL;
-    uint32_t norm_count = 0;
-    int norm_by_polygon_vertex = 0;
-    int norm_index_to_direct = 0;
-
-    if (norm_layer) {
-        fbx_node_t *n_node = fbx_find_child(norm_layer, "Normals");
-        if (n_node && n_node->prop_count >= 1 && n_node->props[0].type == 'd') {
-            normals = (double *)n_node->props[0].v.array.data;
-            norm_count = n_node->props[0].v.array.count / 3;
-            if (norm_count > (uint32_t)INT32_MAX) {
-                normals = NULL;
-                norm_count = 0;
-            }
-        }
-        fbx_node_t *mm = fbx_find_child(norm_layer, "MappingInformationType");
-        if (mm && mm->prop_count >= 1)
-            norm_by_polygon_vertex = strcmp(fbx_prop_str(mm, 0), "ByPolygonVertex") == 0;
-        fbx_node_t *rm = fbx_find_child(norm_layer, "ReferenceInformationType");
-        if (rm && rm->prop_count >= 1)
-            norm_index_to_direct = strcmp(fbx_prop_str(rm, 0), "IndexToDirect") == 0;
-        if (norm_index_to_direct) {
-            fbx_node_t *ni = fbx_find_child(norm_layer, "NormalsIndex");
-            if (ni && ni->prop_count >= 1 && ni->props[0].type == 'i')
-                norm_indices = (int32_t *)ni->props[0].v.array.data;
-        }
-    }
-
-    /* Find UVs (optional) */
-    fbx_node_t *uv_layer = fbx_find_child(geom_node, "LayerElementUV");
-    double *uvs = NULL;
-    int32_t *uv_indices = NULL;
-    uint32_t uv_count = 0;
-    int uv_by_polygon_vertex = 0;
-    int uv_index_to_direct = 0;
-
-    if (uv_layer) {
-        fbx_node_t *u_node = fbx_find_child(uv_layer, "UV");
-        if (u_node && u_node->prop_count >= 1 && u_node->props[0].type == 'd') {
-            uvs = (double *)u_node->props[0].v.array.data;
-            uv_count = u_node->props[0].v.array.count / 2;
-            if (uv_count > (uint32_t)INT32_MAX) {
-                uvs = NULL;
-                uv_count = 0;
-            }
-        }
-        fbx_node_t *umm = fbx_find_child(uv_layer, "MappingInformationType");
-        if (umm && umm->prop_count >= 1)
-            uv_by_polygon_vertex = strcmp(fbx_prop_str(umm, 0), "ByPolygonVertex") == 0;
-        fbx_node_t *urm = fbx_find_child(uv_layer, "ReferenceInformationType");
-        if (urm && urm->prop_count >= 1)
-            uv_index_to_direct = strcmp(fbx_prop_str(urm, 0), "IndexToDirect") == 0;
-        if (uv_index_to_direct) {
-            fbx_node_t *ui = fbx_find_child(uv_layer, "UVIndex");
-            if (ui && ui->prop_count >= 1 && ui->props[0].type == 'i')
-                uv_indices = (int32_t *)ui->props[0].v.array.data;
-        }
-    }
-
-    fbx_node_t *mat_layer = fbx_find_child(geom_node, "LayerElementMaterial");
-    int32_t *material_slots = NULL;
-    uint32_t material_slot_count = 0;
-    int material_by_polygon = 0;
-    int material_all_same = 0;
-    if (mat_layer) {
-        fbx_node_t *m_node = fbx_find_child(mat_layer, "Materials");
-        fbx_node_t *mm = fbx_find_child(mat_layer, "MappingInformationType");
-        if (mm && mm->prop_count >= 1) {
-            const char *mapping = fbx_prop_str(mm, 0);
-            material_by_polygon = strcmp(mapping, "ByPolygon") == 0;
-            material_all_same = strcmp(mapping, "AllSame") == 0;
-        }
-        if (m_node && m_node->prop_count >= 1 && m_node->props[0].type == 'i' &&
-            m_node->props[0].v.array.data) {
-            material_slots = (int32_t *)m_node->props[0].v.array.data;
-            material_slot_count = m_node->props[0].v.array.count;
-            if (material_slot_count > (uint32_t)INT32_MAX) {
-                material_slots = NULL;
-                material_slot_count = 0;
-            }
-        }
-    }
+    /* Vertex attribute layers (optional) + material assignment (optional) */
+    fbx_vertex_layer_t norm_layer;
+    fbx_parse_vertex_layer(
+        geom_node, "LayerElementNormal", "Normals", "NormalsIndex", "NormalIndex", 3, &norm_layer);
+    fbx_vertex_layer_t uv_layer;
+    fbx_parse_vertex_layer(geom_node, "LayerElementUV", "UV", "UVIndex", NULL, 2, &uv_layer);
+    fbx_material_layer_t mat;
+    fbx_parse_material_layer(geom_node, &mat);
 
     /* Build mesh: iterate polygon indices, triangulate with fan */
     void *mesh = rt_mesh3d_new();
@@ -1241,17 +1398,12 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
 
         /* Get normal */
         double nx = 0, ny = 1, nz = 0;
-        if (normals) {
-            int ni = 0;
-            if (norm_by_polygon_vertex)
-                ni = norm_index_to_direct ? (norm_indices ? norm_indices[polygon_vertex_idx] : 0)
-                                          : polygon_vertex_idx;
-            else
-                ni = norm_index_to_direct ? (norm_indices ? norm_indices[vi] : 0) : vi;
-            if (ni >= 0 && ni < (int32_t)norm_count) {
-                nx = normals[ni * 3 + 0];
-                ny = normals[ni * 3 + 1];
-                nz = normals[ni * 3 + 2];
+        if (norm_layer.data) {
+            int32_t ni = fbx_resolve_layer_index(&norm_layer, polygon_vertex_idx, polygon_idx, vi);
+            if (ni >= 0) {
+                nx = norm_layer.data[ni * 3 + 0];
+                ny = norm_layer.data[ni * 3 + 1];
+                nz = norm_layer.data[ni * 3 + 2];
                 if (z_up)
                     fbx_correct_zup(&nx, &ny, &nz);
             }
@@ -1259,16 +1411,11 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
 
         /* Get UV */
         double u = 0, v = 0;
-        if (uvs) {
-            int ui = 0;
-            if (uv_by_polygon_vertex)
-                ui = uv_index_to_direct ? (uv_indices ? uv_indices[polygon_vertex_idx] : 0)
-                                        : polygon_vertex_idx;
-            else
-                ui = uv_index_to_direct ? (uv_indices ? uv_indices[vi] : 0) : vi;
-            if (ui >= 0 && ui < (int32_t)uv_count) {
-                u = uvs[ui * 2 + 0];
-                v = 1.0 - uvs[ui * 2 + 1]; /* FBX V is flipped vs OpenGL */
+        if (uv_layer.data) {
+            int32_t ui = fbx_resolve_layer_index(&uv_layer, polygon_vertex_idx, polygon_idx, vi);
+            if (ui >= 0) {
+                u = uv_layer.data[ui * 2 + 0];
+                v = 1.0 - uv_layer.data[ui * 2 + 1]; /* FBX V is flipped vs OpenGL */
             }
         }
 
@@ -1278,42 +1425,22 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
                 int32_t new_capacity = poly_capacity * 2;
                 int32_t *grown;
                 if (poly_capacity > INT32_MAX / 2 ||
-                    (size_t)new_capacity > SIZE_MAX / sizeof(*polygon)) {
-                    if (polygon != polygon_stack)
-                        free(polygon);
-                    if (rt_obj_release_check0(mesh))
-                        rt_obj_free(mesh);
-                    return NULL;
-                }
+                    (size_t)new_capacity > SIZE_MAX / sizeof(*polygon))
+                    return fbx_geom_fail(polygon, polygon_stack, mesh);
                 grown = (int32_t *)malloc((size_t)new_capacity * sizeof(*polygon));
-                if (!grown) {
-                    if (polygon != polygon_stack)
-                        free(polygon);
-                    if (rt_obj_release_check0(mesh))
-                        rt_obj_free(mesh);
-                    return NULL;
-                }
+                if (!grown)
+                    return fbx_geom_fail(polygon, polygon_stack, mesh);
                 memcpy(grown, polygon, (size_t)poly_count * sizeof(*polygon));
                 if (polygon != polygon_stack)
                     free(polygon);
                 polygon = grown;
                 poly_capacity = new_capacity;
             }
-            if (((rt_mesh3d *)mesh)->vertex_count == UINT32_MAX) {
-                if (polygon != polygon_stack)
-                    free(polygon);
-                if (rt_obj_release_check0(mesh))
-                    rt_obj_free(mesh);
-                return NULL;
-            }
+            if (((rt_mesh3d *)mesh)->vertex_count == UINT32_MAX)
+                return fbx_geom_fail(polygon, polygon_stack, mesh);
             rt_mesh3d_add_vertex(mesh, px, py, pz, nx, ny, nz, u, v);
-            if (((rt_mesh3d *)mesh)->build_failed) {
-                if (polygon != polygon_stack)
-                    free(polygon);
-                if (rt_obj_release_check0(mesh))
-                    rt_obj_free(mesh);
-                return NULL;
-            }
+            if (((rt_mesh3d *)mesh)->build_failed)
+                return fbx_geom_fail(polygon, polygon_stack, mesh);
             fbx_mesh_remap_add_vertex(remap, vi, emitted_vertex);
             polygon[poly_count++] = emitted_vertex;
         }
@@ -1321,28 +1448,16 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
 
         if (end_of_polygon) {
             uint32_t index_before = ((rt_mesh3d *)mesh)->index_count;
-            int32_t material_slot = fbx_material_slot_for_polygon(material_slots,
-                                                                  material_slot_count,
-                                                                  material_by_polygon,
-                                                                  material_all_same,
-                                                                  polygon_idx);
-            if (!fbx_emit_polygon_triangles(mesh, polygon, poly_count)) {
-                if (polygon != polygon_stack)
-                    free(polygon);
-                if (rt_obj_release_check0(mesh))
-                    rt_obj_free(mesh);
-                return NULL;
-            }
+            int32_t material_slot = fbx_material_slot_for_polygon(
+                mat.slots, mat.slot_count, mat.by_polygon, mat.all_same, polygon_idx);
+            if (!fbx_emit_polygon_triangles(mesh, polygon, poly_count))
+                return fbx_geom_fail(polygon, polygon_stack, mesh);
             if (material_map) {
                 uint32_t index_after = ((rt_mesh3d *)mesh)->index_count;
                 uint32_t added_triangles = (index_after - index_before) / 3u;
                 if (!fbx_mesh_material_map_append(material_map, material_slot, added_triangles)) {
-                    if (polygon != polygon_stack)
-                        free(polygon);
                     fbx_mesh_material_map_free(material_map);
-                    if (rt_obj_release_check0(mesh))
-                        rt_obj_free(mesh);
-                    return NULL;
+                    return fbx_geom_fail(polygon, polygon_stack, mesh);
                 }
             }
             poly_count = 0;
@@ -1352,6 +1467,8 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
 
     if (polygon != polygon_stack)
         free(polygon);
+    if (!norm_layer.data || norm_layer.count == 0)
+        rt_mesh3d_recalc_normals(mesh);
     return mesh;
 }
 
@@ -1602,6 +1719,7 @@ static void fbx_extract_model_trs(
     }
 }
 
+/// @brief Linear-search @p bindings for the entry with the given @p id; NULL if not found.
 static const fbx_mesh_binding_t *fbx_lookup_mesh_binding_entry(const fbx_mesh_binding_t *bindings,
                                                                int32_t count,
                                                                int64_t id) {
@@ -1611,6 +1729,10 @@ static const fbx_mesh_binding_t *fbx_lookup_mesh_binding_entry(const fbx_mesh_bi
     return NULL;
 }
 
+/// @brief Build a new Mesh3D containing only the triangles of @p src assigned to
+///   @p material_slot, compacting the referenced vertices through a remap table so the
+///   sub-mesh has no unused vertices.
+/// @return The new mesh object, or NULL if no triangle uses the slot or on allocation failure.
 static void *fbx_clone_mesh_for_material_slot(const rt_mesh3d *src,
                                               const fbx_mesh_material_map_t *map,
                                               int32_t material_slot) {
@@ -1755,7 +1877,8 @@ static void *fbx_build_scene_root(fbx_node_t *root,
 
         if (model_count >= model_capacity) {
             if (model_capacity < 0 || model_capacity > INT32_MAX / 2 ||
-                (size_t)(model_capacity == 0 ? 16 : model_capacity * 2) > SIZE_MAX / sizeof(*models)) {
+                (size_t)(model_capacity == 0 ? 16 : model_capacity * 2) >
+                    SIZE_MAX / sizeof(*models)) {
                 failed = 1;
                 break;
             }
@@ -1879,10 +2002,8 @@ static void *fbx_build_scene_root(fbx_node_t *root,
             if (binding->material_map.has_slots && binding->material_map.slot_count > 1 &&
                 model_material_count > 1) {
                 for (int32_t slot = 0; slot < binding->material_map.slot_count; slot++) {
-                    void *slot_mesh =
-                        fbx_clone_mesh_for_material_slot((const rt_mesh3d *)mesh,
-                                                         &binding->material_map,
-                                                         slot);
+                    void *slot_mesh = fbx_clone_mesh_for_material_slot(
+                        (const rt_mesh3d *)mesh, &binding->material_map, slot);
                     void *slot_material = slot < model_material_count && model_materials[slot]
                                               ? model_materials[slot]
                                               : default_material;
@@ -2643,6 +2764,7 @@ static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
                            : (double)curve->values32[curve->count - 1];
 }
 
+/// @brief qsort comparator for int64 keys, ascending (returns -1/0/1).
 static int fbx_i64_compare(const void *a, const void *b) {
     int64_t av = *(const int64_t *)a;
     int64_t bv = *(const int64_t *)b;
@@ -2829,7 +2951,8 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
 }
 
 /// @brief Largest keyframe time (seconds) across all of @p builders' curves.
-static double fbx_anim_compute_max_time(const fbx_anim_bone_builder_t *builders, int64_t bone_count) {
+static double fbx_anim_compute_max_time(const fbx_anim_bone_builder_t *builders,
+                                        int64_t bone_count) {
     double max_time = 0.0;
     for (int64_t bone_idx = 0; bone_idx < bone_count; bone_idx++) {
         if (!builders[bone_idx].initialized)
@@ -2915,6 +3038,11 @@ static int fbx_anim_build_bone_keyframes(void *anim,
     return emitted_any;
 }
 
+/// @brief Extract animation clips from the FBX node graph: for each animation stack, sample
+///   its bone AnimCurves over the union of keyframe times and emit TRS keyframes (Euler
+///   degrees converted to quaternions, with optional Z-up correction) into new Animation3Ds.
+/// @param out_anims Receives a newly allocated array of animation objects (caller owns).
+/// @param out_count Receives the number of animations written.
 static void fbx_extract_animations(fbx_node_t *root,
                                    const fbx_conn_table_t *ct,
                                    void *skeleton,
@@ -3041,6 +3169,8 @@ static void rt_fbx_asset_finalize(void *obj) {
     fbx_release_ref(&fbx->scene_root);
 }
 
+/// @brief Ensure a double array holds at least @p needed elements, doubling capacity (min 64)
+///   with overflow checks. @return 1 on success, 0 on overflow or allocation failure.
 static int fbx_ascii_grow_double_array(double **values, size_t *capacity, size_t needed) {
     double *grown;
     size_t new_capacity;
@@ -3062,6 +3192,8 @@ static int fbx_ascii_grow_double_array(double **values, size_t *capacity, size_t
     return 1;
 }
 
+/// @brief Ensure an int32 array holds at least @p needed elements, doubling capacity (min 64)
+///   with overflow checks. @return 1 on success, 0 on overflow or allocation failure.
 static int fbx_ascii_grow_i32_array(int32_t **values, size_t *capacity, size_t needed) {
     int32_t *grown;
     size_t new_capacity;
@@ -3083,6 +3215,8 @@ static int fbx_ascii_grow_i32_array(int32_t **values, size_t *capacity, size_t n
     return 1;
 }
 
+/// @brief Locate the "a:" value payload of the ASCII-FBX array node named @p key within
+///   @p text; NULL if the node or its payload marker is absent.
 static const char *fbx_ascii_array_payload(const char *text, const char *key) {
     const char *p = text ? strstr(text, key) : NULL;
     if (!p)
@@ -3091,6 +3225,9 @@ static const char *fbx_ascii_array_payload(const char *text, const char *key) {
     return p ? p + 2 : NULL;
 }
 
+/// @brief Parse a comma-separated list of doubles from an ASCII-FBX "a:" payload up to the
+///   closing '}', rejecting non-finite values. @return 1 if ≥1 value parsed (sets @p out /
+///   @p out_count), 0 on parse error or allocation failure.
 static int fbx_ascii_parse_double_array(const char *payload, double **out, size_t *out_count) {
     double *values = NULL;
     size_t count = 0;
@@ -3125,6 +3262,9 @@ static int fbx_ascii_parse_double_array(const char *payload, double **out, size_
     return count > 0;
 }
 
+/// @brief Parse a comma-separated list of int32s from an ASCII-FBX "a:" payload up to the
+///   closing '}', rejecting out-of-range values. @return 1 if ≥1 value parsed (sets @p out /
+///   @p out_count), 0 on parse error or allocation failure.
 static int fbx_ascii_parse_i32_array(const char *payload, int32_t **out, size_t *out_count) {
     int32_t *values = NULL;
     size_t count = 0;
@@ -3159,6 +3299,10 @@ static int fbx_ascii_parse_i32_array(const char *payload, int32_t **out, size_t 
     return count > 0;
 }
 
+/// @brief Build a Mesh3D from ASCII-FBX vertex positions and polygon-vertex indices.
+/// @details FBX marks each polygon's final index with a bitwise complement (a negative value);
+///   this fan-triangulates arbitrary-sized polygons and skips out-of-range indices.
+/// @return The new mesh object, or NULL on malformed input or allocation failure.
 static void *fbx_ascii_build_mesh(const double *positions,
                                   size_t position_count,
                                   const int32_t *indices,
@@ -3184,8 +3328,7 @@ static void *fbx_ascii_build_mesh(const double *positions,
         if (poly_count >= poly_capacity) {
             int32_t new_capacity = poly_capacity * 2;
             int32_t *grown;
-            if (poly_capacity > INT32_MAX / 2 ||
-                (size_t)new_capacity > SIZE_MAX / sizeof(*polygon))
+            if (poly_capacity > INT32_MAX / 2 || (size_t)new_capacity > SIZE_MAX / sizeof(*polygon))
                 goto fail;
             grown = (int32_t *)malloc((size_t)new_capacity * sizeof(*polygon));
             if (!grown)
@@ -3236,6 +3379,9 @@ fail:
     return NULL;
 }
 
+/// @brief Minimal ASCII-FBX fallback loader: parse the "Vertices:" and "PolygonVertexIndex:"
+///   arrays into a single mesh with a default material under a fresh scene root.
+/// @return A new FBX asset, or NULL if the required arrays are missing or allocation fails.
 static void *fbx_load_ascii_minimal(const char *text) {
     double *positions = NULL;
     int32_t *indices = NULL;
@@ -3295,6 +3441,95 @@ fail:
 /// @brief Link FBX Texture nodes to their owning materials via the connection table.
 ///   Extracted phase of rt_fbx_load; reads the connection table + material bindings and
 ///   assigns decoded pixels to the matched material texture slots.
+static const uint8_t *fbx_video_content_bytes(fbx_node_t *video, uint32_t *out_len) {
+    fbx_node_t *content;
+    if (out_len)
+        *out_len = 0;
+    if (!video)
+        return NULL;
+    content = fbx_find_child(video, "Content");
+    if (!content || content->prop_count < 1)
+        return NULL;
+    if (content->props[0].type == 'R' && content->props[0].v.raw.data) {
+        if (out_len)
+            *out_len = content->props[0].v.raw.len;
+        return content->props[0].v.raw.data;
+    }
+    return NULL;
+}
+
+/// @brief Best-effort texture filename for a Video node, checking its Properties70
+///   RelativeFilename/FileName entries then child RelativeFilename/FileName nodes.
+///   Returns "" when none is present.
+static const char *fbx_video_filename_hint(fbx_node_t *video) {
+    fbx_node_t *p70;
+    if (!video)
+        return "";
+    p70 = fbx_find_child(video, "Properties70");
+    if (p70) {
+        for (int32_t pi = 0; pi < p70->child_count; pi++) {
+            fbx_node_t *p = &p70->children[pi];
+            const char *pname;
+            if (strcmp(p->name, "P") != 0 || p->prop_count < 5)
+                continue;
+            pname = fbx_prop_str(p, 0);
+            if (strcmp(pname, "RelativeFilename") == 0 || strcmp(pname, "FileName") == 0) {
+                const char *value = fbx_prop_str(p, 4);
+                if (value && *value)
+                    return value;
+            }
+        }
+    }
+    {
+        fbx_node_t *rfn = fbx_find_child(video, "RelativeFilename");
+        if (rfn && rfn->prop_count > 0 && *fbx_prop_str(rfn, 0))
+            return fbx_prop_str(rfn, 0);
+    }
+    {
+        fbx_node_t *fn = fbx_find_child(video, "FileName");
+        if (fn && fn->prop_count > 0 && *fbx_prop_str(fn, 0))
+            return fbx_prop_str(fn, 0);
+    }
+    return "";
+}
+
+/// @brief Find the Video node connected to texture @p texture_id and decode its embedded
+///   image content into a Pixels object, picking the codec from the Video filename hint (or
+///   @p texture_hint / @p fallback_hint). Returns NULL if no embedded content decodes.
+static void *fbx_try_decode_embedded_texture(fbx_node_t *objects,
+                                             const fbx_conn_table_t *ct,
+                                             int64_t texture_id,
+                                             const char *texture_hint,
+                                             const char *fallback_hint) {
+    if (!objects || !ct)
+        return NULL;
+    for (int32_t ci = 0; ci < ct->count; ci++) {
+        fbx_node_t *video;
+        uint32_t content_len = 0;
+        const uint8_t *content;
+        const char *hint;
+        void *pixels;
+        if (ct->entries[ci].parent_id != texture_id)
+            continue;
+        video = fbx_find_object_by_id(objects, ct->entries[ci].child_id);
+        if (!video || strcmp(video->name, "Video") != 0)
+            continue;
+        content = fbx_video_content_bytes(video, &content_len);
+        if (!content || content_len == 0)
+            continue;
+        hint = fbx_video_filename_hint(video);
+        pixels = fbx_decode_texture_payload(hint && *hint ? hint : texture_hint, content, content_len);
+        if (!pixels && fallback_hint && fallback_hint != texture_hint)
+            pixels = fbx_decode_texture_payload(fallback_hint, content, content_len);
+        if (pixels)
+            return pixels;
+    }
+    return NULL;
+}
+
+/// @brief Resolve and attach textures to the asset's materials: for each Texture node, load
+///   its image (external file relative to @p cpath, or embedded Video content) and assign it
+///   to the connected material's slots per @p material_bindings.
 static void fbx_load_link_textures(rt_fbx_asset *asset,
                                    fbx_node_t *objects,
                                    const char *cpath,
@@ -3347,6 +3582,9 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
             if (!pixels && filename && *filename &&
                 (!rel_filename || !*rel_filename || strcmp(filename, rel_filename) != 0))
                 pixels = fbx_try_load_texture_path(cpath, filename);
+            if (!pixels)
+                pixels = fbx_try_decode_embedded_texture(
+                    objects, &ct, tex_id, rel_filename, filename);
             if (!pixels)
                 continue;
 
@@ -3533,6 +3771,10 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
     }
 }
 
+/// @brief Walk the FBX "Objects" node, importing each "Geometry" into a Mesh3D (with optional
+///   Z-up correction) and accumulating mesh bindings, geometry-id remaps, and material
+///   bindings through the in/out array and count pointers.
+/// @return 1 on success, 0 on allocation failure.
 static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                                      fbx_node_t *objects,
                                      int z_up,
@@ -3566,8 +3808,7 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                     }
                     int32_t nc = asset->mesh_count + 1;
                     void **nm = (void **)realloc(asset->meshes, (size_t)nc * sizeof(void *));
-                    void *nb =
-                        realloc(mesh_bindings, (size_t)nc * sizeof(*mesh_bindings));
+                    void *nb = realloc(mesh_bindings, (size_t)nc * sizeof(*mesh_bindings));
                     if (!nm || !nb ||
                         !fbx_mesh_remaps_append(&mesh_remaps, &mesh_remap_count, &remap)) {
                         if (nm)
@@ -3601,8 +3842,7 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                     }
                     int32_t nc = asset->material_count + 1;
                     void **nm = (void **)realloc(asset->materials, (size_t)nc * sizeof(void *));
-                    void *nb =
-                        realloc(material_bindings, (size_t)nc * sizeof(*material_bindings));
+                    void *nb = realloc(material_bindings, (size_t)nc * sizeof(*material_bindings));
                     if (!nm || !nb) {
                         if (nm)
                             asset->materials = nm;

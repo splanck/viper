@@ -340,6 +340,103 @@ void *rt_game3d_entity_set_material(void *obj, void *material) {
     return obj;
 }
 
+/// @brief Assign `mesh` to every mesh-bearing node in the subtree rooted at `root`,
+///   walked as an iterative depth-first traversal over an explicit heap stack (avoids
+///   C-stack overflow on deep hierarchies). If no node in the subtree carries a mesh,
+///   the mesh is assigned to `root` as a fallback. Traps on stack-allocation failure.
+/// @return Count of nodes that received the mesh (>= 1 when `root` is non-NULL).
+static int game3d_entity_set_mesh_subtree(rt_scene_node3d *root, void *mesh) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    int assigned = 0;
+    if (!root)
+        return 0;
+    if (!scene_node_stack_push(&stack, &count, &capacity, root)) {
+        rt_trap("Game3D.Entity3D.setMeshRecursive: traversal stack allocation failed");
+        return 0;
+    }
+    while (count > 0) {
+        rt_scene_node3d *node = stack[--count];
+        if (node->mesh) {
+            rt_scene_node3d_set_mesh(node, mesh);
+            assigned++;
+        }
+        for (int32_t i = node->child_count - 1; i >= 0; --i) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, node->children[i])) {
+                free(stack);
+                rt_trap("Game3D.Entity3D.setMeshRecursive: traversal stack allocation failed");
+                return assigned;
+            }
+        }
+    }
+    free(stack);
+    if (!assigned) {
+        rt_scene_node3d_set_mesh(root, mesh);
+        assigned = 1;
+    }
+    return assigned;
+}
+
+/// @brief Assign `material` to every node in the subtree rooted at `root`, walked as an
+///   iterative depth-first traversal over an explicit heap stack (avoids C-stack overflow
+///   on deep hierarchies). Traps on stack-allocation failure.
+static void game3d_entity_set_material_subtree(rt_scene_node3d *root, void *material) {
+    rt_scene_node3d **stack = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    if (!root)
+        return;
+    if (!scene_node_stack_push(&stack, &count, &capacity, root)) {
+        rt_trap("Game3D.Entity3D.setMaterialRecursive: traversal stack allocation failed");
+        return;
+    }
+    while (count > 0) {
+        rt_scene_node3d *node = stack[--count];
+        rt_scene_node3d_set_material(node, material);
+        for (int32_t i = node->child_count - 1; i >= 0; --i) {
+            if (!scene_node_stack_push(&stack, &count, &capacity, node->children[i])) {
+                free(stack);
+                rt_trap("Game3D.Entity3D.setMaterialRecursive: traversal stack allocation failed");
+                return;
+            }
+        }
+    }
+    free(stack);
+}
+
+/// @brief Fluent: assign the mesh (validated as Mesh3D) to the entity and propagate it
+///   to every mesh-bearing node of its scene-node subtree; returns the entity.
+void *rt_game3d_entity_set_mesh_recursive(void *obj, void *mesh) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.setMeshRecursive: invalid entity");
+    if (mesh && !rt_g3d_has_class(mesh, RT_G3D_MESH3D_CLASS_ID)) {
+        rt_trap("Game3D.Entity3D.setMeshRecursive: mesh must be Mesh3D");
+        return obj;
+    }
+    if (entity) {
+        game3d_assign_ref(&entity->mesh, mesh);
+        game3d_entity_set_mesh_subtree(entity->node, mesh);
+    }
+    return obj;
+}
+
+/// @brief Fluent: assign the material (validated as Material3D) to the entity and
+///   propagate it to every node of its scene-node subtree; returns the entity.
+void *rt_game3d_entity_set_material_recursive(void *obj, void *material) {
+    rt_game3d_entity *entity =
+        game3d_entity_checked(obj, "Game3D.Entity3D.setMaterialRecursive: invalid entity");
+    if (material && !rt_g3d_has_class(material, RT_G3D_MATERIAL3D_CLASS_ID)) {
+        rt_trap("Game3D.Entity3D.setMaterialRecursive: material must be Material3D");
+        return obj;
+    }
+    if (entity) {
+        game3d_assign_ref(&entity->material, material);
+        game3d_entity_set_material_subtree(entity->node, material);
+    }
+    return obj;
+}
+
 /// @brief Fluent: parent `child_obj` under this entity (retaining it and linking the
 ///   nodes), mark this entity a group, and return it.
 void *rt_game3d_entity_add_child(void *obj, void *child_obj) {

@@ -28,6 +28,9 @@
 #include <math.h>
 #include <stdlib.h>
 
+/// @brief Borrow the scene's pooled query-candidate buffer, transferring ownership to the
+///   returned list and clearing the scene's slot (avoids per-query allocation). Returns an
+///   empty list when @p scene is NULL.
 static scene3d_spatial_candidate_list_t scene3d_query_borrow_candidates(rt_scene3d *scene) {
     scene3d_spatial_candidate_list_t candidates = {0};
     if (!scene)
@@ -39,6 +42,9 @@ static scene3d_spatial_candidate_list_t scene3d_query_borrow_candidates(rt_scene
     return candidates;
 }
 
+/// @brief Return a borrowed candidate buffer to the scene's pool for reuse (freeing whatever
+///   was previously pooled), or free it outright when @p scene is NULL; resets @p candidates
+///   to empty either way.
 static void scene3d_query_return_candidates(rt_scene3d *scene,
                                             scene3d_spatial_candidate_list_t *candidates) {
     if (!candidates)

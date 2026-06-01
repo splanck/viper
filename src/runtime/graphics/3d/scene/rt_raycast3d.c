@@ -760,6 +760,9 @@ static void *ray3d_build_mesh_hit(const ray3d_mesh_ctx_t *ctx, const ray3d_mesh_
     return hit;
 }
 
+/// @brief Intersect a world-space ray (@p origin, @p dir) against a Mesh3D, optionally placed
+///   by @p transform_obj, by transforming the ray into mesh-local space and testing triangles.
+/// @return The nearest RayHit3D object, or NULL on a miss or invalid/degenerate inputs.
 void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *transform_obj) {
     ray3d_mesh_ctx_t ctx = {0};
     ray3d_mesh_hit_t hit_data;

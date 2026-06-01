@@ -127,7 +127,7 @@ still open around `Viper.Graphics3D.*`, `Viper.Game3D.*`, and
 1. Status: fixed. glTF external URI handling now percent-decodes before validation, accepts safe `./` relative paths, and rejects absolute paths, schemes, `..`, NUL bytes, and overlong references.
 2. Status: fixed. glTF scalar/vector/index reads now use explicit little-endian decoding instead of relying on host byte order.
 3. Status: fixed. glTF accessor contracts for positions, normals, UVs, colors, tangents, indices, joints, and weights are validated before mesh emission.
-4. Status: fixed. glTF point and line primitive modes are rejected as unsupported renderable geometry instead of being silently skipped.
+4. Status: fixed. glTF point and line primitive modes are skipped as unsupported renderable geometry instead of failing an otherwise renderable asset.
 5. Status: fixed. glTF invalid node graphs now fail the load instead of returning an asset with an empty or misleading scene tree.
 6. Status: fixed. glTF TRS import sanitizes non-finite components and normalizes quaternions before scene nodes are created.
 7. Status: fixed. glTF materials without `pbrMetallicRoughness` now receive the glTF default PBR values, including metallic/roughness defaults.
@@ -154,6 +154,24 @@ still open around `Viper.Graphics3D.*`, `Viper.Game3D.*`, and
 28. Status: fixed. The runtime ABI catalog includes the new `ModelTemplate` scene/camera methods and `sceneCount` property.
 29. Status: fixed. Documentation now distinguishes geometry-only `Mesh3D.FromOBJ` from material-preserving `Model3D.Load(".obj")`.
 30. Status: fixed. Documentation now reflects `.stl` model templates, FBX ASCII fallback, FBX material splitting, and the updated glTF required-extension/path contracts.
+31. Status: fixed. glTF sparse accessor indices are validated as strictly increasing and in range before binary-search sparse override reads.
+32. Status: fixed. glTF optional malformed normals, UVs, colors, and tangents are dropped or regenerated without discarding valid primitive geometry.
+33. Status: fixed. glTF invalid skin references now fail the import instead of producing nodes with dangling skin bindings.
+34. Status: fixed. glTF `KHR_texture_basisu` KTX2 images import as `TextureAsset3D` material textures for external, embedded, and extension-sourced texture references.
+35. Status: fixed. glTF specular, clearcoat, and transmission material extensions map to stable `Material3D` fields/custom parameters without making transmission materials invisible.
+36. Status: fixed. glTF matrix decomposition now preserves negative scale sign and orthonormalizes unsupported shear so node rotations remain finite and stable.
+37. Status: fixed. glTF node animation channels bind by stable imported node index before falling back to names, so duplicate names do not retarget clips.
+38. Status: fixed. glTF morph-weight animation now applies to all primitive morph target sets in the target subtree, not just the first primitive.
+39. Status: fixed. Morph/skinning culling bounds now include authored morph deltas and use a full-radius dynamic fallback for skinned or otherwise deforming meshes.
+40. Status: fixed. Native `TextureAsset3D` normal maps trigger tangent generation just like `Pixels` normal maps.
+41. Status: fixed. OBJ MTL import now supports multiple `mtllib` names per line and imports `Ks`, `Ke`, `Ns`, `map_Kd`, `map_Ks`, `map_Ke`, and bump/normal maps.
+42. Status: fixed. OBJ material group emission skips empty or degenerate groups without failing valid groups.
+43. Status: fixed. Game3D async model handles accept `.fbx`, `.obj`, `.stl`, and `.vscn` in addition to glTF/GLB, using one async surface for mixed model libraries.
+44. Status: fixed. FBX missing normals are regenerated after import instead of leaving default up normals on every vertex.
+45. Status: fixed. FBX normal and UV mapping supports `ByPolygon`, `ByPolygonVertex`, `Index`, `IndexToDirect`, and common `NormalIndex` fallbacks with bounds checks.
+46. Status: fixed. FBX embedded Texture->Video PNG/JPEG/GIF payloads are decoded when the referenced external texture file is absent.
+47. Status: fixed. Skinned scene draws now verify the mesh skeleton matches the effective animator skeleton before applying a bone palette.
+48. Status: fixed. `Game3D.Entity3D.setMeshRecursive` and `setMaterialRecursive` update imported raw scene-node subtrees without flattening or cloning them.
 
 Focused verification:
 

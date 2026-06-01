@@ -444,8 +444,12 @@ void *rt_game3d_entity_set_scale_xyz(void *entity, double x, double y, double z)
 void *rt_game3d_entity_set_rotation_euler(void *entity, double x_deg, double y_deg, double z_deg);
 /// @brief Fluent: assign the mesh and return the entity.
 void *rt_game3d_entity_set_mesh(void *entity, void *mesh);
+/// @brief Fluent: assign a mesh to every drawable node in this entity's scene-node subtree.
+void *rt_game3d_entity_set_mesh_recursive(void *entity, void *mesh);
 /// @brief Fluent: assign the material and return the entity.
 void *rt_game3d_entity_set_material(void *entity, void *material);
+/// @brief Fluent: assign a material to every node in this entity's scene-node subtree.
+void *rt_game3d_entity_set_material_recursive(void *entity, void *material);
 /// @brief Fluent: parent the given child entity under this one and return this entity.
 void *rt_game3d_entity_add_child(void *entity, void *child);
 /// @brief True if the entity is a group (no own renderable, only children).

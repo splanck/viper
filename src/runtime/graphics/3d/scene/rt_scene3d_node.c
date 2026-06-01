@@ -132,6 +132,7 @@ void *rt_scene_node3d_new(void) {
     node->bound_animator = NULL;
     node->bound_node_animator = NULL;
     node->sync_mode = RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
+    node->import_index = -1;
     node->visible = 1;
     node->name = NULL;
 

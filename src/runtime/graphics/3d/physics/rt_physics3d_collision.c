@@ -2423,6 +2423,8 @@ static void gjk_support(void *a_collider,
     vec3_sub(pa, pb, out->v);
 }
 
+/// @brief GJK support callback for a collider pair: the Minkowski-difference support point
+///   (collider A's support along @p direction minus collider B's along the opposite direction).
 static void gjk_support_collider_pair(void *ctx, const double *direction, gjk_support_point *out) {
     ph3d_collider_pair_support_ctx *pair = (ph3d_collider_pair_support_ctx *)ctx;
     if (!pair || !out)
@@ -2430,6 +2432,7 @@ static void gjk_support_collider_pair(void *ctx, const double *direction, gjk_su
     gjk_support(pair->a_collider, pair->a_pose, pair->b_collider, pair->b_pose, direction, out);
 }
 
+/// @brief Support point of a triangle: the vertex farthest along @p direction.
 static void triangle_support_point(const double tri[3][3], const double *direction, double *out) {
     double best_dot = -DBL_MAX;
     int best = 0;
@@ -2443,6 +2446,8 @@ static void triangle_support_point(const double tri[3][3], const double *directi
     vec3_copy(out, tri[best]);
 }
 
+/// @brief GJK support callback for a triangle-vs-convex-hull pair: the Minkowski-difference
+///   support point (triangle support along @p direction minus hull support along −direction).
 static void gjk_support_triangle_hull(void *ctx, const double *direction, gjk_support_point *out) {
     ph3d_triangle_hull_support_ctx *pair = (ph3d_triangle_hull_support_ctx *)ctx;
     double tri_point[3];
@@ -2771,6 +2776,9 @@ static int epa_solve_with_support(ph3d_gjk_support_fn support_fn,
     return 0;
 }
 
+/// @brief Run EPA (Expanding Polytope Algorithm) on a collider pair, given a GJK simplex that
+///   encloses the origin, to recover the penetration @p normal and @p depth.
+/// @return 1 on success, 0 if EPA fails to converge.
 static int epa_solve(void *a_collider,
                      const rt_collider_pose *a_pose,
                      void *b_collider,
@@ -2782,6 +2790,9 @@ static int epa_solve(void *a_collider,
     return epa_solve_with_support(gjk_support_collider_pair, &ctx, simplex, normal, depth);
 }
 
+/// @brief Generic GJK overlap test followed by EPA penetration recovery, driven by a
+///   caller-provided @p support_fn and seeded from @p seed_direction.
+/// @return 1 if the shapes overlap (with @p normal / @p depth set), 0 otherwise.
 static int gjk_epa_with_support(ph3d_gjk_support_fn support_fn,
                                 void *support_ctx,
                                 const double *seed_direction,
@@ -2897,6 +2908,9 @@ static int test_convex_hull_gjk_epa(void *a_collider,
     return 0;
 }
 
+/// @brief Narrow-phase collision test between a triangle and a convex-hull collider via
+///   GJK/EPA, seeded from the triangle centroid toward the hull.
+/// @return 1 on overlap (filling @p normal / @p depth), 0 otherwise.
 static int test_triangle_convex_hull_gjk_epa(const double tri[3][3],
                                              void *hull_collider,
                                              const rt_collider_pose *hull_pose,
@@ -3328,6 +3342,10 @@ static int test_compound_collider(const rt_body3d *a_body,
     return hit;
 }
 
+/// @brief Narrow-phase collision test between two bodies' colliders: AABB broad-phase reject,
+///   then per-shape GJK/EPA, returning the contact @p normal / @p depth and the deepest
+///   contributing leaf colliders and their poses.
+/// @return 1 on contact, 0 otherwise.
 static int test_collider_pair(const rt_body3d *a_body,
                               void *a_collider,
                               const rt_collider_pose *a_pose,

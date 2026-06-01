@@ -381,6 +381,8 @@ an attached body only when the node sync mode is `SyncMode.BodyFromNode`:
 | `setScale(s)` / `setScaleXYZ(x, y, z)` | Set node scale |
 | `setRotationEuler(xDeg, yDeg, zDeg)` | Set node orientation in degrees |
 | `setMesh(mesh)` / `setMaterial(material)` | Replace render resources |
+| `setMeshRecursive(mesh)` | Replace mesh handles on every drawable raw node in the entity subtree; if none are drawable, assign the root |
+| `setMaterialRecursive(material)` | Replace material handles on the root and every raw node in the entity subtree |
 | `addChild(child)` | Parent another Game3D entity; reparents from an old Game3D parent and rejects self/cycle parenting |
 | `setName(name)` | Name the entity and backing node for lookup |
 | `setLayer(layer)` | Set gameplay/physics layer |
@@ -488,6 +490,12 @@ failures complete through the worker/commit path with `"failed to load model"` o
 `"failed to load model asset"`. Calling `cancel()` before worker completion makes
 the handle terminal with `error == "cancelled"` and no result. Calling `cancel()`
 on a completed handle is a no-op, which keeps retrieved results stable.
+
+Async handles accept the same model extensions as blocking `Model3D.Load`:
+`.gltf`, `.glb`, `.fbx`, `.obj`, `.stl`, and `.vscn`. glTF/GLB assets use the
+worker preload path described below; the other formats are validated by the
+handle and completed through the main-thread commit path so callers can use one
+async API for mixed model libraries.
 
 Current worker-backed async model loading stages glTF/GLB root bytes plus
 external, data URI, and bufferView-backed buffer/image payloads on a runtime

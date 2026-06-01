@@ -53,6 +53,8 @@ void rt_morphtarget3d_set_weight_by_name(void *mt, rt_string name, double weight
 int64_t rt_morphtarget3d_get_shape_count(void *mt);
 /// @brief Borrow the packed position-delta array (shape-major) for GPU upload.
 const float *rt_morphtarget3d_get_packed_deltas(void *mt);
+/// @brief Largest position-delta vector length across every shape and vertex.
+double rt_morphtarget3d_get_max_position_delta(void *mt);
 /// @brief Borrow the packed normal-delta array, or NULL if no shape has normal deltas.
 const float *rt_morphtarget3d_get_packed_normal_deltas(void *mt);
 /// @brief True when any shape carries tangent deltas that require CPU morphing.

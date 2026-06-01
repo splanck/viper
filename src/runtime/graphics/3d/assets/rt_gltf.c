@@ -27,6 +27,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_gif.h"
+#include "rt_gltf_json.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_pixels.h"
@@ -36,6 +37,7 @@
 #include "rt_skeleton3d.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
+#include "rt_textureasset3d.h"
 #include "rt_vec3.h"
 
 #include <ctype.h>
@@ -95,6 +97,7 @@ extern void rt_material3d_set_double_sided(void *obj, int8_t enabled);
 extern void rt_material3d_set_unlit(void *obj, int8_t unlit);
 extern void rt_material3d_set_shading_model(void *obj, int64_t model);
 extern void rt_material3d_set_reflectivity(void *obj, double value);
+extern void rt_material3d_set_custom_param(void *obj, int64_t index, double value);
 
 /// @brief Cast a JSON double to int64 only when the conversion is defined.
 static int gltf_double_to_i64_checked(double value, int64_t *out) {
@@ -112,6 +115,7 @@ static int32_t gltf_i32_from_i64_or(int64_t value, int32_t fallback) {
         return fallback;
     return (int32_t)value;
 }
+
 extern void rt_material3d_set_import_texture_slot(void *obj,
                                                   int64_t slot,
                                                   int64_t uv_set,
@@ -322,6 +326,8 @@ static const char *gltf_effective_node_name(void *nodes_arr,
     return NULL;
 }
 
+/// @brief Write an identity transform into the given outputs: zero position, identity
+///   quaternion (0,0,0,1), unit scale. NULL outputs are skipped.
 static void gltf_write_identity_trs(double *pos, double *quat, double *scale) {
     if (pos) {
         pos[0] = 0.0;
@@ -341,10 +347,81 @@ static void gltf_write_identity_trs(double *pos, double *quat, double *scale) {
     }
 }
 
+/// @brief Square root guarded against non-finite or negative input (returns 0.0 for those).
 static double gltf_sqrt_nonnegative(double value) {
     if (!isfinite(value) || value <= 0.0)
         return 0.0;
     return sqrt(value);
+}
+
+/// @brief Dot product of two 3-component double vectors.
+static double gltf_vec3_dot_local(const double *a, const double *b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+/// @brief Normalize a 3-vector in place.
+/// @return 1 on success; 0 (leaving @p v unchanged) for NULL, non-finite, or near-zero length.
+static int gltf_vec3_normalize_local(double *v) {
+    double len;
+    if (!v)
+        return 0;
+    if (!isfinite(v[0]) || !isfinite(v[1]) || !isfinite(v[2]))
+        return 0;
+    len = sqrt(gltf_vec3_dot_local(v, v));
+    if (!isfinite(len) || len <= 1e-12)
+        return 0;
+    v[0] /= len;
+    v[1] /= len;
+    v[2] /= len;
+    return 1;
+}
+
+/// @brief Cross product out = a × b of two 3-component double vectors.
+static void gltf_vec3_cross_local(const double *a, const double *b, double *out) {
+    out[0] = a[1] * b[2] - a[2] * b[1];
+    out[1] = a[2] * b[0] - a[0] * b[2];
+    out[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+/// @brief Gram-Schmidt orthonormalize three basis columns in place, substituting canonical
+///   axes for any degenerate (non-normalizable) column so the result is always orthonormal.
+static void gltf_orthonormalize_columns(double *c0, double *c1, double *c2) {
+    double dot01;
+    if (!gltf_vec3_normalize_local(c0)) {
+        c0[0] = 1.0;
+        c0[1] = 0.0;
+        c0[2] = 0.0;
+    }
+    dot01 = gltf_vec3_dot_local(c0, c1);
+    c1[0] -= dot01 * c0[0];
+    c1[1] -= dot01 * c0[1];
+    c1[2] -= dot01 * c0[2];
+    if (!gltf_vec3_normalize_local(c1)) {
+        if (fabs(c0[0]) < 0.9) {
+            c1[0] = 1.0;
+            c1[1] = 0.0;
+            c1[2] = 0.0;
+        } else {
+            c1[0] = 0.0;
+            c1[1] = 1.0;
+            c1[2] = 0.0;
+        }
+        dot01 = gltf_vec3_dot_local(c0, c1);
+        c1[0] -= dot01 * c0[0];
+        c1[1] -= dot01 * c0[1];
+        c1[2] -= dot01 * c0[2];
+        if (!gltf_vec3_normalize_local(c1)) {
+            c1[0] = 0.0;
+            c1[1] = 1.0;
+            c1[2] = 0.0;
+        }
+    }
+    gltf_vec3_cross_local(c0, c1, c2);
+    if (!gltf_vec3_normalize_local(c2)) {
+        c2[0] = 0.0;
+        c2[1] = 0.0;
+        c2[2] = 1.0;
+    }
 }
 
 /// @brief Decompose a row-major 4x4 transform matrix into separate position, quaternion, and scale.
@@ -352,7 +429,9 @@ static double gltf_sqrt_nonnegative(double value) {
 /// glTF nodes can store either a 16-element matrix or explicit
 /// TRS — this helper converts the matrix form so the runtime
 /// always works with TRS internally. Uses Shepperd's method
-/// (largest-trace pivot) for the rotation extraction.
+/// (largest-trace pivot) for the rotation extraction. Sheared authoring matrices
+/// are reduced to the closest orthonormal rotation basis by Gram-Schmidt so
+/// unsupported shear does not appear as a spurious node rotation.
 static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, double *scale) {
     double r00, r01, r02;
     double r10, r11, r12;
@@ -411,6 +490,21 @@ static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, doubl
     r02 = m[2] / scale[2];
     r12 = m[6] / scale[2];
     r22 = m[10] / scale[2];
+    {
+        double c0[3] = {r00, r10, r20};
+        double c1[3] = {r01, r11, r21};
+        double c2[3] = {r02, r12, r22};
+        gltf_orthonormalize_columns(c0, c1, c2);
+        r00 = c0[0];
+        r10 = c0[1];
+        r20 = c0[2];
+        r01 = c1[0];
+        r11 = c1[1];
+        r21 = c1[2];
+        r02 = c2[0];
+        r12 = c2[1];
+        r22 = c2[2];
+    }
 
     trace = r00 + r11 + r22;
     if (trace > 0.0) {
@@ -459,8 +553,8 @@ static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, doubl
         quat[2] = 0.25 * s;
     }
     {
-        double qlen = sqrt(quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] +
-                           quat[3] * quat[3]);
+        double qlen =
+            sqrt(quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] + quat[3] * quat[3]);
         if (!isfinite(qlen) || qlen <= 1e-12) {
             quat[0] = quat[1] = quat[2] = 0.0;
             quat[3] = 1.0;
@@ -755,7 +849,7 @@ static int gltf_required_extension_supported(const char *name) {
            strcmp(name, "KHR_materials_specular") == 0 ||
            strcmp(name, "KHR_materials_clearcoat") == 0 ||
            strcmp(name, "KHR_materials_transmission") == 0 ||
-           strcmp(name, "KHR_lights_punctual") == 0;
+           strcmp(name, "KHR_texture_basisu") == 0 || strcmp(name, "KHR_lights_punctual") == 0;
 }
 
 /// @brief Enforce the glTF `extensionsRequired` contract.
@@ -1118,6 +1212,18 @@ static int gltf_texture_index_missing_supported_payload(int64_t texture_index,
            texture_supported[texture_index] && (!texture_images || !texture_images[texture_index]);
 }
 
+/// @brief Resolve the image source for a parsed glTF texture, including KHR_texture_basisu.
+static int64_t gltf_texture_source_index(void *texture_json) {
+    void *extensions;
+    void *basisu;
+    int64_t source_idx = jint(texture_json, "source", -1);
+    if (source_idx >= 0)
+        return source_idx;
+    extensions = jget(texture_json, "extensions");
+    basisu = extensions ? jget(extensions, "KHR_texture_basisu") : NULL;
+    return jint(basisu, "source", -1);
+}
+
 //===----------------------------------------------------------------------===//
 // Buffer management
 //===----------------------------------------------------------------------===//
@@ -1227,11 +1333,8 @@ static int gltf_preload_rgba_blob_pixel_bytes(const uint8_t *blob,
                                               size_t *out_pixel_bytes);
 
 /// @brief Compute a checked geometric capacity for preload staging arrays.
-static int gltf_preload_next_capacity_size(size_t current,
-                                           size_t required,
-                                           size_t initial,
-                                           size_t elem_size,
-                                           size_t *out_capacity) {
+static int gltf_preload_next_capacity_size(
+    size_t current, size_t required, size_t initial, size_t elem_size, size_t *out_capacity) {
     size_t next;
     if (out_capacity)
         *out_capacity = current;
@@ -1258,11 +1361,8 @@ static int gltf_preload_next_capacity_size(size_t current,
 }
 
 /// @brief Int-capacity wrapper for JSON-indexed preload ref tables.
-static int gltf_preload_next_capacity_int(int current,
-                                          int required,
-                                          int initial,
-                                          size_t elem_size,
-                                          int *out_capacity) {
+static int gltf_preload_next_capacity_int(
+    int current, int required, int initial, size_t elem_size, int *out_capacity) {
     size_t next = 0u;
     if (out_capacity)
         *out_capacity = current;
@@ -1745,6 +1845,32 @@ static int gltf_preload_image_is_supported_format(const char *mime_or_name) {
            gltf_preload_image_is_jpeg(mime_or_name) || gltf_preload_image_is_gif(mime_or_name);
 }
 
+/// @brief Whether @p mime_or_name denotes a KTX2 texture asset.
+static int gltf_image_is_ktx2(const char *mime_or_name) {
+    size_t len;
+    if (!mime_or_name)
+        return 0;
+    if (gltf_ascii_has_token_i(mime_or_name, "image/ktx2") ||
+        gltf_ascii_has_token_i(mime_or_name, "model/ktx2") ||
+        gltf_ascii_has_token_i(mime_or_name, "application/ktx2"))
+        return 1;
+    len = strlen(mime_or_name);
+    return len >= 5u && gltf_ascii_ieq_n(mime_or_name + len - 5u, ".ktx2", 5u);
+}
+
+/// @brief Decode KTX2 payloads under trap recovery so malformed textures fail the import cleanly.
+static void *gltf_decode_ktx2_payload(const uint8_t *data, size_t data_len) {
+    void *asset = NULL;
+    jmp_buf recovery;
+    if (!data || data_len == 0)
+        return NULL;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0)
+        asset = rt_textureasset3d_load_ktx2_memory(data, (uint64_t)data_len);
+    rt_trap_clear_recovery();
+    return asset;
+}
+
 /// @brief Decode an uncompressed 24/32-bpp BMP into an owned "VGRA" RGBA blob.
 /// @details Parses the BMP/DIB headers, handles bottom-up vs. top-down (negative height) row
 ///          order and the 4-byte row-stride padding, and swizzles BGR(A) to RGBA. Every size
@@ -2002,6 +2128,12 @@ static int gltf_nonnegative_size(void *obj, const char *key, size_t def, size_t 
     return 1;
 }
 
+/// @brief Sanitize a decoded glTF resource URI into a safe relative path in @p out.
+/// @details Path-traversal guard for external buffers/images: rejects absolute paths,
+///   Windows drive letters (`X:`), and scheme URIs (`foo://`), forbids any `..` segment,
+///   and collapses `.` and redundant separators, emitting forward-slash-joined segments.
+/// @return Non-zero if a non-empty safe path was written; 0 (with out[0]='\0') if the URI
+///   is empty, unsafe, or would overflow @p out_cap.
 static int gltf_normalize_relative_uri(const char *decoded_uri, char *out, size_t out_cap) {
     const char *p;
     size_t out_len = 0;
@@ -2383,6 +2515,8 @@ static int gltf_component_count(const char *acc_type) {
     return 1;
 }
 
+static int gltf_validate_sparse_indices(const gltf_accessor_view_t *view);
+
 /// @brief Resolve a glTF accessor into a typed byte view.
 static int gltf_get_accessor_view(void *root,
                                   int64_t accessor_idx,
@@ -2519,9 +2653,51 @@ static int gltf_get_accessor_view(void *root,
             out->sparse_index_comp_type = index_comp_type;
             out->sparse_index_stride = index_comp_size;
             out->sparse_value_stride = comp_size * comp_count;
+            if (!gltf_validate_sparse_indices(out))
+                return 0;
         }
     }
     return 1;
+}
+
+/// @brief Validate sparse accessor metadata globally before importers decide to skip primitives.
+static int gltf_validate_sparse_accessors(void *root, gltf_buffer_t *buffers, int buf_count) {
+    void *accessors = jarr(root, "accessors");
+    int64_t accessor_count = jarr_len(accessors);
+    for (int64_t i = 0; i < accessor_count; i++) {
+        void *acc = rt_seq_get(accessors, i);
+        void *sparse = jget(acc, "sparse");
+        if (sparse && jint(sparse, "count", 0) > 0) {
+            gltf_accessor_view_t view;
+            if (!gltf_get_accessor_view(root, i, buffers, buf_count, &view))
+                return 0;
+        }
+    }
+    return 1;
+}
+
+/// @brief Read a little-endian uint16 from the first 2 bytes of @p src.
+static uint16_t gltf_read_le_u16(const uint8_t *src) {
+    return (uint16_t)((uint16_t)src[0] | ((uint16_t)src[1] << 8));
+}
+
+/// @brief Read a little-endian int16 from the first 2 bytes of @p src.
+static int16_t gltf_read_le_i16(const uint8_t *src) {
+    return (int16_t)gltf_read_le_u16(src);
+}
+
+/// @brief Read a little-endian uint32 from the first 4 bytes of @p src.
+static uint32_t gltf_read_le_u32(const uint8_t *src) {
+    return (uint32_t)src[0] | ((uint32_t)src[1] << 8) | ((uint32_t)src[2] << 16) |
+           ((uint32_t)src[3] << 24);
+}
+
+/// @brief Read a little-endian IEEE-754 float from the first 4 bytes of @p src (bit copy).
+static float gltf_read_le_f32(const uint8_t *src) {
+    uint32_t bits = gltf_read_le_u32(src);
+    float value = 0.0f;
+    memcpy(&value, &bits, sizeof(value));
+    return value;
 }
 
 /// @brief Decode one glTF accessor component from raw bytes to a float.
@@ -2539,26 +2715,6 @@ static int gltf_get_accessor_view(void *root,
 /// @param comp_type  glTF component type integer (5120–5126).
 /// @param normalized Non-zero to apply normalization; 0 to return the raw numeric value.
 /// @return The decoded float value, or 0.0f for unknown component types.
-static uint16_t gltf_read_le_u16(const uint8_t *src) {
-    return (uint16_t)((uint16_t)src[0] | ((uint16_t)src[1] << 8));
-}
-
-static int16_t gltf_read_le_i16(const uint8_t *src) {
-    return (int16_t)gltf_read_le_u16(src);
-}
-
-static uint32_t gltf_read_le_u32(const uint8_t *src) {
-    return (uint32_t)src[0] | ((uint32_t)src[1] << 8) | ((uint32_t)src[2] << 16) |
-           ((uint32_t)src[3] << 24);
-}
-
-static float gltf_read_le_f32(const uint8_t *src) {
-    uint32_t bits = gltf_read_le_u32(src);
-    float value = 0.0f;
-    memcpy(&value, &bits, sizeof(value));
-    return value;
-}
-
 static float gltf_decode_component_f32(const uint8_t *src, int comp_type, int normalized) {
     switch (comp_type) {
         case 5120: {
@@ -2671,6 +2827,27 @@ static int32_t gltf_accessor_sparse_value_index(const gltf_accessor_view_t *view
             hi = i - 1;
     }
     return -1;
+}
+
+/// @brief Validate sparse accessor indices before sparse reads rely on binary search.
+/// @details glTF requires sparse indices to be strictly increasing and in accessor range. Without
+///   this guard duplicate or unsorted indices silently produce inconsistent overrides because the
+///   runtime lookup performs a binary search over the sparse index table.
+static int gltf_validate_sparse_indices(const gltf_accessor_view_t *view) {
+    uint32_t previous = 0u;
+    if (!view || !view->sparse_indices || view->sparse_count <= 0)
+        return 1;
+    for (int32_t i = 0; i < view->sparse_count; i++) {
+        uint32_t sparse_index = gltf_decode_component_u32(
+            view->sparse_indices + (size_t)i * (size_t)view->sparse_index_stride,
+            view->sparse_index_comp_type);
+        if (sparse_index >= (uint32_t)view->count)
+            return 0;
+        if (i > 0 && sparse_index <= previous)
+            return 0;
+        previous = sparse_index;
+    }
+    return 1;
 }
 
 /// @brief Read one element from an accessor view into a float array, applying sparse overrides.
@@ -2895,11 +3072,14 @@ static uint32_t gltf_read_index(const gltf_accessor_view_t *view, int32_t elemen
     return value;
 }
 
+/// @brief True if the accessor view has dense data or a complete sparse substitution set.
 static int gltf_accessor_has_payload(const gltf_accessor_view_t *view) {
-    return view && (view->data || (view->sparse_count > 0 && view->sparse_indices &&
-                                   view->sparse_values));
+    return view &&
+           (view->data || (view->sparse_count > 0 && view->sparse_indices && view->sparse_values));
 }
 
+/// @brief True if the accessor is FLOAT (comp_type 5126) with a component count in
+///   [@p min_components, @p max_components].
 static int gltf_accessor_is_f32_components(const gltf_accessor_view_t *view,
                                            int min_components,
                                            int max_components) {
@@ -2907,34 +3087,40 @@ static int gltf_accessor_is_f32_components(const gltf_accessor_view_t *view,
            view->comp_count <= max_components;
 }
 
+/// @brief True if the accessor is a scalar unsigned index stream (u8/u16/u32 component types).
 static int gltf_accessor_is_indices(const gltf_accessor_view_t *view) {
     return view && view->comp_count == 1 &&
            (view->comp_type == 5121 || view->comp_type == 5123 || view->comp_type == 5125);
 }
 
+/// @brief True if the accessor is a valid UV stream (≥2 components, FLOAT or normalized u8/u16).
 static int gltf_accessor_is_texcoord(const gltf_accessor_view_t *view) {
     return view && view->comp_count >= 2 &&
            (view->comp_type == 5126 ||
             (view->normalized && (view->comp_type == 5121 || view->comp_type == 5123)));
 }
 
+/// @brief True if the accessor is a valid vertex-color stream (3-4 components, FLOAT or
+///   normalized u8/u16).
 static int gltf_accessor_is_color(const gltf_accessor_view_t *view) {
     return view && view->comp_count >= 3 && view->comp_count <= 4 &&
            (view->comp_type == 5126 ||
             (view->normalized && (view->comp_type == 5121 || view->comp_type == 5123)));
 }
 
+/// @brief True if the accessor is a joint-index stream (≥4 components, u8 or u16).
 static int gltf_accessor_is_joints(const gltf_accessor_view_t *view) {
-    return view && view->comp_count >= 4 &&
-           (view->comp_type == 5121 || view->comp_type == 5123);
+    return view && view->comp_count >= 4 && (view->comp_type == 5121 || view->comp_type == 5123);
 }
 
+/// @brief True if the accessor is a skin-weight stream (≥4 components, FLOAT or normalized u8/u16).
 static int gltf_accessor_is_weights(const gltf_accessor_view_t *view) {
     return view && view->comp_count >= 4 &&
            (view->comp_type == 5126 ||
             (view->normalized && (view->comp_type == 5121 || view->comp_type == 5123)));
 }
 
+/// @brief True if all @p count floats are finite; false for NULL or negative count.
 static int gltf_f32_array_is_finite(const float *values, int32_t count) {
     if (!values || count < 0)
         return 0;
@@ -2945,6 +3131,9 @@ static int gltf_f32_array_is_finite(const float *values, int32_t count) {
     return 1;
 }
 
+/// @brief Triangle count yielded by a glTF primitive topology: mode 4 = TRIANGLES
+///   (count/3), 5/6 = TRIANGLE_STRIP/FAN (count-2). Returns 0 for too few indices and
+///   -1 for non-triangle modes (points/lines).
 static int32_t gltf_primitive_triangle_count(int64_t mode, int32_t index_count) {
     if (index_count <= 0)
         return 0;
@@ -3317,6 +3506,8 @@ static void gltf_normalize_vec3_or(double *v, double fx, double fy, double fz) {
     v[2] /= len;
 }
 
+/// @brief Sanitize a quaternion in place: replace non-finite components (defaulting w to 1),
+///   then normalize; falls back to identity (0,0,0,1) when the length is near zero.
 static void gltf_normalize_quat_or_identity(double *q) {
     double len;
     if (!q)
@@ -3339,6 +3530,9 @@ static void gltf_normalize_quat_or_identity(double *q) {
     q[3] /= len;
 }
 
+/// @brief Sanitize a TRS triple in place: non-finite position components become 0, the
+///   quaternion is normalized to identity-on-degenerate, and non-finite scale components
+///   become 1. NULL outputs are skipped.
 static void gltf_sanitize_trs(double *pos, double *quat, double *scale) {
     if (pos) {
         pos[0] = gltf_finite_or(pos[0], 0.0);
@@ -4250,6 +4444,7 @@ static void *gltf_load_dependency_image(const char *resource_path,
                                         rt_gltf_preload_bundle *preload_bundle) {
     uint8_t *staged = NULL;
     size_t staged_len = 0;
+    int is_ktx2 = gltf_image_is_ktx2(resource_path);
     if (!resource_path || resource_path[0] == '\0')
         return NULL;
     {
@@ -4260,7 +4455,8 @@ static void *gltf_load_dependency_image(const char *resource_path,
     staged = gltf_preload_bundle_take_dependency(
         preload_bundle, resource_path, GLTF_PRELOAD_DEP_IMAGE, &staged_len);
     if (staged) {
-        void *decoded = rt_asset_decode_typed(resource_path, staged, staged_len);
+        void *decoded = is_ktx2 ? gltf_decode_ktx2_payload(staged, staged_len)
+                                : rt_asset_decode_typed(resource_path, staged, staged_len);
         free(staged);
         if (decoded)
             return decoded;
@@ -4269,13 +4465,21 @@ static void *gltf_load_dependency_image(const char *resource_path,
         size_t data_len = 0;
         uint8_t *data = rt_asset_load_raw(rt_const_cstr(resource_path), &data_len);
         if (data) {
-            void *decoded = rt_asset_decode_typed(resource_path, data, data_len);
+            void *decoded = is_ktx2 ? gltf_decode_ktx2_payload(data, data_len)
+                                    : rt_asset_decode_typed(resource_path, data, data_len);
             free(data);
             if (decoded)
                 return decoded;
         }
         if (gltf_is_asset_uri(resource_path))
             return NULL;
+    }
+    if (is_ktx2) {
+        size_t data_len = 0;
+        uint8_t *data = gltf_read_file_bytes(resource_path, &data_len);
+        void *decoded = data ? gltf_decode_ktx2_payload(data, data_len) : NULL;
+        free(data);
+        return decoded;
     }
     return rt_pixels_load(rt_const_cstr(resource_path));
 }
@@ -4287,569 +4491,36 @@ static void gltf_preload_set_error(char *error, size_t error_cap, const char *me
     }
 }
 
-/// @brief Advance @p pos past JSON whitespace (space/tab/CR/LF) in the raw byte scanner.
-static size_t gltf_json_skip_ws(const char *json, size_t len, size_t pos) {
-    while (pos < len) {
-        char c = json[pos];
-        if (c != ' ' && c != '\t' && c != '\r' && c != '\n')
-            break;
-        pos++;
-    }
-    return pos;
-}
-
-/// @brief Skip a quoted JSON string (honoring backslash escapes) starting at @p pos.
-/// @return Index just past the closing quote, or SIZE_MAX if @p pos isn't a string or it's
-/// unterminated.
-static size_t gltf_json_skip_string_raw(const char *json, size_t len, size_t pos) {
-    if (!json || pos >= len || json[pos] != '"')
-        return SIZE_MAX;
-    pos++;
-    while (pos < len) {
-        char c = json[pos++];
-        if (c == '"')
-            return pos;
-        if (c == '\\') {
-            if (pos >= len)
-                return SIZE_MAX;
-            pos++;
-        }
-    }
-    return SIZE_MAX;
-}
-
-/// @brief Read and unescape a quoted JSON string at @p pos into a malloc'd C string (caller frees).
-/// @details Decodes the standard JSON escape set (\" \\ \/ \b \f \n \r \t); rejects any other
-///          escape. Sets @p out_next past the closing quote on success.
-/// @return The decoded string, or NULL on a malformed/unterminated string or allocation failure.
-static char *gltf_json_read_string_alloc(const char *json,
-                                         size_t len,
-                                         size_t pos,
-                                         size_t *out_next) {
-    char *out;
-    size_t cap;
-    size_t count = 0;
-    if (out_next)
-        *out_next = SIZE_MAX;
-    if (!json || pos >= len || json[pos] != '"')
-        return NULL;
-    cap = len - pos + 1u;
-    out = (char *)malloc(cap);
-    if (!out)
-        return NULL;
-    pos++;
-    while (pos < len) {
-        char c = json[pos++];
-        if (c == '"') {
-            out[count] = '\0';
-            if (out_next)
-                *out_next = pos;
-            return out;
-        }
-        if (c == '\\') {
-            if (pos >= len)
-                break;
-            c = json[pos++];
-            switch (c) {
-                case '"':
-                case '\\':
-                case '/':
-                    break;
-                case 'b':
-                    c = '\b';
-                    break;
-                case 'f':
-                    c = '\f';
-                    break;
-                case 'n':
-                    c = '\n';
-                    break;
-                case 'r':
-                    c = '\r';
-                    break;
-                case 't':
-                    c = '\t';
-                    break;
-                default:
-                    free(out);
-                    return NULL;
-            }
-        }
-        out[count++] = c;
-    }
-    free(out);
-    return NULL;
-}
-
-/// @brief Whether the JSON string at @p pos equals @p key, advancing @p out_next past it either
-/// way.
-static int gltf_json_key_matches(
-    const char *json, size_t len, size_t pos, const char *key, size_t *out_next) {
-    char *decoded = gltf_json_read_string_alloc(json, len, pos, out_next);
-    int matches = decoded && key && strcmp(decoded, key) == 0;
-    free(decoded);
-    return matches;
-}
-
-/// @brief Skip a complete JSON value (string, number, object, or array) starting at @p pos.
-/// @details Strings are skipped whole; objects/arrays are skipped by tracking nesting depth so the
-///          scanner lands on the value's first sibling/terminator. Primitives run to the next
-///          delimiter. Returns SIZE_MAX on malformed/unbalanced input.
-static size_t gltf_json_skip_value(const char *json, size_t len, size_t pos) {
-    int object_depth = 0;
-    int array_depth = 0;
-    pos = gltf_json_skip_ws(json, len, pos);
-    if (pos >= len)
-        return SIZE_MAX;
-    if (json[pos] == '"')
-        return gltf_json_skip_string_raw(json, len, pos);
-    if (json[pos] != '{' && json[pos] != '[') {
-        while (pos < len && json[pos] != ',' && json[pos] != '}' && json[pos] != ']')
-            pos++;
-        return pos;
-    }
-    do {
-        char c = json[pos];
-        if (c == '"') {
-            pos = gltf_json_skip_string_raw(json, len, pos);
-            if (pos == SIZE_MAX)
-                return SIZE_MAX;
-            continue;
-        }
-        if (c == '{')
-            object_depth++;
-        else if (c == '}')
-            object_depth--;
-        else if (c == '[')
-            array_depth++;
-        else if (c == ']')
-            array_depth--;
-        pos++;
-    } while (pos < len && (object_depth > 0 || array_depth > 0));
-    return object_depth == 0 && array_depth == 0 ? pos : SIZE_MAX;
-}
-
-/// @brief Find the index just past the bracket that closes the @p open_ch at @p pos.
-/// @details Tracks nesting and skips quoted strings so brackets inside strings don't miscount.
-/// @return Index after the matching @p close_ch, or SIZE_MAX if unbalanced.
-static size_t gltf_json_find_matching(
-    const char *json, size_t len, size_t pos, char open_ch, char close_ch) {
-    int depth = 0;
-    if (!json || pos >= len || json[pos] != open_ch)
-        return SIZE_MAX;
-    while (pos < len) {
-        char c = json[pos];
-        if (c == '"') {
-            pos = gltf_json_skip_string_raw(json, len, pos);
-            if (pos == SIZE_MAX)
-                return SIZE_MAX;
-            continue;
-        }
-        if (c == open_ch)
-            depth++;
-        else if (c == close_ch) {
-            depth--;
-            if (depth == 0)
-                return pos + 1u;
-        }
-        pos++;
-    }
-    return SIZE_MAX;
-}
-
-/// @brief Locate a top-level array property @p key in the root object, by raw byte scan.
-/// @details Only matches keys at object depth 1 (true top level), then returns the byte range
-///          of the '['..']' array value via @p out_start / @p out_end.
-/// @return 1 if found (range set), 0 otherwise.
-static int gltf_json_find_top_level_array(
-    const char *json, size_t len, const char *key, size_t *out_start, size_t *out_end) {
-    int object_depth = 0;
-    int array_depth = 0;
-    size_t pos = 0;
-    if (out_start)
-        *out_start = SIZE_MAX;
-    if (out_end)
-        *out_end = SIZE_MAX;
-    while (pos < len) {
-        char c = json[pos];
-        if (c == '"') {
-            size_t next = gltf_json_skip_string_raw(json, len, pos);
-            int at_top_key = 0;
-            if (next == SIZE_MAX)
-                return 0;
-            if (object_depth == 1 && array_depth == 0)
-                at_top_key = gltf_json_key_matches(json, len, pos, key, NULL);
-            if (at_top_key) {
-                size_t colon = gltf_json_skip_ws(json, len, next);
-                size_t start;
-                size_t end;
-                if (colon < len && json[colon] == ':') {
-                    start = gltf_json_skip_ws(json, len, colon + 1u);
-                    if (start < len && json[start] == '[') {
-                        end = gltf_json_find_matching(json, len, start, '[', ']');
-                        if (end != SIZE_MAX) {
-                            if (out_start)
-                                *out_start = start;
-                            if (out_end)
-                                *out_end = end;
-                            return 1;
-                        }
-                    }
-                }
-            }
-            pos = next;
-            continue;
-        }
-        if (c == '{')
-            object_depth++;
-        else if (c == '}')
-            object_depth--;
-        else if (c == '[')
-            array_depth++;
-        else if (c == ']')
-            array_depth--;
-        pos++;
-    }
-    return 0;
-}
-
-/// @brief Read a direct string property @p key from the object spanning [obj_start, obj_end).
-/// @details Only the object's own (depth-1) keys are considered; nested objects are skipped.
-/// @return The unescaped value (caller frees), or NULL if absent or not a string.
-static char *gltf_json_object_get_string(
-    const char *json, size_t len, size_t obj_start, size_t obj_end, const char *key) {
-    int depth = 0;
-    size_t pos = obj_start;
-    while (pos < obj_end && pos < len) {
-        char c = json[pos];
-        if (c == '"') {
-            size_t next = gltf_json_skip_string_raw(json, len, pos);
-            int at_key = 0;
-            if (next == SIZE_MAX)
-                return NULL;
-            if (depth == 1)
-                at_key = gltf_json_key_matches(json, len, pos, key, NULL);
-            if (at_key) {
-                size_t colon = gltf_json_skip_ws(json, len, next);
-                size_t value;
-                if (colon < obj_end && json[colon] == ':') {
-                    value = gltf_json_skip_ws(json, len, colon + 1u);
-                    if (value < obj_end && json[value] == '"')
-                        return gltf_json_read_string_alloc(json, len, value, NULL);
-                }
-            }
-            pos = next;
-            continue;
-        }
-        if (c == '{')
-            depth++;
-        else if (c == '}') {
-            depth--;
-            if (depth == 0)
-                break;
-        } else if (depth == 1 && c == ':') {
-            pos = gltf_json_skip_value(json, len, pos + 1u);
-            if (pos == SIZE_MAX)
-                return NULL;
-            continue;
-        }
-        pos++;
-    }
-    return NULL;
-}
-
-/// @brief Read a direct non-negative integer property @p key as size_t (overflow-checked).
-/// @return The parsed value, or @p fallback if absent, non-numeric, or it would overflow.
-static size_t gltf_json_object_get_size(const char *json,
-                                        size_t len,
-                                        size_t obj_start,
-                                        size_t obj_end,
-                                        const char *key,
-                                        size_t fallback) {
-    int depth = 0;
-    size_t pos = obj_start;
-    while (pos < obj_end && pos < len) {
-        char c = json[pos];
-        if (c == '"') {
-            size_t next = gltf_json_skip_string_raw(json, len, pos);
-            int at_key = 0;
-            if (next == SIZE_MAX)
-                return fallback;
-            if (depth == 1)
-                at_key = gltf_json_key_matches(json, len, pos, key, NULL);
-            if (at_key) {
-                size_t colon = gltf_json_skip_ws(json, len, next);
-                size_t value;
-                size_t result = 0;
-                if (colon < obj_end && json[colon] == ':') {
-                    value = gltf_json_skip_ws(json, len, colon + 1u);
-                    if (value < obj_end && json[value] >= '0' && json[value] <= '9') {
-                        while (value < obj_end && json[value] >= '0' && json[value] <= '9') {
-                            size_t digit = (size_t)(json[value] - '0');
-                            if (result > (SIZE_MAX - digit) / 10u)
-                                return fallback;
-                            result = result * 10u + digit;
-                            value++;
-                        }
-                        return result;
-                    }
-                }
-            }
-            pos = next;
-            continue;
-        }
-        if (c == '{')
-            depth++;
-        else if (c == '}') {
-            depth--;
-            if (depth == 0)
-                break;
-        } else if (depth == 1 && c == ':') {
-            pos = gltf_json_skip_value(json, len, pos + 1u);
-            if (pos == SIZE_MAX)
-                return fallback;
-            continue;
-        }
-        pos++;
-    }
-    return fallback;
-}
-
-/// @brief Read a direct signed integer property @p key as int (overflow-checked, allows leading
-/// '-').
-/// @return The parsed value, or @p fallback if absent, non-numeric, or it would overflow.
-static int gltf_json_object_get_int(
-    const char *json, size_t len, size_t obj_start, size_t obj_end, const char *key, int fallback) {
-    int depth = 0;
-    size_t pos = obj_start;
-    while (pos < obj_end && pos < len) {
-        char c = json[pos];
-        if (c == '"') {
-            size_t next = gltf_json_skip_string_raw(json, len, pos);
-            int at_key = 0;
-            if (next == SIZE_MAX)
-                return fallback;
-            if (depth == 1)
-                at_key = gltf_json_key_matches(json, len, pos, key, NULL);
-            if (at_key) {
-                size_t colon = gltf_json_skip_ws(json, len, next);
-                size_t value;
-                int sign = 1;
-                int result = 0;
-                if (colon < obj_end && json[colon] == ':') {
-                    value = gltf_json_skip_ws(json, len, colon + 1u);
-                    if (value < obj_end && json[value] == '-') {
-                        sign = -1;
-                        value++;
-                    }
-                    if (value < obj_end && json[value] >= '0' && json[value] <= '9') {
-                        while (value < obj_end && json[value] >= '0' && json[value] <= '9') {
-                            int digit = (int)(json[value] - '0');
-                            if (result > (INT_MAX - digit) / 10)
-                                return fallback;
-                            result = result * 10 + digit;
-                            value++;
-                        }
-                        return sign * result;
-                    }
-                }
-            }
-            pos = next;
-            continue;
-        }
-        if (c == '{')
-            depth++;
-        else if (c == '}') {
-            depth--;
-            if (depth == 0)
-                break;
-        } else if (depth == 1 && c == ':') {
-            pos = gltf_json_skip_value(json, len, pos + 1u);
-            if (pos == SIZE_MAX)
-                return fallback;
-            continue;
-        }
-        pos++;
-    }
-    return fallback;
-}
-
-/// @brief Find the byte range of a direct property @p key's value within an object.
-/// @details Reports the [out_start, out_end) span of the raw value (any JSON type) for the
-///          caller to parse further. Only depth-1 keys match.
-/// @return 1 if found (range set), 0 otherwise.
-static int gltf_json_object_find_value(const char *json,
-                                       size_t len,
-                                       size_t obj_start,
-                                       size_t obj_end,
-                                       const char *key,
-                                       size_t *out_start,
-                                       size_t *out_end) {
-    int depth = 0;
-    size_t pos = obj_start;
-    if (out_start)
-        *out_start = SIZE_MAX;
-    if (out_end)
-        *out_end = SIZE_MAX;
-    while (pos < obj_end && pos < len) {
-        char c = json[pos];
-        if (c == '"') {
-            size_t next = gltf_json_skip_string_raw(json, len, pos);
-            int at_key = 0;
-            if (next == SIZE_MAX)
-                return 0;
-            if (depth == 1)
-                at_key = gltf_json_key_matches(json, len, pos, key, NULL);
-            if (at_key) {
-                size_t colon = gltf_json_skip_ws(json, len, next);
-                if (colon < obj_end && json[colon] == ':') {
-                    size_t value = gltf_json_skip_ws(json, len, colon + 1u);
-                    size_t end = gltf_json_skip_value(json, len, value);
-                    if (end != SIZE_MAX && end <= obj_end) {
-                        if (out_start)
-                            *out_start = value;
-                        if (out_end)
-                            *out_end = end;
-                        return 1;
-                    }
-                }
-                return 0;
-            }
-            pos = next;
-            continue;
-        }
-        if (c == '{')
-            depth++;
-        else if (c == '}') {
-            depth--;
-            if (depth == 0)
-                break;
-        } else if (depth == 1 && c == ':') {
-            pos = gltf_json_skip_value(json, len, pos + 1u);
-            if (pos == SIZE_MAX)
-                return 0;
-            continue;
-        }
-        pos++;
-    }
-    return 0;
-}
-
-/// @brief Find the byte range of the @p item_index-th element of a JSON array.
-/// @details Walks comma-separated values (skipping each whole) until it reaches the index.
-/// @return 1 with [out_start, out_end) set, or 0 if the index is out of range or input malformed.
-static int gltf_json_array_item_range(const char *json,
-                                      size_t len,
-                                      size_t array_start,
-                                      size_t array_end,
-                                      int item_index,
-                                      size_t *out_start,
-                                      size_t *out_end) {
-    size_t pos;
-    int index = 0;
-    if (out_start)
-        *out_start = SIZE_MAX;
-    if (out_end)
-        *out_end = SIZE_MAX;
-    if (!json || item_index < 0 || array_start >= array_end || array_end > len ||
-        json[array_start] != '[')
-        return 0;
-    pos = array_start + 1u;
-    while (pos < array_end) {
-        size_t value_start;
-        size_t value_end;
-        pos = gltf_json_skip_ws(json, len, pos);
-        if (pos >= array_end || json[pos] == ']')
-            break;
-        value_start = pos;
-        value_end = gltf_json_skip_value(json, len, value_start);
-        if (value_end == SIZE_MAX || value_end > array_end)
-            return 0;
-        if (index == item_index) {
-            if (out_start)
-                *out_start = value_start;
-            if (out_end)
-                *out_end = value_end;
-            return 1;
-        }
-        index++;
-        pos = gltf_json_skip_ws(json, len, value_end);
-        if (pos < array_end && json[pos] == ',')
-            pos++;
-    }
-    return 0;
-}
-
-/// @brief Read the @p item_index-th array element as a double via strtod (@p fallback otherwise).
-/// @details Rejects string/object/array elements and non-finite results, returning @p fallback.
-static double gltf_json_array_get_number(const char *json,
-                                         size_t len,
-                                         size_t array_start,
-                                         size_t array_end,
-                                         int item_index,
-                                         double fallback) {
-    size_t value_start;
-    size_t value_end;
-    size_t text_len;
-    char *text;
-    char *endptr;
-    double value;
-    if (!gltf_json_array_item_range(
-            json, len, array_start, array_end, item_index, &value_start, &value_end))
-        return fallback;
-    value_start = gltf_json_skip_ws(json, len, value_start);
-    if (value_start >= value_end || json[value_start] == '"' || json[value_start] == '{' ||
-        json[value_start] == '[')
-        return fallback;
-    text_len = value_end - value_start;
-    if (text_len > SIZE_MAX - 1u)
-        return fallback;
-    text = (char *)malloc(text_len + 1u);
-    if (!text)
-        return fallback;
-    memcpy(text, json + value_start, text_len);
-    text[text_len] = '\0';
-    endptr = NULL;
-    errno = 0;
-    value = strtod(text, &endptr);
-    while (endptr && *endptr && isspace((unsigned char)*endptr))
-        endptr++;
-    if (endptr == text || (endptr && *endptr != '\0') || errno == ERANGE || !isfinite(value))
-        value = fallback;
-    free(text);
-    return value;
-}
-
-/// @brief Read the @p item_index-th array element as an unescaped string (caller frees; NULL if not
-/// a string).
-static char *gltf_json_array_get_string_alloc(
-    const char *json, size_t len, size_t array_start, size_t array_end, int item_index) {
-    size_t value_start;
-    size_t value_end;
-    if (!gltf_json_array_item_range(
-            json, len, array_start, array_end, item_index, &value_start, &value_end))
-        return NULL;
-    value_start = gltf_json_skip_ws(json, len, value_start);
-    if (value_start >= value_end || json[value_start] != '"')
-        return NULL;
-    return gltf_json_read_string_alloc(json, len, value_start, NULL);
-}
-
-/// @brief Read a property @p key as a boolean, accepting literal true/false or a nonzero number.
-/// @return 1 for true/nonzero, 0 for false/zero, or @p fallback if the key is absent.
-static int gltf_json_object_get_boolish(
-    const char *json, size_t len, size_t obj_start, size_t obj_end, const char *key, int fallback) {
-    size_t value_start;
-    size_t value_end;
-    size_t value;
-    if (!gltf_json_object_find_value(json, len, obj_start, obj_end, key, &value_start, &value_end))
-        return fallback;
-    value = gltf_json_skip_ws(json, len, value_start);
-    if (value + 4u <= value_end && strncmp(json + value, "true", 4u) == 0)
-        return 1;
-    if (value + 5u <= value_end && strncmp(json + value, "false", 5u) == 0)
-        return 0;
-    return gltf_json_object_get_int(json, len, obj_start, obj_end, key, fallback) ? 1 : 0;
+/// @brief Resolve a raw JSON texture object's source, including KHR_texture_basisu.
+static int gltf_json_texture_source_index(const char *json,
+                                          size_t len,
+                                          size_t obj_start,
+                                          size_t obj_end) {
+    size_t extensions_start;
+    size_t extensions_end;
+    size_t basisu_start;
+    size_t basisu_end;
+    int source = gltf_json_object_get_int(json, len, obj_start, obj_end, "source", -1);
+    if (source >= 0)
+        return source;
+    if (!gltf_json_object_find_value(
+            json, len, obj_start, obj_end, "extensions", &extensions_start, &extensions_end))
+        return -1;
+    extensions_start = gltf_json_skip_ws(json, len, extensions_start);
+    if (extensions_start >= extensions_end || json[extensions_start] != '{')
+        return -1;
+    if (!gltf_json_object_find_value(json,
+                                     len,
+                                     extensions_start,
+                                     extensions_end,
+                                     "KHR_texture_basisu",
+                                     &basisu_start,
+                                     &basisu_end))
+        return -1;
+    basisu_start = gltf_json_skip_ws(json, len, basisu_start);
+    if (basisu_start >= basisu_end || json[basisu_start] != '{')
+        return -1;
+    return gltf_json_object_get_int(json, len, basisu_start, basisu_end, "source", -1);
 }
 
 /// @brief Extract the glTF JSON text from raw bytes, handling both .gltf and binary .glb.
@@ -6341,7 +6012,8 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                           views,
                                                           view_count,
                                                           &out->norm_view) &&
-                       out->norm_view.comp_count >= 3 && out->norm_view.count >= out->pos_view.count;
+                       out->norm_view.comp_count >= 3 &&
+                       out->norm_view.count >= out->pos_view.count;
     if (out->pos_view.comp_count < 3 || out->pos_view.count <= 0)
         return 0;
 
@@ -6382,7 +6054,8 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                          views,
                                                          view_count,
                                                          &out->color_view) &&
-                      out->color_view.comp_count >= 3 && out->color_view.count >= out->pos_view.count;
+                      out->color_view.comp_count >= 3 &&
+                      out->color_view.count >= out->pos_view.count;
     out->has_tangents = gltf_preload_resolve_accessor_view(accessors,
                                                            accessor_count,
                                                            tangent_acc,
@@ -6401,7 +6074,8 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                                                          views,
                                                          view_count,
                                                          &out->joints_view) &&
-                      out->joints_view.comp_count >= 4 && out->joints_view.count >= out->pos_view.count;
+                      out->joints_view.comp_count >= 4 &&
+                      out->joints_view.count >= out->pos_view.count;
     out->has_weights = gltf_preload_resolve_accessor_view(accessors,
                                                           accessor_count,
                                                           weights_acc,
@@ -6434,18 +6108,17 @@ static int gltf_preload_resolve_primitive_attribs(const char *json,
                         out->weights1_view.count >= out->pos_view.count;
     out->has_skinning_attrs =
         out->has_joints || out->has_weights || out->has_joints1 || out->has_weights1;
-    out->has_indices =
-        gltf_preload_resolve_accessor_view(accessors,
-                                           accessor_count,
-                                           idx_acc,
-                                           buffers,
-                                           buffer_count,
-                                           views,
-                                           view_count,
-                                           &out->idx_view) &&
-        out->idx_view.comp_count == 1 &&
-        (out->idx_view.comp_type == 5121 || out->idx_view.comp_type == 5123 ||
-         out->idx_view.comp_type == 5125);
+    out->has_indices = gltf_preload_resolve_accessor_view(accessors,
+                                                          accessor_count,
+                                                          idx_acc,
+                                                          buffers,
+                                                          buffer_count,
+                                                          views,
+                                                          view_count,
+                                                          &out->idx_view) &&
+                       out->idx_view.comp_count == 1 &&
+                       (out->idx_view.comp_type == 5121 || out->idx_view.comp_type == 5123 ||
+                        out->idx_view.comp_type == 5125);
     out->vertex_count_i = out->pos_view.count;
     out->source_index_count = out->has_indices ? out->idx_view.count : out->vertex_count_i;
     if (out->vertex_count_i < 3 || out->source_index_count < 3)
@@ -6598,6 +6271,12 @@ static void gltf_preload_triangulate_primitive(const gltf_primitive_attribs_t *a
     *out_index_count = index_count;
 }
 
+/// @brief Stage one mesh primitive during the preload pass: resolve its vertex attributes
+///   and indices from the glTF JSON and buffer views, then record the built geometry into
+///   @p bundle keyed by (@p mesh_index, @p primitive_index) for later mesh assembly. Writes a
+///   message into @p error (capacity @p error_cap) on a fatal failure.
+/// @return Non-zero to continue staging (primitive staged or harmlessly skipped); 0 on a
+///   fatal error such as an allocation failure.
 static int gltf_preload_stage_mesh_primitive(rt_gltf_preload_bundle *bundle,
                                              const char *json,
                                              size_t json_len,
@@ -6641,7 +6320,8 @@ static int gltf_preload_stage_mesh_primitive(rt_gltf_preload_bundle *bundle,
         return 1;
     if (!gltf_checked_mul_size(
             (size_t)attribs.vertex_count_i, sizeof(vgfx3d_vertex_t), &vertex_bytes) ||
-        !gltf_checked_mul_size((size_t)attribs.index_capacity_count, sizeof(uint32_t), &index_bytes))
+        !gltf_checked_mul_size(
+            (size_t)attribs.index_capacity_count, sizeof(uint32_t), &index_bytes))
         return 1;
     if (vertex_bytes == 0 || index_bytes == 0)
         return 1;
@@ -6846,7 +6526,7 @@ static void gltf_preload_mark_required_images(const char *json,
             int source;
             if (object_end == SIZE_MAX || object_end > array_end)
                 break;
-            source = gltf_json_object_get_int(json, json_len, pos, object_end, "source", -1);
+            source = gltf_json_texture_source_index(json, json_len, pos, object_end);
             if (source >= 0 && source < required_count)
                 required[source] = 1u;
             pos = object_end;
@@ -6926,7 +6606,17 @@ static int gltf_validate_required_data_uri_images(const char *json, size_t json_
                 int ok = 1;
                 gltf_data_uri_copy_mime(uri, parsed_mime, sizeof(parsed_mime));
                 image_type = mime_type ? mime_type : parsed_mime;
-                if (gltf_preload_image_is_supported_format(image_type)) {
+                if (gltf_image_is_ktx2(image_type)) {
+                    void *ktx_asset = NULL;
+                    ok = gltf_parse_data_uri(
+                        uri, parsed_mime, sizeof(parsed_mime), &data, &data_len);
+                    if (ok)
+                        ktx_asset = gltf_decode_ktx2_payload(data, data_len);
+                    ok = ktx_asset != NULL;
+                    if (ktx_asset && rt_obj_release_check0(ktx_asset))
+                        rt_obj_free(ktx_asset);
+                    free(data);
+                } else if (gltf_preload_image_is_supported_format(image_type)) {
                     ok = gltf_parse_data_uri(
                              uri, parsed_mime, sizeof(parsed_mime), &data, &data_len) &&
                          gltf_decode_image_payload_to_rgba_blob(
@@ -7323,8 +7013,7 @@ static int64_t gltf_add_skin_joint_recursive(gltf_skin_t *skin,
 
     children = jarr(node_json, "children");
     for (int64_t ci = 0; ci < jarr_len(children); ci++) {
-        int32_t child_node =
-            gltf_i32_from_i64_or(jvalue_int(rt_seq_get(children, ci), -1), -1);
+        int32_t child_node = gltf_i32_from_i64_or(jvalue_int(rt_seq_get(children, ci), -1), -1);
         int32_t child_joint = gltf_skin_find_joint(skin, child_node);
         if (child_joint >= 0)
             gltf_add_skin_joint_recursive(skin, nodes_arr, child_joint, bone_idx);
@@ -7570,6 +7259,7 @@ static void gltf_apply_skin_to_mesh(void *mesh_obj, const gltf_skin_t *skin) {
                                    weights[3]);
     }
     mesh->bone_count = max_bone;
+    rt_mesh3d_set_skeleton(mesh, skin->skeleton);
 }
 
 /// @brief Deep-clone a mesh for per-node variant use.
@@ -8291,8 +7981,11 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
                         times,
                         values);
                 }
-                if (channel_index >= 0)
+                if (channel_index >= 0) {
+                    rt_node_animation3d_set_channel_target_node_index(
+                        node_anim, channel_index, node_idx);
                     emitted_any = 1;
+                }
             }
             free(times);
             free(values);
@@ -8349,7 +8042,7 @@ static void gltf_load_images_and_textures(void *root,
         if (image_required) {
             for (int i = 0; i < texture_count; i++) {
                 void *texture_json = rt_seq_get(textures_arr, (int64_t)i);
-                int64_t source_idx = jint(texture_json, "source", -1);
+                int64_t source_idx = gltf_texture_source_index(texture_json);
                 if (source_idx >= 0 && source_idx < image_count)
                     image_required[source_idx] = 1u;
             }
@@ -8429,7 +8122,14 @@ static void gltf_load_images_and_textures(void *root,
             const char *image_type;
             gltf_build_embedded_name(mime_type, ".bin", image_name, sizeof(image_name));
             image_type = mime_type ? mime_type : image_name;
-            if (gltf_preload_image_is_supported_format(image_type)) {
+            if (gltf_image_is_ktx2(image_type)) {
+                images[i] = gltf_decode_ktx2_payload(image_data, image_len);
+                if (!images[i] && required_image) {
+                    free(owned_data);
+                    load_failed = 1;
+                    break;
+                }
+            } else if (gltf_preload_image_is_supported_format(image_type)) {
                 uint8_t *rgba_blob = NULL;
                 size_t rgba_len = 0;
                 if (gltf_decode_image_payload_to_rgba_blob(
@@ -8462,7 +8162,7 @@ static void gltf_load_images_and_textures(void *root,
             (gltf_sampler_info_t *)calloc((size_t)texture_count, sizeof(*texture_samplers));
     for (int i = 0; i < texture_count && texture_images; i++) {
         void *texture_json = rt_seq_get(textures_arr, (int64_t)i);
-        int64_t source_idx = jint(texture_json, "source", -1);
+        int64_t source_idx = gltf_texture_source_index(texture_json);
         int64_t sampler_idx = jint(texture_json, "sampler", -1);
         if (texture_samplers) {
             void *samplers_arr = jarr(root, "samplers");
@@ -8480,8 +8180,11 @@ static void gltf_load_images_and_textures(void *root,
             if (image_uri && strncmp(image_uri, "data:", 5) == 0)
                 gltf_data_uri_copy_mime(image_uri, parsed_mime, sizeof(parsed_mime));
             if (texture_supported &&
-                gltf_preload_image_is_supported_format(
-                    image_mime ? image_mime : (parsed_mime[0] != '\0' ? parsed_mime : image_uri)))
+                (gltf_preload_image_is_supported_format(
+                     image_mime ? image_mime
+                                : (parsed_mime[0] != '\0' ? parsed_mime : image_uri)) ||
+                 gltf_image_is_ktx2(
+                     image_mime ? image_mime : (parsed_mime[0] != '\0' ? parsed_mime : image_uri))))
                 texture_supported[i] = 1u;
             texture_images[i] = images[source_idx];
         }
@@ -8645,7 +8348,9 @@ static void gltf_load_materials(rt_gltf_asset *asset,
                 if (specular) {
                     void *spec_color = jarr(specular, "specularColorFactor");
                     void *spec_tex = jget(specular, "specularTexture");
-                    int64_t tex_idx = jint(spec_tex, "index", -1);
+                    void *spec_color_tex = jget(specular, "specularColorTexture");
+                    void *chosen_spec_tex = spec_color_tex ? spec_color_tex : spec_tex;
+                    int64_t tex_idx = jint(chosen_spec_tex, "index", -1);
                     ((rt_material3d *)mat)->specular[0] =
                         jnum(specular, "specularFactor", ((rt_material3d *)mat)->specular[0]);
                     ((rt_material3d *)mat)->specular[1] = ((rt_material3d *)mat)->specular[0];
@@ -8658,9 +8363,9 @@ static void gltf_load_materials(rt_gltf_asset *asset,
                         ((rt_material3d *)mat)->specular[2] = jvalue_num(
                             rt_seq_get(spec_color, 2), ((rt_material3d *)mat)->specular[2]);
                     }
-                    if (spec_tex && material_infos) {
+                    if (chosen_spec_tex && material_infos) {
                         gltf_read_texture_info(
-                            spec_tex,
+                            chosen_spec_tex,
                             &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]);
                     }
                     if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
@@ -8681,15 +8386,18 @@ static void gltf_load_materials(rt_gltf_asset *asset,
                 }
                 if (clearcoat) {
                     double clearcoat_factor = jnum(clearcoat, "clearcoatFactor", 0.0);
+                    double clearcoat_roughness = jnum(clearcoat, "clearcoatRoughnessFactor", 0.0);
                     if (clearcoat_factor > ((rt_material3d *)mat)->reflectivity)
                         rt_material3d_set_reflectivity(mat, clearcoat_factor);
+                    rt_material3d_set_custom_param(mat, 1, clearcoat_factor);
+                    rt_material3d_set_custom_param(mat, 2, clearcoat_roughness);
                 }
                 if (transmission) {
                     double transmission_factor = jnum(transmission, "transmissionFactor", 0.0);
                     if (transmission_factor > 0.0) {
-                        rt_material3d_set_reflectivity(mat, transmission_factor);
-                        rt_material3d_set_alpha(mat, 1.0 - transmission_factor);
-                        rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+                        if (transmission_factor > ((rt_material3d *)mat)->reflectivity)
+                            rt_material3d_set_reflectivity(mat, transmission_factor);
+                        rt_material3d_set_custom_param(mat, 3, transmission_factor);
                     }
                 }
             }
@@ -8790,6 +8498,9 @@ static void gltf_load_materials(rt_gltf_asset *asset,
     *load_failed_io = load_failed;
 }
 
+/// @brief Append one imported vertex to @p mesh during glTF import, taking position, normal,
+///   UV0/UV1, color, and tangent (any pointer may be NULL to use that attribute's default).
+/// @return 1 on success, 0 if the mesh vertex storage cannot grow.
 static int gltf_mesh_append_import_vertex(rt_mesh3d *mesh,
                                           const float *pos,
                                           const float *nrm,
@@ -8845,8 +8556,7 @@ static void gltf_load_meshes(rt_gltf_asset *asset,
     // Extract meshes
     void *meshes_arr = jarr(root, "meshes");
     int64_t mesh_json_count_raw = jarr_len(meshes_arr);
-    int mesh_json_count =
-        mesh_json_count_raw > INT32_MAX ? INT32_MAX : (int)mesh_json_count_raw;
+    int mesh_json_count = mesh_json_count_raw > INT32_MAX ? INT32_MAX : (int)mesh_json_count_raw;
     if (gltf_material_count_raw > INT32_MAX - 1 || mesh_json_count_raw > INT32_MAX) {
         if (load_failed_io)
             *load_failed_io = 1;
@@ -8992,23 +8702,28 @@ static void gltf_load_meshes(rt_gltf_asset *asset,
                             *load_failed_io = 1;
                         continue;
                     }
-                    if ((has_normals && (!gltf_accessor_has_payload(&norm_view) ||
-                                         !gltf_accessor_is_f32_components(&norm_view, 3, 3) ||
-                                         norm_view.count < pos_view.count)) ||
-                        (has_uv0 && (!gltf_accessor_has_payload(&uv0_view) ||
-                                     !gltf_accessor_is_texcoord(&uv0_view) ||
-                                     uv0_view.count < pos_view.count)) ||
-                        (has_uv1 && (!gltf_accessor_has_payload(&uv1_view) ||
-                                     !gltf_accessor_is_texcoord(&uv1_view) ||
-                                     uv1_view.count < pos_view.count)) ||
-                        (has_colors && (!gltf_accessor_has_payload(&color_view) ||
-                                        !gltf_accessor_is_color(&color_view) ||
-                                        color_view.count < pos_view.count)) ||
-                        (has_tangents && (!gltf_accessor_has_payload(&tangent_view) ||
-                                          !gltf_accessor_is_f32_components(&tangent_view, 4, 4) ||
-                                          tangent_view.count < pos_view.count)) ||
-                        (has_indices && (!gltf_accessor_has_payload(&idx_view) ||
-                                         !gltf_accessor_is_indices(&idx_view)))) {
+                    if (has_normals && (!gltf_accessor_has_payload(&norm_view) ||
+                                        !gltf_accessor_is_f32_components(&norm_view, 3, 3) ||
+                                        norm_view.count < pos_view.count))
+                        has_normals = 0;
+                    if (has_uv0 &&
+                        (!gltf_accessor_has_payload(&uv0_view) ||
+                         !gltf_accessor_is_texcoord(&uv0_view) || uv0_view.count < pos_view.count))
+                        has_uv0 = 0;
+                    if (has_uv1 &&
+                        (!gltf_accessor_has_payload(&uv1_view) ||
+                         !gltf_accessor_is_texcoord(&uv1_view) || uv1_view.count < pos_view.count))
+                        has_uv1 = 0;
+                    if (has_colors &&
+                        (!gltf_accessor_has_payload(&color_view) ||
+                         !gltf_accessor_is_color(&color_view) || color_view.count < pos_view.count))
+                        has_colors = 0;
+                    if (has_tangents && (!gltf_accessor_has_payload(&tangent_view) ||
+                                         !gltf_accessor_is_f32_components(&tangent_view, 4, 4) ||
+                                         tangent_view.count < pos_view.count))
+                        has_tangents = 0;
+                    if (has_indices && (!gltf_accessor_has_payload(&idx_view) ||
+                                        !gltf_accessor_is_indices(&idx_view))) {
                         if (load_failed_io)
                             *load_failed_io = 1;
                         continue;
@@ -9033,8 +8748,6 @@ static void gltf_load_meshes(rt_gltf_asset *asset,
                     draw_count = has_indices ? idx_view.count : pos_view.count;
                     triangle_estimate = gltf_primitive_triangle_count(mode, draw_count);
                     if (triangle_estimate <= 0) {
-                        if (load_failed_io)
-                            *load_failed_io = 1;
                         continue;
                     }
                     has_skin0 = has_joints && has_weights;
@@ -9095,8 +8808,7 @@ static void gltf_load_meshes(rt_gltf_asset *asset,
                         if (has_weights1)
                             gltf_accessor_read_f32(&weights1_view, vi, weights1, 4);
                         if (!gltf_f32_array_is_finite(pos, 3) ||
-                            !gltf_f32_array_is_finite(nrm, 3) ||
-                            !gltf_f32_array_is_finite(uv, 2) ||
+                            !gltf_f32_array_is_finite(nrm, 3) || !gltf_f32_array_is_finite(uv, 2) ||
                             !gltf_f32_array_is_finite(uv1, 2) ||
                             !gltf_f32_array_is_finite(color, 4) ||
                             !gltf_f32_array_is_finite(tangent, 4) ||
@@ -9241,6 +8953,7 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                 nodes[ni] = node;
                 if (!node)
                     continue;
+                node->import_index = ni;
 
                 if (!name || name[0] == '\0')
                     name = gltf_effective_node_name(
@@ -9296,22 +9009,23 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                 gltf_sanitize_trs(node->position, node->rotation, node->scale_xyz);
                 node->world_dirty = 1;
 
+                if (skin_ref >= 0 && skin_ref >= skin_count) {
+                    load_failed = 1;
+                    continue;
+                }
+
                 if (mesh_ref >= 0 && mesh_ref < mesh_json_count && mesh_prim_count &&
                     mesh_prim_start) {
                     int prim_start = mesh_prim_start[mesh_ref];
-                        int prim_count = mesh_prim_count[mesh_ref];
-                        if (prim_count > 0) {
-                            int mesh_index = prim_start;
-                            void *node_mesh = NULL;
-                            if (mesh_index >= 0 && mesh_index < asset->mesh_count) {
-                                node_mesh = gltf_make_node_mesh_variant(asset,
-                                                                        mesh_index,
-                                                                        skin_ref,
-                                                                        weights_arr,
-                                                                        skins,
-                                                                        skin_count);
-                                if (!node_mesh)
-                                    load_failed = 1;
+                    int prim_count = mesh_prim_count[mesh_ref];
+                    if (prim_count > 0) {
+                        int mesh_index = prim_start;
+                        void *node_mesh = NULL;
+                        if (mesh_index >= 0 && mesh_index < asset->mesh_count) {
+                            node_mesh = gltf_make_node_mesh_variant(
+                                asset, mesh_index, skin_ref, weights_arr, skins, skin_count);
+                            if (!node_mesh)
+                                load_failed = 1;
                         }
                         rt_scene_node3d_set_mesh(node, node_mesh);
                         if (node_mesh && node_mesh != asset->meshes[mesh_index])
@@ -9777,6 +9491,16 @@ static void *rt_gltf_load_impl(rt_string path,
         }
     }
     if (load_failed) {
+        for (int i = 0; i < buf_count; i++) {
+            if (buffers[i].data != bin_chunk)
+                free(buffers[i].data);
+        }
+        free(buffers);
+        gltf_release_local(root);
+        free(file_data);
+        return NULL;
+    }
+    if (!gltf_validate_sparse_accessors(root, buffers, buf_count)) {
         for (int i = 0; i < buf_count; i++) {
             if (buffers[i].data != bin_chunk)
                 free(buffers[i].data);

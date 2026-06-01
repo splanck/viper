@@ -15,6 +15,7 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_model3d.h"
 #include "rt_morphtarget3d.h"
+#include "rt_pixels.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
@@ -91,6 +92,23 @@ static bool write_text_file(const char *path, const std::string &text) {
     return ok;
 }
 
+static bool read_binary_file(const char *path, std::vector<uint8_t> &out) {
+    FILE *f = std::fopen(path, "rb");
+    if (!f)
+        return false;
+    std::fseek(f, 0, SEEK_END);
+    long len = std::ftell(f);
+    std::fseek(f, 0, SEEK_SET);
+    if (len < 0) {
+        std::fclose(f);
+        return false;
+    }
+    out.resize((size_t)len);
+    bool ok = len == 0 || std::fread(out.data(), 1, (size_t)len, f) == (size_t)len;
+    std::fclose(f);
+    return ok;
+}
+
 static std::string base64_encode(const uint8_t *data, size_t len) {
     static const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string out(((len + 2) / 3) * 4, '=');
@@ -148,6 +166,16 @@ static FbxPropFixture fbx_prop_f64_fixture(double value) {
     FbxPropFixture prop;
     prop.type = 'D';
     append_bytes(prop.payload, value);
+    return prop;
+}
+
+static FbxPropFixture fbx_prop_raw_fixture(const uint8_t *data, size_t len) {
+    FbxPropFixture prop;
+    uint32_t byte_length = (uint32_t)len;
+    prop.type = 'R';
+    append_bytes(prop.payload, byte_length);
+    if (data && len > 0)
+        prop.payload.insert(prop.payload.end(), data, data + len);
     return prop;
 }
 
@@ -225,6 +253,17 @@ static FbxNodeFixture make_fbx_property_scalar(const char *name, double value) {
     node.props.push_back(fbx_prop_f64_fixture(value));
     node.props.push_back(fbx_prop_f64_fixture(0.0));
     node.props.push_back(fbx_prop_f64_fixture(0.0));
+    return node;
+}
+
+static FbxNodeFixture make_fbx_property_string(const char *name, const char *value) {
+    FbxNodeFixture node;
+    node.name = "P";
+    node.props.push_back(fbx_prop_string_fixture(name ? name : ""));
+    node.props.push_back(fbx_prop_string_fixture("KString"));
+    node.props.push_back(fbx_prop_string_fixture(""));
+    node.props.push_back(fbx_prop_string_fixture("A"));
+    node.props.push_back(fbx_prop_string_fixture(value ? value : ""));
     return node;
 }
 
@@ -455,6 +494,102 @@ static bool write_fbx_multimaterial_fixture(const char *path) {
     connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
     connections.children.push_back(make_fbx_connection_fixture(kRedMaterialId, kModelId));
     connections.children.push_back(make_fbx_connection_fixture(kBlueMaterialId, kModelId));
+
+    bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
+                               'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
+    append_bytes(bytes, (uint32_t)7400);
+    write_fbx_node_fixture(objects, bytes);
+    write_fbx_node_fixture(connections, bytes);
+    bytes.resize(bytes.size() + 13, 0);
+
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    std::fclose(f);
+    return ok;
+}
+
+static bool write_fbx_embedded_texture_fixture(const char *path,
+                                               const uint8_t *png_data,
+                                               size_t png_len) {
+    static const int64_t kGeometryId = 3101;
+    static const int64_t kModelId = 3102;
+    static const int64_t kMaterialId = 3103;
+    static const int64_t kTextureId = 3104;
+    static const int64_t kVideoId = 3105;
+    static const double kPositions[] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
+    static const int32_t kIndices[] = {0, 1, ~2};
+
+    FbxNodeFixture geometry;
+    FbxNodeFixture material;
+    FbxNodeFixture material_props70;
+    FbxNodeFixture texture;
+    FbxNodeFixture texture_props70;
+    FbxNodeFixture video;
+    FbxNodeFixture video_props70;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture model =
+        make_fbx_model_fixture(kModelId, "EmbeddedTexture", "Mesh", 0.0, 0.0, 0.0);
+    std::vector<uint8_t> bytes;
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("EmbeddedTextureMesh", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{
+        "Vertices",
+        {fbx_prop_array_fixture('d', kPositions, sizeof(kPositions) / sizeof(kPositions[0]))},
+        {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex",
+        {fbx_prop_array_fixture('i', kIndices, sizeof(kIndices) / sizeof(kIndices[0]))},
+        {}});
+
+    material.name = "Material";
+    material.props.push_back(fbx_prop_i64_fixture(kMaterialId));
+    material.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("EmbeddedMaterial", "Material")));
+    material.props.push_back(fbx_prop_string_fixture(""));
+    material_props70.name = "Properties70";
+    material_props70.children.push_back(make_fbx_property_vec3("DiffuseColor", 1.0, 1.0, 1.0));
+    material.children.push_back(material_props70);
+
+    texture.name = "Texture";
+    texture.props.push_back(fbx_prop_i64_fixture(kTextureId));
+    texture.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("EmbeddedAlbedo", "Texture")));
+    texture.props.push_back(fbx_prop_string_fixture(""));
+    texture_props70.name = "Properties70";
+    texture_props70.children.push_back(
+        make_fbx_property_string("RelativeFilename", "missing_embedded_albedo.png"));
+    texture.children.push_back(texture_props70);
+
+    video.name = "Video";
+    video.props.push_back(fbx_prop_i64_fixture(kVideoId));
+    video.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("EmbeddedAlbedo", "Video")));
+    video.props.push_back(fbx_prop_string_fixture("Clip"));
+    video_props70.name = "Properties70";
+    video_props70.children.push_back(make_fbx_property_string("RelativeFilename", "embedded_albedo.png"));
+    video.children.push_back(video_props70);
+    video.children.push_back(FbxNodeFixture{"Content", {fbx_prop_raw_fixture(png_data, png_len)}, {}});
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(material);
+    objects.children.push_back(texture);
+    objects.children.push_back(video);
+    objects.children.push_back(model);
+
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kMaterialId, kModelId));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kTextureId, kMaterialId, "DiffuseColor"));
+    connections.children.push_back(make_fbx_connection_fixture(kVideoId, kTextureId));
 
     bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
                                'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
@@ -1212,6 +1347,48 @@ static void test_model3d_preserves_obj_mtl_material_groups() {
     EXPECT_NEAR(blue_mat->diffuse[2], 0.9, 0.001, "OBJ MTL Kd imports blue material color");
 }
 
+static void test_model3d_imports_obj_mtl_texture_maps() {
+    const char *obj_path = "/tmp/viper_model3d_mtl_texture.obj";
+    const char *mtl_a_path = "/tmp/viper_model3d_mtl_texture_a.mtl";
+    const char *mtl_b_path = "/tmp/viper_model3d_mtl_texture_b.mtl";
+    const char *png_path = "/tmp/viper_model3d_mtl_texture.png";
+    void *pixels = rt_pixels_new(1, 1);
+    rt_pixels_set(pixels, 0, 0, 0xFF8844FFll);
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "OBJ texture PNG fixture can be written");
+
+    const char *mtl_a = "newmtl Unused\nKd 0.2 0.2 0.2\n";
+    const char *mtl_b = "newmtl Textured\n"
+                        "Kd 1.0 1.0 1.0\n"
+                        "map_Kd viper_model3d_mtl_texture.png\n"
+                        "map_Bump viper_model3d_mtl_texture.png\n";
+    const char *obj = "mtllib viper_model3d_mtl_texture_a.mtl "
+                      "viper_model3d_mtl_texture_b.mtl\n"
+                      "v 0 0 0\n"
+                      "v 1 0 0\n"
+                      "v 0 1 0\n"
+                      "vt 0 0\n"
+                      "vt 1 0\n"
+                      "vt 0 1\n"
+                      "usemtl Textured\n"
+                      "f 1/1 2/2 3/3\n";
+    EXPECT_TRUE(write_text_file(mtl_a_path, mtl_a), "First OBJ MTL library can be written");
+    EXPECT_TRUE(write_text_file(mtl_b_path, mtl_b), "Second OBJ MTL library can be written");
+    EXPECT_TRUE(write_text_file(obj_path, obj), "OBJ multi-mtllib texture fixture can be written");
+
+    void *model = rt_model3d_load(rt_const_cstr(obj_path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses OBJ assets with texture maps");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
+                "OBJ MTL texture fixture imports the referenced material");
+    auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model, 0));
+    EXPECT_TRUE(mat != nullptr && rt_material3d_get_has_texture(mat) == 1,
+                "OBJ MTL map_Kd imports a diffuse texture");
+    EXPECT_TRUE(mat != nullptr && rt_material3d_get_has_normal_map(mat) == 1,
+                "OBJ MTL map_Bump imports a normal texture");
+}
+
 static void test_model3d_loads_stl_as_template_asset() {
     const char *path = "/tmp/viper_model3d_fixture.stl";
     const char *stl = "solid tri\n"
@@ -1300,6 +1477,33 @@ static void test_model3d_splits_fbx_layer_element_materials() {
         return;
     EXPECT_NEAR(red_mat->diffuse[0], 0.9, 0.001, "FBX first material slot uses Red material");
     EXPECT_NEAR(blue_mat->diffuse[2], 0.9, 0.001, "FBX second material slot uses Blue material");
+}
+
+static void test_model3d_imports_fbx_embedded_textures() {
+    const char *path = "/tmp/viper_model3d_embedded_texture_fixture.fbx";
+    const char *png_path = "/tmp/viper_model3d_embedded_texture_source.png";
+    std::vector<uint8_t> png_bytes;
+    void *pixels = rt_pixels_new(1, 1);
+    rt_pixels_set(pixels, 0, 0, 0x4A6C8EFFll);
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "Embedded FBX PNG fixture can be written");
+    EXPECT_TRUE(read_binary_file(png_path, png_bytes), "Embedded FBX PNG can be read");
+    if (png_bytes.empty())
+        return;
+    EXPECT_TRUE(write_fbx_embedded_texture_fixture(path, png_bytes.data(), png_bytes.size()),
+                "Embedded-texture FBX fixture can be written");
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with embedded textures");
+    if (!model)
+        return;
+
+    auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model, 0));
+    EXPECT_TRUE(mat != nullptr && rt_material3d_get_has_texture(mat) == 1,
+                "FBX embedded Video content imports as the diffuse material texture");
+    EXPECT_TRUE(mat != nullptr && mat->texture != nullptr &&
+                    rt_pixels_get(mat->texture, 0, 0) == 0x4A6C8EFFll,
+                "FBX embedded texture pixels preserve decoded PNG contents");
 }
 
 static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
@@ -1572,9 +1776,11 @@ int main() {
     test_model3d_adapts_fbx_scene_graphs();
     test_model3d_loads_obj_as_template_asset();
     test_model3d_preserves_obj_mtl_material_groups();
+    test_model3d_imports_obj_mtl_texture_maps();
     test_model3d_loads_stl_as_template_asset();
     test_model3d_loads_minimal_ascii_fbx();
     test_model3d_splits_fbx_layer_element_materials();
+    test_model3d_imports_fbx_embedded_textures();
     test_model3d_imports_fbx_skinning_and_grouped_animation();
     test_model3d_rejects_truncated_fbx();
     test_model3d_loads_demo_fbx_textures();

@@ -98,6 +98,8 @@ static double sprite3d_clamp01(double value) {
     return value;
 }
 
+/// @brief Clamp an int64 frame component to int32: negatives become @p fallback, values above
+///   INT32_MAX saturate to INT32_MAX.
 static int32_t sprite3d_clamp_frame_component_i32(int64_t value, int32_t fallback) {
     if (value < 0)
         return fallback;

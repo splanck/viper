@@ -228,6 +228,9 @@ static int controller_grow_array(void **buffer, int32_t *capacity, int32_t need,
     return 1;
 }
 
+/// @brief FNV-1a 64-bit hash of a state name, used as the key in the open-addressing
+///   name index. Returns 0 for a NULL name; otherwise a non-zero hash (a hash that would
+///   be 0 is remapped to 1 so 0 stays reserved as the empty-slot sentinel).
 static uint64_t controller_hash_name_cstr(const char *name) {
     uint64_t hash = UINT64_C(1469598103934665603);
     if (!name)
@@ -239,6 +242,10 @@ static uint64_t controller_hash_name_cstr(const char *name) {
     return hash ? hash : 1u;
 }
 
+/// @brief Rebuild the open-addressing (linear-probe) name index that maps state-name
+///   hashes to state-array slots, growing to a power-of-two capacity sized to keep the
+///   load factor below 50%, and clear the dirty flag.
+/// @return 1 on success, 0 if `controller` is NULL or an index allocation fails.
 static int controller_rebuild_state_name_index(rt_anim_controller3d *controller) {
     int32_t capacity = 16;
     uint64_t *hashes;
@@ -2104,6 +2111,12 @@ void *rt_anim_controller3d_get_bone_matrix(void *obj, int64_t bone_index) {
                        m[13],
                        m[14],
                        m[15]);
+}
+
+/// @brief Direct pointer to the final-palette float buffer (no copy).
+void *rt_anim_controller3d_get_skeleton(void *obj) {
+    rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    return controller ? controller->skeleton : NULL;
 }
 
 /// @brief Direct pointer to the final-palette float buffer (no copy).

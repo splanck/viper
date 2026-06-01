@@ -1652,6 +1652,9 @@ typedef struct {
     int32_t original_index;
 } game3d_model_cache_victim_candidate_t;
 
+/// @brief Eviction ordering for model-cache victims: non-zero if @p candidate is a better
+///   eviction target than @p current — lower residency priority first, then greater residency
+///   distance, then least-recently-used, then lower original index as a stable tiebreak.
 static int game3d_model_cache_victim_candidate_is_worse(
     const game3d_model_cache_victim_candidate_t *candidate,
     const game3d_model_cache_victim_candidate_t *current) {
@@ -1674,6 +1677,7 @@ static int game3d_model_cache_victim_candidate_is_worse(
     return candidate->original_index < current->original_index;
 }
 
+/// @brief Swap two model-cache victim-heap entries.
 static void game3d_model_cache_victim_heap_swap(game3d_model_cache_victim_candidate_t *a,
                                                 game3d_model_cache_victim_candidate_t *b) {
     game3d_model_cache_victim_candidate_t tmp = *a;
@@ -1681,6 +1685,8 @@ static void game3d_model_cache_victim_heap_swap(game3d_model_cache_victim_candid
     *b = tmp;
 }
 
+/// @brief Sift a victim-heap entry down to restore heap order (best eviction target at the
+///   root), comparing children with game3d_model_cache_victim_candidate_is_worse.
 static void game3d_model_cache_victim_heap_sift_down(
     game3d_model_cache_victim_candidate_t *heap, int32_t count, int32_t index) {
     while (heap && index >= 0) {
@@ -1700,6 +1706,9 @@ static void game3d_model_cache_victim_heap_sift_down(
     }
 }
 
+/// @brief Snapshot all non-loading model-cache entries into @p heap (up to @p heap_capacity)
+///   and heapify so the best eviction victim is at the root.
+/// @return The number of candidate entries collected.
 static int32_t game3d_model_cache_build_victim_heap(
     game3d_model_cache_victim_candidate_t *heap, int32_t heap_capacity) {
     int32_t count = 0;
@@ -1723,6 +1732,8 @@ static int32_t game3d_model_cache_build_victim_heap(
     return count;
 }
 
+/// @brief Re-resolve the live model-cache index matching @p candidate (by asset path, model
+///   template, and path), since the heap holds copies; -1 if it is no longer present.
 static int32_t game3d_model_cache_find_victim_candidate(
     const game3d_model_cache_victim_candidate_t *candidate) {
     if (!candidate)
@@ -1920,9 +1931,7 @@ static rt_string game3d_asset_handle_preflight_error(rt_game3d_asset_handle *han
         }
         if (!game3d_path_has_model_extension(path))
             return rt_const_cstr("unsupported file extension");
-        return game3d_path_has_gltf_extension(path)
-                   ? rt_const_cstr("")
-                   : rt_const_cstr("async model loading supports glTF/GLB only");
+        return rt_const_cstr("");
     }
     FILE *file = fopen(path, "rb");
     if (!file)
@@ -1930,9 +1939,7 @@ static rt_string game3d_asset_handle_preflight_error(rt_game3d_asset_handle *han
     fclose(file);
     if (!game3d_path_has_model_extension(path))
         return rt_const_cstr("unsupported file extension");
-    return game3d_path_has_gltf_extension(path)
-               ? rt_const_cstr("")
-               : rt_const_cstr("async model loading supports glTF/GLB only");
+    return rt_const_cstr("");
 }
 
 /// @brief Return the load error recorded on an asset handle (NULL if it loaded successfully).
@@ -5183,6 +5190,7 @@ int64_t rt_game3d_world_stream_get_cell_bytes(void *obj, int64_t index) {
     return cell ? game3d_stream_cell_bytes(cell) : 0;
 }
 
+/// @brief Get parsed scene-cell material metadata, or "" for invalid/missing.
 rt_string rt_game3d_world_stream_get_cell_material(void *obj, int64_t index) {
     rt_game3d_world_stream *stream =
         game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellMaterial: invalid stream");
@@ -5190,6 +5198,7 @@ rt_string rt_game3d_world_stream_get_cell_material(void *obj, int64_t index) {
     return rt_string_ref(cell && cell->material ? cell->material : rt_const_cstr(""));
 }
 
+/// @brief Get parsed scene-cell optional binary sidecar path, or "" for invalid/missing.
 rt_string rt_game3d_world_stream_get_cell_sidecar(void *obj, int64_t index) {
     rt_game3d_world_stream *stream =
         game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellSidecar: invalid stream");
@@ -5197,6 +5206,7 @@ rt_string rt_game3d_world_stream_get_cell_sidecar(void *obj, int64_t index) {
     return rt_string_ref(cell && cell->sidecar_path ? cell->sidecar_path : rt_const_cstr(""));
 }
 
+/// @brief Get parsed scene-cell collision/render layer metadata, or 0 if unset/invalid.
 int64_t rt_game3d_world_stream_get_cell_layer(void *obj, int64_t index) {
     rt_game3d_world_stream *stream =
         game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellLayer: invalid stream");
@@ -5204,6 +5214,7 @@ int64_t rt_game3d_world_stream_get_cell_layer(void *obj, int64_t index) {
     return cell && cell->has_layer ? cell->layer : 0;
 }
 
+/// @brief Get parsed scene-cell collision mask metadata, or all bits if unset.
 int64_t rt_game3d_world_stream_get_cell_collision_mask(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getCellCollisionMask: invalid stream");
@@ -5211,6 +5222,7 @@ int64_t rt_game3d_world_stream_get_cell_collision_mask(void *obj, int64_t index)
     return cell && cell->has_collision_mask ? cell->collision_mask : ~(int64_t)0;
 }
 
+/// @brief Return whether parsed scene-cell collision is enabled.
 int8_t rt_game3d_world_stream_get_cell_collision_enabled(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getCellCollisionEnabled: invalid stream");
@@ -5218,6 +5230,7 @@ int8_t rt_game3d_world_stream_get_cell_collision_enabled(void *obj, int64_t inde
     return cell ? cell->collision_enabled : 0;
 }
 
+/// @brief Get parsed scene-cell navigation area metadata, or "" for invalid/missing.
 rt_string rt_game3d_world_stream_get_cell_nav_area(void *obj, int64_t index) {
     rt_game3d_world_stream *stream =
         game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellNavArea: invalid stream");
@@ -5225,6 +5238,7 @@ rt_string rt_game3d_world_stream_get_cell_nav_area(void *obj, int64_t index) {
     return rt_string_ref(cell && cell->nav_area ? cell->nav_area : rt_const_cstr(""));
 }
 
+/// @brief Get parsed scene-cell traversal cost metadata.
 double rt_game3d_world_stream_get_cell_traversal_cost(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getCellTraversalCost: invalid stream");
@@ -5282,6 +5296,7 @@ int64_t rt_game3d_world_stream_get_terrain_tile_bytes(void *obj, int64_t index) 
     return tile ? game3d_stream_terrain_tile_bytes(tile) : 0;
 }
 
+/// @brief Get parsed terrain-tile material metadata, or "" for invalid/missing.
 rt_string rt_game3d_world_stream_get_terrain_tile_material(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getTerrainTileMaterial: invalid stream");
@@ -5289,6 +5304,7 @@ rt_string rt_game3d_world_stream_get_terrain_tile_material(void *obj, int64_t in
     return rt_string_ref(tile && tile->material ? tile->material : rt_const_cstr(""));
 }
 
+/// @brief Get parsed terrain-tile optional binary sidecar path, or "" for invalid/missing.
 rt_string rt_game3d_world_stream_get_terrain_tile_sidecar(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getTerrainTileSidecar: invalid stream");
@@ -5296,6 +5312,7 @@ rt_string rt_game3d_world_stream_get_terrain_tile_sidecar(void *obj, int64_t ind
     return rt_string_ref(tile && tile->sidecar_path ? tile->sidecar_path : rt_const_cstr(""));
 }
 
+/// @brief Get parsed terrain-tile collision/render layer metadata.
 int64_t rt_game3d_world_stream_get_terrain_tile_layer(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getTerrainTileLayer: invalid stream");
@@ -5303,6 +5320,7 @@ int64_t rt_game3d_world_stream_get_terrain_tile_layer(void *obj, int64_t index) 
     return tile ? game3d_stream_layer_or_valid(tile->layer, RT_GAME3D_LAYER_WORLD) : 0;
 }
 
+/// @brief Get parsed terrain-tile collision mask metadata.
 int64_t rt_game3d_world_stream_get_terrain_tile_collision_mask(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getTerrainTileCollisionMask: invalid stream");
@@ -5310,6 +5328,7 @@ int64_t rt_game3d_world_stream_get_terrain_tile_collision_mask(void *obj, int64_
     return tile && tile->has_collision_mask ? tile->collision_mask : ~(int64_t)0;
 }
 
+/// @brief Return whether parsed terrain-tile collision is enabled.
 int8_t rt_game3d_world_stream_get_terrain_tile_collision_enabled(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getTerrainTileCollisionEnabled: invalid stream");
@@ -5317,6 +5336,7 @@ int8_t rt_game3d_world_stream_get_terrain_tile_collision_enabled(void *obj, int6
     return tile ? tile->collision_enabled : 0;
 }
 
+/// @brief Get parsed terrain-tile navigation area metadata, or "" for invalid/missing.
 rt_string rt_game3d_world_stream_get_terrain_tile_nav_area(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getTerrainTileNavArea: invalid stream");
@@ -6291,6 +6311,10 @@ static void game3d_world_draw_debug_overlay(rt_game3d_world *world) {
     rt_canvas3d_end_overlay(world->canvas);
 }
 
+/// @brief Shared begin-frame body: clear the back buffer to the world's clear color,
+///   enable camera-relative upload for floating-origin worlds, and open the 3D pass
+///   with the active camera.
+/// @return Non-zero if the canvas frame opened successfully (canvas valid and in-frame).
 static int game3d_world_begin_frame_impl(rt_game3d_world *world) {
     if (!world || !world->canvas || !world->camera)
         return 0;
@@ -6308,7 +6332,9 @@ void rt_game3d_world_begin_frame(void *obj) {
     (void)game3d_world_begin_frame_impl(world);
 }
 
-/// @brief Draw the scene graph through the canvas with the active camera. See header.
+/// @brief Draw every resident streamed terrain tile through the world's canvas,
+///   positioning each tile from its center and per-axis scale. No-op when the world has
+///   no stream or the terrain manifest is not loaded.
 static void game3d_world_draw_stream_terrain(rt_game3d_world *world) {
     rt_game3d_world_stream *stream;
     if (!world || !world->canvas || !world->stream)

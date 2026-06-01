@@ -123,6 +123,8 @@ void rt_anim_controller3d_stop_layer(void *controller, int64_t layer);
 void *rt_anim_controller3d_get_bone_matrix(void *controller, int64_t bone_index);
 
 /* Runtime integration helpers used by Scene3D bindings. */
+/// @brief Borrow the Skeleton3D bound to this controller.
+void *rt_anim_controller3d_get_skeleton(void *controller);
 /// @brief Borrow the flat float array of bone matrices for GPU upload (length = bone_count*16).
 const float *rt_anim_controller3d_get_final_palette_data(void *controller, int32_t *bone_count);
 /// @brief Borrow the previous frame's bone palette (used for motion vectors / TAA).

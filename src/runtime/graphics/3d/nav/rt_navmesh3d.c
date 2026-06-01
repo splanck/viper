@@ -234,6 +234,7 @@ static int navmesh3d_portal_allows_agent(const rt_navmesh3d *nm, int32_t va, int
     return width + 1e-5 >= nm->agent_radius * 2.0 ? 1 : 0;
 }
 
+/// @brief Clamp a traversal cost to [1.0, 1e6]; non-finite or sub-1.0 values become 1.0.
 static float navmesh3d_sanitize_traversal_cost(double cost) {
     if (!isfinite(cost) || cost < 1.0)
         cost = 1.0;
@@ -248,10 +249,14 @@ static int navmesh3d_point_in_rect_xz(float x, float z, const float *min, const 
     return x >= min[0] - eps && x <= max[0] + eps && z >= min[2] - eps && z <= max[2] + eps;
 }
 
+/// @brief Signed orientation (twice the triangle area) of points A, B, C in the XZ plane;
+///   the sign gives the turn direction and zero means collinear.
 static float navmesh3d_orient_xz(float ax, float az, float bx, float bz, float cx, float cz) {
     return (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
 }
 
+/// @brief True if point (px, pz) is collinear with and lies within segment A→B in the XZ
+///   plane (with a small epsilon tolerance).
 static int navmesh3d_on_segment_xz(float ax, float az, float bx, float bz, float px, float pz) {
     const float eps = 1e-5f;
     if (fabsf(navmesh3d_orient_xz(ax, az, bx, bz, px, pz)) > eps)
@@ -348,6 +353,9 @@ static int navmesh3d_triangle_blocked_by_obstacle(const rt_navmesh3d *nm,
     return 0;
 }
 
+/// @brief Intern a nav-area name, returning its 1-based area id and appending it (growing the
+///   name table) if new.
+/// @return The 1-based id, 0 for an empty name, or -1 on invalid input or allocation failure.
 static int32_t navmesh3d_ensure_area_id(rt_navmesh3d *nm, rt_string area) {
     if (!nm || !area || !rt_string_is_handle(area))
         return -1;
@@ -377,6 +385,8 @@ static int32_t navmesh3d_ensure_area_id(rt_navmesh3d *nm, rt_string area) {
     return nm->area_name_count;
 }
 
+/// @brief Reverse-lookup the name for a 1-based area id; returns "default" for id 0 or an
+///   invalid/unset id.
 static rt_string navmesh3d_area_name(const rt_navmesh3d *nm, int32_t area_id) {
     if (area_id > 0 && nm && nm->area_names && area_id <= nm->area_name_count &&
         nm->area_names[area_id - 1])
@@ -384,6 +394,7 @@ static rt_string navmesh3d_area_name(const rt_navmesh3d *nm, int32_t area_id) {
     return rt_const_cstr("default");
 }
 
+/// @brief Sanitized traversal cost of triangle @p tri (1.0 if @p tri is out of range).
 static float navmesh3d_tri_cost(const rt_navmesh3d *nm, int32_t tri) {
     if (!nm || !nm->triangles || tri < 0 || tri >= nm->triangle_count)
         return 1.0f;
@@ -1420,6 +1431,8 @@ static void navmesh3d_voxel_emit_grid_mesh(rt_navmesh3d *nm,
     }
 }
 
+/// @brief Number of voxel cells spanning @p span at @p cell_size (floor(span/cell)+1).
+/// @return 1 with @p out_dim set, or 0 if the result is non-finite or exceeds INT32_MAX.
 static int navmesh3d_voxel_dim_for_span(double span, double cell_size, int64_t *out_dim) {
     if (!out_dim || !isfinite(span) || span < 0.0 || !isfinite(cell_size) || cell_size <= 0.0)
         return 0;
@@ -1430,6 +1443,10 @@ static int navmesh3d_voxel_dim_for_span(double span, double cell_size, int64_t *
     return 1;
 }
 
+/// @brief Bake a navmesh from arbitrary source geometry via voxelization: rasterize the
+///   triangles into an XZ heightfield at @p cell_size, keep cells walkable for an agent of
+///   @p agent_radius / @p agent_height within @p max_slope, and emit the walkable nav polygons.
+/// @return A new navmesh object, or NULL for empty/degenerate input.
 static void *navmesh3d_voxel_bake(
     rt_mesh3d *src, double agent_radius, double agent_height, double max_slope, double cell_size) {
     if (!src || src->vertex_count == 0 || src->index_count < 3)
@@ -1902,6 +1919,8 @@ static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b) {
     return isfinite(dist) ? dist : FLT_MAX;
 }
 
+/// @brief A* edge cost between adjacent triangles @p from and @p to: their centroid distance
+///   scaled by the average of their traversal costs; FLT_MAX if non-finite (impassable).
 static float navmesh3d_edge_cost(const rt_navmesh3d *nm, int32_t from, int32_t to) {
     float base = centroid_dist(nm, from, to);
     if (!isfinite(base) || base >= FLT_MAX)
@@ -1911,6 +1930,8 @@ static float navmesh3d_edge_cost(const rt_navmesh3d *nm, int32_t from, int32_t t
     return isfinite(total) ? total : FLT_MAX;
 }
 
+/// @brief Traversal cost of an off-mesh link: its 3D length scaled by its sanitized traversal
+///   cost; FLT_MAX if non-finite.
 static float navmesh3d_offmesh_cost(const nav_offmesh_link_t *link) {
     if (!link)
         return 0.0f;
@@ -2131,6 +2152,8 @@ static double *navmesh3d_reconstruct_path(rt_navmesh3d *nm,
     return points;
 }
 
+/// @brief Compute a path from @p from to @p to and copy it into a freshly malloc'd flat xyz
+///   array. @return Point count (the caller frees @p out_points_xyz).
 int64_t rt_navmesh3d_copy_path_points(void *obj,
                                       void *from_v,
                                       void *to_v,
@@ -2398,6 +2421,7 @@ int8_t rt_navmesh3d_add_offmesh_link(void *obj, void *from, void *to, int8_t bid
     return 1;
 }
 
+/// @brief Attach kind/cost/state metadata to an authored off-mesh link by index.
 int8_t rt_navmesh3d_set_offmesh_link_metadata(
     void *obj, int64_t index, rt_string kind, double traversal_cost, int64_t state_flags) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
@@ -2416,6 +2440,7 @@ int8_t rt_navmesh3d_set_offmesh_link_metadata(
     return 1;
 }
 
+/// @brief Read the kind-string metadata of an authored off-mesh link by index.
 rt_string rt_navmesh3d_get_offmesh_link_kind(void *obj, int64_t index) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || index < 0 || index >= nm->offmesh_link_count)
@@ -2432,6 +2457,7 @@ double rt_navmesh3d_get_offmesh_link_traversal_cost(void *obj, int64_t index) {
         (double)nm->offmesh_links[(int32_t)index].traversal_cost);
 }
 
+/// @brief Read the state-flag metadata of an authored off-mesh link by index.
 int64_t rt_navmesh3d_get_offmesh_link_state(void *obj, int64_t index) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || index < 0 || index >= nm->offmesh_link_count)
@@ -2577,6 +2603,7 @@ int64_t rt_navmesh3d_get_obstacle_count(void *obj) {
     return nm ? nm->obstacle_count : 0;
 }
 
+/// @brief Assign nav-area and traversal-cost metadata to polygons overlapping an AABB volume.
 int8_t rt_navmesh3d_set_area(
     void *obj, void *min_v, void *max_v, rt_string area, double traversal_cost) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
@@ -2609,6 +2636,7 @@ int8_t rt_navmesh3d_set_area(
     return touched > 0 ? 1 : 0;
 }
 
+/// @brief Read the nav-area name metadata at a walkable position.
 rt_string rt_navmesh3d_get_area(void *obj, void *point) {
     if (!obj || !rt_g3d_is_vec3(point))
         return rt_const_cstr("");

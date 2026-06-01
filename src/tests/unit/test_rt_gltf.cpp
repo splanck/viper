@@ -19,6 +19,7 @@
 #include "rt_scene3d_internal.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
+#include "rt_textureasset3d.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -34,6 +35,10 @@ extern rt_string rt_const_cstr(const char *s);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
+extern double rt_quat_x(void *q);
+extern double rt_quat_y(void *q);
+extern double rt_quat_z(void *q);
+extern double rt_quat_w(void *q);
 }
 
 static int tests_passed = 0;
@@ -107,6 +112,15 @@ static bool write_text_file(const char *path, const std::string &text) {
     return ok;
 }
 
+static bool write_binary_file(const char *path, const std::vector<uint8_t> &bytes) {
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    std::fclose(f);
+    return ok;
+}
+
 static void test_gltf_accessors_reject_wrong_handles() {
     void *fake = rt_obj_new_i64(0, 8);
     EXPECT_TRUE(rt_gltf_mesh_count(fake) == 0, "GLTF mesh count rejects wrong handles");
@@ -140,6 +154,39 @@ static void append_u32_le(std::vector<uint8_t> &buf, uint32_t value) {
     buf.push_back((uint8_t)((value >> 8) & 0xFFu));
     buf.push_back((uint8_t)((value >> 16) & 0xFFu));
     buf.push_back((uint8_t)((value >> 24) & 0xFFu));
+}
+
+static void append_u64_le(std::vector<uint8_t> &buf, uint64_t value) {
+    append_u32_le(buf, (uint32_t)(value & 0xFFFFFFFFu));
+    append_u32_le(buf, (uint32_t)(value >> 32));
+}
+
+static bool write_test_ktx2_rgba8(const char *path,
+                                  uint32_t width,
+                                  uint32_t height,
+                                  const uint8_t *level0,
+                                  uint64_t level0_bytes) {
+    static const uint8_t identifier[12] = {
+        0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A};
+    std::vector<uint8_t> bytes;
+    bytes.insert(bytes.end(), identifier, identifier + sizeof(identifier));
+    append_u32_le(bytes, 37u);
+    append_u32_le(bytes, 1u);
+    append_u32_le(bytes, width);
+    append_u32_le(bytes, height);
+    append_u32_le(bytes, 0u);
+    append_u32_le(bytes, 0u);
+    append_u32_le(bytes, 1u);
+    append_u32_le(bytes, 1u);
+    append_u32_le(bytes, 0u);
+    while (bytes.size() < 80u)
+        bytes.push_back(0u);
+    append_u64_le(bytes, 104u);
+    append_u64_le(bytes, level0_bytes);
+    append_u64_le(bytes, level0_bytes);
+    if (level0 && level0_bytes > 0)
+        bytes.insert(bytes.end(), level0, level0 + (size_t)level0_bytes);
+    return write_binary_file(path, bytes);
 }
 
 static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
@@ -1485,6 +1532,155 @@ static void test_gltf_rejects_out_of_range_indices() {
         return;
     EXPECT_TRUE(rt_gltf_mesh_count(asset) == 0,
                 "GLTF.Load skips primitives whose indices reference missing vertices");
+}
+
+static void test_gltf_skips_non_triangle_primitives() {
+    const char *gltf_path = "/tmp/viper_gltf_skip_lines.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1},"
+        "{\"attributes\":{\"POSITION\":0},\"indices\":1,\"mode\":1}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Line-primitive glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load keeps triangle primitives when lines are present");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_mesh_count(asset) == 1,
+                "GLTF.Load skips non-triangle primitive modes without failing the asset");
+}
+
+static void test_gltf_drops_invalid_optional_attributes() {
+    const char *gltf_path = "/tmp/viper_gltf_bad_optional_normal.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const float bad_normals[6] = {9.0f, 9.0f, 9.0f, 9.0f, 9.0f, 9.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : bad_normals)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},"
+        "\"indices\":2}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Invalid optional-attribute glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load drops malformed optional attributes");
+    if (!asset)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_gltf_get_mesh(asset, 0));
+    EXPECT_TRUE(mesh != nullptr && mesh->index_count == 3,
+                "GLTF.Load keeps geometry after dropping malformed normals");
+    if (mesh)
+        EXPECT_NEAR(mesh->vertices[0].normal[2], 1.0, 0.001,
+                    "GLTF.Load recalculates normals after dropping malformed normals");
+}
+
+static void test_gltf_rejects_unsorted_sparse_indices() {
+    const char *gltf_path = "/tmp/viper_gltf_bad_sparse_order.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float base_positions[9] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                     0.0f, 0.0f, 0.0f, 0.0f};
+    const uint16_t sparse_indices[2] = {2, 1};
+    const float sparse_values[6] = {0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : base_positions)
+        append_bytes(gltf_buffer, v);
+    size_t sparse_idx_off = gltf_buffer.size();
+    for (uint16_t v : sparse_indices)
+        append_bytes(gltf_buffer, v);
+    size_t sparse_value_off = gltf_buffer.size();
+    for (float v : sparse_values)
+        append_bytes(gltf_buffer, v);
+    size_t index_off = gltf_buffer.size();
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(sparse_idx_off) +
+        ",\"byteLength\":4},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(sparse_value_off) +
+        ",\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(index_off) +
+        ",\"byteLength\":6}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\","
+        "\"sparse\":{\"count\":2,\"indices\":{\"bufferView\":1,\"componentType\":5123},"
+        "\"values\":{\"bufferView\":2}}},"
+        "{\"bufferView\":3,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Unsorted sparse glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset == nullptr, "GLTF.Load rejects unsorted sparse accessor indices");
+}
+
+static void test_gltf_rejects_invalid_skin_reference() {
+    const char *gltf_path = "/tmp/viper_gltf_invalid_skin_ref.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1}]}],"
+        "\"nodes\":[{\"mesh\":0,\"skin\":4}],\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Invalid-skin-reference glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset == nullptr, "GLTF.Load rejects nodes that reference missing skins");
 }
 
 static void test_gltf_builds_scene_hierarchy_for_active_scene() {
@@ -2901,7 +3097,9 @@ static void test_gltf_imports_material_extensions_supported_by_material3d() {
         "\"extensions\":{\"KHR_materials_unlit\":{},"
         "\"KHR_materials_specular\":{\"specularFactor\":0.25,"
         "\"specularColorFactor\":[0.2,0.3,0.4],\"specularTexture\":{\"index\":0}},"
-        "\"KHR_materials_clearcoat\":{\"clearcoatFactor\":0.6}}}]"
+        "\"KHR_materials_clearcoat\":{\"clearcoatFactor\":0.6,"
+        "\"clearcoatRoughnessFactor\":0.35},"
+        "\"KHR_materials_transmission\":{\"transmissionFactor\":0.5}}}]"
         "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "Material-extension glTF fixture can be created");
@@ -2919,6 +3117,47 @@ static void test_gltf_imports_material_extensions_supported_by_material3d() {
     EXPECT_NEAR(mat->specular[1], 0.3, 0.001, "GLTF.Load imports specularColorFactor G");
     EXPECT_NEAR(mat->specular[2], 0.4, 0.001, "GLTF.Load imports specularColorFactor B");
     EXPECT_NEAR(mat->reflectivity, 0.6, 0.001, "GLTF.Load approximates clearcoat reflectivity");
+    EXPECT_NEAR(mat->alpha, 1.0, 0.001, "GLTF.Load keeps transmission materials opaque");
+    EXPECT_NEAR(mat->custom_params[2],
+                0.35,
+                0.001,
+                "GLTF.Load records clearcoat roughness in material custom params");
+    EXPECT_NEAR(mat->custom_params[3],
+                0.5,
+                0.001,
+                "GLTF.Load records transmission factor in material custom params");
+}
+
+static void test_gltf_imports_ktx2_basisu_textures() {
+    const char *ktx_path = "/tmp/viper_gltf_basisu_albedo.ktx2";
+    const char *gltf_path = "/tmp/viper_gltf_basisu_texture.gltf";
+    const uint8_t rgba[16] = {0x10, 0x20, 0x30, 0xFF, 0x40, 0x50, 0x60, 0xFF,
+                              0x70, 0x80, 0x90, 0xFF, 0xA0, 0xB0, 0xC0, 0xFF};
+    EXPECT_TRUE(write_test_ktx2_rgba8(ktx_path, 2u, 2u, rgba, sizeof(rgba)),
+                "KTX2 fixture can be written");
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"extensionsRequired\":[\"KHR_texture_basisu\"],"
+        "\"extensionsUsed\":[\"KHR_texture_basisu\"],"
+        "\"images\":[{\"uri\":\"viper_gltf_basisu_albedo.ktx2\",\"mimeType\":\"image/ktx2\"}],"
+        "\"textures\":[{\"extensions\":{\"KHR_texture_basisu\":{\"source\":0}}}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "KTX2 glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts required KHR_texture_basisu textures");
+    if (!asset)
+        return;
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mat != nullptr && mat->texture != nullptr,
+                "GLTF.Load binds KTX2 image as a material texture");
+    if (mat && mat->texture) {
+        EXPECT_TRUE(rt_textureasset3d_get_width(mat->texture) == 2,
+                    "GLTF.Load stores KTX2 material textures as TextureAsset3D");
+        EXPECT_TRUE(rt_material3d_get_has_texture(mat) == 1,
+                    "Material3D sees imported KTX2 TextureAsset3D as drawable");
+    }
 }
 
 static void test_gltf_preserves_negative_matrix_scale_sign() {
@@ -2943,6 +3182,30 @@ static void test_gltf_preserves_negative_matrix_scale_sign() {
                 -2.0,
                 0.001,
                 "GLTF.Load preserves negative X scale from matrix transforms");
+}
+
+static void test_gltf_matrix_shear_does_not_leak_into_rotation() {
+    const char *gltf_path = "/tmp/viper_gltf_sheared_matrix.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"nodes\":[{\"name\":\"Sheared\",\"matrix\":[1,0,0,0,0.5,1,0,0,0,0,1,0,0,0,0,1]}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Sheared glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses sheared matrix nodes");
+    if (!asset)
+        return;
+    void *node = rt_scene_node3d_find(rt_gltf_get_scene_root(asset), rt_const_cstr("Sheared"));
+    EXPECT_TRUE(node != nullptr, "GLTF.Load exposes sheared matrix node");
+    if (!node)
+        return;
+    void *rot = rt_scene_node3d_get_rotation(node);
+    EXPECT_NEAR(rt_quat_x(rot), 0.0, 0.001, "GLTF.Load drops unsupported matrix shear rotation X");
+    EXPECT_NEAR(rt_quat_y(rot), 0.0, 0.001, "GLTF.Load drops unsupported matrix shear rotation Y");
+    EXPECT_NEAR(rt_quat_z(rot), 0.0, 0.001, "GLTF.Load drops unsupported matrix shear rotation Z");
+    EXPECT_NEAR(rt_quat_w(rot), 1.0, 0.001, "GLTF.Load keeps sheared matrix rotation normalized");
 }
 
 static void test_gltf_rejects_skins_over_runtime_bone_limit() {
@@ -3190,6 +3453,10 @@ int main() {
     test_gltf_load_asset_resolves_mounted_external_buffers();
     test_gltf_load_asset_handles_glb_filesystem_and_mounted_package();
     test_gltf_rejects_out_of_range_indices();
+    test_gltf_skips_non_triangle_primitives();
+    test_gltf_drops_invalid_optional_attributes();
+    test_gltf_rejects_unsorted_sparse_indices();
+    test_gltf_rejects_invalid_skin_reference();
     test_gltf_builds_scene_hierarchy_for_active_scene();
     test_gltf_imports_extended_vertex_attributes_and_triangle_strips();
     test_gltf_reduces_secondary_joint_sets_to_top_four_influences();
@@ -3207,7 +3474,9 @@ int main() {
     test_gltf_assigns_default_material_to_materialless_primitives();
     test_gltf_uses_texture_texcoord_and_transform();
     test_gltf_imports_material_extensions_supported_by_material3d();
+    test_gltf_imports_ktx2_basisu_textures();
     test_gltf_preserves_negative_matrix_scale_sign();
+    test_gltf_matrix_shear_does_not_leak_into_rotation();
     test_gltf_rejects_skins_over_runtime_bone_limit();
     test_gltf_rejects_unsupported_required_extensions();
     test_gltf_accepts_supported_required_extensions_with_parser_coverage();
