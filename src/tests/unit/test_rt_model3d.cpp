@@ -380,6 +380,97 @@ static bool write_fbx_fixture(const char *path) {
     return ok;
 }
 
+static bool write_fbx_multimaterial_fixture(const char *path) {
+    static const int64_t kGeometryId = 2100;
+    static const int64_t kRedMaterialId = 2200;
+    static const int64_t kBlueMaterialId = 2201;
+    static const int64_t kModelId = 2300;
+    static const double kPositions[12] = {
+        0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+    static const int32_t kIndices[6] = {0, 1, -3, 0, 2, -4};
+    static const int32_t kMaterialSlots[2] = {0, 1};
+
+    FbxNodeFixture geometry;
+    FbxNodeFixture layer_material;
+    FbxNodeFixture red_material;
+    FbxNodeFixture blue_material;
+    FbxNodeFixture red_props70;
+    FbxNodeFixture blue_props70;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture model = make_fbx_model_fixture(kModelId, "Multi", "Mesh", 1.0, 2.0, 3.0);
+    std::vector<uint8_t> bytes;
+
+    model.children[0].children.push_back(make_fbx_property_vec3("GeometricTranslation", 4.0, 5.0, 6.0));
+    model.children[0].children.push_back(make_fbx_property_vec3("PreRotation", 0.0, 0.0, 90.0));
+
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("MultiMaterialMesh", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(FbxNodeFixture{
+        "Vertices",
+        {fbx_prop_array_fixture('d', kPositions, sizeof(kPositions) / sizeof(kPositions[0]))},
+        {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "PolygonVertexIndex",
+        {fbx_prop_array_fixture('i', kIndices, sizeof(kIndices) / sizeof(kIndices[0]))},
+        {}});
+    layer_material.name = "LayerElementMaterial";
+    layer_material.children.push_back(
+        FbxNodeFixture{"MappingInformationType", {fbx_prop_string_fixture("ByPolygon")}, {}});
+    layer_material.children.push_back(
+        FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("IndexToDirect")}, {}});
+    layer_material.children.push_back(FbxNodeFixture{
+        "Materials",
+        {fbx_prop_array_fixture('i', kMaterialSlots, sizeof(kMaterialSlots) / sizeof(kMaterialSlots[0]))},
+        {}});
+    geometry.children.push_back(layer_material);
+
+    red_material.name = "Material";
+    red_material.props.push_back(fbx_prop_i64_fixture(kRedMaterialId));
+    red_material.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("Red", "Material")));
+    red_material.props.push_back(fbx_prop_string_fixture(""));
+    red_props70.name = "Properties70";
+    red_props70.children.push_back(make_fbx_property_vec3("DiffuseColor", 0.9, 0.1, 0.1));
+    red_material.children.push_back(red_props70);
+
+    blue_material.name = "Material";
+    blue_material.props.push_back(fbx_prop_i64_fixture(kBlueMaterialId));
+    blue_material.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("Blue", "Material")));
+    blue_material.props.push_back(fbx_prop_string_fixture(""));
+    blue_props70.name = "Properties70";
+    blue_props70.children.push_back(make_fbx_property_vec3("DiffuseColor", 0.1, 0.2, 0.9));
+    blue_material.children.push_back(blue_props70);
+
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(red_material);
+    objects.children.push_back(blue_material);
+    objects.children.push_back(model);
+
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kRedMaterialId, kModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kBlueMaterialId, kModelId));
+
+    bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
+                               'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
+    append_bytes(bytes, (uint32_t)7400);
+    write_fbx_node_fixture(objects, bytes);
+    write_fbx_node_fixture(connections, bytes);
+    bytes.resize(bytes.size() + 13, 0);
+
+    FILE *f = std::fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    std::fclose(f);
+    return ok;
+}
+
 static bool write_fbx_skinned_animation_fixture(const char *path) {
     static const int64_t kGeometryId = 1100;
     static const int64_t kMeshModelId = 1200;
@@ -1068,6 +1159,149 @@ static void test_model3d_loads_obj_as_template_asset() {
     }
 }
 
+static void test_model3d_preserves_obj_mtl_material_groups() {
+    const char *obj_path = "/tmp/viper_model3d_mtl_groups.obj";
+    const char *mtl_path = "/tmp/viper_model3d_mtl_groups.mtl";
+    const char *mtl = "newmtl Red\n"
+                      "Kd 0.9 0.1 0.1\n"
+                      "newmtl Blue\n"
+                      "Kd 0.1 0.2 0.9\n";
+    const char *obj = "mtllib viper_model3d_mtl_groups.mtl\n"
+                      "v 0 0 0\n"
+                      "v 1 0 0\n"
+                      "v 0 1 0\n"
+                      "v 0 0 1\n"
+                      "vn 0 0 1\n"
+                      "usemtl Red\n"
+                      "f 1//1 2//1 3//1\n"
+                      "usemtl Blue\n"
+                      "f 1//1 3//1 4//1\n";
+    EXPECT_TRUE(write_text_file(mtl_path, mtl), "OBJ MTL fixture can be written");
+    EXPECT_TRUE(write_text_file(obj_path, obj), "OBJ usemtl fixture can be written");
+
+    void *model = rt_model3d_load(rt_const_cstr(obj_path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses OBJ assets with mtllib/usemtl");
+    if (!model)
+        return;
+
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 2,
+                "OBJ usemtl groups become separate renderable meshes");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 2,
+                "OBJ mtllib materials are imported as Material3D handles");
+    EXPECT_TRUE(rt_model3d_get_node_count(model) == 2,
+                "OBJ material groups become separate template nodes");
+
+    void *red_node = rt_model3d_find_node(model, rt_const_cstr("Red"));
+    void *blue_node = rt_model3d_find_node(model, rt_const_cstr("Blue"));
+    EXPECT_TRUE(red_node != nullptr && blue_node != nullptr,
+                "OBJ material group nodes preserve usemtl names");
+    if (!red_node || !blue_node)
+        return;
+    auto *red_mesh = static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(red_node));
+    auto *blue_mesh = static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(blue_node));
+    auto *red_mat = static_cast<rt_material3d *>(rt_scene_node3d_get_material(red_node));
+    auto *blue_mat = static_cast<rt_material3d *>(rt_scene_node3d_get_material(blue_node));
+    EXPECT_TRUE(red_mesh && red_mesh->index_count == 3,
+                "OBJ Red group contains only its own triangle");
+    EXPECT_TRUE(blue_mesh && blue_mesh->index_count == 3,
+                "OBJ Blue group contains only its own triangle");
+    EXPECT_TRUE(red_mat && blue_mat, "OBJ material group nodes have materials");
+    if (!red_mat || !blue_mat)
+        return;
+    EXPECT_NEAR(red_mat->diffuse[0], 0.9, 0.001, "OBJ MTL Kd imports red material color");
+    EXPECT_NEAR(blue_mat->diffuse[2], 0.9, 0.001, "OBJ MTL Kd imports blue material color");
+}
+
+static void test_model3d_loads_stl_as_template_asset() {
+    const char *path = "/tmp/viper_model3d_fixture.stl";
+    const char *stl = "solid tri\n"
+                      "facet normal 0 0 1\n"
+                      "  outer loop\n"
+                      "    vertex 0 0 0\n"
+                      "    vertex 1 0 0\n"
+                      "    vertex 0 1 0\n"
+                      "  endloop\n"
+                      "endfacet\n"
+                      "endsolid tri\n";
+    EXPECT_TRUE(write_text_file(path, stl), "ASCII STL fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses STL assets");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "STL-backed Model3D exposes one mesh");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
+                "STL-backed Model3D creates a default material");
+    EXPECT_TRUE(rt_model3d_get_node_count(model) == 1,
+                "STL-backed Model3D synthesizes one template node");
+    auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+    EXPECT_TRUE(mesh && mesh->index_count == 3, "STL-backed Model3D preserves triangle geometry");
+}
+
+static void test_model3d_loads_minimal_ascii_fbx() {
+    const char *path = "/tmp/viper_model3d_ascii_fixture.fbx";
+    const char *fbx = "; FBX 7.4.0 project file\n"
+                      "Objects:  {\n"
+                      "  Geometry: 1, \"Geometry::AsciiMesh\", \"Mesh\" {\n"
+                      "    Vertices: *9 { a: 0,0,0, 1,0,0, 0,1,0 }\n"
+                      "    PolygonVertexIndex: *3 { a: 0,1,-3 }\n"
+                      "  }\n"
+                      "}\n";
+    EXPECT_TRUE(write_text_file(path, fbx), "ASCII FBX fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses minimal ASCII FBX assets");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "ASCII FBX exposes one mesh");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
+                "ASCII FBX creates a default material");
+    EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("mesh_0")) != nullptr,
+                "ASCII FBX builds a renderable mesh node");
+}
+
+static void test_model3d_splits_fbx_layer_element_materials() {
+    const char *path = "/tmp/viper_model3d_multimaterial_fixture.fbx";
+    EXPECT_TRUE(write_fbx_multimaterial_fixture(path), "Multi-material FBX fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX LayerElementMaterial fixtures");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 2,
+                "FBX connected materials are imported");
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 3,
+                "FBX multi-material geometry keeps source mesh and adds two render submeshes");
+    void *multi = rt_model3d_find_node(model, rt_const_cstr("Multi"));
+    EXPECT_TRUE(multi != nullptr, "FBX multi-material model node is preserved");
+    if (!multi)
+        return;
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(multi)),
+                5.0,
+                0.001,
+                "FBX GeometricTranslation contributes to imported model position X");
+    EXPECT_NEAR(rt_vec3_y(rt_scene_node3d_get_position(multi)),
+                7.0,
+                0.001,
+                "FBX GeometricTranslation contributes to imported model position Y");
+    EXPECT_TRUE(rt_scene_node3d_get_mesh(multi) == nullptr,
+                "FBX multi-material model acts as a transform group");
+    EXPECT_TRUE(rt_scene_node3d_child_count(multi) == 2,
+                "FBX LayerElementMaterial creates one child submesh per material slot");
+    void *red_child = rt_scene_node3d_get_child(multi, 0);
+    void *blue_child = rt_scene_node3d_get_child(multi, 1);
+    auto *red_mesh = static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(red_child));
+    auto *blue_mesh = static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(blue_child));
+    auto *red_mat = static_cast<rt_material3d *>(rt_scene_node3d_get_material(red_child));
+    auto *blue_mat = static_cast<rt_material3d *>(rt_scene_node3d_get_material(blue_child));
+    EXPECT_TRUE(red_mesh && red_mesh->index_count == 3,
+                "FBX material slot 0 submesh contains one triangle");
+    EXPECT_TRUE(blue_mesh && blue_mesh->index_count == 3,
+                "FBX material slot 1 submesh contains one triangle");
+    EXPECT_TRUE(red_mat && blue_mat, "FBX material submesh nodes have materials");
+    if (!red_mat || !blue_mat)
+        return;
+    EXPECT_NEAR(red_mat->diffuse[0], 0.9, 0.001, "FBX first material slot uses Red material");
+    EXPECT_NEAR(blue_mat->diffuse[2], 0.9, 0.001, "FBX second material slot uses Blue material");
+}
+
 static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
     const char *path = "/tmp/viper_model3d_skinned_anim_fixture.fbx";
     bool wrote_fixture = write_fbx_skinned_animation_fixture(path);
@@ -1337,6 +1571,10 @@ int main() {
     test_model3d_load_asset_diagnostics_name_missing_dependency();
     test_model3d_adapts_fbx_scene_graphs();
     test_model3d_loads_obj_as_template_asset();
+    test_model3d_preserves_obj_mtl_material_groups();
+    test_model3d_loads_stl_as_template_asset();
+    test_model3d_loads_minimal_ascii_fbx();
+    test_model3d_splits_fbx_layer_element_materials();
     test_model3d_imports_fbx_skinning_and_grouped_animation();
     test_model3d_rejects_truncated_fbx();
     test_model3d_loads_demo_fbx_textures();

@@ -848,6 +848,71 @@ void rt_mesh3d_recalc_normals(void *obj) {
     mesh3d_bump_vertex_revision(m, 1);
 }
 
+static void mesh3d_fill_missing_normals(rt_mesh3d *m) {
+    if (!m || m->index_count < 3u)
+        return;
+    if ((size_t)m->vertex_count > SIZE_MAX / (3u * sizeof(double))) {
+        rt_trap("Mesh3D.FromOBJ: normal accumulator allocation overflow");
+        return;
+    }
+    double *accum = (double *)calloc((size_t)m->vertex_count * 3u, sizeof(double));
+    if (m->vertex_count > 0 && !accum) {
+        rt_trap("Mesh3D.FromOBJ: memory allocation failed");
+        return;
+    }
+    for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
+        uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
+        if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
+            continue;
+        float *p0 = m->vertices[i0].pos;
+        float *p1 = m->vertices[i1].pos;
+        float *p2 = m->vertices[i2].pos;
+        double e1[3] = {(double)p1[0] - (double)p0[0],
+                        (double)p1[1] - (double)p0[1],
+                        (double)p1[2] - (double)p0[2]};
+        double e2[3] = {(double)p2[0] - (double)p0[0],
+                        (double)p2[1] - (double)p0[1],
+                        (double)p2[2] - (double)p0[2]};
+        double nx = e1[1] * e2[2] - e1[2] * e2[1];
+        double ny = e1[2] * e2[0] - e1[0] * e2[2];
+        double nz = e1[0] * e2[1] - e1[1] * e2[0];
+        double len_sq = nx * nx + ny * ny + nz * nz;
+        if (!isfinite(len_sq) || len_sq <= 1e-20)
+            continue;
+        accum[(size_t)i0 * 3u + 0] += nx;
+        accum[(size_t)i0 * 3u + 1] += ny;
+        accum[(size_t)i0 * 3u + 2] += nz;
+        accum[(size_t)i1 * 3u + 0] += nx;
+        accum[(size_t)i1 * 3u + 1] += ny;
+        accum[(size_t)i1 * 3u + 2] += nz;
+        accum[(size_t)i2 * 3u + 0] += nx;
+        accum[(size_t)i2 * 3u + 1] += ny;
+        accum[(size_t)i2 * 3u + 2] += nz;
+    }
+    for (uint32_t i = 0; i < m->vertex_count; i++) {
+        float *n = m->vertices[i].normal;
+        double existing_len = (double)n[0] * n[0] + (double)n[1] * n[1] + (double)n[2] * n[2];
+        if (isfinite(existing_len) && existing_len > 1e-20)
+            continue;
+        double nx = accum[(size_t)i * 3u + 0];
+        double ny = accum[(size_t)i * 3u + 1];
+        double nz = accum[(size_t)i * 3u + 2];
+        double len = sqrt(nx * nx + ny * ny + nz * nz);
+        if (isfinite(len) && len > 1e-12 && mesh_value_fits_float(nx / len) &&
+            mesh_value_fits_float(ny / len) && mesh_value_fits_float(nz / len)) {
+            n[0] = (float)(nx / len);
+            n[1] = (float)(ny / len);
+            n[2] = (float)(nz / len);
+        } else {
+            n[0] = 0.0f;
+            n[1] = 1.0f;
+            n[2] = 0.0f;
+        }
+    }
+    free(accum);
+    mesh3d_bump_vertex_revision(m, 1);
+}
+
 /// @brief Create a deep copy of a mesh (independent vertex/index arrays).
 void *rt_mesh3d_clone(void *obj) {
     rt_mesh3d *src = mesh3d_checked(obj);
@@ -2485,11 +2550,396 @@ void *rt_mesh3d_from_obj(rt_string path) {
 
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
 
-    /* If normals are missing globally or on any face, compute a complete normal set. */
-    if ((cnt_n == 0 || missing_normals) && ((rt_mesh3d *)mesh)->vertex_count > 0)
+    if (cnt_n == 0 && ((rt_mesh3d *)mesh)->vertex_count > 0)
         rt_mesh3d_recalc_normals(mesh);
+    else if (missing_normals && ((rt_mesh3d *)mesh)->vertex_count > 0)
+        mesh3d_fill_missing_normals((rt_mesh3d *)mesh);
 
     return mesh;
+}
+
+typedef struct {
+    rt_mesh3d_obj_group_t group;
+    obj_vertex_cache_t vertex_cache;
+    int missing_normals;
+} obj_group_builder_t;
+
+static void obj_group_builders_free(obj_group_builder_t *groups, int32_t count) {
+    if (!groups)
+        return;
+    for (int32_t i = 0; i < count; i++) {
+        free(groups[i].group.material_name);
+        groups[i].group.material_name = NULL;
+        obj_vertex_cache_free(&groups[i].vertex_cache);
+        if (groups[i].group.mesh && rt_obj_release_check0(groups[i].group.mesh))
+            rt_obj_free(groups[i].group.mesh);
+        groups[i].group.mesh = NULL;
+    }
+    free(groups);
+}
+
+void rt_mesh3d_obj_groups_free(rt_mesh3d_obj_group_t *groups, int32_t count) {
+    if (!groups)
+        return;
+    for (int32_t i = 0; i < count; i++) {
+        free(groups[i].material_name);
+        groups[i].material_name = NULL;
+        if (groups[i].mesh && rt_obj_release_check0(groups[i].mesh))
+            rt_obj_free(groups[i].mesh);
+        groups[i].mesh = NULL;
+    }
+    free(groups);
+}
+
+static char *obj_copy_directive_value(const char *p) {
+    const char *start;
+    const char *end;
+    char *copy;
+    size_t len;
+    if (!p)
+        p = "";
+    while (*p == ' ' || *p == '\t')
+        p++;
+    start = p;
+    end = p + strlen(p);
+    while (end > start && (end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' ' ||
+                           end[-1] == '\t'))
+        end--;
+    len = (size_t)(end - start);
+    copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, start, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+static int obj_group_find_or_create(obj_group_builder_t **groups,
+                                    int32_t *count,
+                                    int32_t *capacity,
+                                    const char *material_name,
+                                    obj_group_builder_t **out_group) {
+    const char *name = material_name ? material_name : "";
+    obj_group_builder_t *grown;
+    char *name_copy;
+    void *mesh;
+    if (!groups || !count || !capacity || !out_group)
+        return 0;
+    for (int32_t i = 0; i < *count; i++) {
+        const char *existing = (*groups)[i].group.material_name;
+        if (strcmp(existing ? existing : "", name) == 0) {
+            *out_group = &(*groups)[i];
+            return 1;
+        }
+    }
+    if (*count >= *capacity) {
+        int32_t new_capacity = *capacity > 0 ? *capacity * 2 : 4;
+        if (*capacity > INT32_MAX / 2 ||
+            (size_t)new_capacity > SIZE_MAX / sizeof(**groups))
+            return 0;
+        grown = (obj_group_builder_t *)realloc(*groups, (size_t)new_capacity * sizeof(**groups));
+        if (!grown)
+            return 0;
+        memset(grown + *capacity, 0, (size_t)(new_capacity - *capacity) * sizeof(*grown));
+        *groups = grown;
+        *capacity = new_capacity;
+    }
+    name_copy = obj_copy_directive_value(name);
+    mesh = rt_mesh3d_new();
+    if (!name_copy || !mesh) {
+        free(name_copy);
+        if (mesh && rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return 0;
+    }
+    if (!obj_vertex_cache_init(&(*groups)[*count].vertex_cache, 1024)) {
+        free(name_copy);
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return 0;
+    }
+    (*groups)[*count].group.material_name = name_copy;
+    (*groups)[*count].group.mesh = mesh;
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
+    *out_group = &(*groups)[*count];
+    (*count)++;
+    return 1;
+}
+
+static int obj_groups_transfer(obj_group_builder_t *builders,
+                               int32_t builder_count,
+                               rt_mesh3d_obj_group_t **out_groups,
+                               int32_t *out_count) {
+    rt_mesh3d_obj_group_t *groups;
+    if (!out_groups || !out_count)
+        return 0;
+    *out_groups = NULL;
+    *out_count = 0;
+    if (builder_count <= 0)
+        return 1;
+    groups = (rt_mesh3d_obj_group_t *)calloc((size_t)builder_count, sizeof(*groups));
+    if (!groups)
+        return 0;
+    for (int32_t i = 0; i < builder_count; i++) {
+        groups[i].material_name = builders[i].group.material_name;
+        groups[i].mesh = builders[i].group.mesh;
+        builders[i].group.material_name = NULL;
+        builders[i].group.mesh = NULL;
+        obj_vertex_cache_free(&builders[i].vertex_cache);
+    }
+    free(builders);
+    *out_groups = groups;
+    *out_count = builder_count;
+    return 1;
+}
+
+int rt_mesh3d_from_obj_groups(rt_string path, rt_mesh3d_obj_group_t **out_groups, int32_t *out_count) {
+    const char *filepath;
+    FILE *f;
+    int cap_p = 256, cap_n = 256, cap_t = 256;
+    int cnt_p = 0, cnt_n = 0, cnt_t = 0;
+    int parse_failed = 0;
+    int line_too_long = 0;
+    float *positions;
+    float *normals;
+    float *texcoords;
+    obj_group_builder_t *groups = NULL;
+    int32_t group_count = 0;
+    int32_t group_capacity = 0;
+    char *current_material = NULL;
+    char *line = NULL;
+    size_t line_cap = 0;
+    int line_status;
+
+    if (out_groups)
+        *out_groups = NULL;
+    if (out_count)
+        *out_count = 0;
+    if (!path || !out_groups || !out_count) {
+        rt_trap("Mesh3D.FromOBJ: path must not be null");
+        return 0;
+    }
+    filepath = rt_string_cstr(path);
+    if (!filepath)
+        return 0;
+    f = fopen(filepath, "r");
+    if (!f) {
+        rt_trap("Mesh3D.FromOBJ: failed to open file");
+        return 0;
+    }
+    positions = (float *)malloc((size_t)cap_p * 3u * sizeof(float));
+    normals = (float *)malloc((size_t)cap_n * 3u * sizeof(float));
+    texcoords = (float *)malloc((size_t)cap_t * 2u * sizeof(float));
+    current_material = obj_copy_directive_value("");
+    if (!positions || !normals || !texcoords || !current_material) {
+        parse_failed = 1;
+        goto done_reading;
+    }
+
+    while ((line_status = mesh3d_read_text_line(f, &line, &line_cap, MESH3D_OBJ_MAX_LINE_BYTES)) >
+           0) {
+        const char *p = line;
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (*p == '#' || *p == '\n' || *p == '\r' || *p == '\0')
+            continue;
+        if (p[0] == 'v' && p[1] == ' ') {
+            double x, y, z;
+            p += 2;
+            if (cnt_p >= cap_p && !obj_grow_float_array(&positions, &cap_p, 3)) {
+                parse_failed = 1;
+                break;
+            }
+            if (!obj_parse_double(&p, &x) || !obj_parse_double(&p, &y) ||
+                !obj_parse_double(&p, &z) || !mesh_value_fits_float(x) ||
+                !mesh_value_fits_float(y) || !mesh_value_fits_float(z)) {
+                parse_failed = 1;
+                break;
+            }
+            positions[cnt_p * 3 + 0] = (float)x;
+            positions[cnt_p * 3 + 1] = (float)y;
+            positions[cnt_p * 3 + 2] = (float)z;
+            cnt_p++;
+        } else if (p[0] == 'v' && p[1] == 'n' && p[2] == ' ') {
+            double x, y, z;
+            p += 3;
+            if (cnt_n >= cap_n && !obj_grow_float_array(&normals, &cap_n, 3)) {
+                parse_failed = 1;
+                break;
+            }
+            if (!obj_parse_double(&p, &x) || !obj_parse_double(&p, &y) ||
+                !obj_parse_double(&p, &z) || !mesh_value_fits_float(x) ||
+                !mesh_value_fits_float(y) || !mesh_value_fits_float(z)) {
+                parse_failed = 1;
+                break;
+            }
+            normals[cnt_n * 3 + 0] = (float)x;
+            normals[cnt_n * 3 + 1] = (float)y;
+            normals[cnt_n * 3 + 2] = (float)z;
+            cnt_n++;
+        } else if (p[0] == 'v' && p[1] == 't' && p[2] == ' ') {
+            double u, v;
+            p += 3;
+            if (cnt_t >= cap_t && !obj_grow_float_array(&texcoords, &cap_t, 2)) {
+                parse_failed = 1;
+                break;
+            }
+            if (!obj_parse_double(&p, &u) || !obj_parse_double(&p, &v) ||
+                !mesh_value_fits_float(u) || !mesh_value_fits_float(v)) {
+                parse_failed = 1;
+                break;
+            }
+            texcoords[cnt_t * 2 + 0] = (float)u;
+            texcoords[cnt_t * 2 + 1] = (float)v;
+            cnt_t++;
+        } else if (strncmp(p, "usemtl ", 7) == 0) {
+            char *next = obj_copy_directive_value(p + 7);
+            if (!next) {
+                parse_failed = 1;
+                break;
+            }
+            free(current_material);
+            current_material = next;
+        } else if (p[0] == 'f' && p[1] == ' ') {
+            size_t face_capacity = 8;
+            obj_face_vert_t face_stack[8];
+            uint32_t mesh_indices_stack[8];
+            obj_face_vert_t *face = face_stack;
+            uint32_t *mesh_indices = mesh_indices_stack;
+            int face_count = 0;
+            obj_group_builder_t *group = NULL;
+            p += 2;
+            while (*p && *p != '\n' && *p != '\r') {
+                while (*p == ' ' || *p == '\t')
+                    p++;
+                if (!*p || *p == '\n' || *p == '\r' || *p == '#')
+                    break;
+                if (face_count >= MESH3D_OBJ_MAX_FACE_VERTS) {
+                    parse_failed = 1;
+                    break;
+                }
+                if ((size_t)face_count >= face_capacity) {
+                    size_t new_capacity;
+                    obj_face_vert_t *new_face;
+                    if (face_capacity > SIZE_MAX / 2u ||
+                        face_capacity * 2u > SIZE_MAX / sizeof(*face)) {
+                        parse_failed = 1;
+                        break;
+                    }
+                    new_capacity = face_capacity * 2u;
+                    new_face = (obj_face_vert_t *)malloc(new_capacity * sizeof(*new_face));
+                    if (!new_face) {
+                        parse_failed = 1;
+                        break;
+                    }
+                    memcpy(new_face, face, (size_t)face_count * sizeof(*face));
+                    if (face != face_stack)
+                        free(face);
+                    face = new_face;
+                    face_capacity = new_capacity;
+                }
+                {
+                    const char *before = p;
+                    if (!obj_parse_face_vert(&p,
+                                             &face[face_count].vi,
+                                             &face[face_count].ti,
+                                             &face[face_count].ni) ||
+                        p == before || face[face_count].vi == 0) {
+                        parse_failed = 1;
+                        break;
+                    }
+                }
+                face_count++;
+            }
+            if (!parse_failed && face_count >= 3) {
+                if (face_count > (int)(sizeof(mesh_indices_stack) / sizeof(mesh_indices_stack[0]))) {
+                    mesh_indices = (uint32_t *)malloc((size_t)face_count * sizeof(uint32_t));
+                    if (!mesh_indices)
+                        parse_failed = 1;
+                }
+                if (!parse_failed &&
+                    !obj_group_find_or_create(&groups,
+                                              &group_count,
+                                              &group_capacity,
+                                              current_material,
+                                              &group)) {
+                    parse_failed = 1;
+                }
+                for (int fi = 0; !parse_failed && fi < face_count; fi++) {
+                    int64_t vi = face[fi].vi;
+                    int64_t ti = face[fi].ti;
+                    int64_t ni = face[fi].ni;
+                    if (!obj_resolve_index(vi, cnt_p, 0, &vi) ||
+                        !obj_resolve_index(ti, cnt_t, 1, &ti) ||
+                        !obj_resolve_index(ni, cnt_n, 1, &ni) ||
+                        !obj_get_or_add_mesh_vertex(group->group.mesh,
+                                                    &group->vertex_cache,
+                                                    positions,
+                                                    cnt_p,
+                                                    normals,
+                                                    cnt_n,
+                                                    texcoords,
+                                                    cnt_t,
+                                                    vi,
+                                                    ti,
+                                                    ni,
+                                                    &mesh_indices[fi])) {
+                        parse_failed = 1;
+                        break;
+                    }
+                    if (ni == 0)
+                        group->missing_normals = 1;
+                }
+                if (!parse_failed && !obj_triangulate_face(group->group.mesh, mesh_indices, face_count))
+                    parse_failed = 1;
+            }
+            if (face != face_stack)
+                free(face);
+            if (mesh_indices != mesh_indices_stack)
+                free(mesh_indices);
+            if (parse_failed)
+                break;
+        }
+    }
+    if (line_status == -2) {
+        parse_failed = 1;
+        line_too_long = 1;
+    } else if (line_status < 0) {
+        parse_failed = 1;
+    }
+
+done_reading:
+    fclose(f);
+    free(line);
+    free(current_material);
+    free(positions);
+    free(normals);
+    free(texcoords);
+
+    for (int32_t i = 0; i < group_count; i++) {
+        rt_mesh3d *mesh = (rt_mesh3d *)groups[i].group.mesh;
+        if (!mesh)
+            continue;
+        rt_mesh3d_end_geometry_batch(mesh);
+        if (mesh->build_failed || mesh->index_count < 3u)
+            parse_failed = 1;
+        if (!parse_failed && cnt_n == 0 && mesh->vertex_count > 0)
+            rt_mesh3d_recalc_normals(mesh);
+        else if (!parse_failed && groups[i].missing_normals && mesh->vertex_count > 0)
+            mesh3d_fill_missing_normals(mesh);
+    }
+    if (parse_failed || group_count <= 0) {
+        obj_group_builders_free(groups, group_count);
+        rt_trap(line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
+                              : "Mesh3D.FromOBJ: invalid or unsupported geometry");
+        return 0;
+    }
+    if (!obj_groups_transfer(groups, group_count, out_groups, out_count)) {
+        obj_group_builders_free(groups, group_count);
+        rt_trap("Mesh3D.FromOBJ: group allocation failed");
+        return 0;
+    }
+    return 1;
 }
 
 //=============================================================================

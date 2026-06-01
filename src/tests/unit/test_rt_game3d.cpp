@@ -1914,6 +1914,54 @@ static bool test_phase4_assets3d_model_templates() {
     EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(inst)),
                   1,
                   "ModelTemplate.instantiate clones the model root subtree");
+    EXPECT_EQ_INT(rt_game3d_model_template_get_scene_count(tpl1),
+                  1,
+                  "ModelTemplate exposes the synthesized default scene for mesh-only glTF assets");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_model_template_get_scene_name(tpl1, 0)),
+                            "default") == 0,
+                "ModelTemplate exposes synthesized default scene names");
+    EXPECT_EQ_INT(rt_game3d_model_template_get_camera_count(tpl1, 0),
+                  0,
+                  "ModelTemplate reports zero cameras for camera-less scenes");
+    EXPECT_TRUE(rt_game3d_model_template_get_camera(tpl1, 0, 0) == nullptr,
+                "ModelTemplate returns null for missing scene cameras");
+    void *scene_inst = rt_game3d_model_template_instantiate_scene_at(tpl1, 0);
+    EXPECT_TRUE(scene_inst != nullptr, "ModelTemplate.instantiateSceneAt returns an Entity3D");
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(scene_inst)),
+                  1,
+                  "ModelTemplate.instantiateSceneAt clones selected scene roots");
+    EXPECT_TRUE(rt_game3d_model_template_instantiate_scene_at(tpl1, 1) == nullptr,
+                "ModelTemplate.instantiateSceneAt rejects invalid scene indices");
+
+    const char *camera_template_path = "/tmp/viper_game3d_template_camera_scene.gltf";
+    const char *camera_gltf = "{"
+                              "\"asset\":{\"version\":\"2.0\"},"
+                              "\"cameras\":[{\"type\":\"perspective\",\"perspective\":{"
+                              "\"yfov\":1.0,\"znear\":0.1,\"zfar\":10.0}}],"
+                              "\"nodes\":[{\"name\":\"CameraNode\",\"camera\":0}],"
+                              "\"scenes\":[{\"name\":\"CameraScene\",\"nodes\":[0]}],"
+                              "\"scene\":0"
+                              "}";
+    EXPECT_TRUE(write_text_file(camera_template_path, camera_gltf),
+                "camera ModelTemplate fixture can be written");
+    void *camera_tpl = rt_game3d_assets_load_model_template(rt_const_cstr(camera_template_path));
+    EXPECT_TRUE(camera_tpl != nullptr, "LoadModelTemplate parses camera-only glTF scenes");
+    EXPECT_EQ_INT(rt_game3d_model_template_get_scene_count(camera_tpl),
+                  1,
+                  "ModelTemplate exposes camera-only scene count");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_model_template_get_scene_name(camera_tpl, 0)),
+                            "CameraScene") == 0,
+                "ModelTemplate preserves imported camera scene names");
+    EXPECT_EQ_INT(rt_game3d_model_template_get_camera_count(camera_tpl, 0),
+                  1,
+                  "ModelTemplate exposes imported scene cameras");
+    EXPECT_TRUE(rt_game3d_model_template_get_camera(camera_tpl, 0, 0) != nullptr,
+                "ModelTemplate.GetCamera returns imported Camera3D handles");
+    void *camera_scene_inst = rt_game3d_model_template_instantiate_scene_at(camera_tpl, 0);
+    EXPECT_TRUE(camera_scene_inst != nullptr, "ModelTemplate.instantiateSceneAt returns an Entity3D");
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(camera_scene_inst)),
+                  1,
+                  "ModelTemplate.instantiateSceneAt clones selected scene roots");
 
     void *asset_tpl = rt_game3d_assets_load_model_template_asset(path);
     EXPECT_TRUE(asset_tpl != nullptr, "LoadModelTemplateAsset returns a template");

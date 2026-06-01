@@ -298,6 +298,10 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/audio/rt_sound3d.c
         graphics/3d/audio/rt_sound3d_objects.c
         graphics/3d/physics/rt_physics3d.c
+        graphics/3d/physics/rt_physics3d_character.c
+        graphics/3d/physics/rt_physics3d_collision.c
+        graphics/3d/physics/rt_physics3d_query.c
+        graphics/3d/physics/rt_physics3d_solver.c
         graphics/3d/physics/rt_joints3d.c
         graphics/3d/scene/rt_transform3d.c
         graphics/3d/nav/rt_path3d.c

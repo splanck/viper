@@ -717,8 +717,18 @@ void *rt_game3d_model_template_get_model(void *model_template);
 rt_string rt_game3d_model_template_get_path(void *model_template);
 /// @brief True if the template was loaded from a packed asset (not the filesystem).
 int8_t rt_game3d_model_template_get_is_asset(void *model_template);
+/// @brief Number of scenes addressable from the underlying model.
+int64_t rt_game3d_model_template_get_scene_count(void *model_template);
+/// @brief Name of the imported scene at @p index, or empty when out of range.
+rt_string rt_game3d_model_template_get_scene_name(void *model_template, int64_t index);
+/// @brief Number of imported cameras in @p scene_index.
+int64_t rt_game3d_model_template_get_camera_count(void *model_template, int64_t scene_index);
+/// @brief Get an imported camera from @p scene_index.
+void *rt_game3d_model_template_get_camera(void *model_template, int64_t scene_index, int64_t index);
 /// @brief Instantiate a fresh entity from the template.
 void *rt_game3d_model_template_instantiate(void *model_template);
+/// @brief Instantiate a fresh entity from a specific imported scene.
+void *rt_game3d_model_template_instantiate_scene_at(void *model_template, int64_t index);
 
 //=========================================================================
 // Environment / EnvHandle — environment presets and builder (Viper.Game3D.Environment / EnvHandle)

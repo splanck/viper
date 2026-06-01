@@ -2731,6 +2731,61 @@ static void test_gltf_rejects_unsafe_external_buffer_paths() {
                 "GLTF.Load rejects external resource paths outside the asset directory");
 }
 
+static void test_gltf_accepts_dot_relative_external_buffer_paths() {
+    const char *gltf_path = "/tmp/viper_gltf_dot_relative_uri.gltf";
+    const char *bin_path = "/tmp/viper_gltf_dot_relative_uri.bin";
+    const float scalar = 1.0f;
+    FILE *bin = std::fopen(bin_path, "wb");
+    EXPECT_TRUE(bin != nullptr, "Dot-relative glTF buffer fixture can be created");
+    if (!bin)
+        return;
+    std::fwrite(&scalar, 1, sizeof(scalar), bin);
+    std::fclose(bin);
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"./viper_gltf_dot_relative_uri.bin\",\"byteLength\":4}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Dot-relative URI glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(gltf_path)) != nullptr,
+                "GLTF.Load accepts safe ./ external resource paths");
+}
+
+static void test_gltf_rejects_percent_decoded_nul_external_paths() {
+    const char *gltf_path = "/tmp/viper_gltf_nul_uri.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"textures/%00.bin\",\"byteLength\":4}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "NUL-URI glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(gltf_path)) == nullptr,
+                "GLTF.Load rejects URI paths containing percent-decoded NUL bytes");
+}
+
+static void test_gltf_material_without_pbr_uses_pbr_defaults() {
+    const char *gltf_path = "/tmp/viper_gltf_material_no_pbr.gltf";
+    std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},\"materials\":[{}]}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "No-PBR material glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses material objects without PBR blocks");
+    if (!asset)
+        return;
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mat != nullptr, "No-PBR glTF material is exposed");
+    if (!mat)
+        return;
+    EXPECT_TRUE(mat->workflow == 1, "No-PBR glTF materials use Material3D's PBR workflow");
+    EXPECT_NEAR(mat->metallic, 1.0, 0.001, "No-PBR glTF material default metallic is 1");
+    EXPECT_NEAR(mat->roughness, 1.0, 0.001, "No-PBR glTF material default roughness is 1");
+}
+
 static void test_gltf_assigns_default_material_to_materialless_primitives() {
     const char *gltf_path = "/tmp/viper_gltf_default_material.gltf";
     std::vector<uint8_t> gltf_buffer;
@@ -3113,13 +3168,7 @@ static void test_gltf_rejects_invalid_scene_graph_links() {
                 "Invalid scene-graph glTF fixture can be created");
 
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
-    EXPECT_TRUE(asset != nullptr, "GLTF.Load keeps resources while rejecting cyclic node graphs");
-    if (!asset)
-        return;
-    EXPECT_TRUE(rt_gltf_get_scene_root(asset) == nullptr,
-                "GLTF.Load does not build a scene root for cyclic node graphs");
-    EXPECT_TRUE(rt_gltf_node_count(asset) == 0,
-                "GLTF.Load reports zero imported nodes for invalid scene graphs");
+    EXPECT_TRUE(asset == nullptr, "GLTF.Load rejects cyclic node graphs instead of returning an empty scene");
 }
 
 int main() {
@@ -3152,6 +3201,9 @@ int main() {
     test_gltf_rejects_malformed_glb_headers();
     test_gltf_rejects_corrupt_required_image_payload();
     test_gltf_rejects_unsafe_external_buffer_paths();
+    test_gltf_accepts_dot_relative_external_buffer_paths();
+    test_gltf_rejects_percent_decoded_nul_external_paths();
+    test_gltf_material_without_pbr_uses_pbr_defaults();
     test_gltf_assigns_default_material_to_materialless_primitives();
     test_gltf_uses_texture_texcoord_and_transform();
     test_gltf_imports_material_extensions_supported_by_material3d();

@@ -706,6 +706,37 @@ static void test_mesh_obj_loader_flattens_material_groups() {
     PASS();
 }
 
+static void test_mesh_obj_loader_fills_only_missing_normals() {
+    TEST("Mesh3D.FromOBJ — preserves authored normals while filling missing normals");
+    const char *path = "/tmp/viper_obj_mixed_normals_test.obj";
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs("v 0 0 0\n"
+          "v 1 0 0\n"
+          "v 0 1 0\n"
+          "v -1 0 0\n"
+          "vn 0 0 -1\n"
+          "f 1//1 2//1 3//1\n"
+          "f 1 3 4\n",
+          f);
+    fclose(f);
+
+    rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_from_obj(obj_path);
+    assert(mesh);
+    bool saw_authored_negative = false;
+    bool saw_generated_positive = false;
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        if (mesh->vertices[i].normal[2] < -0.9f)
+            saw_authored_negative = true;
+        if (mesh->vertices[i].normal[2] > 0.9f)
+            saw_generated_positive = true;
+    }
+    EXPECT_TRUE(saw_authored_negative, "authored normals must not be overwritten");
+    EXPECT_TRUE(saw_generated_positive, "missing normals should be generated");
+    PASS();
+}
+
 static void test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons() {
     TEST("Mesh3D.FromOBJ — deduplicates vertices and triangulates n-gons");
     const char *path = "/tmp/viper_obj_dedup_ngon_test.obj";
@@ -5240,6 +5271,7 @@ int main() {
     test_mesh_recalc_normals_uses_double_accumulation();
     test_mesh_obj_loader();
     test_mesh_obj_loader_flattens_material_groups();
+    test_mesh_obj_loader_fills_only_missing_normals();
     test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons();
     test_mesh_obj_loader_ear_clips_concave_ngons();
     test_mesh_obj_loader_rejects_invalid_indices();

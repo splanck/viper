@@ -567,7 +567,7 @@ Ray queries normalize non-zero directions internally. Zero-length or non-finite 
 
 ### Viper.Graphics3D.Model3D
 
-High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, and geometry-only `.obj` assets.
+High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` assets. OBJ imports preserve safe relative `mtllib`/`usemtl` material groups as separate template nodes; STL imports synthesize one default-material mesh node.
 
 #### Scene and Camera Methods
 
@@ -579,7 +579,7 @@ High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, and ge
 | `GetCamera(model, sceneIndex, index)` | `Object(Object, Integer, Integer)` | Imported `Camera3D`, or `null` when absent/out of range |
 | `InstantiateSceneAt(model, index)` | `Object(Object, Integer)` | Clone a scene by index as a fresh `Scene3D` |
 
-glTF cameras are imported as standalone `Camera3D` handles with the node's world transform applied. Cached `Model3D` assets remain immutable: index `0` is the active/default scene, secondary glTF scene roots follow it, and invalid scene indices return zero/null rather than changing shared loader state.
+glTF cameras are imported as standalone `Camera3D` handles with the node's world transform applied. Cached `Model3D` assets remain immutable: index `0` is the active/default scene, secondary glTF scene roots follow it, and invalid scene indices return zero/null rather than changing shared loader state. FBX imports preserve authored model hierarchy where available and split polygon material assignments into instantiable material-specific mesh nodes.
 
 ---
 

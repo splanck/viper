@@ -25,6 +25,7 @@
 #include "rt_heap.h"
 #include "rt_input.h"
 #include "rt_postfx3d.h"
+#include "rt_string.h"
 #include "vgfx.h"
 #include "vgfx3d_frustum.h"
 #include <float.h>
@@ -238,6 +239,14 @@ void rt_camera3d_update_shake_for_frame(void *cam, double dt);
 
 /// @brief Internal Mesh3D tangent generator for already-validated mesh storage.
 void rt_mesh3d_calc_tangents_impl(rt_mesh3d *mesh);
+
+typedef struct {
+    char *material_name;
+    void *mesh;
+} rt_mesh3d_obj_group_t;
+
+int rt_mesh3d_from_obj_groups(rt_string path, rt_mesh3d_obj_group_t **out_groups, int32_t *out_count);
+void rt_mesh3d_obj_groups_free(rt_mesh3d_obj_group_t *groups, int32_t count);
 
 //=============================================================================
 // Material3D

@@ -342,6 +342,27 @@ bool check_runtime_surface_names() {
         require(contains(runtime_def, "\"Viper.Game3D.Assets3D.LoadModelTemplateAssetAsync\""),
                 "Assets3D.LoadModelTemplateAssetAsync must use Game3D PascalCase factory naming") &&
         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.get_sceneCount\""),
+                 "ModelTemplate.sceneCount getter must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.getSceneName\""),
+                 "ModelTemplate.getSceneName must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.getCameraCount\""),
+                 "ModelTemplate.getCameraCount must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.getCamera\""),
+                 "ModelTemplate.getCamera must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Viper.Game3D.ModelTemplate.instantiateSceneAt\""),
+                 "ModelTemplate.instantiateSceneAt must use Game3D lower/camel naming") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"sceneCount\""),
+                 "ModelTemplate.sceneCount property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"instantiateSceneAt\""),
+                 "ModelTemplate.instantiateSceneAt method missing") &&
+         ok;
     ok = require(contains(runtime_def, "\"Viper.Game3D.Assets3D.SetResidencyBudget\""),
                  "Assets3D.SetResidencyBudget must use Game3D PascalCase method naming") &&
          ok;

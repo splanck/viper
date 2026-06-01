@@ -2540,6 +2540,40 @@ int8_t rt_game3d_model_template_get_is_asset(void *obj) {
     return model_template ? model_template->asset_path : 0;
 }
 
+/// @brief Number of immutable scenes on the underlying Model3D. See header.
+int64_t rt_game3d_model_template_get_scene_count(void *obj) {
+    rt_game3d_model_template *model_template =
+        game3d_model_template_checked(obj, "Game3D.ModelTemplate.get_sceneCount: invalid template");
+    return model_template && model_template->model ? rt_model3d_get_scene_count(model_template->model)
+                                                   : 0;
+}
+
+/// @brief Imported scene name lookup. See header.
+rt_string rt_game3d_model_template_get_scene_name(void *obj, int64_t index) {
+    rt_game3d_model_template *model_template =
+        game3d_model_template_checked(obj, "Game3D.ModelTemplate.getSceneName: invalid template");
+    return model_template && model_template->model ? rt_model3d_get_scene_name(model_template->model, index)
+                                                   : rt_const_cstr("");
+}
+
+/// @brief Imported camera count per scene. See header.
+int64_t rt_game3d_model_template_get_camera_count(void *obj, int64_t scene_index) {
+    rt_game3d_model_template *model_template =
+        game3d_model_template_checked(obj, "Game3D.ModelTemplate.getCameraCount: invalid template");
+    return model_template && model_template->model
+               ? rt_model3d_get_camera_count(model_template->model, scene_index)
+               : 0;
+}
+
+/// @brief Imported camera lookup per scene. See header.
+void *rt_game3d_model_template_get_camera(void *obj, int64_t scene_index, int64_t index) {
+    rt_game3d_model_template *model_template =
+        game3d_model_template_checked(obj, "Game3D.ModelTemplate.getCamera: invalid template");
+    return model_template && model_template->model
+               ? rt_model3d_get_camera(model_template->model, scene_index, index)
+               : NULL;
+}
+
 /// @brief Instantiate a fresh entity by cloning the template's model. See header.
 void *rt_game3d_model_template_instantiate(void *obj) {
     rt_game3d_model_template *model_template =
@@ -2549,6 +2583,21 @@ void *rt_game3d_model_template_instantiate(void *obj) {
     void *root = rt_model3d_instantiate(model_template->model);
     void *entity = game3d_entity_from_model_root(root);
     game3d_release_ref(&root);
+    return entity;
+}
+
+/// @brief Instantiate a specific imported scene and wrap its root as a Game3D entity.
+void *rt_game3d_model_template_instantiate_scene_at(void *obj, int64_t index) {
+    rt_game3d_model_template *model_template = game3d_model_template_checked(
+        obj, "Game3D.ModelTemplate.instantiateSceneAt: invalid template");
+    if (!model_template || !model_template->model)
+        return NULL;
+    void *scene = rt_model3d_instantiate_scene_at(model_template->model, index);
+    if (!scene)
+        return NULL;
+    rt_scene3d *scene3d = (rt_scene3d *)scene;
+    void *entity = game3d_entity_from_model_root(scene3d->root);
+    game3d_release_ref(&scene);
     return entity;
 }
 

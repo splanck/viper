@@ -1347,6 +1347,692 @@ static inline float pbr_geometry_smith(float ndv, float ndl, float roughness) {
     return pbr_geometry_schlick_ggx(ndv, roughness) * pbr_geometry_schlick_ggx(ndl, roughness);
 }
 
+/// @brief Per-triangle invariants shared by every fragment of one raster_triangle
+///   call. Built once before the pixel loop; sw_shade_fragment reads it per pixel
+///   so the rasterizer's inner loop stays a thin barycentric/depth-test skeleton.
+typedef struct {
+    uint8_t *pixels;
+    float *zbuf;
+    int32_t stride;
+    const screen_vert_t *v0;
+    const screen_vert_t *v1;
+    const screen_vert_t *v2;
+    const sw_pixels_view *tex;
+    const sw_pixels_view *emissive_tex;
+    const float *emissive_color;
+    const sw_pixels_view *normal_map;
+    const sw_pixels_view *specular_map;
+    const sw_pixels_view *metallic_roughness_map;
+    const sw_pixels_view *ao_map;
+    const vgfx3d_draw_cmd_t *cmd;
+    const vgfx3d_light_params_t *lights;
+    int32_t light_count;
+    const float *ambient;
+    const sw_context_t *fog_ctx;
+    int depth_disabled;
+    int have_splat;
+    const sw_pixels_view *splat_view;
+    const sw_pixels_view *layer_views;
+} sw_fragment_ctx;
+
+/// @brief Shade and write one fragment that already passed the in-triangle and
+///   depth tests. Performs base-color/splat/emissive sampling, normal mapping,
+///   Phong or PBR lighting with shadows, environment reflection, distance fog,
+///   and alpha-mode-aware blending into the framebuffer.
+/// @param fc Per-triangle invariants (see sw_fragment_ctx).
+/// @param x,y Pixel coordinates; idx the z-buffer index; z the interpolated depth.
+/// @param b0,b1,b2 Barycentric weights of the pixel within the triangle.
+/// @return 1 if a pixel was written (opaque or blended), 0 if discarded.
+static int sw_shade_fragment(
+    const sw_fragment_ctx *fc, int x, int y, int idx, float z, float b0, float b1, float b2) {
+    uint8_t *pixels = fc->pixels;
+    float *zbuf = fc->zbuf;
+    int32_t stride = fc->stride;
+    const screen_vert_t *v0 = fc->v0;
+    const screen_vert_t *v1 = fc->v1;
+    const screen_vert_t *v2 = fc->v2;
+    const sw_pixels_view *tex = fc->tex;
+    const sw_pixels_view *emissive_tex = fc->emissive_tex;
+    const float *emissive_color = fc->emissive_color;
+    const sw_pixels_view *normal_map = fc->normal_map;
+    const sw_pixels_view *specular_map = fc->specular_map;
+    const sw_pixels_view *metallic_roughness_map = fc->metallic_roughness_map;
+    const sw_pixels_view *ao_map = fc->ao_map;
+    const vgfx3d_draw_cmd_t *cmd = fc->cmd;
+    const vgfx3d_light_params_t *lights = fc->lights;
+    int32_t light_count = fc->light_count;
+    const float *ambient = fc->ambient;
+    const sw_context_t *fog_ctx = fc->fog_ctx;
+    int depth_disabled = fc->depth_disabled;
+    int have_splat = fc->have_splat;
+    const sw_pixels_view *layer_views = fc->layer_views;
+
+    float fr = b0 * v0->r + b1 * v1->r + b2 * v2->r;
+    float fg = b0 * v0->g + b1 * v1->g + b2 * v2->g;
+    float fb_c = b0 * v0->b + b1 * v1->b + b2 * v2->b;
+    float material_r = fr;
+    float material_g = fg;
+    float material_b = fb_c;
+    float tex_alpha = 1.0f; /* per-texel alpha (for foliage, fences) */
+    if (tex) {
+        float u;
+        float vc;
+        sw_interpolate_uv_for_slot(
+            cmd, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR, b0, b1, b2, v0, v1, v2, &u, &vc);
+        {
+            float tr, tg, tb, ta;
+            if (cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)
+                sample_texture_slot_srgb_ex(
+                    tex, cmd, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR, u, vc, &tr, &tg, &tb, &ta);
+            else
+                sample_texture_slot_ex(
+                    tex, cmd, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR, u, vc, &tr, &tg, &tb, &ta);
+            fr *= tr;
+            fg *= tg;
+            fb_c *= tb;
+            tex_alpha = ta;
+        }
+    }
+    /* Terrain splat: replace diffuse with per-pixel layer blend.
+     * Views were resolved once per triangle (splat_view /
+     * layer_views) above. */
+    if (have_splat) {
+        float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
+        if (fabsf(iw) > 1e-7f) {
+            float sp_u = (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
+            float sp_v = (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
+            {
+                float sr, sg, sb, sa;
+                sample_texture(fc->splat_view, sp_u, sp_v, &sr, &sg, &sb, &sa);
+                float w[4] = {sr, sg, sb, sa};
+                float wsum = w[0] + w[1] + w[2] + w[3];
+                if (wsum > 0.001f) {
+                    for (int wi = 0; wi < 4; wi++)
+                        w[wi] /= wsum;
+                } else {
+                    w[0] = 1.0f;
+                    w[1] = w[2] = w[3] = 0.0f;
+                }
+                float blr = 0, blg = 0, blb = 0;
+                for (int L = 0; L < 4; L++) {
+                    if (w[L] < 0.001f)
+                        continue;
+                    float lu = sp_u * cmd->splat_layer_scales[L];
+                    float lvc = sp_v * cmd->splat_layer_scales[L];
+                    float lr, lg2, lb, la;
+                    sample_texture(&layer_views[L], lu, lvc, &lr, &lg2, &lb, &la);
+                    blr += lr * w[L];
+                    blg += lg2 * w[L];
+                    blb += lb * w[L];
+                }
+                fr = blr * material_r;
+                fg = blg * material_g;
+                fb_c = blb * material_b;
+            }
+        }
+    }
+
+    /* Emissive map sampling (legacy path only; PBR handles it in the lighting
+     * branch so emissiveIntensity can scale both the color and the map.) */
+    if (emissive_tex && !(cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)) {
+        {
+            float u;
+            float vc;
+            float er, eg, eb, ea;
+            sw_interpolate_uv_for_slot(
+                cmd, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE, b0, b1, b2, v0, v1, v2, &u, &vc);
+            sample_texture_slot_srgb_ex(
+                emissive_tex, cmd, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE, u, vc, &er, &eg, &eb, &ea);
+            float emissive_scale = (cmd ? cmd->emissive_intensity : 1.0f);
+            fr += er * emissive_color[0] * emissive_scale;
+            fg += eg * emissive_color[1] * emissive_scale;
+            fb_c += eb * emissive_color[2] * emissive_scale;
+        }
+    }
+
+    /* Per-pixel lighting for PBR or normal-mapped legacy materials. */
+    float pixel_ndv = 1.0f;
+    /* Captured perturbed world normal; reused by the env-reflection
+     * pass below to avoid recomputing the TBN a second time. */
+    float refl_world_normal[3] = {0.0f, 0.0f, 0.0f};
+    int refl_world_normal_valid = 0;
+    if (cmd && !cmd->unlit && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map)) {
+        float pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
+        if (fabsf(pp_iw) > 1e-7f) {
+            float normal_u = 0.0f;
+            float normal_v = 0.0f;
+            float specular_u = 0.0f;
+            float specular_v = 0.0f;
+            float emissive_u = 0.0f;
+            float emissive_v = 0.0f;
+            float mr_u = 0.0f;
+            float mr_v = 0.0f;
+            float ao_u = 0.0f;
+            float ao_v = 0.0f;
+            sw_interpolate_uv_for_slot(cmd,
+                                       RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
+                                       b0,
+                                       b1,
+                                       b2,
+                                       v0,
+                                       v1,
+                                       v2,
+                                       &normal_u,
+                                       &normal_v);
+            if (specular_map)
+                sw_interpolate_uv_for_slot(cmd,
+                                           RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
+                                           b0,
+                                           b1,
+                                           b2,
+                                           v0,
+                                           v1,
+                                           v2,
+                                           &specular_u,
+                                           &specular_v);
+            if (emissive_tex)
+                sw_interpolate_uv_for_slot(cmd,
+                                           RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
+                                           b0,
+                                           b1,
+                                           b2,
+                                           v0,
+                                           v1,
+                                           v2,
+                                           &emissive_u,
+                                           &emissive_v);
+            if (metallic_roughness_map)
+                sw_interpolate_uv_for_slot(cmd,
+                                           RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                                           b0,
+                                           b1,
+                                           b2,
+                                           v0,
+                                           v1,
+                                           v2,
+                                           &mr_u,
+                                           &mr_v);
+            if (ao_map)
+                sw_interpolate_uv_for_slot(
+                    cmd, RT_MATERIAL3D_TEXTURE_SLOT_AO, b0, b1, b2, v0, v1, v2, &ao_u, &ao_v);
+
+            /* Interpolate world normal */
+            float pnx = b0 * v0->nx + b1 * v1->nx + b2 * v2->nx;
+            float pny = b0 * v0->ny + b1 * v1->ny + b2 * v2->ny;
+            float pnz = b0 * v0->nz + b1 * v1->nz + b2 * v2->nz;
+            normalize3f(&pnx, &pny, &pnz);
+
+            /* Interpolate tangent + build TBN */
+            float ptx = b0 * v0->tx + b1 * v1->tx + b2 * v2->tx;
+            float pty = b0 * v0->ty + b1 * v1->ty + b2 * v2->ty;
+            float ptz = b0 * v0->tz + b1 * v1->tz + b2 * v2->tz;
+            float ptw = b0 * v0->tw + b1 * v1->tw + b2 * v2->tw;
+            float tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
+
+            if (normal_map && tlen > 1e-7f) {
+                ptx /= tlen;
+                pty /= tlen;
+                ptz /= tlen;
+                /* Gram-Schmidt orthogonalize T against N */
+                float tdotn = ptx * pnx + pty * pny + ptz * pnz;
+                ptx -= tdotn * pnx;
+                pty -= tdotn * pny;
+                ptz -= tdotn * pnz;
+                tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
+                if (tlen > 1e-7f) {
+                    ptx /= tlen;
+                    pty /= tlen;
+                    ptz /= tlen;
+                }
+
+                /* Sample normal map: [0,1] → [-1,1] */
+                float tnr, tng, tnb, tna;
+                sample_texture_slot_ex(normal_map,
+                                       cmd,
+                                       RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
+                                       normal_u,
+                                       normal_v,
+                                       &tnr,
+                                       &tng,
+                                       &tnb,
+                                       &tna);
+                float map_x = (tnr * 2.0f - 1.0f) * cmd->normal_scale;
+                float map_y = (tng * 2.0f - 1.0f) * cmd->normal_scale;
+                float map_z = tnb * 2.0f - 1.0f;
+
+                /* Bitangent = sign * (N × T) */
+                float tangent_sign = ptw < 0.0f ? -1.0f : 1.0f;
+                float bbx = (pny * ptz - pnz * pty) * tangent_sign;
+                float bby = (pnz * ptx - pnx * ptz) * tangent_sign;
+                float bbz = (pnx * pty - pny * ptx) * tangent_sign;
+
+                /* TBN transform: tangent-space → world-space */
+                float wn_x = ptx * map_x + bbx * map_y + pnx * map_z;
+                float wn_y = pty * map_x + bby * map_y + pny * map_z;
+                float wn_z = ptz * map_x + bbz * map_y + pnz * map_z;
+                float wlen = sqrtf(wn_x * wn_x + wn_y * wn_y + wn_z * wn_z);
+                if (wlen > 1e-7f) {
+                    pnx = wn_x / wlen;
+                    pny = wn_y / wlen;
+                    pnz = wn_z / wlen;
+                }
+            }
+            /* else: degenerate tangent → use unperturbed normal */
+
+            /* Capture the final shading normal so the env-reflection
+             * pass can reuse it instead of recomputing the TBN. */
+            refl_world_normal[0] = pnx;
+            refl_world_normal[1] = pny;
+            refl_world_normal[2] = pnz;
+            refl_world_normal_valid = 1;
+
+            /* Per-pixel Blinn-Phong with perturbed normal */
+            float wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
+            float wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
+            float wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
+
+            float vdx;
+            float vdy;
+            float vdz;
+            sw_compute_view_vector(fog_ctx, wx, wy, wz, &vdx, &vdy, &vdz);
+            pixel_ndv = clamp01f(dot3f(pnx, pny, pnz, vdx, vdy, vdz));
+
+            if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR) {
+                float base_r = fr;
+                float base_g = fg;
+                float base_b = fb_c;
+                float metallic = clamp01f(cmd->metallic);
+                float roughness = clamp01f(cmd->roughness);
+                float ao = clamp01f(cmd->ao);
+                if (metallic_roughness_map) {
+                    float mrr, mrg, mrb, mra;
+                    sample_texture_slot_ex(metallic_roughness_map,
+                                           cmd,
+                                           RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+                                           mr_u,
+                                           mr_v,
+                                           &mrr,
+                                           &mrg,
+                                           &mrb,
+                                           &mra);
+                    roughness *= mrg;
+                    metallic *= mrb;
+                }
+                if (ao_map) {
+                    float aor, aog, aob, aoa;
+                    sample_texture_slot_ex(ao_map,
+                                           cmd,
+                                           RT_MATERIAL3D_TEXTURE_SLOT_AO,
+                                           ao_u,
+                                           ao_v,
+                                           &aor,
+                                           &aog,
+                                           &aob,
+                                           &aoa);
+                    ao *= aor;
+                }
+                metallic = clamp01f(metallic);
+                roughness = roughness < 0.045f ? 0.045f : clamp01f(roughness);
+                ao = clamp01f(ao);
+
+                float ndv = pixel_ndv;
+                if (ndv < 0.001f)
+                    ndv = 0.001f;
+
+                float lit_r = (ambient ? ambient[0] : 0.0f) * base_r * ao;
+                float lit_g = (ambient ? ambient[1] : 0.0f) * base_g * ao;
+                float lit_b = (ambient ? ambient[2] : 0.0f) * base_b * ao;
+
+                for (int32_t li = 0; li < light_count; li++) {
+                    const vgfx3d_light_params_t *lt = &lights[li];
+                    float llx, lly, llz, la = 1.0f;
+
+                    if (lt->type == 0) { /* directional */
+                        llx = -lt->direction[0];
+                        lly = -lt->direction[1];
+                        llz = -lt->direction[2];
+                        normalize3f(&llx, &lly, &llz);
+                    } else if (lt->type == 1) { /* point */
+                        llx = lt->position[0] - wx;
+                        lly = lt->position[1] - wy;
+                        llz = lt->position[2] - wz;
+                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                        if (!isfinite(dist) || dist <= 1e-7f)
+                            continue;
+                        llx /= dist;
+                        lly /= dist;
+                        llz /= dist;
+                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                    } else if (lt->type == 3) { /* spot */
+                        llx = lt->position[0] - wx;
+                        lly = lt->position[1] - wy;
+                        llz = lt->position[2] - wz;
+                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                        if (!isfinite(dist) || dist <= 1e-7f)
+                            continue;
+                        llx /= dist;
+                        lly /= dist;
+                        llz /= dist;
+                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                        float sdx = -lt->direction[0];
+                        float sdy = -lt->direction[1];
+                        float sdz = -lt->direction[2];
+                        normalize3f(&sdx, &sdy, &sdz);
+                        float sd = llx * sdx + lly * sdy + llz * sdz;
+                        if (sd < lt->outer_cos)
+                            la = 0.0f;
+                        else if (sd < lt->inner_cos) {
+                            float cone_range = lt->inner_cos - lt->outer_cos;
+                            if (cone_range <= 1e-6f) {
+                                la = 0.0f;
+                            } else {
+                                float st = (sd - lt->outer_cos) / cone_range;
+                                la *= st * st * (3.0f - 2.0f * st);
+                            }
+                        }
+                    } else { /* ambient */
+                        lit_r += lt->color[0] * lt->intensity * base_r * ao;
+                        lit_g += lt->color[1] * lt->intensity * base_g * ao;
+                        lit_b += lt->color[2] * lt->intensity * base_b * ao;
+                        continue;
+                    }
+
+                    if (lt->type == 0 && lt->shadow_index >= 0) {
+                        int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
+                        la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz);
+                    }
+
+                    float ndl = dot3f(pnx, pny, pnz, llx, lly, llz);
+                    if (ndl <= 0.0f)
+                        continue;
+
+                    float hx = llx + vdx;
+                    float hy = lly + vdy;
+                    float hz = llz + vdz;
+                    normalize3f(&hx, &hy, &hz);
+                    float ndh = clamp01f(dot3f(pnx, pny, pnz, hx, hy, hz));
+                    float vdh = clamp01f(dot3f(vdx, vdy, vdz, hx, hy, hz));
+
+                    float f0_r = 0.04f + (base_r - 0.04f) * metallic;
+                    float f0_g = 0.04f + (base_g - 0.04f) * metallic;
+                    float f0_b = 0.04f + (base_b - 0.04f) * metallic;
+                    float fresnel_w = powf(1.0f - vdh, 5.0f);
+                    float f_r = f0_r + (1.0f - f0_r) * fresnel_w;
+                    float f_g = f0_g + (1.0f - f0_g) * fresnel_w;
+                    float f_b = f0_b + (1.0f - f0_b) * fresnel_w;
+
+                    float d = pbr_distribution_ggx(ndh, roughness);
+                    float g = pbr_geometry_smith(ndv, ndl, roughness);
+                    float spec_denom = 4.0f * ndv * ndl + 1e-4f;
+                    float spec_r = (d * g * f_r) / spec_denom;
+                    float spec_g = (d * g * f_g) / spec_denom;
+                    float spec_b = (d * g * f_b) / spec_denom;
+
+                    const float inv_pi = 0.31830988618f;
+                    float kd_r = (1.0f - f_r) * (1.0f - metallic);
+                    float kd_g = (1.0f - f_g) * (1.0f - metallic);
+                    float kd_b = (1.0f - f_b) * (1.0f - metallic);
+                    float diff_r = kd_r * base_r * inv_pi;
+                    float diff_g = kd_g * base_g * inv_pi;
+                    float diff_b = kd_b * base_b * inv_pi;
+
+                    float radiance_r = lt->color[0] * lt->intensity * la;
+                    float radiance_g = lt->color[1] * lt->intensity * la;
+                    float radiance_b = lt->color[2] * lt->intensity * la;
+                    lit_r += (diff_r + spec_r) * radiance_r * ndl;
+                    lit_g += (diff_g + spec_g) * radiance_g * ndl;
+                    lit_b += (diff_b + spec_b) * radiance_b * ndl;
+                }
+
+                float emissive_r = cmd->emissive_color[0] * cmd->emissive_intensity;
+                float emissive_g = cmd->emissive_color[1] * cmd->emissive_intensity;
+                float emissive_b = cmd->emissive_color[2] * cmd->emissive_intensity;
+                if (emissive_tex) {
+                    float er, eg, eb, ea;
+                    sample_texture_slot_srgb_ex(emissive_tex,
+                                                cmd,
+                                                RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
+                                                emissive_u,
+                                                emissive_v,
+                                                &er,
+                                                &eg,
+                                                &eb,
+                                                &ea);
+                    emissive_r *= er;
+                    emissive_g *= eg;
+                    emissive_b *= eb;
+                }
+                lit_r += emissive_r;
+                lit_g += emissive_g;
+                lit_b += emissive_b;
+
+                if (cmd->shading_model == 1) {
+                    float bands = cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
+                    lit_r = floorf(lit_r * bands) / bands;
+                    lit_g = floorf(lit_g * bands) / bands;
+                    lit_b = floorf(lit_b * bands) / bands;
+                } else if (cmd->shading_model == 5) {
+                    float strength = cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
+                    lit_r += emissive_r * (strength - 1.0f);
+                    lit_g += emissive_g * (strength - 1.0f);
+                    lit_b += emissive_b * (strength - 1.0f);
+                }
+
+                fr = lit_r;
+                fg = lit_g;
+                fb_c = lit_b;
+            } else {
+                /* Ambient */
+                float lit_r = (ambient ? ambient[0] : 0.0f) * fr;
+                float lit_g = (ambient ? ambient[1] : 0.0f) * fg;
+                float lit_b = (ambient ? ambient[2] : 0.0f) * fb_c;
+
+                /* Specular properties (possibly from specular map) */
+                float sp_r = cmd->specular[0];
+                float sp_g = cmd->specular[1];
+                float sp_b = cmd->specular[2];
+                if (specular_map) {
+                    float smr, smg, smb, sma;
+                    sample_texture_slot_ex(specular_map,
+                                           cmd,
+                                           RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
+                                           specular_u,
+                                           specular_v,
+                                           &smr,
+                                           &smg,
+                                           &smb,
+                                           &sma);
+                    sp_r *= smr;
+                    sp_g *= smg;
+                    sp_b *= smb;
+                }
+
+                for (int32_t li = 0; li < light_count; li++) {
+                    const vgfx3d_light_params_t *lt = &lights[li];
+                    float llx, lly, llz, la = 1.0f;
+
+                    if (lt->type == 0) { /* directional */
+                        llx = -lt->direction[0];
+                        lly = -lt->direction[1];
+                        llz = -lt->direction[2];
+                        normalize3f(&llx, &lly, &llz);
+                    } else if (lt->type == 1) { /* point */
+                        llx = lt->position[0] - wx;
+                        lly = lt->position[1] - wy;
+                        llz = lt->position[2] - wz;
+                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                        if (!isfinite(dist) || dist <= 1e-7f)
+                            continue;
+                        llx /= dist;
+                        lly /= dist;
+                        llz /= dist;
+                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                    } else if (lt->type == 3) { /* spot */
+                        llx = lt->position[0] - wx;
+                        lly = lt->position[1] - wy;
+                        llz = lt->position[2] - wz;
+                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
+                        if (!isfinite(dist) || dist <= 1e-7f)
+                            continue;
+                        llx /= dist;
+                        lly /= dist;
+                        llz /= dist;
+                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
+                        float sdx = -lt->direction[0];
+                        float sdy = -lt->direction[1];
+                        float sdz = -lt->direction[2];
+                        normalize3f(&sdx, &sdy, &sdz);
+                        float sd = llx * sdx + lly * sdy + llz * sdz;
+                        if (sd < lt->outer_cos)
+                            la = 0.0f;
+                        else if (sd < lt->inner_cos) {
+                            float cone_range = lt->inner_cos - lt->outer_cos;
+                            if (cone_range <= 1e-6f) {
+                                la = 0.0f;
+                            } else {
+                                float st = (sd - lt->outer_cos) / cone_range;
+                                la *= st * st * (3.0f - 2.0f * st);
+                            }
+                        }
+                    } else { /* ambient */
+                        lit_r += lt->color[0] * lt->intensity * fr;
+                        lit_g += lt->color[1] * lt->intensity * fg;
+                        lit_b += lt->color[2] * lt->intensity * fb_c;
+                        continue;
+                    }
+
+                    if (lt->type == 0 && lt->shadow_index >= 0) {
+                        int32_t shadow_slot = sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
+                        la *= sw_sample_shadow_visibility(fog_ctx, shadow_slot, wx, wy, wz);
+                    }
+
+                    float ndl = pnx * llx + pny * lly + pnz * llz;
+                    if (ndl < 0.0f)
+                        ndl = 0.0f;
+                    float li_i = lt->intensity;
+                    lit_r += lt->color[0] * li_i * ndl * fr * la;
+                    lit_g += lt->color[1] * li_i * ndl * fg * la;
+                    lit_b += lt->color[2] * li_i * ndl * fb_c * la;
+
+                    if (ndl > 0.0f && cmd->shininess > 0.0f) {
+                        float hx = llx + vdx, hy = lly + vdy, hz = llz + vdz;
+                        normalize3f(&hx, &hy, &hz);
+                        float ndh = pnx * hx + pny * hy + pnz * hz;
+                        if (ndh < 0.0f)
+                            ndh = 0.0f;
+                        float spec = powf(ndh, cmd->shininess);
+                        lit_r += lt->color[0] * li_i * spec * sp_r * la;
+                        lit_g += lt->color[1] * li_i * spec * sp_g * la;
+                        lit_b += lt->color[2] * li_i * spec * sp_b * la;
+                    }
+                }
+
+                /* Emissive color base */
+                lit_r += cmd->emissive_color[0] * cmd->emissive_intensity;
+                lit_g += cmd->emissive_color[1] * cmd->emissive_intensity;
+                lit_b += cmd->emissive_color[2] * cmd->emissive_intensity;
+
+                if (cmd->shading_model == 1) {
+                    float bands = cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
+                    lit_r = floorf(lit_r * bands) / bands;
+                    lit_g = floorf(lit_g * bands) / bands;
+                    lit_b = floorf(lit_b * bands) / bands;
+                } else if (cmd->shading_model == 5) {
+                    float strength = cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
+                    lit_r += cmd->emissive_color[0] * cmd->emissive_intensity * (strength - 1.0f);
+                    lit_g += cmd->emissive_color[1] * cmd->emissive_intensity * (strength - 1.0f);
+                    lit_b += cmd->emissive_color[2] * cmd->emissive_intensity * (strength - 1.0f);
+                }
+
+                fr = lit_r;
+                fg = lit_g;
+                fb_c = lit_b;
+            }
+        }
+    }
+
+    if (cmd && cmd->env_map && cmd->reflectivity > 0.0001f) {
+        sw_apply_environment_reflection(cmd,
+                                        normal_map,
+                                        metallic_roughness_map,
+                                        b0,
+                                        b1,
+                                        b2,
+                                        v0,
+                                        v1,
+                                        v2,
+                                        fog_ctx,
+                                        refl_world_normal_valid ? refl_world_normal : NULL,
+                                        &fr,
+                                        &fg,
+                                        &fb_c);
+    }
+
+    /* Distance fog — interpolate world position, compute camera distance */
+    if (fog_ctx && fog_ctx->fog_enabled) {
+        float wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
+        float wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
+        float wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
+        float dist = sw_compute_fog_distance(fog_ctx, wx, wy, wz);
+        float fog_range = fog_ctx->fog_far - fog_ctx->fog_near;
+        float fog_f = (fog_range > 1e-6f) ? (dist - fog_ctx->fog_near) / fog_range : 0.0f;
+        fog_f = fog_f < 0.0f ? 0.0f : (fog_f > 1.0f ? 1.0f : fog_f);
+        fr = fr * (1.0f - fog_f) + fog_ctx->fog_color[0] * fog_f;
+        fg = fg * (1.0f - fog_f) + fog_ctx->fog_color[1] * fog_f;
+        fb_c = fb_c * (1.0f - fog_f) + fog_ctx->fog_color[2] * fog_f;
+    }
+
+    /* Interpolate alpha, respecting material alpha modes. */
+    float material_alpha = b0 * v0->a + b1 * v1->a + b2 * v2->a;
+    float fa = material_alpha * tex_alpha;
+    int discard_fragment = 0;
+    if (cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK) {
+        if (fa < cmd->alpha_cutoff)
+            discard_fragment = 1;
+        fa = 1.0f;
+    } else if (cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
+        fa = 1.0f;
+    }
+    if (cmd && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map) &&
+        cmd->shading_model == 4) {
+        float ndv = pixel_ndv;
+        float power = cmd->custom_params[0] > 0.1f ? cmd->custom_params[0] : 3.0f;
+        float bias = cmd->custom_params[1];
+        float fresnel = powf(1.0f - ndv, power) + bias;
+        fa *= clamp01f(fresnel);
+    }
+
+    uint8_t *dst = &pixels[y * stride + x * 4];
+    if (!discard_fragment && fa >= 1.0f) {
+        /* Opaque: overwrite pixel; screen-space overlays skip Z writes. */
+        if (!depth_disabled)
+            zbuf[idx] = z;
+        dst[0] = (uint8_t)(clamp01f(fr) * 255.0f);
+        dst[1] = (uint8_t)(clamp01f(fg) * 255.0f);
+        dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f);
+        dst[3] = 0xFF;
+        return 1;
+    } else if (!discard_fragment && fa > 0.0f) {
+        /* Transparent: additive keeps the destination, alpha uses source-over.
+         * Both skip Z writes so they don't occlude later transparent draws. */
+        if (cmd && cmd->additive_blend) {
+            dst[0] = (uint8_t)fminf(255.0f, clamp01f(fr) * 255.0f * fa + (float)dst[0]);
+            dst[1] = (uint8_t)fminf(255.0f, clamp01f(fg) * 255.0f * fa + (float)dst[1]);
+            dst[2] = (uint8_t)fminf(255.0f, clamp01f(fb_c) * 255.0f * fa + (float)dst[2]);
+        } else {
+            float inv_a = 1.0f - fa;
+            dst[0] = (uint8_t)(clamp01f(fr) * 255.0f * fa + (float)dst[0] * inv_a);
+            dst[1] = (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a);
+            dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f * fa + (float)dst[2] * inv_a);
+        }
+        dst[3] = 0xFF;
+        return 1;
+    }
+    /* else: alpha <= 0 → fully invisible, skip */
+
+    return 0;
+}
+
 /// @brief Edge-function triangle rasterizer with PBR + Phong + shadow + fog support.
 ///
 /// Centerpiece of the software backend. Steps:
@@ -1471,6 +2157,30 @@ static void raster_triangle(uint8_t *pixels,
                          ? sw_setup_complete_splat(cmd, &splat_view, layer_views)
                          : 0;
 
+    sw_fragment_ctx fc = {.pixels = pixels,
+                          .zbuf = zbuf,
+                          .stride = stride,
+                          .v0 = v0,
+                          .v1 = v1,
+                          .v2 = v2,
+                          .tex = tex,
+                          .emissive_tex = emissive_tex,
+                          .emissive_color = emissive_color,
+                          .normal_map = normal_map,
+                          .specular_map = specular_map,
+                          .metallic_roughness_map = metallic_roughness_map,
+                          .ao_map = ao_map,
+                          .cmd = cmd,
+                          .lights = lights,
+                          .light_count = light_count,
+                          .ambient = ambient,
+                          .fog_ctx = fog_ctx,
+                          .depth_disabled = depth_disabled,
+                          .have_splat = have_splat,
+                          .splat_view = &splat_view,
+                          .layer_views = layer_views};
+
+
     for (int y = min_y; y <= max_y; y++) {
         float w0 = row_w0, w1 = row_w1, w2 = row_w2;
         for (int x = min_x; x <= max_x; x++) {
@@ -1484,695 +2194,7 @@ static void raster_triangle(uint8_t *pixels,
                 int idx = y * fb_w + x;
                 if (depth_disabled || z < zbuf[idx]) {
                     depth_passes++;
-                    float fr = b0 * v0->r + b1 * v1->r + b2 * v2->r;
-                    float fg = b0 * v0->g + b1 * v1->g + b2 * v2->g;
-                    float fb_c = b0 * v0->b + b1 * v1->b + b2 * v2->b;
-                    float material_r = fr;
-                    float material_g = fg;
-                    float material_b = fb_c;
-                    float tex_alpha = 1.0f; /* per-texel alpha (for foliage, fences) */
-                    if (tex) {
-                        float u;
-                        float vc;
-                        sw_interpolate_uv_for_slot(cmd,
-                                                   RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
-                                                   b0,
-                                                   b1,
-                                                   b2,
-                                                   v0,
-                                                   v1,
-                                                   v2,
-                                                   &u,
-                                                   &vc);
-                        {
-                            float tr, tg, tb, ta;
-                            if (cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)
-                                sample_texture_slot_srgb_ex(tex,
-                                                            cmd,
-                                                            RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
-                                                            u,
-                                                            vc,
-                                                            &tr,
-                                                            &tg,
-                                                            &tb,
-                                                            &ta);
-                            else
-                                sample_texture_slot_ex(tex,
-                                                       cmd,
-                                                       RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
-                                                       u,
-                                                       vc,
-                                                       &tr,
-                                                       &tg,
-                                                       &tb,
-                                                       &ta);
-                            fr *= tr;
-                            fg *= tg;
-                            fb_c *= tb;
-                            tex_alpha = ta;
-                        }
-                    }
-                    /* Terrain splat: replace diffuse with per-pixel layer blend.
-                     * Views were resolved once per triangle (splat_view /
-                     * layer_views) above. */
-                    if (have_splat) {
-                        float iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
-                        if (fabsf(iw) > 1e-7f) {
-                            float sp_u =
-                                (b0 * v0->u_over_w + b1 * v1->u_over_w + b2 * v2->u_over_w) / iw;
-                            float sp_v =
-                                (b0 * v0->v_over_w + b1 * v1->v_over_w + b2 * v2->v_over_w) / iw;
-                            {
-                                float sr, sg, sb, sa;
-                                sample_texture(&splat_view, sp_u, sp_v, &sr, &sg, &sb, &sa);
-                                float w[4] = {sr, sg, sb, sa};
-                                float wsum = w[0] + w[1] + w[2] + w[3];
-                                if (wsum > 0.001f) {
-                                    for (int wi = 0; wi < 4; wi++)
-                                        w[wi] /= wsum;
-                                } else {
-                                    w[0] = 1.0f;
-                                    w[1] = w[2] = w[3] = 0.0f;
-                                }
-                                float blr = 0, blg = 0, blb = 0;
-                                for (int L = 0; L < 4; L++) {
-                                    if (w[L] < 0.001f)
-                                        continue;
-                                    float lu = sp_u * cmd->splat_layer_scales[L];
-                                    float lvc = sp_v * cmd->splat_layer_scales[L];
-                                    float lr, lg2, lb, la;
-                                    sample_texture(&layer_views[L], lu, lvc, &lr, &lg2, &lb, &la);
-                                    blr += lr * w[L];
-                                    blg += lg2 * w[L];
-                                    blb += lb * w[L];
-                                }
-                                fr = blr * material_r;
-                                fg = blg * material_g;
-                                fb_c = blb * material_b;
-                            }
-                        }
-                    }
-
-                    /* Emissive map sampling (legacy path only; PBR handles it in the lighting
-                     * branch so emissiveIntensity can scale both the color and the map.) */
-                    if (emissive_tex && !(cmd && cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR)) {
-                        {
-                            float u;
-                            float vc;
-                            float er, eg, eb, ea;
-                            sw_interpolate_uv_for_slot(cmd,
-                                                       RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
-                                                       b0,
-                                                       b1,
-                                                       b2,
-                                                       v0,
-                                                       v1,
-                                                       v2,
-                                                       &u,
-                                                       &vc);
-                            sample_texture_slot_srgb_ex(emissive_tex,
-                                                        cmd,
-                                                        RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
-                                                        u,
-                                                        vc,
-                                                        &er,
-                                                        &eg,
-                                                        &eb,
-                                                        &ea);
-                            float emissive_scale = (cmd ? cmd->emissive_intensity : 1.0f);
-                            fr += er * emissive_color[0] * emissive_scale;
-                            fg += eg * emissive_color[1] * emissive_scale;
-                            fb_c += eb * emissive_color[2] * emissive_scale;
-                        }
-                    }
-
-                    /* Per-pixel lighting for PBR or normal-mapped legacy materials. */
-                    float pixel_ndv = 1.0f;
-                    /* Captured perturbed world normal; reused by the env-reflection
-                     * pass below to avoid recomputing the TBN a second time. */
-                    float refl_world_normal[3] = {0.0f, 0.0f, 0.0f};
-                    int refl_world_normal_valid = 0;
-                    if (cmd && !cmd->unlit &&
-                        (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map)) {
-                        float pp_iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
-                        if (fabsf(pp_iw) > 1e-7f) {
-                            float normal_u = 0.0f;
-                            float normal_v = 0.0f;
-                            float specular_u = 0.0f;
-                            float specular_v = 0.0f;
-                            float emissive_u = 0.0f;
-                            float emissive_v = 0.0f;
-                            float mr_u = 0.0f;
-                            float mr_v = 0.0f;
-                            float ao_u = 0.0f;
-                            float ao_v = 0.0f;
-                            sw_interpolate_uv_for_slot(cmd,
-                                                       RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
-                                                       b0,
-                                                       b1,
-                                                       b2,
-                                                       v0,
-                                                       v1,
-                                                       v2,
-                                                       &normal_u,
-                                                       &normal_v);
-                            if (specular_map)
-                                sw_interpolate_uv_for_slot(cmd,
-                                                           RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
-                                                           b0,
-                                                           b1,
-                                                           b2,
-                                                           v0,
-                                                           v1,
-                                                           v2,
-                                                           &specular_u,
-                                                           &specular_v);
-                            if (emissive_tex)
-                                sw_interpolate_uv_for_slot(cmd,
-                                                           RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
-                                                           b0,
-                                                           b1,
-                                                           b2,
-                                                           v0,
-                                                           v1,
-                                                           v2,
-                                                           &emissive_u,
-                                                           &emissive_v);
-                            if (metallic_roughness_map)
-                                sw_interpolate_uv_for_slot(
-                                    cmd,
-                                    RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
-                                    b0,
-                                    b1,
-                                    b2,
-                                    v0,
-                                    v1,
-                                    v2,
-                                    &mr_u,
-                                    &mr_v);
-                            if (ao_map)
-                                sw_interpolate_uv_for_slot(cmd,
-                                                           RT_MATERIAL3D_TEXTURE_SLOT_AO,
-                                                           b0,
-                                                           b1,
-                                                           b2,
-                                                           v0,
-                                                           v1,
-                                                           v2,
-                                                           &ao_u,
-                                                           &ao_v);
-
-                            /* Interpolate world normal */
-                            float pnx = b0 * v0->nx + b1 * v1->nx + b2 * v2->nx;
-                            float pny = b0 * v0->ny + b1 * v1->ny + b2 * v2->ny;
-                            float pnz = b0 * v0->nz + b1 * v1->nz + b2 * v2->nz;
-                            normalize3f(&pnx, &pny, &pnz);
-
-                            /* Interpolate tangent + build TBN */
-                            float ptx = b0 * v0->tx + b1 * v1->tx + b2 * v2->tx;
-                            float pty = b0 * v0->ty + b1 * v1->ty + b2 * v2->ty;
-                            float ptz = b0 * v0->tz + b1 * v1->tz + b2 * v2->tz;
-                            float ptw = b0 * v0->tw + b1 * v1->tw + b2 * v2->tw;
-                            float tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
-
-                            if (normal_map && tlen > 1e-7f) {
-                                ptx /= tlen;
-                                pty /= tlen;
-                                ptz /= tlen;
-                                /* Gram-Schmidt orthogonalize T against N */
-                                float tdotn = ptx * pnx + pty * pny + ptz * pnz;
-                                ptx -= tdotn * pnx;
-                                pty -= tdotn * pny;
-                                ptz -= tdotn * pnz;
-                                tlen = sqrtf(ptx * ptx + pty * pty + ptz * ptz);
-                                if (tlen > 1e-7f) {
-                                    ptx /= tlen;
-                                    pty /= tlen;
-                                    ptz /= tlen;
-                                }
-
-                                /* Sample normal map: [0,1] → [-1,1] */
-                                float tnr, tng, tnb, tna;
-                                sample_texture_slot_ex(normal_map,
-                                                       cmd,
-                                                       RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
-                                                       normal_u,
-                                                       normal_v,
-                                                       &tnr,
-                                                       &tng,
-                                                       &tnb,
-                                                       &tna);
-                                float map_x = (tnr * 2.0f - 1.0f) * cmd->normal_scale;
-                                float map_y = (tng * 2.0f - 1.0f) * cmd->normal_scale;
-                                float map_z = tnb * 2.0f - 1.0f;
-
-                                /* Bitangent = sign * (N × T) */
-                                float tangent_sign = ptw < 0.0f ? -1.0f : 1.0f;
-                                float bbx = (pny * ptz - pnz * pty) * tangent_sign;
-                                float bby = (pnz * ptx - pnx * ptz) * tangent_sign;
-                                float bbz = (pnx * pty - pny * ptx) * tangent_sign;
-
-                                /* TBN transform: tangent-space → world-space */
-                                float wn_x = ptx * map_x + bbx * map_y + pnx * map_z;
-                                float wn_y = pty * map_x + bby * map_y + pny * map_z;
-                                float wn_z = ptz * map_x + bbz * map_y + pnz * map_z;
-                                float wlen = sqrtf(wn_x * wn_x + wn_y * wn_y + wn_z * wn_z);
-                                if (wlen > 1e-7f) {
-                                    pnx = wn_x / wlen;
-                                    pny = wn_y / wlen;
-                                    pnz = wn_z / wlen;
-                                }
-                            }
-                            /* else: degenerate tangent → use unperturbed normal */
-
-                            /* Capture the final shading normal so the env-reflection
-                             * pass can reuse it instead of recomputing the TBN. */
-                            refl_world_normal[0] = pnx;
-                            refl_world_normal[1] = pny;
-                            refl_world_normal[2] = pnz;
-                            refl_world_normal_valid = 1;
-
-                            /* Per-pixel Blinn-Phong with perturbed normal */
-                            float wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
-                            float wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
-                            float wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
-
-                            float vdx;
-                            float vdy;
-                            float vdz;
-                            sw_compute_view_vector(fog_ctx, wx, wy, wz, &vdx, &vdy, &vdz);
-                            pixel_ndv = clamp01f(dot3f(pnx, pny, pnz, vdx, vdy, vdz));
-
-                            if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR) {
-                                float base_r = fr;
-                                float base_g = fg;
-                                float base_b = fb_c;
-                                float metallic = clamp01f(cmd->metallic);
-                                float roughness = clamp01f(cmd->roughness);
-                                float ao = clamp01f(cmd->ao);
-                                if (metallic_roughness_map) {
-                                    float mrr, mrg, mrb, mra;
-                                    sample_texture_slot_ex(
-                                        metallic_roughness_map,
-                                        cmd,
-                                        RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
-                                        mr_u,
-                                        mr_v,
-                                        &mrr,
-                                        &mrg,
-                                        &mrb,
-                                        &mra);
-                                    roughness *= mrg;
-                                    metallic *= mrb;
-                                }
-                                if (ao_map) {
-                                    float aor, aog, aob, aoa;
-                                    sample_texture_slot_ex(ao_map,
-                                                           cmd,
-                                                           RT_MATERIAL3D_TEXTURE_SLOT_AO,
-                                                           ao_u,
-                                                           ao_v,
-                                                           &aor,
-                                                           &aog,
-                                                           &aob,
-                                                           &aoa);
-                                    ao *= aor;
-                                }
-                                metallic = clamp01f(metallic);
-                                roughness = roughness < 0.045f ? 0.045f : clamp01f(roughness);
-                                ao = clamp01f(ao);
-
-                                float ndv = pixel_ndv;
-                                if (ndv < 0.001f)
-                                    ndv = 0.001f;
-
-                                float lit_r = (ambient ? ambient[0] : 0.0f) * base_r * ao;
-                                float lit_g = (ambient ? ambient[1] : 0.0f) * base_g * ao;
-                                float lit_b = (ambient ? ambient[2] : 0.0f) * base_b * ao;
-
-                                for (int32_t li = 0; li < light_count; li++) {
-                                    const vgfx3d_light_params_t *lt = &lights[li];
-                                    float llx, lly, llz, la = 1.0f;
-
-                                    if (lt->type == 0) { /* directional */
-                                        llx = -lt->direction[0];
-                                        lly = -lt->direction[1];
-                                        llz = -lt->direction[2];
-                                        normalize3f(&llx, &lly, &llz);
-                                    } else if (lt->type == 1) { /* point */
-                                        llx = lt->position[0] - wx;
-                                        lly = lt->position[1] - wy;
-                                        llz = lt->position[2] - wz;
-                                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                        if (!isfinite(dist) || dist <= 1e-7f)
-                                            continue;
-                                        llx /= dist;
-                                        lly /= dist;
-                                        llz /= dist;
-                                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
-                                    } else if (lt->type == 3) { /* spot */
-                                        llx = lt->position[0] - wx;
-                                        lly = lt->position[1] - wy;
-                                        llz = lt->position[2] - wz;
-                                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                        if (!isfinite(dist) || dist <= 1e-7f)
-                                            continue;
-                                        llx /= dist;
-                                        lly /= dist;
-                                        llz /= dist;
-                                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
-                                        float sdx = -lt->direction[0];
-                                        float sdy = -lt->direction[1];
-                                        float sdz = -lt->direction[2];
-                                        normalize3f(&sdx, &sdy, &sdz);
-                                        float sd = llx * sdx + lly * sdy + llz * sdz;
-                                        if (sd < lt->outer_cos)
-                                            la = 0.0f;
-                                        else if (sd < lt->inner_cos) {
-                                            float cone_range = lt->inner_cos - lt->outer_cos;
-                                            if (cone_range <= 1e-6f) {
-                                                la = 0.0f;
-                                            } else {
-                                                float st = (sd - lt->outer_cos) / cone_range;
-                                                la *= st * st * (3.0f - 2.0f * st);
-                                            }
-                                        }
-                                    } else { /* ambient */
-                                        lit_r += lt->color[0] * lt->intensity * base_r * ao;
-                                        lit_g += lt->color[1] * lt->intensity * base_g * ao;
-                                        lit_b += lt->color[2] * lt->intensity * base_b * ao;
-                                        continue;
-                                    }
-
-                                    if (lt->type == 0 && lt->shadow_index >= 0) {
-                                        int32_t shadow_slot =
-                                            sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
-                                        la *= sw_sample_shadow_visibility(
-                                            fog_ctx, shadow_slot, wx, wy, wz);
-                                    }
-
-                                    float ndl = dot3f(pnx, pny, pnz, llx, lly, llz);
-                                    if (ndl <= 0.0f)
-                                        continue;
-
-                                    float hx = llx + vdx;
-                                    float hy = lly + vdy;
-                                    float hz = llz + vdz;
-                                    normalize3f(&hx, &hy, &hz);
-                                    float ndh = clamp01f(dot3f(pnx, pny, pnz, hx, hy, hz));
-                                    float vdh = clamp01f(dot3f(vdx, vdy, vdz, hx, hy, hz));
-
-                                    float f0_r = 0.04f + (base_r - 0.04f) * metallic;
-                                    float f0_g = 0.04f + (base_g - 0.04f) * metallic;
-                                    float f0_b = 0.04f + (base_b - 0.04f) * metallic;
-                                    float fresnel_w = powf(1.0f - vdh, 5.0f);
-                                    float f_r = f0_r + (1.0f - f0_r) * fresnel_w;
-                                    float f_g = f0_g + (1.0f - f0_g) * fresnel_w;
-                                    float f_b = f0_b + (1.0f - f0_b) * fresnel_w;
-
-                                    float d = pbr_distribution_ggx(ndh, roughness);
-                                    float g = pbr_geometry_smith(ndv, ndl, roughness);
-                                    float spec_denom = 4.0f * ndv * ndl + 1e-4f;
-                                    float spec_r = (d * g * f_r) / spec_denom;
-                                    float spec_g = (d * g * f_g) / spec_denom;
-                                    float spec_b = (d * g * f_b) / spec_denom;
-
-                                    const float inv_pi = 0.31830988618f;
-                                    float kd_r = (1.0f - f_r) * (1.0f - metallic);
-                                    float kd_g = (1.0f - f_g) * (1.0f - metallic);
-                                    float kd_b = (1.0f - f_b) * (1.0f - metallic);
-                                    float diff_r = kd_r * base_r * inv_pi;
-                                    float diff_g = kd_g * base_g * inv_pi;
-                                    float diff_b = kd_b * base_b * inv_pi;
-
-                                    float radiance_r = lt->color[0] * lt->intensity * la;
-                                    float radiance_g = lt->color[1] * lt->intensity * la;
-                                    float radiance_b = lt->color[2] * lt->intensity * la;
-                                    lit_r += (diff_r + spec_r) * radiance_r * ndl;
-                                    lit_g += (diff_g + spec_g) * radiance_g * ndl;
-                                    lit_b += (diff_b + spec_b) * radiance_b * ndl;
-                                }
-
-                                float emissive_r = cmd->emissive_color[0] * cmd->emissive_intensity;
-                                float emissive_g = cmd->emissive_color[1] * cmd->emissive_intensity;
-                                float emissive_b = cmd->emissive_color[2] * cmd->emissive_intensity;
-                                if (emissive_tex) {
-                                    float er, eg, eb, ea;
-                                    sample_texture_slot_srgb_ex(emissive_tex,
-                                                                cmd,
-                                                                RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
-                                                                emissive_u,
-                                                                emissive_v,
-                                                                &er,
-                                                                &eg,
-                                                                &eb,
-                                                                &ea);
-                                    emissive_r *= er;
-                                    emissive_g *= eg;
-                                    emissive_b *= eb;
-                                }
-                                lit_r += emissive_r;
-                                lit_g += emissive_g;
-                                lit_b += emissive_b;
-
-                                if (cmd->shading_model == 1) {
-                                    float bands =
-                                        cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
-                                    lit_r = floorf(lit_r * bands) / bands;
-                                    lit_g = floorf(lit_g * bands) / bands;
-                                    lit_b = floorf(lit_b * bands) / bands;
-                                } else if (cmd->shading_model == 5) {
-                                    float strength =
-                                        cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
-                                    lit_r += emissive_r * (strength - 1.0f);
-                                    lit_g += emissive_g * (strength - 1.0f);
-                                    lit_b += emissive_b * (strength - 1.0f);
-                                }
-
-                                fr = lit_r;
-                                fg = lit_g;
-                                fb_c = lit_b;
-                            } else {
-                                /* Ambient */
-                                float lit_r = (ambient ? ambient[0] : 0.0f) * fr;
-                                float lit_g = (ambient ? ambient[1] : 0.0f) * fg;
-                                float lit_b = (ambient ? ambient[2] : 0.0f) * fb_c;
-
-                                /* Specular properties (possibly from specular map) */
-                                float sp_r = cmd->specular[0];
-                                float sp_g = cmd->specular[1];
-                                float sp_b = cmd->specular[2];
-                                if (specular_map) {
-                                    float smr, smg, smb, sma;
-                                    sample_texture_slot_ex(specular_map,
-                                                           cmd,
-                                                           RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
-                                                           specular_u,
-                                                           specular_v,
-                                                           &smr,
-                                                           &smg,
-                                                           &smb,
-                                                           &sma);
-                                    sp_r *= smr;
-                                    sp_g *= smg;
-                                    sp_b *= smb;
-                                }
-
-                                for (int32_t li = 0; li < light_count; li++) {
-                                    const vgfx3d_light_params_t *lt = &lights[li];
-                                    float llx, lly, llz, la = 1.0f;
-
-                                    if (lt->type == 0) { /* directional */
-                                        llx = -lt->direction[0];
-                                        lly = -lt->direction[1];
-                                        llz = -lt->direction[2];
-                                        normalize3f(&llx, &lly, &llz);
-                                    } else if (lt->type == 1) { /* point */
-                                        llx = lt->position[0] - wx;
-                                        lly = lt->position[1] - wy;
-                                        llz = lt->position[2] - wz;
-                                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                        if (!isfinite(dist) || dist <= 1e-7f)
-                                            continue;
-                                        llx /= dist;
-                                        lly /= dist;
-                                        llz /= dist;
-                                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
-                                    } else if (lt->type == 3) { /* spot */
-                                        llx = lt->position[0] - wx;
-                                        lly = lt->position[1] - wy;
-                                        llz = lt->position[2] - wz;
-                                        float dist = sqrtf(llx * llx + lly * lly + llz * llz);
-                                        if (!isfinite(dist) || dist <= 1e-7f)
-                                            continue;
-                                        llx /= dist;
-                                        lly /= dist;
-                                        llz /= dist;
-                                        la = 1.0f / (1.0f + lt->attenuation * dist * dist);
-                                        float sdx = -lt->direction[0];
-                                        float sdy = -lt->direction[1];
-                                        float sdz = -lt->direction[2];
-                                        normalize3f(&sdx, &sdy, &sdz);
-                                        float sd = llx * sdx + lly * sdy + llz * sdz;
-                                        if (sd < lt->outer_cos)
-                                            la = 0.0f;
-                                        else if (sd < lt->inner_cos) {
-                                            float cone_range = lt->inner_cos - lt->outer_cos;
-                                            if (cone_range <= 1e-6f) {
-                                                la = 0.0f;
-                                            } else {
-                                                float st = (sd - lt->outer_cos) / cone_range;
-                                                la *= st * st * (3.0f - 2.0f * st);
-                                            }
-                                        }
-                                    } else { /* ambient */
-                                        lit_r += lt->color[0] * lt->intensity * fr;
-                                        lit_g += lt->color[1] * lt->intensity * fg;
-                                        lit_b += lt->color[2] * lt->intensity * fb_c;
-                                        continue;
-                                    }
-
-                                    if (lt->type == 0 && lt->shadow_index >= 0) {
-                                        int32_t shadow_slot =
-                                            sw_resolve_shadow_slot(fog_ctx, lt, wx, wy, wz);
-                                        la *= sw_sample_shadow_visibility(
-                                            fog_ctx, shadow_slot, wx, wy, wz);
-                                    }
-
-                                    float ndl = pnx * llx + pny * lly + pnz * llz;
-                                    if (ndl < 0.0f)
-                                        ndl = 0.0f;
-                                    float li_i = lt->intensity;
-                                    lit_r += lt->color[0] * li_i * ndl * fr * la;
-                                    lit_g += lt->color[1] * li_i * ndl * fg * la;
-                                    lit_b += lt->color[2] * li_i * ndl * fb_c * la;
-
-                                    if (ndl > 0.0f && cmd->shininess > 0.0f) {
-                                        float hx = llx + vdx, hy = lly + vdy, hz = llz + vdz;
-                                        normalize3f(&hx, &hy, &hz);
-                                        float ndh = pnx * hx + pny * hy + pnz * hz;
-                                        if (ndh < 0.0f)
-                                            ndh = 0.0f;
-                                        float spec = powf(ndh, cmd->shininess);
-                                        lit_r += lt->color[0] * li_i * spec * sp_r * la;
-                                        lit_g += lt->color[1] * li_i * spec * sp_g * la;
-                                        lit_b += lt->color[2] * li_i * spec * sp_b * la;
-                                    }
-                                }
-
-                                /* Emissive color base */
-                                lit_r += cmd->emissive_color[0] * cmd->emissive_intensity;
-                                lit_g += cmd->emissive_color[1] * cmd->emissive_intensity;
-                                lit_b += cmd->emissive_color[2] * cmd->emissive_intensity;
-
-                                if (cmd->shading_model == 1) {
-                                    float bands =
-                                        cmd->custom_params[0] > 0.5f ? cmd->custom_params[0] : 4.0f;
-                                    lit_r = floorf(lit_r * bands) / bands;
-                                    lit_g = floorf(lit_g * bands) / bands;
-                                    lit_b = floorf(lit_b * bands) / bands;
-                                } else if (cmd->shading_model == 5) {
-                                    float strength =
-                                        cmd->custom_params[0] > 0.0f ? cmd->custom_params[0] : 2.0f;
-                                    lit_r += cmd->emissive_color[0] * cmd->emissive_intensity *
-                                             (strength - 1.0f);
-                                    lit_g += cmd->emissive_color[1] * cmd->emissive_intensity *
-                                             (strength - 1.0f);
-                                    lit_b += cmd->emissive_color[2] * cmd->emissive_intensity *
-                                             (strength - 1.0f);
-                                }
-
-                                fr = lit_r;
-                                fg = lit_g;
-                                fb_c = lit_b;
-                            }
-                        }
-                    }
-
-                    if (cmd && cmd->env_map && cmd->reflectivity > 0.0001f) {
-                        sw_apply_environment_reflection(cmd,
-                                                        normal_map,
-                                                        metallic_roughness_map,
-                                                        b0,
-                                                        b1,
-                                                        b2,
-                                                        v0,
-                                                        v1,
-                                                        v2,
-                                                        fog_ctx,
-                                                        refl_world_normal_valid ? refl_world_normal
-                                                                                : NULL,
-                                                        &fr,
-                                                        &fg,
-                                                        &fb_c);
-                    }
-
-                    /* Distance fog — interpolate world position, compute camera distance */
-                    if (fog_ctx && fog_ctx->fog_enabled) {
-                        float wx = b0 * v0->wx + b1 * v1->wx + b2 * v2->wx;
-                        float wy = b0 * v0->wy + b1 * v1->wy + b2 * v2->wy;
-                        float wz = b0 * v0->wz + b1 * v1->wz + b2 * v2->wz;
-                        float dist = sw_compute_fog_distance(fog_ctx, wx, wy, wz);
-                        float fog_range = fog_ctx->fog_far - fog_ctx->fog_near;
-                        float fog_f =
-                            (fog_range > 1e-6f) ? (dist - fog_ctx->fog_near) / fog_range : 0.0f;
-                        fog_f = fog_f < 0.0f ? 0.0f : (fog_f > 1.0f ? 1.0f : fog_f);
-                        fr = fr * (1.0f - fog_f) + fog_ctx->fog_color[0] * fog_f;
-                        fg = fg * (1.0f - fog_f) + fog_ctx->fog_color[1] * fog_f;
-                        fb_c = fb_c * (1.0f - fog_f) + fog_ctx->fog_color[2] * fog_f;
-                    }
-
-                    /* Interpolate alpha, respecting material alpha modes. */
-                    float material_alpha = b0 * v0->a + b1 * v1->a + b2 * v2->a;
-                    float fa = material_alpha * tex_alpha;
-                    int discard_fragment = 0;
-                    if (cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK) {
-                        if (fa < cmd->alpha_cutoff)
-                            discard_fragment = 1;
-                        fa = 1.0f;
-                    } else if (cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
-                        fa = 1.0f;
-                    }
-                    if (cmd && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || normal_map) &&
-                        cmd->shading_model == 4) {
-                        float ndv = pixel_ndv;
-                        float power = cmd->custom_params[0] > 0.1f ? cmd->custom_params[0] : 3.0f;
-                        float bias = cmd->custom_params[1];
-                        float fresnel = powf(1.0f - ndv, power) + bias;
-                        fa *= clamp01f(fresnel);
-                    }
-
-                    uint8_t *dst = &pixels[y * stride + x * 4];
-                    if (!discard_fragment && fa >= 1.0f) {
-                        /* Opaque: overwrite pixel; screen-space overlays skip Z writes. */
-                        if (!depth_disabled)
-                            zbuf[idx] = z;
-                        dst[0] = (uint8_t)(clamp01f(fr) * 255.0f);
-                        dst[1] = (uint8_t)(clamp01f(fg) * 255.0f);
-                        dst[2] = (uint8_t)(clamp01f(fb_c) * 255.0f);
-                        dst[3] = 0xFF;
-                        pixels_written++;
-                    } else if (!discard_fragment && fa > 0.0f) {
-                        /* Transparent: additive keeps the destination, alpha uses source-over.
-                         * Both skip Z writes so they don't occlude later transparent draws. */
-                        if (cmd && cmd->additive_blend) {
-                            dst[0] =
-                                (uint8_t)fminf(255.0f, clamp01f(fr) * 255.0f * fa + (float)dst[0]);
-                            dst[1] =
-                                (uint8_t)fminf(255.0f, clamp01f(fg) * 255.0f * fa + (float)dst[1]);
-                            dst[2] = (uint8_t)fminf(255.0f,
-                                                    clamp01f(fb_c) * 255.0f * fa + (float)dst[2]);
-                        } else {
-                            float inv_a = 1.0f - fa;
-                            dst[0] = (uint8_t)(clamp01f(fr) * 255.0f * fa + (float)dst[0] * inv_a);
-                            dst[1] = (uint8_t)(clamp01f(fg) * 255.0f * fa + (float)dst[1] * inv_a);
-                            dst[2] =
-                                (uint8_t)(clamp01f(fb_c) * 255.0f * fa + (float)dst[2] * inv_a);
-                        }
-                        dst[3] = 0xFF;
-                        pixels_written++;
-                    }
-                    /* else: alpha <= 0 → fully invisible, skip */
+                    pixels_written += sw_shade_fragment(&fc, x, y, idx, z, b0, b1, b2);
                 }
             }
             w0 -= e12_dy;
@@ -2761,6 +2783,69 @@ static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     memset(ctx->shadow_complete, 0, sizeof(ctx->shadow_complete));
 }
 
+/// @brief A draw call's resolved material texture views plus the (possibly NULL)
+///   pointers handed to the rasterizer. The pointers alias the views stored in
+///   this struct, so it must outlive the rasterization loop that reads them.
+typedef struct {
+    sw_pixels_view tex_view, emissive_view, normal_view;
+    sw_pixels_view specular_view, metallic_roughness_view, ao_view;
+    sw_pixels_view *tex_ptr;
+    sw_pixels_view *emissive_ptr;
+    sw_pixels_view *normal_ptr;
+    sw_pixels_view *specular_ptr;
+    sw_pixels_view *metallic_roughness_ptr;
+    sw_pixels_view *ao_ptr;
+} sw_material_views;
+
+/// @brief Copy each present material map (base color, emissive, normal, specular,
+///   metallic-roughness, AO) into @p mv, setting the matching pointer non-NULL
+///   only when the view has non-empty dimensions and backing data.
+static void sw_resolve_material_views(const vgfx3d_draw_cmd_t *cmd, sw_material_views *mv) {
+    mv->tex_ptr = NULL;
+    mv->emissive_ptr = NULL;
+    mv->normal_ptr = NULL;
+    mv->specular_ptr = NULL;
+    mv->metallic_roughness_ptr = NULL;
+    mv->ao_ptr = NULL;
+    if (cmd->texture) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
+        mv->tex_view = *pv;
+        if (mv->tex_view.width > 0 && mv->tex_view.height > 0 && mv->tex_view.data)
+            mv->tex_ptr = &mv->tex_view;
+    }
+    if (cmd->emissive_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->emissive_map;
+        mv->emissive_view = *pv;
+        if (mv->emissive_view.width > 0 && mv->emissive_view.height > 0 && mv->emissive_view.data)
+            mv->emissive_ptr = &mv->emissive_view;
+    }
+    if (cmd->normal_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->normal_map;
+        mv->normal_view = *pv;
+        if (mv->normal_view.width > 0 && mv->normal_view.height > 0 && mv->normal_view.data)
+            mv->normal_ptr = &mv->normal_view;
+    }
+    if (cmd->specular_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->specular_map;
+        mv->specular_view = *pv;
+        if (mv->specular_view.width > 0 && mv->specular_view.height > 0 && mv->specular_view.data)
+            mv->specular_ptr = &mv->specular_view;
+    }
+    if (cmd->metallic_roughness_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->metallic_roughness_map;
+        mv->metallic_roughness_view = *pv;
+        if (mv->metallic_roughness_view.width > 0 && mv->metallic_roughness_view.height > 0 &&
+            mv->metallic_roughness_view.data)
+            mv->metallic_roughness_ptr = &mv->metallic_roughness_view;
+    }
+    if (cmd->ao_map) {
+        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->ao_map;
+        mv->ao_view = *pv;
+        if (mv->ao_view.width > 0 && mv->ao_view.height > 0 && mv->ao_view.data)
+            mv->ao_ptr = &mv->ao_view;
+    }
+}
+
 /// @brief Backend `submit_draw` op — render one indexed mesh in software.
 ///
 /// End-to-end pipeline:
@@ -2823,49 +2908,12 @@ static void sw_submit_draw(void *ctx_ptr,
     mat4f_mul(ctx->vp, cmd->model_matrix, mvp);
     vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_matrix);
 
-    /* Texture setup */
-    sw_pixels_view tex_view, emissive_view;
-    sw_pixels_view *tex_ptr = NULL, *emissive_ptr = NULL;
-    if (cmd->texture) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
-        tex_view = *pv;
-        if (tex_view.width > 0 && tex_view.height > 0 && tex_view.data)
-            tex_ptr = &tex_view;
-    }
-    if (cmd->emissive_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->emissive_map;
-        emissive_view = *pv;
-        if (emissive_view.width > 0 && emissive_view.height > 0 && emissive_view.data)
-            emissive_ptr = &emissive_view;
-    }
-    sw_pixels_view normal_view, specular_view, metallic_roughness_view, ao_view;
-    sw_pixels_view *normal_ptr = NULL, *specular_ptr = NULL, *metallic_roughness_ptr = NULL,
-                   *ao_ptr = NULL;
-    if (cmd->normal_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->normal_map;
-        normal_view = *pv;
-        if (normal_view.width > 0 && normal_view.height > 0 && normal_view.data)
-            normal_ptr = &normal_view;
-    }
-    if (cmd->specular_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->specular_map;
-        specular_view = *pv;
-        if (specular_view.width > 0 && specular_view.height > 0 && specular_view.data)
-            specular_ptr = &specular_view;
-    }
-    if (cmd->metallic_roughness_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->metallic_roughness_map;
-        metallic_roughness_view = *pv;
-        if (metallic_roughness_view.width > 0 && metallic_roughness_view.height > 0 &&
-            metallic_roughness_view.data)
-            metallic_roughness_ptr = &metallic_roughness_view;
-    }
-    if (cmd->ao_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->ao_map;
-        ao_view = *pv;
-        if (ao_view.width > 0 && ao_view.height > 0 && ao_view.data)
-            ao_ptr = &ao_view;
-    }
+    /* Texture setup — resolve up to six material maps into stack-local views. */
+    sw_material_views mv;
+    sw_resolve_material_views(cmd, &mv);
+    sw_pixels_view *tex_ptr = mv.tex_ptr, *emissive_ptr = mv.emissive_ptr,
+                   *normal_ptr = mv.normal_ptr, *specular_ptr = mv.specular_ptr,
+                   *metallic_roughness_ptr = mv.metallic_roughness_ptr, *ao_ptr = mv.ao_ptr;
 
     float half_w = (float)out_w * 0.5f;
     float half_h = (float)out_h * 0.5f;

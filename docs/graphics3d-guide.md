@@ -510,7 +510,7 @@ All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** windi
 
 **Tangents:** `CalcTangents()` uses position/UV derivatives with Gram-Schmidt orthogonalization and `tangent.w` handedness for mirrored UVs. Degenerate UV islands get a normalized fallback tangent orthogonal to the vertex normal so normal maps never receive a tangent parallel to the normal.
 
-**OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, locale-independent decimal parsing, and arbitrary n-gons through ear-clipping triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened but do not create per-material submeshes.
+**OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, locale-independent decimal parsing, and arbitrary n-gons through ear-clipping triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `Mesh3D.FromOBJ` is a geometry-only loader: `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened into one mesh. Use `Model3D.Load(".obj")` when you want `mtllib`/`usemtl` material groups preserved as separate model nodes and materials.
 
 **STL loader:** Auto-detects binary vs ASCII format, streams exact binary STL payloads without buffering the full file, and computes normals for valid triangles.
 
@@ -1111,7 +1111,7 @@ Current scope:
 
 ## Model3D
 
-`Model3D` is the preferred high-level import surface for reusable 3D assets. It normalizes `.vscn`, `.fbx`, `.gltf`, `.glb`, and geometry-only `.obj` files into one container that keeps shared meshes, materials, skeletons, animations, and a template node hierarchy together.
+`Model3D` is the preferred high-level import surface for reusable 3D assets. It normalizes `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` files into one container that keeps shared meshes, materials, skeletons, animations, and a template node hierarchy together.
 
 ### Properties
 
@@ -1128,7 +1128,7 @@ Current scope:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Load(path)` | `obj(str)` | Load `.vscn`, `.fbx`, `.gltf`, `.glb`, or `.obj` into a `Model3D` |
+| `Load(path)` | `obj(str)` | Load `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, or `.stl` into a `Model3D` |
 | `LoadAsset(path)` | `obj(str)` | Load through `Viper.IO.Assets`; `.gltf` external buffers/images resolve relative to the model asset |
 | `GetMesh(index)` | `obj(i64)` | Get a shared `Mesh3D` by index |
 | `GetMaterial(index)` | `obj(i64)` | Get a shared `Material3D` by index |
@@ -1145,7 +1145,7 @@ Current scope:
 ### Ownership and Instancing
 
 - Imported meshes, materials, skeletons, and animations are shared across instances.
-- OBJ-backed models create one default material and synthesized `mesh_N` template nodes.
+- OBJ-backed models preserve `mtllib`/`usemtl` material groups as synthesized template nodes with matching `Material3D` handles when the referenced `.mtl` is available; missing materials fall back to a default white material.
 - `Instantiate()` clones nodes and transforms only. The returned node is a synthetic root group that owns the imported top-level nodes.
 - Mutating an instantiated node does not mutate the template returned by `FindNode`.
 - `InstantiateScene()` is the easiest way to drop an imported asset into a fresh scene while preserving node names and hierarchy.
@@ -1184,8 +1184,9 @@ For game-facing asset loading, prefer `Model3D.Load` for loose filesystem files 
 
 Format note:
 - `.vscn`, FBX, and glTF imports can populate shared skeletons and animation clips when the source format contains supported skin/animation data.
-- FBX-backed `Model3D` assets preserve authored `Model` hierarchy, local TRS, and mesh/material attachments when the source file contains object connections, instead of always collapsing to synthetic `mesh_N` nodes.
-- OBJ-backed `Model3D` assets use the existing geometry-only OBJ loader and synthesize template nodes because OBJ has no scene hierarchy.
+- FBX-backed `Model3D` assets preserve authored `Model` hierarchy, common local transform properties, mesh/material attachments, LayerElementMaterial polygon assignments, and materialless meshes when the source file contains object connections, instead of always collapsing to synthetic `mesh_N` nodes.
+- OBJ-backed `Model3D` assets synthesize template nodes per material group, resolve relative `.mtl` files safely beside the source OBJ, and reject absolute paths, URI schemes, traversal, and NUL-containing references.
+- STL-backed `Model3D` assets synthesize a single mesh node and default material around the existing binary/ASCII STL geometry loader.
 - glTF imports populate meshes, materials, active-scene and secondary scene hierarchies, scene-local cameras, skins, morph targets, punctual lights, skeletal clips, and node/morph animation clips.
 - glTF skeletal tracks map to `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` tracks are bound automatically on `Model3D.Instantiate()` and `InstantiateScene()`. Node animation channels reject non-finite sample data and non-increasing key times before playback; LINEAR rotation tracks use quaternion slerp, and CUBICSPLINE tracks use glTF Hermite tangents. Call `Scene3D.SyncBindings(dt)` each frame to advance those imported node clips.
 - glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT`, `JOINTS_0`/`WEIGHTS_0`, and `JOINTS_1`/`WEIGHTS_1`. Secondary joint sets are reduced to the four strongest supported influences and renormalized. Skins above the runtime 256-bone palette are rejected instead of silently dropping the rig.
@@ -1194,8 +1195,8 @@ Format note:
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import.
 - Materialless glTF primitives receive a shared default white PBR material so valid assets render through `Scene3D` / `Model3D` without manual material assignment.
 - VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, node-attached lights, and high-precision node transforms, while still loading older `vgfx3d_vertex_le_v1` scenes. The loader rejects malformed JSON/base64, invalid mesh index buffers, broken node references, and partial child subtrees; finite transform/material/light values are sanitized during load.
-- `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are resolved relative to the asset path and reject absolute paths, URI schemes, and `.` / `..` traversal segments. In `LoadAsset`, those external dependencies are loaded through `Viper.IO.Assets` first and missing-dependency diagnostics name both the parent model and dependency path.
-- glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, and `KHR_lights_punctual` are accepted; unsupported required extensions such as Draco, Meshopt, Basis/KTX2, DDS, and exact advanced material extensions fail load rather than rendering incomplete fallback data.
+- `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are URI-decoded and resolved relative to the asset path; `./` relative paths are accepted, while absolute paths, URI schemes, `..` traversal, and NUL-containing references are rejected before opening files. In `LoadAsset`, those external dependencies are loaded through `Viper.IO.Assets` first and missing-dependency diagnostics name both the parent model and dependency path.
+- glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_materials_specular`, `KHR_materials_clearcoat`, `KHR_materials_transmission`, and `KHR_lights_punctual` are accepted and mapped onto `Material3D` or scene lights where the runtime surface can represent them; unsupported required extensions such as Draco, Meshopt, Basis/KTX2, and DDS fail load rather than rendering incomplete fallback data.
 
 ## Skeleton3D
 
@@ -1434,13 +1435,13 @@ func start() {
 
 ## FBX Loader
 
-Low-level extractor API for meshes, skeletons, materials, animations, and morph targets from binary FBX files (v7100-7700). For instantiation-ready imported assets, prefer `Model3D.Load("asset.fbx")`.
+Low-level extractor API for meshes, skeletons, materials, animations, and morph targets from binary FBX files (v7100-7700), with a minimal ASCII FBX geometry fallback for simple `Vertices`/`PolygonVertexIndex` assets. For instantiation-ready imported assets, prefer `Model3D.Load("asset.fbx")`.
 
 ### Constructor
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
-| `Load(path)` | `obj(str)` | Parse binary FBX file |
+| `Load(path)` | `obj(str)` | Parse binary FBX file or minimal ASCII FBX geometry |
 
 ### Properties
 
@@ -1498,7 +1499,7 @@ func start() {
 }
 ```
 
-Supports zlib-compressed array properties, negative polygon indices, and Z-up to Y-up coordinate conversion. `Model3D.Load("asset.fbx")` adapts these extracted resources into an instantiable scene asset and now preserves authored FBX `Model` hierarchy when the file contains object connections.
+Supports zlib-compressed array properties, negative polygon indices, arbitrary n-gon triangulation, LayerElementMaterial polygon assignments, default materials for materialless meshes, common FBX transform properties, and Z-up to Y-up coordinate conversion. `Model3D.Load("asset.fbx")` adapts these extracted resources into an instantiable scene asset and preserves authored FBX `Model` hierarchy when the file contains object connections.
 
 ---
 
@@ -1550,7 +1551,7 @@ func start() {
 
 Supported glTF material fidelity:
 - Core metallic-roughness PBR, base-color / normal / metallic-roughness / occlusion / emissive texture slots, alpha modes, `doubleSided`, and `KHR_materials_emissive_strength`. PBR base-color and emissive textures are decoded from sRGB to linear before lighting on software, Metal, D3D11, and OpenGL.
-- `KHR_materials_unlit` is supported as a required extension. `KHR_materials_specular`, `KHR_materials_clearcoat`, and `KHR_materials_transmission` are mapped onto the current `Material3D` surface where possible when optional, but assets that mark those advanced material extensions as required are rejected until the renderer has exact shader support.
+- `KHR_materials_unlit`, `KHR_materials_specular`, `KHR_materials_clearcoat`, and `KHR_materials_transmission` are accepted as required extensions and mapped onto the current `Material3D` surface where possible. Values that cannot be represented exactly by the current renderer are treated as best-effort material parameters rather than causing a partial import.
 - `KHR_texture_transform`, `textureInfo.texCoord`, wrap mode, and nearest/linear filter state are preserved independently for base-color, normal, specular, emissive, metallic-roughness, and occlusion texture slots across software, Metal, D3D11, and OpenGL.
 - `KHR_lights_punctual` directional, point, and spot lights attach to their authored scene nodes. `Scene3D.Draw` transforms them by node world pose and includes them in the per-draw light snapshot; imported directional lights participate in shadow selection from that snapshot, and glTF `range` maps to the runtime quadratic attenuation coefficient.
 

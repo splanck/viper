@@ -77,8 +77,16 @@ typedef struct {
 } rt_fbx_asset;
 
 typedef struct {
+    int32_t *triangle_slots;
+    uint32_t triangle_count;
+    int32_t slot_count;
+    int8_t has_slots;
+} fbx_mesh_material_map_t;
+
+typedef struct {
     int64_t id;
     void *mesh;
+    fbx_mesh_material_map_t material_map;
 } fbx_mesh_binding_t;
 
 typedef struct {
@@ -194,7 +202,49 @@ static void fbx_join_path(char *out, size_t out_size, const char *dir, const cha
     }
 }
 
-/// @brief Try a texture reference verbatim, then fall back to its basename beside the FBX file.
+static int fbx_normalize_relative_texture_ref(const char *src, char *out, size_t out_size) {
+    char normalized[1024];
+    const char *p;
+    size_t out_len = 0;
+    int wrote_segment = 0;
+    if (!src || !*src || !out || out_size == 0)
+        return 0;
+    if (strlen(src) >= sizeof(normalized))
+        return 0;
+    fbx_normalize_path(normalized, sizeof(normalized), src);
+    if (!*normalized || fbx_is_absolute_path(normalized) || strstr(normalized, "://"))
+        return 0;
+    p = normalized;
+    out[0] = '\0';
+    while (*p) {
+        const char *seg;
+        size_t seg_len;
+        while (*p == '/')
+            p++;
+        seg = p;
+        while (*p && *p != '/')
+            p++;
+        seg_len = (size_t)(p - seg);
+        if (seg_len == 0 || (seg_len == 1 && seg[0] == '.'))
+            continue;
+        if (seg_len == 2 && seg[0] == '.' && seg[1] == '.')
+            return 0;
+        if (wrote_segment) {
+            if (out_len + 1 >= out_size)
+                return 0;
+            out[out_len++] = '/';
+        }
+        if (seg_len >= out_size || out_len > out_size - 1 - seg_len)
+            return 0;
+        memcpy(out + out_len, seg, seg_len);
+        out_len += seg_len;
+        out[out_len] = '\0';
+        wrote_segment = 1;
+    }
+    return wrote_segment;
+}
+
+/// @brief Try a safe relative texture reference, then fall back to its basename beside the FBX file.
 static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture_ref) {
     char normalized_ref[1024];
     char dir[1024];
@@ -205,14 +255,11 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
     if (!texture_ref || !*texture_ref)
         return NULL;
 
-    fbx_normalize_path(normalized_ref, sizeof(normalized_ref), texture_ref);
-    if (!*normalized_ref)
+    if (!fbx_normalize_relative_texture_ref(texture_ref, normalized_ref, sizeof(normalized_ref)))
         return NULL;
 
     fbx_parent_dir(dir, sizeof(dir), fbx_path);
-    if (fbx_is_absolute_path(normalized_ref)) {
-        pixels = rt_pixels_load(rt_const_cstr(normalized_ref));
-    } else if (*dir) {
+    if (*dir) {
         fbx_join_path(candidate, sizeof(candidate), dir, normalized_ref);
         pixels = rt_pixels_load(rt_const_cstr(candidate));
     } else {
@@ -406,19 +453,29 @@ static void *fbx_decompress_array(const uint8_t *data,
     memcpy(bv->bdata, data + 2, deflate_len);
 
     void *inflated = rt_compress_inflate(comp_bytes);
+    if (rt_obj_release_check0(comp_bytes))
+        rt_obj_free(comp_bytes);
     if (!inflated)
         return NULL;
 
     bytes_view *iv = (bytes_view *)inflated;
-    if (elem_size > 0 && count > SIZE_MAX / elem_size)
+    if (elem_size > 0 && count > SIZE_MAX / elem_size) {
+        if (rt_obj_release_check0(inflated))
+            rt_obj_free(inflated);
         return NULL; /* overflow guard for 32-bit platforms */
+    }
     size_t expected = (size_t)count * elem_size;
-    if ((size_t)iv->len < expected)
+    if ((size_t)iv->len < expected) {
+        if (rt_obj_release_check0(inflated))
+            rt_obj_free(inflated);
         return NULL;
+    }
 
     void *result = malloc(expected);
     if (result)
         memcpy(result, iv->bdata, expected);
+    if (rt_obj_release_check0(inflated))
+        rt_obj_free(inflated);
     return result;
 }
 
@@ -957,6 +1014,69 @@ static const fbx_mesh_remap_t *fbx_find_mesh_remap(const fbx_mesh_remap_t *remap
     return NULL;
 }
 
+static void fbx_mesh_material_map_free(fbx_mesh_material_map_t *map) {
+    if (!map)
+        return;
+    free(map->triangle_slots);
+    memset(map, 0, sizeof(*map));
+}
+
+static void fbx_mesh_bindings_free(fbx_mesh_binding_t *bindings, int32_t count) {
+    if (!bindings)
+        return;
+    for (int32_t i = 0; i < count; i++)
+        fbx_mesh_material_map_free(&bindings[i].material_map);
+    free(bindings);
+}
+
+static int fbx_mesh_material_map_append(fbx_mesh_material_map_t *map,
+                                        int32_t material_slot,
+                                        uint32_t triangle_count) {
+    int32_t *grown;
+    uint32_t old_count;
+    if (!map || triangle_count == 0)
+        return 1;
+    if (material_slot < 0)
+        material_slot = 0;
+    if (map->triangle_count > UINT32_MAX - triangle_count)
+        return 0;
+    if ((size_t)(map->triangle_count + triangle_count) > SIZE_MAX / sizeof(*map->triangle_slots))
+        return 0;
+    grown = (int32_t *)realloc(map->triangle_slots,
+                               (size_t)(map->triangle_count + triangle_count) *
+                                   sizeof(*map->triangle_slots));
+    if (!grown)
+        return 0;
+    map->triangle_slots = grown;
+    old_count = map->triangle_count;
+    for (uint32_t i = 0; i < triangle_count; i++)
+        map->triangle_slots[old_count + i] = material_slot;
+    map->triangle_count += triangle_count;
+    map->has_slots = 1;
+    if (material_slot + 1 > map->slot_count)
+        map->slot_count = material_slot + 1;
+    return 1;
+}
+
+static int32_t fbx_material_slot_for_polygon(const int32_t *slots,
+                                             uint32_t slot_count,
+                                             int by_polygon,
+                                             int all_same,
+                                             uint32_t polygon_index) {
+    uint32_t src_index = 0;
+    if (!slots || slot_count == 0)
+        return 0;
+    if (by_polygon)
+        src_index = polygon_index;
+    else if (all_same)
+        src_index = 0;
+    else
+        src_index = polygon_index;
+    if (src_index >= slot_count)
+        return 0;
+    return slots[src_index] < 0 ? 0 : slots[src_index];
+}
+
 #include "rt_fbx_triangulation.inc"
 
 /*==========================================================================
@@ -972,7 +1092,10 @@ static const fbx_mesh_remap_t *fbx_find_mesh_remap(const fbx_mesh_remap_t *remap
 /// using ear clipping. If `z_up` is set, applies an axis
 /// swap (positions and normals) to convert to Y-up.
 /// @return A new mesh on success, NULL on missing or malformed geometry.
-static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_remap_t *remap) {
+static void *fbx_extract_geometry(fbx_node_t *geom_node,
+                                  int z_up,
+                                  fbx_mesh_remap_t *remap,
+                                  fbx_mesh_material_map_t *material_map) {
     if (!geom_node)
         return NULL;
 
@@ -997,6 +1120,8 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_rema
         return NULL;
     if (remap)
         fbx_mesh_remap_init(remap, fbx_prop_i64(geom_node, 0), (int32_t)pos_count);
+    if (material_map)
+        memset(material_map, 0, sizeof(*material_map));
 
     /* Find normals (optional) */
     fbx_node_t *norm_layer = fbx_find_child(geom_node, "LayerElementNormal");
@@ -1060,14 +1185,41 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_rema
         }
     }
 
+    fbx_node_t *mat_layer = fbx_find_child(geom_node, "LayerElementMaterial");
+    int32_t *material_slots = NULL;
+    uint32_t material_slot_count = 0;
+    int material_by_polygon = 0;
+    int material_all_same = 0;
+    if (mat_layer) {
+        fbx_node_t *m_node = fbx_find_child(mat_layer, "Materials");
+        fbx_node_t *mm = fbx_find_child(mat_layer, "MappingInformationType");
+        if (mm && mm->prop_count >= 1) {
+            const char *mapping = fbx_prop_str(mm, 0);
+            material_by_polygon = strcmp(mapping, "ByPolygon") == 0;
+            material_all_same = strcmp(mapping, "AllSame") == 0;
+        }
+        if (m_node && m_node->prop_count >= 1 && m_node->props[0].type == 'i' &&
+            m_node->props[0].v.array.data) {
+            material_slots = (int32_t *)m_node->props[0].v.array.data;
+            material_slot_count = m_node->props[0].v.array.count;
+            if (material_slot_count > (uint32_t)INT32_MAX) {
+                material_slots = NULL;
+                material_slot_count = 0;
+            }
+        }
+    }
+
     /* Build mesh: iterate polygon indices, triangulate with fan */
     void *mesh = rt_mesh3d_new();
     if (!mesh)
         return NULL;
 
-    int32_t polygon[32];
+    int32_t polygon_stack[16];
+    int32_t *polygon = polygon_stack;
     int32_t poly_count = 0;
+    int32_t poly_capacity = (int32_t)(sizeof(polygon_stack) / sizeof(polygon_stack[0]));
     int32_t polygon_vertex_idx = 0; /* running index for ByPolygonVertex mapping */
+    uint32_t polygon_idx = 0;
     int32_t mesh_vertex_count = 0;
 
     for (uint32_t i = 0; i < idx_count; i++) {
@@ -1122,27 +1274,84 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_rema
 
         {
             int32_t emitted_vertex = mesh_vertex_count++;
-            if (poly_count >= (int32_t)(sizeof(polygon) / sizeof(polygon[0]))) {
+            if (poly_count >= poly_capacity) {
+                int32_t new_capacity = poly_capacity * 2;
+                int32_t *grown;
+                if (poly_capacity > INT32_MAX / 2 ||
+                    (size_t)new_capacity > SIZE_MAX / sizeof(*polygon)) {
+                    if (polygon != polygon_stack)
+                        free(polygon);
+                    if (rt_obj_release_check0(mesh))
+                        rt_obj_free(mesh);
+                    return NULL;
+                }
+                grown = (int32_t *)malloc((size_t)new_capacity * sizeof(*polygon));
+                if (!grown) {
+                    if (polygon != polygon_stack)
+                        free(polygon);
+                    if (rt_obj_release_check0(mesh))
+                        rt_obj_free(mesh);
+                    return NULL;
+                }
+                memcpy(grown, polygon, (size_t)poly_count * sizeof(*polygon));
+                if (polygon != polygon_stack)
+                    free(polygon);
+                polygon = grown;
+                poly_capacity = new_capacity;
+            }
+            if (((rt_mesh3d *)mesh)->vertex_count == UINT32_MAX) {
+                if (polygon != polygon_stack)
+                    free(polygon);
                 if (rt_obj_release_check0(mesh))
                     rt_obj_free(mesh);
                 return NULL;
             }
             rt_mesh3d_add_vertex(mesh, px, py, pz, nx, ny, nz, u, v);
+            if (((rt_mesh3d *)mesh)->build_failed) {
+                if (polygon != polygon_stack)
+                    free(polygon);
+                if (rt_obj_release_check0(mesh))
+                    rt_obj_free(mesh);
+                return NULL;
+            }
             fbx_mesh_remap_add_vertex(remap, vi, emitted_vertex);
             polygon[poly_count++] = emitted_vertex;
         }
         polygon_vertex_idx++;
 
         if (end_of_polygon) {
+            uint32_t index_before = ((rt_mesh3d *)mesh)->index_count;
+            int32_t material_slot = fbx_material_slot_for_polygon(material_slots,
+                                                                  material_slot_count,
+                                                                  material_by_polygon,
+                                                                  material_all_same,
+                                                                  polygon_idx);
             if (!fbx_emit_polygon_triangles(mesh, polygon, poly_count)) {
+                if (polygon != polygon_stack)
+                    free(polygon);
                 if (rt_obj_release_check0(mesh))
                     rt_obj_free(mesh);
                 return NULL;
             }
+            if (material_map) {
+                uint32_t index_after = ((rt_mesh3d *)mesh)->index_count;
+                uint32_t added_triangles = (index_after - index_before) / 3u;
+                if (!fbx_mesh_material_map_append(material_map, material_slot, added_triangles)) {
+                    if (polygon != polygon_stack)
+                        free(polygon);
+                    fbx_mesh_material_map_free(material_map);
+                    if (rt_obj_release_check0(mesh))
+                        rt_obj_free(mesh);
+                    return NULL;
+                }
+            }
             poly_count = 0;
+            polygon_idx++;
         }
     }
 
+    if (polygon != polygon_stack)
+        free(polygon);
     return mesh;
 }
 
@@ -1226,9 +1435,30 @@ static void fbx_extract_model_trs(
     double rx = 0.0;
     double ry = 0.0;
     double rz = 0.0;
+    double pre_rx = 0.0;
+    double pre_ry = 0.0;
+    double pre_rz = 0.0;
+    double post_rx = 0.0;
+    double post_ry = 0.0;
+    double post_rz = 0.0;
+    double geo_tx = 0.0;
+    double geo_ty = 0.0;
+    double geo_tz = 0.0;
+    double geo_rx = 0.0;
+    double geo_ry = 0.0;
+    double geo_rz = 0.0;
+    double rot_off_x = 0.0;
+    double rot_off_y = 0.0;
+    double rot_off_z = 0.0;
+    double scale_off_x = 0.0;
+    double scale_off_y = 0.0;
+    double scale_off_z = 0.0;
     double sx = 1.0;
     double sy = 1.0;
     double sz = 1.0;
+    double geo_sx = 1.0;
+    double geo_sy = 1.0;
+    double geo_sz = 1.0;
     double hx;
     double hy;
     double hz;
@@ -1283,9 +1513,47 @@ static void fbx_extract_model_trs(
                 sx = fbx_prop_f64(p, 4);
                 sy = fbx_prop_f64(p, 5);
                 sz = fbx_prop_f64(p, 6);
+            } else if (strcmp(pn, "PreRotation") == 0) {
+                pre_rx = fbx_prop_f64(p, 4);
+                pre_ry = fbx_prop_f64(p, 5);
+                pre_rz = fbx_prop_f64(p, 6);
+            } else if (strcmp(pn, "PostRotation") == 0) {
+                post_rx = fbx_prop_f64(p, 4);
+                post_ry = fbx_prop_f64(p, 5);
+                post_rz = fbx_prop_f64(p, 6);
+            } else if (strcmp(pn, "GeometricTranslation") == 0) {
+                geo_tx = fbx_prop_f64(p, 4);
+                geo_ty = fbx_prop_f64(p, 5);
+                geo_tz = fbx_prop_f64(p, 6);
+            } else if (strcmp(pn, "GeometricRotation") == 0) {
+                geo_rx = fbx_prop_f64(p, 4);
+                geo_ry = fbx_prop_f64(p, 5);
+                geo_rz = fbx_prop_f64(p, 6);
+            } else if (strcmp(pn, "GeometricScaling") == 0) {
+                geo_sx = fbx_prop_f64(p, 4);
+                geo_sy = fbx_prop_f64(p, 5);
+                geo_sz = fbx_prop_f64(p, 6);
+            } else if (strcmp(pn, "RotationOffset") == 0) {
+                rot_off_x = fbx_prop_f64(p, 4);
+                rot_off_y = fbx_prop_f64(p, 5);
+                rot_off_z = fbx_prop_f64(p, 6);
+            } else if (strcmp(pn, "ScalingOffset") == 0) {
+                scale_off_x = fbx_prop_f64(p, 4);
+                scale_off_y = fbx_prop_f64(p, 5);
+                scale_off_z = fbx_prop_f64(p, 6);
             }
         }
     }
+
+    tx += geo_tx + rot_off_x + scale_off_x;
+    ty += geo_ty + rot_off_y + scale_off_y;
+    tz += geo_tz + rot_off_z + scale_off_z;
+    rx += pre_rx + post_rx + geo_rx;
+    ry += pre_ry + post_ry + geo_ry;
+    rz += pre_rz + post_rz + geo_rz;
+    sx *= geo_sx;
+    sy *= geo_sy;
+    sz *= geo_sz;
 
     if (z_up)
         fbx_correct_zup(&tx, &ty, &tz);
@@ -1303,6 +1571,18 @@ static void fbx_extract_model_trs(
     qx = sxh * cy * cz - cx * syh * szh;
     qy = cx * syh * cz + sxh * cy * szh;
     qz = cx * cy * szh - sxh * syh * cz;
+    {
+        double qlen = sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+        if (isfinite(qlen) && qlen > 1e-12) {
+            qx /= qlen;
+            qy /= qlen;
+            qz /= qlen;
+            qw /= qlen;
+        } else {
+            qx = qy = qz = 0.0;
+            qw = 1.0;
+        }
+    }
 
     if (pos) {
         pos[0] = tx;
@@ -1322,15 +1602,89 @@ static void fbx_extract_model_trs(
     }
 }
 
-/// @brief Linear search for a `Mesh3D` associated with an FBX object ID. Typical FBX
-/// assets have a few dozen meshes so O(n) is fine — switching to a hash would cost
-/// more in setup than it saves on lookup. Returns NULL when no binding matches.
-static void *fbx_lookup_mesh_binding(const fbx_mesh_binding_t *bindings,
-                                     int32_t count,
-                                     int64_t id) {
+static const fbx_mesh_binding_t *fbx_lookup_mesh_binding_entry(const fbx_mesh_binding_t *bindings,
+                                                               int32_t count,
+                                                               int64_t id) {
     for (int32_t i = 0; i < count; i++)
         if (bindings[i].id == id)
-            return bindings[i].mesh;
+            return &bindings[i];
+    return NULL;
+}
+
+static void *fbx_clone_mesh_for_material_slot(const rt_mesh3d *src,
+                                              const fbx_mesh_material_map_t *map,
+                                              int32_t material_slot) {
+    void *mesh_obj;
+    rt_mesh3d *dst;
+    uint32_t selected_triangles = 0;
+    uint32_t *vertex_map = NULL;
+    if (!src || !map || !map->triangle_slots || material_slot < 0)
+        return NULL;
+    for (uint32_t tri = 0; tri < map->triangle_count; tri++) {
+        if (map->triangle_slots[tri] == material_slot)
+            selected_triangles++;
+    }
+    if (selected_triangles == 0 || selected_triangles > UINT32_MAX / 3u)
+        return NULL;
+    mesh_obj = rt_mesh3d_new();
+    if (!mesh_obj)
+        return NULL;
+    dst = (rt_mesh3d *)mesh_obj;
+    rt_mesh3d_begin_geometry_batch(dst);
+    rt_mesh3d_reserve(mesh_obj, (int64_t)selected_triangles * 3, selected_triangles);
+    if (dst->build_failed)
+        goto fail;
+    if (src->positions64 && src->vertex_count > 0) {
+        if ((size_t)dst->vertex_capacity > SIZE_MAX / (3u * sizeof(double)))
+            goto fail;
+        dst->positions64 = (double *)calloc((size_t)dst->vertex_capacity * 3u, sizeof(double));
+        if (!dst->positions64)
+            goto fail;
+    }
+    if ((size_t)src->vertex_count > SIZE_MAX / sizeof(*vertex_map))
+        goto fail;
+    vertex_map = (uint32_t *)malloc((size_t)src->vertex_count * sizeof(*vertex_map));
+    if (!vertex_map)
+        goto fail;
+    for (uint32_t i = 0; i < src->vertex_count; i++)
+        vertex_map[i] = UINT32_MAX;
+    for (uint32_t tri = 0; tri < map->triangle_count; tri++) {
+        if (map->triangle_slots[tri] != material_slot)
+            continue;
+        for (uint32_t corner = 0; corner < 3u; corner++) {
+            uint32_t old_index = src->indices[tri * 3u + corner];
+            uint32_t new_index;
+            if (old_index >= src->vertex_count)
+                goto fail;
+            if (vertex_map[old_index] == UINT32_MAX) {
+                if (dst->vertex_count >= dst->vertex_capacity)
+                    goto fail;
+                new_index = dst->vertex_count++;
+                vertex_map[old_index] = new_index;
+                dst->vertices[new_index] = src->vertices[old_index];
+                if (dst->positions64 && src->positions64) {
+                    memcpy(&dst->positions64[(size_t)new_index * 3u],
+                           &src->positions64[(size_t)old_index * 3u],
+                           3u * sizeof(double));
+                }
+            } else {
+                new_index = vertex_map[old_index];
+            }
+            if (dst->index_count >= dst->index_capacity)
+                goto fail;
+            dst->indices[dst->index_count++] = new_index;
+        }
+    }
+    dst->bone_count = src->bone_count;
+    dst->bounds_dirty = 1;
+    rt_mesh3d_end_geometry_batch(dst);
+    free(vertex_map);
+    return mesh_obj;
+fail:
+    rt_mesh3d_end_geometry_batch(dst);
+    free(vertex_map);
+    if (rt_obj_release_check0(mesh_obj))
+        rt_obj_free(mesh_obj);
     return NULL;
 }
 
@@ -1375,6 +1729,7 @@ static void *fbx_build_scene_root(fbx_node_t *root,
     int32_t model_count = 0;
     int32_t model_capacity = 0;
     void *scene_root = NULL;
+    void *default_material = NULL;
     int failed = 0;
 
     if (!root || !objects)
@@ -1441,12 +1796,18 @@ static void *fbx_build_scene_root(fbx_node_t *root,
         scene_root = rt_scene_node3d_new();
         if (!scene_root)
             failed = 1;
+        default_material = rt_material3d_new();
+        if (!default_material)
+            failed = 1;
     }
 
     for (int32_t i = 0; !failed && i < model_count; i++) {
         void *primary_mesh = NULL;
         void *primary_material = NULL;
         int32_t extra_mesh_count = 0;
+        void **model_materials = NULL;
+        int32_t model_material_count = 0;
+        int32_t model_material_capacity = 0;
         for (int32_t ci = 0; ci < ct->count; ci++) {
             int64_t child_id = ct->entries[ci].child_id;
             int64_t parent_id = ct->entries[ci].parent_id;
@@ -1462,14 +1823,37 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                 continue;
             material =
                 fbx_lookup_material_binding(material_bindings, material_binding_count, child_id);
-            if (material && !primary_material)
-                primary_material = material;
+            if (material) {
+                if (model_material_count >= model_material_capacity) {
+                    int32_t new_capacity =
+                        model_material_capacity == 0 ? 4 : model_material_capacity * 2;
+                    void **grown;
+                    if (model_material_capacity > INT32_MAX / 2 ||
+                        (size_t)new_capacity > SIZE_MAX / sizeof(*model_materials)) {
+                        failed = 1;
+                        break;
+                    }
+                    grown =
+                        (void **)realloc(model_materials, (size_t)new_capacity * sizeof(*grown));
+                    if (!grown) {
+                        failed = 1;
+                        break;
+                    }
+                    model_materials = grown;
+                    model_material_capacity = new_capacity;
+                }
+                model_materials[model_material_count++] = material;
+                if (!primary_material)
+                    primary_material = material;
+            }
         }
-        for (int32_t ci = 0; ci < ct->count; ci++) {
+        for (int32_t ci = 0; !failed && ci < ct->count; ci++) {
             int64_t child_id = ct->entries[ci].child_id;
             int64_t parent_id = ct->entries[ci].parent_id;
             fbx_node_t *child_obj;
+            const fbx_mesh_binding_t *binding;
             void *mesh;
+            void *material;
             void *mesh_node;
 
             if (parent_id != models[i].id)
@@ -1481,11 +1865,56 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                 strcmp(fbx_prop_str(child_obj, 2), "Mesh") != 0) {
                 continue;
             }
-            mesh = fbx_lookup_mesh_binding(mesh_bindings, mesh_binding_count, child_id);
-            if (!mesh)
+            binding = fbx_lookup_mesh_binding_entry(mesh_bindings, mesh_binding_count, child_id);
+            if (!binding || !binding->mesh)
                 continue;
+            mesh = binding->mesh;
+            material = primary_material ? primary_material : default_material;
+            if (binding->material_map.has_slots && binding->material_map.triangle_count > 0 &&
+                binding->material_map.triangle_slots) {
+                int32_t slot = binding->material_map.triangle_slots[0];
+                if (slot >= 0 && slot < model_material_count && model_materials[slot])
+                    material = model_materials[slot];
+            }
+            if (binding->material_map.has_slots && binding->material_map.slot_count > 1 &&
+                model_material_count > 1) {
+                for (int32_t slot = 0; slot < binding->material_map.slot_count; slot++) {
+                    void *slot_mesh =
+                        fbx_clone_mesh_for_material_slot((const rt_mesh3d *)mesh,
+                                                         &binding->material_map,
+                                                         slot);
+                    void *slot_material = slot < model_material_count && model_materials[slot]
+                                              ? model_materials[slot]
+                                              : default_material;
+                    if (!slot_mesh)
+                        continue;
+                    mesh_node = rt_scene_node3d_new();
+                    if (!mesh_node) {
+                        fbx_release_ref(&slot_mesh);
+                        failed = 1;
+                        break;
+                    }
+                    {
+                        char generated_name[96];
+                        snprintf(generated_name,
+                                 sizeof(generated_name),
+                                 "mesh_%d_material_%d",
+                                 extra_mesh_count,
+                                 slot);
+                        rt_scene_node3d_set_name(mesh_node, rt_const_cstr(generated_name));
+                    }
+                    rt_scene_node3d_set_mesh(mesh_node, slot_mesh);
+                    rt_scene_node3d_set_material(mesh_node, slot_material);
+                    rt_scene_node3d_add_child(models[i].node, mesh_node);
+                    fbx_release_ref(&mesh_node);
+                    fbx_release_ref(&slot_mesh);
+                    extra_mesh_count++;
+                }
+                continue;
+            }
             if (!primary_mesh) {
                 primary_mesh = mesh;
+                primary_material = material;
                 continue;
             }
             mesh_node = rt_scene_node3d_new();
@@ -1501,18 +1930,18 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                 rt_scene_node3d_set_name(mesh_node, rt_const_cstr(generated_name));
             }
             rt_scene_node3d_set_mesh(mesh_node, mesh);
-            if (primary_material)
-                rt_scene_node3d_set_material(mesh_node, primary_material);
+            rt_scene_node3d_set_material(mesh_node, material ? material : default_material);
             rt_scene_node3d_add_child(models[i].node, mesh_node);
             fbx_release_ref(&mesh_node);
             extra_mesh_count++;
         }
+        free(model_materials);
         if (failed)
             break;
         if (primary_mesh) {
             rt_scene_node3d_set_mesh(models[i].node, primary_mesh);
-            if (primary_material)
-                rt_scene_node3d_set_material(models[i].node, primary_material);
+            rt_scene_node3d_set_material(models[i].node,
+                                         primary_material ? primary_material : default_material);
         }
     }
 
@@ -1532,6 +1961,7 @@ static void *fbx_build_scene_root(fbx_node_t *root,
     for (int32_t i = 0; i < model_count; i++)
         fbx_release_ref(&models[i].node);
     free(models);
+    fbx_release_ref(&default_material);
 
     if (failed) {
         fbx_release_ref(&scene_root);
@@ -2611,6 +3041,254 @@ static void rt_fbx_asset_finalize(void *obj) {
     fbx_release_ref(&fbx->scene_root);
 }
 
+static int fbx_ascii_grow_double_array(double **values, size_t *capacity, size_t needed) {
+    double *grown;
+    size_t new_capacity;
+    if (needed <= *capacity)
+        return 1;
+    new_capacity = *capacity ? *capacity : 64;
+    while (new_capacity < needed) {
+        if (new_capacity > SIZE_MAX / 2u)
+            return 0;
+        new_capacity *= 2u;
+    }
+    if (new_capacity > SIZE_MAX / sizeof(**values))
+        return 0;
+    grown = (double *)realloc(*values, new_capacity * sizeof(**values));
+    if (!grown)
+        return 0;
+    *values = grown;
+    *capacity = new_capacity;
+    return 1;
+}
+
+static int fbx_ascii_grow_i32_array(int32_t **values, size_t *capacity, size_t needed) {
+    int32_t *grown;
+    size_t new_capacity;
+    if (needed <= *capacity)
+        return 1;
+    new_capacity = *capacity ? *capacity : 64;
+    while (new_capacity < needed) {
+        if (new_capacity > SIZE_MAX / 2u)
+            return 0;
+        new_capacity *= 2u;
+    }
+    if (new_capacity > SIZE_MAX / sizeof(**values))
+        return 0;
+    grown = (int32_t *)realloc(*values, new_capacity * sizeof(**values));
+    if (!grown)
+        return 0;
+    *values = grown;
+    *capacity = new_capacity;
+    return 1;
+}
+
+static const char *fbx_ascii_array_payload(const char *text, const char *key) {
+    const char *p = text ? strstr(text, key) : NULL;
+    if (!p)
+        return NULL;
+    p = strstr(p, "a:");
+    return p ? p + 2 : NULL;
+}
+
+static int fbx_ascii_parse_double_array(const char *payload, double **out, size_t *out_count) {
+    double *values = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    const char *p = payload;
+    if (out)
+        *out = NULL;
+    if (out_count)
+        *out_count = 0;
+    if (!payload || !out || !out_count)
+        return 0;
+    while (*p && *p != '}') {
+        char *end = NULL;
+        while (*p == ',' || isspace((unsigned char)*p))
+            p++;
+        if (*p == '}')
+            break;
+        double value = strtod(p, &end);
+        if (end == p || !isfinite(value)) {
+            free(values);
+            return 0;
+        }
+        if (!fbx_ascii_grow_double_array(&values, &capacity, count + 1)) {
+            free(values);
+            return 0;
+        }
+        values[count++] = value;
+        p = end;
+    }
+    *out = values;
+    *out_count = count;
+    return count > 0;
+}
+
+static int fbx_ascii_parse_i32_array(const char *payload, int32_t **out, size_t *out_count) {
+    int32_t *values = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    const char *p = payload;
+    if (out)
+        *out = NULL;
+    if (out_count)
+        *out_count = 0;
+    if (!payload || !out || !out_count)
+        return 0;
+    while (*p && *p != '}') {
+        char *end = NULL;
+        while (*p == ',' || isspace((unsigned char)*p))
+            p++;
+        if (*p == '}')
+            break;
+        long value = strtol(p, &end, 10);
+        if (end == p || value < INT32_MIN || value > INT32_MAX) {
+            free(values);
+            return 0;
+        }
+        if (!fbx_ascii_grow_i32_array(&values, &capacity, count + 1)) {
+            free(values);
+            return 0;
+        }
+        values[count++] = (int32_t)value;
+        p = end;
+    }
+    *out = values;
+    *out_count = count;
+    return count > 0;
+}
+
+static void *fbx_ascii_build_mesh(const double *positions,
+                                  size_t position_count,
+                                  const int32_t *indices,
+                                  size_t index_count) {
+    int32_t polygon_stack[16];
+    int32_t *polygon = polygon_stack;
+    int32_t poly_count = 0;
+    int32_t poly_capacity = (int32_t)(sizeof(polygon_stack) / sizeof(polygon_stack[0]));
+    void *mesh;
+    if (!positions || !indices || position_count % 3u != 0)
+        return NULL;
+    mesh = rt_mesh3d_new();
+    if (!mesh)
+        return NULL;
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
+    for (size_t i = 0; i < index_count; i++) {
+        int32_t raw = indices[i];
+        int end = raw < 0;
+        int32_t vi = end ? ~raw : raw;
+        int32_t emitted;
+        if (vi < 0 || (size_t)vi >= position_count / 3u)
+            continue;
+        if (poly_count >= poly_capacity) {
+            int32_t new_capacity = poly_capacity * 2;
+            int32_t *grown;
+            if (poly_capacity > INT32_MAX / 2 ||
+                (size_t)new_capacity > SIZE_MAX / sizeof(*polygon))
+                goto fail;
+            grown = (int32_t *)malloc((size_t)new_capacity * sizeof(*polygon));
+            if (!grown)
+                goto fail;
+            memcpy(grown, polygon, (size_t)poly_count * sizeof(*polygon));
+            if (polygon != polygon_stack)
+                free(polygon);
+            polygon = grown;
+            poly_capacity = new_capacity;
+        }
+        emitted = (int32_t)((rt_mesh3d *)mesh)->vertex_count;
+        rt_mesh3d_add_vertex(mesh,
+                             positions[(size_t)vi * 3u + 0],
+                             positions[(size_t)vi * 3u + 1],
+                             positions[(size_t)vi * 3u + 2],
+                             0.0,
+                             1.0,
+                             0.0,
+                             0.0,
+                             0.0);
+        if (((rt_mesh3d *)mesh)->build_failed)
+            goto fail;
+        polygon[poly_count++] = emitted;
+        if (end) {
+            if (!fbx_emit_polygon_triangles(mesh, polygon, poly_count))
+                goto fail;
+            poly_count = 0;
+        }
+    }
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
+    if (((rt_mesh3d *)mesh)->index_count < 3u) {
+        if (polygon != polygon_stack)
+            free(polygon);
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return NULL;
+    }
+    if (polygon != polygon_stack)
+        free(polygon);
+    rt_mesh3d_recalc_normals(mesh);
+    return mesh;
+fail:
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
+    if (polygon != polygon_stack)
+        free(polygon);
+    if (rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
+    return NULL;
+}
+
+static void *fbx_load_ascii_minimal(const char *text) {
+    double *positions = NULL;
+    int32_t *indices = NULL;
+    size_t position_count = 0;
+    size_t index_count = 0;
+    void *mesh = NULL;
+    void *material = NULL;
+    void *scene_root = NULL;
+    void *mesh_node = NULL;
+    rt_fbx_asset *asset = NULL;
+    if (!fbx_ascii_parse_double_array(
+            fbx_ascii_array_payload(text, "Vertices:"), &positions, &position_count) ||
+        !fbx_ascii_parse_i32_array(
+            fbx_ascii_array_payload(text, "PolygonVertexIndex:"), &indices, &index_count))
+        goto fail;
+    mesh = fbx_ascii_build_mesh(positions, position_count, indices, index_count);
+    material = rt_material3d_new();
+    scene_root = rt_scene_node3d_new();
+    mesh_node = rt_scene_node3d_new();
+    asset =
+        (rt_fbx_asset *)rt_obj_new_i64(RT_G3D_FBX_ASSET_CLASS_ID, (int64_t)sizeof(rt_fbx_asset));
+    if (!mesh || !material || !scene_root || !mesh_node || !asset)
+        goto fail;
+    memset(asset, 0, sizeof(*asset));
+    rt_obj_set_finalizer(asset, rt_fbx_asset_finalize);
+    asset->meshes = (void **)calloc(1, sizeof(void *));
+    asset->materials = (void **)calloc(1, sizeof(void *));
+    if (!asset->meshes || !asset->materials)
+        goto fail;
+    asset->meshes[0] = mesh;
+    asset->mesh_count = 1;
+    asset->materials[0] = material;
+    asset->material_count = 1;
+    rt_scene_node3d_set_name(mesh_node, rt_const_cstr("mesh_0"));
+    rt_scene_node3d_set_mesh(mesh_node, mesh);
+    rt_scene_node3d_set_material(mesh_node, material);
+    rt_scene_node3d_add_child(scene_root, mesh_node);
+    asset->scene_root = scene_root;
+    fbx_release_ref(&mesh_node);
+    free(positions);
+    free(indices);
+    return asset;
+fail:
+    free(positions);
+    free(indices);
+    fbx_release_ref(&mesh_node);
+    fbx_release_ref(&scene_root);
+    fbx_release_ref(&material);
+    fbx_release_ref(&mesh);
+    fbx_release_ref((void **)&asset);
+    return NULL;
+}
+
 /// @brief Collect Geometry/Material objects from the FBX `Objects` node onto the asset,
 ///   recording id->mesh/material bindings and per-mesh vertex remaps. Extracted phase of
 ///   rt_fbx_load; the binding/remap arrays grow in place via the in/out pointer params.
@@ -2855,15 +3533,15 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
     }
 }
 
-static void fbx_load_collect_geometry(rt_fbx_asset *asset,
-                                      fbx_node_t *objects,
-                                      int z_up,
-                                      fbx_mesh_binding_t **p_mesh_bindings,
-                                      int32_t *p_mesh_binding_count,
-                                      fbx_mesh_remap_t **p_mesh_remaps,
-                                      int32_t *p_mesh_remap_count,
-                                      fbx_material_binding_t **p_material_bindings,
-                                      int32_t *p_material_binding_count) {
+static int fbx_load_collect_geometry(rt_fbx_asset *asset,
+                                     fbx_node_t *objects,
+                                     int z_up,
+                                     fbx_mesh_binding_t **p_mesh_bindings,
+                                     int32_t *p_mesh_binding_count,
+                                     fbx_mesh_remap_t **p_mesh_remaps,
+                                     int32_t *p_mesh_remap_count,
+                                     fbx_material_binding_t **p_material_bindings,
+                                     int32_t *p_material_binding_count) {
     fbx_mesh_binding_t *mesh_bindings = *p_mesh_bindings;
     int32_t mesh_binding_count = *p_mesh_binding_count;
     fbx_mesh_remap_t *mesh_remaps = *p_mesh_remaps;
@@ -2875,65 +3553,71 @@ static void fbx_load_collect_geometry(rt_fbx_asset *asset,
             fbx_node_t *obj = &objects->children[i];
             if (strcmp(obj->name, "Geometry") == 0) {
                 fbx_mesh_remap_t remap;
+                fbx_mesh_material_map_t material_map;
                 memset(&remap, 0, sizeof(remap));
-                void *mesh = fbx_extract_geometry(obj, z_up, &remap);
+                memset(&material_map, 0, sizeof(material_map));
+                void *mesh = fbx_extract_geometry(obj, z_up, &remap, &material_map);
                 if (mesh) {
                     if (asset->mesh_count == INT32_MAX ||
                         (size_t)(asset->mesh_count + 1) > SIZE_MAX / sizeof(void *)) {
                         fbx_release_ref(&mesh);
                         fbx_mesh_remap_free(&remap);
-                        continue;
+                        return 0;
                     }
                     int32_t nc = asset->mesh_count + 1;
                     void **nm = (void **)realloc(asset->meshes, (size_t)nc * sizeof(void *));
-                    if (nm) {
-                        asset->meshes = nm;
-                        asset->meshes[asset->mesh_count] = mesh;
-                        asset->mesh_count = nc;
-                        {
-                            void *nb = realloc(mesh_bindings,
-                                               (size_t)asset->mesh_count * sizeof(*mesh_bindings));
-                            if (nb) {
-                                mesh_bindings = (fbx_mesh_binding_t *)nb;
-                                mesh_bindings[mesh_binding_count].id = fbx_prop_i64(obj, 0);
-                                mesh_bindings[mesh_binding_count].mesh = mesh;
-                                mesh_binding_count++;
-                            }
-                        }
-                        (void)fbx_mesh_remaps_append(&mesh_remaps, &mesh_remap_count, &remap);
-                    } else {
+                    void *nb =
+                        realloc(mesh_bindings, (size_t)nc * sizeof(*mesh_bindings));
+                    if (!nm || !nb ||
+                        !fbx_mesh_remaps_append(&mesh_remaps, &mesh_remap_count, &remap)) {
+                        if (nm)
+                            asset->meshes = nm;
+                        if (nb)
+                            mesh_bindings = (fbx_mesh_binding_t *)nb;
                         fbx_release_ref(&mesh);
+                        fbx_mesh_remap_free(&remap);
+                        fbx_mesh_material_map_free(&material_map);
+                        return 0;
                     }
+                    asset->meshes = nm;
+                    mesh_bindings = (fbx_mesh_binding_t *)nb;
+                    asset->meshes[asset->mesh_count] = mesh;
+                    asset->mesh_count = nc;
+                    mesh_bindings[mesh_binding_count].id = fbx_prop_i64(obj, 0);
+                    mesh_bindings[mesh_binding_count].mesh = mesh;
+                    mesh_bindings[mesh_binding_count].material_map = material_map;
+                    memset(&material_map, 0, sizeof(material_map));
+                    mesh_binding_count++;
                 }
                 fbx_mesh_remap_free(&remap);
+                fbx_mesh_material_map_free(&material_map);
             } else if (strcmp(obj->name, "Material") == 0) {
                 void *mat = fbx_extract_material(obj);
                 if (mat) {
                     if (asset->material_count == INT32_MAX ||
                         (size_t)(asset->material_count + 1) > SIZE_MAX / sizeof(void *)) {
                         fbx_release_ref(&mat);
-                        continue;
+                        return 0;
                     }
                     int32_t nc = asset->material_count + 1;
                     void **nm = (void **)realloc(asset->materials, (size_t)nc * sizeof(void *));
-                    if (nm) {
-                        asset->materials = nm;
-                        asset->materials[asset->material_count] = mat;
-                        asset->material_count = nc;
-                        {
-                            void *nb =
-                                realloc(material_bindings,
-                                        (size_t)asset->material_count * sizeof(*material_bindings));
-                            if (nb) {
-                                material_bindings = (fbx_material_binding_t *)nb;
-                                material_bindings[material_binding_count].id = fbx_prop_i64(obj, 0);
-                                material_bindings[material_binding_count].material = mat;
-                                material_binding_count++;
-                            }
-                        }
-                    } else {
+                    void *nb =
+                        realloc(material_bindings, (size_t)nc * sizeof(*material_bindings));
+                    if (!nm || !nb) {
+                        if (nm)
+                            asset->materials = nm;
+                        if (nb)
+                            material_bindings = (fbx_material_binding_t *)nb;
                         fbx_release_ref(&mat);
+                        return 0;
                     }
+                    asset->materials = nm;
+                    material_bindings = (fbx_material_binding_t *)nb;
+                    asset->materials[asset->material_count] = mat;
+                    asset->material_count = nc;
+                    material_bindings[material_binding_count].id = fbx_prop_i64(obj, 0);
+                    material_bindings[material_binding_count].material = mat;
+                    material_binding_count++;
                 }
             }
         }
@@ -2944,6 +3628,7 @@ static void fbx_load_collect_geometry(rt_fbx_asset *asset,
     *p_mesh_remap_count = mesh_remap_count;
     *p_material_bindings = material_bindings;
     *p_material_binding_count = material_binding_count;
+    return 1;
 }
 
 /// @brief Load an FBX binary file and extract meshes, skeleton, animations, and materials.
@@ -2985,7 +3670,7 @@ void *rt_fbx_load(rt_string path) {
         return NULL;
     }
 
-    uint8_t *data = (uint8_t *)malloc((size_t)fsize);
+    uint8_t *data = (uint8_t *)malloc((size_t)fsize + 1u);
     if (!data) {
         fclose(f);
         rt_trap("FBX.Load: out of memory");
@@ -2997,13 +3682,17 @@ void *rt_fbx_load(rt_string path) {
         rt_trap("FBX.Load: read error");
         return NULL;
     }
+    data[(size_t)fsize] = 0;
     fclose(f);
 
     /* Verify magic */
     static const char magic[] = "Kaydara FBX Binary  ";
     if (memcmp(data, magic, 20) != 0) {
+        void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
         free(data);
-        rt_trap("FBX.Load: not a binary FBX file");
+        if (ascii_asset)
+            return ascii_asset;
+        rt_trap("FBX.Load: not a supported FBX file");
         return NULL;
     }
 
@@ -3076,7 +3765,7 @@ void *rt_fbx_load(rt_string path) {
     rt_fbx_asset *asset =
         (rt_fbx_asset *)rt_obj_new_i64(RT_G3D_FBX_ASSET_CLASS_ID, (int64_t)sizeof(rt_fbx_asset));
     if (!asset) {
-        free(mesh_bindings);
+        fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
         fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
         free(material_bindings);
         free(ct.entries);
@@ -3099,15 +3788,24 @@ void *rt_fbx_load(rt_string path) {
 
     /* Extract geometry */
     fbx_node_t *objects = fbx_find_child(&root, "Objects");
-    fbx_load_collect_geometry(asset,
-                              objects,
-                              z_up,
-                              &mesh_bindings,
-                              &mesh_binding_count,
-                              &mesh_remaps,
-                              &mesh_remap_count,
-                              &material_bindings,
-                              &material_binding_count);
+    if (!fbx_load_collect_geometry(asset,
+                                   objects,
+                                   z_up,
+                                   &mesh_bindings,
+                                   &mesh_binding_count,
+                                   &mesh_remaps,
+                                   &mesh_remap_count,
+                                   &material_bindings,
+                                   &material_binding_count)) {
+        fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
+        fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
+        free(material_bindings);
+        free(ct.entries);
+        fbx_free_node(&root);
+        fbx_release_ref((void **)&asset);
+        rt_trap("FBX.Load: failed to collect geometry/material bindings");
+        return NULL;
+    }
 
     /* Extract textures and link to materials */
     fbx_load_link_textures(asset, objects, cpath, ct, material_bindings, material_binding_count);
@@ -3139,7 +3837,7 @@ void *rt_fbx_load(rt_string path) {
 
     /* Cleanup parser data */
     free(ct.entries);
-    free(mesh_bindings);
+    fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
     fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
     free(material_bindings);
     fbx_free_node(&root);
@@ -3153,14 +3851,15 @@ void *rt_fbx_load(rt_string path) {
 
 /// @brief Get the number of meshes extracted from the FBX file.
 int64_t rt_fbx_mesh_count(void *obj) {
-    return obj ? ((rt_fbx_asset *)obj)->mesh_count : 0;
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    return a ? a->mesh_count : 0;
 }
 
 /// @brief Get a mesh by index from the loaded FBX asset.
 void *rt_fbx_get_mesh(void *obj, int64_t index) {
-    if (!obj)
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    if (!a)
         return NULL;
-    rt_fbx_asset *a = (rt_fbx_asset *)obj;
     if (index < 0 || index >= a->mesh_count)
         return NULL;
     return a->meshes[index];
@@ -3168,7 +3867,8 @@ void *rt_fbx_get_mesh(void *obj, int64_t index) {
 
 /// @brief Get the skeleton extracted from the FBX file (NULL if no skeleton).
 void *rt_fbx_get_skeleton(void *obj) {
-    return obj ? ((rt_fbx_asset *)obj)->skeleton : NULL;
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    return a ? a->skeleton : NULL;
 }
 
 /// @brief Get the `SceneNode3D` root of the imported scene graph — the tree of models
@@ -3177,19 +3877,21 @@ void *rt_fbx_get_skeleton(void *obj) {
 /// `mesh_count` / `material_count` lists which expose every shared resource the scene
 /// uses, regardless of whether it's actually attached to a node.
 void *rt_fbx_get_scene_root(void *obj) {
-    return obj ? ((rt_fbx_asset *)obj)->scene_root : NULL;
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    return a ? a->scene_root : NULL;
 }
 
 /// @brief Get the number of animation clips in the FBX file.
 int64_t rt_fbx_animation_count(void *obj) {
-    return obj ? ((rt_fbx_asset *)obj)->animation_count : 0;
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    return a ? a->animation_count : 0;
 }
 
 /// @brief Get an animation clip by index from the loaded FBX asset.
 void *rt_fbx_get_animation(void *obj, int64_t index) {
-    if (!obj)
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    if (!a)
         return NULL;
-    rt_fbx_asset *a = (rt_fbx_asset *)obj;
     if (index < 0 || index >= a->animation_count)
         return NULL;
     return a->animations[index];
@@ -3205,14 +3907,15 @@ rt_string rt_fbx_get_animation_name(void *obj, int64_t index) {
 
 /// @brief Get the number of materials extracted from the FBX file.
 int64_t rt_fbx_material_count(void *obj) {
-    return obj ? ((rt_fbx_asset *)obj)->material_count : 0;
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    return a ? a->material_count : 0;
 }
 
 /// @brief Get a material by index from the loaded FBX asset.
 void *rt_fbx_get_material(void *obj, int64_t index) {
-    if (!obj)
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    if (!a)
         return NULL;
-    rt_fbx_asset *a = (rt_fbx_asset *)obj;
     if (index < 0 || index >= a->material_count)
         return NULL;
     return a->materials[index];
@@ -3220,9 +3923,9 @@ void *rt_fbx_get_material(void *obj, int64_t index) {
 
 /// @brief Get the morph target data for a mesh by its index in the FBX asset.
 void *rt_fbx_get_morph_target(void *obj, int64_t mesh_index) {
-    if (!obj)
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    if (!a)
         return NULL;
-    rt_fbx_asset *a = (rt_fbx_asset *)obj;
     if (!a->morph_targets || mesh_index < 0 || mesh_index >= a->morph_count)
         return NULL;
     return a->morph_targets[mesh_index];

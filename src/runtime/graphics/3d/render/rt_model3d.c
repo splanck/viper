@@ -829,6 +829,331 @@ static void model_build_synth_mesh_nodes(rt_model3d *model) {
     }
 }
 
+typedef struct {
+    char *name;
+    void *material;
+} model_obj_material_entry;
+
+typedef struct {
+    model_obj_material_entry *entries;
+    int32_t count;
+    int32_t capacity;
+} model_obj_material_table;
+
+static char *model_strdup_range(const char *start, const char *end) {
+    size_t len;
+    char *copy;
+    if (!start)
+        start = "";
+    if (!end)
+        end = start + strlen(start);
+    while (start < end && (*start == ' ' || *start == '\t'))
+        start++;
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' ||
+                           end[-1] == '\r'))
+        end--;
+    len = (size_t)(end - start);
+    copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, start, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+static void model_obj_material_table_free(model_obj_material_table *table) {
+    if (!table || !table->entries)
+        return;
+    for (int32_t i = 0; i < table->count; i++) {
+        free(table->entries[i].name);
+        model_release_ref(&table->entries[i].material);
+    }
+    free(table->entries);
+    memset(table, 0, sizeof(*table));
+}
+
+static int model_obj_material_table_append(model_obj_material_table *table,
+                                           char *name,
+                                           void *material) {
+    model_obj_material_entry *grown;
+    if (!table || !name || !material)
+        return 0;
+    for (int32_t i = 0; i < table->count; i++) {
+        if (strcmp(table->entries[i].name ? table->entries[i].name : "", name) == 0) {
+            free(name);
+            model_release_local(material);
+            return 1;
+        }
+    }
+    if (table->count >= table->capacity) {
+        int32_t new_capacity = table->capacity > 0 ? table->capacity * 2 : 8;
+        if (table->capacity > INT32_MAX / 2 ||
+            (size_t)new_capacity > SIZE_MAX / sizeof(*table->entries))
+            return 0;
+        grown = (model_obj_material_entry *)realloc(table->entries,
+                                                    (size_t)new_capacity * sizeof(*grown));
+        if (!grown)
+            return 0;
+        memset(grown + table->capacity,
+               0,
+               (size_t)(new_capacity - table->capacity) * sizeof(*grown));
+        table->entries = grown;
+        table->capacity = new_capacity;
+    }
+    table->entries[table->count].name = name;
+    table->entries[table->count].material = material;
+    table->count++;
+    return 1;
+}
+
+static void *model_obj_material_lookup(const model_obj_material_table *table, const char *name) {
+    if (!table || !name || !*name)
+        return NULL;
+    for (int32_t i = 0; i < table->count; i++) {
+        if (strcmp(table->entries[i].name ? table->entries[i].name : "", name) == 0)
+            return table->entries[i].material;
+    }
+    return NULL;
+}
+
+static void model_parent_dir(char *out, size_t out_size, const char *path) {
+    const char *last;
+    size_t len;
+    if (!out || out_size == 0)
+        return;
+    out[0] = '\0';
+    if (!path)
+        return;
+    last = strrchr(path, '/');
+    if (!last)
+        return;
+    len = (size_t)(last - path);
+    if (len >= out_size)
+        len = out_size - 1u;
+    memcpy(out, path, len);
+    out[len] = '\0';
+}
+
+static int model_is_absolute_path(const char *path) {
+    if (!path || !*path)
+        return 0;
+    if (path[0] == '/' || path[0] == '\\')
+        return 1;
+    return isalpha((unsigned char)path[0]) && path[1] == ':';
+}
+
+static int model_normalize_relative_asset_ref(const char *src, char *out, size_t out_size) {
+    char normalized[1024];
+    const char *p;
+    size_t ni = 0;
+    size_t out_len = 0;
+    int wrote_segment = 0;
+    if (!src || !*src || !out || out_size == 0)
+        return 0;
+    while (*src && ni + 1u < sizeof(normalized)) {
+        char ch = *src++;
+        normalized[ni++] = ch == '\\' ? '/' : ch;
+    }
+    if (*src)
+        return 0;
+    normalized[ni] = '\0';
+    if (model_is_absolute_path(normalized) || strstr(normalized, "://"))
+        return 0;
+    p = normalized;
+    out[0] = '\0';
+    while (*p) {
+        const char *seg;
+        size_t seg_len;
+        while (*p == '/')
+            p++;
+        seg = p;
+        while (*p && *p != '/')
+            p++;
+        seg_len = (size_t)(p - seg);
+        if (seg_len == 0 || (seg_len == 1 && seg[0] == '.'))
+            continue;
+        if (seg_len == 2 && seg[0] == '.' && seg[1] == '.')
+            return 0;
+        if (wrote_segment) {
+            if (out_len + 1u >= out_size)
+                return 0;
+            out[out_len++] = '/';
+        }
+        if (seg_len > out_size - 1u - out_len)
+            return 0;
+        memcpy(out + out_len, seg, seg_len);
+        out_len += seg_len;
+        out[out_len] = '\0';
+        wrote_segment = 1;
+    }
+    return wrote_segment;
+}
+
+static int model_join_path(char *out, size_t out_size, const char *dir, const char *leaf) {
+    size_t dir_len;
+    if (!out || out_size == 0 || !leaf || !*leaf)
+        return 0;
+    if (!dir || !*dir) {
+        if (strlen(leaf) >= out_size)
+            return 0;
+        strcpy(out, leaf);
+        return 1;
+    }
+    dir_len = strlen(dir);
+    if (dir_len + 1u + strlen(leaf) >= out_size)
+        return 0;
+    memcpy(out, dir, dir_len);
+    out[dir_len++] = '/';
+    strcpy(out + dir_len, leaf);
+    return 1;
+}
+
+static void model_obj_parse_mtl_file(model_obj_material_table *table,
+                                     const char *obj_dir,
+                                     const char *mtllib_ref) {
+    char safe_ref[1024];
+    char path[1024];
+    FILE *f;
+    char line[1024];
+    char *current_name = NULL;
+    void *current_material = NULL;
+    if (!table || !model_normalize_relative_asset_ref(mtllib_ref, safe_ref, sizeof(safe_ref)))
+        return;
+    if (!model_join_path(path, sizeof(path), obj_dir, safe_ref))
+        return;
+    f = fopen(path, "r");
+    if (!f)
+        return;
+    while (fgets(line, sizeof(line), f)) {
+        const char *p = line;
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (*p == '#' || *p == '\0' || *p == '\n' || *p == '\r')
+            continue;
+        if (strncmp(p, "newmtl ", 7) == 0) {
+            if (current_name && current_material &&
+                !model_obj_material_table_append(table, current_name, current_material)) {
+                free(current_name);
+                model_release_local(current_material);
+            }
+            current_name = model_strdup_range(p + 7, NULL);
+            current_material = rt_material3d_new();
+            if (!current_name || !current_material) {
+                free(current_name);
+                model_release_local(current_material);
+                current_name = NULL;
+                current_material = NULL;
+            }
+        } else if (current_material && strncmp(p, "Kd ", 3) == 0) {
+            double r, g, b;
+            p += 3;
+            if (sscanf(p, "%lf %lf %lf", &r, &g, &b) == 3)
+                rt_material3d_set_color(current_material, r, g, b);
+        } else if (current_material && (strncmp(p, "d ", 2) == 0 || strncmp(p, "Tr ", 3) == 0)) {
+            double a;
+            const char *value = p + (p[0] == 'T' ? 3 : 2);
+            if (sscanf(value, "%lf", &a) == 1) {
+                if (p[0] == 'T')
+                    a = 1.0 - a;
+                rt_material3d_set_alpha(current_material, a);
+            }
+        }
+    }
+    fclose(f);
+    if (current_name && current_material &&
+        !model_obj_material_table_append(table, current_name, current_material)) {
+        free(current_name);
+        model_release_local(current_material);
+    }
+}
+
+static void model_obj_load_material_libraries(const char *obj_path, model_obj_material_table *table) {
+    char obj_dir[1024];
+    FILE *f;
+    char line[1024];
+    if (!obj_path || !table)
+        return;
+    model_parent_dir(obj_dir, sizeof(obj_dir), obj_path);
+    f = fopen(obj_path, "r");
+    if (!f)
+        return;
+    while (fgets(line, sizeof(line), f)) {
+        const char *p = line;
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (strncmp(p, "mtllib ", 7) == 0) {
+            char *name = model_strdup_range(p + 7, NULL);
+            if (name) {
+                model_obj_parse_mtl_file(table, obj_dir, name);
+                free(name);
+            }
+        }
+    }
+    fclose(f);
+}
+
+static int model3d_load_from_obj(rt_model3d *model, rt_string path, const char *path_cstr) {
+    rt_mesh3d_obj_group_t *groups = NULL;
+    int32_t group_count = 0;
+    model_obj_material_table materials;
+    void *default_material = NULL;
+    memset(&materials, 0, sizeof(materials));
+    if (!rt_mesh3d_from_obj_groups(path, &groups, &group_count) || group_count <= 0)
+        return 0;
+    model_obj_load_material_libraries(path_cstr, &materials);
+    default_material = rt_material3d_new();
+    if (!default_material) {
+        model_obj_material_table_free(&materials);
+        rt_mesh3d_obj_groups_free(groups, group_count);
+        return 0;
+    }
+    for (int32_t i = 0; i < group_count; i++) {
+        void *material = model_obj_material_lookup(&materials, groups[i].material_name);
+        rt_scene_node3d *node;
+        char fallback_name[64];
+        const char *node_name = groups[i].material_name && groups[i].material_name[0] != '\0'
+                                    ? groups[i].material_name
+                                    : NULL;
+        if (!material)
+            material = default_material;
+        if (!model_append_unique_ref(&model->meshes,
+                                     &model->mesh_count,
+                                     &model->mesh_capacity,
+                                     groups[i].mesh,
+                                     "Model3D.Load: mesh list allocation failed") ||
+            !model_append_unique_ref(&model->materials,
+                                     &model->material_count,
+                                     &model->material_capacity,
+                                     material,
+                                     "Model3D.Load: material list allocation failed")) {
+            model_release_local(default_material);
+            model_obj_material_table_free(&materials);
+            rt_mesh3d_obj_groups_free(groups, group_count);
+            return 0;
+        }
+        node = (rt_scene_node3d *)rt_scene_node3d_new();
+        if (!node) {
+            model_release_local(default_material);
+            model_obj_material_table_free(&materials);
+            rt_mesh3d_obj_groups_free(groups, group_count);
+            return 0;
+        }
+        if (!node_name) {
+            snprintf(fallback_name, sizeof(fallback_name), "mesh_%d", (int)i);
+            node_name = fallback_name;
+        }
+        rt_scene_node3d_set_name(node, rt_const_cstr(node_name));
+        rt_scene_node3d_set_mesh(node, groups[i].mesh);
+        rt_scene_node3d_set_material(node, material);
+        rt_scene_node3d_add_child(model->template_root, node);
+        model_release_local(node);
+    }
+    model_release_local(default_material);
+    model_obj_material_table_free(&materials);
+    rt_mesh3d_obj_groups_free(groups, group_count);
+    return 1;
+}
+
 /// @brief .gltf/.glb branch of rt_model3d_load_impl: decode the asset and collect its
 ///   meshes/materials/skeletons/animations/cameras/scene templates onto `model`.
 ///   Consumes the preloaded gltf inputs. @return 1 on success, 0 on failure (the local
@@ -1052,7 +1377,7 @@ static int model3d_load_from_fbx(rt_model3d *model, rt_string path) {
 }
 
 /// @brief Load a 3D model from disk into a `rt_model3d` template — auto-detects format by file
-/// extension (.vscn, .gltf/.glb, .fbx). Collects meshes, materials, skeletons, animations, and
+/// extension (.vscn, .gltf/.glb, .fbx, .obj, .stl). Collects meshes, materials, skeletons, animations, and
 /// the scene-node template tree from the source asset, retaining each component for the model's
 /// lifetime. Returns NULL (with a trap message) for invalid path / unsupported extension /
 /// underlying loader failure. Use `_instantiate` to spawn a clone in a live scene.
@@ -1107,7 +1432,10 @@ static void *rt_model3d_load_impl(rt_string path,
         if (!model3d_load_from_fbx(model, path))
             goto fail;
     } else if (model_has_ext(path_cstr, ".obj")) {
-        void *mesh = rt_mesh3d_from_obj(path);
+        if (!model3d_load_from_obj(model, path, path_cstr))
+            goto fail;
+    } else if (model_has_ext(path_cstr, ".stl")) {
+        void *mesh = rt_mesh3d_from_stl(path);
         void *material = NULL;
         if (!mesh)
             goto fail;

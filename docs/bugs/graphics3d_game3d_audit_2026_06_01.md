@@ -117,3 +117,49 @@ was fixed: `scene/rt_scene3d_vscn.c` now rejects non-finite/out-of-range JSON
 floating-point values before coercing them to `int64_t`, and generic VSCN
 double reads fall back on non-finite input. `test_rt_scene3d` includes a
 regression fixture for an out-of-range numeric mesh index.
+
+## Importer and Display Remediation Addendum
+
+The follow-up implementation pass completed the importer/display fixes that were
+still open around `Viper.Graphics3D.*`, `Viper.Game3D.*`, and
+`src/runtime/graphics/3d/*`:
+
+1. Status: fixed. glTF external URI handling now percent-decodes before validation, accepts safe `./` relative paths, and rejects absolute paths, schemes, `..`, NUL bytes, and overlong references.
+2. Status: fixed. glTF scalar/vector/index reads now use explicit little-endian decoding instead of relying on host byte order.
+3. Status: fixed. glTF accessor contracts for positions, normals, UVs, colors, tangents, indices, joints, and weights are validated before mesh emission.
+4. Status: fixed. glTF point and line primitive modes are rejected as unsupported renderable geometry instead of being silently skipped.
+5. Status: fixed. glTF invalid node graphs now fail the load instead of returning an asset with an empty or misleading scene tree.
+6. Status: fixed. glTF TRS import sanitizes non-finite components and normalizes quaternions before scene nodes are created.
+7. Status: fixed. glTF materials without `pbrMetallicRoughness` now receive the glTF default PBR values, including metallic/roughness defaults.
+8. Status: fixed. glTF required-extension support now includes texture transform, emissive strength, unlit, punctual lights, specular, clearcoat, and transmission where the runtime has a mapping.
+9. Status: fixed. glTF skin and morph instantiation no longer mutates shared asset meshes while cloning per-node runtime meshes.
+10. Status: fixed. glTF mesh import reserves direct vertex/index capacity and avoids unnecessary intermediate sidecar work for common direct-import paths.
+11. Status: fixed. FBX compressed array import now releases both compressed and inflated temporary buffers on every path.
+12. Status: fixed. FBX external texture references reject unsafe absolute, scheme, traversal, and NUL-containing paths before falling back to safe basenames.
+13. Status: fixed. FBX polygon triangulation now grows dynamically and supports n-gons larger than the old fixed stack limit.
+14. Status: fixed. FBX materialless mesh nodes now receive a default material so valid geometry remains visible through `Model3D`.
+15. Status: fixed. FBX mesh/material binding growth was refactored so allocation failure cannot leave partially updated parallel arrays.
+16. Status: fixed. FBX scene object lookup uses checked class IDs before casting payloads to mesh, material, or model records.
+17. Status: fixed. FBX import now includes a minimal ASCII geometry fallback for simple `Vertices` and `PolygonVertexIndex` files.
+18. Status: fixed. FBX model transforms import common pre/post rotation, geometric transform, and offset properties by folding them into runtime TRS.
+19. Status: fixed. FBX `LayerElementMaterial` polygon assignments are retained during geometry extraction.
+20. Status: fixed. FBX multi-material meshes are split into material-specific child mesh nodes during `Model3D` scene adaptation.
+21. Status: fixed. OBJ normal repair now fills only missing normals and preserves authored normals already present in the file.
+22. Status: fixed. OBJ material groups can be loaded through the internal grouped loader so per-`usemtl` mesh buckets survive `Model3D.Load`.
+23. Status: fixed. `Model3D.Load(".obj")` now resolves safe relative `.mtl` files and maps `newmtl`, `Kd`, `d`, and `Tr` to runtime materials.
+24. Status: fixed. OBJ-backed `Model3D` assets now create material-group template nodes instead of collapsing all faces into one default-material mesh.
+25. Status: fixed. Missing OBJ materials now fall back to a default material per group instead of dropping geometry or leaving null material bindings.
+26. Status: fixed. `Model3D.Load(".stl")` is now supported and wraps binary/ASCII STL geometry in a reusable model template.
+27. Status: fixed. `ModelTemplate` now exposes scene count, scene names, per-scene camera access, and indexed scene instantiation through the Game3D facade.
+28. Status: fixed. The runtime ABI catalog includes the new `ModelTemplate` scene/camera methods and `sceneCount` property.
+29. Status: fixed. Documentation now distinguishes geometry-only `Mesh3D.FromOBJ` from material-preserving `Model3D.Load(".obj")`.
+30. Status: fixed. Documentation now reflects `.stl` model templates, FBX ASCII fallback, FBX material splitting, and the updated glTF required-extension/path contracts.
+
+Focused verification:
+
+```sh
+cmake --build build --target test_rt_gltf test_rt_model3d test_rt_game3d test_rt_canvas3d test_graphics3d_abi_surface -j4
+ctest --test-dir build -R 'test_rt_(gltf|model3d|game3d|canvas3d)$|test_graphics3d_abi_surface$' --output-on-failure
+```
+
+Result: all five focused CTests passed.

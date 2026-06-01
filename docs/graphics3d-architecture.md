@@ -163,7 +163,8 @@ overflowing intermediate vectors, bone weights are filtered and renormalized, an
 are not cloned as drawable meshes. Public `AddVertex`/`AddTriangle` validation traps do not poison
 the mesh, so callers can handle a bad append and keep building; allocation and importer failures still
 mark the build failed. Empty or unsupported OBJ files are rejected instead of returning drawable
-zero-triangle meshes. Negative-determinant mesh transforms reverse triangle winding to keep mirrored
+zero-triangle meshes. Imported OBJ faces with partial normals fill only missing normals so authored
+normal data is preserved. Negative-determinant mesh transforms reverse triangle winding to keep mirrored
 geometry cullable from the expected side. Exact binary STL files stream triangle records directly from
 disk, while non-exact or ASCII STL files keep the bounded buffered path and close geometry batches on
 failure before returning.
@@ -435,7 +436,7 @@ src/runtime/graphics/
 │   ├── rt_navagent3d.c/h          NavAgent3D path following, steering, and character/node bindings
 │   └── rt_path3d.c/h              Path3D spline following
 ├── Asset Loading
-│   ├── rt_fbx_loader.c/h          FBX binary format loader
+│   ├── rt_fbx_loader.c/h          FBX binary plus minimal ASCII format loader
 │   ├── rt_gltf.c/h                glTF 2.0 format loader
 │   └── rt_model3d.c/h             Model3D unified prefab/import wrapper
 └── Audio
@@ -447,21 +448,24 @@ src/runtime/graphics/
 
 ## Asset Import Hardening
 
-`Model3D.Load` is the production-facing import path. It routes `.vscn`, `.fbx`, `.gltf`, `.glb`, and geometry-only `.obj` files into one retained asset container and now treats resource-list allocation failures as hard load failures instead of returning partially populated models.
+`Model3D.Load` is the production-facing import path. It routes `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` files into one retained asset container and treats resource-list allocation failures as hard load failures instead of returning partially populated models. OBJ imports preserve `mtllib`/`usemtl` material groups as synthesized child nodes, STL imports synthesize one default-material mesh node, and FBX imports can split geometry by `LayerElementMaterial` so polygon material assignments survive instantiation.
 
 The glTF loader enforces the following importer contract before renderer-facing objects are created:
 
 1. GLB input must be GLB 2.0 with a matching declared length, a first JSON chunk, aligned chunk sizes, and non-overrunning chunks.
 2. `asset.version` must identify glTF 2.x.
 3. Buffer, bufferView, accessor, and sparse-accessor byte ranges use checked integer arithmetic. Negative offsets, overflowing spans, invalid strides, and out-of-buffer ranges fail the view resolution.
-4. External `.gltf` buffers and images are relative-only. Absolute paths, URI schemes, and `.` / `..` traversal segments are rejected before opening files.
+4. External `.gltf` buffers and images are relative-only after URI decoding. `./` relative paths are accepted; absolute paths, URI schemes, `..` traversal, and NUL-containing references are rejected before opening files.
 5. Valid primitives without authored materials get a shared default white PBR material so scene-graph rendering does not silently skip them.
-6. Runtime skin import respects the 256-bone palette limit. Skins above the supported limit are skipped instead of overflowing the fixed backend palette.
-7. Node hierarchies are validated for invalid child references, duplicate parents, and cycles before a scene root is built.
+6. Accessors used by positions, normals, UVs, colors, tangents, joints, weights, and indices must match the component/type/count contract expected by the runtime importer before any mesh is emitted.
+7. Runtime skin import respects the 256-bone palette limit. Skins above the supported limit are skipped instead of overflowing the fixed backend palette.
+8. Node hierarchies are validated for invalid child references, duplicate parents, and cycles before a scene root is built.
 
 glTF material import maps core metallic-roughness PBR plus selected extensions onto `Material3D`. The vertex format carries `TEXCOORD_0` and `TEXCOORD_1`; each material texture slot stores its own `textureInfo.texCoord`, `KHR_texture_transform`, wrap mode, and nearest/linear filter state. Canvas draw commands forward that per-slot metadata to software, Metal, D3D11, and OpenGL. OpenGL uses sampler objects so one uploaded texture can be reused by multiple material slots without sampler-state aliasing.
 
 glTF animation import now covers both skeletal clips and scene-node clips. Bone-targeted transform channels still feed `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` channels are stored as retained node animation clips and bound automatically when a `Model3D` is instantiated. `Scene3D.SyncBindings(dt)` advances those node clips and applies morph weights before draw submission.
+
+FBX import supports binary FBX plus a minimal ASCII fallback for simple geometry. The scene adapter preserves `Model` hierarchy, folds common pre/post/geometric transform properties into runtime TRS, creates default materials for unassigned meshes, and splits multi-material polygon ranges into child mesh nodes for display. Texture and external material paths are normalized to relative safe references before the loader opens companion files.
 
 VSCN saves the current vertex layout as `vgfx3d_vertex_le_v2` and serializes material `textureSlots` alongside texture references, so saved imported scenes preserve UV-set choices, transforms, and sampler state on reload. The loader still accepts the older `vgfx3d_vertex_le_v1` vertex blob for compatibility, but rejects malformed JSON/base64, non-triangle or out-of-range index buffers, broken asset references, and partial child subtrees before returning a scene.
 
