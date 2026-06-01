@@ -37,6 +37,7 @@
 #include "rt_physics3d.h"
 #include "rt_scene3d.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -136,12 +137,14 @@ static void navagent_unregister(rt_navagent3d *agent) {
 
 /// @brief Squared length of a 3-vector; avoids a sqrt when only ordering/thresholding matters.
 static double navagent_len_sq(const double v[3]) {
-    return v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    double len_sq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    return isfinite(len_sq) && len_sq >= 0.0 ? len_sq : 0.0;
 }
 
 /// @brief Euclidean length of a 3-vector (`sqrt` of the squared length).
 static double navagent_len(const double v[3]) {
-    return sqrt(navagent_len_sq(v));
+    double len = sqrt(navagent_len_sq(v));
+    return isfinite(len) ? len : 0.0;
 }
 
 /// @brief Clamp a value at zero from below, mapping non-finite values to 0.
@@ -155,12 +158,14 @@ static double navagent_dist_sq(const double a[3], const double b[3]) {
     double dx = a[0] - b[0];
     double dy = a[1] - b[1];
     double dz = a[2] - b[2];
-    return dx * dx + dy * dy + dz * dz;
+    double dist_sq = dx * dx + dy * dy + dz * dz;
+    return isfinite(dist_sq) && dist_sq >= 0.0 ? dist_sq : DBL_MAX;
 }
 
 /// @brief Euclidean distance between two points.
 static double navagent_dist(const double a[3], const double b[3]) {
-    return sqrt(navagent_dist_sq(a, b));
+    double dist = sqrt(navagent_dist_sq(a, b));
+    return isfinite(dist) ? dist : DBL_MAX;
 }
 
 /// @brief Assign `(x,y,z)` to `dst[0..2]`. Reads declaratively as "set this vector to …".
@@ -731,35 +736,19 @@ static void navagent_sample_point(rt_navagent3d *agent, const double src[3], dou
     navagent_release_local(sample);
 }
 
-/// @brief Resolve a SceneNode3D's world-space position by transforming the origin through
-/// its cached world matrix. Falls back to the local-space position when no world matrix
-/// is available (which is only approximately correct for parented nodes, but never
-/// crashes). Results land in `out_pos[0..2]` — always written even on the failure paths
-/// so callers don't read uninitialised memory.
+/// @brief Resolve a SceneNode3D's world-space position without allocating matrix/vector wrappers.
 static void navagent_get_node_world_position(void *node, double out_pos[3]) {
-    void *world_matrix;
-    void *world_pos;
     if (!node) {
         navagent_vec_set(out_pos, 0.0, 0.0, 0.0);
         return;
     }
-    world_matrix = rt_scene_node3d_get_world_matrix(node);
-    if (!world_matrix) {
+    if (!rt_scene_node3d_get_world_position_components(node, &out_pos[0], &out_pos[1], &out_pos[2])) {
         void *local = rt_scene_node3d_get_position(node);
         out_pos[0] = local ? rt_vec3_x(local) : 0.0;
         out_pos[1] = local ? rt_vec3_y(local) : 0.0;
         out_pos[2] = local ? rt_vec3_z(local) : 0.0;
         navagent_release_local(local);
-        return;
     }
-    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
-    world_pos = origin ? rt_mat4_transform_point(world_matrix, origin) : NULL;
-    out_pos[0] = world_pos ? rt_vec3_x(world_pos) : 0.0;
-    out_pos[1] = world_pos ? rt_vec3_y(world_pos) : 0.0;
-    out_pos[2] = world_pos ? rt_vec3_z(world_pos) : 0.0;
-    navagent_release_local(origin);
-    navagent_release_local(world_pos);
-    navagent_release_local(world_matrix);
 }
 
 /// @brief Write a world-space position into a SceneNode3D, converting through the

@@ -151,6 +151,13 @@ static void transform3d_quat_normalize(double *q) {
     q[3] *= inv_len;
 }
 
+/// @brief Square root helper for rotation extraction, treating tiny negative drift as zero.
+static double transform3d_sqrt_nonnegative(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 0.0;
+    return sqrt(value);
+}
+
 /// @brief GC finalizer — Transform3D owns no heap allocations, so this is a no-op.
 /// @details All fields (`position`, `rotation`, `scale`, cached `matrix`) live
 ///   inline inside the struct and get freed with the object body. The finalizer
@@ -471,25 +478,33 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
     double m20 = rz, m21 = tuz, m22 = -tz;
     double trace = m00 + m11 + m22;
     if (trace > 0.0) {
-        double s = sqrt(trace + 1.0) * 2.0;
+        double s = transform3d_sqrt_nonnegative(trace + 1.0) * 2.0;
+        if (s <= 1e-12)
+            return;
         xf->rotation[3] = 0.25 * s;
         xf->rotation[0] = (m21 - m12) / s;
         xf->rotation[1] = (m02 - m20) / s;
         xf->rotation[2] = (m10 - m01) / s;
     } else if (m00 > m11 && m00 > m22) {
-        double s = sqrt(1.0 + m00 - m11 - m22) * 2.0;
+        double s = transform3d_sqrt_nonnegative(1.0 + m00 - m11 - m22) * 2.0;
+        if (s <= 1e-12)
+            return;
         xf->rotation[3] = (m21 - m12) / s;
         xf->rotation[0] = 0.25 * s;
         xf->rotation[1] = (m01 + m10) / s;
         xf->rotation[2] = (m02 + m20) / s;
     } else if (m11 > m22) {
-        double s = sqrt(1.0 + m11 - m00 - m22) * 2.0;
+        double s = transform3d_sqrt_nonnegative(1.0 + m11 - m00 - m22) * 2.0;
+        if (s <= 1e-12)
+            return;
         xf->rotation[3] = (m02 - m20) / s;
         xf->rotation[0] = (m01 + m10) / s;
         xf->rotation[1] = 0.25 * s;
         xf->rotation[2] = (m12 + m21) / s;
     } else {
-        double s = sqrt(1.0 + m22 - m00 - m11) * 2.0;
+        double s = transform3d_sqrt_nonnegative(1.0 + m22 - m00 - m11) * 2.0;
+        if (s <= 1e-12)
+            return;
         xf->rotation[3] = (m10 - m01) / s;
         xf->rotation[0] = (m02 + m20) / s;
         xf->rotation[1] = (m12 + m21) / s;

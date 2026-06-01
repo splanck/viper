@@ -256,6 +256,11 @@ set(RT_GRAPHICS_SOURCES
         graphics/text/fonts/embedded_font.c  # JetBrains Mono Regular (MIT) — embedded for portable font rendering
         graphics/3d/render/rt_canvas3d.c
         graphics/3d/render/rt_canvas3d_overlay.c
+        graphics/3d/render/rt_canvas3d_tempmgr.c
+        graphics/3d/render/rt_canvas3d_snapshot.c
+        graphics/3d/render/rt_canvas3d_motion.c
+        graphics/3d/render/rt_canvas3d_skybox.c
+        graphics/3d/render/rt_canvas3d_lighting.c
         graphics/3d/backend/vgfx3d_backend_sw.c
         graphics/3d/rt_g3d_commit_queue.c
         graphics/3d/rt_game3d.c

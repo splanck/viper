@@ -258,6 +258,8 @@ static void build_trs_float(const float *pos, const float *quat, const float *sc
     out[15] = 1.0f;
 }
 
+static void quat_identity_float(float *out);
+
 /// @brief SLERP between two quaternions (float arrays, x,y,z,w).
 static void quat_slerp_float(const float *a, const float *b, float t, float *out) {
     float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
@@ -269,13 +271,19 @@ static void quat_slerp_float(const float *a, const float *b, float t, float *out
         nb[2] = -nb[2];
         nb[3] = -nb[3];
     }
+    if (!isfinite(dot)) {
+        quat_identity_float(out);
+        return;
+    }
+    if (dot > 1.0f)
+        dot = 1.0f;
+    if (dot < -1.0f)
+        dot = -1.0f;
     if (dot > 0.9995f) {
         /* Nearly identical: linear interpolation + normalize */
         for (int i = 0; i < 4; i++)
             out[i] = a[i] + t * (nb[i] - a[i]);
     } else {
-        if (dot > 1.0f)
-            dot = 1.0f; // clamp for acosf domain safety
         float theta = acosf(dot);
         float sin_theta = sinf(theta);
         float wa = sinf((1.0f - t) * theta) / sin_theta;
@@ -285,9 +293,11 @@ static void quat_slerp_float(const float *a, const float *b, float t, float *out
     }
     /* Normalize */
     float len = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3]);
-    if (len > 1e-8f)
+    if (isfinite(len) && len > 1e-8f)
         for (int i = 0; i < 4; i++)
             out[i] /= len;
+    else
+        quat_identity_float(out);
 }
 
 /// @brief Write the identity quaternion (0,0,0,1) into `out[4]`.

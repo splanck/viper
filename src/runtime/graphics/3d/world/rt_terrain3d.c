@@ -215,10 +215,18 @@ static void invalidate_all_chunks(rt_terrain3d *t) {
 /// LOD switches at 100/250 world units, 2-unit crack-hiding skirts. Traps if dimensions are
 /// outside [2, 4096] or on allocation failure.
 void *rt_terrain3d_new(int64_t width, int64_t depth) {
+    size_t height_count;
+    size_t chunk_count;
+    size_t aabb_count;
     if (width < 2 || depth < 2 || width > 4096 || depth > 4096) {
         rt_trap("Terrain3D.New: dimensions must be 2-4096");
         return NULL;
     }
+    if ((uint64_t)width > SIZE_MAX / (uint64_t)depth / sizeof(float)) {
+        rt_trap("Terrain3D.New: height allocation overflow");
+        return NULL;
+    }
+    height_count = (size_t)width * (size_t)depth;
     rt_terrain3d *t =
         (rt_terrain3d *)rt_obj_new_i64(RT_G3D_TERRAIN3D_CLASS_ID, (int64_t)sizeof(rt_terrain3d));
     if (!t) {
@@ -229,17 +237,27 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
     t->vptr = NULL;
     t->width = (int32_t)width;
     t->depth = (int32_t)depth;
-    t->heights = (float *)calloc((size_t)(width * depth), sizeof(float));
+    t->heights = (float *)calloc(height_count, sizeof(float));
     t->scale[0] = 1.0;
     t->scale[1] = 1.0;
     t->scale[2] = 1.0;
     t->chunks_x = ((int32_t)width - 1 + TERRAIN_CHUNK_SIZE - 1) / TERRAIN_CHUNK_SIZE;
     t->chunks_z = ((int32_t)depth - 1 + TERRAIN_CHUNK_SIZE - 1) / TERRAIN_CHUNK_SIZE;
     int32_t num_chunks = t->chunks_x * t->chunks_z;
-    t->chunk_meshes = (void **)calloc((size_t)num_chunks, sizeof(void *));
-    t->chunk_meshes_lod1 = (void **)calloc((size_t)num_chunks, sizeof(void *));
-    t->chunk_meshes_lod2 = (void **)calloc((size_t)num_chunks, sizeof(void *));
-    t->chunk_aabbs = (float *)calloc((size_t)(num_chunks * 6), sizeof(float));
+    if (num_chunks <= 0 || (size_t)t->chunks_x > SIZE_MAX / (size_t)t->chunks_z ||
+        (size_t)num_chunks > SIZE_MAX / 6u) {
+        terrain3d_finalizer(t);
+        if (rt_obj_release_check0(t))
+            rt_obj_free(t);
+        rt_trap("Terrain3D.New: chunk allocation overflow");
+        return NULL;
+    }
+    chunk_count = (size_t)num_chunks;
+    aabb_count = chunk_count * 6u;
+    t->chunk_meshes = (void **)calloc(chunk_count, sizeof(void *));
+    t->chunk_meshes_lod1 = (void **)calloc(chunk_count, sizeof(void *));
+    t->chunk_meshes_lod2 = (void **)calloc(chunk_count, sizeof(void *));
+    t->chunk_aabbs = (float *)calloc(aabb_count, sizeof(float));
     if (!t->heights || !t->chunk_meshes || !t->chunk_meshes_lod1 || !t->chunk_meshes_lod2 ||
         !t->chunk_aabbs) {
         terrain3d_finalizer(t);

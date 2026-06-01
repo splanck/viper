@@ -369,7 +369,7 @@ static void mesh_default_tangent_from_normal(const float *normal, float *tangent
     float n[3] = {0.0f, 0.0f, 1.0f};
     if (normal && isfinite(normal[0]) && isfinite(normal[1]) && isfinite(normal[2])) {
         float len = sqrtf(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
-        if (len > 1e-8f) {
+        if (isfinite(len) && len > 1e-8f) {
             n[0] = normal[0] / len;
             n[1] = normal[1] / len;
             n[2] = normal[2] / len;
@@ -384,7 +384,7 @@ static void mesh_default_tangent_from_normal(const float *normal, float *tangent
     {
         float len =
             sqrtf(tangent[0] * tangent[0] + tangent[1] * tangent[1] + tangent[2] * tangent[2]);
-        if (len <= 1e-8f) {
+        if (!isfinite(len) || len <= 1e-8f) {
             tangent[0] = 1.0f;
             tangent[1] = 0.0f;
             tangent[2] = 0.0f;
@@ -1011,10 +1011,14 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         n[2] = normal_matrix[8] * (float)nx + normal_matrix[9] * (float)ny +
                normal_matrix[10] * (float)nz;
         float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-        if (len > 1e-8f) {
+        if (isfinite(len) && len > 1e-8f) {
             n[0] /= len;
             n[1] /= len;
             n[2] /= len;
+        } else {
+            n[0] = 0.0f;
+            n[1] = 1.0f;
+            n[2] = 0.0f;
         }
 
         float *t = m->vertices[i].tangent;
@@ -1026,10 +1030,12 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         t[1] = normal_matrix[4] * tx + normal_matrix[5] * ty + normal_matrix[6] * tz;
         t[2] = normal_matrix[8] * tx + normal_matrix[9] * ty + normal_matrix[10] * tz;
         len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
-        if (len > 1e-8f) {
+        if (isfinite(len) && len > 1e-8f) {
             t[0] /= len;
             t[1] /= len;
             t[2] /= len;
+        } else {
+            mesh_default_tangent_from_normal(n, t);
         }
         t[3] = (handedness == 0.0f ? 1.0f : handedness) * handedness_sign;
     }

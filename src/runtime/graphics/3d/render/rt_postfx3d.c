@@ -171,6 +171,37 @@ static float luminance(float r, float g, float b) {
     return 0.2126f * r + 0.7152f * g + 0.0722f * b;
 }
 
+/// @brief Validate an RGB float buffer shape and compute its pixel/byte counts.
+static int postfx_rgb_float_layout(int32_t w,
+                                   int32_t h,
+                                   size_t *out_pixels,
+                                   size_t *out_floats,
+                                   size_t *out_bytes) {
+    size_t width;
+    size_t height;
+    size_t pixels;
+    size_t floats;
+    if (w <= 0 || h <= 0)
+        return 0;
+    width = (size_t)w;
+    height = (size_t)h;
+    if (width > SIZE_MAX / height)
+        return 0;
+    pixels = width * height;
+    if (pixels > SIZE_MAX / 3u)
+        return 0;
+    floats = pixels * 3u;
+    if (floats > SIZE_MAX / sizeof(float))
+        return 0;
+    if (out_pixels)
+        *out_pixels = pixels;
+    if (out_floats)
+        *out_floats = floats;
+    if (out_bytes)
+        *out_bytes = floats * sizeof(float);
+    return 1;
+}
+
 /// @brief Reserve and zero one more `postfx_entry_t` slot in the chain, growing the heap
 /// buffer when capacity is exceeded. Capacity doubles on each grow (starting at 8) so the
 /// amortized cost of long chains is O(1). Returns NULL on realloc failure — the caller's
@@ -187,10 +218,18 @@ static postfx_entry_t *postfx_append_entry(rt_postfx3d *fx) {
         memset(entry, 0, sizeof(*entry));
         return entry;
     }
+    if (fx->effect_count == INT32_MAX)
+        return NULL;
 
-    new_capacity = fx->effect_capacity > 0 ? fx->effect_capacity * 2 : 8;
+    if (fx->effect_capacity > INT32_MAX / 2)
+        new_capacity = fx->effect_count + 1;
+    else
+        new_capacity = fx->effect_capacity > 0 ? fx->effect_capacity * 2 : 8;
     if (new_capacity < fx->effect_count + 1)
         new_capacity = fx->effect_count + 1;
+    if (new_capacity <= fx->effect_capacity ||
+        (size_t)new_capacity > SIZE_MAX / sizeof(postfx_entry_t))
+        return NULL;
     effects = (postfx_entry_t *)realloc(fx->effects, (size_t)new_capacity * sizeof(postfx_entry_t));
     if (!effects)
         return NULL;
@@ -213,7 +252,7 @@ static int vgfx3d_postfx_chain_reserve(vgfx3d_postfx_chain_t *chain, int32_t nee
     vgfx3d_postfx_effect_desc_t *effects;
     int32_t new_capacity;
 
-    if (!chain)
+    if (!chain || chain->effect_capacity < 0)
         return 0;
     if (needed <= 0)
         return 1;
@@ -228,6 +267,8 @@ static int vgfx3d_postfx_chain_reserve(vgfx3d_postfx_chain_t *chain, int32_t nee
         }
         new_capacity *= 2;
     }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(*effects))
+        return 0;
     effects = (vgfx3d_postfx_effect_desc_t *)realloc(chain->effects,
                                                      (size_t)new_capacity * sizeof(*effects));
     if (!effects)
@@ -345,11 +386,14 @@ int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
 static void apply_bloom(
     float *buf, int32_t w, int32_t h, float threshold, float intensity, int32_t blur_passes) {
     int32_t hw = w / 2, hh = h / 2;
+    size_t scratch_bytes;
     if (hw < 1 || hh < 1)
+        return;
+    if (!postfx_rgb_float_layout(hw, hh, NULL, NULL, &scratch_bytes))
         return;
 
     /* Extract bright pixels to half-res buffer */
-    float *bloom = (float *)calloc((size_t)hw * hh * 3, sizeof(float));
+    float *bloom = (float *)calloc(1, scratch_bytes);
     if (!bloom)
         return;
 
@@ -366,10 +410,10 @@ static void apply_bloom(
                 bloom[di + 1] = g * scale;
                 bloom[di + 2] = b * scale;
             }
-        }
+    }
 
     /* Separable Gaussian blur (simplified 5-tap kernel) */
-    float *tmp = (float *)calloc((size_t)hw * hh * 3, sizeof(float));
+    float *tmp = (float *)calloc(1, scratch_bytes);
     if (!tmp) {
         free(bloom);
         return;
@@ -449,12 +493,14 @@ static void apply_bloom(
 /// correction so the 8-bit framebuffer gets perceptual output (the earlier float buffer
 /// is linear).
 static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float exposure) {
+    size_t count;
     if (mode != 1 && mode != 2)
         return;
+    if (!postfx_rgb_float_layout(w, h, &count, NULL, NULL))
+        return;
 
-    int32_t count = w * h;
-    for (int32_t i = 0; i < count; i++) {
-        float *p = &buf[i * 3];
+    for (size_t i = 0; i < count; i++) {
+        float *p = &buf[i * 3u];
         float r = p[0] * exposure, g = p[1] * exposure, b = p[2] * exposure;
         if (mode == 1) {
             /* Reinhard */
@@ -474,6 +520,9 @@ static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float 
             b = clampf(ab / bb, 0.0f, 1.0f);
         }
         /* Gamma correction */
+        r = clampf(isfinite(r) ? r : 0.0f, 0.0f, 1.0f);
+        g = clampf(isfinite(g) ? g : 0.0f, 0.0f, 1.0f);
+        b = clampf(isfinite(b) ? b : 0.0f, 0.0f, 1.0f);
         p[0] = powf(r, 1.0f / 2.2f);
         p[1] = powf(g, 1.0f / 2.2f);
         p[2] = powf(b, 1.0f / 2.2f);
@@ -487,10 +536,13 @@ static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float 
 /// the pass is order-independent within a single invocation. Cheaper than real FXAA
 /// 3.11 but good enough for jagged-edge cleanup over the software pipeline's output.
 static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, float min_thresh) {
-    float *out = (float *)malloc((size_t)w * h * 3 * sizeof(float));
+    size_t bytes;
+    if (!postfx_rgb_float_layout(w, h, NULL, NULL, &bytes))
+        return;
+    float *out = (float *)malloc(bytes);
     if (!out)
         return;
-    memcpy(out, buf, (size_t)w * h * 3 * sizeof(float));
+    memcpy(out, buf, bytes);
 
     for (int32_t y = 1; y < h - 1; y++)
         for (int32_t x = 1; x < w - 1; x++) {
@@ -547,7 +599,7 @@ static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, floa
             }
         }
 
-    memcpy(buf, out, (size_t)w * h * 3 * sizeof(float));
+    memcpy(buf, out, bytes);
     free(out);
 }
 
@@ -559,9 +611,11 @@ static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, floa
 /// overflowing.
 static void apply_color_grade(
     float *buf, int32_t w, int32_t h, float brightness, float contrast, float saturation) {
-    int32_t count = w * h;
-    for (int32_t i = 0; i < count; i++) {
-        float *p = &buf[i * 3];
+    size_t count;
+    if (!postfx_rgb_float_layout(w, h, &count, NULL, NULL))
+        return;
+    for (size_t i = 0; i < count; i++) {
+        float *p = &buf[i * 3u];
         /* Brightness + contrast */
         p[0] = (p[0] - 0.5f) * contrast + 0.5f + brightness;
         p[1] = (p[1] - 0.5f) * contrast + 0.5f + brightness;
@@ -584,8 +638,12 @@ static void apply_color_grade(
 /// full black at `radius + softness`. Pixels inside the radius are untouched. Alpha is
 /// preserved — only the RGB channels are scaled.
 static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float softness) {
+    if (!buf || w <= 0 || h <= 0)
+        return;
     float cx = (float)w * 0.5f, cy = (float)h * 0.5f;
     float maxdist = sqrtf(cx * cx + cy * cy);
+    if (!isfinite(maxdist) || maxdist <= 1e-6f)
+        return;
 
     for (int32_t y = 0; y < h; y++)
         for (int32_t x = 0; x < w; x++) {
@@ -677,19 +735,24 @@ static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, 
 ///   SSAO, DOF, and motion blur require GPU scene depth/motion buffers and are rejected
 ///   before this helper is called.
 static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h, int32_t stride) {
+    size_t pixel_count;
+    size_t fbuf_bytes;
     if (!fx || !fx->enabled || fx->effect_count == 0 || !pixels)
         return;
+    if (stride < 0 || (size_t)stride < (size_t)w * 4u ||
+        !postfx_rgb_float_layout(w, h, &pixel_count, NULL, &fbuf_bytes))
+        return;
+    (void)pixel_count;
 
     /* Convert framebuffer to float RGB for processing */
-    int32_t count = w * h;
-    float *fbuf = (float *)malloc((size_t)count * 3 * sizeof(float));
+    float *fbuf = (float *)malloc(fbuf_bytes);
     if (!fbuf)
         return;
 
     for (int32_t y = 0; y < h; y++)
         for (int32_t x = 0; x < w; x++) {
-            const uint8_t *src = &pixels[y * stride + x * 4];
-            int32_t di = (y * w + x) * 3;
+            const uint8_t *src = &pixels[(size_t)y * (size_t)stride + (size_t)x * 4u];
+            size_t di = ((size_t)y * (size_t)w + (size_t)x) * 3u;
             fbuf[di] = (float)src[0] / 255.0f;
             fbuf[di + 1] = (float)src[1] / 255.0f;
             fbuf[di + 2] = (float)src[2] / 255.0f;
@@ -700,8 +763,8 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
     /* Write back to framebuffer */
     for (int32_t y = 0; y < h; y++)
         for (int32_t x = 0; x < w; x++) {
-            uint8_t *dst = &pixels[y * stride + x * 4];
-            int32_t si = (y * w + x) * 3;
+            uint8_t *dst = &pixels[(size_t)y * (size_t)stride + (size_t)x * 4u];
+            size_t si = ((size_t)y * (size_t)w + (size_t)x) * 3u;
             dst[0] = (uint8_t)(clampf(fbuf[si], 0.0f, 1.0f) * 255.0f);
             dst[1] = (uint8_t)(clampf(fbuf[si + 1], 0.0f, 1.0f) * 255.0f);
             dst[2] = (uint8_t)(clampf(fbuf[si + 2], 0.0f, 1.0f) * 255.0f);
@@ -716,21 +779,24 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
 ///          the enabled post-fx chain (tone mapping, bloom, color grading, etc.), then
 ///          writes the result back into the 8-bit UNORM color buffer for display/readback.
 static void postfx_apply_hdr_target(rt_postfx3d *fx, vgfx3d_rendertarget_t *target) {
-    int32_t count;
+    size_t count;
+    size_t fbuf_bytes;
     int tonemapped;
     float *fbuf;
 
     if (!fx || !target || !target->hdr_color_buf || !target->color_buf || target->width <= 0 ||
         target->height <= 0)
         return;
-    count = target->width * target->height;
-    fbuf = (float *)malloc((size_t)count * 3u * sizeof(float));
+    if (target->stride < 0 || (size_t)target->stride < (size_t)target->width * 4u ||
+        !postfx_rgb_float_layout(target->width, target->height, &count, NULL, &fbuf_bytes))
+        return;
+    fbuf = (float *)malloc(fbuf_bytes);
     if (!fbuf)
         return;
-    for (int32_t i = 0; i < count; i++) {
-        fbuf[(size_t)i * 3u + 0u] = target->hdr_color_buf[(size_t)i * 4u + 0u];
-        fbuf[(size_t)i * 3u + 1u] = target->hdr_color_buf[(size_t)i * 4u + 1u];
-        fbuf[(size_t)i * 3u + 2u] = target->hdr_color_buf[(size_t)i * 4u + 2u];
+    for (size_t i = 0; i < count; i++) {
+        fbuf[i * 3u + 0u] = target->hdr_color_buf[i * 4u + 0u];
+        fbuf[i * 3u + 1u] = target->hdr_color_buf[i * 4u + 1u];
+        fbuf[i * 3u + 2u] = target->hdr_color_buf[i * 4u + 2u];
     }
 
     postfx_apply_float_effects(fx, fbuf, target->width, target->height);
@@ -738,13 +804,13 @@ static void postfx_apply_hdr_target(rt_postfx3d *fx, vgfx3d_rendertarget_t *targ
     for (int32_t y = 0; y < target->height; y++) {
         uint8_t *dst = target->color_buf + (size_t)y * (size_t)target->stride;
         for (int32_t x = 0; x < target->width; x++) {
-            int32_t i = y * target->width + x;
-            float r = fbuf[(size_t)i * 3u + 0u];
-            float g = fbuf[(size_t)i * 3u + 1u];
-            float b = fbuf[(size_t)i * 3u + 2u];
-            target->hdr_color_buf[(size_t)i * 4u + 0u] = r;
-            target->hdr_color_buf[(size_t)i * 4u + 1u] = g;
-            target->hdr_color_buf[(size_t)i * 4u + 2u] = b;
+            size_t i = (size_t)y * (size_t)target->width + (size_t)x;
+            float r = fbuf[i * 3u + 0u];
+            float g = fbuf[i * 3u + 1u];
+            float b = fbuf[i * 3u + 2u];
+            target->hdr_color_buf[i * 4u + 0u] = r;
+            target->hdr_color_buf[i * 4u + 1u] = g;
+            target->hdr_color_buf[i * 4u + 2u] = b;
             dst[(size_t)x * 4u + 0u] =
                 tonemapped ? (uint8_t)(clampf(r, 0.0f, 1.0f) * 255.0f) : vgfx3d_hdr_to_unorm8(r);
             dst[(size_t)x * 4u + 1u] =

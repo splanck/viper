@@ -296,6 +296,13 @@ void scene3d_quat_normalize_local(double *q) {
     q[3] *= inv_len;
 }
 
+/// @brief Square root helper for quaternion extraction, treating invalid terms as zero.
+static double scene3d_sqrt_nonnegative(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 0.0;
+    return sqrt(value);
+}
+
 /// @brief Quaternion conjugate for unit-rotation inverse.
 static void quat_conjugate_local(const double *q, double *out) {
     if (!out)
@@ -370,25 +377,41 @@ static void quat_from_matrix_rows(double m00,
         return;
     trace = m00 + m11 + m22;
     if (trace > 0.0) {
-        double s = sqrt(trace + 1.0) * 2.0;
+        double s = scene3d_sqrt_nonnegative(trace + 1.0) * 2.0;
+        if (s <= 1e-12) {
+            quat_identity(out);
+            return;
+        }
         out[3] = 0.25 * s;
         out[0] = (m21 - m12) / s;
         out[1] = (m02 - m20) / s;
         out[2] = (m10 - m01) / s;
     } else if (m00 > m11 && m00 > m22) {
-        double s = sqrt(1.0 + m00 - m11 - m22) * 2.0;
+        double s = scene3d_sqrt_nonnegative(1.0 + m00 - m11 - m22) * 2.0;
+        if (s <= 1e-12) {
+            quat_identity(out);
+            return;
+        }
         out[3] = (m21 - m12) / s;
         out[0] = 0.25 * s;
         out[1] = (m01 + m10) / s;
         out[2] = (m02 + m20) / s;
     } else if (m11 > m22) {
-        double s = sqrt(1.0 + m11 - m00 - m22) * 2.0;
+        double s = scene3d_sqrt_nonnegative(1.0 + m11 - m00 - m22) * 2.0;
+        if (s <= 1e-12) {
+            quat_identity(out);
+            return;
+        }
         out[3] = (m02 - m20) / s;
         out[0] = (m01 + m10) / s;
         out[1] = 0.25 * s;
         out[2] = (m12 + m21) / s;
     } else {
-        double s = sqrt(1.0 + m22 - m00 - m11) * 2.0;
+        double s = scene3d_sqrt_nonnegative(1.0 + m22 - m00 - m11) * 2.0;
+        if (s <= 1e-12) {
+            quat_identity(out);
+            return;
+        }
         out[3] = (m10 - m01) / s;
         out[0] = (m02 + m20) / s;
         out[1] = (m12 + m21) / s;
@@ -860,18 +883,8 @@ static void scene_node_sync_recursive(rt_scene_node3d *node, double dt) {
         if (pull_from_body) {
             double world_pos[3];
             double world_quat[4];
-            void *pos = rt_body3d_get_position(current->bound_body);
-            void *quat = rt_body3d_get_orientation(current->bound_body);
-            world_pos[0] = pos ? rt_vec3_x(pos) : 0.0;
-            world_pos[1] = pos ? rt_vec3_y(pos) : 0.0;
-            world_pos[2] = pos ? rt_vec3_z(pos) : 0.0;
-            world_quat[0] = quat ? rt_quat_x(quat) : 0.0;
-            world_quat[1] = quat ? rt_quat_y(quat) : 0.0;
-            world_quat[2] = quat ? rt_quat_z(quat) : 0.0;
-            world_quat[3] = quat ? rt_quat_w(quat) : 1.0;
+            rt_body3d_get_pose_raw(current->bound_body, world_pos, world_quat, NULL);
             scene_node_set_world_transform(current, world_pos, world_quat);
-            scene3d_release_ref(&pos);
-            scene3d_release_ref(&quat);
         } else if (current->bound_animator &&
                    (mode == RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION || push_to_body)) {
             scene_node_apply_root_motion(current);

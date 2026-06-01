@@ -49,6 +49,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Light flattening lives in rt_canvas3d_lighting.c; its prototype is declared here
+// (not in rt_canvas3d_internal.h) because vgfx3d_light_params_t needs vgfx3d_backend.h,
+// included above — keeping the type-less TUs that share the internal header clean.
+int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
+
 #define CANVAS3D_MAX_INSTANCES 1048576
 #define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
 #define CANVAS3D_FLOAT_ABS_MAX 3.40282346638528859812e38
@@ -60,6 +65,8 @@
 static void *g_canvas3d_synthetic_owner = NULL;
 static void canvas3d_release_synthetic_input(rt_canvas3d *c);
 static void canvas3d_release_synthetic_state(rt_canvas3d *c);
+int32_t canvas3d_active_light_limit(rt_canvas3d *c);
+int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max);
 
 /// @brief Atomically swap the global synthetic-input owner to @p c, returning the previous owner.
 /// @details Only one canvas may drive synthetic (test/replay) input at a time; this enforces it
@@ -319,7 +326,7 @@ static int canvas3d_backend_owns_gpu_rtt(const rt_canvas3d *c) {
 /// @details Canvas-facing RGB/alpha inputs come in as `double` from the IL, but the
 ///   backends consume `float`. Sanitising and narrowing at this boundary keeps NaN out
 ///   of shader uniforms and caps values at the physical [0, 1] range.
-static float canvas3d_clamp01_f64(double value) {
+float canvas3d_clamp01_f64(double value) {
     if (!isfinite(value))
         return 0.0f;
     if (value < 0.0)
@@ -330,7 +337,7 @@ static float canvas3d_clamp01_f64(double value) {
 }
 
 /// @brief Clamp a float to [0,1] (NaN/inf → 0) and convert to a 0-255 byte.
-static uint8_t canvas3d_clamp01_to_u8(float value) {
+uint8_t canvas3d_clamp01_to_u8(float value) {
     if (!isfinite(value))
         value = 0.0f;
     if (value < 0.0f)
@@ -342,7 +349,7 @@ static uint8_t canvas3d_clamp01_to_u8(float value) {
 
 /// @brief Check whether @p value is finite and within ±FLT_MAX.
 /// @details Pre-flight test for safe `double → float` narrowing.
-static int canvas3d_double_fits_float(double value) {
+int canvas3d_double_fits_float(double value) {
     return isfinite(value) && value >= -CANVAS3D_FLOAT_ABS_MAX && value <= CANVAS3D_FLOAT_ABS_MAX;
 }
 
@@ -363,7 +370,7 @@ static int canvas3d_mat4_d2f_checked(const double *src, float *dst) {
 /// @brief Whether the current frame uploads geometry relative to a camera origin (floating origin).
 /// @details Active only for 3D frames with the mode enabled; 2D and out-of-frame paths upload
 /// absolute.
-static int canvas3d_uses_camera_relative_upload(const rt_canvas3d *c) {
+int canvas3d_uses_camera_relative_upload(const rt_canvas3d *c) {
     return c && c->camera_relative_upload && c->in_frame && !c->frame_is_2d;
 }
 
@@ -479,7 +486,7 @@ static mat4_impl *canvas3d_mat4_checked(void *obj) {
 /// @details Used for scalar knobs without an upper bound (exposure, intensities, strengths)
 ///   where the canvas wants to preserve the author's value faithfully but still refuse
 ///   non-finite input.
-static float canvas3d_sanitize_nonnegative_f64(double value, float fallback) {
+float canvas3d_sanitize_nonnegative_f64(double value, float fallback) {
     if (!isfinite(value))
         return fallback;
     if (value < 0.0)
@@ -490,12 +497,12 @@ static float canvas3d_sanitize_nonnegative_f64(double value, float fallback) {
 }
 
 /// @brief Narrow a double to float, returning `fallback` when out of float range or non-finite.
-static float canvas3d_sanitize_f64_to_float(double value, float fallback) {
+float canvas3d_sanitize_f64_to_float(double value, float fallback) {
     return canvas3d_double_fits_float(value) ? (float)value : fallback;
 }
 
 /// @brief Clamp a finite double to [lo, hi] and narrow to float; non-finite -> fallback.
-static float canvas3d_clamp_f64_to_float(double value, double lo, double hi, float fallback) {
+float canvas3d_clamp_f64_to_float(double value, double lo, double hi, float fallback) {
     if (!canvas3d_double_fits_float(value))
         return fallback;
     if (value < lo)
@@ -507,7 +514,7 @@ static float canvas3d_clamp_f64_to_float(double value, double lo, double hi, flo
 
 /// @brief Validate an RGBA8 readback target: positive dimensions, a non-negative stride
 ///   at least 4·w bytes, and no 32-bit overflow in the row size.
-static int canvas3d_rgba8_stride_valid(int32_t w, int32_t h, int32_t stride) {
+int canvas3d_rgba8_stride_valid(int32_t w, int32_t h, int32_t stride) {
     int64_t required;
     if (w <= 0 || h <= 0 || stride < 0)
         return 0;
@@ -749,17 +756,11 @@ typedef struct {
     uint8_t covered[CANVAS3D_OCCLUSION_GRID_CELLS];
 } canvas3d_occlusion_grid_t;
 
-typedef struct {
-    uintptr_t key;
-    float current_model[16];
-    float prev_model[16];
-    int64_t last_frame_seen;
-    int8_t has_current;
-    int8_t has_prev;
-} canvas_motion_history_t;
+// canvas_motion_history_t is defined in rt_canvas3d_internal.h (shared with
+// rt_canvas3d_motion.c).
 
-static uint32_t canvas3d_hash_u64(uintptr_t value);
-static int32_t canvas3d_next_power_of_two_i32(int32_t value);
+// canvas3d_hash_u64 / canvas3d_next_power_of_two_i32 are declared in rt_canvas3d_internal.h
+// (shared with rt_canvas3d_tempmgr.c).
 
 /// @brief Grow the deferred-draw command buffer to hold `needed` entries.
 ///
@@ -1032,313 +1033,14 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
 /// Motion history is keyed by mesh-identity pointer and stores the
 /// previous-frame model matrix for motion-blur / TAA. Geometric
 /// growth starting at 32 entries.
-static int ensure_motion_history_capacity(rt_canvas3d *c, int32_t needed) {
-    if (!c || needed <= 0)
-        return 0;
-    if (c->motion_history_capacity >= needed)
-        return 1;
+// Motion-history (per-object previous-frame model matrices for motion vectors,
+// with an open-addressing hash index) lives in rt_canvas3d_motion.c. The
+// canvas3d_hash_u64 / canvas3d_next_power_of_two_i32 hash-table utilities moved
+// there too (shared via rt_canvas3d_internal.h).
 
-    int32_t new_cap = c->motion_history_capacity > 0 ? c->motion_history_capacity : 32;
-    while (new_cap < needed) {
-        if (new_cap > INT32_MAX / 2)
-            new_cap = needed;
-        else
-            new_cap *= 2;
-    }
-    if ((size_t)new_cap > SIZE_MAX / sizeof(canvas_motion_history_t))
-        return 0;
-
-    canvas_motion_history_t *new_hist = (canvas_motion_history_t *)realloc(
-        c->motion_history, (size_t)new_cap * sizeof(canvas_motion_history_t));
-    if (!new_hist)
-        return 0;
-    c->motion_history = new_hist;
-    c->motion_history_capacity = new_cap;
-    return 1;
-}
-
-/// @brief Clear the motion-history hash table (all slots back to the empty sentinel 0).
-static void canvas3d_motion_hash_reset(rt_canvas3d *c) {
-    if (!c || !c->motion_history_hash || c->motion_history_hash_capacity <= 0)
-        return;
-    memset(c->motion_history_hash,
-           0,
-           (size_t)c->motion_history_hash_capacity * sizeof(*c->motion_history_hash));
-}
-
-/// @brief Ensure the motion-history hash has a power-of-two capacity sized for @p count_hint
-/// entries.
-/// @details Targets ~2x load headroom (min 32) and resets the table on growth.
-static int canvas3d_ensure_motion_hash_capacity(rt_canvas3d *c, int32_t count_hint) {
-    if (!c)
-        return 0;
-    int32_t needed = canvas3d_next_power_of_two_i32(count_hint > 0 ? count_hint * 2 : 32);
-    if (needed < 32)
-        needed = 32;
-    if (c->motion_history_hash_capacity >= needed)
-        return 1;
-    if ((size_t)needed > SIZE_MAX / sizeof(*c->motion_history_hash))
-        return 0;
-    int32_t *grown = (int32_t *)realloc(c->motion_history_hash, (size_t)needed * sizeof(*grown));
-    if (!grown)
-        return 0;
-    c->motion_history_hash = grown;
-    c->motion_history_hash_capacity = needed;
-    canvas3d_motion_hash_reset(c);
-    return 1;
-}
-
-/// @brief Insert history entry @p index into the hash by linear probing (slot stores index+1).
-/// @return 1 on success, 0 if the table is full or inputs are invalid.
-static int canvas3d_motion_hash_insert_existing(rt_canvas3d *c, int32_t index) {
-    canvas_motion_history_t *hist = (canvas_motion_history_t *)c->motion_history;
-    if (!c || !c->motion_history_hash || !hist || index < 0 || index >= c->motion_history_count)
-        return 0;
-    int32_t mask = c->motion_history_hash_capacity - 1;
-    int32_t slot = (int32_t)(canvas3d_hash_u64(hist[index].key) & (uint32_t)mask);
-    for (int32_t probe = 0; probe < c->motion_history_hash_capacity; ++probe) {
-        if (c->motion_history_hash[slot] == 0) {
-            c->motion_history_hash[slot] = index + 1;
-            return 1;
-        }
-        slot = (slot + 1) & mask;
-    }
-    return 0;
-}
-
-/// @brief Rebuild the motion-history hash from scratch over the current history array.
-/// @details Sizes the table to the entry count, clears it, and re-inserts every entry.
-static int canvas3d_rebuild_motion_hash(rt_canvas3d *c) {
-    if (!c)
-        return 0;
-    if (c->motion_history_count <= 0) {
-        canvas3d_motion_hash_reset(c);
-        return 1;
-    }
-    if (!canvas3d_ensure_motion_hash_capacity(c, c->motion_history_count + 1))
-        return 0;
-    canvas3d_motion_hash_reset(c);
-    for (int32_t i = 0; i < c->motion_history_count; ++i) {
-        if (!canvas3d_motion_hash_insert_existing(c, i))
-            return 0;
-    }
-    return 1;
-}
-
-/// @brief Look up the motion-history index for @p key, rebuilding the hash if it is
-/// stale/undersized.
-/// @return The history index, or -1 if the key is absent.
-static int32_t canvas3d_motion_hash_find_index(rt_canvas3d *c, uintptr_t key) {
-    if (!c || key == 0 || c->motion_history_count <= 0)
-        return -1;
-    if (!c->motion_history_hash ||
-        c->motion_history_hash_capacity <
-            canvas3d_next_power_of_two_i32(c->motion_history_count * 2)) {
-        if (!canvas3d_rebuild_motion_hash(c))
-            return -1;
-    }
-    canvas_motion_history_t *hist = (canvas_motion_history_t *)c->motion_history;
-    int32_t mask = c->motion_history_hash_capacity - 1;
-    int32_t slot = (int32_t)(canvas3d_hash_u64(key) & (uint32_t)mask);
-    for (int32_t probe = 0; probe < c->motion_history_hash_capacity; ++probe) {
-        int32_t encoded = c->motion_history_hash[slot];
-        if (encoded == 0)
-            return -1;
-        int32_t index = encoded - 1;
-        if (index >= 0 && index < c->motion_history_count && hist[index].key == key)
-            return index;
-        slot = (slot + 1) & mask;
-    }
-    return -1;
-}
-
-/// @brief Drop motion-history entries that haven't been touched in over a frame.
-///
-/// In-place compaction. Anything not seen in the current or previous
-/// frame is considered stale (the mesh has stopped being drawn or
-/// has been destroyed). Bounded eviction prevents the table from
-/// growing without bound.
-static void canvas3d_prune_motion_history(rt_canvas3d *c) {
-    if (!c || c->motion_history_count <= 0)
-        return;
-
-    canvas_motion_history_t *hist = (canvas_motion_history_t *)c->motion_history;
-    int32_t dst = 0;
-    for (int32_t i = 0; i < c->motion_history_count; i++) {
-        if (c->frame_serial - hist[i].last_frame_seen > 1)
-            continue;
-        if (dst != i)
-            hist[dst] = hist[i];
-        dst++;
-    }
-    c->motion_history_count = dst;
-    canvas3d_rebuild_motion_hash(c);
-}
-
-/// @brief Look up (and update) the previous-frame model matrix for a mesh.
-///
-/// Three cases:
-///   1. Existing entry, first lookup this frame → roll current→previous,
-///      update current, return previous.
-///   2. Existing entry, repeat lookup this frame → just return the
-///      previous (don't roll twice).
-///   3. New entry → register, return "no previous yet".
-/// Returns through `out_has_prev` whether the previous frame was
-/// available — first-frame draws fall back to current=previous.
-static void canvas3d_resolve_previous_model(rt_canvas3d *c,
-                                            uintptr_t motion_key,
-                                            const float *current_model,
-                                            float *out_prev_model,
-                                            int8_t *out_has_prev) {
-    if (out_has_prev)
-        *out_has_prev = 0;
-    if (out_prev_model)
-        memset(out_prev_model, 0, sizeof(float) * 16);
-    if (!c || motion_key == 0 || !current_model || !out_prev_model || !out_has_prev)
-        return;
-
-    canvas_motion_history_t *hist = (canvas_motion_history_t *)c->motion_history;
-    int32_t found_index = canvas3d_motion_hash_find_index(c, motion_key);
-    if (found_index >= 0) {
-        canvas_motion_history_t *entry = &hist[found_index];
-        if (entry->last_frame_seen != c->frame_serial) {
-            if (entry->has_current) {
-                memcpy(entry->prev_model, entry->current_model, sizeof(entry->prev_model));
-                entry->has_prev = 1;
-            }
-            memcpy(entry->current_model, current_model, sizeof(entry->current_model));
-            entry->has_current = 1;
-            entry->last_frame_seen = c->frame_serial;
-        }
-
-        if (entry->has_prev) {
-            memcpy(out_prev_model, entry->prev_model, sizeof(entry->prev_model));
-            *out_has_prev = 1;
-        }
-        return;
-    }
-
-    if (!ensure_motion_history_capacity(c, c->motion_history_count + 1))
-        return;
-    if (!canvas3d_ensure_motion_hash_capacity(c, c->motion_history_count + 1))
-        return;
-
-    hist = (canvas_motion_history_t *)c->motion_history;
-    int32_t new_index = c->motion_history_count++;
-    canvas_motion_history_t *entry = &hist[new_index];
-    memset(entry, 0, sizeof(*entry));
-    entry->key = motion_key;
-    memcpy(entry->current_model, current_model, sizeof(entry->current_model));
-    entry->has_current = 1;
-    entry->last_frame_seen = c->frame_serial;
-    canvas3d_motion_hash_insert_existing(c, new_index);
-}
-
-/// @brief Mix one pointer/value into a running motion-history hash key (boost-style
-///   hash_combine with the golden-ratio constant) so per-object motion vectors stay stable.
-static uintptr_t canvas3d_mix_motion_key(uintptr_t key, uintptr_t value) {
-    key ^= value + (uintptr_t)0x9e3779b97f4a7c15ull + (key << 6) + (key >> 2);
-    return key;
-}
-
-/// @brief Mix a pointer-sized key into a 32-bit hash for the motion-history table.
-static uint32_t canvas3d_hash_u64(uintptr_t value) {
-    uint64_t x = (uint64_t)value;
-    x ^= x >> 33;
-    x *= UINT64_C(0xff51afd7ed558ccd);
-    x ^= x >> 33;
-    x *= UINT64_C(0xc4ceb9fe1a85ec53);
-    x ^= x >> 33;
-    return (uint32_t)x;
-}
-
-/// @brief Round @p value up to the next power of two (used to size the open-addressing hash table).
-static int32_t canvas3d_next_power_of_two_i32(int32_t value) {
-    int32_t cap = 1;
-    if (value <= 1)
-        return 1;
-    while (cap < value) {
-        if (cap > INT32_MAX / 2)
-            return value;
-        cap <<= 1;
-    }
-    return cap;
-}
-
-/// @brief Derive a stable object draw key for transform-handle draw calls.
-static uintptr_t canvas3d_mesh_transform_motion_key(const void *mesh_obj,
-                                                    const void *material_obj,
-                                                    const void *transform_obj) {
-    uintptr_t key = (uintptr_t)transform_obj;
-    key = canvas3d_mix_motion_key(key, (uintptr_t)mesh_obj);
-    key = canvas3d_mix_motion_key(key, (uintptr_t)material_obj);
-    return key ? key : (uintptr_t)1u;
-}
-
-/// @brief Derive a stable per-instance key for the motion-blur history table.
-/// @details Includes the caller's batch buffer identity so two batches with
-///          the same mesh/material/count do not alias one another's previous
-///          transforms. Keeping the same matrix buffer across frames preserves
-///          continuous history; a reallocated buffer safely starts fresh.
-static uintptr_t canvas3d_instance_motion_key(const void *mesh_obj,
-                                              const void *material_obj,
-                                              const void *batch_obj,
-                                              int32_t instance_count,
-                                              int32_t index) {
-    uintptr_t key = (uintptr_t)mesh_obj;
-    uintptr_t instance_key = (uintptr_t)((uint32_t)index + 1u);
-    key = canvas3d_mix_motion_key(key, (uintptr_t)material_obj);
-    key = canvas3d_mix_motion_key(key, (uintptr_t)batch_obj);
-    key = canvas3d_mix_motion_key(key, (uintptr_t)((uint32_t)instance_count + 1u));
-    key ^= instance_key * (uintptr_t)0xc2b2ae35u;
-    return key ? key : instance_key;
-}
-
-/// @brief Compact the canvas's slotted light array into a dense param array.
-///
-/// Canvas lights live in a fixed array with NULL-able slots (so removal
-/// doesn't shift indices). This packs the non-NULL slots into a dense
-/// array the backend draw path consumes, returning the count.
-static void canvas3d_copy_light_params(const rt_canvas3d *c,
-                                       const rt_light3d *l,
-                                       vgfx3d_light_params_t *out) {
-    double origin_x = 0.0;
-    double origin_y = 0.0;
-    double origin_z = 0.0;
-    if (!l || !out)
-        return;
-    if (canvas3d_uses_camera_relative_upload(c)) {
-        origin_x = c->camera_relative_origin[0];
-        origin_y = c->camera_relative_origin[1];
-        origin_z = c->camera_relative_origin[2];
-    }
-    memset(out, 0, sizeof(*out));
-    out->type = l->type;
-    out->shadow_index = -1;
-    out->shadow_cascade_count = 1;
-    out->casts_shadows = l->casts_shadows ? 1 : 0;
-    out->direction[0] = canvas3d_sanitize_f64_to_float(l->direction[0], 0.0f);
-    out->direction[1] = canvas3d_sanitize_f64_to_float(l->direction[1], -1.0f);
-    out->direction[2] = canvas3d_sanitize_f64_to_float(l->direction[2], 0.0f);
-    out->position[0] = canvas3d_sanitize_f64_to_float(l->position[0] - origin_x, 0.0f);
-    out->position[1] = canvas3d_sanitize_f64_to_float(l->position[1] - origin_y, 0.0f);
-    out->position[2] = canvas3d_sanitize_f64_to_float(l->position[2] - origin_z, 0.0f);
-    out->color[0] = canvas3d_clamp01_f64(l->color[0]);
-    out->color[1] = canvas3d_clamp01_f64(l->color[1]);
-    out->color[2] = canvas3d_clamp01_f64(l->color[2]);
-    out->intensity = canvas3d_sanitize_nonnegative_f64(l->intensity, 1.0f);
-    out->attenuation = canvas3d_sanitize_nonnegative_f64(l->attenuation, 1.0f);
-    out->inner_cos = canvas3d_clamp_f64_to_float(l->inner_cos, -1.0, 1.0, 1.0f);
-    out->outer_cos = canvas3d_clamp_f64_to_float(l->outer_cos, -1.0, 1.0, 0.0f);
-}
-
-/// @brief Return the active light payload limit for the selected lighting path.
-static int32_t canvas3d_active_light_limit(rt_canvas3d *c) {
-    if (c && c->clustered_lighting &&
-        rt_canvas3d_backend_supports(c, rt_const_cstr("clustered-lighting")))
-        return VGFX3D_MAX_LIGHTS;
-    return VGFX3D_FORWARD_LIGHT_LIMIT;
-}
+// Light flattening (canvas3d_copy_light_params / canvas3d_active_light_limit /
+// build_light_params) lives in rt_canvas3d_lighting.c (shared via
+// rt_canvas3d_internal.h).
 
 /// @brief Score a directional light by luminance-weighted intensity.
 /// @details Used to rank shadow-caster candidates: only type 0 (directional)
@@ -1353,34 +1055,6 @@ static float canvas3d_shadow_light_param_score(const vgfx3d_light_params_t *l) {
         return -1.0f;
     luminance = (float)(0.2126 * l->color[0] + 0.7152 * l->color[1] + 0.0722 * l->color[2]);
     return (float)l->intensity * luminance;
-}
-
-/// @brief Flatten the canvas's sparse light array into a dense backend buffer.
-/// @details The canvas stores lights in fixed slots (`lights[0..VGFX3D_MAX_LIGHTS]`)
-///   so that dropped-and-readded lights keep stable slot identities, but the
-///   GPU backends expect a packed array — this routine bridges the two. Stops
-///   when either every slot has been visited or `max` entries have been
-///   written, whichever comes first.
-/// @return The number of lights actually copied into `out`.
-static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
-    int32_t count = 0;
-    if (!c || !out || max <= 0)
-        return 0;
-    for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
-        const rt_light3d *l = c->lights[i];
-        if (!l || !l->enabled)
-            continue;
-        canvas3d_copy_light_params(c, l, &out[count]);
-        count++;
-    }
-    for (int i = 0; i < c->scene_light_count && i < VGFX3D_MAX_LIGHTS && count < max; i++) {
-        const rt_light3d *l = c->scene_lights[i];
-        if (!l || !l->enabled)
-            continue;
-        canvas3d_copy_light_params(c, l, &out[count]);
-        count++;
-    }
-    return count;
 }
 
 /// @brief Tolerance-based scalar equality for light parameters.
@@ -1535,428 +1209,21 @@ static void canvas3d_apply_shadow_light_params(vgfx3d_light_params_t *lights,
 /// matrix buffer that outlives the calling Zia frame. Geometric
 /// growth (cap doubles, starting at 8). Ownership transfers only on
 /// success; callers keep ownership and must free the buffer on failure.
-static int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer) {
-    if (!c || !buffer)
-        return 0;
-    for (int32_t i = 0; i < c->temp_buf_count; ++i) {
-        if (c->temp_buffers[i] == buffer)
-            return 1;
-    }
-    if (c->temp_buf_count >= c->temp_buf_capacity) {
-        if (c->temp_buf_capacity > INT32_MAX / 2)
-            return 0;
-        int32_t new_cap = c->temp_buf_capacity == 0 ? 8 : c->temp_buf_capacity * 2;
-        if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
-            return 0;
-        void **nb = (void **)realloc(c->temp_buffers, (size_t)new_cap * sizeof(void *));
-        if (!nb)
-            return 0;
-        c->temp_buffers = nb;
-        c->temp_buf_capacity = new_cap;
-    }
-    c->temp_buffers[c->temp_buf_count++] = buffer;
-    return 1;
-}
-
-/// @brief Remove a tracked temp buffer without freeing it.
-static int canvas3d_untrack_temp_buffer(rt_canvas3d *c, void *buffer) {
-    if (!c || !buffer)
-        return 0;
-    for (int32_t i = 0; i < c->temp_buf_count; ++i) {
-        if (c->temp_buffers[i] == buffer) {
-            for (int32_t j = i; j < c->temp_buf_count - 1; ++j)
-                c->temp_buffers[j] = c->temp_buffers[j + 1];
-            c->temp_buffers[--c->temp_buf_count] = NULL;
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/// @brief Untrack and free a temp buffer when a later allocation path fails.
-static void canvas3d_release_tracked_temp_buffer(rt_canvas3d *c, void *buffer) {
-    if (!buffer)
-        return;
-    if (canvas3d_untrack_temp_buffer(c, buffer))
-        free(buffer);
-}
-
-/// @brief Track a malloc'd buffer used by deferred final-overlay commands.
-///
-/// Final overlays are recorded before frame finalization and replayed after
-/// post-FX. Their geometry must survive normal End() cleanup, so they use a
-/// separate temp-buffer list cleared after Flip() or ClearOverlay().
-static int canvas3d_track_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer) {
-    if (!c || !buffer)
-        return 0;
-    if (c->final_overlay_temp_buf_count >= c->final_overlay_temp_buf_capacity) {
-        if (c->final_overlay_temp_buf_capacity > INT32_MAX / 2)
-            return 0;
-        int32_t new_cap =
-            c->final_overlay_temp_buf_capacity == 0 ? 8 : c->final_overlay_temp_buf_capacity * 2;
-        if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
-            return 0;
-        void **nb =
-            (void **)realloc(c->final_overlay_temp_buffers, (size_t)new_cap * sizeof(void *));
-        if (!nb)
-            return 0;
-        c->final_overlay_temp_buffers = nb;
-        c->final_overlay_temp_buf_capacity = new_cap;
-    }
-    c->final_overlay_temp_buffers[c->final_overlay_temp_buf_count++] = buffer;
-    return 1;
-}
-
-/// @brief Remove a buffer from the final-overlay temp-buffer tracking list (does not free it).
-/// @return 1 if it was found and removed, 0 otherwise.
-static int canvas3d_untrack_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer) {
-    if (!c || !buffer)
-        return 0;
-    for (int32_t i = 0; i < c->final_overlay_temp_buf_count; ++i) {
-        if (c->final_overlay_temp_buffers[i] == buffer) {
-            for (int32_t j = i; j < c->final_overlay_temp_buf_count - 1; ++j)
-                c->final_overlay_temp_buffers[j] = c->final_overlay_temp_buffers[j + 1];
-            c->final_overlay_temp_buffers[--c->final_overlay_temp_buf_count] = NULL;
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/// @brief Untrack and free a final-overlay temp buffer in one step.
-static void canvas3d_release_tracked_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer) {
-    if (!buffer)
-        return;
-    if (canvas3d_untrack_final_overlay_temp_buffer(c, buffer))
-        free(buffer);
-}
-
-/// @brief Clear the per-frame transient-object tracking set (all slots empty).
-static void canvas3d_temp_object_set_clear(rt_canvas3d *c) {
-    if (!c || !c->temp_object_set || c->temp_object_set_capacity <= 0)
-        return;
-    memset(c->temp_object_set, 0, (size_t)c->temp_object_set_capacity * sizeof(void *));
-}
-
-/// @brief Ensure the transient-object set has a power-of-two capacity sized for @p count_hint
-/// entries.
-static int canvas3d_ensure_temp_object_set(rt_canvas3d *c, int32_t count_hint) {
-    if (!c)
-        return 0;
-    int32_t needed = canvas3d_next_power_of_two_i32(count_hint > 0 ? count_hint * 2 : 32);
-    if (needed < 32)
-        needed = 32;
-    if (c->temp_object_set_capacity >= needed)
-        return 1;
-    if ((size_t)needed > SIZE_MAX / sizeof(*c->temp_object_set))
-        return 0;
-    void **grown = (void **)realloc(c->temp_object_set, (size_t)needed * sizeof(*grown));
-    if (!grown)
-        return 0;
-    c->temp_object_set = grown;
-    c->temp_object_set_capacity = needed;
-    canvas3d_temp_object_set_clear(c);
-    for (int32_t i = 0; i < c->temp_obj_count; ++i) {
-        void *existing = c->temp_objects[i];
-        if (!existing)
-            continue;
-        int32_t mask = c->temp_object_set_capacity - 1;
-        int32_t slot = (int32_t)(canvas3d_hash_u64((uintptr_t)existing) & (uint32_t)mask);
-        for (int32_t probe = 0; probe < c->temp_object_set_capacity; ++probe) {
-            if (!c->temp_object_set[slot]) {
-                c->temp_object_set[slot] = existing;
-                break;
-            }
-            slot = (slot + 1) & mask;
-        }
-    }
-    return 1;
-}
-
-/// @brief Whether @p obj is currently tracked as a per-frame transient object (linear-probe
-/// lookup).
-static int canvas3d_temp_object_set_contains(rt_canvas3d *c, void *obj) {
-    if (!c || !obj || c->temp_obj_count <= 0)
-        return 0;
-    if (!c->temp_object_set || c->temp_object_set_capacity < c->temp_obj_count * 2) {
-        if (!canvas3d_ensure_temp_object_set(c, c->temp_obj_count + 1)) {
-            for (int32_t i = 0; i < c->temp_obj_count; ++i) {
-                if (c->temp_objects[i] == obj)
-                    return 1;
-            }
-            return 0;
-        }
-    }
-    int32_t mask = c->temp_object_set_capacity - 1;
-    int32_t slot = (int32_t)(canvas3d_hash_u64((uintptr_t)obj) & (uint32_t)mask);
-    for (int32_t probe = 0; probe < c->temp_object_set_capacity; ++probe) {
-        void *entry = c->temp_object_set[slot];
-        if (!entry)
-            return 0;
-        if (entry == obj)
-            return 1;
-        slot = (slot + 1) & mask;
-    }
-    return 0;
-}
-
-/// @brief Track @p obj as a per-frame transient object (linear-probe insert; grows as needed).
-static int canvas3d_temp_object_set_insert(rt_canvas3d *c, void *obj) {
-    if (!c || !obj)
-        return 0;
-    if (!canvas3d_ensure_temp_object_set(c, c->temp_obj_count + 1))
-        return 0;
-    int32_t mask = c->temp_object_set_capacity - 1;
-    int32_t slot = (int32_t)(canvas3d_hash_u64((uintptr_t)obj) & (uint32_t)mask);
-    for (int32_t probe = 0; probe < c->temp_object_set_capacity; ++probe) {
-        if (!c->temp_object_set[slot]) {
-            c->temp_object_set[slot] = obj;
-            return 1;
-        }
-        if (c->temp_object_set[slot] == obj)
-            return 1;
-        slot = (slot + 1) & mask;
-    }
-    return 0;
-}
-
-/// @brief Rebuild the transient-object hash set from the tracked-object list (after
-/// growth/removal).
-static void canvas3d_rebuild_temp_object_set(rt_canvas3d *c) {
-    if (!c || !c->temp_object_set)
-        return;
-    canvas3d_temp_object_set_clear(c);
-    for (int32_t i = 0; i < c->temp_obj_count; ++i)
-        canvas3d_temp_object_set_insert(c, c->temp_objects[i]);
-}
-
-/// @brief Track a GC-managed object for end-of-frame release.
-///
-/// Retains `obj` immediately so it survives at least until the
-/// frame ends, then releases at end-of-frame via `clear_temp_objects`.
-static int canvas3d_track_temp_object(rt_canvas3d *c, void *obj) {
-    if (!c || !obj)
-        return 0;
-    if (canvas3d_temp_object_set_contains(c, obj))
-        return 1;
-    if (c->temp_obj_count >= c->temp_obj_capacity) {
-        if (c->temp_obj_capacity > INT32_MAX / 2)
-            return 0;
-        int32_t new_cap = c->temp_obj_capacity == 0 ? 8 : c->temp_obj_capacity * 2;
-        if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
-            return 0;
-        void **nb = (void **)realloc(c->temp_objects, (size_t)new_cap * sizeof(void *));
-        if (!nb)
-            return 0;
-        c->temp_objects = nb;
-        c->temp_obj_capacity = new_cap;
-    }
-    if (!canvas3d_temp_object_set_insert(c, obj))
-        return 0;
-    rt_obj_retain_maybe(obj);
-    c->temp_objects[c->temp_obj_count++] = obj;
-    return 1;
-}
-
-/// @brief Untrack a per-frame transient object and release its reference.
-static void canvas3d_release_tracked_temp_object(rt_canvas3d *c, void *obj) {
-    if (!c || !obj)
-        return;
-    for (int32_t i = 0; i < c->temp_obj_count; ++i) {
-        if (c->temp_objects[i] == obj) {
-            for (int32_t j = i; j < c->temp_obj_count - 1; ++j)
-                c->temp_objects[j] = c->temp_objects[j + 1];
-            c->temp_objects[--c->temp_obj_count] = NULL;
-            canvas3d_rebuild_temp_object_set(c);
-            if (rt_obj_release_check0(obj))
-                rt_obj_free(obj);
-            return;
-        }
-    }
-}
+// Per-frame transient-resource tracking — temp buffers, final-overlay temp
+// buffers, and the GC-managed transient-object hash set — lives in
+// rt_canvas3d_tempmgr.c (shared via rt_canvas3d_internal.h).
 
 /// @brief Copy mesh vertex+index arrays into canvas-owned temp buffers.
 /// @details Used when the mesh's owning heap object may be freed before the GPU
 ///          consumes the draw command — the snapshot lives on the canvas's temp
 ///          buffer list, freed at end-of-frame. Returns 1 on success, 0 on
 ///          allocation failure or invalid mesh state.
-static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
-                                           const rt_mesh3d *mesh,
-                                           vgfx3d_vertex_t **out_vertices,
-                                           uint32_t **out_indices) {
-    vgfx3d_vertex_t *vertices;
-    uint32_t *indices;
-    size_t vertex_bytes;
-    size_t index_bytes;
-    if (!c || !mesh || !out_vertices || !out_indices || !mesh->vertices || !mesh->indices ||
-        mesh->vertex_count == 0 || mesh->index_count == 0)
-        return 0;
-    if ((size_t)mesh->vertex_count > SIZE_MAX / sizeof(*vertices) ||
-        (size_t)mesh->index_count > SIZE_MAX / sizeof(*indices))
-        return 0;
-    vertex_bytes = (size_t)mesh->vertex_count * sizeof(*vertices);
-    index_bytes = (size_t)mesh->index_count * sizeof(*indices);
-    vertices = (vgfx3d_vertex_t *)malloc(vertex_bytes);
-    if (!vertices)
-        return 0;
-    indices = (uint32_t *)malloc(index_bytes);
-    if (!indices) {
-        free(vertices);
-        return 0;
-    }
-    memcpy(vertices, mesh->vertices, vertex_bytes);
-    memcpy(indices, mesh->indices, index_bytes);
-    if (!canvas3d_track_temp_buffer(c, vertices)) {
-        free(vertices);
-        free(indices);
-        return 0;
-    }
-    if (!canvas3d_track_temp_buffer(c, indices)) {
-        canvas3d_release_tracked_temp_buffer(c, vertices);
-        free(indices);
-        return 0;
-    }
-    *out_vertices = vertices;
-    *out_indices = indices;
-    return 1;
-}
+// Mesh-geometry snapshotting (copy vertex/index buffers into canvas-owned temp
+// buffers for deferred upload, optionally rebased, with a revision-keyed cache)
+// lives in rt_canvas3d_snapshot.c (shared via rt_canvas3d_internal.h).
 
-/// @brief Compute the axis-aligned bounding box of a vertex array (for culling/occlusion).
-static void canvas3d_compute_vertices_aabb(const vgfx3d_vertex_t *vertices,
-                                           uint32_t vertex_count,
-                                           float out_min[3],
-                                           float out_max[3]) {
-    if (!out_min || !out_max)
-        return;
-    if (!vertices || vertex_count == 0) {
-        out_min[0] = out_min[1] = out_min[2] = 0.0f;
-        out_max[0] = out_max[1] = out_max[2] = 0.0f;
-        return;
-    }
-    vgfx3d_compute_mesh_aabb(vertices, vertex_count, sizeof(vgfx3d_vertex_t), out_min, out_max);
-}
-
-/// @brief Snapshot a mesh while subtracting @p origin from vertex positions before float upload.
-/// @details This is used for identity-matrix raw/generated meshes in camera-relative frames.
-///          `Mesh3D.AddVertex` preserves authored double positions in `positions64`; direct
-///          importer buffers without a sidecar fall back to their existing float positions.
-static int canvas3d_snapshot_mesh_geometry_rebased(rt_canvas3d *c,
-                                                   const rt_mesh3d *mesh,
-                                                   const double origin[3],
-                                                   vgfx3d_vertex_t **out_vertices,
-                                                   uint32_t **out_indices) {
-    if (!canvas3d_snapshot_mesh_geometry(c, mesh, out_vertices, out_indices))
-        return 0;
-    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
-        double x = mesh->positions64 ? mesh->positions64[(size_t)i * 3u + 0]
-                                     : (double)mesh->vertices[i].pos[0];
-        double y = mesh->positions64 ? mesh->positions64[(size_t)i * 3u + 1]
-                                     : (double)mesh->vertices[i].pos[1];
-        double z = mesh->positions64 ? mesh->positions64[(size_t)i * 3u + 2]
-                                     : (double)mesh->vertices[i].pos[2];
-        x -= origin[0];
-        y -= origin[1];
-        z -= origin[2];
-        if (!canvas3d_double_fits_float(x) || !canvas3d_double_fits_float(y) ||
-            !canvas3d_double_fits_float(z)) {
-            canvas3d_release_tracked_temp_buffer(c, *out_vertices);
-            canvas3d_release_tracked_temp_buffer(c, *out_indices);
-            *out_vertices = NULL;
-            *out_indices = NULL;
-            return 0;
-        }
-        (*out_vertices)[i].pos[0] = (float)x;
-        (*out_vertices)[i].pos[1] = (float)y;
-        (*out_vertices)[i].pos[2] = (float)z;
-    }
-    return 1;
-}
-
-/// @brief Ensure the per-frame mesh-snapshot cache can hold @p needed entries (grows as needed).
-static int canvas3d_reserve_mesh_snapshot_cache(rt_canvas3d *c, int32_t needed) {
-    if (!c)
-        return 0;
-    if (needed <= c->mesh_snapshot_capacity)
-        return 1;
-    if (c->mesh_snapshot_capacity > INT32_MAX / 2)
-        return 0;
-    int32_t new_cap = c->mesh_snapshot_capacity == 0 ? 8 : c->mesh_snapshot_capacity * 2;
-    while (new_cap < needed) {
-        if (new_cap > INT32_MAX / 2)
-            return 0;
-        new_cap *= 2;
-    }
-    if ((size_t)new_cap > SIZE_MAX / sizeof(*c->mesh_snapshots))
-        return 0;
-    rt_canvas3d_mesh_snapshot_entry *entries = (rt_canvas3d_mesh_snapshot_entry *)realloc(
-        c->mesh_snapshots, (size_t)new_cap * sizeof(*entries));
-    if (!entries)
-        return 0;
-    c->mesh_snapshots = entries;
-    c->mesh_snapshot_capacity = new_cap;
-    return 1;
-}
-
-/// @brief Snapshot a mesh's geometry for deferred upload, reusing the cache when unchanged.
-/// @details Keyed by the mesh's geometry revision: an unchanged mesh returns its cached snapshot,
-/// so
-///          repeated draws of the same mesh in a frame don't re-copy vertex data.
-static int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
-                                                  const rt_mesh3d *mesh,
-                                                  void *mesh_obj,
-                                                  vgfx3d_vertex_t **out_vertices,
-                                                  uint32_t **out_indices) {
-    int can_cache = mesh_obj && rt_heap_is_payload(mesh_obj);
-    if (can_cache) {
-        for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
-            rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[i];
-            if (entry->source == mesh_obj && entry->geometry_revision == mesh->geometry_revision &&
-                entry->vertex_count == mesh->vertex_count &&
-                entry->index_count == mesh->index_count) {
-                *out_vertices = entry->vertices;
-                *out_indices = entry->indices;
-                return 1;
-            }
-        }
-    }
-    if (!canvas3d_snapshot_mesh_geometry(c, mesh, out_vertices, out_indices))
-        return 0;
-    if (can_cache) {
-        if (!canvas3d_reserve_mesh_snapshot_cache(c, c->mesh_snapshot_count + 1))
-            return 1;
-        rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[c->mesh_snapshot_count++];
-        entry->source = mesh_obj;
-        entry->geometry_revision = mesh->geometry_revision;
-        entry->vertex_count = mesh->vertex_count;
-        entry->index_count = mesh->index_count;
-        entry->vertices = *out_vertices;
-        entry->indices = *out_indices;
-    }
-    return 1;
-}
-
-/// @brief Decide whether to snapshot a mesh's geometry into canvas-owned buffers.
-/// @details Heap meshes snapshot their vertex/index buffers so a user mutation after
-///          enqueue cannot change submitted deferred geometry. Draw-time deformation
-///          payloads stay on the original mesh so GPU skinning/morph paths can bind
-///          their palettes and weights without allocating CPU geometry snapshots.
-static int canvas3d_should_snapshot_geometry(const rt_mesh3d *mesh, void *mesh_obj) {
-    if (!mesh || !mesh_obj)
-        return 0;
-    if (rt_heap_is_payload(mesh_obj))
-        return 1;
-    return 0;
-}
-
-/// @brief Free every tracked transient buffer (called at end of frame).
-static void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
-    if (!c)
-        return;
-    for (int32_t i = 0; i < c->temp_buf_count; i++)
-        free(c->temp_buffers[i]);
-    c->temp_buf_count = 0;
-    c->mesh_snapshot_count = 0;
-}
+// canvas3d_clear_temp_buffers / canvas3d_clear_temp_objects (end-of-frame
+// transient-resource release) live in rt_canvas3d_tempmgr.c.
 
 /// @brief Discard recorded final-overlay commands and owned geometry buffers.
 void canvas3d_clear_final_overlay(rt_canvas3d *c) {
@@ -1967,19 +1234,6 @@ void canvas3d_clear_final_overlay(rt_canvas3d *c) {
     c->final_overlay_temp_buf_count = 0;
     c->final_overlay_count = 0;
     c->final_overlay_recording = 0;
-}
-
-/// @brief Release every tracked transient GC object (called at end of frame).
-static void canvas3d_clear_temp_objects(rt_canvas3d *c) {
-    if (!c)
-        return;
-    for (int32_t i = 0; i < c->temp_obj_count; i++) {
-        if (c->temp_objects[i] && rt_obj_release_check0(c->temp_objects[i]))
-            rt_obj_free(c->temp_objects[i]);
-        c->temp_objects[i] = NULL;
-    }
-    c->temp_obj_count = 0;
-    canvas3d_temp_object_set_clear(c);
 }
 
 /// @brief Transform a local point by a row-major 4x4 model matrix.
@@ -3220,224 +2474,8 @@ static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
 ///   cubemap generation). Call this when any of those inputs change in a way
 ///   `canvas3d_skybox_cache_matches` can't detect (e.g. destroying and
 ///   recreating the cubemap, or repointing the canvas at a different one).
-void rt_canvas3d_invalidate_skybox_cache(rt_canvas3d *c) {
-    if (!c)
-        return;
-    free(c->skybox_cpu_cache);
-    c->skybox_cpu_cache = NULL;
-    c->skybox_cpu_cache_w = 0;
-    c->skybox_cpu_cache_h = 0;
-    c->skybox_cpu_cache_generation = 0;
-    c->skybox_cpu_cache_is_ortho = 0;
-    memset(c->skybox_cpu_cache_vp, 0, sizeof(c->skybox_cpu_cache_vp));
-    memset(c->skybox_cpu_cache_cam_pos, 0, sizeof(c->skybox_cpu_cache_cam_pos));
-    memset(c->skybox_cpu_cache_forward, 0, sizeof(c->skybox_cpu_cache_forward));
-}
-
-/// @brief True if two float arrays match element-wise within @p eps; any non-finite
-///   element or NULL/negative input fails the comparison.
-static int canvas3d_float_array_close(const float *a, const float *b, int32_t count, float eps) {
-    if (!a || !b || count < 0)
-        return 0;
-    for (int32_t i = 0; i < count; i++) {
-        if (!isfinite(a[i]) || !isfinite(b[i]))
-            return 0;
-        if (fabsf(a[i] - b[i]) > eps)
-            return 0;
-    }
-    return 1;
-}
-
-/// @brief CPU-rasterize the bound skybox cubemap into a destination pixel buffer.
-/// @details For perspective cameras, unprojects each destination pixel from NDC
-///   back to a world-space direction by multiplying through `inverse(VP)`, then
-///   samples the cubemap along that ray. Orthographic cameras collapse to a
-///   single-color fill along the camera forward direction because an ortho
-///   projection has no per-pixel ray divergence — all pixels see the same
-///   skybox direction. This is the slow fallback path used when the GPU
-///   backend can't render the skybox directly (e.g. the software renderer).
-/// @return 1 on success, 0 when the VP matrix is non-invertible or inputs
-///   are otherwise malformed.
-static int canvas3d_render_skybox_cpu(
-    rt_canvas3d *c, uint8_t *dst_pixels, int32_t dst_w, int32_t dst_h, int32_t dst_stride) {
-    if (!c || !c->skybox || !dst_pixels || !canvas3d_rgba8_stride_valid(dst_w, dst_h, dst_stride))
-        return 0;
-
-    if (c->cached_cam_is_ortho) {
-        float r;
-        float g;
-        float b;
-
-        rt_cubemap_sample(c->skybox,
-                          c->cached_cam_forward[0],
-                          c->cached_cam_forward[1],
-                          c->cached_cam_forward[2],
-                          &r,
-                          &g,
-                          &b);
-        uint8_t r8 = canvas3d_clamp01_to_u8(r);
-        uint8_t g8 = canvas3d_clamp01_to_u8(g);
-        uint8_t b8 = canvas3d_clamp01_to_u8(b);
-        size_t row_bytes = (size_t)dst_w * 4u;
-        uint8_t *first_row = dst_pixels;
-        for (int32_t x = 0; x < dst_w; x++) {
-            uint8_t *dst = &first_row[(size_t)x * 4u];
-            dst[0] = r8;
-            dst[1] = g8;
-            dst[2] = b8;
-            dst[3] = 0xFF;
-        }
-        for (int32_t y = 1; y < dst_h; y++) {
-            uint8_t *dst = &dst_pixels[(size_t)y * (size_t)dst_stride];
-            memcpy(dst, first_row, row_bytes);
-        }
-        return 1;
-    }
-
-    float inv_vp[16];
-    if (vgfx3d_invert_matrix4(c->cached_vp, inv_vp) != 0)
-        return 0;
-
-    float inv_w = 1.0f / (float)dst_w;
-    float inv_h = 1.0f / (float)dst_h;
-    for (int32_t y = 0; y < dst_h; y++) {
-        float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) * inv_h;
-        uint8_t *row = &dst_pixels[(size_t)y * (size_t)dst_stride];
-        for (int32_t x = 0; x < dst_w; x++) {
-            float ndc_x = 2.0f * ((float)x + 0.5f) * inv_w - 1.0f;
-            float clip[4] = {ndc_x, ndc_y, 1.0f, 1.0f};
-            float world[4];
-            float dx;
-            float dy;
-            float dz;
-            float dl;
-            float r;
-            float g;
-            float b;
-            uint8_t *dst;
-
-            world[0] = inv_vp[0] * clip[0] + inv_vp[1] * clip[1] + inv_vp[2] * clip[2] +
-                       inv_vp[3] * clip[3];
-            world[1] = inv_vp[4] * clip[0] + inv_vp[5] * clip[1] + inv_vp[6] * clip[2] +
-                       inv_vp[7] * clip[3];
-            world[2] = inv_vp[8] * clip[0] + inv_vp[9] * clip[1] + inv_vp[10] * clip[2] +
-                       inv_vp[11] * clip[3];
-            world[3] = inv_vp[12] * clip[0] + inv_vp[13] * clip[1] + inv_vp[14] * clip[2] +
-                       inv_vp[15] * clip[3];
-            if (fabsf(world[3]) > 1e-7f) {
-                world[0] /= world[3];
-                world[1] /= world[3];
-                world[2] /= world[3];
-            }
-            dx = world[0] - c->cached_cam_pos[0];
-            dy = world[1] - c->cached_cam_pos[1];
-            dz = world[2] - c->cached_cam_pos[2];
-            dl = sqrtf(dx * dx + dy * dy + dz * dz);
-            if (dl > 1e-7f) {
-                dx /= dl;
-                dy /= dl;
-                dz /= dl;
-            }
-            rt_cubemap_sample(c->skybox, dx, dy, dz, &r, &g, &b);
-            dst = &row[(size_t)x * 4u];
-            dst[0] = canvas3d_clamp01_to_u8(r);
-            dst[1] = canvas3d_clamp01_to_u8(g);
-            dst[2] = canvas3d_clamp01_to_u8(b);
-            dst[3] = 0xFF;
-        }
-    }
-    return 1;
-}
-
-/// @brief Check whether the cached CPU skybox can satisfy the current frame.
-/// @details Composite key: viewport (w, h), cubemap content generation
-///   (bumped whenever a face is uploaded), projection mode (ortho vs
-///   perspective), and then either the camera forward vector (ortho) or the
-///   full VP matrix + camera position (perspective). The split on projection
-///   mode exists because ortho cameras fill the entire target with one
-///   sampled direction, so only the forward vector needs to match — the VP
-///   matrix can drift without affecting the rendered skybox.
-/// @return 1 if the cache is valid for this frame, 0 if it must be re-rendered.
-static int canvas3d_skybox_cache_matches(const rt_canvas3d *c,
-                                         int32_t w,
-                                         int32_t h,
-                                         uint64_t generation) {
-    if (!c || !c->skybox_cpu_cache || w <= 0 || h <= 0)
-        return 0;
-    if (c->skybox_cpu_cache_w != w || c->skybox_cpu_cache_h != h ||
-        c->skybox_cpu_cache_generation != generation ||
-        c->skybox_cpu_cache_is_ortho != c->cached_cam_is_ortho)
-        return 0;
-    if (c->cached_cam_is_ortho)
-        return canvas3d_float_array_close(
-            c->skybox_cpu_cache_forward, c->cached_cam_forward, 3, 1e-6f);
-    return canvas3d_float_array_close(c->skybox_cpu_cache_vp, c->cached_vp, 16, 1e-6f) &&
-           canvas3d_float_array_close(c->skybox_cpu_cache_cam_pos, c->cached_cam_pos, 3, 1e-6f);
-}
-
-/// @brief Populate (or refresh) the CPU skybox cache so it's ready for blitting.
-/// @details If the cache already matches the current viewport/camera/generation
-///   we return immediately (cheap fast path). Otherwise we (re)allocate the
-///   backing buffer only when its pixel dimensions actually change, then call
-///   `canvas3d_render_skybox_cpu` to paint the fresh image and snapshot the
-///   cache key. OOM on reallocation invalidates the cache rather than leaving
-///   it in a half-valid state. Also guards against `w * h * 4` overflow on
-///   32-bit size_t targets.
-/// @return 1 when a usable cache is ready, 0 on failure (caller should skip
-///   the skybox for this frame rather than render garbage).
-static int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h) {
-    uint64_t generation;
-    size_t bytes;
-
-    if (!c || !c->skybox || w <= 0 || h <= 0 || (int64_t)w > INT32_MAX / 4)
-        return 0;
-    generation = vgfx3d_get_cubemap_generation(c->skybox);
-    if (canvas3d_skybox_cache_matches(c, w, h, generation))
-        return 1;
-    bytes = (size_t)w * (size_t)h * 4u;
-    if (bytes / 4u / (size_t)w != (size_t)h)
-        return 0;
-    if (c->skybox_cpu_cache_w != w || c->skybox_cpu_cache_h != h || !c->skybox_cpu_cache) {
-        uint8_t *new_cache = (uint8_t *)realloc(c->skybox_cpu_cache, bytes);
-        if (!new_cache) {
-            rt_canvas3d_invalidate_skybox_cache(c);
-            return 0;
-        }
-        c->skybox_cpu_cache = new_cache;
-    }
-    c->skybox_cpu_cache_w = w;
-    c->skybox_cpu_cache_h = h;
-    if (!canvas3d_render_skybox_cpu(c, c->skybox_cpu_cache, w, h, (int32_t)((int64_t)w * 4))) {
-        rt_canvas3d_invalidate_skybox_cache(c);
-        return 0;
-    }
-    c->skybox_cpu_cache_generation = generation;
-    c->skybox_cpu_cache_is_ortho = c->cached_cam_is_ortho;
-    memcpy(c->skybox_cpu_cache_vp, c->cached_vp, sizeof(c->skybox_cpu_cache_vp));
-    memcpy(c->skybox_cpu_cache_cam_pos, c->cached_cam_pos, sizeof(c->skybox_cpu_cache_cam_pos));
-    memcpy(c->skybox_cpu_cache_forward, c->cached_cam_forward, sizeof(c->skybox_cpu_cache_forward));
-    return 1;
-}
-
-/// @brief Copy the cached CPU skybox into the frame's destination buffer row-by-row.
-/// @details Performs no rendering — it assumes `canvas3d_ensure_skybox_cpu_cache`
-///   has already refreshed the cache for this frame. Silently no-ops when the
-///   cache size doesn't match the destination, which is by design: the caller
-///   uses it as a "try the fast path" hook before falling back to a full
-///   CPU render.
-static void canvas3d_blit_skybox_cpu_cache(
-    rt_canvas3d *c, uint8_t *dst_pixels, int32_t dst_w, int32_t dst_h, int32_t dst_stride) {
-    int32_t src_stride;
-
-    if (!c || !c->skybox_cpu_cache || !dst_pixels || dst_w <= 0 || dst_h <= 0 ||
-        c->skybox_cpu_cache_w != dst_w || c->skybox_cpu_cache_h != dst_h ||
-        !canvas3d_rgba8_stride_valid(dst_w, dst_h, dst_stride))
-        return;
-    src_stride = (int32_t)((int64_t)dst_w * 4);
-    for (int32_t y = 0; y < dst_h; y++)
-        memcpy(
-            &dst_pixels[y * dst_stride], &c->skybox_cpu_cache[y * src_stride], (size_t)src_stride);
-}
+// CPU skybox fallback (cubemap → pixel buffer, with a per-frame cache) lives in
+// rt_canvas3d_skybox.c (shared via rt_canvas3d_internal.h).
 
 /*==========================================================================
  * Canvas3D lifecycle

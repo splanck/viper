@@ -644,7 +644,11 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
         }
 
         if (node->child_count >= node->child_capacity) {
+            if (node->child_capacity < 0 || node->child_capacity > INT32_MAX / 2)
+                return -1;
             int32_t new_cap = node->child_capacity == 0 ? 8 : node->child_capacity * 2;
+            if ((size_t)new_cap > SIZE_MAX / sizeof(fbx_node_t))
+                return -1;
             fbx_node_t *nc =
                 (fbx_node_t *)realloc(node->children, (size_t)new_cap * sizeof(fbx_node_t));
             if (!nc)
@@ -785,7 +789,11 @@ static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
             continue;
 
         if (ct->count >= ct->capacity) {
+            if (ct->capacity < 0 || ct->capacity > INT32_MAX / 2)
+                break;
             int32_t new_cap = ct->capacity == 0 ? 64 : ct->capacity * 2;
+            if ((size_t)new_cap > SIZE_MAX / sizeof(fbx_conn_t))
+                break;
             fbx_conn_t *nc =
                 (fbx_conn_t *)realloc(ct->entries, (size_t)new_cap * sizeof(fbx_conn_t));
             if (!nc)
@@ -903,7 +911,11 @@ static void fbx_mesh_remap_add_vertex(fbx_mesh_remap_t *remap,
         return;
     list = &remap->control_vertices[control_index];
     if (list->count >= list->capacity) {
+        if (list->capacity < 0 || list->capacity > INT32_MAX / 2)
+            return;
         new_capacity = list->capacity == 0 ? 4 : list->capacity * 2;
+        if ((size_t)new_capacity > SIZE_MAX / sizeof(*list->vertices))
+            return;
         grown = (int32_t *)realloc(list->vertices, (size_t)new_capacity * sizeof(*list->vertices));
         if (!grown)
             return;
@@ -1355,6 +1367,11 @@ static void *fbx_build_scene_root(fbx_node_t *root,
         }
 
         if (model_count >= model_capacity) {
+            if (model_capacity < 0 || model_capacity > INT32_MAX / 2 ||
+                (size_t)(model_capacity == 0 ? 16 : model_capacity * 2) > SIZE_MAX / sizeof(*models)) {
+                failed = 1;
+                break;
+            }
             int32_t new_capacity = model_capacity == 0 ? 16 : model_capacity * 2;
             void *nm = realloc(models, (size_t)new_capacity * sizeof(*models));
             if (!nm) {
@@ -1532,6 +1549,9 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
             continue;
 
         if (bone_count >= bone_cap) {
+            if (bone_cap < 0 || bone_cap > INT32_MAX / 2 ||
+                (size_t)(bone_cap == 0 ? 32 : bone_cap * 2) > SIZE_MAX / sizeof(bone_info_t))
+                break;
             int32_t new_cap = bone_cap == 0 ? 32 : bone_cap * 2;
             bone_info_t *nb = (bone_info_t *)realloc(bones, (size_t)new_cap * sizeof(bone_info_t));
             if (!nb)
@@ -2168,12 +2188,21 @@ static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
 /// @return 1 on success (inserted or already present); 0 on allocation failure.
 static int fbx_anim_insert_time(int64_t **times, int32_t *count, int32_t *capacity, int64_t value) {
     int32_t pos = 0;
+    if (!times || !count || !capacity || *count < 0 || *capacity < 0 || *count > *capacity ||
+        (*count > 0 && !*times))
+        return 0;
     while (pos < *count && (*times)[pos] < value)
         pos++;
     if (pos < *count && (*times)[pos] == value)
         return 1;
     if (*count >= *capacity) {
-        int32_t new_capacity = *capacity == 0 ? 16 : *capacity * 2;
+        int32_t new_capacity;
+        if (*capacity > INT32_MAX / 2)
+            new_capacity = *count + 1;
+        else
+            new_capacity = *capacity == 0 ? 16 : *capacity * 2;
+        if (new_capacity <= *capacity || (size_t)new_capacity > SIZE_MAX / sizeof(**times))
+            return 0;
         int64_t *grown = (int64_t *)realloc(*times, (size_t)new_capacity * sizeof(*grown));
         if (!grown)
             return 0;
@@ -2481,6 +2510,11 @@ static void fbx_extract_animations(fbx_node_t *root,
         }
         rt_animation3d_set_looping(anim, 1);
 
+        if (*out_count < 0 || *out_count == INT32_MAX ||
+            (size_t)(*out_count + 1) > SIZE_MAX / sizeof(void *)) {
+            fbx_release_ref(&anim);
+            continue;
+        }
         int32_t new_count = *out_count + 1;
         void **na = (void **)realloc(*out_anims, (size_t)new_count * sizeof(void *));
         if (!na) {
@@ -2800,6 +2834,12 @@ static void fbx_load_collect_geometry(rt_fbx_asset *asset,
                 memset(&remap, 0, sizeof(remap));
                 void *mesh = fbx_extract_geometry(obj, z_up, &remap);
                 if (mesh) {
+                    if (asset->mesh_count == INT32_MAX ||
+                        (size_t)(asset->mesh_count + 1) > SIZE_MAX / sizeof(void *)) {
+                        fbx_release_ref(&mesh);
+                        fbx_mesh_remap_free(&remap);
+                        continue;
+                    }
                     int32_t nc = asset->mesh_count + 1;
                     void **nm = (void **)realloc(asset->meshes, (size_t)nc * sizeof(void *));
                     if (nm) {
@@ -2817,12 +2857,17 @@ static void fbx_load_collect_geometry(rt_fbx_asset *asset,
                             }
                         }
                         {
-                            fbx_mesh_remap_t *nr = (fbx_mesh_remap_t *)realloc(
-                                mesh_remaps, (size_t)(mesh_remap_count + 1) * sizeof(*mesh_remaps));
-                            if (nr) {
-                                mesh_remaps = nr;
-                                mesh_remaps[mesh_remap_count++] = remap;
-                                memset(&remap, 0, sizeof(remap));
+                            if (mesh_remap_count < INT32_MAX &&
+                                (size_t)(mesh_remap_count + 1) <=
+                                    SIZE_MAX / sizeof(*mesh_remaps)) {
+                                fbx_mesh_remap_t *nr = (fbx_mesh_remap_t *)realloc(
+                                    mesh_remaps,
+                                    (size_t)(mesh_remap_count + 1) * sizeof(*mesh_remaps));
+                                if (nr) {
+                                    mesh_remaps = nr;
+                                    mesh_remaps[mesh_remap_count++] = remap;
+                                    memset(&remap, 0, sizeof(remap));
+                                }
                             }
                         }
                     } else {
@@ -2833,6 +2878,11 @@ static void fbx_load_collect_geometry(rt_fbx_asset *asset,
             } else if (strcmp(obj->name, "Material") == 0) {
                 void *mat = fbx_extract_material(obj);
                 if (mat) {
+                    if (asset->material_count == INT32_MAX ||
+                        (size_t)(asset->material_count + 1) > SIZE_MAX / sizeof(void *)) {
+                        fbx_release_ref(&mat);
+                        continue;
+                    }
                     int32_t nc = asset->material_count + 1;
                     void **nm = (void **)realloc(asset->materials, (size_t)nc * sizeof(void *));
                     if (nm) {
@@ -2955,6 +3005,10 @@ void *rt_fbx_load(rt_string path) {
         }
 
         if (root.child_count >= root.child_capacity) {
+            if (root.child_capacity < 0 || root.child_capacity > INT32_MAX / 2 ||
+                (size_t)(root.child_capacity == 0 ? 16 : root.child_capacity * 2) >
+                    SIZE_MAX / sizeof(fbx_node_t))
+                break;
             int32_t new_cap = root.child_capacity == 0 ? 16 : root.child_capacity * 2;
             fbx_node_t *nc =
                 (fbx_node_t *)realloc(root.children, (size_t)new_cap * sizeof(fbx_node_t));

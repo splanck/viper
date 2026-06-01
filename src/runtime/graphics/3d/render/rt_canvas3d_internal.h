@@ -786,4 +786,95 @@ int canvas3d_queue_screen_line(rt_canvas3d *c,
 /// @brief Internal: discard recorded final-overlay commands and their temp buffers.
 void canvas3d_clear_final_overlay(rt_canvas3d *c);
 
+/// @brief Per-object previous-frame transforms for motion-vector derivation.
+typedef struct {
+    uintptr_t key;
+    float current_model[16];
+    float prev_model[16];
+    int64_t last_frame_seen;
+    int8_t has_current;
+    int8_t has_prev;
+} canvas_motion_history_t;
+
+// Motion-history (rt_canvas3d_motion.c) + the shared open-addressing hash-table
+// utilities, also used by the transient-resource tracker.
+uint32_t canvas3d_hash_u64(uintptr_t value);
+int32_t canvas3d_next_power_of_two_i32(int32_t value);
+void canvas3d_prune_motion_history(rt_canvas3d *c);
+void canvas3d_resolve_previous_model(rt_canvas3d *c,
+                                     uintptr_t motion_key,
+                                     const float *current_model,
+                                     float *out_prev_model,
+                                     int8_t *out_has_prev);
+uintptr_t canvas3d_mesh_transform_motion_key(const void *mesh_obj,
+                                             const void *material_obj,
+                                             const void *transform_obj);
+uintptr_t canvas3d_instance_motion_key(const void *mesh_obj,
+                                       const void *material_obj,
+                                       const void *batch_obj,
+                                       int32_t instance_count,
+                                       int32_t index);
+
+// Shared finite-range check (rt_canvas3d.c) used by the geometry snapshotter.
+int canvas3d_double_fits_float(double value);
+
+// Mesh-geometry snapshotting (rt_canvas3d_snapshot.c).
+int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
+                                    const rt_mesh3d *mesh,
+                                    vgfx3d_vertex_t **out_vertices,
+                                    uint32_t **out_indices);
+void canvas3d_compute_vertices_aabb(const vgfx3d_vertex_t *vertices,
+                                    uint32_t vertex_count,
+                                    float out_min[3],
+                                    float out_max[3]);
+int canvas3d_snapshot_mesh_geometry_rebased(rt_canvas3d *c,
+                                            const rt_mesh3d *mesh,
+                                            const double origin[3],
+                                            vgfx3d_vertex_t **out_vertices,
+                                            uint32_t **out_indices);
+int canvas3d_reserve_mesh_snapshot_cache(rt_canvas3d *c, int32_t needed);
+int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
+                                           const rt_mesh3d *mesh,
+                                           void *mesh_obj,
+                                           vgfx3d_vertex_t **out_vertices,
+                                           uint32_t **out_indices);
+int canvas3d_should_snapshot_geometry(const rt_mesh3d *mesh, void *mesh_obj);
+
+// Shared pixel utilities (rt_canvas3d.c) used by the CPU skybox.
+uint8_t canvas3d_clamp01_to_u8(float value);
+int canvas3d_rgba8_stride_valid(int32_t w, int32_t h, int32_t stride);
+
+// CPU skybox fallback (rt_canvas3d_skybox.c).
+int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h);
+void canvas3d_blit_skybox_cpu_cache(
+    rt_canvas3d *c, uint8_t *dst_pixels, int32_t dst_w, int32_t dst_h, int32_t dst_stride);
+
+// Value-sanitizing utilities (rt_canvas3d.c) used by the light flattener.
+float canvas3d_clamp01_f64(double value);
+int canvas3d_uses_camera_relative_upload(const rt_canvas3d *c);
+float canvas3d_sanitize_nonnegative_f64(double value, float fallback);
+float canvas3d_sanitize_f64_to_float(double value, float fallback);
+float canvas3d_clamp_f64_to_float(double value, double lo, double hi, float fallback);
+
+// Light flattening (rt_canvas3d_lighting.c).
+int32_t canvas3d_active_light_limit(rt_canvas3d *c);
+
+// Per-frame transient-resource tracking (rt_canvas3d_tempmgr.c): temp buffers,
+// final-overlay temp buffers, and the GC-managed transient-object hash set.
+int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer);
+int canvas3d_untrack_temp_buffer(rt_canvas3d *c, void *buffer);
+void canvas3d_release_tracked_temp_buffer(rt_canvas3d *c, void *buffer);
+int canvas3d_track_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer);
+int canvas3d_untrack_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer);
+void canvas3d_release_tracked_final_overlay_temp_buffer(rt_canvas3d *c, void *buffer);
+void canvas3d_temp_object_set_clear(rt_canvas3d *c);
+int canvas3d_ensure_temp_object_set(rt_canvas3d *c, int32_t count_hint);
+int canvas3d_temp_object_set_contains(rt_canvas3d *c, void *obj);
+int canvas3d_temp_object_set_insert(rt_canvas3d *c, void *obj);
+void canvas3d_rebuild_temp_object_set(rt_canvas3d *c);
+int canvas3d_track_temp_object(rt_canvas3d *c, void *obj);
+void canvas3d_release_tracked_temp_object(rt_canvas3d *c, void *obj);
+void canvas3d_clear_temp_buffers(rt_canvas3d *c);
+void canvas3d_clear_temp_objects(rt_canvas3d *c);
+
 #endif /* VIPER_ENABLE_GRAPHICS */

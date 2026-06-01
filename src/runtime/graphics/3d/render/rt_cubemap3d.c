@@ -193,7 +193,7 @@ static void cubemap_face_uv_to_direction(
     }
 
     len = sqrtf(dx * dx + dy * dy + dz * dz);
-    if (len > 1e-8f) {
+    if (isfinite(len) && len > 1e-8f) {
         dx /= len;
         dy /= len;
         dz /= len;
@@ -487,7 +487,7 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
     }
 
     len = sqrtf(dx * dx + dy * dy + dz * dz);
-    if (len <= 1e-8f) {
+    if (!isfinite(len) || len <= 1e-8f) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
@@ -505,7 +505,7 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
         tz = dy;
     }
     len = sqrtf(tx * tx + ty * ty + tz * tz);
-    if (len <= 1e-8f) {
+    if (!isfinite(len) || len <= 1e-8f) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
@@ -527,7 +527,7 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
         float sg;
         float sb;
 
-        if (sample_len <= 1e-8f)
+        if (!isfinite(sample_len) || sample_len <= 1e-8f)
             continue;
         sample_dx /= sample_len;
         sample_dy /= sample_len;

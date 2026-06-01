@@ -306,6 +306,8 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
     void *velocity = rt_vec3_new(vx, controller->vertical_velocity, vz);
     rt_character3d_move(controller->character, velocity, dt);
     game3d_release_ref(&velocity);
+    game3d_release_ref(&right);
+    game3d_release_ref(&forward);
     if (rt_character3d_is_grounded(controller->character) && controller->vertical_velocity < 0.0)
         controller->vertical_velocity = -0.5;
     game3d_character_controller_sync_entity(controller);
@@ -943,7 +945,8 @@ void rt_game3d_follow_controller_late_update(void *obj, void *world_obj, double 
     if (!game3d_entity_world_position_components((rt_game3d_entity *)controller->target_entity,
                                                  target_pos))
         return;
-    (void)rt_camera3d_get_position_components(world->camera, &current[0], &current[1], &current[2]);
+    if (!rt_camera3d_get_position_components(world->camera, &current[0], &current[1], &current[2]))
+        return;
     double target_x = target_pos[0] + rt_vec3_x(controller->offset);
     double target_y = target_pos[1] + rt_vec3_y(controller->offset);
     double target_z = target_pos[2] + rt_vec3_z(controller->offset);

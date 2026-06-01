@@ -303,6 +303,31 @@ static const char *gltf_effective_node_name(void *nodes_arr,
     return NULL;
 }
 
+static void gltf_write_identity_trs(double *pos, double *quat, double *scale) {
+    if (pos) {
+        pos[0] = 0.0;
+        pos[1] = 0.0;
+        pos[2] = 0.0;
+    }
+    if (quat) {
+        quat[0] = 0.0;
+        quat[1] = 0.0;
+        quat[2] = 0.0;
+        quat[3] = 1.0;
+    }
+    if (scale) {
+        scale[0] = 1.0;
+        scale[1] = 1.0;
+        scale[2] = 1.0;
+    }
+}
+
+static double gltf_sqrt_nonnegative(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 0.0;
+    return sqrt(value);
+}
+
 /// @brief Decompose a row-major 4x4 transform matrix into separate position, quaternion, and scale.
 ///
 /// glTF nodes can store either a 16-element matrix or explicit
@@ -318,19 +343,25 @@ static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, doubl
     int flip_axis;
     if (!m || !pos || !quat || !scale)
         return;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m[i])) {
+            gltf_write_identity_trs(pos, quat, scale);
+            return;
+        }
+    }
 
     pos[0] = m[3];
     pos[1] = m[7];
     pos[2] = m[11];
 
-    scale[0] = sqrt(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
-    scale[1] = sqrt(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
-    scale[2] = sqrt(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
-    if (scale[0] <= 1e-12)
+    scale[0] = gltf_sqrt_nonnegative(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
+    scale[1] = gltf_sqrt_nonnegative(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
+    scale[2] = gltf_sqrt_nonnegative(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
+    if (!isfinite(scale[0]) || scale[0] <= 1e-12)
         scale[0] = 1.0;
-    if (scale[1] <= 1e-12)
+    if (!isfinite(scale[1]) || scale[1] <= 1e-12)
         scale[1] = 1.0;
-    if (scale[2] <= 1e-12)
+    if (!isfinite(scale[2]) || scale[2] <= 1e-12)
         scale[2] = 1.0;
 
     det = m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8]) +
@@ -364,29 +395,62 @@ static void gltf_matrix_to_trs(const double *m, double *pos, double *quat, doubl
 
     trace = r00 + r11 + r22;
     if (trace > 0.0) {
-        s = sqrt(trace + 1.0) * 2.0;
+        s = gltf_sqrt_nonnegative(trace + 1.0) * 2.0;
+        if (s <= 1e-12) {
+            quat[0] = quat[1] = quat[2] = 0.0;
+            quat[3] = 1.0;
+            return;
+        }
         quat[3] = 0.25 * s;
         quat[0] = (r21 - r12) / s;
         quat[1] = (r02 - r20) / s;
         quat[2] = (r10 - r01) / s;
     } else if (r00 > r11 && r00 > r22) {
-        s = sqrt(1.0 + r00 - r11 - r22) * 2.0;
+        s = gltf_sqrt_nonnegative(1.0 + r00 - r11 - r22) * 2.0;
+        if (s <= 1e-12) {
+            quat[0] = quat[1] = quat[2] = 0.0;
+            quat[3] = 1.0;
+            return;
+        }
         quat[3] = (r21 - r12) / s;
         quat[0] = 0.25 * s;
         quat[1] = (r01 + r10) / s;
         quat[2] = (r02 + r20) / s;
     } else if (r11 > r22) {
-        s = sqrt(1.0 + r11 - r00 - r22) * 2.0;
+        s = gltf_sqrt_nonnegative(1.0 + r11 - r00 - r22) * 2.0;
+        if (s <= 1e-12) {
+            quat[0] = quat[1] = quat[2] = 0.0;
+            quat[3] = 1.0;
+            return;
+        }
         quat[3] = (r02 - r20) / s;
         quat[0] = (r01 + r10) / s;
         quat[1] = 0.25 * s;
         quat[2] = (r12 + r21) / s;
     } else {
-        s = sqrt(1.0 + r22 - r00 - r11) * 2.0;
+        s = gltf_sqrt_nonnegative(1.0 + r22 - r00 - r11) * 2.0;
+        if (s <= 1e-12) {
+            quat[0] = quat[1] = quat[2] = 0.0;
+            quat[3] = 1.0;
+            return;
+        }
         quat[3] = (r10 - r01) / s;
         quat[0] = (r02 + r20) / s;
         quat[1] = (r12 + r21) / s;
         quat[2] = 0.25 * s;
+    }
+    {
+        double qlen = sqrt(quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] +
+                           quat[3] * quat[3]);
+        if (!isfinite(qlen) || qlen <= 1e-12) {
+            quat[0] = quat[1] = quat[2] = 0.0;
+            quat[3] = 1.0;
+        } else {
+            quat[0] /= qlen;
+            quat[1] /= qlen;
+            quat[2] /= qlen;
+            quat[3] /= qlen;
+        }
     }
 }
 
@@ -7334,13 +7398,23 @@ static double gltf_curve_time(const gltf_accessor_view_t *view, int32_t index) {
 /// @return 1 on success, 0 on allocation failure (caller must free `*times` later).
 static int gltf_anim_insert_time(double **times, int32_t *count, int32_t *capacity, double value) {
     int32_t pos = 0;
+    if (!times || !count || !capacity || *count < 0 || *capacity < 0 || *count > *capacity ||
+        (*count > 0 && !*times) || !isfinite(value))
+        return 0;
     while (pos < *count && (*times)[pos] < value - 1e-6)
         pos++;
     if (pos < *count && fabs((*times)[pos] - value) <= 1e-6)
         return 1;
     if (*count >= *capacity) {
-        int32_t new_capacity = *capacity == 0 ? 16 : *capacity * 2;
-        double *grown = (double *)realloc(*times, (size_t)new_capacity * sizeof(*grown));
+        int32_t new_capacity;
+        double *grown;
+        if (*capacity > INT32_MAX / 2)
+            new_capacity = *count + 1;
+        else
+            new_capacity = *capacity == 0 ? 16 : *capacity * 2;
+        if (new_capacity <= *capacity || (size_t)new_capacity > SIZE_MAX / sizeof(*grown))
+            return 0;
+        grown = (double *)realloc(*times, (size_t)new_capacity * sizeof(*grown));
         if (!grown)
             return 0;
         *times = grown;
@@ -7413,9 +7487,14 @@ static float gltf_accessor_read_flat_f32(const gltf_accessor_view_t *view, int32
 static void gltf_normalize_sample_if_quat(float *out, int32_t components) {
     if (components == 4) {
         float len = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2] + out[3] * out[3]);
-        if (len > 1e-6f) {
+        if (isfinite(len) && len > 1e-6f) {
             for (int c = 0; c < 4; c++)
                 out[c] /= len;
+        } else {
+            out[0] = 0.0f;
+            out[1] = 0.0f;
+            out[2] = 0.0f;
+            out[3] = 1.0f;
         }
     }
 }
@@ -7442,6 +7521,17 @@ static void gltf_slerp_quat(const float *a, const float *b, double alpha, float 
         for (int c = 0; c < 4; c++)
             q1[c] = -q1[c];
     }
+    if (!isfinite(dot)) {
+        out[0] = 0.0f;
+        out[1] = 0.0f;
+        out[2] = 0.0f;
+        out[3] = 1.0f;
+        return;
+    }
+    if (dot > 1.0)
+        dot = 1.0;
+    if (dot < -1.0)
+        dot = -1.0;
     if (dot > 0.9995) {
         for (int c = 0; c < 4; c++)
             out[c] = (float)((double)q0[c] + ((double)q1[c] - (double)q0[c]) * alpha);

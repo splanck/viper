@@ -532,12 +532,19 @@ static void controller_quat_slerp_float(const float *a, const float *b, float t,
         nb[2] = -nb[2];
         nb[3] = -nb[3];
     }
+    if (!isfinite(dot)) {
+        out[0] = out[1] = out[2] = 0.0f;
+        out[3] = 1.0f;
+        return;
+    }
+    if (dot > 1.0f)
+        dot = 1.0f;
+    if (dot < -1.0f)
+        dot = -1.0f;
     if (dot > 0.9995f) {
         for (int32_t i = 0; i < 4; i++)
             out[i] = a[i] + t * (nb[i] - a[i]);
     } else {
-        if (dot > 1.0f)
-            dot = 1.0f;
         float theta = acosf(dot);
         float sin_theta = sinf(theta);
         float wa = sinf((1.0f - t) * theta) / sin_theta;

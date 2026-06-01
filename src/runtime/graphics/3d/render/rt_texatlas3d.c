@@ -75,12 +75,35 @@ static void texatlas3d_finalizer(void *obj) {
     texatlas3d_release_ref(&a->cached_pixels);
 }
 
+/// @brief Compute `width * height` as a checked size_t pixel count.
+static int texatlas3d_pixel_count(int32_t width, int32_t height, size_t *out_count) {
+    size_t w;
+    size_t h;
+    size_t count;
+    if (!out_count || width <= 0 || height <= 0)
+        return 0;
+    w = (size_t)width;
+    h = (size_t)height;
+    if (w > SIZE_MAX / h)
+        return 0;
+    count = w * h;
+    if (count > SIZE_MAX / sizeof(uint32_t))
+        return 0;
+    *out_count = count;
+    return 1;
+}
+
 /// @brief Construct a 3D texture atlas with `width × height` blank pixels (zero-initialized).
 /// Tracks shelf packing state so subsequent `_add` calls fit textures left-to-right with 1-pixel
 /// padding. Traps if dimensions are outside [16, 8192] or on allocation failure.
 void *rt_texatlas3d_new(int64_t width, int64_t height) {
+    size_t pixel_count;
     if (width < 16 || height < 16 || width > 8192 || height > 8192) {
         rt_trap("TextureAtlas3D.New: dimensions must be 16-8192");
+        return NULL;
+    }
+    if (!texatlas3d_pixel_count((int32_t)width, (int32_t)height, &pixel_count)) {
+        rt_trap("TextureAtlas3D.New: dimensions overflow");
         return NULL;
     }
     rt_texatlas3d *a = (rt_texatlas3d *)rt_obj_new_i64(RT_G3D_TEXTUREATLAS3D_CLASS_ID,
@@ -92,7 +115,7 @@ void *rt_texatlas3d_new(int64_t width, int64_t height) {
     a->vptr = NULL;
     a->width = (int32_t)width;
     a->height = (int32_t)height;
-    a->data = (uint32_t *)calloc((size_t)(width * height), sizeof(uint32_t));
+    a->data = (uint32_t *)calloc(pixel_count, sizeof(uint32_t));
     if (!a->data) {
         if (rt_obj_release_check0(a))
             rt_obj_free(a);
@@ -133,13 +156,13 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     int32_t th = ph + 2;
 
     /* Try to fit on current shelf */
-    if (a->shelf_x + tw > a->width) {
+    if (tw > a->width - a->shelf_x) {
         /* Start new shelf */
         a->shelf_y += a->shelf_h;
         a->shelf_x = 0;
         a->shelf_h = 0;
     }
-    if (a->shelf_y + th > a->height)
+    if (th > a->height - a->shelf_y)
         return -1; /* atlas full */
 
     /* Place texture at (shelf_x + 1, shelf_y + 1) — skip 1px border */
@@ -150,26 +173,29 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
         for (int32_t x = 0; x < pw; x++) {
             int32_t ax = dx + x, ay = dy + y;
             if (ax < a->width && ay < a->height)
-                a->data[ay * a->width + ax] = pv->data[(int64_t)y * pv->width + x];
+                a->data[(size_t)ay * (size_t)a->width + (size_t)ax] =
+                    pv->data[(int64_t)y * pv->width + x];
         }
     }
 
     for (int32_t x = 0; x < pw; x++) {
         uint32_t top = pv->data[x];
         uint32_t bottom = pv->data[(int64_t)(ph - 1) * pv->width + x];
-        a->data[(dy - 1) * a->width + (dx + x)] = top;
-        a->data[(dy + ph) * a->width + (dx + x)] = bottom;
+        a->data[(size_t)(dy - 1) * (size_t)a->width + (size_t)(dx + x)] = top;
+        a->data[(size_t)(dy + ph) * (size_t)a->width + (size_t)(dx + x)] = bottom;
     }
     for (int32_t y = 0; y < ph; y++) {
         uint32_t left = pv->data[(int64_t)y * pv->width];
         uint32_t right = pv->data[(int64_t)y * pv->width + (pw - 1)];
-        a->data[(dy + y) * a->width + (dx - 1)] = left;
-        a->data[(dy + y) * a->width + (dx + pw)] = right;
+        a->data[(size_t)(dy + y) * (size_t)a->width + (size_t)(dx - 1)] = left;
+        a->data[(size_t)(dy + y) * (size_t)a->width + (size_t)(dx + pw)] = right;
     }
-    a->data[(dy - 1) * a->width + (dx - 1)] = pv->data[0];
-    a->data[(dy - 1) * a->width + (dx + pw)] = pv->data[pw - 1];
-    a->data[(dy + ph) * a->width + (dx - 1)] = pv->data[(int64_t)(ph - 1) * pv->width];
-    a->data[(dy + ph) * a->width + (dx + pw)] = pv->data[(int64_t)(ph - 1) * pv->width + (pw - 1)];
+    a->data[(size_t)(dy - 1) * (size_t)a->width + (size_t)(dx - 1)] = pv->data[0];
+    a->data[(size_t)(dy - 1) * (size_t)a->width + (size_t)(dx + pw)] = pv->data[pw - 1];
+    a->data[(size_t)(dy + ph) * (size_t)a->width + (size_t)(dx - 1)] =
+        pv->data[(int64_t)(ph - 1) * pv->width];
+    a->data[(size_t)(dy + ph) * (size_t)a->width + (size_t)(dx + pw)] =
+        pv->data[(int64_t)(ph - 1) * pv->width + (pw - 1)];
 
     atlas_region_t *r = &a->regions[a->region_count];
     r->x = dx;
@@ -196,6 +222,7 @@ void *rt_texatlas3d_get_texture(void *obj) {
         return NULL;
 
     if (a->dirty || !a->cached_pixels) {
+        size_t pixel_count;
         /* Create a Pixels object from atlas data */
         void *new_pixels = rt_pixels_new(a->width, a->height);
         if (!new_pixels)
@@ -207,7 +234,12 @@ void *rt_texatlas3d_get_texture(void *obj) {
                 rt_obj_free(new_pixels);
             return NULL;
         }
-        memcpy(pv->data, a->data, (size_t)(a->width * a->height) * sizeof(uint32_t));
+        if (!texatlas3d_pixel_count(a->width, a->height, &pixel_count)) {
+            if (rt_obj_release_check0(new_pixels))
+                rt_obj_free(new_pixels);
+            return NULL;
+        }
+        memcpy(pv->data, a->data, pixel_count * sizeof(uint32_t));
         texatlas3d_release_ref(&a->cached_pixels);
         a->cached_pixels = new_pixels;
         a->dirty = 0;

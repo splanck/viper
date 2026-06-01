@@ -211,15 +211,20 @@ static void normalize3(float *x, float *y, float *z) {
 /// @brief Generate a random direction within a cone of half-angle `spread`
 ///        around the given direction vector.
 static void random_cone_dir(rt_particles3d *ps, const double *dir, double spread, float *out) {
+    if (!ps || !dir || !out)
+        return;
+    spread = particles_clamp(spread, 0.0, M_PI);
     if (spread <= 0.0) {
         out[0] = (float)dir[0];
         out[1] = (float)dir[1];
         out[2] = (float)dir[2];
+        normalize3(&out[0], &out[1], &out[2]);
         return;
     }
 
     /* Random angle within cone */
     float cos_theta = 1.0f - randf(ps) * (1.0f - cosf((float)spread));
+    cos_theta = (float)particles_clamp((double)cos_theta, -1.0, 1.0);
     float theta = acosf(cos_theta);
     float phi = randf(ps) * (float)(2.0 * M_PI);
 
@@ -252,10 +257,14 @@ static void random_cone_dir(rt_particles3d *ps, const double *dir, double spread
     float ry = d[2] * perp[0] - d[0] * perp[2];
     float rz = d[0] * perp[1] - d[1] * perp[0];
     float rlen = sqrtf(rx * rx + ry * ry + rz * rz);
-    if (rlen > 1e-6f) {
+    if (isfinite(rlen) && rlen > 1e-6f) {
         rx /= rlen;
         ry /= rlen;
         rz /= rlen;
+    } else {
+        rx = 1.0f;
+        ry = 0.0f;
+        rz = 0.0f;
     }
 
     /* up = cross(right, d) */
@@ -272,10 +281,14 @@ static void random_cone_dir(rt_particles3d *ps, const double *dir, double spread
 
     /* Normalize */
     float olen = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
-    if (olen > 1e-6f) {
+    if (isfinite(olen) && olen > 1e-6f) {
         out[0] /= olen;
         out[1] /= olen;
         out[2] /= olen;
+    } else {
+        out[0] = d[0];
+        out[1] = d[1];
+        out[2] = d[2];
     }
 }
 
@@ -645,7 +658,7 @@ static void spawn_particle(rt_particles3d *ps) {
     {
         double r = cbrt((double)randf(ps)) * ps->emitter_size[0];
         double theta = (double)randf(ps) * (2.0 * M_PI);
-        double phi = acos(1.0 - 2.0 * (double)randf(ps));
+        double phi = acos(particles_clamp(1.0 - 2.0 * (double)randf(ps), -1.0, 1.0));
         p->pos[0] += r * sin(phi) * cos(theta);
         p->pos[1] += r * cos(phi);
         p->pos[2] += r * sin(phi) * sin(theta);

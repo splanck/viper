@@ -428,9 +428,10 @@ static double game3d_rebase_threshold_or_default(double meters) {
 static void game3d_shift_body_position(void *body, const double delta[3]) {
     if (!body)
         return;
-    void *pos = rt_body3d_get_position(body);
+    double position[3];
+    rt_body3d_get_pose_raw(body, position, NULL, NULL);
     rt_body3d_set_position(
-        body, rt_vec3_x(pos) - delta[0], rt_vec3_y(pos) - delta[1], rt_vec3_z(pos) - delta[2]);
+        body, position[0] - delta[0], position[1] - delta[1], position[2] - delta[2]);
 }
 
 /// @brief Shift a world's particle/decal effects by the floating-origin rebase @p delta.
@@ -490,10 +491,13 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
             continue;
         if (!scene_rebased && !entity->parent && entity->node) {
             void *pos = rt_scene_node3d_get_position(entity->node);
-            rt_scene_node3d_set_position(entity->node,
-                                         rt_vec3_x(pos) - clean_delta[0],
-                                         rt_vec3_y(pos) - clean_delta[1],
-                                         rt_vec3_z(pos) - clean_delta[2]);
+            if (pos) {
+                rt_scene_node3d_set_position(entity->node,
+                                             rt_vec3_x(pos) - clean_delta[0],
+                                             rt_vec3_y(pos) - clean_delta[1],
+                                             rt_vec3_z(pos) - clean_delta[2]);
+                game3d_release_ref(&pos);
+            }
         }
         if (entity->body &&
             (!physics_rebased || !rt_world3d_contains_body(world->physics, entity->body)))
@@ -501,20 +505,29 @@ static void game3d_world_apply_origin_rebase(rt_game3d_world *world, const doubl
     }
 
     if (world->camera) {
-        void *camera_pos = rt_camera3d_get_position(world->camera);
-        void *shifted = rt_vec3_new(rt_vec3_x(camera_pos) - clean_delta[0],
-                                    rt_vec3_y(camera_pos) - clean_delta[1],
-                                    rt_vec3_z(camera_pos) - clean_delta[2]);
-        rt_camera3d_set_position(world->camera, shifted);
+        double camera_pos[3];
+        if (rt_camera3d_get_position_components(
+                world->camera, &camera_pos[0], &camera_pos[1], &camera_pos[2])) {
+            void *shifted = rt_vec3_new(camera_pos[0] - clean_delta[0],
+                                        camera_pos[1] - clean_delta[1],
+                                        camera_pos[2] - clean_delta[2]);
+            if (shifted) {
+                rt_camera3d_set_position(world->camera, shifted);
+                game3d_release_ref(&shifted);
+            }
+        }
     }
     if (world->audio) {
         rt_game3d_audio *audio = (rt_game3d_audio *)world->audio;
         if (audio->listener) {
             void *listener_pos = rt_soundlistener3d_get_position(audio->listener);
-            rt_soundlistener3d_set_position_vec(audio->listener,
-                                                rt_vec3_x(listener_pos) - clean_delta[0],
-                                                rt_vec3_y(listener_pos) - clean_delta[1],
-                                                rt_vec3_z(listener_pos) - clean_delta[2]);
+            if (listener_pos) {
+                rt_soundlistener3d_set_position_vec(audio->listener,
+                                                    rt_vec3_x(listener_pos) - clean_delta[0],
+                                                    rt_vec3_y(listener_pos) - clean_delta[1],
+                                                    rt_vec3_z(listener_pos) - clean_delta[2]);
+                game3d_release_ref(&listener_pos);
+            }
         }
     }
 }
@@ -542,7 +555,11 @@ void game3d_normalize_axis3(double *x, double *y, double *z) {
     double vy = game3d_finite_or(y ? *y : 0.0, 0.0);
     double vz = game3d_finite_or(z ? *z : 0.0, 0.0);
     double len = sqrt(vx * vx + vy * vy + vz * vz);
-    if (isfinite(len) && len > 1.0) {
+    if (!isfinite(len)) {
+        vx = 0.0;
+        vy = 0.0;
+        vz = 0.0;
+    } else if (len > 1.0) {
         vx /= len;
         vy /= len;
         vz /= len;

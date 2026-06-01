@@ -272,16 +272,8 @@ static void sound3d_source_list_remove(rt_soundsource3d *source) {
     source->next = NULL;
 }
 
-/// @brief Resolve a SceneNode3D's world-space position by applying its world matrix to the origin.
-/// @details Uses the node's cached world matrix when available (the standard
-///          path — the scene graph has already composed the parent chain).
-///          Falls back to the node's local position when no world matrix
-///          is cached, which produces the wrong answer for parented nodes
-///          but at least doesn't crash.
+/// @brief Resolve a SceneNode3D's world-space position without allocating wrapper objects.
 static void sound3d_get_node_world_position(void *node, double *out_position) {
-    void *world_matrix;
-    void *world_position;
-    void *origin;
     if (!out_position)
         return;
     if (!node) {
@@ -290,19 +282,12 @@ static void sound3d_get_node_world_position(void *node, double *out_position) {
         out_position[2] = 0.0;
         return;
     }
-    world_matrix = rt_scene_node3d_get_world_matrix(node);
-    if (!world_matrix) {
+    if (!rt_scene_node3d_get_world_position_components(
+            node, &out_position[0], &out_position[1], &out_position[2])) {
         void *local_position = rt_scene_node3d_get_position(node);
         sound3d_vec_from_obj(local_position, out_position);
         sound3d_release_local(local_position);
-        return;
     }
-    origin = rt_vec3_new(0.0, 0.0, 0.0);
-    world_position = rt_mat4_transform_point(world_matrix, origin);
-    sound3d_vec_from_obj(world_position, out_position);
-    sound3d_release_local(origin);
-    sound3d_release_local(world_position);
-    sound3d_release_local(world_matrix);
 }
 
 /// @brief Resolve a SceneNode3D's world-space direction.
@@ -338,8 +323,24 @@ static void sound3d_get_node_world_direction(void *node,
     }
     origin_vec = rt_vec3_new(0.0, 0.0, 0.0);
     direction_vec = rt_vec3_new(local_direction[0], local_direction[1], local_direction[2]);
+    if (!origin_vec || !direction_vec) {
+        sound3d_release_local(origin_vec);
+        sound3d_release_local(direction_vec);
+        sound3d_release_local(world_matrix);
+        sound3d_copy3(out_direction, fallback);
+        return;
+    }
     origin = rt_mat4_transform_point(world_matrix, origin_vec);
     direction = rt_mat4_transform_point(world_matrix, direction_vec);
+    if (!origin || !direction) {
+        sound3d_release_local(origin_vec);
+        sound3d_release_local(direction_vec);
+        sound3d_release_local(origin);
+        sound3d_release_local(direction);
+        sound3d_release_local(world_matrix);
+        sound3d_copy3(out_direction, fallback);
+        return;
+    }
     sound3d_vec_from_obj(origin, origin_xyz);
     sound3d_vec_from_obj(direction, direction_xyz);
     sound3d_release_local(origin_vec);
@@ -352,7 +353,7 @@ static void sound3d_get_node_world_direction(void *node,
     out_direction[2] = direction_xyz[2] - origin_xyz[2];
     len = sqrt(out_direction[0] * out_direction[0] + out_direction[1] * out_direction[1] +
                out_direction[2] * out_direction[2]);
-    if (len <= 1e-8) {
+    if (!isfinite(len) || len <= 1e-8) {
         sound3d_copy3(out_direction, fallback);
         return;
     }

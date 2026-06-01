@@ -720,6 +720,19 @@ static void test_path3d_looping_includes_closing_segment() {
     assert(dist < 0.5);
 }
 
+static void test_path3d_extreme_points_keep_length_and_direction_finite() {
+    void *path = rt_path3d_new();
+    rt_path3d_add_point(path, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_path3d_add_point(path, rt_vec3_new(1.0e308, 0.0, 0.0));
+    rt_path3d_add_point(path, rt_vec3_new(-1.0e308, 1.0e308, 0.0));
+
+    void *dir = rt_path3d_get_direction_at(path, 0.5);
+    assert(std::isfinite(rt_vec3_x(dir)));
+    assert(std::isfinite(rt_vec3_y(dir)));
+    assert(std::isfinite(rt_vec3_z(dir)));
+    assert(std::isfinite(rt_path3d_get_length(path)));
+}
+
 static void test_navmesh_sample_position_handles_empty_mesh() {
     void *mesh = rt_mesh3d_new();
     rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0);
@@ -1341,6 +1354,7 @@ int main() {
     test_decal3d_normal_and_lifetime_are_sanitized();
     test_path3d_growth_preserves_points();
     test_path3d_looping_includes_closing_segment();
+    test_path3d_extreme_points_keep_length_and_direction_finite();
     test_navmesh_sample_position_handles_empty_mesh();
     test_navmesh_slope_refilter_and_sloped_height_projection();
     test_navmesh_sample_position_uses_closest_triangle_point();

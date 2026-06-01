@@ -317,12 +317,18 @@ static void ik3d_quat_slerp(const float *a, const float *b, float t, float *out)
         nb[2] = -nb[2];
         nb[3] = -nb[3];
     }
+    if (!isfinite(dot)) {
+        ik3d_quat_identity(out);
+        return;
+    }
+    if (dot > 1.0f)
+        dot = 1.0f;
+    if (dot < -1.0f)
+        dot = -1.0f;
     if (dot > 0.9995f) {
         for (int i = 0; i < 4; i++)
             out[i] = a[i] + t * (nb[i] - a[i]);
     } else {
-        if (dot > 1.0f)
-            dot = 1.0f;
         float theta = acosf(dot);
         float sin_theta = sinf(theta);
         float wa = sinf((1.0f - t) * theta) / sin_theta;

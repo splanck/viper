@@ -822,10 +822,14 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         for (uint32_t v = 0; v < m->vertex_count; v++) {
             float *n = morphed[v].normal;
             float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-            if (len > 1e-8f) {
+            if (isfinite(len) && len > 1e-8f) {
                 n[0] /= len;
                 n[1] /= len;
                 n[2] /= len;
+            } else {
+                n[0] = 0.0f;
+                n[1] = 1.0f;
+                n[2] = 0.0f;
             }
         }
     }
@@ -834,10 +838,14 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         for (uint32_t v = 0; v < m->vertex_count; v++) {
             float *t = morphed[v].tangent;
             float len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
-            if (len > 1e-8f) {
+            if (isfinite(len) && len > 1e-8f) {
                 t[0] /= len;
                 t[1] /= len;
                 t[2] /= len;
+            } else {
+                t[0] = 1.0f;
+                t[1] = 0.0f;
+                t[2] = 0.0f;
             }
         }
     }

@@ -299,10 +299,14 @@ void *rt_path3d_get_direction_at(void *obj, double t) {
     double dy = rt_vec3_y(p1) - rt_vec3_y(p0);
     double dz = rt_vec3_z(p1) - rt_vec3_z(p0);
     double len = sqrt(dx * dx + dy * dy + dz * dz);
-    if (len > 1e-8) {
+    if (isfinite(len) && len > 1e-8) {
         dx /= len;
         dy /= len;
         dz /= len;
+    } else {
+        dx = 0.0;
+        dy = 0.0;
+        dz = 0.0;
     }
     path3d_release_local(p0);
     path3d_release_local(p1);
@@ -334,7 +338,9 @@ double rt_path3d_get_length(void *obj) {
         double x = rt_vec3_x(pt), y = rt_vec3_y(pt), z = rt_vec3_z(pt);
         if (i > 0) {
             double dx = x - prev_x, dy = y - prev_y, dz = z - prev_z;
-            total += sqrt(dx * dx + dy * dy + dz * dz);
+            double segment = sqrt(dx * dx + dy * dy + dz * dz);
+            if (isfinite(segment))
+                total += segment;
         }
         prev_x = x;
         prev_y = y;
