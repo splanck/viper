@@ -50,6 +50,41 @@ extern void *rt_pixels_new(int64_t width, int64_t height);
 // Render target allocation
 //=============================================================================
 
+static int rt_checked_mul_size(size_t a, size_t b, size_t *out) {
+    if (out)
+        *out = 0u;
+    if (!out)
+        return 0;
+    if (a != 0u && b > SIZE_MAX / a)
+        return 0;
+    *out = a * b;
+    return 1;
+}
+
+static int rt_rendertarget_estimate_bytes(int32_t w,
+                                          int32_t h,
+                                          vgfx3d_rendertarget_color_format_t color_format,
+                                          size_t *out_bytes) {
+    size_t pixels;
+    size_t color_bytes;
+    size_t depth_bytes;
+    size_t total;
+    size_t color_stride = color_format == VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F ? 8u : 4u;
+    if (out_bytes)
+        *out_bytes = 0u;
+    if (!out_bytes || w <= 0 || h <= 0)
+        return 0;
+    if (!rt_checked_mul_size((size_t)w, (size_t)h, &pixels) ||
+        !rt_checked_mul_size(pixels, color_stride, &color_bytes) ||
+        !rt_checked_mul_size(pixels, sizeof(float), &depth_bytes))
+        return 0;
+    if (SIZE_MAX - color_bytes < depth_bytes)
+        return 0;
+    total = color_bytes + depth_bytes;
+    *out_bytes = total;
+    return 1;
+}
+
 /// @brief Allocate the backend-side `vgfx3d_rendertarget_t` shell at `w × h` (RGBA8 stride =
 /// w * 4), with `color_buf` / `depth_buf` left NULL. CPU-side buffers are allocated lazily
 /// on first read or when the software backend binds the target — see
@@ -58,13 +93,15 @@ extern void *rt_pixels_new(int64_t width, int64_t height);
 static vgfx3d_rendertarget_t *rt_alloc(int32_t w,
                                        int32_t h,
                                        vgfx3d_rendertarget_color_format_t color_format) {
+    size_t estimated_bytes = 0u;
     vgfx3d_rendertarget_t *rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
     if (!rt)
         return NULL;
-    if (w > INT32_MAX / 4) {
+    if (w > INT32_MAX / 4 || !rt_rendertarget_estimate_bytes(w, h, color_format, &estimated_bytes)) {
         free(rt);
         return NULL;
     }
+    (void)estimated_bytes;
 
     rt->width = w;
     rt->height = h;

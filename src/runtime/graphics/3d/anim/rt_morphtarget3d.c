@@ -40,6 +40,7 @@
 #include "vgfx3d_backend.h"
 #include "vgfx3d_backend_d3d11_shared.h"
 
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -374,6 +375,12 @@ void *rt_morphtarget3d_clone(void *obj) {
     dst = (rt_morphtarget3d *)rt_morphtarget3d_new(src->vertex_count);
     if (!dst)
         return NULL;
+    size_t delta_size;
+    if (!morphtarget_vertex_delta_bytes(src->vertex_count, &delta_size)) {
+        if (rt_obj_release_check0(dst))
+            rt_obj_free(dst);
+        return NULL;
+    }
     for (int32_t i = 0; i < src->shape_count; i++) {
         int64_t shape = rt_morphtarget3d_add_shape(dst, rt_const_cstr(src->shapes[i].name));
         if (shape < 0) {
@@ -382,33 +389,25 @@ void *rt_morphtarget3d_clone(void *obj) {
             return NULL;
         }
         if (src->shapes[i].pos_deltas && dst->shapes[shape].pos_deltas) {
-            memcpy(dst->shapes[shape].pos_deltas,
-                   src->shapes[i].pos_deltas,
-                   (size_t)src->vertex_count * 3u * sizeof(float));
+            memcpy(dst->shapes[shape].pos_deltas, src->shapes[i].pos_deltas, delta_size);
         }
         if (src->shapes[i].nrm_deltas) {
-            dst->shapes[shape].nrm_deltas =
-                (float *)calloc((size_t)src->vertex_count * 3u, sizeof(float));
+            dst->shapes[shape].nrm_deltas = (float *)calloc(1, delta_size);
             if (!dst->shapes[shape].nrm_deltas) {
                 if (rt_obj_release_check0(dst))
                     rt_obj_free(dst);
                 return NULL;
             }
-            memcpy(dst->shapes[shape].nrm_deltas,
-                   src->shapes[i].nrm_deltas,
-                   (size_t)src->vertex_count * 3u * sizeof(float));
+            memcpy(dst->shapes[shape].nrm_deltas, src->shapes[i].nrm_deltas, delta_size);
         }
         if (src->shapes[i].tan_deltas) {
-            dst->shapes[shape].tan_deltas =
-                (float *)calloc((size_t)src->vertex_count * 3u, sizeof(float));
+            dst->shapes[shape].tan_deltas = (float *)calloc(1, delta_size);
             if (!dst->shapes[shape].tan_deltas) {
                 if (rt_obj_release_check0(dst))
                     rt_obj_free(dst);
                 return NULL;
             }
-            memcpy(dst->shapes[shape].tan_deltas,
-                   src->shapes[i].tan_deltas,
-                   (size_t)src->vertex_count * 3u * sizeof(float));
+            memcpy(dst->shapes[shape].tan_deltas, src->shapes[i].tan_deltas, delta_size);
         }
         dst->weights[shape] = src->weights ? src->weights[i] : 0.0f;
         dst->prev_weights[shape] = src->prev_weights ? src->prev_weights[i] : 0.0f;
@@ -798,20 +797,21 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
             continue;
 
         for (uint32_t v = 0; v < m->vertex_count; v++) {
-            morphed[v].pos[0] += w * pd[v * 3 + 0];
-            morphed[v].pos[1] += w * pd[v * 3 + 1];
-            morphed[v].pos[2] += w * pd[v * 3 + 2];
+            size_t base = (size_t)v * 3u;
+            morphed[v].pos[0] += w * pd[base + 0];
+            morphed[v].pos[1] += w * pd[base + 1];
+            morphed[v].pos[2] += w * pd[base + 2];
 
             if (nd) {
-                morphed[v].normal[0] += w * nd[v * 3 + 0];
-                morphed[v].normal[1] += w * nd[v * 3 + 1];
-                morphed[v].normal[2] += w * nd[v * 3 + 2];
+                morphed[v].normal[0] += w * nd[base + 0];
+                morphed[v].normal[1] += w * nd[base + 1];
+                morphed[v].normal[2] += w * nd[base + 2];
                 has_normal_deltas = 1;
             }
             if (td) {
-                morphed[v].tangent[0] += w * td[v * 3 + 0];
-                morphed[v].tangent[1] += w * td[v * 3 + 1];
-                morphed[v].tangent[2] += w * td[v * 3 + 2];
+                morphed[v].tangent[0] += w * td[base + 0];
+                morphed[v].tangent[1] += w * td[base + 1];
+                morphed[v].tangent[2] += w * td[base + 2];
                 has_tangent_deltas = 1;
             }
         }
@@ -821,11 +821,14 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     if (has_normal_deltas) {
         for (uint32_t v = 0; v < m->vertex_count; v++) {
             float *n = morphed[v].normal;
-            float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-            if (isfinite(len) && len > 1e-8f) {
-                n[0] /= len;
-                n[1] /= len;
-                n[2] /= len;
+            double len_sq =
+                (double)n[0] * (double)n[0] + (double)n[1] * (double)n[1] +
+                (double)n[2] * (double)n[2];
+            double len = sqrt(len_sq);
+            if (isfinite(len) && len > 1e-8 && len <= (double)FLT_MAX) {
+                n[0] = (float)((double)n[0] / len);
+                n[1] = (float)((double)n[1] / len);
+                n[2] = (float)((double)n[2] / len);
             } else {
                 n[0] = 0.0f;
                 n[1] = 1.0f;
@@ -837,11 +840,14 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     if (has_tangent_deltas) {
         for (uint32_t v = 0; v < m->vertex_count; v++) {
             float *t = morphed[v].tangent;
-            float len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
-            if (isfinite(len) && len > 1e-8f) {
-                t[0] /= len;
-                t[1] /= len;
-                t[2] /= len;
+            double len_sq =
+                (double)t[0] * (double)t[0] + (double)t[1] * (double)t[1] +
+                (double)t[2] * (double)t[2];
+            double len = sqrt(len_sq);
+            if (isfinite(len) && len > 1e-8 && len <= (double)FLT_MAX) {
+                t[0] = (float)((double)t[0] / len);
+                t[1] = (float)((double)t[1] / len);
+                t[2] = (float)((double)t[2] / len);
             } else {
                 t[0] = 1.0f;
                 t[1] = 0.0f;

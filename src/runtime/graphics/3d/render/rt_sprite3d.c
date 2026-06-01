@@ -30,6 +30,7 @@
 #include "rt_pixels_internal.h"
 
 #include <math.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,6 +96,14 @@ static double sprite3d_clamp01(double value) {
     if (value > 1.0)
         return 1.0;
     return value;
+}
+
+static int32_t sprite3d_clamp_frame_component_i32(int64_t value, int32_t fallback) {
+    if (value < 0)
+        return fallback;
+    if (value > INT32_MAX)
+        return INT32_MAX;
+    return (int32_t)value;
 }
 
 /// @brief Build a row-major model matrix that translates by @p origin (identity rotation/scale).
@@ -233,22 +242,14 @@ void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_
     rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
     if (!s)
         return;
-    if (fx < 0)
-        fx = 0;
-    if (fy < 0)
-        fy = 0;
     if (fw <= 0)
         fw = s->tex_w > 0 ? s->tex_w : 1;
     if (fh <= 0)
         fh = s->tex_h > 0 ? s->tex_h : 1;
-    if (fx > INT32_MAX)
-        fx = INT32_MAX;
-    if (fy > INT32_MAX)
-        fy = INT32_MAX;
-    if (fw > INT32_MAX)
-        fw = INT32_MAX;
-    if (fh > INT32_MAX)
-        fh = INT32_MAX;
+    fx = sprite3d_clamp_frame_component_i32(fx, 0);
+    fy = sprite3d_clamp_frame_component_i32(fy, 0);
+    fw = sprite3d_clamp_frame_component_i32(fw, s->tex_w > 0 ? s->tex_w : 1);
+    fh = sprite3d_clamp_frame_component_i32(fh, s->tex_h > 0 ? s->tex_h : 1);
     if (s->tex_w > 0) {
         if (fx >= s->tex_w)
             fx = s->tex_w - 1;

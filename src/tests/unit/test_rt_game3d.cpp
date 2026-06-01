@@ -862,6 +862,74 @@ static bool test_world_entity_registry_and_collision_clear() {
     PASS();
 }
 
+static bool test_world_body_index_deletion_tombstones_and_duplicate_names() {
+    TEST("World3D body/name indices survive removals and duplicate names");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Index Regression"), 80, 60);
+    EXPECT_TRUE(world != nullptr, "World3D.New returns an object");
+    rt_game3d_world_set_gravity(world, 0.0, 0.0, 0.0);
+
+    void *first_named = rt_game3d_entity_new();
+    void *second_named = rt_game3d_entity_new();
+    rt_game3d_entity_set_name(first_named, rt_const_cstr("SharedName"));
+    rt_game3d_entity_set_name(second_named, rt_const_cstr("SharedName"));
+    rt_game3d_world_spawn(world, first_named);
+    rt_game3d_world_spawn(world, second_named);
+    EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("SharedName")) == first_named,
+                "duplicate entity names use first-spawned lookup policy");
+    rt_game3d_world_despawn(world, first_named);
+    EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("SharedName")) == second_named,
+                "despawning the first duplicate promotes the remaining entity");
+
+    constexpr int kBodyCount = 10;
+    void *entities[kBodyCount] = {};
+    void *bodies[kBodyCount] = {};
+    bool alive[kBodyCount] = {};
+    for (int i = 0; i < kBodyCount; ++i) {
+        entities[i] = rt_game3d_entity_new();
+        bodies[i] = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+        rt_game3d_entity_attach_body(entities[i], bodies[i]);
+        rt_game3d_entity_set_position(entities[i], 0.0, 0.0, 0.0);
+        rt_game3d_world_spawn(world, entities[i]);
+        alive[i] = true;
+    }
+    rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_game3d_world_collision_event_count(world, rt_game3d_collision_any()) > 0,
+                "overlapping index-regression bodies collide before removals");
+    rt_game3d_world_clear_collision_events(world);
+
+    for (int i = 1; i < kBodyCount; i += 2) {
+        rt_game3d_world_despawn(world, entities[i]);
+        alive[i] = false;
+    }
+    EXPECT_EQ_INT(rt_game3d_world_get_body_count(world),
+                  kBodyCount / 2,
+                  "body index count drops removed open-addressing entries");
+
+    rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+    int64_t event_count = rt_game3d_world_collision_event_count(world, rt_game3d_collision_any());
+    EXPECT_TRUE(event_count > 0, "surviving bodies still collide after clustered removals");
+    for (int64_t ei = 0; ei < event_count; ++ei) {
+        void *event = rt_game3d_world_collision_event(world, rt_game3d_collision_any(), ei);
+        void *a = rt_game3d_collision_event_get_a(event);
+        void *b = rt_game3d_collision_event_get_b(event);
+        bool a_alive = false;
+        bool b_alive = false;
+        for (int i = 0; i < kBodyCount; ++i) {
+            if (!alive[i])
+                continue;
+            if (a == entities[i])
+                a_alive = true;
+            if (b == entities[i])
+                b_alive = true;
+        }
+        EXPECT_TRUE(a_alive && b_alive,
+                    "body-index deletion keeps collision events mapped to surviving entities");
+    }
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 static bool test_world_navmesh_bake_hooks() {
     TEST("World3D exposes world-scoped navmesh bake hooks");
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Nav Bake Unit"), 80, 60);
@@ -1984,6 +2052,24 @@ static bool test_phase4_assets3d_model_templates() {
                 "unsupported-extension AssetHandle3D has no template result");
     rt_string_unref(unsupported_path_s);
     std::remove(unsupported_path);
+
+    const char *sync_only_path = "/tmp/viper_game3d_async_sync_only_model.obj";
+    EXPECT_TRUE(write_text_file(sync_only_path, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"),
+                "test can write sync-only OBJ model fixture");
+    rt_string sync_only_path_s =
+        rt_string_from_bytes(sync_only_path, std::strlen(sync_only_path));
+    void *sync_only_handle = rt_game3d_assets_load_model_template_async(sync_only_path_s);
+    EXPECT_TRUE(sync_only_handle != nullptr,
+                "LoadModelTemplateAsync returns a handle for a sync-only model format");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(sync_only_handle) != 0,
+                "sync-only AssetHandle3D fails preflight instead of main-thread loading");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(sync_only_handle)),
+                            "async model loading supports glTF/GLB only") == 0,
+                "sync-only AssetHandle3D reports the async format policy");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_template(sync_only_handle) == nullptr,
+                "sync-only AssetHandle3D has no template result");
+    rt_string_unref(sync_only_path_s);
+    std::remove(sync_only_path);
 
     void *asset_model_handle = rt_game3d_assets_load_model_asset_async(path);
     EXPECT_TRUE(asset_model_handle != nullptr, "LoadModelAssetAsync returns an AssetHandle3D");
@@ -3802,6 +3888,7 @@ int main() {
     ok = test_input_axes() && ok;
     ok = test_input_update_snapshots_frame_state() && ok;
     ok = test_world_entity_registry_and_collision_clear() && ok;
+    ok = test_world_body_index_deletion_tombstones_and_duplicate_names() && ok;
     ok = test_world_navmesh_bake_hooks() && ok;
     ok = test_entity_from_node_wraps_imported_subtree() && ok;
     ok = test_entity_child_graph_reparents_and_rejects_cycles() && ok;

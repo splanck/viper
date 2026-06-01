@@ -32,6 +32,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels_internal.h"
+#include "rt_world3d_common.h"
 #include "vgfx3d_backend.h"
 
 #include <math.h>
@@ -87,7 +88,7 @@ typedef struct {
 
 /// @brief Return @p value when finite, else @p fallback. Sanitizes scalar inputs.
 static double vegetation_finite_or(double value, double fallback) {
-    return isfinite(value) ? value : fallback;
+    return rt_world3d_finite_or(value, fallback);
 }
 
 /// @brief Drop one GC reference held in `*slot` and clear the slot. NULL-safe.
@@ -371,15 +372,19 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
 
     /* Allocate storage */
     int32_t cap = (int32_t)count;
-    size_t base_count = (size_t)cap * 16u;
-    size_t pos_count = (size_t)cap * 3u;
-    if ((size_t)cap > SIZE_MAX / (16u * sizeof(float)) ||
-        (size_t)cap > SIZE_MAX / (3u * sizeof(float))) {
+    size_t base_count;
+    size_t pos_count;
+    size_t base_bytes;
+    size_t pos_bytes;
+    if (!rt_world3d_checked_mul_size((size_t)cap, 16u, &base_count) ||
+        !rt_world3d_checked_mul_size((size_t)cap, 3u, &pos_count) ||
+        !rt_world3d_checked_mul_size(base_count, sizeof(float), &base_bytes) ||
+        !rt_world3d_checked_mul_size(pos_count, sizeof(float), &pos_bytes)) {
         rt_trap("Vegetation3D.Populate: allocation size overflow");
         return;
     }
-    float *new_base_transforms = (float *)malloc(base_count * sizeof(float));
-    float *new_positions = (float *)malloc(pos_count * sizeof(float));
+    float *new_base_transforms = (float *)malloc(base_bytes);
+    float *new_positions = (float *)malloc(pos_bytes);
     if (!new_base_transforms || !new_positions) {
         free(new_base_transforms);
         free(new_positions);
@@ -481,13 +486,15 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
 
     /* Ensure visible buffer is large enough */
     if (v->visible_capacity < v->total_count) {
-        if ((size_t)v->total_count > SIZE_MAX / (16u * sizeof(float))) {
+        size_t visible_count;
+        size_t visible_bytes;
+        if (!rt_world3d_checked_mul_size((size_t)v->total_count, 16u, &visible_count) ||
+            !rt_world3d_checked_mul_size(visible_count, sizeof(float), &visible_bytes)) {
             v->visible_count = 0;
             rt_trap("Vegetation3D.Update: visible buffer size overflow");
             return;
         }
-        float *new_visible =
-            (float *)realloc(v->visible_transforms, (size_t)v->total_count * 16u * sizeof(float));
+        float *new_visible = (float *)realloc(v->visible_transforms, visible_bytes);
         if (!new_visible) {
             v->visible_count = 0;
             rt_trap("Vegetation3D.Update: visible buffer allocation failed");

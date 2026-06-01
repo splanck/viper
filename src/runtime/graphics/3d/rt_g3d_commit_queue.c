@@ -97,7 +97,7 @@ int8_t rt_g3d_commit_queue_enqueue_cost(void *obj,
 
 /// @brief Enqueue a commit callback with the default unit cost (1).
 int8_t rt_g3d_commit_queue_enqueue(void *obj, rt_g3d_commit_fn fn, void *user_data) {
-    return rt_g3d_commit_queue_enqueue_cost(obj, fn, user_data, 1u);
+    return rt_g3d_commit_queue_enqueue_cost(obj, fn, user_data, RT_G3D_COMMIT_COST_UNIT);
 }
 
 /// @brief Saturating unsigned add — clamps to UINT64_MAX instead of overflowing.
@@ -153,7 +153,7 @@ int64_t rt_g3d_commit_queue_drain_budget(void *obj, int64_t max_items, uint64_t 
 
 /// @brief Drain up to @p max_items commits with no cost budget.
 int64_t rt_g3d_commit_queue_drain(void *obj, int64_t max_items) {
-    return rt_g3d_commit_queue_drain_budget(obj, max_items, UINT64_MAX);
+    return rt_g3d_commit_queue_drain_budget(obj, max_items, RT_G3D_COMMIT_COST_UNLIMITED);
 }
 
 /// @brief Approximate count of commits still waiting to run.

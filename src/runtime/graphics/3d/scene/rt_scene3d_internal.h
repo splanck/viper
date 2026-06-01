@@ -197,6 +197,8 @@ typedef struct rt_scene3d {
     rt_scene3d_visibility_portal *visibility_portals;
     int32_t visibility_portal_count;
     int32_t visibility_portal_capacity;
+    rt_scene3d_spatial_entry **query_candidates;
+    int32_t query_candidate_capacity;
 } rt_scene3d;
 
 #ifdef __cplusplus
@@ -259,6 +261,13 @@ double scene3d_clamp_abs_or(double value, double fallback);
 void scene3d_mark_spatial_dirty(rt_scene3d *scene);
 void scene3d_release_ref(void **slot);
 double scene3d_scale_or_unit(double value);
+int scene3d_grow_stack_storage(void **buffer, size_t *capacity, size_t elem_size);
+int scene3d_grow_array_i32(void **buffer,
+                           int32_t *capacity,
+                           int32_t needed,
+                           int32_t min_capacity,
+                           size_t elem_size,
+                           int zero_new);
 int scene_node_stack_push(rt_scene_node3d ***stack,
                           size_t *count,
                           size_t *capacity,

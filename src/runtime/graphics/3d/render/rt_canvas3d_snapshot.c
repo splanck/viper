@@ -48,6 +48,12 @@ int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
         return 0;
     vertex_bytes = (size_t)mesh->vertex_count * sizeof(*vertices);
     index_bytes = (size_t)mesh->index_count * sizeof(*indices);
+    if (vertex_bytes > SIZE_MAX - index_bytes)
+        return 0;
+    size_t total_bytes = vertex_bytes + index_bytes;
+    size_t snapshot_budget = (size_t)RT_CANVAS3D_MESH_SNAPSHOT_FRAME_BYTE_BUDGET;
+    if (total_bytes > snapshot_budget || c->mesh_snapshot_bytes > snapshot_budget - total_bytes)
+        return 0;
     vertices = (vgfx3d_vertex_t *)malloc(vertex_bytes);
     if (!vertices)
         return 0;
@@ -68,6 +74,7 @@ int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
         free(indices);
         return 0;
     }
+    c->mesh_snapshot_bytes += total_bytes;
     *out_vertices = vertices;
     *out_indices = indices;
     return 1;

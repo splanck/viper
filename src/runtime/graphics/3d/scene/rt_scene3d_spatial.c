@@ -448,6 +448,16 @@ static int scene3d_spatial_refresh_entry_bounds(rt_scene3d_spatial_entry *entry)
     return 1;
 }
 
+static int scene3d_spatial_node_or_ancestor_dirty(const rt_scene_node3d *node) {
+    const rt_scene_node3d *current = node;
+    while (current) {
+        if (current->world_dirty)
+            return 1;
+        current = current->parent;
+    }
+    return 0;
+}
+
 /// @brief Recompute a BVH node's bounds bottom-up from its children/leaf entries (refit, no
 /// resplit).
 static void scene3d_spatial_refit_bvh_node(rt_scene3d_spatial_index *index, int32_t node_index) {
@@ -498,6 +508,11 @@ static int scene3d_spatial_refit(rt_scene3d *scene) {
         return scene3d_spatial_rebuild(scene);
     for (int32_t i = 0; i < index->count; ++i) {
         uint32_t before = index->entries[i].world_revision;
+        if (!index->entries[i].node)
+            return scene3d_spatial_rebuild(scene);
+        if (!scene3d_spatial_node_or_ancestor_dirty(index->entries[i].node) &&
+            before == index->entries[i].node->world_revision)
+            continue;
         if (!scene3d_spatial_refresh_entry_bounds(&index->entries[i]))
             return scene3d_spatial_rebuild(scene);
         if (index->entries[i].world_revision != before)

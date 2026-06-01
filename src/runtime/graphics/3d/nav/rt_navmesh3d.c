@@ -1086,7 +1086,7 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
         float ny = e1z * e2x - e1x * e2z;
         float nz = e1x * e2y - e1y * e2x;
         float nlen = sqrtf(nx * nx + ny * ny + nz * nz);
-        if (nlen < 1e-8f)
+        if (!isfinite(nlen) || nlen < 1e-8f)
             continue;
         nx /= nlen;
         ny /= nlen;
@@ -1420,6 +1420,16 @@ static void navmesh3d_voxel_emit_grid_mesh(rt_navmesh3d *nm,
     }
 }
 
+static int navmesh3d_voxel_dim_for_span(double span, double cell_size, int64_t *out_dim) {
+    if (!out_dim || !isfinite(span) || span < 0.0 || !isfinite(cell_size) || cell_size <= 0.0)
+        return 0;
+    double dim = floor(span / cell_size) + 1.0;
+    if (!isfinite(dim) || dim < 1.0 || dim > (double)INT32_MAX)
+        return 0;
+    *out_dim = (int64_t)dim;
+    return 1;
+}
+
 static void *navmesh3d_voxel_bake(
     rt_mesh3d *src, double agent_radius, double agent_height, double max_slope, double cell_size) {
     if (!src || src->vertex_count == 0 || src->index_count < 3)
@@ -1457,20 +1467,33 @@ static void *navmesh3d_voxel_bake(
     double span_x = max_x - min_x;
     double span_z = max_z - min_z;
     for (int guard = 0; guard < 64; guard++) {
-        int64_t tnx = (int64_t)(span_x / cell_size) + 1;
-        int64_t tnz = (int64_t)(span_z / cell_size) + 1;
-        if (tnx <= MAX_DIM && tnz <= MAX_DIM && tnx * tnz <= MAX_CELLS)
+        int64_t tnx = 0;
+        int64_t tnz = 0;
+        if (navmesh3d_voxel_dim_for_span(span_x, cell_size, &tnx) &&
+            navmesh3d_voxel_dim_for_span(span_z, cell_size, &tnz) && tnx <= MAX_DIM &&
+            tnz <= MAX_DIM && tnz > 0 && tnx <= MAX_CELLS / tnz)
             break;
         cell_size *= 2.0;
+        if (!isfinite(cell_size))
+            return NULL;
     }
-    int32_t nx = (int32_t)(span_x / cell_size) + 1;
-    int32_t nz = (int32_t)(span_z / cell_size) + 1;
+    int64_t nx64 = 0;
+    int64_t nz64 = 0;
+    if (!navmesh3d_voxel_dim_for_span(span_x, cell_size, &nx64) ||
+        !navmesh3d_voxel_dim_for_span(span_z, cell_size, &nz64))
+        return NULL;
+    int32_t nx = (int32_t)nx64;
+    int32_t nz = (int32_t)nz64;
     if (nx < 1)
         nx = 1;
     if (nz < 1)
         nz = 1;
 
+    if ((size_t)nx > SIZE_MAX / (size_t)nz)
+        return NULL;
     size_t cell_count = (size_t)nx * (size_t)nz;
+    if (cell_count > SIZE_MAX / sizeof(float))
+        return NULL;
     float *cell_h = (float *)malloc(cell_count * sizeof(float));
     uint8_t *cell_walk = (uint8_t *)calloc(cell_count, 1);
     if (!cell_h || !cell_walk) {
@@ -1508,7 +1531,17 @@ static void *navmesh3d_voxel_bake(
 
     /* 5. Emit a shared-corner grid mesh into source_triangles. */
     int32_t cnx = nx + 1, cnz = nz + 1;
+    if (cnx <= 0 || cnz <= 0 || (size_t)cnx > SIZE_MAX / (size_t)cnz) {
+        free(cell_h);
+        free(cell_walk);
+        return NULL;
+    }
     size_t corner_count = (size_t)cnx * (size_t)cnz;
+    if (corner_count > SIZE_MAX / sizeof(int32_t)) {
+        free(cell_h);
+        free(cell_walk);
+        return NULL;
+    }
     int32_t *corner_vid = (int32_t *)malloc(corner_count * sizeof(int32_t));
     if (!corner_vid) {
         free(cell_h);
@@ -1534,6 +1567,15 @@ static void *navmesh3d_voxel_bake(
     rt_obj_set_finalizer(nm, navmesh3d_finalizer);
 
     int64_t tri_cap = (int64_t)cell_count * 2;
+    if (corner_count > SIZE_MAX / sizeof(nav_vertex_t) ||
+        (size_t)tri_cap > SIZE_MAX / sizeof(nav_triangle_t) ||
+        cell_count > SIZE_MAX / sizeof(float) || corner_count > SIZE_MAX / sizeof(int32_t)) {
+        free(cell_h);
+        free(cell_walk);
+        free(corner_vid);
+        navmesh3d_free_partial(nm);
+        return NULL;
+    }
     nm->vertices = (nav_vertex_t *)malloc(corner_count * sizeof(nav_vertex_t));
     nm->source_triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
     nm->triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
@@ -1856,13 +1898,17 @@ static float centroid_dist(const rt_navmesh3d *nm, int32_t a, int32_t b) {
     const float *ca = nm->triangles[a].centroid;
     const float *cb = nm->triangles[b].centroid;
     float dx = cb[0] - ca[0], dy = cb[1] - ca[1], dz = cb[2] - ca[2];
-    return sqrtf(dx * dx + dy * dy + dz * dz);
+    float dist = sqrtf(dx * dx + dy * dy + dz * dz);
+    return isfinite(dist) ? dist : FLT_MAX;
 }
 
 static float navmesh3d_edge_cost(const rt_navmesh3d *nm, int32_t from, int32_t to) {
     float base = centroid_dist(nm, from, to);
+    if (!isfinite(base) || base >= FLT_MAX)
+        return FLT_MAX;
     float cost = 0.5f * (navmesh3d_tri_cost(nm, from) + navmesh3d_tri_cost(nm, to));
-    return base * cost;
+    float total = base * cost;
+    return isfinite(total) ? total : FLT_MAX;
 }
 
 static float navmesh3d_offmesh_cost(const nav_offmesh_link_t *link) {
@@ -1872,7 +1918,10 @@ static float navmesh3d_offmesh_cost(const nav_offmesh_link_t *link) {
     float dy = link->to[1] - link->from[1];
     float dz = link->to[2] - link->from[2];
     float base = sqrtf(dx * dx + dy * dy + dz * dz);
-    return base * navmesh3d_sanitize_traversal_cost((double)link->traversal_cost);
+    if (!isfinite(base))
+        return FLT_MAX;
+    float total = base * navmesh3d_sanitize_traversal_cost((double)link->traversal_cost);
+    return isfinite(total) ? total : FLT_MAX;
 }
 
 /// @brief Internal: compute the path from `from_v` to `to_v` and copy the waypoints into a

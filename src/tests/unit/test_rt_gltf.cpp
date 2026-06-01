@@ -2925,6 +2925,55 @@ static void test_gltf_rejects_unsupported_required_extensions() {
         "GLTF.Load rejects unsupported required extensions instead of rendering fallback data");
 }
 
+static void test_gltf_accepts_supported_required_extensions_with_parser_coverage() {
+    const char *gltf_path = "/tmp/viper_gltf_supported_required_extensions.gltf";
+    std::string gltf_json = "{\n"
+                            "  \"asset\": {\"version\": \"2.0\"},\n"
+                            "  \"extensionsUsed\": [\"KHR_texture_transform\", "
+                            "\"KHR_materials_emissive_strength\", \"KHR_materials_unlit\", "
+                            "\"KHR_lights_punctual\"],\n"
+                            "  \"extensionsRequired\": [\"KHR_texture_transform\", "
+                            "\"KHR_materials_emissive_strength\", \"KHR_materials_unlit\", "
+                            "\"KHR_lights_punctual\"],\n"
+                            "  \"textures\": [{}],\n"
+                            "  \"materials\": [{\n"
+                            "    \"pbrMetallicRoughness\": {\"baseColorTexture\": {\"index\": 0, "
+                            "\"extensions\": {\"KHR_texture_transform\": {\"offset\": [0.3, "
+                            "0.4]}}}},\n"
+                            "    \"emissiveFactor\": [0.1, 0.2, 0.3],\n"
+                            "    \"extensions\": {\"KHR_materials_emissive_strength\": "
+                            "{\"emissiveStrength\": 2.5}, \"KHR_materials_unlit\": {}}\n"
+                            "  }],\n"
+                            "  \"extensions\": {\"KHR_lights_punctual\": {\"lights\": "
+                            "[{\"type\": \"point\", \"range\": 4.0}]}},\n"
+                            "  \"nodes\": [{\"extensions\": {\"KHR_lights_punctual\": "
+                            "{\"light\": 0}}}],\n"
+                            "  \"scenes\": [{\"nodes\": [0]}],\n"
+                            "  \"scene\": 0\n"
+                            "}\n";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Supported-required-extension glTF fixture can be created");
+
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr,
+                "GLTF.Load accepts every extension listed as supported for extensionsRequired");
+    if (!asset)
+        return;
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mat != nullptr, "Supported-required-extension fixture imports a material");
+    if (!mat)
+        return;
+    EXPECT_TRUE(mat->unlit == 1, "Required KHR_materials_unlit is interpreted");
+    EXPECT_NEAR(mat->emissive_intensity,
+                2.5,
+                0.001,
+                "Required KHR_materials_emissive_strength is interpreted");
+    EXPECT_NEAR(mat->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][4],
+                0.3,
+                0.001,
+                "Required KHR_texture_transform offset.x is interpreted");
+}
+
 static void test_gltf_imports_required_punctual_lights() {
     const char *gltf_path = "/tmp/viper_gltf_punctual_light.gltf";
     std::string gltf_json = "{\n"
@@ -3109,6 +3158,7 @@ int main() {
     test_gltf_preserves_negative_matrix_scale_sign();
     test_gltf_rejects_skins_over_runtime_bone_limit();
     test_gltf_rejects_unsupported_required_extensions();
+    test_gltf_accepts_supported_required_extensions_with_parser_coverage();
     test_gltf_imports_required_punctual_lights();
     test_gltf_preserves_primary_texture_sampler_state();
     test_gltf_preserves_independent_texture_slot_metadata();

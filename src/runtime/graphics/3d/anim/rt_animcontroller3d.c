@@ -84,6 +84,7 @@ typedef struct {
     int8_t additive;
     float weight;
     int32_t mask_root_bone;
+    int32_t mask_bone_count_seen;
     uint8_t mask_bits[VGFX3D_MAX_BONES];
 } anim_controller3d_layer_t;
 
@@ -94,6 +95,10 @@ typedef struct {
     anim_controller3d_state_t *states;
     int32_t state_count;
     int32_t state_capacity;
+    uint64_t *state_name_hashes;
+    int32_t *state_name_indices;
+    int32_t state_name_index_capacity;
+    int8_t state_name_index_dirty;
 
     anim_controller3d_transition_t *transitions;
     int32_t transition_count;
@@ -223,12 +228,93 @@ static int controller_grow_array(void **buffer, int32_t *capacity, int32_t need,
     return 1;
 }
 
-/// @brief Linear-scan the state table by name.
+static uint64_t controller_hash_name_cstr(const char *name) {
+    uint64_t hash = UINT64_C(1469598103934665603);
+    if (!name)
+        return 0u;
+    while (*name) {
+        hash ^= (unsigned char)*name++;
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash ? hash : 1u;
+}
+
+static int controller_rebuild_state_name_index(rt_anim_controller3d *controller) {
+    int32_t capacity = 16;
+    uint64_t *hashes;
+    int32_t *indices;
+    if (!controller)
+        return 0;
+    while (capacity < controller->state_count * 2) {
+        if (capacity > INT32_MAX / 2)
+            return 0;
+        capacity *= 2;
+    }
+    if (capacity != controller->state_name_index_capacity) {
+        hashes = (uint64_t *)calloc((size_t)capacity, sizeof(*hashes));
+        indices = (int32_t *)malloc((size_t)capacity * sizeof(*indices));
+        if (!hashes || !indices) {
+            free(hashes);
+            free(indices);
+            return 0;
+        }
+        free(controller->state_name_hashes);
+        free(controller->state_name_indices);
+        controller->state_name_hashes = hashes;
+        controller->state_name_indices = indices;
+        controller->state_name_index_capacity = capacity;
+    } else {
+        memset(controller->state_name_hashes,
+               0,
+               (size_t)capacity * sizeof(*controller->state_name_hashes));
+    }
+    for (int32_t i = 0; i < capacity; ++i)
+        controller->state_name_indices[i] = -1;
+    for (int32_t i = 0; i < controller->state_count; ++i) {
+        uint64_t hash = controller_hash_name_cstr(controller->states[i].name);
+        int32_t mask = capacity - 1;
+        for (int32_t probe = 0; probe < capacity; ++probe) {
+            int32_t slot = (int32_t)((hash + (uint64_t)probe) & (uint64_t)mask);
+            if (controller->state_name_hashes[slot] == 0u) {
+                controller->state_name_hashes[slot] = hash;
+                controller->state_name_indices[slot] = i;
+                break;
+            }
+        }
+    }
+    controller->state_name_index_dirty = 0;
+    return 1;
+}
+
+/// @brief Find a state by name, using an open-addressed name index for larger controllers.
 /// @return State index, or -1 if `name` is NULL/empty or no match.
-static int32_t controller_find_state(const rt_anim_controller3d *controller, rt_string name) {
+static int32_t controller_find_state(rt_anim_controller3d *controller, rt_string name) {
     const char *target = name ? rt_string_cstr(name) : NULL;
     if (!controller || !target)
         return -1;
+    if (controller->state_count >= 16) {
+        uint64_t hash = controller_hash_name_cstr(target);
+        if ((controller->state_name_index_dirty || controller->state_name_index_capacity <= 0) &&
+            !controller_rebuild_state_name_index(controller)) {
+            goto linear_scan;
+        }
+        if (controller->state_name_hashes && controller->state_name_indices) {
+            int32_t mask = controller->state_name_index_capacity - 1;
+            for (int32_t probe = 0; probe < controller->state_name_index_capacity; ++probe) {
+                int32_t slot = (int32_t)((hash + (uint64_t)probe) & (uint64_t)mask);
+                int32_t index;
+                if (controller->state_name_hashes[slot] == 0u)
+                    return -1;
+                index = controller->state_name_indices[slot];
+                if (controller->state_name_hashes[slot] == hash && index >= 0 &&
+                    index < controller->state_count &&
+                    strcmp(controller->states[index].name, target) == 0)
+                    return index;
+            }
+            return -1;
+        }
+    }
+linear_scan:
     for (int32_t i = 0; i < controller->state_count; i++) {
         if (strcmp(controller->states[i].name, target) == 0)
             return i;
@@ -374,6 +460,7 @@ static void controller_set_all_mask_bits(anim_controller3d_layer_t *layer, int32
     memset(layer->mask_bits, 0, sizeof(layer->mask_bits));
     for (int32_t bone = 0; bone < bone_count && bone < VGFX3D_MAX_BONES; bone++)
         layer->mask_bits[bone] = 1;
+    layer->mask_bone_count_seen = bone_count;
 }
 
 /// @brief Recompute a layer's mask bits from its `mask_root_bone` setting.
@@ -405,6 +492,7 @@ static void controller_rebuild_layer_mask(rt_anim_controller3d *controller, int3
             current = controller->skeleton->bones[current].parent_index;
         }
     }
+    layer->mask_bone_count_seen = bone_count;
 }
 
 /// @brief Push a state's per-state speed and looping settings into a player.
@@ -639,15 +727,18 @@ static void controller_decompose_trs_float(const float *m,
                                            float *out_rot,
                                            float *out_scl) {
     double rot[4];
-    float sx = sqrtf(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
-    float sy = sqrtf(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
-    float sz = sqrtf(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
+    double sx = sqrt((double)m[0] * (double)m[0] + (double)m[4] * (double)m[4] +
+                     (double)m[8] * (double)m[8]);
+    double sy = sqrt((double)m[1] * (double)m[1] + (double)m[5] * (double)m[5] +
+                     (double)m[9] * (double)m[9]);
+    double sz = sqrt((double)m[2] * (double)m[2] + (double)m[6] * (double)m[6] +
+                     (double)m[10] * (double)m[10]);
     out_pos[0] = isfinite(m[3]) ? m[3] : 0.0f;
     out_pos[1] = isfinite(m[7]) ? m[7] : 0.0f;
     out_pos[2] = isfinite(m[11]) ? m[11] : 0.0f;
-    out_scl[0] = isfinite(sx) && sx > 1e-6f ? sx : 1.0f;
-    out_scl[1] = isfinite(sy) && sy > 1e-6f ? sy : 1.0f;
-    out_scl[2] = isfinite(sz) && sz > 1e-6f ? sz : 1.0f;
+    out_scl[0] = isfinite(sx) && sx > 1e-6 && sx <= (double)FLT_MAX ? (float)sx : 1.0f;
+    out_scl[1] = isfinite(sy) && sy > 1e-6 && sy <= (double)FLT_MAX ? (float)sy : 1.0f;
+    out_scl[2] = isfinite(sz) && sz > 1e-6 && sz <= (double)FLT_MAX ? (float)sz : 1.0f;
     controller_quat_from_matrix_rows((double)m[0] / out_scl[0],
                                      (double)m[1] / out_scl[1],
                                      (double)m[2] / out_scl[2],
@@ -1111,7 +1202,8 @@ static void controller_get_layer_rotation(const anim_controller3d_layer_t *layer
               (double)m[9] * (double)m[9]);
     sz = sqrt((double)m[2] * (double)m[2] + (double)m[6] * (double)m[6] +
               (double)m[10] * (double)m[10]);
-    if (sx < 1e-8 || sy < 1e-8 || sz < 1e-8)
+    if (!isfinite(sx) || !isfinite(sy) || !isfinite(sz) || sx < 1e-8 || sy < 1e-8 ||
+        sz < 1e-8)
         return;
     inv_sx = 1.0 / sx;
     inv_sy = 1.0 / sy;
@@ -1177,9 +1269,13 @@ static void controller_finalize(void *obj) {
     for (int32_t i = 0; i < controller->state_count; i++)
         controller_release_ref((void **)&controller->states[i].animation);
     free(controller->states);
+    free(controller->state_name_hashes);
+    free(controller->state_name_indices);
     free(controller->transitions);
     free(controller->events);
     controller->states = NULL;
+    controller->state_name_hashes = NULL;
+    controller->state_name_indices = NULL;
     controller->transitions = NULL;
     controller->events = NULL;
     for (int32_t i = 0; i < RT_ANIM_CONTROLLER3D_MAX_LAYERS; i++)
@@ -1284,7 +1380,9 @@ int64_t rt_anim_controller3d_add_state(void *obj, rt_string name, void *animatio
     rt_obj_retain_maybe(state->animation);
     state->speed = 1.0f;
     state->looping = rt_animation3d_get_looping(anim) ? 1 : 0;
-    return controller->state_count++;
+    controller->state_count++;
+    controller->state_name_index_dirty = 1;
+    return controller->state_count - 1;
 }
 
 /// @brief Register a directional transition with a default blend time. When `_play` is later
@@ -1407,8 +1505,14 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
         controller->animation_lod_accum += delta_time;
         if (controller->animation_lod_accum + 1e-12 < interval)
             return;
-        delta_time = controller->animation_lod_accum;
-        controller->animation_lod_accum = 0.0;
+        double steps = floor(controller->animation_lod_accum / interval);
+        double consumed = steps * interval;
+        if (!isfinite(consumed) || consumed <= 0.0 || consumed > controller->animation_lod_accum)
+            consumed = controller->animation_lod_accum;
+        delta_time = consumed;
+        controller->animation_lod_accum -= consumed;
+        if (!isfinite(controller->animation_lod_accum) || controller->animation_lod_accum < 1e-12)
+            controller->animation_lod_accum = 0.0;
     }
 
     if (controller->final_palette && controller->prev_final_palette && controller->skeleton &&
@@ -1874,10 +1978,16 @@ void rt_anim_controller3d_set_layer_mask(void *obj, int64_t layer_index, int64_t
     if (!controller || layer_index < 0 || layer_index >= RT_ANIM_CONTROLLER3D_MAX_LAYERS)
         return;
     if (layer_index == 0) {
-        controller_set_all_mask_bits(&controller->layers[0], controller->skeleton->bone_count);
-        controller->layers[0].mask_root_bone = -1;
+        anim_controller3d_layer_t *layer = &controller->layers[0];
+        if (layer->mask_root_bone != -1 ||
+            layer->mask_bone_count_seen != controller->skeleton->bone_count)
+            controller_set_all_mask_bits(layer, controller->skeleton->bone_count);
+        layer->mask_root_bone = -1;
         return;
     }
+    if (controller->layers[layer_index].mask_root_bone == (int32_t)root_bone &&
+        controller->layers[layer_index].mask_bone_count_seen == controller->skeleton->bone_count)
+        return;
     controller->layers[layer_index].mask_root_bone = (int32_t)root_bone;
     controller_rebuild_layer_mask(controller, (int32_t)layer_index);
 }

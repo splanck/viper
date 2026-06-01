@@ -38,6 +38,8 @@
 #include "rt_string.h"
 #include "rt_vec3.h"
 
+#include <ctype.h>
+#include <errno.h>
 #include <float.h>
 #include <limits.h>
 #include <math.h>
@@ -93,6 +95,23 @@ extern void rt_material3d_set_double_sided(void *obj, int8_t enabled);
 extern void rt_material3d_set_unlit(void *obj, int8_t unlit);
 extern void rt_material3d_set_shading_model(void *obj, int64_t model);
 extern void rt_material3d_set_reflectivity(void *obj, double value);
+
+/// @brief Cast a JSON double to int64 only when the conversion is defined.
+static int gltf_double_to_i64_checked(double value, int64_t *out) {
+    if (!out || !isfinite(value))
+        return 0;
+    if (value < (-9223372036854775807.0 - 1.0) || value >= 9223372036854775808.0)
+        return 0;
+    *out = (int64_t)value;
+    return 1;
+}
+
+/// @brief Narrow an int64 JSON value to int32 with fallback on range errors.
+static int32_t gltf_i32_from_i64_or(int64_t value, int32_t fallback) {
+    if (value < (int64_t)INT32_MIN || value > (int64_t)INT32_MAX)
+        return fallback;
+    return (int32_t)value;
+}
 extern void rt_material3d_set_import_texture_slot(void *obj,
                                                   int64_t slot,
                                                   int64_t uv_set,
@@ -481,6 +500,16 @@ static void gltf_build_trs_matrix(const double *pos,
                                   const double *scale,
                                   double *out) {
     double x = quat[0], y = quat[1], z = quat[2], w = quat[3];
+    double qlen = sqrt(x * x + y * y + z * z + w * w);
+    if (!isfinite(qlen) || qlen <= 1e-12) {
+        x = y = z = 0.0;
+        w = 1.0;
+    } else {
+        x /= qlen;
+        y /= qlen;
+        z /= qlen;
+        w /= qlen;
+    }
     double x2 = x + x, y2 = y + y, z2 = z + z;
     double xx = x * x2, xy = x * y2, xz = x * z2;
     double yy = y * y2, yz = y * z2, zz = z * z2;
@@ -576,8 +605,10 @@ static double jnum(void *obj, const char *key, double def) {
     switch (rt_box_type(v)) {
         case 0:
             return (double)rt_unbox_i64(v);
-        case 1:
-            return rt_unbox_f64(v);
+        case 1: {
+            double value = rt_unbox_f64(v);
+            return isfinite(value) ? value : def;
+        }
         case 2:
             return (double)rt_unbox_i1(v);
         default:
@@ -593,8 +624,10 @@ static int64_t jint(void *obj, const char *key, int64_t def) {
     switch (rt_box_type(v)) {
         case 0:
             return rt_unbox_i64(v);
-        case 1:
-            return (int64_t)rt_unbox_f64(v);
+        case 1: {
+            int64_t coerced;
+            return gltf_double_to_i64_checked(rt_unbox_f64(v), &coerced) ? coerced : def;
+        }
         case 2:
             return rt_unbox_i1(v);
         default:
@@ -626,8 +659,10 @@ static double jvalue_num(void *value, double def) {
     switch (rt_box_type(value)) {
         case 0:
             return (double)rt_unbox_i64(value);
-        case 1:
-            return rt_unbox_f64(value);
+        case 1: {
+            double number = rt_unbox_f64(value);
+            return isfinite(number) ? number : def;
+        }
         default:
             return def;
     }
@@ -640,8 +675,10 @@ static int64_t jvalue_int(void *value, int64_t def) {
     switch (rt_box_type(value)) {
         case 0:
             return rt_unbox_i64(value);
-        case 1:
-            return (int64_t)rt_unbox_f64(value);
+        case 1: {
+            int64_t coerced;
+            return gltf_double_to_i64_checked(rt_unbox_f64(value), &coerced) ? coerced : def;
+        }
         case 2:
             return rt_unbox_i1(value);
         default:
@@ -775,7 +812,7 @@ static void gltf_read_texture_info(void *texture_info, gltf_texture_info_t *out)
     gltf_texture_info_init(out);
     if (!texture_info)
         return;
-    out->texcoord = (int32_t)jint(texture_info, "texCoord", 0);
+    out->texcoord = gltf_i32_from_i64_or(jint(texture_info, "texCoord", 0), 0);
     if (out->texcoord < 0)
         out->texcoord = 0;
     extensions = jget(texture_info, "extensions");
@@ -783,7 +820,7 @@ static void gltf_read_texture_info(void *texture_info, gltf_texture_info_t *out)
     if (!transform)
         return;
     out->has_transform = 1;
-    out->texcoord = (int32_t)jint(transform, "texCoord", out->texcoord);
+    out->texcoord = gltf_i32_from_i64_or(jint(transform, "texCoord", out->texcoord), out->texcoord);
     if (out->texcoord < 0)
         out->texcoord = 0;
     offset = jarr(transform, "offset");
@@ -1179,6 +1216,63 @@ static void gltf_preload_mesh_key(int mesh_index, int primitive_index, char *out
 static void gltf_preload_morph_key(int mesh_index, int primitive_index, char *out, size_t out_cap);
 static uint32_t gltf_read_u32_le(const uint8_t *p);
 static int gltf_checked_mul_size(size_t a, size_t b, size_t *out);
+static int gltf_preload_rgba_blob_pixel_bytes(const uint8_t *blob,
+                                              size_t len,
+                                              uint32_t *out_width,
+                                              uint32_t *out_height,
+                                              size_t *out_pixel_bytes);
+
+/// @brief Compute a checked geometric capacity for preload staging arrays.
+static int gltf_preload_next_capacity_size(size_t current,
+                                           size_t required,
+                                           size_t initial,
+                                           size_t elem_size,
+                                           size_t *out_capacity) {
+    size_t next;
+    if (out_capacity)
+        *out_capacity = current;
+    if (!out_capacity || elem_size == 0u || required == 0u)
+        return 0;
+    if (current >= required)
+        return 1;
+    next = current > 0u ? current : initial;
+    if (next == 0u)
+        next = 1u;
+    while (next < required) {
+        size_t prev = next;
+        if (next > SIZE_MAX / 2u)
+            next = required;
+        else
+            next *= 2u;
+        if (next <= prev && next < required)
+            return 0;
+    }
+    if (next > SIZE_MAX / elem_size)
+        return 0;
+    *out_capacity = next;
+    return 1;
+}
+
+/// @brief Int-capacity wrapper for JSON-indexed preload ref tables.
+static int gltf_preload_next_capacity_int(int current,
+                                          int required,
+                                          int initial,
+                                          size_t elem_size,
+                                          int *out_capacity) {
+    size_t next = 0u;
+    if (out_capacity)
+        *out_capacity = current;
+    if (!out_capacity || current < 0 || required <= 0)
+        return 0;
+    if (current >= required)
+        return 1;
+    if (!gltf_preload_next_capacity_size(
+            (size_t)current, (size_t)required, (size_t)initial, elem_size, &next) ||
+        next > (size_t)INT_MAX)
+        return 0;
+    *out_capacity = (int)next;
+    return 1;
+}
 
 /// @brief Duplicate a NUL-terminated string into a malloc'd copy (NULL in -> NULL out).
 static char *gltf_strdup_cstr(const char *text) {
@@ -1251,12 +1345,11 @@ size_t rt_gltf_preload_bundle_decoded_image_bytes(const rt_gltf_preload_bundle *
         return 0u;
     for (size_t i = 0; i < bundle->dependency_count; ++i) {
         if (bundle->dependencies[i].kind == GLTF_PRELOAD_DEP_IMAGE_RGBA) {
-            size_t len = bundle->dependencies[i].len;
+            size_t len = 0u;
             size_t prepared = bundle->dependencies[i].prepared;
-            if (len > 12u)
-                len -= 12u;
-            else
-                len = 0u;
+            if (!gltf_preload_rgba_blob_pixel_bytes(
+                    bundle->dependencies[i].data, bundle->dependencies[i].len, NULL, NULL, &len))
+                continue;
             if (prepared < len)
                 len -= prepared;
             else
@@ -1422,13 +1515,20 @@ static int gltf_preload_bundle_add_dependency(rt_gltf_preload_bundle *bundle,
     if (!bundle || !path || !data)
         return 0;
     if (bundle->dependency_count == bundle->dependency_capacity) {
-        size_t next_capacity = bundle->dependency_capacity ? bundle->dependency_capacity * 2u : 8u;
-        if (next_capacity < bundle->dependency_count)
+        size_t next_capacity;
+        if (!gltf_preload_next_capacity_size(bundle->dependency_capacity,
+                                             bundle->dependency_count + 1u,
+                                             8u,
+                                             sizeof(*bundle->dependencies),
+                                             &next_capacity))
             return 0;
         grown = (gltf_preload_dependency_t *)realloc(bundle->dependencies,
                                                      next_capacity * sizeof(*bundle->dependencies));
         if (!grown)
             return 0;
+        memset(grown + bundle->dependency_capacity,
+               0,
+               (next_capacity - bundle->dependency_capacity) * sizeof(*grown));
         bundle->dependencies = grown;
         bundle->dependency_capacity = next_capacity;
     }
@@ -2509,7 +2609,11 @@ static uint32_t gltf_decode_component_u32(const uint8_t *src, int comp_type) {
         case 5126: {
             float value = 0.0f;
             memcpy(&value, src, sizeof(value));
-            return value < 0.0f ? 0u : (uint32_t)value;
+            if (!isfinite(value) || value <= 0.0f)
+                return 0u;
+            if (value >= (float)UINT32_MAX)
+                return UINT32_MAX;
+            return (uint32_t)value;
         }
         default:
             return 0u;
@@ -4565,14 +4669,19 @@ static double gltf_json_array_get_number(const char *json,
         json[value_start] == '[')
         return fallback;
     text_len = value_end - value_start;
+    if (text_len > SIZE_MAX - 1u)
+        return fallback;
     text = (char *)malloc(text_len + 1u);
     if (!text)
         return fallback;
     memcpy(text, json + value_start, text_len);
     text[text_len] = '\0';
     endptr = NULL;
+    errno = 0;
     value = strtod(text, &endptr);
-    if (endptr == text || !isfinite(value))
+    while (endptr && *endptr && isspace((unsigned char)*endptr))
+        endptr++;
+    if (endptr == text || (endptr && *endptr != '\0') || errno == ERANGE || !isfinite(value))
         value = fallback;
     free(text);
     return value;
@@ -4620,6 +4729,8 @@ static char *gltf_json_copy_from_root_bytes(const uint8_t *data, size_t len, siz
         *out_len = 0;
     if (!data || len == 0)
         return NULL;
+    if (len > (size_t)UINT32_MAX)
+        return NULL;
     if (len >= 12 && data[0] == 0x67 && data[1] == 0x6C && data[2] == 0x54 && data[3] == 0x46) {
         uint32_t version = gltf_read_u32_le(data + 4);
         uint32_t declared_len = gltf_read_u32_le(data + 8);
@@ -4650,6 +4761,8 @@ static char *gltf_json_copy_from_root_bytes(const uint8_t *data, size_t len, siz
         }
         return NULL;
     }
+    if (len > SIZE_MAX - 1u)
+        return NULL;
     json_copy = (char *)malloc(len + 1u);
     if (!json_copy)
         return NULL;
@@ -4787,6 +4900,8 @@ static int gltf_root_find_glb_bin(const uint8_t *data,
     if (!data || len < 12 || data[0] != 0x67 || data[1] != 0x6C || data[2] != 0x54 ||
         data[3] != 0x46)
         return 0;
+    if (len > (size_t)UINT32_MAX)
+        return 0;
     if (gltf_read_u32_le(data + 4) != 2 || gltf_read_u32_le(data + 8) != (uint32_t)len)
         return 0;
     while (pos + 8u <= len) {
@@ -4822,9 +4937,9 @@ static int gltf_preload_grow_buffer_refs(gltf_preload_buffer_ref_t **refs,
         return 0;
     if (*capacity >= required_count)
         return 1;
-    next_capacity = *capacity ? *capacity * 2 : 8;
-    while (next_capacity < required_count)
-        next_capacity *= 2;
+    if (!gltf_preload_next_capacity_int(
+            *capacity, required_count, 8, sizeof(**refs), &next_capacity))
+        return 0;
     grown = (gltf_preload_buffer_ref_t *)realloc(*refs, (size_t)next_capacity * sizeof(**refs));
     if (!grown)
         return 0;
@@ -4970,9 +5085,9 @@ static int gltf_preload_grow_view_refs(gltf_preload_buffer_view_ref_t **views,
         return 0;
     if (*capacity >= required_count)
         return 1;
-    next_capacity = *capacity ? *capacity * 2 : 8;
-    while (next_capacity < required_count)
-        next_capacity *= 2;
+    if (!gltf_preload_next_capacity_int(
+            *capacity, required_count, 8, sizeof(**views), &next_capacity))
+        return 0;
     grown =
         (gltf_preload_buffer_view_ref_t *)realloc(*views, (size_t)next_capacity * sizeof(**views));
     if (!grown)
@@ -5175,9 +5290,9 @@ static int gltf_preload_grow_accessor_refs(gltf_preload_accessor_ref_t **accesso
         return 0;
     if (*capacity >= required_count)
         return 1;
-    next_capacity = *capacity ? *capacity * 2 : 8;
-    while (next_capacity < required_count)
-        next_capacity *= 2;
+    if (!gltf_preload_next_capacity_int(
+            *capacity, required_count, 8, sizeof(**accessors), &next_capacity))
+        return 0;
     grown = (gltf_preload_accessor_ref_t *)realloc(*accessors,
                                                    (size_t)next_capacity * sizeof(**accessors));
     if (!grown)
@@ -7075,7 +7190,8 @@ static int64_t gltf_add_skin_joint_recursive(gltf_skin_t *skin,
 
     children = jarr(node_json, "children");
     for (int64_t ci = 0; ci < jarr_len(children); ci++) {
-        int32_t child_node = (int32_t)jvalue_int(rt_seq_get(children, ci), -1);
+        int32_t child_node =
+            gltf_i32_from_i64_or(jvalue_int(rt_seq_get(children, ci), -1), -1);
         int32_t child_joint = gltf_skin_find_joint(skin, child_node);
         if (child_joint >= 0)
             gltf_add_skin_joint_recursive(skin, nodes_arr, child_joint, bone_idx);
@@ -7133,8 +7249,10 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
                              int *hard_error) {
     void *skins_arr = jarr(root, "skins");
     void *nodes_arr = jarr(root, "nodes");
-    int32_t skin_count = (int32_t)jarr_len(skins_arr);
-    int32_t node_count = (int32_t)jarr_len(nodes_arr);
+    int64_t skin_count64 = jarr_len(skins_arr);
+    int64_t node_count64 = jarr_len(nodes_arr);
+    int32_t skin_count = 0;
+    int32_t node_count = 0;
     int32_t *node_parents = NULL;
     gltf_skin_t *skins = NULL;
     if (hard_error)
@@ -7143,8 +7261,11 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
         *out_skins = NULL;
     if (out_skin_count)
         *out_skin_count = 0;
-    if (!asset || !skins_arr || skin_count <= 0 || !nodes_arr || node_count <= 0)
+    if (!asset || !skins_arr || skin_count64 <= 0 || skin_count64 > INT32_MAX || !nodes_arr ||
+        node_count64 <= 0 || node_count64 > INT32_MAX)
         return;
+    skin_count = (int32_t)skin_count64;
+    node_count = (int32_t)node_count64;
 
     node_parents = (int32_t *)malloc((size_t)node_count * sizeof(*node_parents));
     skins = (gltf_skin_t *)calloc((size_t)skin_count, sizeof(*skins));
@@ -7162,7 +7283,7 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
         void *node_json = rt_seq_get(nodes_arr, ni);
         void *children = jarr(node_json, "children");
         for (int64_t ci = 0; ci < jarr_len(children); ci++) {
-            int32_t child = (int32_t)jvalue_int(rt_seq_get(children, ci), -1);
+            int32_t child = gltf_i32_from_i64_or(jvalue_int(rt_seq_get(children, ci), -1), -1);
             if (child >= 0 && child < node_count)
                 node_parents[child] = ni;
         }
@@ -7171,9 +7292,23 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
     for (int32_t si = 0; si < skin_count; si++) {
         void *skin_json = rt_seq_get(skins_arr, si);
         void *joints = jarr(skin_json, "joints");
-        int32_t joint_count = (int32_t)jarr_len(joints);
-        if (joint_count <= 0)
+        int64_t joint_count64 = jarr_len(joints);
+        int32_t joint_count;
+        if (joint_count64 <= 0)
             continue;
+        if (joint_count64 > INT32_MAX) {
+            if (hard_error)
+                *hard_error = 1;
+            for (int32_t i = 0; i < asset->skeleton_count; i++)
+                gltf_release_ref(&asset->skeletons[i]);
+            asset->skeleton_count = 0;
+            free(asset->skeletons);
+            asset->skeletons = NULL;
+            free(node_parents);
+            gltf_free_skins(skins, skin_count);
+            return;
+        }
+        joint_count = (int32_t)joint_count64;
         if (joint_count > VGFX3D_MAX_BONES) {
             if (hard_error)
                 *hard_error = 1;
@@ -7201,7 +7336,8 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
             continue;
         }
         for (int32_t ji = 0; ji < joint_count; ji++) {
-            skins[si].joint_nodes[ji] = (int32_t)jvalue_int(rt_seq_get(joints, ji), -1);
+            skins[si].joint_nodes[ji] =
+                gltf_i32_from_i64_or(jvalue_int(rt_seq_get(joints, ji), -1), -1);
             skins[si].joint_to_bone[ji] = -1;
         }
         for (int32_t ji = 0; ji < joint_count; ji++) {
@@ -9196,6 +9332,11 @@ static void *rt_gltf_load_impl(rt_string path,
             gltf_trap_asset_dependency(filepath, filepath, "model");
         return NULL;
     }
+    if (file_size > (size_t)LONG_MAX) {
+        if (!preloaded_data)
+            free(file_data);
+        return NULL;
+    }
     long fsize = (long)file_size;
 
     // Detect .glb vs .gltf
@@ -9210,6 +9351,8 @@ static void *rt_gltf_load_impl(rt_string path,
         uint32_t version = gltf_read_u32_le(file_data + 4);
         uint32_t declared_len = gltf_read_u32_le(file_data + 8);
         int chunk_index = 0;
+        if (file_size > (size_t)UINT32_MAX)
+            parse_error = 1;
         if (version != 2 || declared_len != (uint32_t)fsize)
             parse_error = 1;
 

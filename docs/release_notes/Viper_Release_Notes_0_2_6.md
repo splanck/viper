@@ -29,13 +29,13 @@ A hardening cycle pushing toward alpha quality that also delivered substantial n
 
 | Metric | v0.2.5 | v0.2.6 | Delta |
 |---|---|---|---|
-| Commits | — | 256 | +256 |
-| Source files | 2,996 | 3,069 | +73 |
-| Production SLOC | 552K | 659K | +107K |
-| Test SLOC | 228K | 275K | +47K |
+| Commits | — | 274 | +274 |
+| Source files | 2,996 | 3,088 | +92 |
+| Production SLOC | 552K | 664K | +112K |
+| Test SLOC | 228K | 277K | +49K |
 | Demo SLOC | 188K | 192K | +4K |
 
-Counts via `scripts/count_sloc.sh` (production 659,391 / test 275,383 / demo 191,709 / source files 3,069).
+Counts via `scripts/count_sloc.sh` (production 663,819 / test 276,864 / demo 192,140 / source files 3,088); commits since the `v0.2.5-dev` tag.
 
 ---
 
@@ -96,7 +96,7 @@ Counts via `scripts/count_sloc.sh` (production 659,391 / test 275,383 / demo 191
 - **Visibility, lighting, and upload telemetry APIs.** `SceneNode3D.SetAutoLOD`/`SetImpostor`; `Canvas3D.SetOcclusionCulling` with `DrawCount`/`OccludedDrawCount`, `SetTextureUploadBudget`, `TextureUploadBytes`, and `TextureUploadPendingBytes`; `SetClusteredLighting`/`MaxActiveLights` (software >16-light baseline, 16-light fallback on unsupported backends); `SetShadowCascades` for capability-gated primary-directional CSM; `Light3D.CastsShadows` plus now-movable `SetPosition`/`SetDirection`; `Material3D.Has*` slot inspection; and `Camera3D.ScreenToRayOrigin` with tunable `NearPlane`/`FarPlane`.
 - **Physics joints & forces.** `HingeJoint3D` gains a motor, signed angle readout, and limits; `SixDofJoint3D` adds a linear motor for sliders/pistons plus joint-frame pose-angle limits; plus `RopeJoint3D` and off-center `Physics3DBody.ApplyImpulseAtPoint`/`ApplyForceAtPoint`, all iterated by `Physics3DWorld.SolverIterations`.
 - **Animation & IK APIs.** `IKSolver3D.TwoBone`/`LookAt`/`FABRIK` with pole-vector `SetPole`, ground-aligned terrain-foot IK via `SetGroundNormal`, and `AnimController3D.SetIKSolver`; `BlendTree3D` 1D/2D blendspaces bound through `SetBlendTree`; additive `PlayLayerAdditive`/`CrossfadeLayerAdditive`, whole-skeleton `SetAnimationLOD`, and distal-bone-freezing `SetBoneLOD`; and `Animation3D.Retarget`, now a cross-skeleton humanoid remap that infers canonical joints from mixamo/Unreal/Blender bone names and scales translations by bone-length ratio onto a differently-proportioned rig.
-- **Navigation APIs.** `NavMesh3D.Bake`/`BakeTiled` run a from-scratch voxel pipeline — voxelize geometry, keep the slope-walkable surface, erode by `agentRadius`, emit a grid mesh whose triangle count is decoupled from input density — while `RebuildTile` and tiled `AddObstacle`/`RemoveObstacle`/`UpdateObstacle` re-carve a single tile in place and an XZ query grid gives O(cell) point location; `NavAgent3D.AvoidanceEnabled`/`AvoidanceRadius` separation runs over an O(N) spatial hash with head-on deadlock tie-breaking; plus `AddOffMeshLink` and `World3D.bakeNavMesh` editor hooks over the owned scene.
+- **Navigation APIs.** `NavMesh3D.Bake`/`BakeTiled` run a from-scratch voxel pipeline — voxelize geometry, keep the slope-walkable surface, erode by `agentRadius`, emit a grid mesh whose triangle count is decoupled from input density — while `RebuildTile` and tiled `AddObstacle`/`RemoveObstacle`/`UpdateObstacle` re-carve a single tile in place from updated source geometry and an XZ query grid gives O(cell) point location; per-triangle `SetArea`/`GetArea` flags feed `GetTraversalCost` and off-mesh-link cost path weighting. `NavAgent3D` RVO velocity-obstacle avoidance (`AvoidanceEnabled`/`AvoidanceRadius`) runs over an O(N) spatial hash with head-on deadlock tie-breaking, with `SetTarget`/`ClearTarget` crowd targets, plus `AddOffMeshLink` and `World3D.bakeNavMesh` editor hooks over the owned scene.
 - **Assets, streaming & misc.** `TextureAsset3D` KTX2 metadata, mip-residency telemetry, retained native compressed mip blocks, BC3/BC7 modes 0-7 software decode, and representative ETC2/ASTC RGBA8 fallbacks behind `BackendSupports("bc7"/"astc"/"etc2")` gates, with already-bound `Material3D` slots following later resident-mip changes; scene-indexed `Model3D` import (`SceneCount`/`GetCamera`/`InstantiateSceneAt`) with glTF scene-local cameras; deferred/cancellable `Game3D.AssetHandle3D` async loads with texture-aware template-cache residency controls, `Assets3D.GetResidentBytes`, and a streaming hitch probe for zero-upload-budget gating; `World3D` entity/body/draw counters and `WorldStream3D` manifest-driven cell/terrain load-unload telemetry; plus `Canvas3D.Resize`, a queued `PollEvent()`/`Poll()` contract that advances `DeltaTime`, window-vs-output sizing, an `Entity3D` `OrbitController`, PBR `SetShadingModel(2)`, and binary-STL streaming.
 
 ### Game3D runtime (new)
@@ -188,6 +188,6 @@ Counts via `scripts/count_sloc.sh` (production 659,391 / test 275,383 / demo 191
 
 ---
 
-Demos and docs tracked the work: the 3D Bowling demo became a playable arcade lane and, with a new code-first Game3D sample set (a sub-20-line hello scene, a copyable starter, and a full-stack showcase with a balanced lighting rig and magenta/overlay/exposure smoke checks), migrated onto the Game3D layer alongside chess and Crackman polish; the flat `src/runtime/graphics` tree split into domain subdirectories and ViperIDE moved into its own top-level project; and `docs/viperlib/` gained `system.md`, `zia.md`, `game/scene.md`, and `graphics/game3d.md` plus a Doxygen pass over the 3D runtime and the native-toolchain design docs.
+Demos and docs tracked the work: the 3D Bowling demo became a playable arcade lane and, with a new code-first Game3D sample set (a sub-20-line hello scene, a copyable starter, and a full-stack showcase with a balanced lighting rig and magenta/overlay/exposure smoke checks), migrated onto the Game3D layer alongside chess and Crackman polish; the flat `src/runtime/graphics` tree split into domain subdirectories with its largest 3D translation units (Game3D, Scene3D, Canvas3D) decomposed into focused per-feature files, and ViperIDE moved into its own top-level project; and `docs/viperlib/` gained `system.md`, `zia.md`, `game/scene.md`, and `graphics/game3d.md` plus a Doxygen pass over the 3D runtime and the native-toolchain design docs.
 
 <!-- END DRAFT -->

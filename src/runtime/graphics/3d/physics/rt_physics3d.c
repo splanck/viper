@@ -64,6 +64,11 @@ extern double rt_quat_y(void *q);
 extern double rt_quat_z(void *q);
 extern double rt_quat_w(void *q);
 
+static int ph3d_i32_stack_push(int32_t **items,
+                               int32_t *count,
+                               int32_t *capacity,
+                               int32_t value);
+
 #define PH3D_INITIAL_BODIES 256
 #define PH3D_SHAPE_AABB 0
 #define PH3D_SHAPE_SPHERE 1
@@ -3275,10 +3280,13 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
         const rt_physics_mesh_bvh_node *nodes =
             (const rt_physics_mesh_bvh_node *)mesh->physics_bvh_nodes;
         const uint32_t *tri_indices = mesh->physics_bvh_tri_indices;
-        int32_t stack[128];
+        int32_t *stack = NULL;
         int32_t top = 0;
+        int32_t stack_capacity = 0;
         int overflow = 0;
-        stack[top++] = 0;
+        if (!ph3d_i32_stack_push(&stack, &top, &stack_capacity, 0)) {
+            overflow = 1;
+        }
         while (top > 0) {
             int32_t node_index = stack[--top];
             const rt_physics_mesh_bvh_node *node;
@@ -3290,14 +3298,16 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
             if (!aabb_intersects_sphere_raw(node_min, node_max, sphere->position, sphere->radius))
                 continue;
             if (node->left >= 0 || node->right >= 0) {
-                if (top + 2 > (int32_t)(sizeof(stack) / sizeof(stack[0]))) {
+                if (node->right >= 0 &&
+                    !ph3d_i32_stack_push(&stack, &top, &stack_capacity, node->right)) {
                     overflow = 1;
                     break;
                 }
-                if (node->right >= 0)
-                    stack[top++] = node->right;
-                if (node->left >= 0)
-                    stack[top++] = node->left;
+                if (node->left >= 0 &&
+                    !ph3d_i32_stack_push(&stack, &top, &stack_capacity, node->left)) {
+                    overflow = 1;
+                    break;
+                }
                 continue;
             }
             for (int32_t item = node->start; item < node->start + node->count; ++item) {
@@ -3361,6 +3371,7 @@ static int test_meshlike_sphere(rt_mesh3d *mesh,
                 }
             }
         }
+        free(stack);
         if (!overflow)
             goto mesh_sphere_done;
         best_depth = 0.0;
@@ -4313,10 +4324,12 @@ static int test_meshlike_convex_hull(rt_mesh3d *mesh,
         const rt_physics_mesh_bvh_node *nodes =
             (const rt_physics_mesh_bvh_node *)mesh->physics_bvh_nodes;
         const uint32_t *tri_indices = mesh->physics_bvh_tri_indices;
-        int32_t stack[128];
+        int32_t *stack = NULL;
         int32_t top = 0;
+        int32_t stack_capacity = 0;
         int overflow = 0;
-        stack[top++] = 0;
+        if (!ph3d_i32_stack_push(&stack, &top, &stack_capacity, 0))
+            overflow = 1;
         while (top > 0) {
             int32_t node_index = stack[--top];
             const rt_physics_mesh_bvh_node *node;
@@ -4328,14 +4341,16 @@ static int test_meshlike_convex_hull(rt_mesh3d *mesh,
             if (!aabb_overlap_raw(node_min, node_max, hull_min, hull_max))
                 continue;
             if (node->left >= 0 || node->right >= 0) {
-                if (top + 2 > (int32_t)(sizeof(stack) / sizeof(stack[0]))) {
+                if (node->right >= 0 &&
+                    !ph3d_i32_stack_push(&stack, &top, &stack_capacity, node->right)) {
                     overflow = 1;
                     break;
                 }
-                if (node->right >= 0)
-                    stack[top++] = node->right;
-                if (node->left >= 0)
-                    stack[top++] = node->left;
+                if (node->left >= 0 &&
+                    !ph3d_i32_stack_push(&stack, &top, &stack_capacity, node->left)) {
+                    overflow = 1;
+                    break;
+                }
                 continue;
             }
             for (int32_t item = node->start; item < node->start + node->count; ++item) {
@@ -5102,6 +5117,62 @@ static void ph3d_solver_island_batch_free(ph3d_solver_island_batch *batch) {
     memset(batch, 0, sizeof(*batch));
 }
 
+static int ph3d_alloc_i32_array(int32_t count, int zeroed, int32_t **out) {
+    size_t bytes;
+    if (!out)
+        return 0;
+    *out = NULL;
+    if (count < 0)
+        return 0;
+    if ((size_t)count > SIZE_MAX / sizeof(int32_t))
+        return 0;
+    bytes = (size_t)count * sizeof(int32_t);
+    *out = zeroed ? (int32_t *)calloc((size_t)count, sizeof(int32_t)) : (int32_t *)malloc(bytes);
+    return *out || count == 0;
+}
+
+static int ph3d_i32_stack_push(int32_t **items,
+                               int32_t *count,
+                               int32_t *capacity,
+                               int32_t value) {
+    int32_t new_capacity;
+    int32_t *grown;
+    if (!items || !count || !capacity || value < 0)
+        return 0;
+    if (*count >= *capacity) {
+        new_capacity = *capacity < 128 ? 128 : *capacity;
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+        if ((size_t)new_capacity > SIZE_MAX / sizeof(**items))
+            return 0;
+        grown = (int32_t *)realloc(*items, (size_t)new_capacity * sizeof(**items));
+        if (!grown)
+            return 0;
+        *items = grown;
+        *capacity = new_capacity;
+    }
+    (*items)[(*count)++] = value;
+    return 1;
+}
+
+static int ph3d_solver_island_batch_alloc(rt_world3d *w, ph3d_solver_island_batch *batch) {
+    int32_t island_offset_count;
+    if (!w || !batch || w->body_count < 0 || w->contact_count < 0)
+        return 0;
+    if (w->body_count == INT32_MAX)
+        return 0;
+    island_offset_count = w->body_count + 1;
+    return ph3d_alloc_i32_array(w->body_count, 0, &batch->parent) &&
+           ph3d_alloc_i32_array(w->body_count, 1, &batch->active_body) &&
+           ph3d_alloc_i32_array(w->body_count, 0, &batch->root_to_island) &&
+           ph3d_alloc_i32_array(w->body_count, 0, &batch->body_island) &&
+           ph3d_alloc_i32_array(w->body_count, 1, &batch->island_contact_counts) &&
+           ph3d_alloc_i32_array(w->body_count, 1, &batch->island_write_offsets) &&
+           ph3d_alloc_i32_array(island_offset_count, 1, &batch->island_offsets) &&
+           ph3d_alloc_i32_array(w->contact_count, 0, &batch->contact_indices);
+}
+
 /// @brief Linear-search the world's body array for @p body.
 /// @return Index of @p body in @p w, or -1 if absent or either argument is NULL.
 static int32_t world3d_body_index_of(const rt_world3d *w, const rt_body3d *body) {
@@ -5187,17 +5258,7 @@ static int world3d_build_solver_island_batch(rt_world3d *w, ph3d_solver_island_b
     if (!w || w->body_count <= 0 || w->contact_count <= 0)
         return 1;
 
-    batch->parent = (int32_t *)malloc(sizeof(int32_t) * (size_t)w->body_count);
-    batch->active_body = (int32_t *)calloc((size_t)w->body_count, sizeof(int32_t));
-    batch->root_to_island = (int32_t *)malloc(sizeof(int32_t) * (size_t)w->body_count);
-    batch->body_island = (int32_t *)malloc(sizeof(int32_t) * (size_t)w->body_count);
-    batch->island_contact_counts = (int32_t *)calloc((size_t)w->body_count, sizeof(int32_t));
-    batch->island_write_offsets = (int32_t *)calloc((size_t)w->body_count, sizeof(int32_t));
-    batch->island_offsets = (int32_t *)calloc((size_t)w->body_count + 1u, sizeof(int32_t));
-    batch->contact_indices = (int32_t *)malloc(sizeof(int32_t) * (size_t)w->contact_count);
-    if (!batch->parent || !batch->active_body || !batch->root_to_island || !batch->body_island ||
-        !batch->island_contact_counts || !batch->island_write_offsets || !batch->island_offsets ||
-        !batch->contact_indices) {
+    if (!ph3d_solver_island_batch_alloc(w, batch)) {
         ph3d_solver_island_batch_free(batch);
         rt_trap("Physics3D.World.Step: solver island allocation failed");
         return 0;
@@ -8280,10 +8341,12 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
         const rt_physics_mesh_bvh_node *nodes =
             (const rt_physics_mesh_bvh_node *)mesh->physics_bvh_nodes;
         const uint32_t *tri_indices = mesh->physics_bvh_tri_indices;
-        int32_t stack[128];
+        int32_t *stack = NULL;
         int32_t top = 0;
+        int32_t stack_capacity = 0;
         int overflow = 0;
-        stack[top++] = 0;
+        if (!ph3d_i32_stack_push(&stack, &top, &stack_capacity, 0))
+            overflow = 1;
         while (top > 0) {
             int32_t node_index = stack[--top];
             const rt_physics_mesh_bvh_node *node;
@@ -8295,14 +8358,16 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
             if (!raycast_aabb_raw(origin, dir, node_min, node_max, best_t, &box_t, NULL, NULL))
                 continue;
             if (node->left >= 0 || node->right >= 0) {
-                if (top + 2 > (int32_t)(sizeof(stack) / sizeof(stack[0]))) {
+                if (node->right >= 0 &&
+                    !ph3d_i32_stack_push(&stack, &top, &stack_capacity, node->right)) {
                     overflow = 1;
                     break;
                 }
-                if (node->right >= 0)
-                    stack[top++] = node->right;
-                if (node->left >= 0)
-                    stack[top++] = node->left;
+                if (node->left >= 0 &&
+                    !ph3d_i32_stack_push(&stack, &top, &stack_capacity, node->left)) {
+                    overflow = 1;
+                    break;
+                }
                 continue;
             }
             for (int32_t item = node->start; item < node->start + node->count; item++) {
@@ -8333,6 +8398,7 @@ static int raycast_meshlike_pose_raw(rt_mesh3d *mesh,
                 }
             }
         }
+        free(stack);
         if (!overflow)
             goto mesh_raycast_done;
         best_t = max_distance + 1.0;

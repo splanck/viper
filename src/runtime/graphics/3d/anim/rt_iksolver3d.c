@@ -365,24 +365,36 @@ static void ik3d_quat_mul(const float *a, const float *b, float *out) {
 ///          extracting the rotation so shear-free TRS matrices round-trip. Non-finite or
 ///          near-zero scales default to 1 to keep the rotation extraction well-defined.
 static void ik3d_decompose_trs(const float *m, float *out_pos, float *out_rot, float *out_scl) {
-    float sx = sqrtf(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
-    float sy = sqrtf(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
-    float sz = sqrtf(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
+    double sx_sq = (double)m[0] * (double)m[0] + (double)m[4] * (double)m[4] +
+                   (double)m[8] * (double)m[8];
+    double sy_sq = (double)m[1] * (double)m[1] + (double)m[5] * (double)m[5] +
+                   (double)m[9] * (double)m[9];
+    double sz_sq = (double)m[2] * (double)m[2] + (double)m[6] * (double)m[6] +
+                   (double)m[10] * (double)m[10];
+    double sx = sqrt(sx_sq);
+    double sy = sqrt(sy_sq);
+    double sz = sqrt(sz_sq);
+    int x_ok = isfinite(sx) && sx > 1e-6 && sx <= (double)FLT_MAX && isfinite(m[0]) &&
+               isfinite(m[4]) && isfinite(m[8]);
+    int y_ok = isfinite(sy) && sy > 1e-6 && sy <= (double)FLT_MAX && isfinite(m[1]) &&
+               isfinite(m[5]) && isfinite(m[9]);
+    int z_ok = isfinite(sz) && sz > 1e-6 && sz <= (double)FLT_MAX && isfinite(m[2]) &&
+               isfinite(m[6]) && isfinite(m[10]);
     out_pos[0] = isfinite(m[3]) ? m[3] : 0.0f;
     out_pos[1] = isfinite(m[7]) ? m[7] : 0.0f;
     out_pos[2] = isfinite(m[11]) ? m[11] : 0.0f;
-    out_scl[0] = isfinite(sx) && sx > 1e-6f ? sx : 1.0f;
-    out_scl[1] = isfinite(sy) && sy > 1e-6f ? sy : 1.0f;
-    out_scl[2] = isfinite(sz) && sz > 1e-6f ? sz : 1.0f;
-    ik3d_quat_from_matrix_rows(m[0] / out_scl[0],
-                               m[1] / out_scl[1],
-                               m[2] / out_scl[2],
-                               m[4] / out_scl[0],
-                               m[5] / out_scl[1],
-                               m[6] / out_scl[2],
-                               m[8] / out_scl[0],
-                               m[9] / out_scl[1],
-                               m[10] / out_scl[2],
+    out_scl[0] = x_ok ? (float)sx : 1.0f;
+    out_scl[1] = y_ok ? (float)sy : 1.0f;
+    out_scl[2] = z_ok ? (float)sz : 1.0f;
+    ik3d_quat_from_matrix_rows(x_ok ? m[0] / out_scl[0] : 1.0f,
+                               y_ok ? m[1] / out_scl[1] : 0.0f,
+                               z_ok ? m[2] / out_scl[2] : 0.0f,
+                               x_ok ? m[4] / out_scl[0] : 0.0f,
+                               y_ok ? m[5] / out_scl[1] : 1.0f,
+                               z_ok ? m[6] / out_scl[2] : 0.0f,
+                               x_ok ? m[8] / out_scl[0] : 0.0f,
+                               y_ok ? m[9] / out_scl[1] : 0.0f,
+                               z_ok ? m[10] / out_scl[2] : 1.0f,
                                out_rot);
 }
 

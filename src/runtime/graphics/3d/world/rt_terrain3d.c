@@ -28,6 +28,7 @@
 #ifdef VIPER_ENABLE_GRAPHICS
 
 #include "rt_terrain3d.h"
+#include "rt_world3d_common.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics3d_ids.h"
@@ -105,13 +106,7 @@ static void terrain_release_ref(void **slot) {
 /// @brief Clamp `value` into `[-TERRAIN3D_ABS_MAX, TERRAIN3D_ABS_MAX]`, substituting `fallback`
 /// when not finite.
 static double terrain_clamp_abs_or(double value, double fallback) {
-    if (!isfinite(value))
-        return fallback;
-    if (value > TERRAIN3D_ABS_MAX)
-        return TERRAIN3D_ABS_MAX;
-    if (value < -TERRAIN3D_ABS_MAX)
-        return -TERRAIN3D_ABS_MAX;
-    return value;
+    return rt_world3d_clamp_abs_or(value, fallback, TERRAIN3D_ABS_MAX);
 }
 
 /// @brief Floor a continuous heightfield coordinate to a grid index, clamped to

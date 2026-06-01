@@ -589,6 +589,7 @@ void *rt_collider3d_new_heightfield(void *heightmap,
     const uint32_t *raw;
     int64_t width;
     int64_t height;
+    size_t sample_count;
     rt_collider3d *collider;
     if (!heightmap) {
         rt_trap("Collider3D.NewHeightfield: heightmap must be non-null");
@@ -609,6 +610,7 @@ void *rt_collider3d_new_heightfield(void *heightmap,
         rt_trap("Collider3D.NewHeightfield: heightmap is too large");
         return NULL;
     }
+    sample_count = (size_t)width * (size_t)height;
     collider = collider3d_alloc(RT_COLLIDER3D_TYPE_HEIGHTFIELD);
     if (!collider)
         return NULL;
@@ -618,7 +620,7 @@ void *rt_collider3d_new_heightfield(void *heightmap,
     collider->heightfield_scale[0] = collider3d_scale_or_unit(scale_x);
     collider->heightfield_scale[1] = collider3d_scale_or_unit(scale_y);
     collider->heightfield_scale[2] = collider3d_scale_or_unit(scale_z);
-    collider->heightfield_heights = (float *)calloc((size_t)(width * height), sizeof(float));
+    collider->heightfield_heights = (float *)calloc(sample_count, sizeof(float));
     if (!collider->heightfield_heights) {
         if (rt_obj_release_check0(collider))
             rt_obj_free(collider);
@@ -629,11 +631,12 @@ void *rt_collider3d_new_heightfield(void *heightmap,
     collider->heightfield_max = -DBL_MAX;
     for (int64_t z = 0; z < height; ++z) {
         for (int64_t x = 0; x < width; ++x) {
-            uint32_t pixel = raw[z * width + x];
+            size_t sample_index = (size_t)z * (size_t)width + (size_t)x;
+            uint32_t pixel = raw[sample_index];
             uint32_t hi = (pixel >> 24) & 0xFFu;
             uint32_t lo = (pixel >> 16) & 0xFFu;
             double h = (double)((hi << 8) | lo) / 65535.0;
-            collider->heightfield_heights[z * width + x] = (float)h;
+            collider->heightfield_heights[sample_index] = (float)h;
             if (h < collider->heightfield_min)
                 collider->heightfield_min = h;
             if (h > collider->heightfield_max)

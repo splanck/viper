@@ -822,8 +822,15 @@ void rt_animation3d_add_keyframe(
     }
 
     int32_t insert = ch->keyframe_count;
-    while (insert > 0 && ch->keyframes[insert - 1].time > new_kf.time)
-        insert--;
+    if (insert > 0 && ch->keyframes[insert - 1].time <= new_kf.time) {
+        if (ch->keyframes[insert - 1].time == new_kf.time) {
+            ch->keyframes[insert - 1] = new_kf;
+            return;
+        }
+    } else {
+        while (insert > 0 && ch->keyframes[insert - 1].time > new_kf.time)
+            insert--;
+    }
     if (insert < ch->keyframe_count && ch->keyframes[insert].time == new_kf.time) {
         ch->keyframes[insert] = new_kf;
         return;
@@ -935,8 +942,24 @@ static int animation3d_humanoid_role(const char *raw) {
 /// @brief Map a source-skeleton bone to the best-matching destination bone for retargeting.
 /// @details Prefers an exact name match, then falls back to a humanoid-role match, then to the same
 ///          index if in range. Returns -1 when no correspondence exists.
+static int32_t *animation3d_build_humanoid_role_cache(const rt_skeleton3d *skel) {
+    int32_t *roles;
+    if (!skel || skel->bone_count <= 0)
+        return NULL;
+    if ((size_t)skel->bone_count > SIZE_MAX / sizeof(*roles))
+        return NULL;
+    roles = (int32_t *)malloc((size_t)skel->bone_count * sizeof(*roles));
+    if (!roles)
+        return NULL;
+    for (int32_t i = 0; i < skel->bone_count; ++i)
+        roles[i] = animation3d_humanoid_role(skel->bones[i].name);
+    return roles;
+}
+
 static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
                                               const rt_skeleton3d *dst,
+                                              const int32_t *src_roles,
+                                              const int32_t *dst_roles,
                                               int32_t src_bone) {
     if (!src || !dst || src_bone < 0 || src_bone >= src->bone_count)
         return -1;
@@ -948,10 +971,10 @@ static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
                 return i;
     }
     /* No exact-name match: try humanoid role mapping (handles cross-convention skeletons). */
-    role = animation3d_humanoid_role(name);
+    role = src_roles ? src_roles[src_bone] : animation3d_humanoid_role(name);
     if (role != 0) {
         for (int32_t i = 0; i < dst->bone_count; ++i)
-            if (animation3d_humanoid_role(dst->bones[i].name) == role)
+            if ((dst_roles ? dst_roles[i] : animation3d_humanoid_role(dst->bones[i].name)) == role)
                 return i;
     }
     return src_bone < dst->bone_count ? src_bone : -1;
@@ -1038,6 +1061,8 @@ void *rt_animation3d_retarget(void *animation, void *src_skeleton, void *dst_ske
         (rt_skeleton3d *)rt_g3d_checked_or_null(dst_skeleton, RT_G3D_SKELETON3D_CLASS_ID);
     void *out_obj;
     rt_animation3d *out;
+    int32_t *src_roles = NULL;
+    int32_t *dst_roles = NULL;
     if (!src_anim || !src_skel || !dst_skel)
         return NULL;
     out_obj = rt_animation3d_new(rt_const_cstr(src_anim->name), src_anim->duration);
@@ -1058,9 +1083,12 @@ void *rt_animation3d_retarget(void *animation, void *src_skeleton, void *dst_ske
         return NULL;
     }
     out->channel_capacity = src_anim->channel_count;
+    src_roles = animation3d_build_humanoid_role_cache(src_skel);
+    dst_roles = animation3d_build_humanoid_role_cache(dst_skel);
     for (int32_t i = 0; i < src_anim->channel_count; ++i) {
         const vgfx3d_anim_channel_t *src_ch = &src_anim->channels[i];
-        int32_t dst_bone = animation3d_retarget_find_bone(src_skel, dst_skel, src_ch->bone_index);
+        int32_t dst_bone =
+            animation3d_retarget_find_bone(src_skel, dst_skel, src_roles, dst_roles, src_ch->bone_index);
         float src_len, dst_len, pos_scale;
         if (dst_bone < 0 || animation3d_has_channel_for_bone(out, dst_bone))
             continue;
@@ -1068,10 +1096,14 @@ void *rt_animation3d_retarget(void *animation, void *src_skeleton, void *dst_ske
         dst_len = animation3d_bone_bind_length(dst_skel, dst_bone);
         pos_scale = (src_len > 1e-6f && dst_len > 1e-6f) ? (dst_len / src_len) : 1.0f;
         if (!animation3d_retarget_copy_channel(out, src_ch, dst_bone, pos_scale)) {
+            free(src_roles);
+            free(dst_roles);
             animation3d_release_ref(&out_obj);
             return NULL;
         }
     }
+    free(src_roles);
+    free(dst_roles);
     return out_obj;
 }
 

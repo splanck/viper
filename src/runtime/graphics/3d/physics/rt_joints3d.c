@@ -102,9 +102,19 @@ static double joint3d_vec3_dot(const double *a, const double *b) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
+static double joint3d_len3(double x, double y, double z) {
+    double len_sq;
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z))
+        return INFINITY;
+    len_sq = x * x + y * y + z * z;
+    if (!isfinite(len_sq) || len_sq < 0.0)
+        return INFINITY;
+    return sqrt(len_sq);
+}
+
 /// @brief Euclidean length of a 3-vector.
 static double joint3d_vec3_len(const double *v) {
-    return sqrt(joint3d_vec3_dot(v, v));
+    return v ? joint3d_len3(v[0], v[1], v[2]) : INFINITY;
 }
 
 /// @brief Normalize a 3-vector in place; returns 0 (leaving it unchanged) if non-finite or
@@ -613,7 +623,7 @@ static void solve_distance(rt_distance_joint3d *j, double dt) {
     double dx = j->body_b->position[0] - j->body_a->position[0];
     double dy = j->body_b->position[1] - j->body_a->position[1];
     double dz = j->body_b->position[2] - j->body_a->position[2];
-    double dist = sqrt(dx * dx + dy * dy + dz * dz);
+    double dist = joint3d_len3(dx, dy, dz);
 
     if (!isfinite(dist) || dist < 1e-12)
         return; /* coincident — can't determine direction */
@@ -770,7 +780,7 @@ static void solve_spring(rt_spring_joint3d *j, double dt) {
     double dx = j->body_b->position[0] - j->body_a->position[0];
     double dy = j->body_b->position[1] - j->body_a->position[1];
     double dz = j->body_b->position[2] - j->body_a->position[2];
-    double dist = sqrt(dx * dx + dy * dy + dz * dz);
+    double dist = joint3d_len3(dx, dy, dz);
 
     if (!isfinite(dist) || dist < 1e-12)
         return;

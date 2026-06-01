@@ -266,9 +266,10 @@ void rt_instbatch3d_add(void *obj, void *transform) {
             return;
         }
         size_t old_bytes = (size_t)b->instance_capacity * 16u * sizeof(float);
-        float *new_transforms = (float *)calloc((size_t)new_cap * 16u, sizeof(float));
-        float *new_snapshot = (float *)calloc((size_t)new_cap * 16u, sizeof(float));
-        float *new_prev = (float *)calloc((size_t)new_cap * 16u, sizeof(float));
+        size_t new_bytes = (size_t)new_cap * 16u * sizeof(float);
+        float *new_transforms = (float *)malloc(new_bytes);
+        float *new_snapshot = (float *)malloc(new_bytes);
+        float *new_prev = (float *)malloc(new_bytes);
         if (!new_transforms || !new_snapshot || !new_prev) {
             free(new_transforms);
             free(new_snapshot);

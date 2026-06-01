@@ -17,6 +17,9 @@ extern "C" {
 
 typedef void (*rt_g3d_commit_fn)(void *user_data);
 
+#define RT_G3D_COMMIT_COST_UNIT 1ull
+#define RT_G3D_COMMIT_COST_UNLIMITED UINT64_MAX
+
 /// @brief Create an internal FIFO queue for worker-produced main-thread commits.
 void *rt_g3d_commit_queue_new(void);
 
@@ -28,7 +31,8 @@ void rt_g3d_commit_queue_free(void *queue);
 int8_t rt_g3d_commit_queue_enqueue(void *queue, rt_g3d_commit_fn fn, void *user_data);
 
 /// @brief Enqueue a commit callback with an estimated main-thread cost.
-/// @details The cost is an opaque budget unit; asset jobs use decoded texture bytes.
+/// @details The cost is an opaque budget unit; use RT_G3D_COMMIT_COST_UNIT for default work and
+/// decoded-byte counts for asset uploads that should honor upload budgets.
 /// @return Non-zero when the callback was queued.
 int8_t rt_g3d_commit_queue_enqueue_cost(void *queue,
                                         rt_g3d_commit_fn fn,
@@ -42,10 +46,11 @@ int64_t rt_g3d_commit_queue_drain(void *queue, int64_t max_items);
 /// @brief Drain callbacks up to both an item count and cost budget.
 /// @details `max_items <= 0` means no item limit. `max_cost == UINT64_MAX` means
 /// no cost limit. If the first pending item is larger than a positive budget,
-/// it drains alone so oversized assets cannot deadlock the queue.
+/// it drains alone so oversized assets cannot deadlock the queue. This is a single-consumer,
+/// main-thread drain; worker threads may enqueue concurrently but must not drain.
 int64_t rt_g3d_commit_queue_drain_budget(void *queue, int64_t max_items, uint64_t max_cost);
 
-/// @brief Approximate number of pending commits.
+/// @brief Approximate number of pending commits; concurrent enqueue/drain can change it instantly.
 int64_t rt_g3d_commit_queue_pending(void *queue);
 
 /// @brief Total number of callbacks accepted by the queue.

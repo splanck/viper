@@ -31,6 +31,7 @@
 #include "rt_heap.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
+#include "rt_world3d_common.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -131,43 +132,23 @@ static void water3d_assign_ref(void **slot, void *value) {
 /// @brief Clamp a double to the `[0, 1]` range — used for water knobs like transparency,
 ///   reflectivity, and wave amplitude that are physical [0, 1] scalars.
 static double water3d_clamp01(double value) {
-    if (!isfinite(value))
-        return 0.0;
-    if (value < 0.0)
-        return 0.0;
-    if (value > 1.0)
-        return 1.0;
-    return value;
+    return rt_world3d_clamp01(value);
 }
 
 /// @brief Clamp a strictly-positive parameter to `(0, max_value]`; non-finite or ≤0 maps to
 /// `fallback`.
 static double water3d_clamp_positive_or(double value, double fallback, double max_value) {
-    if (!isfinite(value) || value <= 0.0)
-        return fallback;
-    if (value > max_value)
-        return max_value;
-    return value;
+    return rt_world3d_clamp_positive_or(value, fallback, max_value);
 }
 
 /// @brief Clamp `value` into `[-max_abs, max_abs]`, substituting `fallback` when not finite.
 static double water3d_clamp_abs_or(double value, double fallback, double max_abs) {
-    if (!isfinite(value))
-        return fallback;
-    if (value > max_abs)
-        return max_abs;
-    if (value < -max_abs)
-        return -max_abs;
-    return value;
+    return rt_world3d_clamp_abs_or(value, fallback, max_abs);
 }
 
 /// @brief Clamp `value` into `[0, max_value]`; non-finite or negative input maps to 0.
 static double water3d_clamp_nonnegative(double value, double max_value) {
-    if (!isfinite(value) || value < 0.0)
-        return 0.0;
-    if (value > max_value)
-        return max_value;
-    return value;
+    return rt_world3d_clamp_nonnegative(value, max_value);
 }
 
 /// @brief GC finalizer: release every retained graphics resource (textures, mesh, material).

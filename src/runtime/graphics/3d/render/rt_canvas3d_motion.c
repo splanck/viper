@@ -65,6 +65,8 @@ static void canvas3d_motion_hash_reset(rt_canvas3d *c) {
 static int canvas3d_ensure_motion_hash_capacity(rt_canvas3d *c, int32_t count_hint) {
     if (!c)
         return 0;
+    if (count_hint > INT32_MAX / 2)
+        return 0;
     int32_t needed = canvas3d_next_power_of_two_i32(count_hint > 0 ? count_hint * 2 : 32);
     if (needed < 32)
         needed = 32;
@@ -123,6 +125,8 @@ static int canvas3d_rebuild_motion_hash(rt_canvas3d *c) {
 /// @return The history index, or -1 if the key is absent.
 static int32_t canvas3d_motion_hash_find_index(rt_canvas3d *c, uintptr_t key) {
     if (!c || key == 0 || c->motion_history_count <= 0)
+        return -1;
+    if (c->motion_history_count > INT32_MAX / 2)
         return -1;
     if (!c->motion_history_hash ||
         c->motion_history_hash_capacity <

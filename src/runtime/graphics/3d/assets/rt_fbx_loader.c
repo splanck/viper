@@ -331,6 +331,7 @@ static void fbx_skip(fbx_reader_t *r, size_t n) {
 
 #define FBX_MAX_CHILDREN 256
 #define FBX_MAX_PROPS 32
+#define FBX_MAX_COMPRESSED_ARRAY_BYTES (256u * 1024u * 1024u)
 
 typedef struct {
     char type; /* C/Y/I/L/F/D/S/R/b/i/l/f/d */
@@ -386,6 +387,8 @@ static void *fbx_decompress_array(const uint8_t *data,
                                   uint32_t count,
                                   uint32_t elem_size) {
     if (comp_len < 6)
+        return NULL;
+    if (comp_len > FBX_MAX_COMPRESSED_ARRAY_BYTES)
         return NULL;
     uint32_t deflate_len = comp_len - 6; /* strip 2-byte header + 4-byte adler32 */
 
@@ -884,6 +887,25 @@ static void fbx_mesh_remaps_free(fbx_mesh_remap_t *remaps, int32_t count) {
     free(remaps);
 }
 
+/// @brief Append a completed mesh remap, taking ownership of @p remap on success.
+static int fbx_mesh_remaps_append(fbx_mesh_remap_t **remaps,
+                                  int32_t *count,
+                                  fbx_mesh_remap_t *remap) {
+    fbx_mesh_remap_t *grown;
+    if (!remaps || !count || !remap || *count < 0 || *count == INT32_MAX)
+        return 0;
+    if ((size_t)(*count + 1) > SIZE_MAX / sizeof(**remaps))
+        return 0;
+    grown = (fbx_mesh_remap_t *)realloc(*remaps, (size_t)(*count + 1) * sizeof(**remaps));
+    if (!grown)
+        return 0;
+    *remaps = grown;
+    (*remaps)[*count] = *remap;
+    (*count)++;
+    memset(remap, 0, sizeof(*remap));
+    return 1;
+}
+
 /// @brief Allocate the per-control-vertex index arrays for a mesh remap entry; returns 0 on OOM.
 static int fbx_mesh_remap_init(fbx_mesh_remap_t *remap, int64_t id, int32_t control_count) {
     if (!remap)
@@ -971,6 +993,8 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_rema
     int32_t *indices = (int32_t *)ip->v.array.data;
     uint32_t pos_count = vp->v.array.count / 3;
     uint32_t idx_count = ip->v.array.count;
+    if (pos_count > (uint32_t)INT32_MAX || idx_count > (uint32_t)INT32_MAX)
+        return NULL;
     if (remap)
         fbx_mesh_remap_init(remap, fbx_prop_i64(geom_node, 0), (int32_t)pos_count);
 
@@ -987,6 +1011,10 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_rema
         if (n_node && n_node->prop_count >= 1 && n_node->props[0].type == 'd') {
             normals = (double *)n_node->props[0].v.array.data;
             norm_count = n_node->props[0].v.array.count / 3;
+            if (norm_count > (uint32_t)INT32_MAX) {
+                normals = NULL;
+                norm_count = 0;
+            }
         }
         fbx_node_t *mm = fbx_find_child(norm_layer, "MappingInformationType");
         if (mm && mm->prop_count >= 1)
@@ -1014,6 +1042,10 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up, fbx_mesh_rema
         if (u_node && u_node->prop_count >= 1 && u_node->props[0].type == 'd') {
             uvs = (double *)u_node->props[0].v.array.data;
             uv_count = u_node->props[0].v.array.count / 2;
+            if (uv_count > (uint32_t)INT32_MAX) {
+                uvs = NULL;
+                uv_count = 0;
+            }
         }
         fbx_node_t *umm = fbx_find_child(uv_layer, "MappingInformationType");
         if (umm && umm->prop_count >= 1)
@@ -2181,20 +2213,17 @@ static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
                            : (double)curve->values32[curve->count - 1];
 }
 
-/// @brief Insert @p value into a sorted, dynamically-grown int64 time array, deduplicating.
-/// @details Finds the insertion point with a linear scan, skips insertion if @p value already
-///          exists (returns 1 without modification), otherwise shifts elements right and inserts.
-///          The array is grown geometrically (starting at 16, doubling) via realloc.
-/// @return 1 on success (inserted or already present); 0 on allocation failure.
-static int fbx_anim_insert_time(int64_t **times, int32_t *count, int32_t *capacity, int64_t value) {
-    int32_t pos = 0;
+static int fbx_i64_compare(const void *a, const void *b) {
+    int64_t av = *(const int64_t *)a;
+    int64_t bv = *(const int64_t *)b;
+    return (av > bv) - (av < bv);
+}
+
+/// @brief Append @p value to an unsorted key-time array; sorting/dedup happens once after collect.
+static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capacity, int64_t value) {
     if (!times || !count || !capacity || *count < 0 || *capacity < 0 || *count > *capacity ||
         (*count > 0 && !*times))
         return 0;
-    while (pos < *count && (*times)[pos] < value)
-        pos++;
-    if (pos < *count && (*times)[pos] == value)
-        return 1;
     if (*count >= *capacity) {
         int32_t new_capacity;
         if (*capacity > INT32_MAX / 2)
@@ -2209,10 +2238,22 @@ static int fbx_anim_insert_time(int64_t **times, int32_t *count, int32_t *capaci
         *times = grown;
         *capacity = new_capacity;
     }
-    memmove(&(*times)[pos + 1], &(*times)[pos], (size_t)(*count - pos) * sizeof(**times));
-    (*times)[pos] = value;
+    (*times)[*count] = value;
     (*count)++;
     return 1;
+}
+
+/// @brief Sort key times and compact duplicates in place.
+static void fbx_anim_sort_unique_times(int64_t *times, int32_t *count) {
+    int32_t write = 0;
+    if (!times || !count || *count <= 1)
+        return;
+    qsort(times, (size_t)*count, sizeof(*times), fbx_i64_compare);
+    for (int32_t read = 0; read < *count; ++read) {
+        if (write == 0 || times[read] != times[write - 1])
+            times[write++] = times[read];
+    }
+    *count = write;
 }
 
 /// @brief Walk `AnimationStack` / `AnimationLayer` / `AnimationCurveNode` nodes and
@@ -2397,9 +2438,10 @@ static int fbx_anim_build_bone_keyframes(void *anim,
             if (!fbx_anim_curve_has_data(curve))
                 continue;
             for (uint32_t k = 0; k < curve->count; k++)
-                fbx_anim_insert_time(&times, &time_count, &time_capacity, curve->times[k]);
+                fbx_anim_append_time(&times, &time_count, &time_capacity, curve->times[k]);
         }
     }
+    fbx_anim_sort_unique_times(times, &time_count);
     for (int32_t ti = 0; ti < time_count; ti++) {
         int64_t fbx_time = times[ti];
         double t = (double)fbx_time / (double)FBX_TIME_SECOND;
@@ -2777,11 +2819,13 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
             const int32_t *indices_ptr = NULL;
             const double *deltas_ptr = NULL;
 
-            if (idx_prop->type == 'i' && idx_prop->v.array.count > 0) {
-                delta_count = idx_prop->v.array.count;
+            if (idx_prop->type == 'i' && idx_prop->v.array.count > 0 &&
+                idx_prop->v.array.count <= (uint32_t)INT32_MAX) {
+                delta_count = (int32_t)idx_prop->v.array.count;
                 indices_ptr = (const int32_t *)idx_prop->v.array.data;
             }
-            if (vtx_prop->type == 'd' && vtx_prop->v.array.count >= (uint32_t)(delta_count * 3)) {
+            if (vtx_prop->type == 'd' && delta_count > 0 &&
+                vtx_prop->v.array.count / 3u >= (uint32_t)delta_count) {
                 deltas_ptr = (const double *)vtx_prop->v.array.data;
             }
 
@@ -2856,20 +2900,7 @@ static void fbx_load_collect_geometry(rt_fbx_asset *asset,
                                 mesh_binding_count++;
                             }
                         }
-                        {
-                            if (mesh_remap_count < INT32_MAX &&
-                                (size_t)(mesh_remap_count + 1) <=
-                                    SIZE_MAX / sizeof(*mesh_remaps)) {
-                                fbx_mesh_remap_t *nr = (fbx_mesh_remap_t *)realloc(
-                                    mesh_remaps,
-                                    (size_t)(mesh_remap_count + 1) * sizeof(*mesh_remaps));
-                                if (nr) {
-                                    mesh_remaps = nr;
-                                    mesh_remaps[mesh_remap_count++] = remap;
-                                    memset(&remap, 0, sizeof(remap));
-                                }
-                            }
-                        }
+                        (void)fbx_mesh_remaps_append(&mesh_remaps, &mesh_remap_count, &remap);
                     } else {
                         fbx_release_ref(&mesh);
                     }

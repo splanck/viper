@@ -61,6 +61,8 @@ int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int
 #define CANVAS3D_SYNTHETIC_DT_DEFAULT_US 16667LL
 #define CANVAS3D_SYNTHETIC_DT_MAX_US 10000000LL
 #define CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX 1000000.0
+#define CANVAS3D_FINAL_OVERLAY_RETAIN_CMD_CAP 4096
+#define CANVAS3D_FINAL_OVERLAY_RETAIN_TEMP_BUF_CAP 4096
 
 static void *g_canvas3d_synthetic_owner = NULL;
 static void canvas3d_release_synthetic_input(rt_canvas3d *c);
@@ -510,6 +512,26 @@ float canvas3d_clamp_f64_to_float(double value, double lo, double hi, float fall
     if (value > hi)
         value = hi;
     return (float)value;
+}
+
+static int32_t canvas3d_floor_to_i32_clamped(float value, int32_t lo, int32_t hi) {
+    if (!isfinite(value))
+        return lo;
+    if (value <= (float)lo)
+        return lo;
+    if (value >= (float)hi)
+        return hi;
+    return (int32_t)floorf(value);
+}
+
+static int32_t canvas3d_ceil_to_i32_clamped(float value, int32_t lo, int32_t hi) {
+    if (!isfinite(value))
+        return lo;
+    if (value <= (float)lo)
+        return lo;
+    if (value >= (float)hi)
+        return hi;
+    return (int32_t)ceilf(value);
 }
 
 /// @brief Validate an RGBA8 readback target: positive dimensions, a non-negative stride
@@ -1234,6 +1256,16 @@ void canvas3d_clear_final_overlay(rt_canvas3d *c) {
     c->final_overlay_temp_buf_count = 0;
     c->final_overlay_count = 0;
     c->final_overlay_recording = 0;
+    if (c->final_overlay_capacity > CANVAS3D_FINAL_OVERLAY_RETAIN_CMD_CAP) {
+        free(c->final_overlay_cmds);
+        c->final_overlay_cmds = NULL;
+        c->final_overlay_capacity = 0;
+    }
+    if (c->final_overlay_temp_buf_capacity > CANVAS3D_FINAL_OVERLAY_RETAIN_TEMP_BUF_CAP) {
+        free(c->final_overlay_temp_buffers);
+        c->final_overlay_temp_buffers = NULL;
+        c->final_overlay_temp_buf_capacity = 0;
+    }
 }
 
 /// @brief Transform a local point by a row-major 4x4 model matrix.
@@ -2091,10 +2123,10 @@ static int canvas3d_deferred_occlusion_rect(const rt_canvas3d *c,
     if (max_y > (float)(CANVAS3D_OCCLUSION_GRID_H - 1))
         max_y = (float)(CANVAS3D_OCCLUSION_GRID_H - 1);
 
-    *out_min_x = (int32_t)floorf(min_x);
-    *out_min_y = (int32_t)floorf(min_y);
-    *out_max_x = (int32_t)ceilf(max_x);
-    *out_max_y = (int32_t)ceilf(max_y);
+    *out_min_x = canvas3d_floor_to_i32_clamped(min_x, 0, CANVAS3D_OCCLUSION_GRID_W - 1);
+    *out_min_y = canvas3d_floor_to_i32_clamped(min_y, 0, CANVAS3D_OCCLUSION_GRID_H - 1);
+    *out_max_x = canvas3d_ceil_to_i32_clamped(max_x, 0, CANVAS3D_OCCLUSION_GRID_W - 1);
+    *out_max_y = canvas3d_ceil_to_i32_clamped(max_y, 0, CANVAS3D_OCCLUSION_GRID_H - 1);
     if (*out_max_x < *out_min_x || *out_max_y < *out_min_y)
         return 0;
     *out_test_depth = near_depth;
@@ -2216,6 +2248,10 @@ static int canvas3d_build_shadow_light_vp(const float *world_min,
 
     if (!world_min || !world_max || !dir_light || !out_light_vp)
         return 0;
+    for (int i = 0; i < 3; ++i) {
+        if (!isfinite(world_min[i]) || !isfinite(world_max[i]) || world_min[i] > world_max[i])
+            return 0;
+    }
 
     center[0] = 0.5f * (world_min[0] + world_max[0]);
     center[1] = 0.5f * (world_min[1] + world_max[1]);
@@ -2226,7 +2262,7 @@ static int canvas3d_build_shadow_light_vp(const float *world_min,
     ldir[2] = dir_light->direction[2];
     {
         float ll = sqrtf(ldir[0] * ldir[0] + ldir[1] * ldir[1] + ldir[2] * ldir[2]);
-        if (ll > 1e-7f) {
+        if (isfinite(ll) && ll > 1e-7f) {
             ldir[0] /= ll;
             ldir[1] /= ll;
             ldir[2] /= ll;
@@ -2242,6 +2278,8 @@ static int canvas3d_build_shadow_light_vp(const float *world_min,
         float dy = world_max[1] - world_min[1];
         float dz = world_max[2] - world_min[2];
         float radius = 0.5f * sqrtf(dx * dx + dy * dy + dz * dz);
+        if (!isfinite(radius))
+            return 0;
         if (radius < 1.0f)
             radius = 1.0f;
         eye[0] = center[0] - ldir[0] * (radius * 2.0f + 4.0f);
@@ -2262,7 +2300,7 @@ static int canvas3d_build_shadow_light_vp(const float *world_min,
         float uy;
         float uz;
 
-        if (fl > 1e-7f) {
+        if (isfinite(fl) && fl > 1e-7f) {
             fwd[0] /= fl;
             fwd[1] /= fl;
             fwd[2] /= fl;
@@ -2281,7 +2319,7 @@ static int canvas3d_build_shadow_light_vp(const float *world_min,
         ry = fwd[2] * up[0] - fwd[0] * up[2];
         rz = fwd[0] * up[1] - fwd[1] * up[0];
         rl = sqrtf(rx * rx + ry * ry + rz * rz);
-        if (rl > 1e-7f) {
+        if (isfinite(rl) && rl > 1e-7f) {
             rx /= rl;
             ry /= rl;
             rz /= rl;
@@ -3173,6 +3211,10 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
     if (quad_count == 0)
         return;
 
+    if (quad_count > (size_t)INT32_MAX / 4u || quad_count > (size_t)INT32_MAX / 6u) {
+        rt_trap("Canvas3D.DrawText3D: text is too large");
+        return;
+    }
     int32_t vertex_count = (int32_t)(quad_count * 4u);
     int32_t index_count = (int32_t)(quad_count * 6u);
     if (!ensure_text_capacity(c, vertex_count, index_count))
@@ -3721,6 +3763,31 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
     }
 }
 
+static float *canvas3d_alloc_instance_matrix_snapshot(rt_canvas3d *c,
+                                                      const float *matrices,
+                                                      int32_t instance_count,
+                                                      const char *trap_message) {
+    size_t matrix_float_count;
+    float *snapshot;
+    if (!c || !matrices || instance_count <= 0)
+        return NULL;
+    if ((size_t)instance_count > SIZE_MAX / (16u * sizeof(float))) {
+        rt_trap(trap_message ? trap_message : "Canvas3D.DrawMeshInstanced: matrix allocation overflow");
+        return NULL;
+    }
+    matrix_float_count = (size_t)instance_count * 16u;
+    snapshot = (float *)malloc(matrix_float_count * sizeof(*snapshot));
+    if (!snapshot) {
+        rt_trap(trap_message ? trap_message : "Canvas3D.DrawMeshInstanced: matrix allocation failed");
+        return NULL;
+    }
+    for (int32_t i = 0; i < instance_count; ++i) {
+        canvas3d_copy_mat4_f32_for_frame(
+            c, &matrices[(size_t)i * 16u], &snapshot[(size_t)i * 16u]);
+    }
+    return snapshot;
+}
+
 /// @brief Hardware instanced submission: snapshot instance (and motion) matrices into
 ///        frame-owned buffers and enqueue a single instanced draw command.
 static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *b,
@@ -3732,22 +3799,15 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
     rt_canvas3d *c = b->c;
     rt_mesh3d *mesh = b->mesh;
 
-    if ((size_t)instance_count > SIZE_MAX / (16u * sizeof(float))) {
-        canvas3d_instanced_release_refs(b);
-        rt_trap("Canvas3D.DrawMeshInstanced: instance matrix allocation overflow");
-        return;
-    }
     size_t matrix_float_count = (size_t)instance_count * 16u;
-    float *queued_instance_matrices =
-        (float *)malloc(matrix_float_count * sizeof(*queued_instance_matrices));
+    float *queued_instance_matrices = canvas3d_alloc_instance_matrix_snapshot(
+        c,
+        instance_matrices,
+        instance_count,
+        "Canvas3D.DrawMeshInstanced: instance matrix allocation failed");
     if (!queued_instance_matrices) {
         canvas3d_instanced_release_refs(b);
-        rt_trap("Canvas3D.DrawMeshInstanced: instance matrix allocation failed");
         return;
-    }
-    for (int32_t i = 0; i < instance_count; ++i) {
-        canvas3d_copy_mat4_f32_for_frame(
-            c, &instance_matrices[(size_t)i * 16u], &queued_instance_matrices[(size_t)i * 16u]);
     }
     if (!canvas3d_track_temp_buffer(c, queued_instance_matrices)) {
         free(queued_instance_matrices);
@@ -3758,20 +3818,22 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
     float *queued_prev_instance_matrices = NULL;
     int needs_motion_vectors = canvas3d_frame_needs_motion_vectors(c);
     if (needs_motion_vectors) {
-        queued_prev_instance_matrices =
-            (float *)malloc(matrix_float_count * sizeof(*queued_prev_instance_matrices));
+        if (has_prev_instance_matrices && prev_instance_matrices) {
+            queued_prev_instance_matrices = canvas3d_alloc_instance_matrix_snapshot(
+                c,
+                prev_instance_matrices,
+                instance_count,
+                "Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed");
+        } else {
+            queued_prev_instance_matrices =
+                (float *)malloc(matrix_float_count * sizeof(*queued_prev_instance_matrices));
+        }
         if (!queued_prev_instance_matrices) {
             canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
             canvas3d_instanced_release_refs(b);
-            rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed");
+            if (!(has_prev_instance_matrices && prev_instance_matrices))
+                rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrix allocation failed");
             return;
-        }
-        if (has_prev_instance_matrices && prev_instance_matrices) {
-            for (int32_t i = 0; i < instance_count; ++i) {
-                canvas3d_copy_mat4_f32_for_frame(c,
-                                                 &prev_instance_matrices[(size_t)i * 16u],
-                                                 &queued_prev_instance_matrices[(size_t)i * 16u]);
-            }
         }
         if (!canvas3d_track_temp_buffer(c, queued_prev_instance_matrices)) {
             canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
@@ -4115,70 +4177,61 @@ static void canvas3d_render_main_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
 
     {
         int32_t opaque_count = 0;
+        int32_t trans_count = 0;
+        int32_t staged_total;
         for (int32_t i = 0; i < c->draw_count; i++) {
-            if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && !cmds[i].requires_blend &&
-                cmds[i].visible)
+            if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || !cmds[i].visible)
+                continue;
+            if (cmds[i].requires_blend)
+                trans_count++;
+            else
                 opaque_count++;
         }
-        if (opaque_count > 0) {
-            if (ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, opaque_count)) {
-                deferred_draw_t *opaque = (deferred_draw_t *)c->trans_cmds;
-                int32_t oi = 0;
-                for (int32_t i = 0; i < c->draw_count; i++) {
-                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && !cmds[i].requires_blend &&
-                        cmds[i].visible)
-                        opaque[oi++] = cmds[i];
-                }
+        staged_total = opaque_count + trans_count;
+        if (staged_total > 0 &&
+            ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, staged_total)) {
+            deferred_draw_t *opaque = (deferred_draw_t *)c->trans_cmds;
+            deferred_draw_t *trans = opaque + opaque_count;
+            int32_t oi = 0;
+            int32_t ti = 0;
+            for (int32_t i = 0; i < c->draw_count; i++) {
+                if (cmds[i].pass_kind != DEFERRED_PASS_MAIN || !cmds[i].visible)
+                    continue;
+                if (cmds[i].requires_blend)
+                    trans[ti++] = cmds[i];
+                else
+                    opaque[oi++] = cmds[i];
+            }
+            if (opaque_count > 1)
                 qsort(opaque, (size_t)opaque_count, sizeof(deferred_draw_t), cmp_front_to_back);
-                for (int32_t i = 0; i < opaque_count; i++) {
+            for (int32_t i = 0; i < opaque_count; i++) {
+                if (use_occlusion_grid &&
+                    canvas3d_occlusion_test_and_write(c, &occlusion_grid, &opaque[i])) {
+                    c->last_occluded_draw_count++;
+                    continue;
+                }
+                canvas3d_submit_deferred(c, &opaque[i]);
+            }
+            if (trans_count > 1)
+                qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
+            for (int32_t i = 0; i < trans_count; i++)
+                canvas3d_submit_deferred(c, &trans[i]);
+        } else {
+            for (int32_t i = 0; i < c->draw_count; i++) {
+                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && !cmds[i].requires_blend &&
+                    cmds[i].visible) {
                     if (use_occlusion_grid &&
-                        canvas3d_occlusion_test_and_write(c, &occlusion_grid, &opaque[i])) {
+                        canvas3d_occlusion_test_and_write(c, &occlusion_grid, &cmds[i])) {
                         c->last_occluded_draw_count++;
                         continue;
                     }
-                    canvas3d_submit_deferred(c, &opaque[i]);
-                }
-            } else {
-                for (int32_t i = 0; i < c->draw_count; i++) {
-                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && !cmds[i].requires_blend &&
-                        cmds[i].visible) {
-                        if (use_occlusion_grid &&
-                            canvas3d_occlusion_test_and_write(c, &occlusion_grid, &cmds[i])) {
-                            c->last_occluded_draw_count++;
-                            continue;
-                        }
-                        canvas3d_submit_deferred(c, &cmds[i]);
-                    }
+                    canvas3d_submit_deferred(c, &cmds[i]);
                 }
             }
-        }
-    }
-
-    {
-        int32_t trans_count = 0;
-        for (int32_t i = 0; i < c->draw_count; i++) {
-            if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].requires_blend &&
-                cmds[i].visible)
-                trans_count++;
-        }
-        if (trans_count > 0) {
-            if (ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, trans_count)) {
-                deferred_draw_t *trans = (deferred_draw_t *)c->trans_cmds;
-                int32_t ti = 0;
-                for (int32_t i = 0; i < c->draw_count; i++) {
-                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].requires_blend &&
-                        cmds[i].visible)
-                        trans[ti++] = cmds[i];
-                }
-                qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
-                for (int32_t i = 0; i < trans_count; i++)
-                    canvas3d_submit_deferred(c, &trans[i]);
-            } else {
-                for (int32_t i = 0; i < c->draw_count; i++) {
-                    if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].requires_blend &&
-                        cmds[i].visible)
-                        canvas3d_submit_deferred(c, &cmds[i]);
-                }
+            for (int32_t i = 0; i < c->draw_count; i++) {
+                if (cmds[i].pass_kind == DEFERRED_PASS_MAIN && cmds[i].requires_blend &&
+                    cmds[i].visible)
+                    canvas3d_submit_deferred(c, &cmds[i]);
             }
         }
     }

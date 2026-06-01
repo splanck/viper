@@ -41,6 +41,7 @@
 #include "rt_scene3d_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -206,13 +207,28 @@ static char *vscn_base64_encode(const uint8_t *data, size_t len, size_t *out_len
     return output;
 }
 
+static void vscn_trap_base64_error(const char *field, size_t offset) {
+    char msg[160];
+    snprintf(msg,
+             sizeof(msg),
+             "Scene3D.Load: invalid base64 in %s at byte offset %zu",
+             field ? field : "data",
+             offset);
+    rt_trap(msg);
+}
+
 /// @brief Decode a base64 string of `len` characters into raw bytes.
 ///
 /// Strict: rejects inputs whose length isn't a multiple of 4 and
 /// any non-alphabet bytes. Honours `=` padding to compute the
 /// exact output length. Returns a freshly-allocated buffer
 /// (caller `free`s) or NULL on error.
-static uint8_t *vscn_base64_decode(const char *data, size_t len, size_t *out_len) {
+static uint8_t *vscn_base64_decode_ex(const char *data,
+                                      size_t len,
+                                      size_t *out_len,
+                                      size_t *error_offset) {
+    if (error_offset)
+        *error_offset = SIZE_MAX;
     if (!data)
         return NULL;
     if (len == 0) {
@@ -221,8 +237,11 @@ static uint8_t *vscn_base64_decode(const char *data, size_t len, size_t *out_len
             *out_len = 0;
         return empty;
     }
-    if (len % 4 != 0)
+    if (len % 4 != 0) {
+        if (error_offset)
+            *error_offset = len;
         return NULL;
+    }
 
     size_t padding = 0;
     if (data[len - 1] == '=')
@@ -230,8 +249,11 @@ static uint8_t *vscn_base64_decode(const char *data, size_t len, size_t *out_len
     if (data[len - 2] == '=')
         padding++;
     for (size_t k = 0; k + padding < len; k++) {
-        if (data[k] == '=')
+        if (data[k] == '=') {
+            if (error_offset)
+                *error_offset = k;
             return NULL;
+        }
     }
     if ((len / 4) > SIZE_MAX / 3)
         return NULL;
@@ -245,6 +267,7 @@ static uint8_t *vscn_base64_decode(const char *data, size_t len, size_t *out_len
 
     size_t i = 0, j = 0;
     while (i < len) {
+        size_t group = i;
         int a = vscn_base64_digit_value(data[i++]);
         int b = vscn_base64_digit_value(data[i++]);
         int c = vscn_base64_digit_value(data[i++]);
@@ -252,22 +275,40 @@ static uint8_t *vscn_base64_decode(const char *data, size_t len, size_t *out_len
         int is_last_group = (i == len);
 
         if (a < 0 || b < 0 || c == -1 || d == -1) {
+            if (error_offset) {
+                if (a < 0)
+                    *error_offset = group;
+                else if (b < 0)
+                    *error_offset = group + 1u;
+                else if (c == -1)
+                    *error_offset = group + 2u;
+                else
+                    *error_offset = group + 3u;
+            }
             free(output);
             return NULL;
         }
         if ((c == -2 || d == -2) && !is_last_group) {
+            if (error_offset)
+                *error_offset = c == -2 ? group + 2u : group + 3u;
             free(output);
             return NULL;
         }
         if (c == -2 && d != -2) {
+            if (error_offset)
+                *error_offset = group + 3u;
             free(output);
             return NULL;
         }
         if (d == -2 && c != -2 && (c & 0x03) != 0) {
+            if (error_offset)
+                *error_offset = group + 2u;
             free(output);
             return NULL;
         }
         if (c == -2 && (b & 0x0F) != 0) {
+            if (error_offset)
+                *error_offset = group + 1u;
             free(output);
             return NULL;
         }
@@ -383,6 +424,16 @@ static int64_t vjson_len(void *seq) {
     return vjson_is_seq(seq) ? rt_seq_len(seq) : 0;
 }
 
+/// @brief Safely coerce a JSON double to int64 without invoking undefined conversion behavior.
+static int vjson_double_to_i64_checked(double value, int64_t *out) {
+    if (!out || !isfinite(value))
+        return 0;
+    if (value < (-9223372036854775807.0 - 1.0) || value >= 9223372036854775808.0)
+        return 0;
+    *out = (int64_t)value;
+    return 1;
+}
+
 /// @brief Coerce a boxed JSON value to int64. Falls back to `def` for non-numeric or null.
 static int64_t vjson_value_i64(void *value, int64_t def) {
     if (!value)
@@ -390,8 +441,10 @@ static int64_t vjson_value_i64(void *value, int64_t def) {
     switch (rt_box_type(value)) {
         case 0:
             return rt_unbox_i64(value);
-        case 1:
-            return (int64_t)rt_unbox_f64(value);
+        case 1: {
+            int64_t coerced;
+            return vjson_double_to_i64_checked(rt_unbox_f64(value), &coerced) ? coerced : def;
+        }
         case 2:
             return rt_unbox_i1(value);
         default:
@@ -406,8 +459,10 @@ static double vjson_value_f64(void *value, double def) {
     switch (rt_box_type(value)) {
         case 0:
             return (double)rt_unbox_i64(value);
-        case 1:
-            return rt_unbox_f64(value);
+        case 1: {
+            double number = rt_unbox_f64(value);
+            return isfinite(number) ? number : def;
+        }
         case 2:
             return (double)rt_unbox_i1(value);
         default:
@@ -1278,6 +1333,7 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
     int64_t height;
     const char *rgba_b64;
     size_t rgba_len = 0;
+    size_t rgba_error = SIZE_MAX;
     uint8_t *rgba = NULL;
     rt_pixels_impl *pixels = NULL;
 
@@ -1297,9 +1353,12 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
     if (!rgba_b64)
         rgba_b64 = "";
 
-    rgba = vscn_base64_decode(rgba_b64, strlen(rgba_b64), &rgba_len);
-    if (!rgba)
+    rgba = vscn_base64_decode_ex(rgba_b64, strlen(rgba_b64), &rgba_len, &rgba_error);
+    if (!rgba) {
+        if (rgba_error != SIZE_MAX)
+            vscn_trap_base64_error("texture.rgbaBase64", rgba_error);
         return NULL;
+    }
     if (rgba_len != (size_t)width * (size_t)height * 4) {
         free(rgba);
         return NULL;
@@ -1554,6 +1613,8 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     uint32_t index_count;
     size_t vertices_len = 0;
     size_t indices_len = 0;
+    size_t vertices_error = SIZE_MAX;
+    size_t indices_error = SIZE_MAX;
     uint8_t *vertices_raw = NULL;
     uint8_t *indices_raw = NULL;
 
@@ -1584,9 +1645,15 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     if (!indices_b64)
         indices_b64 = "";
 
-    vertices_raw = vscn_base64_decode(vertices_b64, strlen(vertices_b64), &vertices_len);
-    indices_raw = vscn_base64_decode(indices_b64, strlen(indices_b64), &indices_len);
+    vertices_raw =
+        vscn_base64_decode_ex(vertices_b64, strlen(vertices_b64), &vertices_len, &vertices_error);
+    indices_raw =
+        vscn_base64_decode_ex(indices_b64, strlen(indices_b64), &indices_len, &indices_error);
     if (!vertices_raw || !indices_raw) {
+        if (!vertices_raw && vertices_error != SIZE_MAX)
+            vscn_trap_base64_error("mesh.verticesBase64", vertices_error);
+        else if (!indices_raw && indices_error != SIZE_MAX)
+            vscn_trap_base64_error("mesh.indicesBase64", indices_error);
         free(vertices_raw);
         free(indices_raw);
         return NULL;

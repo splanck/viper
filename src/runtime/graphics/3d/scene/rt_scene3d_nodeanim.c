@@ -105,32 +105,14 @@ void *rt_node_animation3d_new(rt_string name, double duration) {
 ///          continue using whatever was already there.
 /// @return 1 on success (including no-op), 0 on allocation failure.
 static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t needed) {
-    int32_t new_capacity;
-    rt_node_anim_channel3d *grown;
     if (!anim || needed < 0)
         return 0;
-    if (anim->channel_capacity >= needed)
-        return 1;
-    if (anim->channel_capacity < 0)
-        return 0;
-    if (anim->channel_capacity > INT32_MAX / 2)
-        new_capacity = needed;
-    else
-        new_capacity = anim->channel_capacity > 0 ? anim->channel_capacity * 2 : 4;
-    if (new_capacity < needed)
-        new_capacity = needed;
-    if ((size_t)new_capacity > SIZE_MAX / sizeof(*anim->channels))
-        return 0;
-    grown = (rt_node_anim_channel3d *)realloc(anim->channels,
-                                              (size_t)new_capacity * sizeof(*anim->channels));
-    if (!grown)
-        return 0;
-    memset(grown + anim->channel_capacity,
-           0,
-           (size_t)(new_capacity - anim->channel_capacity) * sizeof(*grown));
-    anim->channels = grown;
-    anim->channel_capacity = new_capacity;
-    return 1;
+    return scene3d_grow_array_i32((void **)&anim->channels,
+                                  &anim->channel_capacity,
+                                  needed,
+                                  4,
+                                  sizeof(*anim->channels),
+                                  1);
 }
 
 /// @brief Validate raw channel sample data before it is copied into a clip.

@@ -56,10 +56,24 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH3D_OBJ_MAX_LINE_BYTES (1024u * 1024u)
 #define MESH3D_OBJ_MAX_FACE_VERTS 4096
 #define MESH3D_STL_ASCII_MAX_LINE_BYTES (1024u * 1024u)
+#define MESH3D_PROCEDURAL_MAX_BYTES (128ull * 1024ull * 1024ull)
 
 /// @brief Validate @p obj as a Mesh3D handle and return its typed pointer (NULL on mismatch).
 static rt_mesh3d *mesh3d_checked(void *obj) {
     return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
+}
+
+static void mesh3d_bump_vertex_revision(rt_mesh3d *m, int invalidate_tangents) {
+    if (!m)
+        return;
+    if (m->geometry_revision == UINT32_MAX)
+        m->geometry_revision = 1;
+    else
+        m->geometry_revision++;
+    if (invalidate_tangents) {
+        m->tangents_ready = 0;
+        m->tangent_revision = 0;
+    }
 }
 
 /// @brief Estimate vertex/index payload bytes, saturating to INT64_MAX for ABI stability.
@@ -75,6 +89,31 @@ static int64_t mesh3d_estimate_payload_bytes(const rt_mesh3d *m) {
     if (total < vertex_bytes)
         return INT64_MAX;
     return total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
+}
+
+/// @brief Check a planned vertex/index allocation against a predictable procedural budget.
+static int mesh3d_check_planned_payload(uint64_t vertex_count,
+                                        uint64_t index_count,
+                                        const char *trap_name) {
+    uint64_t vertex_bytes;
+    uint64_t index_bytes;
+    uint64_t total;
+    if (vertex_count > UINT32_MAX || index_count > UINT32_MAX)
+        goto too_large;
+    if (vertex_count > UINT64_MAX / (uint64_t)sizeof(vgfx3d_vertex_t))
+        goto too_large;
+    vertex_bytes = vertex_count * (uint64_t)sizeof(vgfx3d_vertex_t);
+    if (index_count > UINT64_MAX / (uint64_t)sizeof(uint32_t))
+        goto too_large;
+    index_bytes = index_count * (uint64_t)sizeof(uint32_t);
+    if (UINT64_MAX - vertex_bytes < index_bytes)
+        goto too_large;
+    total = vertex_bytes + index_bytes;
+    if (total <= MESH3D_PROCEDURAL_MAX_BYTES)
+        return 1;
+too_large:
+    rt_trap(trap_name ? trap_name : "Mesh3D: procedural mesh exceeds safe memory budget");
+    return 0;
 }
 
 /// @brief Parse an OBJ/STL ASCII float with '.' decimal semantics, independent of locale.
@@ -727,6 +766,15 @@ void rt_mesh3d_recalc_normals(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
     if (!m)
         return;
+    if (m->index_count < 3u) {
+        for (uint32_t i = 0; i < m->vertex_count; i++) {
+            m->vertices[i].normal[0] = 0.0f;
+            m->vertices[i].normal[1] = 1.0f;
+            m->vertices[i].normal[2] = 0.0f;
+        }
+        mesh3d_bump_vertex_revision(m, 1);
+        return;
+    }
     if ((size_t)m->vertex_count > SIZE_MAX / (3u * sizeof(double))) {
         rt_trap("Mesh3D.RecalcNormals: normal accumulator allocation overflow");
         return;
@@ -797,7 +845,7 @@ void rt_mesh3d_recalc_normals(void *obj) {
         }
     }
     free(accum);
-    rt_mesh3d_touch_geometry(m);
+    mesh3d_bump_vertex_revision(m, 1);
 }
 
 /// @brief Create a deep copy of a mesh (independent vertex/index arrays).
@@ -829,14 +877,20 @@ void *rt_mesh3d_clone(void *obj) {
         return NULL;
     }
 
-    dst->vertex_capacity = src->vertex_count > 0 ? src->vertex_count : 1;
-    dst->vertices = (vgfx3d_vertex_t *)malloc(dst->vertex_capacity * sizeof(vgfx3d_vertex_t));
+    dst->vertex_capacity = src->vertex_count;
+    dst->vertices = dst->vertex_capacity > 0
+                        ? (vgfx3d_vertex_t *)malloc((size_t)dst->vertex_capacity *
+                                                    sizeof(vgfx3d_vertex_t))
+                        : NULL;
     if (src->positions64)
         dst->positions64 = (double *)malloc((size_t)dst->vertex_capacity * 3u * sizeof(double));
-    dst->index_capacity = src->index_count > 0 ? src->index_count : 1;
-    dst->indices = (uint32_t *)malloc(dst->index_capacity * sizeof(uint32_t));
+    dst->index_capacity = src->index_count;
+    dst->indices = dst->index_capacity > 0
+                       ? (uint32_t *)malloc((size_t)dst->index_capacity * sizeof(uint32_t))
+                       : NULL;
 
-    if (!dst->vertices || !dst->indices || (src->positions64 && !dst->positions64)) {
+    if ((dst->vertex_capacity > 0 && !dst->vertices) ||
+        (dst->index_capacity > 0 && !dst->indices) || (src->positions64 && !dst->positions64)) {
         if (rt_obj_release_check0(dst))
             rt_obj_free(dst);
         rt_trap("Mesh3D.Clone: memory allocation failed");
@@ -1144,6 +1198,11 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
     int64_t bottom_index;
     uint32_t vertex_capacity = (uint32_t)(2 + (rings - 1) * ring_stride);
     uint32_t index_capacity = (uint32_t)(slices * 3 + (rings - 2) * slices * 6 + slices * 3);
+    if (!mesh3d_check_planned_payload(
+            vertex_capacity, index_capacity, "Mesh3D.NewSphere: mesh exceeds memory budget")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
     if (!mesh3d_reserve_storage(
             (rt_mesh3d *)m, vertex_capacity, index_capacity, "Mesh3D.NewSphere")) {
         mesh_mark_build_failed((rt_mesh3d *)m);
@@ -1244,6 +1303,12 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
 
     float r = (float)radius;
     float hy = (float)(height * 0.5);
+    if (!mesh3d_check_planned_payload((uint64_t)(4 * segments + 4),
+                                      (uint64_t)(12 * segments),
+                                      "Mesh3D.NewCylinder: mesh exceeds memory budget")) {
+        mesh_mark_build_failed((rt_mesh3d *)m);
+        return mesh_return_null_if_build_failed(m);
+    }
     if (!mesh3d_reserve_storage((rt_mesh3d *)m,
                                 (uint32_t)(4 * segments + 4),
                                 (uint32_t)(12 * segments),
@@ -1317,6 +1382,12 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
 // for normal, `f` for face). These parsers walk a `**p` cursor
 // through the line, consuming whitespace and tokens.
 // ---------------------------------------------------------------------------
+
+typedef struct {
+    int64_t vi;
+    int64_t ti;
+    int64_t ni;
+} obj_face_vert_t;
 
 /// @brief Parse a signed decimal integer from `*p`, advancing `*p` past it.
 static int obj_parse_int(const char **p, int64_t *out) {
@@ -1539,7 +1610,9 @@ static int obj_vertex_cache_insert(
     obj_vertex_cache_t *cache, int64_t vi, int64_t ti, int64_t ni, uint32_t mesh_index) {
     if (!cache || !cache->entries)
         return 0;
-    if ((cache->count + 1u) * 10u >= cache->capacity * 7u) {
+    size_t next_count = cache->count + 1u;
+    size_t grow_limit = (cache->capacity / 10u) * 7u + ((cache->capacity % 10u) * 7u) / 10u;
+    if (next_count < cache->count || next_count > grow_limit) {
         if (!obj_vertex_cache_grow(cache))
             return 0;
     }
@@ -1878,8 +1951,19 @@ static int obj_triangulate_face(void *mesh_obj, const uint32_t *mesh_indices, in
 void rt_mesh3d_calc_tangents_impl(rt_mesh3d *m) {
     if (!m)
         return;
-    if (m->vertex_count == 0 || m->index_count == 0)
+    if (m->vertex_count == 0) {
+        m->tangents_ready = 1;
+        m->tangent_revision = m->geometry_revision;
         return;
+    }
+    if (m->index_count == 0) {
+        for (uint32_t i = 0; i < m->vertex_count; i++)
+            mesh_default_tangent_from_normal(m->vertices[i].normal, m->vertices[i].tangent);
+        mesh3d_bump_vertex_revision(m, 0);
+        m->tangents_ready = 1;
+        m->tangent_revision = m->geometry_revision;
+        return;
+    }
 
     if ((size_t)m->vertex_count > SIZE_MAX / 3u / sizeof(float)) {
         rt_trap("Mesh3D.CalcTangents: tangent allocation overflow");
@@ -1934,34 +2018,37 @@ void rt_mesh3d_calc_tangents_impl(rt_mesh3d *m) {
             continue;
         float sdir[3] = {(float)sdir_d[0], (float)sdir_d[1], (float)sdir_d[2]};
         float tdir[3] = {(float)tdir_d[0], (float)tdir_d[1], (float)tdir_d[2]};
+        size_t b0 = (size_t)i0 * 3u;
+        size_t b1 = (size_t)i1 * 3u;
+        size_t b2 = (size_t)i2 * 3u;
 
-        tan1[i0 * 3u + 0] += sdir[0];
-        tan1[i0 * 3u + 1] += sdir[1];
-        tan1[i0 * 3u + 2] += sdir[2];
-        tan1[i1 * 3u + 0] += sdir[0];
-        tan1[i1 * 3u + 1] += sdir[1];
-        tan1[i1 * 3u + 2] += sdir[2];
-        tan1[i2 * 3u + 0] += sdir[0];
-        tan1[i2 * 3u + 1] += sdir[1];
-        tan1[i2 * 3u + 2] += sdir[2];
+        tan1[b0 + 0] += sdir[0];
+        tan1[b0 + 1] += sdir[1];
+        tan1[b0 + 2] += sdir[2];
+        tan1[b1 + 0] += sdir[0];
+        tan1[b1 + 1] += sdir[1];
+        tan1[b1 + 2] += sdir[2];
+        tan1[b2 + 0] += sdir[0];
+        tan1[b2 + 1] += sdir[1];
+        tan1[b2 + 2] += sdir[2];
 
-        tan2[i0 * 3u + 0] += tdir[0];
-        tan2[i0 * 3u + 1] += tdir[1];
-        tan2[i0 * 3u + 2] += tdir[2];
-        tan2[i1 * 3u + 0] += tdir[0];
-        tan2[i1 * 3u + 1] += tdir[1];
-        tan2[i1 * 3u + 2] += tdir[2];
-        tan2[i2 * 3u + 0] += tdir[0];
-        tan2[i2 * 3u + 1] += tdir[1];
-        tan2[i2 * 3u + 2] += tdir[2];
+        tan2[b0 + 0] += tdir[0];
+        tan2[b0 + 1] += tdir[1];
+        tan2[b0 + 2] += tdir[2];
+        tan2[b1 + 0] += tdir[0];
+        tan2[b1 + 1] += tdir[1];
+        tan2[b1 + 2] += tdir[2];
+        tan2[b2 + 0] += tdir[0];
+        tan2[b2 + 1] += tdir[1];
+        tan2[b2 + 2] += tdir[2];
     }
 
     /* Normalize, orthogonalize against the normal, and store handedness in tangent.w. */
     for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *t = m->vertices[i].tangent;
         float *n = m->vertices[i].normal;
-        float *tan = &tan1[i * 3u];
-        float *bitan = &tan2[i * 3u];
+        float *tan = &tan1[(size_t)i * 3u];
+        float *bitan = &tan2[(size_t)i * 3u];
 
         /* Gram-Schmidt: T = T - N * dot(N, T) */
         float dot = n[0] * tan[0] + n[1] * tan[1] + n[2] * tan[2];
@@ -1989,7 +2076,7 @@ void rt_mesh3d_calc_tangents_impl(rt_mesh3d *m) {
     }
     free(tan1);
     free(tan2);
-    rt_mesh3d_touch_geometry(m);
+    mesh3d_bump_vertex_revision(m, 0);
     m->tangents_ready = 1;
     m->tangent_revision = m->geometry_revision;
 }
@@ -2009,14 +2096,19 @@ void rt_mesh3d_calc_tangents(void *obj) {
 /// @details Grows `*line` geometrically (starting at 256 bytes) when the line
 ///   exceeds the current capacity. NUL-terminates the line including the
 ///   trailing newline if present. Returns 1 for a successful read, 0 on
-///   end-of-file with no trailing newline, -1 on allocation failure.
-static int obj_read_line(FILE *f, char **line, size_t *cap) {
+///   end-of-file with no trailing newline, -1 on allocation failure, or -2
+///   when the line exceeds @p max_bytes.
+static int mesh3d_read_text_line(FILE *f, char **line, size_t *cap, size_t max_bytes) {
     size_t len = 0;
     int ch;
     if (!f || !line || !cap)
         return -1;
+    if (max_bytes < 2)
+        return -1;
     if (!*line || *cap == 0) {
         *cap = 256;
+        if (*cap > max_bytes)
+            *cap = max_bytes;
         *line = (char *)malloc(*cap);
         if (!*line) {
             *cap = 0;
@@ -2030,8 +2122,10 @@ static int obj_read_line(FILE *f, char **line, size_t *cap) {
             if (*cap > SIZE_MAX / 2u)
                 return -1;
             new_cap = *cap * 2u;
-            if (new_cap > MESH3D_OBJ_MAX_LINE_BYTES)
-                return -1;
+            if (new_cap > max_bytes)
+                new_cap = max_bytes;
+            if (new_cap <= *cap)
+                return -2;
             tmp = (char *)realloc(*line, new_cap);
             if (!tmp)
                 return -1;
@@ -2039,8 +2133,8 @@ static int obj_read_line(FILE *f, char **line, size_t *cap) {
             *cap = new_cap;
         }
         (*line)[len++] = (char)ch;
-        if (len >= MESH3D_OBJ_MAX_LINE_BYTES)
-            return -1;
+        if (len >= max_bytes)
+            return -2;
         if (ch == '\n')
             break;
     }
@@ -2066,7 +2160,8 @@ static void obj_parse_into_mesh(FILE *f,
                                 int *p_cnt_t,
                                 int *p_cap_t,
                                 int *p_parse_failed,
-                                int *p_missing_normals) {
+                                int *p_missing_normals,
+                                int *p_line_too_long) {
     float *positions = *p_positions;
     int cnt_p = *p_cnt_p;
     int cap_p = *p_cap_p;
@@ -2081,7 +2176,8 @@ static void obj_parse_into_mesh(FILE *f,
     char *line = NULL;
     size_t line_cap = 0;
     int line_status;
-    while ((line_status = obj_read_line(f, &line, &line_cap)) > 0) {
+    while ((line_status = mesh3d_read_text_line(f, &line, &line_cap, MESH3D_OBJ_MAX_LINE_BYTES)) >
+           0) {
         const char *p = line;
         while (*p == ' ' || *p == '\t')
             p++;
@@ -2168,13 +2264,9 @@ static void obj_parse_into_mesh(FILE *f,
             /* Face: f v1[/vt1[/vn1]] v2[/vt2[/vn2]] ... */
             p += 2;
             size_t face_capacity = 8;
-            int64_t face_vi_stack[8];
-            int64_t face_ti_stack[8];
-            int64_t face_ni_stack[8];
+            obj_face_vert_t face_stack[8];
             uint32_t mesh_indices_stack[8];
-            int64_t *face_vi = face_vi_stack;
-            int64_t *face_ti = face_ti_stack;
-            int64_t *face_ni = face_ni_stack;
+            obj_face_vert_t *face = face_stack;
             uint32_t *mesh_indices = mesh_indices_stack;
             int face_count = 0;
 
@@ -2190,40 +2282,30 @@ static void obj_parse_into_mesh(FILE *f,
 
                 if ((size_t)face_count >= face_capacity) {
                     if (face_capacity > SIZE_MAX / 2u ||
-                        face_capacity * 2u > SIZE_MAX / sizeof(int64_t)) {
+                        face_capacity * 2u > SIZE_MAX / sizeof(*face)) {
                         parse_failed = 1;
                         break;
                     }
                     size_t new_capacity = face_capacity * 2u;
-                    int64_t *new_vi = (int64_t *)malloc(new_capacity * sizeof(int64_t));
-                    int64_t *new_ti = (int64_t *)malloc(new_capacity * sizeof(int64_t));
-                    int64_t *new_ni = (int64_t *)malloc(new_capacity * sizeof(int64_t));
-                    if (!new_vi || !new_ti || !new_ni) {
-                        free(new_vi);
-                        free(new_ti);
-                        free(new_ni);
+                    obj_face_vert_t *new_face =
+                        (obj_face_vert_t *)malloc(new_capacity * sizeof(*new_face));
+                    if (!new_face) {
                         parse_failed = 1;
                         break;
                     }
-                    memcpy(new_vi, face_vi, (size_t)face_count * sizeof(int64_t));
-                    memcpy(new_ti, face_ti, (size_t)face_count * sizeof(int64_t));
-                    memcpy(new_ni, face_ni, (size_t)face_count * sizeof(int64_t));
-                    if (face_vi != face_vi_stack)
-                        free(face_vi);
-                    if (face_ti != face_ti_stack)
-                        free(face_ti);
-                    if (face_ni != face_ni_stack)
-                        free(face_ni);
-                    face_vi = new_vi;
-                    face_ti = new_ti;
-                    face_ni = new_ni;
+                    memcpy(new_face, face, (size_t)face_count * sizeof(*face));
+                    if (face != face_stack)
+                        free(face);
+                    face = new_face;
                     face_capacity = new_capacity;
                 }
 
                 const char *before = p;
-                if (!obj_parse_face_vert(
-                        &p, &face_vi[face_count], &face_ti[face_count], &face_ni[face_count]) ||
-                    p == before || face_vi[face_count] == 0) {
+                if (!obj_parse_face_vert(&p,
+                                         &face[face_count].vi,
+                                         &face[face_count].ti,
+                                         &face[face_count].ni) ||
+                    p == before || face[face_count].vi == 0) {
                     parse_failed = 1;
                     break;
                 }
@@ -2231,34 +2313,22 @@ static void obj_parse_into_mesh(FILE *f,
             }
 
             if (parse_failed) {
-                if (face_vi != face_vi_stack)
-                    free(face_vi);
-                if (face_ti != face_ti_stack)
-                    free(face_ti);
-                if (face_ni != face_ni_stack)
-                    free(face_ni);
+                if (face != face_stack)
+                    free(face);
                 break;
             }
 
             if (face_count < 3) {
-                if (face_vi != face_vi_stack)
-                    free(face_vi);
-                if (face_ti != face_ti_stack)
-                    free(face_ti);
-                if (face_ni != face_ni_stack)
-                    free(face_ni);
+                if (face != face_stack)
+                    free(face);
                 continue;
             }
 
             if (face_count > (int)(sizeof(mesh_indices_stack) / sizeof(mesh_indices_stack[0]))) {
                 mesh_indices = (uint32_t *)malloc((size_t)face_count * sizeof(uint32_t));
                 if (!mesh_indices) {
-                    if (face_vi != face_vi_stack)
-                        free(face_vi);
-                    if (face_ti != face_ti_stack)
-                        free(face_ti);
-                    if (face_ni != face_ni_stack)
-                        free(face_ni);
+                    if (face != face_stack)
+                        free(face);
                     parse_failed = 1;
                     break;
                 }
@@ -2266,9 +2336,9 @@ static void obj_parse_into_mesh(FILE *f,
 
             /* Resolve indices and emit or reuse vertices */
             for (int fi = 0; fi < face_count; fi++) {
-                int64_t vi = face_vi[fi];
-                int64_t ti = face_ti[fi];
-                int64_t ni = face_ni[fi];
+                int64_t vi = face[fi].vi;
+                int64_t ti = face[fi].ti;
+                int64_t ni = face[fi].ni;
                 if (!obj_resolve_index(vi, cnt_p, 0, &vi) ||
                     !obj_resolve_index(ti, cnt_t, 1, &ti) ||
                     !obj_resolve_index(ni, cnt_n, 1, &ni) ||
@@ -2296,12 +2366,8 @@ static void obj_parse_into_mesh(FILE *f,
                 if (!obj_triangulate_face(mesh, mesh_indices, face_count))
                     parse_failed = 1;
             }
-            if (face_vi != face_vi_stack)
-                free(face_vi);
-            if (face_ti != face_ti_stack)
-                free(face_ti);
-            if (face_ni != face_ni_stack)
-                free(face_ni);
+            if (face != face_stack)
+                free(face);
             if (mesh_indices != mesh_indices_stack)
                 free(mesh_indices);
             if (parse_failed)
@@ -2312,8 +2378,13 @@ static void obj_parse_into_mesh(FILE *f,
         }
         /* Ignore: s and other non-geometry directives. */
     }
-    if (line_status < 0)
+    if (line_status == -2) {
         parse_failed = 1;
+        if (p_line_too_long)
+            *p_line_too_long = 1;
+    } else if (line_status < 0) {
+        parse_failed = 1;
+    }
     free(line);
     *p_positions = positions;
     *p_cnt_p = cnt_p;
@@ -2354,6 +2425,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
     int cnt_p = 0, cnt_n = 0, cnt_t = 0;
     int parse_failed = 0;
     int missing_normals = 0;
+    int line_too_long = 0;
     float *positions = (float *)malloc((size_t)cap_p * 3 * sizeof(float));
     float *normals = (float *)malloc((size_t)cap_n * 3 * sizeof(float));
     float *texcoords = (float *)malloc((size_t)cap_t * 2 * sizeof(float));
@@ -2387,7 +2459,8 @@ void *rt_mesh3d_from_obj(rt_string path) {
                         &cnt_t,
                         &cap_t,
                         &parse_failed,
-                        &missing_normals);
+                        &missing_normals,
+                        &line_too_long);
 
     fclose(f);
     free(positions);
@@ -2398,7 +2471,8 @@ void *rt_mesh3d_from_obj(rt_string path) {
     if (parse_failed || ((rt_mesh3d *)mesh)->build_failed) {
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
-        rt_trap("Mesh3D.FromOBJ: invalid or unsupported geometry");
+        rt_trap(line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
+                              : "Mesh3D.FromOBJ: invalid or unsupported geometry");
         return NULL;
     }
 
@@ -2889,7 +2963,8 @@ static void *stl_load_ascii_stream(FILE *f) {
     if (!mesh)
         return NULL;
     rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
-    while ((line_status = obj_read_line(f, &line_buf, &line_cap)) > 0) {
+    while ((line_status = mesh3d_read_text_line(
+                f, &line_buf, &line_cap, MESH3D_STL_ASCII_MAX_LINE_BYTES)) > 0) {
         const char *line = line_buf;
         const char *line_end = line_buf + strlen(line_buf);
         line_end = stl_trim_line_end(line, line_end);
@@ -2948,8 +3023,12 @@ static void *stl_load_ascii_stream(FILE *f) {
         if (parse_failed)
             break;
     }
-    if (line_status < 0)
+    if (line_status == -2) {
         parse_failed = 1;
+        rt_trap("Mesh3D.FromSTL: line exceeds 1 MiB limit");
+    } else if (line_status < 0) {
+        parse_failed = 1;
+    }
     free(line_buf);
     if (parse_failed || state != STL_ASCII_OUTSIDE_FACET || emitted_triangles == 0 ||
         ((rt_mesh3d *)mesh)->build_failed) {

@@ -83,6 +83,59 @@ void scene3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+int scene3d_grow_stack_storage(void **buffer, size_t *capacity, size_t elem_size) {
+    size_t new_capacity;
+    void *grown;
+    if (!buffer || !capacity || elem_size == 0)
+        return 0;
+    new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
+    if (new_capacity <= *capacity || new_capacity > SIZE_MAX / elem_size)
+        return 0;
+    grown = realloc(*buffer, new_capacity * elem_size);
+    if (!grown)
+        return 0;
+    *buffer = grown;
+    *capacity = new_capacity;
+    return 1;
+}
+
+int scene3d_grow_array_i32(void **buffer,
+                           int32_t *capacity,
+                           int32_t needed,
+                           int32_t min_capacity,
+                           size_t elem_size,
+                           int zero_new) {
+    int32_t old_capacity;
+    int32_t new_capacity;
+    void *grown;
+    if (!buffer || !capacity || needed < 0 || min_capacity <= 0 || elem_size == 0)
+        return 0;
+    old_capacity = *capacity;
+    if (old_capacity >= needed)
+        return 1;
+    if (old_capacity < 0)
+        return 0;
+    new_capacity = old_capacity < min_capacity ? min_capacity : old_capacity;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            new_capacity = needed;
+        else
+            new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / elem_size)
+        return 0;
+    grown = realloc(*buffer, (size_t)new_capacity * elem_size);
+    if (!grown)
+        return 0;
+    if (zero_new && new_capacity > old_capacity)
+        memset((char *)grown + (size_t)old_capacity * elem_size,
+               0,
+               (size_t)(new_capacity - old_capacity) * elem_size);
+    *buffer = grown;
+    *capacity = new_capacity;
+    return 1;
+}
+
 /// @brief Mark the spatial index fully stale: a topology change forces a full BVH rebuild.
 void scene3d_mark_spatial_dirty(rt_scene3d *scene) {
     if (!scene)
@@ -526,21 +579,11 @@ int scene_node_stack_push(rt_scene_node3d ***stack,
                           size_t *count,
                           size_t *capacity,
                           rt_scene_node3d *node) {
-    rt_scene_node3d **grown;
-    size_t new_capacity;
     if (!stack || !count || !capacity || !node)
         return 1;
     if (*count >= *capacity) {
-        new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
-        if (new_capacity <= *capacity)
+        if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
             return 0;
-        if (new_capacity > SIZE_MAX / sizeof(**stack))
-            return 0;
-        grown = (rt_scene_node3d **)realloc(*stack, new_capacity * sizeof(**stack));
-        if (!grown)
-            return 0;
-        *stack = grown;
-        *capacity = new_capacity;
     }
     (*stack)[(*count)++] = node;
     return 1;
@@ -553,21 +596,11 @@ static int scene_node_const_stack_push(const rt_scene_node3d ***stack,
                                        size_t *count,
                                        size_t *capacity,
                                        const rt_scene_node3d *node) {
-    const rt_scene_node3d **grown;
-    size_t new_capacity;
     if (!stack || !count || !capacity || !node)
         return 1;
     if (*count >= *capacity) {
-        new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
-        if (new_capacity <= *capacity)
+        if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
             return 0;
-        if (new_capacity > SIZE_MAX / sizeof(**stack))
-            return 0;
-        grown = (const rt_scene_node3d **)realloc((void *)*stack, new_capacity * sizeof(**stack));
-        if (!grown)
-            return 0;
-        *stack = grown;
-        *capacity = new_capacity;
     }
     (*stack)[(*count)++] = node;
     return 1;
@@ -1262,19 +1295,11 @@ static int scene_bounds_stack_push(scene_bounds_stack_item_t **stack,
                                    size_t *capacity,
                                    rt_scene_node3d *node,
                                    const double *node_to_root) {
-    scene_bounds_stack_item_t *grown;
-    size_t new_capacity;
     if (!stack || !count || !capacity || !node || !node_to_root)
         return 1;
     if (*count >= *capacity) {
-        new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
-        if (new_capacity <= *capacity || new_capacity > SIZE_MAX / sizeof(**stack))
+        if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
             return 0;
-        grown = (scene_bounds_stack_item_t *)realloc(*stack, new_capacity * sizeof(**stack));
-        if (!grown)
-            return 0;
-        *stack = grown;
-        *capacity = new_capacity;
     }
     (*stack)[*count].node = node;
     memcpy((*stack)[*count].node_to_root, node_to_root, sizeof(double) * 16);
@@ -1470,19 +1495,11 @@ int scene_index_build_stack_push(scene_index_build_stack_item_t **stack,
                                  size_t *capacity,
                                  rt_scene_node3d *node,
                                  void *inherited_animator) {
-    scene_index_build_stack_item_t *grown;
-    size_t new_capacity;
     if (!stack || !count || !capacity || !node)
         return 1;
     if (*count >= *capacity) {
-        new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
-        if (new_capacity <= *capacity || new_capacity > SIZE_MAX / sizeof(**stack))
+        if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
             return 0;
-        grown = (scene_index_build_stack_item_t *)realloc(*stack, new_capacity * sizeof(**stack));
-        if (!grown)
-            return 0;
-        *stack = grown;
-        *capacity = new_capacity;
     }
     (*stack)[*count].node = node;
     (*stack)[*count].inherited_animator = inherited_animator;
@@ -1746,19 +1763,11 @@ static int scene_draw_stack_push(scene_draw_stack_item_t **stack,
                                  size_t *capacity,
                                  rt_scene_node3d *node,
                                  void *inherited_animator) {
-    scene_draw_stack_item_t *grown;
-    size_t new_capacity;
     if (!stack || !count || !capacity || !node)
         return 1;
     if (*count >= *capacity) {
-        new_capacity = *capacity > 0 ? *capacity * 2u : 64u;
-        if (new_capacity <= *capacity || new_capacity > SIZE_MAX / sizeof(**stack))
+        if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
             return 0;
-        grown = (scene_draw_stack_item_t *)realloc(*stack, new_capacity * sizeof(**stack));
-        if (!grown)
-            return 0;
-        *stack = grown;
-        *capacity = new_capacity;
     }
     (*stack)[*count].node = node;
     (*stack)[*count].inherited_animator = inherited_animator;
@@ -1899,6 +1908,38 @@ static int scene3d_node_cull_test(rt_scene_node3d *current,
     return 1;
 }
 
+static int scene3d_cached_world_bounds_cull_test(rt_scene_node3d *current,
+                                                 const vgfx3d_frustum_t *frustum,
+                                                 const scene3d_pvs_context_t *pvs,
+                                                 const double world_min_d[3],
+                                                 const double world_max_d[3],
+                                                 int32_t *culled) {
+    float world_min[3];
+    float world_max[3];
+    if (!current || !world_min_d || !world_max_d)
+        return 1;
+    if (pvs && pvs->active &&
+        !scene3d_pvs_allows_aabb(current->owner_scene, pvs, world_min_d, world_max_d)) {
+        if (culled)
+            (*culled)++;
+        if (pvs->culled_count)
+            (*pvs->culled_count)++;
+        return 0;
+    }
+    if (!frustum)
+        return 1;
+    for (int i = 0; i < 3; ++i) {
+        world_min[i] = scene3d_float_or_zero(world_min_d[i]);
+        world_max[i] = scene3d_float_or_zero(world_max_d[i]);
+    }
+    if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
+        if (culled)
+            (*culled)++;
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Submit a node's resolved mesh to the canvas (skinned when an animator palette exists).
 static void scene3d_submit_node_draw(rt_scene_node3d *current,
                                      void *canvas3d,
@@ -1975,6 +2016,52 @@ static void scene3d_draw_node_self(rt_scene_node3d *current,
                                 culled))
         return;
 
+    scene3d_submit_node_draw(
+        current, canvas3d, draw_mesh, draw_material, effective_animator, visible_nodes);
+}
+
+static void scene3d_draw_spatial_entry(rt_scene3d_spatial_entry *entry,
+                                       void *canvas3d,
+                                       rt_canvas3d *canvas,
+                                       rt_camera3d *cam,
+                                       const vgfx3d_frustum_t *frustum,
+                                       const scene3d_pvs_context_t *pvs,
+                                       int32_t *culled,
+                                       int32_t *visible_nodes,
+                                       const float *cam_pos) {
+    rt_scene_node3d *current;
+    void *effective_animator;
+    void *draw_mesh;
+    void *draw_material;
+    float draw_min[3];
+    float draw_max[3];
+    float draw_radius;
+    int use_cached_bounds;
+    if (!entry || !entry->node)
+        return;
+    current = entry->node;
+    effective_animator = scene3d_effective_animator(current);
+    recompute_world_matrix(current);
+    draw_mesh = scene3d_resolve_draw_mesh(
+        current, canvas, cam, cam_pos, &draw_material, draw_min, draw_max, &draw_radius);
+    use_cached_bounds =
+        draw_mesh == current->mesh &&
+        !scene3d_mesh_has_dynamic_deformation((rt_mesh3d *)draw_mesh, effective_animator);
+    if (use_cached_bounds) {
+        if (!scene3d_cached_world_bounds_cull_test(
+                current, frustum, pvs, entry->world_min, entry->world_max, culled))
+            return;
+    } else if (!scene3d_node_cull_test(current,
+                                       frustum,
+                                       pvs,
+                                       draw_mesh,
+                                       draw_min,
+                                       draw_max,
+                                       draw_radius,
+                                       effective_animator,
+                                       culled)) {
+        return;
+    }
     scene3d_submit_node_draw(
         current, canvas3d, draw_mesh, draw_material, effective_animator, visible_nodes);
 }
@@ -2066,17 +2153,15 @@ static int draw_node_spatial(rt_scene3d *scene,
     if (culled)
         *culled += scene->spatial_index.last_prefiltered_count;
     for (int32_t i = 0; i < candidates.count; ++i) {
-        rt_scene_node3d *node = candidates.items[i]->node;
-        scene3d_draw_node_self(node,
-                               canvas3d,
-                               canvas,
-                               cam,
-                               frustum,
-                               pvs,
-                               culled,
-                               visible_nodes,
-                               cam_pos,
-                               scene3d_effective_animator(node));
+        scene3d_draw_spatial_entry(candidates.items[i],
+                                   canvas3d,
+                                   canvas,
+                                   cam,
+                                   frustum,
+                                   pvs,
+                                   culled,
+                                   visible_nodes,
+                                   cam_pos);
     }
     free(candidates.items);
     return 1;
@@ -2112,12 +2197,15 @@ static void rt_scene3d_finalize(void *obj) {
         scene3d_release_ref((void **)&scene->visibility_zones[i].name);
     free(scene->visibility_zones);
     free(scene->visibility_portals);
+    free(scene->query_candidates);
     scene->visibility_zones = NULL;
     scene->visibility_portals = NULL;
+    scene->query_candidates = NULL;
     scene->visibility_zone_count = 0;
     scene->visibility_zone_capacity = 0;
     scene->visibility_portal_count = 0;
     scene->visibility_portal_capacity = 0;
+    scene->query_candidate_capacity = 0;
 }
 
 /// @brief Allocate a fresh Scene3D with an empty root node and no lights or skybox.

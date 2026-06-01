@@ -79,11 +79,13 @@ int8_t rt_anim_controller3d_set_blend_tree(void *controller, void *blend_tree);
 int8_t rt_anim_controller3d_set_ik_solver(void *controller, void *ik_solver);
 
 /// @brief Schedule an event to fire when @p state_name reaches @p time_seconds during playback.
+/// @details Event names are stored in a fixed queue and truncated to 63 bytes plus NUL.
 void rt_anim_controller3d_add_event(void *controller,
                                     rt_string state_name,
                                     double time_seconds,
                                     rt_string event_name);
 /// @brief Pop the next pending event name (empty string when none queued).
+/// @details Pending event names are bounded to 63 bytes; oldest queued events drop on overflow.
 rt_string rt_anim_controller3d_poll_event(void *controller);
 
 /// @brief Designate which bone provides root motion (-1 disables root motion).

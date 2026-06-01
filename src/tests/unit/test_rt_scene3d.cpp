@@ -2247,6 +2247,27 @@ static void test_scene_load_rejects_invalid_node_references() {
                 "Scene3D.Load rejects node mesh references outside the mesh table");
 }
 
+static void test_scene_load_rejects_out_of_range_numeric_indices() {
+    const char *path = "/tmp/viper_scene_out_of_range_index.vscn";
+    const char *json = "{\n"
+                       "  \"format\": \"vscn\",\n"
+                       "  \"version\": 2,\n"
+                       "  \"textures\": [],\n"
+                       "  \"cubemaps\": [],\n"
+                       "  \"materials\": [],\n"
+                       "  \"meshes\": [],\n"
+                       "  \"nodes\": [\n"
+                       "    {\"name\": \"bad\", \"position\": [0,0,0], \"rotation\": [0,0,0,1], "
+                       "\"scale\": [1,1,1], \"visible\": true, "
+                       "\"mesh\": 9223372036854775808.0, \"material\": -1}\n"
+                       "  ]\n"
+                       "}\n";
+    EXPECT_TRUE(write_text_file(path, json), "Out-of-range-index VSCN fixture can be written");
+    void *loaded = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded == nullptr,
+                "Scene3D.Load rejects out-of-range numeric indices without unsafe casts");
+}
+
 static void test_scene_load_sanitizes_degenerate_rotation() {
     const char *path = "/tmp/viper_scene_degenerate_rotation.vscn";
     const char *json = "{\n"
@@ -2356,6 +2377,7 @@ int main() {
     test_scene_save_rejects_wrong_handle();
     test_scene_load_rejects_malformed_json();
     test_scene_load_rejects_invalid_node_references();
+    test_scene_load_rejects_out_of_range_numeric_indices();
     test_scene_load_sanitizes_degenerate_rotation();
     test_scene_roundtrip_preserves_high_precision_transform();
 

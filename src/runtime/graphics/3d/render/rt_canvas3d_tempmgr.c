@@ -291,6 +291,7 @@ void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
         free(c->temp_buffers[i]);
     c->temp_buf_count = 0;
     c->mesh_snapshot_count = 0;
+    c->mesh_snapshot_bytes = 0u;
 }
 
 /// @brief Release every tracked transient GC object (called at end of frame).

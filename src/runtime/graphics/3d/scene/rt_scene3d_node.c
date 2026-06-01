@@ -285,6 +285,12 @@ void *rt_scene_node3d_get_world_scale(void *obj) {
     sx = sqrt(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
     sy = sqrt(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
     sz = sqrt(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
+    if (!isfinite(sx))
+        sx = 1.0;
+    if (!isfinite(sy))
+        sy = 1.0;
+    if (!isfinite(sz))
+        sz = 1.0;
     return rt_vec3_new(sx, sy, sz);
 }
 
@@ -301,9 +307,13 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
     if (child->parent == parent)
         return 1;
 
-    /* Reject cycle formation: parent may not already be inside child's subtree. */
-    if (node_contains(child, parent))
-        return 0;
+    /* Reject cycle formation by walking the proposed parent's ancestor chain.
+     * The hierarchy is a tree, so this is equivalent to subtree search and avoids
+     * scanning every descendant of large child subtrees on reparent. */
+    for (rt_scene_node3d *ancestor = parent; ancestor; ancestor = ancestor->parent) {
+        if (ancestor == child)
+            return 0;
+    }
 
     /* Grow children array if needed */
     if (parent->child_count >= parent->child_capacity) {

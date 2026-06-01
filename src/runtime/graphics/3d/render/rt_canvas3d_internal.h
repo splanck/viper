@@ -174,11 +174,20 @@ static inline void rt_mesh3d_refresh_bounds(rt_mesh3d *mesh) {
                              sizeof(vgfx3d_vertex_t),
                              mesh->aabb_min,
                              mesh->aabb_max);
+    if (!isfinite(mesh->aabb_min[0]) || !isfinite(mesh->aabb_min[1]) ||
+        !isfinite(mesh->aabb_min[2]) || !isfinite(mesh->aabb_max[0]) ||
+        !isfinite(mesh->aabb_max[1]) || !isfinite(mesh->aabb_max[2])) {
+        rt_mesh3d_reset_bounds(mesh);
+        return;
+    }
     {
-        float dx = mesh->aabb_max[0] - mesh->aabb_min[0];
-        float dy = mesh->aabb_max[1] - mesh->aabb_min[1];
-        float dz = mesh->aabb_max[2] - mesh->aabb_min[2];
-        mesh->bsphere_radius = 0.5f * sqrtf(dx * dx + dy * dy + dz * dz);
+        double dx = (double)mesh->aabb_max[0] - (double)mesh->aabb_min[0];
+        double dy = (double)mesh->aabb_max[1] - (double)mesh->aabb_min[1];
+        double dz = (double)mesh->aabb_max[2] - (double)mesh->aabb_min[2];
+        double radius = 0.5 * sqrt(dx * dx + dy * dy + dz * dz);
+        if (!isfinite(radius) || radius < 0.0)
+            radius = (double)FLT_MAX;
+        mesh->bsphere_radius = radius > (double)FLT_MAX ? FLT_MAX : (float)radius;
     }
     mesh->bounds_dirty = 0;
 }
@@ -325,6 +334,7 @@ typedef struct {
 #define VGFX3D_MAX_LIGHTS 64
 #define VGFX3D_MAX_SHADOW_LIGHTS 4
 #define RT_CANVAS3D_EVENT_QUEUE_CAPACITY 128
+#define RT_CANVAS3D_MESH_SNAPSHOT_FRAME_BYTE_BUDGET (256ull * 1024ull * 1024ull)
 
 typedef struct {
     void *source;
@@ -400,11 +410,8 @@ static inline int vgfx3d_rendertarget_ensure_color(vgfx3d_rendertarget_t *target
     if ((size_t)target->height > SIZE_MAX / (size_t)target->stride)
         return 0;
     bytes = (size_t)target->height * (size_t)target->stride;
-    target->color_buf = (uint8_t *)malloc(bytes);
-    if (!target->color_buf)
-        return 0;
-    memset(target->color_buf, 0, bytes);
-    return 1;
+    target->color_buf = (uint8_t *)calloc(bytes, 1u);
+    return target->color_buf != NULL;
 }
 
 /// @brief Lazily allocate the RGBA float HDR color buffer (zero-filled).
@@ -591,6 +598,7 @@ typedef struct {
     rt_canvas3d_mesh_snapshot_entry *mesh_snapshots;
     int32_t mesh_snapshot_count;
     int32_t mesh_snapshot_capacity;
+    size_t mesh_snapshot_bytes;
 
     /* Temporary runtime objects retained until end of frame */
     void **temp_objects;
