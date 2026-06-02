@@ -1037,10 +1037,10 @@ static int game3d_string_has_bytes(rt_string value) {
     return bytes && bytes[0] != '\0';
 }
 
-/// @brief Whether @p path ends in a supported 3D model extension (.vscn/.gltf/.glb/.fbx/.obj),
-/// case-insensitive.
+/// @brief Whether @p path ends in a supported 3D model extension
+/// (.vscn/.gltf/.glb/.fbx/.obj/.stl), case-insensitive.
 static int game3d_path_has_model_extension(const char *path) {
-    static const char *const exts[] = {".vscn", ".gltf", ".glb", ".fbx", ".obj"};
+    static const char *const exts[] = {".vscn", ".gltf", ".glb", ".fbx", ".obj", ".stl"};
     if (!path)
         return 0;
     const char *dot = strrchr(path, '.');
@@ -1915,7 +1915,7 @@ static rt_game3d_asset_handle *game3d_asset_handle_pending(rt_string path,
 }
 
 /// @brief Validate an async asset request up front, returning an error string if it cannot start.
-/// @return NULL if the request is valid, else an owned error message.
+/// @return Empty string if the request is valid, else an owned error message.
 static rt_string game3d_asset_handle_preflight_error(rt_game3d_asset_handle *handle) {
     const char *path = handle && handle->path ? rt_string_cstr(handle->path) : NULL;
     if (!path || !*path)

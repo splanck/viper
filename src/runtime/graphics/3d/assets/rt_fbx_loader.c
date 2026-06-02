@@ -205,7 +205,7 @@ static void fbx_join_path(char *out, size_t out_size, const char *dir, const cha
 }
 
 /// @brief Sanitize a texture reference into a safe relative path in @p out (path-traversal
-///   guard): normalizes separators, then rejects absolute paths, scheme URIs ("://"), and any
+///   guard): normalizes separators, then rejects absolute paths, URI scheme separators, and any
 ///   ".." segment, collapsing "." and redundant slashes into forward-slash-joined segments.
 /// @return Non-zero if a non-empty safe path was written; 0 if empty, unsafe, or overflowing.
 static int fbx_normalize_relative_texture_ref(const char *src, char *out, size_t out_size) {
@@ -218,7 +218,7 @@ static int fbx_normalize_relative_texture_ref(const char *src, char *out, size_t
     if (strlen(src) >= sizeof(normalized))
         return 0;
     fbx_normalize_path(normalized, sizeof(normalized), src);
-    if (!*normalized || fbx_is_absolute_path(normalized) || strstr(normalized, "://"))
+    if (!*normalized || fbx_is_absolute_path(normalized) || strchr(normalized, ':'))
         return 0;
     p = normalized;
     out[0] = '\0';
@@ -1839,7 +1839,8 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                                   int32_t mesh_binding_count,
                                   const fbx_material_binding_t *material_bindings,
                                   int32_t material_binding_count,
-                                  int z_up) {
+                                  int z_up,
+                                  int *out_failed) {
     typedef struct {
         int64_t id;
         int64_t parent_id;
@@ -1853,6 +1854,9 @@ static void *fbx_build_scene_root(fbx_node_t *root,
     void *scene_root = NULL;
     void *default_material = NULL;
     int failed = 0;
+
+    if (out_failed)
+        *out_failed = 0;
 
     if (!root || !objects)
         return NULL;
@@ -2026,7 +2030,12 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                     }
                     rt_scene_node3d_set_mesh(mesh_node, slot_mesh);
                     rt_scene_node3d_set_material(mesh_node, slot_material);
-                    rt_scene_node3d_add_child(models[i].node, mesh_node);
+                    if (!rt_scene_node3d_try_add_child(models[i].node, mesh_node)) {
+                        fbx_release_ref(&mesh_node);
+                        fbx_release_ref(&slot_mesh);
+                        failed = 1;
+                        break;
+                    }
                     fbx_release_ref(&mesh_node);
                     fbx_release_ref(&slot_mesh);
                     extra_mesh_count++;
@@ -2052,7 +2061,11 @@ static void *fbx_build_scene_root(fbx_node_t *root,
             }
             rt_scene_node3d_set_mesh(mesh_node, mesh);
             rt_scene_node3d_set_material(mesh_node, material ? material : default_material);
-            rt_scene_node3d_add_child(models[i].node, mesh_node);
+            if (!rt_scene_node3d_try_add_child(models[i].node, mesh_node)) {
+                fbx_release_ref(&mesh_node);
+                failed = 1;
+                break;
+            }
             fbx_release_ref(&mesh_node);
             extra_mesh_count++;
         }
@@ -2076,7 +2089,10 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                 }
             }
         }
-        rt_scene_node3d_add_child(parent, models[i].node);
+        if (!rt_scene_node3d_try_add_child(parent, models[i].node)) {
+            failed = 1;
+            break;
+        }
     }
 
     for (int32_t i = 0; i < model_count; i++)
@@ -2085,6 +2101,8 @@ static void *fbx_build_scene_root(fbx_node_t *root,
     fbx_release_ref(&default_material);
 
     if (failed) {
+        if (out_failed)
+            *out_failed = 1;
         fbx_release_ref(&scene_root);
         return NULL;
     }
@@ -3418,7 +3436,8 @@ static void *fbx_load_ascii_minimal(const char *text) {
     rt_scene_node3d_set_name(mesh_node, rt_const_cstr("mesh_0"));
     rt_scene_node3d_set_mesh(mesh_node, mesh);
     rt_scene_node3d_set_material(mesh_node, material);
-    rt_scene_node3d_add_child(scene_root, mesh_node);
+    if (!rt_scene_node3d_try_add_child(scene_root, mesh_node))
+        goto fail;
     asset->scene_root = scene_root;
     fbx_release_ref(&mesh_node);
     free(positions);
@@ -4066,14 +4085,28 @@ void *rt_fbx_load(rt_string path) {
     fbx_extract_animations(
         &root, &ct, asset->skeleton, z_up, &asset->animations, &asset->animation_count);
 
-    asset->scene_root = fbx_build_scene_root(&root,
-                                             objects,
-                                             &ct,
-                                             mesh_bindings,
-                                             mesh_binding_count,
-                                             material_bindings,
-                                             material_binding_count,
-                                             z_up);
+    {
+        int scene_failed = 0;
+        asset->scene_root = fbx_build_scene_root(&root,
+                                                 objects,
+                                                 &ct,
+                                                 mesh_bindings,
+                                                 mesh_binding_count,
+                                                 material_bindings,
+                                                 material_binding_count,
+                                                 z_up,
+                                                 &scene_failed);
+        if (scene_failed) {
+            free(ct.entries);
+            fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
+            fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
+            free(material_bindings);
+            fbx_free_node(&root);
+            fbx_release_ref((void **)&asset);
+            rt_trap("FBX.Load: failed to build scene hierarchy");
+            return NULL;
+        }
+    }
 
     /* Cleanup parser data */
     free(ct.entries);

@@ -2130,7 +2130,7 @@ static int gltf_nonnegative_size(void *obj, const char *key, size_t def, size_t 
 
 /// @brief Sanitize a decoded glTF resource URI into a safe relative path in @p out.
 /// @details Path-traversal guard for external buffers/images: rejects absolute paths,
-///   Windows drive letters (`X:`), and scheme URIs (`foo://`), forbids any `..` segment,
+///   Windows drive letters (`X:`), URI scheme separators, forbids any `..` segment,
 ///   and collapses `.` and redundant separators, emitting forward-slash-joined segments.
 /// @return Non-zero if a non-empty safe path was written; 0 (with out[0]='\0') if the URI
 ///   is empty, unsafe, or would overflow @p out_cap.
@@ -2145,7 +2145,7 @@ static int gltf_normalize_relative_uri(const char *decoded_uri, char *out, size_
         return 0;
     if (decoded_uri[0] == '/' || decoded_uri[0] == '\\')
         return 0;
-    if ((decoded_uri[0] && decoded_uri[1] == ':') || strstr(decoded_uri, "://"))
+    if (strchr(decoded_uri, ':') || strstr(decoded_uri, "://"))
         return 0;
 
     p = decoded_uri;
@@ -2336,6 +2336,11 @@ static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len
             free(compact);
             return NULL;
         }
+        if ((c == -2 && d != -2) || ((c == -2 || d == -2) && i < len)) {
+            free(output);
+            free(compact);
+            return NULL;
+        }
         if (c == -2)
             c = 0;
         if (d == -2)
@@ -2363,7 +2368,7 @@ static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len
 /// Recognises the base64 marker and strips the MIME-type prefix.
 /// Used for inline texture / buffer data so a single .gltf file
 /// can be self-contained without separate .bin sidecars.
-/// @return 0 on success (writes decoded bytes + MIME type), -1 on malformed URI.
+/// @return 1 on success (writes decoded bytes + MIME type), 0 on malformed URI.
 static int gltf_parse_data_uri(
     const char *uri, char *mime_buf, size_t mime_buf_cap, uint8_t **out_data, size_t *out_len) {
     const char *comma;
@@ -3758,7 +3763,12 @@ static rt_scene_node3d *gltf_clone_scene_node(const rt_scene_node3d *src) {
             gltf_release_local(root);
             return NULL;
         }
-        rt_scene_node3d_add_child(frame->dst, dst_child);
+        if (!rt_scene_node3d_try_add_child(frame->dst, dst_child)) {
+            gltf_release_local(dst_child);
+            free(stack);
+            gltf_release_local(root);
+            return NULL;
+        }
         gltf_release_local(dst_child);
         if (stack_count >= stack_capacity) {
             gltf_clone_frame_t *grown;
@@ -4221,9 +4231,9 @@ static int gltf_hex_digit(char ch) {
 
 /// @brief Decode a percent-encoded URI path component into a plain filesystem path string.
 /// @details Converts `%XX` escape sequences to their byte values, stops at `#` (fragment)
-///          or `?` (query), and NUL-terminates @p out. Handles malformed escapes by copying
-///          them verbatim. Does not handle scheme prefixes (file://, http://) — caller must
-///          strip those before passing here.
+///          or `?` (query), and NUL-terminates @p out. Rejects malformed escapes and decoded
+///          NUL bytes. Does not handle scheme prefixes (file://, http://) — caller rejects those
+///          after decode.
 static int gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
     size_t oi = 0;
     if (!out || out_cap == 0)
@@ -4237,7 +4247,7 @@ static int gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
             break;
         if (oi + 1 >= out_cap)
             return 0;
-        if (*uri == '%' && uri[1] && uri[2]) {
+        if (*uri == '%') {
             int hi = gltf_hex_digit(uri[1]);
             int lo = gltf_hex_digit(uri[2]);
             if (hi >= 0 && lo >= 0) {
@@ -4248,6 +4258,7 @@ static int gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
                 uri += 3;
                 continue;
             }
+            return 0;
         }
         if (*uri == '\0')
             return 0;
@@ -8091,7 +8102,7 @@ static void gltf_load_images_and_textures(void *root,
             if (image_path[0] != '\0')
                 images[i] = gltf_load_dependency_image(image_path, load_assets, preload_bundle);
             if (!images[i] && required_image &&
-                gltf_preload_image_is_supported_format(image_path)) {
+                gltf_preload_image_is_supported_format(image_path[0] != '\0' ? image_path : uri)) {
                 if (load_assets)
                     gltf_trap_asset_dependency(filepath, image_path, "image");
                 load_failed = 1;
@@ -8951,17 +8962,29 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                 int64_t skin_ref = jint(node_json, "skin", -1);
                 int64_t light_ref = jint(node_punctual_light, "light", -1);
                 nodes[ni] = node;
-                if (!node)
+                if (!node) {
+                    load_failed = 1;
                     continue;
+                }
                 node->import_index = ni;
 
                 if (!name || name[0] == '\0')
                     name = gltf_effective_node_name(
                         nodes_arr, ni, fallback_name, sizeof(fallback_name));
                 gltf_set_node_name(node, name);
-                if (light_ref >= 0 && light_ref < imported_light_count && imported_lights &&
-                    imported_lights[light_ref])
-                    rt_scene_node3d_set_light(node, imported_lights[light_ref]);
+                if (mesh_ref < -1 || skin_ref < -1 || light_ref < -1) {
+                    load_failed = 1;
+                    continue;
+                }
+                if (light_ref >= 0) {
+                    if (light_ref < imported_light_count && imported_lights &&
+                        imported_lights[light_ref]) {
+                        rt_scene_node3d_set_light(node, imported_lights[light_ref]);
+                    } else {
+                        load_failed = 1;
+                        continue;
+                    }
+                }
 
                 if (matrix_arr && jarr_len(matrix_arr) >= 16) {
                     double m[16];
@@ -9013,6 +9036,10 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                     load_failed = 1;
                     continue;
                 }
+                if (mesh_ref >= mesh_json_count) {
+                    load_failed = 1;
+                    continue;
+                }
 
                 if (mesh_ref >= 0 && mesh_ref < mesh_json_count && mesh_prim_count &&
                     mesh_prim_start) {
@@ -9021,6 +9048,11 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                     if (prim_count > 0) {
                         int mesh_index = prim_start;
                         void *node_mesh = NULL;
+                        if (prim_start < 0 || prim_start > asset->mesh_count ||
+                            prim_count > asset->mesh_count - prim_start) {
+                            load_failed = 1;
+                            continue;
+                        }
                         if (mesh_index >= 0 && mesh_index < asset->mesh_count) {
                             node_mesh = gltf_make_node_mesh_variant(
                                 asset, mesh_index, skin_ref, weights_arr, skins, skin_count);
@@ -9036,8 +9068,10 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                             void *prim_mesh = NULL;
                             int child_mesh_index = prim_start + pi;
                             rt_scene_node3d *prim_node = (rt_scene_node3d *)rt_scene_node3d_new();
-                            if (!prim_node)
-                                continue;
+                            if (!prim_node) {
+                                load_failed = 1;
+                                break;
+                            }
                             if (child_mesh_index >= 0 && child_mesh_index < asset->mesh_count) {
                                 prim_mesh = gltf_make_node_mesh_variant(asset,
                                                                         child_mesh_index,
@@ -9045,8 +9079,11 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                                                                         weights_arr,
                                                                         skins,
                                                                         skin_count);
-                                if (!prim_mesh)
+                                if (!prim_mesh) {
                                     load_failed = 1;
+                                    gltf_release_local(prim_node);
+                                    break;
+                                }
                             }
                             rt_scene_node3d_set_mesh(prim_node, prim_mesh);
                             if (prim_mesh && prim_mesh != asset->meshes[child_mesh_index])
@@ -9054,7 +9091,11 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                             if (primitive_materials && primitive_materials[prim_start + pi])
                                 rt_scene_node3d_set_material(prim_node,
                                                              primitive_materials[prim_start + pi]);
-                            rt_scene_node3d_add_child(node, prim_node);
+                            if (!rt_scene_node3d_try_add_child(node, prim_node)) {
+                                gltf_release_local(prim_node);
+                                load_failed = 1;
+                                break;
+                            }
                             gltf_release_local(prim_node);
                         }
                     }
@@ -9068,9 +9109,14 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                     int64_t child_idx = jvalue_int(rt_seq_get(children, (int64_t)ci), -1);
                     if (child_idx >= 0 && child_idx < node_json_count && nodes[ni] &&
                         nodes[child_idx]) {
-                        rt_scene_node3d_add_child(nodes[ni], nodes[child_idx]);
+                        if (!rt_scene_node3d_try_add_child(nodes[ni], nodes[child_idx])) {
+                            load_failed = 1;
+                            break;
+                        }
                     }
                 }
+                if (load_failed)
+                    break;
             }
 
             if (graph_valid && nodes) {
@@ -9094,9 +9140,10 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                             (uint8_t *)calloc((size_t)node_json_count, sizeof(*scene_active));
                         rt_scene_node3d *scene_root = NULL;
                         int scene_roots_valid = scene_seen != NULL && scene_active != NULL;
-                        int attached_any = 0;
                         char fallback_scene_name[64];
                         const char *scene_name = jstr(scene_json, "name");
+                        if (!scene_seen || !scene_active)
+                            load_failed = 1;
                         for (int i = 0; scene_roots_valid && i < jarr_len(scene_nodes); i++) {
                             int64_t node_idx = jvalue_int(rt_seq_get(scene_nodes, (int64_t)i), -1);
                             if (node_idx < 0 || node_idx >= node_json_count ||
@@ -9107,6 +9154,8 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                             }
                             scene_seen[node_idx] = 1;
                         }
+                        if (!load_failed && !scene_roots_valid)
+                            load_failed = 1;
                         if (scene_roots_valid) {
                             scene_root = (rt_scene_node3d *)rt_scene_node3d_new();
                             if (!scene_root) {
@@ -9123,7 +9172,11 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                                             load_failed = 1;
                                             break;
                                         }
-                                        rt_scene_node3d_add_child(scene_root, clone);
+                                        if (!rt_scene_node3d_try_add_child(scene_root, clone)) {
+                                            gltf_release_local(clone);
+                                            load_failed = 1;
+                                            break;
+                                        }
                                         gltf_release_local(clone);
                                         if (!gltf_mark_active_node_subtree(nodes_arr,
                                                                            node_json_count,
@@ -9132,12 +9185,11 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                                             load_failed = 1;
                                             break;
                                         }
-                                        attached_any = 1;
                                     }
                                 }
                             }
                         }
-                        if (!load_failed && scene_root && attached_any) {
+                        if (!load_failed && scene_root) {
                             snprintf(fallback_scene_name,
                                      sizeof(fallback_scene_name),
                                      order == 0 ? "default" : "scene_%d",
@@ -9160,6 +9212,8 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                                 scene_root = NULL;
                                 built_any = 1;
                             }
+                        } else if (!load_failed && !scene_root) {
+                            load_failed = 1;
                         }
                         if (scene_root)
                             gltf_release_local(scene_root);
@@ -9185,7 +9239,11 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                                     load_failed = 1;
                                     break;
                                 }
-                                rt_scene_node3d_add_child(scene_root, clone);
+                                if (!rt_scene_node3d_try_add_child(scene_root, clone)) {
+                                    gltf_release_local(clone);
+                                    load_failed = 1;
+                                    break;
+                                }
                                 gltf_release_local(clone);
                                 if (!gltf_mark_active_node_subtree(
                                         nodes_arr, node_json_count, i, scene_active)) {

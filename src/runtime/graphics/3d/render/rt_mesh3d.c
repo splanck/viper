@@ -2535,6 +2535,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
     obj_vertex_cache_free(&vertex_cache);
 
     if (parse_failed || ((rt_mesh3d *)mesh)->build_failed) {
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         rt_trap(line_too_long ? "Mesh3D.FromOBJ: line exceeds 1 MiB limit"
@@ -2543,6 +2544,7 @@ void *rt_mesh3d_from_obj(rt_string path) {
     }
 
     if (((rt_mesh3d *)mesh)->index_count < 3) {
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         rt_trap("Mesh3D.FromOBJ: invalid or unsupported geometry");
@@ -3073,6 +3075,8 @@ static int stl_emit_triangle(void *mesh, const float *verts, const float *normal
     rt_mesh3d_add_vertex(mesh, verts[0], verts[1], verts[2], 0, 0, 0, 0, 0);
     rt_mesh3d_add_vertex(mesh, verts[3], verts[4], verts[5], 0, 0, 0, 0, 0);
     rt_mesh3d_add_vertex(mesh, verts[6], verts[7], verts[8], 0, 0, 0, 0, 0);
+    if (((rt_mesh3d *)mesh)->build_failed)
+        return 0;
     if (stl_triangle_should_flip(verts, normal))
         rt_mesh3d_add_triangle(mesh, base, base + 2, base + 1);
     else
@@ -3578,7 +3582,7 @@ void *rt_mesh3d_from_stl(rt_string path) {
         size_t expected_binary = 0;
         if ((size_t)tri_count <= (SIZE_MAX - 84u) / 50u)
             expected_binary = 84u + (size_t)tri_count * 50u;
-        if (expected_binary != 0 && (size_t)file_len == expected_binary && tri_count > 0) {
+        if (expected_binary != 0 && (size_t)file_len >= expected_binary && tri_count > 0) {
             mesh = stl_load_binary_stream(f, tri_count);
             fclose(f);
             return mesh;
@@ -3632,7 +3636,7 @@ void *rt_mesh3d_from_stl(rt_string path) {
         size_t expected_binary = 0;
         if ((size_t)tri_count <= (SIZE_MAX - 84u) / 50u)
             expected_binary = 84u + (size_t)tri_count * 50u;
-        if (expected_binary != 0 && (size_t)file_len == expected_binary && tri_count > 0) {
+        if (expected_binary != 0 && (size_t)file_len >= expected_binary && tri_count > 0) {
             mesh = stl_load_binary(data, (size_t)file_len);
         }
     }

@@ -1605,15 +1605,16 @@ static void test_gltf_drops_invalid_optional_attributes() {
     EXPECT_TRUE(mesh != nullptr && mesh->index_count == 3,
                 "GLTF.Load keeps geometry after dropping malformed normals");
     if (mesh)
-        EXPECT_NEAR(mesh->vertices[0].normal[2], 1.0, 0.001,
+        EXPECT_NEAR(mesh->vertices[0].normal[2],
+                    1.0,
+                    0.001,
                     "GLTF.Load recalculates normals after dropping malformed normals");
 }
 
 static void test_gltf_rejects_unsorted_sparse_indices() {
     const char *gltf_path = "/tmp/viper_gltf_bad_sparse_order.gltf";
     std::vector<uint8_t> gltf_buffer;
-    const float base_positions[9] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                     0.0f, 0.0f, 0.0f, 0.0f};
+    const float base_positions[9] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     const uint16_t sparse_indices[2] = {2, 1};
     const float sparse_values[6] = {0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f};
     const uint16_t indices[3] = {0, 1, 2};
@@ -1636,11 +1637,14 @@ static void test_gltf_rejects_unsorted_sparse_indices() {
         buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
         "}],"
         "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(sparse_idx_off) +
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(sparse_idx_off) +
         ",\"byteLength\":4},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(sparse_value_off) +
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(sparse_value_off) +
         ",\"byteLength\":24},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(index_off) +
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(index_off) +
         ",\"byteLength\":6}],"
         "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\","
         "\"sparse\":{\"count\":2,\"indices\":{\"bufferView\":1,\"componentType\":5123},"
@@ -2964,6 +2968,80 @@ static void test_gltf_rejects_percent_decoded_nul_external_paths() {
                 "GLTF.Load rejects URI paths containing percent-decoded NUL bytes");
 }
 
+static void test_gltf_rejects_external_uri_schemes_and_malformed_escapes() {
+    const char *scheme_path = "/tmp/viper_gltf_scheme_uri.gltf";
+    std::string scheme_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"file:secret.bin\",\"byteLength\":4}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}]"
+        "}";
+    EXPECT_TRUE(write_text_file(scheme_path, scheme_json),
+                "Scheme-URI glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(scheme_path)) == nullptr,
+                "GLTF.Load rejects external URI schemes without relying on ://");
+
+    const char *escape_path = "/tmp/viper_gltf_bad_escape_uri.gltf";
+    std::string escape_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"buffers/%GG.bin\",\"byteLength\":4}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}]"
+        "}";
+    EXPECT_TRUE(write_text_file(escape_path, escape_json),
+                "Bad-escape glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(escape_path)) == nullptr,
+                "GLTF.Load rejects malformed percent escapes in external paths");
+}
+
+static void test_gltf_rejects_invalid_node_resource_references() {
+    const char *mesh_path = "/tmp/viper_gltf_invalid_node_mesh.gltf";
+    std::string mesh_json = "{"
+                            "\"asset\":{\"version\":\"2.0\"},"
+                            "\"meshes\":[{\"primitives\":[]}],"
+                            "\"nodes\":[{\"name\":\"BadMesh\",\"mesh\":1}],"
+                            "\"scenes\":[{\"nodes\":[0]}],"
+                            "\"scene\":0"
+                            "}";
+    EXPECT_TRUE(write_text_file(mesh_path, mesh_json),
+                "Invalid node mesh glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(mesh_path)) == nullptr,
+                "GLTF.Load rejects nodes that reference missing meshes");
+
+    const char *light_path = "/tmp/viper_gltf_invalid_node_light.gltf";
+    std::string light_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"extensionsUsed\":[\"KHR_lights_punctual\"],"
+        "\"extensions\":{\"KHR_lights_punctual\":{\"lights\":[{\"type\":\"point\"}]}},"
+        "\"nodes\":[{\"name\":\"BadLight\","
+        "\"extensions\":{\"KHR_lights_punctual\":{\"light\":1}}}],"
+        "\"scenes\":[{\"nodes\":[0]}],"
+        "\"scene\":0"
+        "}";
+    EXPECT_TRUE(write_text_file(light_path, light_json),
+                "Invalid node light glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(light_path)) == nullptr,
+                "GLTF.Load rejects nodes that reference missing punctual lights");
+}
+
+static void test_gltf_rejects_invalid_declared_scene_roots() {
+    const char *gltf_path = "/tmp/viper_gltf_invalid_declared_scene_root.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"nodes\":[{\"name\":\"Parent\",\"children\":[1]},{\"name\":\"Child\"}],"
+        "\"scenes\":[{\"nodes\":[1]}],"
+        "\"scene\":0"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Invalid declared-scene-root glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(gltf_path)) == nullptr,
+                "GLTF.Load rejects declared scene roots that are children of other nodes");
+}
+
 static void test_gltf_material_without_pbr_uses_pbr_defaults() {
     const char *gltf_path = "/tmp/viper_gltf_material_no_pbr.gltf";
     std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},\"materials\":[{}]}";
@@ -3131,8 +3209,22 @@ static void test_gltf_imports_material_extensions_supported_by_material3d() {
 static void test_gltf_imports_ktx2_basisu_textures() {
     const char *ktx_path = "/tmp/viper_gltf_basisu_albedo.ktx2";
     const char *gltf_path = "/tmp/viper_gltf_basisu_texture.gltf";
-    const uint8_t rgba[16] = {0x10, 0x20, 0x30, 0xFF, 0x40, 0x50, 0x60, 0xFF,
-                              0x70, 0x80, 0x90, 0xFF, 0xA0, 0xB0, 0xC0, 0xFF};
+    const uint8_t rgba[16] = {0x10,
+                              0x20,
+                              0x30,
+                              0xFF,
+                              0x40,
+                              0x50,
+                              0x60,
+                              0xFF,
+                              0x70,
+                              0x80,
+                              0x90,
+                              0xFF,
+                              0xA0,
+                              0xB0,
+                              0xC0,
+                              0xFF};
     EXPECT_TRUE(write_test_ktx2_rgba8(ktx_path, 2u, 2u, rgba, sizeof(rgba)),
                 "KTX2 fixture can be written");
     std::string gltf_json =
@@ -3431,7 +3523,8 @@ static void test_gltf_rejects_invalid_scene_graph_links() {
                 "Invalid scene-graph glTF fixture can be created");
 
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
-    EXPECT_TRUE(asset == nullptr, "GLTF.Load rejects cyclic node graphs instead of returning an empty scene");
+    EXPECT_TRUE(asset == nullptr,
+                "GLTF.Load rejects cyclic node graphs instead of returning an empty scene");
 }
 
 int main() {
@@ -3470,6 +3563,9 @@ int main() {
     test_gltf_rejects_unsafe_external_buffer_paths();
     test_gltf_accepts_dot_relative_external_buffer_paths();
     test_gltf_rejects_percent_decoded_nul_external_paths();
+    test_gltf_rejects_external_uri_schemes_and_malformed_escapes();
+    test_gltf_rejects_invalid_node_resource_references();
+    test_gltf_rejects_invalid_declared_scene_roots();
     test_gltf_material_without_pbr_uses_pbr_defaults();
     test_gltf_assigns_default_material_to_materialless_primitives();
     test_gltf_uses_texture_texcoord_and_transform();

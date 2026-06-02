@@ -479,8 +479,7 @@ void *rt_game3d_entity_add_child(void *obj, void *child_obj) {
     entity->children[entity->child_count++] = child;
     child->parent = entity;
     if (entity->node && child->node) {
-        rt_scene_node3d_add_child(entity->node, child->node);
-        if (rt_scene_node3d_get_parent(child->node) != entity->node) {
+        if (!rt_scene_node3d_try_add_child(entity->node, child->node)) {
             entity->children[--entity->child_count] = NULL;
             child->parent = NULL;
             game3d_release_ref((void **)&child);

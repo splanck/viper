@@ -2146,6 +2146,29 @@ static bool test_phase4_assets3d_model_templates() {
     rt_string_unref(sync_only_path_s);
     std::remove(sync_only_path);
 
+    const char *stl_path = "/tmp/viper_game3d_async_stl_model.stl";
+    const char *stl = "solid tri\n"
+                      "facet normal 0 0 1\n"
+                      "  outer loop\n"
+                      "    vertex 0 0 0\n"
+                      "    vertex 1 0 0\n"
+                      "    vertex 0 1 0\n"
+                      "  endloop\n"
+                      "endfacet\n"
+                      "endsolid tri\n";
+    EXPECT_TRUE(write_text_file(stl_path, stl), "test can write async STL model fixture");
+    rt_string stl_path_s = rt_string_from_bytes(stl_path, std::strlen(stl_path));
+    void *stl_handle = rt_game3d_assets_load_model_template_async(stl_path_s);
+    EXPECT_TRUE(stl_handle != nullptr,
+                "LoadModelTemplateAsync returns a handle for an STL model format");
+    EXPECT_TRUE(wait_asset_ready(stl_handle), "STL AssetHandle3D completes through async load");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(stl_handle)), "") == 0,
+                "STL AssetHandle3D has no async format policy error");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_template(stl_handle) != nullptr,
+                "STL AssetHandle3D exposes the loaded template result");
+    rt_string_unref(stl_path_s);
+    std::remove(stl_path);
+
     void *asset_model_handle = rt_game3d_assets_load_model_asset_async(path);
     EXPECT_TRUE(asset_model_handle != nullptr, "LoadModelAssetAsync returns an AssetHandle3D");
     EXPECT_TRUE(rt_game3d_asset_handle_get_ready(asset_model_handle) == 0,

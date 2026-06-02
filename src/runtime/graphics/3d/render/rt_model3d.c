@@ -41,6 +41,7 @@
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_morphtarget3d.h"
+#include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
@@ -49,6 +50,7 @@
 #include "rt_trap.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -439,7 +441,7 @@ static void model_set_root_name(rt_scene_node3d *root, const char *path_cstr) {
 /// shares static geometry with the template instead of duplicating GPU resources. When
 /// requested, morph-enabled meshes are cloned with independent MorphTarget3D state so
 /// blend-shape weights can diverge per instance. Children are cloned recursively and
-/// parented to the clone via `rt_scene_node3d_add_child`, then the caller's local reference
+/// parented to the clone via `rt_scene_node3d_try_add_child`, then the caller's local reference
 /// is released so the parent owns the only retain.
 static void *model_clone_mutable_mesh(void *mesh) {
     rt_mesh3d *src = (rt_mesh3d *)mesh;
@@ -578,8 +580,7 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_m
             model_release_local(root);
             return NULL;
         }
-        rt_scene_node3d_add_child(frame->dst, dst_child);
-        if (rt_scene_node3d_get_parent(dst_child) != frame->dst) {
+        if (!rt_scene_node3d_try_add_child(frame->dst, dst_child)) {
             model_release_local(dst_child);
             free(stack);
             model_release_local(root);
@@ -616,17 +617,21 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_m
 /// to graft the imported scene's top-level children under the synthesized template root
 /// *without* copying the import's own root (which often carries loader-specific metadata
 /// we don't want to leak into the user-visible tree).
-static void model_clone_children_to_root(rt_scene_node3d *dst_root,
-                                         const rt_scene_node3d *src_root) {
+static int model_clone_children_to_root(rt_scene_node3d *dst_root,
+                                        const rt_scene_node3d *src_root) {
     if (!dst_root || !src_root)
-        return;
+        return 0;
     for (int32_t i = 0; i < src_root->child_count; i++) {
         rt_scene_node3d *child = model_clone_node(src_root->children[i], 0);
-        if (child) {
-            rt_scene_node3d_add_child(dst_root, child);
+        if (!child)
+            return 0;
+        if (!rt_scene_node3d_try_add_child(dst_root, child)) {
             model_release_local(child);
+            return 0;
         }
+        model_release_local(child);
     }
+    return 1;
 }
 
 static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *node);
@@ -807,16 +812,18 @@ static int model_has_ext(const char *path_cstr, const char *ext) {
 /// parented under the template root, with material assignment: single shared material
 /// if the asset has exactly one, otherwise parallel indexing by mesh slot. No-op when
 /// the template root already has children (i.e. the importer gave us a real hierarchy).
-static void model_build_synth_mesh_nodes(rt_model3d *model) {
+static int model_build_synth_mesh_nodes(rt_model3d *model) {
     char name[64];
-    if (!model || !model->template_root || model->template_root->child_count > 0)
-        return;
+    if (!model || !model->template_root)
+        return 0;
+    if (model->template_root->child_count > 0)
+        return 1;
 
     for (int32_t i = 0; i < model->mesh_count; i++) {
         rt_scene_node3d *node = (rt_scene_node3d *)rt_scene_node3d_new();
         void *material = NULL;
         if (!node)
-            continue;
+            return 0;
         snprintf(name, sizeof(name), "mesh_%d", (int)i);
         rt_scene_node3d_set_name(node, rt_const_cstr(name));
         rt_scene_node3d_set_mesh(node, model->meshes[i]);
@@ -826,9 +833,13 @@ static void model_build_synth_mesh_nodes(rt_model3d *model) {
             material = model->materials[i];
         if (material)
             rt_scene_node3d_set_material(node, material);
-        rt_scene_node3d_add_child(model->template_root, node);
+        if (!rt_scene_node3d_try_add_child(model->template_root, node)) {
+            model_release_local(node);
+            return 0;
+        }
         model_release_local(node);
     }
+    return 1;
 }
 
 typedef struct {
@@ -853,8 +864,7 @@ static char *model_strdup_range(const char *start, const char *end) {
         end = start + strlen(start);
     while (start < end && (*start == ' ' || *start == '\t'))
         start++;
-    while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' ||
-                           end[-1] == '\r'))
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' || end[-1] == '\r'))
         end--;
     len = (size_t)(end - start);
     copy = (char *)malloc(len + 1u);
@@ -904,9 +914,8 @@ static int model_obj_material_table_append(model_obj_material_table *table,
                                                     (size_t)new_capacity * sizeof(*grown));
         if (!grown)
             return 0;
-        memset(grown + table->capacity,
-               0,
-               (size_t)(new_capacity - table->capacity) * sizeof(*grown));
+        memset(
+            grown + table->capacity, 0, (size_t)(new_capacity - table->capacity) * sizeof(*grown));
         table->entries = grown;
         table->capacity = new_capacity;
     }
@@ -961,7 +970,7 @@ static int model_is_absolute_path(const char *path) {
 }
 
 /// @brief Sanitize an asset reference into a safe relative path in @p out (path-traversal
-///   guard): converts '\\' to '/', then rejects absolute paths, scheme URIs ("://"), and any
+///   guard): converts '\\' to '/', then rejects absolute paths, URI scheme separators, and any
 ///   ".." segment, collapsing "." and redundant slashes.
 /// @return Non-zero if a non-empty safe path was written; 0 if empty, unsafe, or overflowing.
 static int model_normalize_relative_asset_ref(const char *src, char *out, size_t out_size) {
@@ -974,6 +983,8 @@ static int model_normalize_relative_asset_ref(const char *src, char *out, size_t
         return 0;
     while (*src && ni + 1u < sizeof(normalized)) {
         char ch = *src++;
+        if (ch == ':')
+            return 0;
         normalized[ni++] = ch == '\\' ? '/' : ch;
     }
     if (*src)
@@ -1015,21 +1026,78 @@ static int model_normalize_relative_asset_ref(const char *src, char *out, size_t
 ///   is empty), bounds-checked. @return 1 on success, 0 on bad input or overflow.
 static int model_join_path(char *out, size_t out_size, const char *dir, const char *leaf) {
     size_t dir_len;
+    size_t leaf_len;
     if (!out || out_size == 0 || !leaf || !*leaf)
         return 0;
+    leaf_len = strlen(leaf);
     if (!dir || !*dir) {
-        if (strlen(leaf) >= out_size)
+        if (leaf_len >= out_size)
             return 0;
-        strcpy(out, leaf);
+        memcpy(out, leaf, leaf_len);
+        out[leaf_len] = '\0';
         return 1;
     }
     dir_len = strlen(dir);
-    if (dir_len + 1u + strlen(leaf) >= out_size)
+    if (dir_len + 1u + leaf_len >= out_size)
         return 0;
     memcpy(out, dir, dir_len);
     out[dir_len++] = '/';
-    strcpy(out + dir_len, leaf);
+    memcpy(out + dir_len, leaf, leaf_len);
+    out[dir_len + leaf_len] = '\0';
     return 1;
+}
+
+static const char *model_obj_skip_ws(const char *p) {
+    while (p && (*p == ' ' || *p == '\t'))
+        p++;
+    return p;
+}
+
+static int model_obj_line_tail_done(const char *p) {
+    p = model_obj_skip_ws(p);
+    return !p || *p == '\0' || *p == '\n' || *p == '\r' || *p == '#';
+}
+
+static int model_obj_parse_double_token(const char **cursor, double *out) {
+    char token[128];
+    const char *start;
+    size_t len;
+    if (!cursor || !*cursor || !out)
+        return 0;
+    start = model_obj_skip_ws(*cursor);
+    if (!start || *start == '\0' || *start == '\n' || *start == '\r' || *start == '#')
+        return 0;
+    *cursor = start;
+    while (**cursor && **cursor != ' ' && **cursor != '\t' && **cursor != '\n' &&
+           **cursor != '\r' && **cursor != '#')
+        (*cursor)++;
+    len = (size_t)(*cursor - start);
+    if (len == 0 || len >= sizeof(token))
+        return 0;
+    memcpy(token, start, len);
+    token[len] = '\0';
+    return rt_parse_double(token, out) == 0 && isfinite(*out);
+}
+
+static int model_obj_parse_double1(const char *p, double *a) {
+    const char *cursor = p;
+    return model_obj_parse_double_token(&cursor, a) && model_obj_line_tail_done(cursor);
+}
+
+static int model_obj_parse_double3(const char *p, double *a, double *b, double *c) {
+    const char *cursor = p;
+    return model_obj_parse_double_token(&cursor, a) && model_obj_parse_double_token(&cursor, b) &&
+           model_obj_parse_double_token(&cursor, c) && model_obj_line_tail_done(cursor);
+}
+
+static double model_obj_clamp01(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
 }
 
 /// @brief Extract the texture filename from an MTL map directive value, taking the last
@@ -1045,8 +1113,7 @@ static char *model_obj_extract_map_path(const char *value) {
     while (*start == ' ' || *start == '\t')
         start++;
     end = start + strlen(start);
-    while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' ||
-                           end[-1] == '\r'))
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' || end[-1] == '\r'))
         end--;
     last = end;
     while (last > start && last[-1] != ' ' && last[-1] != '\t')
@@ -1139,25 +1206,25 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
         } else if (current_material && strncmp(p, "Kd ", 3) == 0) {
             double r, g, b;
             p += 3;
-            if (sscanf(p, "%lf %lf %lf", &r, &g, &b) == 3)
+            if (model_obj_parse_double3(p, &r, &g, &b))
                 rt_material3d_set_color(current_material, r, g, b);
         } else if (current_material && strncmp(p, "Ks ", 3) == 0) {
             double r, g, b;
             p += 3;
-            if (sscanf(p, "%lf %lf %lf", &r, &g, &b) == 3) {
-                ((rt_material3d *)current_material)->specular[0] = r;
-                ((rt_material3d *)current_material)->specular[1] = g;
-                ((rt_material3d *)current_material)->specular[2] = b;
+            if (model_obj_parse_double3(p, &r, &g, &b)) {
+                ((rt_material3d *)current_material)->specular[0] = model_obj_clamp01(r);
+                ((rt_material3d *)current_material)->specular[1] = model_obj_clamp01(g);
+                ((rt_material3d *)current_material)->specular[2] = model_obj_clamp01(b);
             }
         } else if (current_material && strncmp(p, "Ke ", 3) == 0) {
             double r, g, b;
             p += 3;
-            if (sscanf(p, "%lf %lf %lf", &r, &g, &b) == 3)
+            if (model_obj_parse_double3(p, &r, &g, &b))
                 rt_material3d_set_emissive_color(current_material, r, g, b);
         } else if (current_material && strncmp(p, "Ns ", 3) == 0) {
             double ns;
             p += 3;
-            if (sscanf(p, "%lf", &ns) == 1)
+            if (model_obj_parse_double1(p, &ns))
                 rt_material3d_set_shininess(current_material, ns);
         } else if (current_material && strncmp(p, "map_Kd ", 7) == 0) {
             model_obj_set_texture_from_map(
@@ -1170,14 +1237,14 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
                 current_material, mtl_dir, p + 7, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE);
         } else if (current_material &&
                    (strncmp(p, "map_Bump ", 9) == 0 || strncmp(p, "map_bump ", 9) == 0 ||
-                    strncmp(p, "bump ", 5) == 0)) {
-            const char *map_value = p[0] == 'b' ? p + 5 : p + 9;
+                    strncmp(p, "bump ", 5) == 0 || strncmp(p, "norm ", 5) == 0)) {
+            const char *map_value = (p[0] == 'b' || p[0] == 'n') ? p + 5 : p + 9;
             model_obj_set_texture_from_map(
                 current_material, mtl_dir, map_value, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL);
         } else if (current_material && (strncmp(p, "d ", 2) == 0 || strncmp(p, "Tr ", 3) == 0)) {
             double a;
             const char *value = p + (p[0] == 'T' ? 3 : 2);
-            if (sscanf(value, "%lf", &a) == 1) {
+            if (model_obj_parse_double1(value, &a)) {
                 if (p[0] == 'T')
                     a = 1.0 - a;
                 rt_material3d_set_alpha(current_material, a);
@@ -1194,7 +1261,8 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
 
 /// @brief Scan the OBJ file at @p obj_path for "mtllib" directives and parse each referenced
 ///   .mtl library into @p table.
-static void model_obj_load_material_libraries(const char *obj_path, model_obj_material_table *table) {
+static void model_obj_load_material_libraries(const char *obj_path,
+                                              model_obj_material_table *table) {
     char obj_dir[1024];
     FILE *f;
     char line[1024];
@@ -1288,7 +1356,13 @@ static int model3d_load_from_obj(rt_model3d *model, rt_string path, const char *
         rt_scene_node3d_set_name(node, rt_const_cstr(node_name));
         rt_scene_node3d_set_mesh(node, groups[i].mesh);
         rt_scene_node3d_set_material(node, material);
-        rt_scene_node3d_add_child(model->template_root, node);
+        if (!rt_scene_node3d_try_add_child(model->template_root, node)) {
+            model_release_local(node);
+            model_release_local(default_material);
+            model_obj_material_table_free(&materials);
+            rt_mesh3d_obj_groups_free(groups, group_count);
+            return 0;
+        }
         model_release_local(node);
     }
     model_release_local(default_material);
@@ -1396,13 +1470,20 @@ static int model3d_load_from_gltf(rt_model3d *model,
     }
     scene_root = rt_gltf_get_scene_root(asset);
     if (scene_root) {
-        model_clone_children_to_root(model->template_root, (const rt_scene_node3d *)scene_root);
+        if (!model_clone_children_to_root(model->template_root,
+                                          (const rt_scene_node3d *)scene_root)) {
+            model_release_local(asset);
+            return 0;
+        }
         if (!model_collect_template_refs(model)) {
             model_release_local(asset);
             return 0;
         }
     }
-    model_build_synth_mesh_nodes(model);
+    if (!scene_root && !model_build_synth_mesh_nodes(model)) {
+        model_release_local(asset);
+        return 0;
+    }
     if (gltf_scene_count > 0) {
         for (int64_t si = 0; si < gltf_scene_count; si++) {
             rt_string scene_name = rt_gltf_get_scene_name(asset, si);
@@ -1414,12 +1495,18 @@ static int model3d_load_from_gltf(rt_model3d *model,
             } else {
                 void *gltf_scene_root = rt_gltf_get_scene_root_at(asset, si);
                 scene_template = (rt_scene_node3d *)rt_scene_node3d_new();
-                if (!scene_template) {
+                if (!gltf_scene_root || !scene_template) {
+                    if (scene_template)
+                        model_release_local(scene_template);
                     model_release_local(asset);
                     return 0;
                 }
-                model_clone_children_to_root(scene_template,
-                                             (const rt_scene_node3d *)gltf_scene_root);
+                if (!model_clone_children_to_root(scene_template,
+                                                  (const rt_scene_node3d *)gltf_scene_root)) {
+                    model_release_local(scene_template);
+                    model_release_local(asset);
+                    return 0;
+                }
             }
             if (!model_append_scene_entry(
                     model, scene_name_cstr, scene_template, &model_scene_index)) {
@@ -1508,22 +1595,29 @@ static int model3d_load_from_fbx(rt_model3d *model, rt_string path) {
         }
     }
     if (scene_root) {
-        model_clone_children_to_root(model->template_root, (const rt_scene_node3d *)scene_root);
+        if (!model_clone_children_to_root(model->template_root,
+                                          (const rt_scene_node3d *)scene_root)) {
+            model_release_local(asset);
+            return 0;
+        }
         if (!model_collect_template_refs(model)) {
             model_release_local(asset);
             return 0;
         }
     }
-    model_build_synth_mesh_nodes(model);
+    if (!model_build_synth_mesh_nodes(model)) {
+        model_release_local(asset);
+        return 0;
+    }
     model_release_local(asset);
     return 1;
 }
 
 /// @brief Load a 3D model from disk into a `rt_model3d` template — auto-detects format by file
-/// extension (.vscn, .gltf/.glb, .fbx, .obj, .stl). Collects meshes, materials, skeletons, animations, and
-/// the scene-node template tree from the source asset, retaining each component for the model's
-/// lifetime. Returns NULL (with a trap message) for invalid path / unsupported extension /
-/// underlying loader failure. Use `_instantiate` to spawn a clone in a live scene.
+/// extension (.vscn, .gltf/.glb, .fbx, .obj, .stl). Collects meshes, materials, skeletons,
+/// animations, and the scene-node template tree from the source asset, retaining each component for
+/// the model's lifetime. Returns NULL (with a trap message) for invalid path / unsupported
+/// extension / underlying loader failure. Use `_instantiate` to spawn a clone in a live scene.
 static void *rt_model3d_load_impl(rt_string path,
                                   int load_assets,
                                   uint8_t *preloaded_gltf_data,
@@ -1552,12 +1646,10 @@ static void *rt_model3d_load_impl(rt_string path,
         rt_scene3d *scene = (rt_scene3d *)rt_scene3d_load(path);
         if (!scene)
             goto fail;
-        model_clone_children_to_root(model->template_root, scene->root);
-        for (int32_t i = 0; i < model->template_root->child_count; i++) {
-            if (!model_collect_scene_refs(model, model->template_root->children[i])) {
-                model_release_local(scene);
-                goto fail;
-            }
+        if (!model_clone_children_to_root(model->template_root, scene->root) ||
+            !model_collect_template_refs(model)) {
+            model_release_local(scene);
+            goto fail;
         }
         model_release_local(scene);
     } else if (model_has_ext(path_cstr, ".gltf") || model_has_ext(path_cstr, ".glb")) {
@@ -1607,7 +1699,8 @@ static void *rt_model3d_load_impl(rt_string path,
         }
         model_release_local(material);
         model_release_local(mesh);
-        model_build_synth_mesh_nodes(model);
+        if (!model_build_synth_mesh_nodes(model))
+            goto fail;
     } else {
         char msg[160];
         snprintf(msg, sizeof(msg), "%s: unsupported file extension", api_name);
@@ -1820,8 +1913,15 @@ void *rt_model3d_instantiate_scene_at(void *obj, int64_t index) {
     for (int32_t i = 0; i < entry->root->child_count; i++) {
         rt_scene_node3d *child = model_clone_node(entry->root->children[i], 1);
         if (child) {
-            rt_scene3d_add(scene, child);
+            if (!rt_scene3d_try_add(scene, child)) {
+                model_release_local(child);
+                model_release_local(scene);
+                return NULL;
+            }
             model_release_local(child);
+        } else {
+            model_release_local(scene);
+            return NULL;
         }
     }
     model_bind_default_animator(model, scene->root);

@@ -1979,7 +1979,13 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
                 return NULL;
             }
             if (child) {
-                rt_scene_node3d_add_child(node, child);
+                if (!rt_scene_node3d_try_add_child(node, child)) {
+                    if (io_error)
+                        *io_error = 1;
+                    scene3d_release_ref((void **)&child);
+                    scene3d_release_ref((void **)&node);
+                    return NULL;
+                }
                 {
                     void *tmp = child;
                     scene3d_release_ref(&tmp);
@@ -2204,7 +2210,10 @@ static int vscn_load_nodes(rt_scene3d *scene,
             scene3d_release_ref((void **)&node);
             return 0;
         }
-        rt_scene_node3d_add_child(scene->root, node);
+        if (!rt_scene_node3d_try_add_child(scene->root, node)) {
+            scene3d_release_ref((void **)&node);
+            return 0;
+        }
         {
             void *tmp = node;
             scene3d_release_ref(&tmp);

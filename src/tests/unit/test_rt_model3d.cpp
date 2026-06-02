@@ -440,7 +440,8 @@ static bool write_fbx_multimaterial_fixture(const char *path) {
     FbxNodeFixture model = make_fbx_model_fixture(kModelId, "Multi", "Mesh", 1.0, 2.0, 3.0);
     std::vector<uint8_t> bytes;
 
-    model.children[0].children.push_back(make_fbx_property_vec3("GeometricTranslation", 4.0, 5.0, 6.0));
+    model.children[0].children.push_back(
+        make_fbx_property_vec3("GeometricTranslation", 4.0, 5.0, 6.0));
     model.children[0].children.push_back(make_fbx_property_vec3("PreRotation", 0.0, 0.0, 90.0));
 
     geometry.name = "Geometry";
@@ -463,7 +464,8 @@ static bool write_fbx_multimaterial_fixture(const char *path) {
         FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("IndexToDirect")}, {}});
     layer_material.children.push_back(FbxNodeFixture{
         "Materials",
-        {fbx_prop_array_fixture('i', kMaterialSlots, sizeof(kMaterialSlots) / sizeof(kMaterialSlots[0]))},
+        {fbx_prop_array_fixture(
+            'i', kMaterialSlots, sizeof(kMaterialSlots) / sizeof(kMaterialSlots[0]))},
         {}});
     geometry.children.push_back(layer_material);
 
@@ -477,7 +479,8 @@ static bool write_fbx_multimaterial_fixture(const char *path) {
 
     blue_material.name = "Material";
     blue_material.props.push_back(fbx_prop_i64_fixture(kBlueMaterialId));
-    blue_material.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("Blue", "Material")));
+    blue_material.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("Blue", "Material")));
     blue_material.props.push_back(fbx_prop_string_fixture(""));
     blue_props70.name = "Properties70";
     blue_props70.children.push_back(make_fbx_property_vec3("DiffuseColor", 0.1, 0.2, 0.9));
@@ -572,9 +575,11 @@ static bool write_fbx_embedded_texture_fixture(const char *path,
     video.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("EmbeddedAlbedo", "Video")));
     video.props.push_back(fbx_prop_string_fixture("Clip"));
     video_props70.name = "Properties70";
-    video_props70.children.push_back(make_fbx_property_string("RelativeFilename", "embedded_albedo.png"));
+    video_props70.children.push_back(
+        make_fbx_property_string("RelativeFilename", "embedded_albedo.png"));
     video.children.push_back(video_props70);
-    video.children.push_back(FbxNodeFixture{"Content", {fbx_prop_raw_fixture(png_data, png_len)}, {}});
+    video.children.push_back(
+        FbxNodeFixture{"Content", {fbx_prop_raw_fixture(png_data, png_len)}, {}});
 
     objects.name = "Objects";
     objects.children.push_back(geometry);
@@ -1389,6 +1394,95 @@ static void test_model3d_imports_obj_mtl_texture_maps() {
                 "OBJ MTL map_Bump imports a normal texture");
 }
 
+static void test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps() {
+    const char *obj_path = "/tmp/viper_model3d_mtl_sanitize.obj";
+    const char *mtl_path = "/tmp/viper_model3d_mtl_sanitize.mtl";
+    const char *unsafe_png_path = "/tmp/file:viper_model3d_mtl_unsafe.png";
+    const char *normal_png_path = "/tmp/viper_model3d_mtl_norm.png";
+    void *pixels = rt_pixels_new(1, 1);
+    rt_pixels_set(pixels, 0, 0, 0x4488FFFFll);
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(unsafe_png_path)) == 1,
+                "Unsafe-name OBJ texture PNG fixture can be written");
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(normal_png_path)) == 1,
+                "OBJ norm texture PNG fixture can be written");
+
+    const char *mtl = "newmtl Clamp\n"
+                      "Kd 2.0 -1.0 0.5\n"
+                      "Ks 2.0 -0.5 0.25\n"
+                      "d 1.5\n"
+                      "map_Kd file:viper_model3d_mtl_unsafe.png\n"
+                      "norm viper_model3d_mtl_norm.png\n";
+    const char *obj = "mtllib viper_model3d_mtl_sanitize.mtl\n"
+                      "v 0 0 0\n"
+                      "v 1 0 0\n"
+                      "v 0 1 0\n"
+                      "vn 0 0 1\n"
+                      "usemtl Clamp\n"
+                      "f 1//1 2//1 3//1\n";
+    EXPECT_TRUE(write_text_file(mtl_path, mtl), "Sanitized OBJ MTL fixture can be written");
+    EXPECT_TRUE(write_text_file(obj_path, obj), "Sanitized OBJ fixture can be written");
+
+    void *model = rt_model3d_load(rt_const_cstr(obj_path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses OBJ assets with clamped MTL values");
+    if (!model)
+        return;
+    auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model, 0));
+    EXPECT_TRUE(mat != nullptr, "OBJ MTL sanitize fixture imports a material");
+    if (!mat)
+        return;
+    EXPECT_NEAR(mat->diffuse[0], 1.0, 0.001, "OBJ MTL Kd clamps high diffuse values");
+    EXPECT_NEAR(mat->diffuse[1], 0.0, 0.001, "OBJ MTL Kd clamps low diffuse values");
+    EXPECT_NEAR(mat->diffuse[2], 0.5, 0.001, "OBJ MTL Kd preserves finite diffuse values");
+    EXPECT_NEAR(mat->specular[0], 1.0, 0.001, "OBJ MTL Ks clamps high specular values");
+    EXPECT_NEAR(mat->specular[1], 0.0, 0.001, "OBJ MTL Ks clamps low specular values");
+    EXPECT_NEAR(mat->specular[2], 0.25, 0.001, "OBJ MTL Ks preserves finite specular values");
+    EXPECT_NEAR(mat->alpha, 1.0, 0.001, "OBJ MTL d clamps alpha values");
+    EXPECT_TRUE(rt_material3d_get_has_texture(mat) == 0,
+                "OBJ MTL rejects URI-scheme texture references");
+    EXPECT_TRUE(rt_material3d_get_has_normal_map(mat) == 1,
+                "OBJ MTL norm imports a normal texture");
+}
+
+static void test_model3d_preserves_empty_gltf_scene_without_synth_nodes() {
+    const char *path = "/tmp/viper_model3d_empty_scene.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":" +
+        std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],"
+        "\"nodes\":[{\"name\":\"HiddenMesh\",\"mesh\":0}],"
+        "\"scenes\":[{\"name\":\"Empty\",\"nodes\":[]}],"
+        "\"scene\":0"
+        "}";
+    EXPECT_TRUE(write_text_file(path, gltf_json), "Empty-scene glTF fixture can be written");
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses glTF assets with an explicit empty scene");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
+                "Model3D retains meshes that are outside an empty glTF scene");
+    EXPECT_TRUE(rt_model3d_get_scene_count(model) == 1,
+                "Model3D exposes the explicit empty glTF scene");
+    EXPECT_TRUE(rt_model3d_get_node_count(model) == 0,
+                "Model3D does not synthesize display nodes for an explicit empty glTF scene");
+    void *scene = rt_model3d_instantiate_scene_at(model, 0);
+    EXPECT_TRUE(scene != nullptr, "Model3D.InstantiateSceneAt handles explicit empty scenes");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 1,
+                "Model3D empty-scene instantiation contains only the scene root");
+}
+
 static void test_model3d_loads_stl_as_template_asset() {
     const char *path = "/tmp/viper_model3d_fixture.stl";
     const char *stl = "solid tri\n"
@@ -1429,8 +1523,7 @@ static void test_model3d_loads_minimal_ascii_fbx() {
     if (!model)
         return;
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "ASCII FBX exposes one mesh");
-    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
-                "ASCII FBX creates a default material");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1, "ASCII FBX creates a default material");
     EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("mesh_0")) != nullptr,
                 "ASCII FBX builds a renderable mesh node");
 }
@@ -1442,8 +1535,7 @@ static void test_model3d_splits_fbx_layer_element_materials() {
     EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX LayerElementMaterial fixtures");
     if (!model)
         return;
-    EXPECT_TRUE(rt_model3d_get_material_count(model) == 2,
-                "FBX connected materials are imported");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 2, "FBX connected materials are imported");
     EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 3,
                 "FBX multi-material geometry keeps source mesh and adds two render submeshes");
     void *multi = rt_model3d_find_node(model, rt_const_cstr("Multi"));
@@ -1777,6 +1869,8 @@ int main() {
     test_model3d_loads_obj_as_template_asset();
     test_model3d_preserves_obj_mtl_material_groups();
     test_model3d_imports_obj_mtl_texture_maps();
+    test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps();
+    test_model3d_preserves_empty_gltf_scene_without_synth_nodes();
     test_model3d_loads_stl_as_template_asset();
     test_model3d_loads_minimal_ascii_fbx();
     test_model3d_splits_fbx_layer_element_materials();
