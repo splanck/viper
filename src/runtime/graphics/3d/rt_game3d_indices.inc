@@ -130,11 +130,12 @@ void game3d_world_body_index_remove(rt_game3d_world *world, void *body) {
 
 /// @brief Index `entity` under its physics body for O(1) body→entity lookup.
 int game3d_world_body_index_add(rt_game3d_world *world, rt_game3d_entity *entity) {
-    if (!world || !entity || !entity->body)
+    void *body = game3d_entity_body_ref(entity);
+    if (!world || !body)
         return 1;
     if (!game3d_world_grow_body_index(world, world->body_index_count + 1))
         return 0;
-    return game3d_world_body_index_insert_no_grow(world, entity->body, entity);
+    return game3d_world_body_index_insert_no_grow(world, body, entity);
 }
 
 /// @brief FNV-1a 64-bit hash of NUL-terminated `s`; never returns 0 so the value
@@ -236,19 +237,20 @@ static void game3d_world_name_index_insert(rt_game3d_world *world, rt_game3d_ent
 static void game3d_world_rebuild_name_index(rt_game3d_world *world) {
     if (!world)
         return;
-    if (world->entity_count <= 0) {
+    int32_t entity_count = game3d_world_safe_entity_count(world);
+    if (entity_count <= 0) {
         game3d_world_clear_name_index(world);
         world->name_index_valid = 1;
         return;
     }
-    if (!game3d_world_grow_name_index(world, world->entity_count)) {
+    if (!game3d_world_grow_name_index(world, entity_count)) {
         game3d_world_clear_name_index(world);
         world->name_index_valid = 0;
         rt_trap("Game3D.World3D: name index allocation failed");
         return;
     }
     game3d_world_clear_name_index(world);
-    for (int32_t i = 0; i < world->entity_count; ++i)
+    for (int32_t i = 0; i < entity_count; ++i)
         game3d_world_name_index_insert(world, world->entities[i]);
     world->name_index_valid = 1;
 }
@@ -264,7 +266,8 @@ int game3d_world_name_index_add_entity(rt_game3d_world *world, rt_game3d_entity 
         return world->name_index_valid ? 1 : 0;
     }
     old_capacity = world->name_index_capacity;
-    if (!game3d_world_grow_name_index(world, world->entity_count)) {
+    int32_t entity_count = game3d_world_safe_entity_count(world);
+    if (!game3d_world_grow_name_index(world, entity_count)) {
         game3d_world_clear_name_index(world);
         world->name_index_valid = 0;
         rt_trap("Game3D.World3D: name index allocation failed");
@@ -272,7 +275,7 @@ int game3d_world_name_index_add_entity(rt_game3d_world *world, rt_game3d_entity 
     }
     if (world->name_index_capacity != old_capacity) {
         game3d_world_clear_name_index(world);
-        for (int32_t i = 0; i < world->entity_count; ++i)
+        for (int32_t i = 0; i < entity_count; ++i)
             game3d_world_name_index_insert(world, world->entities[i]);
     } else {
         game3d_world_name_index_insert(world, entity);

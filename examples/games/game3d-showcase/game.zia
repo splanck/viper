@@ -322,9 +322,9 @@ class Game3DShowcase {
         for (var py: Integer = 0; py < size; py = py + 1) {
             for (var px: Integer = 0; px < size; px = px + 1) {
                 var noise = ((px * 7 + py * 11 + px * py) % 28) - 14;
-                var r = clampByte(104 + noise / 2);
-                var g = clampByte(168 + noise);
-                var b = clampByte(70 + noise / 3);
+                var r = clampByte(70 + noise / 2);
+                var g = clampByte(112 + noise);
+                var b = clampByte(48 + noise / 3);
                 tex.Set(px, py, packPixel(r, g, b, 255));
             }
         }
@@ -394,7 +394,7 @@ class Game3DShowcase {
                     }
                 }
 
-                splat.Set(px, py, packPixel(grass, rock, dirt, 255));
+                splat.Set(px, py, packPixel(grass, rock, dirt, 0));
             }
         }
 

@@ -40,6 +40,8 @@ extern double rt_vec3_z(void *v);
 
 #define PATH3D_INIT_CAP 16
 #define PATH3D_MAX_LENGTH_STEPS 1000000
+#define PATH3D_COORD_ABS_MAX 1000000000000.0
+#define PATH3D_LENGTH_MAX 1000000000000000000.0
 
 typedef struct {
     void *vptr;
@@ -61,6 +63,8 @@ typedef struct {
 ///   pointers.
 static void path3d_finalizer(void *obj) {
     rt_path3d *p = (rt_path3d *)obj;
+    if (!p)
+        return;
     free(p->xs);
     free(p->ys);
     free(p->zs);
@@ -76,6 +80,48 @@ static void path3d_release_local(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Sanitize one coordinate lane, capping finite extremes so interpolation stays finite.
+static double path3d_coord_or(double value, double fallback) {
+    if (!isfinite(fallback))
+        fallback = 0.0;
+    if (!isfinite(value))
+        value = fallback;
+    if (value > PATH3D_COORD_ABS_MAX)
+        return PATH3D_COORD_ABS_MAX;
+    if (value < -PATH3D_COORD_ABS_MAX)
+        return -PATH3D_COORD_ABS_MAX;
+    return value;
+}
+
+/// @brief Repair defensive invariants before public operations touch the parallel point arrays.
+static void path3d_repair(rt_path3d *p) {
+    if (!p)
+        return;
+    if (p->point_capacity < 0)
+        p->point_capacity = 0;
+    if (!p->xs || !p->ys || !p->zs || p->point_capacity == 0) {
+        p->point_count = 0;
+        p->point_capacity = 0;
+        p->length_dirty = 1;
+        p->cached_length = 0.0;
+        return;
+    }
+    if (p->point_count < 0)
+        p->point_count = 0;
+    if (p->point_count > p->point_capacity)
+        p->point_count = p->point_capacity;
+    for (int32_t i = 0; i < p->point_count; ++i) {
+        p->xs[i] = path3d_coord_or(p->xs[i], 0.0);
+        p->ys[i] = path3d_coord_or(p->ys[i], 0.0);
+        p->zs[i] = path3d_coord_or(p->zs[i], 0.0);
+    }
+    p->looping = p->looping ? 1 : 0;
+    if (!isfinite(p->cached_length) || p->cached_length < 0.0) {
+        p->cached_length = 0.0;
+        p->length_dirty = 1;
+    }
+}
+
 /// @brief Grow the parallel `xs` / `ys` / `zs` coordinate arrays to hold @p min_capacity entries.
 /// @details Geometric growth (doubling from PATH3D_INIT_CAP) keeps amortised
 ///   `add_point` cost O(1). All three arrays are reallocated together and on
@@ -83,7 +129,10 @@ static void path3d_release_local(void *obj) {
 ///   in its previous valid state. Returns 1 on success, 0 (after `rt_trap`) on
 ///   overflow or OOM.
 static int path3d_reserve(rt_path3d *p, int32_t min_capacity) {
-    if (!p || min_capacity <= p->point_capacity)
+    if (!p || min_capacity < 0)
+        return 0;
+    path3d_repair(p);
+    if (min_capacity <= p->point_capacity)
         return 1;
     int32_t new_cap = p->point_capacity > 0 ? p->point_capacity : PATH3D_INIT_CAP;
     while (new_cap < min_capacity) {
@@ -161,6 +210,7 @@ void rt_path3d_add_point(void *obj, void *pos) {
     rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
     if (!p)
         return;
+    path3d_repair(p);
 
     if (p->point_count == INT32_MAX || !path3d_reserve(p, p->point_count + 1))
         return;
@@ -168,9 +218,9 @@ void rt_path3d_add_point(void *obj, void *pos) {
     double x = rt_vec3_x(pos);
     double y = rt_vec3_y(pos);
     double z = rt_vec3_z(pos);
-    p->xs[p->point_count] = isfinite(x) ? x : 0.0;
-    p->ys[p->point_count] = isfinite(y) ? y : 0.0;
-    p->zs[p->point_count] = isfinite(z) ? z : 0.0;
+    p->xs[p->point_count] = path3d_coord_or(x, 0.0);
+    p->ys[p->point_count] = path3d_coord_or(y, 0.0);
+    p->zs[p->point_count] = path3d_coord_or(z, 0.0);
     p->point_count++;
     p->length_dirty = 1;
 }
@@ -223,6 +273,7 @@ void *rt_path3d_get_position_at(void *obj, double t) {
     rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
     if (!p)
         return rt_vec3_new(0, 0, 0);
+    path3d_repair(p);
     if (!isfinite(t))
         t = 0.0;
     if (p->point_count < 2) {
@@ -280,7 +331,9 @@ void *rt_path3d_get_position_at(void *obj, double t) {
                    &ox,
                    &oy,
                    &oz);
-    return rt_vec3_new(ox, oy, oz);
+    return rt_vec3_new(path3d_coord_or(ox, 0.0),
+                       path3d_coord_or(oy, 0.0),
+                       path3d_coord_or(oz, 0.0));
 }
 
 /// @brief Get the normalized tangent direction at parameter t.
@@ -321,6 +374,7 @@ double rt_path3d_get_length(void *obj) {
     rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
     if (!p)
         return 0.0;
+    path3d_repair(p);
     if (p->point_count < 2)
         return 0.0;
     if (!p->length_dirty)
@@ -341,6 +395,11 @@ double rt_path3d_get_length(void *obj) {
             double segment = sqrt(dx * dx + dy * dy + dz * dz);
             if (isfinite(segment))
                 total += segment;
+            if (total > PATH3D_LENGTH_MAX) {
+                total = PATH3D_LENGTH_MAX;
+                path3d_release_local(pt);
+                break;
+            }
         }
         prev_x = x;
         prev_y = y;
@@ -355,7 +414,10 @@ double rt_path3d_get_length(void *obj) {
 /// @brief Get the number of control points in the path.
 int64_t rt_path3d_get_point_count(void *obj) {
     rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
-    return p ? p->point_count : 0;
+    if (!p)
+        return 0;
+    path3d_repair(p);
+    return p->point_count;
 }
 
 /// @brief Enable or disable looping (t wraps around instead of clamping).
@@ -363,7 +425,8 @@ void rt_path3d_set_looping(void *obj, int8_t loop) {
     rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
     if (!p)
         return;
-    p->looping = loop;
+    path3d_repair(p);
+    p->looping = loop ? 1 : 0;
     p->length_dirty = 1;
 }
 
@@ -372,6 +435,7 @@ void rt_path3d_clear(void *obj) {
     rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
     if (!p)
         return;
+    path3d_repair(p);
     p->point_count = 0;
     p->length_dirty = 1;
 }

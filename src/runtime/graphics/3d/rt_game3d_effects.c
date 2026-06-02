@@ -68,6 +68,7 @@ static void game3d_effects_finalize(void *obj) {
     rt_game3d_effects *effects = (rt_game3d_effects *)obj;
     if (!effects)
         return;
+    game3d_effects_repair(effects);
     for (int32_t i = 0; i < effects->count; ++i)
         game3d_effect_release_item(&effects->items[i]);
     free(effects->items);
@@ -105,7 +106,10 @@ void *rt_game3d_effects_get_postfx(void *obj) {
 int64_t rt_game3d_effects_get_count(void *obj) {
     rt_game3d_effects *effects =
         game3d_effects_checked(obj, "Game3D.EffectRegistry3D.get_count: invalid effects");
-    return effects ? effects->count : 0;
+    if (!effects)
+        return 0;
+    game3d_effects_repair(effects);
+    return effects->count;
 }
 
 /// @brief Count live particle-system items.
@@ -115,6 +119,7 @@ int64_t rt_game3d_effects_get_particles_count(void *obj) {
     int64_t count = 0;
     if (!effects)
         return 0;
+    game3d_effects_repair(effects);
     for (int32_t i = 0; i < effects->count; ++i) {
         if (effects->items[i].type == RT_GAME3D_EFFECT_PARTICLES)
             count++;
@@ -129,6 +134,7 @@ int64_t rt_game3d_effects_get_decal_count(void *obj) {
     int64_t count = 0;
     if (!effects)
         return 0;
+    game3d_effects_repair(effects);
     for (int32_t i = 0; i < effects->count; ++i) {
         if (effects->items[i].type == RT_GAME3D_EFFECT_DECAL)
             count++;
@@ -147,6 +153,7 @@ void *rt_game3d_effects_add_particles(void *obj, void *particles, double lifetim
         rt_trap("Game3D.EffectRegistry3D.addParticles: expected Particles3D");
         return NULL;
     }
+    game3d_effects_repair(effects);
     if (effects->count == INT32_MAX) {
         rt_trap("Game3D.EffectRegistry3D: too many effects");
         return NULL;
@@ -157,7 +164,10 @@ void *rt_game3d_effects_add_particles(void *obj, void *particles, double lifetim
     memset(item, 0, sizeof(*item));
     item->type = RT_GAME3D_EFFECT_PARTICLES;
     item->object = particles;
-    item->lifetime = (isfinite(lifetime) && lifetime > 0.0) ? lifetime : -1.0;
+    item->lifetime = (isfinite(lifetime) && lifetime > 0.0)
+                         ? game3d_positive_clamped_or(lifetime, RT_GAME3D_EFFECT_LIFETIME_MAX,
+                                                      RT_GAME3D_EFFECT_LIFETIME_MAX)
+                         : -1.0;
     item->age = 0.0;
     rt_obj_retain_maybe(particles);
     return particles;
@@ -174,6 +184,7 @@ void *rt_game3d_effects_add_decal(void *obj, void *decal) {
         rt_trap("Game3D.EffectRegistry3D.addDecal: expected Decal3D");
         return NULL;
     }
+    game3d_effects_repair(effects);
     if (effects->count == INT32_MAX) {
         rt_trap("Game3D.EffectRegistry3D: too many effects");
         return NULL;
@@ -195,20 +206,35 @@ void *rt_game3d_effects_add_decal(void *obj, void *decal) {
 void rt_game3d_effects_update(void *obj, double dt) {
     rt_game3d_effects *effects =
         game3d_effects_checked(obj, "Game3D.EffectRegistry3D.update: invalid effects");
-    if (!effects || !isfinite(dt) || dt <= 0.0)
+    if (!effects)
+        return;
+    game3d_effects_repair(effects);
+    dt = game3d_positive_clamped_or(dt, 0.0, RT_GAME3D_EFFECT_STEP_MAX);
+    if (dt <= 0.0)
         return;
     int32_t i = 0;
     while (i < effects->count) {
         rt_game3d_effect_item *item = &effects->items[i];
         int8_t expired = 0;
-        item->age += dt;
+        item->age = game3d_nonnegative_clamped_or(item->age, 0.0, RT_GAME3D_EFFECT_LIFETIME_MAX);
+        if (item->age > RT_GAME3D_EFFECT_LIFETIME_MAX - dt)
+            item->age = RT_GAME3D_EFFECT_LIFETIME_MAX;
+        else
+            item->age += dt;
         if (item->type == RT_GAME3D_EFFECT_PARTICLES) {
-            rt_particles3d_update(item->object, dt);
+            if (rt_g3d_has_class(item->object, RT_G3D_PARTICLES3D_CLASS_ID))
+                rt_particles3d_update(item->object, dt);
+            else
+                expired = 1;
             if (item->lifetime >= 0.0 && item->age >= item->lifetime)
                 expired = 1;
         } else if (item->type == RT_GAME3D_EFFECT_DECAL) {
-            rt_decal3d_update(item->object, dt);
-            expired = rt_decal3d_is_expired(item->object);
+            if (rt_g3d_has_class(item->object, RT_G3D_DECAL3D_CLASS_ID)) {
+                rt_decal3d_update(item->object, dt);
+                expired = rt_decal3d_is_expired(item->object);
+            } else {
+                expired = 1;
+            }
         } else {
             expired = 1;
         }
@@ -230,13 +256,15 @@ void rt_game3d_effects_draw(void *obj, void *canvas, void *camera) {
         game3d_effects_checked(obj, "Game3D.EffectRegistry3D.draw: invalid effects");
     if (!effects || !canvas)
         return;
+    game3d_effects_repair(effects);
     for (int32_t i = 0; i < effects->count; ++i) {
         rt_game3d_effect_item *item = &effects->items[i];
         if (item->type == RT_GAME3D_EFFECT_PARTICLES) {
-            if (camera)
+            if (camera && rt_g3d_has_class(item->object, RT_G3D_PARTICLES3D_CLASS_ID))
                 rt_particles3d_draw(item->object, canvas, camera);
         } else if (item->type == RT_GAME3D_EFFECT_DECAL) {
-            rt_canvas3d_draw_decal(canvas, item->object);
+            if (rt_g3d_has_class(item->object, RT_G3D_DECAL3D_CLASS_ID))
+                rt_canvas3d_draw_decal(canvas, item->object);
         }
     }
 }
@@ -247,6 +275,7 @@ void rt_game3d_effects_clear(void *obj) {
         game3d_effects_checked(obj, "Game3D.EffectRegistry3D.clear: invalid effects");
     if (!effects)
         return;
+    game3d_effects_repair(effects);
     for (int32_t i = 0; i < effects->count; ++i)
         game3d_effect_release_item(&effects->items[i]);
     effects->count = 0;

@@ -45,10 +45,23 @@ extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
 #define EPSILON 1e-8
+#define RAYCAST3D_COORD_ABS_MAX 1000000000000.0
+#define RAYCAST3D_DISTANCE_MAX 1000000000.0
 
 /// @brief Clamp a scalar into the closed range `[lo, hi]`. Used by the per-axis closest-
 /// point query and the box-projection paths that map an arbitrary point onto an AABB.
 static double clampd(double v, double lo, double hi) {
+    if (!isfinite(lo))
+        lo = 0.0;
+    if (!isfinite(hi))
+        hi = lo;
+    if (lo > hi) {
+        double tmp = lo;
+        lo = hi;
+        hi = tmp;
+    }
+    if (!isfinite(v))
+        return lo;
     if (v < lo)
         return lo;
     if (v > hi)
@@ -62,6 +75,40 @@ static int vec3_is_finite_raw(const double *v) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }
 
+/// @brief Clamp scene-ray coordinates to a broad finite runtime range.
+static double raycast3d_saturate_coord(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value > RAYCAST3D_COORD_ABS_MAX)
+        return RAYCAST3D_COORD_ABS_MAX;
+    if (value < -RAYCAST3D_COORD_ABS_MAX)
+        return -RAYCAST3D_COORD_ABS_MAX;
+    return value;
+}
+
+/// @brief Clamp non-negative ray distances/radii to a finite runtime range.
+static double raycast3d_sanitize_distance(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 0.0;
+    return value > RAYCAST3D_DISTANCE_MAX ? RAYCAST3D_DISTANCE_MAX : value;
+}
+
+/// @brief Sanitize a non-negative hit distance while preserving -1 as the miss sentinel.
+static double raycast3d_sanitize_hit_distance(double value) {
+    if (!isfinite(value) || value < 0.0)
+        return -1.0;
+    return value > RAYCAST3D_DISTANCE_MAX ? RAYCAST3D_DISTANCE_MAX : value;
+}
+
+/// @brief Sanitize an in-place raw vector.
+static void vec3_sanitize_raw(double *v) {
+    if (!v)
+        return;
+    v[0] = raycast3d_saturate_coord(v[0]);
+    v[1] = raycast3d_saturate_coord(v[1]);
+    v[2] = raycast3d_saturate_coord(v[2]);
+}
+
 /// @brief Read a boxed Vec3 handle into `out[3]`; returns 0 (and leaves caller to
 ///        reject) when `obj` is not a Vec3 or any component is non-finite.
 static int vec3_read_finite(void *obj, double *out) {
@@ -70,7 +117,10 @@ static int vec3_read_finite(void *obj, double *out) {
     out[0] = rt_vec3_x(obj);
     out[1] = rt_vec3_y(obj);
     out[2] = rt_vec3_z(obj);
-    return vec3_is_finite_raw(out);
+    if (!vec3_is_finite_raw(out))
+        return 0;
+    vec3_sanitize_raw(out);
+    return 1;
 }
 
 /// @brief Normalize a vec3 in place; returns 0 (leaving @p v unchanged) if it is
@@ -88,6 +138,22 @@ static int vec3_normalize_raw(double *v) {
     v[1] *= inv_len;
     v[2] *= inv_len;
     return 1;
+}
+
+/// @brief Normalize a raw normal, falling back to +Y when invalid or degenerate.
+static void vec3_normalize_or_up_raw(double *v) {
+    if (!vec3_normalize_raw(v)) {
+        v[0] = 0.0;
+        v[1] = 1.0;
+        v[2] = 0.0;
+    }
+}
+
+/// @brief Allocate a Vec3 after applying the scene-raycast coordinate clamp.
+static void *vec3_new_sanitized(double x, double y, double z) {
+    return rt_vec3_new(raycast3d_saturate_coord(x),
+                       raycast3d_saturate_coord(y),
+                       raycast3d_saturate_coord(z));
 }
 
 /// @brief Checked cast of an opaque handle to a Mat4 payload; NULL on class mismatch.
@@ -113,6 +179,10 @@ static int mat4d_is_finite(const double *m) {
 /// @brief Canonicalize an AABB in place by swapping any axis where min > max,
 ///        so subsequent overlap/clamp tests can assume `mn[i] <= mx[i]`.
 static void aabb3d_canonicalize_raw(double *mn, double *mx) {
+    if (!mn || !mx)
+        return;
+    vec3_sanitize_raw(mn);
+    vec3_sanitize_raw(mx);
     for (int i = 0; i < 3; i++) {
         if (mn[i] > mx[i]) {
             double tmp = mn[i];
@@ -130,21 +200,31 @@ static void segment3d_closest_point_raw(const double *a,
                                         const double *b,
                                         const double *point,
                                         double *closest) {
-    double dx = b[0] - a[0];
-    double dy = b[1] - a[1];
-    double dz = b[2] - a[2];
+    double aa[3] = {a ? a[0] : 0.0, a ? a[1] : 0.0, a ? a[2] : 0.0};
+    double bb[3] = {b ? b[0] : 0.0, b ? b[1] : 0.0, b ? b[2] : 0.0};
+    double pp[3] = {point ? point[0] : 0.0, point ? point[1] : 0.0, point ? point[2] : 0.0};
+    if (!closest)
+        return;
+    vec3_sanitize_raw(aa);
+    vec3_sanitize_raw(bb);
+    vec3_sanitize_raw(pp);
+    double dx = bb[0] - aa[0];
+    double dy = bb[1] - aa[1];
+    double dz = bb[2] - aa[2];
     double len_sq = dx * dx + dy * dy + dz * dz;
     if (!isfinite(len_sq) || len_sq < 1e-12) {
-        closest[0] = a[0];
-        closest[1] = a[1];
-        closest[2] = a[2];
+        closest[0] = aa[0];
+        closest[1] = aa[1];
+        closest[2] = aa[2];
         return;
     }
-    double t = ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy + (point[2] - a[2]) * dz) / len_sq;
+    double t = ((pp[0] - aa[0]) * dx + (pp[1] - aa[1]) * dy + (pp[2] - aa[2]) * dz) /
+               len_sq;
     t = clampd(t, 0.0, 1.0);
-    closest[0] = a[0] + t * dx;
-    closest[1] = a[1] + t * dy;
-    closest[2] = a[2] + t * dz;
+    closest[0] = aa[0] + t * dx;
+    closest[1] = aa[1] + t * dy;
+    closest[2] = aa[2] + t * dz;
+    vec3_sanitize_raw(closest);
 }
 
 /// @brief Project a 3-point onto an axis-aligned bounding box by clamping each
@@ -156,26 +236,45 @@ static void aabb3d_clamp_point_raw(const double *mn,
                                    const double *mx,
                                    const double *point,
                                    double *closest) {
-    closest[0] = clampd(point[0], mn[0], mx[0]);
-    closest[1] = clampd(point[1], mn[1], mx[1]);
-    closest[2] = clampd(point[2], mn[2], mx[2]);
+    double local_min[3] = {mn ? mn[0] : 0.0, mn ? mn[1] : 0.0, mn ? mn[2] : 0.0};
+    double local_max[3] = {mx ? mx[0] : 0.0, mx ? mx[1] : 0.0, mx ? mx[2] : 0.0};
+    double p[3] = {point ? point[0] : 0.0, point ? point[1] : 0.0, point ? point[2] : 0.0};
+    if (!closest)
+        return;
+    aabb3d_canonicalize_raw(local_min, local_max);
+    vec3_sanitize_raw(p);
+    closest[0] = clampd(p[0], local_min[0], local_max[0]);
+    closest[1] = clampd(p[1], local_min[1], local_max[1]);
+    closest[2] = clampd(p[2], local_min[2], local_max[2]);
+    vec3_sanitize_raw(closest);
 }
 
 /// @brief Squared distance from point `p` to AABB [mn,mx] (0 when `p` is inside).
 static double point_aabb_distance_sq_raw(const double *mn, const double *mx, const double *p) {
     double c[3];
     aabb3d_clamp_point_raw(mn, mx, p, c);
-    double dx = p[0] - c[0];
-    double dy = p[1] - c[1];
-    double dz = p[2] - c[2];
-    return dx * dx + dy * dy + dz * dz;
+    double pp[3] = {p ? p[0] : 0.0, p ? p[1] : 0.0, p ? p[2] : 0.0};
+    vec3_sanitize_raw(pp);
+    double dx = pp[0] - c[0];
+    double dy = pp[1] - c[1];
+    double dz = pp[2] - c[2];
+    double dist_sq = dx * dx + dy * dy + dz * dz;
+    return isfinite(dist_sq) ? dist_sq : DBL_MAX;
 }
 
 /// @brief Evaluate the parametric point `a + d*t` into `out[3]`.
 static void segment_point_at_raw(const double *a, const double *d, double t, double *out) {
-    out[0] = a[0] + d[0] * t;
-    out[1] = a[1] + d[1] * t;
-    out[2] = a[2] + d[2] * t;
+    double aa[3] = {a ? a[0] : 0.0, a ? a[1] : 0.0, a ? a[2] : 0.0};
+    double dd[3] = {d ? d[0] : 0.0, d ? d[1] : 0.0, d ? d[2] : 0.0};
+    if (!out)
+        return;
+    vec3_sanitize_raw(aa);
+    vec3_sanitize_raw(dd);
+    t = clampd(t, 0.0, 1.0);
+    out[0] = aa[0] + dd[0] * t;
+    out[1] = aa[1] + dd[1] * t;
+    out[2] = aa[2] + dd[2] * t;
+    vec3_sanitize_raw(out);
 }
 
 /// @brief Squared distance between segment a–b and AABB [mn,mx].
@@ -188,7 +287,14 @@ static double segment_aabb_distance_sq_raw(const double *a,
                                            const double *b,
                                            const double *mn,
                                            const double *mx) {
-    double d[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    double aa[3] = {a ? a[0] : 0.0, a ? a[1] : 0.0, a ? a[2] : 0.0};
+    double bb[3] = {b ? b[0] : 0.0, b ? b[1] : 0.0, b ? b[2] : 0.0};
+    double local_min[3] = {mn ? mn[0] : 0.0, mn ? mn[1] : 0.0, mn ? mn[2] : 0.0};
+    double local_max[3] = {mx ? mx[0] : 0.0, mx ? mx[1] : 0.0, mx ? mx[2] : 0.0};
+    vec3_sanitize_raw(aa);
+    vec3_sanitize_raw(bb);
+    aabb3d_canonicalize_raw(local_min, local_max);
+    double d[3] = {bb[0] - aa[0], bb[1] - aa[1], bb[2] - aa[2]};
     double ts[8];
     int count = 0;
     double best = DBL_MAX;
@@ -197,8 +303,10 @@ static double segment_aabb_distance_sq_raw(const double *a,
     for (int axis = 0; axis < 3; axis++) {
         if (fabs(d[axis]) <= EPSILON)
             continue;
-        double t0 = (mn[axis] - a[axis]) / d[axis];
-        double t1 = (mx[axis] - a[axis]) / d[axis];
+        double t0 = (local_min[axis] - aa[axis]) / d[axis];
+        double t1 = (local_max[axis] - aa[axis]) / d[axis];
+        if (!isfinite(t0) || !isfinite(t1))
+            continue;
         if (t0 > 0.0 && t0 < 1.0)
             ts[count++] = t0;
         if (t1 > 0.0 && t1 < 1.0)
@@ -215,8 +323,8 @@ static double segment_aabb_distance_sq_raw(const double *a,
     }
     for (int i = 0; i < count; i++) {
         double p[3];
-        segment_point_at_raw(a, d, ts[i], p);
-        double dist_sq = point_aabb_distance_sq_raw(mn, mx, p);
+        segment_point_at_raw(aa, d, ts[i], p);
+        double dist_sq = point_aabb_distance_sq_raw(local_min, local_max, p);
         if (isfinite(dist_sq) && dist_sq < best)
             best = dist_sq;
     }
@@ -227,29 +335,29 @@ static double segment_aabb_distance_sq_raw(const double *a,
         double denom = 0.0;
         double numer = 0.0;
         for (int axis = 0; axis < 3; axis++) {
-            double pm = a[axis] + d[axis] * mid;
+            double pm = aa[axis] + d[axis] * mid;
             double boundary;
-            if (pm < mn[axis])
-                boundary = mn[axis];
-            else if (pm > mx[axis])
-                boundary = mx[axis];
+            if (pm < local_min[axis])
+                boundary = local_min[axis];
+            else if (pm > local_max[axis])
+                boundary = local_max[axis];
             else
                 continue;
             denom += d[axis] * d[axis];
-            numer += d[axis] * (a[axis] - boundary);
+            numer += d[axis] * (aa[axis] - boundary);
         }
-        if (denom > EPSILON) {
+        if (isfinite(denom) && isfinite(numer) && denom > EPSILON) {
             double t = -numer / denom;
-            if (t > lo && t < hi) {
+            if (isfinite(t) && t > lo && t < hi) {
                 double p[3];
-                segment_point_at_raw(a, d, t, p);
-                double dist_sq = point_aabb_distance_sq_raw(mn, mx, p);
+                segment_point_at_raw(aa, d, t, p);
+                double dist_sq = point_aabb_distance_sq_raw(local_min, local_max, p);
                 if (isfinite(dist_sq) && dist_sq < best)
                     best = dist_sq;
             }
         }
     }
-    return best;
+    return isfinite(best) ? best : DBL_MAX;
 }
 
 /// @brief Slab-method ray-vs-AABB intersection. For each axis, intersect the ray with
@@ -262,20 +370,29 @@ static double rt_ray3d_intersect_aabb_raw(const double *origin,
                                           const double *dir,
                                           const double *mn,
                                           const double *mx) {
+    double o[3] = {origin ? origin[0] : 0.0, origin ? origin[1] : 0.0, origin ? origin[2] : 0.0};
+    double d[3] = {dir ? dir[0] : 0.0, dir ? dir[1] : 0.0, dir ? dir[2] : 0.0};
+    double local_min[3] = {mn ? mn[0] : 0.0, mn ? mn[1] : 0.0, mn ? mn[2] : 0.0};
+    double local_max[3] = {mx ? mx[0] : 0.0, mx ? mx[1] : 0.0, mx ? mx[2] : 0.0};
     double tmin = -DBL_MAX, tmax = DBL_MAX;
-    double len_sq = dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2];
+    vec3_sanitize_raw(o);
+    vec3_sanitize_raw(d);
+    aabb3d_canonicalize_raw(local_min, local_max);
+    double len_sq = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
     if (!isfinite(len_sq) || len_sq < EPSILON * EPSILON)
         return -1.0;
     for (int i = 0; i < 3; i++) {
-        if (fabs(dir[i]) < EPSILON) {
-            if (origin[i] < mn[i] || origin[i] > mx[i])
+        if (fabs(d[i]) < EPSILON) {
+            if (o[i] < local_min[i] || o[i] > local_max[i])
                 return -1.0;
             continue;
         }
         {
-            double inv = 1.0 / dir[i];
-            double t0 = (mn[i] - origin[i]) * inv;
-            double t1 = (mx[i] - origin[i]) * inv;
+            double inv = 1.0 / d[i];
+            double t0 = (local_min[i] - o[i]) * inv;
+            double t1 = (local_max[i] - o[i]) * inv;
+            if (!isfinite(t0) || !isfinite(t1))
+                return -1.0;
             if (t0 > t1) {
                 double tmp = t0;
                 t0 = t1;
@@ -289,16 +406,35 @@ static double rt_ray3d_intersect_aabb_raw(const double *origin,
                 return -1.0;
         }
     }
-    return tmin >= 0.0 ? tmin : (tmax >= 0.0 ? 0.0 : -1.0);
+    {
+        double t = tmin >= 0.0 ? tmin : (tmax >= 0.0 ? 0.0 : -1.0);
+        return isfinite(t) ? t : -1.0;
+    }
 }
 
 /// @brief Transform a 3-point through a 4×4 matrix as `M * (point, 1)`. Drops the w
 /// row (assumed identity for the affine transforms used here). Allocation-free wrapper
 /// used by ray-into-mesh-local-space conversion before triangle intersection tests.
 static void mat4_transform_point_raw(const double *m, const double *point, double *out) {
-    out[0] = m[0] * point[0] + m[1] * point[1] + m[2] * point[2] + m[3];
-    out[1] = m[4] * point[0] + m[5] * point[1] + m[6] * point[2] + m[7];
-    out[2] = m[8] * point[0] + m[9] * point[1] + m[10] * point[2] + m[11];
+    double p[3] = {point ? point[0] : 0.0, point ? point[1] : 0.0, point ? point[2] : 0.0};
+    double x;
+    double y;
+    double z;
+    if (!out)
+        return;
+    vec3_sanitize_raw(p);
+    if (!mat4d_is_finite(m)) {
+        out[0] = p[0];
+        out[1] = p[1];
+        out[2] = p[2];
+        return;
+    }
+    x = m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3];
+    y = m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7];
+    z = m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11];
+    out[0] = raycast3d_saturate_coord(x);
+    out[1] = raycast3d_saturate_coord(y);
+    out[2] = raycast3d_saturate_coord(z);
 }
 
 /// @brief Invert a 4×4 row-major matrix using the cofactor / adjugate method. Computes
@@ -308,6 +444,8 @@ static void mat4_transform_point_raw(const double *m, const double *point, doubl
 /// world-space ray into a mesh's local space for triangle intersection.
 static int mat4d_invert(const double *m, double *out) {
     double inv[16];
+    if (!out || !mat4d_is_finite(m))
+        return -1;
     inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
              m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
     inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
@@ -342,12 +480,19 @@ static int mat4d_invert(const double *m, double *out) {
               m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
 
     {
+        for (int i = 0; i < 16; i++) {
+            if (!isfinite(inv[i]))
+                return -1;
+        }
         double det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
         if (!isfinite(det) || fabs(det) < 1e-12)
             return -1;
         det = 1.0 / det;
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < 16; i++) {
             out[i] = inv[i] * det;
+            if (!isfinite(out[i]))
+                return -1;
+        }
     }
     return 0;
 }
@@ -406,9 +551,11 @@ double rt_ray3d_intersect_triangle(
     double px = dy * e2z - dz * e2y;
     double py = dz * e2x - dx * e2z;
     double pz = dx * e2y - dy * e2x;
+    if (!isfinite(px) || !isfinite(py) || !isfinite(pz))
+        return -1.0;
 
     double det = e1x * px + e1y * py + e1z * pz;
-    if (fabs(det) < EPSILON)
+    if (!isfinite(det) || fabs(det) < EPSILON)
         return -1.0; /* parallel */
 
     double inv_det = 1.0 / det;
@@ -418,7 +565,7 @@ double rt_ray3d_intersect_triangle(
 
     /* u = T · P * inv_det */
     double u = (tx * px + ty * py + tz * pz) * inv_det;
-    if (u < 0.0 || u > 1.0)
+    if (!isfinite(u) || u < 0.0 || u > 1.0)
         return -1.0;
 
     /* Q = T × e1 */
@@ -428,12 +575,12 @@ double rt_ray3d_intersect_triangle(
 
     /* v = dir · Q * inv_det */
     double v = (dx * qx + dy * qy + dz * qz) * inv_det;
-    if (v < 0.0 || u + v > 1.0)
+    if (!isfinite(v) || v < 0.0 || u + v > 1.0)
         return -1.0;
 
     /* t = e2 · Q * inv_det */
     double t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
-    return t >= 0.0 ? t : -1.0;
+    return isfinite(t) && t >= 0.0 ? raycast3d_sanitize_hit_distance(t) : -1.0;
 }
 
 /*==========================================================================
@@ -451,13 +598,15 @@ double rt_ray3d_intersect_triangle(
 /// @return Euclidean distance to the nearest hit, or -1.0 on miss.
 double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max) {
     double o[3], d[3], mn[3], mx[3];
+    double t;
     if (!vec3_read_finite(origin, o) || !vec3_read_finite(dir, d) ||
         !vec3_read_finite(aabb_min, mn) || !vec3_read_finite(aabb_max, mx))
         return -1.0;
     if (!vec3_normalize_raw(d))
         return -1.0;
     aabb3d_canonicalize_raw(mn, mx);
-    return rt_ray3d_intersect_aabb_raw(o, d, mn, mx);
+    t = rt_ray3d_intersect_aabb_raw(o, d, mn, mx);
+    return t >= 0.0 ? raycast3d_sanitize_hit_distance(t) : -1.0;
 }
 
 /*==========================================================================
@@ -484,6 +633,7 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
     double cx = cpt[0], cy = cpt[1], cz = cpt[2];
     if (!isfinite(radius) || radius < 0.0)
         return -1.0;
+    radius = raycast3d_sanitize_distance(radius);
 
     double lx = ox - cx, ly = oy - cy, lz = oz - cz;
     double a = dx * dx + dy * dy + dz * dz;
@@ -491,6 +641,8 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
         return -1.0;
     double b = 2.0 * (lx * dx + ly * dy + lz * dz);
     double c = lx * lx + ly * ly + lz * lz - radius * radius;
+    if (!isfinite(b) || !isfinite(c))
+        return -1.0;
     if (c <= 0.0)
         return 0.0;
 
@@ -502,10 +654,10 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
     double t0 = (-b - sqrt_disc) / (2.0 * a);
     double t1 = (-b + sqrt_disc) / (2.0 * a);
 
-    if (t0 >= 0.0)
-        return t0;
-    if (t1 >= 0.0)
-        return t1;
+    if (isfinite(t0) && t0 >= 0.0)
+        return raycast3d_sanitize_hit_distance(t0);
+    if (isfinite(t1) && t1 >= 0.0)
+        return raycast3d_sanitize_hit_distance(t1);
     return -1.0;
 }
 
@@ -553,6 +705,7 @@ static int ray3d_mesh_misses_bounds(const ray3d_mesh_ctx_t *ctx) {
     rt_mesh3d *m = ctx->m;
     double bounds_min[3] = {m->aabb_min[0], m->aabb_min[1], m->aabb_min[2]};
     double bounds_max[3] = {m->aabb_max[0], m->aabb_max[1], m->aabb_max[2]};
+    aabb3d_canonicalize_raw(bounds_min, bounds_max);
     if (ctx->has_transform && !ctx->use_object_space) {
         const double *model = ctx->transform->m;
         double corners[8][3];
@@ -585,6 +738,7 @@ static int ray3d_mesh_misses_bounds(const ray3d_mesh_ctx_t *ctx) {
         for (int i = 0; i < 8; i++) {
             double p[3];
             mat4_transform_point_raw(model, corners[i], p);
+            vec3_sanitize_raw(p);
             for (int axis = 0; axis < 3; axis++) {
                 if (p[axis] < world_min[axis])
                     world_min[axis] = p[axis];
@@ -592,6 +746,7 @@ static int ray3d_mesh_misses_bounds(const ray3d_mesh_ctx_t *ctx) {
                     world_max[axis] = p[axis];
             }
         }
+        aabb3d_canonicalize_raw(world_min, world_max);
         return rt_ray3d_intersect_aabb_raw(ctx->world_origin, ctx->world_dir, world_min, world_max) <
                0.0;
     }
@@ -602,55 +757,53 @@ static int ray3d_mesh_misses_bounds(const ray3d_mesh_ctx_t *ctx) {
 /// @return 1 if a triangle was hit (results in @p out), 0 otherwise.
 static int ray3d_find_closest_triangle(const ray3d_mesh_ctx_t *ctx, ray3d_mesh_hit_t *out) {
     rt_mesh3d *m = ctx->m;
+    uint32_t vertex_count = rt_mesh3d_safe_vertex_count(m);
+    uint32_t index_count = rt_mesh3d_safe_index_count(m);
     out->best_t = 1e30;
     out->best_tri = -1;
     out->best_i0 = out->best_i1 = out->best_i2 = 0;
     out->best_obj_point[0] = out->best_obj_point[1] = out->best_obj_point[2] = 0;
 
-    for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
+    for (uint32_t i = 0; i + 2 < index_count; i += 3) {
         uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
-        if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
+        if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
             continue;
 
-        double ax = m->vertices[i0].pos[0], ay = m->vertices[i0].pos[1],
-               az = m->vertices[i0].pos[2];
-        double bx = m->vertices[i1].pos[0], by = m->vertices[i1].pos[1],
-               bz = m->vertices[i1].pos[2];
-        double cx = m->vertices[i2].pos[0], cy = m->vertices[i2].pos[1],
-               cz = m->vertices[i2].pos[2];
+        double a[3] = {m->vertices[i0].pos[0], m->vertices[i0].pos[1], m->vertices[i0].pos[2]};
+        double b[3] = {m->vertices[i1].pos[0], m->vertices[i1].pos[1], m->vertices[i1].pos[2]};
+        double c[3] = {m->vertices[i2].pos[0], m->vertices[i2].pos[1], m->vertices[i2].pos[2]};
+        if (!vec3_is_finite_raw(a) || !vec3_is_finite_raw(b) || !vec3_is_finite_raw(c))
+            continue;
+        vec3_sanitize_raw(a);
+        vec3_sanitize_raw(b);
+        vec3_sanitize_raw(c);
 
         if (ctx->has_transform && !ctx->use_object_space) {
             const double *model = ctx->transform->m;
-            double a[3] = {ax, ay, az}, b[3] = {bx, by, bz}, c[3] = {cx, cy, cz};
             mat4_transform_point_raw(model, a, a);
             mat4_transform_point_raw(model, b, b);
             mat4_transform_point_raw(model, c, c);
-            ax = a[0];
-            ay = a[1];
-            az = a[2];
-            bx = b[0];
-            by = b[1];
-            bz = b[2];
-            cx = c[0];
-            cy = c[1];
-            cz = c[2];
         }
 
         {
+            double ax = a[0], ay = a[1], az = a[2];
+            double bx = b[0], by = b[1], bz = b[2];
+            double cx = c[0], cy = c[1], cz = c[2];
             double e1x = bx - ax, e1y = by - ay, e1z = bz - az;
             double e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
             double px = ctx->obj_dir[1] * e2z - ctx->obj_dir[2] * e2y;
             double py = ctx->obj_dir[2] * e2x - ctx->obj_dir[0] * e2z;
             double pz = ctx->obj_dir[0] * e2y - ctx->obj_dir[1] * e2x;
             double det = e1x * px + e1y * py + e1z * pz;
-            if (fabs(det) < EPSILON)
+            if (!isfinite(px) || !isfinite(py) || !isfinite(pz) || !isfinite(det) ||
+                fabs(det) < EPSILON)
                 continue;
             {
                 double inv_det = 1.0 / det;
                 double tvx = ctx->obj_origin[0] - ax, tvy = ctx->obj_origin[1] - ay,
                        tvz = ctx->obj_origin[2] - az;
                 double u = (tvx * px + tvy * py + tvz * pz) * inv_det;
-                if (u < 0.0 || u > 1.0)
+                if (!isfinite(u) || u < 0.0 || u > 1.0)
                     continue;
                 {
                     double qx = tvy * e1z - tvz * e1y;
@@ -659,11 +812,11 @@ static int ray3d_find_closest_triangle(const ray3d_mesh_ctx_t *ctx, ray3d_mesh_h
                     double v =
                         (ctx->obj_dir[0] * qx + ctx->obj_dir[1] * qy + ctx->obj_dir[2] * qz) *
                         inv_det;
-                    if (v < 0.0 || u + v > 1.0)
+                    if (!isfinite(v) || v < 0.0 || u + v > 1.0)
                         continue;
                     {
                         double t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
-                        if (t >= 0.0 && t < out->best_t) {
+                        if (isfinite(t) && t >= 0.0 && t < out->best_t) {
                             out->best_t = t;
                             out->best_tri = (int64_t)(i / 3);
                             out->best_i0 = i0;
@@ -672,6 +825,7 @@ static int ray3d_find_closest_triangle(const ray3d_mesh_ctx_t *ctx, ray3d_mesh_h
                             out->best_obj_point[0] = ctx->obj_origin[0] + ctx->obj_dir[0] * t;
                             out->best_obj_point[1] = ctx->obj_origin[1] + ctx->obj_dir[1] * t;
                             out->best_obj_point[2] = ctx->obj_origin[2] + ctx->obj_dir[2] * t;
+                            vec3_sanitize_raw(out->best_obj_point);
                         }
                     }
                 }
@@ -701,6 +855,9 @@ static void *ray3d_build_mesh_hit(const ray3d_mesh_ctx_t *ctx, const ray3d_mesh_
         double c[3] = {m->vertices[hd->best_i2].pos[0],
                        m->vertices[hd->best_i2].pos[1],
                        m->vertices[hd->best_i2].pos[2]};
+        vec3_sanitize_raw(a);
+        vec3_sanitize_raw(b);
+        vec3_sanitize_raw(c);
         if (ctx->has_transform) {
             const double *model = ctx->transform->m;
             mat4_transform_point_raw(model, a, a);
@@ -712,11 +869,13 @@ static void *ray3d_build_mesh_hit(const ray3d_mesh_ctx_t *ctx, const ray3d_mesh_
                 hit->point[0] = ctx->world_origin[0] + ctx->world_dir[0] * hd->best_t;
                 hit->point[1] = ctx->world_origin[1] + ctx->world_dir[1] * hd->best_t;
                 hit->point[2] = ctx->world_origin[2] + ctx->world_dir[2] * hd->best_t;
+                vec3_sanitize_raw(hit->point);
             }
         } else {
             hit->point[0] = ctx->world_origin[0] + ctx->world_dir[0] * hd->best_t;
             hit->point[1] = ctx->world_origin[1] + ctx->world_dir[1] * hd->best_t;
             hit->point[2] = ctx->world_origin[2] + ctx->world_dir[2] * hd->best_t;
+            vec3_sanitize_raw(hit->point);
         }
 
         {
@@ -731,7 +890,7 @@ static void *ray3d_build_mesh_hit(const ray3d_mesh_ctx_t *ctx, const ray3d_mesh_
     {
         double nlen = sqrt(best_normal[0] * best_normal[0] + best_normal[1] * best_normal[1] +
                            best_normal[2] * best_normal[2]);
-        if (nlen > 1e-8) {
+        if (isfinite(nlen) && nlen > 1e-8) {
             best_normal[0] /= nlen;
             best_normal[1] /= nlen;
             best_normal[2] /= nlen;
@@ -741,6 +900,7 @@ static void *ray3d_build_mesh_hit(const ray3d_mesh_ctx_t *ctx, const ray3d_mesh_
             best_normal[2] = 0.0;
         }
     }
+    vec3_normalize_or_up_raw(best_normal);
 
     {
         double dir_len_sq = ctx->world_dir[0] * ctx->world_dir[0] +
@@ -753,6 +913,8 @@ static void *ray3d_build_mesh_hit(const ray3d_mesh_ctx_t *ctx, const ray3d_mesh_
                                dir_len_sq)
                             : 0.0;
     }
+    hit->distance = raycast3d_sanitize_hit_distance(hit->distance);
+    vec3_sanitize_raw(hit->point);
     hit->normal[0] = best_normal[0];
     hit->normal[1] = best_normal[1];
     hit->normal[2] = best_normal[2];
@@ -779,7 +941,8 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
         if (!transform || !mat4d_is_finite(transform->m))
             return NULL;
     }
-    if (m->vertex_count == 0 || m->index_count < 3)
+    rt_mesh3d_repair_geometry_counts(m);
+    if (rt_mesh3d_safe_vertex_count(m) == 0 || rt_mesh3d_safe_index_count(m) < 3)
         return NULL;
 
     ctx.m = m;
@@ -800,7 +963,14 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
             ctx.obj_dir[0] = obj_target[0] - ctx.obj_origin[0];
             ctx.obj_dir[1] = obj_target[1] - ctx.obj_origin[1];
             ctx.obj_dir[2] = obj_target[2] - ctx.obj_origin[2];
-            ctx.use_object_space = 1;
+            vec3_sanitize_raw(ctx.obj_origin);
+            vec3_sanitize_raw(ctx.obj_dir);
+            if (vec3_is_finite_raw(ctx.obj_origin) && vec3_is_finite_raw(ctx.obj_dir)) {
+                double dir_len_sq = ctx.obj_dir[0] * ctx.obj_dir[0] +
+                                    ctx.obj_dir[1] * ctx.obj_dir[1] +
+                                    ctx.obj_dir[2] * ctx.obj_dir[2];
+                ctx.use_object_space = isfinite(dir_len_sq) && dir_len_sq >= EPSILON * EPSILON;
+            }
         }
     }
     if (!ctx.use_object_space) {
@@ -810,6 +980,15 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
         ctx.obj_dir[0] = ctx.world_dir[0];
         ctx.obj_dir[1] = ctx.world_dir[1];
         ctx.obj_dir[2] = ctx.world_dir[2];
+    }
+    vec3_sanitize_raw(ctx.obj_origin);
+    vec3_sanitize_raw(ctx.obj_dir);
+    {
+        double obj_dir_len_sq = ctx.obj_dir[0] * ctx.obj_dir[0] +
+                                ctx.obj_dir[1] * ctx.obj_dir[1] +
+                                ctx.obj_dir[2] * ctx.obj_dir[2];
+        if (!isfinite(obj_dir_len_sq) || obj_dir_len_sq < EPSILON * EPSILON)
+            return NULL;
     }
 
     if (ray3d_mesh_misses_bounds(&ctx))
@@ -868,13 +1047,13 @@ void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) 
 
     if (ax <= ay && ax <= az) {
         cb = (bmin[0] + bmax[0]) * 0.5;
-        return rt_vec3_new(cax < cb ? -ox : ox, 0, 0);
+        return vec3_new_sanitized(cax < cb ? -ox : ox, 0, 0);
     } else if (ay <= az) {
         cb = (bmin[1] + bmax[1]) * 0.5;
-        return rt_vec3_new(0, cay < cb ? -oy : oy, 0);
+        return vec3_new_sanitized(0, cay < cb ? -oy : oy, 0);
     } else {
         cb = (bmin[2] + bmax[2]) * 0.5;
-        return rt_vec3_new(0, 0, caz < cb ? -oz : oz);
+        return vec3_new_sanitized(0, 0, caz < cb ? -oz : oz);
     }
 }
 
@@ -885,7 +1064,7 @@ void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) 
 /// @brief Get the distance along the ray to the hit point.
 double rt_ray3d_hit_distance(void *hit) {
     rt_rayhit3d *h = (rt_rayhit3d *)rt_g3d_checked_or_null(hit, RT_G3D_RAYHIT3D_CLASS_ID);
-    return h ? h->distance : -1.0;
+    return h ? raycast3d_sanitize_hit_distance(h->distance) : -1.0;
 }
 
 /// @brief Get the world-space position of the hit point as a new Vec3.
@@ -893,7 +1072,7 @@ void *rt_ray3d_hit_point(void *hit) {
     rt_rayhit3d *h = (rt_rayhit3d *)rt_g3d_checked_or_null(hit, RT_G3D_RAYHIT3D_CLASS_ID);
     if (!h)
         return rt_vec3_new(0, 0, 0);
-    return rt_vec3_new(h->point[0], h->point[1], h->point[2]);
+    return vec3_new_sanitized(h->point[0], h->point[1], h->point[2]);
 }
 
 /// @brief Get the surface normal at the hit point as a new Vec3.
@@ -901,7 +1080,11 @@ void *rt_ray3d_hit_normal(void *hit) {
     rt_rayhit3d *h = (rt_rayhit3d *)rt_g3d_checked_or_null(hit, RT_G3D_RAYHIT3D_CLASS_ID);
     if (!h)
         return rt_vec3_new(0, 1, 0);
-    return rt_vec3_new(h->normal[0], h->normal[1], h->normal[2]);
+    {
+        double n[3] = {h->normal[0], h->normal[1], h->normal[2]};
+        vec3_normalize_or_up_raw(n);
+        return rt_vec3_new(n[0], n[1], n[2]);
+    }
 }
 
 /// @brief Get the index of the triangle that was hit (-1 if no hit).
@@ -919,14 +1102,14 @@ int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, dou
     double ca[3], cb[3];
     if (!vec3_read_finite(center_a, ca) || !vec3_read_finite(center_b, cb))
         return 0;
-    radius_a = isfinite(radius_a) && radius_a > 0.0 ? radius_a : 0.0;
-    radius_b = isfinite(radius_b) && radius_b > 0.0 ? radius_b : 0.0;
+    radius_a = raycast3d_sanitize_distance(radius_a);
+    radius_b = raycast3d_sanitize_distance(radius_b);
     double dx = cb[0] - ca[0];
     double dy = cb[1] - ca[1];
     double dz = cb[2] - ca[2];
     double dist_sq = dx * dx + dy * dy + dz * dz;
     double r_sum = radius_a + radius_b;
-    return isfinite(dist_sq) && dist_sq <= r_sum * r_sum ? 1 : 0;
+    return isfinite(dist_sq) && isfinite(r_sum) && dist_sq <= r_sum * r_sum ? 1 : 0;
 }
 
 /// @brief Compute the penetration vector to separate two overlapping spheres.
@@ -934,8 +1117,8 @@ void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, d
     double ca[3], cb[3];
     if (!vec3_read_finite(center_a, ca) || !vec3_read_finite(center_b, cb))
         return rt_vec3_new(0, 0, 0);
-    radius_a = isfinite(radius_a) && radius_a > 0.0 ? radius_a : 0.0;
-    radius_b = isfinite(radius_b) && radius_b > 0.0 ? radius_b : 0.0;
+    radius_a = raycast3d_sanitize_distance(radius_a);
+    radius_b = raycast3d_sanitize_distance(radius_b);
     double dx = cb[0] - ca[0];
     double dy = cb[1] - ca[1];
     double dz = cb[2] - ca[2];
@@ -948,9 +1131,9 @@ void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, d
         return rt_vec3_new(0, 0, 0);
     double depth = r_sum - dist;
     if (dist < 1e-12)
-        return rt_vec3_new(0, depth, 0);
+        return vec3_new_sanitized(0, raycast3d_sanitize_distance(depth), 0);
     double inv_dist = 1.0 / dist;
-    return rt_vec3_new(-dx * inv_dist * depth, -dy * inv_dist * depth, -dz * inv_dist * depth);
+    return vec3_new_sanitized(-dx * inv_dist * depth, -dy * inv_dist * depth, -dz * inv_dist * depth);
 }
 
 /// @brief Find the closest point on an AABB surface to a given point.
@@ -1002,7 +1185,7 @@ void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point) {
                 c[2] = mx[2];
             }
         }
-        return rt_vec3_new(c[0], c[1], c[2]);
+        return vec3_new_sanitized(c[0], c[1], c[2]);
     }
 }
 
@@ -1012,6 +1195,7 @@ int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, d
     if (!vec3_read_finite(center, p) || !vec3_read_finite(aabb_min, mn) ||
         !vec3_read_finite(aabb_max, mx) || !isfinite(radius) || radius < 0.0)
         return 0;
+    radius = raycast3d_sanitize_distance(radius);
     aabb3d_canonicalize_raw(mn, mx);
     {
         double c[3];
@@ -1020,7 +1204,8 @@ int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, d
             double dx = p[0] - c[0];
             double dy = p[1] - c[1];
             double dz = p[2] - c[2];
-            return (dx * dx + dy * dy + dz * dz) <= radius * radius ? 1 : 0;
+            double dist_sq = dx * dx + dy * dy + dz * dz;
+            return isfinite(dist_sq) && dist_sq <= radius * radius ? 1 : 0;
         }
     }
 }
@@ -1036,7 +1221,7 @@ void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
     if (!vec3_read_finite(seg_a, a) || !vec3_read_finite(seg_b, b) || !vec3_read_finite(point, p))
         return rt_vec3_new(0, 0, 0);
     segment3d_closest_point_raw(a, b, p, closest);
-    return rt_vec3_new(closest[0], closest[1], closest[2]);
+    return vec3_new_sanitized(closest[0], closest[1], closest[2]);
 }
 
 /// @brief Capsule-vs-sphere overlap. Reduces to a point-segment distance check —
@@ -1051,15 +1236,15 @@ int8_t rt_capsule3d_sphere_overlaps(
     if (!vec3_read_finite(cap_a, a) || !vec3_read_finite(cap_b, b) ||
         !vec3_read_finite(sphere_center, c))
         return 0;
-    cap_radius = isfinite(cap_radius) && cap_radius > 0.0 ? cap_radius : 0.0;
-    sphere_radius = isfinite(sphere_radius) && sphere_radius > 0.0 ? sphere_radius : 0.0;
+    cap_radius = raycast3d_sanitize_distance(cap_radius);
+    sphere_radius = raycast3d_sanitize_distance(sphere_radius);
     segment3d_closest_point_raw(a, b, c, closest);
     double dx = c[0] - closest[0];
     double dy = c[1] - closest[1];
     double dz = c[2] - closest[2];
     double r_sum = cap_radius + sphere_radius;
     double dist_sq = dx * dx + dy * dy + dz * dz;
-    return isfinite(dist_sq) && dist_sq <= r_sum * r_sum ? 1 : 0;
+    return isfinite(dist_sq) && isfinite(r_sum) && dist_sq <= r_sum * r_sum ? 1 : 0;
 }
 
 /// @brief Exact capsule-vs-AABB overlap using segment-to-box squared distance.
@@ -1074,7 +1259,7 @@ int8_t rt_capsule3d_aabb_overlaps(
         !vec3_read_finite(aabb_min, mn) || !vec3_read_finite(aabb_max, mx))
         return 0;
     aabb3d_canonicalize_raw(mn, mx);
-    radius = isfinite(radius) && radius > 0.0 ? radius : 0.0;
+    radius = raycast3d_sanitize_distance(radius);
     double dist_sq = segment_aabb_distance_sq_raw(a, b, mn, mx);
     return isfinite(dist_sq) && dist_sq <= radius * radius ? 1 : 0;
 }

@@ -102,6 +102,31 @@ static rt_morphtarget3d *morphtarget_checked(void *obj) {
     return (rt_morphtarget3d *)rt_g3d_checked_or_null(obj, RT_G3D_MORPHTARGET3D_CLASS_ID);
 }
 
+static int32_t morphtarget_safe_shape_count(const rt_morphtarget3d *mt) {
+    int32_t limit;
+    int32_t count = 0;
+    if (!mt || mt->shape_count <= 0 || mt->shape_capacity <= 0 || !mt->shapes ||
+        !mt->weights || !mt->prev_weights || !mt->motion_weight_snapshot)
+        return 0;
+    limit = mt->shape_count < mt->shape_capacity ? mt->shape_count : mt->shape_capacity;
+    while (count < limit && mt->shapes[count].pos_deltas)
+        count++;
+    return count;
+}
+
+static void morphtarget_repair_shape_table(rt_morphtarget3d *mt) {
+    if (!mt)
+        return;
+    if (!mt->shapes || !mt->weights || !mt->prev_weights || !mt->motion_weight_snapshot) {
+        mt->shape_count = 0;
+        mt->shape_capacity = 0;
+        return;
+    }
+    if (mt->shape_capacity < 0)
+        mt->shape_capacity = 0;
+    mt->shape_count = morphtarget_safe_shape_count(mt);
+}
+
 /// @brief Compute the total float count for `shape_count × vertex_count × 3` delta storage.
 /// @details Returns 0 on any overflow in the multiply chain, 1 on success with @p out_count
 ///          populated. Used to size the packed GPU delta buffer safely.
@@ -141,6 +166,46 @@ static float morphtarget_sanitize_delta(double value) {
                : 0.0f;
 }
 
+/// @brief Clamp a morph weight to the runtime-supported [-1, 1] range.
+static float morphtarget_sanitize_weight(double weight) {
+    if (!isfinite(weight))
+        return 0.0f;
+    if (weight < -1.0)
+        return -1.0f;
+    if (weight > 1.0)
+        return 1.0f;
+    return (float)weight;
+}
+
+static double morphtarget_delta_length_or_zero(const float *delta) {
+    double x;
+    double y;
+    double z;
+    double len;
+    if (!delta || !isfinite(delta[0]) || !isfinite(delta[1]) || !isfinite(delta[2]))
+        return 0.0;
+    x = fabs((double)delta[0]);
+    y = fabs((double)delta[1]);
+    z = fabs((double)delta[2]);
+    len = hypot(hypot(x, y), z);
+    return isfinite(len) ? len : 0.0;
+}
+
+/// @brief Sanitize all weight history arrays before they are exposed to draw backends.
+static void morphtarget_sanitize_weights(rt_morphtarget3d *mt) {
+    if (!mt)
+        return;
+    for (int32_t i = 0, count = morphtarget_safe_shape_count(mt); i < count; ++i) {
+        if (mt->weights)
+            mt->weights[i] = morphtarget_sanitize_weight(mt->weights[i]);
+        if (mt->prev_weights)
+            mt->prev_weights[i] = morphtarget_sanitize_weight(mt->prev_weights[i]);
+        if (mt->motion_weight_snapshot)
+            mt->motion_weight_snapshot[i] =
+                morphtarget_sanitize_weight(mt->motion_weight_snapshot[i]);
+    }
+}
+
 /// @brief Re-linearize the per-shape delta arrays into a single GPU-friendly buffer.
 /// @details Blend shapes arrive from authoring tools as independent arrays
 ///   (one `pos_deltas` / `nrm_deltas` allocation per shape). GPU backends,
@@ -159,6 +224,7 @@ static int morphtarget_rebuild_packed_payload(rt_morphtarget3d *mt) {
 
     if (!mt)
         return 0;
+    morphtarget_repair_shape_table(mt);
     if (!mt->packed_dirty)
         return 1;
 
@@ -183,14 +249,12 @@ static int morphtarget_rebuild_packed_payload(rt_morphtarget3d *mt) {
     for (int32_t s = 0; s < mt->shape_count; s++) {
         size_t offset = (size_t)s * (size_t)mt->vertex_count * 3u;
         if (packed_pos && mt->shapes[s].pos_deltas) {
-            memcpy(&packed_pos[offset],
-                   mt->shapes[s].pos_deltas,
-                   (size_t)mt->vertex_count * 3u * sizeof(float));
+            for (size_t i = 0; i < (size_t)mt->vertex_count * 3u; ++i)
+                packed_pos[offset + i] = morphtarget_sanitize_delta(mt->shapes[s].pos_deltas[i]);
         }
         if (packed_nrm && mt->shapes[s].nrm_deltas) {
-            memcpy(&packed_nrm[offset],
-                   mt->shapes[s].nrm_deltas,
-                   (size_t)mt->vertex_count * 3u * sizeof(float));
+            for (size_t i = 0; i < (size_t)mt->vertex_count * 3u; ++i)
+                packed_nrm[offset + i] = morphtarget_sanitize_delta(mt->shapes[s].nrm_deltas[i]);
         }
     }
 
@@ -219,6 +283,7 @@ static int morphtarget_reserve_shapes(rt_morphtarget3d *mt, int32_t min_capacity
 
     if (!mt)
         return 0;
+    morphtarget_repair_shape_table(mt);
     if (min_capacity < 0)
         return 0;
     if (min_capacity <= mt->shape_capacity)
@@ -249,14 +314,18 @@ static int morphtarget_reserve_shapes(rt_morphtarget3d *mt, int32_t min_capacity
     }
 
     if (mt->shape_count > 0) {
-        memcpy(new_shapes, mt->shapes, (size_t)mt->shape_count * sizeof(*new_shapes));
-        memcpy(new_weights, mt->weights, (size_t)mt->shape_count * sizeof(*new_weights));
-        memcpy(new_prev_weights,
-               mt->prev_weights,
-               (size_t)mt->shape_count * sizeof(*new_prev_weights));
-        memcpy(new_motion_snapshot,
-               mt->motion_weight_snapshot,
-               (size_t)mt->shape_count * sizeof(*new_motion_snapshot));
+        if (mt->shapes)
+            memcpy(new_shapes, mt->shapes, (size_t)mt->shape_count * sizeof(*new_shapes));
+        if (mt->weights)
+            memcpy(new_weights, mt->weights, (size_t)mt->shape_count * sizeof(*new_weights));
+        if (mt->prev_weights)
+            memcpy(new_prev_weights,
+                   mt->prev_weights,
+                   (size_t)mt->shape_count * sizeof(*new_prev_weights));
+        if (mt->motion_weight_snapshot)
+            memcpy(new_motion_snapshot,
+                   mt->motion_weight_snapshot,
+                   (size_t)mt->shape_count * sizeof(*new_motion_snapshot));
     }
 
     free(mt->shapes);
@@ -316,7 +385,7 @@ static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name, int32_t sh
 ///   because finalize is idempotent against null slots.
 static void rt_morphtarget3d_finalize(void *obj) {
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
-    for (int32_t i = 0; i < mt->shape_count; i++) {
+    for (int32_t i = 0, count = morphtarget_safe_shape_count(mt); i < count; i++) {
         free(mt->shapes[i].pos_deltas);
         free(mt->shapes[i].nrm_deltas);
         free(mt->shapes[i].tan_deltas);
@@ -327,6 +396,14 @@ static void rt_morphtarget3d_finalize(void *obj) {
     free(mt->motion_weight_snapshot);
     free(mt->packed_pos_deltas);
     free(mt->packed_nrm_deltas);
+    mt->shapes = NULL;
+    mt->weights = NULL;
+    mt->prev_weights = NULL;
+    mt->motion_weight_snapshot = NULL;
+    mt->packed_pos_deltas = NULL;
+    mt->packed_nrm_deltas = NULL;
+    mt->shape_count = 0;
+    mt->shape_capacity = 0;
 }
 
 /// @brief Create a morph target container for blendshape animation.
@@ -383,7 +460,7 @@ void *rt_morphtarget3d_clone(void *obj) {
             rt_obj_free(dst);
         return NULL;
     }
-    for (int32_t i = 0; i < src->shape_count; i++) {
+    for (int32_t i = 0, count = morphtarget_safe_shape_count(src); i < count; i++) {
         int64_t shape = rt_morphtarget3d_add_shape(dst, rt_const_cstr(src->shapes[i].name));
         if (shape < 0) {
             if (rt_obj_release_check0(dst))
@@ -411,10 +488,12 @@ void *rt_morphtarget3d_clone(void *obj) {
             }
             memcpy(dst->shapes[shape].tan_deltas, src->shapes[i].tan_deltas, delta_size);
         }
-        dst->weights[shape] = src->weights ? src->weights[i] : 0.0f;
-        dst->prev_weights[shape] = src->prev_weights ? src->prev_weights[i] : 0.0f;
+        dst->weights[shape] = src->weights ? morphtarget_sanitize_weight(src->weights[i]) : 0.0f;
+        dst->prev_weights[shape] =
+            src->prev_weights ? morphtarget_sanitize_weight(src->prev_weights[i]) : 0.0f;
         dst->motion_weight_snapshot[shape] =
-            src->motion_weight_snapshot ? src->motion_weight_snapshot[i] : dst->weights[shape];
+            src->motion_weight_snapshot ? morphtarget_sanitize_weight(src->motion_weight_snapshot[i])
+                                        : dst->weights[shape];
     }
     dst->has_prev_weights = src->has_prev_weights;
     dst->last_motion_frame = src->last_motion_frame;
@@ -426,11 +505,37 @@ void *rt_morphtarget3d_clone(void *obj) {
  * Shape management
  *=========================================================================*/
 
+/// @brief Copy a runtime string into the fixed blend-shape name storage.
+static int morphtarget_copy_canonical_name(rt_string name, char out[64]) {
+    const char *cstr;
+    size_t len;
+    if (!out)
+        return 0;
+    out[0] = '\0';
+    if (!name)
+        return 1;
+    if (!rt_string_is_handle(name))
+        return 0;
+    cstr = rt_string_cstr(name);
+    if (!cstr)
+        return 0;
+    len = strlen(cstr);
+    if (len > 63)
+        len = 63;
+    memcpy(out, cstr, len);
+    out[len] = '\0';
+    return 1;
+}
+
 /// @brief Register a named blend shape and allocate its per-vertex delta arrays.
 int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
+    char canonical_name[64];
     if (!mt)
         return -1;
+    if (!morphtarget_copy_canonical_name(name, canonical_name))
+        return -1;
+    morphtarget_repair_shape_table(mt);
     if (mt->shape_count == INT32_MAX)
         return -1;
     if (!morphtarget_reserve_shapes(mt, mt->shape_count + 1)) {
@@ -440,17 +545,7 @@ int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
 
     vgfx3d_morph_shape_t *shape = &mt->shapes[mt->shape_count];
     memset(shape, 0, sizeof(vgfx3d_morph_shape_t));
-
-    if (name) {
-        const char *cstr = rt_string_cstr(name);
-        if (cstr) {
-            size_t len = strlen(cstr);
-            if (len > 63)
-                len = 63;
-            memcpy(shape->name, cstr, len);
-            shape->name[len] = '\0';
-        }
-    }
+    memcpy(shape->name, canonical_name, sizeof(shape->name));
 
     size_t delta_size;
     if (!morphtarget_vertex_delta_bytes(mt->vertex_count, &delta_size))
@@ -472,7 +567,7 @@ void rt_morphtarget3d_set_delta(
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt)
         return;
-    if (shape < 0 || shape >= mt->shape_count)
+    if (shape < 0 || shape >= morphtarget_safe_shape_count(mt))
         return;
     if (vertex < 0 || vertex >= mt->vertex_count)
         return;
@@ -494,7 +589,7 @@ void rt_morphtarget3d_set_normal_delta(
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt)
         return;
-    if (shape < 0 || shape >= mt->shape_count)
+    if (shape < 0 || shape >= morphtarget_safe_shape_count(mt))
         return;
     if (vertex < 0 || vertex >= mt->vertex_count)
         return;
@@ -524,7 +619,7 @@ void rt_morphtarget3d_set_tangent_delta(
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt)
         return;
-    if (shape < 0 || shape >= mt->shape_count)
+    if (shape < 0 || shape >= morphtarget_safe_shape_count(mt))
         return;
     if (vertex < 0 || vertex >= mt->vertex_count)
         return;
@@ -559,15 +654,9 @@ void rt_morphtarget3d_set_weight(void *obj, int64_t shape, double weight) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt)
         return;
-    if (shape < 0 || shape >= mt->shape_count)
+    if (shape < 0 || shape >= morphtarget_safe_shape_count(mt))
         return;
-    if (!isfinite(weight))
-        weight = 0.0;
-    if (weight < -1.0)
-        weight = -1.0;
-    else if (weight > 1.0)
-        weight = 1.0;
-    mt->weights[shape] = (float)weight;
+    mt->weights[shape] = morphtarget_sanitize_weight(weight);
 }
 
 /// @brief Get the current blend weight for a shape by index.
@@ -575,8 +664,11 @@ double rt_morphtarget3d_get_weight(void *obj, int64_t shape) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt)
         return 0.0;
-    if (shape < 0 || shape >= mt->shape_count)
+    if (shape < 0 || shape >= morphtarget_safe_shape_count(mt))
         return 0.0;
+    if (!mt->weights)
+        return 0.0;
+    mt->weights[shape] = morphtarget_sanitize_weight(mt->weights[shape]);
     return mt->weights[shape];
 }
 
@@ -585,10 +677,10 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt || !name)
         return;
-    const char *target = rt_string_cstr(name);
-    if (!target || target[0] == '\0')
+    char target[64];
+    if (!morphtarget_copy_canonical_name(name, target) || target[0] == '\0')
         return;
-    for (int32_t i = 0; i < mt->shape_count; i++) {
+    for (int32_t i = 0, count = morphtarget_safe_shape_count(mt); i < count; i++) {
         if (strcmp(mt->shapes[i].name, target) == 0) {
             rt_morphtarget3d_set_weight(mt, i, weight);
             return;
@@ -599,7 +691,7 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
 /// @brief Get the number of registered blend shapes.
 int64_t rt_morphtarget3d_get_shape_count(void *obj) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
-    return mt ? mt->shape_count : 0;
+    return mt ? morphtarget_safe_shape_count(mt) : 0;
 }
 
 /// @brief Borrow the contiguous packed position-delta payload for GPU upload.
@@ -617,22 +709,21 @@ const float *rt_morphtarget3d_get_packed_deltas(void *obj) {
 /// @brief Largest authored position delta length across all shapes.
 double rt_morphtarget3d_get_max_position_delta(void *obj) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
-    double max_len2 = 0.0;
+    double max_len = 0.0;
     if (!mt || mt->vertex_count <= 0)
         return 0.0;
-    for (int32_t s = 0; s < mt->shape_count; s++) {
+    for (int32_t s = 0, count = morphtarget_safe_shape_count(mt); s < count; s++) {
         const float *deltas = mt->shapes[s].pos_deltas;
         if (!deltas)
             continue;
         for (int32_t v = 0; v < mt->vertex_count; v++) {
             const float *d = deltas + (size_t)v * 3u;
-            double len2 = (double)d[0] * (double)d[0] + (double)d[1] * (double)d[1] +
-                          (double)d[2] * (double)d[2];
-            if (isfinite(len2) && len2 > max_len2)
-                max_len2 = len2;
+            double len = morphtarget_delta_length_or_zero(d);
+            if (len > max_len)
+                max_len = len;
         }
     }
-    return max_len2 > 0.0 ? sqrt(max_len2) : 0.0;
+    return max_len;
 }
 
 /// @brief Borrow the packed normal-delta payload for GPU upload, or NULL when no
@@ -653,7 +744,7 @@ int64_t rt_morphtarget3d_has_tangent_deltas(void *obj) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt)
         return 0;
-    for (int32_t i = 0; i < mt->shape_count; i++) {
+    for (int32_t i = 0, count = morphtarget_safe_shape_count(mt); i < count; i++) {
         if (mt->shapes[i].tan_deltas)
             return 1;
     }
@@ -666,6 +757,8 @@ uint64_t rt_morphtarget3d_get_payload_generation(void *obj) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt)
         return 0;
+    if (mt->payload_generation == 0)
+        mt->payload_generation = 1;
     return mt->payload_generation;
 }
 
@@ -681,8 +774,10 @@ uint64_t rt_morphtarget3d_get_payload_generation(void *obj) {
 static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64_t frame_serial) {
     if (!mt)
         return NULL;
+    morphtarget_sanitize_weights(mt);
     if (mt->last_motion_frame != frame_serial) {
-        size_t weight_bytes = (size_t)mt->shape_count * sizeof(float);
+        int32_t shape_count = morphtarget_safe_shape_count(mt);
+        size_t weight_bytes = (size_t)shape_count * sizeof(float);
         if (mt->last_motion_frame != 0 && weight_bytes > 0) {
             memcpy(mt->prev_weights, mt->motion_weight_snapshot, weight_bytes);
             mt->has_prev_weights = 1;
@@ -698,6 +793,26 @@ static const float *morphtarget_prepare_prev_weights(rt_morphtarget3d *mt, int64
  * Mesh integration
  *=========================================================================*/
 
+/// @brief Drop one retained object ref and clear the slot.
+static void mesh3d_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+/// @brief Release a retained MorphTarget3D slot only if it still points at MorphTarget3D.
+static void mesh3d_release_morph_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MORPHTARGET3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    mesh3d_release_ref(slot);
+}
+
 /// @brief Bind a MorphTarget3D to a Mesh3D so subsequent draws apply blendshapes.
 /// Vertex counts must match exactly; mismatches are silently rejected. Pass NULL
 /// in @p morph_targets to detach.
@@ -705,23 +820,23 @@ void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
     rt_mesh3d *m = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
     if (!m)
         return;
+    if (m->morph_targets_ref &&
+        !rt_g3d_has_class(m->morph_targets_ref, RT_G3D_MORPHTARGET3D_CLASS_ID))
+        mesh3d_release_morph_slot(&m->morph_targets_ref);
     if (!morph_targets) {
-        if (m->morph_targets_ref && rt_obj_release_check0(m->morph_targets_ref))
-            rt_obj_free(m->morph_targets_ref);
-        m->morph_targets_ref = NULL;
+        mesh3d_release_morph_slot(&m->morph_targets_ref);
         rt_mesh3d_touch_geometry(m);
         return;
     }
     rt_morphtarget3d *mt = morphtarget_checked(morph_targets);
     if (!mt)
         return;
-    if ((int32_t)m->vertex_count != mt->vertex_count)
+    if (mt->vertex_count <= 0 || (int32_t)m->vertex_count != mt->vertex_count)
         return;
     if (m->morph_targets_ref == morph_targets)
         return;
     rt_obj_retain_maybe(morph_targets);
-    if (m->morph_targets_ref && rt_obj_release_check0(m->morph_targets_ref))
-        rt_obj_free(m->morph_targets_ref);
+    mesh3d_release_morph_slot(&m->morph_targets_ref);
     m->morph_targets_ref = morph_targets;
     rt_mesh3d_touch_geometry(m);
 }
@@ -729,6 +844,19 @@ void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
 /*==========================================================================
  * CPU morph application + drawing
  *=========================================================================*/
+
+/// @brief True when any shape has a meaningful finite weight and position-delta payload.
+static int morphtarget_has_active_position_deltas(const rt_morphtarget3d *mt) {
+    int32_t shape_count = morphtarget_safe_shape_count(mt);
+    if (!mt || shape_count <= 0 || !mt->weights)
+        return 0;
+    for (int32_t s = 0; s < shape_count; s++) {
+        float w = mt->weights[s];
+        if (mt->shapes[s].pos_deltas && isfinite(w) && fabsf(w) >= 1e-6f)
+            return 1;
+    }
+    return 0;
+}
 
 /// @brief Submit a mesh draw with morph-target blend applied on GPU or CPU.
 /// @details Picks the evaluation path by asking the backend
@@ -760,6 +888,9 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         m = (rt_mesh3d *)mesh;
     if (!c || !m || !mt)
         return;
+    morphtarget_repair_shape_table(mt);
+    morphtarget_sanitize_weights(mt);
+    int32_t shape_count = morphtarget_safe_shape_count(mt);
 
     if (!m->resident)
         return;
@@ -768,14 +899,29 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     if (m->vertex_count != (uint32_t)mt->vertex_count)
         return;
 
+    if (!morphtarget_has_active_position_deltas(mt)) {
+        rt_mesh3d tmp = *m;
+        if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh))
+            return;
+        tmp.morph_targets_ref = NULL;
+        tmp.morph_deltas = NULL;
+        tmp.morph_normal_deltas = NULL;
+        tmp.morph_weights = NULL;
+        tmp.prev_morph_weights = NULL;
+        tmp.morph_shape_count = 0;
+        rt_canvas3d_draw_mesh_matrix_keyed(
+            canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
+        return;
+    }
+
     if (c->backend && !rt_morphtarget3d_has_tangent_deltas(mt) &&
-        vgfx3d_backend_prefers_gpu_morph(c->backend->name, mt->shape_count)) {
+        vgfx3d_backend_prefers_gpu_morph(c->backend->name, shape_count)) {
         const float *prev_weights =
             morphtarget_prepare_prev_weights(mt, rt_canvas3d_get_frame_serial(canvas));
         const float *packed_deltas = rt_morphtarget3d_get_packed_deltas(mt);
         const float *packed_normal_deltas = rt_morphtarget3d_get_packed_normal_deltas(mt);
         rt_mesh3d tmp;
-        if (mt->shape_count > 0 && !packed_deltas)
+        if (shape_count > 0 && !packed_deltas)
             return;
         if (!rt_canvas3d_add_temp_object(canvas, mt))
             return;
@@ -792,7 +938,7 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         tmp.morph_normal_deltas = packed_normal_deltas;
         tmp.morph_weights = mt->weights;
         tmp.prev_morph_weights = prev_weights;
-        tmp.morph_shape_count = mt->shape_count;
+        tmp.morph_shape_count = shape_count;
         rt_canvas3d_draw_mesh_matrix_keyed(
             canvas, &tmp, model_matrix, material, motion_key, NULL, prev_weights);
         return;
@@ -812,8 +958,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     /* Accumulate weighted deltas */
     int has_normal_deltas = 0;
     int has_tangent_deltas = 0;
-    for (int32_t s = 0; s < mt->shape_count; s++) {
-        float w = mt->weights[s];
+    for (int32_t s = 0; s < shape_count; s++) {
+        float w = morphtarget_sanitize_weight(mt->weights[s]);
         if (!isfinite(w) || fabsf(w) < 1e-6f)
             continue;
 
@@ -825,20 +971,20 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
 
         for (uint32_t v = 0; v < m->vertex_count; v++) {
             size_t base = (size_t)v * 3u;
-            morphed[v].pos[0] += w * pd[base + 0];
-            morphed[v].pos[1] += w * pd[base + 1];
-            morphed[v].pos[2] += w * pd[base + 2];
+            morphed[v].pos[0] += w * morphtarget_sanitize_delta(pd[base + 0]);
+            morphed[v].pos[1] += w * morphtarget_sanitize_delta(pd[base + 1]);
+            morphed[v].pos[2] += w * morphtarget_sanitize_delta(pd[base + 2]);
 
             if (nd) {
-                morphed[v].normal[0] += w * nd[base + 0];
-                morphed[v].normal[1] += w * nd[base + 1];
-                morphed[v].normal[2] += w * nd[base + 2];
+                morphed[v].normal[0] += w * morphtarget_sanitize_delta(nd[base + 0]);
+                morphed[v].normal[1] += w * morphtarget_sanitize_delta(nd[base + 1]);
+                morphed[v].normal[2] += w * morphtarget_sanitize_delta(nd[base + 2]);
                 has_normal_deltas = 1;
             }
             if (td) {
-                morphed[v].tangent[0] += w * td[base + 0];
-                morphed[v].tangent[1] += w * td[base + 1];
-                morphed[v].tangent[2] += w * td[base + 2];
+                morphed[v].tangent[0] += w * morphtarget_sanitize_delta(td[base + 0]);
+                morphed[v].tangent[1] += w * morphtarget_sanitize_delta(td[base + 1]);
+                morphed[v].tangent[2] += w * morphtarget_sanitize_delta(td[base + 2]);
                 has_tangent_deltas = 1;
             }
         }

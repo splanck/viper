@@ -25,7 +25,9 @@
 #include "rt_canvas3d_internal.h"
 #include "vgfx3d_backend_utils.h"
 
+#include <float.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -59,6 +61,51 @@ static int canvas3d_float_array_close(const float *a, const float *b, int32_t co
     return 1;
 }
 
+/// @brief Normalize a skybox sample direction, using @p fallback then -Z for malformed input.
+static void canvas3d_sanitize_skybox_dir(const float *candidate,
+                                         const float *fallback,
+                                         float out[3]) {
+    double x = candidate ? (double)candidate[0] : 0.0;
+    double y = candidate ? (double)candidate[1] : 0.0;
+    double z = candidate ? (double)candidate[2] : 0.0;
+    double scale = fabs(x);
+    double len;
+
+    if (fabs(y) > scale)
+        scale = fabs(y);
+    if (fabs(z) > scale)
+        scale = fabs(z);
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z) || !isfinite(scale) || scale <= 1e-20) {
+        x = fallback ? (double)fallback[0] : 0.0;
+        y = fallback ? (double)fallback[1] : 0.0;
+        z = fallback ? (double)fallback[2] : -1.0;
+        scale = fabs(x);
+        if (fabs(y) > scale)
+            scale = fabs(y);
+        if (fabs(z) > scale)
+            scale = fabs(z);
+    }
+    if (!isfinite(x) || !isfinite(y) || !isfinite(z) || !isfinite(scale) || scale <= 1e-20) {
+        out[0] = 0.0f;
+        out[1] = 0.0f;
+        out[2] = -1.0f;
+        return;
+    }
+    x /= scale;
+    y /= scale;
+    z /= scale;
+    len = sqrt(x * x + y * y + z * z);
+    if (!isfinite(len) || len <= 1e-20) {
+        out[0] = 0.0f;
+        out[1] = 0.0f;
+        out[2] = -1.0f;
+        return;
+    }
+    out[0] = (float)(x / len);
+    out[1] = (float)(y / len);
+    out[2] = (float)(z / len);
+}
+
 /// @brief CPU-rasterize the bound skybox cubemap into a destination pixel buffer.
 /// @details For perspective cameras, unprojects each destination pixel from NDC
 ///   back to a world-space direction by multiplying through `inverse(VP)`, then
@@ -71,21 +118,18 @@ static int canvas3d_float_array_close(const float *a, const float *b, int32_t co
 ///   are otherwise malformed.
 static int canvas3d_render_skybox_cpu(
     rt_canvas3d *c, uint8_t *dst_pixels, int32_t dst_w, int32_t dst_h, int32_t dst_stride) {
-    if (!c || !c->skybox || !dst_pixels || !canvas3d_rgba8_stride_valid(dst_w, dst_h, dst_stride))
+    if (!c || !c->skybox || !rt_g3d_has_class(c->skybox, RT_G3D_CUBEMAP3D_CLASS_ID) ||
+        !dst_pixels || !canvas3d_rgba8_stride_valid(dst_w, dst_h, dst_stride))
         return 0;
 
     if (c->cached_cam_is_ortho) {
+        float dir[3];
         float r;
         float g;
         float b;
 
-        rt_cubemap_sample(c->skybox,
-                          c->cached_cam_forward[0],
-                          c->cached_cam_forward[1],
-                          c->cached_cam_forward[2],
-                          &r,
-                          &g,
-                          &b);
+        canvas3d_sanitize_skybox_dir(c->cached_cam_forward, NULL, dir);
+        rt_cubemap_sample(c->skybox, dir[0], dir[1], dir[2], &r, &g, &b);
         uint8_t r8 = canvas3d_clamp01_to_u8(r);
         uint8_t g8 = canvas3d_clamp01_to_u8(g);
         uint8_t b8 = canvas3d_clamp01_to_u8(b);
@@ -122,6 +166,7 @@ static int canvas3d_render_skybox_cpu(
             float dy;
             float dz;
             float dl;
+            float dir[3];
             float r;
             float g;
             float b;
@@ -135,7 +180,7 @@ static int canvas3d_render_skybox_cpu(
                        inv_vp[11] * clip[3];
             world[3] = inv_vp[12] * clip[0] + inv_vp[13] * clip[1] + inv_vp[14] * clip[2] +
                        inv_vp[15] * clip[3];
-            if (fabsf(world[3]) > 1e-7f) {
+            if (isfinite(world[3]) && fabsf(world[3]) > 1e-7f) {
                 world[0] /= world[3];
                 world[1] /= world[3];
                 world[2] /= world[3];
@@ -144,12 +189,17 @@ static int canvas3d_render_skybox_cpu(
             dy = world[1] - c->cached_cam_pos[1];
             dz = world[2] - c->cached_cam_pos[2];
             dl = sqrtf(dx * dx + dy * dy + dz * dz);
-            if (dl > 1e-7f) {
-                dx /= dl;
-                dy /= dl;
-                dz /= dl;
+            if (isfinite(dl) && dl > 1e-7f) {
+                dir[0] = dx / dl;
+                dir[1] = dy / dl;
+                dir[2] = dz / dl;
+            } else {
+                dir[0] = dx;
+                dir[1] = dy;
+                dir[2] = dz;
             }
-            rt_cubemap_sample(c->skybox, dx, dy, dz, &r, &g, &b);
+            canvas3d_sanitize_skybox_dir(dir, c->cached_cam_forward, dir);
+            rt_cubemap_sample(c->skybox, dir[0], dir[1], dir[2], &r, &g, &b);
             dst = &row[(size_t)x * 4u];
             dst[0] = canvas3d_clamp01_to_u8(r);
             dst[1] = canvas3d_clamp01_to_u8(g);
@@ -179,9 +229,13 @@ static int canvas3d_skybox_cache_matches(const rt_canvas3d *c,
         c->skybox_cpu_cache_generation != generation ||
         c->skybox_cpu_cache_is_ortho != c->cached_cam_is_ortho)
         return 0;
-    if (c->cached_cam_is_ortho)
-        return canvas3d_float_array_close(
-            c->skybox_cpu_cache_forward, c->cached_cam_forward, 3, 1e-6f);
+    if (c->cached_cam_is_ortho) {
+        float cached_forward[3];
+        float current_forward[3];
+        canvas3d_sanitize_skybox_dir(c->skybox_cpu_cache_forward, NULL, cached_forward);
+        canvas3d_sanitize_skybox_dir(c->cached_cam_forward, NULL, current_forward);
+        return canvas3d_float_array_close(cached_forward, current_forward, 3, 1e-6f);
+    }
     return canvas3d_float_array_close(c->skybox_cpu_cache_vp, c->cached_vp, 16, 1e-6f) &&
            canvas3d_float_array_close(c->skybox_cpu_cache_cam_pos, c->cached_cam_pos, 3, 1e-6f);
 }
@@ -200,14 +254,19 @@ int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h) {
     uint64_t generation;
     size_t bytes;
 
-    if (!c || !c->skybox || w <= 0 || h <= 0 || (int64_t)w > INT32_MAX / 4)
+    if (!c || !c->skybox || !rt_g3d_has_class(c->skybox, RT_G3D_CUBEMAP3D_CLASS_ID) ||
+        w <= 0 || h <= 0 || (size_t)w > (size_t)INT32_MAX / 4u)
         return 0;
     generation = vgfx3d_get_cubemap_generation(c->skybox);
+    if (generation == 0) {
+        rt_canvas3d_invalidate_skybox_cache(c);
+        return 0;
+    }
     if (canvas3d_skybox_cache_matches(c, w, h, generation))
         return 1;
-    bytes = (size_t)w * (size_t)h * 4u;
-    if (bytes / 4u / (size_t)w != (size_t)h)
+    if ((size_t)w > SIZE_MAX / (size_t)h / 4u)
         return 0;
+    bytes = (size_t)w * (size_t)h * 4u;
     if (c->skybox_cpu_cache_w != w || c->skybox_cpu_cache_h != h || !c->skybox_cpu_cache) {
         uint8_t *new_cache = (uint8_t *)realloc(c->skybox_cpu_cache, bytes);
         if (!new_cache) {
@@ -226,7 +285,10 @@ int canvas3d_ensure_skybox_cpu_cache(rt_canvas3d *c, int32_t w, int32_t h) {
     c->skybox_cpu_cache_is_ortho = c->cached_cam_is_ortho;
     memcpy(c->skybox_cpu_cache_vp, c->cached_vp, sizeof(c->skybox_cpu_cache_vp));
     memcpy(c->skybox_cpu_cache_cam_pos, c->cached_cam_pos, sizeof(c->skybox_cpu_cache_cam_pos));
-    memcpy(c->skybox_cpu_cache_forward, c->cached_cam_forward, sizeof(c->skybox_cpu_cache_forward));
+    if (c->cached_cam_is_ortho)
+        canvas3d_sanitize_skybox_dir(c->cached_cam_forward, NULL, c->skybox_cpu_cache_forward);
+    else
+        memcpy(c->skybox_cpu_cache_forward, c->cached_cam_forward, sizeof(c->skybox_cpu_cache_forward));
     return 1;
 }
 
@@ -246,8 +308,9 @@ void canvas3d_blit_skybox_cpu_cache(
         return;
     src_stride = (int32_t)((int64_t)dst_w * 4);
     for (int32_t y = 0; y < dst_h; y++)
-        memcpy(
-            &dst_pixels[y * dst_stride], &c->skybox_cpu_cache[y * src_stride], (size_t)src_stride);
+        memcpy(&dst_pixels[(size_t)y * (size_t)dst_stride],
+               &c->skybox_cpu_cache[(size_t)y * (size_t)src_stride],
+               (size_t)src_stride);
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

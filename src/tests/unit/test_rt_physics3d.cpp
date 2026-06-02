@@ -423,6 +423,55 @@ static void test_body_extreme_motion_state_saturates() {
                 "Integrated position Y remains finite after extreme motion");
 }
 
+static void test_body_extreme_scale_and_offcenter_inputs_remain_finite() {
+    const double state_max = 1000000000000.0;
+    const double param_max = 1000000000.0;
+    void *world = rt_world3d_new(0, 0, 0);
+    void *body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+
+    rt_body3d_set_scale(body, 1.0e300, NAN, 0.0);
+    void *scale = rt_body3d_get_scale(body);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(scale)) && fabs(rt_vec3_x(scale)) <= param_max,
+                "Extreme scale X clamps to finite parameter bound");
+    EXPECT_NEAR(rt_vec3_y(scale), 1.0, 0.001, "NaN scale Y falls back to unit scale");
+    EXPECT_NEAR(rt_vec3_z(scale), 1.0, 0.001, "Zero scale Z falls back to unit scale");
+
+    rt_body3d_apply_force_at_point(body, 1.0e300, 1.0e300, 0.0, -1.0e300, 1.0e300, 0.0);
+    rt_body3d_apply_impulse_at_point(body, -1.0e300, 0.0, 1.0e300, 1.0e300, 0.0, -1.0e300);
+    rt_world3d_add(world, body);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    void *vel = rt_body3d_get_velocity(body);
+    void *ang = rt_body3d_get_angular_velocity(body);
+    void *pos = rt_body3d_get_position(body);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(vel)) && fabs(rt_vec3_x(vel)) <= state_max,
+                "Extreme off-center impulse keeps velocity finite");
+    EXPECT_TRUE(std::isfinite(rt_vec3_y(ang)) && fabs(rt_vec3_y(ang)) <= state_max,
+                "Extreme off-center impulse keeps angular velocity finite");
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(pos)) && fabs(rt_vec3_x(pos)) <= state_max,
+                "Extreme scaled body keeps integrated position finite");
+}
+
+static void test_world_pathological_step_and_rebase_are_bounded() {
+    const double state_max = 1000000000000.0;
+    void *world = rt_world3d_new(INFINITY, NAN, 0.0);
+    void *body = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_velocity(body, 2.0, 0.0, 0.0);
+    rt_world3d_add(world, body);
+
+    rt_world3d_step(world, 1.0e300);
+    void *pos = rt_body3d_get_position(body);
+    EXPECT_NEAR(rt_vec3_x(pos), 2.0, 0.001, "Pathological Step dt is capped to one second");
+    EXPECT_TRUE(std::isfinite(rt_vec3_y(pos)), "Non-finite gravity is sanitized before stepping");
+
+    rt_world3d_rebase_origin(world, 1.0e300, -1.0e300, NAN);
+    pos = rt_body3d_get_position(body);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(pos)) && fabs(rt_vec3_x(pos)) <= state_max,
+                "Pathological origin rebase keeps X finite");
+    EXPECT_TRUE(std::isfinite(rt_vec3_y(pos)) && fabs(rt_vec3_y(pos)) <= state_max,
+                "Pathological origin rebase keeps Y finite");
+}
+
 static void test_body_trigger() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     EXPECT_TRUE(rt_body3d_is_trigger(b) == 0, "Default: not trigger");
@@ -995,6 +1044,9 @@ static void test_character_sanitizes_motion_config() {
     rt_character3d_set_step_height(c, -1.0);
     EXPECT_NEAR(
         rt_character3d_get_step_height(c), 0.0, 0.001, "Negative step height clamps to zero");
+    rt_character3d_set_step_height(c, 1.0e300);
+    EXPECT_TRUE(rt_character3d_get_step_height(c) <= 100.0,
+                "Extreme finite step height clamps to controller bound");
 
     rt_character3d_set_position(c, 1.0, 2.0, 3.0);
     rt_character3d_move(c, rt_vec3_new(NAN, 0.0, INFINITY), 1.0);
@@ -1011,6 +1063,12 @@ static void test_character_sanitizes_motion_config() {
     rt_character3d_move(c, c, 1.0);
     pos = rt_character3d_get_position(c);
     EXPECT_NEAR(rt_vec3_x(pos), before_x, 0.001, "Character3D.Move rejects non-Vec3 handles");
+
+    rt_character3d_move(c, rt_vec3_new(1.0e300, 1.0e300, -1.0e300), 1.0e300);
+    pos = rt_character3d_get_position(c);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(pos)) && std::isfinite(rt_vec3_y(pos)) &&
+                    std::isfinite(rt_vec3_z(pos)),
+                "Character move clamps extreme finite velocity and dt");
 }
 
 static void test_character_world_binding() {
@@ -1771,6 +1829,33 @@ static void test_world_overlap_queries_reject_nonfinite_inputs() {
                 "OverlapAabb rejects non-finite bounds");
 }
 
+static void test_world_queries_clamp_extreme_finite_inputs() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
+    rt_world3d_add(world, body);
+
+    void *origin = rt_vec3_new(-10.0, 0.0, 0.0);
+    void *dir = rt_vec3_new(1.0e300, 0.0, 0.0);
+    void *hit = rt_world3d_raycast(world, origin, dir, 1.0e300, 1);
+    EXPECT_TRUE(hit != nullptr, "Raycast clamps extreme finite direction and distance");
+    EXPECT_TRUE(std::isfinite(rt_physics_hit3d_get_distance(hit)),
+                "Raycast extreme finite hit distance is finite");
+
+    void *minv = rt_vec3_new(-1.0e300, -1.0e300, -1.0e300);
+    void *maxv = rt_vec3_new(1.0e300, 1.0e300, 1.0e300);
+    void *hits = rt_world3d_overlap_aabb(world, minv, maxv, 1);
+    EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) == 1,
+                "OverlapAabb clamps extreme finite bounds");
+
+    void *delta = rt_vec3_new(1.0e300, 0.0, 0.0);
+    hit = rt_world3d_sweep_sphere(world, origin, 0.25, delta, 1);
+    EXPECT_TRUE(hit != nullptr, "SweepSphere clamps extreme finite delta");
+    EXPECT_TRUE(std::isfinite(rt_physics_hit3d_get_fraction(hit)) &&
+                    rt_physics_hit3d_get_fraction(hit) >= 0.0 &&
+                    rt_physics_hit3d_get_fraction(hit) <= 1.0,
+                "SweepSphere extreme finite hit fraction is clamped");
+}
+
 static void test_world_query_broadphase_cache_invalidates_after_body_move() {
     void *world = rt_world3d_new(0, 0, 0);
     void *body = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
@@ -2125,6 +2210,11 @@ static void test_trigger_set_bounds() {
 
     rt_trigger3d_set_bounds(t, 0, 0, 0, 10, 10, 10);
     EXPECT_TRUE(rt_trigger3d_contains(t, p) != 0, "After resize: inside");
+
+    rt_trigger3d_set_bounds(t, -1.0e300, -1.0e300, -1.0e300, 1.0e300, 1.0e300, 1.0e300);
+    EXPECT_TRUE(rt_trigger3d_contains(t, p) != 0, "Trigger3D clamps extreme finite bounds");
+    EXPECT_TRUE(rt_trigger3d_contains(t, rt_vec3_new(NAN, 0.0, 0.0)) == 0,
+                "Trigger3D.Contains rejects non-finite points");
 }
 
 /*==========================================================================
@@ -2193,6 +2283,72 @@ static void test_joints_retain_bodies_and_sanitize_parameters() {
     rt_rope_joint3d_set_max_length(rope, 1.0e100);
     EXPECT_NEAR(
         rt_rope_joint3d_get_max_length(rope), 1.0e9, 1.0, "RopeJoint3D clamps huge max length");
+}
+
+static void test_joint3d_extreme_finite_inputs_remain_finite() {
+    void *hinge_world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *base = rt_body3d_new_sphere(0.25, 0.0);
+    void *arm = rt_body3d_new_sphere(0.25, 1.0);
+    rt_body3d_set_collision_layer(base, 1);
+    rt_body3d_set_collision_mask(base, 1);
+    rt_body3d_set_collision_layer(arm, 2);
+    rt_body3d_set_collision_mask(arm, 2);
+    void *hinge =
+        rt_hinge_joint3d_new(base, arm, rt_vec3_new(1.0e300, 0.0, 0.0), rt_vec3_new(1.0e300, 0.0, 0.0));
+    EXPECT_TRUE(hinge != nullptr, "HingeJoint3D accepts clampable extreme finite anchor/axis");
+    rt_hinge_joint3d_set_motor(hinge, 1, 1.0e300, 1.0e300);
+    rt_hinge_joint3d_set_limits(hinge, 1.0e300, -1.0e300);
+    rt_world3d_add(hinge_world, base);
+    rt_world3d_add(hinge_world, arm);
+    rt_world3d_add_joint(hinge_world, hinge, RT_JOINT_HINGE);
+    rt_world3d_step(hinge_world, 1.0e300);
+
+    void *arm_pos = rt_body3d_get_position(arm);
+    void *arm_ang = rt_body3d_get_angular_velocity(arm);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(arm_pos)) && std::isfinite(rt_vec3_y(arm_pos)) &&
+                    std::isfinite(rt_vec3_z(arm_pos)),
+                "Extreme finite hinge solve keeps body position finite");
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(arm_ang)) && std::isfinite(rt_vec3_y(arm_ang)) &&
+                    std::isfinite(rt_vec3_z(arm_ang)),
+                "Extreme finite hinge solve keeps angular velocity finite");
+    EXPECT_TRUE(std::isfinite(rt_hinge_joint3d_get_angle(hinge)),
+                "Extreme finite hinge angle accessor remains finite");
+
+    void *six_world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *six_a = rt_body3d_new_sphere(0.25, 0.0);
+    void *six_b = rt_body3d_new_sphere(0.25, 1.0);
+    void *frame_a = rt_mat4_new(1.0, 0.0, 0.0, 1.0e300,
+                                0.0, 1.0, 0.0, -1.0e300,
+                                0.0, 0.0, 1.0, 1.0e300,
+                                0.0, 0.0, 0.0, 1.0);
+    void *frame_b = rt_mat4_new(1.0, 0.0, 0.0, -1.0e300,
+                                0.0, 1.0, 0.0, 1.0e300,
+                                0.0, 0.0, 1.0, -1.0e300,
+                                0.0, 0.0, 0.0, 1.0);
+    void *six = rt_sixdof_joint3d_new(six_a, six_b, frame_a, frame_b);
+    EXPECT_TRUE(six != nullptr, "SixDofJoint3D clamps extreme finite frame translations");
+    rt_sixdof_joint3d_set_linear_limits(
+        six, rt_vec3_new(1.0e300, 0.0, -1.0e300), rt_vec3_new(-1.0e300, 0.0, 1.0e300));
+    rt_sixdof_joint3d_set_angular_limits(
+        six, rt_vec3_new(1.0e300, -1.0e300, 0.0), rt_vec3_new(-1.0e300, 1.0e300, 0.0));
+    rt_sixdof_joint3d_set_linear_motor(six, 1, rt_vec3_new(1.0e300, -1.0e300, 0.0), 1.0e300);
+    rt_world3d_add(six_world, six_a);
+    rt_world3d_add(six_world, six_b);
+    rt_world3d_add_joint(six_world, six, RT_JOINT_SIXDOF);
+    rt_world3d_step(six_world, 1.0e300);
+
+    void *six_pos = rt_body3d_get_position(six_b);
+    void *six_vel = rt_body3d_get_velocity(six_b);
+    void *six_rot = rt_body3d_get_orientation(six_b);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(six_pos)) && std::isfinite(rt_vec3_y(six_pos)) &&
+                    std::isfinite(rt_vec3_z(six_pos)),
+                "Extreme finite 6DOF solve keeps body position finite");
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(six_vel)) && std::isfinite(rt_vec3_y(six_vel)) &&
+                    std::isfinite(rt_vec3_z(six_vel)),
+                "Extreme finite 6DOF solve keeps velocity finite");
+    EXPECT_TRUE(std::isfinite(rt_quat_x(six_rot)) && std::isfinite(rt_quat_y(six_rot)) &&
+                    std::isfinite(rt_quat_z(six_rot)) && std::isfinite(rt_quat_w(six_rot)),
+                "Extreme finite 6DOF solve keeps orientation finite");
 }
 
 static void test_distance_joint_constraint() {
@@ -2637,6 +2793,8 @@ int main() {
     test_body_material_coefficients_are_sanitized();
     test_body_sanitizes_nonfinite_motion_state();
     test_body_extreme_motion_state_saturates();
+    test_body_extreme_scale_and_offcenter_inputs_remain_finite();
+    test_world_pathological_step_and_rebase_are_bounded();
     test_body_trigger();
     test_body_torque_updates_angular_velocity_and_orientation();
     test_body_angular_damping();
@@ -2719,6 +2877,7 @@ int main() {
     test_world_sweep_sphere_reports_started_penetrating();
     test_world_overlap_queries_honor_mask();
     test_world_overlap_queries_reject_nonfinite_inputs();
+    test_world_queries_clamp_extreme_finite_inputs();
     test_world_query_broadphase_cache_invalidates_after_body_move();
     test_world_rebase_origin_shifts_body_contact_and_query_state();
     test_collision_events_enter_stay_exit();
@@ -2732,6 +2891,7 @@ int main() {
     /* Joint tests */
     test_distance_joint_create();
     test_joints_retain_bodies_and_sanitize_parameters();
+    test_joint3d_extreme_finite_inputs_remain_finite();
     test_distance_joint_constraint();
     test_spring_joint_create();
     test_spring_joint_force();

@@ -35,14 +35,17 @@
 #include "rt_string.h"
 #include "rt_terrain3d.h"
 #include "rt_textureasset3d.h"
+#include "rt_pixels_internal.h"
 #include "tests/common/PosixCompat.h"
 #include <cassert>
+#include <cfloat>
 #include <cmath>
 #include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -67,6 +70,62 @@ extern "C" void vm_trap(const char *msg) {
 
 static int tests_passed = 0;
 static int tests_total = 0;
+
+typedef struct {
+    uint64_t offset;
+    uint64_t length;
+    uint64_t uncompressed_length;
+    uint32_t width;
+    uint32_t height;
+} TextureAsset3DTestMip;
+
+typedef struct {
+    void *vptr;
+    void *pixels;
+    void **mip_pixels;
+    uint8_t **mip_payloads;
+    TextureAsset3DTestMip *mips;
+    int64_t width;
+    int64_t height;
+    int64_t mip_count;
+    int64_t mip_capacity;
+    int64_t resident_mip_start;
+    int64_t resident_mip_count;
+    int64_t resident_bytes;
+    const char *format;
+    int8_t compressed;
+    int32_t block_width;
+    int32_t block_height;
+    int32_t block_bytes;
+    uint64_t cache_identity;
+    uint64_t native_revision;
+} TextureAsset3DTestLayout;
+
+typedef struct {
+    void *vptr;
+    float *heights;
+    int32_t width;
+    int32_t depth;
+    int64_t height_count;
+    double scale[3];
+    void **chunk_meshes;
+    void **chunk_meshes_lod1;
+    void **chunk_meshes_lod2;
+    float *chunk_aabbs;
+    int32_t chunks_x;
+    int32_t chunks_z;
+    int32_t chunk_capacity;
+    void *material;
+    float lod_dist1;
+    float lod_dist2;
+    float skirt_depth;
+    void *splat_map;
+    void *layer_textures[4];
+    double layer_scales[4];
+    void *base_texture;
+    void *baked_texture;
+    int8_t splat_dirty;
+} Terrain3DTestLayout;
 
 #define TEST(name)                                                                                 \
     do {                                                                                           \
@@ -234,6 +293,8 @@ extern "C" void *rt_mat4_new(double m00,
                              double m33);
 extern "C" void *rt_mat4_identity(void);
 extern "C" void *rt_mat4_scale(double sx, double sy, double sz);
+extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern "C" void rt_obj_retain_maybe(void *obj);
 extern "C" int rt_obj_release_check0(void *obj);
 extern "C" void rt_obj_free(void *obj);
 extern "C" void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -249,6 +310,11 @@ extern "C" void rt_postfx3d_apply_to_canvas(void *canvas);
 static bool finite_vec3(void *v) {
     return v && std::isfinite(rt_vec3_x(v)) && std::isfinite(rt_vec3_y(v)) &&
            std::isfinite(rt_vec3_z(v));
+}
+
+static bool bounded_vec3(void *v, double limit) {
+    return finite_vec3(v) && std::fabs(rt_vec3_x(v)) <= limit &&
+           std::fabs(rt_vec3_y(v)) <= limit && std::fabs(rt_vec3_z(v)) <= limit;
 }
 
 static void free_canvas3d_test_draw_state(rt_canvas3d *canvas) {
@@ -1104,6 +1170,53 @@ static void test_material_texture_setters_reject_invalid_handles() {
     PASS();
 }
 
+static void test_material_texture_setters_repair_stale_slots_before_rejecting_invalid_handles() {
+    TEST("Material3D texture setters repair stale slots before rejecting invalid handles");
+    auto *mat = (rt_material3d *)rt_material3d_new();
+    void *fake = rt_material3d_new();
+    assert(mat != NULL && fake != NULL);
+    size_t fake_refcnt = rt_heap_hdr(fake)->refcnt;
+
+    mat->texture = fake;
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_texture(mat, fake); }, "Pixels"),
+                "SetTexture still rejects non-texture replacements");
+    EXPECT_TRUE(mat->texture == nullptr, "SetTexture clears stale texture slots before trapping");
+
+    mat->normal_map = fake;
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_normal_map(mat, fake); }, "Pixels"),
+                "SetNormalMap still rejects non-texture replacements");
+    EXPECT_TRUE(mat->normal_map == nullptr,
+                "SetNormalMap clears stale texture slots before trapping");
+
+    mat->metallic_roughness_map = fake;
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_metallic_roughness_map(mat, fake); },
+                                     "Pixels"),
+                "SetMetallicRoughnessMap still rejects non-texture replacements");
+    EXPECT_TRUE(mat->metallic_roughness_map == nullptr,
+                "SetMetallicRoughnessMap clears stale texture slots before trapping");
+
+    mat->ao_map = fake;
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_ao_map(mat, fake); }, "Pixels"),
+                "SetAOMap still rejects non-texture replacements");
+    EXPECT_TRUE(mat->ao_map == nullptr, "SetAOMap clears stale texture slots before trapping");
+
+    mat->specular_map = fake;
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_specular_map(mat, fake); }, "Pixels"),
+                "SetSpecularMap still rejects non-texture replacements");
+    EXPECT_TRUE(mat->specular_map == nullptr,
+                "SetSpecularMap clears stale texture slots before trapping");
+
+    mat->emissive_map = fake;
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_emissive_map(mat, fake); }, "Pixels"),
+                "SetEmissiveMap still rejects non-texture replacements");
+    EXPECT_TRUE(mat->emissive_map == nullptr,
+                "SetEmissiveMap clears stale texture slots before trapping");
+
+    EXPECT_TRUE(rt_heap_hdr(fake)->refcnt == fake_refcnt,
+                "Repairing stale material texture slots does not release unowned wrong-class refs");
+    PASS();
+}
+
 static void test_textureasset3d_ktx2_material_bridge() {
     TEST("TextureAsset3D.LoadKTX2 — metadata and Material3D bridge");
     const char *rgba_path = "/tmp/viper_textureasset3d_rgba8_test.ktx2";
@@ -1663,6 +1776,38 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_TRUE(rt_material3d_resolve_texture_pixels(material_impl->texture) == nullptr,
                 "Material3D resolves empty TextureAsset3D residency to no drawable texture");
     EXPECT_EQ(rt_material3d_get_has_texture(material), 0);
+
+    rt_textureasset3d_set_resident_mip_range(asset, 99, 1);
+    EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 3);
+    EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 0);
+    EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 0);
+    EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
+                "out-of-range resident mip starts clamp to an empty range at mip_count");
+
+    auto *layout = static_cast<TextureAsset3DTestLayout *>(asset);
+    EXPECT_TRUE(layout != nullptr && layout->mip_capacity == 3,
+                "TextureAsset3D test layout sees loaded mip capacity");
+    if (layout) {
+        layout->mip_count = std::numeric_limits<int64_t>::max();
+        EXPECT_EQ(rt_textureasset3d_get_mip_count(asset), 3);
+        layout->resident_mip_start = 1;
+        layout->resident_mip_count = 1;
+        layout->pixels = nullptr;
+        EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == layout->mip_pixels[1],
+                    "TextureAsset3D resolves fallback pixels from the validated resident range");
+        layout->resident_mip_count = 99;
+        layout->resident_bytes = std::numeric_limits<int64_t>::max();
+        EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 0);
+        EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 0);
+        EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
+                    "TextureAsset3D rejects corrupt resident ranges");
+        layout->mip_count = -7;
+        EXPECT_EQ(rt_textureasset3d_get_mip_count(asset), 0);
+        EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 0);
+        layout->mip_count = layout->mip_capacity;
+        rt_textureasset3d_set_resident_mip_range(asset, 0, 0);
+    }
+
     EXPECT_TRUE(
         expect_trap_contains([&] { rt_textureasset3d_set_resident_mip_range(asset, -1, 1); },
                              "negative mip range"),
@@ -1671,6 +1816,23 @@ static void test_textureasset3d_mip_residency() {
         expect_trap_contains([&] { rt_textureasset3d_set_resident_mip_range(asset, 0, -1); },
                              "negative mip range"),
         "SetResidentMipRange rejects a negative mip count");
+
+    if (layout) {
+        void *old_mip0 = layout->mip_pixels ? layout->mip_pixels[0] : nullptr;
+        void *wrong_mip = rt_obj_new_i64(0, 8);
+        assert(wrong_mip != nullptr);
+        rt_material3d_set_texture(material, nullptr);
+        if (old_mip0 && rt_obj_release_check0(old_mip0))
+            rt_obj_free(old_mip0);
+        rt_obj_retain_maybe(wrong_mip);
+        layout->mip_pixels[0] = wrong_mip;
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+        EXPECT_TRUE(rt_obj_release_check0(wrong_mip) == 0,
+                    "TextureAsset3D finalizer clears wrong-class mip fallbacks without releasing");
+        if (rt_obj_release_check0(wrong_mip))
+            rt_obj_free(wrong_mip);
+    }
 
     std::remove(path);
     PASS();
@@ -1747,10 +1909,56 @@ static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
     EXPECT_TRUE(rt_textureasset3d_get_resident_bytes(asset) < (4 * 4 * 4 + 2 * 2 * 4),
                 "resident compressed bytes are smaller than equivalent raw RGBA bytes");
 
+    auto *layout = static_cast<TextureAsset3DTestLayout *>(asset);
+    EXPECT_TRUE(layout != nullptr && layout->mip_capacity == 3,
+                "Native TextureAsset3D test layout sees loaded mip capacity");
+    if (layout) {
+        layout->mip_count = std::numeric_limits<int64_t>::max();
+        EXPECT_EQ(rt_textureasset3d_get_mip_count(asset), 3);
+        EXPECT_TRUE(rt_textureasset3d_get_native_mip_info(
+                        asset, 3, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr) ==
+                        0,
+                    "native mip helper rejects corrupt counts beyond allocated capacity");
+        layout->resident_mip_start = 1;
+        layout->resident_mip_count = 99;
+        EXPECT_EQ(rt_textureasset3d_get_native_cache_key(asset), 0);
+        EXPECT_TRUE(!vgfx3d_textureasset_native_supported(asset, RT_CANVAS3D_BACKEND_CAP_BC7),
+                    "native support helper rejects corrupt resident ranges");
+        layout->mip_count = layout->mip_capacity;
+        rt_textureasset3d_set_resident_mip_range(asset, 1, 2);
+    }
+
     rt_textureasset3d_set_resident_mip_range(asset, 0, 0);
     EXPECT_EQ(rt_textureasset3d_get_native_cache_key(asset), 0);
     EXPECT_TRUE(!vgfx3d_textureasset_native_supported(asset, RT_CANVAS3D_BACKEND_CAP_BC7),
                 "empty residency disables native compressed upload");
+
+    {
+        const char *empty_path = "/tmp/viper_textureasset3d_empty_native_payload_test.ktx2";
+        const uint8_t *empty_levels[] = {nullptr};
+        const uint64_t empty_level_bytes[] = {0};
+        rt_string empty_path_s;
+        void *empty_asset;
+        EXPECT_TRUE(write_test_ktx2_mips(empty_path,
+                                         157u,
+                                         4u,
+                                         4u,
+                                         empty_levels,
+                                         empty_level_bytes,
+                                         1u),
+                    "zero-length native KTX2 fixture written");
+        empty_path_s = rt_string_from_bytes(empty_path, std::strlen(empty_path));
+        empty_asset = rt_textureasset3d_load_ktx2(empty_path_s);
+        rt_string_unref(empty_path_s);
+        assert(empty_asset != nullptr);
+        EXPECT_EQ(rt_textureasset3d_get_resident_bytes(empty_asset), 0);
+        EXPECT_EQ(rt_textureasset3d_get_native_cache_key(empty_asset), 0);
+        EXPECT_TRUE(!vgfx3d_textureasset_native_supported(empty_asset, RT_CANVAS3D_BACKEND_CAP_ASTC),
+                    "zero-length native payloads are not advertised as upload-capable");
+        EXPECT_TRUE(!vgfx3d_textureasset_get_native_resident_mip(empty_asset, 0, &mip),
+                    "zero-length native payloads do not expose resident mip data");
+        std::remove(empty_path);
+    }
 
     std::remove(path);
     PASS();
@@ -2317,6 +2525,68 @@ static void test_camera_sanitizes_nonfinite_inputs() {
     PASS();
 }
 
+static void test_camera_clamps_extreme_finite_inputs() {
+    TEST("Camera3D clamps extreme finite public inputs");
+    const double huge = 1.0e300;
+    const double world_limit = 1000000000000.0;
+    rt_camera3d *cam = (rt_camera3d *)rt_camera3d_new(huge, huge, huge, huge);
+    assert(cam != NULL);
+    EXPECT_TRUE(finite_camera_state(cam), "Perspective camera starts finite after huge construction");
+    EXPECT_NEAR(cam->fov, 179.0, 0.001);
+    EXPECT_NEAR(cam->aspect, 1000000.0, 0.001);
+
+    float render_projection[16];
+    rt_camera3d_get_render_projection(cam, huge, render_projection);
+    for (float value : render_projection)
+        EXPECT_TRUE(std::isfinite(value), "Huge aspect override still produces finite projection");
+
+    void *huge_vec = rt_vec3_new(huge, -huge, huge);
+    void *huge_target = rt_vec3_new(-huge, huge, -huge);
+    void *huge_up = rt_vec3_new(huge, huge, huge);
+    assert(huge_vec && huge_target && huge_up);
+
+    rt_camera3d_look_at(cam, huge_vec, huge_target, huge_up);
+    rt_camera3d_orbit(cam, huge_target, huge, huge, huge);
+    rt_camera3d_set_position(cam, huge_vec);
+    rt_camera3d_fps_update(cam, huge, -huge, huge, -huge, huge, huge, huge);
+    rt_camera3d_set_yaw(cam, huge);
+    rt_camera3d_set_pitch(cam, huge);
+    rt_camera3d_shake(cam, huge, huge, huge);
+    rt_camera3d_update_shake_for_frame(cam, huge);
+    rt_camera3d_smooth_follow(cam, huge_vec, huge, -huge, huge, huge);
+    rt_camera3d_smooth_look_at(cam, huge_target, huge, huge);
+
+    EXPECT_TRUE(finite_camera_state(cam), "Huge camera controls leave state finite");
+    EXPECT_TRUE(bounded_vec3(rt_camera3d_get_position(cam), world_limit),
+                "Huge camera controls keep eye bounded");
+    EXPECT_TRUE(finite_vec3(rt_camera3d_get_forward(cam)), "Forward vector remains finite");
+    EXPECT_TRUE(finite_vec3(rt_camera3d_get_right(cam)), "Right vector remains finite");
+    EXPECT_TRUE(std::isfinite(rt_camera3d_get_yaw(cam)), "Yaw getter remains finite");
+    EXPECT_TRUE(std::fabs(rt_camera3d_get_yaw(cam)) <= 180.0, "Yaw getter remains wrapped");
+    EXPECT_TRUE(std::isfinite(rt_camera3d_get_pitch(cam)), "Pitch getter remains finite");
+    EXPECT_TRUE(std::fabs(rt_camera3d_get_pitch(cam)) <= 89.0, "Pitch getter remains clamped");
+    EXPECT_TRUE(finite_vec3(rt_camera3d_screen_to_ray(
+                    cam, INT64_MAX, INT64_MIN + 1, INT64_MAX, INT64_MAX - 1)),
+                "Huge screen coordinates still produce a finite ray");
+    EXPECT_TRUE(bounded_vec3(rt_camera3d_screen_to_ray_origin(
+                                 cam, INT64_MAX, INT64_MIN + 1, INT64_MAX, INT64_MAX - 1),
+                             world_limit),
+                "Huge screen coordinates still produce a bounded ray origin");
+
+    rt_camera3d *ortho = (rt_camera3d *)rt_camera3d_new_ortho(huge, huge, huge, huge);
+    assert(ortho != NULL);
+    rt_camera3d_look_at(ortho, huge_vec, huge_target, huge_up);
+    EXPECT_TRUE(finite_camera_state(ortho), "Huge orthographic camera state remains finite");
+    EXPECT_TRUE(finite_vec3(rt_camera3d_screen_to_ray(
+                    ortho, INT64_MAX, INT64_MIN + 1, INT64_MAX, INT64_MAX - 1)),
+                "Huge orthographic screen ray remains finite");
+    EXPECT_TRUE(bounded_vec3(rt_camera3d_screen_to_ray_origin(
+                                 ortho, INT64_MAX, INT64_MIN + 1, INT64_MAX, INT64_MAX - 1),
+                             world_limit),
+                "Huge orthographic screen ray origin remains bounded");
+    PASS();
+}
+
 //=============================================================================
 // Material3D — additional tests
 //=============================================================================
@@ -2347,6 +2617,103 @@ static void test_material_sanitizes_numeric_inputs() {
     EXPECT_NEAR(m->emissive[0], 1.0, 0.001);
     EXPECT_NEAR(m->emissive[1], 0.0, 0.001);
     EXPECT_NEAR(m->emissive[2], 0.0, 0.001);
+    PASS();
+}
+
+static void test_material_getters_repair_corrupt_state() {
+    TEST("Material3D getters repair corrupt stored state");
+    rt_material3d *m = (rt_material3d *)rt_material3d_new();
+    assert(m);
+
+    m->diffuse[0] = NAN;
+    m->diffuse[1] = -4.0;
+    m->diffuse[2] = 4.0;
+    void *color = rt_material3d_get_color(m);
+    EXPECT_NEAR(rt_vec3_x(color), 0.0, 0.001);
+    EXPECT_NEAR(rt_vec3_y(color), 0.0, 0.001);
+    EXPECT_NEAR(rt_vec3_z(color), 1.0, 0.001);
+    EXPECT_NEAR(m->diffuse[0], 0.0, 0.001);
+    EXPECT_NEAR(m->diffuse[2], 1.0, 0.001);
+
+    m->alpha = NAN;
+    m->metallic = INFINITY;
+    m->roughness = 2.0;
+    m->ao = -2.0;
+    m->emissive_intensity = INFINITY;
+    m->normal_scale = INFINITY;
+    m->reflectivity = INFINITY;
+    m->shading_model = 99;
+    m->alpha_mode = 99;
+    m->alpha_mode_auto = 1;
+    m->unlit = 7;
+    m->double_sided = -3;
+    EXPECT_NEAR(rt_material3d_get_alpha(m), 0.0, 0.001);
+    EXPECT_NEAR(rt_material3d_get_metallic(m), 0.0, 0.001);
+    EXPECT_NEAR(rt_material3d_get_roughness(m), 1.0, 0.001);
+    EXPECT_NEAR(rt_material3d_get_ao(m), 0.0, 0.001);
+    EXPECT_NEAR(rt_material3d_get_emissive_intensity(m), 0.0, 0.001);
+    EXPECT_NEAR(rt_material3d_get_normal_scale(m), 0.0, 0.001);
+    EXPECT_NEAR(rt_material3d_get_reflectivity(m), 0.0, 0.001);
+    EXPECT_EQ(rt_material3d_get_shading_model(m), 0);
+    EXPECT_EQ(rt_material3d_get_alpha_mode(m), RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+    EXPECT_EQ(m->alpha_mode_auto, 0);
+    EXPECT_EQ(rt_material3d_get_unlit(m), 1);
+    EXPECT_EQ(rt_material3d_get_double_sided(m), 1);
+    EXPECT_EQ(m->unlit, 1);
+    EXPECT_EQ(m->double_sided, 1);
+
+    m->texture = rt_material3d_new();
+    m->normal_map = rt_material3d_new();
+    m->specular_map = rt_material3d_new();
+    m->emissive_map = rt_material3d_new();
+    m->metallic_roughness_map = rt_material3d_new();
+    m->ao_map = rt_material3d_new();
+    m->env_map = rt_material3d_new();
+    EXPECT_EQ(rt_material3d_get_has_texture(m), 0);
+    EXPECT_EQ(rt_material3d_get_has_normal_map(m), 0);
+    EXPECT_EQ(rt_material3d_get_has_specular_map(m), 0);
+    EXPECT_EQ(rt_material3d_get_has_emissive_map(m), 0);
+    EXPECT_EQ(rt_material3d_get_has_metallic_roughness_map(m), 0);
+    EXPECT_EQ(rt_material3d_get_has_ao_map(m), 0);
+    EXPECT_EQ(rt_material3d_get_has_env_map(m), 0);
+    EXPECT_TRUE(m->texture == NULL && m->normal_map == NULL && m->env_map == NULL,
+                "invalid material refs are cleared from texture/env slots");
+    PASS();
+}
+
+static void test_material_clone_repairs_invalid_env_map() {
+    TEST("Material3D.Clone repairs invalid texture and environment maps");
+    auto *src = (rt_material3d *)rt_material3d_new();
+    src->texture = rt_material3d_new();
+    src->normal_map = rt_material3d_new();
+    src->specular_map = rt_material3d_new();
+    src->emissive_map = rt_material3d_new();
+    src->metallic_roughness_map = rt_material3d_new();
+    src->ao_map = rt_material3d_new();
+    src->env_map = rt_material3d_new();
+
+    auto *clone = (rt_material3d *)rt_material3d_clone(src);
+
+    EXPECT_TRUE(clone != nullptr,
+                "Material3D.Clone returns a clone after texture/env-map repair");
+    EXPECT_TRUE(src->texture == nullptr && src->normal_map == nullptr &&
+                    src->specular_map == nullptr && src->emissive_map == nullptr &&
+                    src->metallic_roughness_map == nullptr && src->ao_map == nullptr &&
+                    src->env_map == nullptr,
+                "Material3D.Clone clears invalid source texture/env-map refs");
+    EXPECT_TRUE(clone == nullptr ||
+                    (clone->texture == nullptr && clone->normal_map == nullptr &&
+                     clone->specular_map == nullptr && clone->emissive_map == nullptr &&
+                     clone->metallic_roughness_map == nullptr && clone->ao_map == nullptr &&
+                     clone->env_map == nullptr),
+                "Material3D.Clone does not retain invalid texture/env-map refs into the clone");
+    EXPECT_EQ(rt_material3d_get_has_texture(clone), 0);
+    EXPECT_EQ(rt_material3d_get_has_normal_map(clone), 0);
+    EXPECT_EQ(rt_material3d_get_has_specular_map(clone), 0);
+    EXPECT_EQ(rt_material3d_get_has_emissive_map(clone), 0);
+    EXPECT_EQ(rt_material3d_get_has_metallic_roughness_map(clone), 0);
+    EXPECT_EQ(rt_material3d_get_has_ao_map(clone), 0);
+    EXPECT_EQ(rt_material3d_get_has_env_map(clone), 0);
     PASS();
 }
 
@@ -2473,6 +2840,49 @@ static void test_light_sanitizes_nonfinite_inputs() {
     PASS();
 }
 
+static void test_light_clamps_extreme_finite_inputs() {
+    TEST("Light3D clamps extreme finite public inputs");
+    constexpr double kHuge = 1.0e300;
+    constexpr double kWorldLimit = 1000000000000.0;
+    void *huge_vec = rt_vec3_new(kHuge, -kHuge, kHuge);
+    rt_light3d *dir = (rt_light3d *)rt_light3d_new_directional(huge_vec, 2.0, -1.0, 0.5);
+    rt_light3d *point = (rt_light3d *)rt_light3d_new_point(huge_vec, 0.1, 0.2, 0.3, kHuge);
+    rt_light3d *spot =
+        (rt_light3d *)rt_light3d_new_spot(huge_vec, huge_vec, 0.1, 0.2, 0.3, kHuge, kHuge, kHuge);
+    assert(dir != NULL && point != NULL && spot != NULL);
+
+    EXPECT_TRUE(finite_light_state(dir), "Huge directional light state stays finite");
+    EXPECT_TRUE(finite_light_state(point), "Huge point light state stays finite");
+    EXPECT_TRUE(finite_light_state(spot), "Huge spot light state stays finite");
+    EXPECT_NEAR(dir->direction[0], 0.577350, 0.001);
+    EXPECT_NEAR(dir->direction[1], -0.577350, 0.001);
+    EXPECT_NEAR(dir->direction[2], 0.577350, 0.001);
+    EXPECT_TRUE(std::fabs(point->position[0]) <= kWorldLimit &&
+                    std::fabs(point->position[1]) <= kWorldLimit &&
+                    std::fabs(point->position[2]) <= kWorldLimit,
+                "Huge light positions are world-clamped");
+    EXPECT_NEAR(point->attenuation, 1000000.0, 0.001);
+    EXPECT_TRUE(spot->inner_cos > spot->outer_cos, "Huge spot angles clamp to a valid cone");
+
+    rt_light3d_set_direction(dir, rt_vec3_new(-kHuge, 0.0, 0.0));
+    void *new_dir = rt_light3d_get_direction(dir);
+    EXPECT_TRUE(finite_vec3(new_dir), "Huge SetDirection result is finite");
+    EXPECT_NEAR(rt_vec3_x(new_dir), -1.0, 0.001);
+    EXPECT_NEAR(rt_vec3_y(new_dir), 0.0, 0.001);
+    EXPECT_NEAR(rt_vec3_z(new_dir), 0.0, 0.001);
+
+    dir->type = 99;
+    EXPECT_EQ(rt_light3d_get_type(dir), 0);
+    dir->color[0] = INFINITY;
+    dir->color[1] = -10.0;
+    dir->color[2] = 0.5;
+    void *color = rt_light3d_get_color(dir);
+    EXPECT_NEAR(rt_vec3_x(color), 0.0, 0.001);
+    EXPECT_NEAR(rt_vec3_y(color), 0.0, 0.001);
+    EXPECT_NEAR(rt_vec3_z(color), 0.5, 0.001);
+    PASS();
+}
+
 static void test_camera_ortho() {
     TEST("Camera3D.NewOrtho — creates orthographic camera");
     void *cam = rt_camera3d_new_ortho(10.0, 16.0 / 9.0, 0.1, 100.0);
@@ -2583,6 +2993,34 @@ static void test_cubemap_new() {
     /* Skybox set/clear */
     rt_canvas3d_set_skybox(NULL, cm); /* null canvas = no crash */
     rt_canvas3d_clear_skybox(NULL);
+    PASS();
+}
+
+static void test_canvas_set_skybox_repairs_stale_existing_slot() {
+    TEST("Canvas3D.SetSkybox repairs stale existing skybox before rejecting replacement");
+    rt_canvas3d canvas = {};
+    void *px = rt_pixels_new(1, 1);
+    void *cm = rt_cubemap3d_new(px, px, px, px, px, px);
+    void *wrong = rt_material3d_new();
+
+    EXPECT_TRUE(px != nullptr && cm != nullptr && wrong != nullptr, "Skybox repair fixtures exist");
+    if (!px || !cm || !wrong)
+        return;
+
+    rt_canvas3d_set_skybox(&canvas, cm);
+    EXPECT_TRUE(canvas.skybox == (rt_cubemap3d *)cm, "Valid skybox is assigned");
+
+    canvas.skybox_cpu_cache = (uint8_t *)malloc(4);
+    canvas.skybox_cpu_cache_w = 1;
+    canvas.skybox_cpu_cache_h = 1;
+    canvas.skybox_cpu_cache_generation = 123;
+    ((rt_cubemap3d *)cm)->face_size = 2;
+
+    rt_canvas3d_set_skybox(&canvas, wrong);
+
+    EXPECT_TRUE(canvas.skybox == nullptr, "Stale skybox slot is cleared even when replacement is invalid");
+    EXPECT_TRUE(canvas.skybox_cpu_cache == nullptr && canvas.skybox_cpu_cache_generation == 0,
+                "Clearing a stale skybox invalidates the CPU skybox cache");
     PASS();
 }
 
@@ -2706,6 +3144,82 @@ static void test_canvas_cpu_skybox_fallback_reuses_cache_until_inputs_change() {
                     rt->target->color_buf[2] == 0xC0,
                 "Fallback skybox cache refreshes after cubemap face mutation");
 
+    ((rt_cubemap3d *)cm)->face_size = 2;
+    EXPECT_TRUE(canvas3d_ensure_skybox_cpu_cache(&canvas, 2, 2) == 0,
+                "Malformed cubemap generation is rejected by the skybox CPU cache");
+    EXPECT_TRUE(canvas.skybox_cpu_cache == nullptr,
+                "Malformed cubemap generation invalidates stale skybox cache pixels");
+
+    rt_canvas3d_invalidate_skybox_cache(&canvas);
+    PASS();
+}
+
+static void test_canvas_cpu_skybox_sanitizes_malformed_ortho_forward() {
+    TEST("Canvas3D CPU skybox fallback sanitizes malformed orthographic forward vectors");
+    rt_canvas3d canvas = {};
+    void *px = rt_pixels_new(1, 1);
+    void *cm;
+
+    EXPECT_TRUE(px != nullptr, "Pixels fixture exists");
+    if (!px)
+        return;
+
+    rt_pixels_set(px, 0, 0, 0x556677FF);
+    cm = rt_cubemap3d_new(px, px, px, px, px, px);
+    EXPECT_TRUE(cm != nullptr, "CubeMap3D fixture exists");
+    if (!cm)
+        return;
+
+    canvas.skybox = (rt_cubemap3d *)cm;
+    canvas.cached_cam_is_ortho = 1;
+    canvas.cached_cam_forward[0] = NAN;
+    canvas.cached_cam_forward[1] = INFINITY;
+    canvas.cached_cam_forward[2] = 0.0f;
+
+    EXPECT_TRUE(canvas3d_ensure_skybox_cpu_cache(&canvas, 1, 1) == 1,
+                "Malformed orthographic skybox directions fall back to a valid ray");
+    EXPECT_TRUE(canvas.skybox_cpu_cache != nullptr, "Skybox CPU cache is populated");
+    if (canvas.skybox_cpu_cache) {
+        EXPECT_TRUE(canvas.skybox_cpu_cache[0] == 0x55 && canvas.skybox_cpu_cache[1] == 0x66 &&
+                        canvas.skybox_cpu_cache[2] == 0x77 && canvas.skybox_cpu_cache[3] == 0xFF,
+                    "Sanitized skybox direction still samples the cubemap");
+    }
+    rt_canvas3d_invalidate_skybox_cache(&canvas);
+    PASS();
+}
+
+static void test_canvas_cpu_skybox_normalizes_huge_ortho_forward() {
+    TEST("Canvas3D CPU skybox fallback normalizes huge orthographic forward vectors");
+    rt_canvas3d canvas = {};
+    void *red = rt_pixels_new(1, 1);
+    void *black = rt_pixels_new(1, 1);
+    void *cm;
+
+    EXPECT_TRUE(red != nullptr && black != nullptr, "Pixels fixtures exist");
+    if (!red || !black)
+        return;
+
+    rt_pixels_set(red, 0, 0, 0xCC0000FF);
+    rt_pixels_set(black, 0, 0, 0x000000FF);
+    cm = rt_cubemap3d_new(red, black, black, black, black, black);
+    EXPECT_TRUE(cm != nullptr, "CubeMap3D fixture exists");
+    if (!cm)
+        return;
+
+    canvas.skybox = (rt_cubemap3d *)cm;
+    canvas.cached_cam_is_ortho = 1;
+    canvas.cached_cam_forward[0] = FLT_MAX;
+    canvas.cached_cam_forward[1] = 0.0f;
+    canvas.cached_cam_forward[2] = 0.0f;
+
+    EXPECT_TRUE(canvas3d_ensure_skybox_cpu_cache(&canvas, 1, 1) == 1,
+                "Huge finite orthographic skybox directions stay drawable");
+    EXPECT_TRUE(canvas.skybox_cpu_cache != nullptr, "Skybox CPU cache is populated");
+    if (canvas.skybox_cpu_cache) {
+        EXPECT_TRUE(canvas.skybox_cpu_cache[0] > 0xB0 && canvas.skybox_cpu_cache[1] < 0x10 &&
+                        canvas.skybox_cpu_cache[2] < 0x10 && canvas.skybox_cpu_cache[3] == 0xFF,
+                    "Huge finite skybox direction samples the intended cubemap face");
+    }
     rt_canvas3d_invalidate_skybox_cache(&canvas);
     PASS();
 }
@@ -3473,6 +3987,61 @@ static void test_rendertarget_clear_sync_detaches_backend_callback() {
     PASS();
 }
 
+static void test_rendertarget_rejects_malformed_buffer_layouts() {
+    TEST("RenderTarget3D rejects malformed buffer layouts");
+    vgfx3d_rendertarget_t bad = {};
+    uint8_t tiny_color[4] = {};
+    float tiny_depth[1] = {};
+    float tiny_hdr[4] = {};
+
+    bad.width = 2;
+    bad.height = 2;
+    bad.stride = 4;
+    bad.color_buf = tiny_color;
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_color(&bad) == 0,
+                "Existing color buffers still require stride >= width*4");
+
+    bad.color_buf = nullptr;
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_color(&bad) == 0,
+                "New color buffers reject undersized strides");
+
+    bad.stride = 8;
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_color(&bad) != 0,
+                "Valid color layouts still allocate");
+    free(bad.color_buf);
+    bad.color_buf = nullptr;
+
+    bad.width = INT32_MAX;
+    bad.height = INT32_MAX;
+    bad.depth_buf = tiny_depth;
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_depth(&bad) == 0,
+                "Existing depth buffers still require valid pixel counts");
+
+    bad.color_format = VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F;
+    bad.hdr_color_buf = tiny_hdr;
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_hdr_color(&bad) == 0,
+                "Existing HDR buffers still require valid pixel counts");
+
+    bad.width = 2;
+    bad.height = 2;
+    bad.stride = 4;
+    bad.color_dirty = 1;
+    bad.sync_color = tracked_render_target_sync;
+    g_render_target_sync_calls = 0;
+    EXPECT_TRUE(vgfx3d_rendertarget_sync_color_if_needed(&bad) == 0,
+                "Dirty sync refuses malformed color layouts before callback");
+    EXPECT_EQ(g_render_target_sync_calls, 0);
+
+    rt_rendertarget3d *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(2, 2);
+    assert(rt != nullptr && rt->target != nullptr);
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_color(rt->target) != 0,
+                "AsPixels malformed-layout test allocates color");
+    rt->target->stride = 4;
+    EXPECT_TRUE(rt_rendertarget3d_as_pixels(rt) == nullptr,
+                "AsPixels refuses an existing color buffer with invalid stride");
+    PASS();
+}
+
 static void test_canvas_screenshot_syncs_render_target_on_demand() {
     TEST("Canvas3D.Screenshot syncs render targets on demand without a window");
     rt_canvas3d canvas;
@@ -3826,6 +4395,134 @@ static void test_canvas_camera_relative_upload_rebases_raw_and_generated_vertice
     EXPECT_NEAR(g_last_draw_vertices[2].pos[0], 9.0, 0.0001);
 
     rt_canvas3d_set_camera_relative_upload(&canvas, 0);
+    free_canvas3d_test_draw_state(&canvas);
+    PASS();
+}
+
+static void test_particles3d_spread_uses_radians() {
+    TEST("Particles3D spread uses radians");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 1000.0);
+    void *particles = rt_particles3d_new(4);
+    double max_horizontal = 0.0;
+
+    backend.name = "software";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 128;
+    canvas.height = 128;
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(0.0, 0.0, 10.0),
+                        rt_vec3_new(0.0, 0.0, 0.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+
+    rt_particles3d_set_position(particles, 0.0, 0.0, 0.0);
+    rt_particles3d_set_direction(particles, 0.0, 1.0, 0.0, 2.8);
+    rt_particles3d_set_speed(particles, 100.0, 100.0);
+    rt_particles3d_set_lifetime(particles, 10.0, 10.0);
+    rt_particles3d_set_size(particles, 0.0, 0.0);
+    rt_particles3d_set_gravity(particles, 0.0, 0.0, 0.0);
+    rt_particles3d_burst(particles, 4);
+    rt_particles3d_update(particles, 0.25);
+
+    g_canvas_submit_draw_calls = 0;
+    g_last_draw_vertex_count = 0;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    memset(g_last_draw_vertices, 0, sizeof(g_last_draw_vertices));
+    rt_canvas3d_begin(&canvas, camera);
+    rt_particles3d_draw(particles, &canvas, camera);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(g_last_draw_vertex_count, 16);
+    for (uint32_t i = 0; i < g_last_draw_vertex_count; i++) {
+        double horizontal = std::sqrt((double)g_last_draw_vertices[i].pos[0] *
+                                          (double)g_last_draw_vertices[i].pos[0] +
+                                      (double)g_last_draw_vertices[i].pos[2] *
+                                          (double)g_last_draw_vertices[i].pos[2]);
+        if (horizontal > max_horizontal)
+            max_horizontal = horizontal;
+    }
+    EXPECT_TRUE(max_horizontal > 2.0,
+                "A 2.8 radian spread creates broad particle motion, not a 2.8 degree cone");
+    free_canvas3d_test_draw_state(&canvas);
+    PASS();
+}
+
+static void test_particles3d_extreme_finite_inputs_remain_bounded() {
+    TEST("Particles3D extreme finite inputs remain bounded");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 1000.0);
+    rt_camera3d *camera_impl = (rt_camera3d *)camera;
+    void *particles = rt_particles3d_new(4);
+    double pos[3] = {};
+    constexpr double kHuge = 1.0e300;
+    constexpr double kWorldLimit = 1000000000000.0;
+
+    backend.name = "software";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 128;
+    canvas.height = 128;
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(0.0, 0.0, 10.0),
+                        rt_vec3_new(0.0, 0.0, 0.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+
+    rt_particles3d_set_position(particles, kHuge, -kHuge, kHuge);
+    rt_particles3d_set_direction(particles, kHuge, -kHuge, kHuge, kHuge);
+    rt_particles3d_set_speed(particles, kHuge, kHuge);
+    rt_particles3d_set_lifetime(particles, kHuge, kHuge);
+    rt_particles3d_set_size(particles, kHuge, kHuge);
+    rt_particles3d_set_gravity(particles, -kHuge, kHuge, -kHuge);
+    rt_particles3d_set_alpha(particles, kHuge, -kHuge);
+    rt_particles3d_set_rate(particles, kHuge);
+    rt_particles3d_set_emitter_shape(particles, 2);
+    rt_particles3d_set_emitter_size(particles, kHuge, kHuge, kHuge);
+    rt_particles3d_start(particles);
+    rt_particles3d_burst(particles, 4);
+    rt_particles3d_update(particles, kHuge);
+    rt_particles3d_rebase_origin(particles, -kHuge, kHuge, -kHuge);
+
+    rt_particles3d_get_position(particles, pos);
+    EXPECT_TRUE(std::isfinite(pos[0]) && std::isfinite(pos[1]) && std::isfinite(pos[2]),
+                "Emitter position stays finite after extreme inputs");
+    EXPECT_TRUE(std::fabs(pos[0]) <= kWorldLimit && std::fabs(pos[1]) <= kWorldLimit &&
+                    std::fabs(pos[2]) <= kWorldLimit,
+                "Emitter position is clamped to the particle world range");
+    EXPECT_TRUE(rt_particles3d_get_count(particles) >= 0 && rt_particles3d_get_count(particles) <= 4,
+                "Particle count remains inside the allocated pool");
+
+    g_canvas_submit_draw_calls = 0;
+    g_last_draw_vertex_count = 0;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    memset(g_last_draw_vertices, 0, sizeof(g_last_draw_vertices));
+    rt_canvas3d_begin(&canvas, camera);
+    camera_impl->view[0] = INFINITY;
+    camera_impl->view[5] = NAN;
+    rt_particles3d_draw(particles, &canvas, camera);
+    rt_canvas3d_end(&canvas);
+
+    if (g_canvas_submit_draw_calls > 0) {
+        for (uint32_t i = 0; i < g_last_draw_vertex_count; i++) {
+            EXPECT_TRUE(std::isfinite((double)g_last_draw_vertices[i].pos[0]) &&
+                            std::isfinite((double)g_last_draw_vertices[i].pos[1]) &&
+                            std::isfinite((double)g_last_draw_vertices[i].pos[2]),
+                        "Particle draw vertices remain finite");
+        }
+    }
     free_canvas3d_test_draw_state(&canvas);
     PASS();
 }
@@ -4255,6 +4952,76 @@ static void test_canvas_material_shading_model_mapping() {
     PASS();
 }
 
+static void test_canvas_material_command_sanitizes_corrupt_fields() {
+    TEST("Canvas3D sanitizes corrupt material fields before backend submission");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_plane(1.0, 1.0);
+    auto *mat = (rt_material3d *)rt_material3d_new();
+    void *xf = rt_mat4_identity();
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    mat->shininess = std::numeric_limits<double>::infinity();
+    mat->emissive_intensity = std::numeric_limits<double>::infinity();
+    mat->normal_scale = -5.0;
+    mat->texture_wrap_s = 99;
+    mat->texture_wrap_t = -7;
+    mat->texture_filter = 123;
+    mat->texture_slot_wrap_s[0] = 99;
+    mat->texture_slot_wrap_t[0] = -7;
+    mat->texture_slot_filter[0] = 123;
+    mat->texture_slot_uv_set[0] = 99;
+    mat->texture_slot_uv_transform[0][0] = std::numeric_limits<double>::quiet_NaN();
+    mat->texture_slot_uv_transform[0][1] = std::numeric_limits<double>::infinity();
+    mat->texture_slot_uv_transform[0][3] = -std::numeric_limits<double>::infinity();
+    mat->texture_slot_uv_transform[0][4] = 1.0e300;
+    mat->texture_slot_uv_transform[0][5] = -1.0e300;
+    mat->texture_slot_wrap_s[1] = RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE;
+    mat->texture_slot_wrap_t[1] = RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT;
+    mat->texture_slot_filter[1] = RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    mat->texture_slot_uv_set[1] = -1;
+    mat->custom_params[0] = 1.0e300;
+    mat->custom_params[1] = -1.0e300;
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_NEAR(g_last_draw_cmd.shininess, 32.0f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.emissive_intensity, 1.0f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.normal_scale, 0.0f, 0.0001f);
+    EXPECT_EQ(g_last_draw_cmd.texture_wrap_s, RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
+    EXPECT_EQ(g_last_draw_cmd.texture_wrap_t, RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
+    EXPECT_EQ(g_last_draw_cmd.texture_filter, RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_s[0], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_t[0], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_filter[0], RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_uv_set[0], 1);
+    EXPECT_NEAR(g_last_draw_cmd.texture_slot_uv_transform[0][0], 1.0f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.texture_slot_uv_transform[0][1], 0.0f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.texture_slot_uv_transform[0][3], 1.0f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.texture_slot_uv_transform[0][4], 1000000.0f, 1.0f);
+    EXPECT_NEAR(g_last_draw_cmd.texture_slot_uv_transform[0][5], -1000000.0f, 1.0f);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_s[1], RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_t[1], RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_filter[1], RT_MATERIAL3D_TEXTURE_FILTER_NEAREST);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_uv_set[1], 0);
+    EXPECT_NEAR(g_last_draw_cmd.custom_params[0], 1000000.0f, 1.0f);
+    EXPECT_NEAR(g_last_draw_cmd.custom_params[1], -1000000.0f, 1.0f);
+    PASS();
+}
+
 static void test_canvas_material_textureasset_resolves_resident_mip_on_draw() {
     TEST("Canvas3D resolves TextureAsset3D material slots at draw time");
     const char *path = "/tmp/viper_textureasset3d_draw_mips_test.ktx2";
@@ -4422,6 +5189,111 @@ static void test_canvas_draw_mesh_clears_pending_splat_on_failed_draw() {
     PASS();
 }
 
+static void test_canvas_draw_mesh_sanitizes_pending_splat_scales() {
+    TEST("Canvas3D.DrawMesh sanitizes pending terrain splat scales");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new_color(0.2, 0.4, 0.6);
+    void *splat = rt_pixels_new(1, 1);
+    void *layer = rt_pixels_new(1, 1);
+    double model[16] = {
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    };
+
+    EXPECT_TRUE(cam && mesh && mat && splat && layer, "Splat scale fixtures exist");
+    if (!cam || !mesh || !mat || !splat || !layer)
+        return;
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    canvas.pending_has_splat = 1;
+    canvas.pending_splat_map = splat;
+    for (int i = 0; i < 4; i++)
+        canvas.pending_splat_layers[i] = layer;
+    canvas.pending_splat_layer_scales[0] = std::numeric_limits<float>::quiet_NaN();
+    canvas.pending_splat_layer_scales[1] = std::numeric_limits<float>::infinity();
+    canvas.pending_splat_layer_scales[2] = -2.0f;
+    canvas.pending_splat_layer_scales[3] = 1.0e30f;
+    rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(g_last_draw_cmd.has_splat == 1, "Pending splat flag reaches draw command");
+    EXPECT_NEAR(g_last_draw_cmd.splat_layer_scales[0], 1.0f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.splat_layer_scales[1], 1.0f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.splat_layer_scales[2], 1.0f, 0.0001f);
+    EXPECT_NEAR(g_last_draw_cmd.splat_layer_scales[3], 1000000.0f, 1.0f);
+    PASS();
+}
+
+static void test_canvas_draw_mesh_rejects_corrupt_raw_morph_shape_count() {
+    TEST("Canvas3D.DrawMesh rejects corrupt raw morph shape counts");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new_color(0.2, 0.4, 0.6);
+    void *model = rt_mat4_identity();
+    static const float tiny_delta[3] = {1.0f, 0.0f, 0.0f};
+    static const float tiny_weight[1] = {1.0f};
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    mesh_view->morph_deltas = tiny_delta;
+    mesh_view->morph_weights = tiny_weight;
+    mesh_view->morph_shape_count = INT32_MAX;
+
+    g_canvas_submit_draw_calls = 0;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, model, mat);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(g_last_draw_cmd.morph_shape_count, 0);
+    EXPECT_TRUE(g_last_draw_cmd.morph_deltas == nullptr, "Corrupt raw morph deltas are not bound");
+    EXPECT_TRUE(g_last_draw_cmd.morph_weights == nullptr,
+                "Corrupt raw morph weights are not scanned or bound");
+    PASS();
+}
+
 static void test_canvas_draw_terrain_rejects_2d_frame() {
     TEST("Canvas3D.DrawTerrain rejects Begin2D frames");
     rt_canvas3d canvas;
@@ -4447,6 +5319,45 @@ static void test_canvas_draw_terrain_rejects_2d_frame() {
     EXPECT_TRUE(g_last_trap != nullptr &&
                     std::strstr(g_last_trap, "cannot draw terrain during Begin2D/End") != nullptr,
                 "Canvas3D.DrawTerrain reports the Begin2D misuse");
+    PASS();
+}
+
+static void test_canvas_draw_terrain_sanitizes_nonfinite_lod_distance() {
+    TEST("Canvas3D.DrawTerrain sanitizes non-finite LOD distances");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 10.0, 20.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *terrain = rt_terrain3d_new(16, 16);
+    void *material = rt_material3d_new_color(0.2, 0.4, 0.6);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 640;
+    canvas.height = 480;
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_lod_distances(terrain, 1.0, 2.0);
+
+    g_canvas_submit_draw_calls = 0;
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    canvas.cached_cam_pos[0] = std::numeric_limits<float>::infinity();
+    rt_canvas3d_draw_terrain(&canvas, terrain);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_TRUE(g_last_draw_cmd.vertex_count > 0 && g_last_draw_cmd.vertex_count < 100,
+                "Non-finite terrain camera distance falls back to sanitized far LOD");
     PASS();
 }
 
@@ -4501,6 +5412,46 @@ static void test_terrain_null_safety() {
     PASS();
 }
 
+static void test_terrain_setters_repair_stale_slots_before_rejecting_invalid_handles() {
+    TEST("Terrain3D setters repair stale slots before rejecting invalid handles");
+    void *terrain = rt_terrain3d_new(16, 16);
+    auto *view = (Terrain3DTestLayout *)terrain;
+    void *wrong_material = rt_material3d_new();
+    void *wrong_pixels = rt_pixels_new(1, 1);
+    EXPECT_TRUE(terrain && view && wrong_material && wrong_pixels,
+                "Terrain stale-slot rejection fixtures exist");
+    if (!terrain || !view || !wrong_material || !wrong_pixels)
+        return;
+
+    size_t wrong_material_refcnt = rt_heap_hdr(wrong_material)->refcnt;
+    size_t wrong_pixels_refcnt = rt_heap_hdr(wrong_pixels)->refcnt;
+
+    view->material = wrong_pixels;
+    rt_terrain3d_set_material(terrain, wrong_pixels);
+    EXPECT_TRUE(view->material == nullptr,
+                "Terrain3D.SetMaterial clears stale material slot before rejecting replacement");
+
+    view->splat_map = wrong_material;
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { rt_terrain3d_set_splat_map(terrain, wrong_material); }, "Pixels"),
+                "Terrain3D.SetSplatMap still rejects non-Pixels replacements");
+    EXPECT_TRUE(view->splat_map == nullptr,
+                "Terrain3D.SetSplatMap clears stale splat slot before trapping");
+
+    view->layer_textures[0] = wrong_material;
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { rt_terrain3d_set_layer_texture(terrain, 0, wrong_material); }, "Pixels"),
+                "Terrain3D.SetLayerTexture still rejects non-texture replacements");
+    EXPECT_TRUE(view->layer_textures[0] == nullptr,
+                "Terrain3D.SetLayerTexture clears stale layer slot before trapping");
+
+    EXPECT_TRUE(rt_heap_hdr(wrong_material)->refcnt == wrong_material_refcnt,
+                "Terrain stale texture-slot repair does not release unowned wrong-class refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong_pixels)->refcnt == wrong_pixels_refcnt,
+                "Terrain stale material-slot repair does not release unowned wrong-class refs");
+    PASS();
+}
+
 static void test_terrain_single_pixel_splat_map_draws() {
     TEST("Terrain3D draws with a 1x1 splat map");
     vgfx3d_backend_t backend = {};
@@ -4539,6 +5490,377 @@ static void test_terrain_single_pixel_splat_map_draws() {
     EXPECT_EQ(g_canvas_end_frame_calls, 1);
     EXPECT_TRUE(g_canvas_submit_draw_calls >= 0,
                 "Terrain draw completes without trapping for a degenerate splat-map axis");
+    PASS();
+}
+
+static void test_terrain_splat_bake_uses_base_texture_for_missing_layers() {
+    TEST("Terrain3D splat bake falls back to base texture when a weighted layer is missing");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 10.0, 20.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *terrain = rt_terrain3d_new(16, 16);
+    void *splat = rt_pixels_new(1, 1);
+    void *base = rt_pixels_new(1, 1);
+    void *material;
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 640;
+    canvas.height = 480;
+
+    EXPECT_TRUE(cam && eye && target && up && terrain && splat && base, "Terrain fixtures exist");
+    if (!cam || !eye || !target || !up || !terrain || !splat || !base)
+        return;
+    rt_pixels_set(splat, 0, 0, 0xFF000000);
+    rt_pixels_set(base, 0, 0, 0x22446688);
+    material = rt_material3d_new_textured(base);
+    EXPECT_TRUE(material != nullptr, "Terrain material fixture exists");
+    if (!material)
+        return;
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_splat_map(terrain, splat);
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_terrain(&canvas, terrain);
+    rt_canvas3d_end(&canvas);
+
+    rt_material3d *mat = (rt_material3d *)material;
+    rt_pixels_impl *baked = rt_pixels_checked_impl_or_null(mat->texture);
+    EXPECT_TRUE(baked != nullptr && baked->data != nullptr, "Splat bake produces a texture");
+    if (baked && baked->data)
+        EXPECT_TRUE(baked->data[0] == 0x22446688,
+                    "Missing weighted splat layers preserve the base texture color and alpha");
+    EXPECT_TRUE(g_last_draw_cmd.has_splat == 0,
+                "Incomplete terrain splat layers use the baked material texture, not GPU splat state");
+    PASS();
+}
+
+static void test_terrain_splat_bake_uses_material_color_for_missing_layers() {
+    TEST("Terrain3D splat bake falls back to material color when no base texture exists");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 10.0, 20.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *terrain = rt_terrain3d_new(16, 16);
+    void *splat = rt_pixels_new(1, 1);
+    void *material = rt_material3d_new_color(0.2, 0.4, 0.6);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 640;
+    canvas.height = 480;
+
+    EXPECT_TRUE(cam && eye && target && up && terrain && splat && material,
+                "Terrain material-color fallback fixtures exist");
+    if (!cam || !eye || !target || !up || !terrain || !splat || !material)
+        return;
+    rt_pixels_set(splat, 0, 0, 0x000000FF);
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_splat_map(terrain, splat);
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_terrain(&canvas, terrain);
+    rt_canvas3d_end(&canvas);
+
+    rt_material3d *mat = (rt_material3d *)material;
+    rt_pixels_impl *baked = rt_pixels_checked_impl_or_null(mat->texture);
+    EXPECT_TRUE(baked != nullptr && baked->data != nullptr, "Splat bake produces a texture");
+    if (baked && baked->data)
+        EXPECT_TRUE(baked->data[0] == 0x336699FF,
+                    "Missing weighted splat layers preserve the material diffuse color");
+    EXPECT_TRUE(g_last_draw_cmd.has_splat == 0,
+                "Incomplete terrain splat layers still use the baked material texture");
+    PASS();
+}
+
+static void test_terrain_splat_layers_resolve_texture_assets() {
+    TEST("Terrain3D splat layers resolve TextureAsset3D sources");
+    const char *path = "/tmp/viper_terrain_splat_textureasset_layer.ktx2";
+    const uint8_t rgba_level0[] = {
+        0xAA,
+        0x20,
+        0x30,
+        0xFF,
+    };
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 10.0, 20.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *terrain = rt_terrain3d_new(16, 16);
+    void *splat = rt_pixels_new(1, 1);
+    void *material = rt_material3d_new();
+    rt_string path_s;
+    void *asset;
+    void *asset_pixels;
+
+    EXPECT_TRUE(write_test_ktx2(path, 37u, 1u, 1u, rgba_level0, sizeof(rgba_level0)),
+                "terrain splat TextureAsset3D fixture written");
+    path_s = rt_string_from_bytes(path, std::strlen(path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+    asset_pixels = rt_textureasset3d_get_pixels(asset);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 640;
+    canvas.height = 480;
+
+    EXPECT_TRUE(cam && eye && target && up && terrain && splat && material && asset_pixels,
+                "Terrain TextureAsset3D splat fixtures exist");
+    if (!cam || !eye || !target || !up || !terrain || !splat || !material || !asset_pixels)
+        return;
+
+    rt_pixels_set(splat, 0, 0, 0xFF000000);
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_splat_map(terrain, splat);
+    for (int i = 0; i < 4; i++)
+        rt_terrain3d_set_layer_texture(terrain, i, asset);
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_terrain(&canvas, terrain);
+    rt_canvas3d_end(&canvas);
+
+    rt_material3d *mat = (rt_material3d *)material;
+    rt_pixels_impl *baked = rt_pixels_checked_impl_or_null(mat->texture);
+    EXPECT_TRUE(baked != nullptr && baked->data != nullptr && baked->data[0] == 0xAA2030FF,
+                "Terrain splat bake samples TextureAsset3D resident pixels");
+    EXPECT_TRUE(g_last_draw_cmd.has_splat == 1 && g_last_draw_cmd.splat_layers[0] == asset_pixels,
+                "Terrain splat draw resolves TextureAsset3D layers to resident pixels");
+    PASS();
+}
+
+static void test_terrain_splat_bake_falls_back_when_textureasset_layer_loses_residency() {
+    TEST("Terrain3D splat bake falls back when TextureAsset3D layer pixels are no longer resident");
+    const char *path = "/tmp/viper_terrain_splat_textureasset_layer_unresident.ktx2";
+    const uint8_t rgba_level0[] = {
+        0x11,
+        0xEE,
+        0x22,
+        0xFF,
+    };
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 10.0, 20.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *terrain = rt_terrain3d_new(16, 16);
+    void *splat = rt_pixels_new(1, 1);
+    void *base = rt_pixels_new(1, 1);
+    void *material;
+    rt_string path_s;
+    void *asset;
+
+    EXPECT_TRUE(write_test_ktx2(path, 37u, 1u, 1u, rgba_level0, sizeof(rgba_level0)),
+                "terrain unresident TextureAsset3D splat fixture written");
+    path_s = rt_string_from_bytes(path, std::strlen(path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 640;
+    canvas.height = 480;
+
+    EXPECT_TRUE(cam && eye && target && up && terrain && splat && base && asset,
+                "Terrain unresident TextureAsset3D splat fixtures exist");
+    if (!cam || !eye || !target || !up || !terrain || !splat || !base || !asset)
+        return;
+
+    rt_pixels_set(splat, 0, 0, 0xFF000000);
+    rt_pixels_set(base, 0, 0, 0x336699CC);
+    material = rt_material3d_new_textured(base);
+    EXPECT_TRUE(material != nullptr, "Terrain unresident splat material exists");
+    if (!material)
+        return;
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_splat_map(terrain, splat);
+    rt_terrain3d_set_layer_texture(terrain, 0, asset);
+    rt_textureasset3d_set_resident_mip_range(asset, 0, 0);
+    EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
+                "TextureAsset3D splat layer can lose its resident Pixels after assignment");
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_terrain(&canvas, terrain);
+    rt_canvas3d_end(&canvas);
+
+    rt_material3d *mat = (rt_material3d *)material;
+    rt_pixels_impl *baked = rt_pixels_checked_impl_or_null(mat->texture);
+    EXPECT_TRUE(baked != nullptr && baked->data != nullptr && baked->data[0] == 0x336699CC,
+                "Unresident TextureAsset3D splat layer bakes from the base material texture");
+    EXPECT_TRUE(g_last_draw_cmd.has_splat == 0,
+                "Unresident TextureAsset3D splat layer does not advertise GPU splat state");
+
+    std::remove(path);
+    PASS();
+}
+
+static void test_terrain_draw_repairs_invalid_splat_map_and_restores_base_texture() {
+    TEST("Terrain3D draw repairs invalid splat maps and restores the base texture");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 10.0, 20.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *terrain = rt_terrain3d_new(16, 16);
+    auto *view = (Terrain3DTestLayout *)terrain;
+    void *splat = rt_pixels_new(1, 1);
+    void *base = rt_pixels_new(1, 1);
+    void *layer = rt_pixels_new(1, 1);
+    void *material;
+    void *wrong_splat = rt_material3d_new();
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 640;
+    canvas.height = 480;
+
+    EXPECT_TRUE(cam && eye && target && up && terrain && view && splat && base && layer &&
+                    wrong_splat,
+                "Terrain invalid-splat repair fixtures exist");
+    if (!cam || !eye || !target || !up || !terrain || !view || !splat || !base || !layer ||
+        !wrong_splat)
+        return;
+
+    rt_pixels_set(splat, 0, 0, 0xFF000000);
+    rt_pixels_set(base, 0, 0, 0x10203040);
+    rt_pixels_set(layer, 0, 0, 0xA0B0C0D0);
+    material = rt_material3d_new_textured(base);
+    EXPECT_TRUE(material != nullptr, "Terrain invalid-splat repair material exists");
+    if (!material)
+        return;
+
+    rt_camera3d_look_at(cam, eye, target, up);
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_splat_map(terrain, splat);
+    rt_terrain3d_set_layer_texture(terrain, 0, layer);
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_terrain(&canvas, terrain);
+    rt_canvas3d_end(&canvas);
+
+    rt_material3d *mat = (rt_material3d *)material;
+    rt_pixels_impl *baked = rt_pixels_checked_impl_or_null(mat->texture);
+    EXPECT_TRUE(baked != nullptr && baked->data != nullptr && baked->data[0] == 0xA0B0C0D0,
+                "Initial terrain splat bake uses the weighted layer texture");
+    EXPECT_TRUE(view->baked_texture == mat->texture && mat->texture != base,
+                "Initial terrain splat bake installs a distinct material texture");
+
+    if (view->splat_map && rt_obj_release_check0(view->splat_map))
+        rt_obj_free(view->splat_map);
+    size_t wrong_refcnt = rt_heap_hdr(wrong_splat)->refcnt;
+    view->splat_map = wrong_splat;
+    view->splat_dirty = 1;
+
+    memset(&g_last_draw_cmd, 0, sizeof(g_last_draw_cmd));
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_terrain(&canvas, terrain);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_TRUE(view->splat_map == nullptr,
+                "Terrain draw clears a private non-Pixels splat map slot");
+    EXPECT_TRUE(view->baked_texture == nullptr,
+                "Terrain draw releases stale baked splat textures after invalid splat repair");
+    EXPECT_TRUE(mat->texture == base,
+                "Terrain draw restores the base material texture after invalid splat repair");
+    EXPECT_TRUE(rt_heap_hdr(wrong_splat)->refcnt == wrong_refcnt,
+                "Invalid splat repair does not release unowned wrong-class refs");
+    EXPECT_TRUE(g_last_draw_cmd.has_splat == 0,
+                "Invalid splat repair prevents stale GPU splat state from reaching draw commands");
+    PASS();
+}
+
+static void test_terrain_rejects_native_only_textureasset_splat_layer() {
+    TEST("Terrain3D rejects native-only TextureAsset3D splat layers");
+    const char *path = "/tmp/viper_terrain_splat_native_only_astc_layer.ktx2";
+    const uint8_t astc_level0[] = {
+        0x11,
+        0x22,
+        0x33,
+        0x44,
+        0x55,
+        0x66,
+        0x77,
+        0x88,
+        0x99,
+        0xAA,
+        0xBB,
+        0xCC,
+        0xDD,
+        0xEE,
+        0xF0,
+        0x0F,
+    };
+    rt_string path_s;
+    void *terrain = rt_terrain3d_new(16, 16);
+    void *asset;
+
+    EXPECT_TRUE(write_test_ktx2(path, 157u, 4u, 4u, astc_level0, sizeof(astc_level0)),
+                "terrain native-only TextureAsset3D fixture written");
+    path_s = rt_string_from_bytes(path, std::strlen(path));
+    asset = rt_textureasset3d_load_ktx2(path_s);
+    rt_string_unref(path_s);
+
+    EXPECT_TRUE(terrain && asset, "Native-only terrain TextureAsset3D fixtures exist");
+    if (!terrain || !asset)
+        return;
+    EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
+                "ASTC TextureAsset3D layer fixture has no Pixels fallback");
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { rt_terrain3d_set_layer_texture(terrain, 0, asset); }, "RGBA8 Pixels"),
+                "Terrain splat layers reject TextureAsset3D values without drawable Pixels");
+
+    std::remove(path);
     PASS();
 }
 
@@ -4985,6 +6307,51 @@ static void test_canvas_opaque_alpha_mode_keeps_instanced_path() {
     PASS();
 }
 
+static void test_canvas_instanced_repairs_corrupt_mesh_counts_before_tangents() {
+    TEST("Canvas3D repairs corrupt instanced mesh counts before tangent preparation");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    void *normal = rt_pixels_new(1, 1);
+    float instances[16] = {0.0f};
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.submit_draw_instanced = tracked_submit_draw_instanced;
+    backend.end_frame = tracked_end_frame;
+
+    instances[0] = instances[5] = instances[10] = instances[15] = 1.0f;
+    memset(&canvas, 0, sizeof(canvas));
+    EXPECT_TRUE(cam && mesh && mat && normal, "Instanced corrupt-count fixtures allocate");
+    if (!cam || !mesh || !mat || !normal)
+        return;
+
+    rt_material3d_set_normal_map(mat, normal);
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    uint32_t vertex_capacity = mesh_view->vertex_capacity;
+    uint32_t index_capacity = mesh_view->index_capacity;
+    mesh_view->vertex_count = std::numeric_limits<uint32_t>::max();
+    mesh_view->index_count = std::numeric_limits<uint32_t>::max();
+
+    canvas.backend = &backend;
+    g_canvas_submit_draw_calls = 0;
+    g_canvas_submit_draw_instanced_calls = 0;
+    g_last_instanced_count = 0;
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 1, NULL, 0);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(mesh_view->vertex_count, vertex_capacity);
+    EXPECT_EQ(mesh_view->index_count, index_capacity);
+    EXPECT_EQ(g_canvas_submit_draw_instanced_calls, 1);
+    EXPECT_EQ(g_last_instanced_count, 1);
+    PASS();
+}
+
 static void test_canvas_instanced_gpu_synthesizes_previous_matrices() {
     TEST("Canvas3D synthesizes previous matrices for GPU instancing");
     vgfx3d_backend_t backend = {};
@@ -5320,12 +6687,14 @@ int main() {
     test_camera_screen_to_ray_tracks_shaken_view();
     test_camera_shake_does_not_drift_eye_in_smooth_follow();
     test_camera_sanitizes_nonfinite_inputs();
+    test_camera_clamps_extreme_finite_inputs();
 
     /* Material3D */
     test_material_new();
     test_material_new_color();
     test_material_new_textured();
     test_material_texture_setters_reject_invalid_handles();
+    test_material_texture_setters_repair_stale_slots_before_rejecting_invalid_handles();
     test_textureasset3d_ktx2_material_bridge();
     test_textureasset3d_bc3_software_decode();
     test_textureasset3d_bc7_software_decode();
@@ -5336,6 +6705,8 @@ int main() {
     test_material_texture_presence_getters();
     test_material_set_color();
     test_material_sanitizes_numeric_inputs();
+    test_material_getters_repair_corrupt_state();
+    test_material_clone_repairs_invalid_env_map();
     test_material_set_shininess();
     test_material_set_unlit();
     test_material_null_safety();
@@ -5353,6 +6724,7 @@ int main() {
     test_light_spot_intensity();
     test_light_validation_and_clamping();
     test_light_sanitizes_nonfinite_inputs();
+    test_light_clamps_extreme_finite_inputs();
     test_camera_ortho();
     test_camera_ortho_look_at();
     test_camera_perspective_not_ortho();
@@ -5367,8 +6739,11 @@ int main() {
 
     /* Phase 11 — Cube maps */
     test_cubemap_new();
+    test_canvas_set_skybox_repairs_stale_existing_slot();
     test_canvas_ortho_skybox_fills_render_target_uniformly();
     test_canvas_cpu_skybox_fallback_reuses_cache_until_inputs_change();
+    test_canvas_cpu_skybox_sanitizes_malformed_ortho_forward();
+    test_canvas_cpu_skybox_normalizes_huge_ortho_forward();
     test_material_reflectivity();
 
     /* Mesh3D.Clear */
@@ -5394,6 +6769,7 @@ int main() {
     test_rendertarget_null_safety();
     test_rendertarget_as_pixels_syncs_gpu_color_on_demand();
     test_rendertarget_clear_sync_detaches_backend_callback();
+    test_rendertarget_rejects_malformed_buffer_layouts();
     test_canvas_screenshot_syncs_render_target_on_demand();
     test_canvas_screenshot_returns_null_when_sync_fails();
     test_canvas_dimensions_follow_active_render_target();
@@ -5401,6 +6777,8 @@ int main() {
     test_canvas_begin_uses_active_output_aspect_without_mutating_camera();
     test_canvas_camera_relative_upload_rebases_frame_payloads();
     test_canvas_camera_relative_upload_rebases_raw_and_generated_vertices();
+    test_particles3d_spread_uses_radians();
+    test_particles3d_extreme_finite_inputs_remain_bounded();
     test_canvas_resize_updates_backend_and_projection_aspect();
     test_canvas_fog_and_shadow_state_sanitize_inputs();
     test_canvas_begin_applies_camera_shake_without_follow();
@@ -5430,10 +6808,14 @@ int main() {
     test_canvas_fps_uses_microsecond_delta();
     test_canvas_boolean_setters_normalize();
     test_canvas_material_shading_model_mapping();
+    test_canvas_material_command_sanitizes_corrupt_fields();
     test_canvas_material_textureasset_resolves_resident_mip_on_draw();
     test_canvas_material_textureasset_forwards_native_blocks_on_draw();
     test_canvas_draw_mesh_clears_pending_splat_on_failed_draw();
+    test_canvas_draw_mesh_sanitizes_pending_splat_scales();
+    test_canvas_draw_mesh_rejects_corrupt_raw_morph_shape_count();
     test_canvas_draw_terrain_rejects_2d_frame();
+    test_canvas_draw_terrain_sanitizes_nonfinite_lod_distance();
 
     /* Terrain3D splat */
     test_terrain_create();
@@ -5441,7 +6823,14 @@ int main() {
     test_terrain_set_layer_texture();
     test_terrain_set_layer_scale();
     test_terrain_null_safety();
+    test_terrain_setters_repair_stale_slots_before_rejecting_invalid_handles();
     test_terrain_single_pixel_splat_map_draws();
+    test_terrain_splat_bake_uses_base_texture_for_missing_layers();
+    test_terrain_splat_bake_uses_material_color_for_missing_layers();
+    test_terrain_splat_layers_resolve_texture_assets();
+    test_terrain_splat_bake_falls_back_when_textureasset_layer_loses_residency();
+    test_terrain_draw_repairs_invalid_splat_map_and_restores_base_texture();
+    test_terrain_rejects_native_only_textureasset_splat_layer();
 
     /* SW Backend Features (SW-01 through SW-08) */
     test_vertex_color_default_white();
@@ -5472,6 +6861,7 @@ int main() {
     test_metal_instbatch_create();
     test_instbatch_remove_preserves_unrelated_motion_history();
     test_canvas_opaque_alpha_mode_keeps_instanced_path();
+    test_canvas_instanced_repairs_corrupt_mesh_counts_before_tangents();
     test_canvas_instanced_gpu_synthesizes_previous_matrices();
     test_canvas_instanced_motion_history_separates_batches();
     test_canvas_legacy_translucent_batch_falls_back_from_instancing();

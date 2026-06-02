@@ -68,6 +68,10 @@ extern double rt_quat_w(void *q);
 
 int ph3d_i32_stack_push(int32_t **items, int32_t *count, int32_t *capacity, int32_t value);
 
+#define PH3D_STATE_ABS_MAX 1000000000000.0
+#define PH3D_PARAM_ABS_MAX 1000000000.0
+#define PH3D_STEP_DT_MAX 1.0
+
 
 /* The joint solver (rt_joints3d.c) reaches into a body's pose/velocity through
  * the shared rt_body3d_kinematics view declared in rt_physics3d.h. These asserts
@@ -321,7 +325,9 @@ int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed) {
 double ph3d_clamp_nonnegative_finite(double value, double fallback) {
     if (!isfinite(value))
         return fallback;
-    return value < 0.0 ? 0.0 : value;
+    if (value < 0.0)
+        return 0.0;
+    return value > PH3D_PARAM_ABS_MAX ? PH3D_PARAM_ABS_MAX : value;
 }
 
 /// @brief Return @p value if it is finite, otherwise return @p fallback.
@@ -340,17 +346,6 @@ static int32_t ph3d_clamp_solver_iterations(int64_t value) {
     return (int32_t)value;
 }
 
-/// @brief Write a sanitized 3D vector to @p dst, replacing each NaN/Inf component with 0.
-/// @details Used when accepting Vec3 arguments from Zia to populate force, velocity, and
-///   position arrays — ensures that a single bad component cannot contaminate the solver.
-static void ph3d_vec3_set_finite(double *dst, double x, double y, double z) {
-    dst[0] = ph3d_finite_or(x, 0.0);
-    dst[1] = ph3d_finite_or(y, 0.0);
-    dst[2] = ph3d_finite_or(z, 0.0);
-}
-
-#define PH3D_STATE_ABS_MAX 1000000000000.0
-
 /// @brief Clamp a physics state scalar to ±PH3D_STATE_ABS_MAX, mapping NaN/inf to 0.
 /// @details Keeps positions/velocities from blowing up to non-finite values that would poison the
 ///          whole simulation; the bound is large enough not to affect well-behaved bodies.
@@ -364,6 +359,43 @@ static double ph3d_saturate_state_value(double value) {
     return value;
 }
 
+/// @brief Write a sanitized 3D vector to @p dst, replacing each NaN/Inf component with 0.
+/// @details Used when accepting Vec3 arguments from Zia to populate force, velocity, and
+///   position arrays — ensures that a single bad component cannot contaminate the solver.
+static void ph3d_vec3_set_finite(double *dst, double x, double y, double z) {
+    dst[0] = ph3d_saturate_state_value(x);
+    dst[1] = ph3d_saturate_state_value(y);
+    dst[2] = ph3d_saturate_state_value(z);
+}
+
+/// @brief Clamp an extent-like quantity to a finite, non-negative runtime bound.
+static double ph3d_sanitize_extent_value(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    value = fabs(value);
+    if (value > PH3D_PARAM_ABS_MAX)
+        return PH3D_PARAM_ABS_MAX;
+    return value;
+}
+
+/// @brief Clamp a transform scale component while preserving sign and rejecting collapsed axes.
+static double ph3d_sanitize_scale_value(double value) {
+    if (!isfinite(value) || fabs(value) <= 1e-12)
+        return 1.0;
+    if (value > PH3D_PARAM_ABS_MAX)
+        return PH3D_PARAM_ABS_MAX;
+    if (value < -PH3D_PARAM_ABS_MAX)
+        return -PH3D_PARAM_ABS_MAX;
+    return value;
+}
+
+/// @brief Clamp a public Step duration to a stable, finite frame-sized delta.
+static double ph3d_sanitize_step_dt(double dt) {
+    if (!isfinite(dt) || dt <= 0.0)
+        return 0.0;
+    return dt > PH3D_STEP_DT_MAX ? PH3D_STEP_DT_MAX : dt;
+}
+
 /// @brief Saturate each component of a state vector in place (see ph3d_saturate_state_value).
 void ph3d_vec3_sanitize_state(double *v) {
     if (!v)
@@ -371,6 +403,19 @@ void ph3d_vec3_sanitize_state(double *v) {
     v[0] = ph3d_saturate_state_value(v[0]);
     v[1] = ph3d_saturate_state_value(v[1]);
     v[2] = ph3d_saturate_state_value(v[2]);
+}
+
+/// @brief Copy and saturate a physics state vector.
+static void ph3d_vec3_copy_state(double *dst, const double *src) {
+    if (!dst)
+        return;
+    if (!src) {
+        dst[0] = dst[1] = dst[2] = 0.0;
+        return;
+    }
+    dst[0] = ph3d_saturate_state_value(src[0]);
+    dst[1] = ph3d_saturate_state_value(src[1]);
+    dst[2] = ph3d_saturate_state_value(src[2]);
 }
 
 /// @brief Add (x, y, z) into @p dst, sanitizing the addends and saturating the result per
@@ -439,6 +484,23 @@ int test_collision(const rt_body3d *a,
                    rt_collider_pose *leaf_a_pose_out,
                    rt_collider_pose *leaf_b_pose_out);
 
+/// @brief Sanitize and order a broadphase AABB after a raw collider/body bounds calculation.
+static void ph3d_sanitize_aabb(double *mn, double *mx) {
+    if (!mn || !mx)
+        return;
+    for (int axis = 0; axis < 3; ++axis) {
+        double lo = ph3d_saturate_state_value(mn[axis]);
+        double hi = ph3d_saturate_state_value(mx[axis]);
+        if (lo <= hi) {
+            mn[axis] = lo;
+            mx[axis] = hi;
+        } else {
+            mn[axis] = hi;
+            mx[axis] = lo;
+        }
+    }
+}
+
 /*==========================================================================
  * Collision detection helpers
  *=========================================================================*/
@@ -450,11 +512,19 @@ int test_collision(const rt_body3d *a,
 /// cached primitive shape (AABB / sphere / capsule). This is the broad-
 /// phase primitive used by every collision query.
 void body_aabb(const rt_body3d *b, double *mn, double *mx) {
+    if (!mn || !mx)
+        return;
+    if (!b) {
+        mn[0] = mn[1] = mn[2] = 0.0;
+        mx[0] = mx[1] = mx[2] = 0.0;
+        return;
+    }
     if (b->collider) {
         rt_collider_pose pose;
         collider_pose_from_body(b, &pose);
         rt_collider3d_compute_world_aabb_raw(
             b->collider, pose.position, pose.rotation, pose.scale, mn, mx);
+        ph3d_sanitize_aabb(mn, mx);
         return;
     }
     if (b->shape == PH3D_SHAPE_AABB) {
@@ -482,6 +552,7 @@ void body_aabb(const rt_body3d *b, double *mn, double *mx) {
         mx[1] = (a[1] > c[1] ? a[1] : c[1]) + b->radius;
         mx[2] = (a[2] > c[2] ? a[2] : c[2]) + b->radius;
     }
+    ph3d_sanitize_aabb(mn, mx);
 }
 
 // Vector / scalar math helpers — internal-only, kept in this TU so the
@@ -570,6 +641,29 @@ double vec3_normalize_in_place(double *v) {
         v[2] /= len;
     }
     return len;
+}
+
+/// @brief Copy a vector and normalize it, falling back to +Y for invalid normals.
+static void ph3d_vec3_copy_normal_or_up(double *dst, const double *src) {
+    ph3d_vec3_copy_state(dst, src);
+    if (vec3_normalize_in_place(dst) <= 1e-12)
+        vec3_set(dst, 0.0, 1.0, 0.0);
+}
+
+/// @brief Sanitize a signed scalar stored in contact/query objects.
+static double ph3d_sanitize_contact_scalar(double value) {
+    return ph3d_saturate_state_value(value);
+}
+
+/// @brief Clamp a query fraction to [0, 1], treating NaN/Inf as 0.
+static double ph3d_sanitize_fraction_value(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
 }
 
 // Quaternion helpers — store as `(x, y, z, w)` with `w` last (scalar).
@@ -676,16 +770,32 @@ void quat_conjugate(const double *q, double *out) {
 /// For hot inner loops we'd inline a more efficient form, but this is
 /// only called once per pose composition so the cost is irrelevant.
 void quat_rotate_vec3(const double *q, const double *v, double *out) {
-    double qv[4] = {v[0], v[1], v[2], 0.0};
+    double safe_q[4];
+    double qv[4];
     double q_conj[4];
     double tmp[4];
     double rotated[4];
-    quat_conjugate(q, q_conj);
-    quat_mul(q, qv, tmp);
+    if (!out)
+        return;
+    if (!q || !v) {
+        out[0] = out[1] = out[2] = 0.0;
+        return;
+    }
+    safe_q[0] = q[0];
+    safe_q[1] = q[1];
+    safe_q[2] = q[2];
+    safe_q[3] = q[3];
+    quat_normalize(safe_q);
+    qv[0] = ph3d_saturate_state_value(v[0]);
+    qv[1] = ph3d_saturate_state_value(v[1]);
+    qv[2] = ph3d_saturate_state_value(v[2]);
+    qv[3] = 0.0;
+    quat_conjugate(safe_q, q_conj);
+    quat_mul(safe_q, qv, tmp);
     quat_mul(tmp, q_conj, rotated);
-    out[0] = rotated[0];
-    out[1] = rotated[1];
-    out[2] = rotated[2];
+    out[0] = ph3d_saturate_state_value(rotated[0]);
+    out[1] = ph3d_saturate_state_value(rotated[1]);
+    out[2] = ph3d_saturate_state_value(rotated[2]);
 }
 
 // Collider pose helpers — pose = position + orientation + scale, used
@@ -709,12 +819,15 @@ void collider_pose_from_body(const rt_body3d *body, rt_collider_pose *pose) {
     collider_pose_identity(pose);
     if (!body || !pose)
         return;
-    vec3_copy(pose->position, body->position);
+    ph3d_vec3_copy_state(pose->position, body->position);
     pose->rotation[0] = body->orientation[0];
     pose->rotation[1] = body->orientation[1];
     pose->rotation[2] = body->orientation[2];
     pose->rotation[3] = body->orientation[3];
-    vec3_copy(pose->scale, body->scale);
+    quat_normalize(pose->rotation);
+    pose->scale[0] = ph3d_sanitize_scale_value(body->scale[0]);
+    pose->scale[1] = ph3d_sanitize_scale_value(body->scale[1]);
+    pose->scale[2] = ph3d_sanitize_scale_value(body->scale[2]);
 }
 
 /// @brief Compose a child transform with a parent pose.
@@ -733,19 +846,43 @@ void collider_pose_compose(const rt_collider_pose *parent,
     if (!out)
         return;
     collider_pose_identity(out);
-    if (!parent)
+    if (!parent || !child_position || !child_rotation || !child_scale)
         return;
-    out->scale[0] = parent->scale[0] * child_scale[0];
-    out->scale[1] = parent->scale[1] * child_scale[1];
-    out->scale[2] = parent->scale[2] * child_scale[2];
-    scaled[0] = child_position[0] * parent->scale[0];
-    scaled[1] = child_position[1] * parent->scale[1];
-    scaled[2] = child_position[2] * parent->scale[2];
-    quat_rotate_vec3(parent->rotation, scaled, rotated);
-    out->position[0] = parent->position[0] + rotated[0];
-    out->position[1] = parent->position[1] + rotated[1];
-    out->position[2] = parent->position[2] + rotated[2];
-    quat_mul(parent->rotation, child_rotation, out->rotation);
+    double parent_scale[3] = {
+        ph3d_sanitize_scale_value(parent->scale[0]),
+        ph3d_sanitize_scale_value(parent->scale[1]),
+        ph3d_sanitize_scale_value(parent->scale[2]),
+    };
+    double child_scale_safe[3] = {
+        ph3d_sanitize_scale_value(child_scale[0]),
+        ph3d_sanitize_scale_value(child_scale[1]),
+        ph3d_sanitize_scale_value(child_scale[2]),
+    };
+    double child_rotation_safe[4] = {
+        child_rotation[0],
+        child_rotation[1],
+        child_rotation[2],
+        child_rotation[3],
+    };
+    double parent_rotation_safe[4] = {
+        parent->rotation[0],
+        parent->rotation[1],
+        parent->rotation[2],
+        parent->rotation[3],
+    };
+    quat_normalize(parent_rotation_safe);
+    quat_normalize(child_rotation_safe);
+    out->scale[0] = ph3d_sanitize_scale_value(parent_scale[0] * child_scale_safe[0]);
+    out->scale[1] = ph3d_sanitize_scale_value(parent_scale[1] * child_scale_safe[1]);
+    out->scale[2] = ph3d_sanitize_scale_value(parent_scale[2] * child_scale_safe[2]);
+    scaled[0] = ph3d_saturate_state_value(child_position[0] * parent_scale[0]);
+    scaled[1] = ph3d_saturate_state_value(child_position[1] * parent_scale[1]);
+    scaled[2] = ph3d_saturate_state_value(child_position[2] * parent_scale[2]);
+    quat_rotate_vec3(parent_rotation_safe, scaled, rotated);
+    out->position[0] = ph3d_saturate_state_value(parent->position[0] + rotated[0]);
+    out->position[1] = ph3d_saturate_state_value(parent->position[1] + rotated[1]);
+    out->position[2] = ph3d_saturate_state_value(parent->position[2] + rotated[2]);
+    quat_mul(parent_rotation_safe, child_rotation_safe, out->rotation);
     quat_normalize(out->rotation);
 }
 
@@ -760,13 +897,13 @@ void transform_point_from_pose(const rt_collider_pose *pose,
     double rotated[3];
     if (!pose || !local_point || !world_point)
         return;
-    scaled[0] = local_point[0] * pose->scale[0];
-    scaled[1] = local_point[1] * pose->scale[1];
-    scaled[2] = local_point[2] * pose->scale[2];
+    scaled[0] = ph3d_saturate_state_value(local_point[0] * ph3d_sanitize_scale_value(pose->scale[0]));
+    scaled[1] = ph3d_saturate_state_value(local_point[1] * ph3d_sanitize_scale_value(pose->scale[1]));
+    scaled[2] = ph3d_saturate_state_value(local_point[2] * ph3d_sanitize_scale_value(pose->scale[2]));
     quat_rotate_vec3(pose->rotation, scaled, rotated);
-    world_point[0] = pose->position[0] + rotated[0];
-    world_point[1] = pose->position[1] + rotated[1];
-    world_point[2] = pose->position[2] + rotated[2];
+    world_point[0] = ph3d_saturate_state_value(pose->position[0] + rotated[0]);
+    world_point[1] = ph3d_saturate_state_value(pose->position[1] + rotated[1]);
+    world_point[2] = ph3d_saturate_state_value(pose->position[2] + rotated[2]);
 }
 
 /// @brief Inverse of `transform_point_from_pose`: world → local.
@@ -781,21 +918,21 @@ void transform_point_to_local(const rt_collider_pose *pose,
     double inv_rotation[4];
     if (!pose || !world_point || !local_point)
         return;
-    translated[0] = world_point[0] - pose->position[0];
-    translated[1] = world_point[1] - pose->position[1];
-    translated[2] = world_point[2] - pose->position[2];
+    translated[0] = ph3d_saturate_state_value(world_point[0] - pose->position[0]);
+    translated[1] = ph3d_saturate_state_value(world_point[1] - pose->position[1]);
+    translated[2] = ph3d_saturate_state_value(world_point[2] - pose->position[2]);
     quat_conjugate(pose->rotation, inv_rotation);
     quat_rotate_vec3(inv_rotation, translated, local_point);
-    if (fabs(pose->scale[0]) > 1e-12)
-        local_point[0] /= pose->scale[0];
+    if (fabs(ph3d_sanitize_scale_value(pose->scale[0])) > 1e-12)
+        local_point[0] = ph3d_saturate_state_value(local_point[0] / ph3d_sanitize_scale_value(pose->scale[0]));
     else
         local_point[0] = 0.0;
-    if (fabs(pose->scale[1]) > 1e-12)
-        local_point[1] /= pose->scale[1];
+    if (fabs(ph3d_sanitize_scale_value(pose->scale[1])) > 1e-12)
+        local_point[1] = ph3d_saturate_state_value(local_point[1] / ph3d_sanitize_scale_value(pose->scale[1]));
     else
         local_point[1] = 0.0;
-    if (fabs(pose->scale[2]) > 1e-12)
-        local_point[2] /= pose->scale[2];
+    if (fabs(ph3d_sanitize_scale_value(pose->scale[2])) > 1e-12)
+        local_point[2] = ph3d_saturate_state_value(local_point[2] / ph3d_sanitize_scale_value(pose->scale[2]));
     else
         local_point[2] = 0.0;
 }
@@ -803,13 +940,17 @@ void transform_point_to_local(const rt_collider_pose *pose,
 /// @brief Absolute scale factor sanitized for division: non-finite or near-zero → 1.0.
 double pose_abs_scale_or_unit(double value) {
     value = fabs(value);
-    return isfinite(value) && value > 1e-12 ? value : 1.0;
+    if (!isfinite(value) || value <= 1e-12)
+        return 1.0;
+    return value > PH3D_PARAM_ABS_MAX ? PH3D_PARAM_ABS_MAX : value;
 }
 
 /// @brief Absolute scale factor with non-finite mapped to 1.0 (zero is preserved).
 double pose_abs_scale_or_zero(double value) {
     value = fabs(value);
-    return isfinite(value) ? value : 1.0;
+    if (!isfinite(value))
+        return 1.0;
+    return value > PH3D_PARAM_ABS_MAX ? PH3D_PARAM_ABS_MAX : value;
 }
 
 /// @brief Transform a world-space vector into pose-local space.
@@ -822,16 +963,16 @@ void transform_vector_to_local(const rt_collider_pose *pose,
         return;
     quat_conjugate(pose->rotation, inv_rotation);
     quat_rotate_vec3(inv_rotation, world_vec, local_vec);
-    if (fabs(pose->scale[0]) > 1e-12)
-        local_vec[0] /= pose->scale[0];
+    if (fabs(ph3d_sanitize_scale_value(pose->scale[0])) > 1e-12)
+        local_vec[0] = ph3d_saturate_state_value(local_vec[0] / ph3d_sanitize_scale_value(pose->scale[0]));
     else
         local_vec[0] = 0.0;
-    if (fabs(pose->scale[1]) > 1e-12)
-        local_vec[1] /= pose->scale[1];
+    if (fabs(ph3d_sanitize_scale_value(pose->scale[1])) > 1e-12)
+        local_vec[1] = ph3d_saturate_state_value(local_vec[1] / ph3d_sanitize_scale_value(pose->scale[1]));
     else
         local_vec[1] = 0.0;
-    if (fabs(pose->scale[2]) > 1e-12)
-        local_vec[2] /= pose->scale[2];
+    if (fabs(ph3d_sanitize_scale_value(pose->scale[2])) > 1e-12)
+        local_vec[2] = ph3d_saturate_state_value(local_vec[2] / ph3d_sanitize_scale_value(pose->scale[2]));
     else
         local_vec[2] = 0.0;
 }
@@ -843,10 +984,11 @@ void transform_normal_from_local(const rt_collider_pose *pose,
     double scaled[3];
     if (!pose || !local_normal || !world_normal)
         return;
-    scaled[0] = local_normal[0] / pose_abs_scale_or_unit(pose->scale[0]);
-    scaled[1] = local_normal[1] / pose_abs_scale_or_unit(pose->scale[1]);
-    scaled[2] = local_normal[2] / pose_abs_scale_or_unit(pose->scale[2]);
+    scaled[0] = ph3d_saturate_state_value(local_normal[0]) / pose_abs_scale_or_unit(pose->scale[0]);
+    scaled[1] = ph3d_saturate_state_value(local_normal[1]) / pose_abs_scale_or_unit(pose->scale[1]);
+    scaled[2] = ph3d_saturate_state_value(local_normal[2]) / pose_abs_scale_or_unit(pose->scale[2]);
     quat_rotate_vec3(pose->rotation, scaled, world_normal);
+    ph3d_vec3_sanitize_state(world_normal);
     if (vec3_normalize_in_place(world_normal) <= 1e-12)
         vec3_set(world_normal, 0.0, 1.0, 0.0);
 }
@@ -873,6 +1015,34 @@ int capsule_axis_sample_count(double axis_len, double radius) {
     return samples;
 }
 
+/// @brief Repair cached primitive shape fields after collider geometry or body scale changes.
+static void body3d_sanitize_shape_cache(rt_body3d *body) {
+    if (!body)
+        return;
+    body->half_extents[0] = ph3d_sanitize_extent_value(body->half_extents[0]);
+    body->half_extents[1] = ph3d_sanitize_extent_value(body->half_extents[1]);
+    body->half_extents[2] = ph3d_sanitize_extent_value(body->half_extents[2]);
+    body->radius = ph3d_sanitize_extent_value(body->radius);
+    body->height = ph3d_sanitize_extent_value(body->height);
+    if (body->shape == PH3D_SHAPE_SPHERE) {
+        vec3_set(body->half_extents, body->radius, body->radius, body->radius);
+    } else if (body->shape == PH3D_SHAPE_CAPSULE) {
+        if (body->height < body->radius * 2.0)
+            body->height = body->radius * 2.0;
+        vec3_set(body->half_extents,
+                 body->radius,
+                 fmax(body->height * 0.5, body->radius),
+                 body->radius);
+    }
+}
+
+/// @brief Convert an inertia term to a bounded inverse-inertia component.
+static double body3d_inverse_inertia_from(double inertia) {
+    if (!isfinite(inertia) || inertia <= 1e-12)
+        return 0.0;
+    return ph3d_clamp_nonnegative_finite(1.0 / inertia, 0.0);
+}
+
 /// @brief Refresh the body's cached primitive-shape fields from its collider.
 ///
 /// Bodies hold a denormalized cache of `(shape, half_extents, radius,
@@ -896,15 +1066,9 @@ void body3d_update_shape_cache_from_collider(rt_body3d *body) {
     body->height = 0.0;
     if (!body->collider)
         return;
-    sx = fabs(body->scale[0]);
-    sy = fabs(body->scale[1]);
-    sz = fabs(body->scale[2]);
-    if (!isfinite(sx) || sx <= 1e-12)
-        sx = 1.0;
-    if (!isfinite(sy) || sy <= 1e-12)
-        sy = 1.0;
-    if (!isfinite(sz) || sz <= 1e-12)
-        sz = 1.0;
+    sx = fabs(ph3d_sanitize_scale_value(body->scale[0]));
+    sy = fabs(ph3d_sanitize_scale_value(body->scale[1]));
+    sz = fabs(ph3d_sanitize_scale_value(body->scale[2]));
 
     type = rt_collider3d_get_type(body->collider);
     switch (type) {
@@ -948,6 +1112,7 @@ void body3d_update_shape_cache_from_collider(rt_body3d *body) {
             body->height = body->half_extents[1] * 2.0;
             break;
     }
+    body3d_sanitize_shape_cache(body);
 }
 
 /// @brief Compute the diagonal inverse inertia tensor from mass + shape.
@@ -963,6 +1128,8 @@ static void body3d_compute_inv_inertia(rt_body3d *b) {
     if (!b)
         return;
     vec3_set(b->inv_inertia, 0.0, 0.0, 0.0);
+    b->mass = ph3d_clamp_nonnegative_finite(b->mass, 0.0);
+    body3d_sanitize_shape_cache(b);
     if (b->mass <= 1e-12 || b->motion_mode != PH3D_MODE_DYNAMIC)
         return;
 
@@ -973,15 +1140,15 @@ static void body3d_compute_inv_inertia(rt_body3d *b) {
         double ixx = b->mass * (hy * hy + dz * dz) / 12.0;
         double iyy = b->mass * (wx * wx + dz * dz) / 12.0;
         double izz = b->mass * (wx * wx + hy * hy) / 12.0;
-        b->inv_inertia[0] = ixx > 1e-12 ? 1.0 / ixx : 0.0;
-        b->inv_inertia[1] = iyy > 1e-12 ? 1.0 / iyy : 0.0;
-        b->inv_inertia[2] = izz > 1e-12 ? 1.0 / izz : 0.0;
+        b->inv_inertia[0] = body3d_inverse_inertia_from(ixx);
+        b->inv_inertia[1] = body3d_inverse_inertia_from(iyy);
+        b->inv_inertia[2] = body3d_inverse_inertia_from(izz);
         return;
     }
 
     if (b->shape == PH3D_SHAPE_SPHERE) {
         double inertia = 0.4 * b->mass * b->radius * b->radius;
-        double inv = inertia > 1e-12 ? 1.0 / inertia : 0.0;
+        double inv = body3d_inverse_inertia_from(inertia);
         vec3_set(b->inv_inertia, inv, inv, inv);
         return;
     }
@@ -993,9 +1160,9 @@ static void body3d_compute_inv_inertia(rt_body3d *b) {
         double ixx = b->mass * (3.0 * r2 + h2) / 12.0;
         double iyy = 0.5 * b->mass * r2;
         double izz = ixx;
-        b->inv_inertia[0] = ixx > 1e-12 ? 1.0 / ixx : 0.0;
-        b->inv_inertia[1] = iyy > 1e-12 ? 1.0 / iyy : 0.0;
-        b->inv_inertia[2] = izz > 1e-12 ? 1.0 / izz : 0.0;
+        b->inv_inertia[0] = body3d_inverse_inertia_from(ixx);
+        b->inv_inertia[1] = body3d_inverse_inertia_from(iyy);
+        b->inv_inertia[2] = body3d_inverse_inertia_from(izz);
     }
 }
 
@@ -1010,8 +1177,9 @@ static void body3d_refresh_motion_mode(rt_body3d *b) {
         return;
     b->is_static = (b->motion_mode == PH3D_MODE_STATIC) ? 1 : 0;
     b->is_kinematic = (b->motion_mode == PH3D_MODE_KINEMATIC) ? 1 : 0;
+    b->mass = ph3d_clamp_nonnegative_finite(b->mass, 0.0);
     if (b->motion_mode == PH3D_MODE_DYNAMIC && b->mass > 1e-12) {
-        b->inv_mass = 1.0 / b->mass;
+        b->inv_mass = ph3d_clamp_nonnegative_finite(1.0 / b->mass, 0.0);
     } else {
         b->inv_mass = 0.0;
     }
@@ -1062,15 +1230,17 @@ static void body3d_apply_world_angular_impulse(rt_body3d *b, const double *angul
     double local_impulse[3];
     double local_delta[3];
     double world_delta[3];
+    double impulse_safe[3];
     if (!b || b->motion_mode != PH3D_MODE_DYNAMIC || !angular_impulse)
         return;
     if (!ph3d_vec3_all_finite(angular_impulse))
         return;
+    ph3d_vec3_copy_state(impulse_safe, angular_impulse);
     quat_conjugate(b->orientation, inv_rotation);
-    quat_rotate_vec3(inv_rotation, angular_impulse, local_impulse);
-    local_delta[0] = local_impulse[0] * b->inv_inertia[0];
-    local_delta[1] = local_impulse[1] * b->inv_inertia[1];
-    local_delta[2] = local_impulse[2] * b->inv_inertia[2];
+    quat_rotate_vec3(inv_rotation, impulse_safe, local_impulse);
+    local_delta[0] = ph3d_saturate_state_value(local_impulse[0] * b->inv_inertia[0]);
+    local_delta[1] = ph3d_saturate_state_value(local_impulse[1] * b->inv_inertia[1]);
+    local_delta[2] = ph3d_saturate_state_value(local_impulse[2] * b->inv_inertia[2]);
     quat_rotate_vec3(b->orientation, local_delta, world_delta);
     ph3d_vec3_accumulate_state(b->angular_velocity, world_delta[0], world_delta[1], world_delta[2]);
 }
@@ -1087,10 +1257,11 @@ static void body3d_world_inv_inertia_mul(const rt_body3d *b, const double *v, do
         return;
     quat_conjugate(b->orientation, inv_rotation);
     quat_rotate_vec3(inv_rotation, v, local_v);
-    local_out[0] = local_v[0] * b->inv_inertia[0];
-    local_out[1] = local_v[1] * b->inv_inertia[1];
-    local_out[2] = local_v[2] * b->inv_inertia[2];
+    local_out[0] = ph3d_saturate_state_value(local_v[0] * b->inv_inertia[0]);
+    local_out[1] = ph3d_saturate_state_value(local_v[1] * b->inv_inertia[1]);
+    local_out[2] = ph3d_saturate_state_value(local_v[2] * b->inv_inertia[2]);
     quat_rotate_vec3(b->orientation, local_out, out);
+    ph3d_vec3_sanitize_state(out);
 }
 
 /// @brief Velocity at a world-space contact point, including angular motion.
@@ -1098,12 +1269,13 @@ void body3d_contact_velocity(const rt_body3d *b, const double *r, double *out) {
     double angular_component[3];
     if (!out)
         return;
-    if (!b) {
+    if (!b || !r) {
         vec3_set(out, 0.0, 0.0, 0.0);
         return;
     }
     vec3_cross(b->angular_velocity, r, angular_component);
     vec3_add(b->velocity, angular_component, out);
+    ph3d_vec3_sanitize_state(out);
 }
 
 /// @brief Effective inverse mass contribution for an impulse direction at offset `r`.
@@ -1114,21 +1286,32 @@ double body3d_contact_impulse_denominator(const rt_body3d *b, const double *r, c
     if (!b || b->motion_mode != PH3D_MODE_DYNAMIC || !r || !dir)
         return 0.0;
     vec3_cross(r, dir, r_cross_dir);
+    ph3d_vec3_sanitize_state(r_cross_dir);
     body3d_world_inv_inertia_mul(b, r_cross_dir, inv_i_term);
     vec3_cross(inv_i_term, r, angular_cross);
-    return b->inv_mass + vec3_dot(angular_cross, dir);
+    ph3d_vec3_sanitize_state(angular_cross);
+    double denom = b->inv_mass + vec3_dot(angular_cross, dir);
+    return isfinite(denom) && denom > 0.0 ? denom : 0.0;
 }
 
 /// @brief Apply a world-space linear impulse at a contact offset from the center of mass.
 void body3d_apply_contact_impulse(rt_body3d *b, const double *impulse, const double *r) {
     double angular_impulse[3];
+    double impulse_safe[3];
+    double r_safe[3];
     if (!b || b->motion_mode != PH3D_MODE_DYNAMIC || !impulse || !r)
         return;
     if (!ph3d_vec3_all_finite(impulse))
         return;
+    ph3d_vec3_copy_state(impulse_safe, impulse);
+    ph3d_vec3_copy_state(r_safe, r);
     ph3d_vec3_accumulate_state(
-        b->velocity, impulse[0] * b->inv_mass, impulse[1] * b->inv_mass, impulse[2] * b->inv_mass);
-    vec3_cross(r, impulse, angular_impulse);
+        b->velocity,
+        impulse_safe[0] * b->inv_mass,
+        impulse_safe[1] * b->inv_mass,
+        impulse_safe[2] * b->inv_mass);
+    vec3_cross(r_safe, impulse_safe, angular_impulse);
+    ph3d_vec3_sanitize_state(angular_impulse);
     body3d_apply_world_angular_impulse(b, angular_impulse);
 }
 
@@ -1206,6 +1389,60 @@ static void collision_event3d_finalizer(void *obj) {
     event->collider_b = NULL;
 }
 
+/// @brief Release the body/collider references currently retained by a collision event.
+static void collision_event3d_release_refs(rt_collision_event3d_obj *event) {
+    if (!event)
+        return;
+    if (event->body_a && rt_obj_release_check0(event->body_a))
+        rt_obj_free(event->body_a);
+    if (event->body_b && rt_obj_release_check0(event->body_b))
+        rt_obj_free(event->body_b);
+    if (event->collider_a && rt_obj_release_check0(event->collider_a))
+        rt_obj_free(event->collider_a);
+    if (event->collider_b && rt_obj_release_check0(event->collider_b))
+        rt_obj_free(event->collider_b);
+    event->body_a = NULL;
+    event->body_b = NULL;
+    event->collider_a = NULL;
+    event->collider_b = NULL;
+}
+
+/// @brief Refresh an existing boxed collision event from a transient contact snapshot.
+static void collision_event3d_assign_from_contact(rt_collision_event3d_obj *event,
+                                                  const rt_contact3d *contact) {
+    if (!event || !contact)
+        return;
+    collision_event3d_release_refs(event);
+    event->body_a = contact->body_a;
+    event->body_b = contact->body_b;
+    event->collider_a = contact->collider_a;
+    event->collider_b = contact->collider_b;
+    ph3d_vec3_copy_state(event->point, contact->point);
+    ph3d_vec3_copy_normal_or_up(event->normal, contact->normal);
+    event->separation = ph3d_sanitize_contact_scalar(contact->separation);
+    event->contact_count = contact->contact_count;
+    if (event->contact_count < 1)
+        event->contact_count = 1;
+    if (event->contact_count > PH3D_MAX_MANIFOLD_POINTS)
+        event->contact_count = PH3D_MAX_MANIFOLD_POINTS;
+    for (int32_t i = 0; i < PH3D_MAX_MANIFOLD_POINTS; ++i) {
+        ph3d_vec3_copy_state(event->points[i], contact->points[i]);
+        ph3d_vec3_copy_normal_or_up(event->normals[i], contact->normals[i]);
+        event->separations[i] = ph3d_sanitize_contact_scalar(contact->separations[i]);
+    }
+    event->relative_speed = ph3d_clamp_nonnegative_finite(contact->relative_speed, 0.0);
+    event->normal_impulse = ph3d_clamp_nonnegative_finite(contact->normal_impulse, 0.0);
+    event->is_trigger = contact->is_trigger ? 1 : 0;
+    if (event->body_a)
+        rt_obj_retain_maybe(event->body_a);
+    if (event->body_b)
+        rt_obj_retain_maybe(event->body_b);
+    if (event->collider_a)
+        rt_obj_retain_maybe(event->collider_a);
+    if (event->collider_b)
+        rt_obj_retain_maybe(event->collider_b);
+}
+
 /// @brief Box a transient `rt_query_hit3d` into a GC-managed `PhysicsHit3D`.
 ///
 /// Copies all hit fields and retains the body/collider pointers so the
@@ -1221,12 +1458,12 @@ void *physics_hit3d_new(const rt_query_hit3d *src) {
     if (src) {
         hit->body = src->body;
         hit->collider = src->collider;
-        vec3_copy(hit->point, src->point);
-        vec3_copy(hit->normal, src->normal);
-        hit->distance = src->distance;
-        hit->fraction = src->fraction;
-        hit->started_penetrating = src->started_penetrating;
-        hit->is_trigger = src->is_trigger;
+        ph3d_vec3_copy_state(hit->point, src->point);
+        ph3d_vec3_copy_normal_or_up(hit->normal, src->normal);
+        hit->distance = ph3d_clamp_nonnegative_finite(src->distance, 0.0);
+        hit->fraction = ph3d_sanitize_fraction_value(src->fraction);
+        hit->started_penetrating = src->started_penetrating ? 1 : 0;
+        hit->is_trigger = src->is_trigger ? 1 : 0;
         if (hit->body)
             rt_obj_retain_maybe(hit->body);
         if (hit->collider)
@@ -1294,9 +1531,9 @@ static void *contact_point3d_new_from_contact(const rt_contact3d *contact) {
         return NULL;
     }
     memset(point, 0, sizeof(*point));
-    vec3_copy(point->point, contact->point);
-    vec3_copy(point->normal, contact->normal);
-    point->separation = contact->separation;
+    ph3d_vec3_copy_state(point->point, contact->point);
+    ph3d_vec3_copy_normal_or_up(point->normal, contact->normal);
+    point->separation = ph3d_sanitize_contact_scalar(contact->separation);
     return point;
 }
 
@@ -1317,33 +1554,8 @@ static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
         return NULL;
     }
     memset(event, 0, sizeof(*event));
-    event->body_a = contact->body_a;
-    event->body_b = contact->body_b;
-    event->collider_a = contact->collider_a;
-    event->collider_b = contact->collider_b;
-    vec3_copy(event->point, contact->point);
-    vec3_copy(event->normal, contact->normal);
-    event->separation = contact->separation;
-    event->contact_count = contact->contact_count;
-    if (event->contact_count < 1)
-        event->contact_count = 1;
-    if (event->contact_count > PH3D_MAX_MANIFOLD_POINTS)
-        event->contact_count = PH3D_MAX_MANIFOLD_POINTS;
-    memcpy(event->points, contact->points, sizeof(event->points));
-    memcpy(event->normals, contact->normals, sizeof(event->normals));
-    memcpy(event->separations, contact->separations, sizeof(event->separations));
-    event->relative_speed = contact->relative_speed;
-    event->normal_impulse = contact->normal_impulse;
-    event->is_trigger = contact->is_trigger;
-    if (event->body_a)
-        rt_obj_retain_maybe(event->body_a);
-    if (event->body_b)
-        rt_obj_retain_maybe(event->body_b);
-    if (event->collider_a)
-        rt_obj_retain_maybe(event->collider_a);
-    if (event->collider_b)
-        rt_obj_retain_maybe(event->collider_b);
     rt_obj_set_finalizer(event, collision_event3d_finalizer);
+    collision_event3d_assign_from_contact(event, contact);
     return event;
 }
 
@@ -1405,6 +1617,7 @@ static void *world3d_cached_event_from_contact(void ***array,
         return collision_event3d_new_from_contact(contact);
     event = (*array)[index];
     if (event) {
+        collision_event3d_assign_from_contact((rt_collision_event3d_obj *)event, contact);
         rt_obj_retain_maybe(event);
         return event;
     }
@@ -1796,7 +2009,10 @@ static void world3d_clear_body_accumulators(rt_world3d *w) {
 /// @param dt  Step duration (seconds). No-op for `dt <= 0`.
 void rt_world3d_step(void *obj, double dt) {
     rt_world3d *w = world3d_checked(obj);
-    if (!w || !isfinite(dt) || dt <= 0)
+    if (!w)
+        return;
+    dt = ph3d_sanitize_step_dt(dt);
+    if (dt <= 0.0)
         return;
     int substeps = world3d_compute_substeps(w, dt);
     double sub_dt = dt / (double)substeps;
@@ -1857,6 +2073,8 @@ void rt_world3d_step(void *obj, double dt) {
                                        b->velocity[1] * sub_dt,
                                        b->velocity[2] * sub_dt);
             quat_integrate(b->orientation, b->angular_velocity, sub_dt);
+            ph3d_vec3_sanitize_state(b->position);
+            quat_normalize(b->orientation);
             body3d_touch_broadphase(b);
         }
 
@@ -2122,6 +2340,7 @@ void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz) {
     if (!w)
         return;
     ph3d_vec3_set_finite(w->gravity, gx, gy, gz);
+    ph3d_vec3_sanitize_state(w->gravity);
 }
 
 /// @brief Shift a contact's cached points by the floating-origin rebase @p delta.
@@ -2161,9 +2380,9 @@ void rt_world3d_rebase_origin(void *obj, double dx, double dy, double dz) {
     if (!w)
         return;
     double delta[3] = {
-        ph3d_finite_or(dx, 0.0),
-        ph3d_finite_or(dy, 0.0),
-        ph3d_finite_or(dz, 0.0),
+        ph3d_saturate_state_value(dx),
+        ph3d_saturate_state_value(dy),
+        ph3d_saturate_state_value(dz),
     };
     if (delta[0] == 0.0 && delta[1] == 0.0 && delta[2] == 0.0)
         return;
@@ -2226,12 +2445,13 @@ void *rt_world3d_get_collision_body_b(void *obj, int64_t index) {
 /// @brief `World3D.CollisionNormal(i)` — fresh `Vec3` of the contact normal.
 void *rt_world3d_get_collision_normal(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
+    double normal[3];
     if (!w)
         return rt_vec3_new(0, 0, 0);
     if (index < 0 || index >= w->contact_count)
         return rt_vec3_new(0, 0, 0);
-    return rt_vec3_new(
-        w->contacts[index].normal[0], w->contacts[index].normal[1], w->contacts[index].normal[2]);
+    ph3d_vec3_copy_normal_or_up(normal, w->contacts[index].normal);
+    return rt_vec3_new(normal[0], normal[1], normal[2]);
 }
 
 /// @brief `World3D.CollisionDepth(i)` — penetration depth of contact `i`.
@@ -2244,7 +2464,7 @@ double rt_world3d_get_collision_depth(void *obj, int64_t index) {
         return 0;
     if (index < 0 || index >= w->contact_count)
         return 0;
-    return -w->contacts[index].separation;
+    return ph3d_clamp_nonnegative_finite(-w->contacts[index].separation, 0.0);
 }
 
 /// @brief `World3D.CollisionEventCount` — number of collision events this frame.
@@ -2381,7 +2601,7 @@ int64_t rt_collision_event3d_get_contact_count(void *obj) {
 /// @brief `CollisionEvent3D.RelativeSpeed` — closing speed along the contact normal.
 double rt_collision_event3d_get_relative_speed(void *obj) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    return event ? event->relative_speed : 0.0;
+    return event ? ph3d_clamp_nonnegative_finite(event->relative_speed, 0.0) : 0.0;
 }
 
 /// @brief `CollisionEvent3D.NormalImpulse` — magnitude of the resolved normal impulse.
@@ -2390,7 +2610,7 @@ double rt_collision_event3d_get_relative_speed(void *obj) {
 /// impulses. Always 0 for trigger events (no impulse is applied).
 double rt_collision_event3d_get_normal_impulse(void *obj) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    return event ? event->normal_impulse : 0.0;
+    return event ? ph3d_clamp_nonnegative_finite(event->normal_impulse, 0.0) : 0.0;
 }
 
 /// @brief `CollisionEvent3D.Contact(i)` — boxed contact-point sub-object.
@@ -2407,9 +2627,9 @@ void *rt_collision_event3d_get_contact(void *obj, int64_t index) {
     contact.body_b = event->body_b;
     contact.collider_a = event->collider_a;
     contact.collider_b = event->collider_b;
-    vec3_copy(contact.point, event->points[index]);
-    vec3_copy(contact.normal, event->normals[index]);
-    contact.separation = event->separations[index];
+    ph3d_vec3_copy_state(contact.point, event->points[index]);
+    ph3d_vec3_copy_normal_or_up(contact.normal, event->normals[index]);
+    contact.separation = ph3d_sanitize_contact_scalar(event->separations[index]);
     contact3d_init_single_point(&contact, contact.point, contact.normal, contact.separation);
     return contact_point3d_new_from_contact(&contact);
 }
@@ -2417,18 +2637,21 @@ void *rt_collision_event3d_get_contact(void *obj, int64_t index) {
 /// @brief `CollisionEvent3D.ContactPoint(i)` — fresh `Vec3` for the contact point.
 void *rt_collision_event3d_get_contact_point(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    double point[3];
     if (!event || index < 0 || index >= event->contact_count)
         return rt_vec3_new(0.0, 0.0, 0.0);
-    return rt_vec3_new(event->points[index][0], event->points[index][1], event->points[index][2]);
+    ph3d_vec3_copy_state(point, event->points[index]);
+    return rt_vec3_new(point[0], point[1], point[2]);
 }
 
 /// @brief `CollisionEvent3D.ContactNormal(i)` — fresh `Vec3` for the contact normal.
 void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    double normal[3];
     if (!event || index < 0 || index >= event->contact_count)
         return rt_vec3_new(0.0, 1.0, 0.0);
-    return rt_vec3_new(
-        event->normals[index][0], event->normals[index][1], event->normals[index][2]);
+    ph3d_vec3_copy_normal_or_up(normal, event->normals[index]);
+    return rt_vec3_new(normal[0], normal[1], normal[2]);
 }
 
 /// @brief `CollisionEvent3D.ContactSeparation(i)` — signed separation distance.
@@ -2438,29 +2661,33 @@ double rt_collision_event3d_get_contact_separation(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     if (!event || index < 0 || index >= event->contact_count)
         return 0.0;
-    return event->separations[index];
+    return ph3d_sanitize_contact_scalar(event->separations[index]);
 }
 
 /// @brief `ContactPoint3D.Point` — world-space contact location.
 void *rt_contact_point3d_get_point(void *obj) {
     rt_contact_point3d_obj *contact = contact_point3d_checked(obj);
+    double point[3];
     if (!contact)
         return rt_vec3_new(0.0, 0.0, 0.0);
-    return rt_vec3_new(contact->point[0], contact->point[1], contact->point[2]);
+    ph3d_vec3_copy_state(point, contact->point);
+    return rt_vec3_new(point[0], point[1], point[2]);
 }
 
 /// @brief `ContactPoint3D.Normal` — world-space contact normal (A→B).
 void *rt_contact_point3d_get_normal(void *obj) {
     rt_contact_point3d_obj *contact = contact_point3d_checked(obj);
+    double normal[3];
     if (!contact)
         return rt_vec3_new(0.0, 1.0, 0.0);
-    return rt_vec3_new(contact->normal[0], contact->normal[1], contact->normal[2]);
+    ph3d_vec3_copy_normal_or_up(normal, contact->normal);
+    return rt_vec3_new(normal[0], normal[1], normal[2]);
 }
 
 /// @brief `ContactPoint3D.Separation` — signed gap (negative = penetrating).
 double rt_contact_point3d_get_separation(void *obj) {
     rt_contact_point3d_obj *contact = contact_point3d_checked(obj);
-    return contact ? contact->separation : 0.0;
+    return contact ? ph3d_sanitize_contact_scalar(contact->separation) : 0.0;
 }
 
 // PhysicsHit3D field accessors — exposed as Zia properties on the
@@ -2469,7 +2696,7 @@ double rt_contact_point3d_get_separation(void *obj) {
 /// @brief `PhysicsHit3D.Distance` — world-space distance from query origin.
 double rt_physics_hit3d_get_distance(void *obj) {
     rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
-    return hit ? hit->distance : 0.0;
+    return hit ? ph3d_clamp_nonnegative_finite(hit->distance, 0.0) : 0.0;
 }
 
 /// @brief `PhysicsHit3D.Body` — the body that was hit.
@@ -2487,23 +2714,27 @@ void *rt_physics_hit3d_get_collider(void *obj) {
 /// @brief `PhysicsHit3D.Point` — world-space hit location.
 void *rt_physics_hit3d_get_point(void *obj) {
     rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
+    double point[3];
     if (!hit)
         return rt_vec3_new(0.0, 0.0, 0.0);
-    return rt_vec3_new(hit->point[0], hit->point[1], hit->point[2]);
+    ph3d_vec3_copy_state(point, hit->point);
+    return rt_vec3_new(point[0], point[1], point[2]);
 }
 
 /// @brief `PhysicsHit3D.Normal` — world-space surface normal at the hit.
 void *rt_physics_hit3d_get_normal(void *obj) {
     rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
+    double normal[3];
     if (!hit)
         return rt_vec3_new(0.0, 1.0, 0.0);
-    return rt_vec3_new(hit->normal[0], hit->normal[1], hit->normal[2]);
+    ph3d_vec3_copy_normal_or_up(normal, hit->normal);
+    return rt_vec3_new(normal[0], normal[1], normal[2]);
 }
 
 /// @brief `PhysicsHit3D.Fraction` — t along the swept path (0..1).
 double rt_physics_hit3d_get_fraction(void *obj) {
     rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
-    return hit ? hit->fraction : 0.0;
+    return hit ? ph3d_sanitize_fraction_value(hit->fraction) : 0.0;
 }
 
 /// @brief `PhysicsHit3D.StartedPenetrating` — true if the query started inside the collider.
@@ -2721,9 +2952,11 @@ void rt_body3d_set_position(void *o, double x, double y, double z) {
 /// @brief `Body3D.GetPosition` — fresh `Vec3` of the body's world position.
 void *rt_body3d_get_position(void *o) {
     rt_body3d *b = body3d_checked(o);
+    double position[3];
     if (!b)
         return rt_vec3_new(0, 0, 0);
-    return rt_vec3_new(b->position[0], b->position[1], b->position[2]);
+    ph3d_vec3_copy_state(position, b->position);
+    return rt_vec3_new(position[0], position[1], position[2]);
 }
 
 /// @brief `Body3D.SetScale(x,y,z)` — set collision scale applied to the collider.
@@ -2731,15 +2964,9 @@ void rt_body3d_set_scale(void *o, double x, double y, double z) {
     rt_body3d *b = body3d_checked(o);
     if (!b)
         return;
-    b->scale[0] = ph3d_finite_or(x, 1.0);
-    b->scale[1] = ph3d_finite_or(y, 1.0);
-    b->scale[2] = ph3d_finite_or(z, 1.0);
-    if (fabs(b->scale[0]) <= 1e-12)
-        b->scale[0] = 1.0;
-    if (fabs(b->scale[1]) <= 1e-12)
-        b->scale[1] = 1.0;
-    if (fabs(b->scale[2]) <= 1e-12)
-        b->scale[2] = 1.0;
+    b->scale[0] = ph3d_sanitize_scale_value(x);
+    b->scale[1] = ph3d_sanitize_scale_value(y);
+    b->scale[2] = ph3d_sanitize_scale_value(z);
     body3d_update_shape_cache_from_collider(b);
     body3d_refresh_motion_mode(b);
     body3d_touch_broadphase(b);
@@ -2749,9 +2976,13 @@ void rt_body3d_set_scale(void *o, double x, double y, double z) {
 /// @brief `Body3D.GetScale` — fresh `Vec3` of the collider scale.
 void *rt_body3d_get_scale(void *o) {
     rt_body3d *b = body3d_checked(o);
+    double scale[3];
     if (!b)
         return rt_vec3_new(1.0, 1.0, 1.0);
-    return rt_vec3_new(b->scale[0], b->scale[1], b->scale[2]);
+    scale[0] = ph3d_sanitize_scale_value(b->scale[0]);
+    scale[1] = ph3d_sanitize_scale_value(b->scale[1]);
+    scale[2] = ph3d_sanitize_scale_value(b->scale[2]);
+    return rt_vec3_new(scale[0], scale[1], scale[2]);
 }
 
 /// @brief `Body3D.SetOrientation(quat)` — set the body's orientation quaternion.
@@ -2781,9 +3012,12 @@ void rt_body3d_set_orientation(void *o, void *quat) {
 /// @brief `Body3D.GetOrientation` — fresh `Quat` of the body's orientation.
 void *rt_body3d_get_orientation(void *o) {
     rt_body3d *b = body3d_checked(o);
+    double orientation[4];
     if (!b)
         return rt_quat_new(0.0, 0.0, 0.0, 1.0);
-    return rt_quat_new(b->orientation[0], b->orientation[1], b->orientation[2], b->orientation[3]);
+    memcpy(orientation, b->orientation, sizeof(orientation));
+    quat_normalize(orientation);
+    return rt_quat_new(orientation[0], orientation[1], orientation[2], orientation[3]);
 }
 
 /// @brief Read a body's full pose — position, orientation quaternion, and scale — into raw arrays.
@@ -2803,11 +3037,16 @@ void rt_body3d_get_pose_raw(void *o,
     if (!b)
         return;
     if (position_out)
-        vec3_copy(position_out, b->position);
-    if (rotation_out)
+        ph3d_vec3_copy_state(position_out, b->position);
+    if (rotation_out) {
         memcpy(rotation_out, b->orientation, sizeof(b->orientation));
-    if (scale_out)
-        vec3_copy(scale_out, b->scale);
+        quat_normalize(rotation_out);
+    }
+    if (scale_out) {
+        scale_out[0] = ph3d_sanitize_scale_value(b->scale[0]);
+        scale_out[1] = ph3d_sanitize_scale_value(b->scale[1]);
+        scale_out[2] = ph3d_sanitize_scale_value(b->scale[2]);
+    }
 }
 
 /// @brief `Body3D.SetVelocity(x, y, z)` — set linear velocity (m/s).
@@ -2826,9 +3065,11 @@ void rt_body3d_set_velocity(void *o, double x, double y, double z) {
 /// @brief `Body3D.GetVelocity` — fresh `Vec3` of linear velocity.
 void *rt_body3d_get_velocity(void *o) {
     rt_body3d *b = body3d_checked(o);
+    double velocity[3];
     if (!b)
         return rt_vec3_new(0, 0, 0);
-    return rt_vec3_new(b->velocity[0], b->velocity[1], b->velocity[2]);
+    ph3d_vec3_copy_state(velocity, b->velocity);
+    return rt_vec3_new(velocity[0], velocity[1], velocity[2]);
 }
 
 // Body3D physical-state accessors — set/get pairs for velocity,
@@ -2849,9 +3090,11 @@ void rt_body3d_set_angular_velocity(void *o, double x, double y, double z) {
 /// @brief `Body3D.GetAngularVelocity` — fresh `Vec3` of angular velocity.
 void *rt_body3d_get_angular_velocity(void *o) {
     rt_body3d *b = body3d_checked(o);
+    double angular_velocity[3];
     if (!b)
         return rt_vec3_new(0, 0, 0);
-    return rt_vec3_new(b->angular_velocity[0], b->angular_velocity[1], b->angular_velocity[2]);
+    ph3d_vec3_copy_state(angular_velocity, b->angular_velocity);
+    return rt_vec3_new(angular_velocity[0], angular_velocity[1], angular_velocity[2]);
 }
 
 /// @brief `Body3D.ApplyForce(fx, fy, fz)` — accumulate a continuous force (N).
@@ -2864,9 +3107,9 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     if (b) {
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
-        fx = ph3d_finite_or(fx, 0.0);
-        fy = ph3d_finite_or(fy, 0.0);
-        fz = ph3d_finite_or(fz, 0.0);
+        fx = ph3d_saturate_state_value(fx);
+        fy = ph3d_saturate_state_value(fy);
+        fz = ph3d_saturate_state_value(fz);
         ph3d_vec3_accumulate_state(b->force, fx, fy, fz);
         if (fx != 0.0 || fy != 0.0 || fz != 0.0)
             body3d_wake_if_dynamic(b);
@@ -2884,13 +3127,14 @@ void rt_body3d_apply_force_at_point(
     double torque[3];
     if (!b || b->motion_mode != PH3D_MODE_DYNAMIC)
         return;
-    force[0] = ph3d_finite_or(fx, 0.0);
-    force[1] = ph3d_finite_or(fy, 0.0);
-    force[2] = ph3d_finite_or(fz, 0.0);
-    r[0] = ph3d_finite_or(px, 0.0) - b->position[0];
-    r[1] = ph3d_finite_or(py, 0.0) - b->position[1];
-    r[2] = ph3d_finite_or(pz, 0.0) - b->position[2];
+    force[0] = ph3d_saturate_state_value(fx);
+    force[1] = ph3d_saturate_state_value(fy);
+    force[2] = ph3d_saturate_state_value(fz);
+    r[0] = ph3d_saturate_state_value(ph3d_saturate_state_value(px) - b->position[0]);
+    r[1] = ph3d_saturate_state_value(ph3d_saturate_state_value(py) - b->position[1]);
+    r[2] = ph3d_saturate_state_value(ph3d_saturate_state_value(pz) - b->position[2]);
     vec3_cross(r, force, torque);
+    ph3d_vec3_sanitize_state(torque);
     ph3d_vec3_accumulate_state(b->force, force[0], force[1], force[2]);
     ph3d_vec3_accumulate_state(b->torque, torque[0], torque[1], torque[2]);
     if (force[0] != 0.0 || force[1] != 0.0 || force[2] != 0.0)
@@ -2906,9 +3150,9 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
     if (b) {
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
-        ix = ph3d_finite_or(ix, 0.0);
-        iy = ph3d_finite_or(iy, 0.0);
-        iz = ph3d_finite_or(iz, 0.0);
+        ix = ph3d_saturate_state_value(ix);
+        iy = ph3d_saturate_state_value(iy);
+        iz = ph3d_saturate_state_value(iz);
         ph3d_vec3_accumulate_state(
             b->velocity, ix * b->inv_mass, iy * b->inv_mass, iz * b->inv_mass);
         if (ix != 0.0 || iy != 0.0 || iz != 0.0)
@@ -2926,12 +3170,12 @@ void rt_body3d_apply_impulse_at_point(
     double r[3];
     if (!b || b->motion_mode != PH3D_MODE_DYNAMIC)
         return;
-    impulse[0] = ph3d_finite_or(ix, 0.0);
-    impulse[1] = ph3d_finite_or(iy, 0.0);
-    impulse[2] = ph3d_finite_or(iz, 0.0);
-    r[0] = ph3d_finite_or(px, 0.0) - b->position[0];
-    r[1] = ph3d_finite_or(py, 0.0) - b->position[1];
-    r[2] = ph3d_finite_or(pz, 0.0) - b->position[2];
+    impulse[0] = ph3d_saturate_state_value(ix);
+    impulse[1] = ph3d_saturate_state_value(iy);
+    impulse[2] = ph3d_saturate_state_value(iz);
+    r[0] = ph3d_saturate_state_value(ph3d_saturate_state_value(px) - b->position[0]);
+    r[1] = ph3d_saturate_state_value(ph3d_saturate_state_value(py) - b->position[1]);
+    r[2] = ph3d_saturate_state_value(ph3d_saturate_state_value(pz) - b->position[2]);
     body3d_apply_contact_impulse(b, impulse, r);
     if (impulse[0] != 0.0 || impulse[1] != 0.0 || impulse[2] != 0.0)
         body3d_wake_if_dynamic(b);
@@ -2945,9 +3189,9 @@ void rt_body3d_apply_torque(void *o, double tx, double ty, double tz) {
     if (b) {
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
-        tx = ph3d_finite_or(tx, 0.0);
-        ty = ph3d_finite_or(ty, 0.0);
-        tz = ph3d_finite_or(tz, 0.0);
+        tx = ph3d_saturate_state_value(tx);
+        ty = ph3d_saturate_state_value(ty);
+        tz = ph3d_saturate_state_value(tz);
         ph3d_vec3_accumulate_state(b->torque, tx, ty, tz);
         if (tx != 0.0 || ty != 0.0 || tz != 0.0)
             body3d_wake_if_dynamic(b);
@@ -2962,9 +3206,9 @@ void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
     if (b) {
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
-        ix = ph3d_finite_or(ix, 0.0);
-        iy = ph3d_finite_or(iy, 0.0);
-        iz = ph3d_finite_or(iz, 0.0);
+        ix = ph3d_saturate_state_value(ix);
+        iy = ph3d_saturate_state_value(iy);
+        iz = ph3d_saturate_state_value(iz);
         ph3d_vec3_accumulate_state(b->angular_velocity,
                                    ix * b->inv_inertia[0],
                                    iy * b->inv_inertia[1],
@@ -3226,9 +3470,13 @@ int8_t rt_body3d_is_grounded(void *o) {
 /// Defaults to +Y when not grounded.
 void *rt_body3d_get_ground_normal(void *o) {
     rt_body3d *b = body3d_checked(o);
+    double normal[3];
     if (!b)
         return rt_vec3_new(0, 1, 0);
-    return rt_vec3_new(b->ground_normal[0], b->ground_normal[1], b->ground_normal[2]);
+    ph3d_vec3_copy_state(normal, b->ground_normal);
+    if (vec3_normalize_in_place(normal) <= 1e-12)
+        vec3_set(normal, 0.0, 1.0, 0.0);
+    return rt_vec3_new(normal[0], normal[1], normal[2]);
 }
 
 /// @brief `Body3D.Mass` — read the body's mass (zero for static).

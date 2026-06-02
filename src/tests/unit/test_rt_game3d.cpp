@@ -22,6 +22,7 @@
 #include "rt_canvas3d.h"
 #include "rt_decal3d.h"
 #include "rt_game3d.h"
+#include "rt_heap.h"
 #include "rt_iksolver3d.h"
 #include "rt_input.h"
 #include "rt_mat4.h"
@@ -33,6 +34,7 @@
 #include "rt_platform.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
+#include "rt_object.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_sound3d.h"
@@ -47,9 +49,128 @@
 
 extern "C" {
 #include "rt_canvas3d_internal.h"
+#include "rt_scene3d_internal.h"
 #include "vgfx3d_backend.h"
 }
 
+typedef struct {
+    void *controller;
+    rt_string events[64];
+    int32_t event_count;
+} Game3DAnimatorTestLayout;
+
+typedef struct {
+    void *canvas;
+    void *camera;
+    void *scene;
+    void *physics;
+    void *input;
+    void *audio;
+    void *effects;
+    void *stream;
+    void *camera_controller;
+    void **entities;
+    int32_t entity_count;
+    int32_t entity_capacity;
+    void *body_index_entries;
+    int32_t body_index_count;
+    int32_t body_index_capacity;
+    void *name_index_hashes;
+    void **name_index_entities;
+    int32_t name_index_count;
+    int32_t name_index_capacity;
+    int8_t name_index_valid;
+} Game3DWorldTestLayout;
+
+typedef struct {
+    int64_t id;
+    void *node;
+    void *mesh;
+    void *material;
+    void *body;
+    void *anim;
+    int64_t layer;
+    int64_t collision_mask_bits;
+    rt_string name;
+    void *world;
+    void *parent;
+    void **children;
+    int32_t child_count;
+    int32_t child_capacity;
+    int8_t group;
+    int8_t spawned;
+    int8_t destroyed;
+} Game3DEntityTestLayout;
+
+typedef struct {
+    rt_string path;
+    int8_t asset_path;
+    void *model;
+} Game3DModelTemplateTestLayout;
+
+typedef struct {
+    int8_t ready;
+    int8_t cancelled;
+    int8_t deferred;
+    int8_t async_started;
+    int8_t asset_path;
+    int8_t template_request;
+    double progress;
+    rt_string error;
+    rt_string path;
+    void *entity;
+    void *model_template;
+} Game3DAssetHandleTestLayout;
+
+typedef struct {
+    rt_string name;
+    rt_string path;
+    rt_string heightmap_path;
+    double center[3];
+    double scale[3];
+    double radius;
+    int64_t width;
+    int64_t depth;
+    int64_t resident_bytes;
+    rt_string material;
+    rt_string nav_area;
+    rt_string sidecar_path;
+    int64_t layer;
+    int64_t collision_mask;
+    double traversal_cost;
+    int8_t has_layer;
+    int8_t has_collision_mask;
+    int8_t collision_enabled;
+    void *terrain;
+    void *collider_entity;
+    void *nav_entity;
+    int8_t resident;
+} Game3DStreamTerrainTileTestLayout;
+
+typedef struct {
+    void *world;
+    double center[3];
+    double load_radius;
+    double unload_radius;
+    int64_t residency_budget_bytes;
+    int64_t resident_cell_count;
+    int64_t resident_terrain_tile_count;
+    int64_t pending_request_count;
+    int64_t resident_bytes;
+    rt_string terrain_manifest;
+    rt_string cells_manifest;
+    void *cells;
+    Game3DStreamTerrainTileTestLayout *terrain_tiles;
+    int32_t cell_count;
+    int32_t cell_capacity;
+    int32_t terrain_tile_count;
+    int32_t terrain_tile_capacity;
+    int8_t cells_manifest_loaded;
+    int8_t terrain_manifest_loaded;
+    int8_t retains_world;
+} Game3DWorldStreamTestLayout;
+
+#include <climits>
 #include <cmath>
 #include <csetjmp>
 #include <cstdint>
@@ -798,6 +919,36 @@ static bool test_world_entity_registry_and_collision_clear() {
     EXPECT_TRUE(
         expect_trap_contains([&] { rt_game3d_world_set_skybox(world, parent); }, "CubeMap3D"),
         "World3D.setSkybox rejects non-CubeMap3D handles");
+    void *sky_px = rt_pixels_new(1, 1);
+    rt_pixels_set(sky_px, 0, 0, 0xFFFFFFFF);
+    void *bad_skybox = rt_cubemap3d_new(sky_px, sky_px, sky_px, sky_px, sky_px, sky_px);
+    ((rt_cubemap3d *)bad_skybox)->face_size = 2;
+    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_world_set_skybox(world, bad_skybox); },
+                                     "CubeMap3D"),
+                "World3D.setSkybox rejects incomplete CubeMap3D handles");
+    EXPECT_TRUE(((rt_canvas3d *)rt_game3d_world_get_canvas(world))->skybox == nullptr,
+                "World3D.setSkybox leaves canvas skybox clear after rejecting incomplete cubemaps");
+    void *good_skybox = rt_cubemap3d_new(sky_px, sky_px, sky_px, sky_px, sky_px, sky_px);
+    auto *canvas_state = (rt_canvas3d *)rt_game3d_world_get_canvas(world);
+    EXPECT_TRUE(good_skybox != nullptr && canvas_state != nullptr, "World3D skybox repair fixture exists");
+    if (good_skybox && canvas_state) {
+        rt_game3d_world_set_skybox(world, good_skybox);
+        EXPECT_TRUE(canvas_state->skybox == (rt_cubemap3d *)good_skybox,
+                    "World3D.setSkybox binds a valid cubemap");
+        canvas_state->skybox_cpu_cache = (uint8_t *)malloc(4);
+        canvas_state->skybox_cpu_cache_w = 1;
+        canvas_state->skybox_cpu_cache_h = 1;
+        canvas_state->skybox_cpu_cache_generation = 7;
+        ((rt_cubemap3d *)good_skybox)->face_size = 2;
+        EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_world_set_skybox(world, parent); },
+                                         "CubeMap3D"),
+                    "World3D.setSkybox still rejects non-CubeMap3D replacements");
+        EXPECT_TRUE(canvas_state->skybox == nullptr,
+                    "World3D.setSkybox repairs a stale bound canvas skybox before rejecting");
+        EXPECT_TRUE(canvas_state->skybox_cpu_cache == nullptr &&
+                        canvas_state->skybox_cpu_cache_generation == 0,
+                    "World3D.setSkybox invalidates stale skybox CPU cache during repair");
+    }
     EXPECT_EQ_INT(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)),
                   4,
                   "scene contains root, parent, child, and wall");
@@ -1028,6 +1179,141 @@ static bool test_entity_from_node_wraps_imported_subtree() {
     PASS();
 }
 
+static bool test_entity_private_slots_reject_wrong_class_refs() {
+    TEST("Entity3D ignores wrong-class private node, mesh, material, body, and anim slots");
+    void *mesh_a = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mesh_b = rt_mesh3d_new_sphere(0.5, 8);
+    void *material_a = rt_material3d_new_color(0.7, 0.2, 0.2);
+    void *material_b = rt_material3d_new_color(0.2, 0.5, 0.9);
+    void *entity = rt_game3d_entity_of(mesh_a, material_a);
+    auto *view = static_cast<Game3DEntityTestLayout *>(entity);
+
+    size_t material_b_ref = rt_heap_hdr(material_b)->refcnt;
+    view->node = material_b;
+    EXPECT_TRUE(rt_game3d_entity_get_node(entity) == nullptr,
+                "wrong-class entity node getter returns null");
+    rt_game3d_entity_set_position(entity, 1.0, 2.0, 3.0);
+    rt_game3d_entity_set_name(entity, rt_const_cstr("CorruptEntityNode"));
+    EXPECT_TRUE(rt_heap_hdr(material_b)->refcnt == material_b_ref,
+                "node repair path does not release the wrong-class handle");
+
+    view->mesh = material_b;
+    material_b_ref = rt_heap_hdr(material_b)->refcnt;
+    EXPECT_TRUE(rt_game3d_entity_get_mesh(entity) == nullptr,
+                "wrong-class entity mesh getter returns null");
+    rt_game3d_entity_set_mesh(entity, mesh_b);
+    EXPECT_TRUE(rt_game3d_entity_get_mesh(entity) == mesh_b,
+                "setMesh replaces a wrong-class private mesh slot");
+    EXPECT_TRUE(rt_heap_hdr(material_b)->refcnt == material_b_ref,
+                "setMesh does not release the wrong-class mesh-slot handle");
+
+    view->material = mesh_a;
+    size_t mesh_a_ref = rt_heap_hdr(mesh_a)->refcnt;
+    EXPECT_TRUE(rt_game3d_entity_get_material(entity) == nullptr,
+                "wrong-class entity material getter returns null");
+    rt_game3d_entity_set_material(entity, material_b);
+    EXPECT_TRUE(rt_game3d_entity_get_material(entity) == material_b,
+                "setMaterial replaces a wrong-class private material slot");
+    EXPECT_TRUE(rt_heap_hdr(mesh_a)->refcnt == mesh_a_ref,
+                "setMaterial does not release the wrong-class material-slot handle");
+
+    view->body = material_a;
+    size_t material_a_ref = rt_heap_hdr(material_a)->refcnt;
+    EXPECT_TRUE(rt_game3d_entity_get_body(entity) == nullptr,
+                "wrong-class entity body getter returns null");
+    rt_game3d_entity_set_layer(entity, rt_game3d_layers_player());
+    rt_game3d_entity_set_collision_mask(entity, rt_game3d_layermask_of(rt_game3d_layers_world()));
+    EXPECT_TRUE(rt_heap_hdr(material_a)->refcnt == material_a_ref,
+                "body property propagation ignores a wrong-class private body");
+    void *body = rt_body3d_new(1.0);
+    rt_game3d_entity_attach_body(entity, body);
+    EXPECT_TRUE(rt_game3d_entity_get_body(entity) == body,
+                "attachBody replaces a wrong-class private body slot");
+    EXPECT_TRUE(rt_heap_hdr(material_a)->refcnt == material_a_ref,
+                "attachBody does not release the wrong-class body-slot handle");
+
+    view->anim = material_a;
+    material_a_ref = rt_heap_hdr(material_a)->refcnt;
+    EXPECT_TRUE(rt_game3d_entity_get_anim(entity) == nullptr,
+                "wrong-class entity animator getter returns null");
+    void *controller = make_game3d_test_controller(2.0, 0.25);
+    void *animator = rt_game3d_animator_new(controller);
+    rt_game3d_entity_attach_animator(entity, animator);
+    EXPECT_TRUE(rt_game3d_entity_get_anim(entity) == animator,
+                "attachAnimator replaces a wrong-class private animator slot");
+    EXPECT_TRUE(rt_heap_hdr(material_a)->refcnt == material_a_ref,
+                "attachAnimator does not release the wrong-class animator-slot handle");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Corrupt Entity Slot Unit"), 80, 60);
+    rt_game3d_world_spawn(world, entity);
+    rt_game3d_world_step_simulation(world, 1.0 / 60.0);
+    EXPECT_EQ_INT(rt_game3d_world_get_body_count(world),
+                  1,
+                  "World3D.spawn indexes only the valid repaired body");
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
+static bool test_animator_private_controller_rejects_wrong_class_refs() {
+    TEST("Animator3D ignores wrong-class private controller slots");
+    void *controller = make_game3d_test_controller(3.0, 0.25);
+    void *animator = rt_game3d_animator_new(controller);
+    auto *view = static_cast<Game3DAnimatorTestLayout *>(animator);
+    void *wrong_controller = rt_material3d_new_color(0.9, 0.9, 0.1);
+    size_t wrong_ref = rt_heap_hdr(wrong_controller)->refcnt;
+
+    EXPECT_TRUE(rt_game3d_animator_play(animator, rt_const_cstr("walk")) != 0,
+                "Animator3D.play captures valid controller events before corruption");
+    rt_game3d_animator_update(animator, 0.25);
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(animator),
+                  1,
+                  "Animator3D has a stale event to clear after controller corruption");
+
+    view->controller = wrong_controller;
+    EXPECT_TRUE(rt_game3d_animator_get_controller(animator) == nullptr,
+                "wrong-class Animator3D controller getter returns null");
+    EXPECT_TRUE(rt_game3d_animator_play(animator, rt_const_cstr("walk")) == 0,
+                "Animator3D.play ignores a wrong-class private controller");
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(animator),
+                  0,
+                  "Animator3D.play clears stale events when the controller slot is invalid");
+    EXPECT_TRUE(rt_game3d_animator_crossfade(animator, rt_const_cstr("idle"), 0.1) == 0,
+                "Animator3D.crossfade ignores a wrong-class private controller");
+    rt_game3d_animator_set_speed(animator, rt_const_cstr("walk"), 2.0);
+    rt_game3d_animator_update(animator, 0.25);
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(animator),
+                  0,
+                  "Animator3D.update leaves events empty without a valid controller");
+    EXPECT_TRUE(rt_heap_hdr(wrong_controller)->refcnt == wrong_ref,
+                "Animator3D operations do not release the wrong-class controller-slot handle");
+    PASS();
+}
+
+static bool test_animator_private_event_slots_reject_wrong_class_refs() {
+    TEST("Animator3D repairs wrong-class private event slots");
+    void *controller = make_game3d_test_controller(3.0, 0.25);
+    void *animator = rt_game3d_animator_new(controller);
+    auto *view = static_cast<Game3DAnimatorTestLayout *>(animator);
+    void *wrong_event = rt_material3d_new_color(0.1, 0.7, 0.2);
+    size_t wrong_ref = rt_heap_hdr(wrong_event)->refcnt;
+
+    view->events[0] = reinterpret_cast<rt_string>(wrong_event);
+    view->event_count = 1;
+
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(animator),
+                  0,
+                  "Animator3D.eventCount excludes wrong-class event handles");
+    EXPECT_TRUE(view->events[0] == nullptr,
+                "Animator3D.eventCount clears wrong-class private event slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong_event)->refcnt == wrong_ref,
+                "Animator3D.eventCount does not release the wrong-class event-slot handle");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(animator, 0)), "") == 0,
+                "Animator3D.eventName returns empty after event-slot repair");
+    EXPECT_TRUE(rt_heap_hdr(wrong_event)->refcnt == wrong_ref,
+                "Animator3D.eventName does not release the wrong-class event-slot handle");
+    PASS();
+}
+
 static bool test_entity_child_graph_reparents_and_rejects_cycles() {
     TEST("Entity3D child graph reparents and rejects cycles");
     void *parent_a = rt_game3d_entity_new();
@@ -1056,6 +1342,61 @@ static bool test_entity_child_graph_reparents_and_rejects_cycles() {
     EXPECT_TRUE(
         expect_trap_contains([&] { rt_game3d_entity_add_child(child, child); }, "own child"),
         "child graph rejects self-parenting");
+    PASS();
+}
+
+static bool test_entity_child_count_repair_bounds_tree_walks() {
+    TEST("Entity3D repairs corrupt child counts before hierarchy traversal");
+    void *ungrouped = rt_game3d_entity_new();
+    Game3DEntityTestLayout *ungrouped_layout =
+        static_cast<Game3DEntityTestLayout *>(ungrouped);
+    ungrouped_layout->children = nullptr;
+    ungrouped_layout->child_count = INT32_MAX;
+    ungrouped_layout->child_capacity = 0;
+    ungrouped_layout->group = 0;
+    EXPECT_TRUE(rt_game3d_entity_is_group(ungrouped) == 0,
+                "isGroup ignores corrupt child counts without a backing array");
+
+    void *parent = rt_game3d_entity_new();
+    void *first = rt_game3d_entity_new();
+    void *second = rt_game3d_entity_new();
+    rt_game3d_entity_set_name(parent, rt_const_cstr("CorruptCountParent"));
+    rt_game3d_entity_set_name(first, rt_const_cstr("CorruptCountFirst"));
+    rt_game3d_entity_set_name(second, rt_const_cstr("CorruptCountSecond"));
+
+    rt_game3d_entity_add_child(parent, first);
+    Game3DEntityTestLayout *parent_layout = static_cast<Game3DEntityTestLayout *>(parent);
+    parent_layout->child_count = INT32_MAX;
+    parent_layout->child_capacity = 1;
+    EXPECT_TRUE(rt_game3d_entity_is_group(parent) != 0,
+                "isGroup clamps corrupt child count to allocated child slots");
+
+    rt_game3d_entity_add_child(parent, second);
+    EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(parent)),
+                  2,
+                  "addChild repairs corrupt child count before appending");
+
+    parent_layout->child_count = INT32_MAX;
+    parent_layout->child_capacity = 2;
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Corrupt Child Count Unit"), 80, 60);
+    rt_game3d_world_spawn(world, parent);
+    EXPECT_EQ_INT(rt_game3d_world_get_entity_count(world),
+                  3,
+                  "spawn clamps corrupt entity child count while visiting the tree");
+    EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("CorruptCountSecond")) ==
+                    rt_game3d_entity_get_node(second),
+                "spawn still reaches valid children under the clamped count");
+
+    parent_layout->child_count = INT32_MAX;
+    parent_layout->child_capacity = 2;
+    rt_game3d_world_despawn(world, parent);
+    EXPECT_EQ_INT(rt_game3d_world_get_entity_count(world),
+                  0,
+                  "despawn clamps corrupt entity child count while visiting the tree");
+    EXPECT_TRUE(rt_game3d_entity_is_spawned(first) == 0 && rt_game3d_entity_is_spawned(second) == 0,
+                "despawn reaches all valid children under the clamped count");
+
+    rt_game3d_world_destroy(world);
     PASS();
 }
 
@@ -1287,6 +1628,63 @@ static bool test_worker_count_parallel_animation_parity() {
         EXPECT_EQ_INT(single.event_count[i], 1, "single-worker animation fires event");
         EXPECT_EQ_INT(multi.event_count[i], 1, "multi-worker animation fires event");
     }
+    PASS();
+}
+
+static bool test_world_animation_clamps_corrupt_entity_count() {
+    TEST("World3D animation update clamps corrupt entity counts to registry capacity");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Worker Anim Count Corrupt"), 64, 48);
+    rt_game3d_world_set_worker_count(world, 4);
+    rt_game3d_world_set_gravity(world, 0.0, 0.0, 0.0);
+
+    void *entity = rt_game3d_entity_new();
+    rt_game3d_entity_set_name(entity, rt_const_cstr("corrupt-count-animated"));
+    void *controller = make_game3d_test_controller(3.0, 0.25);
+    void *animator = rt_game3d_animator_new(controller);
+    rt_game3d_entity_attach_animator(entity, animator);
+    rt_scene_node3d_set_sync_mode(rt_game3d_entity_get_node(entity),
+                                  rt_game3d_sync_mode_node_from_anim_root_motion());
+    rt_game3d_animator_play(animator, rt_const_cstr("walk"));
+    rt_game3d_world_spawn(world, entity);
+
+    auto *layout = static_cast<Game3DWorldTestLayout *>(world);
+    const int32_t saved_count = layout->entity_count;
+    const int32_t saved_capacity = layout->entity_capacity;
+    layout->entity_count = INT32_MAX;
+    layout->entity_capacity = 1;
+    rt_game3d_world_step_simulation(world, 0.25);
+
+    EXPECT_EQ_INT(rt_game3d_world_get_entity_count(world),
+                  1,
+                  "World3D.entityCount reports bounded registry count after corruption");
+    EXPECT_NEAR(rt_game3d_animator_state_time(animator),
+                0.25,
+                0.000001,
+                "animation scheduler advances bounded entities after private count corruption");
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(animator),
+                  1,
+                  "animation event polling remains bounded after private count corruption");
+
+    layout->name_index_valid = 0;
+    EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("corrupt-count-animated")) ==
+                    entity,
+                "findEntity rebuilds a bounded name index after private count corruption");
+
+    void *second = rt_game3d_entity_new();
+    rt_game3d_entity_set_name(second, rt_const_cstr("spawn-after-count-repair"));
+    rt_game3d_world_spawn(world, second);
+    EXPECT_EQ_INT(rt_game3d_world_get_entity_count(world),
+                  2,
+                  "World3D.spawn repairs corrupt entity count before appending");
+    EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("spawn-after-count-repair")) ==
+                    second,
+                "newly spawned entity remains indexed after count repair");
+
+    layout->entity_count = INT32_MAX;
+    layout->entity_capacity = 2;
+    (void)saved_count;
+    (void)saved_capacity;
+    rt_game3d_world_destroy(world);
     PASS();
 }
 
@@ -1989,6 +2387,33 @@ static bool test_phase4_assets3d_model_templates() {
     EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(camera_scene_inst)),
                   1,
                   "ModelTemplate.instantiateSceneAt clones selected scene roots");
+    {
+        auto *camera_tpl_view = static_cast<Game3DModelTemplateTestLayout *>(camera_tpl);
+        void *saved_model = camera_tpl_view->model;
+        void *wrong_model = rt_material3d_new_color(0.3, 0.3, 0.8);
+        size_t wrong_model_ref = rt_heap_hdr(wrong_model)->refcnt;
+        camera_tpl_view->model = wrong_model;
+        EXPECT_TRUE(rt_game3d_model_template_get_model(camera_tpl) == nullptr,
+                    "ModelTemplate.getModel ignores wrong-class private model refs");
+        EXPECT_EQ_INT(rt_game3d_model_template_get_scene_count(camera_tpl),
+                      0,
+                      "ModelTemplate sceneCount ignores wrong-class private model refs");
+        EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_model_template_get_scene_name(camera_tpl, 0)),
+                                "") == 0,
+                    "ModelTemplate sceneName falls back without a valid private model");
+        EXPECT_EQ_INT(rt_game3d_model_template_get_camera_count(camera_tpl, 0),
+                      0,
+                      "ModelTemplate cameraCount ignores wrong-class private model refs");
+        EXPECT_TRUE(rt_game3d_model_template_get_camera(camera_tpl, 0, 0) == nullptr,
+                    "ModelTemplate camera lookup ignores wrong-class private model refs");
+        EXPECT_TRUE(rt_game3d_model_template_instantiate(camera_tpl) == nullptr,
+                    "ModelTemplate.instantiate ignores wrong-class private model refs");
+        EXPECT_TRUE(rt_game3d_model_template_instantiate_scene_at(camera_tpl, 0) == nullptr,
+                    "ModelTemplate.instantiateSceneAt ignores wrong-class private model refs");
+        EXPECT_TRUE(rt_heap_hdr(wrong_model)->refcnt == wrong_model_ref,
+                    "ModelTemplate APIs do not release wrong-class private model refs");
+        camera_tpl_view->model = saved_model;
+    }
 
     void *asset_tpl = rt_game3d_assets_load_model_template_asset(path);
     EXPECT_TRUE(asset_tpl != nullptr, "LoadModelTemplateAsset returns a template");
@@ -2015,6 +2440,18 @@ static bool test_phase4_assets3d_model_templates() {
                 "entity AssetHandle3D result is a group entity");
     EXPECT_TRUE(rt_game3d_asset_handle_get_template(model_handle) == nullptr,
                 "entity AssetHandle3D has no template result");
+    {
+        auto *handle_view = static_cast<Game3DAssetHandleTestLayout *>(model_handle);
+        void *saved_entity = handle_view->entity;
+        void *wrong_entity = rt_material3d_new_color(0.6, 0.1, 0.8);
+        size_t wrong_entity_ref = rt_heap_hdr(wrong_entity)->refcnt;
+        handle_view->entity = wrong_entity;
+        EXPECT_TRUE(rt_game3d_asset_handle_get_entity(model_handle) == nullptr,
+                    "AssetHandle3D.getEntity ignores wrong-class private entity refs");
+        EXPECT_TRUE(rt_heap_hdr(wrong_entity)->refcnt == wrong_entity_ref,
+                    "AssetHandle3D.getEntity does not release wrong-class entity refs");
+        handle_view->entity = saved_entity;
+    }
     rt_game3d_asset_handle_cancel(model_handle);
     EXPECT_TRUE(rt_game3d_asset_handle_get_entity(model_handle) == async_entity,
                 "cancelling a completed AssetHandle3D leaves the entity result intact");
@@ -2141,8 +2578,22 @@ static bool test_phase4_assets3d_model_templates() {
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(sync_only_handle)),
                             "") == 0,
                 "OBJ AssetHandle3D has no async format policy error");
-    EXPECT_TRUE(rt_game3d_asset_handle_get_template(sync_only_handle) != nullptr,
+    void *sync_only_template = rt_game3d_asset_handle_get_template(sync_only_handle);
+    EXPECT_TRUE(sync_only_template != nullptr,
                 "OBJ AssetHandle3D exposes the loaded template result");
+    {
+        auto *handle_view = static_cast<Game3DAssetHandleTestLayout *>(sync_only_handle);
+        void *saved_template = handle_view->model_template;
+        void *wrong_template = rt_material3d_new_color(0.2, 0.8, 0.2);
+        size_t wrong_template_ref = rt_heap_hdr(wrong_template)->refcnt;
+        handle_view->model_template = wrong_template;
+        EXPECT_TRUE(rt_game3d_asset_handle_get_template(sync_only_handle) == nullptr,
+                    "AssetHandle3D.getTemplate ignores wrong-class private template refs");
+        rt_game3d_assets_evict(sync_only_handle);
+        EXPECT_TRUE(rt_heap_hdr(wrong_template)->refcnt == wrong_template_ref,
+                    "AssetHandle3D template getter/evict does not release wrong-class refs");
+        handle_view->model_template = saved_template;
+    }
     rt_string_unref(sync_only_path_s);
     std::remove(sync_only_path);
 
@@ -2656,9 +3107,9 @@ static bool test_phase5_world_stream3d_terrain_manifest() {
                     "viper_game3d_terrain_near.height") != nullptr,
         "terrain tile heightmap inspection returns the resolved sidecar path");
     EXPECT_NEAR(rt_terrain3d_get_height_at(near_terrain, 1.0, 1.0),
-                0.75,
+                0.9375,
                 0.001,
-                "manifest terrain payload applies a relative height sidecar");
+                "manifest terrain payload applies a resampled relative height sidecar");
     void *near_nav = rt_game3d_world_bake_nav_mesh(world, 0.35, 1.8, 45.0, 0.3);
     EXPECT_TRUE(near_nav != nullptr, "resident terrain tile contributes a nav-bake source");
     EXPECT_TRUE(rt_navmesh3d_get_triangle_count(near_nav) > 0,
@@ -2726,6 +3177,153 @@ static bool test_phase5_world_stream3d_terrain_manifest() {
     std::remove(manifest_path);
     std::remove(near_height_path);
     std::remove(far_height_path);
+    PASS();
+}
+
+static bool test_phase5_world_stream3d_terrain_slots_reject_wrong_class_refs() {
+    TEST("WorldStream3D terrain tiles reject wrong-class private terrain and source slots");
+
+    const char *manifest_path = "/tmp/viper_game3d_terrain_wrong_slots_manifest.json";
+    const char *manifest = "{\"tiles\":["
+                           "{\"name\":\"wrong_slots\",\"path\":\"terrain/wrong_slots.tile\","
+                           "\"center\":[0,0,0],\"radius\":32,\"bytes\":1000,"
+                           "\"width\":4,\"depth\":4,\"scale\":[2,1,2]}"
+                           "]}";
+    EXPECT_TRUE(write_text_file(manifest_path, manifest),
+                "wrong-slot terrain manifest fixture is writable");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Terrain Wrong Slot Unit"), 80, 60);
+    void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_radii(stream, 96.0, 96.0);
+    rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_game3d_world_stream_mount_tiled_terrain(stream, rt_const_cstr(manifest_path));
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_terrain_tile_count(stream),
+                  1,
+                  "fixture loads one terrain tile before corruption");
+
+    auto *stream_view = static_cast<Game3DWorldStreamTestLayout *>(stream);
+    EXPECT_TRUE(stream_view->terrain_tiles != nullptr && stream_view->terrain_tile_count == 1,
+                "test can access the loaded terrain tile slot");
+
+    rt_game3d_world_stream_set_residency_budget(stream, 0);
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_terrain_tile_count(stream),
+                  0,
+                  "fixture unloads cleanly before slot corruption");
+
+    Game3DStreamTerrainTileTestLayout *tile = &stream_view->terrain_tiles[0];
+    void *wrong_terrain = rt_vec3_new(1.0, 2.0, 3.0);
+    void *wrong_collider = rt_vec3_new(4.0, 5.0, 6.0);
+    void *wrong_nav = rt_vec3_new(7.0, 8.0, 9.0);
+    EXPECT_TRUE(wrong_terrain != nullptr && wrong_collider != nullptr && wrong_nav != nullptr,
+                "wrong-class test handles allocate");
+
+    tile->terrain = wrong_terrain;
+    tile->collider_entity = wrong_collider;
+    tile->nav_entity = wrong_nav;
+    tile->resident = 1;
+
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_resident(stream, 0),
+                  0,
+                  "terrain tile resident query ignores a wrong-class terrain slot");
+    EXPECT_TRUE(rt_game3d_world_stream_get_resident_terrain_tile(stream, 0) == nullptr,
+                "resident terrain accessor hides wrong-class private terrain");
+    rt_game3d_world_begin_frame(world);
+    rt_game3d_world_draw_scene(world);
+    rt_game3d_world_end_scene(world);
+
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+    EXPECT_TRUE(tile->terrain == nullptr && tile->collider_entity == nullptr &&
+                    tile->nav_entity == nullptr,
+                "terrain unload clears wrong-class private slots without retaining them");
+    EXPECT_EQ_INT(tile->resident, 0, "terrain unload clears corrupt resident state");
+
+    if (wrong_terrain && rt_obj_release_check0(wrong_terrain))
+        rt_obj_free(wrong_terrain);
+    if (wrong_collider && rt_obj_release_check0(wrong_collider))
+        rt_obj_free(wrong_collider);
+    if (wrong_nav && rt_obj_release_check0(wrong_nav))
+        rt_obj_free(wrong_nav);
+
+    rt_game3d_world_destroy(world);
+    std::remove(manifest_path);
+    PASS();
+}
+
+static bool test_phase5_world_stream3d_heightmap_resample_preserves_edges() {
+    TEST("WorldStream3D terrain heightmap resampling preserves source edges");
+    const char *manifest_path = "/tmp/viper_game3d_terrain_resample_manifest.json";
+    const char *height_path = "/tmp/viper_game3d_terrain_resample.height";
+    const char *heights = "viper-heightmap-v1 3 3\n"
+                          "0.00 0.10 0.20\n"
+                          "0.30 0.25 0.40\n"
+                          "0.50 0.70 1.00\n";
+    const char *manifest = "{\"tiles\":["
+                           "{\"name\":\"resample\",\"path\":\"terrain/resample.tile\","
+                           "\"heightmap\":\"viper_game3d_terrain_resample.height\","
+                           "\"center\":[0,0,0],\"radius\":32,\"bytes\":1000,"
+                           "\"width\":2,\"depth\":2,\"scale\":[1,10,1]}"
+                           "]}";
+    EXPECT_TRUE(write_text_file(height_path, heights), "resample height sidecar is writable");
+    EXPECT_TRUE(write_text_file(manifest_path, manifest), "resample manifest fixture is writable");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Terrain Resample Unit"), 80, 60);
+    void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_radii(stream, 96.0, 96.0);
+    rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_game3d_world_stream_mount_tiled_terrain(stream, rt_const_cstr(manifest_path));
+    void *terrain = rt_game3d_world_stream_get_resident_terrain_tile(stream, 0);
+    EXPECT_TRUE(terrain != nullptr, "downsampled terrain sidecar becomes resident");
+    if (terrain) {
+        EXPECT_NEAR(rt_terrain3d_get_height_at(terrain, 1.0, 1.0),
+                    10.0,
+                    0.001,
+                    "downsampled terrain preserves the source southeast edge height");
+        EXPECT_NEAR(rt_terrain3d_get_height_at(terrain, 0.0, 0.0),
+                    0.0,
+                    0.001,
+                    "downsampled terrain preserves the source northwest edge height");
+    }
+
+    rt_game3d_world_destroy(world);
+    std::remove(manifest_path);
+    std::remove(height_path);
+    PASS();
+}
+
+static bool test_phase5_world_stream3d_rejects_trailing_heightmap_tokens() {
+    TEST("WorldStream3D rejects terrain heightmap sidecars with trailing tokens");
+    const char *manifest_path = "/tmp/viper_game3d_terrain_trailing_manifest.json";
+    const char *height_path = "/tmp/viper_game3d_terrain_trailing.height";
+    const char *heights = "viper-heightmap-v1 2 2\n"
+                          "0.00 0.00\n"
+                          "0.00 1.00\n"
+                          "unexpected-token\n";
+    const char *manifest = "{\"tiles\":["
+                           "{\"name\":\"trailing\",\"path\":\"terrain/trailing.tile\","
+                           "\"heightmap\":\"viper_game3d_terrain_trailing.height\","
+                           "\"center\":[0,0,0],\"radius\":32,\"bytes\":1000,"
+                           "\"width\":2,\"depth\":2,\"scale\":[1,10,1]}"
+                           "]}";
+    EXPECT_TRUE(write_text_file(height_path, heights), "trailing-token height sidecar is writable");
+    EXPECT_TRUE(write_text_file(manifest_path, manifest),
+                "trailing-token terrain manifest fixture is writable");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Terrain Trailing Unit"), 80, 60);
+    void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_radii(stream, 96.0, 96.0);
+    rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_game3d_world_stream_mount_tiled_terrain(stream, rt_const_cstr(manifest_path));
+    void *terrain = rt_game3d_world_stream_get_resident_terrain_tile(stream, 0);
+    EXPECT_TRUE(terrain != nullptr, "terrain still loads with a fallback heightmap");
+    EXPECT_NEAR(rt_terrain3d_get_height_at(terrain, 1.0, 1.0),
+                0.0,
+                0.001,
+                "malformed trailing height data is not partially applied");
+
+    rt_game3d_world_destroy(world);
+    std::remove(manifest_path);
+    std::remove(height_path);
     PASS();
 }
 
@@ -2835,6 +3433,102 @@ static bool write_stream_cell_scene(const char *path, const char *marker_name) {
     rt_scene_node3d_set_name(node, rt_const_cstr(marker_name));
     rt_scene3d_add(scene, node);
     return rt_scene3d_save(scene, rt_const_cstr(path)) == 1;
+}
+
+static bool test_phase5_world_stream3d_budget_prefers_nearest_entries() {
+    TEST("WorldStream3D budgeted residency prefers nearest manifest entries");
+
+    const char *near_path = "/tmp/viper_game3d_nearest_budget_near.vscn";
+    const char *far_path = "/tmp/viper_game3d_nearest_budget_far.vscn";
+    const char *cells_manifest_path = "/tmp/viper_game3d_nearest_budget_cells.vscn";
+    EXPECT_TRUE(write_stream_cell_scene(near_path, "nearest_budget_near_marker"),
+                "nearest-budget near cell fixture saves");
+    EXPECT_TRUE(write_stream_cell_scene(far_path, "nearest_budget_far_marker"),
+                "nearest-budget far cell fixture saves");
+
+    char cells_manifest[2048];
+    std::snprintf(cells_manifest,
+                  sizeof(cells_manifest),
+                  "{"
+                  "\"cells\":["
+                  "{\"name\":\"far_first\",\"path\":\"%s\",\"center\":[100,0,0],"
+                  "\"radius\":200,\"bytes\":4096},"
+                  "{\"name\":\"near_second\",\"path\":\"%s\",\"center\":[0,0,0],"
+                  "\"radius\":200,\"bytes\":4096}"
+                  "]"
+                  "}",
+                  far_path,
+                  near_path);
+    EXPECT_TRUE(write_text_file(cells_manifest_path, cells_manifest),
+                "nearest-budget cell manifest writes");
+
+    void *cell_world =
+        rt_game3d_world_new(rt_const_cstr("Game3D Nearest Cell Budget Unit"), 80, 60);
+    void *cell_stream = rt_game3d_world_get_stream(cell_world);
+    rt_game3d_world_stream_set_center(cell_stream, rt_vec3_new(1000.0, 0.0, 0.0));
+    rt_game3d_world_stream_set_radii(cell_stream, 256.0, 256.0);
+    rt_game3d_world_stream_mount_cells(cell_stream, rt_const_cstr(cells_manifest_path));
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(cell_stream),
+                  0,
+                  "cell fixture starts outside the stream radius");
+    rt_game3d_world_stream_set_center(cell_stream, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_game3d_world_stream_update(cell_stream, 1.0 / 60.0);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(cell_stream),
+                  1,
+                  "per-frame cell budget admits only one resident cell");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_resident(cell_stream, 0),
+                  0,
+                  "far-first manifest cell is skipped under the one-load frame budget");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_resident(cell_stream, 1),
+                  1,
+                  "nearer later manifest cell is admitted under the one-load frame budget");
+    EXPECT_TRUE(rt_game3d_world_find_node(cell_world,
+                                          rt_const_cstr("nearest_budget_near_marker")) != nullptr,
+                "nearest budget loads the near cell scene");
+    EXPECT_TRUE(rt_game3d_world_find_node(cell_world,
+                                          rt_const_cstr("nearest_budget_far_marker")) == nullptr,
+                "nearest budget leaves the farther first cell unloaded");
+    rt_game3d_world_destroy(cell_world);
+
+    const char *terrain_manifest_path = "/tmp/viper_game3d_nearest_budget_terrain.vscn";
+    const char *terrain_manifest =
+        "{\"tiles\":["
+        "{\"name\":\"far_terrain_first\",\"path\":\"terrain/far.tile\","
+        "\"center\":[100,0,0],\"radius\":200,\"bytes\":4096,"
+        "\"width\":4,\"depth\":4,\"scale\":[2,1,2]},"
+        "{\"name\":\"near_terrain_second\",\"path\":\"terrain/near.tile\","
+        "\"center\":[0,0,0],\"radius\":200,\"bytes\":4096,"
+        "\"width\":4,\"depth\":4,\"scale\":[2,1,2]}"
+        "]}";
+    EXPECT_TRUE(write_text_file(terrain_manifest_path, terrain_manifest),
+                "nearest-budget terrain manifest writes");
+
+    void *terrain_world =
+        rt_game3d_world_new(rt_const_cstr("Game3D Nearest Terrain Budget Unit"), 80, 60);
+    void *terrain_stream = rt_game3d_world_get_stream(terrain_world);
+    rt_game3d_world_stream_set_center(terrain_stream, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_game3d_world_stream_set_radii(terrain_stream, 256.0, 256.0);
+    rt_game3d_world_stream_set_residency_budget(terrain_stream, 7000);
+    rt_game3d_world_stream_mount_tiled_terrain(terrain_stream, rt_const_cstr(terrain_manifest_path));
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_terrain_tile_count(terrain_stream),
+                  1,
+                  "terrain budget admits only one resident tile");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_resident(terrain_stream, 0),
+                  0,
+                  "far-first manifest terrain tile is skipped under the one-tile budget");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_resident(terrain_stream, 1),
+                  1,
+                  "nearer later manifest terrain tile is admitted under the one-tile budget");
+    EXPECT_EQ_INT(rt_game3d_world_get_body_count(terrain_world),
+                  1,
+                  "nearest budget creates one terrain collider for the admitted tile");
+
+    rt_game3d_world_destroy(terrain_world);
+    std::remove(near_path);
+    std::remove(far_path);
+    std::remove(cells_manifest_path);
+    std::remove(terrain_manifest_path);
+    PASS();
 }
 
 static void *make_stream_lod_mesh(void) {
@@ -2983,6 +3677,43 @@ static bool test_phase5_world_stream3d_measures_lod_residency() {
     int64_t lod_resident_bytes =
         loaded_lod_node ? rt_scene_node3d_get_lod_resident_bytes(loaded_lod_node, 0) : 0;
     EXPECT_TRUE(lod_resident_bytes > 0, "loaded stream LOD reports resident mesh bytes");
+
+    if (loaded_lod_node) {
+        rt_scene_node3d *loaded_view = static_cast<rt_scene_node3d *>(loaded_lod_node);
+        void *saved_mesh = loaded_view->mesh;
+        void *saved_material = loaded_view->material;
+        rt_scene_node3d **saved_children = loaded_view->children;
+        int32_t saved_child_count = loaded_view->child_count;
+        int32_t saved_child_capacity = loaded_view->child_capacity;
+        int32_t saved_lod_count = loaded_view->lod_count;
+        int32_t saved_lod_capacity = loaded_view->lod_capacity;
+        void *wrong_class_handle = rt_vec3_new(1.0, 2.0, 3.0);
+
+        loaded_view->mesh = wrong_class_handle;
+        loaded_view->material = wrong_class_handle;
+        loaded_view->child_count = INT32_MAX;
+        loaded_view->child_capacity = 0;
+        loaded_view->children = nullptr;
+        loaded_view->lod_count = INT32_MAX;
+        rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+        int64_t corrupt_cell_bytes = rt_game3d_world_stream_get_cell_bytes(stream, 0);
+        EXPECT_TRUE(corrupt_cell_bytes > 0 && corrupt_cell_bytes <= measured_cell_bytes,
+                    "stream residency ignores corrupt counts and wrong-class mesh/material refs");
+
+        loaded_view->mesh = saved_mesh;
+        loaded_view->material = saved_material;
+        loaded_view->children = saved_children;
+        loaded_view->child_count = saved_child_count;
+        loaded_view->child_capacity = saved_child_capacity;
+        loaded_view->lod_count = saved_lod_count;
+        loaded_view->lod_capacity = saved_lod_capacity;
+        if (wrong_class_handle && rt_obj_release_check0(wrong_class_handle))
+            rt_obj_free(wrong_class_handle);
+        rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+        measured_cell_bytes = rt_game3d_world_stream_get_cell_bytes(stream, 0);
+        measured_total = rt_game3d_world_stream_get_resident_bytes(stream);
+    }
+
     if (loaded_lod_node)
         rt_scene_node3d_set_lod_resident(loaded_lod_node, 0, 0);
     rt_game3d_world_stream_update(stream, 1.0 / 60.0);
@@ -3719,6 +4450,12 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     EXPECT_EQ_INT(rt_game3d_animator_event_count(overflow_animator),
                   0,
                   "Animator3D drains capped controller events between frames");
+    auto *overflow_layout = static_cast<Game3DAnimatorTestLayout *>(overflow_animator);
+    overflow_layout->event_count = INT32_MAX;
+    rt_game3d_animator_update(overflow_animator, 0.0);
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(overflow_animator),
+                  0,
+                  "Animator3D repairs corrupt private event counts before draining");
 
     EXPECT_TRUE(rt_game3d_animator_crossfade(animator, rt_const_cstr("idle"), 0.1) != 0,
                 "Animator3D.crossfade switches to another state");
@@ -4009,11 +4746,16 @@ int main() {
     ok = test_world_body_index_deletion_tombstones_and_duplicate_names() && ok;
     ok = test_world_navmesh_bake_hooks() && ok;
     ok = test_entity_from_node_wraps_imported_subtree() && ok;
+    ok = test_entity_private_slots_reject_wrong_class_refs() && ok;
+    ok = test_animator_private_controller_rejects_wrong_class_refs() && ok;
+    ok = test_animator_private_event_slots_reject_wrong_class_refs() && ok;
     ok = test_entity_child_graph_reparents_and_rejects_cycles() && ok;
+    ok = test_entity_child_count_repair_bounds_tree_walks() && ok;
     ok = test_frame_loop_manual_frame_and_final_capture() && ok;
     ok = test_run_fixed_accumulator_and_spiral_guard() && ok;
     ok = test_worker_count_runframes_replay_parity() && ok;
     ok = test_worker_count_parallel_animation_parity() && ok;
+    ok = test_world_animation_clamps_corrupt_entity_count() && ok;
     ok = test_world_floating_origin_controls_and_rebase() && ok;
     ok = test_world_floating_origin_rendered_parity_and_flag_off_bytes() && ok;
     ok = test_step_simulation_clamps_invalid_dt() && ok;
@@ -4032,7 +4774,11 @@ int main() {
     ok = test_assets3d_loads_packaged_gltf_hierarchy() && ok;
     ok = test_phase5_world_stream3d_baseline() && ok;
     ok = test_phase5_world_stream3d_terrain_manifest() && ok;
+    ok = test_phase5_world_stream3d_terrain_slots_reject_wrong_class_refs() && ok;
+    ok = test_phase5_world_stream3d_heightmap_resample_preserves_edges() && ok;
+    ok = test_phase5_world_stream3d_rejects_trailing_heightmap_tokens() && ok;
     ok = test_phase5_world_stream3d_terrain_lod_seams_large_world() && ok;
+    ok = test_phase5_world_stream3d_budget_prefers_nearest_entries() && ok;
     ok = test_phase5_world_stream3d_manifest_cells() && ok;
     ok = test_phase5_world_stream3d_measures_lod_residency() && ok;
     ok = test_phase5_world_stream3d_hitch_budgeted_update() && ok;

@@ -46,6 +46,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SCENE3D_MORPH_BOUND_SCAN_MAX_TRIPLETS (1024u * 1024u)
+
 /// @brief Ensure the spatial index can hold @p needed entries, growing by doubling (min 64).
 /// @return 1 on success, 0 on bad args, overflow, or allocation failure.
 static int scene3d_spatial_ensure_capacity(rt_scene3d_spatial_index *index, int32_t needed) {
@@ -353,6 +355,43 @@ int scene3d_mesh_has_dynamic_deformation(rt_mesh3d *mesh, void *effective_animat
                     mesh->morph_shape_count > 0);
 }
 
+/// @brief Validate the raw transient morph-delta span before scanning it for culling bounds.
+static int scene3d_morph_delta_triplet_count(const rt_mesh3d *mesh, size_t *out_count) {
+    size_t shape_count;
+    size_t vertex_count;
+    size_t total;
+    uint32_t safe_vertex_count;
+    if (out_count)
+        *out_count = 0;
+    safe_vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    if (!mesh || !mesh->morph_deltas || mesh->morph_shape_count <= 0 || safe_vertex_count == 0)
+        return 0;
+    shape_count = (size_t)mesh->morph_shape_count;
+    vertex_count = (size_t)safe_vertex_count;
+    if (shape_count > SIZE_MAX / vertex_count)
+        return 0;
+    total = shape_count * vertex_count;
+    if (total == 0 || total > SCENE3D_MORPH_BOUND_SCAN_MAX_TRIPLETS)
+        return 0;
+    if (out_count)
+        *out_count = total;
+    return 1;
+}
+
+static double scene3d_morph_delta_length_or_zero(const float *delta) {
+    double x;
+    double y;
+    double z;
+    double len;
+    if (!delta || !isfinite(delta[0]) || !isfinite(delta[1]) || !isfinite(delta[2]))
+        return 0.0;
+    x = fabs((double)delta[0]);
+    y = fabs((double)delta[1]);
+    z = fabs((double)delta[2]);
+    len = hypot(hypot(x, y), z);
+    return isfinite(len) ? len : 0.0;
+}
+
 /// @brief Conservative local-space padding for runtime-deformed mesh bounds.
 double scene3d_mesh_dynamic_bound_pad(rt_mesh3d *mesh,
                                       void *effective_animator,
@@ -363,23 +402,25 @@ double scene3d_mesh_dynamic_bound_pad(rt_mesh3d *mesh,
     if (mesh && mesh->morph_targets_ref) {
         double morph_pad = rt_morphtarget3d_get_max_position_delta(mesh->morph_targets_ref);
         if (isfinite(morph_pad) && morph_pad > pad)
-            pad = morph_pad;
+            pad = scene3d_distance_or_zero(morph_pad);
     }
-    if (mesh && mesh->morph_deltas && mesh->morph_shape_count > 0 && mesh->vertex_count > 0) {
-        size_t total = (size_t)mesh->morph_shape_count * (size_t)mesh->vertex_count;
-        double max_len2 = 0.0;
+    if (mesh && mesh->morph_deltas && mesh->morph_shape_count > 0 &&
+        rt_mesh3d_safe_vertex_count(mesh) > 0) {
+        size_t total = 0;
+        double max_len = 0.0;
+        if (!scene3d_morph_delta_triplet_count(mesh, &total))
+            total = 0;
         for (size_t i = 0; i < total; i++) {
             const float *d = mesh->morph_deltas + i * 3u;
-            double len2 = (double)d[0] * (double)d[0] + (double)d[1] * (double)d[1] +
-                          (double)d[2] * (double)d[2];
-            if (isfinite(len2) && len2 > max_len2)
-                max_len2 = len2;
+            double len = scene3d_morph_delta_length_or_zero(d);
+            if (len > max_len)
+                max_len = len;
         }
-        if (max_len2 > 0.0 && sqrt(max_len2) > pad)
-            pad = sqrt(max_len2);
+        if (max_len > pad)
+            pad = scene3d_distance_or_zero(max_len);
     }
     if (effective_animator || (mesh && mesh->morph_shape_count > 0 && pad <= 0.0)) {
-        double fallback = base_radius > 0.0 ? base_radius : 0.0;
+        double fallback = scene3d_distance_or_zero(base_radius);
         if (fallback > pad)
             pad = fallback;
     }
@@ -404,7 +445,8 @@ static int scene3d_include_mesh_world_bounds(rt_scene_node3d *node,
                                              double out_min[3],
                                              double out_max[3],
                                              double *out_radius) {
-    rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
+    rt_mesh3d *mesh =
+        rt_g3d_has_class(mesh_obj, RT_G3D_MESH3D_CLASS_ID) ? (rt_mesh3d *)mesh_obj : NULL;
     float local_min[3];
     float local_max[3];
     double world_min[3];
@@ -446,7 +488,7 @@ static int scene3d_node_world_draw_union_aabb(rt_scene_node3d *node,
     if (node->mesh && scene3d_include_mesh_world_bounds(
                           node, node->mesh, effective_animator, world_min, world_max, &radius))
         has_bounds = 1;
-    for (int32_t i = 0; i < node->lod_count; ++i) {
+    for (int32_t i = 0, lod_count = scene3d_node_lod_count(node); i < lod_count; ++i) {
         if (node->lod_levels[i].mesh &&
             scene3d_include_mesh_world_bounds(
                 node, node->lod_levels[i].mesh, effective_animator, world_min, world_max, &radius))
@@ -571,8 +613,10 @@ static int scene3d_spatial_refit(rt_scene3d *scene) {
 void *scene3d_effective_animator(rt_scene_node3d *node) {
     rt_scene_node3d *current = node;
     while (current) {
-        if (current->bound_animator)
-            return current->bound_animator;
+        void *animator =
+            rt_g3d_checked_or_null(current->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+        if (animator)
+            return animator;
         current = current->parent;
     }
     return NULL;
@@ -636,7 +680,9 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
 
         recompute_world_matrix(current);
         effective_animator =
-            current->bound_animator ? current->bound_animator : item.inherited_animator;
+            rt_g3d_checked_or_null(current->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+        if (!effective_animator)
+            effective_animator = item.inherited_animator;
         if (scene3d_node_world_draw_union_aabb(
                 current, effective_animator, world_min, world_max, &radius)) {
             if (!scene3d_spatial_add_entry(index, current, order, world_min, world_max, radius)) {
@@ -645,7 +691,7 @@ static int scene3d_spatial_rebuild(rt_scene3d *scene) {
                 return 0;
             }
         }
-        for (int32_t i = current->child_count - 1; i >= 0; --i) {
+        for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; --i) {
             if (!scene_index_build_stack_push(
                     &stack, &count, &capacity, current->children[i], effective_animator)) {
                 rt_trap("Scene3D.SpatialIndex: traversal stack allocation failed");

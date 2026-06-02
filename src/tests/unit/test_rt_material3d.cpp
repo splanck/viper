@@ -11,6 +11,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_heap.h"
 #include "rt_pixels.h"
 
 #include <cmath>
@@ -131,10 +132,91 @@ static void test_clone_and_instance_share_resources_but_copy_scalars() {
                 "Material3D.Clone preserves alpha-mode state");
 }
 
+static void test_setters_replace_wrong_class_private_refs_without_release() {
+    rt_material3d *mat = (rt_material3d *)rt_material3d_new();
+    void *wrong = rt_material3d_new_color(0.4, 0.5, 0.6);
+    void *px = rt_pixels_new(1, 1);
+    void *cubemap = rt_cubemap3d_new(px, px, px, px, px, px);
+    EXPECT_TRUE(mat != nullptr && wrong != nullptr && px != nullptr && cubemap != nullptr,
+                "Material private-slot corruption fixture exists");
+    if (!mat || !wrong || !px || !cubemap)
+        return;
+
+    size_t wrong_refcnt = rt_heap_hdr(wrong)->refcnt;
+    mat->texture = wrong;
+    rt_material3d_set_texture(mat, px);
+    EXPECT_TRUE(mat->texture == px, "Material3D.SetTexture replaces wrong-class private refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "Material3D.SetTexture does not release unowned wrong-class refs");
+
+    mat->normal_map = wrong;
+    rt_material3d_set_normal_map(mat, px);
+    EXPECT_TRUE(mat->normal_map == px,
+                "Material3D.SetNormalMap replaces wrong-class private refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "Material3D.SetNormalMap does not release unowned wrong-class refs");
+
+    mat->metallic_roughness_map = wrong;
+    rt_material3d_set_metallic_roughness_map(mat, px);
+    EXPECT_TRUE(mat->metallic_roughness_map == px,
+                "Material3D.SetMetallicRoughnessMap replaces wrong-class private refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "Material3D.SetMetallicRoughnessMap does not release unowned wrong-class refs");
+
+    mat->ao_map = wrong;
+    rt_material3d_set_ao_map(mat, px);
+    EXPECT_TRUE(mat->ao_map == px, "Material3D.SetAOMap replaces wrong-class private refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "Material3D.SetAOMap does not release unowned wrong-class refs");
+
+    mat->specular_map = wrong;
+    rt_material3d_set_specular_map(mat, px);
+    EXPECT_TRUE(mat->specular_map == px,
+                "Material3D.SetSpecularMap replaces wrong-class private refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "Material3D.SetSpecularMap does not release unowned wrong-class refs");
+
+    mat->emissive_map = wrong;
+    rt_material3d_set_emissive_map(mat, px);
+    EXPECT_TRUE(mat->emissive_map == px,
+                "Material3D.SetEmissiveMap replaces wrong-class private refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "Material3D.SetEmissiveMap does not release unowned wrong-class refs");
+
+    mat->env_map = wrong;
+    rt_material3d_set_env_map(mat, cubemap);
+    EXPECT_TRUE(mat->env_map == cubemap,
+                "Material3D.SetEnvMap replaces wrong-class private env-map refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "Material3D.SetEnvMap does not release unowned wrong-class env-map refs");
+}
+
+static void test_env_map_setter_repairs_stale_slot_before_rejecting_new_value() {
+    rt_material3d *mat = (rt_material3d *)rt_material3d_new();
+    void *wrong = rt_material3d_new_color(0.1, 0.2, 0.3);
+    void *px = rt_pixels_new(1, 1);
+    void *cubemap = rt_cubemap3d_new(px, px, px, px, px, px);
+    EXPECT_TRUE(mat != nullptr && wrong != nullptr && px != nullptr && cubemap != nullptr,
+                "Material stale env-map fixture exists");
+    if (!mat || !wrong || !px || !cubemap)
+        return;
+
+    rt_material3d_set_env_map(mat, cubemap);
+    EXPECT_TRUE(mat->env_map == cubemap, "Material3D.SetEnvMap binds a valid cubemap");
+    ((rt_cubemap3d *)cubemap)->face_size = 2;
+    rt_material3d_set_env_map(mat, wrong);
+    EXPECT_TRUE(mat->env_map == nullptr,
+                "Material3D.SetEnvMap repairs a stale env-map before rejecting a bad replacement");
+    EXPECT_TRUE(rt_material3d_get_has_env_map(mat) == 0,
+                "Material3D env-map presence stays false after stale-slot repair");
+}
+
 int main() {
     test_new_pbr_defaults();
     test_pbr_setters_promote_legacy_material();
     test_clone_and_instance_share_resources_but_copy_scalars();
+    test_setters_replace_wrong_class_private_refs_without_release();
+    test_env_map_setter_repairs_stale_slot_before_rejecting_new_value();
 
     if (tests_passed != tests_run) {
         std::fprintf(stderr, "test_rt_material3d: %d/%d checks passed\n", tests_passed, tests_run);

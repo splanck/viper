@@ -11,15 +11,23 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
 #include "rt_animcontroller3d.h"
 #include "rt_blendtree3d.h"
 #include "rt_box.h"
 #include "rt_iksolver3d.h"
 #include "rt_seq.h"
 #include "rt_skeleton3d.h"
+#include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
+#include <climits>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 
 extern "C" {
@@ -33,6 +41,10 @@ extern void *rt_mat4_translate(double tx, double ty, double tz);
 extern void *rt_mat4_rotate_z(double angle);
 extern void *rt_mat4_mul(void *a, void *b);
 extern double rt_mat4_get(void *m, int64_t row, int64_t col);
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_retain_maybe(void *obj);
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 extern rt_string rt_const_cstr(const char *s);
 extern const char *rt_string_cstr(rt_string s);
 }
@@ -59,6 +71,118 @@ static int tests_run = 0;
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
+
+struct AnimController3DTestPrefix {
+    void *vptr;
+    void *skeleton;
+    void *states;
+    int32_t state_count;
+    int32_t state_capacity;
+    uint64_t *state_name_hashes;
+    int32_t *state_name_indices;
+    int32_t state_name_index_capacity;
+    int8_t state_name_index_dirty;
+    void *transitions;
+    int32_t transition_count;
+    int32_t transition_capacity;
+    void *events;
+    int32_t event_count;
+    int32_t event_capacity;
+};
+
+struct AnimController3DStateTestLayout {
+    char name[64];
+    void *animation;
+    float speed;
+    int8_t looping;
+};
+
+struct AnimController3DLayerTestLayout {
+    void *player;
+    int32_t current_state;
+    int32_t previous_state;
+    float transition_time;
+    float transition_duration;
+    int8_t transitioning;
+    int8_t additive;
+    float weight;
+    int32_t mask_root_bone;
+    int32_t mask_bone_count_seen;
+    uint8_t mask_bits[256];
+};
+
+struct AnimController3DTestLayout {
+    void *vptr;
+    void *skeleton;
+    void *states;
+    int32_t state_count;
+    int32_t state_capacity;
+    uint64_t *state_name_hashes;
+    int32_t *state_name_indices;
+    int32_t state_name_index_capacity;
+    int8_t state_name_index_dirty;
+    void *transitions;
+    int32_t transition_count;
+    int32_t transition_capacity;
+    void *events;
+    int32_t event_count;
+    int32_t event_capacity;
+    AnimController3DLayerTestLayout layers[4];
+    void *blend_tree;
+    void *ik_solver;
+    float *final_palette;
+    float *final_globals;
+    float *prev_final_palette;
+    int8_t has_prev_final_palette;
+    double root_motion_delta[3];
+    double root_motion_rotation[4];
+    double animation_lod_distance;
+    double animation_lod_rate_hz;
+    double animation_lod_accum;
+    int32_t animation_lod_max_bones;
+    int32_t root_motion_bone;
+};
+
+struct BlendTree3DSampleTest {
+    double x;
+    double y;
+    int64_t blend_index;
+};
+
+struct BlendTree3DTestLayout {
+    void *vptr;
+    void *blend;
+    int32_t dimensions;
+    int32_t sample_count;
+    double param_x;
+    double param_y;
+    BlendTree3DSampleTest samples[16];
+};
+
+struct IKSolver3DTestPrefix {
+    void *vptr;
+    void *skeleton;
+    int32_t kind;
+    int32_t chain_count;
+    int32_t chain[32];
+};
+
+static void fill_identity_pose(float *pose, int32_t bone_count) {
+    for (int32_t bone = 0; bone < bone_count; bone++) {
+        float *m = &pose[bone * 16];
+        memset(m, 0, 16 * sizeof(float));
+        m[0] = 1.0f;
+        m[5] = 1.0f;
+        m[10] = 1.0f;
+        m[15] = 1.0f;
+    }
+}
+
+static void expect_retained_probe_untouched(void *probe, const char *msg) {
+    EXPECT_TRUE(rt_obj_release_check0(probe) == 0, msg);
+    if (rt_obj_release_check0(probe))
+        rt_obj_free(probe);
+}
 
 static void *make_anim(const char *name,
                        int64_t bone_index,
@@ -349,6 +473,21 @@ static void test_controller_blend_tree_drives_base_pose() {
                 0.1,
                 "AnimController3D.SetBlendTree drives the base pose from blend weights");
 
+    void *other_skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(other_skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(other_skel);
+    void *other_pose = make_anim("other", 0, 20.0, 0.0, 0.0, 20.0, 0.0, 0.0);
+    void *other_tree = rt_blend_tree3d_new_1d(other_skel);
+    rt_blend_tree3d_add_sample(other_tree, other_pose, 0.0, 0.0);
+    EXPECT_TRUE(rt_anim_controller3d_set_blend_tree(controller, other_tree) == 0,
+                "AnimController3D.SetBlendTree rejects a tree bound to a different skeleton");
+    rt_anim_controller3d_update(controller, 0.0);
+    root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3),
+                5.0,
+                0.1,
+                "Rejected BlendTree does not replace the active controller tree");
+
     EXPECT_TRUE(rt_anim_controller3d_set_blend_tree(controller, skel) == 0,
                 "AnimController3D.SetBlendTree rejects non-tree handles");
     EXPECT_TRUE(rt_anim_controller3d_set_blend_tree(controller, nullptr) != 0,
@@ -356,6 +495,121 @@ static void test_controller_blend_tree_drives_base_pose() {
     rt_anim_controller3d_update(controller, 0.0);
     root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
     EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3), 0.0, 0.1, "Clearing BlendTree restores bind pose");
+}
+
+static void test_controller_play_refreshes_final_pose_immediately() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *pose = make_anim("pose", 0, 7.0, 0.0, 0.0, 7.0, 0.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("pose"), pose);
+    EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr("pose")) != 0,
+                "AnimController3D.Play starts a valid state");
+    void *root_mat = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_NEAR(rt_mat4_get(root_mat, 0, 3),
+                7.0,
+                0.1,
+                "AnimController3D.Play refreshes the final pose before the next Update");
+}
+
+static void test_controller_blend_tree_root_motion_uses_final_pose() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *move = make_anim("move", 0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+    void *tree = rt_blend_tree3d_new_1d(skel);
+    rt_blend_tree3d_add_sample(tree, move, 0.0, 0.0);
+    rt_blend_tree3d_set_param(tree, 0.0, 0.0);
+
+    void *controller = rt_anim_controller3d_new(skel);
+    EXPECT_TRUE(rt_anim_controller3d_set_blend_tree(controller, tree) != 0,
+                "AnimController3D.SetBlendTree accepts a moving tree");
+    rt_anim_controller3d_set_root_motion_bone(controller, 0);
+    rt_anim_controller3d_update(controller, 0.5);
+    void *delta = rt_anim_controller3d_consume_root_motion(controller);
+    EXPECT_NEAR(rt_vec3_x(delta),
+                5.0,
+                0.1,
+                "AnimController3D root motion follows BlendTree final pose movement");
+}
+
+static void test_controller_private_skeleton_growth_stays_in_bounds() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    void *controller = rt_anim_controller3d_new(skel);
+    void *tree = rt_blend_tree3d_new_1d(skel);
+    EXPECT_TRUE(controller != nullptr, "AnimController3D growth fixture creates controller");
+    EXPECT_TRUE(tree != nullptr, "BlendTree3D growth fixture creates blend tree before growth");
+    if (!controller || !tree)
+        return;
+
+    auto *skel_view = static_cast<rt_skeleton3d *>(skel);
+    auto *grown =
+        static_cast<vgfx3d_bone_t *>(std::realloc(skel_view->bones, 2 * sizeof(vgfx3d_bone_t)));
+    EXPECT_TRUE(grown != nullptr, "AnimController3D growth fixture extends skeleton storage");
+    if (!grown)
+        return;
+    skel_view->bones = grown;
+    std::memset(&skel_view->bones[1], 0, sizeof(vgfx3d_bone_t));
+    std::strncpy(skel_view->bones[1].name, "late", sizeof(skel_view->bones[1].name) - 1);
+    skel_view->bones[1].parent_index = 0;
+    fill_identity_pose(skel_view->bones[1].bind_pose_local, 1);
+    fill_identity_pose(skel_view->bones[1].inverse_bind, 1);
+    skel_view->bone_capacity = 2;
+    skel_view->bone_count = 2;
+
+    void *late = make_anim("late", 1, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0);
+    EXPECT_TRUE(rt_anim_controller3d_add_state(controller, rt_const_cstr("late"), late) == 0,
+                "AnimController3D accepts an animation for a late private bone");
+    EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr("late")) == 1,
+                "AnimController3D plays the late-bone animation");
+    rt_anim_controller3d_update(controller, 0.5);
+
+    void *late_mat = rt_anim_controller3d_get_bone_matrix(controller, 1);
+    EXPECT_TRUE(late_mat != nullptr, "AnimController3D returns the late bone matrix");
+    EXPECT_NEAR(rt_mat4_get(late_mat, 1, 3),
+                1.0,
+                0.1,
+                "AnimController3D updates palettes within capacity after skeleton growth");
+
+    EXPECT_TRUE(rt_blend_tree3d_add_sample(tree, late, 0.0, 0.0) == 0,
+                "BlendTree3D accepts an animation for a late private bone");
+    rt_blend_tree3d_update(tree, 0.5);
+    int32_t blend_bones = 0;
+    const float *locals =
+        rt_anim_blend3d_get_local_transform_data(rt_blend_tree3d_get_blend(tree), &blend_bones);
+    EXPECT_TRUE(locals != nullptr && blend_bones == 2,
+                "BlendTree3D reports the grown skeleton bone count");
+    EXPECT_NEAR(locals ? locals[1 * 16 + 7] : 0.0f,
+                1.0,
+                0.1,
+                "BlendTree3D updates blend buffers within capacity after skeleton growth");
+}
+
+static void test_skeletal_state_registration_rejects_out_of_range_clip_bones() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *bad = make_anim("bad", 1, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    void *blend = rt_anim_blend3d_new(skel);
+    void *tree = rt_blend_tree3d_new_1d(skel);
+
+    EXPECT_TRUE(rt_anim_controller3d_add_state(controller, rt_const_cstr("bad"), bad) == -1,
+                "AnimController3D rejects clips targeting bones outside its skeleton");
+    EXPECT_TRUE(rt_anim_controller3d_get_state_count(controller) == 0,
+                "AnimController3D keeps invalid clips out of the state table");
+    EXPECT_TRUE(rt_anim_blend3d_add_state(blend, rt_const_cstr("bad"), bad) == -1,
+                "AnimBlend3D rejects clips targeting bones outside its skeleton");
+    EXPECT_TRUE(rt_anim_blend3d_state_count(blend) == 0,
+                "AnimBlend3D keeps invalid clips out of the blend state table");
+    EXPECT_TRUE(rt_blend_tree3d_add_sample(tree, bad, 0.0, 0.0) == -1,
+                "BlendTree3D rejects samples whose clips cannot drive the bound skeleton");
 }
 
 static void test_two_bone_ik_pole_vector() {
@@ -604,6 +858,48 @@ static void test_controller_rejects_wrong_animation_handles() {
                 "Animation3D getters/setters reject non-Animation3D handles");
 }
 
+static void test_controller_rejects_wrong_string_handles() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *move = make_anim("move", 0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    void *wrong_name = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_name);
+    rt_string fake_name = reinterpret_cast<rt_string>(wrong_name);
+
+    EXPECT_TRUE(rt_anim_controller3d_add_state(controller, fake_name, move) == -1,
+                "AnimController3D.AddState rejects wrong-class string handles");
+    EXPECT_TRUE(rt_anim_controller3d_get_state_count(controller) == 0,
+                "wrong-class state names are not inserted");
+    EXPECT_TRUE(rt_anim_controller3d_add_state(controller, rt_const_cstr("move"), move) == 0,
+                "control state fixture inserts a valid state");
+    EXPECT_TRUE(rt_anim_controller3d_play(controller, fake_name) == 0,
+                "AnimController3D.Play rejects wrong-class string handles");
+    EXPECT_TRUE(rt_anim_controller3d_crossfade(controller, fake_name, 0.1) == 0,
+                "AnimController3D.Crossfade rejects wrong-class string handles");
+    EXPECT_TRUE(
+        rt_anim_controller3d_add_transition(controller, fake_name, rt_const_cstr("move"), 0.1) ==
+            0,
+        "AnimController3D.AddTransition rejects wrong-class source names");
+    EXPECT_TRUE(
+        rt_anim_controller3d_add_transition(controller, rt_const_cstr("move"), fake_name, 0.1) ==
+            0,
+        "AnimController3D.AddTransition rejects wrong-class target names");
+    rt_anim_controller3d_add_event(controller, rt_const_cstr("move"), 0.0, fake_name);
+    EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr("move")) == 1,
+                "valid state still plays after rejected fake names");
+    EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_poll_event(controller)), "") == 0,
+                "wrong-class event names are not queued");
+    EXPECT_TRUE(rt_anim_controller3d_is_state_playing(controller, fake_name) == 0,
+                "IsStatePlaying rejects wrong-class string handles");
+    rt_anim_controller3d_set_state_speed(controller, fake_name, 2.0);
+    rt_anim_controller3d_set_state_looping(controller, fake_name, 0);
+    expect_retained_probe_untouched(
+        wrong_name, "AnimController3D string-name guards do not release wrong-class handles");
+}
+
 static void test_controller_long_state_names_use_canonical_lookup() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -674,6 +970,282 @@ static void test_controller_bone_count_lod_freezes_distal_bones() {
                 "Bone LOD: frozen bones still follow their animated ancestors");
 }
 
+static void test_animation_objects_repair_corrupt_private_counts() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    void *move = make_anim("move", 0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0);
+
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("move"), move);
+    rt_anim_controller3d_add_event(controller, rt_const_cstr("move"), 0.0, rt_const_cstr("enter"));
+    auto *controller_bits = reinterpret_cast<AnimController3DTestPrefix *>(controller);
+    controller_bits->state_count = INT32_MAX;
+    controller_bits->state_capacity = 1;
+    controller_bits->state_name_index_capacity = 3;
+    controller_bits->state_name_index_dirty = 0;
+    controller_bits->transition_count = INT32_MAX;
+    controller_bits->transition_capacity = 0;
+    controller_bits->event_count = INT32_MAX;
+    controller_bits->event_capacity = 1;
+
+    EXPECT_TRUE(rt_anim_controller3d_get_state_count(controller) == 1,
+                "AnimController3D clamps a corrupted state count to the live state table");
+    EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr("move")) == 1,
+                "AnimController3D can still find a state after count repair");
+    EXPECT_TRUE(strcmp(rt_string_cstr(rt_anim_controller3d_poll_event(controller)), "enter") == 0,
+                "AnimController3D processes only live events after count repair");
+    int32_t palette_bones = -1;
+    EXPECT_TRUE(rt_anim_controller3d_get_final_palette_data(controller, &palette_bones) != nullptr,
+                "AnimController3D still exposes palette data after count repair");
+    EXPECT_TRUE(palette_bones == 1, "AnimController3D palette bone count is repaired");
+    auto *controller_layout = reinterpret_cast<AnimController3DTestLayout *>(controller);
+    rt_anim_controller3d_set_animation_lod(controller, 10.0, 10.0);
+    controller_layout->animation_lod_accum = NAN;
+    rt_anim_controller3d_update(controller, 0.1);
+    void *lod_root = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_TRUE(std::isfinite(controller_layout->animation_lod_accum),
+                "AnimController3D repairs corrupt animation LOD accumulator");
+    EXPECT_NEAR(rt_mat4_get(lod_root, 0, 3),
+                0.2,
+                0.05,
+                "AnimController3D still advances a throttled update after LOD accumulator repair");
+    controller_layout->state_count = 0;
+    controller_layout->transition_count = INT32_MAX;
+    controller_layout->transition_capacity = 0;
+    controller_layout->layers[0].current_state = 123;
+    controller_layout->layers[0].previous_state = 456;
+    controller_layout->layers[0].transitioning = 1;
+    controller_layout->layers[0].transition_time = NAN;
+    controller_layout->layers[0].transition_duration = INFINITY;
+    controller_layout->layers[1].current_state = 123;
+    controller_layout->layers[1].weight = NAN;
+    rt_anim_controller3d_update(controller, 0.0);
+    void *repaired_root = rt_anim_controller3d_get_bone_matrix(controller, 0);
+    EXPECT_TRUE(controller_layout->layers[0].current_state == -1 &&
+                    controller_layout->layers[0].previous_state == -1 &&
+                    controller_layout->layers[0].transitioning == 0,
+                "AnimController3D clears layer state that points past the repaired state table");
+    EXPECT_NEAR(rt_mat4_get(repaired_root, 0, 3),
+                0.0,
+                1e-6,
+                "AnimController3D falls back to bind pose when the active layer state is invalid");
+
+    void *tree = rt_blend_tree3d_new_1d(skel);
+    rt_blend_tree3d_add_sample(tree, move, 0.0, 0.0);
+    auto *tree_bits = reinterpret_cast<BlendTree3DTestLayout *>(tree);
+    tree_bits->sample_count = INT32_MAX;
+    EXPECT_TRUE(rt_blend_tree3d_get_sample_count(tree) == 1,
+                "BlendTree3D ignores never-added sample slots after count repair");
+    rt_blend_tree3d_update(tree, 0.5);
+    int32_t blend_bones = -1;
+    const float *locals =
+        rt_anim_blend3d_get_local_transform_data(rt_blend_tree3d_get_blend(tree), &blend_bones);
+    EXPECT_TRUE(locals != nullptr && blend_bones == 1,
+                "BlendTree3D keeps the underlying blend pose valid after count repair");
+    EXPECT_NEAR(locals ? locals[3] : 0.0f,
+                1.0,
+                0.1,
+                "BlendTree3D repaired sample count still drives the live sample");
+    tree_bits->sample_count = 1;
+    tree_bits->samples[0].blend_index = INT32_MAX;
+    EXPECT_TRUE(rt_blend_tree3d_get_sample_count(tree) == 0,
+                "BlendTree3D drops samples whose AnimBlend3D state index is no longer live");
+
+    void *bad_coord_tree = rt_blend_tree3d_new_1d(skel);
+    rt_blend_tree3d_add_sample(bad_coord_tree, move, 0.0, 0.0);
+    rt_blend_tree3d_add_sample(bad_coord_tree, move, 1.0, 0.0);
+    auto *bad_coord_bits = reinterpret_cast<BlendTree3DTestLayout *>(bad_coord_tree);
+    bad_coord_bits->samples[0].x = NAN;
+    bad_coord_bits->samples[1].x = NAN;
+    rt_blend_tree3d_set_param(bad_coord_tree, 0.5, 0.0);
+    rt_blend_tree3d_update(bad_coord_tree, 0.5);
+    int32_t corrupt_coord_bones = -1;
+    const float *corrupt_coord_locals =
+        rt_anim_blend3d_get_local_transform_data(rt_blend_tree3d_get_blend(bad_coord_tree),
+                                                 &corrupt_coord_bones);
+    EXPECT_TRUE(corrupt_coord_locals != nullptr && corrupt_coord_bones == 1 &&
+                    std::isfinite(corrupt_coord_locals[3]),
+                "BlendTree3D falls back safely when all 1D sample coordinates are corrupt");
+
+    void *ik_skel = rt_skeleton3d_new();
+    int64_t root = rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    int64_t mid =
+        rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("mid"), root, rt_mat4_identity());
+    int64_t end =
+        rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("end"), mid, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(ik_skel);
+    void *solver = rt_ik_solver3d_two_bone(ik_skel, root, mid, end);
+    auto *solver_bits = reinterpret_cast<IKSolver3DTestPrefix *>(solver);
+    solver_bits->chain_count = INT32_MAX;
+    float locals_pose[3 * 16];
+    float globals_pose[3 * 16];
+    fill_identity_pose(locals_pose, 3);
+    fill_identity_pose(globals_pose, 3);
+    EXPECT_TRUE(rt_ik_solver3d_apply_to_pose(solver, locals_pose, globals_pose, INT32_MAX) == 0,
+                "IKSolver3D rejects a corrupted chain count before walking the fixed chain");
+}
+
+static void test_anim_controller_private_refs_clear_wrong_class_without_release() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    void *move = make_anim("move", 0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+
+    void *controller = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller, rt_const_cstr("move"), move);
+    auto *layout = reinterpret_cast<AnimController3DTestLayout *>(controller);
+
+    void *wrong_blend_tree = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_blend_tree);
+    layout->blend_tree = wrong_blend_tree;
+    EXPECT_TRUE(rt_anim_controller3d_set_blend_tree(controller, nullptr) == 1,
+                "AnimController3D clears a corrupted BlendTree3D slot");
+    EXPECT_TRUE(layout->blend_tree == nullptr, "AnimController3D nulls the corrupted blend tree");
+    expect_retained_probe_untouched(
+        wrong_blend_tree, "AnimController3D does not release wrong-class blend tree slots");
+
+    void *wrong_ik = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_ik);
+    layout->ik_solver = wrong_ik;
+    EXPECT_TRUE(rt_anim_controller3d_set_ik_solver(controller, nullptr) == 1,
+                "AnimController3D clears a corrupted IKSolver3D slot");
+    EXPECT_TRUE(layout->ik_solver == nullptr, "AnimController3D nulls the corrupted IK solver");
+    expect_retained_probe_untouched(
+        wrong_ik, "AnimController3D does not release wrong-class IK solver slots");
+
+    void *controller_finalizer = rt_anim_controller3d_new(skel);
+    rt_anim_controller3d_add_state(controller_finalizer, rt_const_cstr("move"), move);
+    auto *finalizer_layout = reinterpret_cast<AnimController3DTestLayout *>(controller_finalizer);
+    auto *states = reinterpret_cast<AnimController3DStateTestLayout *>(finalizer_layout->states);
+
+    void *wrong_skeleton = rt_obj_new_i64(0, 8);
+    void *wrong_animation = rt_obj_new_i64(0, 8);
+    void *wrong_player = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_skeleton);
+    rt_obj_retain_maybe(wrong_animation);
+    rt_obj_retain_maybe(wrong_player);
+
+    if (finalizer_layout->skeleton && rt_obj_release_check0(finalizer_layout->skeleton))
+        rt_obj_free(finalizer_layout->skeleton);
+    finalizer_layout->skeleton = wrong_skeleton;
+    if (states && states[0].animation && rt_obj_release_check0(states[0].animation))
+        rt_obj_free(states[0].animation);
+    if (states)
+        states[0].animation = wrong_animation;
+    if (finalizer_layout->layers[0].player &&
+        rt_obj_release_check0(finalizer_layout->layers[0].player))
+        rt_obj_free(finalizer_layout->layers[0].player);
+    finalizer_layout->layers[0].player = wrong_player;
+
+    if (rt_obj_release_check0(controller_finalizer))
+        rt_obj_free(controller_finalizer);
+    expect_retained_probe_untouched(
+        wrong_skeleton, "AnimController3D finalizer does not release wrong-class skeleton slots");
+    expect_retained_probe_untouched(
+        wrong_animation, "AnimController3D finalizer does not release wrong-class animation slots");
+    expect_retained_probe_untouched(
+        wrong_player, "AnimController3D finalizer does not release wrong-class player slots");
+
+    void *tree_finalizer = rt_blend_tree3d_new_1d(skel);
+    auto *tree_layout = reinterpret_cast<BlendTree3DTestLayout *>(tree_finalizer);
+    void *wrong_blend = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_blend);
+    if (tree_layout->blend && rt_obj_release_check0(tree_layout->blend))
+        rt_obj_free(tree_layout->blend);
+    tree_layout->blend = wrong_blend;
+    if (rt_obj_release_check0(tree_finalizer))
+        rt_obj_free(tree_finalizer);
+    expect_retained_probe_untouched(
+        wrong_blend, "BlendTree3D finalizer does not release wrong-class AnimBlend3D slots");
+
+    void *solver_finalizer = rt_ik_solver3d_look_at(skel, 0);
+    auto *solver_layout = reinterpret_cast<IKSolver3DTestPrefix *>(solver_finalizer);
+    void *wrong_solver_skeleton = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_solver_skeleton);
+    if (solver_layout->skeleton && rt_obj_release_check0(solver_layout->skeleton))
+        rt_obj_free(solver_layout->skeleton);
+    solver_layout->skeleton = wrong_solver_skeleton;
+    EXPECT_TRUE(rt_ik_solver3d_get_skeleton(solver_finalizer) == nullptr,
+                "IKSolver3D hides wrong-class retained skeleton slots");
+    if (rt_obj_release_check0(solver_finalizer))
+        rt_obj_free(solver_finalizer);
+    expect_retained_probe_untouched(
+        wrong_solver_skeleton, "IKSolver3D finalizer does not release wrong-class skeleton slots");
+
+    void *player_finalizer = rt_anim_player3d_new(skel);
+    rt_anim_player3d_play(player_finalizer, move);
+    rt_anim_player3d_crossfade(player_finalizer, move, 0.25);
+    auto *player_layout = reinterpret_cast<rt_anim_player3d *>(player_finalizer);
+    void *wrong_player_skeleton = rt_obj_new_i64(0, 8);
+    void *wrong_player_current = rt_obj_new_i64(0, 8);
+    void *wrong_player_crossfade = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_player_skeleton);
+    rt_obj_retain_maybe(wrong_player_current);
+    rt_obj_retain_maybe(wrong_player_crossfade);
+    if (player_layout->skeleton && rt_obj_release_check0(player_layout->skeleton))
+        rt_obj_free(player_layout->skeleton);
+    player_layout->skeleton = reinterpret_cast<rt_skeleton3d *>(wrong_player_skeleton);
+    if (player_layout->current && rt_obj_release_check0(player_layout->current))
+        rt_obj_free(player_layout->current);
+    player_layout->current = reinterpret_cast<rt_animation3d *>(wrong_player_current);
+    if (player_layout->crossfade_from && rt_obj_release_check0(player_layout->crossfade_from))
+        rt_obj_free(player_layout->crossfade_from);
+    player_layout->crossfade_from = reinterpret_cast<rt_animation3d *>(wrong_player_crossfade);
+    EXPECT_TRUE(rt_anim_player3d_get_bone_matrix(player_finalizer, 0) == nullptr,
+                "AnimPlayer3D bone queries hide wrong-class skeleton slots");
+    rt_anim_player3d_update(player_finalizer, 0.1);
+    rt_anim_player3d_stop(player_finalizer);
+    if (rt_obj_release_check0(player_finalizer))
+        rt_obj_free(player_finalizer);
+    expect_retained_probe_untouched(
+        wrong_player_skeleton, "AnimPlayer3D finalizer does not release wrong-class skeleton slots");
+    expect_retained_probe_untouched(
+        wrong_player_current, "AnimPlayer3D finalizer does not release wrong-class current clips");
+    expect_retained_probe_untouched(wrong_player_crossfade,
+                                    "AnimPlayer3D does not release wrong-class crossfade clips");
+
+    void *blend_with_bad_skeleton = rt_anim_blend3d_new(skel);
+    rt_anim_blend3d_add_state(blend_with_bad_skeleton, rt_const_cstr("move"), move);
+    auto *bad_skel_blend_layout = reinterpret_cast<rt_anim_blend3d *>(blend_with_bad_skeleton);
+    void *wrong_blend_skeleton = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_blend_skeleton);
+    if (bad_skel_blend_layout->skeleton && rt_obj_release_check0(bad_skel_blend_layout->skeleton))
+        rt_obj_free(bad_skel_blend_layout->skeleton);
+    bad_skel_blend_layout->skeleton = reinterpret_cast<rt_skeleton3d *>(wrong_blend_skeleton);
+    int32_t bad_blend_bones = 1;
+    EXPECT_TRUE(rt_anim_blend3d_get_skeleton(blend_with_bad_skeleton) == nullptr,
+                "AnimBlend3D hides wrong-class skeleton slots");
+    EXPECT_TRUE(rt_anim_blend3d_get_local_transform_data(blend_with_bad_skeleton,
+                                                         &bad_blend_bones) == nullptr &&
+                    bad_blend_bones == 0,
+                "AnimBlend3D local transform queries reject wrong-class skeleton slots");
+    rt_anim_blend3d_update(blend_with_bad_skeleton, 0.1);
+    if (rt_obj_release_check0(blend_with_bad_skeleton))
+        rt_obj_free(blend_with_bad_skeleton);
+    expect_retained_probe_untouched(
+        wrong_blend_skeleton, "AnimBlend3D finalizer does not release wrong-class skeleton slots");
+
+    void *blend_with_bad_state = rt_anim_blend3d_new(skel);
+    rt_anim_blend3d_add_state(blend_with_bad_state, rt_const_cstr("move"), move);
+    rt_anim_blend3d_set_weight(blend_with_bad_state, 0, 1.0);
+    auto *bad_state_blend_layout = reinterpret_cast<rt_anim_blend3d *>(blend_with_bad_state);
+    void *wrong_state_animation = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_state_animation);
+    if (bad_state_blend_layout->states[0].animation &&
+        rt_obj_release_check0(bad_state_blend_layout->states[0].animation))
+        rt_obj_free(bad_state_blend_layout->states[0].animation);
+    bad_state_blend_layout->states[0].animation =
+        reinterpret_cast<rt_animation3d *>(wrong_state_animation);
+    rt_anim_blend3d_update(blend_with_bad_state, 0.1);
+    EXPECT_TRUE(bad_state_blend_layout->states[0].animation == nullptr,
+                "AnimBlend3D update clears wrong-class state animation slots");
+    if (rt_obj_release_check0(blend_with_bad_state))
+        rt_obj_free(blend_with_bad_state);
+    expect_retained_probe_untouched(
+        wrong_state_animation, "AnimBlend3D finalizer does not release wrong-class state clips");
+}
+
 int main() {
     test_controller_state_flow();
     test_controller_root_motion_disabled_and_loop_wrap();
@@ -681,6 +1253,10 @@ int main() {
     test_controller_masked_layer();
     test_controller_true_additive_layer_uses_bind_pose_delta();
     test_controller_blend_tree_drives_base_pose();
+    test_controller_play_refreshes_final_pose_immediately();
+    test_controller_blend_tree_root_motion_uses_final_pose();
+    test_controller_private_skeleton_growth_stays_in_bounds();
+    test_skeletal_state_registration_rejects_out_of_range_clip_bones();
     test_two_bone_ik_pole_vector();
     test_controller_ik_solver_drives_end_effector();
     test_two_bone_ik_foot_aligns_to_ground_normal();
@@ -689,7 +1265,10 @@ int main() {
     test_controller_bone_count_lod_freezes_distal_bones();
     test_controller_events_cover_full_loops_and_reverse();
     test_controller_rejects_wrong_animation_handles();
+    test_controller_rejects_wrong_string_handles();
     test_controller_long_state_names_use_canonical_lookup();
+    test_animation_objects_repair_corrupt_private_counts();
+    test_anim_controller_private_refs_clear_wrong_class_without_release();
 
     printf("AnimController3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

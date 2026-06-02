@@ -68,6 +68,9 @@ static int8_t s_has_active_listener = 0;
 /* Per-voice max_distance tracking — avoids global state pollution
  * when multiple sounds have different falloff ranges. */
 #define MAX_3D_VOICES 64
+#define SOUND3D_COORD_ABS_MAX 1000000000000.0
+#define SOUND3D_VELOCITY_ABS_MAX 1000000.0
+#define SOUND3D_DISTANCE_MAX 1000000000.0
 
 static struct {
     int64_t voice_id;
@@ -94,6 +97,31 @@ static double finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp a finite scalar to +/- @p max_abs, substituting @p fallback for NaN/Inf.
+static double clamp_abs_or(double value, double fallback, double max_abs) {
+    value = finite_or(value, fallback);
+    if (value < -max_abs)
+        return -max_abs;
+    if (value > max_abs)
+        return max_abs;
+    return value;
+}
+
+/// @brief Clamp an attenuation distance while preserving invalid-value fallback behavior.
+static double sound3d_distance_or(double value, double fallback) {
+    value = finite_or(value, fallback);
+    if (value < 0.0)
+        value = fallback;
+    if (value > SOUND3D_DISTANCE_MAX)
+        return SOUND3D_DISTANCE_MAX;
+    return value;
+}
+
+/// @brief Clamp one velocity component before Doppler math.
+static double sound3d_velocity_or(double value) {
+    return clamp_abs_or(value, 0.0, SOUND3D_VELOCITY_ABS_MAX);
+}
+
 /// @brief Copy a 3-component vector with null-safe zero fill.
 /// @details `dst == NULL` is a silent no-op so callers can pass through
 ///   optional out-params without null-checking at every site. `src == NULL`
@@ -108,9 +136,9 @@ static void sound3d_copy3(double *dst, const double *src) {
         dst[2] = 0.0;
         return;
     }
-    dst[0] = finite_or(src[0], 0.0);
-    dst[1] = finite_or(src[1], 0.0);
-    dst[2] = finite_or(src[2], 0.0);
+    dst[0] = clamp_abs_or(src[0], 0.0, SOUND3D_COORD_ABS_MAX);
+    dst[1] = clamp_abs_or(src[1], 0.0, SOUND3D_COORD_ABS_MAX);
+    dst[2] = clamp_abs_or(src[2], 0.0, SOUND3D_COORD_ABS_MAX);
 }
 
 /// @brief Decode an `rt_vec3` object handle into three raw doubles.
@@ -127,9 +155,9 @@ static void sound3d_vec_from_obj(void *vec, double *out_xyz) {
         out_xyz[2] = 0.0;
         return;
     }
-    out_xyz[0] = finite_or(rt_vec3_x(vec), 0.0);
-    out_xyz[1] = finite_or(rt_vec3_y(vec), 0.0);
-    out_xyz[2] = finite_or(rt_vec3_z(vec), 0.0);
+    out_xyz[0] = clamp_abs_or(rt_vec3_x(vec), 0.0, SOUND3D_COORD_ABS_MAX);
+    out_xyz[1] = clamp_abs_or(rt_vec3_y(vec), 0.0, SOUND3D_COORD_ABS_MAX);
+    out_xyz[2] = clamp_abs_or(rt_vec3_z(vec), 0.0, SOUND3D_COORD_ABS_MAX);
 }
 
 /// @brief Cross product out = a x b for 3-vectors.
@@ -303,10 +331,8 @@ void rt_sound3d_register_voice_ex(int64_t voice,
                                   int64_t base_volume) {
     if (voice <= 0)
         return;
-    if (!isfinite(ref_dist) || ref_dist < 0.0)
-        ref_dist = 0.0;
-    if (!isfinite(max_dist) || max_dist < 0.0)
-        max_dist = 0.0;
+    ref_dist = sound3d_distance_or(ref_dist, 0.0);
+    max_dist = sound3d_distance_or(max_dist, 0.0);
     if (ref_dist > 0.0 && max_dist > 0.0 && max_dist < ref_dist)
         max_dist = ref_dist;
     base_volume = clamp_i64(base_volume, 0, 100);
@@ -416,12 +442,12 @@ void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listene
     if (!source_position || !out_vol || !out_pan)
         return;
 
-    sx = finite_or(source_position[0], 0.0);
-    sy = finite_or(source_position[1], 0.0);
-    sz = finite_or(source_position[2], 0.0);
-    dx = sx - effective->position[0];
-    dy = sy - effective->position[1];
-    dz = sz - effective->position[2];
+    sx = clamp_abs_or(source_position[0], 0.0, SOUND3D_COORD_ABS_MAX);
+    sy = clamp_abs_or(source_position[1], 0.0, SOUND3D_COORD_ABS_MAX);
+    sz = clamp_abs_or(source_position[2], 0.0, SOUND3D_COORD_ABS_MAX);
+    dx = sx - clamp_abs_or(effective->position[0], 0.0, SOUND3D_COORD_ABS_MAX);
+    dy = sy - clamp_abs_or(effective->position[1], 0.0, SOUND3D_COORD_ABS_MAX);
+    dz = sz - clamp_abs_or(effective->position[2], 0.0, SOUND3D_COORD_ABS_MAX);
     if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz)) {
         *out_vol = 0;
         *out_pan = 0;
@@ -434,10 +460,8 @@ void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listene
         return;
     }
 
-    if (!isfinite(ref_dist) || ref_dist < 0.0)
-        ref_dist = 0.0;
-    if (!isfinite(max_dist) || max_dist < 0.0)
-        max_dist = 0.0;
+    ref_dist = sound3d_distance_or(ref_dist, 0.0);
+    max_dist = sound3d_distance_or(max_dist, 0.0);
     if (ref_dist > 0.0 && max_dist > 0.0 && max_dist < ref_dist)
         max_dist = ref_dist;
     base_vol = clamp_i64(base_vol, 0, 100);
@@ -484,11 +508,12 @@ void rt_sound3d_compute_voice_params_ex(const rt_sound3d_listener_state *listene
         double ndx = dx / dist;
         double ndy = dy / dist;
         double ndz = dz / dist;
-        double src_vx = source_velocity ? finite_or(source_velocity[0], 0.0) : 0.0;
-        double src_vy = source_velocity ? finite_or(source_velocity[1], 0.0) : 0.0;
-        double src_vz = source_velocity ? finite_or(source_velocity[2], 0.0) : 0.0;
-        double listener_along = effective->velocity[0] * ndx + effective->velocity[1] * ndy +
-                                effective->velocity[2] * ndz;
+        double src_vx = source_velocity ? sound3d_velocity_or(source_velocity[0]) : 0.0;
+        double src_vy = source_velocity ? sound3d_velocity_or(source_velocity[1]) : 0.0;
+        double src_vz = source_velocity ? sound3d_velocity_or(source_velocity[2]) : 0.0;
+        double listener_along = sound3d_velocity_or(effective->velocity[0]) * ndx +
+                                sound3d_velocity_or(effective->velocity[1]) * ndy +
+                                sound3d_velocity_or(effective->velocity[2]) * ndz;
         double source_along = src_vx * ndx + src_vy * ndy + src_vz * ndz;
         double denom = speed_of_sound + source_along;
         double factor = fabs(denom) > 1e-6 ? (speed_of_sound + listener_along) / denom : 1.0;

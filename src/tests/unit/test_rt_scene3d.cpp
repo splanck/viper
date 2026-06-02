@@ -34,13 +34,16 @@
 #include "rt_string.h"
 #include "vgfx3d_backend.h"
 #include <cassert>
+#include <cstdint>
 #include <csetjmp>
 #include <cstdlib>
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <string>
+#include <vector>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -71,6 +74,10 @@ extern void rt_mesh3d_add_triangle(void *obj, int64_t i0, int64_t i1, int64_t i2
 extern void rt_scene_node3d_set_lod_resident(void *node, int64_t index, int8_t resident);
 extern int8_t rt_scene_node3d_get_lod_resident(void *node, int64_t index);
 extern int64_t rt_scene_node3d_get_lod_resident_bytes(void *node, int64_t index);
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_retain_maybe(void *p);
+extern int32_t rt_obj_release_check0(void *p);
+extern void rt_obj_free(void *p);
 }
 
 static int tests_passed = 0;
@@ -446,6 +453,57 @@ static void test_find_by_name() {
     EXPECT_TRUE(nf == nullptr, "Find nonexistent returns null");
 }
 
+static void test_scene_node_names_reject_wrong_string_handles() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    rt_string parent_name = rt_const_cstr("parent");
+    rt_string child_name = rt_const_cstr("child");
+
+    rt_scene_node3d_set_name(parent, parent_name);
+    rt_scene_node3d_set_name(child, child_name);
+    rt_scene_node3d_add_child(parent, child);
+    rt_scene3d_add(scene, parent);
+
+    void *wrong_name = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_name);
+    rt_string fake_name = reinterpret_cast<rt_string>(wrong_name);
+
+    EXPECT_TRUE(rt_scene3d_find(scene, fake_name) == nullptr,
+                "Scene3D.Find rejects wrong-class query string handles");
+    EXPECT_TRUE(rt_scene_node3d_find(parent, fake_name) == nullptr,
+                "SceneNode3D.Find rejects wrong-class query string handles");
+
+    rt_scene_node3d_set_name(parent, fake_name);
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_scene_node3d_get_name(parent)), "parent") == 0,
+                "SceneNode3D.SetName rejects wrong-class string handles without clearing a valid name");
+    EXPECT_TRUE(rt_scene3d_find(scene, parent_name) == parent,
+                "Scene3D.Find still locates a node after a rejected wrong-class name");
+
+    auto *parent_view = static_cast<rt_scene_node3d *>(parent);
+    rt_string saved_name = parent_view->name;
+    parent_view->name = fake_name;
+    EXPECT_TRUE(rt_scene3d_find(scene, child_name) == child,
+                "Scene3D.Find skips corrupt stored node names while walking descendants");
+    EXPECT_TRUE(parent_view->name == nullptr,
+                "Scene3D.Find repairs corrupt private node name slots");
+    EXPECT_TRUE(rt_scene3d_find(scene, parent_name) == nullptr,
+                "Scene3D.Find does not match a repaired-away corrupt node name");
+    parent_view->name = saved_name;
+
+    parent_view->name = fake_name;
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_scene_node3d_get_name(parent)), "") == 0,
+                "SceneNode3D.GetName returns empty for corrupt private node name slots");
+    EXPECT_TRUE(parent_view->name == nullptr,
+                "SceneNode3D.GetName repairs corrupt private node name slots");
+    parent_view->name = saved_name;
+
+    EXPECT_TRUE(rt_obj_release_check0(wrong_name) == 0,
+                "SceneNode3D name guards do not release wrong-class handles");
+    if (rt_obj_release_check0(wrong_name))
+        rt_obj_free(wrong_name);
+}
+
 static void test_reparenting() {
     void *scene = rt_scene3d_new();
     void *a = rt_scene_node3d_new();
@@ -624,6 +682,117 @@ static void test_node_sanitizes_nonfinite_transform_and_lod() {
                 "SceneNode duplicate LOD thresholds replace the existing entry");
     EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(node, 0) == replacement,
                 "SceneNode duplicate LOD replacement keeps the new mesh");
+}
+
+static void test_scene_repairs_corrupt_private_counts() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(0.6, 0.7, 0.8);
+    void *lod_node = rt_scene_node3d_new();
+    void *lod_mesh = rt_mesh3d_new_box(0.5, 0.5, 0.5);
+
+    rt_scene_node3d_set_name(parent, rt_const_cstr("corrupt_anim_target"));
+    rt_scene_node3d_add_child(parent, child);
+    rt_scene3d_add(scene, parent);
+
+    auto *parent_view = static_cast<rt_scene_node3d *>(parent);
+    parent_view->child_count = INT32_MAX;
+    parent_view->child_capacity = 1;
+    EXPECT_TRUE(rt_scene_node3d_child_count(parent) == 1,
+                "SceneNode childCount clamps corrupt count to capacity");
+    EXPECT_TRUE(rt_scene_node3d_get_child(parent, 1) == nullptr,
+                "SceneNode GetChild rejects indexes beyond clamped child capacity");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 3,
+                "Scene3D node counting walks clamped child arrays");
+    EXPECT_TRUE(rt_scene3d_find(scene, rt_const_cstr("corrupt_anim_target")) == parent,
+                "Scene3D find walks clamped child arrays");
+
+    rt_scene_node3d_set_mesh(parent, mesh);
+    rt_scene_node3d_set_material(parent, material);
+    parent_view->mesh = material;
+    EXPECT_TRUE(rt_scene_node3d_get_mesh(parent) == nullptr,
+                "SceneNode3D.GetMesh rejects wrong-class private mesh slots");
+    parent_view->mesh = mesh;
+    parent_view->material = mesh;
+    EXPECT_TRUE(rt_scene_node3d_get_material(parent) == nullptr,
+                "SceneNode3D.GetMaterial rejects wrong-class private material slots");
+    parent_view->material = material;
+
+    rt_scene_node3d_add_lod(parent, 8.0, mesh);
+    parent_view->lod_count = INT32_MAX;
+    parent_view->lod_capacity = 1;
+    EXPECT_TRUE(rt_scene_node3d_get_lod_count(parent) == 1,
+                "SceneNode lodCount clamps corrupt count to capacity");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(parent, 1) == nullptr,
+                "SceneNode GetLodMesh rejects indexes beyond clamped LOD capacity");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_resident_bytes(parent, 1) == 0,
+                "SceneNode LOD resident bytes rejects indexes beyond clamped capacity");
+    parent_view->lod_levels[0].distance = NAN;
+    EXPECT_TRUE(rt_scene_node3d_get_lod_distance(parent, 0) == 0.0,
+                "SceneNode GetLodDistance sanitizes non-finite private LOD distances");
+    parent_view->lod_levels[0].distance = -12.0;
+    EXPECT_TRUE(rt_scene_node3d_get_lod_distance(parent, 0) == 0.0,
+                "SceneNode GetLodDistance clamps negative private LOD distances");
+    parent_view->lod_levels[0].distance = 8.0;
+    parent_view->lod_levels[0].mesh = material;
+    EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(parent, 0) == nullptr,
+                "SceneNode GetLodMesh rejects wrong-class private LOD mesh slots");
+    parent_view->lod_levels[0].mesh = mesh;
+
+    auto *lod_view = static_cast<rt_scene_node3d *>(lod_node);
+    lod_view->lod_count = INT32_MAX;
+    lod_view->lod_capacity = 4;
+    lod_view->lod_levels = nullptr;
+    rt_scene_node3d_add_lod(lod_node, 2.0, lod_mesh);
+    EXPECT_TRUE(rt_scene_node3d_get_lod_count(lod_node) == 1,
+                "SceneNode AddLOD repairs null LOD array with corrupt positive capacity");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(lod_node, 0) == lod_mesh,
+                "SceneNode AddLOD writes the repaired LOD slot");
+
+    double times[2] = {0.0, 1.0};
+    float translation_values[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    void *clip = rt_node_animation3d_new(rt_const_cstr("corrupt_clip"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(clip,
+                                                rt_const_cstr("corrupt_anim_target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                times,
+                                                translation_values) == 0,
+                "NodeAnimation channel fixture is created");
+    auto *clip_view = static_cast<rt_node_animation3d *>(clip);
+    clip_view->channel_count = INT32_MAX;
+    clip_view->channel_capacity = 1;
+    void *clips[1] = {clip};
+    auto *animator = static_cast<rt_node_animator3d *>(rt_node_animator3d_new_from_clips(clips, 1));
+    EXPECT_TRUE(animator != nullptr, "NodeAnimator fixture is created");
+    animator->animation_count = INT32_MAX;
+    animator->animation_capacity = 1;
+    rt_scene_node3d_bind_node_animator(parent, animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+    EXPECT_TRUE(clip_view->channel_count == 1,
+                "NodeAnimator playback repairs corrupt clip channel count");
+    EXPECT_TRUE(animator->animation_count == 1,
+                "NodeAnimator playback repairs corrupt clip count");
+    void *pos = rt_scene_node3d_get_position(parent);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.5, 0.001, "NodeAnimator still samples repaired channels");
+
+    parent_view->bound_node_animator = rt_material3d_new_color(0.2, 0.3, 0.4);
+    rt_scene_node3d_set_position(parent, 0.0, 0.0, 0.0);
+    rt_scene3d_sync_bindings(scene, 0.5);
+    pos = rt_scene_node3d_get_position(parent);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.001,
+                "Scene3D.SyncBindings ignores wrong-class bound node animators");
+
+    parent_view->bound_animator = rt_material3d_new_color(0.4, 0.3, 0.2);
+    rt_scene_node3d_set_sync_mode(parent, RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION);
+    rt_scene3d_sync_bindings(scene, 0.5);
+    pos = rt_scene_node3d_get_position(parent);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.001,
+                "Scene3D.SyncBindings ignores wrong-class root-motion animators");
 }
 
 static void test_node_body_sync_preserves_negative_scale_handedness() {
@@ -1599,6 +1768,217 @@ static void test_node_animator_handles_large_morph_weight_channels() {
                 "Node animation applies morph weights beyond the old fixed scratch limit");
 }
 
+static void test_node_animator_clears_unkeyed_morph_weight_tail() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new();
+    void *morph = rt_morphtarget3d_new(3);
+    double times[2] = {0.0, 1.0};
+    float values[2] = {0.0f, 1.0f};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("driven"));
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("stale"));
+    rt_morphtarget3d_set_weight(morph, 1, 0.75);
+    rt_mesh3d_set_morph_targets(mesh, morph);
+    rt_scene_node3d_set_name(node, rt_const_cstr("target"));
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene3d_add(scene, node);
+
+    anim = rt_node_animation3d_new(rt_const_cstr("short_weights"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_WEIGHTS,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                1,
+                                                times,
+                                                values) >= 0,
+                "Node animation accepts a short morph-weight vector");
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(morph, 0),
+                0.5,
+                0.001,
+                "Node animation applies provided morph weights");
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(morph, 1),
+                0.0,
+                0.001,
+                "Node animation clears morph weights outside the sampled vector");
+}
+
+static void test_node_animator_skips_corrupt_channel_shape() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new();
+    void *morph = rt_morphtarget3d_new(3);
+    double times[2] = {0.0, 1.0};
+    float values[2] = {0.0f, 1.0f};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("shape"));
+    rt_mesh3d_set_morph_targets(mesh, morph);
+    rt_scene_node3d_set_name(node, rt_const_cstr("target"));
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene3d_add(scene, node);
+
+    anim = rt_node_animation3d_new(rt_const_cstr("corrupt_shape"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_WEIGHTS,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                1,
+                                                times,
+                                                values) >= 0,
+                "Node animation accepts the valid fixture channel before corruption");
+    auto *anim_view = static_cast<rt_node_animation3d *>(anim);
+    anim_view->channels[0].key_count = INT32_MAX;
+    anim_view->channels[0].value_width = INT32_MAX;
+
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(morph, 0),
+                0.0,
+                0.001,
+                "Node animator skips privately corrupt channel key/value dimensions");
+}
+
+static void test_node_animator_skips_corrupt_channel_interpolation() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    double times[2] = {0.0, 1.0};
+    float values[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("target"));
+    rt_scene3d_add(scene, node);
+    anim = rt_node_animation3d_new(rt_const_cstr("bad_interp"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                times,
+                                                values) >= 0,
+                "Node animation accepts the valid interpolation fixture");
+    auto *anim_view = static_cast<rt_node_animation3d *>(anim);
+    anim_view->channels[0].interpolation = INT32_MAX;
+
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+
+    void *pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos),
+                0.0,
+                0.001,
+                "Node animator skips privately corrupt interpolation values");
+}
+
+static void test_node_animator_import_index_binding_does_not_fallback_to_duplicate_name() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    double times[2] = {0.0, 1.0};
+    float values[6] = {0.0f, 0.0f, 0.0f, 10.0f, 0.0f, 0.0f};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("duplicate"));
+    static_cast<rt_scene_node3d *>(node)->import_index = 7;
+    rt_scene3d_add(scene, node);
+
+    anim = rt_node_animation3d_new(rt_const_cstr("indexed"), 1.0);
+    int64_t channel = rt_node_animation3d_add_channel(anim,
+                                                      rt_const_cstr("duplicate"),
+                                                      RT_NODE_ANIM_PATH_TRANSLATION,
+                                                      RT_NODE_ANIM_INTERP_LINEAR,
+                                                      2,
+                                                      3,
+                                                      times,
+                                                      values);
+    EXPECT_TRUE(channel >= 0, "Node animation accepts the indexed-target fixture");
+    rt_node_animation3d_set_channel_target_node_index(anim, channel, 42);
+
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+
+    void *pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos),
+                0.0,
+                0.001,
+                "Import-index-bound node animation does not drive a same-name fallback node");
+}
+
+static void test_scene_save_skips_invalid_material_asset_refs() {
+    const char *path = "/tmp/viper_scene_invalid_material_refs.vscn";
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    rt_material3d *material = (rt_material3d *)rt_material3d_new_color(0.2, 0.3, 0.4);
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("invalid_material_refs"));
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene3d_add(scene, node);
+
+    material->texture = rt_vec3_new(1.0, 0.0, 0.0);
+    material->normal_map = rt_vec3_new(2.0, 0.0, 0.0);
+    material->specular_map = rt_vec3_new(3.0, 0.0, 0.0);
+    material->emissive_map = rt_vec3_new(4.0, 0.0, 0.0);
+    material->metallic_roughness_map = rt_vec3_new(5.0, 0.0, 0.0);
+    material->ao_map = rt_vec3_new(6.0, 0.0, 0.0);
+    material->env_map = rt_vec3_new(7.0, 0.0, 0.0);
+
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                "Scene3D.Save treats wrong-class material asset refs as absent");
+    void *loaded_scene = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded_scene != nullptr, "Scene3D.Load reads scene saved after asset-ref repair");
+    if (loaded_scene) {
+        void *loaded_node = rt_scene3d_find(loaded_scene, rt_const_cstr("invalid_material_refs"));
+        rt_material3d *loaded_material =
+            loaded_node ? (rt_material3d *)rt_scene_node3d_get_material(loaded_node) : nullptr;
+        EXPECT_TRUE(loaded_material != nullptr, "Scene3D.Load preserves the material itself");
+        if (loaded_material) {
+            EXPECT_TRUE(loaded_material->texture == nullptr &&
+                            loaded_material->normal_map == nullptr &&
+                            loaded_material->specular_map == nullptr &&
+                            loaded_material->emissive_map == nullptr &&
+                            loaded_material->metallic_roughness_map == nullptr &&
+                            loaded_material->ao_map == nullptr &&
+                            loaded_material->env_map == nullptr,
+                        "Scene3D.Load does not persist invalid material asset refs");
+        }
+    }
+
+    std::remove(path);
+}
+
 static void test_node_animator_weights_all_morph_primitives_in_subtree() {
     void *scene = rt_scene3d_new();
     void *target = rt_scene_node3d_new();
@@ -1725,6 +2105,82 @@ static void test_node_animator_slerps_linear_rotation_channels() {
         rt_quat_w(rot), 0.98079, 0.001, "Node animation uses quaternion slerp for rotation W");
 }
 
+static void test_node_animator_samples_cubic_rotation_shortest_hemisphere() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    double times[2] = {0.0, 1.0};
+    float values[8] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, -0.70710678f, -0.70710678f};
+    float tangents[8] = {};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("target"));
+    rt_scene3d_add(scene, node);
+    anim = rt_node_animation3d_new(rt_const_cstr("cubic_rotate"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_cubic_channel(anim,
+                                                      rt_const_cstr("target"),
+                                                      RT_NODE_ANIM_PATH_ROTATION,
+                                                      2,
+                                                      4,
+                                                      times,
+                                                      values,
+                                                      tangents,
+                                                      tangents) >= 0,
+                "Node animation accepts cubic rotation channels");
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+
+    void *rot = rt_scene_node3d_get_rotation(node);
+    EXPECT_NEAR(rt_quat_z(rot),
+                0.38268,
+                0.001,
+                "Cubic node rotation samples the shortest quaternion hemisphere");
+    EXPECT_NEAR(rt_quat_w(rot),
+                0.92388,
+                0.001,
+                "Cubic node rotation avoids antipodal midpoint collapse");
+}
+
+static void test_node_animator_repairs_corrupt_clip_duration() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    double times[2] = {0.0, 1.0};
+    float values[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    void *anim;
+    void *animator;
+    void *clips[1];
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("target"));
+    rt_scene3d_add(scene, node);
+    anim = rt_node_animation3d_new(rt_const_cstr("duration_repair"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                times,
+                                                values) >= 0,
+                "Node animation accepts the duration repair fixture");
+    auto *anim_view = static_cast<rt_node_animation3d *>(anim);
+    anim_view->duration = 0.0;
+
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 1.5);
+
+    void *pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(anim_view->duration, 1.0, 0.001, "Node animator repairs corrupt clip duration");
+    EXPECT_NEAR(rt_vec3_x(pos),
+                0.5,
+                0.001,
+                "Node animator wraps with repaired duration instead of clamping at the last key");
+}
+
 static void test_node_animation_rejects_invalid_channel_data() {
     void *anim = rt_node_animation3d_new(rt_const_cstr("invalid"), 1.0);
     double unsorted_times[2] = {1.0, 0.0};
@@ -1755,6 +2211,15 @@ static void test_node_animation_rejects_invalid_channel_data() {
     EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
                                                 rt_const_cstr("target"),
                                                 RT_NODE_ANIM_PATH_TRANSLATION,
+                                                99,
+                                                2,
+                                                3,
+                                                valid_times,
+                                                translation_values) < 0,
+                "Node animation rejects invalid interpolation modes");
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
                                                 RT_NODE_ANIM_INTERP_LINEAR,
                                                 2,
                                                 2,
@@ -1771,6 +2236,178 @@ static void test_node_animation_rejects_invalid_channel_data() {
                                                       bad_tangents,
                                                       tangent_values) < 0,
                 "Node animation rejects non-finite cubic tangents");
+}
+
+static void test_node_animation_rejects_wrong_string_handles() {
+    void *scene = rt_scene3d_new();
+    void *target = rt_scene_node3d_new();
+    rt_string target_name = rt_const_cstr("target");
+    double times[2] = {0.0, 1.0};
+    float values[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+
+    rt_scene_node3d_set_name(target, target_name);
+    rt_scene3d_add(scene, target);
+
+    void *wrong_name = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_name);
+    rt_string fake_name = reinterpret_cast<rt_string>(wrong_name);
+
+    void *bad_named_clip = rt_node_animation3d_new(fake_name, 1.0);
+    auto *bad_named_view = static_cast<rt_node_animation3d *>(bad_named_clip);
+    EXPECT_TRUE(bad_named_view && bad_named_view->name &&
+                    std::strcmp(rt_string_cstr(bad_named_view->name), "") == 0,
+                "NodeAnimation3D.New replaces wrong-class clip names with an empty string");
+    EXPECT_TRUE(rt_node_animation3d_add_channel(bad_named_clip,
+                                                fake_name,
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                times,
+                                                values) < 0,
+                "NodeAnimation3D.AddChannel rejects wrong-class target name handles");
+
+    void *anim = rt_node_animation3d_new(rt_const_cstr("clip"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                target_name,
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                times,
+                                                values) == 0,
+                "NodeAnimation3D string-handle fixture creates a valid channel");
+    void *clips[1] = {anim};
+    void *animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.5);
+    void *pos = rt_scene_node3d_get_position(target);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.5, 0.001, "NodeAnimation3D fixture resolves a valid target");
+
+    auto *anim_view = static_cast<rt_node_animation3d *>(anim);
+    rt_string saved_channel_name = anim_view->channels[0].target_name;
+    rt_scene_node3d_set_position(target, 0.0, 0.0, 0.0);
+    anim_view->channels[0].target_name = fake_name;
+    rt_scene3d_sync_bindings(scene, 0.5);
+    pos = rt_scene_node3d_get_position(target);
+    EXPECT_NEAR(rt_vec3_x(pos),
+                0.0,
+                0.001,
+                "NodeAnimator skips channels whose private target name becomes wrong-class");
+    anim_view->channels[0].target_name = saved_channel_name;
+
+    auto *target_view = static_cast<rt_scene_node3d *>(target);
+    rt_string saved_node_name = target_view->name;
+    rt_scene_node3d_set_position(target, 0.0, 0.0, 0.0);
+    target_view->name = fake_name;
+    rt_scene3d_sync_bindings(scene, 0.25);
+    pos = rt_scene_node3d_get_position(target);
+    EXPECT_NEAR(rt_vec3_x(pos),
+                0.0,
+                0.001,
+                "NodeAnimator skips cached targets whose private node name becomes wrong-class");
+    EXPECT_TRUE(target_view->name == nullptr,
+                "NodeAnimator target lookup repairs wrong-class cached node names");
+    target_view->name = saved_node_name;
+
+    void *finalizer_clip = rt_node_animation3d_new(rt_const_cstr("finalizer"), 1.0);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(finalizer_clip,
+                                                target_name,
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                times,
+                                                values) == 0,
+                "NodeAnimation3D finalizer fixture creates a valid channel");
+    auto *finalizer_view = static_cast<rt_node_animation3d *>(finalizer_clip);
+    finalizer_view->channels[0].target_name = fake_name;
+    if (rt_obj_release_check0(finalizer_clip))
+        rt_obj_free(finalizer_clip);
+    if (rt_obj_release_check0(bad_named_clip))
+        rt_obj_free(bad_named_clip);
+
+    EXPECT_TRUE(rt_obj_release_check0(wrong_name) == 0,
+                "NodeAnimation3D string guards do not release wrong-class handles");
+    if (rt_obj_release_check0(wrong_name))
+        rt_obj_free(wrong_name);
+}
+
+static void test_node_animation_step_accepts_duplicate_key_times() {
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *anim = rt_node_animation3d_new(rt_const_cstr("step_duplicates"), 1.0);
+    void *animator;
+    void *clips[1];
+    double duplicate_times[3] = {0.0, 0.0, 1.0};
+    double linear_duplicate_times[2] = {0.0, 0.0};
+    float step_values[9] = {
+        0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 3.0f, 0.0f, 0.0f};
+    float linear_values[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("target"));
+    rt_scene3d_add(scene, node);
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                linear_duplicate_times,
+                                                linear_values) < 0,
+                "Linear node animation still rejects duplicate key times");
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_STEP,
+                                                3,
+                                                3,
+                                                duplicate_times,
+                                                step_values) >= 0,
+                "Step node animation accepts duplicate key times");
+    ((rt_node_animation3d *)anim)->looping = 0;
+    clips[0] = anim;
+    animator = rt_node_animator3d_new_from_clips(clips, 1);
+    rt_scene_node3d_bind_node_animator(rt_scene3d_get_root(scene), animator);
+    rt_scene3d_sync_bindings(scene, 0.0);
+
+    void *pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos),
+                2.0,
+                0.001,
+                "Step duplicate timestamps sample the last key at the current time");
+
+    rt_scene3d_sync_bindings(scene, 1.0);
+    pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos), 3.0, 0.001, "Step animation still reaches later keys");
+}
+
+static void test_node_animation_rejects_pathological_channel_sizes() {
+    void *anim = rt_node_animation3d_new(rt_const_cstr("pathological_sizes"), 1.0);
+    double one_time[1] = {0.0};
+    float one_value[1] = {0.0f};
+    std::vector<double> many_times(2000);
+    for (size_t i = 0; i < many_times.size(); i++)
+        many_times[i] = (double)i * 0.001;
+
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_WEIGHTS,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                1,
+                                                4097,
+                                                one_time,
+                                                one_value) < 0,
+                "Node animation rejects morph-weight channels wider than the runtime cap");
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_WEIGHTS,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                (int64_t)many_times.size(),
+                                                3000,
+                                                many_times.data(),
+                                                one_value) < 0,
+                "Node animation rejects channels whose key-width product is too large");
 }
 
 static void test_frustum_aabb_inside() {
@@ -2032,6 +2669,13 @@ static void test_impostor_proxy_draws_textured_quad() {
     rt_scene_node3d_set_mesh(node, mesh);
     rt_scene_node3d_set_material(node, material);
     rt_scene_node3d_set_impostor(node, 0.0, pixels);
+    auto *node_view = static_cast<rt_scene_node3d *>(node);
+    EXPECT_TRUE(rt_g3d_has_class(node_view->impostor_mesh, RT_G3D_MESH3D_CLASS_ID),
+                "SceneNode3D.SetImpostor creates a Mesh3D proxy");
+    EXPECT_TRUE(rt_g3d_has_class(node_view->impostor_material, RT_G3D_MATERIAL3D_CLASS_ID),
+                "SceneNode3D.SetImpostor creates a Material3D proxy");
+    EXPECT_TRUE(rt_mesh3d_get_resident(node_view->impostor_mesh) == 1,
+                "SceneNode3D.SetImpostor creates a resident proxy mesh");
     rt_scene3d_add(scene, node);
     rt_camera3d_look_at(camera, eye, target, up);
 
@@ -2043,6 +2687,69 @@ static void test_impostor_proxy_draws_textured_quad() {
     EXPECT_TRUE(g_scene_last_texture == pixels,
                 "SceneNode3D.SetImpostor binds the supplied Pixels texture");
     EXPECT_TRUE(g_scene_last_unlit == 1, "SceneNode3D.SetImpostor uses an unlit proxy material");
+}
+
+static void test_scene_draw_rejects_corrupt_draw_handles() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    canvas.width = 128;
+    canvas.height = 128;
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *pixels = rt_pixels_new(4, 2);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    auto *node_view = static_cast<rt_scene_node3d *>(node);
+
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    reset_scene_capture();
+    node_view->mesh = material;
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 0,
+                "Scene3D.Draw skips wrong-class node mesh slots without submitting");
+    node_view->mesh = mesh;
+
+    reset_scene_capture();
+    node_view->material = mesh;
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 0,
+                "Scene3D.Draw skips wrong-class node material slots without submitting");
+    node_view->material = material;
+
+    rt_scene_node3d_set_impostor(node, 0.0, pixels);
+
+    reset_scene_capture();
+    node_view->impostor_mesh = material;
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D.Draw falls back to base mesh when impostor mesh is wrong-class");
+    EXPECT_TRUE(g_scene_last_vertex_count != 4,
+                "Scene3D.Draw does not submit the generated impostor quad after mesh corruption");
+    node_view->impostor_mesh = nullptr;
+    rt_scene_node3d_set_impostor(node, 0.0, pixels);
+
+    reset_scene_capture();
+    node_view->impostor_material = mesh;
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D.Draw falls back to base mesh when impostor material is wrong-class");
+    EXPECT_TRUE(g_scene_last_vertex_count != 4,
+                "Scene3D.Draw does not submit the generated impostor quad after material corruption");
 }
 
 static void test_dynamic_deformation_uses_conservative_frustum_culling() {
@@ -2116,6 +2823,60 @@ static void test_morph_delta_bounds_keep_deformed_mesh_visible() {
                 "Scene3D keeps morph-deformed meshes visible using authored delta bounds");
 }
 
+static void test_raw_morph_delta_bounds_handle_large_finite_values() {
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    std::vector<float> deltas((size_t)mesh_view->vertex_count * 3u, 0.0f);
+    deltas[0] = std::numeric_limits<float>::max();
+    mesh_view->morph_deltas = deltas.data();
+    mesh_view->morph_shape_count = 1;
+
+    double pad = scene3d_mesh_dynamic_bound_pad(mesh_view, NULL, 1.0);
+    EXPECT_TRUE(std::isfinite(pad) && std::fabs(pad - SCENE3D_ABS_MAX) < 1.0,
+                "Scene3D raw morph bounds clamp huge finite deltas instead of discarding them");
+
+    mesh_view->morph_deltas = NULL;
+    mesh_view->morph_shape_count = 0;
+}
+
+static void test_dynamic_deformation_rejects_corrupt_morph_delta_span() {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.begin_frame = scene_test_begin_frame;
+    backend.end_frame = scene_test_end_frame;
+    backend.submit_draw = scene_test_submit_draw;
+
+    rt_canvas3d canvas;
+    init_scene_test_canvas(&canvas, &backend);
+    reset_scene_capture();
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    static const float tiny_delta[3] = {1.0f, 0.0f, 0.0f};
+
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    mesh_view->morph_deltas = tiny_delta;
+    mesh_view->morph_shape_count = INT32_MAX;
+    rt_scene_node3d_set_position(node, 1000.0, 0.0, 0.0);
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene_node3d_set_material(node, material);
+    rt_scene3d_add(scene, node);
+    rt_camera3d_look_at(camera, eye, target, up);
+
+    rt_scene3d_draw(scene, &canvas, camera);
+
+    EXPECT_TRUE(g_scene_submit_count == 0,
+                "Scene3D does not draw a corrupt raw morph-delta span outside the frustum");
+    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 1,
+                "Scene3D culls corrupt morph spans without scanning bogus shape counts");
+}
+
 static void test_parent_animator_drives_child_skinned_meshes() {
     vgfx3d_backend_t backend = {};
     backend.name = "opengl";
@@ -2163,6 +2924,14 @@ static void test_parent_animator_drives_child_skinned_meshes() {
     EXPECT_TRUE(g_scene_submit_count == 1, "Scene3D draws the child skinned mesh");
     EXPECT_TRUE(g_scene_last_bone_count == 1,
                 "Scene3D inherits a bound parent animator when drawing child meshes");
+
+    static_cast<rt_scene_node3d *>(parent)->bound_animator = material;
+    reset_scene_capture();
+    rt_scene3d_draw(scene, &canvas, camera);
+    EXPECT_TRUE(g_scene_submit_count == 1,
+                "Scene3D still draws child meshes when parent animator binding is wrong-class");
+    EXPECT_TRUE(g_scene_last_bone_count == 0,
+                "Scene3D does not inherit wrong-class parent animator bindings");
 }
 
 static void test_scene_draw_includes_node_attached_lights() {
@@ -2441,6 +3210,45 @@ static void test_scene_roundtrip_preserves_high_precision_transform() {
     EXPECT_NEAR(rt_vec3_x(pos), x, 1e-12, "Scene3D.Save/Load preserves sub-micro positions");
 }
 
+static void test_scene_extreme_finite_transforms_and_queries_remain_bounded() {
+    typedef struct {
+        double m[16];
+    } mat4_view;
+
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    rt_scene_node3d_set_position(node, 1.0e300, 0.0, -1.0e300);
+    rt_scene_node3d_set_scale(node, 1.0e300, -1.0e300, 1.0e300);
+    rt_scene_node3d_set_rotation(node, rt_quat_new(1.0e300, 0.0, 0.0, 0.0));
+    rt_scene_node3d_set_mesh(node, mesh);
+    rt_scene3d_add(scene, node);
+
+    mat4_view *wm = (mat4_view *)rt_scene_node3d_get_world_matrix(node);
+    for (int i = 0; i < 16; ++i)
+        EXPECT_TRUE(std::isfinite(wm->m[i]), "Extreme finite SceneNode world matrix is finite");
+
+    void *world_pos = rt_scene_node3d_get_world_position(node);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(world_pos)) && std::isfinite(rt_vec3_y(world_pos)) &&
+                    std::isfinite(rt_vec3_z(world_pos)),
+                "Extreme finite SceneNode world position is finite");
+    EXPECT_TRUE(fabs(rt_vec3_x(world_pos)) <= 1000000000000.0 &&
+                    fabs(rt_vec3_z(world_pos)) <= 1000000000000.0,
+                "Extreme finite SceneNode world position is clamped");
+
+    void *aabb_hits = rt_scene3d_query_aabb(
+        scene, rt_vec3_new(-1.0e300, -1.0e300, -1.0e300), rt_vec3_new(1.0e300, 1.0e300, 1.0e300));
+    EXPECT_TRUE(rt_seq_len(aabb_hits) == 1, "Extreme finite QueryAABB returns the bounded node");
+
+    void *sphere_hits = rt_scene3d_query_sphere(scene, rt_vec3_new(0.0, 0.0, 0.0), 1.0e300);
+    EXPECT_TRUE(rt_seq_len(sphere_hits) == 1,
+                "Extreme finite QuerySphere radius is clamped but still covers the bounded node");
+
+    void *ray_hit = rt_scene3d_raycast_nodes(
+        scene, rt_vec3_new(1.0e300, 0.0, -1.0e300), rt_vec3_new(-1.0e300, 0.0, 1.0e300), INFINITY);
+    EXPECT_TRUE(ray_hit == node, "Extreme finite RaycastNodes stays bounded and hits the node");
+}
+
 int main() {
     test_create_scene_and_node();
     test_add_remove_child();
@@ -2455,6 +3263,7 @@ int main() {
     test_deep_hierarchy_iterative_traversal();
     test_dirty_flag();
     test_find_by_name();
+    test_scene_node_names_reject_wrong_string_handles();
     test_reparenting();
     test_node_count_tracks_nested_hierarchy_edits();
     test_prevent_cycle();
@@ -2464,6 +3273,7 @@ int main() {
     test_get_child();
     test_default_transform();
     test_node_sanitizes_nonfinite_transform_and_lod();
+    test_scene_repairs_corrupt_private_counts();
     test_node_body_sync_preserves_negative_scale_handedness();
 
     /* Frustum culling */
@@ -2477,13 +3287,17 @@ int main() {
     test_auto_lod_uses_screen_error_selection();
     test_lod_residency_falls_back_and_reports_bytes();
     test_impostor_proxy_draws_textured_quad();
+    test_scene_draw_rejects_corrupt_draw_handles();
     test_dynamic_deformation_uses_conservative_frustum_culling();
     test_morph_delta_bounds_keep_deformed_mesh_visible();
+    test_raw_morph_delta_bounds_handle_large_finite_values();
+    test_dynamic_deformation_rejects_corrupt_morph_delta_span();
     test_parent_animator_drives_child_skinned_meshes();
     test_scene_spatial_queries_flat_walk_reference();
     test_scene_spatial_queries_validate_vec3_args_before_result_alloc();
     test_scene_spatial_index_rebuilds_on_dirty_node();
     test_scene_draw_spatial_index_matches_flat_reference();
+    test_scene_extreme_finite_transforms_and_queries_remain_bounded();
     test_scene_spatial_index_10k_scaling_fixture();
     test_scene_occlusion_grid_uses_spatial_candidates();
     test_scene_portal_pvs_culls_unlinked_interior_zones();
@@ -2493,11 +3307,21 @@ int main() {
     test_scene_save_escapes_json_names();
     test_scene_save_serializes_visibility_and_lod_metadata();
     test_scene_roundtrip_loads_shared_assets();
+    test_scene_save_skips_invalid_material_asset_refs();
     test_node_animator_handles_large_morph_weight_channels();
+    test_node_animator_clears_unkeyed_morph_weight_tail();
+    test_node_animator_skips_corrupt_channel_shape();
+    test_node_animator_skips_corrupt_channel_interpolation();
+    test_node_animator_import_index_binding_does_not_fallback_to_duplicate_name();
     test_node_animator_weights_all_morph_primitives_in_subtree();
     test_node_animator_samples_cubic_translation_channels();
     test_node_animator_slerps_linear_rotation_channels();
+    test_node_animator_samples_cubic_rotation_shortest_hemisphere();
+    test_node_animator_repairs_corrupt_clip_duration();
     test_node_animation_rejects_invalid_channel_data();
+    test_node_animation_rejects_wrong_string_handles();
+    test_node_animation_step_accepts_duplicate_key_times();
+    test_node_animation_rejects_pathological_channel_sizes();
     test_scene_draw_includes_node_attached_lights();
     test_scene_roundtrip_preserves_node_lights();
     test_scene_save_rejects_wrong_handle();

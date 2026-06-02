@@ -69,13 +69,17 @@ typedef struct {
     void *vptr;
     void **meshes;
     int32_t mesh_count;
+    int32_t mesh_capacity;
     void *skeleton;
     void **animations;
     int32_t animation_count;
+    int32_t animation_capacity;
     void **materials;
     int32_t material_count;
+    int32_t material_capacity;
     void **morph_targets; // rt_morphtarget3d*[] parallel to meshes[]
     int32_t morph_count;
+    int32_t morph_capacity;
     void *scene_root;
 } rt_fbx_asset;
 
@@ -113,6 +117,144 @@ typedef struct {
     int32_t bone_indices[4];
     double weights[4];
 } fbx_skin_influence_t;
+
+typedef struct {
+    int64_t model_id;
+    int32_t bone_index;
+} fbx_bone_binding_t;
+
+#define FBX_NUMERIC_ABS_MAX 1000000000000.0
+#define FBX_UV_ABS_MAX 1000000.0
+#define FBX_ROTATION_DEG_ABS_MAX 1000000.0
+#define FBX_SKIN_WEIGHT_MAX 1000000.0
+#define FBX_ANIM_TIME_SECONDS_MAX 100000000.0
+#define FBX_ANIM_CURVE_KEYS_MAX 1000000u
+#define FBX_MAX_SKELETON_BONES 256
+
+static void fbx_release_ref(void **slot);
+
+static double fbx_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static double fbx_clamp_double(double value, double lo, double hi, double fallback) {
+    value = fbx_finite_or(value, fallback);
+    if (value < lo)
+        value = lo;
+    if (value > hi)
+        value = hi;
+    return value;
+}
+
+static double fbx_clamp_abs_or(double value, double fallback, double limit) {
+    value = fbx_finite_or(value, fallback);
+    if (value > limit)
+        value = limit;
+    if (value < -limit)
+        value = -limit;
+    return value;
+}
+
+static double fbx_scale_or_unit(double value) {
+    value = fbx_clamp_abs_or(value, 1.0, FBX_NUMERIC_ABS_MAX);
+    if (fabs(value) < 1e-12)
+        value = 1.0;
+    return value;
+}
+
+static int fbx_sanitize_position3(double *x, double *y, double *z) {
+    if (!x || !y || !z || !isfinite(*x) || !isfinite(*y) || !isfinite(*z))
+        return 0;
+    *x = fbx_clamp_abs_or(*x, 0.0, FBX_NUMERIC_ABS_MAX);
+    *y = fbx_clamp_abs_or(*y, 0.0, FBX_NUMERIC_ABS_MAX);
+    *z = fbx_clamp_abs_or(*z, 0.0, FBX_NUMERIC_ABS_MAX);
+    return 1;
+}
+
+static void fbx_sanitize_normal3(double *x, double *y, double *z) {
+    double len2;
+    double inv_len;
+    if (!x || !y || !z || !isfinite(*x) || !isfinite(*y) || !isfinite(*z)) {
+        if (x)
+            *x = 0.0;
+        if (y)
+            *y = 1.0;
+        if (z)
+            *z = 0.0;
+        return;
+    }
+    len2 = (*x) * (*x) + (*y) * (*y) + (*z) * (*z);
+    if (!isfinite(len2) || len2 <= 1e-20) {
+        *x = 0.0;
+        *y = 1.0;
+        *z = 0.0;
+        return;
+    }
+    inv_len = 1.0 / sqrt(len2);
+    *x *= inv_len;
+    *y *= inv_len;
+    *z *= inv_len;
+}
+
+static double fbx_sanitize_rotation_degrees(double value) {
+    return fbx_clamp_abs_or(value, 0.0, FBX_ROTATION_DEG_ABS_MAX);
+}
+
+static int32_t fbx_asset_safe_count(void **items, int32_t count, int32_t capacity) {
+    if (!items || count <= 0 || capacity <= 0)
+        return 0;
+    if (count > capacity)
+        return capacity;
+    return count;
+}
+
+static int fbx_asset_reserve_ref_array(void ***items, int32_t *capacity, int32_t needed) {
+    int32_t old_capacity;
+    int32_t new_capacity;
+    void **grown;
+    if (!items || !capacity || needed < 0)
+        return 0;
+    if (!*items && *capacity > 0)
+        *capacity = 0;
+    if (*capacity < 0)
+        *capacity = 0;
+    if (needed <= *capacity)
+        return 1;
+    old_capacity = *capacity;
+    new_capacity = old_capacity > 0 ? old_capacity : 4;
+    while (new_capacity < needed) {
+        if (new_capacity > INT32_MAX / 2)
+            return 0;
+        new_capacity *= 2;
+    }
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(**items))
+        return 0;
+    grown = (void **)realloc(*items, (size_t)new_capacity * sizeof(**items));
+    if (!grown)
+        return 0;
+    if (new_capacity > old_capacity)
+        memset(grown + old_capacity, 0, (size_t)(new_capacity - old_capacity) * sizeof(*grown));
+    *items = grown;
+    *capacity = new_capacity;
+    return 1;
+}
+
+static void fbx_asset_release_ref_array(void ***items, int32_t *count, int32_t *capacity) {
+    void **array = items ? *items : NULL;
+    int32_t safe_count =
+        fbx_asset_safe_count(array, count ? *count : 0, capacity ? *capacity : 0);
+    if (array) {
+        for (int32_t i = 0; i < safe_count; i++)
+            fbx_release_ref(&array[i]);
+        free(array);
+    }
+    if (items)
+        *items = NULL;
+    if (count)
+        *count = 0;
+    if (capacity)
+        *capacity = 0;
+}
 
 /*==========================================================================
  * Binary reader helpers
@@ -1370,6 +1512,8 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
     uint32_t idx_count = ip->v.array.count;
     if (pos_count > (uint32_t)INT32_MAX || idx_count > (uint32_t)INT32_MAX)
         return NULL;
+    if (!positions || !indices || pos_count == 0 || idx_count == 0)
+        return NULL;
     if (remap)
         fbx_mesh_remap_init(remap, fbx_prop_i64(geom_node, 0), (int32_t)pos_count);
     if (material_map)
@@ -1420,6 +1564,16 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
         double pz = positions[vi * 3 + 2];
         if (z_up)
             fbx_correct_zup(&px, &py, &pz);
+        if (!fbx_sanitize_position3(&px, &py, &pz)) {
+            polygon_invalid = 1;
+            polygon_vertex_idx++;
+            if (end_of_polygon) {
+                poly_count = 0;
+                polygon_invalid = 0;
+                polygon_idx++;
+            }
+            continue;
+        }
 
         /* Get normal */
         double nx = 0, ny = 1, nz = 0;
@@ -1433,6 +1587,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
                     fbx_correct_zup(&nx, &ny, &nz);
             }
         }
+        fbx_sanitize_normal3(&nx, &ny, &nz);
 
         /* Get UV */
         double u = 0, v = 0;
@@ -1443,6 +1598,8 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
                 v = 1.0 - uv_layer.data[ui * 2 + 1]; /* FBX V is flipped vs OpenGL */
             }
         }
+        u = fbx_clamp_abs_or(u, 0.0, FBX_UV_ABS_MAX);
+        v = fbx_clamp_abs_or(v, 0.0, FBX_UV_ABS_MAX);
 
         {
             int32_t emitted_vertex = mesh_vertex_count++;
@@ -1493,6 +1650,11 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
 
     if (polygon != polygon_stack)
         free(polygon);
+    if (((rt_mesh3d *)mesh)->index_count < 3u) {
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return NULL;
+    }
     if (!norm_layer.data || norm_layer.count == 0)
         rt_mesh3d_recalc_normals(mesh);
     return mesh;
@@ -1525,13 +1687,31 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
             continue;
         const char *pname = fbx_prop_str(p, 0);
         if (strcmp(pname, "DiffuseColor") == 0) {
-            double r = fbx_prop_f64(p, 4);
-            double g = fbx_prop_f64(p, 5);
-            double b = fbx_prop_f64(p, 6);
+            double r = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 1.0);
+            double g = fbx_clamp_double(fbx_prop_f64(p, 5), 0.0, 1.0, 1.0);
+            double b = fbx_clamp_double(fbx_prop_f64(p, 6), 0.0, 1.0, 1.0);
             rt_material3d_set_color(mat, r, g, b);
         } else if (strcmp(pname, "Shininess") == 0 || strcmp(pname, "ShininessExponent") == 0) {
-            double s = fbx_prop_f64(p, 4);
+            double s = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1000000.0, 32.0);
             rt_material3d_set_shininess(mat, s);
+        } else if (strcmp(pname, "Opacity") == 0) {
+            double alpha = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 1.0);
+            rt_material3d_set_alpha(mat, alpha);
+            if (alpha < 1.0)
+                rt_material3d_set_alpha_mode(mat, 2);
+        } else if (strcmp(pname, "TransparencyFactor") == 0) {
+            double alpha = 1.0 - fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 0.0);
+            rt_material3d_set_alpha(mat, alpha);
+            if (alpha < 1.0)
+                rt_material3d_set_alpha_mode(mat, 2);
+        } else if (strcmp(pname, "EmissiveColor") == 0) {
+            double r = fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1.0, 0.0);
+            double g = fbx_clamp_double(fbx_prop_f64(p, 5), 0.0, 1.0, 0.0);
+            double b = fbx_clamp_double(fbx_prop_f64(p, 6), 0.0, 1.0, 0.0);
+            rt_material3d_set_emissive_color(mat, r, g, b);
+        } else if (strcmp(pname, "EmissiveFactor") == 0) {
+            rt_material3d_set_emissive_intensity(
+                mat, fbx_clamp_double(fbx_prop_f64(p, 4), 0.0, 1000000.0, 0.0));
         }
     }
 
@@ -1698,8 +1878,19 @@ static void fbx_extract_model_trs(
     sy *= geo_sy;
     sz *= geo_sz;
 
+    tx = fbx_clamp_abs_or(tx, 0.0, FBX_NUMERIC_ABS_MAX);
+    ty = fbx_clamp_abs_or(ty, 0.0, FBX_NUMERIC_ABS_MAX);
+    tz = fbx_clamp_abs_or(tz, 0.0, FBX_NUMERIC_ABS_MAX);
+    rx = fbx_sanitize_rotation_degrees(rx);
+    ry = fbx_sanitize_rotation_degrees(ry);
+    rz = fbx_sanitize_rotation_degrees(rz);
+    sx = fbx_scale_or_unit(sx);
+    sy = fbx_scale_or_unit(sy);
+    sz = fbx_scale_or_unit(sz);
+
     if (z_up)
         fbx_correct_zup(&tx, &ty, &tz);
+    fbx_sanitize_position3(&tx, &ty, &tz);
 
     hx = rx * 3.14159265358979323846 / 360.0;
     hy = ry * 3.14159265358979323846 / 360.0;
@@ -1728,9 +1919,9 @@ static void fbx_extract_model_trs(
     }
 
     if (pos) {
-        pos[0] = tx;
-        pos[1] = ty;
-        pos[2] = tz;
+        pos[0] = fbx_clamp_abs_or(tx, 0.0, FBX_NUMERIC_ABS_MAX);
+        pos[1] = fbx_clamp_abs_or(ty, 0.0, FBX_NUMERIC_ABS_MAX);
+        pos[2] = fbx_clamp_abs_or(tz, 0.0, FBX_NUMERIC_ABS_MAX);
     }
     if (quat) {
         quat[0] = qx;
@@ -1739,9 +1930,9 @@ static void fbx_extract_model_trs(
         quat[3] = qw;
     }
     if (scale) {
-        scale[0] = sx;
-        scale[1] = sy;
-        scale[2] = sz;
+        scale[0] = fbx_scale_or_unit(sx);
+        scale[1] = fbx_scale_or_unit(sy);
+        scale[2] = fbx_scale_or_unit(sz);
     }
 }
 
@@ -2146,7 +2337,17 @@ static void *fbx_build_scene_root(fbx_node_t *root,
 /// `Lcl Translation/Rotation/Scaling` properties for the bind
 /// pose, and computes inverse-bind matrices for skinning.
 /// `z_up` triggers the same axis-swap normalisation as the geometry pass.
-static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, int z_up) {
+static void *fbx_extract_skeleton(fbx_node_t *root,
+                                  const fbx_conn_table_t *ct,
+                                  int z_up,
+                                  fbx_bone_binding_t **out_bindings,
+                                  int32_t *out_binding_count) {
+    fbx_bone_binding_t *bindings = NULL;
+    int32_t binding_count = 0;
+    if (out_bindings)
+        *out_bindings = NULL;
+    if (out_binding_count)
+        *out_binding_count = 0;
     fbx_node_t *objects = fbx_find_child(root, "Objects");
     if (!objects)
         return NULL;
@@ -2173,6 +2374,8 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
         const char *type_str = fbx_prop_str(obj, 2);
         if (strcmp(type_str, "LimbNode") != 0 && strcmp(type_str, "Limb") != 0 &&
             strcmp(type_str, "Root") != 0)
+            continue;
+        if (bone_count >= FBX_MAX_SKELETON_BONES)
             continue;
 
         if (bone_count >= bone_cap) {
@@ -2244,6 +2447,14 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
     int32_t *order = (int32_t *)calloc((size_t)bone_count, sizeof(int32_t));
     int8_t *placed = (int8_t *)calloc((size_t)bone_count, sizeof(int8_t));
     int32_t placed_count = 0;
+    int failed = 0;
+    if (!order || !placed) {
+        free(order);
+        free(placed);
+        free(bones);
+        fbx_release_ref(&skel);
+        return NULL;
+    }
 
     /* Place roots first */
     for (int32_t i = 0; i < bone_count; i++) {
@@ -2273,6 +2484,23 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
             }
         }
     }
+    if (placed_count <= 0) {
+        free(order);
+        free(placed);
+        free(bones);
+        fbx_release_ref(&skel);
+        return NULL;
+    }
+    if (out_bindings && out_binding_count) {
+        bindings = (fbx_bone_binding_t *)calloc((size_t)placed_count, sizeof(*bindings));
+        if (!bindings) {
+            free(order);
+            free(placed);
+            free(bones);
+            fbx_release_ref(&skel);
+            return NULL;
+        }
+    }
 
     /* Add bones to skeleton in topological order */
     for (int32_t i = 0; i < placed_count; i++) {
@@ -2289,11 +2517,19 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
                tz = bi->lcl_translation[2];
         if (z_up)
             fbx_correct_zup(&tx, &ty, &tz);
+        if (!fbx_sanitize_position3(&tx, &ty, &tz)) {
+            tx = 0.0;
+            ty = 0.0;
+            tz = 0.0;
+        }
 
         /* Build full TRS bind matrix (rotation from Euler ZYX, then scale) */
-        double rx = bi->lcl_rotation[0] * 3.14159265358979323846 / 180.0;
-        double ry = bi->lcl_rotation[1] * 3.14159265358979323846 / 180.0;
-        double rz = bi->lcl_rotation[2] * 3.14159265358979323846 / 180.0;
+        double rx =
+            fbx_sanitize_rotation_degrees(bi->lcl_rotation[0]) * 3.14159265358979323846 / 180.0;
+        double ry =
+            fbx_sanitize_rotation_degrees(bi->lcl_rotation[1]) * 3.14159265358979323846 / 180.0;
+        double rz =
+            fbx_sanitize_rotation_degrees(bi->lcl_rotation[2]) * 3.14159265358979323846 / 180.0;
         double cxr = cos(rx), sxr = sin(rx);
         double cyr = cos(ry), syr = sin(ry);
         double czr = cos(rz), szr = sin(rz);
@@ -2303,7 +2539,9 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
         double r10 = cyr * szr, r11 = sxr * syr * szr + cxr * czr,
                r12 = cxr * syr * szr - sxr * czr;
         double r20 = -syr, r21 = sxr * cyr, r22 = cxr * cyr;
-        double scx = bi->lcl_scaling[0], scy = bi->lcl_scaling[1], scz = bi->lcl_scaling[2];
+        double scx = fbx_scale_or_unit(bi->lcl_scaling[0]);
+        double scy = fbx_scale_or_unit(bi->lcl_scaling[1]);
+        double scz = fbx_scale_or_unit(bi->lcl_scaling[2]);
         void *bind_mat = rt_mat4_new(r00 * scx,
                                      r01 * scy,
                                      r02 * scz,
@@ -2320,8 +2558,26 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
                                      0,
                                      0,
                                      1);
-        rt_skeleton3d_add_bone(skel, rt_const_cstr(bi->name), parent_idx, bind_mat);
-        bi->bone_index = (int32_t)i;
+        int64_t added = rt_skeleton3d_add_bone(skel, rt_const_cstr(bi->name), parent_idx, bind_mat);
+        fbx_release_ref(&bind_mat);
+        if (added < 0) {
+            failed = 1;
+            break;
+        }
+        bi->bone_index = (int32_t)added;
+        if (bindings) {
+            bindings[binding_count].model_id = bi->id;
+            bindings[binding_count].bone_index = (int32_t)added;
+            binding_count++;
+        }
+    }
+    if (failed) {
+        free(bindings);
+        free(order);
+        free(placed);
+        free(bones);
+        fbx_release_ref(&skel);
+        return NULL;
     }
 
     rt_skeleton3d_compute_inverse_bind(skel);
@@ -2329,6 +2585,10 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
     free(order);
     free(placed);
     free(bones);
+    if (out_bindings)
+        *out_bindings = bindings;
+    if (out_binding_count)
+        *out_binding_count = binding_count;
     return skel;
 }
 
@@ -2337,30 +2597,6 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
  *=========================================================================*/
 
 #define FBX_TIME_SECOND 46186158000LL
-
-/// @brief Collect all direct children of @p parent_id from the FBX connection table.
-/// @details Scans every entry in @p ct and copies matching child IDs (and optional
-///          relationship property strings) into the caller-supplied output arrays up to
-///          @p max_out entries. Does not sort or deduplicate results.
-/// @param out_props May be NULL; when non-NULL receives the relationship prop string for each
-/// child.
-/// @return Number of children written to @p out_ids (capped at @p max_out).
-static int32_t fbx_find_children(const fbx_conn_table_t *ct,
-                                 int64_t parent_id,
-                                 int64_t *out_ids,
-                                 const char **out_props,
-                                 int32_t max_out) {
-    int32_t count = 0;
-    for (int32_t i = 0; i < ct->count && count < max_out; i++) {
-        if (ct->entries[i].parent_id == parent_id) {
-            out_ids[count] = ct->entries[i].child_id;
-            if (out_props)
-                out_props[count] = ct->entries[i].prop;
-            count++;
-        }
-    }
-    return count;
-}
 
 /// @brief Find the direct child of the top-level Objects node whose first property matches @p id.
 /// @details FBX assigns every scene object a unique 64-bit ID stored as the first property on
@@ -2449,18 +2685,30 @@ static const float *fbx_get_f32_array(fbx_node_t *node, const char *child_name, 
 /// @return Engine bone index in [0, bone_count), or -1 if the model is not found or not a bone.
 static int32_t fbx_find_bone_index_for_model(fbx_node_t *objects,
                                              void *skeleton,
+                                             const fbx_bone_binding_t *bone_bindings,
+                                             int32_t bone_binding_count,
                                              int64_t model_id) {
     fbx_node_t *model_node;
     char decoded_name[64];
+    int64_t bone_index;
     if (!objects || !skeleton || model_id == 0)
         return -1;
+    if (bone_bindings && bone_binding_count > 0) {
+        for (int32_t i = 0; i < bone_binding_count; i++) {
+            if (bone_bindings[i].model_id == model_id && bone_bindings[i].bone_index >= 0)
+                return bone_bindings[i].bone_index;
+        }
+    }
     model_node = fbx_find_object_by_id(objects, model_id);
     if (!model_node || strcmp(model_node->name, "Model") != 0 || model_node->prop_count < 2)
         return -1;
     fbx_decode_object_name(fbx_prop_str(model_node, 1), decoded_name, sizeof(decoded_name));
     if (decoded_name[0] == '\0')
         return -1;
-    return (int32_t)rt_skeleton3d_find_bone(skeleton, rt_const_cstr(decoded_name));
+    bone_index = rt_skeleton3d_find_bone(skeleton, rt_const_cstr(decoded_name));
+    if (bone_index < 0 || bone_index > INT32_MAX)
+        return -1;
+    return (int32_t)bone_index;
 }
 
 /// @brief Find the Model node that owns the given Cluster deformer in the FBX connection table.
@@ -2526,9 +2774,13 @@ static void fbx_skin_add_influence(fbx_skin_influence_t *dst, int32_t bone_index
     int32_t weakest = 0;
     if (!dst || bone_index < 0 || !isfinite(weight) || weight <= 0.0)
         return;
+    if (weight > FBX_SKIN_WEIGHT_MAX)
+        weight = FBX_SKIN_WEIGHT_MAX;
     for (int i = 0; i < 4; i++) {
         if (dst->weights[i] > 0.0 && dst->bone_indices[i] == bone_index) {
             dst->weights[i] += weight;
+            if (!isfinite(dst->weights[i]) || dst->weights[i] > FBX_SKIN_WEIGHT_MAX)
+                dst->weights[i] = FBX_SKIN_WEIGHT_MAX;
             return;
         }
     }
@@ -2570,9 +2822,11 @@ static void fbx_apply_control_skin_to_vertex(rt_mesh3d *mesh,
                              influence->bone_indices[i] >= 0
                          ? influence->weights[i]
                          : 0.0;
+        if (weights[i] > FBX_SKIN_WEIGHT_MAX)
+            weights[i] = FBX_SKIN_WEIGHT_MAX;
         sum += weights[i];
     }
-    if (sum <= 0.0) {
+    if (!isfinite(sum) || sum <= 0.0) {
         memset(mesh->vertices[vertex_index].bone_indices,
                0,
                sizeof(mesh->vertices[vertex_index].bone_indices));
@@ -2638,6 +2892,8 @@ static void fbx_apply_skin_to_mesh(void *mesh_obj,
 static void fbx_apply_skinning(fbx_node_t *objects,
                                const fbx_conn_table_t *ct,
                                void *skeleton,
+                               const fbx_bone_binding_t *bone_bindings,
+                               int32_t bone_binding_count,
                                const fbx_mesh_binding_t *mesh_bindings,
                                int32_t mesh_binding_count,
                                const fbx_mesh_remap_t *mesh_remaps,
@@ -2671,9 +2927,13 @@ static void fbx_apply_skinning(fbx_node_t *objects,
         if (!mesh_obj)
             continue;
         remap = fbx_find_mesh_remap(mesh_remaps, mesh_remap_count, geometry_id);
+        if (!remap && ((rt_mesh3d *)mesh_obj)->vertex_count > (uint32_t)INT32_MAX)
+            continue;
         control_count =
             remap ? remap->control_count : (int32_t)((rt_mesh3d *)mesh_obj)->vertex_count;
         if (control_count <= 0)
+            continue;
+        if ((size_t)control_count > SIZE_MAX / sizeof(*controls))
             continue;
         controls = (fbx_skin_influence_t *)calloc((size_t)control_count, sizeof(*controls));
         if (!controls)
@@ -2696,7 +2956,8 @@ static void fbx_apply_skinning(fbx_node_t *objects,
                 strcmp(fbx_prop_str(cluster, 2), "Cluster") != 0)
                 continue;
             bone_model_id = fbx_find_cluster_bone_model(objects, ct, fbx_prop_i64(cluster, 0));
-            bone_index = fbx_find_bone_index_for_model(objects, skeleton, bone_model_id);
+            bone_index = fbx_find_bone_index_for_model(
+                objects, skeleton, bone_bindings, bone_binding_count, bone_model_id);
             if (bone_index < 0)
                 continue;
 
@@ -2770,7 +3031,7 @@ static void fbx_extract_model_lcl_components(fbx_node_t *model_node,
             double x = fbx_prop_f64(p, 4);
             double y = fbx_prop_f64(p, 5);
             double z = fbx_prop_f64(p, 6);
-            if (isfinite(x) && isfinite(y) && isfinite(z)) {
+            if (fbx_sanitize_position3(&x, &y, &z)) {
                 translation[0] = x;
                 translation[1] = y;
                 translation[2] = z;
@@ -2780,18 +3041,18 @@ static void fbx_extract_model_lcl_components(fbx_node_t *model_node,
             double y = fbx_prop_f64(p, 5);
             double z = fbx_prop_f64(p, 6);
             if (isfinite(x) && isfinite(y) && isfinite(z)) {
-                rotation[0] = x;
-                rotation[1] = y;
-                rotation[2] = z;
+                rotation[0] = fbx_sanitize_rotation_degrees(x);
+                rotation[1] = fbx_sanitize_rotation_degrees(y);
+                rotation[2] = fbx_sanitize_rotation_degrees(z);
             }
         } else if (scale && strcmp(pn, "Lcl Scaling") == 0) {
             double x = fbx_prop_f64(p, 4);
             double y = fbx_prop_f64(p, 5);
             double z = fbx_prop_f64(p, 6);
             if (isfinite(x) && isfinite(y) && isfinite(z)) {
-                scale[0] = x;
-                scale[1] = y;
-                scale[2] = z;
+                scale[0] = fbx_scale_or_unit(x);
+                scale[1] = fbx_scale_or_unit(y);
+                scale[2] = fbx_scale_or_unit(z);
             }
         }
     }
@@ -2799,7 +3060,8 @@ static void fbx_extract_model_lcl_components(fbx_node_t *model_node,
 
 /// @brief Return non-zero if @p curve contains at least one keyframe with usable value data.
 static int fbx_anim_curve_has_data(const fbx_anim_curve_view_t *curve) {
-    return curve && curve->times && (curve->values64 || curve->values32) && curve->count > 0;
+    return curve && curve->times && (curve->values64 || curve->values32) && curve->count > 0 &&
+           curve->count <= FBX_ANIM_CURVE_KEYS_MAX;
 }
 
 /// @brief Validate an FBX animation curve before the sampler assumes sorted finite data.
@@ -2808,12 +3070,43 @@ static int fbx_anim_curve_view_valid(const fbx_anim_curve_view_t *curve) {
         return 0;
     for (uint32_t i = 0; i < curve->count; i++) {
         double value = curve->values64 ? curve->values64[i] : (double)curve->values32[i];
-        if (!isfinite(value) || curve->times[i] < 0)
+        double seconds = (double)curve->times[i] / (double)FBX_TIME_SECOND;
+        if (!isfinite(value) || curve->times[i] < 0 || !isfinite(seconds) ||
+            seconds > FBX_ANIM_TIME_SECONDS_MAX)
             return 0;
         if (i > 0 && curve->times[i] <= curve->times[i - 1])
             return 0;
     }
     return 1;
+}
+
+static int fbx_ascii_streq_ignore_case(const char *a, const char *b) {
+    if (!a || !b)
+        return 0;
+    while (*a && *b) {
+        unsigned char ca = (unsigned char)*a++;
+        unsigned char cb = (unsigned char)*b++;
+        if (tolower(ca) != tolower(cb))
+            return 0;
+    }
+    return *a == '\0' && *b == '\0';
+}
+
+/// @brief Map an AnimationCurve connection component label to XYZ index.
+/// @details Binary and ASCII FBX commonly use `d|X`, `d|Y`, `d|Z`, but some exporters
+///          write the bare aliases `X`, `Y`, `Z`; others preserve the meaning but vary
+///          ASCII case. Accept these forms so valid curves do not disappear solely
+///          because of exporter spelling.
+static int32_t fbx_anim_component_from_connection_prop(const char *prop) {
+    if (!prop)
+        return -1;
+    if (fbx_ascii_streq_ignore_case(prop, "d|X") || fbx_ascii_streq_ignore_case(prop, "X"))
+        return 0;
+    if (fbx_ascii_streq_ignore_case(prop, "d|Y") || fbx_ascii_streq_ignore_case(prop, "Y"))
+        return 1;
+    if (fbx_ascii_streq_ignore_case(prop, "d|Z") || fbx_ascii_streq_ignore_case(prop, "Z"))
+        return 2;
+    return -1;
 }
 
 /// @brief Sample the animation curve at the given FBX tick time using linear interpolation.
@@ -2877,9 +3170,12 @@ static int fbx_i64_compare(const void *a, const void *b) {
 
 /// @brief Append @p value to an unsorted key-time array; sorting/dedup happens once after collect.
 static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capacity, int64_t value) {
+    double seconds = (double)value / (double)FBX_TIME_SECOND;
     if (!times || !count || !capacity || *count < 0 || *capacity < 0 || *count > *capacity ||
         (*count > 0 && !*times) || value < 0)
         return 0;
+    if (!isfinite(seconds) || seconds > FBX_ANIM_TIME_SECONDS_MAX)
+        return 1;
     if (*count >= *capacity) {
         int32_t new_capacity;
         if (*capacity > INT32_MAX / 2)
@@ -2955,19 +3251,30 @@ static void fbx_anim_sort_unique_times(int64_t *times, int32_t *count) {
 static void fbx_anim_collect_curves(fbx_node_t *objects,
                                     const fbx_conn_table_t *ct,
                                     void *skeleton,
-                                    const int64_t *layer_ids,
-                                    int32_t layer_count,
+                                    const fbx_bone_binding_t *bone_bindings,
+                                    int32_t bone_binding_count,
+                                    int64_t bone_count,
+                                    int64_t stack_id,
                                     fbx_anim_bone_builder_t *builders) {
-    for (int32_t li = 0; li < layer_count; li++) {
-        fbx_node_t *layer_node = fbx_find_object_by_id(objects, layer_ids[li]);
+    if (!objects || !ct || !builders)
+        return;
+    for (int32_t li = 0; li < ct->count; li++) {
+        int64_t layer_id;
+        fbx_node_t *layer_node;
+        if (ct->entries[li].parent_id != stack_id)
+            continue;
+        layer_id = ct->entries[li].child_id;
+        layer_node = fbx_find_object_by_id(objects, layer_id);
         if (!layer_node || strcmp(layer_node->name, "AnimationLayer") != 0)
             continue;
 
-        int64_t curve_node_ids[256];
-        int32_t cn_count = fbx_find_children(ct, layer_ids[li], curve_node_ids, NULL, 256);
-
-        for (int32_t ci = 0; ci < cn_count; ci++) {
-            fbx_node_t *cn_node = fbx_find_object_by_id(objects, curve_node_ids[ci]);
+        for (int32_t ci = 0; ci < ct->count; ci++) {
+            int64_t curve_node_id;
+            fbx_node_t *cn_node;
+            if (ct->entries[ci].parent_id != layer_id)
+                continue;
+            curve_node_id = ct->entries[ci].child_id;
+            cn_node = fbx_find_object_by_id(objects, curve_node_id);
             if (!cn_node || strcmp(cn_node->name, "AnimationCurveNode") != 0)
                 continue;
 
@@ -2977,7 +3284,7 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
             int32_t trs_type = -1; /* 0=T, 1=R, 2=S */
             int64_t model_id = 0;
             for (int32_t ci2 = 0; ci2 < ct->count; ci2++) {
-                if (ct->entries[ci2].child_id == curve_node_ids[ci]) {
+                if (ct->entries[ci2].child_id == curve_node_id) {
                     int64_t pid = ct->entries[ci2].parent_id;
                     fbx_node_t *pnode = fbx_find_object_by_id(objects, pid);
                     if (pnode && strcmp(pnode->name, "Model") == 0) {
@@ -2998,8 +3305,9 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
             if (trs_type < 0 || model_id == 0)
                 continue;
 
-            int64_t bone_idx = fbx_find_bone_index_for_model(objects, skeleton, model_id);
-            if (bone_idx < 0)
+            int64_t bone_idx = fbx_find_bone_index_for_model(
+                objects, skeleton, bone_bindings, bone_binding_count, model_id);
+            if (bone_idx < 0 || bone_idx >= bone_count)
                 continue;
             if (!builders[bone_idx].initialized) {
                 fbx_node_t *model_node = fbx_find_object_by_id(objects, model_id);
@@ -3011,25 +3319,17 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
             }
 
             /* Find AnimationCurve children (d|X, d|Y, d|Z) */
-            int64_t curve_ids[8];
-            const char *curve_props[8];
-            int32_t curve_count =
-                fbx_find_children(ct, curve_node_ids[ci], curve_ids, curve_props, 8);
-
-            for (int32_t ki = 0; ki < curve_count; ki++) {
-                fbx_node_t *curve = fbx_find_object_by_id(objects, curve_ids[ki]);
+            for (int32_t ki = 0; ki < ct->count; ki++) {
+                fbx_node_t *curve;
+                const char *curve_prop;
+                if (ct->entries[ki].parent_id != curve_node_id)
+                    continue;
+                curve = fbx_find_object_by_id(objects, ct->entries[ki].child_id);
                 if (!curve || strcmp(curve->name, "AnimationCurve") != 0)
                     continue;
 
-                int comp = -1;
-                if (!curve_props[ki])
-                    continue;
-                if (strcmp(curve_props[ki], "d|X") == 0)
-                    comp = 0;
-                else if (strcmp(curve_props[ki], "d|Y") == 0)
-                    comp = 1;
-                else if (strcmp(curve_props[ki], "d|Z") == 0)
-                    comp = 2;
+                curve_prop = ct->entries[ki].prop;
+                int comp = fbx_anim_component_from_connection_prop(curve_prop);
                 if (comp < 0)
                     continue;
 
@@ -3045,19 +3345,40 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
                     fvals = fbx_get_f32_array(curve, "KeyValueFloat", &vc);
                 if (!dvals && !fvals)
                     continue;
+                if (tc != vc)
+                    continue;
 
                 {
                     fbx_anim_curve_view_t *view = &builders[bone_idx].curves[trs_type][comp];
-                    view->times = times;
-                    view->values64 = dvals;
-                    view->values32 = fvals;
-                    view->count = tc < vc ? tc : vc;
-                    if (!fbx_anim_curve_view_valid(view))
-                        memset(view, 0, sizeof(*view));
+                    fbx_anim_curve_view_t candidate;
+                    if (fbx_anim_curve_has_data(view))
+                        continue;
+                    candidate.times = times;
+                    candidate.values64 = dvals;
+                    candidate.values32 = fvals;
+                    candidate.count = tc;
+                    if (fbx_anim_curve_view_valid(&candidate))
+                        *view = candidate;
                 }
             }
         }
     }
+}
+
+static int fbx_anim_stack_has_layer(fbx_node_t *objects,
+                                    const fbx_conn_table_t *ct,
+                                    int64_t stack_id) {
+    if (!objects || !ct)
+        return 0;
+    for (int32_t i = 0; i < ct->count; i++) {
+        fbx_node_t *layer_node;
+        if (ct->entries[i].parent_id != stack_id)
+            continue;
+        layer_node = fbx_find_object_by_id(objects, ct->entries[i].child_id);
+        if (layer_node && strcmp(layer_node->name, "AnimationLayer") == 0)
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Largest keyframe time (seconds) across all of @p builders' curves.
@@ -3074,7 +3395,8 @@ static double fbx_anim_compute_max_time(const fbx_anim_bone_builder_t *builders,
                     continue;
                 for (uint32_t k = 0; k < curve->count; k++) {
                     double t = (double)curve->times[k] / (double)FBX_TIME_SECOND;
-                    if (isfinite(t) && t > max_time)
+                    if (isfinite(t) && t > 0.0 && t <= FBX_ANIM_TIME_SECONDS_MAX &&
+                        t > max_time)
                         max_time = t;
                 }
             }
@@ -3124,7 +3446,7 @@ static int fbx_anim_build_bone_keyframes(void *anim,
         double tv[3];
         double rv[3];
         double sv[3];
-        if (!isfinite(t) || t < 0.0)
+        if (!isfinite(t) || t < 0.0 || t > FBX_ANIM_TIME_SECONDS_MAX)
             continue;
         memcpy(tv, builders[bone_idx].base_translation, sizeof(tv));
         memcpy(rv, builders[bone_idx].base_rotation, sizeof(rv));
@@ -3139,10 +3461,14 @@ static int fbx_anim_build_bone_keyframes(void *anim,
         }
         if (z_up)
             fbx_correct_zup(&tv[0], &tv[1], &tv[2]);
-        if (!isfinite(tv[0]) || !isfinite(tv[1]) || !isfinite(tv[2]) || !isfinite(rv[0]) ||
-            !isfinite(rv[1]) || !isfinite(rv[2]) || !isfinite(sv[0]) || !isfinite(sv[1]) ||
-            !isfinite(sv[2]))
+        if (!fbx_sanitize_position3(&tv[0], &tv[1], &tv[2]))
             continue;
+        rv[0] = fbx_sanitize_rotation_degrees(rv[0]);
+        rv[1] = fbx_sanitize_rotation_degrees(rv[1]);
+        rv[2] = fbx_sanitize_rotation_degrees(rv[2]);
+        sv[0] = fbx_scale_or_unit(sv[0]);
+        sv[1] = fbx_scale_or_unit(sv[1]);
+        sv[2] = fbx_scale_or_unit(sv[2]);
 
         double rx = rv[0] * 3.14159265358979323846 / 180.0;
         double ry = rv[1] * 3.14159265358979323846 / 180.0;
@@ -3156,6 +3482,15 @@ static int fbx_anim_build_bone_keyframes(void *anim,
         double qz = cx * cy * sz - sx * sy * cz;
         if (!isfinite(qx) || !isfinite(qy) || !isfinite(qz) || !isfinite(qw))
             continue;
+        {
+            double qlen = sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
+            if (!isfinite(qlen) || qlen <= 1e-12)
+                continue;
+            qx /= qlen;
+            qy /= qlen;
+            qz /= qlen;
+            qw /= qlen;
+        }
         void *pos = rt_vec3_new(tv[0], tv[1], tv[2]);
         void *rot = rt_quat_new(qx, qy, qz, qw);
         void *scl = rt_vec3_new(sv[0], sv[1], sv[2]);
@@ -3179,11 +3514,17 @@ static int fbx_anim_build_bone_keyframes(void *anim,
 static void fbx_extract_animations(fbx_node_t *root,
                                    const fbx_conn_table_t *ct,
                                    void *skeleton,
+                                   const fbx_bone_binding_t *bone_bindings,
+                                   int32_t bone_binding_count,
                                    int z_up,
                                    void ***out_anims,
-                                   int32_t *out_count) {
+                                   int32_t *out_count,
+                                   int32_t *out_capacity) {
+    if (!out_anims || !out_count || !out_capacity)
+        return;
     *out_anims = NULL;
     *out_count = 0;
+    *out_capacity = 0;
 
     fbx_node_t *objects = fbx_find_child(root, "Objects");
     if (!objects)
@@ -3192,7 +3533,8 @@ static void fbx_extract_animations(fbx_node_t *root,
     int64_t bone_count = skeleton ? rt_skeleton3d_get_bone_count(skeleton) : 0;
     if (bone_count <= 0)
         return;
-    if (bone_count > INT32_MAX || (size_t)bone_count > SIZE_MAX / sizeof(fbx_anim_bone_builder_t))
+    if (bone_count > FBX_MAX_SKELETON_BONES ||
+        (size_t)bone_count > SIZE_MAX / sizeof(fbx_anim_bone_builder_t))
         return;
 
     /* Find AnimationStack nodes */
@@ -3213,19 +3555,18 @@ static void fbx_extract_animations(fbx_node_t *root,
                 anim_name = decoded_anim_name;
         }
 
-        /* Find AnimationLayer children of this stack */
-        int64_t layer_ids[16];
-        int32_t layer_count = fbx_find_children(ct, stack_id, layer_ids, NULL, 16);
-        if (layer_count == 0)
+        if (!fbx_anim_stack_has_layer(objects, ct, stack_id))
             continue;
 
         builders = (fbx_anim_bone_builder_t *)calloc((size_t)bone_count, sizeof(*builders));
         if (!builders)
             continue;
 
-        fbx_anim_collect_curves(objects, ct, skeleton, layer_ids, layer_count, builders);
+        fbx_anim_collect_curves(
+            objects, ct, skeleton, bone_bindings, bone_binding_count, bone_count, stack_id, builders);
         max_time = fbx_anim_compute_max_time(builders, bone_count);
 
+        max_time = fbx_clamp_double(max_time, 0.0, FBX_ANIM_TIME_SECONDS_MAX, 0.0);
         void *anim = rt_animation3d_new(rt_const_cstr(anim_name), max_time > 0.0 ? max_time : 1.0);
         int emitted_any = 0;
         if (!anim) {
@@ -3245,20 +3586,16 @@ static void fbx_extract_animations(fbx_node_t *root,
         }
         rt_animation3d_set_looping(anim, 1);
 
-        if (*out_count < 0 || *out_count == INT32_MAX ||
-            (size_t)(*out_count + 1) > SIZE_MAX / sizeof(void *)) {
+        if (*out_count < 0 || *out_count == INT32_MAX) {
             fbx_release_ref(&anim);
             continue;
         }
-        int32_t new_count = *out_count + 1;
-        void **na = (void **)realloc(*out_anims, (size_t)new_count * sizeof(void *));
-        if (!na) {
+        if (!fbx_asset_reserve_ref_array(out_anims, out_capacity, *out_count + 1)) {
             fbx_release_ref(&anim);
             continue;
         }
-        *out_anims = na;
         (*out_anims)[*out_count] = anim;
-        *out_count = new_count;
+        (*out_count)++;
     }
 }
 
@@ -3272,35 +3609,13 @@ static void rt_fbx_asset_finalize(void *obj) {
     rt_fbx_asset *fbx = (rt_fbx_asset *)obj;
     if (!fbx)
         return;
-    if (fbx->meshes) {
-        for (int32_t i = 0; i < fbx->mesh_count; i++)
-            fbx_release_ref(&fbx->meshes[i]);
-    }
-    free(fbx->meshes);
-    fbx->meshes = NULL;
-    fbx->mesh_count = 0;
+    fbx_asset_release_ref_array(&fbx->meshes, &fbx->mesh_count, &fbx->mesh_capacity);
     fbx_release_ref(&fbx->skeleton);
-    if (fbx->animations) {
-        for (int32_t i = 0; i < fbx->animation_count; i++)
-            fbx_release_ref(&fbx->animations[i]);
-    }
-    free(fbx->animations);
-    fbx->animations = NULL;
-    fbx->animation_count = 0;
-    if (fbx->materials) {
-        for (int32_t i = 0; i < fbx->material_count; i++)
-            fbx_release_ref(&fbx->materials[i]);
-    }
-    free(fbx->materials);
-    fbx->materials = NULL;
-    fbx->material_count = 0;
-    if (fbx->morph_targets) {
-        for (int32_t i = 0; i < fbx->morph_count; i++)
-            fbx_release_ref(&fbx->morph_targets[i]);
-    }
-    free(fbx->morph_targets);
-    fbx->morph_targets = NULL;
-    fbx->morph_count = 0;
+    fbx_asset_release_ref_array(
+        &fbx->animations, &fbx->animation_count, &fbx->animation_capacity);
+    fbx_asset_release_ref_array(&fbx->materials, &fbx->material_count, &fbx->material_capacity);
+    fbx_asset_release_ref_array(
+        &fbx->morph_targets, &fbx->morph_count, &fbx->morph_capacity);
     fbx_release_ref(&fbx->scene_root);
 }
 
@@ -3556,8 +3871,10 @@ static void *fbx_load_ascii_minimal(const char *text) {
         goto fail;
     asset->meshes[0] = mesh;
     asset->mesh_count = 1;
+    asset->mesh_capacity = 1;
     asset->materials[0] = material;
     asset->material_count = 1;
+    asset->material_capacity = 1;
     rt_scene_node3d_set_name(mesh_node, rt_const_cstr("mesh_0"));
     rt_scene_node3d_set_mesh(mesh_node, mesh);
     rt_scene_node3d_set_material(mesh_node, material);
@@ -3680,7 +3997,13 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
                                    fbx_conn_table_t ct,
                                    fbx_material_binding_t *material_bindings,
                                    int32_t material_binding_count) {
-    if (objects && asset->material_count > 0) {
+    if (asset && objects) {
+        int32_t material_count =
+            fbx_asset_safe_count(asset->materials, asset->material_count, asset->material_capacity);
+        if (material_count <= 0)
+            return;
+        if (!material_bindings || material_binding_count < 0)
+            material_binding_count = 0;
         // Collect Texture nodes and their filenames
         for (int32_t i = 0; i < objects->child_count; i++) {
             fbx_node_t *obj = &objects->children[i];
@@ -3776,10 +4099,17 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
                                     int z_up,
                                     fbx_mesh_remap_t *mesh_remaps,
                                     int32_t mesh_remap_count) {
-    if (objects && asset->mesh_count > 0) {
+    if (objects) {
+        int32_t mesh_count =
+            fbx_asset_safe_count(asset->meshes, asset->mesh_count, asset->mesh_capacity);
+        if (mesh_count <= 0)
+            return;
         // Allocate parallel morph_targets array (one per mesh, NULL if no morph)
-        asset->morph_targets = (void **)calloc((size_t)asset->mesh_count, sizeof(void *));
-        asset->morph_count = asset->mesh_count;
+        asset->morph_targets = (void **)calloc((size_t)mesh_count, sizeof(void *));
+        if (!asset->morph_targets)
+            return;
+        asset->morph_count = mesh_count;
+        asset->morph_capacity = mesh_count;
 
         // Collect Shape geometry nodes (type "Shape")
         for (int32_t i = 0; i < objects->child_count; i++) {
@@ -3849,13 +4179,17 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
                     counter++;
                 }
             }
-            if (mesh_idx < 0 || mesh_idx >= asset->mesh_count)
+            if (mesh_idx < 0 || mesh_idx >= mesh_count)
                 continue;
 
             // Create morph target if not yet created for this mesh
             rt_mesh3d *mesh = (rt_mesh3d *)asset->meshes[mesh_idx];
             const fbx_mesh_remap_t *shape_remap =
                 fbx_find_mesh_remap(mesh_remaps, mesh_remap_count, mesh_geo_id);
+            if (!mesh)
+                continue;
+            if (!shape_remap && mesh->vertex_count > (uint32_t)INT32_MAX)
+                continue;
             if (!asset->morph_targets[mesh_idx]) {
                 asset->morph_targets[mesh_idx] = rt_morphtarget3d_new((int64_t)mesh->vertex_count);
             }
@@ -3900,6 +4234,8 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
                         dy = dz;
                         dz = -tmp;
                     }
+                    if (!fbx_sanitize_position3(&dx, &dy, &dz))
+                        continue;
                     if (shape_remap && shape_remap->control_vertices && vi >= 0 &&
                         vi < shape_remap->control_count) {
                         const fbx_vertex_index_list_t *list = &shape_remap->control_vertices[vi];
@@ -3944,28 +4280,44 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                 memset(&material_map, 0, sizeof(material_map));
                 void *mesh = fbx_extract_geometry(obj, z_up, &remap, &material_map);
                 if (mesh) {
-                    if (asset->mesh_count == INT32_MAX ||
-                        (size_t)(asset->mesh_count + 1) > SIZE_MAX / sizeof(void *)) {
+                    asset->mesh_count =
+                        fbx_asset_safe_count(asset->meshes, asset->mesh_count, asset->mesh_capacity);
+                    if (asset->mesh_count == INT32_MAX) {
                         fbx_release_ref(&mesh);
                         fbx_mesh_remap_free(&remap);
                         return 0;
                     }
                     int32_t nc = asset->mesh_count + 1;
-                    void **nm = (void **)realloc(asset->meshes, (size_t)nc * sizeof(void *));
-                    void *nb = realloc(mesh_bindings, (size_t)nc * sizeof(*mesh_bindings));
-                    if (!nm || !nb ||
-                        !fbx_mesh_remaps_append(&mesh_remaps, &mesh_remap_count, &remap)) {
-                        if (nm)
-                            asset->meshes = nm;
-                        if (nb)
-                            mesh_bindings = (fbx_mesh_binding_t *)nb;
+                    if ((size_t)nc > SIZE_MAX / sizeof(*mesh_bindings)) {
                         fbx_release_ref(&mesh);
                         fbx_mesh_remap_free(&remap);
                         fbx_mesh_material_map_free(&material_map);
                         return 0;
                     }
-                    asset->meshes = nm;
+                    if (!fbx_asset_reserve_ref_array(
+                            &asset->meshes, &asset->mesh_capacity, nc)) {
+                        fbx_release_ref(&mesh);
+                        fbx_mesh_remap_free(&remap);
+                        fbx_mesh_material_map_free(&material_map);
+                        return 0;
+                    }
+                    void *nb = realloc(mesh_bindings, (size_t)nc * sizeof(*mesh_bindings));
+                    if (!nb) {
+                        fbx_release_ref(&mesh);
+                        fbx_mesh_remap_free(&remap);
+                        fbx_mesh_material_map_free(&material_map);
+                        return 0;
+                    }
                     mesh_bindings = (fbx_mesh_binding_t *)nb;
+                    *p_mesh_bindings = mesh_bindings;
+                    if (!fbx_mesh_remaps_append(&mesh_remaps, &mesh_remap_count, &remap)) {
+                        fbx_release_ref(&mesh);
+                        fbx_mesh_remap_free(&remap);
+                        fbx_mesh_material_map_free(&material_map);
+                        return 0;
+                    }
+                    *p_mesh_remaps = mesh_remaps;
+                    *p_mesh_remap_count = mesh_remap_count;
                     asset->meshes[asset->mesh_count] = mesh;
                     asset->mesh_count = nc;
                     mesh_bindings[mesh_binding_count].id = fbx_prop_i64(obj, 0);
@@ -3973,35 +4325,42 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                     mesh_bindings[mesh_binding_count].material_map = material_map;
                     memset(&material_map, 0, sizeof(material_map));
                     mesh_binding_count++;
+                    *p_mesh_binding_count = mesh_binding_count;
                 }
                 fbx_mesh_remap_free(&remap);
                 fbx_mesh_material_map_free(&material_map);
             } else if (strcmp(obj->name, "Material") == 0) {
                 void *mat = fbx_extract_material(obj);
                 if (mat) {
-                    if (asset->material_count == INT32_MAX ||
-                        (size_t)(asset->material_count + 1) > SIZE_MAX / sizeof(void *)) {
+                    asset->material_count = fbx_asset_safe_count(
+                        asset->materials, asset->material_count, asset->material_capacity);
+                    if (asset->material_count == INT32_MAX) {
                         fbx_release_ref(&mat);
                         return 0;
                     }
                     int32_t nc = asset->material_count + 1;
-                    void **nm = (void **)realloc(asset->materials, (size_t)nc * sizeof(void *));
-                    void *nb = realloc(material_bindings, (size_t)nc * sizeof(*material_bindings));
-                    if (!nm || !nb) {
-                        if (nm)
-                            asset->materials = nm;
-                        if (nb)
-                            material_bindings = (fbx_material_binding_t *)nb;
+                    if ((size_t)nc > SIZE_MAX / sizeof(*material_bindings)) {
                         fbx_release_ref(&mat);
                         return 0;
                     }
-                    asset->materials = nm;
+                    if (!fbx_asset_reserve_ref_array(
+                            &asset->materials, &asset->material_capacity, nc)) {
+                        fbx_release_ref(&mat);
+                        return 0;
+                    }
+                    void *nb = realloc(material_bindings, (size_t)nc * sizeof(*material_bindings));
+                    if (!nb) {
+                        fbx_release_ref(&mat);
+                        return 0;
+                    }
                     material_bindings = (fbx_material_binding_t *)nb;
+                    *p_material_bindings = material_bindings;
                     asset->materials[asset->material_count] = mat;
                     asset->material_count = nc;
                     material_bindings[material_binding_count].id = fbx_prop_i64(obj, 0);
                     material_bindings[material_binding_count].material = mat;
                     material_binding_count++;
+                    *p_material_binding_count = material_binding_count;
                 }
             }
         }
@@ -4029,6 +4388,8 @@ void *rt_fbx_load(rt_string path) {
     int32_t mesh_remap_count = 0;
     fbx_material_binding_t *material_bindings = NULL;
     int32_t material_binding_count = 0;
+    fbx_bone_binding_t *bone_bindings = NULL;
+    int32_t bone_binding_count = 0;
     if (!path) {
         rt_trap("FBX.Load: null path");
         return NULL;
@@ -4160,13 +4521,17 @@ void *rt_fbx_load(rt_string path) {
     asset->vptr = NULL;
     asset->meshes = NULL;
     asset->mesh_count = 0;
+    asset->mesh_capacity = 0;
     asset->skeleton = NULL;
     asset->animations = NULL;
     asset->animation_count = 0;
+    asset->animation_capacity = 0;
     asset->materials = NULL;
     asset->material_count = 0;
+    asset->material_capacity = 0;
     asset->morph_targets = NULL;
     asset->morph_count = 0;
+    asset->morph_capacity = 0;
     asset->scene_root = NULL;
     rt_obj_set_finalizer(asset, rt_fbx_asset_finalize);
 
@@ -4197,18 +4562,27 @@ void *rt_fbx_load(rt_string path) {
     /* Extract morph targets (BlendShape deformers) */
     fbx_load_extract_morphs(asset, objects, ct, z_up, mesh_remaps, mesh_remap_count);
     /* Extract skeleton */
-    asset->skeleton = fbx_extract_skeleton(&root, &ct, z_up);
+    asset->skeleton = fbx_extract_skeleton(&root, &ct, z_up, &bone_bindings, &bone_binding_count);
     fbx_apply_skinning(objects,
                        &ct,
                        asset->skeleton,
+                       bone_bindings,
+                       bone_binding_count,
                        mesh_bindings,
                        mesh_binding_count,
                        mesh_remaps,
                        mesh_remap_count);
 
     /* Extract animations */
-    fbx_extract_animations(
-        &root, &ct, asset->skeleton, z_up, &asset->animations, &asset->animation_count);
+    fbx_extract_animations(&root,
+                           &ct,
+                           asset->skeleton,
+                           bone_bindings,
+                           bone_binding_count,
+                           z_up,
+                           &asset->animations,
+                           &asset->animation_count,
+                           &asset->animation_capacity);
 
     {
         int scene_failed = 0;
@@ -4226,6 +4600,7 @@ void *rt_fbx_load(rt_string path) {
             fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
             fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
             free(material_bindings);
+            free(bone_bindings);
             fbx_free_node(&root);
             fbx_release_ref((void **)&asset);
             rt_trap("FBX.Load: failed to build scene hierarchy");
@@ -4238,6 +4613,7 @@ void *rt_fbx_load(rt_string path) {
     fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
     fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
     free(material_bindings);
+    free(bone_bindings);
     fbx_free_node(&root);
 
     return asset;
@@ -4250,7 +4626,7 @@ void *rt_fbx_load(rt_string path) {
 /// @brief Get the number of meshes extracted from the FBX file.
 int64_t rt_fbx_mesh_count(void *obj) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
-    return a ? a->mesh_count : 0;
+    return a ? fbx_asset_safe_count(a->meshes, a->mesh_count, a->mesh_capacity) : 0;
 }
 
 /// @brief Get a mesh by index from the loaded FBX asset.
@@ -4258,7 +4634,8 @@ void *rt_fbx_get_mesh(void *obj, int64_t index) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
     if (!a)
         return NULL;
-    if (index < 0 || index >= a->mesh_count)
+    int32_t mesh_count = fbx_asset_safe_count(a->meshes, a->mesh_count, a->mesh_capacity);
+    if (index < 0 || index >= mesh_count)
         return NULL;
     return a->meshes[index];
 }
@@ -4282,7 +4659,7 @@ void *rt_fbx_get_scene_root(void *obj) {
 /// @brief Get the number of animation clips in the FBX file.
 int64_t rt_fbx_animation_count(void *obj) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
-    return a ? a->animation_count : 0;
+    return a ? fbx_asset_safe_count(a->animations, a->animation_count, a->animation_capacity) : 0;
 }
 
 /// @brief Get an animation clip by index from the loaded FBX asset.
@@ -4290,7 +4667,9 @@ void *rt_fbx_get_animation(void *obj, int64_t index) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
     if (!a)
         return NULL;
-    if (index < 0 || index >= a->animation_count)
+    int32_t animation_count =
+        fbx_asset_safe_count(a->animations, a->animation_count, a->animation_capacity);
+    if (index < 0 || index >= animation_count)
         return NULL;
     return a->animations[index];
 }
@@ -4306,7 +4685,7 @@ rt_string rt_fbx_get_animation_name(void *obj, int64_t index) {
 /// @brief Get the number of materials extracted from the FBX file.
 int64_t rt_fbx_material_count(void *obj) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
-    return a ? a->material_count : 0;
+    return a ? fbx_asset_safe_count(a->materials, a->material_count, a->material_capacity) : 0;
 }
 
 /// @brief Get a material by index from the loaded FBX asset.
@@ -4314,7 +4693,9 @@ void *rt_fbx_get_material(void *obj, int64_t index) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
     if (!a)
         return NULL;
-    if (index < 0 || index >= a->material_count)
+    int32_t material_count =
+        fbx_asset_safe_count(a->materials, a->material_count, a->material_capacity);
+    if (index < 0 || index >= material_count)
         return NULL;
     return a->materials[index];
 }
@@ -4324,7 +4705,9 @@ void *rt_fbx_get_morph_target(void *obj, int64_t mesh_index) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
     if (!a)
         return NULL;
-    if (!a->morph_targets || mesh_index < 0 || mesh_index >= a->morph_count)
+    int32_t morph_count =
+        fbx_asset_safe_count(a->morph_targets, a->morph_count, a->morph_capacity);
+    if (mesh_index < 0 || mesh_index >= morph_count)
         return NULL;
     return a->morph_targets[mesh_index];
 }

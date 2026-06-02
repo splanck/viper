@@ -67,6 +67,7 @@ typedef struct rt_node_animator3d {
     void *vptr;
     rt_node_animation3d **animations;
     int32_t animation_count;
+    int32_t animation_capacity;
     int32_t current_animation;
     double time;
     double speed;
@@ -203,6 +204,45 @@ typedef struct rt_scene3d {
     int32_t query_candidate_capacity;
 } rt_scene3d;
 
+/// @brief Bound a private dynamic-array count by the pointer and recorded capacity.
+static inline int32_t scene3d_clamped_array_count(const void *array,
+                                                  int32_t count,
+                                                  int32_t capacity) {
+    if (!array || count <= 0 || capacity <= 0)
+        return 0;
+    return count < capacity ? count : capacity;
+}
+
+/// @brief Safe number of children that may be read directly from a SceneNode3D.
+static inline int32_t scene3d_node_child_count(const rt_scene_node3d *node) {
+    return node ? scene3d_clamped_array_count(node->children,
+                                              node->child_count,
+                                              node->child_capacity)
+                : 0;
+}
+
+/// @brief Safe number of LOD entries that may be read directly from a SceneNode3D.
+static inline int32_t scene3d_node_lod_count(const rt_scene_node3d *node) {
+    return node ? scene3d_clamped_array_count(node->lod_levels, node->lod_count, node->lod_capacity)
+                : 0;
+}
+
+/// @brief Safe number of animation channels that may be read directly from a node clip.
+static inline int32_t scene3d_node_animation_channel_count(const rt_node_animation3d *animation) {
+    return animation ? scene3d_clamped_array_count(animation->channels,
+                                                   animation->channel_count,
+                                                   animation->channel_capacity)
+                     : 0;
+}
+
+/// @brief Safe number of clips that may be read directly from a node animator.
+static inline int32_t scene3d_node_animator_clip_count(const rt_node_animator3d *animator) {
+    return animator ? scene3d_clamped_array_count(animator->animations,
+                                                  animator->animation_count,
+                                                  animator->animation_capacity)
+                    : 0;
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -264,7 +304,10 @@ void scene_node_get_world_position(rt_scene_node3d *node, double *x, double *y, 
 void scene_node_get_world_rotation(rt_scene_node3d *node, double *out_quat);
 rt_scene_node3d *scene_node3d_checked(void *obj);
 double scene3d_clamp_abs_or(double value, double fallback);
+void scene3d_canonicalize_aabb_d(double mn[3], double mx[3]);
+double scene3d_distance_or_zero(double value);
 void scene3d_mark_spatial_dirty(rt_scene3d *scene);
+int scene3d_normalize_vec3d(double v[3]);
 void scene3d_release_ref(void **slot);
 double scene3d_scale_or_unit(double value);
 int scene3d_grow_stack_storage(void **buffer, size_t *capacity, size_t elem_size);

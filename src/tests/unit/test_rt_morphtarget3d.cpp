@@ -19,16 +19,20 @@
 #include "rt_morphtarget3d.h"
 #include "rt_string.h"
 #include <cassert>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 
 extern "C" {
 extern rt_string rt_const_cstr(const char *s);
 extern void *rt_mesh3d_new_box(double w, double h, double d);
 extern void *rt_mesh3d_clone(void *obj);
 extern void rt_mesh3d_clear(void *obj);
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -56,6 +60,27 @@ static int tests_run = 0;
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
+
+struct MorphTarget3DShapeTest {
+    char name[64];
+    float *pos_deltas;
+    float *nrm_deltas;
+    float *tan_deltas;
+};
+
+struct MorphTarget3DTestLayout {
+    void *vptr;
+    MorphTarget3DShapeTest *shapes;
+    float *weights;
+    float *prev_weights;
+    float *motion_weight_snapshot;
+    float *packed_pos_deltas;
+    float *packed_nrm_deltas;
+    uint64_t payload_generation;
+    int32_t shape_count;
+    int32_t shape_capacity;
+    int32_t vertex_count;
+};
 
 static void test_create() {
     void *mt = rt_morphtarget3d_new(10);
@@ -96,6 +121,21 @@ static void test_weight_by_name() {
     EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), 0.5, 0.001, "SetWeightByName works");
 }
 
+static void test_weight_by_name_uses_canonical_long_names() {
+    void *mt = rt_morphtarget3d_new(4);
+    char long_name[128];
+    std::memset(long_name, 'c', sizeof(long_name));
+    long_name[sizeof(long_name) - 1] = '\0';
+
+    EXPECT_TRUE(rt_morphtarget3d_add_shape(mt, rt_const_cstr(long_name)) == 0,
+                "MorphTarget3D accepts long shape names");
+    rt_morphtarget3d_set_weight_by_name(mt, rt_const_cstr(long_name), 0.5);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0),
+                0.5,
+                0.001,
+                "MorphTarget3D.SetWeightByName canonicalizes long names");
+}
+
 static void test_weight_by_name_clamps_like_indexed_set_weight() {
     void *mt = rt_morphtarget3d_new(4);
     rt_morphtarget3d_add_shape(mt, rt_const_cstr("blink"));
@@ -104,6 +144,29 @@ static void test_weight_by_name_clamps_like_indexed_set_weight() {
                 1.0,
                 0.001,
                 "SetWeightByName clamps weights to the same unit range");
+}
+
+static void test_rejects_wrong_string_handles() {
+    void *mt = rt_morphtarget3d_new(4);
+    void *wrong_name = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_name);
+    rt_string fake_name = reinterpret_cast<rt_string>(wrong_name);
+
+    EXPECT_TRUE(rt_morphtarget3d_add_shape(mt, fake_name) == -1,
+                "MorphTarget3D.AddShape rejects wrong-class string handles");
+    EXPECT_TRUE(rt_morphtarget3d_get_shape_count(mt) == 0,
+                "fake shape name does not allocate a shape");
+    EXPECT_TRUE(rt_morphtarget3d_add_shape(mt, rt_const_cstr("blink")) == 0,
+                "valid shape fixture still inserts after rejecting fake names");
+    rt_morphtarget3d_set_weight_by_name(mt, fake_name, 0.75);
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0),
+                0.0,
+                0.001,
+                "MorphTarget3D.SetWeightByName rejects wrong-class string handles");
+    EXPECT_TRUE(rt_obj_release_check0(wrong_name) == 0,
+                "MorphTarget3D fake-name guards do not release wrong-class handles");
+    if (rt_obj_release_check0(wrong_name))
+        rt_obj_free(wrong_name);
 }
 
 static void test_negative_weight() {
@@ -163,6 +226,17 @@ static void test_packed_payload_generation_tracks_delta_edits_only() {
                 "Editing morph deltas bumps the packed-payload generation");
     EXPECT_TRUE(rt_morphtarget3d_get_payload_generation(mt) == after_delta_generation,
                 "Changing only morph weights does not bump the packed-payload generation");
+}
+
+static void test_payload_generation_repairs_zero_sentinel() {
+    void *mt = rt_morphtarget3d_new(2);
+    auto *bits = reinterpret_cast<MorphTarget3DTestLayout *>(mt);
+    bits->payload_generation = 0;
+
+    EXPECT_TRUE(rt_morphtarget3d_get_payload_generation(mt) == 1,
+                "MorphTarget3D repairs a corrupt zero payload generation");
+    EXPECT_TRUE(bits->payload_generation == 1,
+                "MorphTarget3D stores the repaired nonzero payload generation");
 }
 
 static void test_packed_payload_exports_positions_and_normals() {
@@ -258,6 +332,51 @@ static void test_clone_copies_delta_payloads_and_weights() {
         EXPECT_NEAR(clone_nrm[2], 0.75f, 1e-6f, "Clone keeps normal delta Z");
 }
 
+static void test_shape_count_repair_ignores_unallocated_slots() {
+    void *mt = rt_morphtarget3d_new(2);
+    rt_morphtarget3d_add_shape(mt, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(mt, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_weight(mt, 0, 0.5);
+
+    auto *bits = reinterpret_cast<MorphTarget3DTestLayout *>(mt);
+    bits->shape_count = INT32_MAX;
+    bits->shape_capacity = 1;
+
+    EXPECT_TRUE(rt_morphtarget3d_get_shape_count(mt) == 1,
+                "MorphTarget3D clamps a corrupted shape count to live shapes");
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0),
+                0.5,
+                0.001,
+                "MorphTarget3D keeps live shape weight after count repair");
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 1),
+                0.0,
+                0.001,
+                "MorphTarget3D hides unallocated slots after count repair");
+
+    const float *packed = rt_morphtarget3d_get_packed_deltas(mt);
+    EXPECT_TRUE(packed != nullptr, "MorphTarget3D packs only live shapes after count repair");
+    if (packed) {
+        EXPECT_NEAR(packed[0], 1.0f, 1e-6f, "Repaired packed payload keeps vertex 0 X");
+        EXPECT_NEAR(packed[3], 0.0f, 1e-6f, "Repaired packed payload stops after live shape");
+    }
+
+    void *clone = rt_morphtarget3d_clone(mt);
+    EXPECT_TRUE(clone != nullptr, "MorphTarget3D.Clone succeeds after source count repair");
+    EXPECT_TRUE(rt_morphtarget3d_get_shape_count(clone) == 1,
+                "MorphTarget3D.Clone copies only live shapes after count repair");
+}
+
+static void test_max_position_delta_handles_large_finite_values() {
+    void *mt = rt_morphtarget3d_new(1);
+    rt_morphtarget3d_add_shape(mt, rt_const_cstr("huge"));
+    rt_morphtarget3d_set_delta(
+        mt, 0, 0, std::numeric_limits<float>::max(), 0.0, 0.0);
+
+    double max_delta = rt_morphtarget3d_get_max_position_delta(mt);
+    EXPECT_TRUE(std::isfinite(max_delta) && max_delta > 1.0e38,
+                "MorphTarget3D max delta uses overflow-safe length for huge finite deltas");
+}
+
 namespace {
 static int g_morph_release_count = 0;
 } // namespace
@@ -302,16 +421,21 @@ int main() {
     test_weight_zero();
     test_weight_set_get();
     test_weight_by_name();
+    test_weight_by_name_uses_canonical_long_names();
     test_weight_by_name_clamps_like_indexed_set_weight();
+    test_rejects_wrong_string_handles();
     test_negative_weight();
     test_weight_clamped_to_unit_range();
     test_bounds_checks();
     test_null_safety();
     test_packed_payload_generation_tracks_delta_edits_only();
+    test_payload_generation_repairs_zero_sentinel();
     test_packed_payload_exports_positions_and_normals();
     test_add_shape_grows_beyond_32_entries();
     test_packed_payload_keeps_shapes_beyond_32();
     test_clone_copies_delta_payloads_and_weights();
+    test_shape_count_repair_ignores_unallocated_slots();
+    test_max_position_delta_handles_large_finite_values();
     test_mesh_clone_deep_copy_releases_original_morph_target_on_clear();
 
     printf("MorphTarget3D tests: %d/%d passed\n", tests_passed, tests_run);

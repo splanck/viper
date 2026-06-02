@@ -45,6 +45,68 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Release a retained Graphics3D slot only if it still has the expected class.
+static void scene_node_release_class_slot(void **slot, int64_t class_id) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, class_id)) {
+        *slot = NULL;
+        return;
+    }
+    scene3d_release_ref(slot);
+}
+
+/// @brief Release a retained Pixels slot only if it still points at Pixels.
+static void scene_node_release_pixels_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_pixels_checked_impl_or_null(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    scene3d_release_ref(slot);
+}
+
+/// @brief Release a retained rt_string slot only if it still points at an rt_string handle.
+static void scene_node_release_string_slot(rt_string *slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_string_is_handle(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    scene3d_release_ref((void **)slot);
+}
+
+/// @brief Retain-then-release assignment for a Graphics3D typed slot.
+static void scene_node_assign_class_ref(void **slot, void *value, int64_t class_id) {
+    if (!slot || *slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    scene_node_release_class_slot(slot, class_id);
+    *slot = value;
+}
+
+/// @brief Clear one slot if it is non-null but no longer has the expected class.
+static void scene_node_repair_class_slot(void **slot, int64_t class_id) {
+    if (slot && *slot && !rt_g3d_has_class(*slot, class_id))
+        scene_node_release_class_slot(slot, class_id);
+}
+
+/// @brief Clear one string slot if it no longer points at an rt_string handle.
+static void scene_node_repair_string_slot(rt_string *slot) {
+    if (slot && *slot && !rt_string_is_handle(*slot))
+        *slot = NULL;
+}
+
+static rt_scene_node3d *scene_node_ref(void *ref) {
+    return (rt_scene_node3d *)rt_g3d_checked_or_null(ref, RT_G3D_SCENENODE3D_CLASS_ID);
+}
+
+static rt_node_animator3d *scene_node_animator_ref(void *ref) {
+    return (rt_node_animator3d *)rt_g3d_checked_or_null(ref, RT_G3D_NODEANIMATOR3D_CLASS_ID);
+}
+
 /*==========================================================================
  * SceneNode3D — lifecycle
  *=========================================================================*/
@@ -53,36 +115,44 @@
 /// array.
 static void rt_scene_node3d_finalize(void *obj) {
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    int32_t child_count;
+    int32_t lod_count;
     if (!node)
         return;
 
-    for (int32_t i = 0; i < node->child_count; i++) {
-        if (node->children[i])
-            node->children[i]->parent = NULL;
-        scene3d_release_ref((void **)&node->children[i]);
+    child_count = scene3d_node_child_count(node);
+    for (int32_t i = 0; i < child_count; i++) {
+        rt_scene_node3d *child = scene_node_ref(node->children[i]);
+        if (child)
+            child->parent = NULL;
+        scene_node_release_class_slot((void **)&node->children[i], RT_G3D_SCENENODE3D_CLASS_ID);
     }
     free(node->children);
     node->children = NULL;
     node->child_count = 0;
     node->child_capacity = 0;
-    for (int32_t i = 0; i < node->lod_count; i++)
-        scene3d_release_ref(&node->lod_levels[i].mesh);
+    lod_count = scene3d_node_lod_count(node);
+    for (int32_t i = 0; i < lod_count; i++)
+        scene_node_release_class_slot(&node->lod_levels[i].mesh, RT_G3D_MESH3D_CLASS_ID);
     free(node->lod_levels);
     node->lod_levels = NULL;
     node->lod_count = 0;
     node->lod_capacity = 0;
-    scene3d_release_ref(&node->mesh);
-    scene3d_release_ref(&node->material);
-    scene3d_release_ref(&node->light);
-    scene3d_release_ref(&node->bound_body);
-    scene3d_release_ref(&node->bound_animator);
-    if (node->bound_node_animator)
-        ((rt_node_animator3d *)node->bound_node_animator)->root = NULL;
-    scene3d_release_ref(&node->bound_node_animator);
-    scene3d_release_ref(&node->impostor_pixels);
-    scene3d_release_ref(&node->impostor_mesh);
-    scene3d_release_ref(&node->impostor_material);
-    scene3d_release_ref((void **)&node->name);
+    scene_node_release_class_slot(&node->mesh, RT_G3D_MESH3D_CLASS_ID);
+    scene_node_release_class_slot(&node->material, RT_G3D_MATERIAL3D_CLASS_ID);
+    scene_node_release_class_slot(&node->light, RT_G3D_LIGHT3D_CLASS_ID);
+    scene_node_release_class_slot(&node->bound_body, RT_G3D_BODY3D_CLASS_ID);
+    scene_node_release_class_slot(&node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+    {
+        rt_node_animator3d *node_animator = scene_node_animator_ref(node->bound_node_animator);
+        if (node_animator)
+            node_animator->root = NULL;
+    }
+    scene_node_release_class_slot(&node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
+    scene_node_release_pixels_slot(&node->impostor_pixels);
+    scene_node_release_class_slot(&node->impostor_mesh, RT_G3D_MESH3D_CLASS_ID);
+    scene_node_release_class_slot(&node->impostor_material, RT_G3D_MATERIAL3D_CLASS_ID);
+    scene_node_release_string_slot(&node->name);
 }
 
 // ===========================================================================
@@ -162,11 +232,17 @@ void *rt_scene_node3d_new(void) {
 /// @brief Set the local-space position component of the node's TRS.
 void rt_scene_node3d_set_position(void *obj, double x, double y, double z) {
     rt_scene_node3d *n = scene_node3d_checked(obj);
+    double next[3];
     if (!n)
         return;
-    n->position[0] = scene3d_clamp_abs_or(x, 0.0);
-    n->position[1] = scene3d_clamp_abs_or(y, 0.0);
-    n->position[2] = scene3d_clamp_abs_or(z, 0.0);
+    next[0] = scene3d_clamp_abs_or(x, 0.0);
+    next[1] = scene3d_clamp_abs_or(y, 0.0);
+    next[2] = scene3d_clamp_abs_or(z, 0.0);
+    if (n->position[0] == next[0] && n->position[1] == next[1] && n->position[2] == next[2])
+        return;
+    n->position[0] = next[0];
+    n->position[1] = next[1];
+    n->position[2] = next[2];
     mark_dirty(n);
 }
 
@@ -181,13 +257,21 @@ void *rt_scene_node3d_get_position(void *obj) {
 /// @brief Replace the local rotation with the given Quat (re-normalised on store).
 void rt_scene_node3d_set_rotation(void *obj, void *quat) {
     rt_scene_node3d *n = scene_node3d_checked(obj);
+    double next[4];
     if (!n || !rt_g3d_is_quat(quat))
         return;
-    n->rotation[0] = rt_quat_x(quat);
-    n->rotation[1] = rt_quat_y(quat);
-    n->rotation[2] = rt_quat_z(quat);
-    n->rotation[3] = rt_quat_w(quat);
-    scene3d_quat_normalize_local(n->rotation);
+    next[0] = rt_quat_x(quat);
+    next[1] = rt_quat_y(quat);
+    next[2] = rt_quat_z(quat);
+    next[3] = rt_quat_w(quat);
+    scene3d_quat_normalize_local(next);
+    if (n->rotation[0] == next[0] && n->rotation[1] == next[1] && n->rotation[2] == next[2] &&
+        n->rotation[3] == next[3])
+        return;
+    n->rotation[0] = next[0];
+    n->rotation[1] = next[1];
+    n->rotation[2] = next[2];
+    n->rotation[3] = next[3];
     mark_dirty(n);
 }
 
@@ -202,11 +286,18 @@ void *rt_scene_node3d_get_rotation(void *obj) {
 /// @brief Set the per-axis scale (uniform or non-uniform).
 void rt_scene_node3d_set_scale(void *obj, double x, double y, double z) {
     rt_scene_node3d *n = scene_node3d_checked(obj);
+    double next[3];
     if (!n)
         return;
-    n->scale_xyz[0] = scene3d_scale_or_unit(x);
-    n->scale_xyz[1] = scene3d_scale_or_unit(y);
-    n->scale_xyz[2] = scene3d_scale_or_unit(z);
+    next[0] = scene3d_scale_or_unit(x);
+    next[1] = scene3d_scale_or_unit(y);
+    next[2] = scene3d_scale_or_unit(z);
+    if (n->scale_xyz[0] == next[0] && n->scale_xyz[1] == next[1] &&
+        n->scale_xyz[2] == next[2])
+        return;
+    n->scale_xyz[0] = next[0];
+    n->scale_xyz[1] = next[1];
+    n->scale_xyz[2] = next[2];
     mark_dirty(n);
 }
 
@@ -250,6 +341,9 @@ void *rt_scene_node3d_get_world_position(void *obj) {
     double y = 0.0;
     double z = 0.0;
     scene_node_get_world_position(n, &x, &y, &z);
+    x = scene3d_clamp_abs_or(x, 0.0);
+    y = scene3d_clamp_abs_or(y, 0.0);
+    z = scene3d_clamp_abs_or(z, 0.0);
     return rt_vec3_new(x, y, z);
 }
 
@@ -261,6 +355,9 @@ int8_t rt_scene_node3d_get_world_position_components(void *obj, double *x, doubl
     if (!n || !x || !y || !z)
         return 0;
     scene_node_get_world_position(n, x, y, z);
+    *x = scene3d_clamp_abs_or(*x, 0.0);
+    *y = scene3d_clamp_abs_or(*y, 0.0);
+    *z = scene3d_clamp_abs_or(*z, 0.0);
     return 1;
 }
 
@@ -292,6 +389,9 @@ void *rt_scene_node3d_get_world_scale(void *obj) {
         sy = 1.0;
     if (!isfinite(sz))
         sz = 1.0;
+    sx = scene3d_clamp_abs_or(sx, 1.0);
+    sy = scene3d_clamp_abs_or(sy, 1.0);
+    sz = scene3d_clamp_abs_or(sz, 1.0);
     return rt_vec3_new(sx, sy, sz);
 }
 
@@ -315,6 +415,10 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
         if (ancestor == child)
             return 0;
     }
+
+    parent->child_count = scene3d_node_child_count(parent);
+    if (!parent->children)
+        parent->child_capacity = 0;
 
     /* Grow children array if needed */
     if (parent->child_count >= parent->child_capacity) {
@@ -369,6 +473,7 @@ void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
     if (!parent || !child)
         return;
 
+    parent->child_count = scene3d_node_child_count(parent);
     for (int32_t i = 0; i < parent->child_count; i++) {
         if (parent->children[i] == child) {
             /* Shift remaining children down */
@@ -392,15 +497,21 @@ void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
 /// @brief Number of immediate (non-recursive) children attached to this node.
 int64_t rt_scene_node3d_child_count(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? node->child_count : 0;
+    if (!node)
+        return 0;
+    node->child_count = scene3d_node_child_count(node);
+    return node->child_count;
 }
 
 /// @brief Return the `index`-th child handle (NULL on out-of-range or NULL `obj`).
 void *rt_scene_node3d_get_child(void *obj, int64_t index) {
     rt_scene_node3d *n = scene_node3d_checked(obj);
+    int32_t child_count;
     if (!n)
         return NULL;
-    if (index < 0 || index >= n->child_count)
+    child_count = scene3d_node_child_count(n);
+    n->child_count = child_count;
+    if (index < 0 || index >= child_count)
         return NULL;
     return n->children[index];
 }
@@ -415,6 +526,8 @@ void *rt_scene_node3d_get_parent(void *obj) {
 void *rt_scene_node3d_find(void *obj, rt_string name) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     if (!node || !name)
+        return NULL;
+    if (!rt_string_is_handle(name))
         return NULL;
     const char *s = rt_string_cstr(name);
     if (!s)
@@ -432,6 +545,7 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
     rt_scene_node3d *n = scene_node3d_checked(obj);
     if (!n)
         return;
+    scene_node_repair_class_slot(&n->mesh, RT_G3D_MESH3D_CLASS_ID);
     if (mesh && !rt_g3d_has_class(mesh, RT_G3D_MESH3D_CLASS_ID))
         return;
     if (n->mesh == mesh) {
@@ -440,9 +554,7 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
         scene3d_mark_spatial_dirty(n->owner_scene);
         return;
     }
-    rt_obj_retain_maybe(mesh);
-    scene3d_release_ref(&n->mesh);
-    n->mesh = mesh;
+    scene_node_assign_class_ref(&n->mesh, mesh, RT_G3D_MESH3D_CLASS_ID);
 
     /* Compute object-space AABB from mesh vertices */
     if (mesh) {
@@ -458,7 +570,7 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
 /// @brief Currently bound mesh handle (NULL if none).
 void *rt_scene_node3d_get_mesh(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? node->mesh : NULL;
+    return node ? rt_g3d_checked_or_null(node->mesh, RT_G3D_MESH3D_CLASS_ID) : NULL;
 }
 
 /// @brief Bind a material to this node (replaces previous; null clears).
@@ -466,19 +578,18 @@ void rt_scene_node3d_set_material(void *obj, void *material) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     if (!node)
         return;
+    scene_node_repair_class_slot(&node->material, RT_G3D_MATERIAL3D_CLASS_ID);
     if (material && !rt_g3d_has_class(material, RT_G3D_MATERIAL3D_CLASS_ID))
         return;
     if (node->material == material)
         return;
-    rt_obj_retain_maybe(material);
-    scene3d_release_ref(&node->material);
-    node->material = material;
+    scene_node_assign_class_ref(&node->material, material, RT_G3D_MATERIAL3D_CLASS_ID);
 }
 
 /// @brief Currently bound material handle (NULL if none).
 void *rt_scene_node3d_get_material(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? node->material : NULL;
+    return node ? rt_g3d_checked_or_null(node->material, RT_G3D_MATERIAL3D_CLASS_ID) : NULL;
 }
 
 /// @brief Attach a Light3D to this node; Scene3D.Draw transforms it by the node world pose.
@@ -486,26 +597,28 @@ void rt_scene_node3d_set_light(void *obj, void *light) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     if (!node)
         return;
+    scene_node_repair_class_slot(&node->light, RT_G3D_LIGHT3D_CLASS_ID);
     if (light && !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID))
         return;
     if (node->light == light)
         return;
-    rt_obj_retain_maybe(light);
-    scene3d_release_ref(&node->light);
-    node->light = light;
+    scene_node_assign_class_ref(&node->light, light, RT_G3D_LIGHT3D_CLASS_ID);
 }
 
 /// @brief Currently attached Light3D handle (NULL if this node has no imported/local light).
 void *rt_scene_node3d_get_light(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? node->light : NULL;
+    return node ? rt_g3d_checked_or_null(node->light, RT_G3D_LIGHT3D_CLASS_ID) : NULL;
 }
 
 /// @brief Toggle whether this node participates in rendering.
 void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
+    int8_t next = visible ? 1 : 0;
     if (node) {
-        node->visible = visible ? 1 : 0;
+        if (node->visible == next)
+            return;
+        node->visible = next;
         scene3d_mark_spatial_dirty(node->owner_scene);
     }
 }
@@ -521,18 +634,23 @@ void rt_scene_node3d_set_name(void *obj, rt_string name) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     if (!node)
         return;
+    scene_node_repair_string_slot(&node->name);
     if (!name)
         name = rt_const_cstr("");
+    if (!rt_string_is_handle(name))
+        return;
     if (node->name == name)
         return;
     rt_obj_retain_maybe(name);
-    scene3d_release_ref((void **)&node->name);
+    scene_node_release_string_slot(&node->name);
     node->name = name;
 }
 
 /// @brief Read the node's name (empty string if unset or `obj` is NULL).
 rt_string rt_scene_node3d_get_name(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (node)
+        scene_node_repair_string_slot(&node->name);
     if (node && node->name)
         return node->name;
     return rt_const_cstr("");
@@ -581,13 +699,12 @@ void rt_scene_node3d_bind_body(void *obj, void *body) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     if (!node)
         return;
+    scene_node_repair_class_slot(&node->bound_body, RT_G3D_BODY3D_CLASS_ID);
     if (body && !rt_g3d_has_class(body, RT_G3D_BODY3D_CLASS_ID))
         return;
     if (node->bound_body == body)
         return;
-    rt_obj_retain_maybe(body);
-    scene3d_release_ref(&node->bound_body);
-    node->bound_body = body;
+    scene_node_assign_class_ref(&node->bound_body, body, RT_G3D_BODY3D_CLASS_ID);
 }
 
 /// @brief Detach any bound rigid body. Subsequent `sync` calls on this node become no-ops.
@@ -595,13 +712,13 @@ void rt_scene_node3d_clear_body_binding(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     if (!node)
         return;
-    scene3d_release_ref(&node->bound_body);
+    scene_node_release_class_slot(&node->bound_body, RT_G3D_BODY3D_CLASS_ID);
 }
 
 /// @brief Currently bound rigid body handle (NULL if none).
 void *rt_scene_node3d_get_body(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? node->bound_body : NULL;
+    return node ? rt_g3d_checked_or_null(node->bound_body, RT_G3D_BODY3D_CLASS_ID) : NULL;
 }
 
 /// @brief Choose how this node and its bound body stay in sync each frame.
@@ -638,13 +755,13 @@ void rt_scene_node3d_bind_animator(void *obj, void *controller) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     if (!node)
         return;
+    scene_node_repair_class_slot(&node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
     if (controller && !rt_g3d_has_class(controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID))
         return;
     if (node->bound_animator == controller)
         return;
-    rt_obj_retain_maybe(controller);
-    scene3d_release_ref(&node->bound_animator);
-    node->bound_animator = controller;
+    scene_node_assign_class_ref(
+        &node->bound_animator, controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
 }
 
 /// @brief Bind a NodeAnimator3D to this scene node so its clip channels are applied
@@ -662,22 +779,28 @@ void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
     rt_node_animator3d *node_animator;
     if (!node)
         return;
+    scene_node_repair_class_slot(&node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
     if (animator && !rt_g3d_has_class(animator, RT_G3D_NODEANIMATOR3D_CLASS_ID))
         return;
     if (node->bound_node_animator == animator)
         return;
     rt_obj_retain_maybe(animator);
-    node_animator = (rt_node_animator3d *)animator;
+    node_animator = scene_node_animator_ref(animator);
     if (node_animator && node_animator->root && node_animator->root != node) {
         rt_scene_node3d *old_root = node_animator->root;
         if (old_root->bound_node_animator == animator)
-            scene3d_release_ref(&old_root->bound_node_animator);
+            scene_node_release_class_slot(&old_root->bound_node_animator,
+                                          RT_G3D_NODEANIMATOR3D_CLASS_ID);
         else
             node_animator->root = NULL;
     }
-    if (node->bound_node_animator)
-        ((rt_node_animator3d *)node->bound_node_animator)->root = NULL;
-    scene3d_release_ref(&node->bound_node_animator);
+    {
+        rt_node_animator3d *old_node_animator =
+            scene_node_animator_ref(node->bound_node_animator);
+        if (old_node_animator)
+            old_node_animator->root = NULL;
+    }
+    scene_node_release_class_slot(&node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
     node->bound_node_animator = animator;
     if (node_animator)
         node_animator->root = node;
@@ -688,13 +811,14 @@ void rt_scene_node3d_clear_animator_binding(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     if (!node)
         return;
-    scene3d_release_ref(&node->bound_animator);
+    scene_node_release_class_slot(&node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
 }
 
 /// @brief Currently bound animation controller handle (NULL if none).
 void *rt_scene_node3d_get_animator(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? node->bound_animator : NULL;
+    return node ? rt_g3d_checked_or_null(node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID)
+                : NULL;
 }
 
 #endif /* VIPER_ENABLE_GRAPHICS */

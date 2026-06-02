@@ -57,6 +57,9 @@ extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
 
+#define SPRITE3D_WORLD_ABS_MAX 1000000000000.0
+#define SPRITE3D_SCALE_MAX 1000000.0
+
 typedef struct {
     void *vptr;
     void *texture;
@@ -82,9 +85,137 @@ static void sprite3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Return true when @p texture is a live Pixels object.
+static int sprite3d_texture_valid(void *texture) {
+    return rt_pixels_checked_impl_or_null(texture) != NULL;
+}
+
+/// @brief Release a retained Pixels slot only if it still points at Pixels.
+static void sprite3d_release_texture_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!sprite3d_texture_valid(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    sprite3d_release_ref(slot);
+}
+
+/// @brief Release a retained Mesh3D slot only if it still points at Mesh3D.
+static void sprite3d_release_mesh_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    sprite3d_release_ref(slot);
+}
+
+/// @brief Release a retained Material3D slot only if it still points at Material3D.
+static void sprite3d_release_material_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    sprite3d_release_ref(slot);
+}
+
+/// @brief Clear corrupted cached refs before draw paths dereference them.
+static void sprite3d_repair_refs(rt_sprite3d *s) {
+    if (!s)
+        return;
+    void *old_texture = s->texture;
+    if (s->texture && !sprite3d_texture_valid(s->texture))
+        sprite3d_release_texture_slot(&s->texture);
+    if (old_texture && old_texture != s->texture)
+        s->cached_texture = NULL;
+    if (s->cached_mesh && !rt_g3d_has_class(s->cached_mesh, RT_G3D_MESH3D_CLASS_ID))
+        sprite3d_release_mesh_slot(&s->cached_mesh);
+    if (s->cached_material &&
+        !rt_g3d_has_class(s->cached_material, RT_G3D_MATERIAL3D_CLASS_ID)) {
+        sprite3d_release_material_slot(&s->cached_material);
+        s->cached_texture = NULL;
+    }
+}
+
 /// @brief Return @p value when finite, else @p fallback. Sanitizes Vec3 inputs.
 static double sprite3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
+}
+
+/// @brief Clamp world-space coordinates to a range that remains drawable in the backend.
+static double sprite3d_coord_or(double value, double fallback) {
+    value = sprite3d_finite_or(value, fallback);
+    if (value < -SPRITE3D_WORLD_ABS_MAX)
+        return -SPRITE3D_WORLD_ABS_MAX;
+    if (value > SPRITE3D_WORLD_ABS_MAX)
+        return SPRITE3D_WORLD_ABS_MAX;
+    return value;
+}
+
+/// @brief Clamp positive billboard dimensions to avoid overflowing generated vertices.
+static double sprite3d_positive_scale_or(double value, double fallback) {
+    value = sprite3d_finite_or(value, fallback);
+    if (value <= 0.0)
+        value = fallback;
+    if (value <= 0.0)
+        value = 1.0;
+    if (value > SPRITE3D_SCALE_MAX)
+        return SPRITE3D_SCALE_MAX;
+    return value;
+}
+
+/// @brief Normalize a vector, replacing invalid/zero vectors with a fallback axis.
+static int sprite3d_normalize3(double *x,
+                               double *y,
+                               double *z,
+                               double fallback_x,
+                               double fallback_y,
+                               double fallback_z) {
+    double len;
+    if (!x || !y || !z)
+        return 0;
+    *x = sprite3d_finite_or(*x, fallback_x);
+    *y = sprite3d_finite_or(*y, fallback_y);
+    *z = sprite3d_finite_or(*z, fallback_z);
+    len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    if (!isfinite(len) || len <= 1e-12) {
+        *x = fallback_x;
+        *y = fallback_y;
+        *z = fallback_z;
+        len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+        if (!isfinite(len) || len <= 1e-12)
+            return 0;
+    }
+    *x /= len;
+    *y /= len;
+    *z /= len;
+    return 1;
+}
+
+/// @brief Choose an axis that is not parallel to the supplied normalized vector.
+static void sprite3d_perpendicular_seed(double x,
+                                        double y,
+                                        double z,
+                                        double *out_x,
+                                        double *out_y,
+                                        double *out_z) {
+    if (fabs(y) < 0.9) {
+        *out_x = 0.0;
+        *out_y = 1.0;
+        *out_z = 0.0;
+    } else if (fabs(x) < 0.9) {
+        *out_x = 1.0;
+        *out_y = 0.0;
+        *out_z = 0.0;
+    } else {
+        *out_x = 0.0;
+        *out_y = 0.0;
+        *out_z = 1.0;
+    }
 }
 
 /// @brief Clamp @p value to [0, 1], substituting 0.5 for non-finite input. Used for anchor coords.
@@ -130,9 +261,9 @@ static void sprite3d_origin_model_matrix(const double origin[3], double out[16])
     };
     memcpy(out, identity, sizeof(identity));
     if (origin) {
-        out[3] = origin[0];
-        out[7] = origin[1];
-        out[11] = origin[2];
+        out[3] = sprite3d_coord_or(origin[0], 0.0);
+        out[7] = sprite3d_coord_or(origin[1], 0.0);
+        out[11] = sprite3d_coord_or(origin[2], 0.0);
     }
 }
 
@@ -148,9 +279,9 @@ static void sprite3d_finalizer(void *obj) {
     rt_sprite3d *s = (rt_sprite3d *)obj;
     if (!s)
         return;
-    sprite3d_release_ref(&s->texture);
-    sprite3d_release_ref(&s->cached_mesh);
-    sprite3d_release_ref(&s->cached_material);
+    sprite3d_release_texture_slot(&s->texture);
+    sprite3d_release_mesh_slot(&s->cached_mesh);
+    sprite3d_release_material_slot(&s->cached_material);
     s->cached_texture = NULL;
 }
 
@@ -193,7 +324,7 @@ void *rt_sprite3d_new(void *texture) {
             rt_pixels_checked_impl(texture, "Sprite3D.New: expected Pixels texture");
         if (!pixels || pixels->width <= 0 || pixels->height <= 0 || pixels->width > INT32_MAX ||
             pixels->height > INT32_MAX) {
-            sprite3d_release_ref(&s->texture);
+            sprite3d_release_texture_slot(&s->texture);
             if (rt_obj_release_check0(s))
                 rt_obj_free(s);
             rt_trap("Sprite3D.New: texture must be non-empty Pixels");
@@ -214,9 +345,9 @@ void rt_sprite3d_set_position(void *obj, double x, double y, double z) {
     rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
     if (!s)
         return;
-    s->position[0] = sprite3d_finite_or(x, 0.0);
-    s->position[1] = sprite3d_finite_or(y, 0.0);
-    s->position[2] = sprite3d_finite_or(z, 0.0);
+    s->position[0] = sprite3d_coord_or(x, 0.0);
+    s->position[1] = sprite3d_coord_or(y, 0.0);
+    s->position[2] = sprite3d_coord_or(z, 0.0);
 }
 
 /// @brief Set the width and height scale of the sprite in world units.
@@ -224,10 +355,8 @@ void rt_sprite3d_set_scale(void *obj, double w, double h) {
     rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
     if (!s)
         return;
-    w = sprite3d_finite_or(w, 1.0);
-    h = sprite3d_finite_or(h, 1.0);
-    s->scale_wh[0] = w > 0.0 ? w : 1.0;
-    s->scale_wh[1] = h > 0.0 ? h : 1.0;
+    s->scale_wh[0] = sprite3d_positive_scale_or(w, 1.0);
+    s->scale_wh[1] = sprite3d_positive_scale_or(h, 1.0);
 }
 
 /// @brief Set the anchor point (0,0 = bottom-left, 0.5,0.5 = center, 1,1 = top-right).
@@ -276,15 +405,15 @@ void rt_sprite3d_rebase_origin(void *obj, double dx, double dy, double dz) {
     if (!s)
         return;
     double delta[3] = {
-        sprite3d_finite_or(dx, 0.0),
-        sprite3d_finite_or(dy, 0.0),
-        sprite3d_finite_or(dz, 0.0),
+        sprite3d_coord_or(dx, 0.0),
+        sprite3d_coord_or(dy, 0.0),
+        sprite3d_coord_or(dz, 0.0),
     };
     if (delta[0] == 0.0 && delta[1] == 0.0 && delta[2] == 0.0)
         return;
-    s->position[0] = sprite3d_finite_or(s->position[0] - delta[0], 0.0);
-    s->position[1] = sprite3d_finite_or(s->position[1] - delta[1], 0.0);
-    s->position[2] = sprite3d_finite_or(s->position[2] - delta[2], 0.0);
+    s->position[0] = sprite3d_coord_or(s->position[0] - delta[0], 0.0);
+    s->position[1] = sprite3d_coord_or(s->position[1] - delta[1], 0.0);
+    s->position[2] = sprite3d_coord_or(s->position[2] - delta[2], 0.0);
 }
 
 /// @brief Draw a 3D sprite as a camera-facing billboard on the canvas.
@@ -298,30 +427,79 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(camera);
     if (!s || !cam)
         return;
+    sprite3d_repair_refs(s);
 
     /* Extract right and up vectors from camera view matrix (row-major) */
     double rx = cam->view[0], ry = cam->view[1], rz = cam->view[2];
     double ux = cam->view[4], uy = cam->view[5], uz = cam->view[6];
+    double sx;
+    double sy;
+    double dot;
+    double up_len;
+    sprite3d_normalize3(&rx, &ry, &rz, 1.0, 0.0, 0.0);
+    sprite3d_normalize3(&ux, &uy, &uz, 0.0, 1.0, 0.0);
+    dot = rx * ux + ry * uy + rz * uz;
+    ux -= rx * dot;
+    uy -= ry * dot;
+    uz -= rz * dot;
+    up_len = sqrt(ux * ux + uy * uy + uz * uz);
+    if (!isfinite(up_len) || up_len <= 1e-12) {
+        sprite3d_perpendicular_seed(rx, ry, rz, &ux, &uy, &uz);
+        dot = rx * ux + ry * uy + rz * uz;
+        ux -= rx * dot;
+        uy -= ry * dot;
+        uz -= rz * dot;
+        up_len = sqrt(ux * ux + uy * uy + uz * uz);
+    }
+    if (isfinite(up_len) && up_len > 1e-12) {
+        ux /= up_len;
+        uy /= up_len;
+        uz /= up_len;
+    } else {
+        ux = 0.0;
+        uy = 1.0;
+        uz = 0.0;
+    }
 
-    double hw = s->scale_wh[0] * 0.5;
-    double hh = s->scale_wh[1] * 0.5;
+    sx = sprite3d_positive_scale_or(s->scale_wh[0], 1.0);
+    sy = sprite3d_positive_scale_or(s->scale_wh[1], 1.0);
 
     /* Anchor offset: shift center by (0.5 - anchor) in each axis */
-    double ax = (0.5 - s->anchor[0]) * s->scale_wh[0];
-    double ay = (0.5 - s->anchor[1]) * s->scale_wh[1];
-    double cx = s->position[0] + rx * ax + ux * ay;
-    double cy = s->position[1] + ry * ax + uy * ay;
-    double cz = s->position[2] + rz * ax + uz * ay;
+    double hw = sx * 0.5;
+    double hh = sy * 0.5;
+    double ax = (0.5 - sprite3d_clamp01(s->anchor[0])) * sx;
+    double ay = (0.5 - sprite3d_clamp01(s->anchor[1])) * sy;
+    double px = sprite3d_coord_or(s->position[0], 0.0);
+    double py = sprite3d_coord_or(s->position[1], 0.0);
+    double pz = sprite3d_coord_or(s->position[2], 0.0);
+    double cx = sprite3d_coord_or(px + rx * ax + ux * ay, px);
+    double cy = sprite3d_coord_or(py + ry * ax + uy * ay, py);
+    double cz = sprite3d_coord_or(pz + rz * ax + uz * ay, pz);
     double origin[3] = {0.0, 0.0, 0.0};
     (void)rt_canvas3d_get_camera_relative_origin(canvas, origin);
+    origin[0] = sprite3d_coord_or(origin[0], 0.0);
+    origin[1] = sprite3d_coord_or(origin[1], 0.0);
+    origin[2] = sprite3d_coord_or(origin[2], 0.0);
 
     /* UV from frame rect */
     double u0 = 0.0, v0 = 0.0, u1 = 1.0, v1 = 1.0;
     if (s->tex_w > 0 && s->tex_h > 0) {
-        u0 = (double)s->frame_x / s->tex_w;
-        v0 = (double)s->frame_y / s->tex_h;
-        u1 = (double)(s->frame_x + s->frame_w) / s->tex_w;
-        v1 = (double)(s->frame_y + s->frame_h) / s->tex_h;
+        int32_t fx = s->frame_x;
+        int32_t fy = s->frame_y;
+        int32_t fw = s->frame_w;
+        int32_t fh = s->frame_h;
+        if (fx < 0 || fx >= s->tex_w)
+            fx = 0;
+        if (fy < 0 || fy >= s->tex_h)
+            fy = 0;
+        if (fw <= 0 || fw > s->tex_w - fx)
+            fw = s->tex_w - fx;
+        if (fh <= 0 || fh > s->tex_h - fy)
+            fh = s->tex_h - fy;
+        u0 = (double)fx / s->tex_w;
+        v0 = (double)fy / s->tex_h;
+        u1 = (double)(fx + fw) / s->tex_w;
+        v1 = (double)(fy + fh) / s->tex_h;
     }
 
     /* Lazily create cached mesh and material (once, reused every frame) */
@@ -330,7 +508,7 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     if (!s->cached_mesh)
         return;
     if (!s->cached_material || s->cached_texture != s->texture) {
-        sprite3d_release_ref(&s->cached_material);
+        sprite3d_release_material_slot(&s->cached_material);
         s->cached_material = rt_material3d_new();
         if (!s->cached_material) {
             s->cached_texture = NULL;
@@ -348,38 +526,39 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     rt_mesh3d_clear(mesh);
 
     double nx = -(cam->view[8]), ny = -(cam->view[9]), nz = -(cam->view[10]); /* face camera */
+    sprite3d_normalize3(&nx, &ny, &nz, 0.0, 0.0, 1.0);
 
     rt_mesh3d_add_vertex(mesh,
-                         cx - rx * hw - ux * hh - origin[0],
-                         cy - ry * hw - uy * hh - origin[1],
-                         cz - rz * hw - uz * hh - origin[2],
+                         sprite3d_coord_or(cx - rx * hw - ux * hh - origin[0], 0.0),
+                         sprite3d_coord_or(cy - ry * hw - uy * hh - origin[1], 0.0),
+                         sprite3d_coord_or(cz - rz * hw - uz * hh - origin[2], 0.0),
                          nx,
                          ny,
                          nz,
                          u0,
                          v1);
     rt_mesh3d_add_vertex(mesh,
-                         cx + rx * hw - ux * hh - origin[0],
-                         cy + ry * hw - uy * hh - origin[1],
-                         cz + rz * hw - uz * hh - origin[2],
+                         sprite3d_coord_or(cx + rx * hw - ux * hh - origin[0], 0.0),
+                         sprite3d_coord_or(cy + ry * hw - uy * hh - origin[1], 0.0),
+                         sprite3d_coord_or(cz + rz * hw - uz * hh - origin[2], 0.0),
                          nx,
                          ny,
                          nz,
                          u1,
                          v1);
     rt_mesh3d_add_vertex(mesh,
-                         cx + rx * hw + ux * hh - origin[0],
-                         cy + ry * hw + uy * hh - origin[1],
-                         cz + rz * hw + uz * hh - origin[2],
+                         sprite3d_coord_or(cx + rx * hw + ux * hh - origin[0], 0.0),
+                         sprite3d_coord_or(cy + ry * hw + uy * hh - origin[1], 0.0),
+                         sprite3d_coord_or(cz + rz * hw + uz * hh - origin[2], 0.0),
                          nx,
                          ny,
                          nz,
                          u1,
                          v0);
     rt_mesh3d_add_vertex(mesh,
-                         cx - rx * hw + ux * hh - origin[0],
-                         cy - ry * hw + uy * hh - origin[1],
-                         cz - rz * hw + uz * hh - origin[2],
+                         sprite3d_coord_or(cx - rx * hw + ux * hh - origin[0], 0.0),
+                         sprite3d_coord_or(cy - ry * hw + uy * hh - origin[1], 0.0),
+                         sprite3d_coord_or(cz - rz * hw + uz * hh - origin[2], 0.0),
                          nx,
                          ny,
                          nz,

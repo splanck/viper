@@ -64,6 +64,12 @@ int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int
 #define CANVAS3D_SYNTHETIC_MOUSE_ABS_MAX 1000000.0
 #define CANVAS3D_FINAL_OVERLAY_RETAIN_CMD_CAP 4096
 #define CANVAS3D_FINAL_OVERLAY_RETAIN_TEMP_BUF_CAP 4096
+#define CANVAS3D_MATERIAL_UV_ABS_MAX 1000000.0
+#define CANVAS3D_MATERIAL_CUSTOM_PARAM_ABS_MAX 1000000.0
+#define CANVAS3D_MATERIAL_SHININESS_MAX 8192.0
+#define CANVAS3D_MATERIAL_EMISSIVE_INTENSITY_MAX 1000000.0
+#define CANVAS3D_MATERIAL_NORMAL_SCALE_MAX 1000.0
+#define CANVAS3D_MAX_RAW_MORPH_SHAPES 32
 
 static void *g_canvas3d_synthetic_owner = NULL;
 static void canvas3d_release_synthetic_input(rt_canvas3d *c);
@@ -564,6 +570,134 @@ static void canvas3d_clear_pending_splat(rt_canvas3d *c) {
     }
 }
 
+static int canvas3d_palette_finite(const float *palette, int32_t bone_count) {
+    size_t lane_count;
+    if (!palette || bone_count <= 0)
+        return 0;
+    if (bone_count > VGFX3D_MAX_BONES)
+        bone_count = VGFX3D_MAX_BONES;
+    if ((size_t)bone_count > SIZE_MAX / (16u * sizeof(float)))
+        return 0;
+    lane_count = (size_t)bone_count * 16u;
+    for (size_t i = 0; i < lane_count; i++) {
+        if (!isfinite(palette[i]))
+            return 0;
+    }
+    return 1;
+}
+
+static void canvas3d_bind_skinning_cmd(vgfx3d_draw_cmd_t *cmd,
+                                       const rt_mesh3d *mesh,
+                                       const float *prev_bone_palette) {
+    int32_t bone_count;
+    if (!cmd || !mesh)
+        return;
+    bone_count = mesh->bone_palette && mesh->bone_count > 0 ? mesh->bone_count : 0;
+    if (bone_count > VGFX3D_MAX_BONES)
+        bone_count = VGFX3D_MAX_BONES;
+    if (!canvas3d_palette_finite(mesh->bone_palette, bone_count)) {
+        cmd->bone_palette = NULL;
+        cmd->prev_bone_palette = NULL;
+        cmd->bone_count = 0;
+        return;
+    }
+    cmd->bone_palette = mesh->bone_palette;
+    cmd->bone_count = bone_count;
+    cmd->prev_bone_palette =
+        canvas3d_palette_finite(prev_bone_palette ? prev_bone_palette : mesh->prev_bone_palette,
+                                bone_count)
+            ? (prev_bone_palette ? prev_bone_palette : mesh->prev_bone_palette)
+            : NULL;
+}
+
+static int canvas3d_float_array_finite(const float *values, size_t count) {
+    if (!values || count <= 0)
+        return 0;
+    for (size_t i = 0; i < count; i++) {
+        if (!isfinite(values[i]))
+            return 0;
+    }
+    return 1;
+}
+
+static void canvas3d_bind_morph_cmd(vgfx3d_draw_cmd_t *cmd,
+                                    const rt_mesh3d *mesh,
+                                    const float *prev_morph_weights) {
+    int32_t shape_count;
+    uint32_t vertex_count;
+    size_t delta_triplets;
+    size_t delta_float_count;
+    if (!cmd || !mesh)
+        return;
+    cmd->morph_deltas = NULL;
+    cmd->morph_normal_deltas = NULL;
+    cmd->morph_weights = NULL;
+    cmd->prev_morph_weights = NULL;
+    cmd->morph_shape_count = 0;
+    cmd->morph_key = NULL;
+    cmd->morph_revision = 0;
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    shape_count = mesh->morph_shape_count;
+    if (shape_count <= 0 || !mesh->morph_deltas || !mesh->morph_weights || vertex_count == 0)
+        return;
+    if (!mesh->morph_targets_ref && shape_count > CANVAS3D_MAX_RAW_MORPH_SHAPES)
+        return;
+    if ((size_t)shape_count > SIZE_MAX / (size_t)vertex_count)
+        return;
+    delta_triplets = (size_t)shape_count * (size_t)vertex_count;
+    if (delta_triplets > SIZE_MAX / 3u)
+        return;
+    delta_float_count = delta_triplets * 3u;
+    if (!canvas3d_float_array_finite(mesh->morph_weights, shape_count))
+        return;
+    if (!canvas3d_float_array_finite(mesh->morph_deltas, delta_float_count))
+        return;
+    cmd->morph_deltas = mesh->morph_deltas;
+    cmd->morph_normal_deltas =
+        canvas3d_float_array_finite(mesh->morph_normal_deltas, delta_float_count)
+            ? mesh->morph_normal_deltas
+            : NULL;
+    cmd->morph_weights = mesh->morph_weights;
+    cmd->prev_morph_weights =
+        canvas3d_float_array_finite(prev_morph_weights ? prev_morph_weights
+                                                       : mesh->prev_morph_weights,
+                                    shape_count)
+            ? (prev_morph_weights ? prev_morph_weights : mesh->prev_morph_weights)
+            : NULL;
+    cmd->morph_shape_count = shape_count;
+    cmd->morph_key = mesh->morph_targets_ref;
+    cmd->morph_revision =
+        mesh->morph_targets_ref ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
+                                : 0;
+}
+
+static int canvas3d_bounds_are_valid(const float minv[3], const float maxv[3]) {
+    if (!minv || !maxv)
+        return 0;
+    for (int i = 0; i < 3; i++) {
+        if (!isfinite(minv[i]) || !isfinite(maxv[i]) || minv[i] > maxv[i])
+            return 0;
+    }
+    return 1;
+}
+
+static void canvas3d_copy_or_compute_local_bounds(const rt_mesh3d *mesh,
+                                                  const vgfx3d_vertex_t *vertices,
+                                                  float out_min[3],
+                                                  float out_max[3]) {
+    if (!out_min || !out_max)
+        return;
+    if (mesh && canvas3d_bounds_are_valid(mesh->aabb_min, mesh->aabb_max)) {
+        memcpy(out_min, mesh->aabb_min, sizeof(float) * 3u);
+        memcpy(out_max, mesh->aabb_max, sizeof(float) * 3u);
+        return;
+    }
+    canvas3d_compute_vertices_aabb(vertices,
+                                   rt_mesh3d_safe_vertex_count(mesh),
+                                   out_min,
+                                   out_max);
+}
+
 #include "rt_canvas3d_frame_postfx.inc"
 
 /// @brief Estimate a physical backing size for a requested logical size.
@@ -987,6 +1121,42 @@ static int canvas3d_generate_snapshot_tangents(const rt_mesh3d *source,
     return temp.tangents_ready ? 1 : 0;
 }
 
+static int32_t canvas3d_sanitize_material_wrap(int32_t value) {
+    if (value == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
+        value == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+        return value;
+    return RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+}
+
+static int32_t canvas3d_sanitize_material_filter(int32_t value) {
+    return value == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                                                         : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+}
+
+static float canvas3d_clamp_material_f64(double value, double lo, double hi, float fallback) {
+    if (!isfinite(value) || lo > hi)
+        return fallback;
+    if (value < lo)
+        value = lo;
+    if (value > hi)
+        value = hi;
+    return (float)value;
+}
+
+static float canvas3d_material_uv_value(double value, int32_t component) {
+    float fallback = (component == 0 || component == 3) ? 1.0f : 0.0f;
+    return canvas3d_clamp_material_f64(
+        value, -CANVAS3D_MATERIAL_UV_ABS_MAX, CANVAS3D_MATERIAL_UV_ABS_MAX, fallback);
+}
+
+static float canvas3d_sanitize_splat_layer_scale(float value) {
+    if (!isfinite(value) || value <= 0.0f)
+        return 1.0f;
+    if (value > (float)CANVAS3D_MATERIAL_UV_ABS_MAX)
+        return (float)CANVAS3D_MATERIAL_UV_ABS_MAX;
+    return value;
+}
+
 /// @brief Translate every material field into the corresponding draw-command field.
 ///
 /// Per-vertex draw commands are float-typed (matches GPU expectations),
@@ -1000,12 +1170,13 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->diffuse_color[0] = canvas3d_clamp01_f64(mat->diffuse[0]);
     cmd->diffuse_color[1] = canvas3d_clamp01_f64(mat->diffuse[1]);
     cmd->diffuse_color[2] = canvas3d_clamp01_f64(mat->diffuse[2]);
-    cmd->diffuse_color[3] = canvas3d_clamp01_f64(mat->diffuse[3]);
+    cmd->diffuse_color[3] = canvas3d_clamp_material_f64(mat->diffuse[3], 0.0, 1.0, 1.0f);
     cmd->specular[0] = canvas3d_clamp01_f64(mat->specular[0]);
     cmd->specular[1] = canvas3d_clamp01_f64(mat->specular[1]);
     cmd->specular[2] = canvas3d_clamp01_f64(mat->specular[2]);
-    cmd->shininess = canvas3d_sanitize_nonnegative_f64(mat->shininess, 32.0f);
-    cmd->alpha = canvas3d_clamp01_f64(mat->alpha);
+    cmd->shininess =
+        canvas3d_clamp_material_f64(mat->shininess, 0.0, CANVAS3D_MATERIAL_SHININESS_MAX, 32.0f);
+    cmd->alpha = canvas3d_clamp_material_f64(mat->alpha, 0.0, 1.0, 1.0f);
     cmd->unlit = (int8_t)(mat->unlit || mat->shading_model == 3);
     cmd->texture = rt_material3d_resolve_texture_pixels(mat->texture);
     cmd->normal_map = rt_material3d_resolve_texture_pixels(mat->normal_map);
@@ -1024,35 +1195,45 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->emissive_color[1] = canvas3d_clamp01_f64(mat->emissive[1]);
     cmd->emissive_color[2] = canvas3d_clamp01_f64(mat->emissive[2]);
     cmd->metallic = canvas3d_clamp01_f64(mat->metallic);
-    cmd->roughness = canvas3d_clamp01_f64(mat->roughness);
-    cmd->ao = canvas3d_clamp01_f64(mat->ao);
-    cmd->emissive_intensity = canvas3d_sanitize_nonnegative_f64(mat->emissive_intensity, 1.0f);
-    cmd->normal_scale = canvas3d_clamp_f64_to_float(mat->normal_scale, -1000.0, 1000.0, 1.0f);
+    cmd->roughness = canvas3d_clamp_material_f64(mat->roughness, 0.0, 1.0, 0.5f);
+    cmd->ao = canvas3d_clamp_material_f64(mat->ao, 0.0, 1.0, 1.0f);
+    cmd->emissive_intensity = canvas3d_clamp_material_f64(mat->emissive_intensity,
+                                                          0.0,
+                                                          CANVAS3D_MATERIAL_EMISSIVE_INTENSITY_MAX,
+                                                          1.0f);
+    cmd->normal_scale = canvas3d_clamp_material_f64(
+        mat->normal_scale, 0.0, CANVAS3D_MATERIAL_NORMAL_SCALE_MAX, 1.0f);
     cmd->additive_blend = mat->additive_blend ? 1 : 0;
     cmd->workflow = (mat->workflow == 1) ? 1 : 0;
     cmd->alpha_mode = (mat->alpha_mode >= 0 && mat->alpha_mode <= 2) ? mat->alpha_mode : 0;
-    cmd->alpha_cutoff = canvas3d_clamp01_f64(mat->alpha_cutoff);
+    cmd->alpha_cutoff = canvas3d_clamp_material_f64(mat->alpha_cutoff, 0.0, 1.0, 0.5f);
     cmd->double_sided = mat->double_sided ? 1 : 0;
-    cmd->texture_wrap_s = mat->texture_wrap_s;
-    cmd->texture_wrap_t = mat->texture_wrap_t;
-    cmd->texture_filter = mat->texture_filter;
-    memcpy(cmd->texture_slot_wrap_s, mat->texture_slot_wrap_s, sizeof(cmd->texture_slot_wrap_s));
-    memcpy(cmd->texture_slot_wrap_t, mat->texture_slot_wrap_t, sizeof(cmd->texture_slot_wrap_t));
-    memcpy(cmd->texture_slot_filter, mat->texture_slot_filter, sizeof(cmd->texture_slot_filter));
-    memcpy(cmd->texture_slot_uv_set, mat->texture_slot_uv_set, sizeof(cmd->texture_slot_uv_set));
+    cmd->texture_wrap_s = canvas3d_sanitize_material_wrap(mat->texture_wrap_s);
+    cmd->texture_wrap_t = canvas3d_sanitize_material_wrap(mat->texture_wrap_t);
+    cmd->texture_filter = canvas3d_sanitize_material_filter(mat->texture_filter);
     for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+        cmd->texture_slot_wrap_s[slot] =
+            canvas3d_sanitize_material_wrap(mat->texture_slot_wrap_s[slot]);
+        cmd->texture_slot_wrap_t[slot] =
+            canvas3d_sanitize_material_wrap(mat->texture_slot_wrap_t[slot]);
+        cmd->texture_slot_filter[slot] =
+            canvas3d_sanitize_material_filter(mat->texture_slot_filter[slot]);
+        cmd->texture_slot_uv_set[slot] = mat->texture_slot_uv_set[slot] > 0 ? 1 : 0;
         for (int i = 0; i < 6; i++)
             cmd->texture_slot_uv_transform[slot][i] =
-                canvas3d_sanitize_f64_to_float(mat->texture_slot_uv_transform[slot][i], 0.0f);
+                canvas3d_material_uv_value(mat->texture_slot_uv_transform[slot][i], i);
     }
-    cmd->env_map = mat->env_map;
-    cmd->reflectivity = canvas3d_clamp01_f64(mat->reflectivity);
+    cmd->env_map = rt_cubemap3d_is_complete(mat->env_map) ? mat->env_map : NULL;
+    cmd->reflectivity = cmd->env_map ? canvas3d_clamp01_f64(mat->reflectivity) : 0.0f;
     cmd->shading_model =
         (mat->shading_model >= 0 && mat->shading_model <= 5 && mat->shading_model != 3)
             ? mat->shading_model
             : 0;
     for (int pi = 0; pi < 8; pi++)
-        cmd->custom_params[pi] = canvas3d_sanitize_f64_to_float(mat->custom_params[pi], 0.0f);
+        cmd->custom_params[pi] = canvas3d_clamp_material_f64(mat->custom_params[pi],
+                                                            -CANVAS3D_MATERIAL_CUSTOM_PARAM_ABS_MAX,
+                                                            CANVAS3D_MATERIAL_CUSTOM_PARAM_ABS_MAX,
+                                                            0.0f);
 }
 
 /// @brief Grow the motion-history table to hold `needed` entries.
@@ -2586,11 +2767,11 @@ static void rt_canvas3d_finalize(void *obj) {
     /* Free shadow render targets if allocated */
     canvas3d_release_shadow_targets(c);
 
-    if (c->skybox) {
+    if (c->skybox && rt_g3d_has_class(c->skybox, RT_G3D_CUBEMAP3D_CLASS_ID)) {
         if (rt_obj_release_check0(c->skybox))
             rt_obj_free(c->skybox);
-        c->skybox = NULL;
     }
+    c->skybox = NULL;
     rt_canvas3d_invalidate_skybox_cache(c);
 
     vgfx3d_postfx_chain_free(&c->frame_postfx_chain);
@@ -3481,6 +3662,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
         rt_trap("Canvas3D.DrawMesh: model matrix must contain finite float-range values");
         return;
     }
+    rt_mesh3d_repair_geometry_counts(mesh);
 
     if (mesh->morph_targets_ref && mesh->morph_deltas == NULL && mesh->morph_weights == NULL &&
         mesh->morph_shape_count == 0) {
@@ -3494,11 +3676,12 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     pending_splat_map = c->pending_splat_map;
     for (int i = 0; i < 4; i++) {
         pending_splat_layers[i] = c->pending_splat_layers[i];
-        pending_splat_layer_scales[i] = c->pending_splat_layer_scales[i];
+        pending_splat_layer_scales[i] =
+            canvas3d_sanitize_splat_layer_scale(c->pending_splat_layer_scales[i]);
     }
     canvas3d_clear_pending_splat(c);
 
-    if (mesh->vertex_count == 0 || mesh->index_count == 0)
+    if (rt_mesh3d_safe_vertex_count(mesh) == 0 || rt_mesh3d_safe_index_count(mesh) == 0)
         return;
     int needs_generated_tangents = canvas3d_prepare_normal_map_tangent_state(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
@@ -3570,24 +3753,9 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
         dd->cmd.splat_layer_scales[i] = pending_splat_layer_scales[i];
     }
 
-    /* Pass through bone palette for GPU skinning (MTL-09) */
-    dd->cmd.bone_palette = mesh->bone_palette;
-    dd->cmd.prev_bone_palette = prev_bone_palette ? prev_bone_palette : mesh->prev_bone_palette;
-    dd->cmd.bone_count = mesh->bone_palette && mesh->bone_count > 0 ? mesh->bone_count : 0;
-    if (dd->cmd.bone_count > VGFX3D_MAX_BONES)
-        dd->cmd.bone_count = VGFX3D_MAX_BONES;
+    canvas3d_bind_skinning_cmd(&dd->cmd, mesh, prev_bone_palette);
 
-    /* GPU morph payloads are supplied by DrawMeshMorphed via transient mesh fields.
-     * CPU morph paths leave these null. */
-    dd->cmd.morph_deltas = mesh->morph_deltas;
-    dd->cmd.morph_normal_deltas = mesh->morph_normal_deltas;
-    dd->cmd.morph_weights = mesh->morph_weights;
-    dd->cmd.prev_morph_weights = prev_morph_weights ? prev_morph_weights : mesh->prev_morph_weights;
-    dd->cmd.morph_shape_count = mesh->morph_shape_count;
-    dd->cmd.morph_key = mesh->morph_targets_ref;
-    dd->cmd.morph_revision = mesh->morph_targets_ref
-                                 ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
-                                 : 0;
+    canvas3d_bind_morph_cmd(&dd->cmd, mesh, prev_morph_weights);
 
     /* Build light params */
     dd->light_count = build_light_params(c, dd->lights, canvas3d_active_light_limit(c));
@@ -3602,8 +3770,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
         canvas3d_compute_vertices_aabb(
             queued_vertices, mesh->vertex_count, dd->local_bounds_min, dd->local_bounds_max);
     } else {
-        memcpy(dd->local_bounds_min, mesh->aabb_min, sizeof(dd->local_bounds_min));
-        memcpy(dd->local_bounds_max, mesh->aabb_max, sizeof(dd->local_bounds_max));
+        canvas3d_copy_or_compute_local_bounds(
+            mesh, queued_vertices, dd->local_bounds_min, dd->local_bounds_max);
     }
 
     dd->sort_key = canvas3d_compute_sort_key(c,
@@ -3697,20 +3865,8 @@ static void canvas3d_build_instanced_base_cmd(rt_mesh3d *mesh,
     base_cmd->model_matrix[0] = base_cmd->model_matrix[5] = base_cmd->model_matrix[10] =
         base_cmd->model_matrix[15] = 1.0f;
     canvas3d_fill_material_cmd(mat, base_cmd);
-    base_cmd->bone_palette = mesh->bone_palette;
-    base_cmd->prev_bone_palette = mesh->prev_bone_palette;
-    base_cmd->bone_count = mesh->bone_palette && mesh->bone_count > 0 ? mesh->bone_count : 0;
-    if (base_cmd->bone_count > VGFX3D_MAX_BONES)
-        base_cmd->bone_count = VGFX3D_MAX_BONES;
-    base_cmd->morph_deltas = mesh->morph_deltas;
-    base_cmd->morph_normal_deltas = mesh->morph_normal_deltas;
-    base_cmd->morph_weights = mesh->morph_weights;
-    base_cmd->prev_morph_weights = mesh->prev_morph_weights;
-    base_cmd->morph_shape_count = mesh->morph_shape_count;
-    base_cmd->morph_key = mesh->morph_targets_ref;
-    base_cmd->morph_revision = mesh->morph_targets_ref
-                                   ? rt_morphtarget3d_get_payload_generation(mesh->morph_targets_ref)
-                                   : 0;
+    canvas3d_bind_skinning_cmd(base_cmd, mesh, NULL);
+    canvas3d_bind_morph_cmd(base_cmd, mesh, NULL);
 }
 
 /// @brief Fallback instanced submission: enqueue each instance as an individual mesh draw.
@@ -3724,6 +3880,10 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
     rt_canvas3d *c = b->c;
     rt_mesh3d *mesh = b->mesh;
     rt_material3d *mat = b->mat;
+    float local_bounds_min[3];
+    float local_bounds_max[3];
+    canvas3d_copy_or_compute_local_bounds(
+        mesh, base_cmd ? base_cmd->vertices : NULL, local_bounds_min, local_bounds_max);
     for (int32_t i = 0; i < instance_count; i++) {
         vgfx3d_draw_cmd_t per_instance = *base_cmd;
         canvas3d_copy_mat4_f32_for_frame(
@@ -3755,12 +3915,12 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
                 canvas3d_material_backface_cull(c, mat),
                 canvas3d_compute_sort_key(c,
                                           per_instance.model_matrix,
-                                          mesh->aabb_min,
-                                          mesh->aabb_max,
+                                          local_bounds_min,
+                                          local_bounds_max,
                                           1,
                                           canvas3d_cmd_requires_blend(&per_instance)),
-                mesh->aabb_min,
-                mesh->aabb_max)) {
+                local_bounds_min,
+                local_bounds_max)) {
             canvas3d_instanced_release_refs(b);
             rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
             return;
@@ -3807,6 +3967,8 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
                                               int8_t has_prev_instance_matrices) {
     rt_canvas3d *c = b->c;
     rt_mesh3d *mesh = b->mesh;
+    float local_bounds_min[3];
+    float local_bounds_max[3];
 
     size_t matrix_float_count = (size_t)instance_count * 16u;
     float *queued_instance_matrices = canvas3d_alloc_instance_matrix_snapshot(
@@ -3880,6 +4042,7 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
 
     base_cmd->prev_instance_matrices = queued_prev_instance_matrices;
     base_cmd->has_prev_instance_matrices = queued_prev_instance_matrices ? 1 : 0;
+    canvas3d_copy_or_compute_local_bounds(mesh, base_cmd->vertices, local_bounds_min, local_bounds_max);
     if (!canvas3d_enqueue_draw(
             c,
             base_cmd,
@@ -3891,9 +4054,9 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
             c->wireframe,
             canvas3d_material_backface_cull(c, b->mat),
             canvas3d_compute_instanced_batch_sort_key(
-                c, queued_instance_matrices, instance_count, mesh->aabb_min, mesh->aabb_max),
-            mesh->aabb_min,
-            mesh->aabb_max)) {
+                c, queued_instance_matrices, instance_count, local_bounds_min, local_bounds_max),
+            local_bounds_min,
+            local_bounds_max)) {
         rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
         canvas3d_release_tracked_temp_buffer(c, queued_prev_instance_matrices);
         canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
@@ -3936,8 +4099,9 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     mat = (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
     if (!c || !mesh || !mat)
         return;
-    if (!c->in_frame || !c->backend || !mesh->resident || mesh->vertex_count == 0 ||
-        mesh->index_count == 0)
+    rt_mesh3d_repair_geometry_counts(mesh);
+    if (!c->in_frame || !c->backend || !mesh->resident || rt_mesh3d_safe_vertex_count(mesh) == 0 ||
+        rt_mesh3d_safe_index_count(mesh) == 0)
         return;
     if (has_prev_instance_matrices && !prev_instance_matrices) {
         rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrices pointer is required");
@@ -4288,6 +4452,18 @@ void rt_canvas3d_end(void *obj) {
 
     cmds = (deferred_draw_t *)c->draw_cmds;
     queued_draw_count = c->draw_count;
+
+    if (c->skybox) {
+        if (!rt_g3d_has_class(c->skybox, RT_G3D_CUBEMAP3D_CLASS_ID)) {
+            c->skybox = NULL;
+            rt_canvas3d_invalidate_skybox_cache(c);
+        } else if (!rt_cubemap3d_is_complete(c->skybox)) {
+            if (rt_obj_release_check0(c->skybox))
+                rt_obj_free(c->skybox);
+            c->skybox = NULL;
+            rt_canvas3d_invalidate_skybox_cache(c);
+        }
+    }
 
     if (!c->frame_is_2d && c->skybox) {
         uint8_t *out_pixels = NULL;

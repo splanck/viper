@@ -66,6 +66,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define RT_GAME3D_BODYDEF_DIM_MAX 1000000.0
+#define RT_GAME3D_BODYDEF_MASS_MAX 1000000.0
+#define RT_GAME3D_BODYDEF_FRICTION_MAX 1000.0
+
 /// @brief Reset a BodyDef to library defaults: a 0.5-half-extent dynamic box, mass 1,
 ///   friction 0.5, restitution 0.3, on the DYNAMIC layer, colliding with everything.
 static void game3d_body_def_defaults(rt_game3d_body_def *def) {
@@ -116,7 +120,11 @@ static int64_t game3d_valid_sync_or_default(int64_t sync_mode) {
 ///   collider extents/radii/heights that must stay positive.
 static double game3d_bodydef_extent_or(double value, double fallback) {
     value = game3d_finite_or(value, fallback);
-    return value > 0.0 ? value : fallback;
+    if (value <= 0.0)
+        return fallback;
+    if (value > RT_GAME3D_BODYDEF_DIM_MAX)
+        return RT_GAME3D_BODYDEF_DIM_MAX;
+    return value;
 }
 
 /// @brief Build a dynamic box BodyDef; a (near-)zero mass yields a static body. See header.
@@ -129,7 +137,7 @@ void *rt_game3d_body_def_box(double half_x, double half_y, double half_z, double
     def->half_extents[0] = game3d_bodydef_extent_or(half_x, 0.5);
     def->half_extents[1] = game3d_bodydef_extent_or(half_y, 0.5);
     def->half_extents[2] = game3d_bodydef_extent_or(half_z, 0.5);
-    def->mass = game3d_nonnegative_or(mass, 1.0);
+    def->mass = game3d_nonnegative_clamped_or(mass, 1.0, RT_GAME3D_BODYDEF_MASS_MAX);
     def->is_static = def->mass <= 1e-12 ? 1 : 0;
     return def;
 }
@@ -142,7 +150,7 @@ void *rt_game3d_body_def_sphere(double radius, double mass) {
         return NULL;
     def->shape = RT_GAME3D_BODY_SHAPE_SPHERE;
     def->radius = game3d_bodydef_extent_or(radius, 0.5);
-    def->mass = game3d_nonnegative_or(mass, 1.0);
+    def->mass = game3d_nonnegative_clamped_or(mass, 1.0, RT_GAME3D_BODYDEF_MASS_MAX);
     def->is_static = def->mass <= 1e-12 ? 1 : 0;
     return def;
 }
@@ -159,7 +167,7 @@ void *rt_game3d_body_def_capsule(double radius, double height, double mass) {
     def->height = game3d_bodydef_extent_or(height, def->radius * 2.0);
     if (def->height < def->radius * 2.0)
         def->height = def->radius * 2.0;
-    def->mass = game3d_nonnegative_or(mass, 1.0);
+    def->mass = game3d_nonnegative_clamped_or(mass, 1.0, RT_GAME3D_BODYDEF_MASS_MAX);
     def->is_static = def->mass <= 1e-12 ? 1 : 0;
     return def;
 }
@@ -220,7 +228,7 @@ void rt_game3d_body_def_set_mass(void *obj, double mass) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.set_mass: invalid BodyDef");
     if (def) {
-        def->mass = game3d_nonnegative_or(mass, def->mass);
+        def->mass = game3d_nonnegative_clamped_or(mass, def->mass, RT_GAME3D_BODYDEF_MASS_MAX);
         if (def->mass <= 1e-12) {
             def->is_static = 1;
             def->is_kinematic = 0;
@@ -242,7 +250,8 @@ void rt_game3d_body_def_set_friction(void *obj, double friction) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.set_friction: invalid BodyDef");
     if (def)
-        def->friction = game3d_nonnegative_or(friction, def->friction);
+        def->friction =
+            game3d_nonnegative_clamped_or(friction, def->friction, RT_GAME3D_BODYDEF_FRICTION_MAX);
 }
 
 /// @brief Get the restitution coefficient (0 on invalid handle).
@@ -422,33 +431,40 @@ void *game3d_body_def_create_body(rt_game3d_body_def *def) {
     void *body = NULL;
     if (!def)
         return NULL;
+    double mass = game3d_nonnegative_clamped_or(def->mass, 1.0, RT_GAME3D_BODYDEF_MASS_MAX);
+    double radius = game3d_bodydef_extent_or(def->radius, 0.5);
+    double height = game3d_bodydef_extent_or(def->height, radius * 2.0);
+    if (height < radius * 2.0)
+        height = radius * 2.0;
+    double half_x = game3d_bodydef_extent_or(def->half_extents[0], 0.5);
+    double half_y = game3d_bodydef_extent_or(def->half_extents[1], 0.5);
+    double half_z = game3d_bodydef_extent_or(def->half_extents[2], 0.5);
+    double body_mass = def->is_static ? 0.0 : mass;
     switch (def->shape) {
         case RT_GAME3D_BODY_SHAPE_SPHERE:
-            body = rt_body3d_new_sphere(def->radius, def->is_static ? 0.0 : def->mass);
+            body = rt_body3d_new_sphere(radius, body_mass);
             break;
         case RT_GAME3D_BODY_SHAPE_CAPSULE:
-            body =
-                rt_body3d_new_capsule(def->radius, def->height, def->is_static ? 0.0 : def->mass);
+            body = rt_body3d_new_capsule(radius, height, body_mass);
             break;
         case RT_GAME3D_BODY_SHAPE_BOX:
         default:
-            body = rt_body3d_new_aabb(def->half_extents[0],
-                                      def->half_extents[1],
-                                      def->half_extents[2],
-                                      def->is_static ? 0.0 : def->mass);
+            body = rt_body3d_new_aabb(half_x, half_y, half_z, body_mass);
             break;
     }
     if (!body)
         return NULL;
-    rt_body3d_set_friction(body, def->friction);
-    rt_body3d_set_restitution(body, def->restitution);
+    rt_body3d_set_friction(
+        body, game3d_nonnegative_clamped_or(def->friction, 0.5, RT_GAME3D_BODYDEF_FRICTION_MAX));
+    rt_body3d_set_restitution(body, game3d_clamp(def->restitution, 0.0, 1.0));
     if (def->is_static)
         rt_body3d_set_static(body, 1);
     else if (def->is_kinematic)
         rt_body3d_set_kinematic(body, 1);
     rt_body3d_set_trigger(body, def->is_trigger);
     rt_body3d_set_use_ccd(body, def->use_ccd);
-    rt_body3d_set_collision_layer(body, def->layer);
+    rt_body3d_set_collision_layer(
+        body, game3d_valid_layer(def->layer) ? def->layer : RT_GAME3D_LAYER_DYNAMIC);
     rt_body3d_set_collision_mask(body, def->mask_bits);
     return body;
 }

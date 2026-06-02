@@ -36,6 +36,7 @@
 #define CAMERA3D_ASPECT_MAX 1000000.0
 #define CAMERA3D_ORTHO_SIZE_MAX 1000000000.0
 #define CAMERA3D_FLOAT_ABS_MAX 3.40282346638528859812e38
+#define CAMERA3D_DAMPING_EXP_MAX 60.0
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 #include "rt_trap.h"
@@ -72,6 +73,28 @@ static double clamp_abs_or(double value, double fallback, double max_abs) {
 /// @brief True if `value` is finite and within ±CAMERA3D_FLOAT_ABS_MAX (safe to narrow to float).
 static int camera_value_fits_float(double value) {
     return isfinite(value) && value >= -CAMERA3D_FLOAT_ABS_MAX && value <= CAMERA3D_FLOAT_ABS_MAX;
+}
+
+static void camera_identity_matrix(double *m) {
+    if (!m)
+        return;
+    memset(m, 0, 16 * sizeof(double));
+    m[0] = m[5] = m[10] = m[15] = 1.0;
+}
+
+static int camera_matrix_is_finite(const double *m) {
+    if (!m)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m[i]))
+            return 0;
+    }
+    return 1;
+}
+
+static void camera_finish_matrix(double *m) {
+    if (!camera_matrix_is_finite(m))
+        camera_identity_matrix(m);
 }
 
 /// @brief Clamp `value` to `[0, +∞)`, substituting `fallback` when not finite.
@@ -148,23 +171,95 @@ static double sanitize_ortho_size(double size) {
     return size > CAMERA3D_ORTHO_SIZE_MAX ? CAMERA3D_ORTHO_SIZE_MAX : size;
 }
 
+static double camera_wrap_degrees(double degrees) {
+    if (!isfinite(degrees))
+        return 0.0;
+    degrees = fmod(degrees, 360.0);
+    if (!isfinite(degrees))
+        return 0.0;
+    if (degrees > 180.0)
+        degrees -= 360.0;
+    if (degrees < -180.0)
+        degrees += 360.0;
+    return degrees;
+}
+
+static double camera_clamp_pitch(double pitch) {
+    pitch = finite_or(pitch, 0.0);
+    if (pitch > 89.0)
+        return 89.0;
+    if (pitch < -89.0)
+        return -89.0;
+    return pitch;
+}
+
+static double camera_damping_factor(double speed, double dt) {
+    double exponent;
+    speed = sanitize_nonnegative(speed, 0.0);
+    dt = sanitize_nonnegative(dt, 0.0);
+    exponent = speed * dt;
+    if (!isfinite(exponent))
+        return 1.0;
+    if (exponent >= CAMERA3D_DAMPING_EXP_MAX)
+        return 1.0;
+    return 1.0 - exp(-exponent);
+}
+
+static void camera_eye_with_shake(const rt_camera3d *cam, double out_eye[3]) {
+    static const double fallback_eye[3] = {0.0, 0.0, 0.0};
+    if (!out_eye)
+        return;
+    if (!cam) {
+        out_eye[0] = out_eye[1] = out_eye[2] = 0.0;
+        return;
+    }
+    out_eye[0] = clamp_abs_or(finite_or(cam->eye[0], fallback_eye[0]) +
+                                  finite_or(cam->shake_offset[0], 0.0),
+                              fallback_eye[0],
+                              CAMERA3D_WORLD_ABS_MAX);
+    out_eye[1] = clamp_abs_or(finite_or(cam->eye[1], fallback_eye[1]) +
+                                  finite_or(cam->shake_offset[1], 0.0),
+                              fallback_eye[1],
+                              CAMERA3D_WORLD_ABS_MAX);
+    out_eye[2] = clamp_abs_or(finite_or(cam->eye[2], fallback_eye[2]) +
+                                  finite_or(cam->shake_offset[2], 0.0),
+                              fallback_eye[2],
+                              CAMERA3D_WORLD_ABS_MAX);
+}
+
+static void camera_sanitize_eye(rt_camera3d *cam) {
+    static const double fallback_eye[3] = {0.0, 0.0, 0.0};
+    if (cam)
+        sanitize_vec3(cam->eye, fallback_eye);
+}
+
 /// @brief Normalize the (`*x`,`*y`,`*z`) triple in place, reverting to the
 ///        fallback direction when any lane is non-finite or the vector length
 ///        is ~zero. Keeps camera basis vectors unit-length and well-defined.
 static void camera_normalize_vec3_or(
     double *x, double *y, double *z, double fallback_x, double fallback_y, double fallback_z) {
-    double vx = finite_or(x ? *x : fallback_x, fallback_x);
-    double vy = finite_or(y ? *y : fallback_y, fallback_y);
-    double vz = finite_or(z ? *z : fallback_z, fallback_z);
-    double len = sqrt(vx * vx + vy * vy + vz * vz);
-    if (!isfinite(len) || len <= 1e-12) {
+    double vx = clamp_abs_or(x ? *x : fallback_x, fallback_x, CAMERA3D_WORLD_ABS_MAX);
+    double vy = clamp_abs_or(y ? *y : fallback_y, fallback_y, CAMERA3D_WORLD_ABS_MAX);
+    double vz = clamp_abs_or(z ? *z : fallback_z, fallback_z, CAMERA3D_WORLD_ABS_MAX);
+    double max_component = fmax(fabs(vx), fmax(fabs(vy), fabs(vz)));
+    if (!isfinite(max_component) || max_component <= 1e-12) {
         vx = fallback_x;
         vy = fallback_y;
         vz = fallback_z;
     } else {
-        vx /= len;
-        vy /= len;
-        vz /= len;
+        double sx = vx / max_component;
+        double sy = vy / max_component;
+        double sz = vz / max_component;
+        double len = sqrt(sx * sx + sy * sy + sz * sz);
+        if (!isfinite(len) || len <= 1e-12) {
+            vx = fallback_x;
+            vy = fallback_y;
+            vz = fallback_z;
+        } else {
+            vx = sx / len;
+            vy = sy / len;
+            vz = sz / len;
+        }
     }
     if (x)
         *x = vx;
@@ -191,6 +286,7 @@ static void build_perspective(double *m, double fov_deg, double aspect, double n
     m[11] = 2.0 * far * near * nf;
     m[14] = -1.0;
     /* m[15] = 0 */
+    camera_finish_matrix(m);
 }
 
 /// @brief Build a right-handed look-at view matrix into `m`. Forward = normalize(eye -
@@ -229,23 +325,19 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     double fx = eye[0] - target[0];
     double fy = eye[1] - target[1];
     double fz = eye[2] - target[2];
-    double flen = sqrt(fx * fx + fy * fy + fz * fz);
-    if (!isfinite(flen) || flen < 1e-12) {
+    camera_normalize_vec3_or(&fx, &fy, &fz, 0.0, 0.0, 1.0);
+    if (fabs(fx) + fabs(fy) + fabs(fz) <= 1e-12) {
         fx = 0.0;
         fy = 0.0;
         fz = 1.0;
-        flen = 1.0;
     }
-    fx /= flen;
-    fy /= flen;
-    fz /= flen;
 
     /* Right = normalize(cross(up, forward)) */
     double rx = up[1] * fz - up[2] * fy;
     double ry = up[2] * fx - up[0] * fz;
     double rz = up[0] * fy - up[1] * fx;
-    double rlen = sqrt(rx * rx + ry * ry + rz * rz);
-    if (!isfinite(rlen) || rlen <= 1e-12) {
+    double rlen_probe = fmax(fabs(rx), fmax(fabs(ry), fabs(rz)));
+    if (!isfinite(rlen_probe) || rlen_probe <= 1e-12) {
         /* When forward is near-vertical (|fy| > 0.99) the world-Y up hint is
          * degenerate, so fall back to world +Z; otherwise use world +Y. */
         const double fallback_up[3] = {
@@ -253,22 +345,14 @@ static void build_look_at(double *m, const double *eye, const double *target, co
         rx = fallback_up[1] * fz - fallback_up[2] * fy;
         ry = fallback_up[2] * fx - fallback_up[0] * fz;
         rz = fallback_up[0] * fy - fallback_up[1] * fx;
-        rlen = sqrt(rx * rx + ry * ry + rz * rz);
     }
-    if (isfinite(rlen) && rlen > 1e-12) {
-        rx /= rlen;
-        ry /= rlen;
-        rz /= rlen;
-    } else {
-        rx = 1.0;
-        ry = 0.0;
-        rz = 0.0;
-    }
+    camera_normalize_vec3_or(&rx, &ry, &rz, 1.0, 0.0, 0.0);
 
     /* True up = cross(forward, right) */
     double ux = fy * rz - fz * ry;
     double uy = fz * rx - fx * rz;
     double uz = fx * ry - fy * rx;
+    camera_normalize_vec3_or(&ux, &uy, &uz, 0.0, 1.0, 0.0);
 
     memset(m, 0, 16 * sizeof(double));
     m[0] = rx;
@@ -284,6 +368,7 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     m[10] = fz;
     m[11] = -(fx * eye[0] + fy * eye[1] + fz * eye[2]);
     m[15] = 1.0;
+    camera_finish_matrix(m);
 }
 
 /// @brief Recompute the camera's projection matrix from current FOV / aspect / clip / ortho size.
@@ -385,12 +470,9 @@ static void camera_sync_fps_angles_from_view(rt_camera3d *cam) {
     fx = finite_or(-cam->view[8], 0.0);
     fy = finite_or(-cam->view[9], 0.0);
     fz = finite_or(-cam->view[10], -1.0);
-    cam->fps_yaw = atan2(fx, -fz) * (180.0 / M_PI);
-    cam->fps_pitch = asin(fmax(-1.0, fmin(1.0, fy))) * (180.0 / M_PI);
-    if (cam->fps_pitch > 89.0)
-        cam->fps_pitch = 89.0;
-    if (cam->fps_pitch < -89.0)
-        cam->fps_pitch = -89.0;
+    camera_normalize_vec3_or(&fx, &fy, &fz, 0.0, 0.0, -1.0);
+    cam->fps_yaw = camera_wrap_degrees(atan2(fx, -fz) * (180.0 / M_PI));
+    cam->fps_pitch = camera_clamp_pitch(asin(fmax(-1.0, fmin(1.0, fy))) * (180.0 / M_PI));
 }
 
 /// @brief Rebuild the view matrix from the cached FPS yaw/pitch and eye position.
@@ -408,8 +490,9 @@ static void camera_rebuild_fps_view(rt_camera3d *cam) {
 
     if (!cam)
         return;
-    cam->fps_yaw = finite_or(cam->fps_yaw, 0.0);
-    cam->fps_pitch = finite_or(cam->fps_pitch, 0.0);
+    camera_sanitize_eye(cam);
+    cam->fps_yaw = camera_wrap_degrees(cam->fps_yaw);
+    cam->fps_pitch = camera_clamp_pitch(cam->fps_pitch);
     yaw_rad = cam->fps_yaw * (M_PI / 180.0);
     pitch_rad = cam->fps_pitch * (M_PI / 180.0);
     cp = cos(pitch_rad);
@@ -437,12 +520,12 @@ static void camera_apply_shake_to_view(rt_camera3d *cam) {
     forward[0] = finite_or(-cam->view[8], 0.0);
     forward[1] = finite_or(-cam->view[9], 0.0);
     forward[2] = finite_or(-cam->view[10], -1.0);
+    camera_normalize_vec3_or(&forward[0], &forward[1], &forward[2], 0.0, 0.0, -1.0);
     up[0] = finite_or(cam->view[4], 0.0);
     up[1] = finite_or(cam->view[5], 1.0);
     up[2] = finite_or(cam->view[6], 0.0);
-    eye[0] = finite_or(cam->eye[0], 0.0) + finite_or(cam->shake_offset[0], 0.0);
-    eye[1] = finite_or(cam->eye[1], 0.0) + finite_or(cam->shake_offset[1], 0.0);
-    eye[2] = finite_or(cam->eye[2], 0.0) + finite_or(cam->shake_offset[2], 0.0);
+    camera_normalize_vec3_or(&up[0], &up[1], &up[2], 0.0, 1.0, 0.0);
+    camera_eye_with_shake(cam, eye);
     target[0] = eye[0] + forward[0];
     target[1] = eye[1] + forward[1];
     target[2] = eye[2] + forward[2];
@@ -498,10 +581,9 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
 ///   because view space uses -Z forward while NDC uses +Z forward, giving
 ///   `-2 / (far - near)` on the diagonal. The translation column centers the
 ///   volume on the origin: `(r+l)/(r-l)` is negated to move "left" to -1.
-///   Degenerate inputs (any axis spanning less than 1e-12) zero the output
-///   rather than generating NaN/Inf so downstream matrix multiplies stay
-///   finite — callers can detect the collapse via a post-build check if
-///   needed.
+///   Degenerate inputs (any axis spanning less than 1e-12) fall back to
+///   identity rather than generating NaN/Inf, so downstream matrix multiplies
+///   stay finite.
 static void build_ortho(double *m,
                         double left,
                         double right,
@@ -514,7 +596,7 @@ static void build_ortho(double *m,
     double tb = top - bottom;
     double fn = far_val - near_val;
     if (fabs(rl) < 1e-12 || fabs(tb) < 1e-12 || fabs(fn) < 1e-12)
-        return;
+        goto finish;
     m[0] = 2.0 / rl;
     m[5] = 2.0 / tb;
     m[10] = -2.0 / fn;
@@ -522,6 +604,8 @@ static void build_ortho(double *m,
     m[7] = -(top + bottom) / tb;
     m[11] = -(far_val + near_val) / fn;
     m[15] = 1.0;
+finish:
+    camera_finish_matrix(m);
 }
 
 /// @brief Create an orthographic camera (parallel projection, no perspective foreshortening).
@@ -655,12 +739,8 @@ static void camera3d_orbit_values(
     ty = clamp_abs_or(ty, 0.0, CAMERA3D_WORLD_ABS_MAX);
     tz = clamp_abs_or(tz, 0.0, CAMERA3D_WORLD_ABS_MAX);
     distance = sanitize_nonnegative(distance, 0.0);
-    yaw = finite_or(yaw, 0.0);
-    pitch = finite_or(pitch, 0.0);
-    if (pitch > 89.0)
-        pitch = 89.0;
-    if (pitch < -89.0)
-        pitch = -89.0;
+    yaw = camera_wrap_degrees(yaw);
+    pitch = camera_clamp_pitch(pitch);
 
     double yaw_rad = yaw * (M_PI / 180.0);
     double pitch_rad = pitch * (M_PI / 180.0);
@@ -774,7 +854,9 @@ void *rt_camera3d_get_position(void *obj) {
     if (!cam)
         return NULL;
     return rt_vec3_new(
-        finite_or(cam->eye[0], 0.0), finite_or(cam->eye[1], 0.0), finite_or(cam->eye[2], 0.0));
+        clamp_abs_or(cam->eye[0], 0.0, CAMERA3D_WORLD_ABS_MAX),
+        clamp_abs_or(cam->eye[1], 0.0, CAMERA3D_WORLD_ABS_MAX),
+        clamp_abs_or(cam->eye[2], 0.0, CAMERA3D_WORLD_ABS_MAX));
 }
 
 /// @brief Read the camera's world position into @p x / @p y / @p z (returns 0 with no writes if
@@ -789,9 +871,9 @@ int8_t rt_camera3d_get_position_components(void *obj, double *x, double *y, doub
         *z = 0.0;
     if (!cam || !x || !y || !z)
         return 0;
-    *x = finite_or(cam->eye[0], 0.0);
-    *y = finite_or(cam->eye[1], 0.0);
-    *z = finite_or(cam->eye[2], 0.0);
+    *x = clamp_abs_or(cam->eye[0], 0.0, CAMERA3D_WORLD_ABS_MAX);
+    *y = clamp_abs_or(cam->eye[1], 0.0, CAMERA3D_WORLD_ABS_MAX);
+    *z = clamp_abs_or(cam->eye[2], 0.0, CAMERA3D_WORLD_ABS_MAX);
     return 1;
 }
 
@@ -807,9 +889,11 @@ void rt_camera3d_set_position(void *obj, void *pos) {
     forward[0] = finite_or(-cam->view[8], 0.0);
     forward[1] = finite_or(-cam->view[9], 0.0);
     forward[2] = finite_or(-cam->view[10], -1.0);
+    camera_normalize_vec3_or(&forward[0], &forward[1], &forward[2], 0.0, 0.0, -1.0);
     up[0] = finite_or(cam->view[4], 0.0);
     up[1] = finite_or(cam->view[5], 1.0);
     up[2] = finite_or(cam->view[6], 0.0);
+    camera_normalize_vec3_or(&up[0], &up[1], &up[2], 0.0, 1.0, 0.0);
     cam->eye[0] = clamp_abs_or(rt_vec3_x(pos), 0.0, CAMERA3D_WORLD_ABS_MAX);
     cam->eye[1] = clamp_abs_or(rt_vec3_y(pos), 0.0, CAMERA3D_WORLD_ABS_MAX);
     cam->eye[2] = clamp_abs_or(rt_vec3_z(pos), 0.0, CAMERA3D_WORLD_ABS_MAX);
@@ -858,6 +942,12 @@ void *rt_camera3d_get_right(void *obj) {
 /// computed from the first row and its cofactors. Returns -1 if singular.
 static int mat4d_invert(const double *m, double *out) {
     double inv[16];
+    if (!m || !out)
+        return -1;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m[i]))
+            return -1;
+    }
     inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
              m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
     inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
@@ -891,13 +981,22 @@ static int mat4d_invert(const double *m, double *out) {
     inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
               m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
 
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(inv[i]))
+            return -1;
+    }
+
     double det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
     if (!isfinite(det) || fabs(det) < 1e-12)
         return -1;
 
     double inv_det = 1.0 / det;
-    for (int i = 0; i < 16; i++)
-        out[i] = inv[i] * inv_det;
+    for (int i = 0; i < 16; i++) {
+        double value = inv[i] * inv_det;
+        if (!isfinite(value))
+            return -1;
+        out[i] = value;
+    }
     return 0;
 }
 
@@ -931,6 +1030,13 @@ static int camera_get_pick_inv_vp(rt_camera3d *cam, double aspect, double *out_i
     sanitize_clip_planes(&near_plane, &far_plane);
     fov = sanitize_fov(cam->fov);
     ortho_size = sanitize_ortho_size(cam->ortho_size);
+    if (!camera_matrix_is_finite(cam->view)) {
+        cam->pick_cache_valid = 0;
+        camera_rebuild_fps_view(cam);
+        camera_apply_shake_to_view(cam);
+    }
+    if (!camera_matrix_is_finite(cam->view))
+        return 0;
     if (cam->pick_cache_valid && cam->pick_cache_is_ortho == cam->is_ortho &&
         camera_pick_cache_scalar_equal(cam->pick_cache_aspect, aspect) &&
         camera_pick_cache_scalar_equal(cam->pick_cache_fov, fov) &&
@@ -954,6 +1060,10 @@ static int camera_get_pick_inv_vp(rt_camera3d *cam, double aspect, double *out_i
                             projection[r * 4 + 1] * cam->view[1 * 4 + c] +
                             projection[r * 4 + 2] * cam->view[2 * 4 + c] +
                             projection[r * 4 + 3] * cam->view[3 * 4 + c];
+            if (!isfinite(vp[r * 4 + c])) {
+                cam->pick_cache_valid = 0;
+                return 0;
+            }
         }
     }
     if (mat4d_invert(vp, out_inv_vp) != 0) {
@@ -996,15 +1106,15 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
         double fx = -cam->view[8];
         double fy = -cam->view[9];
         double fz = -cam->view[10];
-        double len = sqrt(fx * fx + fy * fy + fz * fz);
-        if (isfinite(len) && len > 1e-12)
-            return rt_vec3_new(fx / len, fy / len, fz / len);
-        return rt_vec3_new(0.0, 0.0, -1.0);
+        camera_normalize_vec3_or(&fx, &fy, &fz, 0.0, 0.0, -1.0);
+        return rt_vec3_new(fx, fy, fz);
     }
 
     /* Screen → NDC */
-    double ndc_x = (2.0 * (double)sx / (double)sw) - 1.0;
-    double ndc_y = 1.0 - (2.0 * (double)sy / (double)sh); /* Y-flip */
+    double ndc_x =
+        clamp_abs_or((2.0 * (double)sx / (double)sw) - 1.0, 0.0, CAMERA3D_ASPECT_MAX);
+    double ndc_y =
+        clamp_abs_or(1.0 - (2.0 * (double)sy / (double)sh), 0.0, CAMERA3D_ASPECT_MAX);
 
     double aspect = sanitize_aspect((double)sw / (double)sh);
     double inv_vp[16];
@@ -1019,29 +1129,22 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
     world[2] = inv_vp[8] * p[0] + inv_vp[9] * p[1] + inv_vp[10] * p[2] + inv_vp[11] * p[3];
     world[3] = inv_vp[12] * p[0] + inv_vp[13] * p[1] + inv_vp[14] * p[2] + inv_vp[15] * p[3];
 
-    if (isfinite(world[3]) && fabs(world[3]) > 1e-12) {
-        world[0] /= world[3];
-        world[1] /= world[3];
-        world[2] /= world[3];
-    }
+    if (!isfinite(world[3]) || fabs(world[3]) <= 1e-12)
+        return rt_vec3_new(0.0, 0.0, -1.0);
+    world[0] = clamp_abs_or(world[0] / world[3], 0.0, CAMERA3D_WORLD_ABS_MAX);
+    world[1] = clamp_abs_or(world[1] / world[3], 0.0, CAMERA3D_WORLD_ABS_MAX);
+    world[2] = clamp_abs_or(world[2] / world[3], -1.0, CAMERA3D_WORLD_ABS_MAX);
 
     /* Ray direction = normalize(worldPoint - rendered eye) */
-    double origin_x = cam->eye[0] + cam->shake_offset[0];
-    double origin_y = cam->eye[1] + cam->shake_offset[1];
-    double origin_z = cam->eye[2] + cam->shake_offset[2];
+    double origin[3];
+    camera_eye_with_shake(cam, origin);
+    double origin_x = origin[0];
+    double origin_y = origin[1];
+    double origin_z = origin[2];
     double dx = world[0] - origin_x;
     double dy = world[1] - origin_y;
     double dz = world[2] - origin_z;
-    double len = sqrt(dx * dx + dy * dy + dz * dz);
-    if (isfinite(len) && len > 1e-12) {
-        dx /= len;
-        dy /= len;
-        dz /= len;
-    } else {
-        dx = 0.0;
-        dy = 0.0;
-        dz = -1.0;
-    }
+    camera_normalize_vec3_or(&dx, &dy, &dz, 0.0, 0.0, -1.0);
 
     return rt_vec3_new(dx, dy, dz);
 }
@@ -1055,14 +1158,18 @@ void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_
     if (!cam || sw <= 0 || sh <= 0)
         return rt_vec3_new(0.0, 0.0, 0.0);
 
-    double eye_x = cam->eye[0] + cam->shake_offset[0];
-    double eye_y = cam->eye[1] + cam->shake_offset[1];
-    double eye_z = cam->eye[2] + cam->shake_offset[2];
+    double eye[3];
+    camera_eye_with_shake(cam, eye);
+    double eye_x = eye[0];
+    double eye_y = eye[1];
+    double eye_z = eye[2];
     if (!cam->is_ortho)
         return rt_vec3_new(eye_x, eye_y, eye_z);
 
-    double ndc_x = (2.0 * (double)sx / (double)sw) - 1.0;
-    double ndc_y = 1.0 - (2.0 * (double)sy / (double)sh);
+    double ndc_x =
+        clamp_abs_or((2.0 * (double)sx / (double)sw) - 1.0, 0.0, CAMERA3D_ASPECT_MAX);
+    double ndc_y =
+        clamp_abs_or(1.0 - (2.0 * (double)sy / (double)sh), 0.0, CAMERA3D_ASPECT_MAX);
     double aspect = sanitize_aspect((double)sw / (double)sh);
     double inv_vp[16];
     if (!camera_get_pick_inv_vp(cam, aspect, inv_vp))
@@ -1075,13 +1182,11 @@ void *rt_camera3d_screen_to_ray_origin(void *obj, int64_t sx, int64_t sy, int64_
     world[2] = inv_vp[8] * p[0] + inv_vp[9] * p[1] + inv_vp[10] * p[2] + inv_vp[11] * p[3];
     world[3] = inv_vp[12] * p[0] + inv_vp[13] * p[1] + inv_vp[14] * p[2] + inv_vp[15] * p[3];
 
-    if (isfinite(world[3]) && fabs(world[3]) > 1e-12) {
-        world[0] /= world[3];
-        world[1] /= world[3];
-        world[2] /= world[3];
-    }
-    if (!isfinite(world[0]) || !isfinite(world[1]) || !isfinite(world[2]))
+    if (!isfinite(world[3]) || fabs(world[3]) <= 1e-12)
         return rt_vec3_new(eye_x, eye_y, eye_z);
+    world[0] = clamp_abs_or(world[0] / world[3], eye_x, CAMERA3D_WORLD_ABS_MAX);
+    world[1] = clamp_abs_or(world[1] / world[3], eye_y, CAMERA3D_WORLD_ABS_MAX);
+    world[2] = clamp_abs_or(world[2] / world[3], eye_z, CAMERA3D_WORLD_ABS_MAX);
     return rt_vec3_new(world[0], world[1], world[2]);
 }
 
@@ -1113,25 +1218,20 @@ void rt_camera3d_fps_update(void *obj,
     if (!cam)
         return;
 
-    yaw_delta = finite_or(yaw_delta, 0.0);
-    pitch_delta = finite_or(pitch_delta, 0.0);
+    yaw_delta = camera_wrap_degrees(yaw_delta);
+    pitch_delta = clamp_abs_or(pitch_delta, 0.0, 180.0);
     move_fwd = clamp_abs_or(move_fwd, 0.0, CAMERA3D_WORLD_ABS_MAX);
     move_right = clamp_abs_or(move_right, 0.0, CAMERA3D_WORLD_ABS_MAX);
     move_up = clamp_abs_or(move_up, 0.0, CAMERA3D_WORLD_ABS_MAX);
     speed = sanitize_nonnegative(speed, 0.0);
     dt = sanitize_nonnegative(dt, 0.0);
-    cam->fps_yaw = finite_or(cam->fps_yaw, 0.0);
-    cam->fps_pitch = finite_or(cam->fps_pitch, 0.0);
+    camera_sanitize_eye(cam);
+    cam->fps_yaw = camera_wrap_degrees(cam->fps_yaw);
+    cam->fps_pitch = camera_clamp_pitch(cam->fps_pitch);
 
     /* Accumulate yaw/pitch from mouse deltas */
-    cam->fps_yaw = fmod(cam->fps_yaw + yaw_delta, 360.0);
-    if (!isfinite(cam->fps_yaw))
-        cam->fps_yaw = 0.0;
-    cam->fps_pitch += pitch_delta;
-    if (cam->fps_pitch > 89.0)
-        cam->fps_pitch = 89.0;
-    if (cam->fps_pitch < -89.0)
-        cam->fps_pitch = -89.0;
+    cam->fps_yaw = camera_wrap_degrees(cam->fps_yaw + yaw_delta);
+    cam->fps_pitch = camera_clamp_pitch(cam->fps_pitch + pitch_delta);
 
     /* Compute forward and right vectors from yaw/pitch */
     double yaw_rad = cam->fps_yaw * (M_PI / 180.0);
@@ -1172,13 +1272,13 @@ void rt_camera3d_fps_update(void *obj,
 /// @brief Return the FPS-controller yaw in degrees (heading around world Y).
 double rt_camera3d_get_yaw(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    return cam ? cam->fps_yaw : 0.0;
+    return cam ? camera_wrap_degrees(cam->fps_yaw) : 0.0;
 }
 
 /// @brief Return the FPS-controller pitch in degrees (look up/down).
 double rt_camera3d_get_pitch(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    return cam ? cam->fps_pitch : 0.0;
+    return cam ? camera_clamp_pitch(cam->fps_pitch) : 0.0;
 }
 
 /// @brief Set yaw absolutely and rebuild the view (and shake) to match.
@@ -1190,7 +1290,7 @@ void rt_camera3d_set_yaw(void *obj, double yaw) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam)
         return;
-    cam->fps_yaw = finite_or(yaw, 0.0);
+    cam->fps_yaw = camera_wrap_degrees(yaw);
     camera_rebuild_fps_view(cam);
     camera_apply_shake_to_view(cam);
 }
@@ -1202,11 +1302,7 @@ void rt_camera3d_set_pitch(void *obj, double pitch) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam)
         return;
-    cam->fps_pitch = finite_or(pitch, 0.0);
-    if (cam->fps_pitch > 89.0)
-        cam->fps_pitch = 89.0;
-    if (cam->fps_pitch < -89.0)
-        cam->fps_pitch = -89.0;
+    cam->fps_pitch = camera_clamp_pitch(pitch);
     camera_rebuild_fps_view(cam);
     camera_apply_shake_to_view(cam);
 }
@@ -1236,7 +1332,7 @@ static void apply_shake(rt_camera3d *cam, double dt) {
     dt = sanitize_nonnegative(dt, 0.0);
     cam->shake_duration = sanitize_nonnegative(cam->shake_duration, 0.0);
     cam->shake_intensity = sanitize_nonnegative(cam->shake_intensity, 0.0);
-    cam->shake_decay = finite_or(cam->shake_decay, 5.0);
+    cam->shake_decay = sanitize_nonnegative(cam->shake_decay, 5.0);
     if (cam->shake_decay <= 0.0)
         cam->shake_decay = 5.0;
     if (cam->shake_duration <= 0.0) {
@@ -1250,7 +1346,10 @@ static void apply_shake(rt_camera3d *cam, double dt) {
         cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
         return;
     }
-    cam->shake_intensity *= exp(-cam->shake_decay * dt);
+    if (cam->shake_decay * dt >= CAMERA3D_DAMPING_EXP_MAX)
+        cam->shake_intensity = 0.0;
+    else
+        cam->shake_intensity *= exp(-cam->shake_decay * dt);
 
     /* Xorshift PRNG for deterministic random offsets */
     cam->shake_seed ^= cam->shake_seed << 13;
@@ -1262,9 +1361,10 @@ static void apply_shake(rt_camera3d *cam, double dt) {
     cam->shake_seed ^= cam->shake_seed << 5;
     double r2 = ((double)(cam->shake_seed & 0xFFFF) / 65535.0) * 2.0 - 1.0;
 
-    cam->shake_offset[0] = r1 * cam->shake_intensity;
-    cam->shake_offset[1] = r2 * cam->shake_intensity;
-    cam->shake_offset[2] = (r1 * r2) * cam->shake_intensity * 0.3;
+    cam->shake_offset[0] = clamp_abs_or(r1 * cam->shake_intensity, 0.0, CAMERA3D_WORLD_ABS_MAX);
+    cam->shake_offset[1] = clamp_abs_or(r2 * cam->shake_intensity, 0.0, CAMERA3D_WORLD_ABS_MAX);
+    cam->shake_offset[2] =
+        clamp_abs_or((r1 * r2) * cam->shake_intensity * 0.3, 0.0, CAMERA3D_WORLD_ABS_MAX);
 }
 
 /// @brief Per-frame entry point that advances shake decay and rebuilds the view.
@@ -1292,7 +1392,7 @@ void rt_camera3d_shake(void *obj, double intensity, double duration, double deca
         return;
     cam->shake_intensity = sanitize_nonnegative(intensity, 0.0);
     cam->shake_duration = sanitize_nonnegative(duration, 0.0);
-    cam->shake_decay = isfinite(decay) && decay > 0.0 ? decay : 5.0;
+    cam->shake_decay = isfinite(decay) && decay > 0.0 ? sanitize_nonnegative(decay, 5.0) : 5.0;
     apply_shake(cam, 0.0);
     camera_apply_shake_to_view(cam);
 }
@@ -1318,14 +1418,15 @@ void rt_camera3d_smooth_follow(
     distance = sanitize_nonnegative(distance, 0.0);
     speed = sanitize_nonnegative(speed, 0.0);
     dt = sanitize_nonnegative(dt, 0.0);
-    cam->fps_yaw = finite_or(cam->fps_yaw, 0.0);
+    camera_sanitize_eye(cam);
+    cam->fps_yaw = camera_wrap_degrees(cam->fps_yaw);
 
     /* Desired position: behind target using current yaw */
     double yaw_rad = cam->fps_yaw * (M_PI / 180.0);
     double desired[3] = {tx - sin(yaw_rad) * distance, ty, tz + cos(yaw_rad) * distance};
 
     /* Framerate-independent exponential damping */
-    double t = 1.0 - exp(-speed * dt);
+    double t = camera_damping_factor(speed, dt);
     double base_eye[3] = {
         finite_or(cam->eye[0], 0.0), finite_or(cam->eye[1], 0.0), finite_or(cam->eye[2], 0.0)};
     cam->eye[0] =
@@ -1351,42 +1452,36 @@ void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     if (!cam || !rt_g3d_is_vec3(target))
         return;
+    camera_sanitize_eye(cam);
 
     /* Current forward from view matrix */
     double cur_fwd[3] = {finite_or(-cam->view[8], 0.0),
                          finite_or(-cam->view[9], 0.0),
                          finite_or(-cam->view[10], -1.0)};
+    camera_normalize_vec3_or(&cur_fwd[0], &cur_fwd[1], &cur_fwd[2], 0.0, 0.0, -1.0);
 
     /* Desired forward */
-    double dx = finite_or(rt_vec3_x(target), 0.0) - finite_or(cam->eye[0], 0.0);
-    double dy = finite_or(rt_vec3_y(target), 0.0) - finite_or(cam->eye[1], 0.0);
-    double dz = finite_or(rt_vec3_z(target), 0.0) - finite_or(cam->eye[2], 0.0);
-    double len = sqrt(dx * dx + dy * dy + dz * dz);
+    double dx = clamp_abs_or(rt_vec3_x(target), 0.0, CAMERA3D_WORLD_ABS_MAX) -
+                clamp_abs_or(cam->eye[0], 0.0, CAMERA3D_WORLD_ABS_MAX);
+    double dy = clamp_abs_or(rt_vec3_y(target), 0.0, CAMERA3D_WORLD_ABS_MAX) -
+                clamp_abs_or(cam->eye[1], 0.0, CAMERA3D_WORLD_ABS_MAX);
+    double dz = clamp_abs_or(rt_vec3_z(target), 0.0, CAMERA3D_WORLD_ABS_MAX) -
+                clamp_abs_or(cam->eye[2], 0.0, CAMERA3D_WORLD_ABS_MAX);
     speed = sanitize_nonnegative(speed, 0.0);
     dt = sanitize_nonnegative(dt, 0.0);
-    if (isfinite(len) && len > 1e-8) {
-        dx /= len;
-        dy /= len;
-        dz /= len;
-    } else {
-        dx = cur_fwd[0];
-        dy = cur_fwd[1];
-        dz = cur_fwd[2];
-    }
+    camera_normalize_vec3_or(&dx, &dy, &dz, cur_fwd[0], cur_fwd[1], cur_fwd[2]);
 
     /* Exponential lerp toward desired */
-    double t = 1.0 - exp(-speed * dt);
+    double t = camera_damping_factor(speed, dt);
     double new_fwd[3] = {cur_fwd[0] + (dx - cur_fwd[0]) * t,
                          cur_fwd[1] + (dy - cur_fwd[1]) * t,
                          cur_fwd[2] + (dz - cur_fwd[2]) * t};
-    len = sqrt(new_fwd[0] * new_fwd[0] + new_fwd[1] * new_fwd[1] + new_fwd[2] * new_fwd[2]);
-    if (isfinite(len) && len > 1e-8) {
-        new_fwd[0] /= len;
-        new_fwd[1] /= len;
-        new_fwd[2] /= len;
-    }
+    camera_normalize_vec3_or(
+        &new_fwd[0], &new_fwd[1], &new_fwd[2], cur_fwd[0], cur_fwd[1], cur_fwd[2]);
 
-    double look[3] = {cam->eye[0] + new_fwd[0], cam->eye[1] + new_fwd[1], cam->eye[2] + new_fwd[2]};
+    double look[3] = {clamp_abs_or(cam->eye[0] + new_fwd[0], 0.0, CAMERA3D_WORLD_ABS_MAX),
+                      clamp_abs_or(cam->eye[1] + new_fwd[1], 0.0, CAMERA3D_WORLD_ABS_MAX),
+                      clamp_abs_or(cam->eye[2] + new_fwd[2], -1.0, CAMERA3D_WORLD_ABS_MAX)};
     double up[3] = {0, 1, 0};
     build_look_at(cam->view, cam->eye, look, up);
     camera_sync_fps_angles_from_view(cam);

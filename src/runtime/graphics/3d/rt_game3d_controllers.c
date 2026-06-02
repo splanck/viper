@@ -85,6 +85,9 @@ static void game3d_set_node_world_position(void *node, double world_pos[3]) {
     void *parent;
     if (!node || !world_pos)
         return;
+    world_pos[0] = game3d_clamp_coord_or(world_pos[0], 0.0);
+    world_pos[1] = game3d_clamp_coord_or(world_pos[1], 0.0);
+    world_pos[2] = game3d_clamp_coord_or(world_pos[2], 0.0);
     parent = rt_scene_node3d_get_parent(node);
     if (!parent) {
         rt_scene_node3d_set_position(node, world_pos[0], world_pos[1], world_pos[2]);
@@ -97,8 +100,10 @@ static void game3d_set_node_world_position(void *node, double world_pos[3]) {
         void *local =
             (parent_inv && world_vec) ? rt_mat4_transform_point(parent_inv, world_vec) : NULL;
         if (local) {
-            rt_scene_node3d_set_position(
-                node, rt_vec3_x(local), rt_vec3_y(local), rt_vec3_z(local));
+            rt_scene_node3d_set_position(node,
+                                         game3d_clamp_coord_or(rt_vec3_x(local), 0.0),
+                                         game3d_clamp_coord_or(rt_vec3_y(local), 0.0),
+                                         game3d_clamp_coord_or(rt_vec3_z(local), 0.0));
         } else {
             rt_scene_node3d_set_position(node, world_pos[0], world_pos[1], world_pos[2]);
         }
@@ -111,19 +116,27 @@ static void game3d_set_node_world_position(void *node, double world_pos[3]) {
 
 /// @brief Push a node's current world-space position/rotation/scale into its body.
 void game3d_sync_body_from_entity_node(rt_game3d_entity *entity, int8_t force) {
-    if (!entity || !entity->node || !entity->body)
+    void *node = game3d_entity_node_ref(entity);
+    void *body = game3d_entity_body_ref(entity);
+    if (!node || !body)
         return;
-    if (!force && rt_scene_node3d_get_sync_mode(entity->node) != RT_GAME3D_SYNC_BODY_FROM_NODE)
+    if (!force && rt_scene_node3d_get_sync_mode(node) != RT_GAME3D_SYNC_BODY_FROM_NODE)
         return;
-    void *pos = rt_scene_node3d_get_world_position(entity->node);
-    void *rot = rt_scene_node3d_get_world_rotation(entity->node);
-    void *scale = rt_scene_node3d_get_world_scale(entity->node);
+    void *pos = rt_scene_node3d_get_world_position(node);
+    void *rot = rt_scene_node3d_get_world_rotation(node);
+    void *scale = rt_scene_node3d_get_world_scale(node);
     if (pos)
-        rt_body3d_set_position(entity->body, rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos));
+        rt_body3d_set_position(body,
+                               game3d_clamp_coord_or(rt_vec3_x(pos), 0.0),
+                               game3d_clamp_coord_or(rt_vec3_y(pos), 0.0),
+                               game3d_clamp_coord_or(rt_vec3_z(pos), 0.0));
     if (rot)
-        rt_body3d_set_orientation(entity->body, rot);
+        rt_body3d_set_orientation(body, rot);
     if (scale)
-        rt_body3d_set_scale(entity->body, rt_vec3_x(scale), rt_vec3_y(scale), rt_vec3_z(scale));
+        rt_body3d_set_scale(body,
+                            game3d_scale_or_unit(rt_vec3_x(scale)),
+                            game3d_scale_or_unit(rt_vec3_y(scale)),
+                            game3d_scale_or_unit(rt_vec3_z(scale)));
     game3d_release_ref(&scale);
     game3d_release_ref(&rot);
     game3d_release_ref(&pos);
@@ -135,9 +148,10 @@ static void game3d_character_controller_sync_entity(rt_game3d_character_controll
         return;
     rt_game3d_entity *entity = (rt_game3d_entity *)controller->entity;
     void *pos = rt_character3d_get_position(controller->character);
-    if (entity->node && pos) {
+    void *node = game3d_entity_node_ref(entity);
+    if (node && pos) {
         double world_pos[3] = {rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos)};
-        game3d_set_node_world_position(entity->node, world_pos);
+        game3d_set_node_world_position(node, world_pos);
     }
     game3d_release_ref(&pos);
 }
@@ -154,9 +168,9 @@ void *rt_game3d_character_controller_new(
     if (!world || !entity)
         return NULL;
 
-    radius = game3d_positive_or(radius, 0.3);
-    height = game3d_positive_or(height, 1.8);
-    mass = game3d_nonnegative_or(mass, 70.0);
+    radius = game3d_positive_clamped_or(radius, 0.3, RT_GAME3D_SCALE_ABS_MAX);
+    height = game3d_positive_clamped_or(height, 1.8, RT_GAME3D_SCALE_ABS_MAX);
+    mass = game3d_nonnegative_clamped_or(mass, 70.0, RT_GAME3D_SCALE_ABS_MAX);
 
     rt_game3d_character_controller *controller = (rt_game3d_character_controller *)rt_obj_new_i64(
         RT_G3D_GAME3D_CHARACTER_CONTROLLER_CLASS_ID, (int64_t)sizeof(*controller));
@@ -184,8 +198,10 @@ void *rt_game3d_character_controller_new(
 
     void *pos = rt_game3d_entity_position(entity);
     if (pos) {
-        rt_character3d_set_position(
-            controller->character, rt_vec3_x(pos), rt_vec3_y(pos), rt_vec3_z(pos));
+        rt_character3d_set_position(controller->character,
+                                    game3d_clamp_coord_or(rt_vec3_x(pos), 0.0),
+                                    game3d_clamp_coord_or(rt_vec3_y(pos), 0.0),
+                                    game3d_clamp_coord_or(rt_vec3_z(pos), 0.0));
         game3d_release_ref(&pos);
     }
     game3d_character_controller_sync_entity(controller);
@@ -218,7 +234,8 @@ void rt_game3d_character_controller_set_speed(void *obj, double speed) {
     rt_game3d_character_controller *controller = game3d_character_controller_checked(
         obj, "Game3D.CharacterController3D.set_speed: invalid controller");
     if (controller)
-        controller->speed = game3d_nonnegative_or(speed, RT_GAME3D_DEFAULT_MOVE_SPEED);
+        controller->speed = game3d_nonnegative_clamped_or(
+            speed, RT_GAME3D_DEFAULT_MOVE_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX);
 }
 
 /// @brief Get the jump launch speed in units/sec.
@@ -233,7 +250,8 @@ void rt_game3d_character_controller_set_jump_speed(void *obj, double jump_speed)
     rt_game3d_character_controller *controller = game3d_character_controller_checked(
         obj, "Game3D.CharacterController3D.set_jumpSpeed: invalid controller");
     if (controller)
-        controller->jump_speed = game3d_nonnegative_or(jump_speed, RT_GAME3D_DEFAULT_JUMP_SPEED);
+        controller->jump_speed = game3d_nonnegative_clamped_or(
+            jump_speed, RT_GAME3D_DEFAULT_JUMP_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX);
 }
 
 /// @brief Get the gravity acceleration in units/sec².
@@ -248,7 +266,8 @@ void rt_game3d_character_controller_set_gravity(void *obj, double gravity) {
     rt_game3d_character_controller *controller = game3d_character_controller_checked(
         obj, "Game3D.CharacterController3D.set_gravity: invalid controller");
     if (controller)
-        controller->gravity = game3d_finite_or(gravity, RT_GAME3D_DEFAULT_GRAVITY);
+        controller->gravity =
+            game3d_clamp_abs_or(gravity, RT_GAME3D_DEFAULT_GRAVITY, RT_GAME3D_CONTROLLER_SPEED_MAX);
 }
 
 /// @brief Advance the character one frame from input and camera orientation.
@@ -268,6 +287,8 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
         return;
 
     dt = game3d_clamp_dt(dt);
+    controller->vertical_velocity =
+        game3d_clamp_abs_or(controller->vertical_velocity, 0.0, RT_GAME3D_CONTROLLER_SPEED_MAX);
     double move_x = 0.0;
     double move_y = 0.0;
     double move_z = 0.0;
@@ -292,24 +313,27 @@ void rt_game3d_character_controller_update(void *obj, void *input_obj, void *cam
     game3d_normalize_xz(&rx, &rz, 1.0, 0.0);
 
     int8_t grounded = rt_character3d_is_grounded(controller->character);
+    double jump_speed = game3d_nonnegative_clamped_or(
+        controller->jump_speed, RT_GAME3D_DEFAULT_JUMP_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX);
+    double gravity = game3d_clamp_abs_or(
+        controller->gravity, RT_GAME3D_DEFAULT_GRAVITY, RT_GAME3D_CONTROLLER_SPEED_MAX);
     if (grounded) {
         if (controller->vertical_velocity < 0.0)
             controller->vertical_velocity = -0.5;
         if (rt_game3d_input_pressed(input_obj, rt_game3d_key_space()) || move_y > 0.5)
-            controller->vertical_velocity = controller->jump_speed;
+            controller->vertical_velocity = jump_speed;
     } else {
-        controller->vertical_velocity += controller->gravity * dt;
+        controller->vertical_velocity += gravity * dt;
         controller->vertical_velocity = game3d_clamp(controller->vertical_velocity, -100.0, 100.0);
     }
 
-    double speed = game3d_nonnegative_or(controller->speed, RT_GAME3D_DEFAULT_MOVE_SPEED);
+    double speed = game3d_nonnegative_clamped_or(
+        controller->speed, RT_GAME3D_DEFAULT_MOVE_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX);
     double vx = (fx * move_z + rx * move_x) * speed;
     double vz = (fz * move_z + rz * move_x) * speed;
     void *velocity = rt_vec3_new(vx, controller->vertical_velocity, vz);
     rt_character3d_move(controller->character, velocity, dt);
     game3d_release_ref(&velocity);
-    game3d_release_ref(&right);
-    game3d_release_ref(&forward);
     if (rt_character3d_is_grounded(controller->character) && controller->vertical_velocity < 0.0)
         controller->vertical_velocity = -0.5;
     game3d_character_controller_sync_entity(controller);
@@ -327,9 +351,9 @@ void rt_game3d_character_controller_teleport(void *obj, double x, double y, doub
         return;
     controller->vertical_velocity = 0.0;
     rt_character3d_set_position(controller->character,
-                                game3d_finite_or(x, 0.0),
-                                game3d_finite_or(y, 0.0),
-                                game3d_finite_or(z, 0.0));
+                                game3d_clamp_coord_or(x, 0.0),
+                                game3d_clamp_coord_or(y, 0.0),
+                                game3d_clamp_coord_or(z, 0.0));
     game3d_character_controller_sync_entity(controller);
 }
 
@@ -459,7 +483,8 @@ void rt_game3d_first_person_controller_set_speed(void *obj, double speed) {
     rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
         obj, "Game3D.FirstPersonController.set_speed: invalid controller");
     if (controller)
-        controller->speed = game3d_nonnegative_or(speed, RT_GAME3D_DEFAULT_MOVE_SPEED);
+        controller->speed = game3d_nonnegative_clamped_or(
+            speed, RT_GAME3D_DEFAULT_MOVE_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX);
 }
 
 /// @brief Get the mouse-look sensitivity.
@@ -474,8 +499,8 @@ void rt_game3d_first_person_controller_set_look_sensitivity(void *obj, double se
     rt_game3d_first_person_controller *controller = game3d_first_person_controller_checked(
         obj, "Game3D.FirstPersonController.set_lookSensitivity: invalid controller");
     if (controller)
-        controller->look_sensitivity =
-            game3d_nonnegative_or(sensitivity, RT_GAME3D_DEFAULT_LOOK_SENSITIVITY);
+        controller->look_sensitivity = game3d_nonnegative_clamped_or(
+            sensitivity, RT_GAME3D_DEFAULT_LOOK_SENSITIVITY, RT_GAME3D_LOOK_SENSITIVITY_MAX);
 }
 
 /// @brief Capture and hide the cursor and remember the captured state.
@@ -512,14 +537,23 @@ void rt_game3d_first_person_controller_update(void *obj, void *world_obj, double
     dt = game3d_clamp_dt(dt);
     if (controller->capture_mouse)
         rt_mouse_capture();
-    double yaw = (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) *
-                 controller->look_sensitivity;
+    double sensitivity = game3d_nonnegative_clamped_or(
+        controller->look_sensitivity,
+        RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
+        RT_GAME3D_LOOK_SENSITIVITY_MAX);
+    double yaw =
+        (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) * sensitivity;
     double pitch = 0.0 - (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) *
-                             controller->look_sensitivity;
+                             sensitivity;
+    yaw = game3d_clamp_abs_or(yaw, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
+    pitch = game3d_clamp_abs_or(pitch, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     if (controller->character_controller) {
         rt_camera3d_fps_update(world->camera, yaw, pitch, 0.0, 0.0, 0.0, 0.0, dt);
-        rt_game3d_character_controller_set_speed(controller->character_controller,
-                                                 controller->speed);
+        rt_game3d_character_controller_set_speed(
+            controller->character_controller,
+            game3d_nonnegative_clamped_or(controller->speed,
+                                          RT_GAME3D_DEFAULT_MOVE_SPEED,
+                                          RT_GAME3D_CONTROLLER_SPEED_MAX));
         rt_game3d_character_controller_update(
             controller->character_controller, world->input, world->camera, dt);
     } else {
@@ -528,7 +562,8 @@ void rt_game3d_first_person_controller_update(void *obj, void *world_obj, double
         double move_z = 0.0;
         game3d_input_move_axis_components(
             (rt_game3d_input *)world->input, &move_x, &move_y, &move_z);
-        double speed = game3d_nonnegative_or(controller->speed, RT_GAME3D_DEFAULT_MOVE_SPEED);
+        double speed = game3d_nonnegative_clamped_or(
+            controller->speed, RT_GAME3D_DEFAULT_MOVE_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX);
         rt_camera3d_fps_update(
             world->camera, yaw, pitch, move_z, move_x, move_y, speed, dt);
     }
@@ -551,8 +586,10 @@ void rt_game3d_first_person_controller_late_update(void *obj, void *world_obj, d
         return;
     void *pos = rt_character3d_get_position(character->character);
     if (pos) {
-        void *eye =
-            rt_vec3_new(rt_vec3_x(pos), rt_vec3_y(pos) + character->eye_height, rt_vec3_z(pos));
+        void *eye = rt_vec3_new(game3d_clamp_coord_or(rt_vec3_x(pos), 0.0),
+                                game3d_clamp_coord_or(rt_vec3_y(pos) + character->eye_height,
+                                                      0.0),
+                                game3d_clamp_coord_or(rt_vec3_z(pos), 0.0));
         rt_camera3d_set_position(world->camera, eye);
         game3d_release_ref(&eye);
     }
@@ -601,7 +638,8 @@ void rt_game3d_free_fly_controller_set_speed(void *obj, double speed) {
     rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
         obj, "Game3D.FreeFlyController.set_speed: invalid controller");
     if (controller)
-        controller->speed = game3d_nonnegative_or(speed, RT_GAME3D_DEFAULT_MOVE_SPEED);
+        controller->speed = game3d_nonnegative_clamped_or(
+            speed, RT_GAME3D_DEFAULT_MOVE_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX);
 }
 
 /// @brief Get the mouse-look sensitivity.
@@ -616,8 +654,8 @@ void rt_game3d_free_fly_controller_set_look_sensitivity(void *obj, double sensit
     rt_game3d_free_fly_controller *controller = game3d_free_fly_controller_checked(
         obj, "Game3D.FreeFlyController.set_lookSensitivity: invalid controller");
     if (controller)
-        controller->look_sensitivity =
-            game3d_nonnegative_or(sensitivity, RT_GAME3D_DEFAULT_LOOK_SENSITIVITY);
+        controller->look_sensitivity = game3d_nonnegative_clamped_or(
+            sensitivity, RT_GAME3D_DEFAULT_LOOK_SENSITIVITY, RT_GAME3D_LOOK_SENSITIVITY_MAX);
 }
 
 /// @brief Capture and hide the cursor and remember the captured state.
@@ -656,12 +694,26 @@ void rt_game3d_free_fly_controller_update(void *obj, void *world_obj, double dt)
     double move_y = 0.0;
     double move_z = 0.0;
     game3d_input_move_axis_components((rt_game3d_input *)world->input, &move_x, &move_y, &move_z);
-    double yaw = (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) *
-                 controller->look_sensitivity;
+    double sensitivity = game3d_nonnegative_clamped_or(
+        controller->look_sensitivity,
+        RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
+        RT_GAME3D_LOOK_SENSITIVITY_MAX);
+    double yaw =
+        (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) * sensitivity;
     double pitch = 0.0 - (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) *
-                             controller->look_sensitivity;
+                             sensitivity;
+    yaw = game3d_clamp_abs_or(yaw, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
+    pitch = game3d_clamp_abs_or(pitch, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
     rt_camera3d_fps_update(
-        world->camera, yaw, pitch, move_z, move_x, move_y, controller->speed, dt);
+        world->camera,
+        yaw,
+        pitch,
+        move_z,
+        move_x,
+        move_y,
+        game3d_nonnegative_clamped_or(
+            controller->speed, RT_GAME3D_DEFAULT_MOVE_SPEED, RT_GAME3D_CONTROLLER_SPEED_MAX),
+        dt);
 }
 
 /// @brief No-op late update (free-fly needs no post-physics pass); validates handles. See header.
@@ -742,8 +794,10 @@ void rt_game3d_orbit_controller_set_distance(void *obj, double distance) {
     rt_game3d_orbit_controller *controller = game3d_orbit_controller_checked(
         obj, "Game3D.OrbitController.set_distance: invalid controller");
     if (controller)
-        controller->distance =
-            game3d_clamp(distance, controller->min_distance, controller->max_distance);
+        controller->distance = game3d_clamp(
+            game3d_positive_clamped_or(distance, controller->min_distance, RT_GAME3D_COORD_ABS_MAX),
+            game3d_positive_clamped_or(controller->min_distance, 1.0, RT_GAME3D_COORD_ABS_MAX),
+            game3d_positive_clamped_or(controller->max_distance, 100.0, RT_GAME3D_COORD_ABS_MAX));
 }
 
 /// @brief Get the horizontal orbit angle (yaw) in degrees.
@@ -758,7 +812,7 @@ void rt_game3d_orbit_controller_set_yaw(void *obj, double yaw) {
     rt_game3d_orbit_controller *controller =
         game3d_orbit_controller_checked(obj, "Game3D.OrbitController.set_yaw: invalid controller");
     if (controller)
-        controller->yaw = game3d_finite_or(yaw, 0.0);
+        controller->yaw = game3d_clamp_abs_or(yaw, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
 }
 
 /// @brief Get the vertical orbit angle (pitch) in degrees.
@@ -786,17 +840,31 @@ void rt_game3d_orbit_controller_update(void *obj, void *world_obj, double dt) {
         game3d_world_checked(world_obj, "Game3D.OrbitController.update: invalid world");
     if (!controller || !world || !world->input)
         return;
+    double orbit_sensitivity =
+        game3d_nonnegative_clamped_or(controller->orbit_sensitivity, 0.25, 1000.0);
+    double zoom_sensitivity =
+        game3d_nonnegative_clamped_or(controller->zoom_sensitivity, 1.0, RT_GAME3D_COORD_ABS_MAX);
+    double min_distance =
+        game3d_positive_clamped_or(controller->min_distance, 1.0, RT_GAME3D_COORD_ABS_MAX);
+    double max_distance =
+        game3d_positive_clamped_or(controller->max_distance, 100.0, RT_GAME3D_COORD_ABS_MAX);
+    if (max_distance < min_distance)
+        max_distance = min_distance;
+    controller->yaw = game3d_clamp_abs_or(controller->yaw, 0.0, RT_GAME3D_ANGLE_DEG_ABS_MAX);
+    controller->pitch = game3d_clamp(controller->pitch, -85.0, 85.0);
     if (rt_game3d_input_mouse_button(world->input, rt_game3d_mouse_left())) {
-        controller->yaw += (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) *
-                           controller->orbit_sensitivity;
+        controller->yaw = game3d_clamp_abs_or(
+            controller->yaw + (double)game3d_input_mouse_dx((rt_game3d_input *)world->input) *
+                                  orbit_sensitivity,
+            0.0,
+            RT_GAME3D_ANGLE_DEG_ABS_MAX);
         controller->pitch -= (double)game3d_input_mouse_dy((rt_game3d_input *)world->input) *
-                             controller->orbit_sensitivity;
+                             orbit_sensitivity;
         controller->pitch = game3d_clamp(controller->pitch, -85.0, 85.0);
     }
     controller->distance -= game3d_input_wheel_y_snapshot((rt_game3d_input *)world->input) *
-                            controller->zoom_sensitivity;
-    controller->distance =
-        game3d_clamp(controller->distance, controller->min_distance, controller->max_distance);
+                            zoom_sensitivity;
+    controller->distance = game3d_clamp(controller->distance, min_distance, max_distance);
 }
 
 /// @brief After physics, reposition the camera on the orbit sphere around the target. See header.
@@ -819,13 +887,20 @@ void rt_game3d_orbit_controller_late_update(void *obj, void *world_obj, double d
         } else {
             return;
         }
+        target_pos[0] = game3d_clamp_coord_or(target_pos[0], 0.0);
+        target_pos[1] = game3d_clamp_coord_or(target_pos[1], 0.0);
+        target_pos[2] = game3d_clamp_coord_or(target_pos[2], 0.0);
         rt_camera3d_orbit_components(world->camera,
                                      target_pos[0],
                                      target_pos[1],
                                      target_pos[2],
-                                     controller->distance,
-                                     controller->yaw,
-                                     controller->pitch);
+                                     game3d_positive_clamped_or(controller->distance,
+                                                                6.0,
+                                                                RT_GAME3D_COORD_ABS_MAX),
+                                     game3d_clamp_abs_or(controller->yaw,
+                                                         0.0,
+                                                         RT_GAME3D_ANGLE_DEG_ABS_MAX),
+                                     game3d_clamp(controller->pitch, -85.0, 85.0));
     }
 }
 
@@ -918,7 +993,8 @@ void rt_game3d_follow_controller_set_damping(void *obj, double damping) {
     rt_game3d_follow_controller *controller = game3d_follow_controller_checked(
         obj, "Game3D.FollowController.set_damping: invalid controller");
     if (controller)
-        controller->damping = game3d_nonnegative_or(damping, RT_GAME3D_DEFAULT_FOLLOW_DAMPING);
+        controller->damping = game3d_nonnegative_clamped_or(
+            damping, RT_GAME3D_DEFAULT_FOLLOW_DAMPING, RT_GAME3D_DAMPING_MAX);
 }
 
 /// @brief No-op pre-physics update (follow runs in late update); validates handles. See header.
@@ -949,14 +1025,22 @@ void rt_game3d_follow_controller_late_update(void *obj, void *world_obj, double 
         return;
     if (!rt_camera3d_get_position_components(world->camera, &current[0], &current[1], &current[2]))
         return;
-    double target_x = target_pos[0] + rt_vec3_x(controller->offset);
-    double target_y = target_pos[1] + rt_vec3_y(controller->offset);
-    double target_z = target_pos[2] + rt_vec3_z(controller->offset);
-    double alpha = controller->damping <= 0.0 ? 1.0 : 1.0 - exp(0.0 - controller->damping * dt);
+    double target_x = game3d_clamp_coord_or(
+        target_pos[0] + game3d_clamp_coord_or(rt_vec3_x(controller->offset), 0.0), 0.0);
+    double target_y = game3d_clamp_coord_or(
+        target_pos[1] + game3d_clamp_coord_or(rt_vec3_y(controller->offset), 0.0), 0.0);
+    double target_z = game3d_clamp_coord_or(
+        target_pos[2] + game3d_clamp_coord_or(rt_vec3_z(controller->offset), 0.0), 0.0);
+    double damping = game3d_nonnegative_clamped_or(
+        controller->damping, RT_GAME3D_DEFAULT_FOLLOW_DAMPING, RT_GAME3D_DAMPING_MAX);
+    double alpha = damping <= 0.0 ? 1.0 : 1.0 - exp(0.0 - damping * dt);
     alpha = game3d_clamp(alpha, 0.0, 1.0);
-    double x = current[0] + (target_x - current[0]) * alpha;
-    double y = current[1] + (target_y - current[1]) * alpha;
-    double z = current[2] + (target_z - current[2]) * alpha;
+    current[0] = game3d_clamp_coord_or(current[0], target_x);
+    current[1] = game3d_clamp_coord_or(current[1], target_y);
+    current[2] = game3d_clamp_coord_or(current[2], target_z);
+    double x = game3d_clamp_coord_or(current[0] + (target_x - current[0]) * alpha, target_x);
+    double y = game3d_clamp_coord_or(current[1] + (target_y - current[1]) * alpha, target_y);
+    double z = game3d_clamp_coord_or(current[2] + (target_z - current[2]) * alpha, target_z);
     rt_camera3d_look_at_components(
         world->camera, x, y, z, target_pos[0], target_pos[1], target_pos[2], 0.0, 1.0, 0.0);
 }

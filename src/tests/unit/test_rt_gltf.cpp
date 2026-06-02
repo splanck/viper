@@ -2482,6 +2482,560 @@ static void test_gltf_imports_skins_and_animation_clips() {
     }
 }
 
+static void test_gltf_skips_duplicate_skeletal_animation_channels() {
+    const char *gltf_path = "/tmp/viper_gltf_duplicate_skeletal_channels.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float primary_times[2] = {0.0f, 1.0f};
+    static const float primary_translation[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    static const float duplicate_times[3] = {0.0f, 0.5f, 1.0f};
+    static const float duplicate_translation[9] = {
+        0.0f, 0.0f, 0.0f, 10.0f, 0.0f, 0.0f, 20.0f, 0.0f, 0.0f};
+    size_t primary_times_off = append_float_array(primary_times, 2);
+    size_t primary_translation_off = append_float_array(primary_translation, 6);
+    size_t duplicate_times_off = append_float_array(duplicate_times, 3);
+    size_t duplicate_translation_off = append_float_array(duplicate_translation, 9);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(primary_times_off) +
+        ",\"byteLength\":8},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(primary_translation_off) +
+        ",\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(duplicate_times_off) +
+        ",\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(duplicate_translation_off) +
+        ",\"byteLength\":36}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":3,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}"
+        "],"
+        "\"skins\":[{\"joints\":[0]}],"
+        "\"animations\":[{\"name\":\"DuplicateBoneChannels\",\"samplers\":["
+        "{\"input\":0,\"output\":1},{\"input\":2,\"output\":3}],\"channels\":["
+        "{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"translation\"}},"
+        "{\"sampler\":1,\"target\":{\"node\":0,\"path\":\"translation\"}}]}],"
+        "\"nodes\":[{\"name\":\"Joint\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Duplicate skeletal-channel glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses duplicate skeletal-channel assets");
+    if (!asset)
+        return;
+
+    auto *anim = static_cast<rt_animation3d *>(rt_gltf_get_animation(asset, 0));
+    EXPECT_TRUE(anim != nullptr, "Duplicate skeletal-channel fixture exposes Animation3D");
+    if (!anim)
+        return;
+    EXPECT_TRUE(anim->channel_count == 1, "Duplicate skeletal channels keep one bone channel");
+    EXPECT_TRUE(anim->channels[0].keyframe_count == 2,
+                "Ignored duplicate skeletal channels do not inject extra sample times");
+    EXPECT_NEAR(anim->channels[0].keyframes[1].position[0],
+                1.0,
+                0.001,
+                "Duplicate skeletal channels preserve the first valid curve");
+}
+
+static void test_gltf_imports_step_skeletal_animation_as_hold_keys() {
+    const char *gltf_path = "/tmp/viper_gltf_step_skeletal_hold_keys.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float times[2] = {0.0f, 1.0f};
+    static const float translations[6] = {0.0f, 0.0f, 0.0f, 10.0f, 0.0f, 0.0f};
+    size_t times_off = append_float_array(times, 2);
+    size_t translations_off = append_float_array(translations, 6);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(times_off) +
+        ",\"byteLength\":8},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(translations_off) +
+        ",\"byteLength\":24}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}"
+        "],"
+        "\"skins\":[{\"joints\":[0]}],"
+        "\"animations\":[{\"name\":\"StepBone\",\"samplers\":[{\"input\":0,\"output\":1,"
+        "\"interpolation\":\"STEP\"}],\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,"
+        "\"path\":\"translation\"}}]}],"
+        "\"nodes\":[{\"name\":\"Joint\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "STEP skeletal glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses STEP skeletal animation assets");
+    if (!asset)
+        return;
+
+    auto *anim = static_cast<rt_animation3d *>(rt_gltf_get_animation(asset, 0));
+    EXPECT_TRUE(anim != nullptr, "STEP skeletal fixture exposes Animation3D");
+    if (!anim)
+        return;
+    EXPECT_TRUE(anim->channel_count == 1, "STEP skeletal animation targets one bone channel");
+    EXPECT_TRUE(anim->channels[0].keyframe_count == 3,
+                "STEP skeletal animation inserts a pre-next-key hold sample");
+    if (anim->channels[0].keyframe_count >= 3) {
+        EXPECT_TRUE(anim->channels[0].keyframes[1].time > 0.0f &&
+                        anim->channels[0].keyframes[1].time < 1.0f,
+                    "STEP skeletal hold sample is placed inside the source interval");
+        EXPECT_NEAR(anim->channels[0].keyframes[1].position[0],
+                    0.0,
+                    0.001,
+                    "STEP skeletal hold sample preserves the previous translation value");
+        EXPECT_NEAR(anim->channels[0].keyframes[2].position[0],
+                    10.0,
+                    0.001,
+                    "STEP skeletal authored key still applies at the next time");
+    }
+}
+
+static void test_gltf_rejects_skeletal_trs_animation_output_count_mismatch() {
+    const char *gltf_path = "/tmp/viper_gltf_bad_skeletal_trs_output_count.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float times[2] = {0.0f, 1.0f};
+    static const float translations[9] = {
+        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+    size_t times_off = append_float_array(times, 2);
+    size_t translations_off = append_float_array(translations, 9);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(times_off) +
+        ",\"byteLength\":8},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(translations_off) +
+        ",\"byteLength\":36}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}"
+        "],"
+        "\"skins\":[{\"joints\":[0]}],"
+        "\"animations\":[{\"name\":\"BadSkeletalCount\",\"samplers\":[{\"input\":0,"
+        "\"output\":1}],\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,"
+        "\"path\":\"translation\"}}]}],"
+        "\"nodes\":[{\"name\":\"Joint\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Mismatched skeletal TRS glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses skeletal TRS count-mismatch assets");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_animation_count(asset) == 0,
+                "glTF rejects skeletal TRS animation outputs whose accessor count is not exact");
+    std::remove(gltf_path);
+}
+
+static void test_gltf_rejects_node_trs_animation_output_count_mismatch() {
+    const char *gltf_path = "/tmp/viper_gltf_bad_node_trs_output_count.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float times[2] = {0.0f, 1.0f};
+    static const float translations[9] = {
+        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f};
+    size_t times_off = append_float_array(times, 2);
+    size_t translations_off = append_float_array(translations, 9);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(times_off) +
+        ",\"byteLength\":8},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(translations_off) +
+        ",\"byteLength\":36}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}"
+        "],"
+        "\"animations\":[{\"name\":\"BadNodeCount\",\"samplers\":[{\"input\":0,"
+        "\"output\":1}],\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,"
+        "\"path\":\"translation\"}}]}],"
+        "\"nodes\":[{\"name\":\"Animated\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Mismatched node TRS glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses node TRS count-mismatch assets");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_node_animation_count(asset) == 0,
+                "glTF rejects node TRS animation outputs whose accessor count is not exact");
+    std::remove(gltf_path);
+}
+
+static void test_gltf_ignores_inverse_bind_matrices_with_count_mismatch() {
+    const char *gltf_path = "/tmp/viper_gltf_bad_inverse_bind_count.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float inverse_binds[32] = {
+        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f, 9.0f, 0.0f, 0.0f, 1.0f,
+        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f, 9.0f, 0.0f, 0.0f, 1.0f};
+    size_t inverse_off = append_float_array(inverse_binds, 32);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(inverse_off) +
+        ",\"byteLength\":128}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":2,"
+        "\"type\":\"MAT4\"}],"
+        "\"skins\":[{\"joints\":[0],\"inverseBindMatrices\":0}],"
+        "\"nodes\":[{\"name\":\"Joint\",\"translation\":[4.0,0.0,0.0]}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Mismatched inverse-bind glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses inverse-bind count-mismatch assets");
+    if (!asset)
+        return;
+    auto *skeleton = static_cast<rt_skeleton3d *>(rt_gltf_get_skeleton(asset, 0));
+    EXPECT_TRUE(skeleton != nullptr && skeleton->bone_count == 1,
+                "glTF still builds the skin skeleton when inverse-bind count is malformed");
+    if (skeleton && skeleton->bone_count == 1) {
+        EXPECT_NEAR(skeleton->bones[0].inverse_bind[3],
+                    -4.0,
+                    0.001,
+                    "glTF ignores inverse-bind accessors whose count does not match joint count");
+    }
+    std::remove(gltf_path);
+}
+
+static void test_gltf_skips_duplicate_node_animation_channels() {
+    const char *gltf_path = "/tmp/viper_gltf_duplicate_node_channels.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float times[2] = {0.0f, 1.0f};
+    static const float primary_translation[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    static const float duplicate_translation[6] = {0.0f, 0.0f, 0.0f, 10.0f, 0.0f, 0.0f};
+    size_t times_off = append_float_array(times, 2);
+    size_t primary_translation_off = append_float_array(primary_translation, 6);
+    size_t duplicate_translation_off = append_float_array(duplicate_translation, 6);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(times_off) +
+        ",\"byteLength\":8},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(primary_translation_off) +
+        ",\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(duplicate_translation_off) +
+        ",\"byteLength\":24}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}"
+        "],"
+        "\"animations\":[{\"name\":\"DuplicateNodeChannels\",\"samplers\":["
+        "{\"input\":0,\"output\":1},{\"input\":0,\"output\":2}],\"channels\":["
+        "{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"translation\"}},"
+        "{\"sampler\":1,\"target\":{\"node\":0,\"path\":\"translation\"}}]}],"
+        "\"nodes\":[{\"name\":\"Animated\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Duplicate node-channel glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses duplicate node-channel assets");
+    if (!asset)
+        return;
+
+    auto *node_anim = static_cast<rt_node_animation3d *>(rt_gltf_get_node_animation(asset, 0));
+    EXPECT_TRUE(node_anim != nullptr, "Duplicate node-channel fixture exposes NodeAnimation3D");
+    if (!node_anim)
+        return;
+    EXPECT_TRUE(node_anim->channel_count == 1,
+                "Duplicate node animation channels keep one target/path channel");
+    EXPECT_TRUE(node_anim->channels[0].target_node_index == 0,
+                "Duplicate node animation channel keeps its import-node binding");
+    EXPECT_NEAR(node_anim->channels[0].values[3],
+                1.0,
+                0.001,
+                "Duplicate node animation channels preserve the first valid curve");
+}
+
+static void test_gltf_imports_step_node_animation_duplicate_times() {
+    const char *gltf_path = "/tmp/viper_gltf_step_duplicate_node_times.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float times[3] = {0.0f, 0.0f, 1.0f};
+    static const float translations[9] = {
+        0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 3.0f, 0.0f, 0.0f};
+    size_t times_off = append_float_array(times, 3);
+    size_t translations_off = append_float_array(translations, 9);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(times_off) +
+        ",\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(translations_off) +
+        ",\"byteLength\":36}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}"
+        "],"
+        "\"animations\":[{\"name\":\"StepDuplicateTimes\",\"samplers\":["
+        "{\"input\":0,\"output\":1,\"interpolation\":\"STEP\"}],\"channels\":["
+        "{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"translation\"}}]}],"
+        "\"nodes\":[{\"name\":\"Animated\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "STEP duplicate-time glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses STEP duplicate-time node animations");
+    if (!asset)
+        return;
+
+    auto *node_anim = static_cast<rt_node_animation3d *>(rt_gltf_get_node_animation(asset, 0));
+    EXPECT_TRUE(node_anim != nullptr, "STEP duplicate-time fixture exposes NodeAnimation3D");
+    if (!node_anim)
+        return;
+    EXPECT_TRUE(node_anim->channel_count == 1,
+                "STEP duplicate-time glTF emits one node animation channel");
+    EXPECT_TRUE(node_anim->channels[0].interpolation == RT_NODE_ANIM_INTERP_STEP,
+                "STEP duplicate-time glTF preserves step interpolation");
+    EXPECT_TRUE(node_anim->channels[0].key_count == 3,
+                "STEP duplicate-time glTF preserves duplicate input keys");
+    EXPECT_NEAR(node_anim->channels[0].values[3],
+                2.0,
+                0.001,
+                "STEP duplicate-time glTF keeps the later duplicate key value");
+}
+
+static void test_gltf_rejects_mismatched_morph_weight_animation_width() {
+    const char *gltf_path = "/tmp/viper_gltf_mismatched_weight_animation_width.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    auto align4 = [&]() {
+        while ((gltf_buffer.size() & 3u) != 0)
+            gltf_buffer.push_back(0);
+    };
+    auto append_float_array = [&](const float *values, size_t count) -> size_t {
+        align4();
+        size_t offset = gltf_buffer.size();
+        for (size_t i = 0; i < count; i++)
+            append_bytes(gltf_buffer, values[i]);
+        return offset;
+    };
+
+    static const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                       0.0f, 0.0f, 1.0f, 0.0f};
+    static const float morph_a[9] = {0.1f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                     0.0f, 0.0f, 0.0f, 0.0f};
+    static const float morph_b[9] = {0.0f, 0.2f, 0.0f, 0.0f, 0.0f,
+                                     0.0f, 0.0f, 0.0f, 0.0f};
+    static const float times[1] = {0.0f};
+    static const float weights[1] = {1.0f};
+    size_t positions_off = append_float_array(positions, 9);
+    size_t morph_a_off = append_float_array(morph_a, 9);
+    size_t morph_b_off = append_float_array(morph_b, 9);
+    size_t times_off = append_float_array(times, 1);
+    size_t weights_off = append_float_array(weights, 1);
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(positions_off) +
+        ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(morph_a_off) +
+        ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(morph_b_off) +
+        ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(times_off) +
+        ",\"byteLength\":4},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(weights_off) +
+        ",\"byteLength\":4}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":3,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":4,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}"
+        "],"
+        "\"meshes\":[{\"weights\":[0.0,0.0],\"primitives\":[{\"attributes\":{\"POSITION\":0},"
+        "\"targets\":[{\"POSITION\":1},{\"POSITION\":2}]}]}],"
+        "\"nodes\":[{\"name\":\"BadWeights\",\"mesh\":0}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0,"
+        "\"animations\":[{\"name\":\"BadWeightWidth\",\"samplers\":[{\"input\":3,\"output\":4}],"
+        "\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"weights\"}}]}]"
+        "}";
+
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Mismatched morph-weight animation fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses malformed morph-weight animation assets");
+    if (!asset)
+        return;
+    EXPECT_TRUE(rt_gltf_node_animation_count(asset) == 0,
+                "glTF rejects morph-weight animation widths that do not match target morph count");
+    std::remove(gltf_path);
+}
+
 static void test_gltf_splits_animation_clips_per_skin() {
     const char *gltf_path = "/tmp/viper_gltf_multi_skin_animation.gltf";
     std::vector<uint8_t> gltf_buffer;
@@ -3656,6 +4210,14 @@ int main() {
     test_gltf_reduces_secondary_joint_sets_to_top_four_influences();
     test_gltf_applies_matrix_nodes_in_column_major_order();
     test_gltf_imports_skins_and_animation_clips();
+    test_gltf_skips_duplicate_skeletal_animation_channels();
+    test_gltf_imports_step_skeletal_animation_as_hold_keys();
+    test_gltf_rejects_skeletal_trs_animation_output_count_mismatch();
+    test_gltf_rejects_node_trs_animation_output_count_mismatch();
+    test_gltf_ignores_inverse_bind_matrices_with_count_mismatch();
+    test_gltf_skips_duplicate_node_animation_channels();
+    test_gltf_imports_step_node_animation_duplicate_times();
+    test_gltf_rejects_mismatched_morph_weight_animation_width();
     test_gltf_splits_animation_clips_per_skin();
     test_gltf_applies_sparse_accessors();
     test_gltf_imports_morph_targets();

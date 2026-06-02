@@ -102,26 +102,36 @@ void rt_game3d_lighting_outdoor(void *obj, void *sun_dir) {
     rt_game3d_world *world = game3d_world_checked(obj, "Game3D.Lighting.Outdoor: invalid world");
     if (!world || !world->canvas)
         return;
-    void *dir = sun_dir;
-    int owns_dir = 0;
-    if (!dir) {
-        dir = rt_vec3_new(-0.45, -1.00, -0.22);
-        owns_dir = 1;
-    } else if (!rt_g3d_is_vec3(dir)) {
-        rt_trap("Game3D.Lighting.Outdoor: sunDir must be Vec3");
-        return;
+    double dir_xyz[3] = {-0.45, -1.0, -0.22};
+    if (sun_dir) {
+        if (!game3d_read_vec3(sun_dir, dir_xyz, "Game3D.Lighting.Outdoor: sunDir must be Vec3"))
+            return;
+    }
+    double dir_len =
+        sqrt(dir_xyz[0] * dir_xyz[0] + dir_xyz[1] * dir_xyz[1] + dir_xyz[2] * dir_xyz[2]);
+    if (!isfinite(dir_len) || dir_len <= 1e-12) {
+        dir_xyz[0] = -0.45;
+        dir_xyz[1] = -1.0;
+        dir_xyz[2] = -0.22;
+        dir_len =
+            sqrt(dir_xyz[0] * dir_xyz[0] + dir_xyz[1] * dir_xyz[1] + dir_xyz[2] * dir_xyz[2]);
+    }
+    if (isfinite(dir_len) && dir_len > 1e-12) {
+        dir_xyz[0] /= dir_len;
+        dir_xyz[1] /= dir_len;
+        dir_xyz[2] /= dir_len;
     }
 
     rt_game3d_lighting_clear(world);
     rt_canvas3d_set_ambient(world->canvas, 0.38, 0.42, 0.46);
     game3d_world_set_clear_color(world, 0.50, 0.66, 0.86);
+    void *dir = rt_vec3_new(dir_xyz[0], dir_xyz[1], dir_xyz[2]);
     void *sun = rt_light3d_new_directional(dir, 1.0, 0.94, 0.82);
     if (sun)
         rt_light3d_set_intensity(sun, 1.55);
     game3d_world_install_light(world, 0, sun);
     game3d_release_ref(&sun);
-    if (owns_dir)
-        game3d_release_ref(&dir);
+    game3d_release_ref(&dir);
 }
 
 /// @brief Install a dim moonlight + cool point lamp for a dark night look. See header.
@@ -220,12 +230,15 @@ void *rt_game3d_materials_glass(double r, double g, double b, double alpha) {
 
 /// @brief Self-illuminated emissive preset at the given color/intensity. See header.
 void *rt_game3d_materials_emissive(double r, double g, double b, double intensity) {
-    void *mat = rt_material3d_new_color(
-        game3d_clamp(r, 0.0, 1.0), game3d_clamp(g, 0.0, 1.0), game3d_clamp(b, 0.0, 1.0));
+    r = game3d_clamp(r, 0.0, 1.0);
+    g = game3d_clamp(g, 0.0, 1.0);
+    b = game3d_clamp(b, 0.0, 1.0);
+    void *mat = rt_material3d_new_color(r, g, b);
     if (mat) {
         rt_material3d_set_shading_model(mat, RT_GAME3D_SHADING_EMISSIVE);
         rt_material3d_set_emissive_color(mat, r, g, b);
-        rt_material3d_set_emissive_intensity(mat, game3d_nonnegative_or(intensity, 1.0));
+        rt_material3d_set_emissive_intensity(
+            mat, game3d_nonnegative_clamped_or(intensity, 1.0, RT_GAME3D_SCALE_ABS_MAX));
     }
     return mat;
 }
@@ -355,37 +368,37 @@ static void *game3d_prefab_from_mesh(void *mesh, void *material, const char *nam
 
 /// @brief Create a uniform cube entity of the given size. See header.
 void *rt_game3d_prefab_box(double size, void *material) {
-    double s = game3d_positive_or(size, 1.0);
+    double s = game3d_positive_clamped_or(size, 1.0, RT_GAME3D_SCALE_ABS_MAX);
     return game3d_prefab_from_mesh(rt_mesh3d_new_box(s, s, s), material, "Box");
 }
 
 /// @brief Create a box entity with explicit width/height/depth. See header.
 void *rt_game3d_prefab_box_xyz(double width, double height, double depth, void *material) {
-    double w = game3d_positive_or(width, 1.0);
-    double h = game3d_positive_or(height, 1.0);
-    double d = game3d_positive_or(depth, 1.0);
+    double w = game3d_positive_clamped_or(width, 1.0, RT_GAME3D_SCALE_ABS_MAX);
+    double h = game3d_positive_clamped_or(height, 1.0, RT_GAME3D_SCALE_ABS_MAX);
+    double d = game3d_positive_clamped_or(depth, 1.0, RT_GAME3D_SCALE_ABS_MAX);
     return game3d_prefab_from_mesh(rt_mesh3d_new_box(w, h, d), material, "BoxXYZ");
 }
 
 /// @brief Create a UV-sphere entity (segments clamped, default 32). See header.
 void *rt_game3d_prefab_sphere(double radius, int64_t segments, void *material) {
-    double r = game3d_positive_or(radius, 0.5);
+    double r = game3d_positive_clamped_or(radius, 0.5, RT_GAME3D_SCALE_ABS_MAX);
     return game3d_prefab_from_mesh(
         rt_mesh3d_new_sphere(r, game3d_sanitize_segments(segments, 32)), material, "Sphere");
 }
 
 /// @brief Create a cylinder entity (segments clamped, default 24). See header.
 void *rt_game3d_prefab_cylinder(double radius, double height, int64_t segments, void *material) {
-    double r = game3d_positive_or(radius, 0.5);
-    double h = game3d_positive_or(height, 1.0);
+    double r = game3d_positive_clamped_or(radius, 0.5, RT_GAME3D_SCALE_ABS_MAX);
+    double h = game3d_positive_clamped_or(height, 1.0, RT_GAME3D_SCALE_ABS_MAX);
     return game3d_prefab_from_mesh(
         rt_mesh3d_new_cylinder(r, h, game3d_sanitize_segments(segments, 24)), material, "Cylinder");
 }
 
 /// @brief Create a flat plane entity of the given footprint. See header.
 void *rt_game3d_prefab_plane(double width, double depth, void *material) {
-    double w = game3d_positive_or(width, 1.0);
-    double d = game3d_positive_or(depth, 1.0);
+    double w = game3d_positive_clamped_or(width, 1.0, RT_GAME3D_SCALE_ABS_MAX);
+    double d = game3d_positive_clamped_or(depth, 1.0, RT_GAME3D_SCALE_ABS_MAX);
     return game3d_prefab_from_mesh(rt_mesh3d_new_plane(w, d), material, "Plane");
 }
 

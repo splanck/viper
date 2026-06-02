@@ -46,9 +46,31 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define NODE_ANIM_TIME_MAX 100000000.0
+#define NODE_ANIM_SPEED_ABS_MAX 1000000.0
+#define NODE_ANIM_KEY_COUNT_MAX 1000000
+#define NODE_ANIM_VALUE_WIDTH_MAX 4096
+#define NODE_ANIM_VALUE_COUNT_MAX 4000000
+
 /*==========================================================================
  * Imported node animation clips
  *=========================================================================*/
+
+/// @brief Release a retained rt_string slot only if it still points at an rt_string handle.
+static void node_anim_release_string_slot(rt_string *slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_string_is_handle(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    scene3d_release_ref((void **)slot);
+}
+
+/// @brief Return a C string only for live rt_string handles.
+static const char *node_anim_cstr_or_null(rt_string value) {
+    return (value && rt_string_is_handle(value)) ? rt_string_cstr(value) : NULL;
+}
 
 /// @brief GC finalizer for a NodeAnimation3D. Releases the clip name reference and
 ///        frees every channel's target name plus its times / values / in-tangent /
@@ -56,11 +78,13 @@
 ///        LINEAR / STEP leave those pointers NULL and `free(NULL)` is a no-op.
 static void rt_node_animation3d_finalize(void *obj) {
     rt_node_animation3d *anim = (rt_node_animation3d *)obj;
+    int32_t channel_count;
     if (!anim)
         return;
-    scene3d_release_ref((void **)&anim->name);
-    for (int32_t i = 0; i < anim->channel_count; i++) {
-        scene3d_release_ref((void **)&anim->channels[i].target_name);
+    node_anim_release_string_slot(&anim->name);
+    channel_count = scene3d_node_animation_channel_count(anim);
+    for (int32_t i = 0; i < channel_count; i++) {
+        node_anim_release_string_slot(&anim->channels[i].target_name);
         free(anim->channels[i].times);
         free(anim->channels[i].values);
         free(anim->channels[i].in_tangents);
@@ -89,9 +113,13 @@ void *rt_node_animation3d_new(rt_string name, double duration) {
     }
     memset(anim, 0, sizeof(*anim));
     rt_obj_set_finalizer(anim, rt_node_animation3d_finalize);
+    if (name && !rt_string_is_handle(name))
+        name = rt_const_cstr("");
     rt_obj_retain_maybe(name);
     anim->name = name;
     anim->duration = (isfinite(duration) && duration > 0.0) ? duration : 1.0;
+    if (anim->duration > NODE_ANIM_TIME_MAX)
+        anim->duration = NODE_ANIM_TIME_MAX;
     anim->looping = 1;
     return anim;
 }
@@ -119,9 +147,8 @@ static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t ne
 /// @details Enforces the invariants that `node_animation_add_channel_impl` depends on:
 ///   - `value_width` must match the path's dimensionality: 3 for TRANSLATION/SCALE,
 ///     4 for ROTATION, at least 1 for WEIGHTS/other (morph weight count varies).
-///   - Every time sample must be finite and strictly increasing; glTF allows equal
-///     consecutive times only in STEP interpolation, but we reject them here to prevent
-///     division by zero in the linear and cubic interpolation paths.
+///   - Every time sample must be finite and sorted. LINEAR/CUBICSPLINE require strictly
+///     increasing times; STEP allows equal consecutive times per glTF's sampler rules.
 ///   - key_count × value_width overflow is checked before iterating so the loop bound
 ///     is always within size_t range.
 ///   - All value samples (and, for CUBICSPLINE, both tangent sets) must be finite;
@@ -134,6 +161,7 @@ static int node_animation_validate_channel_data(int64_t path,
                                                 const float *values,
                                                 const float *in_tangents,
                                                 const float *out_tangents,
+                                                int step,
                                                 int cubic) {
     int64_t min_width = 1;
     if (path == RT_NODE_ANIM_PATH_TRANSLATION || path == RT_NODE_ANIM_PATH_SCALE)
@@ -145,23 +173,57 @@ static int node_animation_validate_channel_data(int64_t path,
         return 0;
     if (path == RT_NODE_ANIM_PATH_ROTATION && value_width != 4)
         return 0;
-    if (value_width < min_width)
+    if (key_count > NODE_ANIM_KEY_COUNT_MAX || value_width < min_width ||
+        value_width > NODE_ANIM_VALUE_WIDTH_MAX)
         return 0;
-    for (int64_t i = 0; i < key_count; i++) {
-        if (!isfinite(times[i]) || times[i] < 0.0)
-            return 0;
-        if (i > 0 && times[i] <= times[i - 1])
-            return 0;
-    }
     if ((uint64_t)key_count > SIZE_MAX / (uint64_t)value_width)
         return 0;
     size_t value_count = (size_t)key_count * (size_t)value_width;
+    if (value_count > NODE_ANIM_VALUE_COUNT_MAX)
+        return 0;
+    for (int64_t i = 0; i < key_count; i++) {
+        if (!isfinite(times[i]) || times[i] < 0.0 || times[i] > NODE_ANIM_TIME_MAX)
+            return 0;
+        if (i > 0 && (times[i] < times[i - 1] || (!step && times[i] <= times[i - 1])))
+            return 0;
+    }
     for (size_t i = 0; i < value_count; i++) {
         if (!isfinite(values[i]))
             return 0;
         if (cubic && (!isfinite(in_tangents[i]) || !isfinite(out_tangents[i])))
             return 0;
     }
+    return 1;
+}
+
+/// @brief Cheap per-frame guard for channels that may have been privately corrupted after import.
+static int node_anim_channel_runtime_valid(const rt_node_anim_channel3d *channel) {
+    int64_t value_count;
+    if (!channel || !channel->target_name || !channel->times || !channel->values ||
+        channel->key_count <= 0 || channel->value_width <= 0 ||
+        channel->key_count > NODE_ANIM_KEY_COUNT_MAX ||
+        channel->value_width > NODE_ANIM_VALUE_WIDTH_MAX)
+        return 0;
+    if (!rt_string_is_handle(channel->target_name))
+        return 0;
+    if (channel->path < RT_NODE_ANIM_PATH_TRANSLATION || channel->path > RT_NODE_ANIM_PATH_WEIGHTS)
+        return 0;
+    if (channel->interpolation < RT_NODE_ANIM_INTERP_LINEAR ||
+        channel->interpolation > RT_NODE_ANIM_INTERP_CUBICSPLINE)
+        return 0;
+    if ((channel->path == RT_NODE_ANIM_PATH_TRANSLATION ||
+         channel->path == RT_NODE_ANIM_PATH_SCALE) &&
+        channel->value_width != 3)
+        return 0;
+    if (channel->path == RT_NODE_ANIM_PATH_ROTATION && channel->value_width != 4)
+        return 0;
+    if (channel->interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE &&
+        (!channel->in_tangents || !channel->out_tangents))
+        return 0;
+    value_count = (int64_t)channel->key_count * (int64_t)channel->value_width;
+    if (value_count <= 0 || (uint64_t)channel->key_count > SIZE_MAX / sizeof(double) ||
+        (uint64_t)value_count > SIZE_MAX / sizeof(float))
+        return 0;
     return 1;
 }
 
@@ -198,8 +260,11 @@ static int64_t node_animation_add_channel_impl(void *obj,
     const char *target_cstr;
     if (!anim || !target_name || key_count <= 0 || value_width <= 0 || !times || !values)
         return -1;
-    target_cstr = rt_string_cstr(target_name);
+    target_cstr = node_anim_cstr_or_null(target_name);
     if (!target_cstr || target_cstr[0] == '\0')
+        return -1;
+    if (interpolation < RT_NODE_ANIM_INTERP_LINEAR ||
+        interpolation > RT_NODE_ANIM_INTERP_CUBICSPLINE)
         return -1;
     if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE && (!in_tangents || !out_tangents))
         return -1;
@@ -214,11 +279,15 @@ static int64_t node_animation_add_channel_impl(void *obj,
                                               values,
                                               in_tangents,
                                               out_tangents,
+                                              interpolation == RT_NODE_ANIM_INTERP_STEP,
                                               interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE))
         return -1;
     value_count = (size_t)key_count * (size_t)value_width;
     if (value_count > SIZE_MAX / sizeof(float))
         return -1;
+    anim->channel_count = scene3d_node_animation_channel_count(anim);
+    if (!anim->channels)
+        anim->channel_capacity = 0;
     if (anim->channel_count == INT32_MAX)
         return -1;
     if (!node_animation_reserve_channels(anim, anim->channel_count + 1))
@@ -333,7 +402,12 @@ void rt_node_animation3d_set_channel_target_node_index(void *obj,
                                                        int64_t node_index) {
     rt_node_animation3d *anim =
         (rt_node_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_NODEANIMATION3D_CLASS_ID);
-    if (!anim || channel_index < 0 || channel_index >= anim->channel_count)
+    int32_t channel_count;
+    if (!anim || channel_index < 0)
+        return;
+    channel_count = scene3d_node_animation_channel_count(anim);
+    anim->channel_count = channel_count;
+    if (channel_index >= channel_count)
         return;
     if (node_index < 0 || node_index > INT32_MAX)
         anim->channels[channel_index].target_node_index = -1;
@@ -352,13 +426,16 @@ void rt_node_animation3d_set_channel_target_node_index(void *obj,
 ///   that reference from the scene, so releasing it here would cause a double-free.
 static void rt_node_animator3d_finalize(void *obj) {
     rt_node_animator3d *animator = (rt_node_animator3d *)obj;
+    int32_t clip_count;
     if (!animator)
         return;
-    for (int32_t i = 0; i < animator->animation_count; i++)
+    clip_count = scene3d_node_animator_clip_count(animator);
+    for (int32_t i = 0; i < clip_count; i++)
         scene3d_release_ref((void **)&animator->animations[i]);
     free(animator->animations);
     animator->animations = NULL;
     animator->animation_count = 0;
+    animator->animation_capacity = 0;
     animator->root = NULL;
 }
 
@@ -401,6 +478,7 @@ void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count) {
         animator->animations[i] = (rt_node_animation3d *)clips[i];
     }
     animator->animation_count = (int32_t)clip_count;
+    animator->animation_capacity = (int32_t)clip_count;
     animator->current_animation = 0;
     animator->speed = 1.0;
     animator->playing = 1;
@@ -531,14 +609,41 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
         return;
     if (!isfinite(time))
         time = 0.0;
+    if (channel->interpolation == RT_NODE_ANIM_INTERP_STEP) {
+        int32_t upper_lo = 0;
+        int32_t upper_hi = channel->key_count;
+        int32_t sample_index;
+        while (upper_lo < upper_hi) {
+            int32_t mid = upper_lo + (upper_hi - upper_lo) / 2;
+            if (channel->times[mid] <= time)
+                upper_lo = mid + 1;
+            else
+                upper_hi = mid;
+        }
+        sample_index = upper_lo - 1;
+        if (sample_index < 0)
+            sample_index = 0;
+        if (sample_index >= channel->key_count)
+            sample_index = channel->key_count - 1;
+        memcpy(out_values,
+               &channel->values[(size_t)sample_index * (size_t)channel->value_width],
+               (size_t)channel->value_width * sizeof(float));
+        if (channel->path == RT_NODE_ANIM_PATH_ROTATION && channel->value_width >= 4)
+            node_anim_normalize_quat(out_values);
+        return;
+    }
     if (time <= channel->times[0]) {
         memcpy(out_values, channel->values, (size_t)channel->value_width * sizeof(float));
+        if (channel->path == RT_NODE_ANIM_PATH_ROTATION && channel->value_width >= 4)
+            node_anim_normalize_quat(out_values);
         return;
     }
     if (time >= channel->times[channel->key_count - 1]) {
         memcpy(out_values,
                &channel->values[(size_t)(channel->key_count - 1) * (size_t)channel->value_width],
                (size_t)channel->value_width * sizeof(float));
+        if (channel->path == RT_NODE_ANIM_PATH_ROTATION && channel->value_width >= 4)
+            node_anim_normalize_quat(out_values);
         return;
     }
     lo = 0;
@@ -559,12 +664,6 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
         alpha = 0.0;
     else if (alpha > 1.0)
         alpha = 1.0;
-    if (channel->interpolation == RT_NODE_ANIM_INTERP_STEP) {
-        memcpy(out_values,
-               &channel->values[(size_t)lo * (size_t)channel->value_width],
-               (size_t)channel->value_width * sizeof(float));
-        return;
-    }
     if (channel->interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE && channel->in_tangents &&
         channel->out_tangents) {
         double dt = t1 - t0;
@@ -576,6 +675,35 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
         double h11 = u3 - u2;
         if (!isfinite(dt) || dt < 0.0)
             dt = 0.0;
+        if (channel->path == RT_NODE_ANIM_PATH_ROTATION && channel->value_width == 4) {
+            float a[4];
+            float b[4];
+            float out_tangent[4];
+            float in_tangent[4];
+            double dot;
+            size_t a_base = (size_t)lo * (size_t)channel->value_width;
+            size_t b_base = (size_t)hi * (size_t)channel->value_width;
+            memcpy(a, &channel->values[a_base], sizeof(a));
+            memcpy(b, &channel->values[b_base], sizeof(b));
+            memcpy(out_tangent, &channel->out_tangents[a_base], sizeof(out_tangent));
+            memcpy(in_tangent, &channel->in_tangents[b_base], sizeof(in_tangent));
+            node_anim_normalize_quat(a);
+            node_anim_normalize_quat(b);
+            dot = (double)a[0] * b[0] + (double)a[1] * b[1] + (double)a[2] * b[2] +
+                  (double)a[3] * b[3];
+            if (isfinite(dot) && dot < 0.0) {
+                for (int32_t i = 0; i < 4; i++) {
+                    b[i] = -b[i];
+                    in_tangent[i] = -in_tangent[i];
+                }
+            }
+            for (int32_t i = 0; i < 4; i++) {
+                out_values[i] = (float)(h00 * a[i] + h10 * dt * out_tangent[i] + h01 * b[i] +
+                                        h11 * dt * in_tangent[i]);
+            }
+            node_anim_normalize_quat(out_values);
+            return;
+        }
         for (int32_t i = 0; i < channel->value_width; i++) {
             size_t ai = (size_t)lo * (size_t)channel->value_width + (size_t)i;
             size_t bi = (size_t)hi * (size_t)channel->value_width + (size_t)i;
@@ -618,14 +746,20 @@ static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
     }
     while (count > 0) {
         rt_scene_node3d *current = stack[--count];
-        rt_mesh3d *mesh = (rt_mesh3d *)current->mesh;
+        rt_mesh3d *mesh = rt_g3d_has_class(current->mesh, RT_G3D_MESH3D_CLASS_ID)
+                              ? (rt_mesh3d *)current->mesh
+                              : NULL;
         if (mesh && mesh->morph_targets_ref) {
             int64_t shape_count = rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref);
+            if (shape_count > INT32_MAX)
+                shape_count = INT32_MAX;
             int32_t limit = (int32_t)((shape_count < weight_count) ? shape_count : weight_count);
             for (int32_t i = 0; i < limit; i++)
                 rt_morphtarget3d_set_weight(mesh->morph_targets_ref, i, weights[i]);
+            for (int32_t i = limit; i < (int32_t)shape_count; i++)
+                rt_morphtarget3d_set_weight(mesh->morph_targets_ref, i, 0.0);
         }
-        for (int32_t i = current->child_count - 1; i >= 0; i--) {
+        for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; i--) {
             if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
                 rt_trap("NodeAnimation3D: traversal stack allocation failed");
                 free(stack);
@@ -666,7 +800,7 @@ static rt_scene_node3d *node_anim_find_by_import_index(rt_scene_node3d *root,
             result = current;
             break;
         }
-        for (int32_t i = current->child_count - 1; i >= 0; i--) {
+        for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; i--) {
             if (!scene_node_stack_push(&stack, &count, &capacity, current->children[i])) {
                 rt_trap("NodeAnimation3D: traversal stack allocation failed");
                 free(stack);
@@ -688,6 +822,8 @@ static rt_scene_node3d *node_anim_resolve_target(rt_scene_node3d *root,
     const char *cached_name;
     if (!root || !channel || !channel->target_name)
         return NULL;
+    if (!rt_string_is_handle(channel->target_name))
+        return NULL;
     if (channel->target_node_index >= 0) {
         if (channel->cached_root == root && channel->cached_target &&
             channel->cached_target->import_index == channel->target_node_index &&
@@ -698,14 +834,14 @@ static rt_scene_node3d *node_anim_resolve_target(rt_scene_node3d *root,
         channel->cached_root = channel->cached_target ? root : NULL;
         if (channel->cached_target)
             return channel->cached_target;
+        return NULL;
     }
     target_name = rt_string_cstr(channel->target_name);
     if (!target_name)
         return NULL;
     if (channel->cached_root == root && channel->cached_target &&
         scene_node_is_descendant_of(root, channel->cached_target)) {
-        cached_name =
-            channel->cached_target->name ? rt_string_cstr(channel->cached_target->name) : "";
+        cached_name = node_anim_cstr_or_null(channel->cached_target->name);
         if (cached_name && strcmp(cached_name, target_name) == 0)
             return channel->cached_target;
     }
@@ -738,6 +874,8 @@ static void node_anim_apply_channel(rt_scene_node3d *root,
     int32_t width;
     if (!root || !channel || !channel->target_name)
         return;
+    if (!node_anim_channel_runtime_valid(channel))
+        return;
     width = channel->value_width;
     if (width <= 0)
         return;
@@ -760,27 +898,43 @@ static void node_anim_apply_channel(rt_scene_node3d *root,
     switch (channel->path) {
         case RT_NODE_ANIM_PATH_TRANSLATION:
             if (width >= 3) {
-                target->position[0] = values[0];
-                target->position[1] = values[1];
-                target->position[2] = values[2];
+                double next[3] = {scene3d_clamp_abs_or(values[0], 0.0),
+                                  scene3d_clamp_abs_or(values[1], 0.0),
+                                  scene3d_clamp_abs_or(values[2], 0.0)};
+                if (target->position[0] == next[0] && target->position[1] == next[1] &&
+                    target->position[2] == next[2])
+                    break;
+                target->position[0] = next[0];
+                target->position[1] = next[1];
+                target->position[2] = next[2];
                 mark_dirty(target);
             }
             break;
         case RT_NODE_ANIM_PATH_ROTATION:
             if (width >= 4) {
-                target->rotation[0] = values[0];
-                target->rotation[1] = values[1];
-                target->rotation[2] = values[2];
-                target->rotation[3] = values[3];
-                scene3d_quat_normalize_local(target->rotation);
+                double next[4] = {values[0], values[1], values[2], values[3]};
+                scene3d_quat_normalize_local(next);
+                if (target->rotation[0] == next[0] && target->rotation[1] == next[1] &&
+                    target->rotation[2] == next[2] && target->rotation[3] == next[3])
+                    break;
+                target->rotation[0] = next[0];
+                target->rotation[1] = next[1];
+                target->rotation[2] = next[2];
+                target->rotation[3] = next[3];
                 mark_dirty(target);
             }
             break;
         case RT_NODE_ANIM_PATH_SCALE:
             if (width >= 3) {
-                target->scale_xyz[0] = scene3d_scale_or_unit(values[0]);
-                target->scale_xyz[1] = scene3d_scale_or_unit(values[1]);
-                target->scale_xyz[2] = scene3d_scale_or_unit(values[2]);
+                double next[3] = {scene3d_scale_or_unit(values[0]),
+                                  scene3d_scale_or_unit(values[1]),
+                                  scene3d_scale_or_unit(values[2])};
+                if (target->scale_xyz[0] == next[0] && target->scale_xyz[1] == next[1] &&
+                    target->scale_xyz[2] == next[2])
+                    break;
+                target->scale_xyz[0] = next[0];
+                target->scale_xyz[1] = next[1];
+                target->scale_xyz[2] = next[2];
                 mark_dirty(target);
             }
             break;
@@ -807,34 +961,57 @@ static void node_anim_apply_channel(rt_scene_node3d *root,
 ///                 ignored so a stalled timer cannot corrupt the playback position.
 void node_animator_update(rt_node_animator3d *animator, double dt) {
     rt_node_animation3d *clip;
+    double duration;
     double step;
-    if (!animator || !animator->playing || animator->animation_count <= 0 || !animator->root)
+    int32_t clip_count;
+    int32_t channel_count;
+    if (!animator || !animator->playing || !animator->root)
         return;
-    if (animator->current_animation < 0 || animator->current_animation >= animator->animation_count)
+    clip_count = scene3d_node_animator_clip_count(animator);
+    if (clip_count <= 0)
+        return;
+    animator->animation_count = clip_count;
+    if (animator->current_animation < 0 || animator->current_animation >= clip_count)
         animator->current_animation = 0;
     clip = animator->animations[animator->current_animation];
-    if (!clip)
+    if (!rt_g3d_has_class(clip, RT_G3D_NODEANIMATION3D_CLASS_ID))
         return;
-    step = (isfinite(dt) && dt > 0.0) ? dt * (isfinite(animator->speed) ? animator->speed : 1.0)
-                                      : 0.0;
+    duration = clip->duration;
+    if (!isfinite(duration) || duration <= 0.0)
+        duration = 1.0;
+    else if (duration > NODE_ANIM_TIME_MAX)
+        duration = NODE_ANIM_TIME_MAX;
+    clip->duration = duration;
+    channel_count = scene3d_node_animation_channel_count(clip);
+    clip->channel_count = channel_count;
+    double speed = isfinite(animator->speed) ? animator->speed : 1.0;
+    if (speed > NODE_ANIM_SPEED_ABS_MAX)
+        speed = NODE_ANIM_SPEED_ABS_MAX;
+    else if (speed < -NODE_ANIM_SPEED_ABS_MAX)
+        speed = -NODE_ANIM_SPEED_ABS_MAX;
+    step = (isfinite(dt) && dt > 0.0) ? dt * speed : 0.0;
+    if (step > NODE_ANIM_TIME_MAX)
+        step = NODE_ANIM_TIME_MAX;
+    else if (step < -NODE_ANIM_TIME_MAX)
+        step = -NODE_ANIM_TIME_MAX;
     if (isfinite(step))
         animator->time += step;
     if (!isfinite(animator->time))
         animator->time = 0.0;
-    if (clip->duration > 0.0) {
+    if (duration > 0.0) {
         if (clip->looping) {
-            animator->time = fmod(animator->time, clip->duration);
+            animator->time = fmod(animator->time, duration);
             if (animator->time < 0.0)
-                animator->time += clip->duration;
-        } else if (animator->time > clip->duration) {
-            animator->time = clip->duration;
+                animator->time += duration;
+        } else if (animator->time > duration) {
+            animator->time = duration;
             animator->playing = 0;
         } else if (animator->time < 0.0) {
             animator->time = 0.0;
             animator->playing = 0;
         }
     }
-    for (int32_t i = 0; i < clip->channel_count; i++)
+    for (int32_t i = 0; i < channel_count; i++)
         node_anim_apply_channel(animator->root, &clip->channels[i], animator->time);
 }
 

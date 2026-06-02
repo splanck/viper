@@ -13,14 +13,20 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
 #include "rt.hpp"
 #include "rt_canvas3d.h"
+#include "rt_canvas3d_internal.h"
 #include "rt_internal.h"
 #include "rt_raycast3d.h"
 #include "rt_string.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
@@ -239,6 +245,27 @@ static void test_ray_mesh_unnormalized_direction_reports_world_distance() {
     }
 }
 
+static void test_ray_mesh_repairs_corrupt_geometry_counts() {
+    void *origin = rt_vec3_new(0, 0, 5);
+    void *dir = rt_vec3_new(0, 0, -1);
+    void *box = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    rt_mesh3d *mesh = (rt_mesh3d *)box;
+    uint32_t vertex_count = mesh->vertex_count;
+    uint32_t index_count = mesh->index_count;
+    mesh->vertex_capacity = vertex_count;
+    mesh->index_capacity = index_count;
+    mesh->vertex_count = UINT32_MAX;
+    mesh->index_count = UINT32_MAX;
+
+    void *hit = rt_ray3d_intersect_mesh(origin, dir, box, rt_mat4_identity());
+
+    EXPECT_TRUE(hit != nullptr, "Ray-mesh repairs corrupt counts and still hits valid geometry");
+    EXPECT_TRUE(mesh->vertex_count == vertex_count && mesh->index_count == index_count,
+                "Ray-mesh repairs corrupt geometry counts before traversal");
+    if (hit)
+        EXPECT_NEAR(rt_ray3d_hit_distance(hit), 4.0, 0.01, "Ray-mesh repaired-count distance");
+}
+
 static void test_ray_mesh_translated() {
     void *origin = rt_vec3_new(3, 0, 5);
     void *dir = rt_vec3_new(0, 0, -1);
@@ -321,6 +348,59 @@ static void test_capsule_aabb_uses_exact_segment_distance() {
                 "Capsule-AABB tests distance to the box, not only the box center");
 }
 
+static void test_ray_queries_clamp_extreme_finite_inputs() {
+    void *origin = rt_vec3_new(1.0e300, 0.0, 5.0);
+    void *dir = rt_vec3_new(-1.0e300, 0.0, -5.0);
+    void *mn = rt_vec3_new(-1.0, -1.0, -1.0);
+    void *mx = rt_vec3_new(1.0, 1.0, 1.0);
+    double t = rt_ray3d_intersect_aabb(origin, dir, mn, mx);
+    EXPECT_TRUE(std::isfinite(t), "Ray-AABB clamps extreme finite coordinates to finite distance");
+    EXPECT_TRUE(t <= 1000000000.0, "Ray-AABB caps extreme finite hit distances");
+
+    t = rt_ray3d_intersect_sphere(origin, dir, rt_vec3_new(0.0, 0.0, 0.0), 1.0e300);
+    EXPECT_TRUE(std::isfinite(t),
+                "Ray-sphere clamps extreme finite coordinates and radius to finite distance");
+    EXPECT_TRUE(t <= 1000000000.0, "Ray-sphere caps extreme finite hit distances");
+}
+
+static void test_translated_mesh_hit_transform_aliasing() {
+    void *origin = rt_vec3_new(3, 0, 5);
+    void *dir = rt_vec3_new(0, 0, -1);
+    void *box = rt_mesh3d_new_box(2.0, 2.0, 2.0);
+    void *xf = rt_mat4_translate(3.0, 0.0, 0.0);
+    void *hit = rt_ray3d_intersect_mesh(origin, dir, box, xf);
+    EXPECT_TRUE(hit != nullptr, "Ray-mesh translated hit still succeeds with aliased transforms");
+    if (hit) {
+        void *pt = rt_ray3d_hit_point(hit);
+        void *normal = rt_ray3d_hit_normal(hit);
+        EXPECT_NEAR(rt_vec3_x(pt), 3.0, 0.01, "Translated mesh hit keeps X after alias-safe transform");
+        EXPECT_NEAR(rt_vec3_z(pt), 1.0, 0.01, "Translated mesh hit keeps Z after alias-safe transform");
+        EXPECT_TRUE(std::isfinite(rt_ray3d_hit_distance(hit)), "RayHit distance accessor is finite");
+        EXPECT_TRUE(std::isfinite(rt_vec3_x(normal)) && std::isfinite(rt_vec3_y(normal)) &&
+                        std::isfinite(rt_vec3_z(normal)),
+                    "RayHit normal accessor returns finite components");
+    }
+}
+
+static void test_shape_queries_clamp_extreme_finite_inputs() {
+    void *huge_a = rt_vec3_new(-1.0e300, -1.0e300, -1.0e300);
+    void *huge_b = rt_vec3_new(1.0e300, 1.0e300, 1.0e300);
+    void *point = rt_vec3_new(5.0e299, 0.0, 0.0);
+    void *closest = rt_aabb3d_closest_point(huge_a, huge_b, point);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(closest)) && std::isfinite(rt_vec3_y(closest)) &&
+                    std::isfinite(rt_vec3_z(closest)),
+                "AABB closest point clamps extreme finite inputs");
+
+    void *pen = rt_sphere3d_penetration(
+        rt_vec3_new(0, 0, 0), 1.0e300, rt_vec3_new(0.5, 0, 0), 1.0e300);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(pen)) && std::isfinite(rt_vec3_y(pen)) &&
+                    std::isfinite(rt_vec3_z(pen)),
+                "Sphere penetration clamps extreme finite radii");
+
+    EXPECT_TRUE(rt_capsule3d_aabb_overlaps(huge_a, huge_b, 1.0e300, huge_a, huge_b) == 1,
+                "Capsule-AABB clamps extreme finite radius and bounds");
+}
+
 int main() {
     test_ray_triangle_hit();
     test_ray_triangle_miss();
@@ -341,12 +421,16 @@ int main() {
     test_sphere_penetration_pushes_a_away_from_b();
     test_ray_mesh();
     test_ray_mesh_unnormalized_direction_reports_world_distance();
+    test_ray_mesh_repairs_corrupt_geometry_counts();
     test_ray_mesh_translated();
     test_ray_mesh_and_hit_accessors_reject_wrong_handles();
     test_aabb_closest_point_surface_inside();
     test_aabb_sphere_overlap_inside_box();
     test_aabb_canonicalizes_inverted_bounds();
     test_capsule_aabb_uses_exact_segment_distance();
+    test_ray_queries_clamp_extreme_finite_inputs();
+    test_translated_mesh_hit_transform_aliasing();
+    test_shape_queries_clamp_extreme_finite_inputs();
 
     printf("Raycast3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

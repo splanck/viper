@@ -33,6 +33,7 @@
 #include "rt_pixels_internal.h"
 #include "rt_platform.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -54,7 +55,43 @@ static int cubemap_pixels_valid(void *pixels) {
     return rt_pixels_checked_impl_or_null(pixels) != NULL;
 }
 
+/// @brief Validate that @p cm is still a live CubeMap3D handle before dereferencing it.
+static int cubemap_handle_valid(const rt_cubemap3d *cm) {
+    return cm && rt_g3d_has_class((void *)(uintptr_t)cm, RT_G3D_CUBEMAP3D_CLASS_ID);
+}
+
+/// @brief Return a checked Pixels face implementation, or NULL for stale/corrupt slots.
+static rt_pixels_impl *cubemap_face_pixels_impl(void *pixels) {
+    rt_pixels_impl *pv = rt_pixels_checked_impl_or_null(pixels);
+    if (!pv || !pv->data || pv->width <= 0 || pv->height <= 0 || pv->width > INT_MAX ||
+        pv->height > INT_MAX)
+        return NULL;
+    return pv;
+}
+
 static volatile int64_t g_next_cubemap_cache_identity = 1;
+
+#define CUBEMAP3D_MAX_FACE_SIZE 32768
+
+/// @brief Validate the full six-face cubemap invariant before sampling.
+static int cubemap_faces_valid(const rt_cubemap3d *cm) {
+    int64_t face_size;
+    if (!cubemap_handle_valid(cm))
+        return 0;
+    face_size = cm->face_size;
+    if (face_size <= 0 || face_size > CUBEMAP3D_MAX_FACE_SIZE || cm->cache_identity == 0)
+        return 0;
+    for (int face = 0; face < 6; face++) {
+        rt_pixels_impl *pv = cubemap_face_pixels_impl(cm->faces[face]);
+        if (!pv || pv->width != face_size || pv->height != face_size)
+            return 0;
+    }
+    return 1;
+}
+
+int rt_cubemap3d_is_complete(void *cubemap) {
+    return cubemap_faces_valid((const rt_cubemap3d *)cubemap) ? 1 : 0;
+}
 
 /// @brief Drop a GC-managed reference held in a `**slot` and null the slot.
 /// @details Idempotent — safe to call on already-null slots. Used by the
@@ -67,6 +104,77 @@ static void cubemap_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Release a cubemap face only when it still points at a Pixels object.
+static void cubemap_release_face_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!cubemap_pixels_valid(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    cubemap_release_ref(slot);
+}
+
+/// @brief Return a process-unique nonzero cache identity for skybox/env-map invalidation.
+static uint64_t cubemap_next_cache_identity(void) {
+    uint64_t id =
+        (uint64_t)__atomic_fetch_add(&g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+    if (id == 0) {
+        id = (uint64_t)__atomic_fetch_add(
+            &g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+        if (id == 0)
+            id = 1;
+    }
+    return id;
+}
+
+/// @brief Return a finite scalar, falling back to @p fallback for NaN/Inf.
+static float cubemap_finite_or(float value, float fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+/// @brief Clamp extreme face UVs while preserving small out-of-face edge taps.
+static float cubemap_limited_uv(float value) {
+    value = cubemap_finite_or(value, 0.5f);
+    if (value < -2.0f)
+        return -2.0f;
+    if (value > 3.0f)
+        return 3.0f;
+    return value;
+}
+
+/// @brief Normalize a direction with max-component scaling to avoid float overflow.
+static int cubemap_normalize_direction(float *dx, float *dy, float *dz) {
+    double x;
+    double y;
+    double z;
+    double scale;
+    double len;
+
+    if (!dx || !dy || !dz || !isfinite(*dx) || !isfinite(*dy) || !isfinite(*dz))
+        return 0;
+    x = (double)*dx;
+    y = (double)*dy;
+    z = (double)*dz;
+    scale = fabs(x);
+    if (fabs(y) > scale)
+        scale = fabs(y);
+    if (fabs(z) > scale)
+        scale = fabs(z);
+    if (!isfinite(scale) || scale <= 1e-20)
+        return 0;
+    x /= scale;
+    y /= scale;
+    z /= scale;
+    len = sqrt(x * x + y * y + z * z);
+    if (!isfinite(len) || len <= 1e-20)
+        return 0;
+    *dx = (float)(x / len);
+    *dy = (float)(y / len);
+    *dz = (float)(z / len);
+    return 1;
+}
+
 /// @brief GC finalizer: release every face Pixels reference and null the slots.
 /// @details Called when the cubemap's refcount reaches zero. Each face
 ///          is released independently so cubemaps built with a subset
@@ -77,7 +185,7 @@ static void cubemap_finalize(void *obj) {
     if (!cm)
         return;
     for (int i = 0; i < 6; i++)
-        cubemap_release_ref(&cm->faces[i]);
+        cubemap_release_face_slot(&cm->faces[i]);
 }
 
 /// @brief Convert a 3D direction vector into a cubemap face index plus UV.
@@ -96,9 +204,22 @@ static void cubemap_finalize(void *obj) {
 ///          sampling straight down (0,-1,0)).
 static void cubemap_direction_to_face_uv(
     float dx, float dy, float dz, int *out_face, float *out_u, float *out_v) {
-    float ax = fabsf(dx), ay = fabsf(dy), az = fabsf(dz);
+    float ax;
+    float ay;
+    float az;
     int face;
     float u, v, ma;
+
+    if (!out_face || !out_u || !out_v)
+        return;
+    if (!cubemap_normalize_direction(&dx, &dy, &dz)) {
+        dx = 0.0f;
+        dy = 0.0f;
+        dz = -1.0f;
+    }
+    ax = fabsf(dx);
+    ay = fabsf(dy);
+    az = fabsf(dz);
 
     if (ax >= ay && ax >= az) {
         ma = ax;
@@ -152,12 +273,21 @@ static void cubemap_direction_to_face_uv(
 ///          collapsed to zero.
 static void cubemap_face_uv_to_direction(
     int face, float u, float v, float *out_dx, float *out_dy, float *out_dz) {
-    float uu = u * 2.0f - 1.0f;
-    float vv = v * 2.0f - 1.0f;
+    float uu;
+    float vv;
     float dx = 0.0f;
     float dy = 0.0f;
     float dz = 0.0f;
     float len;
+
+    if (!out_dx || !out_dy || !out_dz)
+        return;
+    if (face < 0 || face > 5)
+        face = 5;
+    u = cubemap_limited_uv(u);
+    v = cubemap_limited_uv(v);
+    uu = u * 2.0f - 1.0f;
+    vv = v * 2.0f - 1.0f;
 
     switch (face) {
         case 0: /* +X */
@@ -197,6 +327,10 @@ static void cubemap_face_uv_to_direction(
         dx /= len;
         dy /= len;
         dz /= len;
+    } else {
+        dx = 0.0f;
+        dy = 0.0f;
+        dz = -1.0f;
     }
     *out_dx = dx;
     *out_dy = dy;
@@ -217,24 +351,26 @@ static uint32_t cubemap_sample_nearest_rgba(const rt_cubemap3d *cm, float dx, fl
     int face = 0;
     float u = 0.5f;
     float v = 0.5f;
-    void *face_pixels;
+    rt_pixels_impl *pv;
     int64_t fw;
     int64_t fh;
     int xi;
     int yi;
 
-    if (!cm)
+    if (!cubemap_faces_valid(cm))
+        return 0;
+    if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz) ||
+        (fabsf(dx) < 1e-10f && fabsf(dy) < 1e-10f && fabsf(dz) < 1e-10f))
         return 0;
 
     cubemap_direction_to_face_uv(dx, dy, dz, &face, &u, &v);
-    face_pixels = cm->faces[face];
-    if (!face_pixels)
+    if (face < 0 || face > 5)
         return 0;
-
-    fw = rt_pixels_width(face_pixels);
-    fh = rt_pixels_height(face_pixels);
-    if (fw <= 0 || fh <= 0)
+    pv = cubemap_face_pixels_impl(cm->faces[face]);
+    if (!pv)
         return 0;
+    fw = pv->width;
+    fh = pv->height;
 
     if (u < 0.0f)
         u = 0.0f;
@@ -255,7 +391,7 @@ static uint32_t cubemap_sample_nearest_rgba(const rt_cubemap3d *cm, float dx, fl
         xi = 0;
     if (yi < 0)
         yi = 0;
-    return (uint32_t)rt_pixels_get(face_pixels, xi, yi);
+    return pv->data[(int64_t)yi * pv->width + xi];
 }
 
 /// @brief Create a cube map from six square face textures.
@@ -288,6 +424,10 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
         rt_trap("CubeMap3D.New: faces must be square");
         return NULL;
     }
+    if (size > CUBEMAP3D_MAX_FACE_SIZE) {
+        rt_trap("CubeMap3D.New: face dimensions exceed supported maximum");
+        return NULL;
+    }
 
     for (int i = 1; i < 6; i++) {
         if (rt_pixels_width(faces[i]) != size || rt_pixels_height(faces[i]) != size) {
@@ -308,11 +448,7 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
         cm->faces[i] = faces[i];
     }
     cm->face_size = size;
-    cm->cache_identity =
-        (uint64_t)__atomic_fetch_add(&g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
-    if (cm->cache_identity == 0)
-        cm->cache_identity = (uint64_t)__atomic_fetch_add(
-            &g_next_cubemap_cache_identity, (int64_t)1, __ATOMIC_RELAXED);
+    cm->cache_identity = cubemap_next_cache_identity();
     rt_obj_set_finalizer(cm, cubemap_finalize);
     return cm;
 }
@@ -339,7 +475,7 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
                        float *out_b) {
     if (!out_r || !out_g || !out_b)
         return;
-    if (!cm) {
+    if (!cubemap_faces_valid(cm)) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
@@ -357,17 +493,17 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
 
     /* Sample face texture using public API */
     cubemap_direction_to_face_uv(dx, dy, dz, &face, &u, &v);
-    void *face_pixels = cm->faces[face];
-    if (!face_pixels) {
+    if (face < 0 || face > 5) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
-    int64_t fw = rt_pixels_width(face_pixels);
-    int64_t fh = rt_pixels_height(face_pixels);
-    if (fw <= 0 || fh <= 0) {
+    rt_pixels_impl *pv = cubemap_face_pixels_impl(cm->faces[face]);
+    if (!pv) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
+    int64_t fw = pv->width;
+    int64_t fh = pv->height;
 
     /* Bilinear interpolation for smooth cubemap sampling */
     float fx = u * (float)fw - 0.5f;
@@ -467,7 +603,7 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
     if (!out_r || !out_g || !out_b) {
         return;
     }
-    if (!cm) {
+    if (!cubemap_faces_valid(cm)) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
@@ -476,7 +612,7 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
         roughness = 0.0f;
     if (roughness > 1.0f)
         roughness = 1.0f;
-    if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz)) {
+    if (!cubemap_normalize_direction(&dx, &dy, &dz)) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
@@ -485,15 +621,6 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
         rt_cubemap_sample(cm, dx, dy, dz, out_r, out_g, out_b);
         return;
     }
-
-    len = sqrtf(dx * dx + dy * dy + dz * dz);
-    if (!isfinite(len) || len <= 1e-8f) {
-        *out_r = *out_g = *out_b = 0.0f;
-        return;
-    }
-    dx /= len;
-    dy /= len;
-    dz /= len;
 
     if (fabsf(dz) < 0.999f) {
         tx = -dy;
@@ -552,17 +679,36 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
 // Canvas3D skybox
 //=============================================================================
 
+static int canvas3d_repair_skybox_slot(rt_canvas3d *c) {
+    if (!c || !c->skybox)
+        return 0;
+    if (!cubemap_handle_valid(c->skybox)) {
+        c->skybox = NULL;
+        rt_canvas3d_invalidate_skybox_cache(c);
+        return 1;
+    }
+    if (!rt_cubemap3d_is_complete(c->skybox)) {
+        if (rt_obj_release_check0(c->skybox))
+            rt_obj_free(c->skybox);
+        c->skybox = NULL;
+        rt_canvas3d_invalidate_skybox_cache(c);
+        return 1;
+    }
+    return 0;
+}
+
 /// @brief Set a cube map as the canvas skybox (drawn behind all geometry).
 void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
     if (!c)
         return;
-    if (cubemap && !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID))
+    canvas3d_repair_skybox_slot(c);
+    if (cubemap && !rt_cubemap3d_is_complete(cubemap))
         return;
     if (c->skybox == (rt_cubemap3d *)cubemap)
         return;
     rt_obj_retain_maybe(cubemap);
-    if (c->skybox && rt_obj_release_check0(c->skybox))
+    if (cubemap_handle_valid(c->skybox) && rt_obj_release_check0(c->skybox))
         rt_obj_free(c->skybox);
     c->skybox = (rt_cubemap3d *)cubemap;
     rt_canvas3d_invalidate_skybox_cache(c);
@@ -573,7 +719,9 @@ void rt_canvas3d_clear_skybox(void *canvas) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
     if (!c)
         return;
-    if (c->skybox && rt_obj_release_check0(c->skybox))
+    if (canvas3d_repair_skybox_slot(c))
+        return;
+    if (cubemap_handle_valid(c->skybox) && rt_obj_release_check0(c->skybox))
         rt_obj_free(c->skybox);
     c->skybox = NULL;
     rt_canvas3d_invalidate_skybox_cache(c);
@@ -607,6 +755,12 @@ double rt_material3d_get_reflectivity(void *obj) {
     rt_material3d *mat = (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
     if (!mat)
         return 0.0;
+    if (!isfinite(mat->reflectivity))
+        mat->reflectivity = 0.0;
+    if (mat->reflectivity < 0.0)
+        mat->reflectivity = 0.0;
+    if (mat->reflectivity > 1.0)
+        mat->reflectivity = 1.0;
     return mat->reflectivity;
 }
 

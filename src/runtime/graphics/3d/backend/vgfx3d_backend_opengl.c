@@ -2173,6 +2173,12 @@ static int gl_continue_native_texture_upload(gl_context_t *ctx, gl_texture_cache
     if (!ctx || !entry || !entry->texture_asset || !entry->upload_in_progress || !entry->tex ||
         !gl.CompressedTexImage2D)
         return 0;
+    if (entry->native_mip_count <= 0)
+        return 0;
+    if (entry->native_next_mip < 0)
+        entry->native_next_mip = 0;
+    if (entry->native_next_mip > entry->native_mip_count)
+        entry->native_next_mip = entry->native_mip_count;
     gl.BindTexture(GL_TEXTURE_2D, entry->tex);
     while (entry->native_next_mip < entry->native_mip_count) {
         vgfx3d_native_texture_mip_t mip;
@@ -2263,6 +2269,10 @@ static int gl_continue_texture_upload(gl_context_t *ctx,
 
     if (!ctx || !entry || !pixels_ptr || !entry->upload_in_progress || !entry->tex)
         return 0;
+    if (entry->width <= 0 || entry->height <= 0)
+        return 0;
+    if (entry->upload_next_row < 0 || entry->upload_next_row >= entry->height)
+        entry->upload_next_row = 0;
     rows = vgfx3d_upload_rows_for_budget(entry->width,
                                          entry->height,
                                          entry->upload_next_row,
@@ -2488,9 +2498,8 @@ static float gl_cubemap_max_lod(const rt_cubemap3d *cubemap) {
     int32_t size;
     float lod = 0.0f;
 
-    if (!cubemap || cubemap->face_size <= 1)
+    if (!cubemap || !vgfx3d_get_cubemap_face_size(cubemap, &size) || size <= 1)
         return 0.0f;
-    size = (int32_t)cubemap->face_size;
     while (size > 1) {
         size >>= 1;
         lod += 1.0f;
@@ -2506,6 +2515,16 @@ static int gl_continue_cubemap_upload(gl_context_t *ctx,
     if (!ctx || !entry || !cubemap || !entry->upload_in_progress || !entry->tex ||
         entry->face_size <= 0)
         return 0;
+    if (entry->upload_face < 0 || entry->upload_face >= 6) {
+        entry->upload_face = 0;
+        entry->upload_next_row = 0;
+    }
+    if (entry->upload_next_row < 0)
+        entry->upload_next_row = 0;
+    if (entry->upload_next_row >= entry->face_size) {
+        entry->upload_face++;
+        entry->upload_next_row = 0;
+    }
 
     while (entry->upload_face < 6) {
         int32_t rows = vgfx3d_upload_rows_for_budget(entry->face_size,

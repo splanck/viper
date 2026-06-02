@@ -28,6 +28,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_pixels_internal.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -35,6 +36,9 @@
 #include <string.h>
 
 #define DECAL3D_SIZE_MAX 1000000.0
+#define DECAL3D_WORLD_ABS_MAX 1000000000000.0
+#define DECAL3D_LIFETIME_MAX 1000000.0
+#define DECAL3D_DT_MAX DECAL3D_LIFETIME_MAX
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -55,6 +59,10 @@ extern void rt_canvas3d_draw_mesh_matrix(void *canvas,
                                          void *mesh,
                                          const double *transform,
                                          void *material);
+extern void *rt_material3d_new(void);
+extern void rt_material3d_set_texture(void *m, void *tex);
+extern void rt_material3d_set_alpha(void *m, double a);
+extern void rt_material3d_set_unlit(void *m, int8_t u);
 
 typedef struct {
     void *vptr;
@@ -86,24 +94,124 @@ static double decal3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp a world-space decal coordinate to a stable finite range.
+static double decal3d_coord_or(double value, double fallback) {
+    value = decal3d_finite_or(value, fallback);
+    if (value > DECAL3D_WORLD_ABS_MAX)
+        return DECAL3D_WORLD_ABS_MAX;
+    if (value < -DECAL3D_WORLD_ABS_MAX)
+        return -DECAL3D_WORLD_ABS_MAX;
+    return value;
+}
+
+/// @brief Clamp alpha/fade values to [0, 1].
+static double decal3d_alpha_or(double value, double fallback) {
+    value = decal3d_finite_or(value, fallback);
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
+}
+
+/// @brief Return non-zero when @p texture is a valid Pixels handle.
+static int decal3d_texture_valid(void *texture) {
+    return texture && rt_pixels_checked_impl_or_null(texture) != NULL;
+}
+
+/// @brief Release a retained Pixels slot only if it still points at Pixels.
+static void decal3d_release_texture_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!decal3d_texture_valid(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    decal3d_release_ref(slot);
+}
+
+/// @brief Release a retained Mesh3D slot only if it still points at Mesh3D.
+static void decal3d_release_mesh_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    decal3d_release_ref(slot);
+}
+
+/// @brief Release a retained Material3D slot only if it still points at Material3D.
+static void decal3d_release_material_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    decal3d_release_ref(slot);
+}
+
 /// @brief Normalise the (x,y,z) vector in place; fall back to +Y on zero/non-finite input.
 static void decal3d_normalize_or_default(double *x, double *y, double *z) {
-    double len;
     if (!x || !y || !z)
         return;
-    *x = decal3d_finite_or(*x, 0.0);
-    *y = decal3d_finite_or(*y, 1.0);
-    *z = decal3d_finite_or(*z, 0.0);
-    len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    *x = decal3d_coord_or(*x, 0.0);
+    *y = decal3d_coord_or(*y, 1.0);
+    *z = decal3d_coord_or(*z, 0.0);
+    double max_component = fmax(fabs(*x), fmax(fabs(*y), fabs(*z)));
+    if (!isfinite(max_component) || max_component <= 1e-8) {
+        *x = 0.0;
+        *y = 1.0;
+        *z = 0.0;
+        return;
+    }
+    double sx = *x / max_component;
+    double sy = *y / max_component;
+    double sz = *z / max_component;
+    double len = sqrt(sx * sx + sy * sy + sz * sz);
     if (!isfinite(len) || len <= 1e-8) {
         *x = 0.0;
         *y = 1.0;
         *z = 0.0;
         return;
     }
-    *x /= len;
-    *y /= len;
-    *z /= len;
+    *x = sx / len;
+    *y = sy / len;
+    *z = sz / len;
+}
+
+/// @brief Release invalid cached refs before draw/update paths use them.
+static void decal3d_repair_refs(rt_decal3d *d) {
+    if (!d)
+        return;
+    if (d->texture && !decal3d_texture_valid(d->texture))
+        decal3d_release_texture_slot(&d->texture);
+    if (d->mesh && !rt_g3d_has_class(d->mesh, RT_G3D_MESH3D_CLASS_ID))
+        decal3d_release_mesh_slot(&d->mesh);
+    if (d->material && !rt_g3d_has_class(d->material, RT_G3D_MATERIAL3D_CLASS_ID))
+        decal3d_release_material_slot(&d->material);
+}
+
+/// @brief Add one decal vertex after clamping world coordinates.
+static void decal3d_add_vertex_clamped(void *mesh,
+                                       double x,
+                                       double y,
+                                       double z,
+                                       double nx,
+                                       double ny,
+                                       double nz,
+                                       double u,
+                                       double v) {
+    rt_mesh3d_add_vertex(mesh,
+                         decal3d_coord_or(x, 0.0),
+                         decal3d_coord_or(y, 0.0),
+                         decal3d_coord_or(z, 0.0),
+                         nx,
+                         ny,
+                         nz,
+                         u,
+                         v);
 }
 
 /// @brief GC finalizer: release the decal's texture, lazily-built mesh, and material.
@@ -114,9 +222,11 @@ static void decal3d_normalize_or_default(double *x, double *y, double *z) {
 ///          without special-casing.
 static void decal3d_finalizer(void *obj) {
     rt_decal3d *d = (rt_decal3d *)obj;
-    decal3d_release_ref(&d->texture);
-    decal3d_release_ref(&d->mesh);
-    decal3d_release_ref(&d->material);
+    if (!d)
+        return;
+    decal3d_release_texture_slot(&d->texture);
+    decal3d_release_mesh_slot(&d->mesh);
+    decal3d_release_material_slot(&d->material);
 }
 
 /// @brief Create a new 3D decal projected onto a surface.
@@ -141,9 +251,9 @@ void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
         return NULL;
     }
     d->vptr = NULL;
-    d->position[0] = decal3d_finite_or(rt_vec3_x(pos_v), 0.0);
-    d->position[1] = decal3d_finite_or(rt_vec3_y(pos_v), 0.0);
-    d->position[2] = decal3d_finite_or(rt_vec3_z(pos_v), 0.0);
+    d->position[0] = decal3d_coord_or(rt_vec3_x(pos_v), 0.0);
+    d->position[1] = decal3d_coord_or(rt_vec3_y(pos_v), 0.0);
+    d->position[2] = decal3d_coord_or(rt_vec3_z(pos_v), 0.0);
     d->normal[0] = rt_vec3_x(normal_v);
     d->normal[1] = rt_vec3_y(normal_v);
     d->normal[2] = rt_vec3_z(normal_v);
@@ -151,8 +261,8 @@ void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
     d->size = (isfinite(size) && size > 0.0) ? size : 1.0;
     if (d->size > DECAL3D_SIZE_MAX)
         d->size = DECAL3D_SIZE_MAX;
-    d->texture = texture;
-    rt_obj_retain_maybe(texture);
+    d->texture = decal3d_texture_valid(texture) ? texture : NULL;
+    rt_obj_retain_maybe(d->texture);
     d->lifetime = -1.0; /* permanent by default */
     d->max_lifetime = -1.0;
     d->alpha = 1.0;
@@ -169,6 +279,14 @@ void rt_decal3d_set_lifetime(void *obj, double seconds) {
         return;
     if (!isfinite(seconds))
         seconds = -1.0;
+    if (seconds < 0.0) {
+        d->lifetime = -1.0;
+        d->max_lifetime = -1.0;
+        d->alpha = 1.0;
+        return;
+    }
+    if (seconds > DECAL3D_LIFETIME_MAX)
+        seconds = DECAL3D_LIFETIME_MAX;
     d->lifetime = seconds;
     d->max_lifetime = seconds;
     d->alpha = seconds == 0.0 ? 0.0 : 1.0;
@@ -179,8 +297,17 @@ void rt_decal3d_update(void *obj, double dt) {
     rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
     if (!d || !isfinite(dt) || dt <= 0.0)
         return;
+    if (dt > DECAL3D_DT_MAX)
+        dt = DECAL3D_DT_MAX;
+    d->alpha = decal3d_alpha_or(d->alpha, 1.0);
+    if (!isfinite(d->lifetime))
+        d->lifetime = -1.0;
+    if (!isfinite(d->max_lifetime))
+        d->max_lifetime = d->lifetime;
     if (d->lifetime < 0)
         return; /* permanent */
+    if (d->max_lifetime <= 0.0)
+        d->max_lifetime = d->lifetime;
     d->lifetime -= dt;
     /* Fade alpha over last 20% of lifetime */
     if (d->max_lifetime > 0 && d->lifetime < d->max_lifetime * 0.2) {
@@ -209,13 +336,13 @@ void rt_decal3d_rebase_origin(void *obj, double dx, double dy, double dz) {
     if (!d)
         return;
     double delta[3] = {
-        decal3d_finite_or(dx, 0.0), decal3d_finite_or(dy, 0.0), decal3d_finite_or(dz, 0.0)};
+        decal3d_coord_or(dx, 0.0), decal3d_coord_or(dy, 0.0), decal3d_coord_or(dz, 0.0)};
     if (delta[0] == 0.0 && delta[1] == 0.0 && delta[2] == 0.0)
         return;
-    d->position[0] = decal3d_finite_or(d->position[0] - delta[0], 0.0);
-    d->position[1] = decal3d_finite_or(d->position[1] - delta[1], 0.0);
-    d->position[2] = decal3d_finite_or(d->position[2] - delta[2], 0.0);
-    decal3d_release_ref(&d->mesh);
+    d->position[0] = decal3d_coord_or(d->position[0] - delta[0], 0.0);
+    d->position[1] = decal3d_coord_or(d->position[1] - delta[1], 0.0);
+    d->position[2] = decal3d_coord_or(d->position[2] - delta[2], 0.0);
+    decal3d_release_mesh_slot(&d->mesh);
 }
 
 /// @brief Copy the decal world position into @p out. Used by floating-origin rebase tests to
@@ -224,9 +351,9 @@ void rt_decal3d_get_position(void *obj, double out[3]) {
     rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
     if (!out)
         return;
-    out[0] = d ? d->position[0] : 0.0;
-    out[1] = d ? d->position[1] : 0.0;
-    out[2] = d ? d->position[2] : 0.0;
+    out[0] = d ? decal3d_coord_or(d->position[0], 0.0) : 0.0;
+    out[1] = d ? decal3d_coord_or(d->position[1], 0.0) : 0.0;
+    out[2] = d ? decal3d_coord_or(d->position[2], 0.0) : 0.0;
 }
 
 /// @brief Build the decal's quad mesh + material on first draw (lazy init).
@@ -246,11 +373,18 @@ void rt_decal3d_get_position(void *obj, double out[3]) {
 ///          texture as-is without picking up scene lighting (matches
 ///          bullet-hole / scorch-mark convention).
 static void ensure_decal_mesh(rt_decal3d *d) {
-    if (d->mesh)
+    if (!d)
+        return;
+    decal3d_repair_refs(d);
+    if (d->mesh && d->material)
         return;
 
     /* Build tangent frame from normal */
     double nx = d->normal[0], ny = d->normal[1], nz = d->normal[2];
+    decal3d_normalize_or_default(&nx, &ny, &nz);
+    d->normal[0] = nx;
+    d->normal[1] = ny;
+    d->normal[2] = nz;
 
     /* Choose arbitrary up vector not parallel to normal */
     double ux = 0.0, uy = 1.0, uz = 0.0;
@@ -279,65 +413,68 @@ static void ensure_decal_mesh(rt_decal3d *d) {
     double tux = ny * rz - nz * ry;
     double tuy = nz * rx - nx * rz;
     double tuz = nx * ry - ny * rx;
+    decal3d_normalize_or_default(&tux, &tuy, &tuz);
 
+    d->size = (isfinite(d->size) && d->size > 0.0) ? d->size : 1.0;
+    if (d->size > DECAL3D_SIZE_MAX)
+        d->size = DECAL3D_SIZE_MAX;
     double hs = d->size * 0.5; /* half-size */
     double off = 0.01;         /* surface offset to prevent z-fighting */
-    double cx = d->position[0] + nx * off;
-    double cy = d->position[1] + ny * off;
-    double cz = d->position[2] + nz * off;
+    double cx = decal3d_coord_or(d->position[0] + nx * off, 0.0);
+    double cy = decal3d_coord_or(d->position[1] + ny * off, 0.0);
+    double cz = decal3d_coord_or(d->position[2] + nz * off, 0.0);
 
-    d->mesh = rt_mesh3d_new();
-    if (!d->mesh)
-        return;
-    rt_mesh3d_add_vertex(d->mesh,
-                         cx - rx * hs - tux * hs,
-                         cy - ry * hs - tuy * hs,
-                         cz - rz * hs - tuz * hs,
-                         nx,
-                         ny,
-                         nz,
-                         0.0,
-                         0.0);
-    rt_mesh3d_add_vertex(d->mesh,
-                         cx + rx * hs - tux * hs,
-                         cy + ry * hs - tuy * hs,
-                         cz + rz * hs - tuz * hs,
-                         nx,
-                         ny,
-                         nz,
-                         1.0,
-                         0.0);
-    rt_mesh3d_add_vertex(d->mesh,
-                         cx + rx * hs + tux * hs,
-                         cy + ry * hs + tuy * hs,
-                         cz + rz * hs + tuz * hs,
-                         nx,
-                         ny,
-                         nz,
-                         1.0,
-                         1.0);
-    rt_mesh3d_add_vertex(d->mesh,
-                         cx - rx * hs + tux * hs,
-                         cy - ry * hs + tuy * hs,
-                         cz - rz * hs + tuz * hs,
-                         nx,
-                         ny,
-                         nz,
-                         0.0,
-                         1.0);
-    rt_mesh3d_add_triangle(d->mesh, 0, 1, 2);
-    rt_mesh3d_add_triangle(d->mesh, 0, 2, 3);
+    if (!d->mesh) {
+        d->mesh = rt_mesh3d_new();
+        if (!d->mesh)
+            return;
+        decal3d_add_vertex_clamped(d->mesh,
+                                   cx - rx * hs - tux * hs,
+                                   cy - ry * hs - tuy * hs,
+                                   cz - rz * hs - tuz * hs,
+                                   nx,
+                                   ny,
+                                   nz,
+                                   0.0,
+                                   0.0);
+        decal3d_add_vertex_clamped(d->mesh,
+                                   cx + rx * hs - tux * hs,
+                                   cy + ry * hs - tuy * hs,
+                                   cz + rz * hs - tuz * hs,
+                                   nx,
+                                   ny,
+                                   nz,
+                                   1.0,
+                                   0.0);
+        decal3d_add_vertex_clamped(d->mesh,
+                                   cx + rx * hs + tux * hs,
+                                   cy + ry * hs + tuy * hs,
+                                   cz + rz * hs + tuz * hs,
+                                   nx,
+                                   ny,
+                                   nz,
+                                   1.0,
+                                   1.0);
+        decal3d_add_vertex_clamped(d->mesh,
+                                   cx - rx * hs + tux * hs,
+                                   cy - ry * hs + tuy * hs,
+                                   cz - rz * hs + tuz * hs,
+                                   nx,
+                                   ny,
+                                   nz,
+                                   0.0,
+                                   1.0);
+        rt_mesh3d_add_triangle(d->mesh, 0, 1, 2);
+        rt_mesh3d_add_triangle(d->mesh, 0, 2, 3);
+    }
 
     /* Create material with texture and alpha */
-    extern void *rt_material3d_new(void);
-    extern void rt_material3d_set_texture(void *m, void *tex);
-    extern void rt_material3d_set_alpha(void *m, double a);
-    extern void rt_material3d_set_unlit(void *m, int8_t u);
-    d->material = rt_material3d_new();
+    d->material = d->material ? d->material : rt_material3d_new();
     if (!d->material)
         return;
     if (d->texture)
         rt_material3d_set_texture(d->material, d->texture);
+    d->alpha = decal3d_alpha_or(d->alpha, 1.0);
     rt_material3d_set_alpha(d->material, d->alpha);
     rt_material3d_set_unlit(d->material, 1); /* decals are unlit — they show texture only */
 }
@@ -354,12 +491,13 @@ void rt_canvas3d_draw_decal(void *canvas, void *obj) {
     if (d->max_lifetime >= 0 && d->lifetime <= 0)
         return; /* expired */
 
+    decal3d_repair_refs(d);
     ensure_decal_mesh(d);
     if (!d->mesh || !d->material)
         return;
 
     /* Update material alpha for fade */
-    extern void rt_material3d_set_alpha(void *m, double a);
+    d->alpha = decal3d_alpha_or(d->alpha, 1.0);
     rt_material3d_set_alpha(d->material, d->alpha);
 
     {

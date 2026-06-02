@@ -240,6 +240,41 @@ static void test_transform_sanitizes_nonfinite_inputs() {
                         "Transform matrix stays finite after invalid Euler input");
 }
 
+static void test_transform_clamps_extreme_finite_inputs() {
+    void *xf = rt_transform3d_new();
+    rt_transform3d_set_position(xf, 1.0e300, -1.0e300, 42.0);
+    void *pos = rt_transform3d_get_position(xf);
+    EXPECT_NEAR(rt_vec3_x(pos), 1000000000000.0, 1.0, "Extreme position X clamps");
+    EXPECT_NEAR(rt_vec3_y(pos), -1000000000000.0, 1.0, "Extreme position Y clamps");
+    EXPECT_NEAR(rt_vec3_z(pos), 42.0, 0.01, "Finite position Z is preserved");
+
+    rt_transform3d_set_scale(xf, 1.0e300, -1.0e300, 0.0);
+    void *scale = rt_transform3d_get_scale(xf);
+    EXPECT_NEAR(rt_vec3_x(scale), 1000000000000.0, 1.0, "Extreme positive scale clamps");
+    EXPECT_NEAR(rt_vec3_y(scale), -1000000000000.0, 1.0, "Extreme negative scale clamps");
+    EXPECT_NEAR(rt_vec3_z(scale), 0.0, 0.01, "Finite zero scale is preserved");
+
+    rt_transform3d_set_rotation(xf, rt_quat_new(1.0e300, 0.0, 0.0, 0.0));
+    void *rot = rt_transform3d_get_rotation(xf);
+    EXPECT_TRUE(std::isfinite(rt_quat_x(rot)) && std::isfinite(rt_quat_y(rot)) &&
+                    std::isfinite(rt_quat_z(rot)) && std::isfinite(rt_quat_w(rot)),
+                "Extreme finite quaternion normalizes to finite components");
+    EXPECT_NEAR(fabs(rt_quat_x(rot)), 1.0, 0.01, "Extreme quaternion keeps dominant axis");
+
+    rt_transform3d_rotate(xf, rt_vec3_new(1.0e300, 0.0, 0.0), M_PI);
+    rot = rt_transform3d_get_rotation(xf);
+    EXPECT_TRUE(std::isfinite(rt_quat_x(rot)) && std::isfinite(rt_quat_w(rot)),
+                "Extreme finite rotation axis normalizes without overflow");
+
+    rt_transform3d_look_at(
+        xf, rt_vec3_new(1.0e300, 0.0, -1.0e300), rt_vec3_new(0.0, 1.0e300, 0.0));
+    void *mat = rt_transform3d_get_matrix(xf);
+    for (int r = 0; r < 4; ++r)
+        for (int c = 0; c < 4; ++c)
+            EXPECT_TRUE(std::isfinite(rt_mat4_get(mat, r, c)),
+                        "Transform matrix stays finite after extreme LookAt");
+}
+
 /*==========================================================================
  * Path3D tests
  *=========================================================================*/
@@ -340,6 +375,7 @@ int main() {
     test_mat4_inverse_translation_layout();
     test_transform_dirty_flag();
     test_transform_sanitizes_nonfinite_inputs();
+    test_transform_clamps_extreme_finite_inputs();
 
     /* Path3D */
     test_path_linear();

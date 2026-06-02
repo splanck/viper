@@ -67,6 +67,8 @@ void rt_material3d_set_import_texture_slot(void *obj,
                                            int64_t wrap_t,
                                            int64_t filter);
 
+static int material_texture_ref_supported(void *texture_ref);
+
 /// @brief Release the GC reference at `*slot` and NULL it. NULL-safe both ways (slot ==
 /// NULL or *slot == NULL). Only frees the underlying object when the release drops its
 /// retain count to zero — bystander references keep the texture alive.
@@ -78,6 +80,28 @@ static void material_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Release a material texture slot only when it still points at a supported texture.
+static void material_release_texture_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!material_texture_ref_supported(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    material_release_ref(slot);
+}
+
+/// @brief Release an environment-map slot only when it still points at a Cubemap3D.
+static void material_release_env_map_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_CUBEMAP3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    material_release_ref(slot);
+}
+
 /// @brief GC finalizer for Material3D. Walks all seven texture slots (diffuse, normal,
 /// specular, emissive, metallic-roughness, AO, environment) and releases each, regardless
 /// of which subset the material actually used. Unused slots are NULL and release is
@@ -86,13 +110,13 @@ static void rt_material3d_finalize(void *obj) {
     rt_material3d *mat = (rt_material3d *)obj;
     if (!mat)
         return;
-    material_release_ref(&mat->texture);
-    material_release_ref(&mat->normal_map);
-    material_release_ref(&mat->specular_map);
-    material_release_ref(&mat->emissive_map);
-    material_release_ref(&mat->metallic_roughness_map);
-    material_release_ref(&mat->ao_map);
-    material_release_ref(&mat->env_map);
+    material_release_texture_slot(&mat->texture);
+    material_release_texture_slot(&mat->normal_map);
+    material_release_texture_slot(&mat->specular_map);
+    material_release_texture_slot(&mat->emissive_map);
+    material_release_texture_slot(&mat->metallic_roughness_map);
+    material_release_texture_slot(&mat->ao_map);
+    material_release_env_map_slot(&mat->env_map);
 }
 
 /// @brief Retain-then-release swap for a texture slot: if `value` differs from the
@@ -120,7 +144,7 @@ static int material_pixels_handle_valid(void *pixels) {
 
 /// @brief Validate that @p cubemap is a live `Viper.Graphics3D.Cubemap3D` handle.
 static int material_cubemap_handle_valid(void *cubemap) {
-    return cubemap && rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID);
+    return cubemap && rt_cubemap3d_is_complete(cubemap);
 }
 
 /// @brief Resolve a texture reference to its RGBA8 Pixels source, if it has one.
@@ -148,6 +172,49 @@ static int material_texture_ref_has_drawable_source(void *texture_ref) {
            rt_material3d_resolve_texture_native_asset(texture_ref);
 }
 
+/// @brief Whether a texture slot points at a supported material texture handle type.
+static int material_texture_ref_supported(void *texture_ref) {
+    return texture_ref &&
+           (material_pixels_handle_valid(texture_ref) ||
+            rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID));
+}
+
+/// @brief Return whether a texture slot is currently drawable, clearing stale invalid refs.
+/// @details TextureAsset3D refs are kept even when their residency window is empty; they may
+///          become drawable again after streaming without rebinding the material.
+static int material_texture_slot_has_drawable_source(void **slot) {
+    if (!slot || !*slot)
+        return 0;
+    if (!material_texture_ref_supported(*slot)) {
+        *slot = NULL;
+        return 0;
+    }
+    return material_texture_ref_has_drawable_source(*slot);
+}
+
+/// @brief Clear unsupported texture refs from all material texture slots.
+static void material_repair_texture_refs(rt_material3d *mat) {
+    if (!mat)
+        return;
+    (void)material_texture_slot_has_drawable_source(&mat->texture);
+    (void)material_texture_slot_has_drawable_source(&mat->normal_map);
+    (void)material_texture_slot_has_drawable_source(&mat->specular_map);
+    (void)material_texture_slot_has_drawable_source(&mat->emissive_map);
+    (void)material_texture_slot_has_drawable_source(&mat->metallic_roughness_map);
+    (void)material_texture_slot_has_drawable_source(&mat->ao_map);
+}
+
+/// @brief Clear an invalid env-map reference before exposing it to inspectors/renderers.
+static void material_repair_env_map(rt_material3d *mat) {
+    if (!mat || !mat->env_map || material_cubemap_handle_valid(mat->env_map))
+        return;
+    if (!rt_g3d_has_class(mat->env_map, RT_G3D_CUBEMAP3D_CLASS_ID)) {
+        mat->env_map = NULL;
+        return;
+    }
+    material_release_ref(&mat->env_map);
+}
+
 /// @brief Validate a texture reference, trapping with a descriptive message when it is unusable.
 /// @details NULL is accepted (clears the slot). A TextureAsset3D lacking both RGBA fallback and
 ///          native blocks, or a non-texture handle, traps via @p method. Returns 1 if usable.
@@ -169,6 +236,8 @@ static int material_texture_ref_valid_or_trap(void *texture, const char *method)
 /// input.
 /// @return 1 on a successful assignment (including clearing with NULL), 0 if validation trapped.
 static int material_assign_texture_ref_checked(void **slot, void *texture, const char *method) {
+    if (slot && *slot && !material_texture_ref_supported(*slot))
+        *slot = NULL;
     if (!material_texture_ref_valid_or_trap(texture, method))
         return 0;
     material_assign_ref(slot, texture);
@@ -182,6 +251,7 @@ void rt_material3d_assign_env_map_checked(void *obj, void *cubemap) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
+    material_repair_env_map(mat);
     if (cubemap && !material_cubemap_handle_valid(cubemap))
         return;
     material_assign_ref(&mat->env_map, cubemap);
@@ -307,6 +377,76 @@ static void material_init_defaults(rt_material3d *mat) {
     memset(mat->custom_params, 0, sizeof(mat->custom_params));
 }
 
+/// @brief Re-sanitize copied material state that may have been imported through legacy direct fields.
+static void material_sanitize_state(rt_material3d *mat) {
+    if (!mat)
+        return;
+    for (int i = 0; i < 3; i++) {
+        mat->diffuse[i] = sanitize_color(mat->diffuse[i]);
+        mat->specular[i] = sanitize_color(mat->specular[i]);
+        mat->emissive[i] = sanitize_color(mat->emissive[i]);
+    }
+    mat->diffuse[3] = clamp01(mat->diffuse[3]);
+    mat->shininess = clamp_range(mat->shininess, 0.0, MATERIAL3D_SHININESS_MAX);
+    if (mat->workflow != RT_MATERIAL3D_WORKFLOW_PBR)
+        mat->workflow = RT_MATERIAL3D_WORKFLOW_LEGACY;
+    mat->metallic = clamp01(mat->metallic);
+    mat->roughness = clamp01(mat->roughness);
+    mat->ao = clamp01(mat->ao);
+    mat->emissive_intensity =
+        clamp_range(mat->emissive_intensity, 0.0, MATERIAL3D_EMISSIVE_INTENSITY_MAX);
+    mat->normal_scale = clamp_range(mat->normal_scale, 0.0, MATERIAL3D_NORMAL_SCALE_MAX);
+    mat->alpha = clamp01(mat->alpha);
+    mat->alpha_cutoff = clamp01(mat->alpha_cutoff);
+    if (mat->alpha_mode < RT_MATERIAL3D_ALPHA_MODE_OPAQUE ||
+        mat->alpha_mode > RT_MATERIAL3D_ALPHA_MODE_BLEND)
+        mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    mat->alpha_mode_auto = mat->alpha_mode_auto ? 1 : 0;
+    mat->reflectivity = clamp01(mat->reflectivity);
+    mat->unlit = mat->unlit ? 1 : 0;
+    mat->double_sided = mat->double_sided ? 1 : 0;
+    mat->additive_blend = mat->additive_blend ? 1 : 0;
+    if (mat->shading_model < 0 || mat->shading_model > 5)
+        mat->shading_model = 0;
+    for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+        int32_t wrap_s = mat->texture_slot_wrap_s[slot];
+        int32_t wrap_t = mat->texture_slot_wrap_t[slot];
+        mat->texture_slot_wrap_s[slot] =
+            (wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
+             wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+                ? wrap_s
+                : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+        mat->texture_slot_wrap_t[slot] =
+            (wrap_t == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
+             wrap_t == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+                ? wrap_t
+                : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+        mat->texture_slot_filter[slot] =
+            mat->texture_slot_filter[slot] == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+        mat->texture_slot_uv_set[slot] = mat->texture_slot_uv_set[slot] > 0 ? 1 : 0;
+        mat->texture_slot_uv_transform[slot][0] =
+            material_clamp_uv_transform(mat->texture_slot_uv_transform[slot][0], 1.0);
+        mat->texture_slot_uv_transform[slot][1] =
+            material_clamp_uv_transform(mat->texture_slot_uv_transform[slot][1], 0.0);
+        mat->texture_slot_uv_transform[slot][2] =
+            material_clamp_uv_transform(mat->texture_slot_uv_transform[slot][2], 0.0);
+        mat->texture_slot_uv_transform[slot][3] =
+            material_clamp_uv_transform(mat->texture_slot_uv_transform[slot][3], 1.0);
+        mat->texture_slot_uv_transform[slot][4] =
+            material_clamp_uv_transform(mat->texture_slot_uv_transform[slot][4], 0.0);
+        mat->texture_slot_uv_transform[slot][5] =
+            material_clamp_uv_transform(mat->texture_slot_uv_transform[slot][5], 0.0);
+    }
+    mat->texture_wrap_s = mat->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_wrap_t = mat->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_filter = mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    for (int i = 0; i < 8; i++)
+        mat->custom_params[i] = clamp_range(
+            mat->custom_params[i], -MATERIAL3D_CUSTOM_PARAM_ABS_MAX, MATERIAL3D_CUSTOM_PARAM_ABS_MAX);
+}
+
 /// @brief Switch the material from legacy-Phong to PBR workflow. Called implicitly by
 /// any PBR-specific setter (metallic / roughness / metallic-roughness-map / AO / etc.)
 /// so a caller that touches those fields automatically opts into the PBR lighting path
@@ -328,6 +468,8 @@ static void *material_clone_like(void *obj) {
     rt_material3d *dst;
     if (!src)
         return NULL;
+    material_repair_texture_refs(src);
+    material_repair_env_map(src);
     dst = (rt_material3d *)rt_material3d_new();
     if (!dst)
         return NULL;
@@ -369,6 +511,7 @@ static void *material_clone_like(void *obj) {
     dst->additive_blend = src->additive_blend;
     dst->shading_model = src->shading_model;
     memcpy(dst->custom_params, src->custom_params, sizeof(dst->custom_params));
+    material_sanitize_state(dst);
 
     material_assign_ref(&dst->texture, src->texture);
     material_assign_ref(&dst->normal_map, src->normal_map);
@@ -474,6 +617,9 @@ void *rt_material3d_get_color(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return rt_vec3_new(1.0, 1.0, 1.0);
+    mat->diffuse[0] = sanitize_color(mat->diffuse[0]);
+    mat->diffuse[1] = sanitize_color(mat->diffuse[1]);
+    mat->diffuse[2] = sanitize_color(mat->diffuse[2]);
     return rt_vec3_new(mat->diffuse[0], mat->diffuse[1], mat->diffuse[2]);
 }
 
@@ -607,6 +753,7 @@ int8_t rt_material3d_get_unlit(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 0;
+    mat->unlit = mat->unlit ? 1 : 0;
     return mat->unlit ? 1 : 0;
 }
 
@@ -629,6 +776,8 @@ int64_t rt_material3d_get_shading_model(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 0;
+    if (mat->shading_model < 0 || mat->shading_model > 5)
+        mat->shading_model = 0;
     return mat->shading_model;
 }
 
@@ -665,6 +814,7 @@ double rt_material3d_get_alpha(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 1.0;
+    mat->alpha = clamp01(mat->alpha);
     return mat->alpha;
 }
 
@@ -683,6 +833,7 @@ double rt_material3d_get_metallic(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 0.0;
+    mat->metallic = clamp01(mat->metallic);
     return mat->metallic;
 }
 
@@ -700,6 +851,7 @@ double rt_material3d_get_roughness(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 0.5;
+    mat->roughness = clamp01(mat->roughness);
     return mat->roughness;
 }
 
@@ -718,6 +870,7 @@ double rt_material3d_get_ao(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 1.0;
+    mat->ao = clamp01(mat->ao);
     return mat->ao;
 }
 
@@ -735,6 +888,8 @@ double rt_material3d_get_emissive_intensity(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 1.0;
+    mat->emissive_intensity =
+        clamp_range(mat->emissive_intensity, 0.0, MATERIAL3D_EMISSIVE_INTENSITY_MAX);
     return mat->emissive_intensity;
 }
 
@@ -752,13 +907,13 @@ void rt_material3d_set_normal_map(void *obj, void *pixels) {
 /// @brief Return whether the base-color/albedo texture slot is populated.
 int8_t rt_material3d_get_has_texture(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && material_texture_ref_has_drawable_source(mat->texture)) ? 1 : 0;
+    return (mat && material_texture_slot_has_drawable_source(&mat->texture)) ? 1 : 0;
 }
 
 /// @brief Return whether the normal-map slot is populated.
 int8_t rt_material3d_get_has_normal_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && material_texture_ref_has_drawable_source(mat->normal_map)) ? 1 : 0;
+    return (mat && material_texture_slot_has_drawable_source(&mat->normal_map)) ? 1 : 0;
 }
 
 /// @brief Assign a glTF-style metallic-roughness texture (B = metallic, G = roughness, R/A
@@ -777,7 +932,7 @@ void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels) {
 /// @brief Return whether the metallic-roughness texture slot is populated.
 int8_t rt_material3d_get_has_metallic_roughness_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && material_texture_ref_has_drawable_source(mat->metallic_roughness_map)) ? 1 : 0;
+    return (mat && material_texture_slot_has_drawable_source(&mat->metallic_roughness_map)) ? 1 : 0;
 }
 
 /// @brief Assign an ambient-occlusion texture (R channel). Multiplied into indirect lighting.
@@ -794,7 +949,7 @@ void rt_material3d_set_ao_map(void *obj, void *pixels) {
 /// @brief Return whether the ambient-occlusion texture slot is populated.
 int8_t rt_material3d_get_has_ao_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && material_texture_ref_has_drawable_source(mat->ao_map)) ? 1 : 0;
+    return (mat && material_texture_slot_has_drawable_source(&mat->ao_map)) ? 1 : 0;
 }
 
 /// @brief Assign a specular map texture to control per-pixel highlight intensity.
@@ -811,7 +966,7 @@ void rt_material3d_set_specular_map(void *obj, void *pixels) {
 /// @brief Return whether the specular texture slot is populated.
 int8_t rt_material3d_get_has_specular_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && material_texture_ref_has_drawable_source(mat->specular_map)) ? 1 : 0;
+    return (mat && material_texture_slot_has_drawable_source(&mat->specular_map)) ? 1 : 0;
 }
 
 /// @brief Assign an emissive map texture for self-illuminated surface regions.
@@ -828,12 +983,13 @@ void rt_material3d_set_emissive_map(void *obj, void *pixels) {
 /// @brief Return whether the emissive texture slot is populated.
 int8_t rt_material3d_get_has_emissive_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
-    return (mat && material_texture_ref_has_drawable_source(mat->emissive_map)) ? 1 : 0;
+    return (mat && material_texture_slot_has_drawable_source(&mat->emissive_map)) ? 1 : 0;
 }
 
 /// @brief Return whether an environment cubemap is populated.
 int8_t rt_material3d_get_has_env_map(void *obj) {
     rt_material3d *mat = material_checked(obj);
+    material_repair_env_map(mat);
     return (mat && mat->env_map) ? 1 : 0;
 }
 
@@ -860,6 +1016,7 @@ double rt_material3d_get_normal_scale(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 1.0;
+    mat->normal_scale = clamp_range(mat->normal_scale, 0.0, MATERIAL3D_NORMAL_SCALE_MAX);
     return mat->normal_scale;
 }
 
@@ -881,6 +1038,11 @@ int64_t rt_material3d_get_alpha_mode(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    if (mat->alpha_mode < RT_MATERIAL3D_ALPHA_MODE_OPAQUE ||
+        mat->alpha_mode > RT_MATERIAL3D_ALPHA_MODE_BLEND) {
+        mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+        mat->alpha_mode_auto = 0;
+    }
     return mat->alpha_mode;
 }
 
@@ -898,6 +1060,7 @@ int8_t rt_material3d_get_double_sided(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 0;
+    mat->double_sided = mat->double_sided ? 1 : 0;
     return mat->double_sided ? 1 : 0;
 }
 

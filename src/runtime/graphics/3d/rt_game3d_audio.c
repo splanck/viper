@@ -70,6 +70,7 @@ static void game3d_audio_finalize(void *obj) {
     rt_game3d_audio *audio = (rt_game3d_audio *)obj;
     if (!audio)
         return;
+    game3d_audio_repair_sources(audio);
     for (int32_t i = 0; i < audio->source_count; ++i)
         game3d_release_ref(&audio->sources[i]);
     free(audio->sources);
@@ -142,6 +143,8 @@ int64_t rt_game3d_audio_get_volume(void *obj) {
 int64_t rt_game3d_audio_get_source_count(void *obj) {
     rt_game3d_audio *audio =
         game3d_audio_checked(obj, "Game3D.Sound3D.get_sourceCount: invalid audio");
+    if (audio)
+        game3d_audio_repair_sources(audio);
     return audio ? audio->source_count : 0;
 }
 
@@ -186,12 +189,12 @@ void rt_game3d_audio_set_attenuation(void *obj, double ref_distance, double max_
         game3d_audio_checked(obj, "Game3D.Sound3D.setAttenuation: invalid audio");
     if (!audio)
         return;
-    audio->ref_distance = (isfinite(ref_distance) && ref_distance > 0.0)
-                              ? ref_distance
-                              : RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE;
-    audio->max_distance = (isfinite(max_distance) && max_distance > 0.0)
-                              ? max_distance
-                              : RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE;
+    audio->ref_distance = game3d_positive_clamped_or(ref_distance,
+                                                     RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE,
+                                                     RT_GAME3D_AUDIO_DISTANCE_MAX);
+    audio->max_distance = game3d_positive_clamped_or(max_distance,
+                                                     RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE,
+                                                     RT_GAME3D_AUDIO_DISTANCE_MAX);
     if (audio->max_distance < audio->ref_distance)
         audio->max_distance = audio->ref_distance;
     game3d_audio_prune_sources(audio);
@@ -265,8 +268,9 @@ void *rt_game3d_audio_play_attached(void *obj, void *clip, void *entity_obj) {
     rt_soundsource3d_set_ref_distance(source, audio->ref_distance);
     rt_soundsource3d_set_max_distance(source, audio->max_distance);
     rt_soundsource3d_set_volume(source, audio->volume);
-    if (entity->node)
-        rt_soundsource3d_bind_node(source, entity->node);
+    void *node = game3d_entity_node_ref(entity);
+    if (node)
+        rt_soundsource3d_bind_node(source, node);
     else {
         void *pos = rt_game3d_entity_position(entity);
         rt_soundsource3d_set_position(source, pos);
@@ -297,6 +301,7 @@ void rt_game3d_audio_clear_sources(void *obj) {
         game3d_audio_checked(obj, "Game3D.Sound3D.clearSources: invalid audio");
     if (!audio)
         return;
+    game3d_audio_repair_sources(audio);
     for (int32_t i = 0; i < audio->source_count; ++i) {
         if (audio->sources[i])
             rt_soundsource3d_stop(audio->sources[i]);

@@ -67,6 +67,71 @@ typedef struct {
     int8_t hit;
 } rt_character_hit3d;
 
+#define CHARACTER3D_COORD_ABS_MAX 1000000000000.0
+#define CHARACTER3D_MOVE_ABS_MAX 1000.0
+#define CHARACTER3D_STEP_HEIGHT_MAX 100.0
+#define CHARACTER3D_DT_MAX 1.0
+
+/// @brief Clamp a character/trigger coordinate to a finite physics state range.
+static double character3d_saturate_coord(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value > CHARACTER3D_COORD_ABS_MAX)
+        return CHARACTER3D_COORD_ABS_MAX;
+    if (value < -CHARACTER3D_COORD_ABS_MAX)
+        return -CHARACTER3D_COORD_ABS_MAX;
+    return value;
+}
+
+/// @brief Clamp a Vec3 in place for character controller math.
+static void character3d_sanitize_vec3(double v[3]) {
+    if (!v)
+        return;
+    v[0] = character3d_saturate_coord(v[0]);
+    v[1] = character3d_saturate_coord(v[1]);
+    v[2] = character3d_saturate_coord(v[2]);
+}
+
+/// @brief Normalize a collision normal, returning 0 when no reliable direction exists.
+static int character3d_sanitize_contact_normal(double out[3], const double *normal) {
+    if (!out || !normal)
+        return 0;
+    out[0] = character3d_saturate_coord(normal[0]);
+    out[1] = character3d_saturate_coord(normal[1]);
+    out[2] = character3d_saturate_coord(normal[2]);
+    return vec3_normalize_in_place(out) > 1e-12;
+}
+
+/// @brief Copy and cap a movement vector, preserving direction for extreme finite velocities.
+static double character3d_sanitize_delta(const double *src, double out[3]) {
+    double len;
+    if (!src || !out)
+        return 0.0;
+    out[0] = character3d_saturate_coord(src[0]);
+    out[1] = character3d_saturate_coord(src[1]);
+    out[2] = character3d_saturate_coord(src[2]);
+    len = vec3_len(out);
+    if (!isfinite(len) || len <= 1e-12) {
+        vec3_set(out, 0.0, 0.0, 0.0);
+        return 0.0;
+    }
+    if (len > CHARACTER3D_MOVE_ABS_MAX) {
+        double scale = CHARACTER3D_MOVE_ABS_MAX / len;
+        out[0] *= scale;
+        out[1] *= scale;
+        out[2] *= scale;
+        len = CHARACTER3D_MOVE_ABS_MAX;
+    }
+    return len;
+}
+
+/// @brief Clamp controller step heights to a non-negative, physically usable range.
+static double character3d_sanitize_step_height(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 0.0;
+    return value > CHARACTER3D_STEP_HEIGHT_MAX ? CHARACTER3D_STEP_HEIGHT_MAX : value;
+}
+
 // Character controller — built on top of Body3D with custom motion
 // resolution: kinematic-style sweeps + slide along surfaces, optional
 // step-up over small obstacles, ground probing for "is grounded" state.
@@ -83,9 +148,16 @@ static void character3d_set_ground_state(rt_character3d *ctrl,
     ctrl->is_grounded = grounded;
     ctrl->body->is_grounded = grounded;
     if (grounded && normal) {
-        ctrl->body->ground_normal[0] = -normal[0];
-        ctrl->body->ground_normal[1] = -normal[1];
-        ctrl->body->ground_normal[2] = -normal[2];
+        double contact_normal[3];
+        if (character3d_sanitize_contact_normal(contact_normal, normal)) {
+            ctrl->body->ground_normal[0] = -contact_normal[0];
+            ctrl->body->ground_normal[1] = -contact_normal[1];
+            ctrl->body->ground_normal[2] = -contact_normal[2];
+        } else {
+            ctrl->body->ground_normal[0] = 0.0;
+            ctrl->body->ground_normal[1] = 1.0;
+            ctrl->body->ground_normal[2] = 0.0;
+        }
     } else {
         ctrl->body->ground_normal[0] = 0.0;
         ctrl->body->ground_normal[1] = 1.0;
@@ -98,7 +170,9 @@ static void character3d_set_ground_state(rt_character3d *ctrl,
 /// `slope_limit_cos = cos(max_slope_angle)`; a "walkable" surface has
 /// `normal_y >= cos(angle)`. Used to gate ground-snapping and step-up.
 static int character3d_normal_is_walkable(const rt_character3d *ctrl, const double *normal) {
-    return ctrl && normal && (-normal[1] >= ctrl->slope_limit_cos);
+    double contact_normal[3];
+    return ctrl && normal && character3d_sanitize_contact_normal(contact_normal, normal) &&
+           (-contact_normal[1] >= ctrl->slope_limit_cos);
 }
 
 /// @brief Filter for which world bodies the controller should slide against.
@@ -130,9 +204,11 @@ static int character3d_test_position(rt_character3d *ctrl,
 
     rt_body3d *body = ctrl->body;
     double saved[3] = {body->position[0], body->position[1], body->position[2]};
-    body->position[0] = pos[0];
-    body->position[1] = pos[1];
-    body->position[2] = pos[2];
+    double test_pos[3] = {pos[0], pos[1], pos[2]};
+    character3d_sanitize_vec3(test_pos);
+    body->position[0] = test_pos[0];
+    body->position[1] = test_pos[1];
+    body->position[2] = test_pos[2];
 
     rt_character_hit3d best;
     memset(&best, 0, sizeof(best));
@@ -143,10 +219,12 @@ static int character3d_test_position(rt_character3d *ctrl,
             continue;
         if (!test_collision(body, other, normal, &depth, NULL, NULL, NULL, NULL, NULL))
             continue;
+        if (!isfinite(depth) || depth <= 0.0 || !character3d_sanitize_contact_normal(normal, normal))
+            continue;
         if (!best.hit || depth > best.depth) {
             best.hit = 1;
             best.body = other;
-            best.depth = depth;
+            best.depth = depth > CHARACTER3D_MOVE_ABS_MAX ? CHARACTER3D_MOVE_ABS_MAX : depth;
             vec3_copy(best.normal, normal);
         }
     }
@@ -172,11 +250,17 @@ static void character3d_resolve_penetration(rt_character3d *ctrl) {
     for (int iter = 0; iter < 6; iter++) {
         rt_character_hit3d hit;
         double pos[3] = {ctrl->body->position[0], ctrl->body->position[1], ctrl->body->position[2]};
+        character3d_sanitize_vec3(pos);
         if (!character3d_test_position(ctrl, pos, &hit))
             return;
-        ctrl->body->position[0] -= hit.normal[0] * (hit.depth + 1e-4);
-        ctrl->body->position[1] -= hit.normal[1] * (hit.depth + 1e-4);
-        ctrl->body->position[2] -= hit.normal[2] * (hit.depth + 1e-4);
+        double push = hit.depth + 1e-4;
+        if (!isfinite(push) || push <= 0.0)
+            return;
+        if (push > CHARACTER3D_MOVE_ABS_MAX)
+            push = CHARACTER3D_MOVE_ABS_MAX;
+        ctrl->body->position[0] = character3d_saturate_coord(ctrl->body->position[0] - hit.normal[0] * push);
+        ctrl->body->position[1] = character3d_saturate_coord(ctrl->body->position[1] - hit.normal[1] * push);
+        ctrl->body->position[2] = character3d_saturate_coord(ctrl->body->position[2] - hit.normal[2] * push);
     }
 }
 
@@ -189,26 +273,43 @@ static void character3d_resolve_penetration(rt_character3d *ctrl) {
 static int character3d_sweep(rt_character3d *ctrl,
                              const double *delta,
                              rt_character_hit3d *out_hit) {
-    if (!ctrl || !ctrl->body || vec3_len_sq(delta) < 1e-12)
+    double move_delta[3];
+    double move_len;
+    if (!ctrl || !ctrl->body)
+        return 0;
+    move_len = character3d_sanitize_delta(delta, move_delta);
+    if (move_len <= 1e-12)
         return 0;
 
     rt_body3d *body = ctrl->body;
     double start[3] = {body->position[0], body->position[1], body->position[2]};
-    double end[3] = {start[0] + delta[0], start[1] + delta[1], start[2] + delta[2]};
-    double move_len = sqrt(vec3_len_sq(delta));
+    character3d_sanitize_vec3(start);
+    double end[3] = {character3d_saturate_coord(start[0] + move_delta[0]),
+                     character3d_saturate_coord(start[1] + move_delta[1]),
+                     character3d_saturate_coord(start[2] + move_delta[2])};
     double step_dist = body->radius > 1e-6 ? body->radius * 0.25 : 0.05;
-    int steps = (int)ceil(move_len / (step_dist > 0.05 ? step_dist : 0.05));
+    double step_count;
+    int steps;
     double prev_t = 0.0;
     rt_character_hit3d hit;
 
+    if (!isfinite(step_dist) || step_dist < 0.05)
+        step_dist = 0.05;
+    step_count = ceil(move_len / step_dist);
+    if (!isfinite(step_count) || step_count > 128.0)
+        steps = 128;
+    else if (step_count < 1.0)
+        steps = 1;
+    else
+        steps = (int)step_count;
     if (steps < 1)
         steps = 1;
-    if (steps > 128)
-        steps = 128;
 
     for (int s = 1; s <= steps; s++) {
         double t = (double)s / (double)steps;
-        double pos[3] = {start[0] + delta[0] * t, start[1] + delta[1] * t, start[2] + delta[2] * t};
+        double pos[3] = {character3d_saturate_coord(start[0] + move_delta[0] * t),
+                         character3d_saturate_coord(start[1] + move_delta[1] * t),
+                         character3d_saturate_coord(start[2] + move_delta[2] * t)};
         if (!character3d_test_position(ctrl, pos, &hit)) {
             prev_t = t;
             continue;
@@ -220,9 +321,9 @@ static int character3d_sweep(rt_character3d *ctrl,
             rt_character_hit3d best_hit = hit;
             for (int iter = 0; iter < 14; iter++) {
                 double mid = (lo + hi) * 0.5;
-                double mid_pos[3] = {start[0] + delta[0] * mid,
-                                     start[1] + delta[1] * mid,
-                                     start[2] + delta[2] * mid};
+                double mid_pos[3] = {character3d_saturate_coord(start[0] + move_delta[0] * mid),
+                                     character3d_saturate_coord(start[1] + move_delta[1] * mid),
+                                     character3d_saturate_coord(start[2] + move_delta[2] * mid)};
                 if (character3d_test_position(ctrl, mid_pos, &hit)) {
                     hi = mid;
                     best_hit = hit;
@@ -231,11 +332,11 @@ static int character3d_sweep(rt_character3d *ctrl,
                 }
             }
 
-            body->position[0] = start[0] + delta[0] * lo;
-            body->position[1] = start[1] + delta[1] * lo;
-            body->position[2] = start[2] + delta[2] * lo;
+            body->position[0] = character3d_saturate_coord(start[0] + move_delta[0] * lo);
+            body->position[1] = character3d_saturate_coord(start[1] + move_delta[1] * lo);
+            body->position[2] = character3d_saturate_coord(start[2] + move_delta[2] * lo);
             best_hit.hit = 1;
-            best_hit.fraction = lo;
+            best_hit.fraction = clampd(lo, 0.0, 1.0);
             if (out_hit)
                 *out_hit = best_hit;
             return 1;
@@ -279,10 +380,13 @@ static int character3d_probe_ground(rt_character3d *ctrl) {
 ///      If the new surface is walkable, commit and mark grounded.
 /// On any failure the controller is restored to its original position.
 static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_delta) {
-    if (!ctrl || !ctrl->body || ctrl->step_height <= 1e-6 || vec3_len_sq(horizontal_delta) < 1e-12)
+    double step_delta[3];
+    if (!ctrl || !ctrl->body || ctrl->step_height <= 1e-6 ||
+        character3d_sanitize_delta(horizontal_delta, step_delta) <= 1e-12)
         return 0;
 
     double start[3] = {ctrl->body->position[0], ctrl->body->position[1], ctrl->body->position[2]};
+    character3d_sanitize_vec3(start);
     double up[3] = {0.0, ctrl->step_height, 0.0};
     rt_character_hit3d hit;
 
@@ -294,7 +398,7 @@ static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_d
     }
     character3d_resolve_penetration(ctrl);
 
-    if (character3d_sweep(ctrl, horizontal_delta, &hit)) {
+    if (character3d_sweep(ctrl, step_delta, &hit)) {
         ctrl->body->position[0] = start[0];
         ctrl->body->position[1] = start[1];
         ctrl->body->position[2] = start[2];
@@ -328,12 +432,14 @@ static int character3d_try_step(rt_character3d *ctrl, const double *horizontal_d
 static void character3d_move_axis(rt_character3d *ctrl,
                                   const double *initial_delta,
                                   int allow_step) {
-    double remaining[3] = {initial_delta[0], initial_delta[1], initial_delta[2]};
+    double remaining[3];
+    if (character3d_sanitize_delta(initial_delta, remaining) <= 1e-12)
+        return;
     for (int iter = 0; iter < 4; iter++) {
         rt_character_hit3d hit;
         double leftover[3];
 
-        if (vec3_len_sq(remaining) < 1e-12)
+        if (character3d_sanitize_delta(remaining, remaining) <= 1e-12)
             return;
 
         character3d_resolve_penetration(ctrl);
@@ -343,6 +449,7 @@ static void character3d_move_axis(rt_character3d *ctrl,
         leftover[0] = remaining[0] * (1.0 - hit.fraction);
         leftover[1] = remaining[1] * (1.0 - hit.fraction);
         leftover[2] = remaining[2] * (1.0 - hit.fraction);
+        character3d_sanitize_delta(leftover, leftover);
 
         if (allow_step && !character3d_normal_is_walkable(ctrl, hit.normal) &&
             character3d_try_step(ctrl, leftover))
@@ -355,18 +462,16 @@ static void character3d_move_axis(rt_character3d *ctrl,
 
         {
             double into = vec3_dot(leftover, hit.normal);
-            if (into > 0.0) {
-                leftover[0] -= hit.normal[0] * into;
-                leftover[1] -= hit.normal[1] * into;
-                leftover[2] -= hit.normal[2] * into;
+            if (isfinite(into) && into > 0.0) {
+                leftover[0] = character3d_saturate_coord(leftover[0] - hit.normal[0] * into);
+                leftover[1] = character3d_saturate_coord(leftover[1] - hit.normal[1] * into);
+                leftover[2] = character3d_saturate_coord(leftover[2] - hit.normal[2] * into);
             } else {
                 leftover[0] = leftover[1] = leftover[2] = 0.0;
             }
         }
 
-        remaining[0] = leftover[0];
-        remaining[1] = leftover[1];
-        remaining[2] = leftover[2];
+        character3d_sanitize_delta(leftover, remaining);
     }
 }
 
@@ -423,21 +528,25 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
     rt_character3d *ctrl = character3d_checked(obj);
     if (!ctrl || !rt_g3d_is_vec3(velocity_vec) || !isfinite(dt) || dt <= 0)
         return;
+    if (dt > CHARACTER3D_DT_MAX)
+        dt = CHARACTER3D_DT_MAX;
     rt_body3d *body = ctrl->body;
     if (!body)
         return;
 
-    double vx = ph3d_finite_or(rt_vec3_x(velocity_vec), 0.0);
-    double vy = ph3d_finite_or(rt_vec3_y(velocity_vec), 0.0);
-    double vz = ph3d_finite_or(rt_vec3_z(velocity_vec), 0.0);
+    double velocity[3] = {ph3d_finite_or(rt_vec3_x(velocity_vec), 0.0),
+                          ph3d_finite_or(rt_vec3_y(velocity_vec), 0.0),
+                          ph3d_finite_or(rt_vec3_z(velocity_vec), 0.0)};
+    character3d_sanitize_vec3(velocity);
 
     ctrl->was_grounded = ctrl->is_grounded;
     character3d_set_ground_state(ctrl, 0, NULL);
 
     {
         double start[3] = {body->position[0], body->position[1], body->position[2]};
-        double horizontal[3] = {vx * dt, 0.0, vz * dt};
-        double vertical[3] = {0.0, vy * dt, 0.0};
+        character3d_sanitize_vec3(start);
+        double horizontal[3] = {velocity[0] * dt, 0.0, velocity[2] * dt};
+        double vertical[3] = {0.0, velocity[1] * dt, 0.0};
 
         character3d_resolve_penetration(ctrl);
         character3d_move_axis(ctrl, horizontal, 1);
@@ -446,9 +555,12 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
         if (!ctrl->is_grounded)
             character3d_probe_ground(ctrl);
 
-        body->velocity[0] = (body->position[0] - start[0]) / dt;
-        body->velocity[1] = (body->position[1] - start[1]) / dt;
-        body->velocity[2] = (body->position[2] - start[2]) / dt;
+        body->position[0] = character3d_saturate_coord(body->position[0]);
+        body->position[1] = character3d_saturate_coord(body->position[1]);
+        body->position[2] = character3d_saturate_coord(body->position[2]);
+        body->velocity[0] = character3d_saturate_coord((body->position[0] - start[0]) / dt);
+        body->velocity[1] = character3d_saturate_coord((body->position[1] - start[1]) / dt);
+        body->velocity[2] = character3d_saturate_coord((body->position[2] - start[2]) / dt);
         ph3d_vec3_sanitize_state(body->velocity);
     }
 }
@@ -457,13 +569,13 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
 void rt_character3d_set_step_height(void *o, double h) {
     rt_character3d *c = character3d_checked(o);
     if (c)
-        c->step_height = ph3d_clamp_nonnegative_finite(h, 0.0);
+        c->step_height = character3d_sanitize_step_height(h);
 }
 
 /// @brief `Character3D.GetStepHeight` — read the configured step height.
 double rt_character3d_get_step_height(void *o) {
     rt_character3d *c = character3d_checked(o);
-    return c ? c->step_height : 0.3;
+    return c ? character3d_sanitize_step_height(c->step_height) : 0.3;
 }
 
 /// @brief `Character3D.SetSlopeLimit(degrees)` — max walkable slope angle.
@@ -476,6 +588,8 @@ void rt_character3d_set_slope_limit(void *o, double degrees) {
         degrees = ph3d_finite_or(degrees, 45.0);
         degrees = clampd(degrees, 0.0, 89.9);
         c->slope_limit_cos = cos(degrees * 3.14159265358979323846 / 180.0);
+        if (!isfinite(c->slope_limit_cos))
+            c->slope_limit_cos = cos(45.0 * 3.14159265358979323846 / 180.0);
     }
 }
 
@@ -573,6 +687,25 @@ static void trigger3d_finalizer(void *obj) {
     (void)obj;
 }
 
+/// @brief Store ordered, finite trigger bounds.
+static void trigger3d_set_bounds_raw(
+    rt_trigger3d *t, double x0, double y0, double z0, double x1, double y1, double z1) {
+    double a[3] = {character3d_saturate_coord(x0),
+                   character3d_saturate_coord(y0),
+                   character3d_saturate_coord(z0)};
+    double b[3] = {character3d_saturate_coord(x1),
+                   character3d_saturate_coord(y1),
+                   character3d_saturate_coord(z1)};
+    if (!t)
+        return;
+    t->bounds_min[0] = a[0] < b[0] ? a[0] : b[0];
+    t->bounds_min[1] = a[1] < b[1] ? a[1] : b[1];
+    t->bounds_min[2] = a[2] < b[2] ? a[2] : b[2];
+    t->bounds_max[0] = a[0] > b[0] ? a[0] : b[0];
+    t->bounds_max[1] = a[1] > b[1] ? a[1] : b[1];
+    t->bounds_max[2] = a[2] > b[2] ? a[2] : b[2];
+}
+
 /// @brief `Trigger3D.New(x0, y0, z0, x1, y1, z1)` — make an axis-aligned trigger zone.
 ///
 /// Auto-orders the corners so caller can pass them in any order. Up to
@@ -585,18 +718,7 @@ void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, do
         return NULL;
     }
     memset(t, 0, sizeof(rt_trigger3d));
-    x0 = ph3d_finite_or(x0, 0.0);
-    y0 = ph3d_finite_or(y0, 0.0);
-    z0 = ph3d_finite_or(z0, 0.0);
-    x1 = ph3d_finite_or(x1, 0.0);
-    y1 = ph3d_finite_or(y1, 0.0);
-    z1 = ph3d_finite_or(z1, 0.0);
-    t->bounds_min[0] = x0 < x1 ? x0 : x1;
-    t->bounds_min[1] = y0 < y1 ? y0 : y1;
-    t->bounds_min[2] = z0 < z1 ? z0 : z1;
-    t->bounds_max[0] = x0 > x1 ? x0 : x1;
-    t->bounds_max[1] = y0 > y1 ? y0 : y1;
-    t->bounds_max[2] = z0 > z1 ? z0 : z1;
+    trigger3d_set_bounds_raw(t, x0, y0, z0, x1, y1, z1);
     rt_obj_set_finalizer(t, trigger3d_finalizer);
     return t;
 }
@@ -613,6 +735,9 @@ int8_t rt_trigger3d_contains(void *obj, void *point) {
     double px = rt_vec3_x(point), py = rt_vec3_y(point), pz = rt_vec3_z(point);
     if (!isfinite(px) || !isfinite(py) || !isfinite(pz))
         return 0;
+    px = character3d_saturate_coord(px);
+    py = character3d_saturate_coord(py);
+    pz = character3d_saturate_coord(pz);
     return (px >= t->bounds_min[0] && px <= t->bounds_max[0] && py >= t->bounds_min[1] &&
             py <= t->bounds_max[1] && pz >= t->bounds_min[2] && pz <= t->bounds_max[2])
                ? 1
@@ -666,9 +791,11 @@ void rt_trigger3d_update(void *obj, void *world_obj) {
             continue;
 
         /* Point-in-AABB test using body center */
-        int8_t inside = (b->position[0] >= t->bounds_min[0] && b->position[0] <= t->bounds_max[0] &&
-                         b->position[1] >= t->bounds_min[1] && b->position[1] <= t->bounds_max[1] &&
-                         b->position[2] >= t->bounds_min[2] && b->position[2] <= t->bounds_max[2])
+        double pos[3] = {b->position[0], b->position[1], b->position[2]};
+        character3d_sanitize_vec3(pos);
+        int8_t inside = (pos[0] >= t->bounds_min[0] && pos[0] <= t->bounds_max[0] &&
+                         pos[1] >= t->bounds_min[1] && pos[1] <= t->bounds_max[1] &&
+                         pos[2] >= t->bounds_min[2] && pos[2] <= t->bounds_max[2])
                             ? 1
                             : 0;
 
@@ -729,18 +856,7 @@ void rt_trigger3d_set_bounds(
     rt_trigger3d *t = trigger3d_checked(obj);
     if (!t)
         return;
-    x0 = ph3d_finite_or(x0, 0.0);
-    y0 = ph3d_finite_or(y0, 0.0);
-    z0 = ph3d_finite_or(z0, 0.0);
-    x1 = ph3d_finite_or(x1, 0.0);
-    y1 = ph3d_finite_or(y1, 0.0);
-    z1 = ph3d_finite_or(z1, 0.0);
-    t->bounds_min[0] = x0 < x1 ? x0 : x1;
-    t->bounds_min[1] = y0 < y1 ? y0 : y1;
-    t->bounds_min[2] = z0 < z1 ? z0 : z1;
-    t->bounds_max[0] = x0 > x1 ? x0 : x1;
-    t->bounds_max[1] = y0 > y1 ? y0 : y1;
-    t->bounds_max[2] = z0 > z1 ? z0 : z1;
+    trigger3d_set_bounds_raw(t, x0, y0, z0, x1, y1, z1);
 }
 
 #else

@@ -24,7 +24,9 @@
 #include "rt_string.h"
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 extern "C" {
@@ -98,6 +100,18 @@ static void test_skeleton_find_bone() {
                 "FindBone('missing') = -1");
 }
 
+static void test_skeleton_find_bone_uses_canonical_long_names() {
+    void *skel = rt_skeleton3d_new();
+    char long_name[128];
+    std::memset(long_name, 'b', sizeof(long_name));
+    long_name[sizeof(long_name) - 1] = '\0';
+
+    EXPECT_TRUE(rt_skeleton3d_add_bone(skel, rt_const_cstr(long_name), -1, rt_mat4_identity()) == 0,
+                "Skeleton3D accepts long bone names");
+    EXPECT_TRUE(rt_skeleton3d_find_bone(skel, rt_const_cstr(long_name)) == 0,
+                "Skeleton3D.FindBone canonicalizes long names before lookup");
+}
+
 static void test_animation_create() {
     void *anim = rt_animation3d_new(rt_const_cstr("walk"), 1.0);
     EXPECT_TRUE(anim != nullptr, "Animation3D.New returns non-null");
@@ -166,6 +180,93 @@ static void test_animation_near_duplicate_keyframes_replace_existing_sample() {
 
     mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
     EXPECT_NEAR(mv->m[3], 2.0, 0.05, "Near-duplicate keyframe keeps latest TRS values");
+}
+
+static void test_skeleton_animation_repairs_corrupt_counts() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("child"), 0, rt_mat4_identity());
+    auto *skel_impl = static_cast<rt_skeleton3d *>(skel);
+    skel_impl->bone_count = INT32_MAX;
+    skel_impl->bone_capacity = 2;
+    EXPECT_TRUE(rt_skeleton3d_get_bone_count(skel) == 2,
+                "Skeleton3D boneCount clamps corrupt count to capacity");
+    EXPECT_TRUE(rt_skeleton3d_find_bone(skel, rt_const_cstr("child")) == 1,
+                "Skeleton3D FindBone walks repaired bone count");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_skeleton3d_get_bone_name(skel, 2)), "") == 0,
+                "Skeleton3D GetBoneName rejects indexes beyond repaired count");
+
+    void *anim = rt_animation3d_new(rt_const_cstr("corrupt_counts"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, 0, 0.0, rt_vec3_new(0.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, 0, 1.0, rt_vec3_new(1.0, 0.0, 0.0), rot, scl);
+    auto *anim_impl = static_cast<rt_animation3d *>(anim);
+    anim_impl->channel_count = INT32_MAX;
+    anim_impl->channel_capacity = 1;
+    anim_impl->channels[0].keyframe_count = INT32_MAX;
+    anim_impl->channels[0].keyframe_capacity = 2;
+
+    void *player = rt_anim_player3d_new(skel);
+    EXPECT_TRUE(player != nullptr, "AnimPlayer3D.New accepts repaired skeleton counts");
+    rt_anim_player3d_play(player, anim);
+    rt_anim_player3d_update(player, 0.5);
+    EXPECT_TRUE(anim_impl->channel_count == 1,
+                "AnimPlayer3D playback repairs corrupt animation channel count");
+
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    EXPECT_TRUE(mv != nullptr, "AnimPlayer3D returns matrix after repaired playback");
+    if (mv)
+        EXPECT_NEAR(mv->m[3], 0.5, 0.05, "AnimPlayer3D samples repaired keyframe count");
+}
+
+static void test_animation_safe_counts_have_domain_ceilings() {
+    rt_animation3d fake_anim = {};
+    vgfx3d_anim_channel_t fake_channels[1] = {};
+    vgfx3d_anim_channel_t fake_channel = {};
+    vgfx3d_keyframe_t fake_keyframe = {};
+
+    fake_anim.channels = fake_channels;
+    fake_anim.channel_count = INT32_MAX;
+    fake_anim.channel_capacity = INT32_MAX;
+    EXPECT_TRUE(animation3d_safe_channel_count(&fake_anim) == RT_ANIMATION3D_MAX_CHANNELS,
+                "Animation3D safe channel count clamps to the bone-channel ceiling");
+
+    fake_channel.keyframes = &fake_keyframe;
+    fake_channel.keyframe_count = INT32_MAX;
+    fake_channel.keyframe_capacity = INT32_MAX;
+    EXPECT_TRUE(animation3d_safe_keyframe_count(&fake_channel) ==
+                    RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL,
+                "Animation3D safe keyframe count clamps to the per-channel ceiling");
+
+    void *anim = rt_animation3d_new(rt_const_cstr("full_channels"), 1.0);
+    auto *impl = static_cast<rt_animation3d *>(anim);
+    EXPECT_TRUE(impl != nullptr, "Animation3D channel-limit fixture exists");
+    if (!impl)
+        return;
+    impl->channels = static_cast<vgfx3d_anim_channel_t *>(
+        std::calloc(RT_ANIMATION3D_MAX_CHANNELS, sizeof(vgfx3d_anim_channel_t)));
+    EXPECT_TRUE(impl->channels != nullptr, "Animation3D channel-limit table allocated");
+    if (!impl->channels)
+        return;
+    impl->channel_count = RT_ANIMATION3D_MAX_CHANNELS;
+    impl->channel_capacity = RT_ANIMATION3D_MAX_CHANNELS;
+    for (int32_t i = 0; i < RT_ANIMATION3D_MAX_CHANNELS; i++)
+        impl->channels[i].bone_index = -1;
+
+    rt_animation3d_add_keyframe(anim,
+                                0,
+                                0.0,
+                                rt_vec3_new(1.0, 0.0, 0.0),
+                                rt_quat_new(0.0, 0.0, 0.0, 1.0),
+                                rt_vec3_new(1.0, 1.0, 1.0));
+    EXPECT_TRUE(impl->channel_count == RT_ANIMATION3D_MAX_CHANNELS,
+                "Animation3D.AddKeyframe refuses to grow past the channel ceiling");
+    EXPECT_TRUE(impl->channel_capacity == RT_ANIMATION3D_MAX_CHANNELS,
+                "Animation3D.AddKeyframe keeps channel capacity at the ceiling");
 }
 
 static void test_anim_player_retains_inputs() {
@@ -628,6 +729,15 @@ static void test_anim_blend_dt_zero_and_looping_defaults() {
                 1.0,
                 0.01,
                 "AnimBlend3D state inherits non-looping animation default");
+
+    float *saved_temp_state_local = blend_impl->temp_state_local;
+    blend_impl->temp_state_local = nullptr;
+    rt_anim_blend3d_update(blend, 0.5);
+    EXPECT_NEAR(blend_impl->states[state].anim_time,
+                1.0,
+                0.01,
+                "AnimBlend3D.Update ignores corrupted scratch buffers before advancing time");
+    blend_impl->temp_state_local = saved_temp_state_local;
 }
 
 static void test_anim_blend_long_state_names_use_canonical_lookup() {
@@ -803,6 +913,60 @@ static void test_animation_retarget_matches_bone_names() {
                 "Animation3D.Retarget rejects non-skeleton source handles");
 }
 
+static void test_non_topological_parent_order_evaluates_hierarchy() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("child_first"), -1, rt_mat4_translate(2.0, 0.0, 0.0));
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("parent_second"), 0, rt_mat4_translate(3.0, 0.0, 0.0));
+    auto *impl = static_cast<rt_skeleton3d *>(skel);
+    impl->bones[0].parent_index = 1;
+    impl->bones[1].parent_index = -1;
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *player = rt_anim_player3d_new(skel);
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *child_bind = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    EXPECT_NEAR(child_bind->m[3],
+                5.0,
+                0.1,
+                "AnimPlayer3D evaluates a forward parent reference in bind pose");
+
+    void *anim = rt_animation3d_new(rt_const_cstr("parent_move"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, 1, 0.0, rt_vec3_new(3.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, 1, 1.0, rt_vec3_new(5.0, 0.0, 0.0), rot, scl);
+    rt_anim_player3d_play(player, anim);
+    rt_anim_player3d_update(player, 0.5);
+    mat4_view *child_anim = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    EXPECT_NEAR(child_anim->m[3],
+                6.0,
+                0.1,
+                "AnimPlayer3D keeps children attached to forward parents during animation");
+}
+
+static void test_cyclic_parent_indices_degrade_to_finite_pose() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("a"), -1, rt_mat4_translate(2.0, 0.0, 0.0));
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("b"), 0, rt_mat4_translate(3.0, 0.0, 0.0));
+    auto *impl = static_cast<rt_skeleton3d *>(skel);
+    impl->bones[0].parent_index = 1;
+    impl->bones[1].parent_index = 0;
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *player = rt_anim_player3d_new(skel);
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *a = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    mat4_view *b = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 1);
+    EXPECT_TRUE(a != nullptr && b != nullptr,
+                "AnimPlayer3D returns matrices for a skeleton with a parent cycle");
+    EXPECT_TRUE(std::isfinite(a->m[3]) && std::isfinite(b->m[3]),
+                "AnimPlayer3D breaks parent cycles into finite global transforms");
+}
+
 static void test_crossfade_preserves_structure() {
     EXPECT_TRUE(1, "crossfade: TRS blend preserves matrix orthogonality (compile check)");
     /* This test ensures the crossfade code path compiles and runs
@@ -818,6 +982,8 @@ int main() {
     test_animation_keyframes();
     test_animation_keyframes_are_sorted();
     test_animation_near_duplicate_keyframes_replace_existing_sample();
+    test_skeleton_animation_repairs_corrupt_counts();
+    test_animation_safe_counts_have_domain_ceilings();
     test_anim_player_retains_inputs();
     test_player_create();
     test_skeleton_freezes_after_player_creation();
@@ -830,6 +996,7 @@ int main() {
     test_two_bone_chain();
     test_non_identity_bind_pose();
     test_partial_keyframes_preserve_bind_components();
+    test_skeleton_find_bone_uses_canonical_long_names();
     test_bone_name();
 
     /* Crossfade tests */
@@ -841,6 +1008,8 @@ int main() {
     test_animation_retarget_matches_bone_names();
     test_animation_retarget_scales_by_proportion();
     test_animation_retarget_maps_humanoid_roles();
+    test_non_topological_parent_order_evaluates_hierarchy();
+    test_cyclic_parent_indices_degrade_to_finite_pose();
     test_crossfade_preserves_structure();
 
     printf("Skeleton3D tests: %d/%d passed\n", tests_passed, tests_run);

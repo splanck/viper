@@ -19,8 +19,88 @@
 #include "vgfx3d_backend_utils.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define VGFX3D_SKIN_WEIGHT_MAX 1000000.0
+#define VGFX3D_SKIN_INDEX_RANGE 256
+
+static int32_t skin_effective_bone_count(int32_t bone_count) {
+    if (bone_count <= 0)
+        return 0;
+    return bone_count < VGFX3D_SKIN_INDEX_RANGE ? bone_count : VGFX3D_SKIN_INDEX_RANGE;
+}
+
+static int skin_matrix4_is_finite(const float *m) {
+    if (!m)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m[i]))
+            return 0;
+    }
+    return 1;
+}
+
+static int skin_vec3_is_usable(const double v[3]) {
+    return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
+}
+
+static float skin_finite_float_or(float value, float fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static double skin_weight_or_skip(float value) {
+    double w;
+    if (!isfinite(value) || value <= 1e-6f)
+        return 0.0;
+    w = (double)value;
+    return w > VGFX3D_SKIN_WEIGHT_MAX ? VGFX3D_SKIN_WEIGHT_MAX : w;
+}
+
+static void skin_sanitize_vertex(vgfx3d_vertex_t *v) {
+    if (!v)
+        return;
+    for (int i = 0; i < 3; i++) {
+        v->pos[i] = skin_finite_float_or(v->pos[i], 0.0f);
+        v->normal[i] = skin_finite_float_or(v->normal[i], 0.0f);
+        v->tangent[i] = skin_finite_float_or(v->tangent[i], 0.0f);
+    }
+    for (int i = 0; i < 2; i++) {
+        v->uv[i] = skin_finite_float_or(v->uv[i], 0.0f);
+        v->uv1[i] = skin_finite_float_or(v->uv1[i], v->uv[i]);
+    }
+    for (int i = 0; i < 4; i++) {
+        if (!isfinite(v->bone_weights[i]) || v->bone_weights[i] < 0.0f)
+            v->bone_weights[i] = 0.0f;
+        else if (v->bone_weights[i] > (float)VGFX3D_SKIN_WEIGHT_MAX)
+            v->bone_weights[i] = (float)VGFX3D_SKIN_WEIGHT_MAX;
+    }
+    if (!isfinite(v->tangent[3]) || v->tangent[3] == 0.0f)
+        v->tangent[3] = 1.0f;
+    else
+        v->tangent[3] = v->tangent[3] < 0.0f ? -1.0f : 1.0f;
+}
+
+static int skin_store_normalized_vec3(double in[3], float out[3]) {
+    double len2;
+    double inv_len;
+    if (!skin_vec3_is_usable(in) || !out)
+        return 0;
+    len2 = in[0] * in[0] + in[1] * in[1] + in[2] * in[2];
+    if (!isfinite(len2) || len2 <= 1e-16)
+        return 0;
+    inv_len = 1.0 / sqrt(len2);
+    in[0] *= inv_len;
+    in[1] *= inv_len;
+    in[2] *= inv_len;
+    if (!skin_vec3_is_usable(in))
+        return 0;
+    out[0] = (float)in[0];
+    out[1] = (float)in[1];
+    out[2] = (float)in[2];
+    return isfinite(out[0]) && isfinite(out[1]) && isfinite(out[2]);
+}
 
 /// @brief Apply 4-influence linear blend skinning on the CPU.
 /// @details For every vertex, sums `weight[i] * palette[bone_index[i]] * v` over the
@@ -28,6 +108,9 @@
 ///   Positions take the full affine row (translation column included); normals use
 ///   each bone's inverse-transpose normal matrix and are re-normalized. Influences
 ///   with weight below 1e-6 or whose bone index exceeds `bone_count` are skipped.
+///   CPU skinning enforces the engine's 256-bone palette limit because vertex
+///   bone indices are stored as uint8_t and every GPU skinning path has the same
+///   upper bound.
 ///   Non-position/normal
 ///   attributes are passed through by copying `src[v]` into `dst[v]` first when the
 ///   buffers differ (in-place skinning is supported by leaving `dst == src`).
@@ -51,46 +134,49 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
             memcpy(dst, src, (size_t)vertex_count * sizeof(*dst));
         return;
     }
+    bone_count = skin_effective_bone_count(bone_count);
+    if (bone_count <= 0)
+        return;
 
     /* A bone's normal matrix (inverse-transpose of its skinning matrix) depends
      * only on the bone, not the vertex, so precompute the whole palette once
      * rather than recomputing it per vertex per influence. Falls back to inline
      * per-influence computation if the scratch allocation fails. */
+    int32_t normal_bone_count = bone_count;
     float *normal_palette = NULL;
-    if ((size_t)bone_count <= SIZE_MAX / (16u * sizeof(float)))
-        normal_palette = (float *)malloc((size_t)bone_count * 16u * sizeof(float));
+    if ((size_t)normal_bone_count <= SIZE_MAX / (16u * sizeof(float)))
+        normal_palette = (float *)malloc((size_t)normal_bone_count * 16u * sizeof(float));
     if (normal_palette) {
-        for (int32_t b = 0; b < bone_count; b++)
+        for (int32_t b = 0; b < normal_bone_count; b++)
             vgfx3d_compute_normal_matrix4(&palette[(size_t)b * 16u],
                                           &normal_palette[(size_t)b * 16u]);
     }
 
     for (uint32_t v = 0; v < vertex_count; v++) {
-        float pos[3] = {0, 0, 0};
-        float nrm[3] = {0, 0, 0};
-        float total_w = 0.0f;
+        vgfx3d_vertex_t base = src[v];
+        double pos[3] = {0.0, 0.0, 0.0};
+        double nrm[3] = {0.0, 0.0, 0.0};
+        double tan[3] = {0.0, 0.0, 0.0};
+        double total_w = 0.0;
+        int normal_influences = 0;
+        int tangent_influences = 0;
+
+        skin_sanitize_vertex(&base);
 
         for (int b = 0; b < 4; b++) {
-            float w = src[v].bone_weights[b];
-            if (!isfinite(w) || w <= 1e-6f)
+            double w = skin_weight_or_skip(base.bone_weights[b]);
+            if (w <= 0.0)
                 continue;
-            int idx = (int)src[v].bone_indices[b];
+            int idx = (int)base.bone_indices[b];
             if (idx >= bone_count)
                 continue;
 
             const float *m = &palette[(size_t)idx * 16u];
-            int matrix_finite = 1;
-            for (int mi = 0; mi < 16; mi++) {
-                if (!isfinite(m[mi])) {
-                    matrix_finite = 0;
-                    break;
-                }
-            }
-            if (!matrix_finite)
+            if (!skin_matrix4_is_finite(m))
                 continue;
             float nm_local[16];
             const float *nm;
-            if (normal_palette) {
+            if (normal_palette && idx < normal_bone_count) {
                 nm = &normal_palette[(size_t)idx * 16u];
             } else {
                 vgfx3d_compute_normal_matrix4(m, nm_local);
@@ -98,37 +184,71 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
             }
             /* pos += w * (M * src_pos) — row-major multiply */
             for (int i = 0; i < 3; i++) {
-                pos[i] += w * (m[i * 4 + 0] * src[v].pos[0] + m[i * 4 + 1] * src[v].pos[1] +
-                               m[i * 4 + 2] * src[v].pos[2] + m[i * 4 + 3]);
-                nrm[i] += w * (nm[i * 4 + 0] * src[v].normal[0] + nm[i * 4 + 1] * src[v].normal[1] +
-                               nm[i * 4 + 2] * src[v].normal[2]);
+                pos[i] +=
+                    w * ((double)m[i * 4 + 0] * (double)base.pos[0] +
+                         (double)m[i * 4 + 1] * (double)base.pos[1] +
+                         (double)m[i * 4 + 2] * (double)base.pos[2] + (double)m[i * 4 + 3]);
+            }
+            if (skin_matrix4_is_finite(nm)) {
+                for (int i = 0; i < 3; i++) {
+                    nrm[i] +=
+                        w * ((double)nm[i * 4 + 0] * (double)base.normal[0] +
+                             (double)nm[i * 4 + 1] * (double)base.normal[1] +
+                             (double)nm[i * 4 + 2] * (double)base.normal[2]);
+                    tan[i] +=
+                        w * ((double)nm[i * 4 + 0] * (double)base.tangent[0] +
+                             (double)nm[i * 4 + 1] * (double)base.tangent[1] +
+                             (double)nm[i * 4 + 2] * (double)base.tangent[2]);
+                }
+                normal_influences++;
+                tangent_influences++;
             }
             total_w += w;
         }
 
         /* Copy all attributes, then overwrite position and normal */
-        if (dst != src)
-            dst[v] = src[v];
+        dst[v] = base;
 
-        if (total_w > 1e-6f) {
-            float inv_w = 1.0f / total_w;
+        if (total_w > 1e-6) {
+            double inv_w = 1.0 / total_w;
             pos[0] *= inv_w;
             pos[1] *= inv_w;
             pos[2] *= inv_w;
-            if (isfinite(pos[0]) && isfinite(pos[1]) && isfinite(pos[2]))
-                memcpy(dst[v].pos, pos, sizeof(float) * 3);
+            if (skin_vec3_is_usable(pos)) {
+                float px = (float)pos[0];
+                float py = (float)pos[1];
+                float pz = (float)pos[2];
+                if (isfinite(px) && isfinite(py) && isfinite(pz)) {
+                    dst[v].pos[0] = px;
+                    dst[v].pos[1] = py;
+                    dst[v].pos[2] = pz;
+                }
+            }
             /* Normalize the skinned normal. The weighted sum's magnitude is
              * irrelevant once renormalized, so we skip the inv_w scale here. If
              * opposing bone influences cancel to a near-zero vector there is no
              * meaningful direction to keep — leave the source normal (already
              * copied into dst above) rather than writing a degenerate zero
              * normal that would black out shading on that vertex. */
-            float len = sqrtf(nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]);
-            if (isfinite(len) && len > 1e-8f) {
-                nrm[0] /= len;
-                nrm[1] /= len;
-                nrm[2] /= len;
-                memcpy(dst[v].normal, nrm, sizeof(float) * 3);
+            if (normal_influences > 0)
+                skin_store_normalized_vec3(nrm, dst[v].normal);
+            if (tangent_influences > 0) {
+                double tangent_vec[3] = {tan[0], tan[1], tan[2]};
+                double normal_vec[3] = {(double)dst[v].normal[0], (double)dst[v].normal[1],
+                                        (double)dst[v].normal[2]};
+                double n_len2 = normal_vec[0] * normal_vec[0] + normal_vec[1] * normal_vec[1] +
+                                normal_vec[2] * normal_vec[2];
+                if (isfinite(n_len2) && n_len2 > 1e-16) {
+                    double dot = tangent_vec[0] * normal_vec[0] + tangent_vec[1] * normal_vec[1] +
+                                 tangent_vec[2] * normal_vec[2];
+                    if (isfinite(dot)) {
+                        double along_normal = dot / n_len2;
+                        tangent_vec[0] -= along_normal * normal_vec[0];
+                        tangent_vec[1] -= along_normal * normal_vec[1];
+                        tangent_vec[2] -= along_normal * normal_vec[2];
+                    }
+                }
+                skin_store_normalized_vec3(tangent_vec, dst[v].tangent);
             }
         }
     }

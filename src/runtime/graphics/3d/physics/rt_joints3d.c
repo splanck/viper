@@ -48,6 +48,9 @@ extern double rt_vec3_z(void *v);
 
 #define RT_JOINT3D_MAX_PARAM 1.0e9
 #define RT_JOINT3D_MAX_FORCE 1.0e9
+#define RT_JOINT3D_MAX_COORD 1.0e12
+#define RT_JOINT3D_MAX_DT 1.0
+#define RT_JOINT3D_TWO_PI 6.28318530717958647692
 
 /* Body pose/velocity access uses the shared rt_body3d_kinematics view from
  * rt_physics3d.h, whose layout is asserted to match the private rt_body3d there. */
@@ -57,6 +60,7 @@ typedef struct {
 } joint3d_mat4_view;
 
 static int joint3d_body_is_finite(const rt_body3d_kinematics *body);
+static void joint3d_quat_normalize(double *q);
 
 /// @brief Clamp a joint parameter to `[0, RT_JOINT3D_MAX_PARAM]`; non-finite maps to 0.
 static double joint3d_sanitize_nonnegative(double value) {
@@ -76,42 +80,90 @@ static double joint3d_clamp_force(double value) {
     return value;
 }
 
+/// @brief Clamp a coordinate-like value to the joint runtime envelope.
+static double joint3d_clamp_coord(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value > RT_JOINT3D_MAX_COORD)
+        return RT_JOINT3D_MAX_COORD;
+    if (value < -RT_JOINT3D_MAX_COORD)
+        return -RT_JOINT3D_MAX_COORD;
+    return value;
+}
+
+/// @brief Clamp a timestep to a finite positive range used by joint force integration.
+static double joint3d_sanitize_dt(double dt) {
+    if (!isfinite(dt) || dt <= 0.0)
+        return 0.0;
+    return dt > RT_JOINT3D_MAX_DT ? RT_JOINT3D_MAX_DT : dt;
+}
+
 /// @brief Whether @p v is non-NULL and all three components are finite.
 static int joint3d_vec3_all_finite(const double *v) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
+}
+
+/// @brief Clamp a raw 3-vector in place.
+static void joint3d_vec3_sanitize(double *v) {
+    if (!v)
+        return;
+    v[0] = joint3d_clamp_coord(v[0]);
+    v[1] = joint3d_clamp_coord(v[1]);
+    v[2] = joint3d_clamp_coord(v[2]);
 }
 
 /// @brief Set a 3-vector to (x, y, z) (no-op if @p dst is NULL).
 static void joint3d_vec3_set(double *dst, double x, double y, double z) {
     if (!dst)
         return;
-    dst[0] = x;
-    dst[1] = y;
-    dst[2] = z;
+    dst[0] = joint3d_clamp_coord(x);
+    dst[1] = joint3d_clamp_coord(y);
+    dst[2] = joint3d_clamp_coord(z);
 }
 
 /// @brief Component-wise difference out = a - b for 3-vectors.
 static void joint3d_vec3_sub(const double *a, const double *b, double *out) {
-    out[0] = a[0] - b[0];
-    out[1] = a[1] - b[1];
-    out[2] = a[2] - b[2];
+    if (!out)
+        return;
+    out[0] = joint3d_clamp_coord((a ? a[0] : 0.0) - (b ? b[0] : 0.0));
+    out[1] = joint3d_clamp_coord((a ? a[1] : 0.0) - (b ? b[1] : 0.0));
+    out[2] = joint3d_clamp_coord((a ? a[2] : 0.0) - (b ? b[2] : 0.0));
 }
 
 /// @brief Dot product of two 3-vectors.
 static double joint3d_vec3_dot(const double *a, const double *b) {
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    double ax = joint3d_clamp_coord(a ? a[0] : 0.0);
+    double ay = joint3d_clamp_coord(a ? a[1] : 0.0);
+    double az = joint3d_clamp_coord(a ? a[2] : 0.0);
+    double bx = joint3d_clamp_coord(b ? b[0] : 0.0);
+    double by = joint3d_clamp_coord(b ? b[1] : 0.0);
+    double bz = joint3d_clamp_coord(b ? b[2] : 0.0);
+    double dot = ax * bx + ay * by + az * bz;
+    return isfinite(dot) ? dot : 0.0;
 }
 
 /// @brief Euclidean length of the vector (x, y, z); returns INFINITY for non-finite inputs
 ///   or overflow so callers can reject degenerate joint geometry.
 static double joint3d_len3(double x, double y, double z) {
+    double max_abs;
+    double sx;
+    double sy;
+    double sz;
     double len_sq;
     if (!isfinite(x) || !isfinite(y) || !isfinite(z))
         return INFINITY;
-    len_sq = x * x + y * y + z * z;
+    max_abs = fmax(fabs(x), fmax(fabs(y), fabs(z)));
+    if (max_abs <= 0.0)
+        return 0.0;
+    if (!isfinite(max_abs))
+        return INFINITY;
+    sx = x / max_abs;
+    sy = y / max_abs;
+    sz = z / max_abs;
+    len_sq = sx * sx + sy * sy + sz * sz;
     if (!isfinite(len_sq) || len_sq < 0.0)
         return INFINITY;
-    return sqrt(len_sq);
+    return max_abs * sqrt(len_sq);
 }
 
 /// @brief Euclidean length of a 3-vector.
@@ -122,15 +174,27 @@ static double joint3d_vec3_len(const double *v) {
 /// @brief Normalize a 3-vector in place; returns 0 (leaving it unchanged) if non-finite or
 /// near-zero.
 static int joint3d_vec3_normalize(double *v) {
-    double len;
+    double max_abs;
+    double x;
+    double y;
+    double z;
+    double len_sq;
+    double inv_len;
     if (!joint3d_vec3_all_finite(v))
         return 0;
-    len = joint3d_vec3_len(v);
-    if (!isfinite(len) || len < 1e-12)
+    max_abs = fmax(fabs(v[0]), fmax(fabs(v[1]), fabs(v[2])));
+    if (!isfinite(max_abs) || max_abs < 1e-24)
         return 0;
-    v[0] /= len;
-    v[1] /= len;
-    v[2] /= len;
+    x = v[0] / max_abs;
+    y = v[1] / max_abs;
+    z = v[2] / max_abs;
+    len_sq = x * x + y * y + z * z;
+    if (!isfinite(len_sq) || len_sq < 1e-24)
+        return 0;
+    inv_len = 1.0 / sqrt(len_sq);
+    v[0] = x * inv_len;
+    v[1] = y * inv_len;
+    v[2] = z * inv_len;
     return 1;
 }
 
@@ -142,13 +206,18 @@ static int joint3d_read_vec3(void *obj, double *out) {
     out[0] = rt_vec3_x(obj);
     out[1] = rt_vec3_y(obj);
     out[2] = rt_vec3_z(obj);
-    return joint3d_vec3_all_finite(out);
+    if (!joint3d_vec3_all_finite(out))
+        return 0;
+    joint3d_vec3_sanitize(out);
+    return 1;
 }
 
 /// @brief Swap any min/max pair where min > max so each axis' [min, max] limit is well-ordered.
 static void joint3d_canonicalize_limits(double *min_v, double *max_v) {
     if (!min_v || !max_v)
         return;
+    joint3d_vec3_sanitize(min_v);
+    joint3d_vec3_sanitize(max_v);
     for (int i = 0; i < 3; i++) {
         if (min_v[i] > max_v[i]) {
             double tmp = min_v[i];
@@ -174,36 +243,78 @@ static int joint3d_read_mat4_translation(void *obj, double *out) {
         if (!isfinite(m->m[i]))
             return 0;
     }
-    out[0] = m->m[3];
-    out[1] = m->m[7];
-    out[2] = m->m[11];
+    out[0] = joint3d_clamp_coord(m->m[3]);
+    out[1] = joint3d_clamp_coord(m->m[7]);
+    out[2] = joint3d_clamp_coord(m->m[11]);
     return 1;
 }
 
 /// @brief Hamilton product out = a * b (apply b then a) for (x,y,z,w) quaternions.
 static void joint3d_quat_mul(const double *a, const double *b, double *out) {
-    out[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
-    out[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
-    out[2] = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
-    out[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+    double ax = a && isfinite(a[0]) ? a[0] : 0.0;
+    double ay = a && isfinite(a[1]) ? a[1] : 0.0;
+    double az = a && isfinite(a[2]) ? a[2] : 0.0;
+    double aw = a && isfinite(a[3]) ? a[3] : 1.0;
+    double bx = b && isfinite(b[0]) ? b[0] : 0.0;
+    double by = b && isfinite(b[1]) ? b[1] : 0.0;
+    double bz = b && isfinite(b[2]) ? b[2] : 0.0;
+    double bw = b && isfinite(b[3]) ? b[3] : 1.0;
+    if (!out)
+        return;
+    out[0] = aw * bx + ax * bw + ay * bz - az * by;
+    out[1] = aw * by - ax * bz + ay * bw + az * bx;
+    out[2] = aw * bz + ax * by - ay * bx + az * bw;
+    out[3] = aw * bw - ax * bx - ay * by - az * bz;
 }
 
 /// @brief Quaternion conjugate (negated vector part) — the inverse for a unit quaternion.
 static void joint3d_quat_conjugate(const double *q, double *out) {
-    out[0] = -q[0];
-    out[1] = -q[1];
-    out[2] = -q[2];
-    out[3] = q[3];
+    if (!out)
+        return;
+    if (!q) {
+        out[0] = out[1] = out[2] = 0.0;
+        out[3] = 1.0;
+        return;
+    }
+    out[0] = isfinite(q[0]) ? -q[0] : 0.0;
+    out[1] = isfinite(q[1]) ? -q[1] : 0.0;
+    out[2] = isfinite(q[2]) ? -q[2] : 0.0;
+    out[3] = isfinite(q[3]) ? q[3] : 1.0;
+    joint3d_quat_normalize(out);
 }
 
 /// @brief Normalize a quaternion in place, falling back to identity for invalid values.
 static void joint3d_quat_normalize(double *q) {
+    double max_abs;
+    double x;
+    double y;
+    double z;
+    double w;
     double len_sq;
     double inv_len;
     if (!q) {
         return;
     }
-    len_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        q[0] = 0.0;
+        q[1] = 0.0;
+        q[2] = 0.0;
+        q[3] = 1.0;
+        return;
+    }
+    max_abs = fmax(fmax(fabs(q[0]), fabs(q[1])), fmax(fabs(q[2]), fabs(q[3])));
+    if (!isfinite(max_abs) || max_abs < 1e-24) {
+        q[0] = 0.0;
+        q[1] = 0.0;
+        q[2] = 0.0;
+        q[3] = 1.0;
+        return;
+    }
+    x = q[0] / max_abs;
+    y = q[1] / max_abs;
+    z = q[2] / max_abs;
+    w = q[3] / max_abs;
+    len_sq = x * x + y * y + z * z + w * w;
     if (!isfinite(len_sq) || len_sq < 1e-24) {
         q[0] = 0.0;
         q[1] = 0.0;
@@ -212,10 +323,10 @@ static void joint3d_quat_normalize(double *q) {
         return;
     }
     inv_len = 1.0 / sqrt(len_sq);
-    q[0] *= inv_len;
-    q[1] *= inv_len;
-    q[2] *= inv_len;
-    q[3] *= inv_len;
+    q[0] = x * inv_len;
+    q[1] = y * inv_len;
+    q[2] = z * inv_len;
+    q[3] = w * inv_len;
 }
 
 /// @brief Build a quaternion from a normalized world axis and an angle in radians.
@@ -231,6 +342,9 @@ static void joint3d_quat_from_axis_angle(const double *axis, double angle, doubl
         }
         return;
     }
+    angle = fmod(angle, RT_JOINT3D_TWO_PI);
+    if (!isfinite(angle))
+        angle = 0.0;
     half = angle * 0.5;
     s = sin(half);
     out[0] = axis[0] * s;
@@ -287,16 +401,29 @@ static void joint3d_quat_to_rotation_vector(const double *q, double *out) {
 
 /// @brief Rotate vector @p v by quaternion @p q (out = q * v * q⁻¹).
 static void joint3d_quat_rotate_vec3(const double *q, const double *v, double *out) {
-    double qv[4] = {v[0], v[1], v[2], 0.0};
+    double qn[4];
+    double vv[3] = {v ? v[0] : 0.0, v ? v[1] : 0.0, v ? v[2] : 0.0};
+    double qv[4];
     double q_conj[4];
     double tmp[4];
     double rotated[4];
-    joint3d_quat_conjugate(q, q_conj);
-    joint3d_quat_mul(q, qv, tmp);
+    if (!out)
+        return;
+    if (!q) {
+        joint3d_vec3_set(out, vv[0], vv[1], vv[2]);
+        return;
+    }
+    memcpy(qn, q, sizeof(qn));
+    joint3d_quat_normalize(qn);
+    joint3d_vec3_sanitize(vv);
+    qv[0] = vv[0];
+    qv[1] = vv[1];
+    qv[2] = vv[2];
+    qv[3] = 0.0;
+    joint3d_quat_conjugate(qn, q_conj);
+    joint3d_quat_mul(qn, qv, tmp);
     joint3d_quat_mul(tmp, q_conj, rotated);
-    out[0] = rotated[0];
-    out[1] = rotated[1];
-    out[2] = rotated[2];
+    joint3d_vec3_set(out, rotated[0], rotated[1], rotated[2]);
 }
 
 /// @brief Transform a body-local anchor point into world space (rotate by orientation, add
@@ -312,9 +439,9 @@ static void joint3d_world_anchor(const rt_body3d_kinematics *body,
         return;
     }
     joint3d_quat_rotate_vec3(body->orientation, local_anchor, rotated);
-    out[0] = body->position[0] + rotated[0];
-    out[1] = body->position[1] + rotated[1];
-    out[2] = body->position[2] + rotated[2];
+    out[0] = joint3d_clamp_coord(body->position[0] + rotated[0]);
+    out[1] = joint3d_clamp_coord(body->position[1] + rotated[1]);
+    out[2] = joint3d_clamp_coord(body->position[2] + rotated[2]);
 }
 
 /// @brief Transform a world-space point into a body's local frame (subtract position, unrotate).
@@ -331,6 +458,7 @@ static void joint3d_local_from_world(const rt_body3d_kinematics *body,
     joint3d_vec3_sub(world_point, body->position, delta);
     joint3d_quat_conjugate(body->orientation, inv_rotation);
     joint3d_quat_rotate_vec3(inv_rotation, delta, out);
+    joint3d_vec3_sanitize(out);
 }
 
 /// @brief Rotate a body-local axis into world space and normalize it (defaults to +Y if
@@ -378,8 +506,10 @@ static void joint3d_correct_anchor_pair(rt_body3d_kinematics *body_a,
     double scale = stiffness / inv_sum;
     for (int i = 0; i < 3; i++) {
         double correction = delta[i] * scale;
-        body_a->position[i] += correction * body_a->inv_mass;
-        body_b->position[i] -= correction * body_b->inv_mass;
+        body_a->position[i] =
+            joint3d_clamp_coord(body_a->position[i] + correction * body_a->inv_mass);
+        body_b->position[i] =
+            joint3d_clamp_coord(body_b->position[i] - correction * body_b->inv_mass);
     }
 }
 
@@ -423,8 +553,11 @@ static void joint3d_correct_anchor_pair_limited(rt_body3d_kinematics *body_a,
         return;
     for (int i = 0; i < 3; i++) {
         double correction = violation[i] / inv_sum;
-        body_a->position[i] += correction * body_a->inv_mass;
-        body_b->position[i] -= correction * body_b->inv_mass;
+        correction = joint3d_clamp_coord(correction);
+        body_a->position[i] =
+            joint3d_clamp_coord(body_a->position[i] + correction * body_a->inv_mass);
+        body_b->position[i] =
+            joint3d_clamp_coord(body_b->position[i] - correction * body_b->inv_mass);
     }
 }
 
@@ -448,8 +581,11 @@ static void joint3d_remove_relative_linear_velocity(rt_body3d_kinematics *body_a
         return;
     for (int i = 0; i < 3; i++) {
         double correction = rel[i] * amount / inv_sum;
-        body_a->velocity[i] += correction * body_a->inv_mass;
-        body_b->velocity[i] -= correction * body_b->inv_mass;
+        correction = joint3d_clamp_force(correction);
+        body_a->velocity[i] =
+            joint3d_clamp_force(body_a->velocity[i] + correction * body_a->inv_mass);
+        body_b->velocity[i] =
+            joint3d_clamp_force(body_b->velocity[i] - correction * body_b->inv_mass);
     }
 }
 
@@ -473,8 +609,11 @@ static void joint3d_remove_relative_linear_velocity_locked_axes(rt_body3d_kinema
         if (fabs(linear_max[i] - linear_min[i]) > 1e-12)
             continue;
         double correction = rel[i] / inv_sum;
-        body_a->velocity[i] += correction * body_a->inv_mass;
-        body_b->velocity[i] -= correction * body_b->inv_mass;
+        correction = joint3d_clamp_force(correction);
+        body_a->velocity[i] =
+            joint3d_clamp_force(body_a->velocity[i] + correction * body_a->inv_mass);
+        body_b->velocity[i] =
+            joint3d_clamp_force(body_b->velocity[i] - correction * body_b->inv_mass);
     }
 }
 
@@ -510,8 +649,11 @@ static void joint3d_remove_relative_angular_velocity(rt_body3d_kinematics *body_
         return;
     for (int i = 0; i < 3; i++) {
         double correction = remove[i] / inv_sum;
-        body_a->angular_velocity[i] += correction * body_a->inv_mass;
-        body_b->angular_velocity[i] -= correction * body_b->inv_mass;
+        correction = joint3d_clamp_force(correction);
+        body_a->angular_velocity[i] =
+            joint3d_clamp_force(body_a->angular_velocity[i] + correction * body_a->inv_mass);
+        body_b->angular_velocity[i] =
+            joint3d_clamp_force(body_b->angular_velocity[i] - correction * body_b->inv_mass);
     }
 }
 
@@ -618,13 +760,15 @@ void rt_distance_joint3d_set_distance(void *joint, double distance) {
 ///   Early-outs: coincident bodies (no defined direction) and two static
 ///   bodies (both inv_mass = 0) both skip the step cleanly.
 static void solve_distance(rt_distance_joint3d *j, double dt) {
+    double delta[3];
     if (!j || !joint3d_body_is_finite(j->body_a) || !joint3d_body_is_finite(j->body_b))
         return;
     (void)dt;
 
-    double dx = j->body_b->position[0] - j->body_a->position[0];
-    double dy = j->body_b->position[1] - j->body_a->position[1];
-    double dz = j->body_b->position[2] - j->body_a->position[2];
+    joint3d_vec3_sub(j->body_b->position, j->body_a->position, delta);
+    double dx = delta[0];
+    double dy = delta[1];
+    double dz = delta[2];
     double dist = joint3d_len3(dx, dy, dz);
 
     if (!isfinite(dist) || dist < 1e-12)
@@ -641,16 +785,22 @@ static void solve_distance(rt_distance_joint3d *j, double dt) {
         return; /* both static */
 
     /* Positional correction: move each body proportional to inverse mass */
-    double correction = error / inv_sum;
+    double correction = joint3d_clamp_coord(error / inv_sum);
     if (!isfinite(correction))
         return;
 
-    j->body_a->position[0] += correction * j->body_a->inv_mass * nx;
-    j->body_a->position[1] += correction * j->body_a->inv_mass * ny;
-    j->body_a->position[2] += correction * j->body_a->inv_mass * nz;
-    j->body_b->position[0] -= correction * j->body_b->inv_mass * nx;
-    j->body_b->position[1] -= correction * j->body_b->inv_mass * ny;
-    j->body_b->position[2] -= correction * j->body_b->inv_mass * nz;
+    j->body_a->position[0] =
+        joint3d_clamp_coord(j->body_a->position[0] + correction * j->body_a->inv_mass * nx);
+    j->body_a->position[1] =
+        joint3d_clamp_coord(j->body_a->position[1] + correction * j->body_a->inv_mass * ny);
+    j->body_a->position[2] =
+        joint3d_clamp_coord(j->body_a->position[2] + correction * j->body_a->inv_mass * nz);
+    j->body_b->position[0] =
+        joint3d_clamp_coord(j->body_b->position[0] - correction * j->body_b->inv_mass * nx);
+    j->body_b->position[1] =
+        joint3d_clamp_coord(j->body_b->position[1] - correction * j->body_b->inv_mass * ny);
+    j->body_b->position[2] =
+        joint3d_clamp_coord(j->body_b->position[2] - correction * j->body_b->inv_mass * nz);
 
     /* Velocity correction: remove relative velocity along constraint axis */
     double rvx = j->body_b->velocity[0] - j->body_a->velocity[0];
@@ -660,15 +810,21 @@ static void solve_distance(rt_distance_joint3d *j, double dt) {
     if (!isfinite(rv_along))
         return;
 
-    double jn = rv_along / inv_sum;
+    double jn = joint3d_clamp_force(rv_along / inv_sum);
     if (!isfinite(jn))
         return;
-    j->body_a->velocity[0] += jn * j->body_a->inv_mass * nx;
-    j->body_a->velocity[1] += jn * j->body_a->inv_mass * ny;
-    j->body_a->velocity[2] += jn * j->body_a->inv_mass * nz;
-    j->body_b->velocity[0] -= jn * j->body_b->inv_mass * nx;
-    j->body_b->velocity[1] -= jn * j->body_b->inv_mass * ny;
-    j->body_b->velocity[2] -= jn * j->body_b->inv_mass * nz;
+    j->body_a->velocity[0] =
+        joint3d_clamp_force(j->body_a->velocity[0] + jn * j->body_a->inv_mass * nx);
+    j->body_a->velocity[1] =
+        joint3d_clamp_force(j->body_a->velocity[1] + jn * j->body_a->inv_mass * ny);
+    j->body_a->velocity[2] =
+        joint3d_clamp_force(j->body_a->velocity[2] + jn * j->body_a->inv_mass * nz);
+    j->body_b->velocity[0] =
+        joint3d_clamp_force(j->body_b->velocity[0] - jn * j->body_b->inv_mass * nx);
+    j->body_b->velocity[1] =
+        joint3d_clamp_force(j->body_b->velocity[1] - jn * j->body_b->inv_mass * ny);
+    j->body_b->velocity[2] =
+        joint3d_clamp_force(j->body_b->velocity[2] - jn * j->body_b->inv_mass * nz);
 }
 
 /*==========================================================================
@@ -775,13 +931,16 @@ double rt_spring_joint3d_get_rest_length(void *joint) {
 ///   can oscillate or explode at the current fixed step — tune `stiffness`
 ///   below the stability ceiling for the caller's step frequency.
 static void solve_spring(rt_spring_joint3d *j, double dt) {
+    double delta[3];
+    dt = joint3d_sanitize_dt(dt);
     if (!j || !joint3d_body_is_finite(j->body_a) || !joint3d_body_is_finite(j->body_b) ||
-        !isfinite(dt) || dt <= 0.0)
+        dt <= 0.0)
         return;
 
-    double dx = j->body_b->position[0] - j->body_a->position[0];
-    double dy = j->body_b->position[1] - j->body_a->position[1];
-    double dz = j->body_b->position[2] - j->body_a->position[2];
+    joint3d_vec3_sub(j->body_b->position, j->body_a->position, delta);
+    double dx = delta[0];
+    double dy = delta[1];
+    double dz = delta[2];
     double dist = joint3d_len3(dx, dy, dz);
 
     if (!isfinite(dist) || dist < 1e-12)
@@ -813,12 +972,18 @@ static void solve_spring(rt_spring_joint3d *j, double dt) {
     double fz = joint3d_clamp_force(total_force * nz);
 
     /* F = ma → a = F * inv_mass, v += a * dt */
-    j->body_a->velocity[0] -= fx * j->body_a->inv_mass * dt;
-    j->body_a->velocity[1] -= fy * j->body_a->inv_mass * dt;
-    j->body_a->velocity[2] -= fz * j->body_a->inv_mass * dt;
-    j->body_b->velocity[0] += fx * j->body_b->inv_mass * dt;
-    j->body_b->velocity[1] += fy * j->body_b->inv_mass * dt;
-    j->body_b->velocity[2] += fz * j->body_b->inv_mass * dt;
+    j->body_a->velocity[0] =
+        joint3d_clamp_force(j->body_a->velocity[0] - fx * j->body_a->inv_mass * dt);
+    j->body_a->velocity[1] =
+        joint3d_clamp_force(j->body_a->velocity[1] - fy * j->body_a->inv_mass * dt);
+    j->body_a->velocity[2] =
+        joint3d_clamp_force(j->body_a->velocity[2] - fz * j->body_a->inv_mass * dt);
+    j->body_b->velocity[0] =
+        joint3d_clamp_force(j->body_b->velocity[0] + fx * j->body_b->inv_mass * dt);
+    j->body_b->velocity[1] =
+        joint3d_clamp_force(j->body_b->velocity[1] + fy * j->body_b->inv_mass * dt);
+    j->body_b->velocity[2] =
+        joint3d_clamp_force(j->body_b->velocity[2] + fz * j->body_b->inv_mass * dt);
 }
 
 /*==========================================================================
@@ -975,10 +1140,12 @@ static void hinge_joint_apply_limits(rt_hinge_joint3d *j, const double *axis_wor
     inv_sum = a->inv_mass + b->inv_mass;
     if (inv_sum <= 1e-9)
         return;
-    correction = w_rel / inv_sum; /* drive axial relative velocity to 0 */
+    correction = joint3d_clamp_force(w_rel / inv_sum); /* drive axial relative velocity to 0 */
     for (int i = 0; i < 3; i++) {
-        a->angular_velocity[i] += axis_world[i] * correction * a->inv_mass;
-        b->angular_velocity[i] -= axis_world[i] * correction * b->inv_mass;
+        a->angular_velocity[i] =
+            joint3d_clamp_force(a->angular_velocity[i] + axis_world[i] * correction * a->inv_mass);
+        b->angular_velocity[i] =
+            joint3d_clamp_force(b->angular_velocity[i] - axis_world[i] * correction * b->inv_mass);
     }
 }
 
@@ -1007,14 +1174,16 @@ static void hinge_joint_apply_motor(rt_hinge_joint3d *j, const double *axis_worl
     inv_sum = a->inv_mass + b->inv_mass;
     if (inv_sum <= 1e-9)
         return;
-    correction = violation / inv_sum;
+    correction = joint3d_clamp_force(violation / inv_sum);
     if (correction > j->motor_max_impulse)
         correction = j->motor_max_impulse;
     else if (correction < -j->motor_max_impulse)
         correction = -j->motor_max_impulse;
     for (int i = 0; i < 3; i++) {
-        a->angular_velocity[i] += axis_world[i] * correction * a->inv_mass;
-        b->angular_velocity[i] -= axis_world[i] * correction * b->inv_mass;
+        a->angular_velocity[i] =
+            joint3d_clamp_force(a->angular_velocity[i] + axis_world[i] * correction * a->inv_mass);
+        b->angular_velocity[i] =
+            joint3d_clamp_force(b->angular_velocity[i] - axis_world[i] * correction * b->inv_mass);
     }
 }
 
@@ -1078,8 +1247,8 @@ void rt_hinge_joint3d_set_motor(void *joint,
         return;
     j = (rt_hinge_joint3d *)joint;
     j->motor_enabled = enabled ? 1 : 0;
-    j->motor_target_velocity = isfinite(target_velocity) ? target_velocity : 0.0;
-    j->motor_max_impulse = (isfinite(max_impulse) && max_impulse > 0.0) ? max_impulse : 0.0;
+    j->motor_target_velocity = joint3d_clamp_force(target_velocity);
+    j->motor_max_impulse = joint3d_sanitize_nonnegative(max_impulse);
 }
 
 /*==========================================================================
@@ -1171,20 +1340,24 @@ static void solve_rope(rt_rope_joint3d *j, double dt) {
     n[2] = delta[2] / dist;
 
     double error = dist - j->max_length;
-    double correction = error / inv_sum;
+    double correction = joint3d_clamp_coord(error / inv_sum);
     for (int i = 0; i < 3; i++) {
-        j->body_a->position[i] += correction * j->body_a->inv_mass * n[i];
-        j->body_b->position[i] -= correction * j->body_b->inv_mass * n[i];
+        j->body_a->position[i] = joint3d_clamp_coord(
+            j->body_a->position[i] + correction * j->body_a->inv_mass * n[i]);
+        j->body_b->position[i] = joint3d_clamp_coord(
+            j->body_b->position[i] - correction * j->body_b->inv_mass * n[i]);
     }
 
     joint3d_vec3_sub(j->body_b->velocity, j->body_a->velocity, rel_velocity);
     rel_along = joint3d_vec3_dot(rel_velocity, n);
     if (!isfinite(rel_along) || rel_along <= 0.0)
         return;
-    double impulse = rel_along / inv_sum;
+    double impulse = joint3d_clamp_force(rel_along / inv_sum);
     for (int i = 0; i < 3; i++) {
-        j->body_a->velocity[i] += impulse * j->body_a->inv_mass * n[i];
-        j->body_b->velocity[i] -= impulse * j->body_b->inv_mass * n[i];
+        j->body_a->velocity[i] = joint3d_clamp_force(
+            j->body_a->velocity[i] + impulse * j->body_a->inv_mass * n[i]);
+        j->body_b->velocity[i] = joint3d_clamp_force(
+            j->body_b->velocity[i] - impulse * j->body_b->inv_mass * n[i]);
     }
 }
 
@@ -1310,6 +1483,7 @@ static void sixdof_joint_apply_pose_angle_correction(rt_sixdof_joint3d *j,
     inv_sum = j->body_a->inv_mass + j->body_b->inv_mass;
     if (!isfinite(inv_sum) || inv_sum < 1e-12)
         return;
+    violation = joint3d_clamp_force(violation);
     joint3d_quat_prepend_axis_angle(
         j->body_a->orientation, axis_world, violation * j->body_a->inv_mass / inv_sum);
     joint3d_quat_prepend_axis_angle(
@@ -1351,10 +1525,12 @@ static void sixdof_joint_apply_pose_angle_velocity_stop(rt_sixdof_joint3d *j,
         }
         if (!stop)
             continue;
-        correction = rel_axis / inv_sum;
+        correction = joint3d_clamp_force(rel_axis / inv_sum);
         for (int k = 0; k < 3; k++) {
-            j->body_a->angular_velocity[k] += axis_world[k] * correction * j->body_a->inv_mass;
-            j->body_b->angular_velocity[k] -= axis_world[k] * correction * j->body_b->inv_mass;
+            j->body_a->angular_velocity[k] = joint3d_clamp_force(
+                j->body_a->angular_velocity[k] + axis_world[k] * correction * j->body_a->inv_mass);
+            j->body_b->angular_velocity[k] = joint3d_clamp_force(
+                j->body_b->angular_velocity[k] - axis_world[k] * correction * j->body_b->inv_mass);
         }
     }
 }
@@ -1406,13 +1582,13 @@ static void sixdof_joint_apply_linear_motor(rt_sixdof_joint3d *j) {
         if (fabs(j->linear_max[i] - j->linear_min[i]) <= 1e-12)
             continue; /* axis is locked — leave it to the limit solver */
         violation = rel[i] - j->linear_motor_velocity[i];
-        correction = violation / inv_sum;
+        correction = joint3d_clamp_force(violation / inv_sum);
         if (correction > j->linear_motor_max_impulse)
             correction = j->linear_motor_max_impulse;
         else if (correction < -j->linear_motor_max_impulse)
             correction = -j->linear_motor_max_impulse;
-        a->velocity[i] += correction * a->inv_mass;
-        b->velocity[i] -= correction * b->inv_mass;
+        a->velocity[i] = joint3d_clamp_force(a->velocity[i] + correction * a->inv_mass);
+        b->velocity[i] = joint3d_clamp_force(b->velocity[i] - correction * b->inv_mass);
     }
 }
 
@@ -1431,7 +1607,7 @@ void rt_sixdof_joint3d_set_linear_motor(void *joint,
         return;
     j->linear_motor_enabled = enabled ? 1 : 0;
     memcpy(j->linear_motor_velocity, vel, sizeof(j->linear_motor_velocity));
-    j->linear_motor_max_impulse = (isfinite(max_impulse) && max_impulse > 0.0) ? max_impulse : 0.0;
+    j->linear_motor_max_impulse = joint3d_sanitize_nonnegative(max_impulse);
 }
 
 /// @brief Set the joint's per-axis linear limits from two Vec3 handles.

@@ -185,12 +185,13 @@ static int mesh_parse_ascii_double_span(const char *p,
 /// @details Used by Mesh3D.Clone to decide whether to propagate `bone_count` —
 ///          meshes without skinning data clone with `bone_count = 0`.
 static int mesh3d_has_bone_weights(const rt_mesh3d *mesh) {
+    uint32_t vertex_count = rt_mesh3d_safe_vertex_count(mesh);
     if (!mesh || !mesh->vertices)
         return 0;
-    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+    for (uint32_t i = 0; i < vertex_count; i++) {
         const vgfx3d_vertex_t *v = &mesh->vertices[i];
         for (int j = 0; j < 4; j++) {
-            if (v->bone_weights[j] != 0.0f)
+            if (isfinite(v->bone_weights[j]) && fabsf(v->bone_weights[j]) > 1e-8f)
                 return 1;
         }
     }
@@ -207,6 +208,34 @@ static mat4_impl *mesh3d_mat4_checked(void *obj) {
 /// @brief Test whether @p value is finite and within ±FLT_MAX for safe `double → float` narrowing.
 static int mesh_value_fits_float(double value) {
     return isfinite(value) && value >= -MESH3D_FLOAT_ABS_MAX && value <= MESH3D_FLOAT_ABS_MAX;
+}
+
+/// @brief Sanitize copied vertex data that may have come from imported or direct internal storage.
+static void mesh3d_sanitize_vertex_copy(vgfx3d_vertex_t *v) {
+    if (!v)
+        return;
+    for (int i = 0; i < 3; ++i) {
+        if (!isfinite(v->pos[i]))
+            v->pos[i] = 0.0f;
+        if (!isfinite(v->normal[i]))
+            v->normal[i] = 0.0f;
+        if (!isfinite(v->tangent[i]))
+            v->tangent[i] = 0.0f;
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (!isfinite(v->uv[i]))
+            v->uv[i] = 0.0f;
+        if (!isfinite(v->uv1[i]))
+            v->uv1[i] = v->uv[i];
+    }
+    for (int i = 0; i < 4; ++i) {
+        if (!isfinite(v->bone_weights[i]))
+            v->bone_weights[i] = 0.0f;
+    }
+    if (!isfinite(v->tangent[3]) || v->tangent[3] == 0.0f)
+        v->tangent[3] = 1.0f;
+    else
+        v->tangent[3] = v->tangent[3] < 0.0f ? -1.0f : 1.0f;
 }
 
 /// @brief Ensure the optional double-position sidecar exists and mirrors existing vertices.
@@ -451,17 +480,55 @@ static void mesh_release_ref(void **slot) {
     *slot = NULL;
 }
 
-/// @brief Safely swap in a new GC-tracked reference: retain new, then release old.
-/// @details The retain-first ordering matters when `value` is already held transitively
-///   through `*slot` — releasing first could drop the final reference and leave `value`
-///   dangling. The early-return on self-assignment skips an unnecessary retain/release
-///   round trip.
-static void mesh_assign_ref(void **slot, void *value) {
+/// @brief Release a retained Skeleton3D slot only if it still points at Skeleton3D.
+static void mesh_release_skeleton_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_SKELETON3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    mesh_release_ref(slot);
+}
+
+/// @brief Release a retained MorphTarget3D slot only if it still points at MorphTarget3D.
+static void mesh_release_morph_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MORPHTARGET3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    mesh_release_ref(slot);
+}
+
+/// @brief Safely assign a Skeleton3D ref into a retained mesh slot.
+static void mesh_assign_skeleton_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
     rt_obj_retain_maybe(value);
-    mesh_release_ref(slot);
+    mesh_release_skeleton_slot(slot);
     *slot = value;
+}
+
+/// @brief Safely assign a MorphTarget3D ref into a retained mesh slot.
+static void mesh_assign_morph_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    mesh_release_morph_slot(slot);
+    *slot = value;
+}
+
+/// @brief Clear corrupted animation refs without releasing unrelated private handles.
+static void mesh_repair_animation_refs(rt_mesh3d *m) {
+    if (!m)
+        return;
+    if (m->skeleton_ref && !rt_g3d_has_class(m->skeleton_ref, RT_G3D_SKELETON3D_CLASS_ID))
+        mesh_release_skeleton_slot(&m->skeleton_ref);
+    if (m->morph_targets_ref &&
+        !rt_g3d_has_class(m->morph_targets_ref, RT_G3D_MORPHTARGET3D_CLASS_ID))
+        mesh_release_morph_slot(&m->morph_targets_ref);
 }
 
 /// @brief GC finalizer for Mesh3D — releases the owned vertex and index buffers.
@@ -477,8 +544,8 @@ static void rt_mesh3d_finalize(void *obj) {
     m->physics_bvh_nodes = NULL;
     free(m->physics_bvh_tri_indices);
     m->physics_bvh_tri_indices = NULL;
-    mesh_release_ref(&m->skeleton_ref);
-    mesh_release_ref(&m->morph_targets_ref);
+    mesh_release_skeleton_slot(&m->skeleton_ref);
+    mesh_release_morph_slot(&m->morph_targets_ref);
 }
 
 /// @brief Create a new empty 3D mesh for programmatic construction.
@@ -557,8 +624,8 @@ void rt_mesh3d_clear(void *obj) {
     m->prev_morph_weights = NULL;
     m->morph_shape_count = 0;
     m->build_failed = 0;
-    mesh_release_ref(&m->skeleton_ref);
-    mesh_release_ref(&m->morph_targets_ref);
+    mesh_release_skeleton_slot(&m->skeleton_ref);
+    mesh_release_morph_slot(&m->morph_targets_ref);
     free(m->physics_bvh_nodes);
     m->physics_bvh_nodes = NULL;
     free(m->physics_bvh_tri_indices);
@@ -969,23 +1036,35 @@ void *rt_mesh3d_clone(void *obj) {
     }
 
     dst->vertex_count = src->vertex_count;
-    if (src->vertex_count > 0)
+    if (src->vertex_count > 0) {
         memcpy(dst->vertices, src->vertices, src->vertex_count * sizeof(vgfx3d_vertex_t));
-    if (src->positions64 && src->vertex_count > 0)
+        for (uint32_t i = 0; i < src->vertex_count; ++i)
+            mesh3d_sanitize_vertex_copy(&dst->vertices[i]);
+    }
+    if (src->positions64 && src->vertex_count > 0) {
         memcpy(dst->positions64, src->positions64, (size_t)src->vertex_count * 3u * sizeof(double));
+        for (uint32_t i = 0; i < src->vertex_count; ++i) {
+            for (int lane = 0; lane < 3; ++lane) {
+                size_t index = (size_t)i * 3u + (size_t)lane;
+                if (!isfinite(dst->positions64[index]))
+                    dst->positions64[index] = (double)dst->vertices[i].pos[lane];
+            }
+        }
+    }
 
     dst->index_count = src->index_count;
     if (src->index_count > 0)
         memcpy(dst->indices, src->indices, src->index_count * sizeof(uint32_t));
     dst->bone_palette = NULL;
     dst->prev_bone_palette = NULL;
+    mesh_repair_animation_refs(src);
     dst->bone_count = (src->skeleton_ref || mesh3d_has_bone_weights(src)) ? src->bone_count : 0;
     dst->morph_deltas = NULL;
     dst->morph_weights = NULL;
     dst->morph_shape_count = 0;
     dst->morph_normal_deltas = NULL;
     dst->prev_morph_weights = NULL;
-    mesh_assign_ref(&dst->skeleton_ref, src->skeleton_ref);
+    mesh_assign_skeleton_ref(&dst->skeleton_ref, src->skeleton_ref);
     if (src->morph_targets_ref) {
         void *morph_clone = rt_morphtarget3d_clone(src->morph_targets_ref);
         if (!morph_clone) {
@@ -994,7 +1073,7 @@ void *rt_mesh3d_clone(void *obj) {
             rt_trap("Mesh3D.Clone: morph target clone failed");
             return NULL;
         }
-        mesh_assign_ref(&dst->morph_targets_ref, morph_clone);
+        mesh_assign_morph_ref(&dst->morph_targets_ref, morph_clone);
         if (rt_obj_release_check0(morph_clone))
             rt_obj_free(morph_clone);
     }
@@ -1010,7 +1089,7 @@ void *rt_mesh3d_clone(void *obj) {
     dst->aabb_max[1] = src->aabb_max[1];
     dst->aabb_max[2] = src->aabb_max[2];
     dst->bsphere_radius = src->bsphere_radius;
-    dst->bounds_dirty = src->bounds_dirty;
+    dst->bounds_dirty = 1;
     rt_mesh3d_refresh_bounds(dst);
 
     return dst;
@@ -1147,7 +1226,8 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         }
 
         float *t = m->vertices[i].tangent;
-        float handedness = t[3];
+        float handedness =
+            (!isfinite(t[3]) || t[3] == 0.0f) ? 1.0f : (t[3] < 0.0f ? -1.0f : 1.0f);
         float tx = t[0];
         float ty = t[1];
         float tz = t[2];
@@ -1162,7 +1242,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         } else {
             mesh_default_tangent_from_normal(n, t);
         }
-        t[3] = (handedness == 0.0f ? 1.0f : handedness) * handedness_sign;
+        t[3] = handedness * handedness_sign;
     }
     if (handedness_sign < 0.0f) {
         for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {

@@ -61,19 +61,122 @@ static int raycast_box_pose_raw(void *box_collider,
                                 double *out_normal,
                                 int *out_started);
 
+#define PH3D_QUERY_COORD_ABS_MAX 1000000000000.0
+#define PH3D_QUERY_DISTANCE_MAX 1000000000.0
+
+/// @brief Clamp query coordinates to the same broad finite range used by body state.
+static double query_saturate_coord(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value > PH3D_QUERY_COORD_ABS_MAX)
+        return PH3D_QUERY_COORD_ABS_MAX;
+    if (value < -PH3D_QUERY_COORD_ABS_MAX)
+        return -PH3D_QUERY_COORD_ABS_MAX;
+    return value;
+}
+
+/// @brief Read a public Vec3 argument, rejecting NaN/Inf and capping extreme finite values.
+static int query_read_vec3(void *obj, double out[3]) {
+    double raw[3];
+    if (!out || !rt_g3d_is_vec3(obj))
+        return 0;
+    raw[0] = rt_vec3_x(obj);
+    raw[1] = rt_vec3_y(obj);
+    raw[2] = rt_vec3_z(obj);
+    if (!ph3d_vec3_all_finite(raw))
+        return 0;
+    out[0] = query_saturate_coord(raw[0]);
+    out[1] = query_saturate_coord(raw[1]);
+    out[2] = query_saturate_coord(raw[2]);
+    return 1;
+}
+
+/// @brief Clamp a finite public query distance/radius to a runtime-safe range.
+static double query_sanitize_distance(double value) {
+    if (!isfinite(value) || value <= 0.0)
+        return 0.0;
+    return value > PH3D_QUERY_DISTANCE_MAX ? PH3D_QUERY_DISTANCE_MAX : value;
+}
+
+/// @brief Normalize a direction vector in place, returning 0 for invalid/zero vectors.
+static int query_normalize_direction(double dir[3]) {
+    if (!ph3d_vec3_all_finite(dir))
+        return 0;
+    ph3d_vec3_sanitize_state(dir);
+    return vec3_normalize_in_place(dir) > 1e-12;
+}
+
+/// @brief Clamp a vector's length to the query distance cap, preserving direction.
+static double query_cap_vector_length(double v[3]) {
+    double len;
+    if (!ph3d_vec3_all_finite(v))
+        return 0.0;
+    ph3d_vec3_sanitize_state(v);
+    len = vec3_len(v);
+    if (!isfinite(len) || len <= 0.0)
+        return 0.0;
+    if (len > PH3D_QUERY_DISTANCE_MAX) {
+        double scale = PH3D_QUERY_DISTANCE_MAX / len;
+        v[0] *= scale;
+        v[1] *= scale;
+        v[2] *= scale;
+        return PH3D_QUERY_DISTANCE_MAX;
+    }
+    return len;
+}
+
+/// @brief Normalize a hit normal with a fallback opposite the ray/sweep direction.
+static void query_normalize_normal(double normal[3], const double *fallback_dir) {
+    ph3d_vec3_sanitize_state(normal);
+    if (vec3_normalize_in_place(normal) > 1e-12)
+        return;
+    if (fallback_dir && ph3d_vec3_all_finite(fallback_dir)) {
+        vec3_negate(fallback_dir, normal);
+        ph3d_vec3_sanitize_state(normal);
+        if (vec3_normalize_in_place(normal) > 1e-12)
+            return;
+    }
+    vec3_set(normal, 0.0, 1.0, 0.0);
+}
+
+/// @brief Validate and sanitize a raw query hit before it is boxed or sorted.
+static int query_sanitize_hit(rt_query_hit3d *hit, double max_distance, const double *fallback_dir) {
+    if (!hit || !isfinite(hit->distance) || hit->distance < 0.0)
+        return 0;
+    hit->distance = query_sanitize_distance(hit->distance);
+    if (max_distance > 1e-12 && hit->distance > max_distance)
+        hit->distance = max_distance;
+    if (!isfinite(hit->fraction)) {
+        hit->fraction = max_distance > 1e-12 ? hit->distance / max_distance : 0.0;
+    }
+    if (hit->fraction < 0.0)
+        hit->fraction = 0.0;
+    if (hit->fraction > 1.0)
+        hit->fraction = 1.0;
+    ph3d_vec3_sanitize_state(hit->point);
+    query_normalize_normal(hit->normal, fallback_dir);
+    hit->started_penetrating = hit->started_penetrating ? 1 : 0;
+    hit->is_trigger = hit->is_trigger ? 1 : 0;
+    return 1;
+}
+
 /// @brief Insert `hit` into a distance-sorted hit array, keeping the order.
 ///
 /// O(n) insertion (linear shift). Acceptable because `RaycastAll` /
 /// `OverlapAll` queries are bounded by `PH3D_MAX_QUERY_HITS` (256).
 static int query_hit_insert_sorted(rt_query_hit3d *hits, int32_t count, const rt_query_hit3d *hit) {
     int32_t pos = count;
+    rt_query_hit3d clean;
     if (!hits || !hit)
         return count;
-    while (pos > 0 && hits[pos - 1].distance > hit->distance) {
+    clean = *hit;
+    if (!query_sanitize_hit(&clean, PH3D_QUERY_DISTANCE_MAX, NULL))
+        return count;
+    while (pos > 0 && hits[pos - 1].distance > clean.distance) {
         hits[pos] = hits[pos - 1];
         pos--;
     }
-    hits[pos] = *hit;
+    hits[pos] = clean;
     return count + 1;
 }
 
@@ -87,18 +190,22 @@ static int query_hit_insert_sorted_bounded(rt_query_hit3d *hits,
                                            int32_t capacity,
                                            const rt_query_hit3d *hit) {
     int32_t pos;
+    rt_query_hit3d clean;
     if (!hits || !hit || capacity <= 0)
         return count;
+    clean = *hit;
+    if (!query_sanitize_hit(&clean, PH3D_QUERY_DISTANCE_MAX, NULL))
+        return count;
     if (count < capacity)
-        return query_hit_insert_sorted(hits, count, hit);
-    if (hit->distance >= hits[capacity - 1].distance)
+        return query_hit_insert_sorted(hits, count, &clean);
+    if (clean.distance >= hits[capacity - 1].distance)
         return count;
     pos = capacity - 1;
-    while (pos > 0 && hits[pos - 1].distance > hit->distance) {
+    while (pos > 0 && hits[pos - 1].distance > clean.distance) {
         hits[pos] = hits[pos - 1];
         pos--;
     }
-    hits[pos] = *hit;
+    hits[pos] = clean;
     return capacity;
 }
 
@@ -178,8 +285,10 @@ static void init_temp_query_body(rt_body3d *body, void *collider, const double *
     vec3_set(body->scale, 1.0, 1.0, 1.0);
     body->motion_mode = PH3D_MODE_STATIC;
     body->collider = collider;
-    if (position)
+    if (position) {
         vec3_copy(body->position, position);
+        ph3d_vec3_sanitize_state(body->position);
+    }
 }
 
 /// @brief Test a transient query body for overlap against a registered body.
@@ -205,6 +314,7 @@ static int overlap_query_body_against_body(rt_body3d *query_body,
         out_hit->fraction = 0.0;
         out_hit->started_penetrating = 1;
         out_hit->is_trigger = other->is_trigger;
+        query_sanitize_hit(out_hit, 0.0, NULL);
     }
     return 1;
 }
@@ -223,17 +333,22 @@ static void sweep_sphere_fill_hit(rt_body3d *body,
     memset(out_hit, 0, sizeof(*out_hit));
     out_hit->body = body;
     out_hit->collider = body ? body->collider : NULL;
-    out_hit->distance = distance;
-    out_hit->fraction = max_distance > 1e-12 ? distance / max_distance : 0.0;
+    out_hit->distance = query_sanitize_distance(distance);
+    out_hit->fraction = max_distance > 1e-12 ? out_hit->distance / max_distance : 0.0;
     out_hit->started_penetrating = 0;
     out_hit->is_trigger = body ? body->is_trigger : 0;
     if (normal)
         vec3_copy(out_hit->normal, normal);
     else
         vec3_negate(dir, out_hit->normal);
-    out_hit->point[0] = start_center[0] + dir[0] * distance - out_hit->normal[0] * radius;
-    out_hit->point[1] = start_center[1] + dir[1] * distance - out_hit->normal[1] * radius;
-    out_hit->point[2] = start_center[2] + dir[2] * distance - out_hit->normal[2] * radius;
+    query_normalize_normal(out_hit->normal, dir);
+    out_hit->point[0] =
+        query_saturate_coord(start_center[0] + dir[0] * out_hit->distance - out_hit->normal[0] * radius);
+    out_hit->point[1] =
+        query_saturate_coord(start_center[1] + dir[1] * out_hit->distance - out_hit->normal[1] * radius);
+    out_hit->point[2] =
+        query_saturate_coord(start_center[2] + dir[2] * out_hit->distance - out_hit->normal[2] * radius);
+    query_sanitize_hit(out_hit, max_distance, dir);
 }
 
 /// @brief Exact fast paths for common sphere sweeps before the generic sampler runs.
@@ -250,7 +365,7 @@ static int sweep_sphere_against_simple_body(const double *start_center,
     if (!start_center || !delta || !other || !other->collider || max_distance <= 1e-12)
         return 0;
     vec3_copy(dir, delta);
-    if (vec3_normalize_in_place(dir) <= 1e-12)
+    if (!query_normalize_direction(dir))
         return 0;
     if (other->shape == PH3D_SHAPE_SPHERE) {
         double combined_radius = radius + other->radius;
@@ -350,20 +465,26 @@ static int sweep_sphere_against_body(void *sphere_collider,
             step_dist = 0.25;
     }
 
-    steps = (int)ceil(delta_len / step_dist);
+    {
+        double step_count = ceil(delta_len / step_dist);
+        if (!isfinite(step_count) || step_count > (double)PH3D_MAX_SWEEP_STEPS)
+            steps = PH3D_MAX_SWEEP_STEPS;
+        else if (step_count < 1.0)
+            steps = 1;
+        else
+            steps = (int)step_count;
+    }
     if (steps < 1)
         steps = 1;
-    if (steps > PH3D_MAX_SWEEP_STEPS)
-        steps = PH3D_MAX_SWEEP_STEPS;
 
     {
         double prev_t = 0.0;
         for (int s = 1; s <= steps; ++s) {
             double t = (double)s / (double)steps;
             double center[3] = {
-                start_center[0] + delta[0] * t,
-                start_center[1] + delta[1] * t,
-                start_center[2] + delta[2] * t,
+                query_saturate_coord(start_center[0] + delta[0] * t),
+                query_saturate_coord(start_center[1] + delta[1] * t),
+                query_saturate_coord(start_center[2] + delta[2] * t),
             };
             init_temp_query_body(&query_body, sphere_collider, center);
             body3d_update_shape_cache_from_collider(&query_body);
@@ -378,9 +499,9 @@ static int sweep_sphere_against_body(void *sphere_collider,
                 for (int iter = 0; iter < 14; ++iter) {
                     double mid = (lo + hi) * 0.5;
                     double mid_center[3] = {
-                        start_center[0] + delta[0] * mid,
-                        start_center[1] + delta[1] * mid,
-                        start_center[2] + delta[2] * mid,
+                        query_saturate_coord(start_center[0] + delta[0] * mid),
+                        query_saturate_coord(start_center[1] + delta[1] * mid),
+                        query_saturate_coord(start_center[2] + delta[2] * mid),
                     };
                     init_temp_query_body(&query_body, sphere_collider, mid_center);
                     body3d_update_shape_cache_from_collider(&query_body);
@@ -394,6 +515,7 @@ static int sweep_sphere_against_body(void *sphere_collider,
                 best.distance = hi * max_distance;
                 best.fraction = hi;
                 best.started_penetrating = 0;
+                query_sanitize_hit(&best, max_distance, delta);
                 if (out_hit)
                     *out_hit = best;
                 return 1;
@@ -427,13 +549,15 @@ static int sweep_capsule_against_body(const double *a,
         return 0;
     vec3_sub(b, a, axis);
     axis_len = vec3_len(axis);
+    if (!isfinite(axis_len))
+        axis_len = 0.0;
     samples = capsule_axis_sample_count(axis_len, radius);
     for (int i = 0; i < samples; ++i) {
         double t = samples == 1 ? 0.5 : (double)i / (double)(samples - 1);
         double center[3] = {
-            a[0] + axis[0] * t,
-            a[1] + axis[1] * t,
-            a[2] + axis[2] * t,
+            query_saturate_coord(a[0] + axis[0] * t),
+            query_saturate_coord(a[1] + axis[1] * t),
+            query_saturate_coord(a[2] + axis[2] * t),
         };
         rt_query_hit3d cur_hit;
         if (!sweep_sphere_against_body(
@@ -441,6 +565,7 @@ static int sweep_capsule_against_body(const double *a,
             continue;
         if (!hit || cur_hit.distance < best.distance) {
             best = cur_hit;
+            query_sanitize_hit(&best, max_distance, delta);
             hit = 1;
         }
     }
@@ -468,11 +593,9 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
     void *sphere_collider;
     if (!w || !rt_g3d_is_vec3(center_obj) || !isfinite(radius) || radius < 0.0)
         return NULL;
-    center[0] = rt_vec3_x(center_obj);
-    center[1] = rt_vec3_y(center_obj);
-    center[2] = rt_vec3_z(center_obj);
-    if (!ph3d_vec3_all_finite(center))
+    if (!query_read_vec3(center_obj, center))
         return NULL;
+    radius = query_sanitize_distance(radius);
     sphere_collider = rt_collider3d_new_sphere(radius);
     if (!sphere_collider)
         return NULL;
@@ -519,20 +642,14 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
     void *box_collider;
     if (!w || !rt_g3d_is_vec3(min_obj) || !rt_g3d_is_vec3(max_obj))
         return NULL;
-    mn[0] = rt_vec3_x(min_obj);
-    mn[1] = rt_vec3_y(min_obj);
-    mn[2] = rt_vec3_z(min_obj);
-    mx[0] = rt_vec3_x(max_obj);
-    mx[1] = rt_vec3_y(max_obj);
-    mx[2] = rt_vec3_z(max_obj);
-    if (!ph3d_vec3_all_finite(mn) || !ph3d_vec3_all_finite(mx))
+    if (!query_read_vec3(min_obj, mn) || !query_read_vec3(max_obj, mx))
         return NULL;
-    center[0] = (mn[0] + mx[0]) * 0.5;
-    center[1] = (mn[1] + mx[1]) * 0.5;
-    center[2] = (mn[2] + mx[2]) * 0.5;
-    half[0] = fabs(mx[0] - mn[0]) * 0.5;
-    half[1] = fabs(mx[1] - mn[1]) * 0.5;
-    half[2] = fabs(mx[2] - mn[2]) * 0.5;
+    center[0] = query_saturate_coord((mn[0] + mx[0]) * 0.5);
+    center[1] = query_saturate_coord((mn[1] + mx[1]) * 0.5);
+    center[2] = query_saturate_coord((mn[2] + mx[2]) * 0.5);
+    half[0] = query_sanitize_distance(fabs(mx[0] - mn[0]) * 0.5);
+    half[1] = query_sanitize_distance(fabs(mx[1] - mn[1]) * 0.5);
+    half[2] = query_sanitize_distance(fabs(mx[2] - mn[2]) * 0.5);
     if (!ph3d_vec3_all_finite(center) || !ph3d_vec3_all_finite(half))
         return NULL;
     box_collider = rt_collider3d_new_box(half[0], half[1], half[2]);
@@ -583,17 +700,10 @@ void *rt_world3d_sweep_sphere(
     if (!w || !rt_g3d_is_vec3(center_obj) || !rt_g3d_is_vec3(delta_obj) || !isfinite(radius) ||
         radius < 0.0)
         return NULL;
-    center[0] = rt_vec3_x(center_obj);
-    center[1] = rt_vec3_y(center_obj);
-    center[2] = rt_vec3_z(center_obj);
-    delta[0] = rt_vec3_x(delta_obj);
-    delta[1] = rt_vec3_y(delta_obj);
-    delta[2] = rt_vec3_z(delta_obj);
-    if (!ph3d_vec3_all_finite(center) || !ph3d_vec3_all_finite(delta))
+    if (!query_read_vec3(center_obj, center) || !query_read_vec3(delta_obj, delta))
         return NULL;
-    max_distance = vec3_len(delta);
-    if (!isfinite(max_distance))
-        return NULL;
+    radius = query_sanitize_distance(radius);
+    max_distance = query_cap_vector_length(delta);
     sphere_collider = rt_collider3d_new_sphere(radius);
     if (!sphere_collider)
         return NULL;
@@ -615,6 +725,8 @@ void *rt_world3d_sweep_sphere(
             continue;
         if (!sweep_sphere_against_body(
                 sphere_collider, center, radius, delta, body, max_distance, &hit))
+            continue;
+        if (!query_sanitize_hit(&hit, max_distance, delta))
             continue;
         if (!found || hit.distance < best_hit.distance) {
             best_hit = hit;
@@ -641,23 +753,14 @@ void *rt_world3d_sweep_capsule(
     if (!w || !rt_g3d_is_vec3(a_obj) || !rt_g3d_is_vec3(b_obj) || !rt_g3d_is_vec3(delta_obj) ||
         !isfinite(radius) || radius < 0.0)
         return NULL;
-    a[0] = rt_vec3_x(a_obj);
-    a[1] = rt_vec3_y(a_obj);
-    a[2] = rt_vec3_z(a_obj);
-    b[0] = rt_vec3_x(b_obj);
-    b[1] = rt_vec3_y(b_obj);
-    b[2] = rt_vec3_z(b_obj);
-    delta[0] = rt_vec3_x(delta_obj);
-    delta[1] = rt_vec3_y(delta_obj);
-    delta[2] = rt_vec3_z(delta_obj);
-    if (!ph3d_vec3_all_finite(a) || !ph3d_vec3_all_finite(b) || !ph3d_vec3_all_finite(delta))
+    if (!query_read_vec3(a_obj, a) || !query_read_vec3(b_obj, b) ||
+        !query_read_vec3(delta_obj, delta))
         return NULL;
-    max_distance = vec3_len(delta);
-    if (!isfinite(max_distance))
-        return NULL;
+    radius = query_sanitize_distance(radius);
+    max_distance = query_cap_vector_length(delta);
     for (int axis = 0; axis < 3; ++axis) {
-        query_min[axis] = fmin(a[axis], b[axis]) - radius;
-        query_max[axis] = fmax(a[axis], b[axis]) + radius;
+        query_min[axis] = query_saturate_coord(fmin(a[axis], b[axis]) - radius);
+        query_max[axis] = query_saturate_coord(fmax(a[axis], b[axis]) + radius);
     }
     swept_aabb_from_points(query_min, query_max, delta, swept_min, swept_max);
     int32_t entry_count = world3d_build_query_broadphase(w);
@@ -673,6 +776,8 @@ void *rt_world3d_sweep_capsule(
         if (!body || !body->collider || !query_mask_matches_body(body, mask))
             continue;
         if (!sweep_capsule_against_body(a, b, radius, delta, body, max_distance, &hit))
+            continue;
+        if (!query_sanitize_hit(&hit, max_distance, delta))
             continue;
         if (!found || hit.distance < best_hit.distance) {
             best_hit = hit;
@@ -697,17 +802,18 @@ static void ray_fill_hit(rt_body3d *body,
     memset(out_hit, 0, sizeof(*out_hit));
     out_hit->body = body;
     out_hit->collider = body ? body->collider : NULL;
-    out_hit->distance = distance;
-    out_hit->fraction = max_distance > 1e-12 ? distance / max_distance : 0.0;
+    out_hit->distance = query_sanitize_distance(distance);
+    out_hit->fraction = max_distance > 1e-12 ? out_hit->distance / max_distance : 0.0;
     out_hit->started_penetrating = (int8_t)(started ? 1 : 0);
     out_hit->is_trigger = body ? body->is_trigger : 0;
-    out_hit->point[0] = origin[0] + dir[0] * distance;
-    out_hit->point[1] = origin[1] + dir[1] * distance;
-    out_hit->point[2] = origin[2] + dir[2] * distance;
+    out_hit->point[0] = query_saturate_coord(origin[0] + dir[0] * out_hit->distance);
+    out_hit->point[1] = query_saturate_coord(origin[1] + dir[1] * out_hit->distance);
+    out_hit->point[2] = query_saturate_coord(origin[2] + dir[2] * out_hit->distance);
     if (normal)
         vec3_copy(out_hit->normal, normal);
     else
         vec3_negate(dir, out_hit->normal);
+    query_sanitize_hit(out_hit, max_distance, dir);
 }
 
 /// @brief Ray vs sphere intersection (analytic quadratic solve).
@@ -721,6 +827,11 @@ static int raycast_sphere_raw(const double *origin,
                               double *out_normal,
                               int *out_started) {
     double m[3];
+    if (!origin || !dir || !center || !isfinite(radius) || radius < 0.0 ||
+        !isfinite(max_distance) || max_distance < 0.0)
+        return 0;
+    radius = query_sanitize_distance(radius);
+    max_distance = query_sanitize_distance(max_distance);
     vec3_sub(origin, center, m);
     double c = vec3_dot(m, m) - radius * radius;
     if (c <= 0.0) {
@@ -734,10 +845,10 @@ static int raycast_sphere_raw(const double *origin,
     }
     double b = vec3_dot(m, dir);
     double disc = b * b - c;
-    if (disc < 0.0)
+    if (!isfinite(disc) || disc < 0.0)
         return 0;
     double t = -b - sqrt(disc);
-    if (t < 0.0 || t > max_distance)
+    if (!isfinite(t) || t < 0.0 || t > max_distance)
         return 0;
     if (out_t)
         *out_t = t;
@@ -747,8 +858,7 @@ static int raycast_sphere_raw(const double *origin,
         out_normal[0] = origin[0] + dir[0] * t - center[0];
         out_normal[1] = origin[1] + dir[1] * t - center[1];
         out_normal[2] = origin[2] + dir[2] * t - center[2];
-        if (vec3_normalize_in_place(out_normal) <= 1e-12)
-            vec3_negate(dir, out_normal);
+        query_normalize_normal(out_normal, dir);
     }
     return 1;
 }
@@ -767,6 +877,10 @@ static int raycast_aabb_raw(const double *origin,
     double tmax = max_distance;
     double n[3] = {0.0, 0.0, 0.0};
     int inside = 1;
+    if (!origin || !dir || !mn || !mx || !isfinite(max_distance) || max_distance < 0.0)
+        return 0;
+    max_distance = query_sanitize_distance(max_distance);
+    tmax = max_distance;
     for (int axis = 0; axis < 3; axis++) {
         if (origin[axis] < mn[axis] || origin[axis] > mx[axis])
             inside = 0;
@@ -779,6 +893,8 @@ static int raycast_aabb_raw(const double *origin,
         double t1 = (mn[axis] - origin[axis]) * inv;
         double t2 = (mx[axis] - origin[axis]) * inv;
         double sign = -1.0;
+        if (!isfinite(t1) || !isfinite(t2))
+            return 0;
         if (t1 > t2) {
             double tmp = t1;
             t1 = t2;
@@ -800,8 +916,10 @@ static int raycast_aabb_raw(const double *origin,
             *out_t = 0.0;
         if (out_started)
             *out_started = 1;
-        if (out_normal)
+        if (out_normal) {
             vec3_negate(dir, out_normal);
+            query_normalize_normal(out_normal, dir);
+        }
         return 1;
     }
     if (tmin < 0.0 || tmin > max_distance)
@@ -810,8 +928,10 @@ static int raycast_aabb_raw(const double *origin,
         *out_t = tmin;
     if (out_started)
         *out_started = 0;
-    if (out_normal)
+    if (out_normal) {
         vec3_copy(out_normal, n);
+        query_normalize_normal(out_normal, dir);
+    }
     return 1;
 }
 
@@ -832,6 +952,11 @@ static int raycast_capsule_raw(const double *origin,
     int found = 0;
     double t, n[3];
     int started;
+    if (!origin || !dir || !a || !b || !isfinite(radius) || radius < 0.0 ||
+        !isfinite(max_distance) || max_distance < 0.0)
+        return 0;
+    radius = query_sanitize_distance(radius);
+    max_distance = query_sanitize_distance(max_distance);
     if (raycast_sphere_raw(origin, dir, a, radius, max_distance, &t, n, &started)) {
         best_t = t;
         vec3_copy(best_n, n);
@@ -861,17 +986,19 @@ static int raycast_capsule_raw(const double *origin,
         if (qc <= 0.0 && md >= 0.0 && md <= h) {
             best_t = 0.0;
             vec3_negate(dir, best_n);
+            query_normalize_normal(best_n, dir);
             best_started = 1;
             found = 1;
         } else if (qa > 1e-12) {
             double disc = qb * qb - 4.0 * qa * qc;
-            if (disc >= 0.0) {
+            if (isfinite(disc) && disc >= 0.0) {
                 double root = sqrt(disc);
                 double roots[2] = {(-qb - root) / (2.0 * qa), (-qb + root) / (2.0 * qa)};
                 for (int i = 0; i < 2; i++) {
                     double ct = roots[i];
                     double y = md + ct * nd;
-                    if (ct < 0.0 || ct > max_distance || y < 0.0 || y > h)
+                    if (!isfinite(ct) || !isfinite(y) || ct < 0.0 || ct > max_distance ||
+                        y < 0.0 || y > h)
                         continue;
                     if (!found || ct < best_t) {
                         double p[3] = {origin[0] + dir[0] * ct,
@@ -882,8 +1009,7 @@ static int raycast_capsule_raw(const double *origin,
                         best_n[0] = p[0] - c[0];
                         best_n[1] = p[1] - c[1];
                         best_n[2] = p[2] - c[2];
-                        if (vec3_normalize_in_place(best_n) <= 1e-12)
-                            vec3_negate(dir, best_n);
+                        query_normalize_normal(best_n, dir);
                         best_started = 0;
                         found = 1;
                     }
@@ -895,8 +1021,10 @@ static int raycast_capsule_raw(const double *origin,
         return 0;
     if (out_t)
         *out_t = best_t;
-    if (out_normal)
+    if (out_normal) {
         vec3_copy(out_normal, best_n);
+        query_normalize_normal(out_normal, dir);
+    }
     if (out_started)
         *out_started = best_started;
     return 1;
@@ -923,8 +1051,11 @@ static int raycast_box_pose_raw(void *box_collider,
     double local_normal[3] = {0.0, 0.0, 0.0};
     double t = 0.0;
     int started = 0;
-    if (!box_collider || !pose)
+    if (!box_collider || !pose || !origin || !dir || !isfinite(max_distance) ||
+        max_distance < 0.0 || !isfinite(expand_radius) || expand_radius < 0.0)
         return 0;
+    max_distance = query_sanitize_distance(max_distance);
+    expand_radius = query_sanitize_distance(expand_radius);
     rt_collider3d_get_box_half_extents_raw(box_collider, he);
     for (int i = 0; i < 3; i++) {
         double expansion = expand_radius / pose_abs_scale_or_unit(pose->scale[i]);
@@ -933,6 +1064,8 @@ static int raycast_box_pose_raw(void *box_collider,
     }
     transform_point_to_local(pose, origin, local_origin);
     transform_vector_to_local(pose, dir, local_dir);
+    ph3d_vec3_sanitize_state(local_origin);
+    ph3d_vec3_sanitize_state(local_dir);
     if (!raycast_aabb_raw(
             local_origin, local_dir, mn, mx, max_distance, &t, local_normal, &started))
         return 0;
@@ -941,10 +1074,13 @@ static int raycast_box_pose_raw(void *box_collider,
     if (out_started)
         *out_started = started;
     if (out_normal) {
-        if (started)
+        if (started) {
             vec3_negate(dir, out_normal);
-        else
+            query_normalize_normal(out_normal, dir);
+        } else {
             transform_normal_from_local(pose, local_normal, out_normal);
+            query_normalize_normal(out_normal, dir);
+        }
     }
     return 1;
 }
@@ -962,23 +1098,26 @@ static int raycast_triangle_world(const double *origin,
                                   double *out_normal) {
     double e1[3], e2[3], pvec[3], tvec[3], qvec[3];
     double det, inv_det, u, v, t;
+    if (!origin || !dir || !a || !b || !c || !isfinite(max_distance) || max_distance < 0.0)
+        return 0;
+    max_distance = query_sanitize_distance(max_distance);
     vec3_sub(b, a, e1);
     vec3_sub(c, a, e2);
     vec3_cross(dir, e2, pvec);
     det = vec3_dot(e1, pvec);
-    if (fabs(det) < 1e-12)
+    if (!isfinite(det) || fabs(det) < 1e-12)
         return 0;
     inv_det = 1.0 / det;
     vec3_sub(origin, a, tvec);
     u = vec3_dot(tvec, pvec) * inv_det;
-    if (u < 0.0 || u > 1.0)
+    if (!isfinite(u) || u < 0.0 || u > 1.0)
         return 0;
     vec3_cross(tvec, e1, qvec);
     v = vec3_dot(dir, qvec) * inv_det;
-    if (v < 0.0 || u + v > 1.0)
+    if (!isfinite(v) || v < 0.0 || u + v > 1.0)
         return 0;
     t = vec3_dot(e2, qvec) * inv_det;
-    if (t < 0.0 || t > max_distance)
+    if (!isfinite(t) || t < 0.0 || t > max_distance)
         return 0;
     if (out_t)
         *out_t = t;
@@ -986,6 +1125,7 @@ static int raycast_triangle_world(const double *origin,
         triangle_normal(a, b, c, out_normal);
         if (vec3_dot(out_normal, dir) > 0.0)
             vec3_negate(out_normal, out_normal);
+        query_normalize_normal(out_normal, dir);
     }
     return 1;
 }
@@ -1000,15 +1140,32 @@ static void mesh_bvh_expand(float *mn, float *mx, const float *p) {
     }
 }
 
+/// @brief Sanitize a mesh vertex coordinate before storing it in the physics BVH.
+static float mesh_bvh_sanitize_coord(float value) {
+    if (!isfinite((double)value))
+        return 0.0f;
+    if (value > (float)PH3D_QUERY_COORD_ABS_MAX)
+        return (float)PH3D_QUERY_COORD_ABS_MAX;
+    if (value < (float)-PH3D_QUERY_COORD_ABS_MAX)
+        return (float)-PH3D_QUERY_COORD_ABS_MAX;
+    return value;
+}
+
 /// @brief Compute triangle @p tri's AABB (@p mn, @p mx) and centroid for BVH construction.
 static void mesh_bvh_triangle_bounds(
     const rt_mesh3d *mesh, uint32_t tri, float *mn, float *mx, float *centroid) {
     uint32_t i0 = mesh->indices[tri * 3u + 0u];
     uint32_t i1 = mesh->indices[tri * 3u + 1u];
     uint32_t i2 = mesh->indices[tri * 3u + 2u];
-    const float *a = mesh->vertices[i0].pos;
-    const float *b = mesh->vertices[i1].pos;
-    const float *c = mesh->vertices[i2].pos;
+    float a[3] = {mesh_bvh_sanitize_coord(mesh->vertices[i0].pos[0]),
+                  mesh_bvh_sanitize_coord(mesh->vertices[i0].pos[1]),
+                  mesh_bvh_sanitize_coord(mesh->vertices[i0].pos[2])};
+    float b[3] = {mesh_bvh_sanitize_coord(mesh->vertices[i1].pos[0]),
+                  mesh_bvh_sanitize_coord(mesh->vertices[i1].pos[1]),
+                  mesh_bvh_sanitize_coord(mesh->vertices[i1].pos[2])};
+    float c[3] = {mesh_bvh_sanitize_coord(mesh->vertices[i2].pos[0]),
+                  mesh_bvh_sanitize_coord(mesh->vertices[i2].pos[1]),
+                  mesh_bvh_sanitize_coord(mesh->vertices[i2].pos[2])};
     for (int axis = 0; axis < 3; axis++) {
         mn[axis] = fminf(a[axis], fminf(b[axis], c[axis]));
         mx[axis] = fmaxf(a[axis], fmaxf(b[axis], c[axis]));
@@ -1324,6 +1481,9 @@ static int raycast_heightfield_pose_raw(void *heightfield,
     double prev_t;
     double prev_clearance = DBL_MAX;
     int has_prev = 0;
+    if (!heightfield || !pose || !origin || !dir || !isfinite(max_distance) || max_distance <= 0.0)
+        return 0;
+    max_distance = query_sanitize_distance(max_distance);
     rt_collider3d_compute_world_aabb_raw(
         heightfield, pose->position, pose->rotation, pose->scale, mn, mx);
     if (!raycast_aabb_raw(origin, dir, mn, mx, max_distance, &entry_t, aabb_normal, &started))
@@ -1349,8 +1509,11 @@ static int raycast_heightfield_pose_raw(void *heightfield,
         step = 1e-5;
     if (step > max_distance)
         step = max_distance;
+    if (!isfinite(step) || step <= 0.0)
+        return 0;
     prev_t = start_t;
-    for (double t = start_t; t <= max_distance + 1e-9; t += step) {
+    for (double t = start_t, march_iter = 0.0; t <= max_distance + 1e-9 && march_iter < 2048.0;
+         t += step, march_iter += 1.0) {
         double local_point[3] = {local_origin[0] + local_dir[0] * t,
                                  local_origin[1] + local_dir[1] * t,
                                  local_origin[2] + local_dir[2] * t};
@@ -1391,8 +1554,10 @@ static int raycast_heightfield_pose_raw(void *heightfield,
                 *out_t = hit_t;
             if (out_started)
                 *out_started = (t == start_t && clearance <= 0.0) ? 1 : 0;
-            if (out_normal)
+            if (out_normal) {
                 transform_normal_from_local(pose, local_normal, out_normal);
+                query_normalize_normal(out_normal, dir);
+            }
             return 1;
         }
         prev_clearance = clearance;
@@ -1506,6 +1671,9 @@ static int raycast_collider_pose(void *collider,
         if (!raycast_aabb_raw(origin, dir, mn, mx, max_distance, &t, normal, &started))
             return 0;
     }
+    if (!isfinite(t) || t < 0.0 || t > max_distance)
+        return 0;
+    query_normalize_normal(normal, dir);
     if (out_t)
         *out_t = t;
     if (out_normal)
@@ -1560,21 +1728,14 @@ void *rt_world3d_raycast(
     if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) ||
         !isfinite(max_distance) || max_distance <= 0.0)
         return NULL;
-    origin[0] = rt_vec3_x(origin_obj);
-    origin[1] = rt_vec3_y(origin_obj);
-    origin[2] = rt_vec3_z(origin_obj);
-    if (!ph3d_vec3_all_finite(origin))
+    if (!query_read_vec3(origin_obj, origin) || !query_read_vec3(direction_obj, dir))
         return NULL;
-    dir[0] = rt_vec3_x(direction_obj);
-    dir[1] = rt_vec3_y(direction_obj);
-    dir[2] = rt_vec3_z(direction_obj);
-    if (!isfinite(dir[0]) || !isfinite(dir[1]) || !isfinite(dir[2]))
+    max_distance = query_sanitize_distance(max_distance);
+    if (!query_normalize_direction(dir))
         return NULL;
-    if (vec3_normalize_in_place(dir) <= 1e-12)
-        return NULL;
-    end[0] = origin[0] + dir[0] * max_distance;
-    end[1] = origin[1] + dir[1] * max_distance;
-    end[2] = origin[2] + dir[2] * max_distance;
+    end[0] = query_saturate_coord(origin[0] + dir[0] * max_distance);
+    end[1] = query_saturate_coord(origin[1] + dir[1] * max_distance);
+    end[2] = query_saturate_coord(origin[2] + dir[2] * max_distance);
     for (int axis = 0; axis < 3; ++axis) {
         query_min[axis] = fmin(origin[axis], end[axis]);
         query_max[axis] = fmax(origin[axis], end[axis]);
@@ -1617,21 +1778,14 @@ void *rt_world3d_raycast_all(
     if (!w || !rt_g3d_is_vec3(origin_obj) || !rt_g3d_is_vec3(direction_obj) ||
         !isfinite(max_distance) || max_distance <= 0.0)
         return NULL;
-    origin[0] = rt_vec3_x(origin_obj);
-    origin[1] = rt_vec3_y(origin_obj);
-    origin[2] = rt_vec3_z(origin_obj);
-    if (!ph3d_vec3_all_finite(origin))
+    if (!query_read_vec3(origin_obj, origin) || !query_read_vec3(direction_obj, dir))
         return NULL;
-    dir[0] = rt_vec3_x(direction_obj);
-    dir[1] = rt_vec3_y(direction_obj);
-    dir[2] = rt_vec3_z(direction_obj);
-    if (!isfinite(dir[0]) || !isfinite(dir[1]) || !isfinite(dir[2]))
+    max_distance = query_sanitize_distance(max_distance);
+    if (!query_normalize_direction(dir))
         return NULL;
-    if (vec3_normalize_in_place(dir) <= 1e-12)
-        return NULL;
-    end[0] = origin[0] + dir[0] * max_distance;
-    end[1] = origin[1] + dir[1] * max_distance;
-    end[2] = origin[2] + dir[2] * max_distance;
+    end[0] = query_saturate_coord(origin[0] + dir[0] * max_distance);
+    end[1] = query_saturate_coord(origin[1] + dir[1] * max_distance);
+    end[2] = query_saturate_coord(origin[2] + dir[2] * max_distance);
     for (int axis = 0; axis < 3; ++axis) {
         query_min[axis] = fmin(origin[axis], end[axis]);
         query_max[axis] = fmax(origin[axis], end[axis]);

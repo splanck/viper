@@ -10,7 +10,7 @@
 //   and optional tinted color. Rendered as a dynamic mesh updated each frame.
 //
 // Key invariants:
-//   - Wave height = amplitude * sin(frequency * (x + z) + time * speed).
+//   - Wave height = amplitude * sin(frequency * (x + z) - time * speed).
 //   - Mesh regenerated each Update() call with new vertex positions.
 //   - Transparent material (alpha blend) with configurable color.
 //

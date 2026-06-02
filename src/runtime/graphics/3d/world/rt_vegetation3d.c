@@ -40,6 +40,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define VEGETATION3D_BLADE_DIM_MAX 1000000.0
+#define VEGETATION3D_TERRAIN_EXTENT_MAX 1000000.0
+#define VEGETATION3D_WIND_PARAM_MAX 1000000.0
+#define VEGETATION3D_TIME_MAX 1000000.0
+#define VEGETATION3D_DT_MAX 1.0
+#define VEGETATION3D_MAX_BLADES 2000000
+#define VEGETATION3D_TWO_PI 6.28318530717958647692
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
@@ -91,6 +99,21 @@ static double vegetation_finite_or(double value, double fallback) {
     return rt_world3d_finite_or(value, fallback);
 }
 
+/// @brief Clamp a positive vegetation scalar to a bounded finite range.
+static double vegetation_positive_or(double value, double fallback, double max_value) {
+    return rt_world3d_clamp_positive_or(value, fallback, max_value);
+}
+
+/// @brief Clamp a non-negative vegetation scalar to a bounded finite range.
+static double vegetation_nonnegative_or(double value, double max_value) {
+    return rt_world3d_clamp_nonnegative(value, max_value);
+}
+
+/// @brief Clamp a signed vegetation scalar to a bounded finite range.
+static double vegetation_abs_or(double value, double fallback, double max_abs) {
+    return rt_world3d_clamp_abs_or(value, fallback, max_abs);
+}
+
 /// @brief Drop one GC reference held in `*slot` and clear the slot. NULL-safe.
 static void vegetation3d_release_ref(void **slot) {
     if (!slot || !*slot)
@@ -100,13 +123,73 @@ static void vegetation3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
-/// @brief Retain-then-release swap into @p slot. Safe on self-assign.
-static void vegetation3d_assign_ref(void **slot, void *value) {
+/// @brief Return true when @p pixels is a live Pixels object.
+static int vegetation3d_is_pixels_handle(void *pixels) {
+    return rt_pixels_checked_impl_or_null(pixels) != NULL;
+}
+
+/// @brief Release a retained Pixels slot only if it still points at Pixels.
+static void vegetation3d_release_pixels_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!vegetation3d_is_pixels_handle(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    vegetation3d_release_ref(slot);
+}
+
+/// @brief Release a retained Mesh3D slot only if it still points at Mesh3D.
+static void vegetation3d_release_mesh_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    vegetation3d_release_ref(slot);
+}
+
+/// @brief Release a retained Material3D slot only if it still points at Material3D.
+static void vegetation3d_release_material_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    vegetation3d_release_ref(slot);
+}
+
+/// @brief Retain-then-release swap into a Pixels slot. Safe on self-assign.
+static void vegetation3d_assign_pixels_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
     rt_obj_retain_maybe(value);
-    vegetation3d_release_ref(slot);
+    vegetation3d_release_pixels_slot(slot);
     *slot = value;
+}
+
+/// @brief Return a Mesh3D slot only when its private handle is still valid.
+static rt_mesh3d *vegetation3d_mesh_ref(void *ref) {
+    return rt_g3d_has_class(ref, RT_G3D_MESH3D_CLASS_ID) ? (rt_mesh3d *)ref : NULL;
+}
+
+/// @brief Return a Material3D slot only when its private handle is still valid.
+static rt_material3d *vegetation3d_material_ref(void *ref) {
+    return rt_g3d_has_class(ref, RT_G3D_MATERIAL3D_CLASS_ID) ? (rt_material3d *)ref : NULL;
+}
+
+/// @brief Clear corrupted retained resource slots without releasing unrelated objects.
+static void vegetation3d_repair_resource_handles(rt_vegetation3d *v) {
+    if (!v)
+        return;
+    if (v->density_map && !vegetation3d_is_pixels_handle(v->density_map))
+        vegetation3d_release_pixels_slot(&v->density_map);
+    if (v->blade_mesh && !vegetation3d_mesh_ref(v->blade_mesh))
+        vegetation3d_release_mesh_slot(&v->blade_mesh);
+    if (v->blade_material && !vegetation3d_material_ref(v->blade_material))
+        vegetation3d_release_material_slot(&v->blade_material);
 }
 
 /// @brief GC finalizer — release owned blade resources and instance arrays.
@@ -118,21 +201,25 @@ static void vegetation3d_assign_ref(void **slot, void *value) {
 ///   so the finalize is just three `free`s plus pointer nulling.
 static void vegetation3d_finalizer(void *obj) {
     rt_vegetation3d *v = (rt_vegetation3d *)obj;
+    if (!v)
+        return;
     free(v->base_transforms);
     free(v->positions);
     free(v->visible_transforms);
     v->base_transforms = NULL;
     v->positions = NULL;
     v->visible_transforms = NULL;
-    vegetation3d_release_ref(&v->density_map);
-    vegetation3d_release_ref(&v->blade_mesh);
-    vegetation3d_release_ref(&v->blade_material);
+    vegetation3d_release_pixels_slot(&v->density_map);
+    vegetation3d_release_mesh_slot(&v->blade_mesh);
+    vegetation3d_release_material_slot(&v->blade_material);
 }
 
 /// @brief Build the cross-billboard blade mesh (2 perpendicular quads).
 static void build_blade_mesh(void *mesh, double w, double h) {
     if (!mesh)
         return;
+    w = vegetation_positive_or(w, 0.4, VEGETATION3D_BLADE_DIM_MAX);
+    h = vegetation_positive_or(h, 1.2, VEGETATION3D_BLADE_DIM_MAX);
     double hw = w * 0.5;
     /* Quad 1: X-aligned */
     rt_mesh3d_add_vertex(mesh, -hw, 0, 0, 0, 0, 1, 0, 1);
@@ -157,8 +244,70 @@ static void build_blade_mesh(void *mesh, double w, double h) {
 ///   artist tunes a seed to get a specific look. Not suitable for anything
 ///   cryptographic, but statistically adequate for even-ish scattering.
 static uint32_t lcg_next(uint32_t *state) {
+    if (!state)
+        return 0u;
     *state = *state * 1103515245u + 12345u;
     return *state;
+}
+
+/// @brief Repair count/buffer invariants before update/draw work touches flat arrays.
+static int vegetation3d_repair_state(rt_vegetation3d *v) {
+    if (!v)
+        return 0;
+    vegetation3d_repair_resource_handles(v);
+    if (v->capacity < 0)
+        v->capacity = 0;
+    if (!v->base_transforms || !v->positions || v->capacity == 0) {
+        v->total_count = 0;
+        v->capacity = 0;
+    } else {
+        if (v->total_count < 0)
+            v->total_count = 0;
+        if (v->total_count > v->capacity)
+            v->total_count = v->capacity;
+    }
+    if (v->visible_capacity < 0)
+        v->visible_capacity = 0;
+    if (!v->visible_transforms || v->visible_capacity == 0) {
+        v->visible_count = 0;
+        v->visible_capacity = v->visible_transforms ? v->visible_capacity : 0;
+    } else {
+        if (v->visible_count < 0)
+            v->visible_count = 0;
+        if (v->visible_count > v->visible_capacity)
+            v->visible_count = v->visible_capacity;
+    }
+    return 1;
+}
+
+/// @brief True if a transform matrix is finite and inside the vegetation world range.
+static int vegetation3d_matrix_is_drawable(const float *m) {
+    if (!m)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m[i]) || fabsf(m[i]) > (float)VEGETATION3D_TERRAIN_EXTENT_MAX)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Remove invalid visible matrices before handing the batch to Canvas3D.
+static void vegetation3d_compact_visible(rt_vegetation3d *v) {
+    if (!v || !v->visible_transforms || v->visible_count <= 0) {
+        if (v)
+            v->visible_count = 0;
+        return;
+    }
+    int32_t out = 0;
+    for (int32_t i = 0; i < v->visible_count; i++) {
+        float *src = &v->visible_transforms[(size_t)i * 16u];
+        if (!vegetation3d_matrix_is_drawable(src))
+            continue;
+        if (out != i)
+            memcpy(&v->visible_transforms[(size_t)out * 16u], src, 16u * sizeof(float));
+        out++;
+    }
+    v->visible_count = out;
 }
 
 /// @brief Construct a Vegetation3D system. Allocates the shared cross-billboard blade mesh and
@@ -204,7 +353,7 @@ void *rt_vegetation3d_new(void *blade_texture) {
     /* Build material */
     v->blade_material = rt_material3d_new();
     if (!v->blade_material) {
-        vegetation3d_release_ref(&v->blade_mesh);
+        vegetation3d_release_mesh_slot(&v->blade_mesh);
         if (rt_obj_release_check0(v))
             rt_obj_free(v);
         rt_trap("Vegetation3D.New: material allocation failed");
@@ -233,7 +382,7 @@ void rt_vegetation3d_set_density_map(void *obj, void *pixels) {
             return;
         }
     }
-    vegetation3d_assign_ref(&v->density_map, pixels);
+    vegetation3d_assign_pixels_ref(&v->density_map, pixels);
 }
 
 /// @brief Configure wind animation. `speed` scales time, `strength` is the maximum top-of-blade
@@ -246,13 +395,9 @@ void rt_vegetation3d_set_wind_params(void *obj, double speed, double strength, d
         (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
     if (!v)
         return;
-    v->wind_speed = vegetation_finite_or(speed, 0.0);
-    v->wind_strength = vegetation_finite_or(strength, 0.0);
-    if (v->wind_strength < 0.0)
-        v->wind_strength = 0.0;
-    v->wind_turbulence = vegetation_finite_or(turbulence, 0.0);
-    if (v->wind_turbulence < 0.0)
-        v->wind_turbulence = 0.0;
+    v->wind_speed = vegetation_abs_or(speed, 0.0, VEGETATION3D_WIND_PARAM_MAX);
+    v->wind_strength = vegetation_nonnegative_or(strength, VEGETATION3D_WIND_PARAM_MAX);
+    v->wind_turbulence = vegetation_nonnegative_or(turbulence, VEGETATION3D_WIND_PARAM_MAX);
 }
 
 /// @brief Set LOD thresholds. Within `near_dist` all blades render; between near and far they
@@ -265,12 +410,18 @@ void rt_vegetation3d_set_lod_distances(void *obj, double near_dist, double far_d
         (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
     if (!v)
         return;
-    near_dist = vegetation_finite_or(near_dist, 40.0);
-    far_dist = vegetation_finite_or(far_dist, 100.0);
-    if (near_dist < 0.0)
-        near_dist = 0.0;
+    near_dist = vegetation_nonnegative_or(near_dist, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    far_dist = vegetation_nonnegative_or(far_dist, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    if (near_dist <= 0.0)
+        near_dist = 40.0;
+    if (far_dist <= 0.0)
+        far_dist = 100.0;
     if (far_dist <= near_dist + 1e-6)
         far_dist = near_dist + 1.0;
+    if (far_dist > VEGETATION3D_TERRAIN_EXTENT_MAX)
+        far_dist = VEGETATION3D_TERRAIN_EXTENT_MAX;
+    if (near_dist >= far_dist)
+        near_dist = far_dist > 1.0 ? far_dist - 1.0 : 0.0;
     v->lod_near = (float)near_dist;
     v->lod_far = (float)far_dist;
 }
@@ -285,13 +436,9 @@ void rt_vegetation3d_set_blade_size(void *obj, double width, double height, doub
         (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
     if (!v)
         return;
-    width = vegetation_finite_or(width, 0.4);
-    height = vegetation_finite_or(height, 1.2);
+    width = vegetation_positive_or(width, 0.4, VEGETATION3D_BLADE_DIM_MAX);
+    height = vegetation_positive_or(height, 1.2, VEGETATION3D_BLADE_DIM_MAX);
     variation = vegetation_finite_or(variation, 0.0);
-    if (width <= 0.0)
-        width = 0.4;
-    if (height <= 0.0)
-        height = 1.2;
     if (variation < 0.0)
         variation = 0.0;
     if (variation > 1.0)
@@ -300,14 +447,37 @@ void rt_vegetation3d_set_blade_size(void *obj, double width, double height, doub
     v->blade_height = height;
     v->size_variation = variation;
     /* Rebuild blade mesh with new size */
-    if (v->blade_mesh)
+    if (v->blade_mesh && !vegetation3d_mesh_ref(v->blade_mesh))
+        vegetation3d_release_mesh_slot(&v->blade_mesh);
+    if (!v->blade_mesh) {
+        v->blade_mesh = rt_mesh3d_new();
+        if (!v->blade_mesh) {
+            rt_trap("Vegetation3D.SetBladeSize: blade mesh allocation failed");
+            return;
+        }
+    } else {
         rt_mesh3d_clear(v->blade_mesh);
+    }
     build_blade_mesh(v->blade_mesh, width, height);
 }
 
 /// @brief Build a row-major 4x4 transform: translate(x,y,z) * rotateY(angle) * scale(s).
 static void build_transform(float *out, double x, double y, double z, double angle, double s) {
+    if (!out)
+        return;
+    x = vegetation_abs_or(x, 0.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    y = vegetation_abs_or(y, 0.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    z = vegetation_abs_or(z, 0.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    angle = vegetation_abs_or(angle, 0.0, VEGETATION3D_WIND_PARAM_MAX);
+    s = vegetation_positive_or(s, 1.0, VEGETATION3D_BLADE_DIM_MAX);
+    angle = fmod(angle, VEGETATION3D_TWO_PI);
+    if (!isfinite(angle))
+        angle = 0.0;
     double ca = cos(angle), sa = sin(angle);
+    if (!isfinite(ca))
+        ca = 1.0;
+    if (!isfinite(sa))
+        sa = 0.0;
     /* Row 0 */ out[0] = (float)(ca * s);
     out[1] = 0;
     out[2] = (float)(sa * s);
@@ -335,12 +505,13 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
         (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
     if (!v)
         return;
+    vegetation3d_repair_resource_handles(v);
     if (count <= 0) {
         v->total_count = 0;
         v->visible_count = 0;
         return;
     }
-    if (count > INT32_MAX) {
+    if (count > VEGETATION3D_MAX_BLADES) {
         rt_trap("Vegetation3D.Populate: count exceeds supported range");
         return;
     }
@@ -357,14 +528,14 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
     if (!tv || tv->width <= 0 || tv->depth <= 0)
         return;
 
-    double sx = vegetation_finite_or(tv->scale[0], 1.0);
-    double sz = vegetation_finite_or(tv->scale[2], 1.0);
-    if (sx <= 0.0)
-        sx = 1.0;
-    if (sz <= 0.0)
-        sz = 1.0;
+    double sx = vegetation_positive_or(tv->scale[0], 1.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    double sz = vegetation_positive_or(tv->scale[2], 1.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
     double tw = (double)tv->width * sx;
     double td = (double)tv->depth * sz;
+    if (tw > VEGETATION3D_TERRAIN_EXTENT_MAX)
+        tw = VEGETATION3D_TERRAIN_EXTENT_MAX;
+    if (td > VEGETATION3D_TERRAIN_EXTENT_MAX)
+        td = VEGETATION3D_TERRAIN_EXTENT_MAX;
     if (!isfinite(tw) || !isfinite(td) || tw <= 0.0 || td <= 0.0) {
         rt_trap("Vegetation3D.Populate: invalid terrain extents");
         return;
@@ -383,8 +554,8 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
         rt_trap("Vegetation3D.Populate: allocation size overflow");
         return;
     }
-    float *new_base_transforms = (float *)malloc(base_bytes);
-    float *new_positions = (float *)malloc(pos_bytes);
+    float *new_base_transforms = (float *)calloc(1, base_bytes);
+    float *new_positions = (float *)calloc(1, pos_bytes);
     if (!new_base_transforms || !new_positions) {
         free(new_base_transforms);
         free(new_positions);
@@ -440,18 +611,21 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
             uint32_t pixel = density_map->data[pz * density_map->width + px];
             int32_t density = (int32_t)((pixel >> 24) & 0xFF); /* R channel */
             uint32_t roll = lcg_next(&rng) & 0xFF;
-            if ((int32_t)roll > density)
+            if (density <= 0)
+                continue;
+            if (density < 255 && (int32_t)roll >= density)
                 continue; /* skip based on density */
         }
 
         double wy = rt_terrain3d_get_height_at(terrain, wx, wz);
-        wy = vegetation_finite_or(wy, 0.0);
+        wy = vegetation_abs_or(wy, 0.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
 
         /* Random Y rotation + scale variation */
         double angle = ((double)(lcg_next(&rng) & 0xFFFF) / 65535.0) * 6.283185307;
         double scale_var =
             1.0 + (((double)(lcg_next(&rng) & 0xFFFF) / 65535.0) - 0.5) * 2.0 * v->size_variation;
-        if (!isfinite(scale_var) || scale_var < 0.01)
+        scale_var = vegetation_positive_or(scale_var, 1.0, VEGETATION3D_BLADE_DIM_MAX);
+        if (scale_var < 0.01)
             scale_var = 0.01;
 
         int32_t idx = v->total_count;
@@ -473,16 +647,33 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
         (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
     if (!v || !isfinite(dt) || dt < 0.0)
         return;
-    camX = vegetation_finite_or(camX, 0.0);
-    camZ = vegetation_finite_or(camZ, 0.0);
+    if (!vegetation3d_repair_state(v))
+        return;
+    if (dt > VEGETATION3D_DT_MAX)
+        dt = VEGETATION3D_DT_MAX;
+    camX = vegetation_abs_or(camX, 0.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    camZ = vegetation_abs_or(camZ, 0.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
     v->time += dt;
     if (!isfinite(v->time))
         v->time = 0.0;
+    if (v->time > VEGETATION3D_TIME_MAX)
+        v->time = fmod(v->time, VEGETATION3D_TIME_MAX);
 
     if (v->total_count <= 0 || !v->base_transforms || !v->positions) {
         v->visible_count = 0;
         return;
     }
+
+    float lod_near =
+        (float)vegetation_nonnegative_or((double)v->lod_near, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    float lod_far =
+        (float)vegetation_nonnegative_or((double)v->lod_far, VEGETATION3D_TERRAIN_EXTENT_MAX);
+    if (lod_far <= lod_near)
+        lod_far = lod_near + 1.0f;
+    double wind_speed = vegetation_abs_or(v->wind_speed, 0.0, VEGETATION3D_WIND_PARAM_MAX);
+    double wind_strength = vegetation_nonnegative_or(v->wind_strength, VEGETATION3D_WIND_PARAM_MAX);
+    double wind_turbulence =
+        vegetation_nonnegative_or(v->wind_turbulence, VEGETATION3D_WIND_PARAM_MAX);
 
     /* Ensure visible buffer is large enough */
     if (v->visible_capacity < v->total_count) {
@@ -508,20 +699,24 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
     for (int32_t i = 0; i < v->total_count; i++) {
         float bx = v->positions[i * 3 + 0];
         float bz = v->positions[i * 3 + 2];
+        if (!isfinite(bx) || !isfinite(bz))
+            continue;
 
         /* Distance to camera (XZ plane) */
-        float dx = bx - (float)camX;
-        float dz = bz - (float)camZ;
-        float dist = sqrtf(dx * dx + dz * dz);
+        double dx = (double)bx - camX;
+        double dz = (double)bz - camZ;
+        float dist = (float)sqrt(dx * dx + dz * dz);
+        if (!isfinite(dist))
+            continue;
 
         /* Hard cull beyond far distance */
-        if (dist > v->lod_far)
+        if (dist > lod_far)
             continue;
 
         /* Progressive thinning between near and far */
-        if (dist > v->lod_near) {
-            float denom = v->lod_far - v->lod_near;
-            float t = denom > 1e-6f ? (dist - v->lod_near) / denom : 1.0f;
+        if (dist > lod_near) {
+            float denom = lod_far - lod_near;
+            float t = denom > 1e-6f ? (dist - lod_near) / denom : 1.0f;
             if (t < 0.0f)
                 t = 0.0f;
             if (t > 1.0f)
@@ -536,14 +731,27 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
         /* Copy base transform */
         float *dst = &v->visible_transforms[v->visible_count * 16];
         memcpy(dst, &v->base_transforms[i * 16], 16 * sizeof(float));
+        if (!vegetation3d_matrix_is_drawable(dst))
+            continue;
 
         /* Apply wind shear to the transform's Y-column entries.
          * This bends the blade tops in the wind direction. */
-        double phase = v->wind_turbulence * (bx * 0.1 + bz * 0.07) + v->time * v->wind_speed;
-        float wind_x = (float)(sin(phase) * v->wind_strength);
-        float wind_z = (float)(cos(phase * 0.7) * v->wind_strength * 0.5);
+        double phase = wind_turbulence * (bx * 0.1 + bz * 0.07) + v->time * wind_speed;
+        if (!isfinite(phase))
+            phase = 0.0;
+        phase = fmod(phase, VEGETATION3D_TWO_PI);
+        if (!isfinite(phase))
+            phase = 0.0;
+        float wind_x = (float)(sin(phase) * wind_strength);
+        float wind_z = (float)(cos(phase * 0.7) * wind_strength * 0.5);
+        if (!isfinite(wind_x))
+            wind_x = 0.0f;
+        if (!isfinite(wind_z))
+            wind_z = 0.0f;
         dst[1] += wind_x; /* shear X column by wind */
         dst[9] += wind_z; /* shear Z column by wind */
+        if (!vegetation3d_matrix_is_drawable(dst))
+            continue;
 
         v->visible_count++;
     }
@@ -560,16 +768,20 @@ void rt_canvas3d_draw_vegetation(void *canvas_obj, void *veg_obj) {
         (rt_vegetation3d *)rt_g3d_checked_or_null(veg_obj, RT_G3D_VEGETATION3D_CLASS_ID);
     if (!c || !v)
         return;
-    if (!c->in_frame || !c->backend || v->visible_count == 0)
+    if (!vegetation3d_repair_state(v))
+        return;
+    if (!c->in_frame || !c->backend || v->visible_count <= 0)
         return;
     if (c->frame_is_2d) {
         rt_trap("Canvas3D.DrawVegetation: cannot draw vegetation during Begin2D/End");
         return;
     }
 
-    rt_mesh3d *mesh = (rt_mesh3d *)v->blade_mesh;
-    rt_material3d *mat = (rt_material3d *)v->blade_material;
-    if (!mesh || mesh->vertex_count == 0 || !mat)
+    rt_mesh3d *mesh = vegetation3d_mesh_ref(v->blade_mesh);
+    rt_material3d *mat = vegetation3d_material_ref(v->blade_material);
+    vegetation3d_compact_visible(v);
+    if (!mesh || mesh->vertex_count == 0 || !mat || !v->visible_transforms ||
+        v->visible_count <= 0 || v->visible_count > v->visible_capacity)
         return;
 
     /* Disable backface culling for grass (visible from both sides) */

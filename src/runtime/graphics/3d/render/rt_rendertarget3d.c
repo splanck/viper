@@ -270,6 +270,11 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
     } px_view;
 
     px_view *pv = (px_view *)pixels;
+    if (!pv->data || pv->w != (int64_t)w || pv->h != (int64_t)h) {
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+        return NULL;
+    }
 
     for (int32_t y = 0; y < h; y++) {
         const uint8_t *src = &rtd->target->color_buf[(size_t)y * (size_t)stride];

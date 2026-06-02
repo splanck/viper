@@ -112,6 +112,60 @@ static double transform3d_scale_or_unit(double value) {
     return value;
 }
 
+/// @brief Sanitize a position-like vector in place.
+static void transform3d_sanitize_position3(double *v) {
+    if (!v)
+        return;
+    v[0] = transform3d_clamp_abs_or(v[0], 0.0);
+    v[1] = transform3d_clamp_abs_or(v[1], 0.0);
+    v[2] = transform3d_clamp_abs_or(v[2], 0.0);
+}
+
+/// @brief Sanitize a scale-like vector in place, preserving finite negative and zero scales.
+static void transform3d_sanitize_scale3(double *v) {
+    if (!v)
+        return;
+    v[0] = transform3d_scale_or_unit(v[0]);
+    v[1] = transform3d_scale_or_unit(v[1]);
+    v[2] = transform3d_scale_or_unit(v[2]);
+}
+
+/// @brief Read a Vec3 handle into a clamped raw vector.
+static int transform3d_read_vec3_clamped(void *obj, double *out) {
+    if (!out || !rt_g3d_is_vec3(obj))
+        return 0;
+    out[0] = transform3d_clamp_abs_or(rt_vec3_x(obj), 0.0);
+    out[1] = transform3d_clamp_abs_or(rt_vec3_y(obj), 0.0);
+    out[2] = transform3d_clamp_abs_or(rt_vec3_z(obj), 0.0);
+    return 1;
+}
+
+/// @brief Robustly normalize a raw Vec3 without overflowing on very large finite inputs.
+static int transform3d_normalize_vec3(double *v) {
+    double max_abs;
+    double sx;
+    double sy;
+    double sz;
+    double len_sq;
+    double inv_len;
+    if (!v || !isfinite(v[0]) || !isfinite(v[1]) || !isfinite(v[2]))
+        return 0;
+    max_abs = fmax(fabs(v[0]), fmax(fabs(v[1]), fabs(v[2])));
+    if (!isfinite(max_abs) || max_abs < 1e-24)
+        return 0;
+    sx = v[0] / max_abs;
+    sy = v[1] / max_abs;
+    sz = v[2] / max_abs;
+    len_sq = sx * sx + sy * sy + sz * sz;
+    if (!isfinite(len_sq) || len_sq < 1e-24)
+        return 0;
+    inv_len = 1.0 / sqrt(len_sq);
+    v[0] = sx * inv_len;
+    v[1] = sy * inv_len;
+    v[2] = sz * inv_len;
+    return 1;
+}
+
 /// @brief Write the identity quaternion (0, 0, 0, 1) into @p q.
 /// @details Used as the fallback when `transform3d_quat_normalize` receives a
 ///   degenerate input. The identity quaternion represents no rotation so a
@@ -133,22 +187,58 @@ static void transform3d_quat_identity(double *q) {
 ///   external sources are silently corrected.
 /// @param q double[4] quaternion in (x, y, z, w) order; modified in-place.
 static void transform3d_quat_normalize(double *q) {
+    double max_abs;
+    double x;
+    double y;
+    double z;
+    double w;
+    double len_sq;
+    double inv_len;
     if (!q)
         return;
     if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
         transform3d_quat_identity(q);
         return;
     }
-    double len_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    max_abs = fmax(fmax(fabs(q[0]), fabs(q[1])), fmax(fabs(q[2]), fabs(q[3])));
+    if (!isfinite(max_abs) || max_abs < 1e-24) {
+        transform3d_quat_identity(q);
+        return;
+    }
+    x = q[0] / max_abs;
+    y = q[1] / max_abs;
+    z = q[2] / max_abs;
+    w = q[3] / max_abs;
+    len_sq = x * x + y * y + z * z + w * w;
     if (!isfinite(len_sq) || len_sq < 1e-24) {
         transform3d_quat_identity(q);
         return;
     }
-    double inv_len = 1.0 / sqrt(len_sq);
-    q[0] *= inv_len;
-    q[1] *= inv_len;
-    q[2] *= inv_len;
-    q[3] *= inv_len;
+    inv_len = 1.0 / sqrt(len_sq);
+    q[0] = x * inv_len;
+    q[1] = y * inv_len;
+    q[2] = z * inv_len;
+    q[3] = w * inv_len;
+}
+
+/// @brief Return true when every cached matrix lane is finite.
+static int transform3d_matrix_is_finite(const double *m) {
+    if (!m)
+        return 0;
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m[i]))
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Re-apply component invariants before exposing getters or rebuilding the matrix.
+static void transform3d_repair_components(rt_transform3d *xf) {
+    if (!xf)
+        return;
+    transform3d_sanitize_position3(xf->position);
+    transform3d_sanitize_scale3(xf->scale);
+    transform3d_quat_normalize(xf->rotation);
 }
 
 /// @brief Square root helper for rotation extraction, treating tiny negative drift as zero.
@@ -170,28 +260,35 @@ static void transform3d_finalizer(void *obj) {
 /// @brief Build TRS matrix from position, quaternion, scale.
 /// Mirrors rt_scene3d.c:build_trs_matrix exactly.
 static void build_trs(const double *pos, const double *quat, const double *scl, double *out) {
-    double x = quat[0], y = quat[1], z = quat[2], w = quat[3];
+    double p[3] = {pos ? pos[0] : 0.0, pos ? pos[1] : 0.0, pos ? pos[2] : 0.0};
+    double q[4] = {quat ? quat[0] : 0.0, quat ? quat[1] : 0.0, quat ? quat[2] : 0.0,
+                   quat ? quat[3] : 1.0};
+    double s[3] = {scl ? scl[0] : 1.0, scl ? scl[1] : 1.0, scl ? scl[2] : 1.0};
+    transform3d_sanitize_position3(p);
+    transform3d_sanitize_scale3(s);
+    transform3d_quat_normalize(q);
+    double x = q[0], y = q[1], z = q[2], w = q[3];
     double x2 = x + x, y2 = y + y, z2 = z + z;
     double xx = x * x2, xy = x * y2, xz = x * z2;
     double yy = y * y2, yz = y * z2, zz = z * z2;
     double wx = w * x2, wy = w * y2, wz = w * z2;
 
-    double sx = scl[0], sy = scl[1], sz = scl[2];
+    double sx = s[0], sy = s[1], sz = s[2];
 
     out[0] = (1.0 - (yy + zz)) * sx;
     out[1] = (xy - wz) * sy;
     out[2] = (xz + wy) * sz;
-    out[3] = pos[0];
+    out[3] = p[0];
 
     out[4] = (xy + wz) * sx;
     out[5] = (1.0 - (xx + zz)) * sy;
     out[6] = (yz - wx) * sz;
-    out[7] = pos[1];
+    out[7] = p[1];
 
     out[8] = (xz - wy) * sx;
     out[9] = (yz + wx) * sy;
     out[10] = (1.0 - (xx + yy)) * sz;
-    out[11] = pos[2];
+    out[11] = p[2];
 
     out[12] = 0.0;
     out[13] = 0.0;
@@ -208,9 +305,14 @@ static void build_trs(const double *pos, const double *quat, const double *scl, 
 ///   `xf->matrix` equals `T * R * S` built from the current component
 ///   fields, and `xf->dirty == 0`.
 static void ensure_matrix(rt_transform3d *xf) {
-    if (!xf->dirty)
+    transform3d_repair_components(xf);
+    if (!xf->dirty && transform3d_matrix_is_finite(xf->matrix))
         return;
     build_trs(xf->position, xf->rotation, xf->scale, xf->matrix);
+    if (!transform3d_matrix_is_finite(xf->matrix)) {
+        memset(xf->matrix, 0, sizeof(xf->matrix));
+        xf->matrix[0] = xf->matrix[5] = xf->matrix[10] = xf->matrix[15] = 1.0;
+    }
     xf->dirty = 0;
 }
 
@@ -232,6 +334,8 @@ void *rt_transform3d_new(void) {
     xf->rotation[0] = xf->rotation[1] = xf->rotation[2] = 0.0;
     xf->rotation[3] = 1.0; /* identity quaternion */
     xf->scale[0] = xf->scale[1] = xf->scale[2] = 1.0;
+    memset(xf->matrix, 0, sizeof(xf->matrix));
+    xf->matrix[0] = xf->matrix[5] = xf->matrix[10] = xf->matrix[15] = 1.0;
     xf->dirty = 1;
     rt_obj_set_finalizer(xf, transform3d_finalizer);
     return xf;
@@ -253,6 +357,7 @@ void *rt_transform3d_get_position(void *obj) {
     rt_transform3d *xf = transform3d_checked(obj);
     if (!xf)
         return rt_vec3_new(0, 0, 0);
+    transform3d_repair_components(xf);
     return rt_vec3_new(xf->position[0], xf->position[1], xf->position[2]);
 }
 
@@ -274,6 +379,7 @@ void *rt_transform3d_get_rotation(void *obj) {
     rt_transform3d *xf = transform3d_checked(obj);
     if (!xf)
         return rt_quat_new(0, 0, 0, 1);
+    transform3d_repair_components(xf);
     return rt_quat_new(xf->rotation[0], xf->rotation[1], xf->rotation[2], xf->rotation[3]);
 }
 
@@ -323,6 +429,7 @@ void *rt_transform3d_get_scale(void *obj) {
     rt_transform3d *xf = transform3d_checked(obj);
     if (!xf)
         return rt_vec3_new(1, 1, 1);
+    transform3d_repair_components(xf);
     return rt_vec3_new(xf->scale[0], xf->scale[1], xf->scale[2]);
 }
 
@@ -357,6 +464,7 @@ void rt_transform3d_translate(void *obj, void *delta) {
     rt_transform3d *xf = transform3d_checked(obj);
     if (!xf || !rt_g3d_is_vec3(delta))
         return;
+    transform3d_repair_components(xf);
     double nx = xf->position[0] + transform3d_finite_or(rt_vec3_x(delta), 0.0);
     double ny = xf->position[1] + transform3d_finite_or(rt_vec3_y(delta), 0.0);
     double nz = xf->position[2] + transform3d_finite_or(rt_vec3_z(delta), 0.0);
@@ -372,19 +480,19 @@ void rt_transform3d_translate(void *obj, void *delta) {
 ///          vector is normalized internally.
 void rt_transform3d_rotate(void *obj, void *axis, double angle) {
     rt_transform3d *xf = transform3d_checked(obj);
-    if (!xf || !rt_g3d_is_vec3(axis))
+    double axis_raw[3];
+    if (!xf || !transform3d_read_vec3_clamped(axis, axis_raw))
         return;
 
     /* Build quaternion from axis-angle */
-    double ax = rt_vec3_x(axis), ay = rt_vec3_y(axis), az = rt_vec3_z(axis);
-    if (!isfinite(ax) || !isfinite(ay) || !isfinite(az) || !isfinite(angle))
+    double ax = axis_raw[0], ay = axis_raw[1], az = axis_raw[2];
+    if (!isfinite(angle))
         return;
-    double len = sqrt(ax * ax + ay * ay + az * az);
-    if (!isfinite(len) || len < 1e-12)
+    if (!transform3d_normalize_vec3(axis_raw))
         return;
-    ax /= len;
-    ay /= len;
-    az /= len;
+    ax = axis_raw[0];
+    ay = axis_raw[1];
+    az = axis_raw[2];
 
     angle = fmod(angle, TRANSFORM3D_TWO_PI);
     if (!isfinite(angle))
@@ -394,6 +502,7 @@ void rt_transform3d_rotate(void *obj, void *axis, double angle) {
     double qx = ax * sa, qy = ay * sa, qz = az * sa, qw = ca;
 
     /* Multiply: current = new_rot * current */
+    transform3d_repair_components(xf);
     double cx = xf->rotation[0], cy = xf->rotation[1];
     double cz = xf->rotation[2], cw = xf->rotation[3];
     xf->rotation[0] = qw * cx + qx * cw + qy * cz - qz * cy;
@@ -414,35 +523,25 @@ void rt_transform3d_rotate(void *obj, void *axis, double angle) {
 /// @param up_vec Vec3 up hint (defaults to world Y if NULL).
 void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
     rt_transform3d *xf = transform3d_checked(obj);
-    if (!xf || !rt_g3d_is_vec3(target))
+    double target_pos[3];
+    double up_hint[3] = {0.0, 1.0, 0.0};
+    if (!xf || !transform3d_read_vec3_clamped(target, target_pos))
         return;
 
-    double target_x = rt_vec3_x(target);
-    double target_y = rt_vec3_y(target);
-    double target_z = rt_vec3_z(target);
-    if (!isfinite(target_x) || !isfinite(target_y) || !isfinite(target_z))
+    transform3d_repair_components(xf);
+    double forward[3] = {target_pos[0] - xf->position[0],
+                         target_pos[1] - xf->position[1],
+                         target_pos[2] - xf->position[2]};
+    if (!transform3d_normalize_vec3(forward))
         return;
-    double tx = target_x - xf->position[0];
-    double ty = target_y - xf->position[1];
-    double tz = target_z - xf->position[2];
-    double flen = sqrt(tx * tx + ty * ty + tz * tz);
-    if (!isfinite(flen) || flen < 1e-12)
-        return;
-    tx /= flen;
-    ty /= flen;
-    tz /= flen;
+    double tx = forward[0], ty = forward[1], tz = forward[2];
 
-    double ux = 0.0, uy = 1.0, uz = 0.0;
-    if (rt_g3d_is_vec3(up_vec)) {
-        ux = rt_vec3_x(up_vec);
-        uy = rt_vec3_y(up_vec);
-        uz = rt_vec3_z(up_vec);
-        if (!isfinite(ux) || !isfinite(uy) || !isfinite(uz)) {
-            ux = 0.0;
-            uy = 1.0;
-            uz = 0.0;
-        }
+    if (!transform3d_read_vec3_clamped(up_vec, up_hint) || !transform3d_normalize_vec3(up_hint)) {
+        up_hint[0] = 0.0;
+        up_hint[1] = 1.0;
+        up_hint[2] = 0.0;
     }
+    double ux = up_hint[0], uy = up_hint[1], uz = up_hint[2];
 
     /* Right = normalize(cross(forward, up)) */
     double rx = ty * uz - tz * uy, ry = tz * ux - tx * uz, rz = tx * uy - ty * ux;

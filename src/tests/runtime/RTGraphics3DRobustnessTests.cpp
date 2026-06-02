@@ -35,6 +35,7 @@ extern "C" {
 #include "rt_quat.h"
 #include "rt_raycast3d.h"
 #include "rt_scene3d.h"
+#include "rt_scene3d_internal.h"
 #include "rt_skeleton3d.h"
 #include "rt_sprite3d.h"
 #include "rt_string.h"
@@ -214,6 +215,15 @@ struct ParticleView {
     void *texture;
     int32_t emitter_shape;
     double emitter_size[3];
+    uint32_t prng_state;
+    void *cached_material;
+    void *draw_vertices[4];
+    uint32_t *draw_indices[4];
+    uint32_t draw_vertex_capacity[4];
+    uint32_t draw_index_capacity[4];
+    void *draw_materials[4];
+    int64_t draw_frame_serial;
+    int32_t draw_slots_used;
 };
 
 struct WaterView {
@@ -532,6 +542,13 @@ static void test_scene_particles_water_and_render_targets_reject_wrong_handles()
     assert(water->env_map == cubemap);
     rt_water3d_set_env_map(water_obj, fake);
     assert(water->env_map == cubemap);
+    void *incomplete_cubemap = rt_cubemap3d_new(pixels, pixels, pixels, pixels, pixels, pixels);
+    static_cast<rt_cubemap3d *>(incomplete_cubemap)->face_size = 2;
+    rt_water3d_set_env_map(water_obj, incomplete_cubemap);
+    assert(water->env_map == cubemap);
+    water->env_map = incomplete_cubemap;
+    rt_water3d_update(water_obj, 0.0);
+    assert(water->env_map == nullptr);
 
     assert(rt_rendertarget3d_get_width(fake) == 0);
     assert(rt_rendertarget3d_get_height(fake) == 0);
@@ -561,6 +578,47 @@ static void test_cubemap_sampling_sanitizes_inputs() {
                                 &out[2]);
     assert(std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]));
     assert(out[0] > 0.9f);
+
+    rt_cubemap_sample(cubemap,
+                      std::numeric_limits<float>::max(),
+                      0.0f,
+                      0.0f,
+                      &out[0],
+                      &out[1],
+                      &out[2]);
+    assert(out[0] > 0.9f && out[1] < 0.1f && out[2] < 0.1f);
+
+    rt_cubemap_sample_roughness(cubemap,
+                                std::numeric_limits<float>::max(),
+                                0.0f,
+                                0.0f,
+                                0.6f,
+                                &out[0],
+                                &out[1],
+                                &out[2]);
+    assert(std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]));
+    assert(out[0] > 0.1f);
+
+    void *fake = rt_obj_new_i64(0, 8);
+    void *saved_neg_x = cubemap->faces[1];
+    cubemap->faces[1] = fake;
+    out[0] = out[1] = out[2] = 1.0f;
+    rt_cubemap_sample(cubemap, 1.0f, 0.0f, 0.0f, &out[0], &out[1], &out[2]);
+    assert(out[0] == 0.0f && out[1] == 0.0f && out[2] == 0.0f);
+    cubemap->faces[1] = saved_neg_x;
+
+    cubemap->faces[0] = fake;
+    rt_cubemap_sample(cubemap, 1.0f, 0.0f, 0.0f, &out[0], &out[1], &out[2]);
+    assert(out[0] == 0.0f && out[1] == 0.0f && out[2] == 0.0f);
+
+    auto *fake_cubemap = static_cast<rt_cubemap3d *>(rt_obj_new_i64(0, sizeof(rt_cubemap3d)));
+    out[0] = out[1] = out[2] = 1.0f;
+    rt_cubemap_sample(fake_cubemap, 1.0f, 0.0f, 0.0f, &out[0], &out[1], &out[2]);
+    assert(out[0] == 0.0f && out[1] == 0.0f && out[2] == 0.0f);
+
+    rt_canvas3d canvas{};
+    canvas.skybox = fake_cubemap;
+    assert(canvas3d_ensure_skybox_cpu_cache(&canvas, 1, 1) == 0);
 }
 
 static void test_physics_checked_handles_and_trigger_removal_exit() {
@@ -684,9 +742,33 @@ static void test_decal3d_normal_and_lifetime_are_sanitized() {
     void *huge_decal = rt_decal3d_new(pos, huge_normal, 1.0e300, nullptr);
     auto *hd = static_cast<DecalView *>(huge_decal);
     assert(std::isfinite(hd->size) && hd->size <= 1000000.0);
-    assert(hd->normal[0] == 0.0);
-    assert(hd->normal[1] == 1.0);
+    assert(hd->normal[0] == 1.0);
+    assert(hd->normal[1] == 0.0);
     assert(hd->normal[2] == 0.0);
+
+    void *fake_texture = rt_obj_new_i64(0, 8);
+    void *invalid_texture_decal = rt_decal3d_new(pos, normal, 1.0, fake_texture);
+    auto *itd = static_cast<DecalView *>(invalid_texture_decal);
+    assert(itd->texture == nullptr);
+
+    rt_canvas3d canvas = {};
+    hd->mesh = rt_obj_new_i64(0, 8);
+    hd->material = rt_obj_new_i64(0, 8);
+    hd->texture = rt_obj_new_i64(0, 8);
+    rt_canvas3d_draw_decal(&canvas, huge_decal);
+    assert(hd->texture == nullptr);
+    assert(hd->mesh != nullptr && rt_obj_class_id(hd->mesh) == RT_G3D_MESH3D_CLASS_ID);
+    assert(hd->material != nullptr && rt_obj_class_id(hd->material) == RT_G3D_MATERIAL3D_CLASS_ID);
+    auto *mesh = static_cast<rt_mesh3d *>(hd->mesh);
+    assert(mesh->vertex_count == 4);
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        assert(std::isfinite(mesh->vertices[i].pos[0]));
+        assert(std::isfinite(mesh->vertices[i].pos[1]));
+        assert(std::isfinite(mesh->vertices[i].pos[2]));
+        assert(std::fabs(mesh->vertices[i].pos[0]) <= 1000000000000.0);
+        assert(std::fabs(mesh->vertices[i].pos[1]) <= 1000000000000.0);
+        assert(std::fabs(mesh->vertices[i].pos[2]) <= 1000000000000.0);
+    }
 }
 
 static void test_path3d_growth_preserves_points() {
@@ -1135,7 +1217,7 @@ static void test_raycast_math_and_backend_guards_are_strict() {
     void *far_max = rt_vec3_new(1.0e35 + 1.0e31, 1.0, 1.0);
     double far_hit = rt_ray3d_intersect_aabb(origin, dir, far_min, far_max);
     assert(std::isfinite(far_hit));
-    assert(far_hit > 1.0e34);
+    assert(far_hit > 0.0 && far_hit <= 1000000000.0);
 
     void *fake = rt_obj_new_i64(0, 8);
     assert(rt_sphere3d_overlaps(fake, 1.0, tangent_center, 1.0) == 0);
@@ -1291,6 +1373,49 @@ static void test_terrain_water_and_vegetation_zero_dt_paths() {
     assert(veg->visible_count > 0);
 }
 
+static void test_vegetation_density_map_edges_are_exact() {
+    void *terrain = rt_terrain3d_new(4, 4);
+    void *density = rt_pixels_new(1, 1);
+    auto *veg = static_cast<VegetationView *>(rt_vegetation3d_new(nullptr));
+    assert(terrain != nullptr && density != nullptr && veg != nullptr);
+
+    rt_pixels_set(density, 0, 0, 0x000000FFll);
+    rt_vegetation3d_set_density_map(veg, density);
+    rt_vegetation3d_populate(veg, terrain, 512);
+    assert(veg->total_count == 0);
+
+    rt_pixels_set(density, 0, 0, 0xFF0000FFll);
+    rt_vegetation3d_populate(veg, terrain, 32);
+    assert(veg->total_count == 32);
+}
+
+static void test_vegetation_extreme_wind_and_corrupt_instances_are_compacted() {
+    void *terrain = rt_terrain3d_new(8, 8);
+    auto *veg = static_cast<VegetationView *>(rt_vegetation3d_new(nullptr));
+    assert(terrain != nullptr && veg != nullptr);
+
+    rt_vegetation3d_set_blade_size(veg, 1.0e300, 1.0e300, 1.0e300);
+    rt_vegetation3d_set_lod_distances(veg, 1.0e300, 1.0e300);
+    rt_vegetation3d_set_wind_params(veg, 1.0e300, 1.0e300, 1.0e300);
+    rt_vegetation3d_populate(veg, terrain, 16);
+    assert(veg->total_count == 16);
+
+    veg->positions[0] = std::numeric_limits<float>::infinity();
+    veg->base_transforms[16] = std::numeric_limits<float>::quiet_NaN();
+    veg->base_transforms[32 + 3] = 1.0e30f;
+    veg->visible_count = veg->visible_capacity + 99;
+
+    rt_vegetation3d_update(veg, 1.0e300, 0.0, 1.0e300, 0.0);
+
+    assert(std::isfinite(veg->time));
+    assert(veg->visible_count >= 0 && veg->visible_count <= veg->visible_capacity);
+    assert(veg->visible_count > 0);
+    for (int32_t i = 0; i < veg->visible_count * 16; i++) {
+        assert(std::isfinite(veg->visible_transforms[i]));
+        assert(std::fabs(veg->visible_transforms[i]) <= 1000000.0f);
+    }
+}
+
 static void test_particles_and_water_numeric_knobs_are_bounded() {
     auto *particles = static_cast<ParticleView *>(rt_particles3d_new(8));
     rt_particles3d_set_position(particles, 1.0e300, -1.0e300, 2.0);
@@ -1330,6 +1455,314 @@ static void test_particles_and_water_numeric_knobs_are_bounded() {
     assert(std::isfinite(water->waves[0][3]) && water->waves[0][3] <= 1000000.0);
     assert(water->mesh != nullptr);
     assert(static_cast<rt_mesh3d *>(water->mesh)->build_failed == 0);
+}
+
+static void test_water_extreme_wave_directions_and_cached_resources_are_repaired() {
+    auto *water = static_cast<WaterView *>(rt_water3d_new(16.0, 16.0));
+    assert(water != nullptr);
+
+    water->wave_count = -7;
+    rt_water3d_add_wave(water, 1.0e300, -1.0e300, 1.0e300, 1.0e300, 1.0e300);
+    assert(water->wave_count == 1);
+    assert(std::isfinite(water->waves[0][0]));
+    assert(std::isfinite(water->waves[0][1]));
+    assert(std::fabs(std::fabs(water->waves[0][0]) - 0.70710678) < 0.001);
+    assert(std::fabs(std::fabs(water->waves[0][1]) - 0.70710678) < 0.001);
+    assert(std::isfinite(water->waves[0][2]) && water->waves[0][2] <= 1000000.0);
+    assert(std::isfinite(water->waves[0][3]) && water->waves[0][3] <= 1000000.0);
+    assert(std::isfinite(water->waves[0][4]) && water->waves[0][4] > 0.0);
+
+    water->mesh = rt_obj_new_i64(0, 8);
+    water->material = rt_obj_new_i64(0, 8);
+    water->texture = rt_obj_new_i64(0, 8);
+    water->normal_map = rt_obj_new_i64(0, 8);
+    water->env_map = rt_obj_new_i64(0, 8);
+    water->mesh_dirty = 0;
+
+    rt_water3d_update(water, 0.0);
+    assert(water->mesh != nullptr);
+    assert(water->material != nullptr);
+    assert(rt_obj_class_id(water->mesh) == RT_G3D_MESH3D_CLASS_ID);
+    assert(rt_obj_class_id(water->material) == RT_G3D_MATERIAL3D_CLASS_ID);
+    assert(water->texture == nullptr);
+    assert(water->normal_map == nullptr);
+    assert(water->env_map == nullptr);
+
+    auto *mesh = static_cast<rt_mesh3d *>(water->mesh);
+    assert(mesh->vertex_count > 0);
+    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+        assert(std::isfinite(mesh->vertices[i].pos[0]));
+        assert(std::isfinite(mesh->vertices[i].pos[1]));
+        assert(std::isfinite(mesh->vertices[i].pos[2]));
+        assert(std::isfinite(mesh->vertices[i].normal[0]));
+        assert(std::isfinite(mesh->vertices[i].normal[1]));
+        assert(std::isfinite(mesh->vertices[i].normal[2]));
+    }
+}
+
+static void test_water_wrong_class_private_resources_clear_without_release() {
+    auto *water = static_cast<WaterView *>(rt_water3d_new(8.0, 8.0));
+    assert(water != nullptr);
+
+    void *wrong = rt_obj_new_i64(0, 8);
+    assert(wrong != nullptr);
+    rt_obj_retain_maybe(wrong);
+    water->mesh = wrong;
+    water->material = wrong;
+    water->texture = wrong;
+    water->normal_map = wrong;
+    water->env_map = wrong;
+    water->mesh_dirty = 0;
+
+    rt_water3d_update(water, 0.0);
+
+    assert(water->mesh != nullptr);
+    assert(water->material != nullptr);
+    assert(rt_obj_class_id(water->mesh) == RT_G3D_MESH3D_CLASS_ID);
+    assert(rt_obj_class_id(water->material) == RT_G3D_MATERIAL3D_CLASS_ID);
+    assert(water->texture == nullptr);
+    assert(water->normal_map == nullptr);
+    assert(water->env_map == nullptr);
+    assert(rt_obj_release_check0(wrong) == 0);
+    if (rt_obj_release_check0(wrong))
+        rt_obj_free(wrong);
+}
+
+static void test_vegetation_wrong_class_private_resources_clear_without_release() {
+    auto *veg = static_cast<VegetationView *>(rt_vegetation3d_new(nullptr));
+    assert(veg != nullptr);
+
+    void *wrong = rt_obj_new_i64(0, 8);
+    assert(wrong != nullptr);
+    rt_obj_retain_maybe(wrong);
+    veg->blade_mesh = wrong;
+    veg->blade_material = wrong;
+    veg->density_map = wrong;
+
+    rt_vegetation3d_update(veg, 0.0, 0.0, 0.0, 0.0);
+    assert(veg->blade_mesh == nullptr);
+    assert(veg->blade_material == nullptr);
+    assert(veg->density_map == nullptr);
+    assert(rt_obj_release_check0(wrong) == 0);
+    if (rt_obj_release_check0(wrong))
+        rt_obj_free(wrong);
+
+    rt_vegetation3d_set_blade_size(veg, 0.5, 1.5, 0.25);
+    assert(veg->blade_mesh != nullptr);
+    assert(rt_obj_class_id(veg->blade_mesh) == RT_G3D_MESH3D_CLASS_ID);
+}
+
+static void release_retained_probe(void *probe) {
+    assert(rt_obj_release_check0(probe) == 0);
+    if (rt_obj_release_check0(probe))
+        rt_obj_free(probe);
+}
+
+static void test_mesh_animation_refs_clear_wrong_class_without_release() {
+    auto *mesh = static_cast<rt_mesh3d *>(rt_mesh3d_new());
+    assert(mesh != nullptr);
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, nullptr, -1, nullptr);
+    void *wrong_skel = rt_obj_new_i64(0, 8);
+    assert(skel != nullptr && wrong_skel != nullptr);
+    rt_obj_retain_maybe(wrong_skel);
+    mesh->skeleton_ref = wrong_skel;
+    rt_mesh3d_set_skeleton(mesh, skel);
+    assert(mesh->skeleton_ref == skel);
+    release_retained_probe(wrong_skel);
+    rt_mesh3d_set_skeleton(mesh, nullptr);
+    assert(mesh->skeleton_ref == nullptr);
+
+    void *mt = rt_morphtarget3d_new(1);
+    void *wrong_morph = rt_obj_new_i64(0, 8);
+    assert(mt != nullptr && wrong_morph != nullptr);
+    rt_obj_retain_maybe(wrong_morph);
+    mesh->morph_targets_ref = wrong_morph;
+    rt_mesh3d_set_morph_targets(mesh, mt);
+    assert(mesh->morph_targets_ref == mt);
+    release_retained_probe(wrong_morph);
+    rt_mesh3d_set_morph_targets(mesh, nullptr);
+    assert(mesh->morph_targets_ref == nullptr);
+
+    void *wrong_clone_ref = rt_obj_new_i64(0, 8);
+    assert(wrong_clone_ref != nullptr);
+    rt_obj_retain_maybe(wrong_clone_ref);
+    mesh->skeleton_ref = wrong_clone_ref;
+    mesh->morph_targets_ref = wrong_clone_ref;
+    auto *clone = static_cast<rt_mesh3d *>(rt_mesh3d_clone(mesh));
+    assert(clone != nullptr);
+    assert(mesh->skeleton_ref == nullptr);
+    assert(mesh->morph_targets_ref == nullptr);
+    assert(clone->skeleton_ref == nullptr);
+    assert(clone->morph_targets_ref == nullptr);
+    release_retained_probe(wrong_clone_ref);
+
+    void *wrong_clear_ref = rt_obj_new_i64(0, 8);
+    assert(wrong_clear_ref != nullptr);
+    rt_obj_retain_maybe(wrong_clear_ref);
+    mesh->skeleton_ref = wrong_clear_ref;
+    mesh->morph_targets_ref = wrong_clear_ref;
+    rt_mesh3d_clear(mesh);
+    assert(mesh->skeleton_ref == nullptr);
+    assert(mesh->morph_targets_ref == nullptr);
+    release_retained_probe(wrong_clear_ref);
+}
+
+static void test_scene_node_private_refs_clear_wrong_class_without_release() {
+    auto *finalizer_node = static_cast<rt_scene_node3d *>(rt_scene_node3d_new());
+    void *child_wrong = rt_obj_new_i64(0, 8);
+    assert(finalizer_node != nullptr && child_wrong != nullptr);
+    rt_obj_retain_maybe(child_wrong);
+    finalizer_node->children =
+        static_cast<rt_scene_node3d **>(std::calloc(1, sizeof(rt_scene_node3d *)));
+    assert(finalizer_node->children != nullptr);
+    finalizer_node->children[0] = static_cast<rt_scene_node3d *>(child_wrong);
+    finalizer_node->child_count = 1;
+    finalizer_node->child_capacity = 1;
+    if (rt_obj_release_check0(finalizer_node))
+        rt_obj_free(finalizer_node);
+    release_retained_probe(child_wrong);
+
+    auto *node = static_cast<rt_scene_node3d *>(rt_scene_node3d_new());
+    assert(node != nullptr);
+
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *wrong_mesh = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_mesh);
+    node->mesh = wrong_mesh;
+    rt_scene_node3d_set_mesh(node, mesh);
+    assert(node->mesh == mesh);
+    release_retained_probe(wrong_mesh);
+    rt_scene_node3d_set_mesh(node, nullptr);
+
+    void *material = rt_material3d_new_color(1.0, 0.0, 0.0);
+    void *wrong_material = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_material);
+    node->material = wrong_material;
+    rt_scene_node3d_set_material(node, material);
+    assert(node->material == material);
+    release_retained_probe(wrong_material);
+    rt_scene_node3d_set_material(node, nullptr);
+
+    void *light = rt_light3d_new_ambient(1.0, 1.0, 1.0);
+    void *wrong_light = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_light);
+    node->light = wrong_light;
+    rt_scene_node3d_set_light(node, light);
+    assert(node->light == light);
+    release_retained_probe(wrong_light);
+    rt_scene_node3d_set_light(node, nullptr);
+
+    void *wrong_body = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_body);
+    node->bound_body = wrong_body;
+    rt_scene_node3d_clear_body_binding(node);
+    assert(node->bound_body == nullptr);
+    assert(rt_scene_node3d_get_body(node) == nullptr);
+    release_retained_probe(wrong_body);
+
+    void *wrong_animator = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_animator);
+    node->bound_animator = wrong_animator;
+    rt_scene_node3d_clear_animator_binding(node);
+    assert(node->bound_animator == nullptr);
+    assert(rt_scene_node3d_get_animator(node) == nullptr);
+    release_retained_probe(wrong_animator);
+
+    void *wrong_node_animator = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_node_animator);
+    node->bound_node_animator = wrong_node_animator;
+    rt_scene_node3d_bind_node_animator(node, nullptr);
+    assert(node->bound_node_animator == nullptr);
+    release_retained_probe(wrong_node_animator);
+
+    void *lod_a = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *lod_b = rt_mesh3d_new_box(0.5, 0.5, 0.5);
+    void *wrong_lod = rt_obj_new_i64(0, 8);
+    rt_scene_node3d_add_lod(node, 5.0, lod_a);
+    assert(node->lod_count == 1);
+    rt_obj_retain_maybe(wrong_lod);
+    node->lod_levels[0].mesh = wrong_lod;
+    rt_scene_node3d_add_lod(node, 5.0, lod_b);
+    assert(node->lod_levels[0].mesh == lod_b);
+    release_retained_probe(wrong_lod);
+    rt_scene_node3d_clear_lod(node);
+
+    void *wrong_impostor = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_impostor);
+    node->impostor_pixels = wrong_impostor;
+    node->impostor_mesh = wrong_impostor;
+    node->impostor_material = wrong_impostor;
+    rt_scene_node3d_set_impostor(node, 0.0, nullptr);
+    assert(node->impostor_pixels == nullptr);
+    assert(node->impostor_mesh == nullptr);
+    assert(node->impostor_material == nullptr);
+    release_retained_probe(wrong_impostor);
+}
+
+static void test_billboard_cached_resource_slots_clear_wrong_class_without_release() {
+    void *pixels = rt_pixels_new(1, 1);
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    rt_canvas3d canvas = {};
+    assert(pixels != nullptr && camera != nullptr);
+
+    auto *sprite = static_cast<SpriteView *>(rt_sprite3d_new(pixels));
+    assert(sprite != nullptr);
+    void *sprite_wrong = rt_obj_new_i64(0, 8);
+    assert(sprite_wrong != nullptr);
+    rt_obj_retain_maybe(sprite_wrong);
+    sprite->texture = sprite_wrong;
+    sprite->cached_mesh = sprite_wrong;
+    sprite->cached_material = sprite_wrong;
+    sprite->cached_texture = sprite_wrong;
+    rt_canvas3d_draw_sprite3d(&canvas, sprite, camera);
+    assert(sprite->texture == nullptr);
+    assert(sprite->cached_mesh != nullptr);
+    assert(sprite->cached_material != nullptr);
+    assert(sprite->cached_texture == nullptr);
+    assert(rt_obj_class_id(sprite->cached_mesh) == RT_G3D_MESH3D_CLASS_ID);
+    assert(rt_obj_class_id(sprite->cached_material) == RT_G3D_MATERIAL3D_CLASS_ID);
+    release_retained_probe(sprite_wrong);
+
+    auto *decal = static_cast<DecalView *>(
+        rt_decal3d_new(rt_vec3_new(0.0, 0.0, 0.0), rt_vec3_new(0.0, 1.0, 0.0), 1.0, pixels));
+    assert(decal != nullptr);
+    void *decal_wrong = rt_obj_new_i64(0, 8);
+    assert(decal_wrong != nullptr);
+    rt_obj_retain_maybe(decal_wrong);
+    decal->texture = decal_wrong;
+    decal->mesh = decal_wrong;
+    decal->material = decal_wrong;
+    rt_canvas3d_draw_decal(&canvas, decal);
+    assert(decal->texture == nullptr);
+    assert(decal->mesh != nullptr);
+    assert(decal->material != nullptr);
+    assert(rt_obj_class_id(decal->mesh) == RT_G3D_MESH3D_CLASS_ID);
+    assert(rt_obj_class_id(decal->material) == RT_G3D_MATERIAL3D_CLASS_ID);
+    release_retained_probe(decal_wrong);
+
+    auto *particles = static_cast<ParticleView *>(rt_particles3d_new(4));
+    assert(particles != nullptr);
+    rt_particles3d_set_lifetime(particles, 10.0, 10.0);
+    rt_particles3d_set_speed(particles, 0.0, 0.0);
+    rt_particles3d_set_size(particles, 1.0, 1.0);
+    rt_particles3d_burst(particles, 1);
+    assert(particles->count == 1);
+    void *particles_wrong = rt_obj_new_i64(0, 8);
+    assert(particles_wrong != nullptr);
+    rt_obj_retain_maybe(particles_wrong);
+    particles->texture = particles_wrong;
+    particles->cached_material = particles_wrong;
+    particles->draw_materials[0] = particles_wrong;
+    particles->draw_slots_used = 0;
+    rt_particles3d_draw(particles, &canvas, camera);
+    assert(particles->texture == nullptr);
+    assert(particles->cached_material == nullptr);
+    assert(particles->draw_materials[0] != nullptr);
+    assert(rt_obj_class_id(particles->draw_materials[0]) == RT_G3D_MATERIAL3D_CLASS_ID);
+    release_retained_probe(particles_wrong);
 }
 
 } // namespace
@@ -1379,7 +1812,15 @@ int main() {
     test_physics_mesh_box_collision_uses_triangles_not_mesh_aabb();
     test_physics_sweeps_handle_thin_geometry_and_long_capsules();
     test_terrain_water_and_vegetation_zero_dt_paths();
+    test_vegetation_density_map_edges_are_exact();
+    test_vegetation_extreme_wind_and_corrupt_instances_are_compacted();
     test_particles_and_water_numeric_knobs_are_bounded();
+    test_water_extreme_wave_directions_and_cached_resources_are_repaired();
+    test_water_wrong_class_private_resources_clear_without_release();
+    test_vegetation_wrong_class_private_resources_clear_without_release();
+    test_mesh_animation_refs_clear_wrong_class_without_release();
+    test_scene_node_private_refs_clear_wrong_class_without_release();
+    test_billboard_cached_resource_slots_clear_wrong_class_without_release();
     std::printf("RTGraphics3DRobustnessTests passed.\n");
     return 0;
 }

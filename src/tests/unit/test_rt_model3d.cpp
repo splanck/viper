@@ -13,10 +13,13 @@
 #include "rt_asset.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_fbx_loader.h"
+#include "rt_gltf.h"
 #include "rt_model3d.h"
 #include "rt_morphtarget3d.h"
 #include "rt_pixels.h"
 #include "rt_scene3d.h"
+#include "rt_scene3d_internal.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 
@@ -35,9 +38,100 @@ extern rt_string rt_const_cstr(const char *s);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
+extern void *rt_mat4_identity(void);
 extern void *rt_mesh3d_new_box(double w, double h, double d);
 extern void *rt_material3d_new_color(double r, double g, double b);
+extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern void rt_obj_retain_maybe(void *p);
+extern int32_t rt_obj_release_check0(void *p);
+extern void rt_obj_free(void *p);
 }
+
+struct Model3DView {
+    void *vptr;
+    rt_scene_node3d *template_root;
+    void **meshes;
+    int32_t mesh_count;
+    int32_t mesh_capacity;
+    void **materials;
+    int32_t material_count;
+    int32_t material_capacity;
+    void **skeletons;
+    int32_t skeleton_count;
+    int32_t skeleton_capacity;
+    void **animations;
+    int32_t animation_count;
+    int32_t animation_capacity;
+    void **node_animations;
+    int32_t node_animation_count;
+    int32_t node_animation_capacity;
+    void **cameras;
+    int32_t camera_count;
+    int32_t camera_capacity;
+    struct {
+        rt_scene_node3d *root;
+        char *name;
+        void **cameras;
+        int32_t camera_count;
+        int32_t camera_capacity;
+    } *scenes;
+    int32_t scene_count;
+    int32_t scene_capacity;
+};
+
+struct FbxAssetView {
+    void *vptr;
+    void **meshes;
+    int32_t mesh_count;
+    int32_t mesh_capacity;
+    void *skeleton;
+    void **animations;
+    int32_t animation_count;
+    int32_t animation_capacity;
+    void **materials;
+    int32_t material_count;
+    int32_t material_capacity;
+    void **morph_targets;
+    int32_t morph_count;
+    int32_t morph_capacity;
+    void *scene_root;
+};
+
+struct GltfSceneInfoView {
+    void *root;
+    char *name;
+    int32_t node_count;
+    void **cameras;
+    int32_t camera_count;
+    int32_t camera_capacity;
+};
+
+struct GltfAssetView {
+    void *vptr;
+    void **meshes;
+    int32_t mesh_count;
+    int32_t mesh_capacity;
+    void **materials;
+    int32_t material_count;
+    int32_t material_capacity;
+    void **skeletons;
+    int32_t skeleton_count;
+    int32_t skeleton_capacity;
+    void **animations;
+    int32_t animation_count;
+    int32_t animation_capacity;
+    void **node_animations;
+    int32_t node_animation_count;
+    int32_t node_animation_capacity;
+    void **cameras;
+    int32_t camera_count;
+    int32_t camera_capacity;
+    GltfSceneInfoView *scenes;
+    int32_t scene_count;
+    int32_t scene_capacity;
+    void *scene_root;
+    int32_t node_count;
+};
 
 static int tests_passed = 0;
 static int tests_run = 0;
@@ -335,6 +429,23 @@ static FbxNodeFixture make_fbx_animation_curve_fixture(int64_t id,
     return node;
 }
 
+static FbxNodeFixture make_fbx_animation_curve_mismatched_fixture(int64_t id,
+                                                                  const int64_t *times,
+                                                                  size_t time_count,
+                                                                  const double *values,
+                                                                  size_t value_count) {
+    FbxNodeFixture node;
+    node.name = "AnimationCurve";
+    node.props.push_back(fbx_prop_i64_fixture(id));
+    node.props.push_back(fbx_prop_string_fixture(make_fbx_object_name("Curve", "AnimCurve")));
+    node.props.push_back(fbx_prop_string_fixture(""));
+    node.children.push_back(
+        FbxNodeFixture{"KeyTime", {fbx_prop_array_fixture('l', times, time_count)}, {}});
+    node.children.push_back(
+        FbxNodeFixture{"KeyValueFloat", {fbx_prop_array_fixture('d', values, value_count)}, {}});
+    return node;
+}
+
 static bool write_fbx_fixture(const char *path) {
     static const int64_t kGeometryId = 100;
     static const int64_t kMaterialId = 200;
@@ -611,7 +722,15 @@ static bool write_fbx_embedded_texture_fixture(const char *path,
     return ok;
 }
 
-static bool write_fbx_skinned_animation_fixture(const char *path) {
+static bool write_fbx_skinned_animation_fixture_ex(const char *path,
+                                                   bool duplicate_x_curve,
+                                                   int dummy_layers,
+                                                   int dummy_curve_nodes,
+                                                   bool duplicate_bone_names,
+                                                   bool animate_child_bone,
+                                                   bool mismatched_x_curve,
+                                                   bool bare_curve_component_names = false,
+                                                   bool lowercase_curve_component_names = false) {
     static const int64_t kGeometryId = 1100;
     static const int64_t kMeshModelId = 1200;
     static const int64_t kRootBoneId = 1300;
@@ -624,6 +743,9 @@ static bool write_fbx_skinned_animation_fixture(const char *path) {
     static const int64_t kTranslateNodeId = 1510;
     static const int64_t kCurveXId = 1511;
     static const int64_t kCurveYId = 1512;
+    static const int64_t kCurveXDuplicateId = 1513;
+    static const int64_t kDummyLayerBaseId = 1600;
+    static const int64_t kDummyCurveNodeBaseId = 2000;
     static const int64_t kFbxSecond = 46186158000LL;
     static const double kPositions[9] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
     static const int32_t kIndices[3] = {0, 1, -3};
@@ -634,6 +756,8 @@ static bool write_fbx_skinned_animation_fixture(const char *path) {
     static const int64_t kKeyTimes[2] = {0, kFbxSecond};
     static const double kCurveXValues[2] = {0.0, 10.0};
     static const double kCurveYValues[2] = {0.0, 20.0};
+    static const double kCurveXDuplicateValues[2] = {0.0, 99.0};
+    static const double kCurveXShortValues[1] = {123.0};
 
     FbxNodeFixture geometry;
     FbxNodeFixture objects;
@@ -643,6 +767,14 @@ static bool write_fbx_skinned_animation_fixture(const char *path) {
     FbxNodeFixture anim_layer;
     FbxNodeFixture translate_node;
     std::vector<uint8_t> bytes;
+    const char *child_bone_name = duplicate_bone_names ? "RootBone" : "ChildBone";
+    int64_t animated_bone_id = animate_child_bone ? kChildBoneId : kRootBoneId;
+    const char *curve_x_prop = bare_curve_component_names
+                                   ? (lowercase_curve_component_names ? "x" : "X")
+                                   : (lowercase_curve_component_names ? "d|x" : "d|X");
+    const char *curve_y_prop = bare_curve_component_names
+                                   ? (lowercase_curve_component_names ? "y" : "Y")
+                                   : (lowercase_curve_component_names ? "d|y" : "d|Y");
 
     geometry.name = "Geometry";
     geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
@@ -682,7 +814,7 @@ static bool write_fbx_skinned_animation_fixture(const char *path) {
     objects.children.push_back(
         make_fbx_model_fixture(kRootBoneId, "RootBone", "Root", 0.0, 0.0, 0.0));
     objects.children.push_back(
-        make_fbx_model_fixture(kChildBoneId, "ChildBone", "LimbNode", 0.0, 1.0, 0.0));
+        make_fbx_model_fixture(kChildBoneId, child_bone_name, "LimbNode", 0.0, 1.0, 0.0));
     objects.children.push_back(skin);
     objects.children.push_back(
         make_fbx_cluster_fixture(kRootClusterId,
@@ -699,12 +831,49 @@ static bool write_fbx_skinned_animation_fixture(const char *path) {
                                  kChildWeights,
                                  sizeof(kChildWeights) / sizeof(kChildWeights[0])));
     objects.children.push_back(anim_stack);
+    for (int i = 0; i < dummy_layers; i++) {
+        char name[64];
+        FbxNodeFixture dummy_layer;
+        std::snprintf(name, sizeof(name), "DummyLayer%d", i);
+        dummy_layer.name = "AnimationLayer";
+        dummy_layer.props.push_back(fbx_prop_i64_fixture(kDummyLayerBaseId + i));
+        dummy_layer.props.push_back(fbx_prop_string_fixture(make_fbx_object_name(name, "AnimLayer")));
+        dummy_layer.props.push_back(fbx_prop_string_fixture(""));
+        objects.children.push_back(dummy_layer);
+    }
     objects.children.push_back(anim_layer);
+    for (int i = 0; i < dummy_curve_nodes; i++) {
+        char name[64];
+        FbxNodeFixture dummy_curve_node;
+        std::snprintf(name, sizeof(name), "DummyCurveNode%d", i);
+        dummy_curve_node.name = "AnimationCurveNode";
+        dummy_curve_node.props.push_back(fbx_prop_i64_fixture(kDummyCurveNodeBaseId + i));
+        dummy_curve_node.props.push_back(
+            fbx_prop_string_fixture(make_fbx_object_name(name, "AnimCurveNode")));
+        dummy_curve_node.props.push_back(fbx_prop_string_fixture(""));
+        objects.children.push_back(dummy_curve_node);
+    }
     objects.children.push_back(translate_node);
-    objects.children.push_back(make_fbx_animation_curve_fixture(
-        kCurveXId, kKeyTimes, kCurveXValues, sizeof(kKeyTimes) / sizeof(kKeyTimes[0])));
+    if (mismatched_x_curve) {
+        objects.children.push_back(make_fbx_animation_curve_mismatched_fixture(
+            kCurveXId,
+            kKeyTimes,
+            sizeof(kKeyTimes) / sizeof(kKeyTimes[0]),
+            kCurveXShortValues,
+            sizeof(kCurveXShortValues) / sizeof(kCurveXShortValues[0])));
+    } else {
+        objects.children.push_back(make_fbx_animation_curve_fixture(
+            kCurveXId, kKeyTimes, kCurveXValues, sizeof(kKeyTimes) / sizeof(kKeyTimes[0])));
+    }
     objects.children.push_back(make_fbx_animation_curve_fixture(
         kCurveYId, kKeyTimes, kCurveYValues, sizeof(kKeyTimes) / sizeof(kKeyTimes[0])));
+    if (duplicate_x_curve) {
+        objects.children.push_back(make_fbx_animation_curve_fixture(kCurveXDuplicateId,
+                                                                    kKeyTimes,
+                                                                    kCurveXDuplicateValues,
+                                                                    sizeof(kKeyTimes) /
+                                                                        sizeof(kKeyTimes[0])));
+    }
 
     connections.name = "Connections";
     connections.children.push_back(make_fbx_connection_fixture(kMeshModelId, 0));
@@ -716,12 +885,28 @@ static bool write_fbx_skinned_animation_fixture(const char *path) {
     connections.children.push_back(make_fbx_connection_fixture(kRootClusterId, kRootBoneId));
     connections.children.push_back(make_fbx_connection_fixture(kChildClusterId, kSkinId));
     connections.children.push_back(make_fbx_connection_fixture(kChildClusterId, kChildBoneId));
+    for (int i = 0; i < dummy_layers; i++) {
+        connections.children.push_back(
+            make_fbx_connection_fixture(kDummyLayerBaseId + i, kStackId));
+    }
     connections.children.push_back(make_fbx_connection_fixture(kLayerId, kStackId));
+    for (int i = 0; i < dummy_curve_nodes; i++) {
+        connections.children.push_back(
+            make_fbx_connection_fixture(kDummyCurveNodeBaseId + i, kLayerId));
+    }
     connections.children.push_back(make_fbx_connection_fixture(kTranslateNodeId, kLayerId));
     connections.children.push_back(
-        make_fbx_connection_fixture(kTranslateNodeId, kRootBoneId, "Lcl Translation"));
-    connections.children.push_back(make_fbx_connection_fixture(kCurveXId, kTranslateNodeId, "d|X"));
-    connections.children.push_back(make_fbx_connection_fixture(kCurveYId, kTranslateNodeId, "d|Y"));
+        make_fbx_connection_fixture(kTranslateNodeId, animated_bone_id, "Lcl Translation"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kCurveXId, kTranslateNodeId, curve_x_prop));
+    if (duplicate_x_curve) {
+        connections.children.push_back(
+            make_fbx_connection_fixture(kCurveXDuplicateId,
+                                        kTranslateNodeId,
+                                        curve_x_prop));
+    }
+    connections.children.push_back(
+        make_fbx_connection_fixture(kCurveYId, kTranslateNodeId, curve_y_prop));
 
     bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
                                'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
@@ -736,6 +921,39 @@ static bool write_fbx_skinned_animation_fixture(const char *path) {
     bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
     std::fclose(f);
     return ok;
+}
+
+static bool write_fbx_skinned_animation_fixture(const char *path) {
+    return write_fbx_skinned_animation_fixture_ex(path, false, 0, 0, false, false, false);
+}
+
+static bool write_fbx_duplicate_animation_curve_fixture(const char *path) {
+    return write_fbx_skinned_animation_fixture_ex(path, true, 0, 0, false, false, false);
+}
+
+static bool write_fbx_many_layer_animation_fixture(const char *path) {
+    return write_fbx_skinned_animation_fixture_ex(path, false, 20, 0, false, false, false);
+}
+
+static bool write_fbx_many_curve_node_animation_fixture(const char *path) {
+    return write_fbx_skinned_animation_fixture_ex(path, false, 0, 260, false, false, false);
+}
+
+static bool write_fbx_duplicate_bone_name_child_animation_fixture(const char *path) {
+    return write_fbx_skinned_animation_fixture_ex(path, false, 0, 0, true, true, false);
+}
+
+static bool write_fbx_mismatched_animation_curve_fixture(const char *path) {
+    return write_fbx_skinned_animation_fixture_ex(path, false, 0, 0, false, false, true);
+}
+
+static bool write_fbx_bare_component_animation_curve_fixture(const char *path) {
+    return write_fbx_skinned_animation_fixture_ex(path, false, 0, 0, false, false, false, true);
+}
+
+static bool write_fbx_lowercase_component_animation_curve_fixture(const char *path) {
+    return write_fbx_skinned_animation_fixture_ex(
+        path, false, 0, 0, false, false, false, false, true);
 }
 
 static bool write_truncated_fbx_fixture(const char *path) {
@@ -978,6 +1196,46 @@ static void test_model3d_roundtrips_vscn_assets() {
                 "InstantiateScene preserves node searchability");
 }
 
+static void test_model3d_find_node_rejects_wrong_string_handles() {
+    const char *path = "/tmp/viper_model3d_find_node_fixture.vscn";
+    bool wrote_fixture = write_scene_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "FindNode corruption fixture can be written to .vscn");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FindNode corruption fixture");
+    if (!model) {
+        std::remove(path);
+        return;
+    }
+
+    void *wrong_name = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_name);
+    rt_string fake_name = reinterpret_cast<rt_string>(wrong_name);
+    EXPECT_TRUE(rt_model3d_find_node(model, fake_name) == nullptr,
+                "Model3D.FindNode rejects wrong-class query string handles");
+
+    void *template_parent = rt_model3d_find_node(model, rt_const_cstr("parent"));
+    auto *parent_node = static_cast<rt_scene_node3d *>(template_parent);
+    EXPECT_TRUE(parent_node != nullptr, "FindNode corruption fixture has a parent node");
+    if (parent_node) {
+        rt_string saved_name = parent_node->name;
+        parent_node->name = fake_name;
+        EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("parent")) == nullptr,
+                    "Model3D.FindNode skips wrong-class stored node names");
+        EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("child")) != nullptr,
+                    "Model3D.FindNode keeps walking past corrupt stored node names");
+        parent_node->name = saved_name;
+    }
+
+    EXPECT_TRUE(rt_obj_release_check0(wrong_name) == 0,
+                "Model3D.FindNode string guards do not release wrong-class handles");
+    if (rt_obj_release_check0(wrong_name))
+        rt_obj_free(wrong_name);
+    std::remove(path);
+}
+
 static void test_model3d_adapts_gltf_scene_graphs() {
     const char *path = "/tmp/viper_model3d_fixture.gltf";
     bool wrote_fixture = write_gltf_fixture(path);
@@ -1087,6 +1345,148 @@ static void test_model3d_adapts_gltf_scene_graphs() {
                 "Model3D.InstantiateSceneAt preserves secondary scene searchability");
     EXPECT_TRUE(rt_scene3d_find(secondary_scene, rt_const_cstr("GltfParent")) == nullptr,
                 "Model3D.InstantiateSceneAt keeps default roots out of the secondary scene");
+}
+
+static void test_model3d_rejects_gltf_accessor_overrun_of_buffer_view() {
+    const char *path = "/tmp/viper_model3d_accessor_overrun.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":24}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+        "\"type\":\"VEC3\"}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],"
+        "\"nodes\":[{\"mesh\":0}],"
+        "\"scenes\":[{\"nodes\":[0]}],"
+        "\"scene\":0"
+        "}";
+
+    EXPECT_TRUE(write_text_file(path, gltf_json), "Accessor-overrun glTF fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model == nullptr || rt_model3d_get_mesh_count(model) == 0,
+                "glTF accessors cannot read past their declared bufferView byteLength");
+}
+
+static void test_gltf_asset_accessors_clamp_corrupt_counts() {
+    const char *path = "/tmp/viper_gltf_asset_corrupt_counts.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f};
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(gltf_buffer.size()) +
+        "}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":" +
+        std::to_string(gltf_buffer.size()) + "}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":3,"
+        "\"type\":\"VEC3\"}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,0,0,1]}}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"material\":0}]}],"
+        "\"nodes\":[{\"name\":\"Triangle\",\"mesh\":0}],"
+        "\"scenes\":[{\"name\":\"Main\",\"nodes\":[0]}],"
+        "\"scene\":0"
+        "}";
+
+    EXPECT_TRUE(write_text_file(path, gltf_json),
+                "glTF asset corrupt-count fixture can be written");
+    void *asset = rt_gltf_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "Direct glTF.Load parses corrupt-count fixture");
+    if (!asset) {
+        std::remove(path);
+        return;
+    }
+
+    auto *view = static_cast<GltfAssetView *>(asset);
+    EXPECT_TRUE(rt_gltf_mesh_count(asset) == 1, "glTF asset starts with one mesh");
+    EXPECT_TRUE(rt_gltf_material_count(asset) == 1, "glTF asset starts with one material");
+    EXPECT_TRUE(rt_gltf_scene_count(asset) == 1, "glTF asset starts with one scene");
+
+    void **saved_meshes = view->meshes;
+    view->meshes = nullptr;
+    view->mesh_count = 1;
+    view->mesh_capacity = 1;
+    EXPECT_TRUE(rt_gltf_mesh_count(asset) == 0, "glTF mesh count rejects missing storage");
+    view->meshes = saved_meshes;
+    view->mesh_count = 99;
+    view->mesh_capacity = 1;
+    EXPECT_TRUE(rt_gltf_mesh_count(asset) == 1, "glTF mesh count clamps corrupt count");
+    EXPECT_TRUE(rt_gltf_get_mesh(asset, 1) == nullptr,
+                "glTF mesh accessor rejects indexes past repaired count");
+
+    void **saved_materials = view->materials;
+    view->materials = nullptr;
+    view->material_count = 1;
+    view->material_capacity = 1;
+    EXPECT_TRUE(rt_gltf_material_count(asset) == 0, "glTF material count rejects missing storage");
+    view->materials = saved_materials;
+    view->material_count = 99;
+    view->material_capacity = 1;
+    EXPECT_TRUE(rt_gltf_material_count(asset) == 1, "glTF material count clamps corrupt count");
+    EXPECT_TRUE(rt_gltf_get_material(asset, 1) == nullptr,
+                "glTF material accessor rejects indexes past repaired count");
+
+    view->skeletons = static_cast<void **>(std::calloc(1, sizeof(void *)));
+    if (view->skeletons) {
+        view->skeletons[0] = rt_skeleton3d_new();
+        view->skeleton_count = 99;
+        view->skeleton_capacity = 1;
+        EXPECT_TRUE(rt_gltf_skeleton_count(asset) == 1,
+                    "glTF skeleton count clamps corrupt count");
+        EXPECT_TRUE(rt_gltf_get_skeleton(asset, 1) == nullptr,
+                    "glTF skeleton accessor rejects indexes past repaired count");
+    }
+
+    view->animations = static_cast<void **>(std::calloc(1, sizeof(void *)));
+    if (view->animations) {
+        view->animations[0] = rt_animation3d_new(rt_const_cstr("clip"), 1.0);
+        view->animation_count = 99;
+        view->animation_capacity = 1;
+        EXPECT_TRUE(rt_gltf_animation_count(asset) == 1,
+                    "glTF animation count clamps corrupt count");
+        EXPECT_TRUE(rt_gltf_get_animation(asset, 1) == nullptr,
+                    "glTF animation accessor rejects indexes past repaired count");
+    }
+
+    view->node_animations = static_cast<void **>(std::calloc(1, sizeof(void *)));
+    if (view->node_animations) {
+        view->node_animations[0] = rt_node_animation3d_new(rt_const_cstr("node_clip"), 1.0);
+        view->node_animation_count = 99;
+        view->node_animation_capacity = 1;
+        EXPECT_TRUE(rt_gltf_node_animation_count(asset) == 1,
+                    "glTF node-animation count clamps corrupt count");
+        EXPECT_TRUE(rt_gltf_get_node_animation(asset, 1) == nullptr,
+                    "glTF node-animation accessor rejects indexes past repaired count");
+    }
+
+    view->scene_count = 99;
+    view->scene_capacity = 1;
+    EXPECT_TRUE(rt_gltf_scene_count(asset) == 1, "glTF scene count clamps corrupt count");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_gltf_get_scene_name(asset, 1)), "") == 0,
+                "glTF scene-name accessor rejects indexes past repaired count");
+    EXPECT_TRUE(rt_gltf_get_scene_root_at(asset, 1) == nullptr,
+                "glTF scene-root accessor rejects indexes past repaired count");
+    EXPECT_TRUE(rt_gltf_scene_camera_count(asset, 1) == 0,
+                "glTF scene-camera count rejects invalid scene index");
+
+    if (rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
 }
 
 static void test_model3d_load_asset_resolves_mounted_gltf_dependencies() {
@@ -1721,6 +2121,360 @@ static void test_model3d_imports_fbx_skinning_and_grouped_animation() {
     }
 }
 
+static void test_fbx_duplicate_animation_curves_keep_first_component() {
+    const char *path = "/tmp/viper_model3d_duplicate_anim_curve_fixture.fbx";
+    bool wrote_fixture = write_fbx_duplicate_animation_curve_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Duplicate-curve FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with duplicate animation curves");
+    if (!model)
+        return;
+
+    auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
+    EXPECT_TRUE(anim != nullptr, "Duplicate-curve FBX animation is available");
+    if (!anim)
+        return;
+
+    const vgfx3d_anim_channel_t *root_channel = nullptr;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == 0) {
+            root_channel = &anim->channels[i];
+            break;
+        }
+    }
+    EXPECT_TRUE(root_channel != nullptr, "Duplicate-curve FBX animation creates a root channel");
+    if (!root_channel || root_channel->keyframe_count < 2)
+        return;
+
+    EXPECT_NEAR(root_channel->keyframes[1].position[0],
+                10.0,
+                0.001,
+                "FBX duplicate component curves keep the first valid X channel");
+    EXPECT_NEAR(root_channel->keyframes[1].position[1],
+                20.0,
+                0.001,
+                "FBX duplicate component curves do not disturb sibling Y channels");
+}
+
+static void test_fbx_mismatched_animation_curve_key_arrays_are_ignored() {
+    const char *path = "/tmp/viper_model3d_mismatched_anim_curve_fixture.fbx";
+    bool wrote_fixture = write_fbx_mismatched_animation_curve_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Mismatched-curve FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with malformed animation curves");
+    if (!model)
+        return;
+
+    auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
+    EXPECT_TRUE(anim != nullptr, "FBX animation survives when a sibling component curve is valid");
+    if (!anim)
+        return;
+
+    const vgfx3d_anim_channel_t *root_channel = nullptr;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == 0) {
+            root_channel = &anim->channels[i];
+            break;
+        }
+    }
+    EXPECT_TRUE(root_channel != nullptr, "Mismatched-curve FBX animation creates a root channel");
+    if (!root_channel || root_channel->keyframe_count < 2)
+        return;
+
+    EXPECT_NEAR(root_channel->keyframes[1].position[0],
+                0.0,
+                0.001,
+                "FBX curves with mismatched KeyTime/KeyValueFloat counts do not drive X");
+    EXPECT_NEAR(root_channel->keyframes[1].position[1],
+                20.0,
+                0.001,
+                "FBX curves with valid sibling key arrays still drive Y");
+}
+
+static void test_fbx_bare_animation_curve_component_names_import() {
+    const char *path = "/tmp/viper_model3d_bare_anim_curve_component_fixture.fbx";
+    bool wrote_fixture = write_fbx_bare_component_animation_curve_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Bare-component FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with bare animation components");
+    if (!model)
+        return;
+
+    auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
+    EXPECT_TRUE(anim != nullptr, "Bare-component FBX animation is available");
+    if (!anim)
+        return;
+
+    const vgfx3d_anim_channel_t *root_channel = nullptr;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == 0) {
+            root_channel = &anim->channels[i];
+            break;
+        }
+    }
+    EXPECT_TRUE(root_channel != nullptr, "Bare-component FBX animation creates a root channel");
+    if (!root_channel || root_channel->keyframe_count < 2)
+        return;
+
+    EXPECT_NEAR(root_channel->keyframes[1].position[0],
+                10.0,
+                0.001,
+                "FBX bare X component connections drive translation X");
+    EXPECT_NEAR(root_channel->keyframes[1].position[1],
+                20.0,
+                0.001,
+	                "FBX bare Y component connections drive translation Y");
+}
+
+static void test_fbx_lowercase_animation_curve_component_names_import() {
+    const char *path = "/tmp/viper_model3d_lowercase_anim_curve_component_fixture.fbx";
+    bool wrote_fixture = write_fbx_lowercase_component_animation_curve_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Lowercase-component FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr,
+                "Model3D.Load parses FBX assets with lowercase animation components");
+    if (!model)
+        return;
+
+    auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
+    EXPECT_TRUE(anim != nullptr, "Lowercase-component FBX animation is available");
+    if (!anim)
+        return;
+
+    const vgfx3d_anim_channel_t *root_channel = nullptr;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == 0) {
+            root_channel = &anim->channels[i];
+            break;
+        }
+    }
+    EXPECT_TRUE(root_channel != nullptr,
+                "Lowercase-component FBX animation creates a root channel");
+    if (!root_channel || root_channel->keyframe_count < 2)
+        return;
+
+    EXPECT_NEAR(root_channel->keyframes[1].position[0],
+                10.0,
+                0.001,
+                "FBX lowercase X component connections drive translation X");
+    EXPECT_NEAR(root_channel->keyframes[1].position[1],
+                20.0,
+                0.001,
+                "FBX lowercase Y component connections drive translation Y");
+}
+
+static void test_fbx_animation_layers_beyond_fixed_cap_import() {
+    const char *path = "/tmp/viper_model3d_many_anim_layers_fixture.fbx";
+    bool wrote_fixture = write_fbx_many_layer_animation_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Many-layer FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with many animation layers");
+    if (!model)
+        return;
+
+    auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
+    EXPECT_TRUE(anim != nullptr, "FBX animation imports after many preceding layers");
+    if (!anim)
+        return;
+
+    const vgfx3d_anim_channel_t *root_channel = nullptr;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == 0) {
+            root_channel = &anim->channels[i];
+            break;
+        }
+    }
+    EXPECT_TRUE(root_channel != nullptr, "Many-layer FBX animation creates a root channel");
+    if (!root_channel || root_channel->keyframe_count < 2)
+        return;
+    EXPECT_NEAR(root_channel->keyframes[1].position[0],
+                10.0,
+                0.001,
+                "FBX animation scans layers beyond the former fixed layer cap");
+}
+
+static void test_fbx_animation_curve_nodes_beyond_fixed_cap_import() {
+    const char *path = "/tmp/viper_model3d_many_curve_nodes_fixture.fbx";
+    bool wrote_fixture = write_fbx_many_curve_node_animation_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Many-curve-node FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with many animation curve nodes");
+    if (!model)
+        return;
+
+    auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
+    EXPECT_TRUE(anim != nullptr, "FBX animation imports after many preceding curve nodes");
+    if (!anim)
+        return;
+
+    const vgfx3d_anim_channel_t *root_channel = nullptr;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == 0) {
+            root_channel = &anim->channels[i];
+            break;
+        }
+    }
+    EXPECT_TRUE(root_channel != nullptr, "Many-curve-node FBX animation creates a root channel");
+    if (!root_channel || root_channel->keyframe_count < 2)
+        return;
+    EXPECT_NEAR(root_channel->keyframes[1].position[0],
+                10.0,
+                0.001,
+                "FBX animation scans curve nodes beyond the former fixed curve-node cap");
+}
+
+static void test_fbx_duplicate_bone_names_resolve_by_model_id() {
+    const char *path = "/tmp/viper_model3d_duplicate_bone_names_fixture.fbx";
+    bool wrote_fixture = write_fbx_duplicate_bone_name_child_animation_fixture(path);
+    EXPECT_TRUE(wrote_fixture, "Duplicate-bone-name FBX fixture can be written");
+    if (!wrote_fixture)
+        return;
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load parses FBX assets with duplicate bone names");
+    if (!model)
+        return;
+
+    auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(model, 0));
+    EXPECT_TRUE(mesh != nullptr, "Duplicate-bone-name FBX mesh is available");
+    if (!mesh)
+        return;
+    EXPECT_TRUE(mesh->bone_count == 2, "Duplicate-bone-name FBX keeps both imported bones");
+    EXPECT_TRUE(mesh->vertices[2].bone_indices[0] == 1,
+                "FBX skin clusters resolve duplicate bone names by model ID");
+    EXPECT_NEAR(mesh->vertices[2].bone_weights[0],
+                1.0,
+                0.001,
+                "FBX skin clusters preserve child-bone weight after ID mapping");
+
+    auto *anim = static_cast<rt_animation3d *>(rt_model3d_get_animation(model, 0));
+    EXPECT_TRUE(anim != nullptr, "Duplicate-bone-name FBX animation is available");
+    if (!anim)
+        return;
+
+    const vgfx3d_anim_channel_t *child_channel = nullptr;
+    for (int32_t i = 0; i < anim->channel_count; i++) {
+        if (anim->channels[i].bone_index == 1) {
+            child_channel = &anim->channels[i];
+            break;
+        }
+    }
+    EXPECT_TRUE(child_channel != nullptr,
+                "FBX animation curves resolve duplicate bone names by model ID");
+    if (!child_channel || child_channel->keyframe_count < 2)
+        return;
+    EXPECT_NEAR(child_channel->keyframes[1].position[0],
+                10.0,
+                0.001,
+                "FBX child animation preserves X translation after ID mapping");
+    EXPECT_NEAR(child_channel->keyframes[1].position[1],
+                20.0,
+                0.001,
+                "FBX child animation preserves Y translation after ID mapping");
+}
+
+static void test_fbx_asset_accessors_clamp_corrupt_counts() {
+    const char *skinned_path = "/tmp/viper_fbx_asset_corrupt_counts_skinned.fbx";
+    EXPECT_TRUE(write_fbx_skinned_animation_fixture(skinned_path),
+                "Skinned FBX fixture can be written for asset corruption test");
+    void *skinned_asset = rt_fbx_load(rt_const_cstr(skinned_path));
+    EXPECT_TRUE(skinned_asset != nullptr, "Direct FBX.Load parses skinned fixture");
+    if (skinned_asset) {
+        auto *view = static_cast<FbxAssetView *>(skinned_asset);
+        EXPECT_TRUE(rt_fbx_mesh_count(skinned_asset) == 1, "FBX asset starts with one mesh");
+        EXPECT_TRUE(rt_fbx_animation_count(skinned_asset) == 1,
+                    "FBX asset starts with one animation");
+
+        void **saved_meshes = view->meshes;
+        view->meshes = nullptr;
+        view->mesh_count = 1;
+        view->mesh_capacity = 1;
+        EXPECT_TRUE(rt_fbx_mesh_count(skinned_asset) == 0,
+                    "FBX mesh count rejects missing backing storage");
+        EXPECT_TRUE(rt_fbx_get_mesh(skinned_asset, 0) == nullptr,
+                    "FBX mesh accessor rejects missing backing storage");
+        view->meshes = saved_meshes;
+        view->mesh_count = 99;
+        view->mesh_capacity = 1;
+        EXPECT_TRUE(rt_fbx_mesh_count(skinned_asset) == 1,
+                    "FBX mesh count clamps corrupt count to capacity");
+        EXPECT_TRUE(rt_fbx_get_mesh(skinned_asset, 1) == nullptr,
+                    "FBX mesh accessor rejects indexes past repaired count");
+
+        void **saved_animations = view->animations;
+        view->animations = nullptr;
+        view->animation_count = 1;
+        view->animation_capacity = 1;
+        EXPECT_TRUE(rt_fbx_animation_count(skinned_asset) == 0,
+                    "FBX animation count rejects missing backing storage");
+        view->animations = saved_animations;
+        view->animation_count = 99;
+        view->animation_capacity = 1;
+        EXPECT_TRUE(rt_fbx_animation_count(skinned_asset) == 1,
+                    "FBX animation count clamps corrupt count to capacity");
+        EXPECT_TRUE(rt_fbx_get_animation(skinned_asset, 1) == nullptr,
+                    "FBX animation accessor rejects indexes past repaired count");
+        EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_fbx_get_animation_name(skinned_asset, 1)), "") ==
+                        0,
+                    "FBX animation names use empty fallback for repaired-invalid indexes");
+
+        view->morph_count = 99;
+        view->morph_capacity = 1;
+        EXPECT_TRUE(rt_fbx_get_morph_target(skinned_asset, 1) == nullptr,
+                    "FBX morph accessor rejects indexes past repaired count");
+
+        if (rt_obj_release_check0(skinned_asset))
+            rt_obj_free(skinned_asset);
+    }
+
+    const char *material_path = "/tmp/viper_fbx_asset_corrupt_counts_material.fbx";
+    EXPECT_TRUE(write_fbx_fixture(material_path),
+                "Material FBX fixture can be written for asset corruption test");
+    void *material_asset = rt_fbx_load(rt_const_cstr(material_path));
+    EXPECT_TRUE(material_asset != nullptr, "Direct FBX.Load parses material fixture");
+    if (material_asset) {
+        auto *view = static_cast<FbxAssetView *>(material_asset);
+        EXPECT_TRUE(rt_fbx_material_count(material_asset) == 1,
+                    "FBX asset starts with one material");
+        void **saved_materials = view->materials;
+        view->materials = nullptr;
+        view->material_count = 1;
+        view->material_capacity = 1;
+        EXPECT_TRUE(rt_fbx_material_count(material_asset) == 0,
+                    "FBX material count rejects missing backing storage");
+        view->materials = saved_materials;
+        view->material_count = 99;
+        view->material_capacity = 1;
+        EXPECT_TRUE(rt_fbx_material_count(material_asset) == 1,
+                    "FBX material count clamps corrupt count to capacity");
+        EXPECT_TRUE(rt_fbx_get_material(material_asset, 1) == nullptr,
+                    "FBX material accessor rejects indexes past repaired count");
+
+        if (rt_obj_release_check0(material_asset))
+            rt_obj_free(material_asset);
+    }
+    std::remove(skinned_path);
+    std::remove(material_path);
+}
+
 static void test_model3d_rejects_truncated_fbx() {
     const char *path = "/tmp/viper_model3d_truncated_fixture.fbx";
     bool wrote_fixture = write_truncated_fbx_fixture(path);
@@ -1878,6 +2632,221 @@ static void test_model3d_autoplays_gltf_node_and_morph_animation() {
     }
 }
 
+static void test_gltf_short_node_weights_clear_morph_tail() {
+    const char *path = "/tmp/viper_gltf_short_node_weights.gltf";
+    std::vector<uint8_t> buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    const float morph_a[9] = {0.1f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    const float morph_b[9] = {0.0f, 0.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+    size_t pos_off = buffer.size();
+    for (float v : positions)
+        append_bytes(buffer, v);
+    size_t idx_off = buffer.size();
+    for (uint16_t v : indices)
+        append_bytes(buffer, v);
+    while (buffer.size() % 4 != 0)
+        buffer.push_back(0);
+    size_t morph_a_off = buffer.size();
+    for (float v : morph_a)
+        append_bytes(buffer, v);
+    size_t morph_b_off = buffer.size();
+    for (float v : morph_b)
+        append_bytes(buffer, v);
+
+    std::string buffer_b64 = base64_encode(buffer.data(), buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(pos_off) +
+        ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(idx_off) +
+        ",\"byteLength\":6},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(morph_a_off) +
+        ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(morph_b_off) +
+        ",\"byteLength\":36}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+        "{\"bufferView\":3,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}"
+        "],"
+        "\"meshes\":[{\"weights\":[0.0,1.0],\"primitives\":[{\"attributes\":{\"POSITION\":0},"
+        "\"indices\":1,\"targets\":[{\"POSITION\":2},{\"POSITION\":3}]}]}],"
+        "\"nodes\":[{\"name\":\"ShortWeights\",\"mesh\":0,\"weights\":[0.0]}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+        "}";
+    EXPECT_TRUE(write_text_file(path, gltf_json), "Short node-weights glTF fixture can be written");
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load imports glTF with short node weights");
+    if (!model)
+        return;
+    void *scene = rt_model3d_instantiate_scene(model);
+    EXPECT_TRUE(scene != nullptr, "Model3D.InstantiateScene creates short-weights scene");
+    if (!scene)
+        return;
+    void *node = rt_scene3d_find(scene, rt_const_cstr("ShortWeights"));
+    EXPECT_TRUE(node != nullptr, "Short-weights node is present");
+    if (!node)
+        return;
+    auto *mesh = static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(node));
+    EXPECT_TRUE(mesh != nullptr && mesh->morph_targets_ref != nullptr,
+                "Short-weights node has instance-local morph targets");
+    if (mesh && mesh->morph_targets_ref) {
+        EXPECT_NEAR(rt_morphtarget3d_get_weight(mesh->morph_targets_ref, 0),
+                    0.0,
+                    0.001,
+                    "Short node weights apply provided weight");
+        EXPECT_NEAR(rt_morphtarget3d_get_weight(mesh->morph_targets_ref, 1),
+                    0.0,
+                    0.001,
+                    "Short node weights clear inherited mesh-default tail weights");
+    }
+    std::remove(path);
+}
+
+static void test_gltf_rejects_unknown_animation_interpolation() {
+    const char *path = "/tmp/viper_gltf_unknown_animation_interpolation.gltf";
+    std::vector<uint8_t> buffer;
+    const float times[2] = {0.0f, 1.0f};
+    const float translations[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+
+    size_t times_off = buffer.size();
+    for (float v : times)
+        append_bytes(buffer, v);
+    size_t translations_off = buffer.size();
+    for (float v : translations)
+        append_bytes(buffer, v);
+
+    std::string buffer_b64 = base64_encode(buffer.data(), buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(times_off) +
+        ",\"byteLength\":8},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(translations_off) +
+        ",\"byteLength\":24}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}"
+        "],"
+        "\"nodes\":[{\"name\":\"BadInterpolationTarget\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0,"
+        "\"animations\":[{\"name\":\"BadInterpolation\",\"samplers\":[{\"input\":0,"
+        "\"output\":1,\"interpolation\":\"BOGUS\"}],\"channels\":[{\"sampler\":0,"
+        "\"target\":{\"node\":0,\"path\":\"translation\"}}]}]"
+        "}";
+
+    EXPECT_TRUE(write_text_file(path, gltf_json),
+                "Unknown-interpolation glTF fixture can be written");
+    void *asset = rt_gltf_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "glTF asset with a bad animation sampler still loads");
+    if (asset) {
+        EXPECT_TRUE(rt_gltf_node_animation_count(asset) == 0,
+                    "glTF rejects unknown animation interpolation instead of treating it as linear");
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(path);
+}
+
+static void test_gltf_rejects_oversized_node_animation_key_count_before_scan() {
+    const char *path = "/tmp/viper_gltf_oversized_node_animation_keys.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"accessors\":["
+        "{\"componentType\":5126,\"count\":1000001,\"type\":\"SCALAR\"},"
+        "{\"componentType\":5126,\"count\":1000001,\"type\":\"VEC3\"}"
+        "],"
+        "\"nodes\":[{\"name\":\"HugeAnimationTarget\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0,"
+        "\"animations\":[{\"name\":\"TooManyKeys\",\"samplers\":[{\"input\":0,\"output\":1}],"
+        "\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"translation\"}}]}]"
+        "}";
+
+    EXPECT_TRUE(write_text_file(path, gltf_json),
+                "Oversized-key-count glTF fixture can be written");
+    void *asset = rt_gltf_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "glTF asset with oversized animation key count still loads");
+    if (asset) {
+        EXPECT_TRUE(rt_gltf_node_animation_count(asset) == 0,
+                    "glTF skips node animation channels before scanning oversized key accessors");
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(path);
+}
+
+static void test_gltf_rejects_oversized_morph_weight_animation_width() {
+    const char *path = "/tmp/viper_gltf_oversized_weight_animation.gltf";
+    std::vector<uint8_t> buffer;
+    const float time = 0.0f;
+    size_t time_off = buffer.size();
+    append_bytes(buffer, time);
+    size_t weights_off = buffer.size();
+    for (int i = 0; i < 4097; i++) {
+        const float weight = 0.0f;
+        append_bytes(buffer, weight);
+    }
+
+    std::string buffer_b64 = base64_encode(buffer.data(), buffer.size());
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        buffer_b64 + "\",\"byteLength\":" + std::to_string(buffer.size()) +
+        "}],"
+        "\"bufferViews\":["
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(time_off) +
+        ",\"byteLength\":4},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(weights_off) +
+        ",\"byteLength\":" + std::to_string(4097 * (int)sizeof(float)) +
+        "}"
+        "],"
+        "\"accessors\":["
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"},"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":4097,\"type\":\"SCALAR\"}"
+        "],"
+        "\"nodes\":[{\"name\":\"TooManyWeights\"}],"
+        "\"scenes\":[{\"nodes\":[0]}],\"scene\":0,"
+        "\"animations\":[{\"name\":\"TooWide\",\"samplers\":[{\"input\":0,\"output\":1}],"
+        "\"channels\":[{\"sampler\":0,\"target\":{\"node\":0,\"path\":\"weights\"}}]}]"
+        "}";
+
+    EXPECT_TRUE(write_text_file(path, gltf_json),
+                "Oversized morph-weight glTF fixture can be written");
+    void *asset = rt_gltf_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "glTF asset with oversized weight animation still loads");
+    if (asset) {
+        EXPECT_TRUE(rt_gltf_node_animation_count(asset) == 0,
+                    "glTF skips morph-weight channels wider than NodeAnimation3D can play");
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(path);
+}
+
 static void test_model3d_rejects_wrong_handle_types() {
     void *node = rt_scene_node3d_new();
     EXPECT_TRUE(rt_model3d_get_mesh_count(node) == 0,
@@ -1900,10 +2869,229 @@ static void test_model3d_rejects_wrong_handle_types() {
                 "Model3D.InstantiateSceneAt rejects non-Model3D handles");
 }
 
+static void test_model3d_skips_default_skeletal_animator_for_multiple_skeletons() {
+    const char *path = "/tmp/viper_model3d_multi_skeleton_autobind.obj";
+    const char *obj = "v 0 0 0\n"
+                      "v 1 0 0\n"
+                      "v 0 1 0\n"
+                      "f 1 2 3\n";
+    EXPECT_TRUE(write_text_file(path, obj), "Model3D multi-skeleton OBJ fixture is written");
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load creates fixture for multi-skeleton auto-bind test");
+    if (!model)
+        return;
+
+    auto *view = static_cast<Model3DView *>(model);
+    view->skeletons = static_cast<void **>(std::calloc(2, sizeof(void *)));
+    view->animations = static_cast<void **>(std::calloc(2, sizeof(void *)));
+    EXPECT_TRUE(view->skeletons && view->animations,
+                "Model3D multi-skeleton auto-bind arrays allocate");
+    if (!view->skeletons || !view->animations)
+        return;
+
+    view->skeletons[0] = rt_skeleton3d_new();
+    view->skeletons[1] = rt_skeleton3d_new();
+    EXPECT_TRUE(view->skeletons[0] && view->skeletons[1],
+                "Model3D multi-skeleton auto-bind skeletons allocate");
+    if (!view->skeletons[0] || !view->skeletons[1])
+        return;
+    rt_skeleton3d_add_bone(view->skeletons[0], rt_const_cstr("root_a"), -1, rt_mat4_identity());
+    rt_skeleton3d_add_bone(view->skeletons[1], rt_const_cstr("root_b"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(view->skeletons[0]);
+    rt_skeleton3d_compute_inverse_bind(view->skeletons[1]);
+    view->skeleton_count = 2;
+    view->skeleton_capacity = 2;
+
+    view->animations[0] = rt_animation3d_new(rt_const_cstr("clip_a"), 1.0);
+    view->animations[1] = rt_animation3d_new(rt_const_cstr("clip_b"), 1.0);
+    view->animation_count = 2;
+    view->animation_capacity = 2;
+
+    auto *instance = static_cast<rt_scene_node3d *>(rt_model3d_instantiate(model));
+    EXPECT_TRUE(instance != nullptr, "Model3D.Instantiate succeeds for multi-skeleton fixture");
+    EXPECT_TRUE(instance && instance->bound_animator == nullptr,
+                "Model3D skips arbitrary default skeletal animator for multiple skeletons");
+
+    std::remove(path);
+}
+
+static void test_model3d_clamps_corrupt_counts_and_child_walks() {
+    const char *path = "/tmp/viper_model3d_corrupt_counts.obj";
+    const char *obj = "v 0 0 0\n"
+                      "v 1 0 0\n"
+                      "v 0 1 0\n"
+                      "f 1 2 3\n";
+    EXPECT_TRUE(write_text_file(path, obj), "Model3D corrupt-count OBJ fixture is written");
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load creates fixture for corrupt-count test");
+    if (!model)
+        return;
+
+    auto *view = static_cast<Model3DView *>(model);
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1, "Model3D fixture starts with one mesh");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
+                "Model3D fixture starts with one material");
+    EXPECT_TRUE(rt_model3d_get_scene_count(model) == 1, "Model3D fixture starts with one scene");
+
+    view->mesh_count = 50;
+    view->mesh_capacity = 1;
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
+                "Model3D mesh count clamps to backing capacity");
+    EXPECT_TRUE(rt_model3d_get_mesh(model, 0) != nullptr,
+                "Model3D still exposes valid mesh within clamped count");
+    EXPECT_TRUE(rt_model3d_get_mesh(model, 1) == nullptr,
+                "Model3D rejects mesh index beyond clamped count");
+    if (view->meshes && view->materials) {
+        void *saved_mesh_entry = view->meshes[0];
+        void *saved_material_entry = view->materials[0];
+        view->meshes[0] = saved_material_entry;
+        EXPECT_TRUE(rt_model3d_get_mesh(model, 0) == nullptr,
+                    "Model3D.GetMesh rejects wrong-class entries in corrupt mesh tables");
+        view->meshes[0] = saved_mesh_entry;
+        view->materials[0] = saved_mesh_entry;
+        EXPECT_TRUE(rt_model3d_get_material(model, 0) == nullptr,
+                    "Model3D.GetMaterial rejects wrong-class entries in corrupt material tables");
+        view->materials[0] = saved_material_entry;
+    }
+
+    view->material_count = -5;
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 0,
+                "Model3D negative material count reads as empty");
+    EXPECT_TRUE(rt_model3d_get_material(model, 0) == nullptr,
+                "Model3D rejects material access when count is corrupt-negative");
+
+    view->scene_count = 50;
+    view->scene_capacity = 1;
+    EXPECT_TRUE(rt_model3d_get_scene_count(model) == 1,
+                "Model3D scene count clamps to backing capacity");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(model, 1)), "") == 0,
+                "Model3D rejects scene-name access beyond clamped count");
+    EXPECT_TRUE(rt_model3d_instantiate_scene_at(model, 1) == nullptr,
+                "Model3D rejects scene instantiation beyond clamped count");
+
+    if (view->scenes) {
+        view->scenes[0].camera_count = 99;
+        view->scenes[0].camera_capacity = 0;
+        view->scenes[0].cameras = nullptr;
+        EXPECT_TRUE(rt_model3d_get_camera_count(model, 0) == 0,
+                    "Model3D camera count clamps to a missing camera array");
+        EXPECT_TRUE(rt_model3d_get_camera(model, 0, 0) == nullptr,
+                    "Model3D rejects camera access when camera array is missing");
+        view->scenes[0].cameras = static_cast<void **>(std::calloc(1, sizeof(void *)));
+        EXPECT_TRUE(view->scenes[0].cameras != nullptr,
+                    "Model3D corrupt camera table test array allocates");
+        if (view->scenes[0].cameras) {
+            view->scenes[0].cameras[0] = rt_material3d_new_color(0.8, 0.2, 0.2);
+            view->scenes[0].camera_count = 1;
+            view->scenes[0].camera_capacity = 1;
+            EXPECT_TRUE(rt_model3d_get_camera_count(model, 0) == 1,
+                        "Model3D camera count exposes corrupt but backed camera table");
+            EXPECT_TRUE(rt_model3d_get_camera(model, 0, 0) == nullptr,
+                        "Model3D.GetCamera rejects wrong-class entries in corrupt camera tables");
+        }
+    }
+
+    if (view->template_root) {
+        view->template_root->child_count = 99;
+        view->template_root->child_capacity = 1;
+        EXPECT_TRUE(rt_model3d_get_node_count(model) == 1,
+                    "Model3D node counting clamps corrupt root child count");
+        EXPECT_TRUE(rt_model3d_find_node(model, rt_const_cstr("mesh_0")) != nullptr,
+                    "Model3D.FindNode still finds valid children under clamped count");
+        EXPECT_TRUE(rt_model3d_instantiate(model) != nullptr,
+                    "Model3D.Instantiate clamps corrupt root child count while cloning");
+        EXPECT_TRUE(rt_model3d_instantiate_scene_at(model, 0) != nullptr,
+                    "Model3D.InstantiateSceneAt clamps corrupt scene root child count");
+
+        rt_scene_node3d *saved_child = view->template_root->children[0];
+        view->template_root->children[0] = nullptr;
+        void *empty_instance = rt_model3d_instantiate(model);
+        EXPECT_TRUE(empty_instance != nullptr,
+                    "Model3D.Instantiate skips null child slots in corrupt templates");
+        EXPECT_TRUE(rt_scene_node3d_child_count(empty_instance) == 0,
+                    "Model3D null child slots do not appear in cloned instances");
+        EXPECT_TRUE(rt_model3d_instantiate_scene_at(model, 0) != nullptr,
+                    "Model3D.InstantiateSceneAt skips null child slots in corrupt scenes");
+        view->template_root->children[0] = saved_child;
+
+        if (saved_child && view->materials && view->materials[0] && view->meshes && view->meshes[0]) {
+            void *saved_mesh = saved_child->mesh;
+            saved_child->mesh = view->materials[0];
+            auto *bad_mesh_instance = static_cast<rt_scene_node3d *>(rt_model3d_instantiate(model));
+            auto *bad_mesh_child =
+                bad_mesh_instance && bad_mesh_instance->child_count > 0
+                    ? bad_mesh_instance->children[0]
+                    : nullptr;
+            EXPECT_TRUE(bad_mesh_child && bad_mesh_child->mesh == nullptr,
+                        "Model3D.Instantiate drops wrong-class template mesh slots");
+            saved_child->mesh = saved_mesh;
+
+            rt_scene_node3d_add_lod(saved_child, 4.0, view->meshes[0]);
+            if (saved_child->lod_levels && saved_child->lod_count > 0) {
+                void *saved_lod_mesh = saved_child->lod_levels[0].mesh;
+                saved_child->lod_levels[0].mesh = view->materials[0];
+                auto *bad_lod_instance =
+                    static_cast<rt_scene_node3d *>(rt_model3d_instantiate(model));
+                auto *bad_lod_child =
+                    bad_lod_instance && bad_lod_instance->child_count > 0
+                        ? bad_lod_instance->children[0]
+                        : nullptr;
+                EXPECT_TRUE(bad_lod_child && rt_scene_node3d_get_lod_count(bad_lod_child) == 0,
+                            "Model3D.Instantiate drops wrong-class template LOD mesh slots");
+                saved_child->lod_levels[0].mesh = saved_lod_mesh;
+            }
+        }
+    }
+
+    view->skeletons = static_cast<void **>(std::calloc(2, sizeof(void *)));
+    view->animations = static_cast<void **>(std::calloc(2, sizeof(void *)));
+    view->node_animations = static_cast<void **>(std::calloc(2, sizeof(void *)));
+    EXPECT_TRUE(view->skeletons && view->animations && view->node_animations,
+                "Model3D corrupt animation-list test arrays allocate");
+    if (view->skeletons && view->animations && view->node_animations) {
+        view->skeletons[0] = rt_material3d_new_color(0.3, 0.4, 0.5);
+        view->skeletons[1] = rt_skeleton3d_new();
+        view->animations[0] = rt_material3d_new_color(0.5, 0.4, 0.3);
+        view->animations[1] = rt_animation3d_new(rt_const_cstr("idle"), 1.0);
+        view->node_animations[0] = rt_material3d_new_color(0.2, 0.5, 0.4);
+        view->node_animations[1] = rt_node_animation3d_new(rt_const_cstr("node_idle"), 1.0);
+        view->skeleton_count = 99;
+        view->skeleton_capacity = 2;
+        view->animation_count = 99;
+        view->animation_capacity = 2;
+        view->node_animation_count = 99;
+        view->node_animation_capacity = 2;
+        EXPECT_TRUE(rt_model3d_get_skeleton(model, 0) == nullptr,
+                    "Model3D.GetSkeleton rejects wrong-class entries in corrupt skeleton tables");
+        EXPECT_TRUE(rt_model3d_get_skeleton(model, 1) == view->skeletons[1],
+                    "Model3D.GetSkeleton still returns valid clamped skeleton entries");
+        EXPECT_TRUE(rt_model3d_get_animation(model, 0) == nullptr,
+                    "Model3D.GetAnimation rejects wrong-class entries in corrupt animation tables");
+        EXPECT_TRUE(rt_model3d_get_animation(model, 1) == view->animations[1],
+                    "Model3D.GetAnimation still returns valid clamped animation entries");
+
+        void *animated_instance = rt_model3d_instantiate(model);
+        auto *animated_root = static_cast<rt_scene_node3d *>(animated_instance);
+        EXPECT_TRUE(animated_root && animated_root->bound_animator,
+                    "Model3D default skeletal animator skips null/corrupt animation slots");
+        EXPECT_TRUE(animated_root && animated_root->bound_node_animator,
+                    "Model3D default node animator compacts null/corrupt clip slots");
+    }
+
+    std::remove(path);
+}
+
 int main() {
     test_model3d_rejects_wrong_handle_types();
+    test_model3d_skips_default_skeletal_animator_for_multiple_skeletons();
+    test_model3d_clamps_corrupt_counts_and_child_walks();
     test_model3d_roundtrips_vscn_assets();
+    test_model3d_find_node_rejects_wrong_string_handles();
     test_model3d_adapts_gltf_scene_graphs();
+    test_model3d_rejects_gltf_accessor_overrun_of_buffer_view();
+    test_gltf_asset_accessors_clamp_corrupt_counts();
     test_model3d_load_asset_resolves_mounted_gltf_dependencies();
     test_model3d_load_asset_diagnostics_name_missing_dependency();
     test_model3d_adapts_fbx_scene_graphs();
@@ -1918,9 +3106,21 @@ int main() {
     test_model3d_splits_fbx_layer_element_materials();
     test_model3d_imports_fbx_embedded_textures();
     test_model3d_imports_fbx_skinning_and_grouped_animation();
+    test_fbx_duplicate_animation_curves_keep_first_component();
+    test_fbx_mismatched_animation_curve_key_arrays_are_ignored();
+    test_fbx_bare_animation_curve_component_names_import();
+    test_fbx_lowercase_animation_curve_component_names_import();
+    test_fbx_animation_layers_beyond_fixed_cap_import();
+    test_fbx_animation_curve_nodes_beyond_fixed_cap_import();
+    test_fbx_duplicate_bone_names_resolve_by_model_id();
+    test_fbx_asset_accessors_clamp_corrupt_counts();
     test_model3d_rejects_truncated_fbx();
     test_model3d_loads_demo_fbx_textures();
+    test_gltf_rejects_unknown_animation_interpolation();
+    test_gltf_rejects_oversized_node_animation_key_count_before_scan();
+    test_gltf_rejects_oversized_morph_weight_animation_width();
     test_model3d_autoplays_gltf_node_and_morph_animation();
+    test_gltf_short_node_weights_clear_morph_tail();
     std::printf("Model3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

@@ -38,6 +38,7 @@
 #include "rt_graphics3d_ids.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_platform.h"
 #include "rt_trap.h"
 
@@ -50,6 +51,7 @@
 #define TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE 24u
 #define TEXTUREASSET3D_MAX_FILE_BYTES (256u * 1024u * 1024u)
 #define TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES (256u * 1024u * 1024u)
+#define TEXTUREASSET3D_MAX_MIP_COUNT 32u
 
 #define VK_FORMAT_R8G8B8A8_UNORM 37u
 #define VK_FORMAT_R8G8B8A8_SRGB 43u
@@ -94,6 +96,7 @@ typedef struct {
     int64_t width;
     int64_t height;
     int64_t mip_count;
+    int64_t mip_capacity;
     int64_t resident_mip_start;
     int64_t resident_mip_count;
     int64_t resident_bytes;
@@ -153,6 +156,23 @@ static rt_textureasset3d *textureasset3d_checked(void *obj) {
     return (rt_textureasset3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREASSET3D_CLASS_ID);
 }
 
+/// @brief Number of mip slots allocated for the asset's parallel mip arrays.
+static int64_t textureasset3d_allocated_mip_count(const rt_textureasset3d *asset) {
+    if (!asset || asset->mip_capacity <= 0)
+        return 0;
+    if (asset->mip_capacity > (int64_t)TEXTUREASSET3D_MAX_MIP_COUNT)
+        return (int64_t)TEXTUREASSET3D_MAX_MIP_COUNT;
+    return asset->mip_capacity;
+}
+
+/// @brief Mip count safe for public access, clamped to the allocated mip table.
+static int64_t textureasset3d_safe_mip_count(const rt_textureasset3d *asset) {
+    int64_t allocated = textureasset3d_allocated_mip_count(asset);
+    if (!asset || !asset->mips || asset->mip_count <= 0 || allocated <= 0)
+        return 0;
+    return asset->mip_count < allocated ? asset->mip_count : allocated;
+}
+
 /// @brief Release a GC reference held in @p *slot if this is its last drop, then NULL it.
 static void textureasset3d_release_ref(void **slot) {
     if (!slot || !*slot)
@@ -162,26 +182,41 @@ static void textureasset3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Release a decoded mip fallback only if it is still a live Pixels object.
+static void textureasset3d_release_pixels_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_pixels_checked_impl_or_null(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    textureasset3d_release_ref(slot);
+}
+
 /// @brief GC finalizer: release each decoded Pixels mip and free the mip table and native payloads.
 static void textureasset3d_finalize(void *obj) {
     rt_textureasset3d *asset = (rt_textureasset3d *)obj;
+    int64_t allocated;
     if (!asset)
         return;
+    allocated = textureasset3d_allocated_mip_count(asset);
     asset->pixels = NULL;
     if (asset->mip_pixels) {
-        for (int64_t i = 0; i < asset->mip_count; i++)
-            textureasset3d_release_ref(&asset->mip_pixels[i]);
+        for (int64_t i = 0; i < allocated; i++)
+            textureasset3d_release_pixels_ref(&asset->mip_pixels[i]);
         free(asset->mip_pixels);
         asset->mip_pixels = NULL;
     }
     if (asset->mip_payloads) {
-        for (int64_t i = 0; i < asset->mip_count; i++)
+        for (int64_t i = 0; i < allocated; i++)
             free(asset->mip_payloads[i]);
         free(asset->mip_payloads);
         asset->mip_payloads = NULL;
     }
     free(asset->mips);
     asset->mips = NULL;
+    asset->mip_count = 0;
+    asset->mip_capacity = 0;
 }
 
 /// @brief Read a little-endian uint32 from @p p (KTX2 is little-endian on all hosts).
@@ -244,6 +279,7 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
     uint64_t total = 0;
     int64_t old_start;
     int64_t old_count;
+    int64_t safe_mip_count;
 
     if (!asset)
         return 0;
@@ -253,8 +289,10 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
         rt_trap(api_name ? api_name : "TextureAsset3D.SetResidentMipRange: negative mip range");
         return 0;
     }
-    if (mip_count == 0 || first_mip >= asset->mip_count) {
-        asset->resident_mip_start = first_mip;
+    safe_mip_count = textureasset3d_safe_mip_count(asset);
+    if (mip_count == 0 || first_mip >= safe_mip_count || safe_mip_count <= 0) {
+        asset->resident_mip_start =
+            (safe_mip_count > 0 && first_mip > safe_mip_count) ? safe_mip_count : first_mip;
         asset->resident_mip_count = 0;
         asset->resident_bytes = 0;
         asset->pixels = NULL;
@@ -262,8 +300,8 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
             textureasset3d_bump_native_revision(asset);
         return 1;
     }
-    if (mip_count > asset->mip_count - first_mip)
-        mip_count = asset->mip_count - first_mip;
+    if (mip_count > safe_mip_count - first_mip)
+        mip_count = safe_mip_count - first_mip;
 
     for (int64_t i = 0; i < mip_count; i++) {
         const textureasset3d_mip *mip = &asset->mips[first_mip + i];
@@ -278,10 +316,38 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
     asset->resident_mip_count = mip_count;
     asset->resident_bytes = total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
     asset->pixels =
-        (asset->mip_pixels && first_mip < asset->mip_count) ? asset->mip_pixels[first_mip] : NULL;
+        (asset->mip_pixels && first_mip < safe_mip_count) ? asset->mip_pixels[first_mip] : NULL;
     if (old_start != asset->resident_mip_start || old_count != asset->resident_mip_count)
         textureasset3d_bump_native_revision(asset);
     return 1;
+}
+
+/// @brief True when the currently resident mip window is inside the loaded mip table.
+static int textureasset3d_resident_range_valid(const rt_textureasset3d *asset) {
+    int64_t safe_mip_count = textureasset3d_safe_mip_count(asset);
+    if (!asset || safe_mip_count <= 0 || asset->resident_mip_start < 0 ||
+        asset->resident_mip_count <= 0)
+        return 0;
+    if (asset->resident_mip_start >= safe_mip_count)
+        return 0;
+    return asset->resident_mip_count <= safe_mip_count - asset->resident_mip_start;
+}
+
+/// @brief True when the resident range contains at least one complete native payload.
+static int textureasset3d_resident_range_has_native_payload(const rt_textureasset3d *asset) {
+    if (!asset || !asset->compressed || !asset->mip_payloads || !asset->mips ||
+        !textureasset3d_resident_range_valid(asset) || asset->block_width <= 0 ||
+        asset->block_height <= 0 || asset->block_bytes <= 0)
+        return 0;
+    for (int64_t i = 0; i < asset->resident_mip_count; i++) {
+        int64_t mip = asset->resident_mip_start + i;
+        if (mip < 0 || mip >= textureasset3d_safe_mip_count(asset))
+            continue;
+        if (asset->mip_payloads[mip] && asset->mips[mip].length > 0 &&
+            asset->mips[mip].width > 0 && asset->mips[mip].height > 0)
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Read an entire file into a freshly malloc'd buffer (caller frees).
@@ -390,7 +456,7 @@ static void textureasset3d_release_mip_pixels(void **mip_pixels, int64_t mip_cou
     if (!mip_pixels)
         return;
     for (int64_t i = 0; i < mip_count; i++)
-        textureasset3d_release_ref(&mip_pixels[i]);
+        textureasset3d_release_pixels_ref(&mip_pixels[i]);
     free(mip_pixels);
 }
 
@@ -1510,7 +1576,8 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     level_count = textureasset3d_read_u32le(data + 40);
     supercompression_scheme = textureasset3d_read_u32le(data + 44);
 
-    if (pixel_width == 0 || pixel_height == 0) {
+    if (pixel_width == 0 || pixel_height == 0 || pixel_width > INT32_MAX ||
+        pixel_height > INT32_MAX) {
         rt_trap("TextureAsset3D.LoadKTX2: invalid dimensions");
         return NULL;
     }
@@ -1519,6 +1586,10 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         return NULL;
     }
     mip_count = level_count > 0 ? (int64_t)level_count : 1;
+    if (mip_count <= 0 || mip_count > (int64_t)TEXTUREASSET3D_MAX_MIP_COUNT) {
+        rt_trap("TextureAsset3D.LoadKTX2: unsupported mip count");
+        return NULL;
+    }
     if (level_count > 0) {
         if ((uint64_t)level_count >
             (UINT64_MAX - TEXTUREASSET3D_KTX2_HEADER_SIZE) / TEXTUREASSET3D_KTX2_LEVEL_ENTRY_SIZE) {
@@ -1615,6 +1686,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     asset->width = (int64_t)pixel_width;
     asset->height = (int64_t)pixel_height;
     asset->mip_count = mip_count;
+    asset->mip_capacity = mip_count;
     asset->format = format.name;
     asset->compressed = (format.compressed || supercompression_scheme != 0) ? 1 : 0;
     asset->block_width = format.block_width;
@@ -1629,7 +1701,8 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
 
 /// @brief Decode a caller-owned KTX2 byte stream into a TextureAsset3D.
 void *rt_textureasset3d_load_ktx2_memory(const uint8_t *data, uint64_t size) {
-    if (!data || size == 0 || size > (uint64_t)SIZE_MAX) {
+    if (!data || size == 0 || size > (uint64_t)SIZE_MAX ||
+        size > (uint64_t)TEXTUREASSET3D_MAX_FILE_BYTES) {
         rt_trap("TextureAsset3D.LoadKTX2Memory: invalid payload");
         return NULL;
     }
@@ -1680,19 +1753,19 @@ void *rt_textureasset3d_load_ktx2_asset(rt_string path) {
 /// @brief Texture width in pixels (0 if the handle is invalid).
 int64_t rt_textureasset3d_get_width(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
-    return asset ? asset->width : 0;
+    return (asset && asset->width > 0) ? asset->width : 0;
 }
 
 /// @brief Texture height in pixels (0 if the handle is invalid).
 int64_t rt_textureasset3d_get_height(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
-    return asset ? asset->height : 0;
+    return (asset && asset->height > 0) ? asset->height : 0;
 }
 
 /// @brief Number of mip levels (0 if the handle is invalid).
 int64_t rt_textureasset3d_get_mip_count(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
-    return asset ? asset->mip_count : 0;
+    return textureasset3d_safe_mip_count(asset);
 }
 
 /// @brief Runtime format name ("rgba8"/"bc3"/"bc7"/"astc"/"etc2"/"unknown"; "" if invalid).
@@ -1710,19 +1783,26 @@ int8_t rt_textureasset3d_get_compressed(void *obj) {
 /// @brief First mip index currently marked resident.
 int64_t rt_textureasset3d_get_resident_mip_start(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
-    return asset ? asset->resident_mip_start : 0;
+    int64_t safe_mip_count = textureasset3d_safe_mip_count(asset);
+    if (!asset || safe_mip_count <= 0 || asset->resident_mip_start < 0)
+        return 0;
+    if (safe_mip_count > 0 && asset->resident_mip_start > safe_mip_count)
+        return safe_mip_count;
+    return asset->resident_mip_start;
 }
 
 /// @brief Number of mip levels currently marked resident.
 int64_t rt_textureasset3d_get_resident_mip_count(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
-    return asset ? asset->resident_mip_count : 0;
+    return textureasset3d_resident_range_valid(asset) ? asset->resident_mip_count : 0;
 }
 
 /// @brief Total byte size of the currently-resident mips (saturated to INT64_MAX).
 int64_t rt_textureasset3d_get_resident_bytes(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
-    return asset ? asset->resident_bytes : 0;
+    if (!textureasset3d_resident_range_valid(asset) || asset->resident_bytes < 0)
+        return 0;
+    return asset->resident_bytes;
 }
 
 /// @brief Set the resident mip window (traps on a negative range); see the internal helper.
@@ -1735,7 +1815,9 @@ void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int6
 /// @brief Borrow the decoded Pixels object for the first resident mip (NULL if none/invalid).
 void *rt_textureasset3d_get_pixels(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
-    return asset ? asset->pixels : NULL;
+    if (!textureasset3d_resident_range_valid(asset) || !asset->mip_pixels)
+        return NULL;
+    return asset->mip_pixels[asset->resident_mip_start];
 }
 
 /// @brief Compute the backend texture-cache key for this asset's resident native blocks.
@@ -1747,7 +1829,7 @@ uint64_t rt_textureasset3d_get_native_cache_key(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     uint64_t signature = 1469598103934665603ull;
 
-    if (!asset || !asset->compressed || !asset->mip_payloads || asset->resident_mip_count <= 0)
+    if (!textureasset3d_resident_range_has_native_payload(asset))
         return 0;
     signature ^=
         asset->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
@@ -1807,9 +1889,13 @@ int rt_textureasset3d_get_native_mip_info(void *obj,
         *out_block_height = 0;
     if (out_block_bytes)
         *out_block_bytes = 0;
-    if (!asset || !asset->compressed || !asset->mip_payloads || mip < 0 ||
-        mip >= asset->mip_count || !asset->mip_payloads[mip] || asset->mips[mip].length == 0 ||
-        asset->block_width <= 0 || asset->block_height <= 0 || asset->block_bytes <= 0)
+    int64_t safe_mip_count = textureasset3d_safe_mip_count(asset);
+    if (!asset || !asset->compressed || !asset->mip_payloads || !asset->mips || mip < 0 ||
+        mip >= safe_mip_count || !asset->mip_payloads[mip] || asset->mips[mip].length == 0 ||
+        asset->mips[mip].width == 0 || asset->mips[mip].height == 0 ||
+        asset->mips[mip].width > (uint32_t)INT32_MAX ||
+        asset->mips[mip].height > (uint32_t)INT32_MAX || asset->block_width <= 0 ||
+        asset->block_height <= 0 || asset->block_bytes <= 0)
         return 0;
 
     if (out_data)

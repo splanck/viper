@@ -1128,12 +1128,12 @@ static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
 
 /// @brief Maximum mip LOD index for a cubemap (0 if it has no mip chain).
 static float metal_cubemap_max_lod(const rt_cubemap3d *cubemap) {
+    int32_t face_size;
     int32_t mip_count;
 
-    if (!cubemap || cubemap->face_size <= 1)
+    if (!cubemap || !vgfx3d_get_cubemap_face_size(cubemap, &face_size) || face_size <= 1)
         return 0.0f;
-    mip_count =
-        vgfx3d_metal_compute_mip_count((int32_t)cubemap->face_size, (int32_t)cubemap->face_size);
+    mip_count = vgfx3d_metal_compute_mip_count(face_size, face_size);
     return mip_count > 1 ? (float)(mip_count - 1) : 0.0f;
 }
 

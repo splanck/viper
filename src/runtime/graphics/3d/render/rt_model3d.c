@@ -59,6 +59,8 @@
 extern void *rt_fbx_get_scene_root(void *fbx);
 extern void *rt_pixels_load(void *path);
 
+#define MODEL3D_MAX_WALK_NODES 1048576
+
 typedef struct {
     rt_scene_node3d *root;
     char *name;
@@ -105,6 +107,73 @@ static rt_model3d *model3d_checked(void *obj) {
     return (rt_model3d *)rt_g3d_checked_or_null(obj, RT_G3D_MODEL3D_CLASS_ID);
 }
 
+/// @brief Clamp a runtime count to its backing capacity and pointer validity.
+static int32_t model_clamped_array_count(const void *arr, int32_t count, int32_t capacity) {
+    if (count <= 0)
+        return 0;
+    if (!arr || capacity <= 0)
+        return 0;
+    return count > capacity ? capacity : count;
+}
+
+/// @brief Clamp and persist a private array count before mutating that array.
+static int32_t model_repair_array_count(const void *arr, int32_t *count, int32_t capacity) {
+    int32_t safe_count = count ? model_clamped_array_count(arr, *count, capacity) : 0;
+    if (count)
+        *count = safe_count;
+    return safe_count;
+}
+
+/// @brief Return a safe child count for scene-node walkers.
+static int32_t model_node_child_count(const rt_scene_node3d *node) {
+    return node ? model_clamped_array_count(node->children, node->child_count, node->child_capacity)
+                : 0;
+}
+
+/// @brief Return a safe LOD count for scene-node cloning/ref collection.
+static int32_t model_node_lod_count(const rt_scene_node3d *node) {
+    return node ? model_clamped_array_count(node->lod_levels, node->lod_count, node->lod_capacity)
+                : 0;
+}
+
+/// @brief Return a safe scene count for public scene accessors.
+static int32_t model_scene_count(const rt_model3d *model) {
+    return model ? model_clamped_array_count(model->scenes, model->scene_count, model->scene_capacity)
+                 : 0;
+}
+
+/// @brief Clamp and persist the scene count before mutating the scene table.
+static int32_t model_repair_scene_count(rt_model3d *model) {
+    int32_t safe_count = model_scene_count(model);
+    if (model)
+        model->scene_count = safe_count;
+    return safe_count;
+}
+
+/// @brief Return a C string only when @p string is a valid runtime string handle.
+static const char *model_string_cstr_or_null(rt_string string) {
+    if (!string || !rt_string_is_handle(string))
+        return NULL;
+    return rt_string_cstr(string);
+}
+
+/// @brief Convert an importer-reported int64 count into a runtime array count.
+static int model_count_i64_to_i32(int64_t count, int32_t *out, const char *trap_msg) {
+    if (!out)
+        return 0;
+    if (count <= 0) {
+        *out = 0;
+        return 1;
+    }
+    if (count > INT32_MAX) {
+        rt_trap(trap_msg ? trap_msg : "Model3D.Load: imported count is too large");
+        *out = 0;
+        return 0;
+    }
+    *out = (int32_t)count;
+    return 1;
+}
+
 /// @brief Release the GC reference at `*slot` and clear the slot. NULL-safe both ways
 /// (`slot == NULL` or `*slot == NULL`). Frees the object only when the release drops the
 /// retain count to zero — bystander references stay alive.
@@ -128,29 +197,44 @@ static void model_release_local(void *obj) {
 /// @brief Release every entry in a dynamically-grown reference array, then free the array
 /// storage itself and reset the count. Used by the finalizer to tear down `meshes`,
 /// `materials`, `skeletons`, and `animations` lists in one call each.
-static void model_release_array(void ***arr, int32_t *count) {
-    if (!arr || !*arr)
+static void model_release_array(void ***arr, int32_t *count, int32_t *capacity) {
+    int32_t release_count;
+    if (!arr)
         return;
+    if (!*arr) {
+        if (count)
+            *count = 0;
+        if (capacity)
+            *capacity = 0;
+        return;
+    }
+    release_count = model_clamped_array_count(*arr, count ? *count : 0, capacity ? *capacity : 0);
     if (count) {
-        for (int32_t i = 0; i < *count; i++)
+        for (int32_t i = 0; i < release_count; i++)
             model_release_ref(&(*arr)[i]);
         *count = 0;
     }
+    if (capacity)
+        *capacity = 0;
     free(*arr);
     *arr = NULL;
 }
 
 /// @brief Release every scene entry's root, name, and camera list (does not free the array itself).
 static void model_release_scenes(rt_model3d *model) {
-    if (!model || !model->scenes)
+    if (!model)
         return;
-    for (int32_t i = 0; i < model->scene_count; i++) {
+    if (!model->scenes) {
+        model->scene_count = 0;
+        model->scene_capacity = 0;
+        return;
+    }
+    for (int32_t i = 0, scene_count = model_scene_count(model); i < scene_count; i++) {
         model3d_scene_entry *scene = &model->scenes[i];
         model_release_ref((void **)&scene->root);
         free(scene->name);
         scene->name = NULL;
-        model_release_array(&scene->cameras, &scene->camera_count);
-        scene->camera_capacity = 0;
+        model_release_array(&scene->cameras, &scene->camera_count, &scene->camera_capacity);
     }
     free(model->scenes);
     model->scenes = NULL;
@@ -168,12 +252,13 @@ static void rt_model3d_finalize(void *obj) {
         return;
     model_release_ref((void **)&model->template_root);
     model_release_scenes(model);
-    model_release_array(&model->meshes, &model->mesh_count);
-    model_release_array(&model->materials, &model->material_count);
-    model_release_array(&model->skeletons, &model->skeleton_count);
-    model_release_array(&model->animations, &model->animation_count);
-    model_release_array(&model->node_animations, &model->node_animation_count);
-    model_release_array(&model->cameras, &model->camera_count);
+    model_release_array(&model->meshes, &model->mesh_count, &model->mesh_capacity);
+    model_release_array(&model->materials, &model->material_count, &model->material_capacity);
+    model_release_array(&model->skeletons, &model->skeleton_count, &model->skeleton_capacity);
+    model_release_array(&model->animations, &model->animation_count, &model->animation_capacity);
+    model_release_array(
+        &model->node_animations, &model->node_animation_count, &model->node_animation_capacity);
+    model_release_array(&model->cameras, &model->camera_count, &model->camera_capacity);
 }
 
 /// @brief Allocate a zeroed `rt_model3d` with finalizer wired and a fresh template-root
@@ -204,8 +289,12 @@ static int model_grow_array(void ***arr, int32_t *cap, int32_t need) {
     int32_t new_cap;
     if (need < 0 || !cap || !arr)
         return 0;
-    if (*cap >= need)
+    if (*cap < 0)
+        *cap = 0;
+    if (*cap >= need && *arr)
         return 1;
+    if (!*arr)
+        *cap = 0;
     new_cap = *cap > 0 ? *cap : 4;
     while (new_cap < need) {
         if (new_cap > INT32_MAX / 2) {
@@ -254,12 +343,18 @@ static char *model_strdup_or(const char *value, const char *fallback) {
 /// @return 1 on success, 0 on overflow or reallocation failure.
 static int model_grow_scenes(rt_model3d *model, int32_t need) {
     model3d_scene_entry *grown;
+    int32_t old_capacity;
     int32_t new_cap;
     if (!model || need < 0)
         return 0;
-    if (model->scene_capacity >= need)
+    if (model->scene_capacity < 0)
+        model->scene_capacity = 0;
+    if (model->scene_capacity >= need && model->scenes)
         return 1;
-    new_cap = model->scene_capacity > 0 ? model->scene_capacity : 4;
+    if (!model->scenes)
+        model->scene_capacity = 0;
+    old_capacity = model->scene_capacity;
+    new_cap = old_capacity > 0 ? old_capacity : 4;
     while (new_cap < need) {
         if (new_cap > INT32_MAX / 2) {
             new_cap = need;
@@ -267,14 +362,14 @@ static int model_grow_scenes(rt_model3d *model, int32_t need) {
         }
         new_cap *= 2;
     }
+    if (new_cap < need)
+        return 0;
     if ((size_t)new_cap > SIZE_MAX / sizeof(*model->scenes))
         return 0;
     grown = (model3d_scene_entry *)realloc(model->scenes, (size_t)new_cap * sizeof(*grown));
     if (!grown)
         return 0;
-    memset(grown + model->scene_capacity,
-           0,
-           (size_t)(new_cap - model->scene_capacity) * sizeof(*grown));
+    memset(grown + old_capacity, 0, (size_t)(new_cap - old_capacity) * sizeof(*grown));
     model->scenes = grown;
     model->scene_capacity = new_cap;
     return 1;
@@ -289,17 +384,19 @@ static int model_append_scene_entry(rt_model3d *model,
                                     int32_t *out_index) {
     model3d_scene_entry *scene;
     char fallback[64];
+    int32_t scene_count;
     if (!model || !root)
         return 0;
-    if (!model_grow_scenes(model, model->scene_count + 1)) {
+    scene_count = model_repair_scene_count(model);
+    if (scene_count >= INT32_MAX || !model_grow_scenes(model, scene_count + 1)) {
         rt_trap("Model3D.Load: scene list allocation failed");
         return 0;
     }
     snprintf(fallback,
              sizeof(fallback),
-             model->scene_count == 0 ? "default" : "scene_%d",
-             (int)model->scene_count);
-    scene = &model->scenes[model->scene_count];
+             scene_count == 0 ? "default" : "scene_%d",
+             (int)scene_count);
+    scene = &model->scenes[scene_count];
     memset(scene, 0, sizeof(*scene));
     rt_obj_retain_maybe(root);
     scene->root = root;
@@ -310,8 +407,8 @@ static int model_append_scene_entry(rt_model3d *model,
         return 0;
     }
     if (out_index)
-        *out_index = model->scene_count;
-    model->scene_count++;
+        *out_index = scene_count;
+    model->scene_count = scene_count + 1;
     return 1;
 }
 
@@ -332,16 +429,21 @@ static int model_append_scene_camera(model3d_scene_entry *scene, void *camera) {
 /// of the entry.
 static int model_append_ref(
     void ***arr, int32_t *count, int32_t *cap, void *obj, const char *trap_msg) {
+    int32_t safe_count;
     if (!obj)
         return 1;
-    if (!arr || !count || !cap || *count < 0 || *count >= INT32_MAX)
+    if (!arr || !count || !cap)
         return 0;
-    if (!model_grow_array(arr, cap, *count + 1)) {
+    safe_count = model_repair_array_count(*arr, count, *cap);
+    if (safe_count >= INT32_MAX)
+        return 0;
+    if (!model_grow_array(arr, cap, safe_count + 1)) {
         rt_trap(trap_msg);
         return 0;
     }
     rt_obj_retain_maybe(obj);
-    (*arr)[(*count)++] = obj;
+    (*arr)[safe_count] = obj;
+    *count = safe_count + 1;
     return 1;
 }
 
@@ -350,11 +452,13 @@ static int model_append_ref(
 /// same asset may be referenced from many nodes. NULL `obj` is treated as success-noop.
 static int model_append_unique_ref(
     void ***arr, int32_t *count, int32_t *cap, void *obj, const char *trap_msg) {
+    int32_t safe_count;
     if (!obj)
         return 1;
-    if (!arr || !count || !cap || *count < 0)
+    if (!arr || !count || !cap)
         return 0;
-    for (int32_t i = 0; i < *count; i++) {
+    safe_count = model_repair_array_count(*arr, count, *cap);
+    for (int32_t i = 0; i < safe_count; i++) {
         if ((*arr)[i] == obj)
             return 1;
     }
@@ -382,13 +486,14 @@ static int32_t model_count_subtree(const rt_scene_node3d *node) {
         const rt_scene_node3d *current = stack[--stack_count];
         if (!current)
             continue;
-        if (total == INT32_MAX) {
+        if (total >= MODEL3D_MAX_WALK_NODES || total == INT32_MAX) {
             free(stack);
             rt_trap("Model3D: too many nodes");
             return 0;
         }
         total++;
-        for (int32_t i = 0; i < current->child_count; i++) {
+        int32_t child_count = model_node_child_count(current);
+        for (int32_t i = 0; i < child_count; i++) {
             if (stack_count >= stack_capacity) {
                 if (stack_capacity > INT32_MAX / 2 ||
                     (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(*stack)) {
@@ -454,7 +559,7 @@ static void model_set_root_name(rt_scene_node3d *root, const char *path_cstr) {
 /// parented to the clone via `rt_scene_node3d_try_add_child`, then the caller's local reference
 /// is released so the parent owns the only retain.
 static int model_clone_mutable_mesh(void *mesh, void **out_mesh) {
-    rt_mesh3d *src = (rt_mesh3d *)mesh;
+    rt_mesh3d *src = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
     void *mesh_clone;
     if (out_mesh)
         *out_mesh = NULL;
@@ -463,7 +568,8 @@ static int model_clone_mutable_mesh(void *mesh, void **out_mesh) {
     mesh_clone = rt_mesh3d_clone(mesh);
     if (!mesh_clone)
         return 0;
-    if (!((rt_mesh3d *)mesh_clone)->morph_targets_ref) {
+    rt_mesh3d *cloned = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_clone, RT_G3D_MESH3D_CLASS_ID);
+    if (!cloned || !cloned->morph_targets_ref) {
         model_release_local(mesh_clone);
         return 0;
     }
@@ -472,6 +578,41 @@ static int model_clone_mutable_mesh(void *mesh, void **out_mesh) {
     else
         model_release_local(mesh_clone);
     return 1;
+}
+
+static float model_finite_float_or(float value, float fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static double model_nonnegative_double_or(double value, double fallback) {
+    if (!isfinite(value) || value < 0.0)
+        return fallback;
+    return value;
+}
+
+static void model_clone_sanitize_bounds(rt_scene_node3d *dst, const rt_scene_node3d *src) {
+    int valid = 1;
+    if (!dst || !src)
+        return;
+    for (int32_t i = 0; i < 3; i++) {
+        if (!isfinite(src->aabb_min[i]) || !isfinite(src->aabb_max[i]) ||
+            src->aabb_min[i] > src->aabb_max[i]) {
+            valid = 0;
+            break;
+        }
+    }
+    if (!valid) {
+        memset(dst->aabb_min, 0, sizeof(dst->aabb_min));
+        memset(dst->aabb_max, 0, sizeof(dst->aabb_max));
+        dst->bsphere_radius = 0.0f;
+        return;
+    }
+    for (int32_t i = 0; i < 3; i++) {
+        dst->aabb_min[i] = model_finite_float_or(src->aabb_min[i], 0.0f);
+        dst->aabb_max[i] = model_finite_float_or(src->aabb_max[i], dst->aabb_min[i]);
+    }
+    dst->bsphere_radius =
+        (isfinite(src->bsphere_radius) && src->bsphere_radius >= 0.0f) ? src->bsphere_radius : 0.0f;
 }
 
 /// @brief Clone one node without its children. Returns NULL and releases partial state on OOM.
@@ -485,37 +626,41 @@ static rt_scene_node3d *model_clone_node_shallow(const rt_scene_node3d *src,
     if (!dst)
         return NULL;
 
-    dst->position[0] = src->position[0];
-    dst->position[1] = src->position[1];
-    dst->position[2] = src->position[2];
+    dst->position[0] = scene3d_clamp_abs_or(src->position[0], 0.0);
+    dst->position[1] = scene3d_clamp_abs_or(src->position[1], 0.0);
+    dst->position[2] = scene3d_clamp_abs_or(src->position[2], 0.0);
     dst->rotation[0] = src->rotation[0];
     dst->rotation[1] = src->rotation[1];
     dst->rotation[2] = src->rotation[2];
     dst->rotation[3] = src->rotation[3];
-    dst->scale_xyz[0] = src->scale_xyz[0];
-    dst->scale_xyz[1] = src->scale_xyz[1];
-    dst->scale_xyz[2] = src->scale_xyz[2];
+    scene3d_quat_normalize_local(dst->rotation);
+    dst->scale_xyz[0] = scene3d_scale_or_unit(src->scale_xyz[0]);
+    dst->scale_xyz[1] = scene3d_scale_or_unit(src->scale_xyz[1]);
+    dst->scale_xyz[2] = scene3d_scale_or_unit(src->scale_xyz[2]);
     dst->world_dirty = 1;
     dst->import_index = src->import_index;
-    dst->visible = src->visible;
-    dst->auto_lod_enabled = src->auto_lod_enabled;
-    dst->auto_lod_screen_error_px = src->auto_lod_screen_error_px;
+    dst->visible = src->visible ? 1 : 0;
+    dst->auto_lod_enabled = src->auto_lod_enabled ? 1 : 0;
+    dst->auto_lod_screen_error_px = model_nonnegative_double_or(src->auto_lod_screen_error_px, 8.0);
+    if (dst->auto_lod_screen_error_px < 1.0)
+        dst->auto_lod_screen_error_px = 1.0;
+    if (dst->auto_lod_screen_error_px > 1000000.0)
+        dst->auto_lod_screen_error_px = 1000000.0;
 
-    memcpy(dst->aabb_min, src->aabb_min, sizeof(dst->aabb_min));
-    memcpy(dst->aabb_max, src->aabb_max, sizeof(dst->aabb_max));
-    dst->bsphere_radius = src->bsphere_radius;
+    model_clone_sanitize_bounds(dst, src);
 
     if (src->mesh) {
+        void *src_mesh = rt_g3d_checked_or_null(src->mesh, RT_G3D_MESH3D_CLASS_ID);
         void *mesh_clone = NULL;
-        if (clone_mutable_meshes && !model_clone_mutable_mesh(src->mesh, &mesh_clone)) {
+        if (src_mesh && clone_mutable_meshes && !model_clone_mutable_mesh(src_mesh, &mesh_clone)) {
             model_release_local(dst);
             return NULL;
         }
         if (mesh_clone) {
             dst->mesh = mesh_clone;
-        } else {
-            rt_obj_retain_maybe(src->mesh);
-            dst->mesh = src->mesh;
+        } else if (src_mesh) {
+            rt_obj_retain_maybe(src_mesh);
+            dst->mesh = src_mesh;
         }
     }
     if (src->material) {
@@ -531,34 +676,52 @@ static rt_scene_node3d *model_clone_node_shallow(const rt_scene_node3d *src,
         dst->name = src->name;
     }
 
-    if (src->lod_count > 0) {
-        dst->lod_levels = calloc((size_t)src->lod_count, sizeof(*dst->lod_levels));
+    {
+        int32_t lod_count = model_node_lod_count(src);
+        if (lod_count <= 0)
+            goto after_lods;
+        if ((size_t)lod_count > SIZE_MAX / sizeof(*dst->lod_levels)) {
+            rt_trap("Model3D: lod allocation overflow");
+            model_release_local(dst);
+            return NULL;
+        }
+        dst->lod_levels = calloc((size_t)lod_count, sizeof(*dst->lod_levels));
         if (!dst->lod_levels) {
             rt_trap("Model3D: lod allocation failed");
             model_release_local(dst);
             return NULL;
         }
-        dst->lod_capacity = src->lod_count;
-        dst->lod_count = src->lod_count;
-        for (int32_t i = 0; i < src->lod_count; i++) {
+        dst->lod_capacity = lod_count;
+        for (int32_t i = 0; i < lod_count; i++) {
             void *lod_mesh_clone = NULL;
+            void *lod_mesh =
+                rt_g3d_checked_or_null(src->lod_levels[i].mesh, RT_G3D_MESH3D_CLASS_ID);
+            double distance = model_nonnegative_double_or(src->lod_levels[i].distance, 0.0);
+            if (dst->lod_count > 0 && distance < dst->lod_levels[dst->lod_count - 1].distance)
+                distance = dst->lod_levels[dst->lod_count - 1].distance;
+            if (!lod_mesh)
+                continue;
             if (clone_mutable_meshes &&
-                !model_clone_mutable_mesh(src->lod_levels[i].mesh, &lod_mesh_clone)) {
+                !model_clone_mutable_mesh(lod_mesh, &lod_mesh_clone)) {
                 model_release_local(dst);
                 return NULL;
             }
-            dst->lod_levels[i].distance = src->lod_levels[i].distance;
+            dst->lod_levels[dst->lod_count].distance = distance;
             if (lod_mesh_clone) {
-                dst->lod_levels[i].mesh = lod_mesh_clone;
+                dst->lod_levels[dst->lod_count].mesh = lod_mesh_clone;
             } else {
-                dst->lod_levels[i].mesh = src->lod_levels[i].mesh;
-                rt_obj_retain_maybe(dst->lod_levels[i].mesh);
+                dst->lod_levels[dst->lod_count].mesh = lod_mesh;
+                rt_obj_retain_maybe(dst->lod_levels[dst->lod_count].mesh);
             }
+            dst->lod_count++;
         }
     }
+after_lods:
 
-    if (src->has_impostor && src->impostor_pixels)
-        rt_scene_node3d_set_impostor(dst, src->impostor_distance, src->impostor_pixels);
+    if (src->has_impostor && src->impostor_pixels) {
+        double impostor_distance = model_nonnegative_double_or(src->impostor_distance, 0.0);
+        rt_scene_node3d_set_impostor(dst, impostor_distance, src->impostor_pixels);
+    }
 
     return dst;
 }
@@ -575,6 +738,7 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_m
     model_clone_frame *stack;
     int32_t stack_count = 0;
     int32_t stack_capacity = 32;
+    int32_t visited_count = 1;
     if (!src)
         return NULL;
     root = model_clone_node_shallow(src, clone_mutable_meshes);
@@ -589,11 +753,21 @@ static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_m
     stack[stack_count++] = (model_clone_frame){src, root, 0};
     while (stack_count > 0) {
         model_clone_frame *frame = &stack[stack_count - 1];
-        if (!frame->src || frame->next_child >= frame->src->child_count) {
+        int32_t child_count = model_node_child_count(frame->src);
+        if (!frame->src || frame->next_child >= child_count) {
             stack_count--;
             continue;
         }
         const rt_scene_node3d *src_child = frame->src->children[frame->next_child++];
+        if (!src_child)
+            continue;
+        if (visited_count >= MODEL3D_MAX_WALK_NODES) {
+            free(stack);
+            model_release_local(root);
+            rt_trap("Model3D: too many nodes to clone");
+            return NULL;
+        }
+        visited_count++;
         rt_scene_node3d *dst_child = model_clone_node_shallow(src_child, clone_mutable_meshes);
         if (!dst_child) {
             free(stack);
@@ -641,7 +815,9 @@ static int model_clone_children_to_root(rt_scene_node3d *dst_root,
                                         const rt_scene_node3d *src_root) {
     if (!dst_root || !src_root)
         return 0;
-    for (int32_t i = 0; i < src_root->child_count; i++) {
+    for (int32_t i = 0, child_count = model_node_child_count(src_root); i < child_count; i++) {
+        if (!src_root->children[i])
+            continue;
         rt_scene_node3d *child = model_clone_node(src_root->children[i], 0);
         if (!child)
             return 0;
@@ -663,7 +839,8 @@ static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *no
 static int model_collect_template_refs(rt_model3d *model) {
     if (!model || !model->template_root)
         return 1;
-    for (int32_t i = 0; i < model->template_root->child_count; i++) {
+    for (int32_t i = 0, child_count = model_node_child_count(model->template_root); i < child_count;
+         i++) {
         if (!model_collect_scene_refs(model, model->template_root->children[i]))
             return 0;
     }
@@ -681,34 +858,57 @@ static int model_collect_template_refs(rt_model3d *model) {
 static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root) {
     void *controller;
     int added_any = 0;
-    if (!model || !root || root->bound_animator || model->skeleton_count <= 0 ||
-        model->animation_count <= 0)
+    void *skeleton = NULL;
+    int32_t valid_skeleton_count = 0;
+    int32_t skeleton_count =
+        model ? model_clamped_array_count(model->skeletons, model->skeleton_count, model->skeleton_capacity)
+              : 0;
+    int32_t animation_count =
+        model ? model_clamped_array_count(
+                    model->animations, model->animation_count, model->animation_capacity)
+              : 0;
+    if (!model || !root || root->bound_animator || skeleton_count <= 0 || animation_count <= 0)
         return;
-    controller = rt_anim_controller3d_new(model->skeletons[0]);
+    for (int32_t i = 0; i < skeleton_count; i++) {
+        void *candidate = rt_g3d_checked_or_null(model->skeletons[i], RT_G3D_SKELETON3D_CLASS_ID);
+        if (!candidate)
+            continue;
+        skeleton = candidate;
+        valid_skeleton_count++;
+        if (valid_skeleton_count > 1)
+            return;
+    }
+    if (valid_skeleton_count != 1 || !skeleton)
+        return;
+    controller = rt_anim_controller3d_new(skeleton);
     if (!controller)
         return;
-    for (int32_t i = 0; i < model->animation_count; i++) {
-        rt_string anim_name = rt_animation3d_get_name(model->animations[i]);
-        const char *name = anim_name ? rt_string_cstr(anim_name) : NULL;
+    for (int32_t i = 0; i < animation_count; i++) {
+        rt_string anim_name;
+        const char *name;
         char fallback[64];
         char unique_fallback[64];
         rt_string state_name;
         int64_t state_index;
         int64_t before_count;
+        void *animation = rt_g3d_checked_or_null(model->animations[i], RT_G3D_ANIMATION3D_CLASS_ID);
+        if (!animation)
+            continue;
+        anim_name = rt_animation3d_get_name(animation);
+        name = anim_name ? rt_string_cstr(anim_name) : NULL;
         if (!name || name[0] == '\0') {
             snprintf(fallback, sizeof(fallback), "animation_%d", (int)i);
             name = fallback;
         }
         state_name = rt_const_cstr(name);
         before_count = rt_anim_controller3d_get_state_count(controller);
-        state_index = rt_anim_controller3d_add_state(controller, state_name, model->animations[i]);
+        state_index = rt_anim_controller3d_add_state(controller, state_name, animation);
         if (state_index >= 0 && rt_anim_controller3d_get_state_count(controller) == before_count &&
             state_index < before_count) {
             snprintf(unique_fallback, sizeof(unique_fallback), "animation_%d", (int)i);
             if (strcmp(unique_fallback, name) != 0) {
                 state_name = rt_const_cstr(unique_fallback);
-                state_index =
-                    rt_anim_controller3d_add_state(controller, state_name, model->animations[i]);
+                state_index = rt_anim_controller3d_add_state(controller, state_name, animation);
                 name = unique_fallback;
             }
         }
@@ -730,10 +930,42 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
 ///   The animator's local reference is released after binding.
 static void model_bind_default_node_animator(rt_model3d *model, rt_scene_node3d *root) {
     void *animator;
-    if (!model || !root || root->bound_node_animator || model->node_animation_count <= 0)
+    void **clips = NULL;
+    int32_t live_count = 0;
+    int32_t node_animation_count =
+        model ? model_clamped_array_count(model->node_animations,
+                                          model->node_animation_count,
+                                          model->node_animation_capacity)
+              : 0;
+    if (!model || !root || root->bound_node_animator || node_animation_count <= 0)
         return;
-    animator =
-        rt_node_animator3d_new_from_clips(model->node_animations, model->node_animation_count);
+    for (int32_t i = 0; i < node_animation_count; i++) {
+        if (rt_g3d_checked_or_null(model->node_animations[i], RT_G3D_NODEANIMATION3D_CLASS_ID))
+            live_count++;
+    }
+    if (live_count <= 0)
+        return;
+    if (live_count == node_animation_count) {
+        animator = rt_node_animator3d_new_from_clips(model->node_animations, node_animation_count);
+    } else {
+        if ((size_t)live_count > SIZE_MAX / sizeof(*clips)) {
+            rt_trap("Model3D.Instantiate: node-animation list too large");
+            return;
+        }
+        clips = (void **)malloc((size_t)live_count * sizeof(*clips));
+        if (!clips) {
+            rt_trap("Model3D.Instantiate: node-animation list allocation failed");
+            return;
+        }
+        for (int32_t i = 0, out_i = 0; i < node_animation_count; i++) {
+            void *clip =
+                rt_g3d_checked_or_null(model->node_animations[i], RT_G3D_NODEANIMATION3D_CLASS_ID);
+            if (clip)
+                clips[out_i++] = clip;
+        }
+        animator = rt_node_animator3d_new_from_clips(clips, live_count);
+        free(clips);
+    }
     if (!animator)
         return;
     rt_scene_node3d_bind_node_animator(root, animator);
@@ -749,6 +981,8 @@ static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *no
     const rt_scene_node3d **stack = NULL;
     int32_t stack_count = 0;
     int32_t stack_capacity = 32;
+    int32_t visited_count = 1;
+    static const char *too_many_msg = "Model3D.Load: too many scene nodes";
     if (!model || !node)
         return 1;
     stack = (const rt_scene_node3d **)malloc((size_t)stack_capacity * sizeof(*stack));
@@ -759,12 +993,16 @@ static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *no
     stack[stack_count++] = node;
     while (stack_count > 0) {
         const rt_scene_node3d *current = stack[--stack_count];
+        void *mesh;
+        void *material;
         if (!current)
             continue;
+        mesh = rt_g3d_checked_or_null(current->mesh, RT_G3D_MESH3D_CLASS_ID);
+        material = rt_g3d_checked_or_null(current->material, RT_G3D_MATERIAL3D_CLASS_ID);
         if (!model_append_unique_ref(&model->meshes,
                                      &model->mesh_count,
                                      &model->mesh_capacity,
-                                     current->mesh,
+                                     mesh,
                                      "Model3D.Load: mesh list allocation failed")) {
             free(stack);
             return 0;
@@ -772,27 +1010,39 @@ static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *no
         if (!model_append_unique_ref(&model->materials,
                                      &model->material_count,
                                      &model->material_capacity,
-                                     current->material,
+                                     material,
                                      "Model3D.Load: material list allocation failed")) {
             free(stack);
             return 0;
         }
-        for (int32_t i = 0; i < current->lod_count; i++) {
+        int32_t lod_count = model_node_lod_count(current);
+        int32_t child_count = model_node_child_count(current);
+        for (int32_t i = 0; i < lod_count; i++) {
+            void *lod_mesh =
+                rt_g3d_checked_or_null(current->lod_levels[i].mesh, RT_G3D_MESH3D_CLASS_ID);
             if (!model_append_unique_ref(&model->meshes,
                                          &model->mesh_count,
                                          &model->mesh_capacity,
-                                         current->lod_levels[i].mesh,
+                                         lod_mesh,
                                          "Model3D.Load: mesh list allocation failed")) {
                 free(stack);
                 return 0;
             }
         }
-        for (int32_t i = 0; i < current->child_count; i++) {
+        for (int32_t i = 0; i < child_count; i++) {
+            const rt_scene_node3d *child = current->children[i];
+            if (!child)
+                continue;
+            if (visited_count >= MODEL3D_MAX_WALK_NODES) {
+                free(stack);
+                rt_trap(too_many_msg);
+                return 0;
+            }
             if (stack_count >= stack_capacity) {
                 if (stack_capacity > INT32_MAX / 2 ||
                     (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(*stack)) {
                     free(stack);
-                    rt_trap("Model3D.Load: too many scene nodes");
+                    rt_trap(too_many_msg);
                     return 0;
                 }
                 int32_t new_capacity = stack_capacity * 2;
@@ -806,11 +1056,75 @@ static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *no
                 stack = grown;
                 stack_capacity = new_capacity;
             }
-            stack[stack_count++] = current->children[i];
+            stack[stack_count++] = child;
+            visited_count++;
         }
     }
     free(stack);
     return 1;
+}
+
+/// @brief Find a named node using Model3D's clamped child-count walker.
+static rt_scene_node3d *model_find_node_safe(rt_scene_node3d *root, rt_string name) {
+    rt_scene_node3d **stack = NULL;
+    int32_t stack_count = 0;
+    int32_t stack_capacity = 32;
+    int32_t visited_count = 1;
+    const char *needle = model_string_cstr_or_null(name);
+    if (!root || !needle)
+        return NULL;
+    stack = (rt_scene_node3d **)malloc((size_t)stack_capacity * sizeof(*stack));
+    if (!stack) {
+        rt_trap("Model3D.FindNode: search stack allocation failed");
+        return NULL;
+    }
+    stack[stack_count++] = root;
+    while (stack_count > 0) {
+        rt_scene_node3d *current = stack[--stack_count];
+        int32_t child_count;
+        if (!current)
+            continue;
+        if (current->name) {
+            const char *node_name = model_string_cstr_or_null(current->name);
+            if (node_name && strcmp(node_name, needle) == 0) {
+                free(stack);
+                return current;
+            }
+        }
+        child_count = model_node_child_count(current);
+        for (int32_t i = 0; i < child_count; i++) {
+            rt_scene_node3d *child = current->children[i];
+            if (!child)
+                continue;
+            if (visited_count >= MODEL3D_MAX_WALK_NODES) {
+                free(stack);
+                rt_trap("Model3D.FindNode: too many nodes");
+                return NULL;
+            }
+            if (stack_count >= stack_capacity) {
+                if (stack_capacity > INT32_MAX / 2 ||
+                    (size_t)(stack_capacity * 2) > SIZE_MAX / sizeof(*stack)) {
+                    free(stack);
+                    rt_trap("Model3D.FindNode: too many nodes");
+                    return NULL;
+                }
+                int32_t new_capacity = stack_capacity * 2;
+                rt_scene_node3d **grown =
+                    (rt_scene_node3d **)realloc(stack, (size_t)new_capacity * sizeof(*stack));
+                if (!grown) {
+                    free(stack);
+                    rt_trap("Model3D.FindNode: search stack allocation failed");
+                    return NULL;
+                }
+                stack = grown;
+                stack_capacity = new_capacity;
+            }
+            stack[stack_count++] = child;
+            visited_count++;
+        }
+    }
+    free(stack);
+    return NULL;
 }
 
 /// @brief Case-insensitive extension match. Returns 1 when `path_cstr` ends with `ext`
@@ -842,20 +1156,26 @@ static int model_build_synth_mesh_nodes(rt_model3d *model) {
     char name[64];
     if (!model || !model->template_root)
         return 0;
-    if (model->template_root->child_count > 0)
+    if (model_node_child_count(model->template_root) > 0)
         return 1;
 
-    for (int32_t i = 0; i < model->mesh_count; i++) {
+    int32_t mesh_count =
+        model_clamped_array_count(model->meshes, model->mesh_count, model->mesh_capacity);
+    int32_t material_count =
+        model_clamped_array_count(model->materials, model->material_count, model->material_capacity);
+    for (int32_t i = 0; i < mesh_count; i++) {
         rt_scene_node3d *node = (rt_scene_node3d *)rt_scene_node3d_new();
         void *material = NULL;
+        if (!model->meshes[i])
+            continue;
         if (!node)
             return 0;
         snprintf(name, sizeof(name), "mesh_%d", (int)i);
         rt_scene_node3d_set_name(node, rt_const_cstr(name));
         rt_scene_node3d_set_mesh(node, model->meshes[i]);
-        if (model->material_count == 1)
+        if (material_count == 1)
             material = model->materials[0];
-        else if (i < model->material_count)
+        else if (i < material_count)
             material = model->materials[i];
         if (material)
             rt_scene_node3d_set_material(node, material);
@@ -878,6 +1198,19 @@ typedef struct {
     int32_t count;
     int32_t capacity;
 } model_obj_material_table;
+
+/// @brief Safe live entry count for the OBJ material table.
+static int32_t model_obj_material_table_count(const model_obj_material_table *table) {
+    return table ? model_clamped_array_count(table->entries, table->count, table->capacity) : 0;
+}
+
+/// @brief Clamp and persist the OBJ material table count before mutation.
+static int32_t model_obj_material_table_repair_count(model_obj_material_table *table) {
+    int32_t count = model_obj_material_table_count(table);
+    if (table)
+        table->count = count;
+    return count;
+}
 
 /// @brief Duplicate the substring [@p start, @p end), trimming leading/trailing ASCII
 ///   whitespace. Returns NULL on allocation failure.
@@ -904,9 +1237,14 @@ static char *model_strdup_range(const char *start, const char *end) {
 /// @brief Free an OBJ material table: release each entry's name and material reference, then
 ///   the entry array, and zero the table.
 static void model_obj_material_table_free(model_obj_material_table *table) {
-    if (!table || !table->entries)
+    if (!table)
         return;
-    for (int32_t i = 0; i < table->count; i++) {
+    if (!table->entries) {
+        table->count = 0;
+        table->capacity = 0;
+        return;
+    }
+    for (int32_t i = 0, count = model_obj_material_table_count(table); i < count; i++) {
         free(table->entries[i].name);
         model_release_ref(&table->entries[i].material);
     }
@@ -922,32 +1260,39 @@ static int model_obj_material_table_append(model_obj_material_table *table,
                                            char *name,
                                            void *material) {
     model_obj_material_entry *grown;
+    int32_t count;
+    int32_t old_capacity;
     if (!table || !name || !material)
         return 0;
-    for (int32_t i = 0; i < table->count; i++) {
+    count = model_obj_material_table_repair_count(table);
+    for (int32_t i = 0; i < count; i++) {
         if (strcmp(table->entries[i].name ? table->entries[i].name : "", name) == 0) {
             free(name);
             model_release_local(material);
             return 1;
         }
     }
-    if (table->count >= table->capacity) {
-        int32_t new_capacity = table->capacity > 0 ? table->capacity * 2 : 8;
-        if (table->capacity > INT32_MAX / 2 ||
+    if (!table->entries)
+        table->capacity = 0;
+    if (table->capacity < 0)
+        table->capacity = 0;
+    old_capacity = table->capacity;
+    if (count >= table->capacity) {
+        int32_t new_capacity = old_capacity > 0 ? old_capacity * 2 : 8;
+        if (old_capacity > INT32_MAX / 2 ||
             (size_t)new_capacity > SIZE_MAX / sizeof(*table->entries))
             return 0;
         grown = (model_obj_material_entry *)realloc(table->entries,
                                                     (size_t)new_capacity * sizeof(*grown));
         if (!grown)
             return 0;
-        memset(
-            grown + table->capacity, 0, (size_t)(new_capacity - table->capacity) * sizeof(*grown));
+        memset(grown + old_capacity, 0, (size_t)(new_capacity - old_capacity) * sizeof(*grown));
         table->entries = grown;
         table->capacity = new_capacity;
     }
-    table->entries[table->count].name = name;
-    table->entries[table->count].material = material;
-    table->count++;
+    table->entries[count].name = name;
+    table->entries[count].material = material;
+    table->count = count + 1;
     return 1;
 }
 
@@ -955,7 +1300,7 @@ static int model_obj_material_table_append(model_obj_material_table *table,
 static void *model_obj_material_lookup(const model_obj_material_table *table, const char *name) {
     if (!table || !name || !*name)
         return NULL;
-    for (int32_t i = 0; i < table->count; i++) {
+    for (int32_t i = 0, count = model_obj_material_table_count(table); i < count; i++) {
         if (strcmp(table->entries[i].name ? table->entries[i].name : "", name) == 0)
             return table->entries[i].material;
     }
@@ -1489,13 +1834,13 @@ static int model3d_load_from_gltf(rt_model3d *model,
                                   size_t preloaded_gltf_size,
                                   struct rt_gltf_preload_bundle *preloaded_gltf_bundle) {
     void *asset = NULL;
-    int64_t mesh_count;
-    int64_t material_count;
-    int64_t skeleton_count;
-    int64_t animation_count;
-    int64_t node_animation_count;
-    int64_t camera_count;
-    int64_t gltf_scene_count;
+    int32_t mesh_count;
+    int32_t material_count;
+    int32_t skeleton_count;
+    int32_t animation_count;
+    int32_t node_animation_count;
+    int32_t camera_count;
+    int32_t gltf_scene_count;
     void *scene_root;
     if (preloaded_gltf_bundle) {
         asset = rt_gltf_load_preloaded_bundle(path, preloaded_gltf_bundle, load_assets);
@@ -1508,14 +1853,29 @@ static int model3d_load_from_gltf(rt_model3d *model,
     }
     if (!asset)
         return 0;
-    mesh_count = rt_gltf_mesh_count(asset);
-    material_count = rt_gltf_material_count(asset);
-    skeleton_count = rt_gltf_skeleton_count(asset);
-    animation_count = rt_gltf_animation_count(asset);
-    node_animation_count = rt_gltf_node_animation_count(asset);
-    camera_count = rt_gltf_camera_count(asset);
-    gltf_scene_count = rt_gltf_scene_count(asset);
-    for (int64_t i = 0; i < mesh_count; i++) {
+    if (!model_count_i64_to_i32(
+            rt_gltf_mesh_count(asset), &mesh_count, "Model3D.Load: too many glTF meshes") ||
+        !model_count_i64_to_i32(rt_gltf_material_count(asset),
+                                &material_count,
+                                "Model3D.Load: too many glTF materials") ||
+        !model_count_i64_to_i32(rt_gltf_skeleton_count(asset),
+                                &skeleton_count,
+                                "Model3D.Load: too many glTF skeletons") ||
+        !model_count_i64_to_i32(rt_gltf_animation_count(asset),
+                                &animation_count,
+                                "Model3D.Load: too many glTF animations") ||
+        !model_count_i64_to_i32(rt_gltf_node_animation_count(asset),
+                                &node_animation_count,
+                                "Model3D.Load: too many glTF node animations") ||
+        !model_count_i64_to_i32(
+            rt_gltf_camera_count(asset), &camera_count, "Model3D.Load: too many glTF cameras") ||
+        !model_count_i64_to_i32(rt_gltf_scene_count(asset),
+                                &gltf_scene_count,
+                                "Model3D.Load: too many glTF scenes")) {
+        model_release_local(asset);
+        return 0;
+    }
+    for (int32_t i = 0; i < mesh_count; i++) {
         if (!model_append_ref(&model->meshes,
                               &model->mesh_count,
                               &model->mesh_capacity,
@@ -1525,7 +1885,7 @@ static int model3d_load_from_gltf(rt_model3d *model,
             return 0;
         }
     }
-    for (int64_t i = 0; i < material_count; i++) {
+    for (int32_t i = 0; i < material_count; i++) {
         if (!model_append_ref(&model->materials,
                               &model->material_count,
                               &model->material_capacity,
@@ -1535,7 +1895,7 @@ static int model3d_load_from_gltf(rt_model3d *model,
             return 0;
         }
     }
-    for (int64_t i = 0; i < skeleton_count; i++) {
+    for (int32_t i = 0; i < skeleton_count; i++) {
         if (!model_append_ref(&model->skeletons,
                               &model->skeleton_count,
                               &model->skeleton_capacity,
@@ -1545,7 +1905,7 @@ static int model3d_load_from_gltf(rt_model3d *model,
             return 0;
         }
     }
-    for (int64_t i = 0; i < animation_count; i++) {
+    for (int32_t i = 0; i < animation_count; i++) {
         if (!model_append_ref(&model->animations,
                               &model->animation_count,
                               &model->animation_capacity,
@@ -1555,7 +1915,7 @@ static int model3d_load_from_gltf(rt_model3d *model,
             return 0;
         }
     }
-    for (int64_t i = 0; i < node_animation_count; i++) {
+    for (int32_t i = 0; i < node_animation_count; i++) {
         if (!model_append_ref(&model->node_animations,
                               &model->node_animation_count,
                               &model->node_animation_capacity,
@@ -1565,7 +1925,7 @@ static int model3d_load_from_gltf(rt_model3d *model,
             return 0;
         }
     }
-    for (int64_t i = 0; i < camera_count; i++) {
+    for (int32_t i = 0; i < camera_count; i++) {
         if (!model_append_ref(&model->cameras,
                               &model->camera_count,
                               &model->camera_capacity,
@@ -1592,11 +1952,12 @@ static int model3d_load_from_gltf(rt_model3d *model,
         return 0;
     }
     if (gltf_scene_count > 0) {
-        for (int64_t si = 0; si < gltf_scene_count; si++) {
+        for (int32_t si = 0; si < gltf_scene_count; si++) {
             rt_string scene_name = rt_gltf_get_scene_name(asset, si);
             const char *scene_name_cstr = scene_name ? rt_string_cstr(scene_name) : NULL;
             rt_scene_node3d *scene_template = NULL;
             int32_t model_scene_index = -1;
+            int32_t scene_camera_count = 0;
             if (si == 0) {
                 scene_template = model->template_root;
             } else {
@@ -1622,7 +1983,15 @@ static int model3d_load_from_gltf(rt_model3d *model,
                 model_release_local(asset);
                 return 0;
             }
-            for (int64_t ci = 0; ci < rt_gltf_scene_camera_count(asset, si); ci++) {
+            if (!model_count_i64_to_i32(rt_gltf_scene_camera_count(asset, si),
+                                        &scene_camera_count,
+                                        "Model3D.Load: too many glTF scene cameras")) {
+                if (si != 0)
+                    model_release_local(scene_template);
+                model_release_local(asset);
+                return 0;
+            }
+            for (int32_t ci = 0; ci < scene_camera_count; ci++) {
                 if (!model_append_scene_camera(&model->scenes[model_scene_index],
                                                rt_gltf_get_scene_camera(asset, si, ci))) {
                     if (si != 0)
@@ -1644,20 +2013,28 @@ static int model3d_load_from_gltf(rt_model3d *model,
 ///   0 on failure (local asset released; caller cleans up `model`).
 static int model3d_load_from_fbx(rt_model3d *model, rt_string path) {
     void *asset = rt_fbx_load(path);
-    int64_t mesh_count;
-    int64_t material_count;
-    int64_t animation_count;
+    int32_t mesh_count;
+    int32_t material_count;
+    int32_t animation_count;
     void *skeleton;
     void *scene_root;
     if (!asset)
         return 0;
-    mesh_count = rt_fbx_mesh_count(asset);
-    material_count = rt_fbx_material_count(asset);
-    animation_count = rt_fbx_animation_count(asset);
+    if (!model_count_i64_to_i32(
+            rt_fbx_mesh_count(asset), &mesh_count, "Model3D.Load: too many FBX meshes") ||
+        !model_count_i64_to_i32(rt_fbx_material_count(asset),
+                                &material_count,
+                                "Model3D.Load: too many FBX materials") ||
+        !model_count_i64_to_i32(rt_fbx_animation_count(asset),
+                                &animation_count,
+                                "Model3D.Load: too many FBX animations")) {
+        model_release_local(asset);
+        return 0;
+    }
     skeleton = rt_fbx_get_skeleton(asset);
     scene_root = rt_fbx_get_scene_root(asset);
 
-    for (int64_t i = 0; i < mesh_count; i++) {
+    for (int32_t i = 0; i < mesh_count; i++) {
         void *mesh = rt_fbx_get_mesh(asset, i);
         void *morph_targets = rt_fbx_get_morph_target(asset, i);
         if (morph_targets)
@@ -1671,7 +2048,7 @@ static int model3d_load_from_fbx(rt_model3d *model, rt_string path) {
             return 0;
         }
     }
-    for (int64_t i = 0; i < material_count; i++) {
+    for (int32_t i = 0; i < material_count; i++) {
         if (!model_append_ref(&model->materials,
                               &model->material_count,
                               &model->material_capacity,
@@ -1691,7 +2068,7 @@ static int model3d_load_from_fbx(rt_model3d *model, rt_string path) {
             return 0;
         }
     }
-    for (int64_t i = 0; i < animation_count; i++) {
+    for (int32_t i = 0; i < animation_count; i++) {
         if (!model_append_ref(&model->animations,
                               &model->animation_count,
                               &model->animation_capacity,
@@ -1874,25 +2251,32 @@ void *rt_model3d_load_preloaded_gltf_bundle(rt_string path,
 /// @brief Number of meshes loaded into this model.
 int64_t rt_model3d_get_mesh_count(void *obj) {
     rt_model3d *model = model3d_checked(obj);
-    return model ? model->mesh_count : 0;
+    return model ? model_clamped_array_count(model->meshes, model->mesh_count, model->mesh_capacity)
+                 : 0;
 }
 
 /// @brief Number of materials loaded into this model.
 int64_t rt_model3d_get_material_count(void *obj) {
     rt_model3d *model = model3d_checked(obj);
-    return model ? model->material_count : 0;
+    return model ? model_clamped_array_count(
+                       model->materials, model->material_count, model->material_capacity)
+                 : 0;
 }
 
 /// @brief Number of skeletons (bone hierarchies) loaded into this model.
 int64_t rt_model3d_get_skeleton_count(void *obj) {
     rt_model3d *model = model3d_checked(obj);
-    return model ? model->skeleton_count : 0;
+    return model ? model_clamped_array_count(
+                       model->skeletons, model->skeleton_count, model->skeleton_capacity)
+                 : 0;
 }
 
 /// @brief Number of animation clips loaded into this model.
 int64_t rt_model3d_get_animation_count(void *obj) {
     rt_model3d *model = model3d_checked(obj);
-    return model ? model->animation_count : 0;
+    return model ? model_clamped_array_count(
+                       model->animations, model->animation_count, model->animation_capacity)
+                 : 0;
 }
 
 /// @brief Number of scene nodes in the template subtree (excludes the synthetic root).
@@ -1911,7 +2295,7 @@ int64_t rt_model3d_get_node_count(void *obj) {
 ///   scene roots after it. Other importers expose one default scene.
 int64_t rt_model3d_get_scene_count(void *obj) {
     rt_model3d *model = model3d_checked(obj);
-    return model ? model->scene_count : 0;
+    return model_scene_count(model);
 }
 
 /// @brief Number of cameras imported for @p scene_index.
@@ -1919,61 +2303,84 @@ int64_t rt_model3d_get_scene_count(void *obj) {
 ///   without authored cameras return zero.
 int64_t rt_model3d_get_camera_count(void *obj, int64_t scene_index) {
     rt_model3d *model = model3d_checked(obj);
-    if (!model || scene_index < 0 || scene_index >= model->scene_count)
+    int32_t scene_count = model_scene_count(model);
+    if (!model || scene_index < 0 || scene_index >= scene_count)
         return 0;
-    return model->scenes[scene_index].camera_count;
+    return model_clamped_array_count(model->scenes[scene_index].cameras,
+                                     model->scenes[scene_index].camera_count,
+                                     model->scenes[scene_index].camera_capacity);
 }
 
 /// @brief Borrow the i-th Mesh3D (NULL on out-of-range). Caller must NOT release; the model owns
 /// it.
 void *rt_model3d_get_mesh(void *obj, int64_t index) {
     rt_model3d *model = model3d_checked(obj);
-    if (!model || index < 0 || index >= model->mesh_count)
+    int32_t mesh_count =
+        model ? model_clamped_array_count(model->meshes, model->mesh_count, model->mesh_capacity)
+              : 0;
+    if (!model || index < 0 || index >= mesh_count)
         return NULL;
-    return model->meshes[index];
+    return rt_g3d_checked_or_null(model->meshes[index], RT_G3D_MESH3D_CLASS_ID);
 }
 
 /// @brief Borrow the i-th Material3D (NULL on out-of-range).
 void *rt_model3d_get_material(void *obj, int64_t index) {
     rt_model3d *model = model3d_checked(obj);
-    if (!model || index < 0 || index >= model->material_count)
+    int32_t material_count =
+        model ? model_clamped_array_count(
+                    model->materials, model->material_count, model->material_capacity)
+              : 0;
+    if (!model || index < 0 || index >= material_count)
         return NULL;
-    return model->materials[index];
+    return rt_g3d_checked_or_null(model->materials[index], RT_G3D_MATERIAL3D_CLASS_ID);
 }
 
 /// @brief Borrow the i-th Skeleton3D (NULL on out-of-range).
 void *rt_model3d_get_skeleton(void *obj, int64_t index) {
     rt_model3d *model = model3d_checked(obj);
-    if (!model || index < 0 || index >= model->skeleton_count)
+    int32_t skeleton_count =
+        model ? model_clamped_array_count(
+                    model->skeletons, model->skeleton_count, model->skeleton_capacity)
+              : 0;
+    if (!model || index < 0 || index >= skeleton_count)
         return NULL;
-    return model->skeletons[index];
+    return rt_g3d_checked_or_null(model->skeletons[index], RT_G3D_SKELETON3D_CLASS_ID);
 }
 
 /// @brief Borrow the i-th Animation3D clip (NULL on out-of-range).
 void *rt_model3d_get_animation(void *obj, int64_t index) {
     rt_model3d *model = model3d_checked(obj);
-    if (!model || index < 0 || index >= model->animation_count)
+    int32_t animation_count =
+        model ? model_clamped_array_count(
+                    model->animations, model->animation_count, model->animation_capacity)
+              : 0;
+    if (!model || index < 0 || index >= animation_count)
         return NULL;
-    return model->animations[index];
+    return rt_g3d_checked_or_null(model->animations[index], RT_G3D_ANIMATION3D_CLASS_ID);
 }
 
 /// @brief Borrow an imported Camera3D from @p scene_index (NULL on out-of-range).
 void *rt_model3d_get_camera(void *obj, int64_t scene_index, int64_t index) {
     rt_model3d *model = model3d_checked(obj);
     model3d_scene_entry *scene;
-    if (!model || scene_index < 0 || scene_index >= model->scene_count)
+    int32_t scene_count = model_scene_count(model);
+    int32_t camera_count;
+    if (!model || scene_index < 0 || scene_index >= scene_count)
         return NULL;
     scene = &model->scenes[scene_index];
-    if (index < 0 || index >= scene->camera_count)
+    camera_count =
+        model_clamped_array_count(scene->cameras, scene->camera_count, scene->camera_capacity);
+    if (index < 0 || index >= camera_count)
         return NULL;
-    return scene->cameras[index];
+    return rt_g3d_checked_or_null(scene->cameras[index], RT_G3D_CAMERA3D_CLASS_ID);
 }
 
 /// @brief Return the immutable scene name for @p index.
 /// @details Invalid model handles or indices return the empty string.
 rt_string rt_model3d_get_scene_name(void *obj, int64_t index) {
     rt_model3d *model = model3d_checked(obj);
-    if (!model || index < 0 || index >= model->scene_count || !model->scenes[index].name)
+    int32_t scene_count = model_scene_count(model);
+    if (!model || index < 0 || index >= scene_count || !model->scenes[index].name)
         return rt_const_cstr("");
     return rt_const_cstr(model->scenes[index].name);
 }
@@ -1983,7 +2390,7 @@ void *rt_model3d_find_node(void *obj, rt_string name) {
     rt_model3d *model = model3d_checked(obj);
     if (!model || !model->template_root)
         return NULL;
-    return rt_scene_node3d_find(model->template_root, name);
+    return model_find_node_safe(model->template_root, name);
 }
 
 /// @brief Clone the template into an independent SceneNode3D subtree (with synthetic root).
@@ -2012,7 +2419,8 @@ void *rt_model3d_instantiate_scene_at(void *obj, int64_t index) {
     rt_model3d *model = model3d_checked(obj);
     rt_scene3d *scene;
     model3d_scene_entry *entry;
-    if (!model || index < 0 || index >= model->scene_count)
+    int32_t scene_count = model_scene_count(model);
+    if (!model || index < 0 || index >= scene_count)
         return NULL;
     entry = &model->scenes[index];
     if (!entry->root)
@@ -2020,7 +2428,9 @@ void *rt_model3d_instantiate_scene_at(void *obj, int64_t index) {
     scene = (rt_scene3d *)rt_scene3d_new();
     if (!scene)
         return NULL;
-    for (int32_t i = 0; i < entry->root->child_count; i++) {
+    for (int32_t i = 0, child_count = model_node_child_count(entry->root); i < child_count; i++) {
+        if (!entry->root->children[i])
+            continue;
         rt_scene_node3d *child = model_clone_node(entry->root->children[i], 1);
         if (child) {
             if (!rt_scene3d_try_add(scene, child)) {

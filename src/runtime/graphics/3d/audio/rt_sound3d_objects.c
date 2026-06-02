@@ -97,6 +97,11 @@ static rt_soundlistener3d *s_listener_head = NULL;
 static rt_soundsource3d *s_source_head = NULL;
 static rt_soundlistener3d *s_active_listener_obj = NULL;
 
+#define SOUND3D_COMPONENT_ABS_MAX 1000000000000.0
+#define SOUND3D_VELOCITY_ABS_MAX 1000000.0
+#define SOUND3D_DISTANCE_MAX 1000000000.0
+#define SOUND3D_SYNC_DT_MAX 1.0
+
 /// @brief Checked cast of an opaque handle to SoundListener3D; NULL on class mismatch.
 static rt_soundlistener3d *sound3d_listener_checked(void *obj) {
     if (!rt_obj_is_instance(obj, RT_G3D_SOUNDLISTENER3D_CLASS_ID, sizeof(rt_soundlistener3d)))
@@ -134,6 +139,45 @@ static double sound3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp a finite scalar to +/- @p max_abs, substituting @p fallback for NaN/Inf.
+static double sound3d_clamp_abs_or(double value, double fallback, double max_abs) {
+    value = sound3d_finite_or(value, fallback);
+    if (value < -max_abs)
+        return -max_abs;
+    if (value > max_abs)
+        return max_abs;
+    return value;
+}
+
+/// @brief Clamp a positive distance, preserving the caller's fallback for invalid values.
+static double sound3d_distance_or(double value, double fallback) {
+    value = sound3d_finite_or(value, fallback);
+    if (value < 0.0)
+        value = fallback;
+    if (value > SOUND3D_DISTANCE_MAX)
+        return SOUND3D_DISTANCE_MAX;
+    return value;
+}
+
+/// @brief Clamp velocity components to the range accepted by Doppler math.
+static void sound3d_clamp_velocity3(double *velocity) {
+    if (!velocity)
+        return;
+    velocity[0] = sound3d_clamp_abs_or(velocity[0], 0.0, SOUND3D_VELOCITY_ABS_MAX);
+    velocity[1] = sound3d_clamp_abs_or(velocity[1], 0.0, SOUND3D_VELOCITY_ABS_MAX);
+    velocity[2] = sound3d_clamp_abs_or(velocity[2], 0.0, SOUND3D_VELOCITY_ABS_MAX);
+}
+
+/// @brief Clamp a Doppler factor to the mixer-supported range.
+static double sound3d_doppler_or(double value) {
+    value = sound3d_finite_or(value, 1.0);
+    if (value < 0.5)
+        return 0.5;
+    if (value > 2.0)
+        return 2.0;
+    return value;
+}
+
 /// @brief Translation-unit-local copy of `rt_sound3d.c::sound3d_copy3`.
 /// @details Null-source-fills-zero convention applies: missing position
 ///   vectors collapse to the origin rather than leaving `dst` untouched.
@@ -146,9 +190,9 @@ static void sound3d_copy3(double *dst, const double *src) {
         dst[2] = 0.0;
         return;
     }
-    dst[0] = sound3d_finite_or(src[0], 0.0);
-    dst[1] = sound3d_finite_or(src[1], 0.0);
-    dst[2] = sound3d_finite_or(src[2], 0.0);
+    dst[0] = sound3d_clamp_abs_or(src[0], 0.0, SOUND3D_COMPONENT_ABS_MAX);
+    dst[1] = sound3d_clamp_abs_or(src[1], 0.0, SOUND3D_COMPONENT_ABS_MAX);
+    dst[2] = sound3d_clamp_abs_or(src[2], 0.0, SOUND3D_COMPONENT_ABS_MAX);
 }
 
 /// @brief Translation-unit-local copy of `rt_sound3d.c::sound3d_vec_from_obj`.
@@ -165,9 +209,9 @@ static int sound3d_vec_from_obj(void *vec, double *out_xyz) {
     }
     if (!rt_g3d_is_vec3(vec))
         return 0;
-    out_xyz[0] = sound3d_finite_or(rt_vec3_x(vec), 0.0);
-    out_xyz[1] = sound3d_finite_or(rt_vec3_y(vec), 0.0);
-    out_xyz[2] = sound3d_finite_or(rt_vec3_z(vec), 0.0);
+    out_xyz[0] = sound3d_clamp_abs_or(rt_vec3_x(vec), 0.0, SOUND3D_COMPONENT_ABS_MAX);
+    out_xyz[1] = sound3d_clamp_abs_or(rt_vec3_y(vec), 0.0, SOUND3D_COMPONENT_ABS_MAX);
+    out_xyz[2] = sound3d_clamp_abs_or(rt_vec3_z(vec), 0.0, SOUND3D_COMPONENT_ABS_MAX);
     return 1;
 }
 
@@ -184,14 +228,21 @@ static void sound3d_update_velocity(double *velocity,
                                     double dt) {
     if (!velocity || !last_position || !has_last_position || !new_position)
         return;
+    if (!isfinite(dt) || dt < 0.0)
+        dt = 0.0;
+    if (dt > SOUND3D_SYNC_DT_MAX)
+        dt = SOUND3D_SYNC_DT_MAX;
     if (*has_last_position && dt > 1e-8) {
-        velocity[0] = (new_position[0] - last_position[0]) / dt;
-        velocity[1] = (new_position[1] - last_position[1]) / dt;
-        velocity[2] = (new_position[2] - last_position[2]) / dt;
+        velocity[0] = sound3d_clamp_abs_or(
+            (new_position[0] - last_position[0]) / dt, 0.0, SOUND3D_VELOCITY_ABS_MAX);
+        velocity[1] = sound3d_clamp_abs_or(
+            (new_position[1] - last_position[1]) / dt, 0.0, SOUND3D_VELOCITY_ABS_MAX);
+        velocity[2] = sound3d_clamp_abs_or(
+            (new_position[2] - last_position[2]) / dt, 0.0, SOUND3D_VELOCITY_ABS_MAX);
     }
-    last_position[0] = new_position[0];
-    last_position[1] = new_position[1];
-    last_position[2] = new_position[2];
+    last_position[0] = sound3d_clamp_abs_or(new_position[0], 0.0, SOUND3D_COMPONENT_ABS_MAX);
+    last_position[1] = sound3d_clamp_abs_or(new_position[1], 0.0, SOUND3D_COMPONENT_ABS_MAX);
+    last_position[2] = sound3d_clamp_abs_or(new_position[2], 0.0, SOUND3D_COMPONENT_ABS_MAX);
     *has_last_position = 1;
 }
 
@@ -586,6 +637,10 @@ static void sound3d_source_finalize(void *obj) {
 void rt_sound3d_sync_bindings(double dt) {
     rt_soundlistener3d *listener = s_listener_head;
     rt_soundsource3d *source = s_source_head;
+    if (!isfinite(dt) || dt < 0.0)
+        dt = 0.0;
+    if (dt > SOUND3D_SYNC_DT_MAX)
+        dt = SOUND3D_SYNC_DT_MAX;
     while (listener) {
         sound3d_listener_sync_binding(listener, dt);
         listener = listener->next;
@@ -719,6 +774,7 @@ void rt_soundlistener3d_set_velocity(void *obj, void *velocity) {
         return;
     if (!sound3d_vec_from_obj(velocity, listener->state.velocity))
         return;
+    sound3d_clamp_velocity3(listener->state.velocity);
     sound3d_listener_push_active_state(listener);
 }
 
@@ -875,6 +931,7 @@ void rt_soundsource3d_set_velocity(void *obj, void *velocity) {
         return;
     if (!sound3d_vec_from_obj(velocity, source->velocity))
         return;
+    sound3d_clamp_velocity3(source->velocity);
     sound3d_source_apply_spatial(source);
 }
 
@@ -885,13 +942,14 @@ double rt_soundsource3d_get_doppler_factor(void *obj) {
         return 1.0;
     sound3d_source_sync_binding(source, 0.0);
     sound3d_source_refresh_doppler(source);
+    source->doppler_factor = sound3d_doppler_or(source->doppler_factor);
     return source->doppler_factor;
 }
 
 /// @brief Maximum audible distance in world units. Beyond this the source contributes 0 volume.
 double rt_soundsource3d_get_max_distance(void *obj) {
     rt_soundsource3d *source = sound3d_source_checked(obj);
-    return source ? source->max_distance : 0.0;
+    return source ? sound3d_distance_or(source->max_distance, 0.0) : 0.0;
 }
 
 /// @brief Set audible-falloff distance (clamped to ≥ 0). Larger = louder for further-away
@@ -900,7 +958,7 @@ void rt_soundsource3d_set_max_distance(void *obj, double max_distance) {
     rt_soundsource3d *source = sound3d_source_checked(obj);
     if (!source)
         return;
-    source->max_distance = (isfinite(max_distance) && max_distance > 0.0) ? max_distance : 0.0;
+    source->max_distance = sound3d_distance_or(max_distance, 0.0);
     if (source->ref_distance > 0.0 && source->max_distance > 0.0 &&
         source->max_distance < source->ref_distance)
         source->max_distance = source->ref_distance;
@@ -910,7 +968,7 @@ void rt_soundsource3d_set_max_distance(void *obj, double max_distance) {
 /// @brief Full-volume reference distance in world units. Falloff begins past this radius.
 double rt_soundsource3d_get_ref_distance(void *obj) {
     rt_soundsource3d *source = sound3d_source_checked(obj);
-    return source ? source->ref_distance : 0.0;
+    return source ? sound3d_distance_or(source->ref_distance, 0.0) : 0.0;
 }
 
 /// @brief Set the full-volume reference radius. The max distance is raised when needed so
@@ -919,7 +977,9 @@ void rt_soundsource3d_set_ref_distance(void *obj, double ref_distance) {
     rt_soundsource3d *source = sound3d_source_checked(obj);
     if (!source)
         return;
-    source->ref_distance = (isfinite(ref_distance) && ref_distance > 0.0) ? ref_distance : 1.0;
+    source->ref_distance = sound3d_distance_or(ref_distance, 1.0);
+    if (source->ref_distance <= 0.0)
+        source->ref_distance = 1.0;
     if (source->max_distance > 0.0 && source->max_distance < source->ref_distance)
         source->max_distance = source->ref_distance;
     sound3d_source_apply_spatial(source);

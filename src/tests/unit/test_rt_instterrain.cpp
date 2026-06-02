@@ -13,12 +13,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_heap.h"
 #include "rt_instbatch3d.h"
 #include "rt_internal.h"
 #include "rt_terrain3d.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
@@ -63,6 +65,32 @@ typedef struct {
     int64_t last_motion_frame;
     int8_t has_prev_snapshot;
 } rt_instbatch3d_view;
+
+typedef struct {
+    void *vptr;
+    float *heights;
+    int32_t width;
+    int32_t depth;
+    int64_t height_count;
+    double scale[3];
+    void **chunk_meshes;
+    void **chunk_meshes_lod1;
+    void **chunk_meshes_lod2;
+    float *chunk_aabbs;
+    int32_t chunks_x;
+    int32_t chunks_z;
+    int32_t chunk_capacity;
+    void *material;
+    float lod_dist1;
+    float lod_dist2;
+    float skirt_depth;
+    void *splat_map;
+    void *layer_textures[4];
+    double layer_scales[4];
+    void *base_texture;
+    void *baked_texture;
+    int8_t splat_dirty;
+} rt_terrain3d_view;
 
 static int tests_passed = 0;
 static int tests_run = 0;
@@ -182,6 +210,37 @@ static void test_instbatch_sanitizes_nonfinite_matrices() {
     EXPECT_NEAR(view->transforms[10], 1.0, 0.001, "NaN matrix diagonal falls back to identity");
     EXPECT_NEAR(
         view->transforms[15], 1.0, 0.001, "NaN homogeneous component falls back to identity");
+
+    void *huge = rt_mat4_new(1.0,
+                             0.0,
+                             0.0,
+                             1.0e20,
+                             0.0,
+                             1.0,
+                             0.0,
+                             -1.0e20,
+                             0.0,
+                             0.0,
+                             1.0,
+                             5.0e19,
+                             0.0,
+                             0.0,
+                             0.0,
+                             1.0);
+    rt_instbatch3d_add(batch, huge);
+    EXPECT_TRUE(rt_instbatch3d_count(batch) == 2, "Batch accepts huge finite matrix after clamping");
+    EXPECT_NEAR(view->transforms[16 + 3],
+                1000000000000.0,
+                10000.0,
+                "Huge positive translation clamps to world bound");
+    EXPECT_NEAR(view->transforms[16 + 7],
+                -1000000000000.0,
+                10000.0,
+                "Huge negative translation clamps to world bound");
+    EXPECT_NEAR(view->transforms[16 + 11],
+                1000000000000.0,
+                10000.0,
+                "Huge finite transform component clamps before culling");
 }
 
 /*==========================================================================
@@ -208,6 +267,29 @@ static void test_terrain_normal_flat() {
     EXPECT_NEAR(rt_vec3_z(normal), 0.0, 0.01, "Flat normal Z ≈ 0");
 }
 
+static void test_terrain_edge_normals_use_one_sided_spacing() {
+    void *terrain = rt_terrain3d_new(2, 2);
+    auto *view = static_cast<rt_terrain3d_view *>(terrain);
+    EXPECT_TRUE(view != nullptr && view->heights != nullptr,
+                "Terrain edge-normal fixture exposes the height buffer");
+    if (!view || !view->heights)
+        return;
+
+    view->heights[1] = 1.0f;
+    view->heights[3] = 1.0f;
+    void *normal = rt_terrain3d_get_normal_at(terrain, 0.0, 0.0);
+    const double inv_sqrt2 = 0.7071067811865475;
+    EXPECT_NEAR(rt_vec3_x(normal),
+                -inv_sqrt2,
+                0.01,
+                "Terrain edge normal uses one-sided X spacing");
+    EXPECT_NEAR(rt_vec3_y(normal),
+                inv_sqrt2,
+                0.01,
+                "Terrain edge normal preserves the true edge slope");
+    EXPECT_NEAR(rt_vec3_z(normal), 0.0, 0.01, "Terrain edge normal keeps flat Z slope");
+}
+
 static void test_terrain_scale() {
     void *terrain = rt_terrain3d_new(32, 32);
     rt_terrain3d_set_scale(terrain, 2.0, 10.0, 2.0);
@@ -226,6 +308,189 @@ static void test_terrain_material() {
     EXPECT_TRUE(terrain != nullptr, "Terrain with material set");
 }
 
+static void test_terrain_heightmap_resample_preserves_source_edges() {
+    void *terrain = rt_terrain3d_new(2, 2);
+    void *heightmap = rt_pixels_new(4, 4);
+    EXPECT_TRUE(terrain != nullptr && heightmap != nullptr, "Terrain heightmap fixture created");
+    if (!terrain || !heightmap)
+        return;
+
+    rt_pixels_set(heightmap, 2, 2, 0x400000FF);
+    rt_pixels_set(heightmap, 3, 3, 0xFFFFFFFF);
+    rt_terrain3d_set_heightmap(terrain, heightmap);
+
+    EXPECT_NEAR(rt_terrain3d_get_height_at(terrain, 1.0, 1.0),
+                1.0,
+                0.001,
+                "Terrain heightmap resampling preserves the source bottom-right edge");
+}
+
+static void test_terrain_corrupt_private_counts_are_safe() {
+    void *terrain = rt_terrain3d_new(4, 4);
+    auto *view = static_cast<rt_terrain3d_view *>(terrain);
+    EXPECT_TRUE(view != nullptr && view->height_count == 16,
+                "Terrain test fixture records allocated height capacity");
+    if (!view)
+        return;
+
+    view->width = std::numeric_limits<int32_t>::max();
+    EXPECT_NEAR(rt_terrain3d_get_height_at(terrain, 1.0, 1.0),
+                0.0,
+                0.001,
+                "Terrain height query rejects corrupt dimensions");
+    void *normal = rt_terrain3d_get_normal_at(terrain, 1.0, 1.0);
+    EXPECT_NEAR(rt_vec3_y(normal), 1.0, 0.001, "Terrain normal falls back on corrupt dimensions");
+    EXPECT_TRUE(rt_terrain3d_build_heightmap_pixels(terrain) == nullptr,
+                "Terrain heightmap export rejects corrupt dimensions");
+    EXPECT_TRUE(rt_terrain3d_build_nav_mesh(terrain, 1) == nullptr,
+                "Terrain nav mesh build rejects corrupt dimensions");
+
+    view->width = 4;
+    view->depth = 4;
+    view->scale[0] = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_TRUE(std::isfinite(rt_terrain3d_get_height_at(terrain, 1.0, 1.0)),
+                "Terrain height query repairs corrupt scale values");
+
+    view->chunks_x = std::numeric_limits<int32_t>::max();
+    view->chunks_z = std::numeric_limits<int32_t>::max();
+    rt_terrain3d_set_scale(terrain, 2.0, 3.0, 4.0);
+    EXPECT_TRUE(view->chunk_capacity == 1,
+                "Terrain invalidation keeps using allocated chunk capacity");
+
+    view->chunks_x = 0;
+    view->chunks_z = 1;
+    view->chunk_capacity = 32;
+    rt_terrain3d_set_skirt_depth(terrain, 3.0);
+    EXPECT_TRUE(view->chunk_capacity == 32,
+                "Terrain invalidation ignores corrupt zero-sized chunk grids");
+}
+
+static void test_terrain_wrong_class_private_slots_clear_without_release() {
+    void *terrain = rt_terrain3d_new(2, 2);
+    auto *view = static_cast<rt_terrain3d_view *>(terrain);
+    void *valid_material = rt_material3d_new_color(0.1, 0.2, 0.3);
+    void *valid_pixels = rt_pixels_new(1, 1);
+    void *wrong_material = rt_material3d_new_color(0.4, 0.5, 0.6);
+    void *wrong_pixels = rt_pixels_new(1, 1);
+    EXPECT_TRUE(view != nullptr && valid_material && valid_pixels && wrong_material && wrong_pixels,
+                "Terrain private-slot corruption fixture is created");
+    if (!view || !valid_material || !valid_pixels || !wrong_material || !wrong_pixels)
+        return;
+    rt_pixels_set(valid_pixels, 0, 0, 0xFFFFFFFF);
+    rt_pixels_set(wrong_pixels, 0, 0, 0xFFFFFFFF);
+
+    view->material = wrong_pixels;
+    size_t wrong_pixels_refcnt = rt_heap_hdr(wrong_pixels)->refcnt;
+    rt_terrain3d_set_material(terrain, valid_material);
+    EXPECT_TRUE(view->material == valid_material,
+                "Terrain SetMaterial replaces wrong-class private material slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong_pixels)->refcnt == wrong_pixels_refcnt,
+                "Terrain SetMaterial does not release unowned wrong-class material slots");
+
+    view->splat_map = wrong_material;
+    size_t wrong_material_refcnt = rt_heap_hdr(wrong_material)->refcnt;
+    rt_terrain3d_set_splat_map(terrain, valid_pixels);
+    EXPECT_TRUE(view->splat_map == valid_pixels,
+                "Terrain SetSplatMap replaces wrong-class private splat-map slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong_material)->refcnt == wrong_material_refcnt,
+                "Terrain SetSplatMap does not release unowned wrong-class splat-map slots");
+
+    view->layer_textures[0] = wrong_material;
+    rt_terrain3d_set_layer_texture(terrain, 0, valid_pixels);
+    EXPECT_TRUE(view->layer_textures[0] == valid_pixels,
+                "Terrain SetLayerTexture replaces wrong-class private layer texture slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong_material)->refcnt == wrong_material_refcnt,
+                "Terrain SetLayerTexture does not release unowned wrong-class layer texture slots");
+
+    view->base_texture = wrong_material;
+    rt_terrain3d_set_splat_map(terrain, nullptr);
+    EXPECT_TRUE(view->base_texture == nullptr,
+                "Terrain SetSplatMap(NULL) clears wrong-class cached base texture slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong_material)->refcnt == wrong_material_refcnt,
+                "Terrain SetSplatMap(NULL) does not release unowned wrong-class base textures");
+
+    view->base_texture = wrong_material;
+    view->baked_texture = wrong_material;
+    rt_terrain3d_set_material(terrain, rt_material3d_new_color(0.7, 0.8, 0.9));
+    EXPECT_TRUE(view->base_texture == nullptr && view->baked_texture == nullptr,
+                "Terrain SetMaterial clears wrong-class cached texture slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong_material)->refcnt == wrong_material_refcnt,
+                "Terrain SetMaterial does not release unowned wrong-class cached texture slots");
+
+    view->material = wrong_pixels;
+    rt_terrain3d_set_splat_map(terrain, nullptr);
+    EXPECT_TRUE(view->material == nullptr,
+                "Terrain SetSplatMap(NULL) clears wrong-class private material slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong_pixels)->refcnt == wrong_pixels_refcnt,
+                "Terrain SetSplatMap(NULL) does not release unowned wrong-class materials");
+
+    view->chunk_meshes[0] = wrong_material;
+    rt_terrain3d_set_scale(terrain, 2.0, 1.0, 2.0);
+    EXPECT_TRUE(view->chunk_meshes[0] == nullptr,
+                "Terrain invalidation clears wrong-class cached chunk mesh slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong_material)->refcnt == wrong_material_refcnt,
+                "Terrain invalidation does not release unowned wrong-class chunk mesh slots");
+}
+
+static void test_terrain_corrupt_height_samples_are_clamped() {
+    void *terrain = rt_terrain3d_new(2, 2);
+    auto *view = static_cast<rt_terrain3d_view *>(terrain);
+    EXPECT_TRUE(view != nullptr && view->heights != nullptr,
+                "Terrain corruption fixture exposes the height buffer");
+    if (!view || !view->heights)
+        return;
+
+    view->heights[3] = std::numeric_limits<float>::infinity();
+    EXPECT_NEAR(rt_terrain3d_get_height_at(terrain, 1.0, 1.0),
+                0.0,
+                0.001,
+                "Terrain height query repairs infinite private samples");
+
+    view->heights[3] = 1.0e30f;
+    double huge_height = rt_terrain3d_get_height_at(terrain, 1.0, 1.0);
+    EXPECT_TRUE(std::isfinite(huge_height) && huge_height <= 1000000.0,
+                "Terrain height query clamps huge private samples");
+    void *normal = rt_terrain3d_get_normal_at(terrain, 1.0, 1.0);
+    double normal_len =
+        std::sqrt(rt_vec3_x(normal) * rt_vec3_x(normal) +
+                  rt_vec3_y(normal) * rt_vec3_y(normal) + rt_vec3_z(normal) * rt_vec3_z(normal));
+    EXPECT_TRUE(std::isfinite(normal_len) && normal_len > 0.9 && normal_len < 1.1,
+                "Terrain normal remains normalized with huge private samples");
+    EXPECT_TRUE(rt_terrain3d_build_nav_mesh(terrain, 1) != nullptr,
+                "Terrain nav mesh build survives huge private samples");
+    EXPECT_TRUE(rt_terrain3d_build_heightmap_pixels(terrain) != nullptr,
+                "Terrain heightmap export survives huge private samples");
+
+    view->heights[3] = -1.0e30f;
+    double low_height = rt_terrain3d_get_height_at(terrain, 1.0, 1.0);
+    EXPECT_TRUE(std::isfinite(low_height) && low_height >= -1000000.0,
+                "Terrain height query clamps huge negative private samples");
+}
+
+static void test_terrain_layer_scale_setter_repairs_invalid_values() {
+    void *terrain = rt_terrain3d_new(2, 2);
+    auto *view = static_cast<rt_terrain3d_view *>(terrain);
+    EXPECT_TRUE(view != nullptr, "Terrain layer-scale fixture created");
+    if (!view)
+        return;
+
+    rt_terrain3d_set_layer_scale(terrain, 0, std::numeric_limits<double>::quiet_NaN());
+    EXPECT_NEAR(view->layer_scales[0], 1.0, 0.001, "NaN terrain layer scale falls back to 1");
+
+    rt_terrain3d_set_layer_scale(terrain, 1, -8.0);
+    EXPECT_NEAR(view->layer_scales[1], 1.0, 0.001, "Negative terrain layer scale falls back to 1");
+
+    rt_terrain3d_set_layer_scale(terrain, 2, std::numeric_limits<double>::infinity());
+    EXPECT_NEAR(
+        view->layer_scales[2], 1.0, 0.001, "Infinite terrain layer scale falls back to 1");
+
+    rt_terrain3d_set_layer_scale(terrain, 3, 1.0e30);
+    EXPECT_NEAR(view->layer_scales[3],
+                1000000.0,
+                0.001,
+                "Huge terrain layer scale clamps to renderer-safe max");
+}
+
 int main() {
     /* InstanceBatch3D */
     test_instbatch_create();
@@ -239,8 +504,14 @@ int main() {
     test_terrain_create();
     test_terrain_flat_height();
     test_terrain_normal_flat();
+    test_terrain_edge_normals_use_one_sided_spacing();
     test_terrain_scale();
     test_terrain_material();
+    test_terrain_heightmap_resample_preserves_source_edges();
+    test_terrain_corrupt_private_counts_are_safe();
+    test_terrain_wrong_class_private_slots_clear_without_release();
+    test_terrain_corrupt_height_samples_are_clamped();
+    test_terrain_layer_scale_setter_repairs_invalid_values();
 
     printf("InstanceBatch3D+Terrain3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

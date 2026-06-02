@@ -88,7 +88,8 @@ void rt_game3d_input_set_look_sensitivity(void *obj, double sensitivity) {
         game3d_input_checked(obj, "Game3D.Input3D.set_LookSensitivity: invalid input");
     if (!input)
         return;
-    input->look_sensitivity = game3d_nonnegative_or(sensitivity, 0.01);
+    input->look_sensitivity =
+        game3d_nonnegative_clamped_or(sensitivity, 0.01, RT_GAME3D_LOOK_SENSITIVITY_MAX);
 }
 
 /// @brief Roll input edge state forward one frame; the shared device state is polled
@@ -110,7 +111,7 @@ void rt_game3d_input_update(void *obj) {
     }
     input->mouse_dx = rt_mouse_delta_x();
     input->mouse_dy = rt_mouse_delta_y();
-    input->wheel_y = rt_mouse_wheel_yf();
+    input->wheel_y = game3d_finite_or(rt_mouse_wheel_yf(), 0.0);
     input->has_snapshot = 1;
 }
 
@@ -207,9 +208,18 @@ void *rt_game3d_input_move_axis(void *obj) {
 /// @brief Build the mouse-look axis as a Vec2 (mouse delta scaled by sensitivity).
 void *rt_game3d_input_look_axis(void *obj) {
     rt_game3d_input *input = game3d_input_checked(obj, "Game3D.Input3D.lookAxis: invalid input");
-    double s = input ? input->look_sensitivity : 0.01;
-    return rt_vec2_new((double)game3d_input_mouse_dx(input) * s,
-                       (double)game3d_input_mouse_dy(input) * s);
+    double s =
+        input ? game3d_nonnegative_clamped_or(input->look_sensitivity,
+                                              0.01,
+                                              RT_GAME3D_LOOK_SENSITIVITY_MAX)
+              : 0.01;
+    double x = game3d_clamp_abs_or((double)game3d_input_mouse_dx(input) * s,
+                                   0.0,
+                                   RT_GAME3D_ANGLE_DEG_ABS_MAX);
+    double y = game3d_clamp_abs_or((double)game3d_input_mouse_dy(input) * s,
+                                   0.0,
+                                   RT_GAME3D_ANGLE_DEG_ABS_MAX);
+    return rt_vec2_new(x, y);
 }
 
 /// @brief Capture and hide the OS cursor for relative mouse-look.

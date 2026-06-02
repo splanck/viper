@@ -40,14 +40,18 @@ int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
     uint32_t *indices;
     size_t vertex_bytes;
     size_t index_bytes;
+    uint32_t vertex_count;
+    uint32_t index_count;
     if (!c || !mesh || !out_vertices || !out_indices || !mesh->vertices || !mesh->indices ||
-        mesh->vertex_count == 0 || mesh->index_count == 0)
+        rt_mesh3d_safe_vertex_count(mesh) == 0 || rt_mesh3d_safe_index_count(mesh) == 0)
         return 0;
-    if ((size_t)mesh->vertex_count > SIZE_MAX / sizeof(*vertices) ||
-        (size_t)mesh->index_count > SIZE_MAX / sizeof(*indices))
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    index_count = rt_mesh3d_safe_index_count(mesh);
+    if ((size_t)vertex_count > SIZE_MAX / sizeof(*vertices) ||
+        (size_t)index_count > SIZE_MAX / sizeof(*indices))
         return 0;
-    vertex_bytes = (size_t)mesh->vertex_count * sizeof(*vertices);
-    index_bytes = (size_t)mesh->index_count * sizeof(*indices);
+    vertex_bytes = (size_t)vertex_count * sizeof(*vertices);
+    index_bytes = (size_t)index_count * sizeof(*indices);
     if (vertex_bytes > SIZE_MAX - index_bytes)
         return 0;
     size_t total_bytes = vertex_bytes + index_bytes;
@@ -104,9 +108,10 @@ int canvas3d_snapshot_mesh_geometry_rebased(rt_canvas3d *c,
                                             const double origin[3],
                                             vgfx3d_vertex_t **out_vertices,
                                             uint32_t **out_indices) {
+    uint32_t vertex_count = rt_mesh3d_safe_vertex_count(mesh);
     if (!canvas3d_snapshot_mesh_geometry(c, mesh, out_vertices, out_indices))
         return 0;
-    for (uint32_t i = 0; i < mesh->vertex_count; i++) {
+    for (uint32_t i = 0; i < vertex_count; i++) {
         double x = mesh->positions64 ? mesh->positions64[(size_t)i * 3u + 0]
                                      : (double)mesh->vertices[i].pos[0];
         double y = mesh->positions64 ? mesh->positions64[(size_t)i * 3u + 1]
@@ -167,13 +172,18 @@ int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
                                            void *mesh_obj,
                                            vgfx3d_vertex_t **out_vertices,
                                            uint32_t **out_indices) {
+    uint32_t vertex_count;
+    uint32_t index_count;
+    if (!c || !mesh || !out_vertices || !out_indices)
+        return 0;
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    index_count = rt_mesh3d_safe_index_count(mesh);
     int can_cache = mesh_obj && rt_heap_is_payload(mesh_obj);
     if (can_cache) {
         for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
             rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[i];
             if (entry->source == mesh_obj && entry->geometry_revision == mesh->geometry_revision &&
-                entry->vertex_count == mesh->vertex_count &&
-                entry->index_count == mesh->index_count) {
+                entry->vertex_count == vertex_count && entry->index_count == index_count) {
                 *out_vertices = entry->vertices;
                 *out_indices = entry->indices;
                 return 1;
@@ -190,8 +200,8 @@ int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
         rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[c->mesh_snapshot_count++];
         entry->source = mesh_obj;
         entry->geometry_revision = mesh->geometry_revision;
-        entry->vertex_count = mesh->vertex_count;
-        entry->index_count = mesh->index_count;
+        entry->vertex_count = vertex_count;
+        entry->index_count = index_count;
         entry->vertices = *out_vertices;
         entry->indices = *out_indices;
     }

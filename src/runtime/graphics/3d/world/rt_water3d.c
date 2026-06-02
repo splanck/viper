@@ -68,6 +68,9 @@ extern void rt_material3d_set_color(void *m, double r, double g, double b);
 #define WATER3D_SIZE_MAX 1000000.0
 #define WATER3D_HEIGHT_ABS_MAX 1000000000000.0
 #define WATER3D_PARAM_MAX 1000000.0
+#define WATER3D_DT_MAX 1.0
+#define WATER3D_TIME_MAX 1000000.0
+#define WATER3D_TWO_PI 6.28318530717958647692
 
 typedef struct {
     double dir[2]; /* normalized wave direction */
@@ -118,14 +121,65 @@ static void water3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
-/// @brief Replace `*slot` with `value`, retaining the new value first then releasing the old.
-/// Order matters — without retain-before-release, assigning a slot's current value to itself
-/// would briefly drop the refcount to 0 and free the object.
-static void water3d_assign_ref(void **slot, void *value) {
-    if (*slot == value)
+/// @brief Release a retained Pixels slot only if it still points at a valid Pixels object.
+static void water3d_release_pixels_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!water3d_is_pixels_handle(*slot)) {
+        *slot = NULL;
+        return;
+    }
+    water3d_release_ref(slot);
+}
+
+/// @brief Release a retained mesh slot only if it still points at a Mesh3D object.
+static void water3d_release_mesh_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    water3d_release_ref(slot);
+}
+
+/// @brief Release a retained material slot only if it still points at a Material3D object.
+static void water3d_release_material_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    water3d_release_ref(slot);
+}
+
+/// @brief Release a retained cubemap slot only if it still points at a Cubemap3D object.
+static void water3d_release_env_map_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_CUBEMAP3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    water3d_release_ref(slot);
+}
+
+/// @brief Retain-then-release assignment for Pixels slots, clearing corrupt old slots safely.
+static void water3d_assign_pixels_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
         return;
     rt_obj_retain_maybe(value);
-    water3d_release_ref(slot);
+    water3d_release_pixels_slot(slot);
+    *slot = value;
+}
+
+/// @brief Retain-then-release assignment for Cubemap3D slots, clearing corrupt old slots safely.
+static void water3d_assign_env_map_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    water3d_release_env_map_slot(slot);
     *slot = value;
 }
 
@@ -151,14 +205,66 @@ static double water3d_clamp_nonnegative(double value, double max_value) {
     return rt_world3d_clamp_nonnegative(value, max_value);
 }
 
+/// @brief Normalize a 2D wave direction robustly, accepting huge finite components.
+static int water3d_normalize_dir2(double *x, double *z) {
+    if (!x || !z)
+        return 0;
+    *x = water3d_clamp_abs_or(*x, 0.0, WATER3D_PARAM_MAX);
+    *z = water3d_clamp_abs_or(*z, 0.0, WATER3D_PARAM_MAX);
+    double max_component = fmax(fabs(*x), fabs(*z));
+    if (!isfinite(max_component) || max_component <= 1e-8)
+        return 0;
+    double sx = *x / max_component;
+    double sz = *z / max_component;
+    double len = sqrt(sx * sx + sz * sz);
+    if (!isfinite(len) || len <= 1e-8)
+        return 0;
+    *x = sx / len;
+    *z = sz / len;
+    return 1;
+}
+
+/// @brief Release corrupted cached resources so update can recreate valid ones.
+static void water3d_repair_resource_handles(rt_water3d *w) {
+    if (!w)
+        return;
+    if (w->mesh && !rt_g3d_has_class(w->mesh, RT_G3D_MESH3D_CLASS_ID)) {
+        water3d_release_mesh_slot(&w->mesh);
+        w->mesh_dirty = 1;
+    }
+    if (w->material && !rt_g3d_has_class(w->material, RT_G3D_MATERIAL3D_CLASS_ID))
+        water3d_release_material_slot(&w->material);
+    if (w->texture && !water3d_is_pixels_handle(w->texture))
+        water3d_release_pixels_slot(&w->texture);
+    if (w->normal_map && !water3d_is_pixels_handle(w->normal_map))
+        water3d_release_pixels_slot(&w->normal_map);
+    if (w->env_map && (!rt_g3d_has_class(w->env_map, RT_G3D_CUBEMAP3D_CLASS_ID) ||
+                       !rt_cubemap3d_is_complete(w->env_map)))
+        water3d_release_env_map_slot(&w->env_map);
+}
+
+/// @brief Clamp one stored wave and return whether it can contribute to mesh deformation.
+static int water3d_sanitize_wave(water_wave_t *wv) {
+    if (!wv)
+        return 0;
+    if (!water3d_normalize_dir2(&wv->dir[0], &wv->dir[1]))
+        return 0;
+    wv->speed = water3d_clamp_abs_or(wv->speed, 0.0, WATER3D_PARAM_MAX);
+    wv->amplitude = water3d_clamp_nonnegative(wv->amplitude, WATER3D_PARAM_MAX);
+    wv->frequency = water3d_clamp_nonnegative(wv->frequency, WATER3D_PARAM_MAX);
+    return wv->frequency > 0.0 && wv->amplitude > 0.0;
+}
+
 /// @brief GC finalizer: release every retained graphics resource (textures, mesh, material).
 static void water3d_finalizer(void *obj) {
     rt_water3d *w = (rt_water3d *)obj;
-    water3d_release_ref(&w->texture);
-    water3d_release_ref(&w->normal_map);
-    water3d_release_ref(&w->env_map);
-    water3d_release_ref(&w->mesh);
-    water3d_release_ref(&w->material);
+    if (!w)
+        return;
+    water3d_release_pixels_slot(&w->texture);
+    water3d_release_pixels_slot(&w->normal_map);
+    water3d_release_env_map_slot(&w->env_map);
+    water3d_release_mesh_slot(&w->mesh);
+    water3d_release_material_slot(&w->material);
 }
 
 /// @brief Create a new water surface with animated wave simulation.
@@ -239,9 +345,11 @@ void rt_water3d_set_texture(void *obj, void *pixels) {
     rt_water3d *w = water3d_checked(obj);
     if (!w)
         return;
+    if (w->material && !rt_g3d_has_class(w->material, RT_G3D_MATERIAL3D_CLASS_ID))
+        water3d_release_material_slot(&w->material);
     if (pixels && !water3d_is_pixels_handle(pixels))
         return;
-    water3d_assign_ref(&w->texture, pixels);
+    water3d_assign_pixels_ref(&w->texture, pixels);
     if (w->material)
         rt_material3d_set_texture(w->material, pixels);
 }
@@ -251,9 +359,11 @@ void rt_water3d_set_normal_map(void *obj, void *pixels) {
     rt_water3d *w = water3d_checked(obj);
     if (!w)
         return;
+    if (w->material && !rt_g3d_has_class(w->material, RT_G3D_MATERIAL3D_CLASS_ID))
+        water3d_release_material_slot(&w->material);
     if (pixels && !water3d_is_pixels_handle(pixels))
         return;
-    water3d_assign_ref(&w->normal_map, pixels);
+    water3d_assign_pixels_ref(&w->normal_map, pixels);
     if (w->material)
         rt_material3d_set_normal_map(w->material, pixels);
 }
@@ -263,11 +373,20 @@ void rt_water3d_set_env_map(void *obj, void *cubemap) {
     rt_water3d *w = water3d_checked(obj);
     if (!w)
         return;
-    if (cubemap && !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID))
+    water3d_repair_resource_handles(w);
+    if (cubemap && (!rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID) ||
+                    !rt_cubemap3d_is_complete(cubemap))) {
+        if (w->material) {
+            rt_material3d_set_env_map(w->material, w->env_map);
+            rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
+        }
         return;
-    water3d_assign_ref(&w->env_map, cubemap);
-    if (w->material)
+    }
+    water3d_assign_env_map_ref(&w->env_map, cubemap);
+    if (w->material) {
         rt_material3d_set_env_map(w->material, cubemap);
+        rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
+    }
 }
 
 /// @brief Set reflectivity [0.0-1.0] for environment mapping.
@@ -275,6 +394,7 @@ void rt_water3d_set_reflectivity(void *obj, double r) {
     rt_water3d *w = water3d_checked(obj);
     if (!w)
         return;
+    water3d_repair_resource_handles(w);
     w->reflectivity = water3d_clamp01(r);
     if (w->material)
         rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
@@ -301,22 +421,24 @@ void rt_water3d_add_wave(
     rt_water3d *w = water3d_checked(obj);
     if (!w)
         return;
+    if (w->wave_count < 0)
+        w->wave_count = 0;
+    if (w->wave_count > WATER_MAX_WAVES)
+        w->wave_count = WATER_MAX_WAVES;
     if (w->wave_count >= WATER_MAX_WAVES)
         return;
     if (!isfinite(dirX) || !isfinite(dirZ) || !isfinite(speed) || !isfinite(amplitude) ||
         !isfinite(wavelength) || amplitude < 0.0 || wavelength <= 1e-6)
         return;
-    /* Normalize direction */
-    double len = sqrt(dirX * dirX + dirZ * dirZ);
-    if (!isfinite(len) || len < 1e-8)
+    if (!water3d_normalize_dir2(&dirX, &dirZ))
         return;
     water_wave_t *wv = &w->waves[w->wave_count];
-    wv->dir[0] = dirX / len;
-    wv->dir[1] = dirZ / len;
+    wv->dir[0] = dirX;
+    wv->dir[1] = dirZ;
     wv->speed = water3d_clamp_abs_or(speed, 0.0, WATER3D_PARAM_MAX);
     wv->amplitude = water3d_clamp_nonnegative(amplitude, WATER3D_PARAM_MAX);
     wavelength = water3d_clamp_positive_or(wavelength, 1.0, WATER3D_PARAM_MAX);
-    wv->frequency = 6.283185307 / wavelength;
+    wv->frequency = WATER3D_TWO_PI / wavelength;
     w->wave_count++;
     w->mesh_dirty = 1;
 }
@@ -326,6 +448,7 @@ void rt_water3d_clear_waves(void *obj) {
     rt_water3d *w = water3d_checked(obj);
     if (w) {
         w->wave_count = 0;
+        memset(w->waves, 0, sizeof(w->waves));
         w->mesh_dirty = 1;
     }
 }
@@ -353,11 +476,35 @@ void rt_water3d_update(void *obj, double dt) {
     rt_water3d *w = water3d_checked(obj);
     if (!w || !isfinite(dt) || dt < 0.0)
         return;
+    water3d_repair_resource_handles(w);
+    if (dt > WATER3D_DT_MAX)
+        dt = WATER3D_DT_MAX;
     if (dt == 0.0 && !w->mesh_dirty && w->mesh && w->material)
         return;
     w->time += dt;
     if (!isfinite(w->time))
         w->time = 0.0;
+    if (w->time > WATER3D_TIME_MAX)
+        w->time = fmod(w->time, WATER3D_TIME_MAX);
+
+    w->width = water3d_clamp_positive_or(w->width, 1.0, WATER3D_SIZE_MAX);
+    w->depth = water3d_clamp_positive_or(w->depth, 1.0, WATER3D_SIZE_MAX);
+    w->height = water3d_clamp_abs_or(w->height, 0.0, WATER3D_HEIGHT_ABS_MAX);
+    w->wave_speed = water3d_clamp_abs_or(w->wave_speed, 0.0, WATER3D_PARAM_MAX);
+    w->wave_amplitude = water3d_clamp_nonnegative(w->wave_amplitude, WATER3D_PARAM_MAX);
+    w->wave_frequency = water3d_clamp_abs_or(w->wave_frequency, 0.0, WATER3D_PARAM_MAX);
+    w->reflectivity = water3d_clamp01(w->reflectivity);
+    w->alpha = water3d_clamp01(w->alpha);
+    for (int32_t c = 0; c < 3; c++)
+        w->color[c] = water3d_clamp01(w->color[c]);
+    if (w->resolution < 8 || w->resolution > 256)
+        w->resolution = WATER_GRID;
+    if (w->wave_count < 0)
+        w->wave_count = 0;
+    if (w->wave_count > WATER_MAX_WAVES)
+        w->wave_count = WATER_MAX_WAVES;
+    for (int32_t wi = 0; wi < w->wave_count; wi++)
+        (void)water3d_sanitize_wave(&w->waves[wi]);
 
     /* Regenerate mesh with new wave positions (reuse allocation to avoid GC pressure) */
     if (!w->mesh)
@@ -387,8 +534,15 @@ void rt_water3d_update(void *obj, double dt) {
                  * direction. */
                 for (int32_t wi = 0; wi < w->wave_count; wi++) {
                     water_wave_t *wv = &w->waves[wi];
+                    if (!water3d_sanitize_wave(wv))
+                        continue;
                     double dot = wv->dir[0] * x + wv->dir[1] * z;
                     double phase = wv->frequency * dot - w->time * wv->speed;
+                    if (!isfinite(phase))
+                        continue;
+                    phase = fmod(phase, WATER3D_TWO_PI);
+                    if (!isfinite(phase))
+                        phase = 0.0;
                     y += wv->amplitude * sin(phase);
                     double dc = wv->amplitude * wv->frequency * cos(phase);
                     dydx += dc * wv->dir[0];
@@ -397,11 +551,23 @@ void rt_water3d_update(void *obj, double dt) {
             } else {
                 /* Legacy single sine wave — keep same sign convention as above. */
                 double phase = w->wave_frequency * (x + z) - w->time * w->wave_speed;
+                if (!isfinite(phase))
+                    phase = 0.0;
+                phase = fmod(phase, WATER3D_TWO_PI);
+                if (!isfinite(phase))
+                    phase = 0.0;
                 y += w->wave_amplitude * sin(phase);
                 double dc = w->wave_amplitude * w->wave_frequency * cos(phase);
                 dydx = dc;
                 dydz = dc;
             }
+
+            if (!isfinite(y))
+                y = w->height;
+            if (!isfinite(dydx))
+                dydx = 0.0;
+            if (!isfinite(dydz))
+                dydz = 0.0;
 
             /* Normal from wave derivatives */
             double nx = -dydx, ny = 1.0, nz = -dydz;
@@ -472,6 +638,7 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     if (!c || !w)
         return;
     (void)camera;
+    water3d_repair_resource_handles(w);
     if (!w->mesh || !w->material || w->mesh_dirty)
         rt_water3d_update(w, 0.0);
     if (!w->mesh || !w->material)

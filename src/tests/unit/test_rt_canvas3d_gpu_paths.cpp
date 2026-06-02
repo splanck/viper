@@ -10,7 +10,9 @@
 #include "rt_morphtarget3d.h"
 #include "rt_postfx3d.h"
 #include "rt_skeleton3d.h"
+#include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
+#include "rt_terrain3d.h"
 #include "vgfx3d_backend.h"
 
 #include <climits>
@@ -19,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 extern "C" {
 extern void *rt_mat4_identity(void);
@@ -26,6 +29,7 @@ extern rt_string rt_const_cstr(const char *s);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 extern void *rt_canvas3d_screenshot(void *canvas);
+extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 }
@@ -84,6 +88,32 @@ typedef struct {
     float local_bounds_max[3];
     float sort_key;
 } test_deferred_draw_t;
+
+typedef struct {
+    void *vptr;
+    float *heights;
+    int32_t width;
+    int32_t depth;
+    int64_t height_count;
+    double scale[3];
+    void **chunk_meshes;
+    void **chunk_meshes_lod1;
+    void **chunk_meshes_lod2;
+    float *chunk_aabbs;
+    int32_t chunks_x;
+    int32_t chunks_z;
+    int32_t chunk_capacity;
+    void *material;
+    float lod_dist1;
+    float lod_dist2;
+    float skirt_depth;
+    void *splat_map;
+    void *layer_textures[4];
+    double layer_scales[4];
+    void *base_texture;
+    void *baked_texture;
+    int8_t splat_dirty;
+} test_terrain3d_view;
 
 static vgfx3d_backend_t make_backend(const char *name) {
     vgfx3d_backend_t backend = {};
@@ -544,6 +574,31 @@ static void test_gpu_skinning_bypass_for_opengl(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_draw_repairs_corrupt_mesh_geometry_counts(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
+    mesh_view->vertex_capacity = mesh_view->vertex_count;
+    mesh_view->index_capacity = mesh_view->index_count;
+    mesh_view->vertex_count = UINT32_MAX;
+    mesh_view->index_count = UINT32_MAX;
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Canvas3D draws the valid prefix of a count-corrupt mesh");
+    EXPECT_TRUE(mesh_view->vertex_count == 3 && mesh_view->index_count == 3,
+                "Canvas3D repairs corrupt mesh counts before queuing");
+    EXPECT_TRUE(draws[0].cmd.vertex_count == 3 && draws[0].cmd.index_count == 3,
+                "Canvas3D queues repaired mesh counts");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_gpu_skinning_bypass_for_d3d11(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kD3D11Backend);
@@ -916,6 +971,70 @@ static void test_gpu_morph_normal_payload_for_metal(void) {
     cleanup_fake_canvas(&canvas);
 }
 
+static void test_gpu_morph_rejects_nonfinite_position_payload(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(morph, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_weight(morph, 0, 0.5);
+
+    float *packed = const_cast<float *>(rt_morphtarget3d_get_packed_deltas(morph));
+    EXPECT_TRUE(packed != nullptr, "Test morph builds a packed position payload");
+    if (packed)
+        packed[0] = std::numeric_limits<float>::quiet_NaN();
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Corrupt morph payload still submits the base mesh draw");
+    EXPECT_TRUE(draws[0].cmd.morph_deltas == nullptr &&
+                    draws[0].cmd.morph_weights == nullptr &&
+                    draws[0].cmd.morph_shape_count == 0,
+                "Non-finite position morph payload disables GPU morph bindings");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_gpu_morph_drops_nonfinite_normal_payload(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+    void *morph = rt_morphtarget3d_new(3);
+    rt_morphtarget3d_add_shape(morph, rt_const_cstr("raise"));
+    rt_morphtarget3d_set_delta(morph, 0, 0, 1.0, 2.0, 3.0);
+    rt_morphtarget3d_set_normal_delta(morph, 0, 0, 0.25, 0.5, 0.75);
+    rt_morphtarget3d_set_weight(morph, 0, 0.5);
+
+    const float *packed_pos = rt_morphtarget3d_get_packed_deltas(morph);
+    float *packed_normal =
+        const_cast<float *>(rt_morphtarget3d_get_packed_normal_deltas(morph));
+    EXPECT_TRUE(packed_pos != nullptr && packed_normal != nullptr,
+                "Test morph builds packed position and normal payloads");
+    if (packed_normal)
+        packed_normal[0] = std::numeric_limits<float>::quiet_NaN();
+
+    rt_canvas3d_draw_mesh_morphed(&canvas, mesh, transform, material, morph);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Corrupt normal payload still submits the morphed draw");
+    EXPECT_TRUE(draws[0].cmd.morph_deltas != nullptr &&
+                    draws[0].cmd.morph_weights != nullptr &&
+                    draws[0].cmd.morph_shape_count == 1,
+                "Valid position morph payload remains active");
+    EXPECT_TRUE(draws[0].cmd.morph_normal_deltas == nullptr,
+                "Non-finite optional normal morph payload is not forwarded to the backend");
+
+    cleanup_fake_canvas(&canvas);
+}
+
 static void test_attached_morph_targets_route_through_draw_mesh(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kOpenGLBackend);
@@ -1137,6 +1256,294 @@ static void test_backend_skybox_hook_used(void) {
     EXPECT_TRUE(skybox_draw_calls == 1,
                 "Canvas3D.End delegates skybox rendering to the backend hook when available");
     EXPECT_TRUE(canvas.in_frame == 0, "Canvas3D.End completes cleanly for skybox-only scenes");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_incomplete_cubemaps_are_not_forwarded(void) {
+    vgfx3d_backend_t backend = {};
+    backend.name = "opengl";
+    backend.end_frame = noop_end_frame;
+    backend.draw_skybox = record_draw_skybox;
+
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &backend);
+    canvas.backend_ctx = &canvas;
+
+    void *px = rt_pixels_new(1, 1);
+    rt_pixels_set(px, 0, 0, 0xFF0000FF);
+    void *cubemap = rt_cubemap3d_new(px, px, px, px, px, px);
+    ((rt_cubemap3d *)cubemap)->face_size = 2;
+    EXPECT_TRUE(rt_cubemap3d_is_complete(cubemap) == 0,
+                "CubeMap3D completeness rejects mismatched face sizes");
+
+    skybox_draw_calls = 0;
+    rt_canvas3d_set_skybox(&canvas, cubemap);
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(skybox_draw_calls == 0,
+                "Canvas3D.SetSkybox rejects incomplete cubemaps before backend submission");
+
+    init_fake_canvas(&canvas, &backend);
+    canvas.backend_ctx = &canvas;
+    void *bound_cubemap = rt_cubemap3d_new(px, px, px, px, px, px);
+    rt_canvas3d_set_skybox(&canvas, bound_cubemap);
+    EXPECT_TRUE(rt_heap_hdr(bound_cubemap)->refcnt == 2,
+                "Canvas3D.SetSkybox retains a complete cubemap");
+    ((rt_cubemap3d *)bound_cubemap)->face_size = 2;
+    skybox_draw_calls = 0;
+    rt_canvas3d_end(&canvas);
+    EXPECT_TRUE(skybox_draw_calls == 0,
+                "Canvas3D.End rejects skyboxes corrupted after binding");
+    EXPECT_TRUE(canvas.skybox == nullptr,
+                "Canvas3D.End clears corrupted skyboxes before later frames reuse them");
+    EXPECT_TRUE(rt_heap_hdr(bound_cubemap)->refcnt == 1,
+                "Canvas3D.End releases its retain on a corrupted bound skybox");
+
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new();
+    rt_material3d_set_env_map(material, cubemap);
+    rt_material3d_set_reflectivity(material, 0.75);
+    rt_canvas3d_draw_mesh(&canvas, mesh, rt_mat4_identity(), material);
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Incomplete env-map draw still enqueues the mesh");
+    EXPECT_TRUE(draws[0].cmd.env_map == nullptr,
+                "Material3D.SetEnvMap rejects incomplete cubemap payloads");
+    EXPECT_TRUE(draws[0].cmd.reflectivity == 0.0f,
+                "Material3D incomplete env maps clear reflectivity in draw payloads");
+
+    reset_canvas_frame(&canvas, 2);
+    ((rt_material3d *)material)->env_map = cubemap;
+    ((rt_material3d *)material)->reflectivity = 0.5;
+    rt_canvas3d_draw_mesh(&canvas, mesh, rt_mat4_identity(), material);
+    draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(draws[0].cmd.env_map == nullptr,
+                "Canvas3D draw command repair drops directly corrupted env maps");
+    EXPECT_TRUE(draws[0].cmd.reflectivity == 0.0f,
+                "Canvas3D draw command repair drops corrupted env-map reflectivity");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_material_repairs_wrong_class_private_refs_without_release(void) {
+    void *material = rt_material3d_new();
+    void *wrong = rt_material3d_new();
+    rt_material3d *mat = (rt_material3d *)material;
+    size_t wrong_refcnt = rt_heap_hdr(wrong)->refcnt;
+
+    mat->texture = wrong;
+    EXPECT_TRUE(rt_material3d_get_has_texture(material) == 0,
+                "Material3D.GetHasTexture rejects wrong-class private texture refs");
+    EXPECT_TRUE(mat->texture == nullptr,
+                "Material3D.GetHasTexture clears wrong-class private texture refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "Material3D wrong-class texture repair does not release unowned refs");
+
+    mat->env_map = wrong;
+    wrong_refcnt = rt_heap_hdr(wrong)->refcnt;
+    EXPECT_TRUE(rt_material3d_get_has_env_map(material) == 0,
+                "Material3D.GetHasEnvMap rejects wrong-class private env-map refs");
+    EXPECT_TRUE(mat->env_map == nullptr,
+                "Material3D.GetHasEnvMap clears wrong-class private env-map refs");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "Material3D wrong-class env-map repair does not release unowned refs");
+
+    void *px = rt_pixels_new(1, 1);
+    rt_pixels_set(px, 0, 0, 0xFFFFFFFF);
+    void *cubemap = rt_cubemap3d_new(px, px, px, px, px, px);
+    rt_material3d_set_env_map(material, cubemap);
+    EXPECT_TRUE(rt_heap_hdr(cubemap)->refcnt == 2,
+                "Material3D.SetEnvMap retains a complete cubemap");
+    ((rt_cubemap3d *)cubemap)->face_size = 2;
+    EXPECT_TRUE(rt_material3d_get_has_env_map(material) == 0,
+                "Material3D.GetHasEnvMap rejects cubemaps corrupted after assignment");
+    EXPECT_TRUE(mat->env_map == nullptr,
+                "Material3D.GetHasEnvMap clears cubemaps corrupted after assignment");
+    EXPECT_TRUE(rt_heap_hdr(cubemap)->refcnt == 1,
+                "Material3D.GetHasEnvMap releases retained cubemaps corrupted after assignment");
+}
+
+static void test_cubemap_finalizer_skips_wrong_class_private_faces(void) {
+    void *px = rt_pixels_new(1, 1);
+    void *cubemap = rt_cubemap3d_new(px, px, px, px, px, px);
+    void *wrong = rt_material3d_new();
+    EXPECT_TRUE(px != nullptr && cubemap != nullptr && wrong != nullptr,
+                "CubeMap3D private-face corruption fixture is created");
+    if (!px || !cubemap || !wrong)
+        return;
+
+    rt_obj_retain_maybe(wrong);
+    size_t wrong_refcnt = rt_heap_hdr(wrong)->refcnt;
+    ((rt_cubemap3d *)cubemap)->faces[2] = wrong;
+    EXPECT_TRUE(rt_cubemap3d_is_complete(cubemap) == 0,
+                "CubeMap3D completeness rejects wrong-class private face refs");
+    if (rt_obj_release_check0(cubemap))
+        rt_obj_free(cubemap);
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_refcnt,
+                "CubeMap3D finalizer does not release unowned wrong-class face refs");
+    if (rt_obj_release_check0(wrong))
+        rt_obj_free(wrong);
+}
+
+static void test_terrain_draw_sanitizes_private_splat_scales(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *terrain = rt_terrain3d_new(2, 2);
+    void *material = rt_material3d_new();
+    void *splat = rt_pixels_new(1, 1);
+    void *layer = rt_pixels_new(1, 1);
+    rt_pixels_set(splat, 0, 0, 0xFFFFFFFF);
+    rt_pixels_set(layer, 0, 0, 0xFFFFFFFF);
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_splat_map(terrain, splat);
+    for (int i = 0; i < 4; i++)
+        rt_terrain3d_set_layer_texture(terrain, i, layer);
+
+    test_terrain3d_view *view = (test_terrain3d_view *)terrain;
+    view->layer_scales[0] = std::numeric_limits<double>::quiet_NaN();
+    view->layer_scales[1] = std::numeric_limits<double>::infinity();
+    view->layer_scales[2] = -3.0;
+    view->layer_scales[3] = 1.0e30;
+
+    rt_canvas3d_draw_terrain_at(&canvas, terrain, 0.0, 0.0, 0.0);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Terrain splat fixture enqueues one terrain chunk");
+    EXPECT_TRUE(draws[0].cmd.has_splat == 1, "Terrain draw forwards splat payload");
+    EXPECT_TRUE(draws[0].cmd.splat_map == splat, "Terrain draw forwards splat map payload");
+    EXPECT_TRUE(fabsf(draws[0].cmd.splat_layer_scales[0] - 1.0f) < 0.001f,
+                "Terrain draw repairs NaN private splat scale");
+    EXPECT_TRUE(fabsf(draws[0].cmd.splat_layer_scales[1] - 1.0f) < 0.001f,
+                "Terrain draw repairs infinite private splat scale");
+    EXPECT_TRUE(fabsf(draws[0].cmd.splat_layer_scales[2] - 1.0f) < 0.001f,
+                "Terrain draw repairs negative private splat scale");
+    EXPECT_TRUE(fabsf(draws[0].cmd.splat_layer_scales[3] - 1000000.0f) < 1.0f,
+                "Terrain draw clamps huge private splat scale");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_terrain_draw_rejects_private_wrong_class_material(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *terrain = rt_terrain3d_new(2, 2);
+    void *splat = rt_pixels_new(1, 1);
+    void *not_material = rt_pixels_new(1, 1);
+    rt_pixels_set(splat, 0, 0, 0xFFFFFFFF);
+    rt_pixels_set(not_material, 0, 0, 0xFFFFFFFF);
+    rt_terrain3d_set_splat_map(terrain, splat);
+
+    test_terrain3d_view *view = (test_terrain3d_view *)terrain;
+    view->material = not_material;
+    view->splat_dirty = 1;
+
+    rt_canvas3d_draw_terrain_at(&canvas, terrain, 0.0, 0.0, 0.0);
+
+    EXPECT_TRUE(canvas.draw_count == 0,
+                "Terrain draw rejects private wrong-class material pointers before splat bake");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_terrain_draw_rejects_private_wrong_class_splat_textures(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *terrain = rt_terrain3d_new(2, 2);
+    void *material = rt_material3d_new();
+    void *splat = rt_pixels_new(1, 1);
+    void *not_pixels = rt_material3d_new();
+    rt_pixels_set(splat, 0, 0, 0xFFFFFFFF);
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_splat_map(terrain, splat);
+
+    test_terrain3d_view *view = (test_terrain3d_view *)terrain;
+    ((rt_material3d *)material)->texture = not_pixels;
+    size_t wrong_texture_refcnt = rt_heap_hdr(not_pixels)->refcnt;
+    view->layer_textures[0] = not_pixels;
+    rt_canvas3d_draw_terrain_at(&canvas, terrain, 0.0, 0.0, 0.0);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1,
+                "Terrain wrong-class layer texture fixture enqueues one chunk");
+    EXPECT_TRUE(view->base_texture == nullptr,
+                "Terrain splat bake skips wrong-class material texture snapshots");
+    EXPECT_TRUE(rt_heap_hdr(not_pixels)->refcnt == wrong_texture_refcnt,
+                "Terrain splat bake does not retain unowned wrong-class material textures");
+    EXPECT_TRUE(view->splat_map == splat,
+                "Terrain keeps valid splat map when only a layer texture is corrupt");
+    EXPECT_TRUE(draws[0].cmd.has_splat == 0 && draws[0].cmd.splat_map == nullptr,
+                "Terrain disables GPU splatting when a private layer texture is corrupt");
+
+    reset_canvas_frame(&canvas, 2);
+    view->layer_textures[0] = nullptr;
+    view->splat_map = not_pixels;
+    view->splat_dirty = 1;
+    rt_canvas3d_draw_terrain_at(&canvas, terrain, 0.0, 0.0, 0.0);
+    draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1,
+                "Terrain wrong-class splat map fixture still enqueues the chunk");
+    EXPECT_TRUE(draws[0].cmd.has_splat == 0 && draws[0].cmd.splat_map == nullptr,
+                "Terrain draw disables splatting for wrong-class private splat maps");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_terrain_set_material_restores_previous_splat_base_texture(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *terrain = rt_terrain3d_new(2, 2);
+    void *material = rt_material3d_new();
+    void *replacement = rt_material3d_new();
+    void *base = rt_pixels_new(1, 1);
+    void *splat = rt_pixels_new(1, 1);
+    EXPECT_TRUE(terrain && material && replacement && base && splat,
+                "Terrain material-restore fixture is created");
+    if (!terrain || !material || !replacement || !base || !splat)
+        return;
+    rt_pixels_set(base, 0, 0, 0x224466FF);
+    rt_pixels_set(splat, 0, 0, 0xFFFFFFFF);
+    rt_material3d_set_texture(material, base);
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_splat_map(terrain, splat);
+
+    rt_canvas3d_draw_terrain_at(&canvas, terrain, 0.0, 0.0, 0.0);
+
+    test_terrain3d_view *view = (test_terrain3d_view *)terrain;
+    rt_material3d *mat = (rt_material3d *)material;
+    EXPECT_TRUE(canvas.draw_count == 1, "Terrain splat material-restore fixture draws once");
+    EXPECT_TRUE(view->baked_texture != nullptr && mat->texture == view->baked_texture,
+                "Terrain splat bake temporarily replaces the material texture");
+    EXPECT_TRUE(mat->texture != base, "Terrain splat bake uses a distinct baked texture");
+
+    rt_terrain3d_set_material(terrain, replacement);
+
+    EXPECT_TRUE(mat->texture == base,
+                "Terrain SetMaterial restores the previous material's base texture");
+    EXPECT_TRUE(view->base_texture == nullptr && view->baked_texture == nullptr,
+                "Terrain SetMaterial clears terrain-owned bake texture refs");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_terrain_chunk_aabb_includes_skirt_depth(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *terrain = rt_terrain3d_new(2, 2);
+    void *material = rt_material3d_new();
+    rt_terrain3d_set_material(terrain, material);
+    rt_terrain3d_set_skirt_depth(terrain, 3.0);
+
+    test_terrain3d_view *view = (test_terrain3d_view *)terrain;
+    rt_canvas3d_draw_terrain_at(&canvas, terrain, 0.0, 0.0, 0.0);
+
+    EXPECT_TRUE(canvas.draw_count == 1, "Terrain skirt AABB fixture enqueues one chunk");
+    EXPECT_TRUE(view->chunk_aabbs != nullptr && view->chunk_aabbs[1] <= -3.0f,
+                "Terrain cached chunk AABB includes downward skirt depth");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1403,6 +1810,37 @@ static void test_skinning_palette_history_forwarded(void) {
     draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(draws[0].cmd.prev_bone_palette != nullptr,
                 "Second GPU skinned draw forwards previous palette history");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_skinning_missing_previous_palette_disables_history(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *player = make_test_player();
+    void *material = rt_material3d_new();
+    void *transform = rt_mat4_identity();
+
+    reset_canvas_frame(&canvas, 1);
+    rt_canvas3d_draw_mesh_skinned(&canvas, mesh, transform, material, player);
+
+    rt_anim_player3d *player_view = (rt_anim_player3d *)player;
+    std::free(player_view->prev_bone_palette);
+    player_view->prev_bone_palette = nullptr;
+    player_view->has_prev_motion_palette = 1;
+
+    reset_canvas_frame(&canvas, 2);
+    rt_canvas3d_draw_mesh_skinned(&canvas, mesh, transform, material, player);
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+
+    EXPECT_TRUE(canvas.draw_count == 1,
+                "Missing previous skinning palette still allows the current skinned draw");
+    EXPECT_TRUE(draws[0].cmd.prev_bone_palette == nullptr,
+                "Missing previous skinning palette disables GPU skinning history");
+    EXPECT_TRUE(player_view->has_prev_motion_palette == 0,
+                "Missing previous skinning palette clears stale history state");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -1734,6 +2172,37 @@ static void test_pbr_material_payload_forwarded(void) {
                     .texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][5] -
                 0.25f) < 0.001f,
         "PBR material draw forwards imported texture slot UV transform");
+
+    cleanup_fake_canvas(&canvas);
+}
+
+static void test_material_draw_uses_neutral_fallbacks_for_nonfinite_private_scalars(void) {
+    rt_canvas3d canvas;
+    init_fake_canvas(&canvas, &kOpenGLBackend);
+
+    void *mesh = make_test_mesh();
+    void *material = rt_material3d_new_pbr(0.6, 0.4, 0.2);
+    void *transform = rt_mat4_identity();
+    auto *mat = (rt_material3d *)material;
+    mat->diffuse[3] = std::numeric_limits<double>::quiet_NaN();
+    mat->alpha = std::numeric_limits<double>::quiet_NaN();
+    mat->roughness = std::numeric_limits<double>::quiet_NaN();
+    mat->ao = std::numeric_limits<double>::quiet_NaN();
+    mat->alpha_cutoff = std::numeric_limits<double>::quiet_NaN();
+
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+
+    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
+    EXPECT_TRUE(canvas.draw_count == 1, "Corrupt private material scalar draw enqueues one draw");
+    EXPECT_TRUE(draws[0].cmd.diffuse_color[3] == 1.0f,
+                "Non-finite diffuse alpha falls back to opaque");
+    EXPECT_TRUE(draws[0].cmd.alpha == 1.0f,
+                "Non-finite material alpha falls back to opaque");
+    EXPECT_TRUE(draws[0].cmd.roughness == 0.5f,
+                "Non-finite roughness falls back to the material default");
+    EXPECT_TRUE(draws[0].cmd.ao == 1.0f, "Non-finite AO falls back to unoccluded");
+    EXPECT_TRUE(draws[0].cmd.alpha_cutoff == 0.5f,
+                "Non-finite alpha cutoff falls back to the material default");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -2761,6 +3230,7 @@ static void test_quality_profile_enables_gpu_effects_when_backend_supports_postf
 
 int main() {
     test_gpu_skinning_bypass_for_opengl();
+    test_draw_repairs_corrupt_mesh_geometry_counts();
     test_gpu_skinning_bypass_for_d3d11();
     test_gpu_skinning_bypass_for_metal();
     test_cpu_skinning_fallback_for_software();
@@ -2773,6 +3243,8 @@ int main() {
     test_gpu_morph_normal_payload_for_opengl();
     test_gpu_morph_normal_payload_for_d3d11();
     test_gpu_morph_normal_payload_for_metal();
+    test_gpu_morph_rejects_nonfinite_position_payload();
+    test_gpu_morph_drops_nonfinite_normal_payload();
     test_attached_morph_targets_route_through_draw_mesh();
     test_large_morph_payload_falls_back_to_cpu_for_opengl();
     test_large_morph_payload_falls_back_to_cpu_for_d3d11();
@@ -2781,6 +3253,14 @@ int main() {
     test_morph_tangent_deltas_fall_back_to_cpu_for_metal();
     test_env_map_payload_forwarded();
     test_backend_skybox_hook_used();
+    test_incomplete_cubemaps_are_not_forwarded();
+    test_material_repairs_wrong_class_private_refs_without_release();
+    test_cubemap_finalizer_skips_wrong_class_private_faces();
+    test_terrain_draw_sanitizes_private_splat_scales();
+    test_terrain_draw_rejects_private_wrong_class_material();
+    test_terrain_draw_rejects_private_wrong_class_splat_textures();
+    test_terrain_set_material_restores_previous_splat_base_texture();
+    test_terrain_chunk_aabb_includes_skirt_depth();
     test_metal_robustness_probe_accepts_degenerate_basis_and_skybox_forward();
     test_static_mesh_geometry_identity_forwarded();
     test_deferred_draw_retains_mesh_and_material_until_end();
@@ -2789,12 +3269,14 @@ int main() {
     test_transform_history_forwarded_for_motion_blur();
     test_morph_weight_history_forwarded();
     test_skinning_palette_history_forwarded();
+    test_skinning_missing_previous_palette_disables_history();
     test_instanced_transform_history_forwarded();
     test_instanced_transform_history_survives_count_changes();
     test_deferred_instanced_draw_snapshots_instance_buffers();
     test_instanced_transform_history_skips_payload_without_motion_blur();
     test_instanced_material_payload_forwarded();
     test_pbr_material_payload_forwarded();
+    test_material_draw_uses_neutral_fallbacks_for_nonfinite_private_scalars();
     test_instanced_runtime_culls_outside_frustum();
     test_instanced_shadow_pass_includes_instances();
     test_transparent_sort_key_uses_mesh_bounds_depth();

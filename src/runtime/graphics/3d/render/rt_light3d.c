@@ -35,6 +35,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#define LIGHT3D_WORLD_ABS_MAX 1000000000000.0
+#define LIGHT3D_PARAM_MAX 1000000.0
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 #include "rt_trap.h"
 extern double rt_vec3_x(void *v);
@@ -57,6 +60,12 @@ static double clamp_min0(double value) {
     return value < 0.0 ? 0.0 : value;
 }
 
+/// @brief Clamp a non-negative light parameter to a stable finite range.
+static double clamp_param_min0(double value) {
+    value = clamp_min0(value);
+    return value > LIGHT3D_PARAM_MAX ? LIGHT3D_PARAM_MAX : value;
+}
+
 /// @brief Clamp a value to the [0, 1] range, mapping NaN/inf to 0.
 /// @details Used for RGB color components, which the runtime treats as linear [0, 1]
 ///   scalars. Anything NaN-poisoned would produce black pixels downstream, so sanitising
@@ -74,6 +83,16 @@ static double clamp01(double value) {
 /// @brief Return `value` if finite, else 0. Boundary cleanup for positions/directions.
 static double finite_or_zero(double value) {
     return isfinite(value) ? value : 0.0;
+}
+
+/// @brief Clamp a world-space light coordinate to a stable finite range.
+static double light_coord_or_zero(double value) {
+    value = finite_or_zero(value);
+    if (value > LIGHT3D_WORLD_ABS_MAX)
+        return LIGHT3D_WORLD_ABS_MAX;
+    if (value < -LIGHT3D_WORLD_ABS_MAX)
+        return -LIGHT3D_WORLD_ABS_MAX;
+    return value;
 }
 
 /// @brief Clamp a spot-light cone angle to [0°, 89°], substituting `fallback` when NaN.
@@ -124,23 +143,31 @@ static void sanitize_spot_angles(double *inner_angle, double *outer_angle) {
 ///   is permissive enough that any artistically-meaningful input passes,
 ///   but catches explicit zeroing.
 static void normalize_light_direction(double *x, double *y, double *z) {
-    double len;
-
     if (!x || !y || !z)
         return;
-    *x = finite_or_zero(*x);
-    *y = finite_or_zero(*y);
-    *z = finite_or_zero(*z);
-    len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    *x = light_coord_or_zero(*x);
+    *y = light_coord_or_zero(*y);
+    *z = light_coord_or_zero(*z);
+    double max_component = fmax(fabs(*x), fmax(fabs(*y), fabs(*z)));
+    if (!isfinite(max_component) || max_component <= 1e-8) {
+        *x = 0.0;
+        *y = -1.0;
+        *z = 0.0;
+        return;
+    }
+    double sx = *x / max_component;
+    double sy = *y / max_component;
+    double sz = *z / max_component;
+    double len = sqrt(sx * sx + sy * sy + sz * sz);
     if (!isfinite(len) || len <= 1e-8) {
         *x = 0.0;
         *y = -1.0;
         *z = 0.0;
         return;
     }
-    *x /= len;
-    *y /= len;
-    *z /= len;
+    *x = sx / len;
+    *y = sy / len;
+    *z = sz / len;
 }
 
 /// @brief Create a directional light (e.g., sun or moon).
@@ -207,14 +234,14 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
     light->vptr = NULL;
     light->type = 1; /* point */
     light->direction[0] = light->direction[1] = light->direction[2] = 0.0;
-    light->position[0] = finite_or_zero(rt_vec3_x(position));
-    light->position[1] = finite_or_zero(rt_vec3_y(position));
-    light->position[2] = finite_or_zero(rt_vec3_z(position));
+    light->position[0] = light_coord_or_zero(rt_vec3_x(position));
+    light->position[1] = light_coord_or_zero(rt_vec3_y(position));
+    light->position[2] = light_coord_or_zero(rt_vec3_z(position));
     light->color[0] = clamp01(r);
     light->color[1] = clamp01(g);
     light->color[2] = clamp01(b);
     light->intensity = 1.0;
-    light->attenuation = clamp_min0(attenuation);
+    light->attenuation = clamp_param_min0(attenuation);
     light->enabled = 1;
     light->casts_shadows = 1;
     return light;
@@ -290,14 +317,14 @@ void *rt_light3d_new_spot(void *position,
     light->direction[1] = rt_vec3_y(direction);
     light->direction[2] = rt_vec3_z(direction);
     normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
-    light->position[0] = finite_or_zero(rt_vec3_x(position));
-    light->position[1] = finite_or_zero(rt_vec3_y(position));
-    light->position[2] = finite_or_zero(rt_vec3_z(position));
+    light->position[0] = light_coord_or_zero(rt_vec3_x(position));
+    light->position[1] = light_coord_or_zero(rt_vec3_y(position));
+    light->position[2] = light_coord_or_zero(rt_vec3_z(position));
     light->color[0] = clamp01(r);
     light->color[1] = clamp01(g);
     light->color[2] = clamp01(b);
     light->intensity = 1.0;
-    light->attenuation = clamp_min0(attenuation);
+    light->attenuation = clamp_param_min0(attenuation);
     /* Convert angles (degrees) to cosines for shader comparison */
     double pi = 3.14159265358979323846;
     sanitize_spot_angles(&inner_angle, &outer_angle);
@@ -318,7 +345,7 @@ void rt_light3d_set_intensity(void *obj, double intensity) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return;
-    light->intensity = clamp_min0(intensity);
+    light->intensity = clamp_param_min0(intensity);
 }
 
 /// @brief Change the RGB color of a light after creation.
@@ -340,6 +367,8 @@ int64_t rt_light3d_get_type(void *obj) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return 0;
+    if (light->type < 0 || light->type > 3)
+        light->type = 0;
     return light->type;
 }
 
@@ -348,7 +377,7 @@ void *rt_light3d_get_color(void *obj) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return rt_vec3_new(0.0, 0.0, 0.0);
-    return rt_vec3_new(light->color[0], light->color[1], light->color[2]);
+    return rt_vec3_new(clamp01(light->color[0]), clamp01(light->color[1]), clamp01(light->color[2]));
 }
 
 /// @brief Read the light intensity.
@@ -356,7 +385,7 @@ double rt_light3d_get_intensity(void *obj) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return 0.0;
-    return light->intensity;
+    return clamp_param_min0(light->intensity);
 }
 
 /// @brief Enable or disable a light without removing it from its owning slot.
@@ -396,7 +425,11 @@ void *rt_light3d_get_direction(void *obj) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return rt_vec3_new(0.0, -1.0, 0.0);
-    return rt_vec3_new(light->direction[0], light->direction[1], light->direction[2]);
+    double x = light->direction[0];
+    double y = light->direction[1];
+    double z = light->direction[2];
+    normalize_light_direction(&x, &y, &z);
+    return rt_vec3_new(x, y, z);
 }
 
 /// @brief Read the light position as a fresh Vec3.
@@ -404,7 +437,9 @@ void *rt_light3d_get_position(void *obj) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return rt_vec3_new(0.0, 0.0, 0.0);
-    return rt_vec3_new(light->position[0], light->position[1], light->position[2]);
+    return rt_vec3_new(light_coord_or_zero(light->position[0]),
+                       light_coord_or_zero(light->position[1]),
+                       light_coord_or_zero(light->position[2]));
 }
 
 /// @brief Move the light to a new world position. Non-Vec3 input is ignored.
@@ -412,9 +447,9 @@ void rt_light3d_set_position(void *obj, void *position) {
     rt_light3d *light = light3d_checked(obj);
     if (!light || !rt_g3d_is_vec3(position))
         return;
-    light->position[0] = finite_or_zero(rt_vec3_x(position));
-    light->position[1] = finite_or_zero(rt_vec3_y(position));
-    light->position[2] = finite_or_zero(rt_vec3_z(position));
+    light->position[0] = light_coord_or_zero(rt_vec3_x(position));
+    light->position[1] = light_coord_or_zero(rt_vec3_y(position));
+    light->position[2] = light_coord_or_zero(rt_vec3_z(position));
 }
 
 /// @brief Re-aim the light. The direction is normalized; non-Vec3 input is ignored.

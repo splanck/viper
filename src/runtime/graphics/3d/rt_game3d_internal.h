@@ -48,10 +48,22 @@
 #define RT_GAME3D_DEFAULT_FOLLOW_DAMPING 12.0      ///< Default follow-camera smoothing factor.
 #define RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE 1.0   ///< Default audio full-volume radius.
 #define RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE 50.0  ///< Default audio silence radius.
+#define RT_GAME3D_AUDIO_DISTANCE_MAX 1000000000.0  ///< Max finite audio attenuation radius.
 #define RT_GAME3D_DEFAULT_AUDIO_VOLUME 100         ///< Default master audio volume (0–100).
 #define RT_GAME3D_PI 3.14159265358979323846        ///< Pi (avoids relying on non-portable M_PI).
 #define RT_GAME3D_ANIM_EVENT_MAX 64                ///< Max animation events buffered per update.
 #define RT_GAME3D_MAX_FIXED_STEPS_PER_FRAME 8      ///< Fixed-loop spiral-of-death guard.
+#define RT_GAME3D_COORD_ABS_MAX 1000000000000.0    ///< Max finite world coordinate accepted.
+#define RT_GAME3D_SCALE_ABS_MAX 1000000.0          ///< Max absolute node/body scale.
+#define RT_GAME3D_ANGLE_DEG_ABS_MAX 1000000.0      ///< Max finite Euler/orbit angle in degrees.
+#define RT_GAME3D_CONTROLLER_SPEED_MAX 1000000.0   ///< Max controller speed/jump velocity.
+#define RT_GAME3D_LOOK_SENSITIVITY_MAX 1000.0      ///< Max mouse-look sensitivity.
+#define RT_GAME3D_DAMPING_MAX 1000.0               ///< Max camera damping factor.
+#define RT_GAME3D_ANIM_BLEND_TIME_MAX 1000000.0    ///< Max animation transition duration.
+#define RT_GAME3D_ANIM_STEP_MAX 1.0                ///< Max single Game3D animator update step.
+#define RT_GAME3D_ANIM_SPEED_ABS_MAX 1000000.0     ///< Max animation playback speed multiplier.
+#define RT_GAME3D_EFFECT_STEP_MAX 10.0             ///< Max single EffectRegistry3D update step.
+#define RT_GAME3D_EFFECT_LIFETIME_MAX 86400.0      ///< Max effect auto-expire lifetime.
 
 /// @brief Internal effect-item discriminator stored in rt_game3d_effect_item.type.
 enum {
@@ -139,6 +151,40 @@ typedef struct rt_game3d_entity {
     int8_t spawned;
     int8_t destroyed;
 } rt_game3d_entity;
+
+/// @brief Return the entity's SceneNode3D slot only when it still has the expected class.
+static inline void *game3d_entity_node_ref(const rt_game3d_entity *entity) {
+    return entity ? rt_g3d_checked_or_null(entity->node, RT_G3D_SCENENODE3D_CLASS_ID) : NULL;
+}
+
+/// @brief Return the entity's Mesh3D slot only when it still has the expected class.
+static inline void *game3d_entity_mesh_ref(const rt_game3d_entity *entity) {
+    return entity ? rt_g3d_checked_or_null(entity->mesh, RT_G3D_MESH3D_CLASS_ID) : NULL;
+}
+
+/// @brief Return the entity's Material3D slot only when it still has the expected class.
+static inline void *game3d_entity_material_ref(const rt_game3d_entity *entity) {
+    return entity ? rt_g3d_checked_or_null(entity->material, RT_G3D_MATERIAL3D_CLASS_ID) : NULL;
+}
+
+/// @brief Return the entity's Physics3DBody slot only when it still has the expected class.
+static inline void *game3d_entity_body_ref(const rt_game3d_entity *entity) {
+    return entity ? rt_g3d_checked_or_null(entity->body, RT_G3D_BODY3D_CLASS_ID) : NULL;
+}
+
+/// @brief Return the entity's Animator3D slot only when it still has the expected class.
+static inline void *game3d_entity_anim_ref(const rt_game3d_entity *entity) {
+    return entity ? rt_g3d_checked_or_null(entity->anim, RT_G3D_GAME3D_ANIMATOR3D_CLASS_ID)
+                  : NULL;
+}
+
+/// @brief Safe number of child entity slots that may be read directly.
+static inline int32_t game3d_entity_child_count(const rt_game3d_entity *entity) {
+    if (!entity || !entity->children || entity->child_count <= 0 || entity->child_capacity <= 0)
+        return 0;
+    return entity->child_count < entity->child_capacity ? entity->child_count
+                                                        : entity->child_capacity;
+}
 
 /// @brief Sound3D payload: listener, optional followed camera, a dynamic source
 ///   list, distance-attenuation radii, master volume, and follow-camera flag.
@@ -680,11 +726,18 @@ static inline rt_game3d_follow_controller *game3d_follow_controller_checked(void
 //=========================================================================
 void game3d_assign_ref(void **slot, void *value);
 void game3d_release_ref(void **slot);
+void game3d_assign_typed_ref(void **slot, void *value, int64_t class_id);
+void game3d_release_typed_ref(void **slot, int64_t class_id);
 double game3d_clamp(double value, double lo, double hi);
 double game3d_clamp_dt(double dt);
 double game3d_finite_or(double value, double fallback);
+double game3d_clamp_abs_or(double value, double fallback, double abs_max);
+double game3d_clamp_coord_or(double value, double fallback);
+double game3d_scale_or_unit(double value);
 double game3d_nonnegative_or(double value, double fallback);
+double game3d_nonnegative_clamped_or(double value, double fallback, double max_value);
 double game3d_positive_or(double value, double fallback);
+double game3d_positive_clamped_or(double value, double fallback, double max_value);
 void game3d_normalize_xz(double *x, double *z, double fallback_x, double fallback_z);
 void *game3d_camera_controller_get_world_ref(void *controller);
 void game3d_camera_controller_bind_world_ref(void *controller, void *world);
@@ -708,11 +761,13 @@ int8_t game3d_valid_layer(int64_t layer);
 void *game3d_layermask_new_bits(int64_t bits);
 void *game3d_body_def_create_body(rt_game3d_body_def *def);
 int game3d_audio_reserve_sources(rt_game3d_audio *audio, int32_t needed);
+void game3d_audio_repair_sources(rt_game3d_audio *audio);
 void game3d_audio_track_source(rt_game3d_audio *audio, void *source);
 void game3d_audio_prune_sources(rt_game3d_audio *audio);
 int64_t game3d_clamp_i64(int64_t value, int64_t lo, int64_t hi);
 void *game3d_audio_new(void *camera);
 void game3d_effect_release_item(rt_game3d_effect_item *item);
+void game3d_effects_repair(rt_game3d_effects *effects);
 int game3d_effects_reserve(rt_game3d_effects *effects, int32_t needed);
 int8_t game3d_read_vec3(void *vec, double *out, const char *method);
 void *game3d_effects_new(void *canvas, int64_t quality);

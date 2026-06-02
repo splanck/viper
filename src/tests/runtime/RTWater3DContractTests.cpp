@@ -36,6 +36,11 @@ int g_backface_cull_call_count = 0;
 int g_dummy_texture = 1;
 int g_dummy_normal = 2;
 int g_dummy_env = 3;
+int g_dummy_incomplete_env = 4;
+void *g_stub_meshes[16] = {nullptr};
+int g_stub_mesh_count = 0;
+void *g_stub_materials[16] = {nullptr};
+int g_stub_material_count = 0;
 
 struct WaterWaveView {
     double dir[2];
@@ -66,6 +71,34 @@ struct WaterView {
     int32_t resolution;
 };
 
+static bool stub_pointer_tracked(void *const *items, int count, void *value) {
+    for (int i = 0; i < count; i++) {
+        if (items[i] == value)
+            return true;
+    }
+    return false;
+}
+
+static void stub_track_pointer(void **items, int *count, int capacity, void *value) {
+    if (!items || !count || !value || stub_pointer_tracked(items, *count, value))
+        return;
+    if (*count < capacity)
+        items[(*count)++] = value;
+}
+
+static void stub_untrack_pointer(void **items, int *count, void *value) {
+    if (!items || !count || !value)
+        return;
+    for (int i = 0; i < *count; i++) {
+        if (items[i] == value) {
+            items[i] = items[*count - 1];
+            items[*count - 1] = nullptr;
+            (*count)--;
+            return;
+        }
+    }
+}
+
 } // namespace
 
 extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
@@ -75,13 +108,21 @@ extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
 extern "C" int64_t rt_obj_class_id(void *obj) {
     if (obj == &g_dummy_texture || obj == &g_dummy_normal)
         return RT_PIXELS_CLASS_ID;
-    if (obj == &g_dummy_env)
+    if (obj == &g_dummy_env || obj == &g_dummy_incomplete_env)
         return RT_G3D_CUBEMAP3D_CLASS_ID;
+    if (stub_pointer_tracked(g_stub_meshes, g_stub_mesh_count, obj))
+        return RT_G3D_MESH3D_CLASS_ID;
+    if (stub_pointer_tracked(g_stub_materials, g_stub_material_count, obj))
+        return RT_G3D_MATERIAL3D_CLASS_ID;
     return RT_G3D_WATER3D_CLASS_ID;
 }
 
 extern "C" int8_t rt_obj_is_instance(void *obj, int64_t class_id, size_t) {
     return obj && rt_obj_class_id(obj) == class_id;
+}
+
+extern "C" int rt_cubemap3d_is_complete(void *cubemap) {
+    return cubemap == &g_dummy_env ? 1 : 0;
 }
 
 extern "C" int8_t rt_heap_is_payload(void *) {
@@ -92,11 +133,16 @@ extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
 
 extern "C" void rt_obj_retain_maybe(void *) {}
 
-extern "C" int32_t rt_obj_release_check0(void *) {
+extern "C" int32_t rt_obj_release_check0(void *p) {
+    if (p == &g_dummy_texture || p == &g_dummy_normal || p == &g_dummy_env ||
+        p == &g_dummy_incomplete_env)
+        return 0;
     return 1;
 }
 
 extern "C" void rt_obj_free(void *p) {
+    stub_untrack_pointer(g_stub_meshes, &g_stub_mesh_count, p);
+    stub_untrack_pointer(g_stub_materials, &g_stub_material_count, p);
     std::free(p);
 }
 
@@ -105,7 +151,12 @@ extern "C" void rt_trap(const char *) {
 }
 
 extern "C" void *rt_mesh3d_new(void) {
-    return std::calloc(1, sizeof(rt_mesh3d));
+    void *mesh = std::calloc(1, sizeof(rt_mesh3d));
+    stub_track_pointer(g_stub_meshes,
+                       &g_stub_mesh_count,
+                       static_cast<int>(sizeof(g_stub_meshes) / sizeof(g_stub_meshes[0])),
+                       mesh);
+    return mesh;
 }
 
 extern "C" void rt_mesh3d_clear(void *m) {
@@ -143,7 +194,12 @@ extern "C" void rt_canvas3d_draw_mesh_matrix(void *canvas,
 }
 
 extern "C" void *rt_material3d_new_color(double, double, double) {
-    return std::calloc(1, sizeof(StubMaterial));
+    void *material = std::calloc(1, sizeof(StubMaterial));
+    stub_track_pointer(g_stub_materials,
+                       &g_stub_material_count,
+                       static_cast<int>(sizeof(g_stub_materials) / sizeof(g_stub_materials[0])),
+                       material);
+    return material;
 }
 
 extern "C" void rt_material3d_set_alpha(void *m, double a) {
@@ -219,6 +275,30 @@ static void test_material_wiring_and_reflectivity() {
     rt_water3d_set_reflectivity(water, 5.0);
     rt_water3d_update(water, 0.1);
     assert(material->reflectivity == 1.0);
+
+    rt_water3d_set_reflectivity(water, 0.65);
+    rt_water3d_set_env_map(water, nullptr);
+    assert(material->env_map == nullptr);
+    assert(material->reflectivity == 0.0);
+    rt_water3d_set_env_map(water, &g_dummy_env);
+    assert(material->env_map == &g_dummy_env);
+    assert(material->reflectivity == 0.65);
+
+    auto *view = static_cast<WaterView *>(water);
+    view->env_map = &g_dummy_incomplete_env;
+    material->env_map = &g_dummy_incomplete_env;
+    material->reflectivity = 0.65;
+    rt_water3d_set_env_map(water, &g_dummy_texture);
+    assert(view->env_map == nullptr);
+    assert(material->env_map == nullptr);
+    assert(material->reflectivity == 0.0);
+
+    view->env_map = &g_dummy_incomplete_env;
+    material->env_map = &g_dummy_incomplete_env;
+    material->reflectivity = 0.65;
+    rt_water3d_set_reflectivity(water, 0.5);
+    assert(view->env_map == nullptr);
+    assert(material->reflectivity == 0.0);
 }
 
 static void test_draw_restores_backface_cull_state() {

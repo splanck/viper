@@ -39,6 +39,8 @@
  * (sub-0.01) objects, whose normal matrix is renormalized after derivation. */
 static const float kVgfx3dSingularDetEps = 1e-12f;
 
+#define VGFX3D_BACKEND_MAX_CUBEMAP_FACE_SIZE 32768
+
 typedef struct {
     int64_t w;
     int64_t h;
@@ -125,7 +127,7 @@ int vgfx3d_textureasset_get_native_resident_mip(void *asset,
         return 0;
     first = rt_textureasset3d_get_resident_mip_start(asset);
     count = rt_textureasset3d_get_resident_mip_count(asset);
-    if (count <= 0 || relative_mip >= count)
+    if (first < 0 || count <= 0 || relative_mip >= count || relative_mip > INT64_MAX - first)
         return 0;
     if (!rt_textureasset3d_get_native_mip_info(asset,
                                                first + relative_mip,
@@ -155,7 +157,7 @@ uint64_t vgfx3d_textureasset_pending_native_bytes(void *asset,
     if (!upload_in_progress || !asset || next_relative_mip < 0)
         return 0;
     count = rt_textureasset3d_get_resident_mip_count(asset);
-    if (next_relative_mip >= count)
+    if (count <= 0 || next_relative_mip >= count)
         return 0;
     for (int64_t i = next_relative_mip; i < count; i++) {
         vgfx3d_native_texture_mip_t mip;
@@ -492,14 +494,16 @@ int vgfx3d_unpack_cubemap_faces_rgba(const void *cubemap_ptr,
     int32_t face_size = 0;
     const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
 
-    if (!cubemap || !out_face_size || !out_faces || cubemap->face_size <= 0 ||
-        cubemap->face_size > INT32_MAX)
+    if (out_face_size)
+        *out_face_size = 0;
+    if (out_faces) {
+        for (int face = 0; face < 6; face++)
+            out_faces[face] = NULL;
+    }
+    if (!cubemap || !out_face_size || !out_faces ||
+        !vgfx3d_get_cubemap_face_size(cubemap, &face_size))
         return -1;
 
-    for (int face = 0; face < 6; face++)
-        out_faces[face] = NULL;
-
-    face_size = (int32_t)cubemap->face_size;
     for (int face = 0; face < 6; face++) {
         int32_t w = 0;
         int32_t h = 0;
@@ -525,7 +529,8 @@ int vgfx3d_get_cubemap_face_size(const void *cubemap_ptr, int32_t *out_face_size
 
     if (out_face_size)
         *out_face_size = 0;
-    if (!cubemap || !out_face_size || cubemap->face_size <= 0 || cubemap->face_size > INT32_MAX)
+    if (!cubemap || !out_face_size || cubemap->cache_identity == 0 || cubemap->face_size <= 0 ||
+        cubemap->face_size > VGFX3D_BACKEND_MAX_CUBEMAP_FACE_SIZE)
         return 0;
 
     face_size = (int32_t)cubemap->face_size;
@@ -585,17 +590,18 @@ int vgfx3d_unpack_cubemap_rgba_rows(const void *cubemap_ptr,
 /// @brief Compute the RGBA8 byte count uploaded for one six-face cubemap.
 int vgfx3d_estimate_cubemap_rgba_upload_bytes(const void *cubemap_ptr, uint64_t *out_bytes) {
     const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
+    int32_t face_size = 0;
     uint64_t face_bytes = 0;
     uint64_t total = 0;
 
     if (out_bytes)
         *out_bytes = 0;
-    if (!cubemap || !out_bytes || cubemap->face_size <= 0 || cubemap->face_size > INT32_MAX)
+    if (!cubemap || !out_bytes || !vgfx3d_get_cubemap_face_size(cubemap, &face_size))
         return 0;
 
     for (int face = 0; face < 6; face++) {
         const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)cubemap->faces[face];
-        if (!pv || pv->w != cubemap->face_size || pv->h != cubemap->face_size ||
+        if (!pv || pv->w != face_size || pv->h != face_size ||
             !vgfx3d_estimate_pixels_rgba_upload_bytes(pv, &face_bytes))
             return 0;
         if (total > UINT64_MAX - face_bytes)
@@ -607,27 +613,29 @@ int vgfx3d_estimate_cubemap_rgba_upload_bytes(const void *cubemap_ptr, uint64_t 
     return 1;
 }
 
-/// @brief Hash cubemap identity + all six face generations into one signature.
-/// Uses an FNV-prime mixing scheme so face mutations and cubemap object
-/// replacement both invalidate backend caches. Returns 0 when no faces are bound.
+/// @brief Hash cubemap identity + all six face cache keys into one signature.
+/// Uses an FNV-prime mixing scheme so face mutations, face replacement, and
+/// cubemap object replacement all invalidate backend caches. Returns 0 when no
+/// complete face set is bound.
 uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr) {
     const vgfx3d_cubemap_view_t *cubemap = (const vgfx3d_cubemap_view_t *)cubemap_ptr;
     uint64_t signature = 1469598103934665603ull;
-    int any_face = 0;
+    int32_t face_size = 0;
 
-    if (!cubemap)
+    if (!cubemap || !vgfx3d_get_cubemap_face_size(cubemap, &face_size))
         return 0;
 
     signature ^=
         cubemap->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
 
     for (int face = 0; face < 6; face++) {
-        uint64_t generation = vgfx3d_get_pixels_generation(cubemap->faces[face]);
-        signature ^= generation + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
-        any_face |= (cubemap->faces[face] != NULL);
+        uint64_t face_key = vgfx3d_get_pixels_cache_key(cubemap->faces[face]);
+        if (face_key == 0)
+            return 0;
+        signature ^= face_key + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
     }
 
-    return any_face ? signature : 0;
+    return signature;
 }
 
 /// @brief Flip an RGBA8 image vertically in place (top<->bottom row swap).

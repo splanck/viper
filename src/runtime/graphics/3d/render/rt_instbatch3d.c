@@ -52,6 +52,7 @@ extern int rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 #define INST_INIT_CAP 64
 #define INSTBATCH3D_FLOAT_ABS_MAX 3.40282346638528859812e38
+#define INSTBATCH3D_WORLD_ABS_MAX 1000000000000.0
 
 typedef struct {
     void *vptr;
@@ -105,6 +106,17 @@ static int instbatch_value_fits_float(double value) {
            value <= INSTBATCH3D_FLOAT_ABS_MAX;
 }
 
+/// @brief Sanitize a matrix element before storing/submitting it as instance state.
+static float instbatch_sanitize_matrix_value(double value, int row, int col) {
+    if (!instbatch_value_fits_float(value))
+        return instbatch_identity_at(row, col);
+    if (value > INSTBATCH3D_WORLD_ABS_MAX)
+        return (float)INSTBATCH3D_WORLD_ABS_MAX;
+    if (value < -INSTBATCH3D_WORLD_ABS_MAX)
+        return (float)-INSTBATCH3D_WORLD_ABS_MAX;
+    return (float)value;
+}
+
 /// @brief True if `transform` is a live Mat4 runtime instance of the expected size.
 static int instbatch_mat4_valid(void *transform) {
     return transform && rt_obj_is_instance(transform, RT_MAT4_CLASS_ID, sizeof(mat4_impl));
@@ -120,10 +132,29 @@ static void instbatch_copy_mat4_sanitized(float *dst, void *transform) {
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             double value = rt_mat4_get(transform, i, j);
-            dst[i * 4 + j] =
-                instbatch_value_fits_float(value) ? (float)value : instbatch_identity_at(i, j);
+            dst[i * 4 + j] = instbatch_sanitize_matrix_value(value, i, j);
         }
     }
+}
+
+/// @brief Replace invalid/extreme floats in a stored matrix slot with bounded values.
+static void instbatch_sanitize_matrix_slot(float *slot) {
+    if (!slot)
+        return;
+    for (int i = 0; i < 16; i++)
+        slot[i] = instbatch_sanitize_matrix_value(slot[i], i / 4, i % 4);
+}
+
+/// @brief Repair all active matrix slots before motion snapshots or backend submission.
+static void instbatch_sanitize_active_matrices(rt_instbatch3d *b) {
+    if (!b)
+        return;
+    for (int32_t i = 0; i < b->instance_count; i++)
+        instbatch_sanitize_matrix_slot(&b->transforms[(size_t)i * 16u]);
+    for (int32_t i = 0; i < b->motion_snapshot_count; i++)
+        instbatch_sanitize_matrix_slot(&b->current_snapshot[(size_t)i * 16u]);
+    for (int32_t i = 0; i < b->prev_count; i++)
+        instbatch_sanitize_matrix_slot(&b->prev_transforms[(size_t)i * 16u]);
 }
 
 /// @brief Copy one 4x4 matrix between stride-16-float slots.
@@ -139,6 +170,51 @@ static void instbatch_copy_matrix_slot(float *dst,
     if (!dst || !src || dst_idx < 0 || src_idx < 0)
         return;
     memcpy(&dst[(size_t)dst_idx * 16u], &src[(size_t)src_idx * 16u], 16u * sizeof(float));
+    instbatch_sanitize_matrix_slot(&dst[(size_t)dst_idx * 16u]);
+}
+
+/// @brief Repair count/buffer invariants before mutating or drawing a batch.
+static int instbatch_repair_state(rt_instbatch3d *b) {
+    if (!b)
+        return 0;
+    if (b->instance_capacity <= 0 || !b->transforms || !b->current_snapshot ||
+        !b->prev_transforms) {
+        free(b->transforms);
+        free(b->current_snapshot);
+        free(b->prev_transforms);
+        b->transforms = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));
+        b->current_snapshot = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));
+        b->prev_transforms = (float *)calloc(INST_INIT_CAP * 16, sizeof(float));
+        b->instance_count = 0;
+        b->motion_snapshot_count = 0;
+        b->prev_count = 0;
+        b->has_prev_snapshot = 0;
+        b->instance_capacity =
+            (b->transforms && b->current_snapshot && b->prev_transforms) ? INST_INIT_CAP : 0;
+        if (b->instance_capacity == 0) {
+            free(b->transforms);
+            free(b->current_snapshot);
+            free(b->prev_transforms);
+            b->transforms = NULL;
+            b->current_snapshot = NULL;
+            b->prev_transforms = NULL;
+        }
+        return b->instance_capacity > 0;
+    }
+    if (b->instance_count < 0)
+        b->instance_count = 0;
+    if (b->instance_count > b->instance_capacity)
+        b->instance_count = b->instance_capacity;
+    if (b->motion_snapshot_count < 0)
+        b->motion_snapshot_count = 0;
+    if (b->motion_snapshot_count > b->instance_count)
+        b->motion_snapshot_count = b->instance_count;
+    if (b->prev_count < 0)
+        b->prev_count = 0;
+    if (b->prev_count > b->instance_count)
+        b->prev_count = b->instance_count;
+    b->has_prev_snapshot = (b->has_prev_snapshot && b->prev_count > 0) ? 1 : 0;
+    return 1;
 }
 
 /// @brief Drop a retained reference from a slot and clear it.
@@ -190,6 +266,8 @@ static int instbatch_instance_visible(const vgfx3d_frustum_t *frustum,
 ///   capacity-matches-missing-buffer.
 static void instbatch_finalizer(void *obj) {
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
+    if (!b)
+        return;
     free(b->transforms);
     free(b->current_snapshot);
     free(b->prev_transforms);
@@ -258,6 +336,10 @@ void rt_instbatch3d_add(void *obj, void *transform) {
         (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
     if (!b || !instbatch_mat4_valid(transform))
         return;
+    if (!instbatch_repair_state(b)) {
+        rt_trap("InstanceBatch3D.Add: allocation failed");
+        return;
+    }
 
     if (b->instance_count >= b->instance_capacity) {
         int32_t new_cap;
@@ -302,6 +384,8 @@ void rt_instbatch3d_remove(void *obj, int64_t index) {
         (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
     if (!b)
         return;
+    if (!instbatch_repair_state(b))
+        return;
     int32_t last_idx;
     if (index < 0 || index >= b->instance_count)
         return;
@@ -336,10 +420,12 @@ void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
         (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
     if (!b || !instbatch_mat4_valid(transform))
         return;
+    if (!instbatch_repair_state(b))
+        return;
     if (index < 0 || index >= b->instance_count)
         return;
 
-    float *dst = &b->transforms[index * 16];
+    float *dst = &b->transforms[(size_t)index * 16u];
     instbatch_copy_mat4_sanitized(dst, transform);
 }
 
@@ -349,6 +435,7 @@ void rt_instbatch3d_clear(void *obj) {
         (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
     if (!b)
         return;
+    (void)instbatch_repair_state(b);
     b->instance_count = 0;
     b->motion_snapshot_count = 0;
     b->prev_count = 0;
@@ -359,7 +446,9 @@ void rt_instbatch3d_clear(void *obj) {
 int64_t rt_instbatch3d_count(void *obj) {
     rt_instbatch3d *b =
         (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
-    return b ? b->instance_count : 0;
+    if (!b || !instbatch_repair_state(b))
+        return 0;
+    return b->instance_count;
 }
 
 /// @brief Draw all visible instances. Falls back to N individual draw calls
@@ -369,6 +458,8 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
     rt_instbatch3d *b =
         (rt_instbatch3d *)rt_g3d_checked_or_null(batch_obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
     if (!c || !b)
+        return;
+    if (!instbatch_repair_state(b))
         return;
     if (!c->in_frame || !c->backend || b->instance_count == 0)
         return;
@@ -392,6 +483,7 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
         (rt_material3d *)rt_g3d_checked_or_null(b->material, RT_G3D_MATERIAL3D_CLASS_ID);
     if (!mat)
         return;
+    instbatch_sanitize_active_matrices(b);
 
     if (b->last_motion_frame != rt_canvas3d_get_frame_serial(canvas_obj)) {
         if (b->motion_snapshot_count > 0) {

@@ -215,6 +215,7 @@ static void test_unpack_cubemap_faces_rgba_success(void) {
         cubemap.faces[i] = &faces[i];
     }
     cubemap.face_size = 1;
+    cubemap.cache_identity = 1;
 
     EXPECT_TRUE(vgfx3d_unpack_cubemap_faces_rgba(&cubemap, &face_size, rgba_faces) == 0,
                 "Cubemap unpack succeeds");
@@ -238,17 +239,41 @@ static void test_unpack_cubemap_faces_rgba_rejects_invalid(void) {
     uint32_t data = 0x11223344u;
     fake_pixels_t good_face = {1, 1, &data, 2, 61};
     fake_pixels_t bad_face = {2, 1, &data, 5, 62};
+    fake_pixels_t huge_face = {INT32_MAX, INT32_MAX, &data, 6, 63};
     fake_cubemap_t cubemap = {0};
     int32_t face_size = 0;
     uint8_t *rgba_faces[6];
 
     for (int i = 0; i < 6; i++)
+        rgba_faces[i] = (uint8_t *)1;
+    face_size = 7;
+    EXPECT_TRUE(vgfx3d_unpack_cubemap_faces_rgba(NULL, &face_size, rgba_faces) != 0,
+                "Cubemap unpack rejects null cubemaps");
+    EXPECT_TRUE(face_size == 0, "Cubemap unpack clears face size on early failure");
+    for (int i = 0; i < 6; i++)
+        EXPECT_TRUE(rgba_faces[i] == NULL, "Cubemap unpack clears face outputs on early failure");
+
+    for (int i = 0; i < 6; i++)
         cubemap.faces[i] = &good_face;
     cubemap.faces[3] = &bad_face;
     cubemap.face_size = 1;
+    cubemap.cache_identity = 1;
 
     EXPECT_TRUE(vgfx3d_unpack_cubemap_faces_rgba(&cubemap, &face_size, rgba_faces) != 0,
                 "Cubemap unpack rejects mismatched face dimensions");
+
+    for (int i = 0; i < 6; i++) {
+        rgba_faces[i] = (uint8_t *)1;
+        cubemap.faces[i] = &huge_face;
+    }
+    cubemap.face_size = 1;
+    cubemap.cache_identity = 1;
+    face_size = 7;
+    EXPECT_TRUE(vgfx3d_unpack_cubemap_faces_rgba(&cubemap, &face_size, rgba_faces) != 0,
+                "Cubemap unpack rejects mismatched huge faces before decoding");
+    EXPECT_TRUE(face_size == 0, "Cubemap unpack clears face size for huge mismatched faces");
+    for (int i = 0; i < 6; i++)
+        EXPECT_TRUE(rgba_faces[i] == NULL, "Cubemap unpack clears outputs for huge mismatches");
 }
 
 static void test_estimate_cubemap_rgba_upload_bytes(void) {
@@ -264,6 +289,7 @@ static void test_estimate_cubemap_rgba_upload_bytes(void) {
         cubemap.faces[i] = &faces[i];
     }
     cubemap.face_size = 2;
+    cubemap.cache_identity = 1;
 
     EXPECT_TRUE(vgfx3d_estimate_cubemap_rgba_upload_bytes(&cubemap, &bytes) == 1,
                 "Cubemap upload byte estimate accepts valid faces");
@@ -275,6 +301,17 @@ static void test_estimate_cubemap_rgba_upload_bytes(void) {
     faces[4].h = 2;
     EXPECT_TRUE(vgfx3d_estimate_cubemap_rgba_upload_bytes(&cubemap, NULL) == 0,
                 "Cubemap upload byte estimate rejects null output");
+    cubemap.cache_identity = 0;
+    EXPECT_TRUE(vgfx3d_estimate_cubemap_rgba_upload_bytes(&cubemap, &bytes) == 0,
+                "Cubemap upload byte estimate rejects zero cache identities");
+    cubemap.cache_identity = 1;
+    cubemap.face_size = 32769;
+    for (int i = 0; i < 6; i++) {
+        faces[i].w = 32769;
+        faces[i].h = 32769;
+    }
+    EXPECT_TRUE(vgfx3d_estimate_cubemap_rgba_upload_bytes(&cubemap, &bytes) == 0,
+                "Cubemap upload byte estimate rejects oversized declared faces");
 }
 
 static void test_unpack_cubemap_rows_and_extent(void) {
@@ -299,6 +336,7 @@ static void test_unpack_cubemap_rows_and_extent(void) {
         cubemap.faces[i] = &faces[i];
     }
     cubemap.face_size = 2;
+    cubemap.cache_identity = 1;
 
     EXPECT_TRUE(vgfx3d_get_cubemap_face_size(&cubemap, &face_size) == 1,
                 "Cubemap face-size helper accepts matching square faces");
@@ -451,9 +489,20 @@ static void test_generation_helpers(void) {
                 "Cubemap generation signature depends on per-face generations, not just their max");
 
     faces[4].generation = 3;
+    fake_pixels_t replacement = {1, 1, &data, faces[0].generation, 207};
+    cubemap.faces[0] = &replacement;
+    EXPECT_TRUE(vgfx3d_get_cubemap_generation(&cubemap) != base_generation,
+                "Cubemap generation signature changes when a same-generation face is replaced");
+    cubemap.faces[0] = &faces[0];
+
     cubemap.cache_identity = 8;
     EXPECT_TRUE(vgfx3d_get_cubemap_generation(&cubemap) != base_generation,
                 "Cubemap generation signature changes when the cubemap identity changes");
+
+    faces[2].h = 2;
+    EXPECT_TRUE(vgfx3d_get_cubemap_generation(&cubemap) == 0,
+                "Cubemap generation helper rejects malformed face layouts");
+    faces[2].h = 1;
 }
 
 static void test_compute_normal_matrix_inverse_transpose(void) {
@@ -858,6 +907,40 @@ static void test_skinning_multibone_reuses_normal_palette(void) {
                 "A distinct identity bone leaves vertex 1's normal unchanged");
 }
 
+static void test_skinning_clamps_corrupt_oversized_bone_count(void) {
+    vgfx3d_vertex_t src[1];
+    vgfx3d_vertex_t dst[1];
+    float palette[256 * 16];
+
+    memset(src, 0, sizeof(src));
+    for (int i = 0; i < 256; i++)
+        set_identity4x4(&palette[i * 16]);
+    palette[255 * 16 + 3] = 7.0f;
+
+    src[0].pos[0] = 2.0f;
+    src[0].normal[0] = 1.0f;
+    src[0].tangent[1] = 1.0f;
+    src[0].tangent[3] = 1.0f;
+    src[0].bone_indices[0] = 255;
+    src[0].bone_weights[0] = 1.0f;
+
+    memset(dst, 0, sizeof(dst));
+    vgfx3d_skin_vertices(src, dst, 1, palette, INT32_MAX);
+
+    EXPECT_NEAR(dst[0].pos[0],
+                9.0f,
+                1e-6f,
+                "CPU skinning clamps corrupt oversized bone counts to the 8-bit palette range");
+    EXPECT_NEAR(dst[0].normal[0],
+                1.0f,
+                1e-6f,
+                "CPU skinning keeps normals valid when clamping oversized bone counts");
+    EXPECT_NEAR(dst[0].tangent[1],
+                1.0f,
+                1e-6f,
+                "CPU skinning keeps tangents valid when clamping oversized bone counts");
+}
+
 static void test_frustum_valid_classifies_volumes(void) {
     vgfx3d_frustum_t f;
     float vp[16];
@@ -931,6 +1014,7 @@ int main(void) {
     test_frustum_and_mesh_aabb_reject_invalid_inputs_conservatively();
     test_transform_aabb_orders_inverted_extents();
     test_skinning_multibone_reuses_normal_palette();
+    test_skinning_clamps_corrupt_oversized_bone_count();
     test_frustum_valid_classifies_volumes();
     test_compute_normal_matrix_small_scale();
 

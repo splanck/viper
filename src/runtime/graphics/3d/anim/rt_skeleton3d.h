@@ -127,6 +127,8 @@ void rt_anim_blend3d_set_speed(void *blend, int64_t state, double speed);
 void rt_anim_blend3d_update(void *blend, double dt);
 /// @brief Number of registered blend states.
 int64_t rt_anim_blend3d_state_count(void *blend);
+/* Internal integration helper: borrowed skeleton handle for controller compatibility checks. */
+void *rt_anim_blend3d_get_skeleton(void *blend);
 /* Internal integration helper: borrowed local-transform buffer for controller composition. */
 const float *rt_anim_blend3d_get_local_transform_data(void *blend, int32_t *bone_count);
 

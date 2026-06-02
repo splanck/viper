@@ -93,7 +93,8 @@ static int32_t scene3d_count_subtree(const rt_scene_node3d *node) {
             return INT32_MAX;
         }
         total++;
-        for (int32_t i = 0; i < current->child_count; i++) {
+        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count;
+             i++) {
             if (count >= capacity) {
                 size_t new_capacity = capacity > 0 ? capacity * 2u : 64u;
                 const rt_scene_node3d **grown;
@@ -845,27 +846,53 @@ static int vscn_append_json_string(char **buf, size_t *len, size_t *cap, const c
 /// The save algorithm runs collection over the whole scene before
 /// any serialisation so each shared asset gets a stable index
 /// referenced from every material that uses it.
+static rt_pixels_impl *vscn_material_texture_pixels(void *texture_ref) {
+    void *pixels = rt_material3d_resolve_texture_pixels(texture_ref);
+    return rt_pixels_checked_impl_or_null(pixels);
+}
+
+static int vscn_cubemap_is_serializable(rt_cubemap3d *cubemap) {
+    if (!rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID) || cubemap->face_size <= 0 ||
+        cubemap->face_size > INT32_MAX)
+        return 0;
+    for (int i = 0; i < 6; i++) {
+        rt_pixels_impl *face = rt_pixels_checked_impl_or_null(cubemap->faces[i]);
+        if (!face || face->width != cubemap->face_size || face->height != cubemap->face_size)
+            return 0;
+    }
+    return 1;
+}
+
+static rt_cubemap3d *vscn_material_env_map(rt_material3d *material) {
+    rt_cubemap3d *cubemap = material ? (rt_cubemap3d *)material->env_map : NULL;
+    return vscn_cubemap_is_serializable(cubemap) ? cubemap : NULL;
+}
+
 static int vscn_collect_material_assets(rt_material3d *material, vscn_save_context_t *ctx) {
+    rt_pixels_impl *texture;
+    rt_cubemap3d *cubemap;
     if (!material || !ctx)
         return 1;
-    if (material->texture && vscn_ptr_table_index_or_add(&ctx->textures, material->texture) < 0)
+    texture = vscn_material_texture_pixels(material->texture);
+    if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    if (material->normal_map &&
-        vscn_ptr_table_index_or_add(&ctx->textures, material->normal_map) < 0)
+    texture = vscn_material_texture_pixels(material->normal_map);
+    if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    if (material->specular_map &&
-        vscn_ptr_table_index_or_add(&ctx->textures, material->specular_map) < 0)
+    texture = vscn_material_texture_pixels(material->specular_map);
+    if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    if (material->emissive_map &&
-        vscn_ptr_table_index_or_add(&ctx->textures, material->emissive_map) < 0)
+    texture = vscn_material_texture_pixels(material->emissive_map);
+    if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    if (material->metallic_roughness_map &&
-        vscn_ptr_table_index_or_add(&ctx->textures, material->metallic_roughness_map) < 0)
+    texture = vscn_material_texture_pixels(material->metallic_roughness_map);
+    if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    if (material->ao_map && vscn_ptr_table_index_or_add(&ctx->textures, material->ao_map) < 0)
+    texture = vscn_material_texture_pixels(material->ao_map);
+    if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    if (material->env_map) {
-        rt_cubemap3d *cubemap = (rt_cubemap3d *)material->env_map;
+    cubemap = vscn_material_env_map(material);
+    if (cubemap) {
         if (vscn_ptr_table_index_or_add(&ctx->cubemaps, cubemap) < 0)
             return 0;
         for (int i = 0; i < 6; i++) {
@@ -897,25 +924,27 @@ static int vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t *
         rt_scene_node3d *current = stack[--count];
         if (!current)
             continue;
-        if (current->mesh && vscn_ptr_table_index_or_add(&ctx->meshes, current->mesh) < 0) {
+        if (rt_g3d_has_class(current->mesh, RT_G3D_MESH3D_CLASS_ID) &&
+            vscn_ptr_table_index_or_add(&ctx->meshes, current->mesh) < 0) {
             free(stack);
             return 0;
         }
-        if (current->material) {
+        if (rt_g3d_has_class(current->material, RT_G3D_MATERIAL3D_CLASS_ID)) {
             if (vscn_ptr_table_index_or_add(&ctx->materials, current->material) < 0 ||
                 !vscn_collect_material_assets((rt_material3d *)current->material, ctx)) {
                 free(stack);
                 return 0;
             }
         }
-        for (int32_t i = 0; i < current->lod_count; i++) {
-            if (current->lod_levels[i].mesh &&
+        for (int32_t i = 0, lod_count = scene3d_node_lod_count(current); i < lod_count; i++) {
+            if (rt_g3d_has_class(current->lod_levels[i].mesh, RT_G3D_MESH3D_CLASS_ID) &&
                 vscn_ptr_table_index_or_add(&ctx->meshes, current->lod_levels[i].mesh) < 0) {
                 free(stack);
                 return 0;
             }
         }
-        for (int32_t i = 0; i < current->child_count; i++) {
+        for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count;
+             i++) {
             if (!current->children[i])
                 continue;
             if (count >= capacity) {
@@ -1005,6 +1034,8 @@ static int vscn_serialize_cubemap(rt_cubemap3d *cubemap,
     char indent[64];
     if (!cubemap || !ctx)
         return 0;
+    if (!vscn_cubemap_is_serializable(cubemap))
+        return 0;
     vscn_make_indent(indent, sizeof(indent), depth);
     if (!vscn_append(buf, len, cap, "%s{\"faces\": [", indent))
         return 0;
@@ -1032,14 +1063,21 @@ static int vscn_serialize_material(rt_material3d *material,
         return 0;
     vscn_make_indent(indent, sizeof(indent), depth);
 
-    const int texture_index = vscn_ptr_table_index_or_add(&ctx->textures, material->texture);
-    const int normal_index = vscn_ptr_table_index_or_add(&ctx->textures, material->normal_map);
-    const int specular_index = vscn_ptr_table_index_or_add(&ctx->textures, material->specular_map);
-    const int emissive_index = vscn_ptr_table_index_or_add(&ctx->textures, material->emissive_map);
+    const int texture_index =
+        vscn_ptr_table_index_or_add(&ctx->textures, vscn_material_texture_pixels(material->texture));
+    const int normal_index = vscn_ptr_table_index_or_add(
+        &ctx->textures, vscn_material_texture_pixels(material->normal_map));
+    const int specular_index = vscn_ptr_table_index_or_add(
+        &ctx->textures, vscn_material_texture_pixels(material->specular_map));
+    const int emissive_index = vscn_ptr_table_index_or_add(
+        &ctx->textures, vscn_material_texture_pixels(material->emissive_map));
     const int metallic_roughness_index =
-        vscn_ptr_table_index_or_add(&ctx->textures, material->metallic_roughness_map);
-    const int ao_index = vscn_ptr_table_index_or_add(&ctx->textures, material->ao_map);
-    const int env_index = vscn_ptr_table_index_or_add(&ctx->cubemaps, material->env_map);
+        vscn_ptr_table_index_or_add(&ctx->textures,
+                                    vscn_material_texture_pixels(material->metallic_roughness_map));
+    const int ao_index =
+        vscn_ptr_table_index_or_add(&ctx->textures, vscn_material_texture_pixels(material->ao_map));
+    const int env_index =
+        vscn_ptr_table_index_or_add(&ctx->cubemaps, vscn_material_env_map(material));
 
     if (!vscn_append(buf,
                      len,
@@ -1313,15 +1351,17 @@ static int vscn_serialize_node(rt_scene_node3d *node,
         }
     }
 
-    if (node->lod_count > 0) {
+    int32_t lod_count = scene3d_node_lod_count(node);
+    if (lod_count > 0) {
         if (!vscn_append(buf, len, cap, ",\n%s  \"lod\": [\n", indent))
             return 0;
-        for (int32_t i = 0; i < node->lod_count; i++) {
+        for (int32_t i = 0; i < lod_count; i++) {
+            void *lod_mesh = rt_g3d_has_class(node->lod_levels[i].mesh, RT_G3D_MESH3D_CLASS_ID)
+                                 ? node->lod_levels[i].mesh
+                                 : NULL;
             int lod_mesh_index =
-                node->lod_levels[i].mesh
-                    ? vscn_ptr_table_index_or_add(&ctx->meshes, node->lod_levels[i].mesh)
-                    : -1;
-            if (node->lod_levels[i].mesh && lod_mesh_index < 0)
+                lod_mesh ? vscn_ptr_table_index_or_add(&ctx->meshes, lod_mesh) : -1;
+            if (lod_mesh && lod_mesh_index < 0)
                 return 0;
             if (!vscn_append(buf,
                              len,
@@ -1329,9 +1369,9 @@ static int vscn_serialize_node(rt_scene_node3d *node,
                              "%s    {\"distance\": %.17g, \"hasMesh\": %s, \"mesh\": %d}%s\n",
                              indent,
                              vscn_nonnegative_or(node->lod_levels[i].distance, 0.0),
-                             node->lod_levels[i].mesh ? "true" : "false",
+                             lod_mesh ? "true" : "false",
                              lod_mesh_index,
-                             i + 1 < node->lod_count ? "," : "")) {
+                             i + 1 < lod_count ? "," : "")) {
                 return 0;
             }
         }
@@ -1350,14 +1390,19 @@ static int vscn_serialize_node(rt_scene_node3d *node,
         }
     }
 
-    if (node->child_count > 0) {
+    int32_t child_count = scene3d_node_child_count(node);
+    if (child_count > 0) {
+        int32_t emitted = 0;
         if (!vscn_append(buf, len, cap, ",\n%s  \"children\": [\n", indent))
             return 0;
-        for (int32_t i = 0; i < node->child_count; i++) {
+        for (int32_t i = 0; i < child_count; i++) {
+            if (!node->children[i])
+                continue;
+            if (emitted > 0 && !vscn_append(buf, len, cap, ","))
+                return 0;
             if (!vscn_serialize_node(node->children[i], ctx, buf, len, cap, depth + 2))
                 return 0;
-            if (i < node->child_count - 1 && !vscn_append(buf, len, cap, ","))
-                return 0;
+            emitted++;
             if (!vscn_append(buf, len, cap, "\n"))
                 return 0;
         }
@@ -2190,13 +2235,19 @@ static int vscn_save_emit_meshes(char **buf, size_t *len, size_t *cap, vscn_save
 /// @return 1 on success, 0 on append failure.
 static int vscn_save_emit_nodes(
     char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx, rt_scene_node3d *root) {
+    int32_t child_count = scene3d_node_child_count(root);
+    int32_t emitted = 0;
     if (!vscn_append(buf, len, cap, "  \"nodes\": [\n"))
         return 0;
-    for (int32_t i = 0; i < root->child_count; i++) {
+    for (int32_t i = 0; i < child_count; i++) {
+        if (!root->children[i])
+            continue;
+        if (emitted > 0 && !vscn_append(buf, len, cap, ","))
+            return 0;
         if (!vscn_serialize_node(root->children[i], ctx, buf, len, cap, 2) ||
-            (i < root->child_count - 1 && !vscn_append(buf, len, cap, ",")) ||
             !vscn_append(buf, len, cap, "\n"))
             return 0;
+        emitted++;
     }
     return vscn_append(buf, len, cap, "  ]\n");
 }
@@ -2221,7 +2272,9 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     FILE *f;
     size_t written = 0;
 
-    for (int32_t i = 0; i < scene->root->child_count; i++) {
+    for (int32_t i = 0, child_count = scene3d_node_child_count(scene->root); i < child_count; i++) {
+        if (!scene->root->children[i])
+            continue;
         if (!vscn_collect_node_assets(scene->root->children[i], &ctx)) {
             vscn_save_free_ctx(&ctx);
             return 0;

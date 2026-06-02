@@ -2279,12 +2279,12 @@ static int d3d11_ensure_cubemap_cache_capacity(d3d11_context_t *ctx, int32_t nee
 ///   a float LOD. A 1×1 face has only one mip and thus max-LOD 0. Used to clamp sampler
 ///   LOD ranges and compute prefiltered environment-map roughness lookups.
 static float d3d11_cubemap_max_lod(const rt_cubemap3d *cubemap) {
+    int32_t face_size;
     int32_t mip_count;
 
-    if (!cubemap || cubemap->face_size <= 1)
+    if (!cubemap || !vgfx3d_get_cubemap_face_size(cubemap, &face_size) || face_size <= 1)
         return 0.0f;
-    mip_count =
-        vgfx3d_d3d11_compute_mip_count((int32_t)cubemap->face_size, (int32_t)cubemap->face_size);
+    mip_count = vgfx3d_d3d11_compute_mip_count(face_size, face_size);
     return mip_count > 1 ? (float)(mip_count - 1) : 0.0f;
 }
 
@@ -2533,6 +2533,12 @@ static int d3d11_continue_native_texture_upload(d3d11_context_t *ctx,
     if (!ctx || !entry || !entry->texture_asset || !entry->upload_in_progress || !entry->tex ||
         !entry->srv)
         return 0;
+    if (entry->native_mip_count <= 0)
+        return 0;
+    if (entry->native_next_mip < 0)
+        entry->native_next_mip = 0;
+    if (entry->native_next_mip > entry->native_mip_count)
+        entry->native_next_mip = entry->native_mip_count;
     while (entry->native_next_mip < entry->native_mip_count) {
         vgfx3d_native_texture_mip_t mip;
         uint64_t row_bytes;
@@ -2619,6 +2625,10 @@ static int d3d11_continue_texture_upload(d3d11_context_t *ctx,
 
     if (!ctx || !entry || !pixels || !entry->upload_in_progress || !entry->tex || !entry->srv)
         return 0;
+    if (entry->width <= 0 || entry->height <= 0)
+        return 0;
+    if (entry->upload_next_row < 0 || entry->upload_next_row >= entry->height)
+        entry->upload_next_row = 0;
     rows = vgfx3d_upload_rows_for_budget(entry->width,
                                          entry->height,
                                          entry->upload_next_row,
@@ -2877,6 +2887,16 @@ static int d3d11_continue_cubemap_upload(d3d11_context_t *ctx,
     if (!ctx || !entry || !cubemap || !entry->upload_in_progress || !entry->tex || !entry->srv ||
         entry->face_size <= 0)
         return 0;
+    if (entry->upload_face < 0 || entry->upload_face >= 6) {
+        entry->upload_face = 0;
+        entry->upload_next_row = 0;
+    }
+    if (entry->upload_next_row < 0)
+        entry->upload_next_row = 0;
+    if (entry->upload_next_row >= entry->face_size) {
+        entry->upload_face++;
+        entry->upload_next_row = 0;
+    }
 
     mip_count = vgfx3d_d3d11_compute_mip_count(entry->face_size, entry->face_size);
     while (entry->upload_face < 6) {

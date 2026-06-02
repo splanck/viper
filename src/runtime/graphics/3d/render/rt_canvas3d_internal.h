@@ -34,6 +34,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define VGFX3D_RENDERTARGET_DIM_MAX 8192
+
 //=============================================================================
 // Vertex format
 //=============================================================================
@@ -95,6 +97,32 @@ typedef struct {
     int32_t physics_bvh_node_count;
     int32_t physics_bvh_tri_count;
 } rt_mesh3d;
+
+static inline uint32_t rt_mesh3d_safe_vertex_count(const rt_mesh3d *mesh) {
+    if (!mesh || !mesh->vertices || mesh->vertex_count == 0 || mesh->vertex_capacity == 0)
+        return 0;
+    return mesh->vertex_count < mesh->vertex_capacity ? mesh->vertex_count : mesh->vertex_capacity;
+}
+
+static inline uint32_t rt_mesh3d_safe_index_count(const rt_mesh3d *mesh) {
+    if (!mesh || !mesh->indices || mesh->index_count == 0 || mesh->index_capacity == 0)
+        return 0;
+    return mesh->index_count < mesh->index_capacity ? mesh->index_count : mesh->index_capacity;
+}
+
+static inline void rt_mesh3d_repair_geometry_counts(rt_mesh3d *mesh) {
+    uint32_t vertex_count;
+    uint32_t index_count;
+    if (!mesh)
+        return;
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    index_count = rt_mesh3d_safe_index_count(mesh);
+    if (mesh->vertex_count != vertex_count || mesh->index_count != index_count) {
+        mesh->vertex_count = vertex_count;
+        mesh->index_count = index_count;
+        mesh->bounds_dirty = 1;
+    }
+}
 
 /// @brief Zero a mesh's cached AABB/bounding-sphere and clear the dirty flag.
 static inline void rt_mesh3d_reset_bounds(rt_mesh3d *mesh) {
@@ -164,14 +192,17 @@ static inline void rt_mesh3d_end_geometry_batch(rt_mesh3d *mesh) {
 ///          vertices; otherwise calls vgfx3d_compute_mesh_aabb over the
 ///          vertex buffer and clears the dirty flag.
 static inline void rt_mesh3d_refresh_bounds(rt_mesh3d *mesh) {
+    uint32_t vertex_count;
     if (!mesh || !mesh->bounds_dirty)
         return;
-    if (!mesh->vertices || mesh->vertex_count == 0) {
+    rt_mesh3d_repair_geometry_counts(mesh);
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    if (!mesh->vertices || vertex_count == 0) {
         rt_mesh3d_reset_bounds(mesh);
         return;
     }
     vgfx3d_compute_mesh_aabb(mesh->vertices,
-                             mesh->vertex_count,
+                             vertex_count,
                              sizeof(vgfx3d_vertex_t),
                              mesh->aabb_min,
                              mesh->aabb_max);
@@ -370,6 +401,15 @@ typedef struct {
     uint64_t cache_identity; /* stable cache key generation across allocator reuse */
 } rt_cubemap3d;
 
+/// @brief Return 1 when @p cubemap is a live CubeMap3D with all six matching square faces.
+#ifdef __cplusplus
+extern "C" {
+#endif
+int rt_cubemap3d_is_complete(void *cubemap);
+#ifdef __cplusplus
+}
+#endif
+
 //=============================================================================
 // RenderTarget3D — offscreen color + depth buffers
 //=============================================================================
@@ -405,6 +445,47 @@ static inline int vgfx3d_rendertarget_is_hdr(const vgfx3d_rendertarget_t *target
     return target && target->color_format == VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F;
 }
 
+static inline int vgfx3d_rendertarget_valid_pixels(const vgfx3d_rendertarget_t *target,
+                                                   size_t *out_pixel_count) {
+    size_t pixels;
+    if (out_pixel_count)
+        *out_pixel_count = 0u;
+    if (!target || target->width <= 0 || target->height <= 0)
+        return 0;
+    if (target->width > VGFX3D_RENDERTARGET_DIM_MAX ||
+        target->height > VGFX3D_RENDERTARGET_DIM_MAX)
+        return 0;
+    if ((size_t)target->width > SIZE_MAX / (size_t)target->height)
+        return 0;
+    pixels = (size_t)target->width * (size_t)target->height;
+    if (out_pixel_count)
+        *out_pixel_count = pixels;
+    return 1;
+}
+
+static inline int vgfx3d_rendertarget_valid_color_layout(const vgfx3d_rendertarget_t *target,
+                                                         size_t *out_bytes) {
+    size_t min_stride;
+    size_t bytes;
+    if (out_bytes)
+        *out_bytes = 0u;
+    if (!target || target->stride <= 0)
+        return 0;
+    if (!vgfx3d_rendertarget_valid_pixels(target, NULL))
+        return 0;
+    if ((size_t)target->width > SIZE_MAX / 4u)
+        return 0;
+    min_stride = (size_t)target->width * 4u;
+    if ((size_t)target->stride < min_stride)
+        return 0;
+    if ((size_t)target->height > SIZE_MAX / (size_t)target->stride)
+        return 0;
+    bytes = (size_t)target->height * (size_t)target->stride;
+    if (out_bytes)
+        *out_bytes = bytes;
+    return 1;
+}
+
 /// @brief Lazily allocate the 8-bit LDR color buffer (zero-filled).
 /// @details No-op if already allocated; fails on invalid dims or overflow.
 /// @return 1 if the buffer is available, 0 on failure.
@@ -412,13 +493,10 @@ static inline int vgfx3d_rendertarget_ensure_color(vgfx3d_rendertarget_t *target
     size_t bytes;
     if (!target)
         return 0;
+    if (!vgfx3d_rendertarget_valid_color_layout(target, &bytes))
+        return 0;
     if (target->color_buf)
         return 1;
-    if (target->width <= 0 || target->height <= 0 || target->stride <= 0)
-        return 0;
-    if ((size_t)target->height > SIZE_MAX / (size_t)target->stride)
-        return 0;
-    bytes = (size_t)target->height * (size_t)target->stride;
     target->color_buf = (uint8_t *)calloc(bytes, 1u);
     return target->color_buf != NULL;
 }
@@ -431,15 +509,12 @@ static inline int vgfx3d_rendertarget_ensure_hdr_color(vgfx3d_rendertarget_t *ta
     size_t float_count;
     if (!vgfx3d_rendertarget_is_hdr(target))
         return 0;
-    if (target->hdr_color_buf)
-        return 1;
-    if (target->width <= 0 || target->height <= 0)
+    if (!vgfx3d_rendertarget_valid_pixels(target, &pixel_count))
         return 0;
-    if ((size_t)target->width > SIZE_MAX / (size_t)target->height)
-        return 0;
-    pixel_count = (size_t)target->width * (size_t)target->height;
     if (pixel_count > SIZE_MAX / (sizeof(float) * 4u))
         return 0;
+    if (target->hdr_color_buf)
+        return 1;
     float_count = pixel_count * 4u;
     target->hdr_color_buf = (float *)calloc(float_count, sizeof(float));
     return target->hdr_color_buf != NULL;
@@ -469,15 +544,12 @@ static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target
     size_t pixel_count;
     if (!target)
         return 0;
-    if (target->depth_buf)
-        return 1;
-    if (target->width <= 0 || target->height <= 0)
+    if (!vgfx3d_rendertarget_valid_pixels(target, &pixel_count))
         return 0;
-    if ((size_t)target->width > SIZE_MAX / (size_t)target->height)
-        return 0;
-    pixel_count = (size_t)target->width * (size_t)target->height;
     if (pixel_count > SIZE_MAX / sizeof(float))
         return 0;
+    if (target->depth_buf)
+        return 1;
     target->depth_buf = (float *)malloc(pixel_count * sizeof(float));
     if (!target->depth_buf)
         return 0;
@@ -490,6 +562,8 @@ static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target
 ///          success. @return 1 if color is up to date, 0 on failure.
 static inline int vgfx3d_rendertarget_sync_color_if_needed(vgfx3d_rendertarget_t *target) {
     if (!target)
+        return 0;
+    if (!vgfx3d_rendertarget_valid_color_layout(target, NULL))
         return 0;
     if (!target->color_dirty)
         return 1;

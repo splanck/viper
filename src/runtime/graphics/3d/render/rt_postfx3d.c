@@ -50,6 +50,11 @@ extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 
+#define POSTFX3D_FLOAT_ABS_MAX 3.40282346638528859812e38
+#define POSTFX3D_PARAM_MAX 64.0f
+#define POSTFX3D_RADIUS_MAX 1000000.0f
+#define POSTFX3D_FOCUS_MAX 1000000.0f
+
 /*==========================================================================
  * Effect types
  *=========================================================================*/
@@ -142,15 +147,28 @@ static float clampf(float v, float lo, float hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-/// @brief Narrow a finite double to float, substituting `fallback` on NaN/inf.
-static float sanitize_f32(double value, float fallback) {
-    return isfinite(value) ? (float)value : fallback;
+/// @brief Clamp a double into a finite float parameter range, using fallback for NaN/Inf.
+static float sanitize_range_f32(double value, float fallback, float lo, float hi) {
+    float narrowed;
+    if (!isfinite(value))
+        return clampf(fallback, lo, hi);
+    if (value <= (double)lo)
+        return lo;
+    if (value >= (double)hi)
+        return hi;
+    if (value > POSTFX3D_FLOAT_ABS_MAX || value < -POSTFX3D_FLOAT_ABS_MAX)
+        return value < 0.0 ? lo : hi;
+    narrowed = (float)value;
+    return isfinite(narrowed) ? clampf(narrowed, lo, hi) : (value < 0.0 ? lo : hi);
 }
 
 /// @brief `sanitize_f32` plus clamp-to-zero floor — for strengths/intensities that must be ≥ 0.
 static float sanitize_nonnegative_f32(double value, float fallback) {
-    float v = sanitize_f32(value, fallback);
-    return v < 0.0f ? 0.0f : v;
+    return sanitize_range_f32(value, fallback, 0.0f, POSTFX3D_PARAM_MAX);
+}
+
+static float sanitize_hdr_channel(float value) {
+    return clampf(value, 0.0f, POSTFX3D_FOCUS_MAX);
 }
 
 /// @brief Clamp a 64-bit integer into a 32-bit range, truncating outside values.
@@ -361,7 +379,7 @@ static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
 /// @return 1 if the chain requires auxiliary GPU scene buffers, 0 if color-only.
 int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
     rt_postfx3d *fx = postfx3d_checked(postfx);
-    if (!fx || !fx->enabled || fx->effect_count <= 0)
+    if (!fx || !fx->enabled || fx->effect_count <= 0 || !fx->effects)
         return 0;
     for (int32_t i = 0; i < fx->effect_count; i++) {
         const postfx_entry_t *e = &fx->effects[i];
@@ -672,7 +690,7 @@ static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float
 ///          bloom + tonemap + color-grade in HDR produces different output than the
 ///          same chain applied post-quantization.
 static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
-    if (!fx || !fx->enabled)
+    if (!fx || !fx->enabled || !fx->effects)
         return 0;
     for (int32_t i = 0; i < fx->effect_count; i++) {
         const postfx_entry_t *e = &fx->effects[i];
@@ -691,7 +709,7 @@ static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
 ///          is the whole point of running this before `postfx_apply` touches the
 ///          integer framebuffer.
 static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, int32_t h) {
-    if (!fx || !fx->enabled || fx->effect_count == 0 || !fbuf)
+    if (!fx || !fx->enabled || fx->effect_count == 0 || !fx->effects || !fbuf)
         return;
 
     for (int32_t i = 0; i < fx->effect_count; i++) {
@@ -794,9 +812,9 @@ static void postfx_apply_hdr_target(rt_postfx3d *fx, vgfx3d_rendertarget_t *targ
     if (!fbuf)
         return;
     for (size_t i = 0; i < count; i++) {
-        fbuf[i * 3u + 0u] = target->hdr_color_buf[i * 4u + 0u];
-        fbuf[i * 3u + 1u] = target->hdr_color_buf[i * 4u + 1u];
-        fbuf[i * 3u + 2u] = target->hdr_color_buf[i * 4u + 2u];
+        fbuf[i * 3u + 0u] = sanitize_hdr_channel(target->hdr_color_buf[i * 4u + 0u]);
+        fbuf[i * 3u + 1u] = sanitize_hdr_channel(target->hdr_color_buf[i * 4u + 1u]);
+        fbuf[i * 3u + 2u] = sanitize_hdr_channel(target->hdr_color_buf[i * 4u + 2u]);
     }
 
     postfx_apply_float_effects(fx, fbuf, target->width, target->height);
@@ -805,9 +823,9 @@ static void postfx_apply_hdr_target(rt_postfx3d *fx, vgfx3d_rendertarget_t *targ
         uint8_t *dst = target->color_buf + (size_t)y * (size_t)target->stride;
         for (int32_t x = 0; x < target->width; x++) {
             size_t i = (size_t)y * (size_t)target->width + (size_t)x;
-            float r = fbuf[i * 3u + 0u];
-            float g = fbuf[i * 3u + 1u];
-            float b = fbuf[i * 3u + 2u];
+            float r = sanitize_hdr_channel(fbuf[i * 3u + 0u]);
+            float g = sanitize_hdr_channel(fbuf[i * 3u + 1u]);
+            float b = sanitize_hdr_channel(fbuf[i * 3u + 2u]);
             target->hdr_color_buf[i * 4u + 0u] = r;
             target->hdr_color_buf[i * 4u + 1u] = g;
             target->hdr_color_buf[i * 4u + 2u] = b;
@@ -922,9 +940,9 @@ void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, 
         return;
     e->type = POSTFX_COLOR_GRADE;
     e->enabled = 1;
-    e->p.color_grade.brightness = clampf(sanitize_f32(brightness, 0.0f), -1.0f, 1.0f);
-    e->p.color_grade.contrast = clampf(sanitize_f32(contrast, 1.0f), 0.0f, 4.0f);
-    e->p.color_grade.saturation = clampf(sanitize_f32(saturation, 1.0f), 0.0f, 4.0f);
+    e->p.color_grade.brightness = sanitize_range_f32(brightness, 0.0f, -1.0f, 1.0f);
+    e->p.color_grade.contrast = sanitize_range_f32(contrast, 1.0f, 0.0f, 4.0f);
+    e->p.color_grade.saturation = sanitize_range_f32(saturation, 1.0f, 0.0f, 4.0f);
 }
 
 /// @brief Append a vignette (radial darkening toward edges). `radius` is the bright region
@@ -939,8 +957,8 @@ void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
         return;
     e->type = POSTFX_VIGNETTE;
     e->enabled = 1;
-    e->p.vignette.radius = clampf(sanitize_f32(radius, 0.7f), 0.0f, 1.0f);
-    e->p.vignette.softness = clampf(sanitize_f32(softness, 0.3f), 0.001f, 1.0f);
+    e->p.vignette.radius = sanitize_range_f32(radius, 0.7f, 0.0f, 1.0f);
+    e->p.vignette.softness = sanitize_range_f32(softness, 0.3f, 0.001f, 1.0f);
 }
 
 /// @brief Master enable/disable for the entire effect chain. Disabled = framebuffer passes
@@ -948,13 +966,13 @@ void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
 void rt_postfx3d_set_enabled(void *obj, int8_t enabled) {
     rt_postfx3d *fx = postfx3d_checked(obj);
     if (fx)
-        fx->enabled = enabled;
+        fx->enabled = enabled ? 1 : 0;
 }
 
 /// @brief Returns 1 if the post-FX chain is currently enabled.
 int8_t rt_postfx3d_get_enabled(void *obj) {
     rt_postfx3d *fx = postfx3d_checked(obj);
-    return fx ? fx->enabled : 0;
+    return fx && fx->enabled ? 1 : 0;
 }
 
 /// @brief Drop every effect in the chain (fresh state). Master enable flag preserved.
@@ -1187,7 +1205,7 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
         return;
     e->type = POSTFX_SSAO;
     e->enabled = 1;
-    e->p.ssao.ao_radius = sanitize_nonnegative_f32(radius, 0.5f);
+    e->p.ssao.ao_radius = sanitize_range_f32(radius, 0.5f, 0.0f, POSTFX3D_RADIUS_MAX);
     e->p.ssao.ao_intensity = sanitize_nonnegative_f32(intensity, 1.0f);
     e->p.ssao.ao_samples = clamp_i64_to_i32(samples, 1, 128);
 }
@@ -1205,9 +1223,9 @@ void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, doub
         return;
     e->type = POSTFX_DOF;
     e->enabled = 1;
-    e->p.dof.focus_distance = sanitize_nonnegative_f32(focus_distance, 10.0f);
+    e->p.dof.focus_distance = sanitize_range_f32(focus_distance, 10.0f, 0.0f, POSTFX3D_FOCUS_MAX);
     e->p.dof.aperture = sanitize_nonnegative_f32(aperture, 0.0f);
-    e->p.dof.max_blur = clampf(sanitize_f32(max_blur, 8.0f), 0.0f, 128.0f);
+    e->p.dof.max_blur = sanitize_range_f32(max_blur, 8.0f, 0.0f, 128.0f);
 }
 
 /// @brief Append per-pixel motion blur. `intensity` controls the blur length; `samples` is
@@ -1222,7 +1240,7 @@ void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
         return;
     e->type = POSTFX_MOTION_BLUR;
     e->enabled = 1;
-    e->p.motion_blur.mb_intensity = clampf(sanitize_f32(intensity, 0.0f), 0.0f, 1.0f);
+    e->p.motion_blur.mb_intensity = sanitize_range_f32(intensity, 0.0f, 0.0f, 1.0f);
     e->p.motion_blur.mb_samples = clamp_i64_to_i32(samples, 1, 64);
 }
 
@@ -1237,6 +1255,11 @@ void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
 void vgfx3d_postfx_chain_reset(vgfx3d_postfx_chain_t *chain) {
     if (!chain)
         return;
+    if (chain->effect_capacity < 0) {
+        free(chain->effects);
+        chain->effects = NULL;
+        chain->effect_capacity = 0;
+    }
     chain->enabled = 0;
     chain->effect_count = 0;
     if (chain->effects && chain->effect_capacity > 0) {
@@ -1265,7 +1288,8 @@ void vgfx3d_postfx_chain_free(vgfx3d_postfx_chain_t *chain) {
 int vgfx3d_postfx_chain_copy(vgfx3d_postfx_chain_t *dst, const vgfx3d_postfx_chain_t *src) {
     if (!dst)
         return 0;
-    if (!src || !src->enabled || src->effect_count <= 0 || !src->effects) {
+    if (!src || !src->enabled || src->effect_count <= 0 || !src->effects ||
+        src->effect_capacity < src->effect_count) {
         vgfx3d_postfx_chain_reset(dst);
         return 0;
     }
@@ -1332,7 +1356,11 @@ int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out) {
                0,
                (size_t)(out->effect_capacity - out->effect_count) * sizeof(*out->effects));
     }
-    return out->effect_count > 0 ? 1 : 0;
+    if (out->effect_count <= 0) {
+        vgfx3d_postfx_chain_reset(out);
+        return 0;
+    }
+    return 1;
 }
 
 /// @brief Flatten a gameplay-facing `PostFX3D` into a single struct whose fields carry
@@ -1343,6 +1371,7 @@ int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out) {
 /// disabled fields read as zero instead of garbage.
 int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
     rt_postfx3d *fx;
+    int32_t valid_count = 0;
 
     if (!out)
         return 0;
@@ -1350,14 +1379,14 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
     fx = postfx3d_checked(postfx);
     if (!fx)
         return 0;
-    if (!fx->enabled || fx->effect_count == 0)
+    if (!fx->enabled || fx->effect_count == 0 || !fx->effects)
         return 0;
 
-    out->enabled = 1;
     for (int32_t i = 0; i < fx->effect_count; i++) {
         vgfx3d_postfx_effect_desc_t effect;
         if (!vgfx3d_postfx_fill_effect_snapshot(&fx->effects[i], &effect))
             continue;
+        valid_count++;
         switch ((postfx_type_t)effect.type) {
             case POSTFX_BLOOM:
                 out->bloom_enabled = 1;
@@ -1404,6 +1433,11 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
                 break;
         }
     }
+    if (valid_count <= 0) {
+        memset(out, 0, sizeof(*out));
+        return 0;
+    }
+    out->enabled = 1;
     return 1;
 }
 

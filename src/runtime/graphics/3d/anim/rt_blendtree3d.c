@@ -39,6 +39,7 @@
 #include <string.h>
 
 #define RT_BLENDTREE3D_MAX_SAMPLES 16
+#define RT_BLENDTREE3D_PARAM_ABS_MAX 1000000.0
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -76,16 +77,58 @@ static void blend_tree3d_release_local(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Release the owned AnimBlend3D only if the private slot still has that class.
+static void blend_tree3d_release_blend_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_ANIMBLEND3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    blend_tree3d_release_local(*slot);
+    *slot = NULL;
+}
+
 /// @brief Return @p value when finite, else 0 — sanitizes parameter inputs.
 static double blend_tree3d_finite_or_zero(double value) {
-    return isfinite(value) ? value : 0.0;
+    if (!isfinite(value))
+        return 0.0;
+    if (value > RT_BLENDTREE3D_PARAM_ABS_MAX)
+        return RT_BLENDTREE3D_PARAM_ABS_MAX;
+    if (value < -RT_BLENDTREE3D_PARAM_ABS_MAX)
+        return -RT_BLENDTREE3D_PARAM_ABS_MAX;
+    return value;
+}
+
+static int32_t blend_tree3d_safe_sample_count(const rt_blend_tree3d *tree) {
+    int32_t limit;
+    int32_t count = 0;
+    int64_t blend_state_count;
+    if (!tree || tree->sample_count <= 0)
+        return 0;
+    blend_state_count = rt_anim_blend3d_state_count(tree->blend);
+    if (blend_state_count <= 0)
+        return 0;
+    limit = tree->sample_count < RT_BLENDTREE3D_MAX_SAMPLES ? tree->sample_count
+                                                            : RT_BLENDTREE3D_MAX_SAMPLES;
+    while (count < limit && tree->samples[count].blend_index >= 0 &&
+           tree->samples[count].blend_index < blend_state_count)
+        count++;
+    return count;
+}
+
+static void blend_tree3d_repair_sample_count(rt_blend_tree3d *tree) {
+    if (tree)
+        tree->sample_count = blend_tree3d_safe_sample_count(tree);
 }
 
 /// @brief Zero every sample's blend weight so a fresh weighting can be written.
 static void blend_tree3d_clear_weights(rt_blend_tree3d *tree) {
+    int32_t sample_count;
     if (!tree || !tree->blend)
         return;
-    for (int32_t i = 0; i < tree->sample_count; i++)
+    sample_count = blend_tree3d_safe_sample_count(tree);
+    for (int32_t i = 0; i < sample_count; i++)
         rt_anim_blend3d_set_weight(tree->blend, tree->samples[i].blend_index, 0.0);
 }
 
@@ -99,17 +142,21 @@ static void blend_tree3d_apply_1d(rt_blend_tree3d *tree) {
     int32_t lower = -1;
     int32_t upper = -1;
     int32_t exact_count = 0;
+    int32_t sample_count;
     double x;
-    if (!tree || !tree->blend || tree->sample_count <= 0)
+    sample_count = blend_tree3d_safe_sample_count(tree);
+    if (!tree || !tree->blend || sample_count <= 0)
         return;
-    x = tree->param_x;
+    x = blend_tree3d_finite_or_zero(tree->param_x);
     blend_tree3d_clear_weights(tree);
-    if (tree->sample_count == 1) {
+    if (sample_count == 1) {
         rt_anim_blend3d_set_weight(tree->blend, tree->samples[0].blend_index, 1.0);
         return;
     }
-    for (int32_t i = 0; i < tree->sample_count; i++) {
+    for (int32_t i = 0; i < sample_count; i++) {
         double sx = tree->samples[i].x;
+        if (!isfinite(sx))
+            continue;
         if (fabs(sx - x) <= 1e-9) {
             exact_count++;
             continue;
@@ -121,10 +168,14 @@ static void blend_tree3d_apply_1d(rt_blend_tree3d *tree) {
     }
     if (exact_count > 0) {
         double w = 1.0 / (double)exact_count;
-        for (int32_t i = 0; i < tree->sample_count; i++) {
+        for (int32_t i = 0; i < sample_count; i++) {
             if (fabs(tree->samples[i].x - x) <= 1e-9)
                 rt_anim_blend3d_set_weight(tree->blend, tree->samples[i].blend_index, w);
         }
+        return;
+    }
+    if (lower < 0 && upper < 0) {
+        rt_anim_blend3d_set_weight(tree->blend, tree->samples[0].blend_index, 1.0);
         return;
     }
     if (lower < 0) {
@@ -156,14 +207,15 @@ static void blend_tree3d_apply_2d(rt_blend_tree3d *tree) {
     double raw[RT_BLENDTREE3D_MAX_SAMPLES];
     double total = 0.0;
     int32_t exact = -1;
-    if (!tree || !tree->blend || tree->sample_count <= 0)
+    int32_t sample_count = blend_tree3d_safe_sample_count(tree);
+    if (!tree || !tree->blend || sample_count <= 0)
         return;
     blend_tree3d_clear_weights(tree);
-    if (tree->sample_count == 1) {
+    if (sample_count == 1) {
         rt_anim_blend3d_set_weight(tree->blend, tree->samples[0].blend_index, 1.0);
         return;
     }
-    for (int32_t i = 0; i < tree->sample_count; i++) {
+    for (int32_t i = 0; i < sample_count; i++) {
         double dx = tree->param_x - tree->samples[i].x;
         double dy = tree->param_y - tree->samples[i].y;
         double d2 = dx * dx + dy * dy;
@@ -185,7 +237,7 @@ static void blend_tree3d_apply_2d(rt_blend_tree3d *tree) {
         rt_anim_blend3d_set_weight(tree->blend, tree->samples[0].blend_index, 1.0);
         return;
     }
-    for (int32_t i = 0; i < tree->sample_count; i++)
+    for (int32_t i = 0; i < sample_count; i++)
         rt_anim_blend3d_set_weight(tree->blend, tree->samples[i].blend_index, raw[i] / total);
 }
 
@@ -204,8 +256,7 @@ static void blend_tree3d_finalize(void *obj) {
     rt_blend_tree3d *tree = (rt_blend_tree3d *)obj;
     if (!tree)
         return;
-    blend_tree3d_release_local(tree->blend);
-    tree->blend = NULL;
+    blend_tree3d_release_blend_ref(&tree->blend);
 }
 
 /// @brief Shared constructor for 1D/2D trees: wrap a new AnimBlend3D bound to @p skeleton.
@@ -228,6 +279,8 @@ static void *blend_tree3d_new(void *skeleton, int32_t dimensions) {
     memset(tree, 0, sizeof(*tree));
     tree->dimensions = dimensions == 2 ? 2 : 1;
     tree->blend = blend;
+    for (int32_t i = 0; i < RT_BLENDTREE3D_MAX_SAMPLES; i++)
+        tree->samples[i].blend_index = -1;
     rt_obj_set_finalizer(tree, blend_tree3d_finalize);
     return tree;
 }
@@ -248,8 +301,9 @@ void *rt_blend_tree3d_new_2d(void *skeleton) {
 int64_t rt_blend_tree3d_add_sample(void *obj, void *animation, double x, double y) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     int64_t blend_index;
-    if (!tree || !rt_g3d_has_class(animation, RT_G3D_ANIMATION3D_CLASS_ID))
+    if (!tree || !tree->blend || !rt_g3d_has_class(animation, RT_G3D_ANIMATION3D_CLASS_ID))
         return -1;
+    blend_tree3d_repair_sample_count(tree);
     if (tree->sample_count >= RT_BLENDTREE3D_MAX_SAMPLES)
         return -1;
     blend_index = rt_anim_blend3d_add_state(tree->blend, NULL, animation);
@@ -268,6 +322,7 @@ void rt_blend_tree3d_set_param(void *obj, double x, double y) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     if (!tree)
         return;
+    blend_tree3d_repair_sample_count(tree);
     tree->param_x = blend_tree3d_finite_or_zero(x);
     tree->param_y = blend_tree3d_finite_or_zero(y);
     blend_tree3d_apply_weights(tree);
@@ -278,6 +333,7 @@ void rt_blend_tree3d_update(void *obj, double dt) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     if (!tree || !tree->blend)
         return;
+    blend_tree3d_repair_sample_count(tree);
     if (!isfinite(dt) || dt < 0.0)
         dt = 0.0;
     blend_tree3d_apply_weights(tree);
@@ -287,7 +343,7 @@ void rt_blend_tree3d_update(void *obj, double dt) {
 /// @brief Number of samples currently registered (0 for an invalid handle).
 int64_t rt_blend_tree3d_get_sample_count(void *obj) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
-    return tree ? tree->sample_count : 0;
+    return tree ? blend_tree3d_safe_sample_count(tree) : 0;
 }
 
 /// @brief Borrow the underlying AnimBlend3D handle (not retained; NULL if invalid).
