@@ -459,6 +459,10 @@ static void node_anim_slerp_quat(const float *a, const float *b, double alpha, f
     double dot;
     if (!a || !b || !out)
         return;
+    if (!isfinite(alpha) || alpha < 0.0)
+        alpha = 0.0;
+    else if (alpha > 1.0)
+        alpha = 1.0;
     memcpy(q0, a, sizeof(q0));
     memcpy(q1, b, sizeof(q1));
     node_anim_normalize_quat(q0);
@@ -570,6 +574,8 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
         double h10 = u3 - 2.0 * u2 + alpha;
         double h01 = -2.0 * u3 + 3.0 * u2;
         double h11 = u3 - u2;
+        if (!isfinite(dt) || dt < 0.0)
+            dt = 0.0;
         for (int32_t i = 0; i < channel->value_width; i++) {
             size_t ai = (size_t)lo * (size_t)channel->value_width + (size_t)i;
             size_t bi = (size_t)hi * (size_t)channel->value_width + (size_t)i;
@@ -735,6 +741,8 @@ static void node_anim_apply_channel(rt_scene_node3d *root,
     width = channel->value_width;
     if (width <= 0)
         return;
+    if ((size_t)width > SIZE_MAX / sizeof(float))
+        return;
     if (width > (int32_t)(sizeof(stack_values) / sizeof(stack_values[0]))) {
         values = (float *)calloc((size_t)width, sizeof(float));
         if (!values)
@@ -799,6 +807,7 @@ static void node_anim_apply_channel(rt_scene_node3d *root,
 ///                 ignored so a stalled timer cannot corrupt the playback position.
 void node_animator_update(rt_node_animator3d *animator, double dt) {
     rt_node_animation3d *clip;
+    double step;
     if (!animator || !animator->playing || animator->animation_count <= 0 || !animator->root)
         return;
     if (animator->current_animation < 0 || animator->current_animation >= animator->animation_count)
@@ -806,8 +815,10 @@ void node_animator_update(rt_node_animator3d *animator, double dt) {
     clip = animator->animations[animator->current_animation];
     if (!clip)
         return;
-    if (isfinite(dt) && dt > 0.0)
-        animator->time += dt * (isfinite(animator->speed) ? animator->speed : 1.0);
+    step = (isfinite(dt) && dt > 0.0) ? dt * (isfinite(animator->speed) ? animator->speed : 1.0)
+                                      : 0.0;
+    if (isfinite(step))
+        animator->time += step;
     if (!isfinite(animator->time))
         animator->time = 0.0;
     if (clip->duration > 0.0) {

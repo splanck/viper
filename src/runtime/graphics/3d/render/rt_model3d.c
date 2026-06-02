@@ -237,6 +237,10 @@ static char *model_strdup_or(const char *value, const char *fallback) {
     if (!src)
         src = "";
     len = strlen(src);
+    if (len == SIZE_MAX) {
+        rt_trap("Model3D.Load: scene name too long");
+        return NULL;
+    }
     copy = (char *)malloc(len + 1);
     if (!copy) {
         rt_trap("Model3D.Load: scene name allocation failed");
@@ -330,6 +334,8 @@ static int model_append_ref(
     void ***arr, int32_t *count, int32_t *cap, void *obj, const char *trap_msg) {
     if (!obj)
         return 1;
+    if (!arr || !count || !cap || *count < 0 || *count >= INT32_MAX)
+        return 0;
     if (!model_grow_array(arr, cap, *count + 1)) {
         rt_trap(trap_msg);
         return 0;
@@ -346,6 +352,8 @@ static int model_append_unique_ref(
     void ***arr, int32_t *count, int32_t *cap, void *obj, const char *trap_msg) {
     if (!obj)
         return 1;
+    if (!arr || !count || !cap || *count < 0)
+        return 0;
     for (int32_t i = 0; i < *count; i++) {
         if ((*arr)[i] == obj)
             return 1;
@@ -672,7 +680,6 @@ static int model_collect_template_refs(rt_model3d *model) {
 ///   released after binding because the root's `bound_animator` slot owns the retain.
 static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root) {
     void *controller;
-    char first_state[64];
     int added_any = 0;
     if (!model || !root || root->bound_animator || model->skeleton_count <= 0 ||
         model->animation_count <= 0)
@@ -680,7 +687,6 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
     controller = rt_anim_controller3d_new(model->skeletons[0]);
     if (!controller)
         return;
-    first_state[0] = '\0';
     for (int32_t i = 0; i < model->animation_count; i++) {
         rt_string anim_name = rt_animation3d_get_name(model->animations[i]);
         const char *name = anim_name ? rt_string_cstr(anim_name) : NULL;
@@ -707,16 +713,10 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
             }
         }
         if (state_index >= 0 && !added_any) {
-            size_t len = strlen(name);
-            if (len >= sizeof(first_state))
-                len = sizeof(first_state) - 1;
-            memcpy(first_state, name, len);
-            first_state[len] = '\0';
+            rt_anim_controller3d_play(controller, state_name);
             added_any = 1;
         }
     }
-    if (added_any)
-        rt_anim_controller3d_play(controller, rt_const_cstr(first_state));
     if (added_any)
         rt_scene_node3d_bind_animator(root, controller);
     model_release_local(controller);

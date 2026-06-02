@@ -814,7 +814,7 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     int has_tangent_deltas = 0;
     for (int32_t s = 0; s < mt->shape_count; s++) {
         float w = mt->weights[s];
-        if (fabsf(w) < 1e-6f)
+        if (!isfinite(w) || fabsf(w) < 1e-6f)
             continue;
 
         const float *pd = mt->shapes[s].pos_deltas;
@@ -857,9 +857,7 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
                 n[1] = (float)((double)n[1] / len);
                 n[2] = (float)((double)n[2] / len);
             } else {
-                n[0] = 0.0f;
-                n[1] = 1.0f;
-                n[2] = 0.0f;
+                memcpy(n, m->vertices[v].normal, sizeof(float) * 3);
             }
         }
     }
@@ -876,11 +874,15 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
                 t[1] = (float)((double)t[1] / len);
                 t[2] = (float)((double)t[2] / len);
             } else {
-                t[0] = 1.0f;
-                t[1] = 0.0f;
-                t[2] = 0.0f;
+                memcpy(t, m->vertices[v].tangent, sizeof(float) * 3);
             }
         }
+    }
+
+    for (uint32_t v = 0; v < m->vertex_count; v++) {
+        if (!isfinite(morphed[v].pos[0]) || !isfinite(morphed[v].pos[1]) ||
+            !isfinite(morphed[v].pos[2]))
+            memcpy(morphed[v].pos, m->vertices[v].pos, sizeof(float) * 3);
     }
 
     if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh)) {

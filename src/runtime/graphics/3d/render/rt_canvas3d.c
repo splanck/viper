@@ -35,6 +35,7 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
+#include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include "rt_time.h"
 #include "rt_trap.h"
@@ -3572,7 +3573,9 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     /* Pass through bone palette for GPU skinning (MTL-09) */
     dd->cmd.bone_palette = mesh->bone_palette;
     dd->cmd.prev_bone_palette = prev_bone_palette ? prev_bone_palette : mesh->prev_bone_palette;
-    dd->cmd.bone_count = mesh->bone_count;
+    dd->cmd.bone_count = mesh->bone_palette && mesh->bone_count > 0 ? mesh->bone_count : 0;
+    if (dd->cmd.bone_count > VGFX3D_MAX_BONES)
+        dd->cmd.bone_count = VGFX3D_MAX_BONES;
 
     /* GPU morph payloads are supplied by DrawMeshMorphed via transient mesh fields.
      * CPU morph paths leave these null. */
@@ -3696,7 +3699,9 @@ static void canvas3d_build_instanced_base_cmd(rt_mesh3d *mesh,
     canvas3d_fill_material_cmd(mat, base_cmd);
     base_cmd->bone_palette = mesh->bone_palette;
     base_cmd->prev_bone_palette = mesh->prev_bone_palette;
-    base_cmd->bone_count = mesh->bone_count;
+    base_cmd->bone_count = mesh->bone_palette && mesh->bone_count > 0 ? mesh->bone_count : 0;
+    if (base_cmd->bone_count > VGFX3D_MAX_BONES)
+        base_cmd->bone_count = VGFX3D_MAX_BONES;
     base_cmd->morph_deltas = mesh->morph_deltas;
     base_cmd->morph_normal_deltas = mesh->morph_normal_deltas;
     base_cmd->morph_weights = mesh->morph_weights;

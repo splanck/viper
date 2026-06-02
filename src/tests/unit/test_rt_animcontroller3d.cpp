@@ -604,6 +604,30 @@ static void test_controller_rejects_wrong_animation_handles() {
                 "Animation3D getters/setters reject non-Animation3D handles");
 }
 
+static void test_controller_long_state_names_use_canonical_lookup() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *clip = make_anim("long", 0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0);
+    void *controller = rt_anim_controller3d_new(skel);
+    char long_name[128];
+    std::memset(long_name, 'b', sizeof(long_name));
+    long_name[sizeof(long_name) - 1] = '\0';
+
+    EXPECT_TRUE(rt_anim_controller3d_add_state(controller, rt_const_cstr(long_name), clip) == 0,
+                "AnimController3D accepts a long state name");
+    EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr(long_name)) != 0,
+                "AnimController3D.Play canonicalizes long names");
+    EXPECT_TRUE(rt_anim_controller3d_is_state_playing(controller, rt_const_cstr(long_name)) != 0,
+                "AnimController3D.IsStatePlaying canonicalizes long names");
+    rt_anim_controller3d_update(controller, 0.5);
+    EXPECT_NEAR(rt_mat4_get(rt_anim_controller3d_get_bone_matrix(controller, 0), 0, 3),
+                2.0,
+                0.1,
+                "AnimController3D long-name state drives animation");
+}
+
 static void test_controller_bone_count_lod_freezes_distal_bones() {
     /* 4-bone chain, identity binds: root(0) - b1(1) - b2(2) - foot(3). */
     void *skel = rt_skeleton3d_new();
@@ -665,6 +689,7 @@ int main() {
     test_controller_bone_count_lod_freezes_distal_bones();
     test_controller_events_cover_full_loops_and_reverse();
     test_controller_rejects_wrong_animation_handles();
+    test_controller_long_state_names_use_canonical_lookup();
 
     printf("AnimController3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

@@ -310,6 +310,10 @@ static void ik3d_quat_from_matrix_rows(float r00,
 static void ik3d_quat_slerp(const float *a, const float *b, float t, float *out) {
     float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
     float nb[4] = {b[0], b[1], b[2], b[3]};
+    if (!isfinite(t) || t < 0.0f)
+        t = 0.0f;
+    else if (t > 1.0f)
+        t = 1.0f;
     if (dot < 0.0f) {
         dot = -dot;
         nb[0] = -nb[0];

@@ -140,6 +140,34 @@ static void test_animation_keyframes_are_sorted() {
     EXPECT_NEAR(mv->m[3], 5.0, 0.1, "Out-of-order keyframes sample at sorted midpoint");
 }
 
+static void test_animation_near_duplicate_keyframes_replace_existing_sample() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *anim = rt_animation3d_new(rt_const_cstr("dedupe"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, 0, 0.0, rt_vec3_new(1.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, 0, 0.0000001, rt_vec3_new(2.0, 0.0, 0.0), rot, scl);
+
+    rt_animation3d *impl = (rt_animation3d *)anim;
+    EXPECT_TRUE(impl->channel_count == 1, "Near-duplicate keyframes keep one channel");
+    EXPECT_TRUE(impl->channels[0].keyframe_count == 1,
+                "Near-duplicate keyframes replace the existing sample");
+
+    void *player = rt_anim_player3d_new(skel);
+    rt_anim_player3d_play(player, anim);
+    rt_anim_player3d_update(player, 0.0);
+
+    typedef struct {
+        double m[16];
+    } mat4_view;
+
+    mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    EXPECT_NEAR(mv->m[3], 2.0, 0.05, "Near-duplicate keyframe keeps latest TRS values");
+}
+
 static void test_anim_player_retains_inputs() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -240,6 +268,17 @@ static void test_player_loop() {
     rt_anim_player3d_update(player, 1.5);
     EXPECT_TRUE(rt_anim_player3d_is_playing(player) == 1, "Still playing after loop wrap");
     EXPECT_NEAR(rt_anim_player3d_get_time(player), 0.5, 0.01, "Time wraps to 0.5");
+
+    rt_anim_player3d_set_time(player, 2.25);
+    EXPECT_NEAR(rt_anim_player3d_get_time(player),
+                0.25,
+                0.01,
+                "Looping SetTime wraps positive seeks");
+    rt_anim_player3d_set_time(player, -0.25);
+    EXPECT_NEAR(rt_anim_player3d_get_time(player),
+                0.75,
+                0.01,
+                "Looping SetTime wraps negative seeks");
 }
 
 static void test_player_reverse_timing_and_bad_handles() {
@@ -265,6 +304,14 @@ static void test_player_reverse_timing_and_bad_handles() {
                 0.75,
                 0.01,
                 "Reverse looping playback wraps negative time");
+
+    rt_anim_player3d_set_speed(player, 1.0);
+    rt_anim_player3d_set_time(player, 0.25);
+    rt_anim_player3d_update(player, -1.0);
+    EXPECT_NEAR(rt_anim_player3d_get_time(player),
+                0.25,
+                0.01,
+                "AnimPlayer3D ignores negative delta time");
 
     rt_animation3d_set_looping(anim, 0);
     rt_anim_player3d_play(player, anim);
@@ -583,6 +630,38 @@ static void test_anim_blend_dt_zero_and_looping_defaults() {
                 "AnimBlend3D state inherits non-looping animation default");
 }
 
+static void test_anim_blend_long_state_names_use_canonical_lookup() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *anim = rt_animation3d_new(rt_const_cstr("long"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, 0, 0.0, rt_vec3_new(3.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, 0, 1.0, rt_vec3_new(3.0, 0.0, 0.0), rot, scl);
+
+    char long_name[128];
+    std::memset(long_name, 'a', sizeof(long_name));
+    long_name[sizeof(long_name) - 1] = '\0';
+
+    void *blend = rt_anim_blend3d_new(skel);
+    int64_t state = rt_anim_blend3d_add_state(blend, rt_const_cstr(long_name), anim);
+    EXPECT_TRUE(state == 0, "AnimBlend3D accepts a long state name");
+    rt_anim_blend3d_set_weight_by_name(blend, rt_const_cstr(long_name), 1.0);
+    rt_anim_blend3d_update(blend, 0.0);
+
+    rt_anim_blend3d *impl = (rt_anim_blend3d *)blend;
+    EXPECT_NEAR(impl->states[0].weight,
+                1.0,
+                0.001,
+                "AnimBlend3D.SetWeightByName canonicalizes long names");
+    EXPECT_NEAR(impl->bone_palette[3],
+                3.0,
+                0.05,
+                "AnimBlend3D long-name lookup contributes to the blended pose");
+}
+
 static void test_animation_retarget_scales_by_proportion() {
     /* Source skeleton: arm offset 1 unit from root (bone length 1). */
     void *src = rt_skeleton3d_new();
@@ -738,6 +817,7 @@ int main() {
     test_animation_create();
     test_animation_keyframes();
     test_animation_keyframes_are_sorted();
+    test_animation_near_duplicate_keyframes_replace_existing_sample();
     test_anim_player_retains_inputs();
     test_player_create();
     test_skeleton_freezes_after_player_creation();
@@ -757,6 +837,7 @@ int main() {
     test_crossfade_falls_back_to_bind_pose_translation();
     test_crossfade_blends_target_only_channels();
     test_anim_blend_dt_zero_and_looping_defaults();
+    test_anim_blend_long_state_names_use_canonical_lookup();
     test_animation_retarget_matches_bone_names();
     test_animation_retarget_scales_by_proportion();
     test_animation_retarget_maps_humanoid_roles();

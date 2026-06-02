@@ -3020,7 +3020,7 @@ static void gltf_normalize_joint_influences(float *weights) {
     if (!weights)
         return;
     for (int i = 0; i < 4; i++) {
-        if (weights[i] > 0.0f)
+        if (isfinite(weights[i]) && weights[i] > 0.0f)
             sum += weights[i];
         else
             weights[i] = 0.0f;
@@ -4166,6 +4166,15 @@ static void gltf_import_primitive_morph_targets(void *root,
         int has_norm = gltf_get_accessor_view(root, norm_acc, buffers, buf_count, &norm_view);
         int has_tangent =
             gltf_get_accessor_view(root, tangent_acc, buffers, buf_count, &tangent_view);
+        if (has_pos && (!gltf_accessor_has_payload(&pos_view) ||
+                        !gltf_accessor_is_f32_components(&pos_view, 3, 3)))
+            has_pos = 0;
+        if (has_norm && (!gltf_accessor_has_payload(&norm_view) ||
+                         !gltf_accessor_is_f32_components(&norm_view, 3, 3)))
+            has_norm = 0;
+        if (has_tangent && (!gltf_accessor_has_payload(&tangent_view) ||
+                            !gltf_accessor_is_f32_components(&tangent_view, 3, 4)))
+            has_tangent = 0;
         char fallback_name[64];
         const char *name;
         int64_t shape;
@@ -5631,12 +5640,20 @@ static double gltf_preload_target_weight(
     const char *json, size_t json_len, size_t mesh_start, size_t mesh_end, int target_index) {
     size_t weights_start;
     size_t weights_end;
+    double weight;
     if (!gltf_json_object_find_value(
             json, json_len, mesh_start, mesh_end, "weights", &weights_start, &weights_end) ||
         weights_start >= weights_end || json[weights_start] != '[')
         return 0.0;
-    return gltf_json_array_get_number(
+    weight = gltf_json_array_get_number(
         json, json_len, weights_start, weights_end, target_index, 0.0);
+    if (!isfinite(weight))
+        return 0.0;
+    if (weight < -1.0)
+        return -1.0;
+    if (weight > 1.0)
+        return 1.0;
+    return weight;
 }
 
 /// @brief Copy one morph channel (vec3 deltas) from an accessor view into an owned float array.
@@ -5699,7 +5716,10 @@ static int gltf_preload_pack_morph_pod(rt_gltf_preload_bundle *bundle,
         !gltf_checked_mul_size(shape_count, GLTF_PRELOAD_MORPH_POD_RECORD_SIZE, &record_bytes))
         return 1;
     for (size_t i = 0; i < shape_count; i++) {
-        size_t name_len = shapes[i].name ? strlen(shapes[i].name) + 1u : 1u;
+        size_t name_len = shapes[i].name ? strlen(shapes[i].name) : 0u;
+        if (name_len == SIZE_MAX)
+            return 1;
+        name_len += 1u;
         if (!gltf_checked_add_size(names_bytes, name_len, &names_bytes))
             return 1;
         if ((shapes[i].flags & GLTF_PRELOAD_MORPH_POD_HAS_POSITIONS) != 0 &&
@@ -5848,7 +5868,7 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                          views,
                                                          view_count,
                                                          &pos_view) &&
-                      pos_view.comp_count >= 3;
+                      pos_view.comp_type == 5126 && pos_view.comp_count >= 3;
             has_norm = gltf_preload_resolve_accessor_view(accessors,
                                                           accessor_count,
                                                           norm_acc,
@@ -5857,7 +5877,7 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                           views,
                                                           view_count,
                                                           &norm_view) &&
-                       norm_view.comp_count >= 3;
+                       norm_view.comp_type == 5126 && norm_view.comp_count >= 3;
             has_tangent = gltf_preload_resolve_accessor_view(accessors,
                                                              accessor_count,
                                                              tangent_acc,
@@ -5866,8 +5886,13 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                              views,
                                                              view_count,
                                                              &tangent_view) &&
-                          tangent_view.comp_count >= 3;
+                          tangent_view.comp_type == 5126 && tangent_view.comp_count >= 3;
             if (has_pos || has_norm || has_tangent) {
+                if (shape_count >= SIZE_MAX / sizeof(*shapes)) {
+                    gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                    ok = 0;
+                    goto done;
+                }
                 gltf_preload_morph_shape_t *grown = (gltf_preload_morph_shape_t *)realloc(
                     shapes, (shape_count + 1u) * sizeof(*shapes));
                 if (!grown) {
@@ -7300,7 +7325,7 @@ static void gltf_apply_skin_to_mesh(void *mesh_obj, const gltf_skin_t *skin) {
         for (int i = 0; i < 4; i++) {
             uint8_t joint = v->bone_indices[i];
             if (joint < skin->joint_count && skin->joint_to_bone[joint] >= 0 &&
-                v->bone_weights[i] > 0.0f) {
+                isfinite(v->bone_weights[i]) && v->bone_weights[i] > 0.0f) {
                 bones[i] = skin->joint_to_bone[joint];
                 weights[i] = v->bone_weights[i];
                 sum += weights[i];
@@ -7444,8 +7469,13 @@ static int gltf_anim_insert_time(double **times, int32_t *count, int32_t *capaci
 ///          `key_index * 3 + 1`. STEP and LINEAR samplers store one entry per key and
 ///          map identity.
 static int32_t gltf_curve_output_index(const gltf_anim_curve_t *curve, int32_t key_index) {
-    if (curve && curve->interpolation && strcmp(curve->interpolation, "CUBICSPLINE") == 0)
+    if (key_index < 0)
+        return -1;
+    if (curve && curve->interpolation && strcmp(curve->interpolation, "CUBICSPLINE") == 0) {
+        if (key_index > (INT32_MAX - 1) / 3)
+            return -1;
         return key_index * 3 + 1;
+    }
     return key_index;
 }
 
@@ -7581,6 +7611,10 @@ static void gltf_slerp_quat(const float *a, const float *b, double alpha, float 
     double dot;
     if (!a || !b || !out)
         return;
+    if (!isfinite(alpha) || alpha < 0.0)
+        alpha = 0.0;
+    else if (alpha > 1.0)
+        alpha = 1.0;
     memcpy(q0, a, sizeof(q0));
     memcpy(q1, b, sizeof(q1));
     gltf_normalize_sample_if_quat(q0, 4);
@@ -7643,8 +7677,13 @@ static void gltf_sample_curve(const gltf_anim_curve_t *curve,
                               float *out,
                               int32_t components) {
     int32_t key_count;
+    int32_t lo;
+    int32_t hi;
+    double t0;
+    double t1;
+    double alpha;
     if (!curve || !curve->valid || !out || components <= 0 || curve->input.count <= 0 ||
-        !isfinite(time))
+        components > 4 || !isfinite(time))
         return;
     key_count = curve->input.count;
     if (curve->interpolation && strcmp(curve->interpolation, "CUBICSPLINE") == 0 &&
@@ -7659,55 +7698,69 @@ static void gltf_sample_curve(const gltf_anim_curve_t *curve,
         gltf_normalize_sample_if_quat(out, components);
         return;
     }
-    for (int32_t i = 1; i < key_count; i++) {
-        double t0 = gltf_curve_time(&curve->input, i - 1);
-        double t1 = gltf_curve_time(&curve->input, i);
-        if (time <= t1 + 1e-6) {
-            float a[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-            float b[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-            double alpha = t1 > t0 ? (time - t0) / (t1 - t0) : 0.0;
-            if (alpha < 0.0)
-                alpha = 0.0;
-            if (alpha > 1.0)
-                alpha = 1.0;
-            gltf_curve_read_value(curve, i - 1, a, components);
-            if (curve->interpolation && strcmp(curve->interpolation, "STEP") == 0) {
-                memcpy(out, a, (size_t)components * sizeof(float));
+    if (time >= gltf_curve_time(&curve->input, key_count - 1)) {
+        gltf_curve_read_value(curve, key_count - 1, out, components);
+        gltf_normalize_sample_if_quat(out, components);
+        return;
+    }
+    lo = 0;
+    hi = key_count - 1;
+    while (hi - lo > 1) {
+        int32_t mid = lo + (hi - lo) / 2;
+        if (gltf_curve_time(&curve->input, mid) <= time)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    t0 = gltf_curve_time(&curve->input, lo);
+    t1 = gltf_curve_time(&curve->input, hi);
+    alpha = t1 > t0 ? (time - t0) / (t1 - t0) : 0.0;
+    if (!isfinite(alpha) || alpha < 0.0)
+        alpha = 0.0;
+    if (alpha > 1.0)
+        alpha = 1.0;
+    {
+        float a[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        float b[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        gltf_curve_read_value(curve, lo, a, components);
+        if (curve->interpolation && strcmp(curve->interpolation, "STEP") == 0) {
+            memcpy(out, a, (size_t)components * sizeof(float));
+            return;
+        }
+        if (curve->interpolation && strcmp(curve->interpolation, "CUBICSPLINE") == 0) {
+            float out_tangent0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            float in_tangent1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            double dt = t1 - t0;
+            double t2 = alpha * alpha;
+            double t3 = t2 * alpha;
+            double h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+            double h10 = t3 - 2.0 * t2 + alpha;
+            double h01 = -2.0 * t3 + 3.0 * t2;
+            double h11 = t3 - t2;
+            if (lo > (INT32_MAX - 2) / 3 || hi > INT32_MAX / 3)
                 return;
+            gltf_curve_read_output_value(curve, lo * 3 + 2, out_tangent0, components);
+            gltf_curve_read_output_value(curve, hi * 3, in_tangent1, components);
+            gltf_curve_read_value(curve, hi, b, components);
+            if (!isfinite(dt))
+                dt = 0.0;
+            for (int c = 0; c < components; c++) {
+                out[c] = (float)(h00 * a[c] + h10 * dt * out_tangent0[c] + h01 * b[c] +
+                                 h11 * dt * in_tangent1[c]);
             }
-            if (curve->interpolation && strcmp(curve->interpolation, "CUBICSPLINE") == 0) {
-                float out_tangent0[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-                float in_tangent1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-                double dt = t1 - t0;
-                double t2 = alpha * alpha;
-                double t3 = t2 * alpha;
-                double h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
-                double h10 = t3 - 2.0 * t2 + alpha;
-                double h01 = -2.0 * t3 + 3.0 * t2;
-                double h11 = t3 - t2;
-                gltf_curve_read_output_value(curve, (i - 1) * 3 + 2, out_tangent0, components);
-                gltf_curve_read_output_value(curve, i * 3, in_tangent1, components);
-                gltf_curve_read_value(curve, i, b, components);
-                for (int c = 0; c < components; c++) {
-                    out[c] = (float)(h00 * a[c] + h10 * dt * out_tangent0[c] + h01 * b[c] +
-                                     h11 * dt * in_tangent1[c]);
-                }
-                gltf_normalize_sample_if_quat(out, components);
-                return;
-            }
-            gltf_curve_read_value(curve, i, b, components);
-            if (components == 4) {
-                gltf_slerp_quat(a, b, alpha, out);
-                return;
-            }
-            for (int c = 0; c < components; c++)
-                out[c] = (float)(a[c] + (b[c] - a[c]) * alpha);
             gltf_normalize_sample_if_quat(out, components);
             return;
         }
+        gltf_curve_read_value(curve, hi, b, components);
+        if (components == 4) {
+            gltf_slerp_quat(a, b, alpha, out);
+            return;
+        }
+        for (int c = 0; c < components; c++)
+            out[c] = (float)(a[c] + (b[c] - a[c]) * alpha);
+        gltf_normalize_sample_if_quat(out, components);
+        return;
     }
-    gltf_curve_read_value(curve, key_count - 1, out, components);
-    gltf_normalize_sample_if_quat(out, components);
 }
 
 /// @brief Parse the glTF "animations" array into engine `Animation3D` objects.
@@ -8074,6 +8127,8 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
             value_count = (int64_t)input.count * (int64_t)width;
             if (value_count <= 0 || value_count > INT32_MAX)
                 continue;
+            if (cubic && value_count > INT32_MAX / 3)
+                continue;
             if ((size_t)input.count > SIZE_MAX / sizeof(double) ||
                 (size_t)value_count > SIZE_MAX / sizeof(float))
                 continue;
@@ -8091,7 +8146,9 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
                 continue;
             }
             for (int32_t ki = 0; ki < input.count; ki++) {
-                int32_t source_key = cubic ? ki * 3 + 1 : ki;
+                int32_t source_key = cubic ? (ki <= (INT32_MAX - 1) / 3 ? ki * 3 + 1 : -1) : ki;
+                if (source_key < 0)
+                    continue;
                 times[ki] = gltf_curve_time(&input, ki);
                 if (times[ki] > duration)
                     duration = times[ki];

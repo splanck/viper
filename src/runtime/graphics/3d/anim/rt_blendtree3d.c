@@ -168,6 +168,8 @@ static void blend_tree3d_apply_2d(rt_blend_tree3d *tree) {
         double dy = tree->param_y - tree->samples[i].y;
         double d2 = dx * dx + dy * dy;
         raw[i] = 0.0;
+        if (!isfinite(d2))
+            continue;
         if (d2 <= 1e-12) {
             exact = i;
             break;
@@ -276,6 +278,8 @@ void rt_blend_tree3d_update(void *obj, double dt) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     if (!tree || !tree->blend)
         return;
+    if (!isfinite(dt) || dt < 0.0)
+        dt = 0.0;
     blend_tree3d_apply_weights(tree);
     rt_anim_blend3d_update(tree->blend, dt);
 }

@@ -1963,6 +1963,7 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
     const float *anim_palette = NULL;
     const float *anim_prev_palette = NULL;
     int32_t anim_bone_count = 0;
+    int32_t anim_prev_bone_count = 0;
     int32_t mesh_bone_count = ((rt_mesh3d *)draw_mesh)->bone_count;
 
     if (effective_animator) {
@@ -1972,7 +1973,10 @@ static void scene3d_submit_node_draw(rt_scene_node3d *current,
             anim_palette =
                 rt_anim_controller3d_get_final_palette_data(effective_animator, &anim_bone_count);
             anim_prev_palette =
-                rt_anim_controller3d_get_previous_palette_data(effective_animator, &anim_bone_count);
+                rt_anim_controller3d_get_previous_palette_data(effective_animator,
+                                                               &anim_prev_bone_count);
+            if (anim_prev_bone_count <= 0 || anim_prev_bone_count < anim_bone_count)
+                anim_prev_palette = NULL;
         }
     }
     if (anim_palette && anim_bone_count > 0 && mesh_bone_count > 0) {

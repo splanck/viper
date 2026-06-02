@@ -297,8 +297,12 @@ static int controller_rebuild_state_name_index(rt_anim_controller3d *controller)
 /// @brief Find a state by name, using an open-addressed name index for larger controllers.
 /// @return State index, or -1 if `name` is NULL/empty or no match.
 static int32_t controller_find_state(rt_anim_controller3d *controller, rt_string name) {
-    const char *target = name ? rt_string_cstr(name) : NULL;
-    if (!controller || !target)
+    char target_buf[RT_ANIM_CONTROLLER3D_STATE_NAME_MAX];
+    const char *target = target_buf;
+    if (!controller || !name)
+        return -1;
+    controller_copy_name(target_buf, sizeof(target_buf), name);
+    if (target_buf[0] == '\0')
         return -1;
     if (controller->state_count >= 16) {
         uint64_t hash = controller_hash_name_cstr(target);
@@ -615,6 +619,10 @@ static void controller_quat_from_matrix_rows(double m00,
 static void controller_quat_slerp_float(const float *a, const float *b, float t, float *out) {
     float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
     float nb[4] = {b[0], b[1], b[2], b[3]};
+    if (!isfinite(t) || t <= 0.0f)
+        t = 0.0f;
+    else if (t >= 1.0f)
+        t = 1.0f;
     if (dot < 0.0f) {
         dot = -dot;
         nb[0] = -nb[0];
@@ -804,7 +812,9 @@ static void controller_sample_channel_trs(const vgfx3d_anim_channel_t *channel,
                                           float *out_pos,
                                           float *out_rot,
                                           float *out_scl) {
-    if (!channel || channel->keyframe_count <= 0) {
+    if (!isfinite(time))
+        time = 0.0f;
+    if (!channel || channel->keyframe_count <= 0 || !channel->keyframes) {
         memcpy(out_pos, fallback_pos, 3 * sizeof(float));
         memcpy(out_rot, fallback_rot, 4 * sizeof(float));
         memcpy(out_scl, fallback_scl, 3 * sizeof(float));
@@ -821,21 +831,40 @@ static void controller_sample_channel_trs(const vgfx3d_anim_channel_t *channel,
         return;
     }
 
+    if (time <= channel->keyframes[0].time) {
+        controller_keyframe_effective_trs(&channel->keyframes[0],
+                                          fallback_pos,
+                                          fallback_rot,
+                                          fallback_scl,
+                                          out_pos,
+                                          out_rot,
+                                          out_scl);
+        return;
+    }
+    if (time >= channel->keyframes[channel->keyframe_count - 1].time) {
+        controller_keyframe_effective_trs(&channel->keyframes[channel->keyframe_count - 1],
+                                          fallback_pos,
+                                          fallback_rot,
+                                          fallback_scl,
+                                          out_pos,
+                                          out_rot,
+                                          out_scl);
+        return;
+    }
+
     int32_t k0 = 0;
-    int32_t k1 = 1;
-    for (int32_t i = 0; i < channel->keyframe_count - 1; i++) {
-        if (channel->keyframes[i + 1].time >= time) {
-            k0 = i;
-            k1 = i + 1;
-            break;
-        }
-        k0 = i;
-        k1 = i + 1;
+    int32_t k1 = channel->keyframe_count - 1;
+    while (k1 - k0 > 1) {
+        int32_t mid = k0 + (k1 - k0) / 2;
+        if (channel->keyframes[mid].time <= time)
+            k0 = mid;
+        else
+            k1 = mid;
     }
     float t0 = channel->keyframes[k0].time;
     float t1 = channel->keyframes[k1].time;
     float alpha = (t1 > t0) ? (time - t0) / (t1 - t0) : 0.0f;
-    if (alpha < 0.0f)
+    if (!isfinite(alpha) || alpha < 0.0f)
         alpha = 0.0f;
     if (alpha > 1.0f)
         alpha = 1.0f;
@@ -1362,8 +1391,12 @@ int64_t rt_anim_controller3d_add_state(void *obj, rt_string name, void *animatio
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     rt_animation3d *anim = animation3d_checked(animation);
     anim_controller3d_state_t *state;
+    char canonical_name[RT_ANIM_CONTROLLER3D_STATE_NAME_MAX];
     int32_t existing;
     if (!controller || !anim)
+        return -1;
+    controller_copy_name(canonical_name, sizeof(canonical_name), name);
+    if (canonical_name[0] == '\0')
         return -1;
     existing = controller_find_state(controller, name);
     if (existing >= 0)
@@ -1377,7 +1410,7 @@ int64_t rt_anim_controller3d_add_state(void *obj, rt_string name, void *animatio
     }
     state = &controller->states[controller->state_count];
     memset(state, 0, sizeof(*state));
-    controller_copy_name(state->name, sizeof(state->name), name);
+    memcpy(state->name, canonical_name, sizeof(state->name));
     state->animation = anim;
     rt_obj_retain_maybe(state->animation);
     state->speed = 1.0f;
@@ -1602,9 +1635,14 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
                 double cycle_dy = (double)end_global[7] - (double)start_global[7];
                 double cycle_dz = (double)end_global[11] - (double)start_global[11];
                 double sign = forward_cycles ? 1.0 : -1.0;
-                dx += sign * (double)cycle_count * cycle_dx;
-                dy += sign * (double)cycle_count * cycle_dy;
-                dz += sign * (double)cycle_count * cycle_dz;
+                double add_x = sign * (double)cycle_count * cycle_dx;
+                double add_y = sign * (double)cycle_count * cycle_dy;
+                double add_z = sign * (double)cycle_count * cycle_dz;
+                if (isfinite(add_x) && isfinite(add_y) && isfinite(add_z)) {
+                    dx += add_x;
+                    dy += add_y;
+                    dz += add_z;
+                }
 
                 float start_pos[3], start_rot_f[4], start_scl[3];
                 float end_pos[3], end_rot_f[4], end_scl[3];
@@ -1625,9 +1663,11 @@ void rt_anim_controller3d_update(void *obj, double delta_time) {
             }
         }
 
-        controller->root_motion_delta[0] += dx;
-        controller->root_motion_delta[1] += dy;
-        controller->root_motion_delta[2] += dz;
+        if (isfinite(dx) && isfinite(dy) && isfinite(dz)) {
+            controller->root_motion_delta[0] += dx;
+            controller->root_motion_delta[1] += dy;
+            controller->root_motion_delta[2] += dz;
+        }
         controller_quat_mul(controller->root_motion_rotation, delta_rot, accumulated_rot);
         memcpy(controller->root_motion_rotation, accumulated_rot, sizeof(accumulated_rot));
     }

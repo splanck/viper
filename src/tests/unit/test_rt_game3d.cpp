@@ -3700,6 +3700,26 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_animator_event_name(animator, 0)), "step") ==
                     0,
                 "Animator3D.eventName returns the captured event");
+
+    const int32_t kGame3DAnimEventMax = 64;
+    void *overflow_controller = make_game3d_test_controller(1.0, 0.25);
+    for (int32_t i = 0; i < kGame3DAnimEventMax + 8; ++i) {
+        char event_name[32];
+        std::snprintf(event_name, sizeof(event_name), "overflow%d", i);
+        rt_anim_controller3d_add_event(
+            overflow_controller, rt_const_cstr("walk"), 0.1, rt_const_cstr(event_name));
+    }
+    void *overflow_animator = rt_game3d_animator_new(overflow_controller);
+    rt_game3d_animator_play(overflow_animator, rt_const_cstr("walk"));
+    rt_game3d_animator_update(overflow_animator, 0.2);
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(overflow_animator),
+                  kGame3DAnimEventMax,
+                  "Animator3D caps frame events at the public buffer size");
+    rt_game3d_animator_update(overflow_animator, 0.0);
+    EXPECT_EQ_INT(rt_game3d_animator_event_count(overflow_animator),
+                  0,
+                  "Animator3D drains capped controller events between frames");
+
     EXPECT_TRUE(rt_game3d_animator_crossfade(animator, rt_const_cstr("idle"), 0.1) != 0,
                 "Animator3D.crossfade switches to another state");
     EXPECT_TRUE(rt_game3d_animator_is_playing(animator, rt_const_cstr("idle")) != 0,

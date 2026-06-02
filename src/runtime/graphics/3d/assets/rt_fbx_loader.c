@@ -2825,28 +2825,47 @@ static int fbx_anim_curve_view_valid(const fbx_anim_curve_view_t *curve) {
 static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
                                    int64_t fbx_time,
                                    double fallback) {
-    if (!fbx_anim_curve_view_valid(curve))
+    uint32_t lo;
+    uint32_t hi;
+    int64_t t0;
+    int64_t t1;
+    double v0;
+    double v1;
+    double a;
+    if (!fbx_anim_curve_has_data(curve))
+        return fallback;
+    v0 = curve->values64 ? curve->values64[0] : (double)curve->values32[0];
+    v1 = curve->values64 ? curve->values64[curve->count - 1]
+                         : (double)curve->values32[curve->count - 1];
+    if (!isfinite(v0) || !isfinite(v1))
         return fallback;
     if (fbx_time <= curve->times[0])
-        return curve->values64 ? curve->values64[0] : (double)curve->values32[0];
-    for (uint32_t i = 1; i < curve->count; i++) {
-        int64_t t0 = curve->times[i - 1];
-        int64_t t1 = curve->times[i];
-        double v0 = curve->values64 ? curve->values64[i - 1] : (double)curve->values32[i - 1];
-        double v1 = curve->values64 ? curve->values64[i] : (double)curve->values32[i];
-        if (fbx_time == t1)
-            return v1;
-        if (fbx_time < t1) {
-            double a = t1 != t0 ? (double)(fbx_time - t0) / (double)(t1 - t0) : 0.0;
-            if (a < 0.0)
-                a = 0.0;
-            if (a > 1.0)
-                a = 1.0;
-            return v0 + (v1 - v0) * a;
-        }
+        return v0;
+    if (fbx_time >= curve->times[curve->count - 1])
+        return v1;
+    lo = 0;
+    hi = curve->count - 1;
+    while (hi - lo > 1) {
+        uint32_t mid = lo + (hi - lo) / 2u;
+        if (curve->times[mid] <= fbx_time)
+            lo = mid;
+        else
+            hi = mid;
     }
-    return curve->values64 ? curve->values64[curve->count - 1]
-                           : (double)curve->values32[curve->count - 1];
+    t0 = curve->times[lo];
+    t1 = curve->times[hi];
+    if (t1 <= t0)
+        return fallback;
+    v0 = curve->values64 ? curve->values64[lo] : (double)curve->values32[lo];
+    v1 = curve->values64 ? curve->values64[hi] : (double)curve->values32[hi];
+    if (!isfinite(v0) || !isfinite(v1))
+        return fallback;
+    a = (double)(fbx_time - t0) / (double)(t1 - t0);
+    if (!isfinite(a) || a < 0.0)
+        a = 0.0;
+    if (a > 1.0)
+        a = 1.0;
+    return v0 + (v1 - v0) * a;
 }
 
 /// @brief qsort comparator for int64 keys, ascending (returns -1/0/1).
@@ -3051,7 +3070,7 @@ static double fbx_anim_compute_max_time(const fbx_anim_bone_builder_t *builders,
         for (int trs = 0; trs < 3; trs++) {
             for (int comp = 0; comp < 3; comp++) {
                 const fbx_anim_curve_view_t *curve = &builders[bone_idx].curves[trs][comp];
-                if (!fbx_anim_curve_view_valid(curve))
+                if (!fbx_anim_curve_has_data(curve))
                     continue;
                 for (uint32_t k = 0; k < curve->count; k++) {
                     double t = (double)curve->times[k] / (double)FBX_TIME_SECOND;
@@ -3080,7 +3099,7 @@ static int fbx_anim_build_bone_keyframes(void *anim,
     for (int trs = 0; trs < 3; trs++) {
         for (int comp = 0; comp < 3; comp++) {
             const fbx_anim_curve_view_t *curve = &builders[bone_idx].curves[trs][comp];
-            if (!fbx_anim_curve_view_valid(curve))
+            if (!fbx_anim_curve_has_data(curve))
                 continue;
             for (uint32_t k = 0; k < curve->count; k++) {
                 if (!fbx_anim_append_time(&times, &time_count, &time_capacity, curve->times[k])) {

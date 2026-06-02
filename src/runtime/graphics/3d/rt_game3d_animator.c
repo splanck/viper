@@ -86,6 +86,14 @@ static void game3d_animator_drain_events(rt_game3d_animator *animator) {
         game3d_assign_ref((void **)&animator->events[animator->event_count++], event_name);
         game3d_release_ref((void **)&event_name);
     }
+    while (animator->event_count >= RT_GAME3D_ANIM_EVENT_MAX) {
+        rt_string overflow_name = rt_anim_controller3d_poll_event(animator->controller);
+        const char *name = overflow_name ? rt_string_cstr(overflow_name) : "";
+        int had_name = name && name[0] != '\0';
+        game3d_release_ref((void **)&overflow_name);
+        if (!had_name)
+            break;
+    }
 }
 
 /// @brief GC finalizer for an animator: drop buffered events and release the controller.
