@@ -1072,6 +1072,8 @@ int64_t rt_game3d_world_stream_get_cell_bytes(void *stream, int64_t index);
 rt_string rt_game3d_world_stream_get_cell_material(void *stream, int64_t index);
 /// @brief Get parsed scene-cell optional binary sidecar path, or "" for invalid/missing.
 rt_string rt_game3d_world_stream_get_cell_sidecar(void *stream, int64_t index);
+/// @brief Get resident bytes of a scene-cell's loaded binary sidecar payload (0 if none/unloaded).
+int64_t rt_game3d_world_stream_get_cell_sidecar_bytes(void *stream, int64_t index);
 /// @brief Get parsed scene-cell collision/render layer metadata, or 0 if unset/invalid.
 int64_t rt_game3d_world_stream_get_cell_layer(void *stream, int64_t index);
 /// @brief Get parsed scene-cell collision mask metadata, or all bits if unset.

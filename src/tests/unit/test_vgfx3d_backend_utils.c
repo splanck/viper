@@ -191,6 +191,32 @@ static void test_compressed_block_upload_budget_and_pending_bytes(void) {
                 "Compressed pending bytes return to baseline after final block row");
     EXPECT_TRUE(vgfx3d_pending_block_upload_bytes(10, 9, 4, 4, 16, 0, 0) == 0,
                 "Compressed pending bytes stay at baseline when no upload is in progress");
+
+    /* Finer-grained slicing: a per-frame budget smaller than a full mip drains the mip in
+     * sub-mip block-row bands, with pending bytes strictly decreasing each step until zero. */
+    {
+        const int32_t w = 64, h = 64, bw = 4, bh = 4, bb = 16; /* 16 block-rows, 256 bytes/row */
+        const int32_t total_block_rows = 16;
+        const uint64_t tight_budget = 768; /* fits 3 of 16 block-rows: a sub-mip slice */
+        int32_t next = 0;
+        int32_t steps = 0;
+        uint64_t prev_pending = vgfx3d_pending_block_upload_bytes(w, h, bw, bh, bb, 0, 1) + 1u;
+        while (next < total_block_rows) {
+            int32_t rows = vgfx3d_upload_block_rows_for_budget(w, h, bw, bh, bb, next, tight_budget, 0);
+            uint64_t pending = vgfx3d_pending_block_upload_bytes(w, h, bw, bh, bb, next, 1);
+            EXPECT_TRUE(rows >= 1, "tight budget still uploads at least one block-row (progress)");
+            EXPECT_TRUE(rows < total_block_rows,
+                        "tight budget uploads a sub-mip slice, not the whole mip at once");
+            EXPECT_TRUE(pending < prev_pending,
+                        "pending bytes strictly decrease as sub-mip block-rows drain");
+            prev_pending = pending;
+            next += rows;
+            steps++;
+        }
+        EXPECT_TRUE(steps > 1, "tight budget drains the mip over multiple sub-mip slices");
+        EXPECT_TRUE(vgfx3d_pending_block_upload_bytes(w, h, bw, bh, bb, next, 1) == 0,
+                    "pending bytes reach zero after the final sub-mip slice");
+    }
 }
 
 static void test_unpack_cubemap_faces_rgba_success(void) {

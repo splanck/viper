@@ -858,6 +858,36 @@ static void test_blendtree_rejects_bad_handles() {
                 "BlendTree3D accessors reject non-tree handles");
 }
 
+static void test_navmesh_export_import_roundtrip() {
+    /* Build a navmesh, export it to a file, re-import it, and confirm the reconstructed mesh
+     * preserves the triangle count and answers the same path query. */
+    void *plane = rt_mesh3d_new_plane(20.0, 20.0);
+    void *nm = rt_navmesh3d_build(plane, 0.4, 1.8);
+    EXPECT_TRUE(nm != nullptr, "source navmesh builds");
+    int64_t tri_count = rt_navmesh3d_get_triangle_count(nm);
+    EXPECT_TRUE(tri_count > 0, "source navmesh has walkable triangles");
+
+    rt_string path = rt_const_cstr("/tmp/viper_navmesh_export_roundtrip.vnav");
+    EXPECT_TRUE(rt_navmesh3d_export(nm, path) == 1, "navmesh exports to a file");
+
+    void *imported = rt_navmesh3d_import(path);
+    EXPECT_TRUE(imported != nullptr, "navmesh re-imports from the exported file");
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(imported) == tri_count,
+                "imported navmesh preserves the triangle count");
+
+    /* The imported navmesh is immediately path-queryable. */
+    void *from = rt_vec3_new(-8.0, 0.0, -8.0);
+    void *to = rt_vec3_new(8.0, 0.0, 8.0);
+    EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr, "source navmesh resolves a path");
+    EXPECT_TRUE(rt_navmesh3d_find_path(imported, from, to) != nullptr,
+                "imported navmesh resolves the same path");
+
+    /* A missing/corrupt file is recoverable: import returns null without trapping. */
+    EXPECT_TRUE(rt_navmesh3d_import(rt_const_cstr("/tmp/viper_navmesh_no_such_file.vnav")) ==
+                    nullptr,
+                "importing a missing file returns null");
+}
+
 int main() {
     /* NavMesh3D */
     test_navmesh_build_plane();
@@ -883,6 +913,7 @@ int main() {
     test_navmesh_rebuild_tile_refreshes_retained_geometry_source();
     test_navmesh_bake_agent_radius_erodes_narrow_corridor();
     test_navmesh_query_grid_matches_linear_scan();
+    test_navmesh_export_import_roundtrip();
 
     /* AnimBlend3D */
     test_blend_create();

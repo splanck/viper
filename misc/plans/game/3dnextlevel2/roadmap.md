@@ -32,7 +32,7 @@ ergonomic carryover so scale work does not block on callback sugar.
 
 - **CO-1 Cross-platform lane (prerequisite for everything).** Build and run
   `ctest -L graphics3d` green on macOS, Windows, and Linux via the platform build
-  scripts. Current local evidence is macOS 71/71 green; Windows/Linux still need
+  scripts. Current local evidence is macOS 79/79 green; Windows/Linux still need
   real host runs.
 - **CO-11 Performance lane (prerequisite for Phase 0 harness).** A Release /
   reference-hardware software-backend FPS lane plus a GPU interactive-framerate

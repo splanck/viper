@@ -134,3 +134,24 @@ sampled pair distance, and counts agents that crossed through the fixture.
 | Build | Agents | Frames | Update us | Min pair distance | Crossed |
 |---|---:|---:|---:|---:|---:|
 | Release | 200 | 180 | 564686 | 1.142 | 170 |
+
+## AC-003 Scene3D Spatial-Index Cull Speedup
+
+Recorded on: 2026-06-02
+
+Command:
+
+- `./build/src/tests/test_rt_scene3d` (telemetry line `SCENE3D_INDEX_SPEEDUP_TARGET`)
+
+The 10k-node Scene3D scaling fixture (`test_scene_spatial_index_10k_scaling_fixture`)
+times an isolated `QueryAABB` point query that the BVH narrows to a single candidate,
+then repeats it with `use_spatial_index = 0` so the same query falls back to a flat
+O(N) sweep over all 10,000 node AABBs. The ratio is build-type independent (both
+paths run under the same build), so the Debug measurement below is representative.
+
+| Build | Nodes | Queries | Flat us | Indexed us | Speedup |
+|---|---:|---:|---:|---:|---:|
+| Debug | 10000 | 4000 | 20523643 | 11573 | 1773.41x |
+
+This satisfies AC-003's "recorded speedup": indexed cull/query cost scales with the
+result set (~1 node) rather than the total node count (10,000).

@@ -72,6 +72,7 @@ and joint integration.
 | `GetEnterEvent(i)`        | `Object(Integer)`     | Get an enter `CollisionEvent3D` |
 | `GetStayEvent(i)`         | `Object(Integer)`     | Get a stay `CollisionEvent3D` |
 | `GetExitEvent(i)`         | `Object(Integer)`     | Get an exit `CollisionEvent3D` |
+| `ClearCollisionEvents()`  | `Void()`              | Clear the collision events buffered from the most recent `Step()` |
 
 ### Notes
 
@@ -481,6 +482,14 @@ given hinge axis.
 - `anchor` and `axis` are `Vec3` values. The axis must be finite and non-zero.
 - Register with `Physics3DWorld.AddJoint(joint, 2)`.
 
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetMotor(enabled, targetVelocity, maxImpulse)` | `Void(Boolean, Double, Double)` | Drive rotation about the hinge axis toward a target angular velocity, bounded by a maximum impulse strength |
+| `GetAngle()` | `Double()` | Current signed hinge angle, in radians |
+| `SetLimits(min, max)` | `Void(Double, Double)` | Constrain the hinge to an angle range, in radians |
+
 ---
 
 ## Viper.Graphics3D.RopeJoint3D
@@ -529,6 +538,7 @@ relative orientation as the zero pose.
 |--------|-----------|-------------|
 | `SetLinearLimits(min, max)` | `Void(Object, Object)` | Set per-axis minimum and maximum anchor separation as `Vec3` values |
 | `SetAngularLimits(min, max)` | `Void(Object, Object)` | Set per-axis relative pose-angle limits in radians as `Vec3` values |
+| `SetLinearMotor(enabled, velocity, maxForce)` | `Void(Boolean, Object, Double)` | Drive relative linear velocity along unlocked axes toward a `Vec3` target, bounded by a maximum force |
 
 ---
 

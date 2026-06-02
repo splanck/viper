@@ -1318,6 +1318,14 @@ function(viper_add_runtime_tests)
             VIPER_ENABLE_GRAPHICS=1
             RT_G3D_ALLOW_STACK_FIXTURES=1)
 
+    viper_add_isolated_runtime_test(test_rt_vegetation3d_contract
+            ${VIPER_TESTS_DIR}/runtime/RTVegetation3DContractTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/world/rt_vegetation3d.c)
+    target_compile_definitions(test_rt_vegetation3d_contract PRIVATE
+            VIPER_ENABLE_GRAPHICS=1
+            RT_G3D_ALLOW_STACK_FIXTURES=1
+            RT_PIXELS_INTERNAL_ASSUME_STRUCT_HANDLE=1)
+
     viper_add_test(test_rt_graphics3d_robustness
             ${VIPER_TESTS_DIR}/runtime/RTGraphics3DRobustnessTests.cpp)
     target_link_libraries(test_rt_graphics3d_robustness PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

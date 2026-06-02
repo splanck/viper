@@ -738,6 +738,14 @@ static void test_decal3d_normal_and_lifetime_are_sanitized() {
     rt_decal3d_update(decal, 1.0);
     assert(rt_decal3d_is_expired(decal) == 0);
 
+    // A positive lifetime counts down across updates and expires once it elapses.
+    rt_decal3d_set_lifetime(decal, 0.5);
+    assert(rt_decal3d_is_expired(decal) == 0);
+    rt_decal3d_update(decal, 0.3);
+    assert(rt_decal3d_is_expired(decal) == 0);
+    rt_decal3d_update(decal, 0.3); // cumulative 0.6 > 0.5 lifetime
+    assert(rt_decal3d_is_expired(decal) == 1);
+
     void *huge_normal = rt_vec3_new(1.0e300, 0.0, 0.0);
     void *huge_decal = rt_decal3d_new(pos, huge_normal, 1.0e300, nullptr);
     auto *hd = static_cast<DecalView *>(huge_decal);

@@ -391,6 +391,7 @@ an attached body only when the node sync mode is `SyncMode.BodyFromNode`:
 | `attachAnimator(animator)` | Attach an `Animator3D` or raw `AnimController3D` to the entity node |
 | `position()` / `worldPosition()` | Read local/world position |
 | `isSpawned()` / `isDestroyed()` | Inspect lifecycle state |
+| `isGroup()` | True when the entity wraps an imported/`FromNode` multi-node group rather than a single primitive |
 
 `World3D.spawn(entity)` attaches the entity node to the world scene and registers
 the entity by name. `World3D.despawn(entity)` removes it from the registry,
@@ -625,7 +626,24 @@ suppresses generated terrain heightfield colliders, `navArea` and
 points at optional binary metadata resolved relative to the manifest. Cell
 layer/mask metadata is applied to the spawned root entity; terrain collision
 metadata is applied to generated heightfield bodies. The metadata is also
-available through typed `getCell*` and `getTerrainTile*` inspection methods.
+available through typed `getCell*` and `getTerrainTile*` inspection methods, each
+taking the resident index and mirroring the manifest fields:
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `getCellMaterial(i)` / `getTerrainTileMaterial(i)` | `String(Integer)` | Authored surface/material name (`""` if unset) |
+| `getCellLayer(i)` / `getTerrainTileLayer(i)` | `Integer(Integer)` | Game3D collision layer bit |
+| `getCellCollisionMask(i)` / `getTerrainTileCollisionMask(i)` | `Integer(Integer)` | Collision mask |
+| `getCellCollisionEnabled(i)` / `getTerrainTileCollisionEnabled(i)` | `Boolean(Integer)` | Whether generated colliders are enabled |
+| `getCellNavArea(i)` / `getTerrainTileNavArea(i)` | `String(Integer)` | Navigation area name |
+| `getCellTraversalCost(i)` / `getTerrainTileTraversalCost(i)` | `Double(Integer)` | Navigation traversal cost |
+| `getCellSidecar(i)` / `getTerrainTileSidecar(i)` | `String(Integer)` | Optional binary sidecar path (`""` if unset) |
+| `getCellSidecarBytes(i)` | `Integer(Integer)` | Resident bytes of the cell's loaded binary sidecar payload (0 if none or unloaded) |
+
+When a resident cell declares a `sidecar` path, the world stream loads that file's
+bytes as opaque cell metadata, counts them in the cell's resident-byte budget, and
+frees them when the cell unloads. A missing, empty, or oversized sidecar is
+recoverable (zero bytes, no error).
 
 `getResidentTerrainTile(index)` returns the nth currently resident payload or
 `null`. The telemetry properties (`residentCellCount`,
@@ -864,7 +882,8 @@ already have one, so a static definition can be toggled back to a usable dynamic
 body without an extra `set_mass` call.
 
 `World3D.collisionEventCount(phase)` and `collisionEvent(phase, index)` expose
-the runtime enter/stay/exit buffers through `Collision3DEvent`:
+the runtime enter/stay/exit buffers through `Collision3DEvent`;
+`World3D.clearCollisionEvents()` empties those buffers manually:
 
 ```zia
 Game3D.World3D.stepSimulation(world, 0.016);

@@ -39,6 +39,7 @@
 #include <cstdlib>
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -1164,6 +1165,40 @@ static void test_scene_spatial_index_10k_scaling_fixture() {
                 "10k indexed Scene3D.Draw preserves flat-path culled count");
     EXPECT_TRUE(indexed_visible_count == rt_scene3d_get_visible_node_count(scene),
                 "10k indexed Scene3D.Draw preserves flat-path visible node count");
+
+    // Indexed-vs-flat cull speedup baseline (AC-003): an isolated point query narrows
+    // to one node through the BVH but scans all 10k AABBs on the flat path. Time both
+    // and record the ratio as telemetry for the perf baseline (not a pass/fail gate).
+    void *q_min = rt_vec3_new(target_x - 0.75, -1.0, target_z - 0.75);
+    void *q_max = rt_vec3_new(target_x + 0.75, 1.0, target_z + 0.75);
+    constexpr int kQueryIterations = 4000;
+
+    scene_impl->use_spatial_index = 1;
+    (void)rt_scene3d_query_aabb(scene, q_min, q_max); // warm the index
+    auto indexed_begin = std::chrono::steady_clock::now();
+    for (int i = 0; i < kQueryIterations; ++i)
+        (void)rt_scene3d_query_aabb(scene, q_min, q_max);
+    auto indexed_end = std::chrono::steady_clock::now();
+
+    scene_impl->use_spatial_index = 0;
+    auto flat_begin = std::chrono::steady_clock::now();
+    for (int i = 0; i < kQueryIterations; ++i)
+        (void)rt_scene3d_query_aabb(scene, q_min, q_max);
+    auto flat_end = std::chrono::steady_clock::now();
+    scene_impl->use_spatial_index = 1;
+
+    long long indexed_us = (long long)std::chrono::duration_cast<std::chrono::microseconds>(
+                               indexed_end - indexed_begin)
+                               .count();
+    long long flat_us =
+        (long long)std::chrono::duration_cast<std::chrono::microseconds>(flat_end - flat_begin)
+            .count();
+    double speedup = indexed_us > 0 ? (double)flat_us / (double)indexed_us : 0.0;
+    std::printf("SCENE3D_INDEX_SPEEDUP_TARGET: nodes=%d queries=%d flat_us=%lld indexed_us=%lld "
+                "speedup=%.2fx\n",
+                kNodeCount, kQueryIterations, flat_us, indexed_us, speedup);
+    EXPECT_TRUE(flat_us >= indexed_us,
+                "10k indexed point query is no slower than the flat O(N) sweep");
 }
 
 static void test_scene_occlusion_grid_uses_spatial_candidates() {

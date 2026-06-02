@@ -33,6 +33,8 @@ frame and does not run post-processing. Finalization is the step that applies
 | `BeginOverlay()` | `Void()` | Start recording a final 2D overlay pass |
 | `EndOverlay()` | `Void()` | Finish final overlay recording |
 | `ClearOverlay()` | `Void()` | Discard the current frame's recorded final overlay |
+| `DrawRect3D(x, y, w, h, color)` | `Void(Integer, Integer, Integer, Integer, Integer)` | Draw a filled screen-space rectangle (used in overlay/2D passes) |
+| `DrawText3D(x, y, text, color)` | `Void(Integer, Integer, String, Integer)` | Draw screen-space text (used in overlay/2D passes) |
 | `Resize(w, h)` | `Void(Integer, Integer)` | Resize the canvas and active backend output targets |
 | `FinalizeFrame()` | `Void()` | Apply post-FX and final overlay once, without presenting |
 | `ScreenshotFinal()` | `Object()` | Finalize if needed, then capture finalized pixels |
@@ -803,6 +805,7 @@ Stateful animation controller with named states, triggered transitions, animatio
 | `Crossfade(state, duration)` | `Boolean(String, Double)` | Blend into the named state over `duration` seconds |
 | `Stop()` | `Void()` | Stop all animation and enter idle |
 | `Update(deltaSeconds)` | `Void(Double)` | Advance the controller and produce the current pose |
+| `IsStatePlaying(state)` | `Boolean(String)` | True when the named state is currently playing (active or being transitioned into) |
 | `SetStateSpeed(state, speed)` | `Void(String, Double)` | Override playback speed for a state |
 | `SetStateLooping(state, loop)` | `Void(String, Boolean)` | Override loop setting for a state |
 | `SetAnimationLOD(distance, rateHz)` | `Void(Double, Double)` | Batch animation updates at a lower deterministic rate; non-positive inputs disable throttling |
@@ -1091,7 +1094,7 @@ same undirected edge, because adjacency/pathfinding would otherwise be
 ambiguous.
 
 **Type:** Static (none)
-**Constructors:** `NavMesh3D.Build(mesh, agentRadius, agentHeight)`, `NavMesh3D.Bake(scene, agentRadius, agentHeight, maxSlope, cellSize)`, `NavMesh3D.BakeTiled(scene, tileSize, agentRadius, agentHeight, maxSlope, cellSize)`
+**Constructors:** `NavMesh3D.Build(mesh, agentRadius, agentHeight)`, `NavMesh3D.Bake(scene, agentRadius, agentHeight, maxSlope, cellSize)`, `NavMesh3D.BakeTiled(scene, tileSize, agentRadius, agentHeight, maxSlope, cellSize)`, `NavMesh3D.Import(path)`
 
 #### Properties
 
@@ -1109,6 +1112,8 @@ ambiguous.
 | `FindPath(start, end)` | `Object(Object, Object)` | Return a `Seq[Vec3]` of waypoints from `start` to `end`, or `Nothing` |
 | `SamplePosition(pos)` | `Object(Object)` | Snap `pos` to the nearest walkable position |
 | `IsWalkable(pos)` | `Boolean(Object)` | True when `pos` is on the walkable surface |
+| `Export(path)` | `Boolean(String)` | Serialize the baked navmesh (vertices, walkable triangles, traversal costs, agent params) to a `VNAVMSH1` binary file; returns false on write failure |
+| `Import(path)` | `Object(String)` | Reconstruct a path-queryable navmesh from a `VNAVMSH1` file (rebuilds adjacency + query grid), or `Nothing` on a missing/corrupt file. Bake a streamed world via `World3D.bakeNavMesh` and `Export` it for later `Import` |
 | `AddOffMeshLink(from, to, bidirectional)` | `Boolean(Object, Object, Boolean)` | Add a directed or bidirectional link between walkable points |
 | `SetOffMeshLinkMetadata(index, kind, cost, state)` | `Boolean(Integer, String, Double, Integer)` | Attach kind/cost/state metadata to a traversal link |
 | `GetOffMeshLinkKind(index)` | `String(Integer)` | Return a traversal link kind string |

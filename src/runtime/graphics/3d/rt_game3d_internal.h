@@ -320,6 +320,8 @@ typedef struct rt_game3d_stream_cell {
     void *scene;
     void *entity;
     int8_t resident;
+    void *sidecar_data;    /* loaded binary sidecar payload (malloc-owned), or NULL */
+    int64_t sidecar_bytes; /* size in bytes of the loaded binary sidecar payload */
 } rt_game3d_stream_cell;
 
 typedef struct rt_game3d_stream_terrain_tile {

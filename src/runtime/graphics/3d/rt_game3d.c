@@ -4912,6 +4912,30 @@ static int game3d_world_stream_load_terrain_tile(rt_game3d_world_stream *stream,
     return 1;
 }
 
+/// @brief Load a streaming cell's optional binary sidecar payload into residency.
+/// @details Reads the whole referenced file as opaque cell metadata. A missing, empty,
+///   or oversized sidecar is recoverable: the cell simply carries zero sidecar bytes
+///   (no trap). Frees any previously loaded payload first so reloads stay idempotent.
+static void game3d_stream_cell_load_sidecar(rt_game3d_stream_cell *cell) {
+    if (!cell)
+        return;
+    free(cell->sidecar_data);
+    cell->sidecar_data = NULL;
+    cell->sidecar_bytes = 0;
+    if (!game3d_string_has_bytes(cell->sidecar_path))
+        return;
+    size_t size = 0;
+    uint8_t *data = game3d_asset_read_file_bytes(rt_string_cstr(cell->sidecar_path), &size);
+    if (!data)
+        return;
+    if (size == 0) {
+        free(data);
+        return;
+    }
+    cell->sidecar_data = data;
+    cell->sidecar_bytes = (int64_t)(size > (size_t)INT64_MAX ? (size_t)INT64_MAX : size);
+}
+
 /// @brief Unload a streaming cell: despawn its spawned entities/nodes and release its scene.
 static void game3d_world_stream_unload_cell(rt_game3d_world_stream *stream,
                                             rt_game3d_stream_cell *cell) {
@@ -4925,6 +4949,9 @@ static void game3d_world_stream_unload_cell(rt_game3d_world_stream *stream,
     }
     game3d_release_ref(&cell->entity);
     game3d_release_ref(&cell->scene);
+    free(cell->sidecar_data);
+    cell->sidecar_data = NULL;
+    cell->sidecar_bytes = 0;
     cell->resident = 0;
     cell->measured_resident_bytes = 0;
 }
@@ -4971,6 +4998,11 @@ static int game3d_world_stream_load_cell(rt_game3d_world_stream *stream,
             if (cell->measured_resident_bytes <= 0)
                 cell->measured_resident_bytes =
                     cell->resident_bytes > 0 ? cell->resident_bytes : 64 * 1024;
+            game3d_stream_cell_load_sidecar(cell);
+            if (cell->sidecar_bytes > 0)
+                cell->measured_resident_bytes = game3d_i64_from_u64_saturating(
+                    game3d_u64_saturating_add((uint64_t)cell->measured_resident_bytes,
+                                              (uint64_t)cell->sidecar_bytes));
             scene = NULL;
         } else {
             game3d_release_ref(&entity);
@@ -4989,6 +5021,9 @@ static void game3d_world_stream_refresh_cell_residency_bytes(rt_game3d_stream_ce
     cell->measured_resident_bytes = game3d_i64_from_u64_saturating(measured);
     if (cell->measured_resident_bytes <= 0)
         cell->measured_resident_bytes = cell->resident_bytes > 0 ? cell->resident_bytes : 64 * 1024;
+    if (cell->sidecar_bytes > 0)
+        cell->measured_resident_bytes = game3d_i64_from_u64_saturating(game3d_u64_saturating_add(
+            (uint64_t)cell->measured_resident_bytes, (uint64_t)cell->sidecar_bytes));
 }
 
 /// @brief Unload and free every streaming cell tracked by the stream.
@@ -5744,6 +5779,14 @@ rt_string rt_game3d_world_stream_get_cell_sidecar(void *obj, int64_t index) {
         game3d_world_stream_checked(obj, "Game3D.WorldStream3D.getCellSidecar: invalid stream");
     rt_game3d_stream_cell *cell = game3d_world_stream_cell_at(stream, index);
     return rt_string_ref(cell && cell->sidecar_path ? cell->sidecar_path : rt_const_cstr(""));
+}
+
+/// @brief Resident bytes of a scene-cell's loaded binary sidecar payload (0 if none/unloaded).
+int64_t rt_game3d_world_stream_get_cell_sidecar_bytes(void *obj, int64_t index) {
+    rt_game3d_world_stream *stream = game3d_world_stream_checked(
+        obj, "Game3D.WorldStream3D.getCellSidecarBytes: invalid stream");
+    rt_game3d_stream_cell *cell = game3d_world_stream_cell_at(stream, index);
+    return cell ? cell->sidecar_bytes : 0;
 }
 
 /// @brief Get parsed scene-cell collision/render layer metadata, or 0 if unset/invalid.

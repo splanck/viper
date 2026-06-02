@@ -4399,6 +4399,77 @@ static void test_canvas_camera_relative_upload_rebases_raw_and_generated_vertice
     PASS();
 }
 
+// Helper: world-space extent of the captured billboard quad along a vgfx vertex axis.
+static double sprite3d_captured_axis_extent(int axis) {
+    double lo = g_last_draw_vertices[0].pos[axis];
+    double hi = lo;
+    for (uint32_t i = 1; i < g_last_draw_vertex_count && i < 4; ++i) {
+        double v = g_last_draw_vertices[i].pos[axis];
+        lo = v < lo ? v : lo;
+        hi = v > hi ? v : hi;
+    }
+    return hi - lo;
+}
+
+static void test_sprite3d_billboard_reorients_to_camera() {
+    TEST("Sprite3D billboard reorients to face the camera");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 1000.0);
+    void *sprite = rt_sprite3d_new(NULL);
+
+    backend.name = "software";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 128;
+    canvas.height = 128;
+
+    rt_sprite3d_set_position(sprite, 4.0, 0.0, 0.0);
+    rt_sprite3d_set_scale(sprite, 2.0, 2.0); // 2.0-wide, centered (default anchor)
+
+    // Camera A: viewing down -Z. Billboard width maps to the camera-right axis
+    // (world X), so the emitted world-space quad spreads in X and is flat in Z.
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(4.0, 0.0, 10.0),
+                        rt_vec3_new(4.0, 0.0, 0.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+    g_canvas_submit_draw_calls = 0;
+    g_last_draw_vertex_count = 0;
+    memset(g_last_draw_vertices, 0, sizeof(g_last_draw_vertices));
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_sprite3d(&canvas, sprite, camera);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(g_last_draw_vertex_count, 4);
+    EXPECT_NEAR(sprite3d_captured_axis_extent(0), 2.0, 0.001); // width along X
+    EXPECT_NEAR(sprite3d_captured_axis_extent(2), 0.0, 0.001); // flat in Z
+
+    // Camera B: viewing down -X. The billboard must re-face the camera, so its
+    // width now maps to world Z and the quad becomes flat in X.
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(14.0, 0.0, 0.0),
+                        rt_vec3_new(4.0, 0.0, 0.0),
+                        rt_vec3_new(0.0, 1.0, 0.0));
+    g_canvas_submit_draw_calls = 0;
+    g_last_draw_vertex_count = 0;
+    memset(g_last_draw_vertices, 0, sizeof(g_last_draw_vertices));
+    rt_canvas3d_begin(&canvas, camera);
+    rt_canvas3d_draw_sprite3d(&canvas, sprite, camera);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(g_last_draw_vertex_count, 4);
+    EXPECT_NEAR(sprite3d_captured_axis_extent(0), 0.0, 0.001); // quad now flat in X
+    EXPECT_NEAR(sprite3d_captured_axis_extent(2), 2.0, 0.001); // width re-mapped to Z
+
+    free_canvas3d_test_draw_state(&canvas);
+    PASS();
+}
+
 static void test_particles3d_spread_uses_radians() {
     TEST("Particles3D spread uses radians");
     vgfx3d_backend_t backend = {};
@@ -6759,6 +6830,7 @@ int main() {
     test_sprite3d_set_scale();
     test_sprite3d_set_frame();
     test_sprite3d_null_safety();
+    test_sprite3d_billboard_reorients_to_camera();
 
     /* RenderTarget3D */
     test_rendertarget_new();

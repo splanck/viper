@@ -41,6 +41,7 @@
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1248,6 +1249,164 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
     }
 
     return nm;
+}
+
+/// @brief Serialize a baked navmesh's geometry to a binary file ("VNAVMSH1").
+/// @details v1 records agent parameters, vertex positions, and the walkable triangle set (vertex
+///   indices, per-triangle traversal cost, and carved/blocked state). Area-name labels and
+///   off-mesh links are not serialized in v1; the A*-relevant traversal cost is. Returns 1 on
+///   success, 0 on an invalid handle/path or any write failure.
+int8_t rt_navmesh3d_export(void *obj, rt_string path) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm || !path || !rt_string_is_handle(path))
+        return 0;
+    const char *cpath = rt_string_cstr(path);
+    if (!cpath || cpath[0] == '\0')
+        return 0;
+    FILE *f = fopen(cpath, "wb");
+    if (!f)
+        return 0;
+    int ok = 1;
+    const char magic[8] = {'V', 'N', 'A', 'V', 'M', 'S', 'H', '1'};
+    double params[3] = {nm->agent_radius, nm->agent_height, nm->max_slope};
+    ok = ok && fwrite(magic, 1u, 8u, f) == 8u;
+    ok = ok && fwrite(params, sizeof(double), 3u, f) == 3u;
+    int32_t vc = nm->vertex_count < 0 ? 0 : nm->vertex_count;
+    ok = ok && fwrite(&vc, sizeof(int32_t), 1u, f) == 1u;
+    if (ok && vc > 0 && nm->vertices)
+        ok = fwrite(nm->vertices, sizeof(nav_vertex_t), (size_t)vc, f) == (size_t)vc;
+    int32_t tc = nm->triangle_count < 0 ? 0 : nm->triangle_count;
+    ok = ok && fwrite(&tc, sizeof(int32_t), 1u, f) == 1u;
+    for (int32_t i = 0; ok && i < tc; i++) {
+        const nav_triangle_t *t = &nm->triangles[i];
+        int32_t idx[3] = {t->v[0], t->v[1], t->v[2]};
+        float cost = t->traversal_cost;
+        int8_t blocked = t->blocked;
+        ok = ok && fwrite(idx, sizeof(int32_t), 3u, f) == 3u;
+        ok = ok && fwrite(&cost, sizeof(float), 1u, f) == 1u;
+        ok = ok && fwrite(&blocked, sizeof(int8_t), 1u, f) == 1u;
+    }
+    fclose(f);
+    return ok ? 1 : 0;
+}
+
+/// @brief Reconstruct a navmesh from a "VNAVMSH1" file written by `rt_navmesh3d_export`.
+/// @details Reads agent params, vertices, and the walkable triangle set, recomputes each
+///   triangle's centroid/normal, then rebuilds adjacency and the point-location query grid so the
+///   result is immediately path-queryable. A missing/short/corrupt file returns NULL (recoverable);
+///   only an allocation failure traps.
+void *rt_navmesh3d_import(rt_string path) {
+    if (!path || !rt_string_is_handle(path))
+        return NULL;
+    const char *cpath = rt_string_cstr(path);
+    if (!cpath || cpath[0] == '\0')
+        return NULL;
+    FILE *f = fopen(cpath, "rb");
+    if (!f)
+        return NULL;
+
+    const int32_t kImportMax = 1 << 24; /* bound corrupt-file allocations */
+    char magic[8];
+    double params[3];
+    int32_t vc = 0;
+    if (fread(magic, 1u, 8u, f) != 8u || memcmp(magic, "VNAVMSH1", 8u) != 0 ||
+        fread(params, sizeof(double), 3u, f) != 3u || fread(&vc, sizeof(int32_t), 1u, f) != 1u ||
+        vc < 0 || vc > kImportMax) {
+        fclose(f);
+        return NULL;
+    }
+
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_obj_new_i64(RT_G3D_NAVMESH3D_CLASS_ID, (int64_t)sizeof(rt_navmesh3d));
+    if (!nm) {
+        fclose(f);
+        rt_trap("NavMesh3D.Import: allocation failed");
+        return NULL;
+    }
+    memset(nm, 0, sizeof(*nm));
+    rt_obj_set_finalizer(nm, navmesh3d_finalizer);
+    nm->agent_radius = navmesh3d_agent_dim_or(params[0], 0.4);
+    nm->agent_height = navmesh3d_agent_dim_or(params[1], 1.8);
+    nm->max_slope = navmesh3d_sanitize_slope(params[2]);
+
+    if (vc > 0) {
+        nm->vertices = (nav_vertex_t *)malloc((size_t)vc * sizeof(nav_vertex_t));
+        if (!nm->vertices ||
+            fread(nm->vertices, sizeof(nav_vertex_t), (size_t)vc, f) != (size_t)vc)
+            goto fail;
+        for (int32_t i = 0; i < vc; i++) {
+            nm->vertices[i].position[0] =
+                navmesh3d_coordf_or((double)nm->vertices[i].position[0], 0.0);
+            nm->vertices[i].position[1] =
+                navmesh3d_coordf_or((double)nm->vertices[i].position[1], 0.0);
+            nm->vertices[i].position[2] =
+                navmesh3d_coordf_or((double)nm->vertices[i].position[2], 0.0);
+        }
+    }
+    nm->vertex_count = vc;
+
+    int32_t tc = 0;
+    if (fread(&tc, sizeof(int32_t), 1u, f) != 1u || tc < 0 || tc > kImportMax)
+        goto fail;
+    if (tc > 0) {
+        nm->triangles = (nav_triangle_t *)calloc((size_t)tc, sizeof(nav_triangle_t));
+        if (!nm->triangles)
+            goto fail;
+        for (int32_t i = 0; i < tc; i++) {
+            nav_triangle_t *t = &nm->triangles[i];
+            int32_t idx[3];
+            float cost = 1.0f;
+            int8_t blocked = 0;
+            if (fread(idx, sizeof(int32_t), 3u, f) != 3u ||
+                fread(&cost, sizeof(float), 1u, f) != 1u ||
+                fread(&blocked, sizeof(int8_t), 1u, f) != 1u)
+                goto fail;
+            for (int k = 0; k < 3; k++) {
+                if (idx[k] < 0 || idx[k] >= vc)
+                    goto fail;
+                t->v[k] = idx[k];
+            }
+            t->neighbors[0] = t->neighbors[1] = t->neighbors[2] = -1;
+            t->area_id = 0;
+            t->traversal_cost = navmesh3d_sanitize_traversal_cost((double)cost);
+            t->blocked = blocked ? 1 : 0;
+            const float *p0 = nm->vertices[t->v[0]].position;
+            const float *p1 = nm->vertices[t->v[1]].position;
+            const float *p2 = nm->vertices[t->v[2]].position;
+            t->centroid[0] = (p0[0] + p1[0] + p2[0]) / 3.0f;
+            t->centroid[1] = (p0[1] + p1[1] + p2[1]) / 3.0f;
+            t->centroid[2] = (p0[2] + p1[2] + p2[2]) / 3.0f;
+            float ux = p1[0] - p0[0], uy = p1[1] - p0[1], uz = p1[2] - p0[2];
+            float wx = p2[0] - p0[0], wy = p2[1] - p0[1], wz = p2[2] - p0[2];
+            float nx = uy * wz - uz * wy;
+            float ny = uz * wx - ux * wz;
+            float nz = ux * wy - uy * wx;
+            float len = (float)sqrt((double)(nx * nx + ny * ny + nz * nz));
+            if (len > 1e-8f) {
+                t->normal[0] = nx / len;
+                t->normal[1] = ny / len;
+                t->normal[2] = nz / len;
+            } else {
+                t->normal[0] = 0.0f;
+                t->normal[1] = 1.0f;
+                t->normal[2] = 0.0f;
+            }
+            nm->triangle_count = i + 1;
+        }
+    }
+    fclose(f);
+    f = NULL;
+
+    if (!navmesh3d_build_adjacency(nm))
+        goto fail;
+    navmesh3d_build_query_grid(nm);
+    return nm;
+
+fail:
+    if (f)
+        fclose(f);
+    navmesh3d_free_partial(nm);
+    return NULL;
 }
 
 /// @brief Bake a navmesh from all Mesh3D-bearing nodes in a Scene3D.

@@ -3631,6 +3631,86 @@ static bool test_phase5_world_stream3d_manifest_cells() {
     PASS();
 }
 
+static bool test_phase5_world_stream3d_cell_binary_sidecar() {
+    TEST("WorldStream3D loads, accounts, and frees cell binary sidecar payloads");
+
+    const char *cell_path = "/tmp/viper_game3d_stream_sidecar_cell.vscn";
+    const char *sidecar_path = "/tmp/viper_game3d_stream_sidecar_payload.bin";
+    const char *manifest_path = "/tmp/viper_game3d_stream_sidecar_manifest.vscn";
+    EXPECT_TRUE(write_stream_cell_scene(cell_path, "stream_sidecar_marker"),
+                "sidecar stream cell fixture saves");
+
+    // 192-byte opaque binary sidecar payload.
+    char payload[193];
+    std::memset(payload, 'V', sizeof(payload) - 1);
+    payload[sizeof(payload) - 1] = '\0';
+    EXPECT_TRUE(write_text_file(sidecar_path, payload), "binary sidecar fixture writes");
+    const int64_t kSidecarBytes = 192;
+
+    char manifest[2048];
+    std::snprintf(manifest,
+                  sizeof(manifest),
+                  "{\"cells\":[{\"name\":\"sidecar_cell\",\"path\":\"%s\",\"center\":[0,0,0],"
+                  "\"radius\":8,\"bytes\":65536,\"sidecar\":\"%s\"}]}",
+                  cell_path,
+                  sidecar_path);
+    EXPECT_TRUE(write_text_file(manifest_path, manifest), "sidecar manifest fixture writes");
+
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D WorldStream Sidecar Unit"), 80, 60);
+    void *stream = rt_game3d_world_get_stream(world);
+    rt_game3d_world_stream_set_center(stream, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_game3d_world_stream_set_radii(stream, 64.0, 96.0);
+    rt_game3d_world_stream_mount_cells(stream, rt_const_cstr(manifest_path));
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  1,
+                  "sidecar manifest loads the cell");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_sidecar_bytes(stream, 0),
+                  kSidecarBytes,
+                  "resident cell reports its loaded binary sidecar byte count");
+    EXPECT_TRUE(rt_game3d_world_stream_get_cell_bytes(stream, 0) > kSidecarBytes,
+                "resident cell bytes include the sidecar payload on top of scene residency");
+
+    // Unloading the cell frees the sidecar payload and clears its byte count.
+    rt_game3d_world_stream_set_residency_budget(stream, 0);
+    rt_game3d_world_stream_update(stream, 1.0 / 60.0);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  0,
+                  "zero budget unloads the sidecar cell");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_sidecar_bytes(stream, 0),
+                  0,
+                  "unloaded cell reports zero sidecar bytes");
+    rt_game3d_world_destroy(world);
+
+    // A missing/unreadable sidecar is recoverable: the cell still loads with zero sidecar bytes.
+    const char *missing_manifest_path = "/tmp/viper_game3d_stream_sidecar_missing_manifest.vscn";
+    char missing_manifest[2048];
+    std::snprintf(missing_manifest,
+                  sizeof(missing_manifest),
+                  "{\"cells\":[{\"name\":\"sidecar_cell\",\"path\":\"%s\",\"center\":[0,0,0],"
+                  "\"radius\":8,\"bytes\":65536,"
+                  "\"sidecar\":\"/tmp/viper_game3d_no_such_sidecar.bin\"}]}",
+                  cell_path);
+    EXPECT_TRUE(write_text_file(missing_manifest_path, missing_manifest),
+                "missing-sidecar manifest fixture writes");
+    void *world2 =
+        rt_game3d_world_new(rt_const_cstr("Game3D WorldStream Sidecar Missing Unit"), 80, 60);
+    void *stream2 = rt_game3d_world_get_stream(world2);
+    rt_game3d_world_stream_set_center(stream2, rt_vec3_new(0.0, 0.0, 0.0));
+    rt_game3d_world_stream_set_radii(stream2, 64.0, 96.0);
+    rt_game3d_world_stream_mount_cells(stream2, rt_const_cstr(missing_manifest_path));
+    rt_game3d_world_stream_update(stream2, 1.0 / 60.0);
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream2),
+                  1,
+                  "cell with a missing sidecar still loads");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_sidecar_bytes(stream2, 0),
+                  0,
+                  "missing sidecar is recoverable with zero bytes");
+    rt_game3d_world_destroy(world2);
+    PASS();
+}
+
 static bool test_phase5_world_stream3d_measures_lod_residency() {
     TEST("WorldStream3D measures loaded VSCN mesh and LOD residency");
 
@@ -4780,6 +4860,7 @@ int main() {
     ok = test_phase5_world_stream3d_terrain_lod_seams_large_world() && ok;
     ok = test_phase5_world_stream3d_budget_prefers_nearest_entries() && ok;
     ok = test_phase5_world_stream3d_manifest_cells() && ok;
+    ok = test_phase5_world_stream3d_cell_binary_sidecar() && ok;
     ok = test_phase5_world_stream3d_measures_lod_residency() && ok;
     ok = test_phase5_world_stream3d_hitch_budgeted_update() && ok;
     ok = test_phase12_world_stream3d_inspection_hooks() && ok;
