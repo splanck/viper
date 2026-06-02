@@ -335,7 +335,7 @@ viper install-package --build-dir build --target linux-rpm
 viper install-package --build-dir build --target windows
 viper install-package --build-dir build --target macos
 viper install-package --build-dir build --stage-only
-viper install-package --verify-only build/installers/viper-0.2.5-dev-macos-arm64.tar.gz
+viper install-package --verify-only build/installers/viper-0.2.6-dev-macos-arm64.tar.gz
 ```
 
 Typical workflow:

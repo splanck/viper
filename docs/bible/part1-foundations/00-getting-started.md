@@ -436,7 +436,7 @@ zia --version
 
 **What you should see:**
 ```text
-zia v0.2.5-dev
+zia v0.2.6-dev
 Zia Compiler
 IL version: 0.2.0
 ```

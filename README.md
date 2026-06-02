@@ -19,15 +19,15 @@
 
 ## Download
 
-**Latest Release:** [v0.2.5-dev](https://github.com/splanck/viper/releases/tag/v0.2.5-dev) (5/7/2026)
+**Latest Release:** [v0.2.6-dev](https://github.com/splanck/viper/releases/tag/v0.2.6-dev) (6/1/2026)
 
-- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.5-dev.tar.gz)
-- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.5-dev.zip)
-- [Release Notes](https://github.com/splanck/viper/releases/tag/v0.2.5-dev)
+- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.2.6-dev.tar.gz)
+- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.2.6-dev.zip)
+- [Release Notes](https://github.com/splanck/viper/releases/tag/v0.2.6-dev)
 
-**In development:** v0.2.6 (unreleased) — See the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_6.md) for the full changelog.
+See the [v0.2.6 release notes](docs/release_notes/Viper_Release_Notes_0_2_6.md) for the full changelog.
 
-> **Working with the latest code:** `master` is a live snapshot ahead of v0.2.5.
+> **Working with the latest code:** `master` is a live snapshot ahead of v0.2.6.
 >
 > ```bash
 > git clone https://github.com/splanck/viper.git
