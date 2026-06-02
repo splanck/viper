@@ -27,6 +27,8 @@
 
 See the [v0.2.6 release notes](docs/release_notes/Viper_Release_Notes_0_2_6.md) for the full changelog.
 
+**In development:** v0.2.7 (unreleased) — See the [draft release notes](docs/release_notes/Viper_Release_Notes_0_2_7.md).
+
 > **Working with the latest code:** `master` is a live snapshot ahead of v0.2.6.
 >
 > ```bash
