@@ -206,12 +206,15 @@ static double jvalue_num(void *value, double def);
 static int64_t jvalue_int(void *value, int64_t def);
 static int gltf_ascii_ieq_n(const char *a, const char *b, size_t len);
 
+/// @brief Number of skin joints safe to read (clamped to VGFX3D_MAX_BONES); 0 when any backing
+///   array is absent.
 static int32_t gltf_skin_safe_joint_count(const gltf_skin_t *skin) {
     if (!skin || skin->joint_count <= 0 || !skin->joint_nodes || !skin->joint_to_bone)
         return 0;
     return skin->joint_count < VGFX3D_MAX_BONES ? skin->joint_count : VGFX3D_MAX_BONES;
 }
 
+/// @brief Clamp a (count, capacity) pair to a safe element count (0 when invalid, else min).
 static int32_t gltf_asset_safe_count(void **items, int32_t count, int32_t capacity) {
     if (!items || count <= 0 || capacity <= 0)
         return 0;
@@ -220,6 +223,7 @@ static int32_t gltf_asset_safe_count(void **items, int32_t count, int32_t capaci
     return count;
 }
 
+/// @brief Number of imported scenes safe to read (live count clamped to capacity).
 static int32_t gltf_asset_safe_scene_count(const rt_gltf_asset *asset) {
     if (!asset || !asset->scenes || asset->scene_count <= 0 || asset->scene_capacity <= 0)
         return 0;
@@ -228,6 +232,8 @@ static int32_t gltf_asset_safe_scene_count(const rt_gltf_asset *asset) {
     return asset->scene_count;
 }
 
+/// @brief Release every reference in a glTF ref array (over its safe count) and free the
+///   backing storage, resetting the count/capacity to zero.
 static void gltf_asset_release_ref_array(void ***items, int32_t *count, int32_t *capacity) {
     void **array = items ? *items : NULL;
     int32_t safe_count =

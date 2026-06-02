@@ -851,6 +851,8 @@ static rt_pixels_impl *vscn_material_texture_pixels(void *texture_ref) {
     return rt_pixels_checked_impl_or_null(pixels);
 }
 
+/// @brief True if a cubemap has all six faces present and square at its declared face size
+///   (i.e. it can be serialized into a .vscn asset).
 static int vscn_cubemap_is_serializable(rt_cubemap3d *cubemap) {
     if (!rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID) || cubemap->face_size <= 0 ||
         cubemap->face_size > INT32_MAX)
@@ -863,11 +865,14 @@ static int vscn_cubemap_is_serializable(rt_cubemap3d *cubemap) {
     return 1;
 }
 
+/// @brief Return a material's environment cubemap only when present and serializable, else NULL.
 static rt_cubemap3d *vscn_material_env_map(rt_material3d *material) {
     rt_cubemap3d *cubemap = material ? (rt_cubemap3d *)material->env_map : NULL;
     return vscn_cubemap_is_serializable(cubemap) ? cubemap : NULL;
 }
 
+/// @brief Register a material's referenced textures and environment cubemap into the save
+///   context's dedup tables; returns 0 on allocation failure, 1 on success (or nothing to do).
 static int vscn_collect_material_assets(rt_material3d *material, vscn_save_context_t *ctx) {
     rt_pixels_impl *texture;
     rt_cubemap3d *cubemap;

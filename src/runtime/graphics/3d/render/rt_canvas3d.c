@@ -570,6 +570,8 @@ static void canvas3d_clear_pending_splat(rt_canvas3d *c) {
     }
 }
 
+/// @brief True if every lane of a bone palette (bone_count × 16 floats, capped at
+///   VGFX3D_MAX_BONES) is finite; guards skinning uploads against NaN-corrupted matrices.
 static int canvas3d_palette_finite(const float *palette, int32_t bone_count) {
     size_t lane_count;
     if (!palette || bone_count <= 0)
@@ -586,6 +588,8 @@ static int canvas3d_palette_finite(const float *palette, int32_t bone_count) {
     return 1;
 }
 
+/// @brief Bind a mesh's bone palette (plus the previous-frame palette for motion blur)
+///   onto a draw command, dropping all skinning data if any palette lane is non-finite.
 static void canvas3d_bind_skinning_cmd(vgfx3d_draw_cmd_t *cmd,
                                        const rt_mesh3d *mesh,
                                        const float *prev_bone_palette) {
@@ -610,6 +614,7 @@ static void canvas3d_bind_skinning_cmd(vgfx3d_draw_cmd_t *cmd,
             : NULL;
 }
 
+/// @brief True if all `count` floats are finite (NULL/empty array returns false).
 static int canvas3d_float_array_finite(const float *values, size_t count) {
     if (!values || count <= 0)
         return 0;
@@ -620,6 +625,9 @@ static int canvas3d_float_array_finite(const float *values, size_t count) {
     return 1;
 }
 
+/// @brief Bind a mesh's morph-target deltas/weights (plus previous weights) onto a draw
+///   command. Validates shape/vertex counts against overflow and finiteness, and clears
+///   every morph field if anything is invalid so the backend skips morphing safely.
 static void canvas3d_bind_morph_cmd(vgfx3d_draw_cmd_t *cmd,
                                     const rt_mesh3d *mesh,
                                     const float *prev_morph_weights) {
@@ -671,6 +679,7 @@ static void canvas3d_bind_morph_cmd(vgfx3d_draw_cmd_t *cmd,
                                 : 0;
 }
 
+/// @brief True if both AABB corners are finite and min ≤ max on every axis.
 static int canvas3d_bounds_are_valid(const float minv[3], const float maxv[3]) {
     if (!minv || !maxv)
         return 0;
@@ -681,6 +690,8 @@ static int canvas3d_bounds_are_valid(const float minv[3], const float maxv[3]) {
     return 1;
 }
 
+/// @brief Fill out_min/out_max from the mesh's cached local AABB when it is valid,
+///   otherwise compute the bounds directly from the vertex array.
 static void canvas3d_copy_or_compute_local_bounds(const rt_mesh3d *mesh,
                                                   const vgfx3d_vertex_t *vertices,
                                                   float out_min[3],
@@ -1121,6 +1132,7 @@ static int canvas3d_generate_snapshot_tangents(const rt_mesh3d *source,
     return temp.tangents_ready ? 1 : 0;
 }
 
+/// @brief Coerce a texture-wrap value to a known mode, defaulting unknown values to REPEAT.
 static int32_t canvas3d_sanitize_material_wrap(int32_t value) {
     if (value == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
         value == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
@@ -1128,11 +1140,14 @@ static int32_t canvas3d_sanitize_material_wrap(int32_t value) {
     return RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
 }
 
+/// @brief Coerce a texture-filter value to NEAREST or LINEAR (default LINEAR).
 static int32_t canvas3d_sanitize_material_filter(int32_t value) {
     return value == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                                                          : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
 
+/// @brief Clamp a double into [lo, hi] and narrow to float; returns `fallback` on
+///   non-finite input or an inverted (lo > hi) range.
 static float canvas3d_clamp_material_f64(double value, double lo, double hi, float fallback) {
     if (!isfinite(value) || lo > hi)
         return fallback;
@@ -1143,12 +1158,16 @@ static float canvas3d_clamp_material_f64(double value, double lo, double hi, flo
     return (float)value;
 }
 
+/// @brief Sanitize one UV-transform component into float range; scale lanes (0, 3)
+///   default to 1.0 and offset lanes (1, 2) to 0.0 on non-finite input.
 static float canvas3d_material_uv_value(double value, int32_t component) {
     float fallback = (component == 0 || component == 3) ? 1.0f : 0.0f;
     return canvas3d_clamp_material_f64(
         value, -CANVAS3D_MATERIAL_UV_ABS_MAX, CANVAS3D_MATERIAL_UV_ABS_MAX, fallback);
 }
 
+/// @brief Clamp a terrain splat-layer UV scale to (0, CANVAS3D_MATERIAL_UV_ABS_MAX],
+///   defaulting non-positive or non-finite values to 1.0.
 static float canvas3d_sanitize_splat_layer_scale(float value) {
     if (!isfinite(value) || value <= 0.0f)
         return 1.0f;

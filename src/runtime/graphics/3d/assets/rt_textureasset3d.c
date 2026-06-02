@@ -530,12 +530,12 @@ static void **textureasset3d_decode_rgba8_mips(const uint8_t *data,
 
 /* --- BC3 (DXT5) software reference decode. Produces an RGBA8 Pixels fallback so BC3-compressed
  *     textures render on backends that cannot upload BC3 natively (R-TEX-001). --- */
-/* Expand a 5-bit color component to 8 bits by bit replication (BC1/BC3 R and B endpoints). */
+/// @brief Expand a 5-bit color component to 8 bits by bit replication (BC1/BC3 R and B endpoints).
 static uint8_t textureasset3d_expand5(uint32_t v) {
     return (uint8_t)((v << 3) | (v >> 2));
 }
 
-/* Expand a 6-bit color component to 8 bits by bit replication (BC1/BC3 green endpoints). */
+/// @brief Expand a 6-bit color component to 8 bits by bit replication (BC1/BC3 green endpoints).
 static uint8_t textureasset3d_expand6(uint32_t v) {
     return (uint8_t)((v << 2) | (v >> 4));
 }
@@ -858,7 +858,7 @@ static const uint8_t BC7_ANCHOR3B[64] = {
     3,  6, 6, 8,  15, 3,  15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 3,  15, 15, 8,
 };
 
-/* Read `n` bits at a fixed bit offset, LSB-first within each byte. */
+/// @brief Read `n` bits at a fixed bit offset, LSB-first within each byte.
 static uint32_t bc7_get_bits_at(const uint8_t *b, int offset, int n) {
     uint32_t v = 0;
     for (int i = 0; i < n; i++)
@@ -866,19 +866,19 @@ static uint32_t bc7_get_bits_at(const uint8_t *b, int offset, int n) {
     return v;
 }
 
-/* Expand a `bits`-bit endpoint component to 8 bits by bit replication. */
+/// @brief Expand a `bits`-bit endpoint component to 8 bits by bit replication.
 static uint8_t bc7_unq(uint32_t v, int bits) {
     if (bits >= 8)
         return (uint8_t)v;
     return (uint8_t)((v << (8 - bits)) | (v >> (2 * bits - 8)));
 }
 
-/* Interpolate two endpoints by weight `w` (out of 64) with rounding: lerp(e0, e1, w/64). */
+/// @brief Interpolate two endpoints by weight `w` (out of 64) with rounding: lerp(e0, e1, w/64).
 static uint8_t bc7_interp(uint8_t e0, uint8_t e1, uint8_t w) {
     return (uint8_t)(((uint32_t)e0 * (64u - w) + (uint32_t)e1 * w + 32u) >> 6);
 }
 
-/* Modes 4/5 may swap the alpha channel with one color channel after decode. */
+/// @brief Modes 4/5 may swap the alpha channel with one color channel after decode.
 static void bc7_apply_rotation(uint32_t rot, uint8_t *px) {
     uint8_t t;
     if (rot == 1) {
@@ -896,7 +896,7 @@ static void bc7_apply_rotation(uint32_t rot, uint8_t *px) {
     }
 }
 
-/* The BC7 mode is the index of the first set bit in byte 0 (LSB-first); 8 = invalid. */
+/// @brief The BC7 mode is the index of the first set bit in byte 0 (LSB-first); 8 = invalid.
 static int bc7_block_mode(const uint8_t *b) {
     int mode = 0;
     while (mode < 8 && !((b[0] >> mode) & 1u))
@@ -904,57 +904,57 @@ static int bc7_block_mode(const uint8_t *b) {
     return mode;
 }
 
-/* Endpoint color-value count for a block: two endpoints per subset. */
+/// @brief Endpoint color-value count for a block: two endpoints per subset.
 static int bc7_num_colors(const bc7_mode_info *info) {
     return (int)info->subset_count * 2;
 }
 
-/* Bit offset of the first color-endpoint field, past the mode/partition/rotation/
-   index-selection header bits. */
+/// @brief Bit offset of the first color-endpoint field, past the mode/partition/rotation/
+///   index-selection header bits.
 static int bc7_endpoint_base(int mode, const bc7_mode_info *info) {
     return mode + 1 + (int)info->partition_bits + (int)info->rotation_bits +
            (int)info->index_selection_bits;
 }
 
-/* Bit offset of endpoint `endpoint`'s red component (all reds are packed first). */
+/// @brief Bit offset of endpoint `endpoint`'s red component (all reds are packed first).
 static int bc7_red_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_endpoint_base(mode, info) + (int)info->color_bits * endpoint;
 }
 
-/* Bit offset of endpoint `endpoint`'s green component (greens follow all reds). */
+/// @brief Bit offset of endpoint `endpoint`'s green component (greens follow all reds).
 static int bc7_green_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_red_offset(mode, info, bc7_num_colors(info)) + (int)info->color_bits * endpoint;
 }
 
-/* Bit offset of endpoint `endpoint`'s blue component (blues follow all greens). */
+/// @brief Bit offset of endpoint `endpoint`'s blue component (blues follow all greens).
 static int bc7_blue_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_green_offset(mode, info, bc7_num_colors(info)) + (int)info->color_bits * endpoint;
 }
 
-/* Bit offset of endpoint `endpoint`'s alpha component (alphas follow all blues). */
+/// @brief Bit offset of endpoint `endpoint`'s alpha component (alphas follow all blues).
 static int bc7_alpha_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_blue_offset(mode, info, bc7_num_colors(info)) + (int)info->alpha_bits * endpoint;
 }
 
-/* Bit offset of per-endpoint p-bit `endpoint` (p-bits follow the alpha endpoints). */
+/// @brief Bit offset of per-endpoint p-bit `endpoint` (p-bits follow the alpha endpoints).
 static int bc7_endpoint_pbit_offset(int mode, const bc7_mode_info *info, int endpoint) {
     return bc7_alpha_offset(mode, info, bc7_num_colors(info)) +
            (int)info->endpoint_pbits * endpoint;
 }
 
-/* Bit offset of shared (per-subset) p-bit `subset`, used by modes with shared p-bits. */
+/// @brief Bit offset of shared (per-subset) p-bit `subset`, used by modes with shared p-bits.
 static int bc7_shared_pbit_offset(int mode, const bc7_mode_info *info, int subset) {
     return bc7_endpoint_pbit_offset(mode, info, bc7_num_colors(info)) +
            (int)info->shared_pbits * subset;
 }
 
-/* Bit offset where per-texel index data begins, past all endpoint and p-bit fields. */
+/// @brief Bit offset where per-texel index data begins, past all endpoint and p-bit fields.
 static int bc7_index_base(int mode, const bc7_mode_info *info) {
     return bc7_shared_pbit_offset(mode, info, 2);
 }
 
-/* Subset (partition region) that `texel` belongs to, read from the 2-/3-subset
-   partition tables; 0 for single-subset modes. */
+/// @brief Subset (partition region) that `texel` belongs to, read from the 2-/3-subset
+///   partition tables; 0 for single-subset modes.
 static int bc7_subset_index(const bc7_mode_info *info, int partition, int texel) {
     if (info->subset_count == 2)
         return BC7_PARTITION2[partition][texel];
@@ -963,8 +963,8 @@ static int bc7_subset_index(const bc7_mode_info *info, int partition, int texel)
     return 0;
 }
 
-/* Texel position of subset `subset`'s anchor index (the index whose high bit is
-   implicitly 0); 0 for subset 0. */
+/// @brief Texel position of subset `subset`'s anchor index (the index whose high bit is
+///   implicitly 0); 0 for subset 0.
 static int bc7_anchor_index(const bc7_mode_info *info, int partition, int subset) {
     if (subset == 1)
         return info->subset_count == 2 ? BC7_ANCHOR2[partition] : BC7_ANCHOR3A[partition];
@@ -973,9 +973,9 @@ static int bc7_anchor_index(const bc7_mode_info *info, int partition, int subset
     return 0;
 }
 
-/* Read texel `anchor`'s color index: selects the primary or secondary index set per the
-   block's index-selection bit / color rotation, drops the implicit MSB for anchor texels,
-   advances *bit_offset past the bits read, and reports the index bit-width in *out_bits. */
+/// @brief Read texel `anchor`'s color index: selects the primary or secondary index set per the
+///   block's index-selection bit / color rotation, drops the implicit MSB for anchor texels,
+///   advances *bit_offset past the bits read, and reports the index bit-width in *out_bits.
 static uint32_t bc7_index_value(const uint8_t *b,
                                 int mode,
                                 const bc7_mode_info *info,
@@ -998,7 +998,7 @@ static uint32_t bc7_index_value(const uint8_t *b,
     return value;
 }
 
-/* Interpolation weight (out of 64) for a 2-, 3-, or 4-bit BC7 index. */
+/// @brief Interpolation weight (out of 64) for a 2-, 3-, or 4-bit BC7 index.
 static uint8_t bc7_index_weight(uint32_t index, int bits) {
     if (bits == 2)
         return BC7_W2[index & 3u];
@@ -1185,12 +1185,12 @@ static void **textureasset3d_decode_bc7_mips(const uint8_t *data,
     return mip_pixels;
 }
 
-/* Expand a 4-bit value to 8 bits by bit replication (v<<4 | v). */
+/// @brief Expand a 4-bit value to 8 bits by bit replication (v<<4 | v).
 static uint8_t textureasset3d_expand4(uint32_t v) {
     return (uint8_t)((v << 4) | v);
 }
 
-/* Clamp a signed integer to the unsigned 8-bit range [0, 255]. */
+/// @brief Clamp a signed integer to the unsigned 8-bit range [0, 255].
 static uint8_t textureasset3d_clamp_u8(int v) {
     if (v < 0)
         return 0;
@@ -1199,12 +1199,12 @@ static uint8_t textureasset3d_clamp_u8(int v) {
     return (uint8_t)v;
 }
 
-/* Sign-extend a 3-bit two's-complement value to a host int. */
+/// @brief Sign-extend a 3-bit two's-complement value to a host int.
 static int textureasset3d_sign3(uint32_t v) {
     return (v & 4u) ? (int)v - 8 : (int)v;
 }
 
-/* Requantize a 16-bit unorm to 8-bit with round-to-nearest. */
+/// @brief Requantize a 16-bit unorm to 8-bit with round-to-nearest.
 static uint8_t textureasset3d_unorm16_to_u8(uint32_t v) {
     return (uint8_t)((v * 255u + 32767u) / 65535u);
 }
@@ -1239,7 +1239,7 @@ static const int16_t ETC2_COLOR_MODIFIERS[8][4] = {
     {-183, -47, 47, 183},
 };
 
-/* Read a 48-bit big-endian unsigned integer from the first 6 bytes of `p`. */
+/// @brief Read a 48-bit big-endian unsigned integer from the first 6 bytes of `p`.
 static uint64_t textureasset3d_read_u48be(const uint8_t *p) {
     uint64_t v = 0;
     for (int i = 0; i < 6; i++)
@@ -1247,8 +1247,8 @@ static uint64_t textureasset3d_read_u48be(const uint8_t *p) {
     return v;
 }
 
-/* Two-bit pixel index for texel (x, y) of an ETC2 color block, gathered from the MSB and
-   LSB index bit-planes packed in bytes 4-7. */
+/// @brief Two-bit pixel index for texel (x, y) of an ETC2 color block, gathered from the MSB and
+///   LSB index bit-planes packed in bytes 4-7.
 static int etc2_color_index(const uint8_t *c, int x, int y) {
     int bit = x * 4 + y;
     uint16_t msb = ((uint16_t)c[4] << 8) | (uint16_t)c[5];

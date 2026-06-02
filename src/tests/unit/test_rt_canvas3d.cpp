@@ -1902,10 +1902,11 @@ static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
     EXPECT_TRUE(!vgfx3d_textureasset_get_native_resident_mip(asset, 2, &mip),
                 "resident native mip query rejects out-of-range relative mips");
 
-    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 0, 1), 32);
-    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 1, 1), 16);
-    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 2, 1), 0);
-    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 0, 0), 0);
+    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 0, 0, 1), 32);
+    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 0, 1, 1), 16);
+    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 1, 0, 1), 16);
+    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 2, 0, 1), 0);
+    EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 0, 0, 0), 0);
     EXPECT_TRUE(rt_textureasset3d_get_resident_bytes(asset) < (4 * 4 * 4 + 2 * 2 * 4),
                 "resident compressed bytes are smaller than equivalent raw RGBA bytes");
 

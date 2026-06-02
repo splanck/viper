@@ -292,6 +292,9 @@ typedef struct rt_game3d_asset_handle {
     void *model_template;
 } rt_game3d_asset_handle;
 
+/// @brief Async asset-load worker job: the target AssetHandle3D, any preloaded glTF
+///   bundle, the cache generation it was scheduled against, upload-byte progress
+///   counters, and a fixed-size error buffer filled on worker-thread failure.
 typedef struct rt_game3d_asset_async_job {
     rt_game3d_asset_handle *handle;
     rt_gltf_preload_bundle *preloaded_gltf;
@@ -301,6 +304,9 @@ typedef struct rt_game3d_asset_async_job {
     char error[256];
 } rt_game3d_asset_async_job;
 
+/// @brief One streaming scene cell parsed from the cells manifest: spatial center/
+///   radius, material/nav/layer/collision metadata, an optional malloc-owned binary
+///   sidecar payload, and the loaded scene/entity plus residency bookkeeping.
 typedef struct rt_game3d_stream_cell {
     rt_string name;
     rt_string path;
@@ -324,6 +330,9 @@ typedef struct rt_game3d_stream_cell {
     int64_t sidecar_bytes; /* size in bytes of the loaded binary sidecar payload */
 } rt_game3d_stream_cell;
 
+/// @brief One streaming terrain tile parsed from the terrain manifest: spatial
+///   center/scale/radius and heightmap, material/nav/layer/collision metadata, and
+///   the loaded terrain plus collider/nav entities and residency bookkeeping.
 typedef struct rt_game3d_stream_terrain_tile {
     rt_string name;
     rt_string path;
@@ -442,6 +451,8 @@ typedef struct rt_game3d_follow_controller {
     double damping;
 } rt_game3d_follow_controller;
 
+/// @brief One body→entity index entry, mapping a physics body handle to the
+///   Entity3D that owns it for fast collision-event entity lookup.
 typedef struct {
     void *body;
     rt_game3d_entity *entity;

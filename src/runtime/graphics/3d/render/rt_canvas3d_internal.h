@@ -98,18 +98,24 @@ typedef struct {
     int32_t physics_bvh_tri_count;
 } rt_mesh3d;
 
+/// @brief Vertex count safe to read directly — the live count clamped to capacity, 0 when
+///   the vertex buffer is absent or empty.
 static inline uint32_t rt_mesh3d_safe_vertex_count(const rt_mesh3d *mesh) {
     if (!mesh || !mesh->vertices || mesh->vertex_count == 0 || mesh->vertex_capacity == 0)
         return 0;
     return mesh->vertex_count < mesh->vertex_capacity ? mesh->vertex_count : mesh->vertex_capacity;
 }
 
+/// @brief Index count safe to read directly — the live count clamped to capacity, 0 when
+///   the index buffer is absent or empty.
 static inline uint32_t rt_mesh3d_safe_index_count(const rt_mesh3d *mesh) {
     if (!mesh || !mesh->indices || mesh->index_count == 0 || mesh->index_capacity == 0)
         return 0;
     return mesh->index_count < mesh->index_capacity ? mesh->index_count : mesh->index_capacity;
 }
 
+/// @brief Clamp a mesh's vertex/index counts to their safe values, marking bounds dirty
+///   when either count changed.
 static inline void rt_mesh3d_repair_geometry_counts(rt_mesh3d *mesh) {
     uint32_t vertex_count;
     uint32_t index_count;
@@ -445,6 +451,8 @@ static inline int vgfx3d_rendertarget_is_hdr(const vgfx3d_rendertarget_t *target
     return target && target->color_format == VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F;
 }
 
+/// @brief Validate the render target's dimensions and compute its pixel count into
+///   *out_pixel_count; returns 0 (count 0) on degenerate, oversized, or overflowing sizes.
 static inline int vgfx3d_rendertarget_valid_pixels(const vgfx3d_rendertarget_t *target,
                                                    size_t *out_pixel_count) {
     size_t pixels;
@@ -463,6 +471,8 @@ static inline int vgfx3d_rendertarget_valid_pixels(const vgfx3d_rendertarget_t *
     return 1;
 }
 
+/// @brief Validate the render target's color stride against its width/format and compute the
+///   color buffer byte size into *out_bytes; returns 0 on an invalid or overflowing layout.
 static inline int vgfx3d_rendertarget_valid_color_layout(const vgfx3d_rendertarget_t *target,
                                                          size_t *out_bytes) {
     size_t min_stride;

@@ -99,10 +99,12 @@ static void scene_node_repair_string_slot(rt_string *slot) {
         *slot = NULL;
 }
 
+/// @brief Class-checked cast of an opaque handle to a SceneNode3D, or NULL on mismatch.
 static rt_scene_node3d *scene_node_ref(void *ref) {
     return (rt_scene_node3d *)rt_g3d_checked_or_null(ref, RT_G3D_SCENENODE3D_CLASS_ID);
 }
 
+/// @brief Class-checked cast of an opaque handle to a NodeAnimator3D, or NULL on mismatch.
 static rt_node_animator3d *scene_node_animator_ref(void *ref) {
     return (rt_node_animator3d *)rt_g3d_checked_or_null(ref, RT_G3D_NODEANIMATOR3D_CLASS_ID);
 }

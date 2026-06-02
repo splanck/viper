@@ -89,6 +89,7 @@ static int cubemap_faces_valid(const rt_cubemap3d *cm) {
     return 1;
 }
 
+/// @brief True if the cubemap has all six faces present, square, and at a consistent face size.
 int rt_cubemap3d_is_complete(void *cubemap) {
     return cubemap_faces_valid((const rt_cubemap3d *)cubemap) ? 1 : 0;
 }
@@ -679,6 +680,9 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
 // Canvas3D skybox
 //=============================================================================
 
+/// @brief Defensively validate a canvas's skybox slot: clear it (and invalidate the skybox
+///   cache) when the cubemap handle is invalid or the cubemap is incomplete. Returns 1 if
+///   it cleared the slot, else 0.
 static int canvas3d_repair_skybox_slot(rt_canvas3d *c) {
     if (!c || !c->skybox)
         return 0;

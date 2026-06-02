@@ -167,6 +167,7 @@ static float sanitize_nonnegative_f32(double value, float fallback) {
     return sanitize_range_f32(value, fallback, 0.0f, POSTFX3D_PARAM_MAX);
 }
 
+/// @brief Clamp an HDR color channel into the valid [0, POSTFX3D_FOCUS_MAX] range.
 static float sanitize_hdr_channel(float value) {
     return clampf(value, 0.0f, POSTFX3D_FOCUS_MAX);
 }

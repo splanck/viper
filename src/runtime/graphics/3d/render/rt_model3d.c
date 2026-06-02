@@ -580,16 +580,20 @@ static int model_clone_mutable_mesh(void *mesh, void **out_mesh) {
     return 1;
 }
 
+/// @brief Return `value` when finite, else `fallback` (float scalar sanitizer).
 static float model_finite_float_or(float value, float fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Return `value` when finite and ≥ 0, else `fallback`.
 static double model_nonnegative_double_or(double value, double fallback) {
     if (!isfinite(value) || value < 0.0)
         return fallback;
     return value;
 }
 
+/// @brief Sanitize a cloned node's local AABB: keep the source bounds when finite and
+///   well-ordered (min ≤ max on every axis), otherwise fall back to a safe default.
 static void model_clone_sanitize_bounds(rt_scene_node3d *dst, const rt_scene_node3d *src) {
     int valid = 1;
     if (!dst || !src)

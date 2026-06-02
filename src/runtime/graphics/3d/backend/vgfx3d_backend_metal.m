@@ -164,6 +164,7 @@
 @property(nonatomic) int8_t uploadInProgress;
 @property(nonatomic, assign) void *textureAsset;
 @property(nonatomic) int32_t nativeFormat;
+@property(nonatomic) int32_t nativeNextBlockRow;
 @property(nonatomic) int64_t nativeNextMip;
 @property(nonatomic) int64_t nativeMipCount;
 @property(nonatomic) uint64_t lastUsedFrame;
@@ -2218,6 +2219,320 @@ static id<MTLSamplerState> metal_get_material_sampler(VGFXMetalContext *ctx,
 // Backend vtable
 //=============================================================================
 
+typedef struct metal_main_functions_t {
+    id<MTLFunction> vertex;
+    id<MTLFunction> vertexInstanced;
+    id<MTLFunction> vertexShadow;
+    id<MTLFunction> fragmentShadow;
+    id<MTLFunction> fragment;
+} metal_main_functions_t;
+
+/// @brief Allocate the Objective-C context and initialize cache/default fields.
+static VGFXMetalContext *metal_create_context_base(id<MTLDevice> device,
+                                                   vgfx_window_t win,
+                                                   int32_t w,
+                                                   int32_t h) {
+    VGFXMetalContext *ctx = [[VGFXMetalContext alloc] init];
+    ctx.device = device;
+    ctx.width = w;
+    ctx.height = h;
+    ctx.vgfxWin = win;
+    ctx.textureCache = [NSMutableDictionary dictionaryWithCapacity:32];
+    ctx.cubemapCache = [NSMutableDictionary dictionaryWithCapacity:8];
+    ctx.geometryCache = [NSMutableDictionary dictionaryWithCapacity:32];
+    ctx.morphCache = [NSMutableDictionary dictionaryWithCapacity:16];
+    ctx.renderTargetCache = [NSMutableDictionary dictionaryWithCapacity:8];
+    ctx.samplerCache = [NSMutableDictionary dictionaryWithCapacity:8];
+    ctx.currentTargetKind = VGFX3D_METAL_TARGET_SWAPCHAIN;
+    ctx.textureUploadBudgetBytes = UINT64_MAX;
+    return ctx;
+}
+
+/// @brief Attach a CAMetalLayer to the native view and sync its drawable size.
+static void metal_attach_layer_to_view(VGFXMetalContext *ctx, NSView *view, id<MTLDevice> device) {
+    view.wantsLayer = YES;
+    if (!view.layer)
+        view.layer = [CALayer layer];
+    ctx.metalLayer = [CAMetalLayer layer];
+    ctx.metalLayer.device = device;
+    ctx.metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+    ctx.metalLayer.framebufferOnly = NO;
+    ctx.metalLayer.hidden = YES;
+    ctx.metalLayer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+    [view.layer addSublayer:ctx.metalLayer];
+    metal_update_layer_size(ctx);
+}
+
+/// @brief Create the command queue and reset frame matrices/state.
+static BOOL metal_create_command_queue_and_defaults(VGFXMetalContext *ctx, id<MTLDevice> device) {
+    ctx.commandQueue = [device newCommandQueue];
+    if (!ctx.commandQueue) {
+        NSLog(@ "[Metal] newCommandQueue returned nil");
+        return NO;
+    }
+    mat4f_identity(ctx->_view);
+    mat4f_identity(ctx->_projection);
+    mat4f_identity(ctx->_vp);
+    mat4f_identity(ctx->_prevVP);
+    mat4f_identity(ctx->_invVP);
+    ctx->_prevVPValid = NO;
+    return YES;
+}
+
+/// @brief Compile the main in-memory Metal shader library.
+static BOOL metal_compile_main_library(VGFXMetalContext *ctx, id<MTLDevice> device) {
+    NSError *error = nil;
+    ctx.library = [device newLibraryWithSource:metal_shader_source options:nil error:&error];
+    if (!ctx.library) {
+        NSLog(@ "[Metal] Shader error: %@", error);
+        return NO;
+    }
+    return YES;
+}
+
+/// @brief Resolve the required main/shadow shader entry points from the main library.
+static BOOL metal_load_main_functions(VGFXMetalContext *ctx, metal_main_functions_t *funcs) {
+    funcs->vertex = nil;
+    funcs->vertexInstanced = nil;
+    funcs->vertexShadow = nil;
+    funcs->fragmentShadow = nil;
+    funcs->fragment = nil;
+    funcs->vertex = [ctx.library newFunctionWithName:@ "vertex_main"];
+    funcs->vertexInstanced = [ctx.library newFunctionWithName:@ "vertex_main_instanced"];
+    funcs->vertexShadow = [ctx.library newFunctionWithName:@ "vertex_shadow"];
+    funcs->fragmentShadow = [ctx.library newFunctionWithName:@ "fragment_shadow"];
+    funcs->fragment = [ctx.library newFunctionWithName:@ "fragment_main"];
+    if (!funcs->vertex || !funcs->vertexInstanced || !funcs->vertexShadow ||
+        !funcs->fragmentShadow || !funcs->fragment) {
+        NSLog(@ "[Metal] required shader entrypoints missing (vf=%@ inst=%@ shadow=%@ shadowf=%@ "
+               "ff=%@)",
+              funcs->vertex,
+              funcs->vertexInstanced,
+              funcs->vertexShadow,
+              funcs->fragmentShadow,
+              funcs->fragment);
+        return NO;
+    }
+    return YES;
+}
+
+/// @brief Build all main and instanced pipeline-state variants.
+static BOOL metal_create_main_pipeline_states(VGFXMetalContext *ctx,
+                                             id<MTLDevice> device,
+                                             const metal_main_functions_t *funcs) {
+    NSError *error = nil;
+    ctx.pipelineState = metal_create_pipeline_state(device,
+                                                    funcs->vertex,
+                                                    funcs->fragment,
+                                                    create_vertex_descriptor(),
+                                                    MTLPixelFormatRGBA16Float,
+                                                    VGFX3D_METAL_BLEND_OPAQUE,
+                                                    NO,
+                                                    &error);
+    ctx.pipelineStateAlpha = metal_create_pipeline_state(device,
+                                                         funcs->vertex,
+                                                         funcs->fragment,
+                                                         create_vertex_descriptor(),
+                                                         MTLPixelFormatRGBA16Float,
+                                                         VGFX3D_METAL_BLEND_ALPHA,
+                                                         YES,
+                                                         &error);
+    ctx.pipelineStateAdditive = metal_create_pipeline_state(device,
+                                                            funcs->vertex,
+                                                            funcs->fragment,
+                                                            create_vertex_descriptor(),
+                                                            MTLPixelFormatRGBA16Float,
+                                                            VGFX3D_METAL_BLEND_ADDITIVE,
+                                                            YES,
+                                                            &error);
+    ctx.pipelineStateColorOnly = metal_create_pipeline_state(device,
+                                                             funcs->vertex,
+                                                             funcs->fragment,
+                                                             create_vertex_descriptor(),
+                                                             MTLPixelFormatBGRA8Unorm,
+                                                             VGFX3D_METAL_BLEND_OPAQUE,
+                                                             NO,
+                                                             &error);
+    ctx.pipelineStateColorOnlyAlpha = metal_create_pipeline_state(device,
+                                                                  funcs->vertex,
+                                                                  funcs->fragment,
+                                                                  create_vertex_descriptor(),
+                                                                  MTLPixelFormatBGRA8Unorm,
+                                                                  VGFX3D_METAL_BLEND_ALPHA,
+                                                                  YES,
+                                                                  &error);
+    ctx.pipelineStateColorOnlyAdditive =
+        metal_create_pipeline_state(device,
+                                    funcs->vertex,
+                                    funcs->fragment,
+                                    create_vertex_descriptor(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_ADDITIVE,
+                                    YES,
+                                    &error);
+    ctx.instancedPipelineState = metal_create_pipeline_state(device,
+                                                             funcs->vertexInstanced,
+                                                             funcs->fragment,
+                                                             create_vertex_descriptor(),
+                                                             MTLPixelFormatRGBA16Float,
+                                                             VGFX3D_METAL_BLEND_OPAQUE,
+                                                             NO,
+                                                             &error);
+    ctx.instancedPipelineStateAlpha = metal_create_pipeline_state(device,
+                                                                  funcs->vertexInstanced,
+                                                                  funcs->fragment,
+                                                                  create_vertex_descriptor(),
+                                                                  MTLPixelFormatRGBA16Float,
+                                                                  VGFX3D_METAL_BLEND_ALPHA,
+                                                                  YES,
+                                                                  &error);
+    ctx.instancedPipelineStateAdditive =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor(),
+                                    MTLPixelFormatRGBA16Float,
+                                    VGFX3D_METAL_BLEND_ADDITIVE,
+                                    YES,
+                                    &error);
+    ctx.instancedPipelineStateColorOnly =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_OPAQUE,
+                                    NO,
+                                    &error);
+    ctx.instancedPipelineStateColorOnlyAlpha =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_ALPHA,
+                                    YES,
+                                    &error);
+    ctx.instancedPipelineStateColorOnlyAdditive =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexInstanced,
+                                    funcs->fragment,
+                                    create_vertex_descriptor(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_ADDITIVE,
+                                    YES,
+                                    &error);
+    if (!ctx.pipelineState || !ctx.pipelineStateAlpha || !ctx.pipelineStateAdditive ||
+        !ctx.pipelineStateColorOnly || !ctx.pipelineStateColorOnlyAlpha ||
+        !ctx.pipelineStateColorOnlyAdditive || !ctx.instancedPipelineState ||
+        !ctx.instancedPipelineStateAlpha || !ctx.instancedPipelineStateAdditive ||
+        !ctx.instancedPipelineStateColorOnly || !ctx.instancedPipelineStateColorOnlyAlpha ||
+        !ctx.instancedPipelineStateColorOnlyAdditive) {
+        NSLog(@ "Metal pipeline error: %@", error);
+        return NO;
+    }
+    return YES;
+}
+
+/// @brief Create depth-stencil state variants used by opaque, transparent, disabled, and skybox draws.
+static void metal_create_depth_state_variants(VGFXMetalContext *ctx, id<MTLDevice> device) {
+    MTLDepthStencilDescriptor *dd = [[MTLDepthStencilDescriptor alloc] init];
+    dd.depthCompareFunction = MTLCompareFunctionLess;
+    dd.depthWriteEnabled = YES;
+    ctx.depthState = [device newDepthStencilStateWithDescriptor:dd];
+    dd.depthWriteEnabled = NO;
+    ctx.depthStateNoWrite = [device newDepthStencilStateWithDescriptor:dd];
+    dd.depthCompareFunction = MTLCompareFunctionAlways;
+    ctx.depthStateDisabled = [device newDepthStencilStateWithDescriptor:dd];
+    dd.depthCompareFunction = MTLCompareFunctionLessEqual;
+    ctx.skyboxDepthState = [device newDepthStencilStateWithDescriptor:dd];
+}
+
+/// @brief Create default white 2D/cubemap textures plus the default sampler.
+static void metal_create_default_texture_resources(VGFXMetalContext *ctx, id<MTLDevice> device) {
+    MTLTextureDescriptor *dtd =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                           width:1
+                                                          height:1
+                                                       mipmapped:NO];
+    dtd.usage = MTLTextureUsageShaderRead;
+    dtd.storageMode = MTLStorageModeShared;
+    ctx.defaultTexture = [device newTextureWithDescriptor:dtd];
+    uint32_t white = 0xFFFFFFFF;
+    [ctx.defaultTexture replaceRegion:MTLRegionMake2D(0, 0, 1, 1)
+                          mipmapLevel:0
+                            withBytes:&white
+                          bytesPerRow:4];
+
+    MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
+    sd.minFilter = MTLSamplerMinMagFilterLinear;
+    sd.magFilter = MTLSamplerMinMagFilterLinear;
+    sd.mipFilter = MTLSamplerMipFilterLinear;
+    ctx.defaultSampler = [device newSamplerStateWithDescriptor:sd];
+
+    MTLTextureDescriptor *cubeDesc =
+        [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                              size:1
+                                                         mipmapped:NO];
+    cubeDesc.usage = MTLTextureUsageShaderRead;
+    cubeDesc.storageMode = MTLStorageModeShared;
+    ctx.defaultCubemap = [device newTextureWithDescriptor:cubeDesc];
+    for (NSUInteger face = 0; face < 6; face++) {
+        uint32_t cube_white = 0xFFFFFFFF;
+        [ctx.defaultCubemap replaceRegion:MTLRegionMake2D(0, 0, 1, 1)
+                              mipmapLevel:0
+                                    slice:face
+                                withBytes:&cube_white
+                              bytesPerRow:4
+                            bytesPerImage:4];
+    }
+}
+
+/// @brief Create shared texture and cubemap samplers.
+static void metal_create_shared_sampler_resources(VGFXMetalContext *ctx, id<MTLDevice> device) {
+    MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
+    sd.minFilter = MTLSamplerMinMagFilterLinear;
+    sd.magFilter = MTLSamplerMinMagFilterLinear;
+    sd.mipFilter = MTLSamplerMipFilterLinear;
+    sd.sAddressMode = MTLSamplerAddressModeRepeat;
+    sd.tAddressMode = MTLSamplerAddressModeRepeat;
+    ctx.sharedSampler = [device newSamplerStateWithDescriptor:sd];
+
+    MTLSamplerDescriptor *cubeSd = [[MTLSamplerDescriptor alloc] init];
+    cubeSd.minFilter = MTLSamplerMinMagFilterLinear;
+    cubeSd.magFilter = MTLSamplerMinMagFilterLinear;
+    cubeSd.mipFilter = MTLSamplerMipFilterLinear;
+    cubeSd.sAddressMode = MTLSamplerAddressModeClampToEdge;
+    cubeSd.tAddressMode = MTLSamplerAddressModeClampToEdge;
+    cubeSd.rAddressMode = MTLSamplerAddressModeClampToEdge;
+    ctx.cubeSampler = [device newSamplerStateWithDescriptor:cubeSd];
+}
+
+/// @brief Create shadow pipeline, comparison sampler, and shadow depth state.
+static void metal_create_shadow_resources(VGFXMetalContext *ctx,
+                                          id<MTLDevice> device,
+                                          const metal_main_functions_t *funcs) {
+    MTLRenderPipelineDescriptor *spd = [[MTLRenderPipelineDescriptor alloc] init];
+    spd.vertexFunction = funcs->vertexShadow;
+    spd.fragmentFunction = funcs->fragmentShadow;
+    spd.vertexDescriptor = create_vertex_descriptor();
+    spd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+    spd.colorAttachments[0].pixelFormat = MTLPixelFormatInvalid;
+    NSError *shadowErr = nil;
+    ctx.shadowPipeline = [device newRenderPipelineStateWithDescriptor:spd error:&shadowErr];
+
+    MTLSamplerDescriptor *csd = [[MTLSamplerDescriptor alloc] init];
+    csd.compareFunction = MTLCompareFunctionLessEqual;
+    csd.minFilter = MTLSamplerMinMagFilterLinear;
+    csd.magFilter = MTLSamplerMinMagFilterLinear;
+    ctx.shadowSampler = [device newSamplerStateWithDescriptor:csd];
+
+    MTLDepthStencilDescriptor *sdd = [[MTLDepthStencilDescriptor alloc] init];
+    sdd.depthCompareFunction = MTLCompareFunctionLess;
+    sdd.depthWriteEnabled = YES;
+    ctx.shadowDepthState = [device newDepthStencilStateWithDescriptor:sdd];
+}
+
 /// @brief Backend vtable entry: create the Metal rendering context for window @p win sized @p w×@p h —
 ///   acquires the system default MTLDevice, attaches a CAMetalLayer to the native NSView, and
 ///   initializes the per-context resource caches (texture/cubemap/geometry/morph/render-target/sampler).
@@ -2237,278 +2552,17 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
             return NULL;
         }
 
-        VGFXMetalContext *ctx = [[VGFXMetalContext alloc] init];
-        ctx.device = device;
-        ctx.width = w;
-        ctx.height = h;
-        ctx.vgfxWin = win;
-        ctx.textureCache = [NSMutableDictionary dictionaryWithCapacity:32];
-        ctx.cubemapCache = [NSMutableDictionary dictionaryWithCapacity:8];
-        ctx.geometryCache = [NSMutableDictionary dictionaryWithCapacity:32];
-        ctx.morphCache = [NSMutableDictionary dictionaryWithCapacity:16];
-        ctx.renderTargetCache = [NSMutableDictionary dictionaryWithCapacity:8];
-        ctx.samplerCache = [NSMutableDictionary dictionaryWithCapacity:8];
-        ctx.currentTargetKind = VGFX3D_METAL_TARGET_SWAPCHAIN;
-        ctx.textureUploadBudgetBytes = UINT64_MAX;
-
-        view.wantsLayer = YES;
-        if (!view.layer)
-            view.layer = [CALayer layer];
-        ctx.metalLayer = [CAMetalLayer layer];
-        ctx.metalLayer.device = device;
-        ctx.metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-        ctx.metalLayer.framebufferOnly = NO;
-        ctx.metalLayer.hidden = YES;
-        ctx.metalLayer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
-        [view.layer addSublayer:ctx.metalLayer];
-        metal_update_layer_size(ctx);
-
-        ctx.commandQueue = [device newCommandQueue];
-        if (!ctx.commandQueue) {
-            NSLog(@ "[Metal] newCommandQueue returned nil");
+        VGFXMetalContext *ctx = metal_create_context_base(device, win, w, h);
+        metal_main_functions_t funcs;
+        metal_attach_layer_to_view(ctx, view, device);
+        if (!metal_create_command_queue_and_defaults(ctx, device) ||
+            !metal_compile_main_library(ctx, device) || !metal_load_main_functions(ctx, &funcs) ||
+            !metal_create_main_pipeline_states(ctx, device, &funcs))
             return NULL;
-        }
-        mat4f_identity(ctx->_view);
-        mat4f_identity(ctx->_projection);
-        mat4f_identity(ctx->_vp);
-        mat4f_identity(ctx->_prevVP);
-        mat4f_identity(ctx->_invVP);
-        ctx->_prevVPValid = NO;
-
-        NSError *error = nil;
-        ctx.library = [device newLibraryWithSource:metal_shader_source options:nil error:&error];
-        if (!ctx.library) {
-            NSLog(@ "[Metal] Shader error: %@", error);
-            return NULL;
-        }
-        /* Shaders compiled successfully */
-
-        id<MTLFunction> vf = [ctx.library newFunctionWithName:@ "vertex_main"];
-        id<MTLFunction> vfInstanced = [ctx.library newFunctionWithName:@ "vertex_main_instanced"];
-        id<MTLFunction> vfShadow = [ctx.library newFunctionWithName:@ "vertex_shadow"];
-        id<MTLFunction> ffShadow = [ctx.library newFunctionWithName:@ "fragment_shadow"];
-        id<MTLFunction> ff = [ctx.library newFunctionWithName:@ "fragment_main"];
-        if (!vf || !vfInstanced || !vfShadow || !ffShadow || !ff) {
-            NSLog(
-                @ "[Metal] required shader entrypoints missing (vf=%@ inst=%@ shadow=%@ shadowf=%@ "
-                 "ff=%@)",
-                vf,
-                vfInstanced,
-                vfShadow,
-                ffShadow,
-                ff);
-            return NULL;
-        }
-
-        ctx.pipelineState = metal_create_pipeline_state(device,
-                                                        vf,
-                                                        ff,
-                                                        create_vertex_descriptor(),
-                                                        MTLPixelFormatRGBA16Float,
-                                                        VGFX3D_METAL_BLEND_OPAQUE,
-                                                        NO,
-                                                        &error);
-        ctx.pipelineStateAlpha = metal_create_pipeline_state(device,
-                                                             vf,
-                                                             ff,
-                                                             create_vertex_descriptor(),
-                                                             MTLPixelFormatRGBA16Float,
-                                                             VGFX3D_METAL_BLEND_ALPHA,
-                                                             YES,
-                                                             &error);
-        ctx.pipelineStateAdditive = metal_create_pipeline_state(device,
-                                                                vf,
-                                                                ff,
-                                                                create_vertex_descriptor(),
-                                                                MTLPixelFormatRGBA16Float,
-                                                                VGFX3D_METAL_BLEND_ADDITIVE,
-                                                                YES,
-                                                                &error);
-        ctx.pipelineStateColorOnly = metal_create_pipeline_state(device,
-                                                                 vf,
-                                                                 ff,
-                                                                 create_vertex_descriptor(),
-                                                                 MTLPixelFormatBGRA8Unorm,
-                                                                 VGFX3D_METAL_BLEND_OPAQUE,
-                                                                 NO,
-                                                                 &error);
-        ctx.pipelineStateColorOnlyAlpha = metal_create_pipeline_state(device,
-                                                                      vf,
-                                                                      ff,
-                                                                      create_vertex_descriptor(),
-                                                                      MTLPixelFormatBGRA8Unorm,
-                                                                      VGFX3D_METAL_BLEND_ALPHA,
-                                                                      YES,
-                                                                      &error);
-        ctx.pipelineStateColorOnlyAdditive =
-            metal_create_pipeline_state(device,
-                                        vf,
-                                        ff,
-                                        create_vertex_descriptor(),
-                                        MTLPixelFormatBGRA8Unorm,
-                                        VGFX3D_METAL_BLEND_ADDITIVE,
-                                        YES,
-                                        &error);
-        ctx.instancedPipelineState = metal_create_pipeline_state(device,
-                                                                 vfInstanced,
-                                                                 ff,
-                                                                 create_vertex_descriptor(),
-                                                                 MTLPixelFormatRGBA16Float,
-                                                                 VGFX3D_METAL_BLEND_OPAQUE,
-                                                                 NO,
-                                                                 &error);
-        ctx.instancedPipelineStateAlpha = metal_create_pipeline_state(device,
-                                                                      vfInstanced,
-                                                                      ff,
-                                                                      create_vertex_descriptor(),
-                                                                      MTLPixelFormatRGBA16Float,
-                                                                      VGFX3D_METAL_BLEND_ALPHA,
-                                                                      YES,
-                                                                      &error);
-        ctx.instancedPipelineStateAdditive =
-            metal_create_pipeline_state(device,
-                                        vfInstanced,
-                                        ff,
-                                        create_vertex_descriptor(),
-                                        MTLPixelFormatRGBA16Float,
-                                        VGFX3D_METAL_BLEND_ADDITIVE,
-                                        YES,
-                                        &error);
-        ctx.instancedPipelineStateColorOnly =
-            metal_create_pipeline_state(device,
-                                        vfInstanced,
-                                        ff,
-                                        create_vertex_descriptor(),
-                                        MTLPixelFormatBGRA8Unorm,
-                                        VGFX3D_METAL_BLEND_OPAQUE,
-                                        NO,
-                                        &error);
-        ctx.instancedPipelineStateColorOnlyAlpha =
-            metal_create_pipeline_state(device,
-                                        vfInstanced,
-                                        ff,
-                                        create_vertex_descriptor(),
-                                        MTLPixelFormatBGRA8Unorm,
-                                        VGFX3D_METAL_BLEND_ALPHA,
-                                        YES,
-                                        &error);
-        ctx.instancedPipelineStateColorOnlyAdditive =
-            metal_create_pipeline_state(device,
-                                        vfInstanced,
-                                        ff,
-                                        create_vertex_descriptor(),
-                                        MTLPixelFormatBGRA8Unorm,
-                                        VGFX3D_METAL_BLEND_ADDITIVE,
-                                        YES,
-                                        &error);
-        if (!ctx.pipelineState || !ctx.pipelineStateAlpha || !ctx.pipelineStateAdditive ||
-            !ctx.pipelineStateColorOnly || !ctx.pipelineStateColorOnlyAlpha ||
-            !ctx.pipelineStateColorOnlyAdditive || !ctx.instancedPipelineState ||
-            !ctx.instancedPipelineStateAlpha || !ctx.instancedPipelineStateAdditive ||
-            !ctx.instancedPipelineStateColorOnly || !ctx.instancedPipelineStateColorOnlyAlpha ||
-            !ctx.instancedPipelineStateColorOnlyAdditive) {
-            NSLog(@ "Metal pipeline error: %@", error);
-            return NULL;
-        }
-
-        MTLDepthStencilDescriptor *dd = [[MTLDepthStencilDescriptor alloc] init];
-        dd.depthCompareFunction = MTLCompareFunctionLess;
-        dd.depthWriteEnabled = YES;
-        ctx.depthState = [device newDepthStencilStateWithDescriptor:dd];
-        /* Depth state for transparent draws: test ON, write OFF */
-        dd.depthWriteEnabled = NO;
-        ctx.depthStateNoWrite = [device newDepthStencilStateWithDescriptor:dd];
-        dd.depthCompareFunction = MTLCompareFunctionAlways;
-        ctx.depthStateDisabled = [device newDepthStencilStateWithDescriptor:dd];
-        dd.depthCompareFunction = MTLCompareFunctionLessEqual;
-        ctx.skyboxDepthState = [device newDepthStencilStateWithDescriptor:dd];
-
-        /* Default 1x1 white texture (bound when no material texture is set,
-         * so the shader's texture2d parameter is always valid) */
-        {
-            MTLTextureDescriptor *dtd =
-                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                                   width:1
-                                                                  height:1
-                                                               mipmapped:NO];
-            dtd.usage = MTLTextureUsageShaderRead;
-            dtd.storageMode = MTLStorageModeShared;
-            ctx.defaultTexture = [device newTextureWithDescriptor:dtd];
-            uint32_t white = 0xFFFFFFFF;
-            [ctx.defaultTexture replaceRegion:MTLRegionMake2D(0, 0, 1, 1)
-                                  mipmapLevel:0
-                                    withBytes:&white
-                                  bytesPerRow:4];
-
-            MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
-            sd.minFilter = MTLSamplerMinMagFilterLinear;
-            sd.magFilter = MTLSamplerMinMagFilterLinear;
-            sd.mipFilter = MTLSamplerMipFilterLinear;
-            ctx.defaultSampler = [device newSamplerStateWithDescriptor:sd];
-
-            MTLTextureDescriptor *cubeDesc =
-                [MTLTextureDescriptor textureCubeDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                                      size:1
-                                                                 mipmapped:NO];
-            cubeDesc.usage = MTLTextureUsageShaderRead;
-            cubeDesc.storageMode = MTLStorageModeShared;
-            ctx.defaultCubemap = [device newTextureWithDescriptor:cubeDesc];
-            for (NSUInteger face = 0; face < 6; face++) {
-                uint32_t cube_white = 0xFFFFFFFF;
-                [ctx.defaultCubemap replaceRegion:MTLRegionMake2D(0, 0, 1, 1)
-                                      mipmapLevel:0
-                                            slice:face
-                                        withBytes:&cube_white
-                                      bytesPerRow:4
-                                    bytesPerImage:4];
-            }
-        }
-
-        /* MTL-03: Shared sampler (linear filter, repeat wrap) used for all textures */
-        {
-            MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
-            sd.minFilter = MTLSamplerMinMagFilterLinear;
-            sd.magFilter = MTLSamplerMinMagFilterLinear;
-            sd.mipFilter = MTLSamplerMipFilterLinear;
-            sd.sAddressMode = MTLSamplerAddressModeRepeat;
-            sd.tAddressMode = MTLSamplerAddressModeRepeat;
-            ctx.sharedSampler = [device newSamplerStateWithDescriptor:sd];
-
-            MTLSamplerDescriptor *cubeSd = [[MTLSamplerDescriptor alloc] init];
-            cubeSd.minFilter = MTLSamplerMinMagFilterLinear;
-            cubeSd.magFilter = MTLSamplerMinMagFilterLinear;
-            cubeSd.mipFilter = MTLSamplerMipFilterLinear;
-            cubeSd.sAddressMode = MTLSamplerAddressModeClampToEdge;
-            cubeSd.tAddressMode = MTLSamplerAddressModeClampToEdge;
-            cubeSd.rAddressMode = MTLSamplerAddressModeClampToEdge;
-            ctx.cubeSampler = [device newSamplerStateWithDescriptor:cubeSd];
-        }
-
-        /* MTL-12: Shadow pipeline (depth-only, no fragment shader) */
-        {
-            MTLRenderPipelineDescriptor *spd = [[MTLRenderPipelineDescriptor alloc] init];
-            spd.vertexFunction = vfShadow;
-            spd.fragmentFunction = ffShadow;
-            spd.vertexDescriptor = create_vertex_descriptor();
-            spd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
-            spd.colorAttachments[0].pixelFormat = MTLPixelFormatInvalid;
-            NSError *shadowErr = nil;
-            ctx.shadowPipeline = [device newRenderPipelineStateWithDescriptor:spd error:&shadowErr];
-            /* Non-fatal: shadow mapping disabled if pipeline fails */
-
-            /* Comparison sampler for shadow lookup */
-            MTLSamplerDescriptor *csd = [[MTLSamplerDescriptor alloc] init];
-            csd.compareFunction = MTLCompareFunctionLessEqual;
-            csd.minFilter = MTLSamplerMinMagFilterLinear;
-            csd.magFilter = MTLSamplerMinMagFilterLinear;
-            ctx.shadowSampler = [device newSamplerStateWithDescriptor:csd];
-
-            /* Shadow depth-stencil state (always-write, less compare) */
-            MTLDepthStencilDescriptor *sdd = [[MTLDepthStencilDescriptor alloc] init];
-            sdd.depthCompareFunction = MTLCompareFunctionLess;
-            sdd.depthWriteEnabled = YES;
-            ctx.shadowDepthState = [device newDepthStencilStateWithDescriptor:sdd];
-        }
+        metal_create_depth_state_variants(ctx, device);
+        metal_create_default_texture_resources(ctx, device);
+        metal_create_shared_sampler_resources(ctx, device);
+        metal_create_shadow_resources(ctx, device, &funcs);
 
         /* MTL-11: Post-processing fullscreen quad shader + pipeline */
         {
@@ -3025,7 +3079,10 @@ static uint64_t metal_texture_pending_bytes(VGFXMetalTextureCacheEntry *entry) {
         return 0;
     if (entry.textureAsset)
         return vgfx3d_textureasset_pending_native_bytes(
-            entry.textureAsset, entry.nativeNextMip, entry.uploadInProgress ? 1 : 0);
+            entry.textureAsset,
+            entry.nativeNextMip,
+            entry.nativeNextBlockRow,
+            entry.uploadInProgress ? 1 : 0);
     return vgfx3d_pending_rgba_upload_bytes(
         entry.width, entry.height, entry.uploadNextRow, entry.uploadInProgress ? 1 : 0);
 }
@@ -3077,6 +3134,12 @@ static int metal_continue_native_texture_upload(VGFXMetalContext *ctx,
     while (entry.nativeNextMip < entry.nativeMipCount) {
         vgfx3d_native_texture_mip_t mip;
         uint64_t row_bytes;
+        uint64_t block_rows;
+        int32_t rows;
+        uint64_t offset;
+        uint64_t upload_bytes;
+        uint64_t y;
+        uint64_t h;
         MTLRegion region;
 
         if (ctx.textureUploadBudgetBytes != UINT64_MAX &&
@@ -3089,13 +3152,46 @@ static int metal_continue_native_texture_upload(VGFXMetalContext *ctx,
         if (row_bytes == 0 || row_bytes > (uint64_t)NSUIntegerMax ||
             mip.bytes > (uint64_t)NSUIntegerMax)
             return 0;
-        region = MTLRegionMake2D(0, 0, (NSUInteger)mip.width, (NSUInteger)mip.height);
+        block_rows =
+            ((uint64_t)(uint32_t)mip.height + (uint64_t)(uint32_t)mip.block_height - 1u) /
+            (uint64_t)(uint32_t)mip.block_height;
+        if (block_rows == 0 || block_rows > (uint64_t)INT32_MAX)
+            return 0;
+        if (entry.nativeNextBlockRow < 0 ||
+            (uint64_t)(uint32_t)entry.nativeNextBlockRow >= block_rows)
+            entry.nativeNextBlockRow = 0;
+        rows = vgfx3d_upload_block_rows_for_budget(mip.width,
+                                                   mip.height,
+                                                   mip.block_width,
+                                                   mip.block_height,
+                                                   mip.block_bytes,
+                                                   entry.nativeNextBlockRow,
+                                                   ctx.textureUploadBudgetBytes,
+                                                   ctx.textureUploadBytes);
+        if (rows <= 0)
+            return 0;
+        offset = (uint64_t)(uint32_t)entry.nativeNextBlockRow * row_bytes;
+        upload_bytes = (uint64_t)(uint32_t)rows * row_bytes;
+        y = (uint64_t)(uint32_t)entry.nativeNextBlockRow * (uint64_t)(uint32_t)mip.block_height;
+        h = (uint64_t)(uint32_t)rows * (uint64_t)(uint32_t)mip.block_height;
+        if (offset > mip.bytes || upload_bytes > mip.bytes - offset || y >= (uint64_t)mip.height)
+            return 0;
+        if (h > (uint64_t)mip.height - y)
+            h = (uint64_t)mip.height - y;
+        if (upload_bytes > (uint64_t)NSUIntegerMax || y > (uint64_t)NSUIntegerMax ||
+            h > (uint64_t)NSUIntegerMax)
+            return 0;
+        region = MTLRegionMake2D(0, (NSUInteger)y, (NSUInteger)mip.width, (NSUInteger)h);
         [entry.texture replaceRegion:region
                          mipmapLevel:(NSUInteger)entry.nativeNextMip
-                           withBytes:mip.data
+                           withBytes:(const uint8_t *)mip.data + offset
                          bytesPerRow:(NSUInteger)row_bytes];
-        metal_record_texture_upload_bytes(ctx, mip.bytes);
-        entry.nativeNextMip++;
+        metal_record_texture_upload_bytes(ctx, upload_bytes);
+        entry.nativeNextBlockRow += rows;
+        if ((uint64_t)(uint32_t)entry.nativeNextBlockRow >= block_rows) {
+            entry.nativeNextMip++;
+            entry.nativeNextBlockRow = 0;
+        }
         entry.lastUsedFrame = ctx.frameSerial;
     }
     entry.generation = entry.pendingGeneration;
@@ -3140,6 +3236,7 @@ static int metal_start_native_texture_upload(VGFXMetalContext *ctx,
 
     entry.textureAsset = asset;
     entry.nativeFormat = first_mip.format_id;
+    entry.nativeNextBlockRow = 0;
     entry.nativeNextMip = 0;
     entry.nativeMipCount = mip_count;
     entry.pendingGeneration = cache_key;
@@ -3233,6 +3330,7 @@ static int metal_start_texture_upload(VGFXMetalContext *ctx,
     entry.generation = 0;
     entry.textureAsset = NULL;
     entry.nativeFormat = RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+    entry.nativeNextBlockRow = 0;
     entry.nativeNextMip = 0;
     entry.nativeMipCount = 0;
     entry.width = tw;
@@ -4965,6 +5063,8 @@ static void metal_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_cha
 }
 
 /* Hide the Metal layer during software RTT or 2D mode */
+/// @brief Hide the Metal layer so GPU-rendered frames stop being presented (used during
+///   teardown or when switching away from the GPU backend).
 static void metal_hide_gpu_layer(void *backend_ctx) {
     if (!backend_ctx)
         return;

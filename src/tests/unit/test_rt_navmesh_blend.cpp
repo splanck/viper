@@ -860,20 +860,67 @@ static void test_blendtree_rejects_bad_handles() {
 
 static void test_navmesh_export_import_roundtrip() {
     /* Build a navmesh, export it to a file, re-import it, and confirm the reconstructed mesh
-     * preserves the triangle count and answers the same path query. */
+     * preserves pathfinding geometry plus the v2 metadata sections. */
     void *plane = rt_mesh3d_new_plane(20.0, 20.0);
     void *nm = rt_navmesh3d_build(plane, 0.4, 1.8);
     EXPECT_TRUE(nm != nullptr, "source navmesh builds");
     int64_t tri_count = rt_navmesh3d_get_triangle_count(nm);
     EXPECT_TRUE(tri_count > 0, "source navmesh has walkable triangles");
+    void *bounds_min = rt_vec3_new(-10.0, -0.1, -10.0);
+    void *bounds_max = rt_vec3_new(10.0, 0.1, 10.0);
+    EXPECT_TRUE(rt_navmesh3d_set_area(nm, bounds_min, bounds_max, rt_const_cstr("mud"), 2.5) == 1,
+                "source navmesh stores area metadata before export");
+    void *link_from = rt_vec3_new(-8.0, 0.0, -8.0);
+    void *link_to = rt_vec3_new(8.0, 0.0, 8.0);
+    EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nm, link_from, link_to, 1) == 1,
+                "source navmesh stores an off-mesh link before export");
+    EXPECT_TRUE(rt_navmesh3d_set_offmesh_link_metadata(
+                    nm, 0, rt_const_cstr("jump"), 3.5, 77) == 1,
+                "source navmesh stores off-mesh link metadata before export");
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(nm,
+                                          rt_vec3_new(40.0, -1.0, 40.0),
+                                          rt_vec3_new(41.0, 1.0, 41.0)) == 1,
+                "source navmesh stores an obstacle before export");
 
     rt_string path = rt_const_cstr("/tmp/viper_navmesh_export_roundtrip.vnav");
     EXPECT_TRUE(rt_navmesh3d_export(nm, path) == 1, "navmesh exports to a file");
+    {
+        FILE *f = std::fopen("/tmp/viper_navmesh_export_roundtrip.vnav", "rb");
+        char magic[8] = {};
+        EXPECT_TRUE(f != nullptr, "exported navmesh file opens for magic check");
+        EXPECT_TRUE(f && std::fread(magic, 1, sizeof(magic), f) == sizeof(magic) &&
+                        std::memcmp(magic, "VNAVMSH2", sizeof(magic)) == 0,
+                    "navmesh export writes the version-2 magic");
+        if (f)
+            std::fclose(f);
+    }
 
     void *imported = rt_navmesh3d_import(path);
     EXPECT_TRUE(imported != nullptr, "navmesh re-imports from the exported file");
     EXPECT_TRUE(rt_navmesh3d_get_triangle_count(imported) == tri_count,
                 "imported navmesh preserves the triangle count");
+    void *center = rt_vec3_new(0.0, 0.0, 0.0);
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_navmesh3d_get_area(imported, center)), "mud") == 0,
+                "imported navmesh preserves area labels");
+    EXPECT_NEAR(rt_navmesh3d_get_traversal_cost(imported, center),
+                2.5,
+                0.001,
+                "imported navmesh preserves traversal costs");
+    EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_count(imported) == 1,
+                "imported navmesh preserves off-mesh link count");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_navmesh3d_get_offmesh_link_kind(imported, 0)), "jump") == 0,
+        "imported navmesh preserves off-mesh link kind");
+    EXPECT_NEAR(rt_navmesh3d_get_offmesh_link_traversal_cost(imported, 0),
+                3.5,
+                0.001,
+                "imported navmesh preserves off-mesh link traversal cost");
+    EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_state(imported, 0) == 77,
+                "imported navmesh preserves off-mesh link state");
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(imported) == 1,
+                "imported navmesh preserves obstacle count");
+    EXPECT_TRUE(rt_navmesh3d_remove_obstacle(imported, 0) == 1,
+                "imported navmesh keeps enough source data for obstacle edits");
 
     /* The imported navmesh is immediately path-queryable. */
     void *from = rt_vec3_new(-8.0, 0.0, -8.0);
@@ -881,6 +928,32 @@ static void test_navmesh_export_import_roundtrip() {
     EXPECT_TRUE(rt_navmesh3d_find_path(nm, from, to) != nullptr, "source navmesh resolves a path");
     EXPECT_TRUE(rt_navmesh3d_find_path(imported, from, to) != nullptr,
                 "imported navmesh resolves the same path");
+
+    void *blocked_nm = rt_navmesh3d_build(rt_mesh3d_new_plane(20.0, 20.0), 0.4, 1.8);
+    EXPECT_TRUE(blocked_nm != nullptr, "blocked-state source navmesh builds");
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(blocked_nm,
+                                          rt_vec3_new(-20.0, -1.0, -20.0),
+                                          rt_vec3_new(20.0, 1.0, 20.0)) == 1,
+                "source navmesh can export carved blocked state");
+    rt_string blocked_path = rt_const_cstr("/tmp/viper_navmesh_export_blocked.vnav");
+    EXPECT_TRUE(rt_navmesh3d_export(blocked_nm, blocked_path) == 1,
+                "blocked navmesh exports to a file");
+    void *blocked_imported = rt_navmesh3d_import(blocked_path);
+    EXPECT_TRUE(blocked_imported != nullptr, "blocked navmesh re-imports");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(blocked_imported, center) == 0,
+                "imported navmesh preserves carved blocked triangles");
+
+    {
+        FILE *f = std::fopen("/tmp/viper_navmesh_export_roundtrip.vnav", "ab");
+        EXPECT_TRUE(f != nullptr, "exported navmesh opens for corrupt trailing-data probe");
+        if (f) {
+            unsigned char trailing = 0x7f;
+            std::fwrite(&trailing, 1, 1, f);
+            std::fclose(f);
+        }
+    }
+    EXPECT_TRUE(rt_navmesh3d_import(path) == nullptr,
+                "importing a navmesh with trailing bytes returns null");
 
     /* A missing/corrupt file is recoverable: import returns null without trapping. */
     EXPECT_TRUE(rt_navmesh3d_import(rt_const_cstr("/tmp/viper_navmesh_no_such_file.vnav")) ==

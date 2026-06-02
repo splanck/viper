@@ -75,6 +75,7 @@ static int camera_value_fits_float(double value) {
     return isfinite(value) && value >= -CAMERA3D_FLOAT_ABS_MAX && value <= CAMERA3D_FLOAT_ABS_MAX;
 }
 
+/// @brief Write the 4×4 identity matrix into `m` (16 doubles); no-op on NULL.
 static void camera_identity_matrix(double *m) {
     if (!m)
         return;
@@ -82,6 +83,7 @@ static void camera_identity_matrix(double *m) {
     m[0] = m[5] = m[10] = m[15] = 1.0;
 }
 
+/// @brief True only if all 16 matrix elements are finite (NULL matrix returns false).
 static int camera_matrix_is_finite(const double *m) {
     if (!m)
         return 0;
@@ -92,6 +94,7 @@ static int camera_matrix_is_finite(const double *m) {
     return 1;
 }
 
+/// @brief Post-build guard: replace a matrix with identity if any element is non-finite.
 static void camera_finish_matrix(double *m) {
     if (!camera_matrix_is_finite(m))
         camera_identity_matrix(m);
@@ -171,6 +174,7 @@ static double sanitize_ortho_size(double size) {
     return size > CAMERA3D_ORTHO_SIZE_MAX ? CAMERA3D_ORTHO_SIZE_MAX : size;
 }
 
+/// @brief Wrap an angle in degrees into (−180, 180]; non-finite input maps to 0.
 static double camera_wrap_degrees(double degrees) {
     if (!isfinite(degrees))
         return 0.0;
@@ -184,6 +188,7 @@ static double camera_wrap_degrees(double degrees) {
     return degrees;
 }
 
+/// @brief Clamp a pitch angle to [−89°, 89°] to avoid look-direction gimbal flip (non-finite → 0).
 static double camera_clamp_pitch(double pitch) {
     pitch = finite_or(pitch, 0.0);
     if (pitch > 89.0)
@@ -193,6 +198,8 @@ static double camera_clamp_pitch(double pitch) {
     return pitch;
 }
 
+/// @brief Frame-rate-independent smoothing factor `1 − exp(−speed·dt)`, clamped to [0, 1];
+///   saturates to 1 for large or non-finite exponents.
 static double camera_damping_factor(double speed, double dt) {
     double exponent;
     speed = sanitize_nonnegative(speed, 0.0);
@@ -205,6 +212,8 @@ static double camera_damping_factor(double speed, double dt) {
     return 1.0 - exp(-exponent);
 }
 
+/// @brief Compute the effective eye position as the camera eye plus its shake offset,
+///   each lane finite-guarded and clamped to the world bound; origin when `cam` is NULL.
 static void camera_eye_with_shake(const rt_camera3d *cam, double out_eye[3]) {
     static const double fallback_eye[3] = {0.0, 0.0, 0.0};
     if (!out_eye)
@@ -227,6 +236,8 @@ static void camera_eye_with_shake(const rt_camera3d *cam, double out_eye[3]) {
                               CAMERA3D_WORLD_ABS_MAX);
 }
 
+/// @brief Replace any non-finite or out-of-range lane of the camera's eye position with a
+///   safe fallback (origin), keeping later view-matrix construction well-defined.
 static void camera_sanitize_eye(rt_camera3d *cam) {
     static const double fallback_eye[3] = {0.0, 0.0, 0.0};
     if (cam)

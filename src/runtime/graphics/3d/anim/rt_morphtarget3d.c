@@ -102,6 +102,8 @@ static rt_morphtarget3d *morphtarget_checked(void *obj) {
     return (rt_morphtarget3d *)rt_g3d_checked_or_null(obj, RT_G3D_MORPHTARGET3D_CLASS_ID);
 }
 
+/// @brief Number of morph shapes safe to use: clamped to capacity and truncated at the first
+///   shape lacking position deltas; 0 when any backing array is absent.
 static int32_t morphtarget_safe_shape_count(const rt_morphtarget3d *mt) {
     int32_t limit;
     int32_t count = 0;
@@ -114,6 +116,7 @@ static int32_t morphtarget_safe_shape_count(const rt_morphtarget3d *mt) {
     return count;
 }
 
+/// @brief Clamp the morph-target's shape_count to its safe value (defensive).
 static void morphtarget_repair_shape_table(rt_morphtarget3d *mt) {
     if (!mt)
         return;
@@ -177,6 +180,7 @@ static float morphtarget_sanitize_weight(double weight) {
     return (float)weight;
 }
 
+/// @brief Euclidean length of a 3-float morph delta (as a double); 0 when any lane is non-finite.
 static double morphtarget_delta_length_or_zero(const float *delta) {
     double x;
     double y;

@@ -1112,8 +1112,8 @@ ambiguous.
 | `FindPath(start, end)` | `Object(Object, Object)` | Return a `Seq[Vec3]` of waypoints from `start` to `end`, or `Nothing` |
 | `SamplePosition(pos)` | `Object(Object)` | Snap `pos` to the nearest walkable position |
 | `IsWalkable(pos)` | `Boolean(Object)` | True when `pos` is on the walkable surface |
-| `Export(path)` | `Boolean(String)` | Serialize the baked navmesh (vertices, walkable triangles, traversal costs, agent params) to a `VNAVMSH1` binary file; returns false on write failure |
-| `Import(path)` | `Object(String)` | Reconstruct a path-queryable navmesh from a `VNAVMSH1` file (rebuilds adjacency + query grid), or `Nothing` on a missing/corrupt file. Bake a streamed world via `World3D.bakeNavMesh` and `Export` it for later `Import` |
+| `Export(path)` | `Boolean(String)` | Serialize the baked navmesh to a `VNAVMSH2` binary file; returns false on write failure |
+| `Import(path)` | `Object(String)` | Reconstruct a path-queryable navmesh from a `VNAVMSH2` or legacy `VNAVMSH1` file, or `Nothing` on a missing/corrupt file |
 | `AddOffMeshLink(from, to, bidirectional)` | `Boolean(Object, Object, Boolean)` | Add a directed or bidirectional link between walkable points |
 | `SetOffMeshLinkMetadata(index, kind, cost, state)` | `Boolean(Integer, String, Double, Integer)` | Attach kind/cost/state metadata to a traversal link |
 | `GetOffMeshLinkKind(index)` | `String(Integer)` | Return a traversal link kind string |
@@ -1149,6 +1149,13 @@ whose triangle footprint intersects the obstacle volume. On tiled bakes, obstacl
 adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still
 refilter the preserved source mesh. This remains polygon-level AABB carving
 rather than clipped sub-polygons; `NavAgent3D` covers local crowd avoidance.
+`Export` writes explicit little-endian vertices, source/current triangles,
+blocked flags, traversal costs, area labels, authored off-mesh links, coarse
+obstacles, and agent parameters. Import rebuilds adjacency and point-location
+grids. Legacy `VNAVMSH1` imports are geometry/cost/blocked-state only. Tiled
+voxel heightfield source arrays remain runtime-derived and are not serialized;
+an imported tiled navmesh is queryable and editable from serialized triangles,
+but it cannot regenerate new voxel heights from an external tile source.
 
 ---
 

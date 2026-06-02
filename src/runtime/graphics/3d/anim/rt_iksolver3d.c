@@ -75,6 +75,7 @@ typedef struct {
     float *solved_globals;
 } rt_ik_solver3d;
 
+/// @brief Number of skeleton bones safe to read, or 0 when the handle is not a live Skeleton3D.
 static int32_t ik3d_safe_bone_count(const rt_skeleton3d *skeleton) {
     if (!skeleton ||
         !rt_g3d_has_class((void *)(uintptr_t)skeleton, RT_G3D_SKELETON3D_CLASS_ID))
@@ -82,6 +83,7 @@ static int32_t ik3d_safe_bone_count(const rt_skeleton3d *skeleton) {
     return skeleton3d_safe_bone_count(skeleton);
 }
 
+/// @brief Number of IK chains safe to read (clamped to RT_IK_SOLVER3D_MAX_CHAIN).
 static int32_t ik3d_safe_chain_count(const rt_ik_solver3d *solver) {
     if (!solver || solver->chain_count <= 0)
         return 0;

@@ -107,11 +107,14 @@ static void terrain_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief True if @p ref is a usable terrain texture reference (a Pixels image or a TextureAsset3D).
 static int terrain_texture_ref_supported(void *ref) {
     return ref && (rt_pixels_checked_impl_or_null(ref) ||
                    rt_g3d_has_class(ref, RT_G3D_TEXTUREASSET3D_CLASS_ID));
 }
 
+/// @brief Release a retained texture slot only if it still holds a supported texture;
+///   otherwise just clear the slot (the stale value is not a releasable handle).
 static void terrain_release_texture_slot(void **slot) {
     if (!slot || !*slot)
         return;
@@ -122,11 +125,15 @@ static void terrain_release_texture_slot(void **slot) {
     terrain_release_ref(slot);
 }
 
+/// @brief Clear a texture slot in place when its contents are no longer a supported texture
+///   (defensive; performs no release).
 static void terrain_repair_texture_slot(void **slot) {
     if (slot && *slot && !terrain_texture_ref_supported(*slot))
         *slot = NULL;
 }
 
+/// @brief Release a retained material slot only if it still holds a Material3D; otherwise
+///   just clear the slot.
 static void terrain_release_material_slot(void **slot) {
     if (!slot || !*slot)
         return;
@@ -137,11 +144,14 @@ static void terrain_release_material_slot(void **slot) {
     terrain_release_ref(slot);
 }
 
+/// @brief Clear a material slot in place when its contents are no longer a Material3D
+///   (defensive; performs no release).
 static void terrain_repair_material_slot(void **slot) {
     if (slot && *slot && !rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID))
         *slot = NULL;
 }
 
+/// @brief Release a retained mesh slot only if it still holds a Mesh3D; otherwise just clear it.
 static void terrain_release_mesh_slot(void **slot) {
     if (!slot || !*slot)
         return;
@@ -264,6 +274,8 @@ static int32_t terrain_resample_index(int32_t dst, int32_t dst_count, int32_t sr
     return (int32_t)value;
 }
 
+/// @brief Assign @p value into a texture slot, retaining the new value and releasing the old
+///   (no-op when unchanged).
 static void terrain_assign_texture_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
@@ -272,6 +284,8 @@ static void terrain_assign_texture_ref(void **slot, void *value) {
     *slot = value;
 }
 
+/// @brief Assign @p value into a material slot, retaining the new value and releasing the old
+///   (no-op when unchanged).
 static void terrain_assign_material_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
@@ -280,6 +294,8 @@ static void terrain_assign_material_ref(void **slot, void *value) {
     *slot = value;
 }
 
+/// @brief Re-bind the terrain's base texture onto its material's albedo slot, first dropping a
+///   stale (non-Material3D) material or an unsupported base-texture reference.
 static void terrain_restore_material_base_texture(rt_terrain3d *t) {
     void *base_texture;
     if (!t || !t->material)
@@ -689,6 +705,8 @@ void rt_terrain3d_set_layer_scale(void *obj, int64_t layer, double scale) {
     t->splat_dirty = 1;
 }
 
+/// @brief Resolve a texture reference to its underlying Pixels and return it only when that is
+///   a valid non-empty image, else NULL.
 static void *terrain_valid_pixels_or_null(void *pixels) {
     rt_pixels_impl *p;
     if (!pixels)
@@ -701,6 +719,8 @@ static void *terrain_valid_pixels_or_null(void *pixels) {
     return pixels;
 }
 
+/// @brief Return @p pixels only when it is a valid non-empty Pixels image (splat maps use raw
+///   Pixels rather than resolved texture references), else NULL.
 static void *terrain_valid_splat_pixels_or_null(void *pixels) {
     rt_pixels_impl *p;
     if (!pixels)
@@ -712,6 +732,8 @@ static void *terrain_valid_splat_pixels_or_null(void *pixels) {
     return pixels;
 }
 
+/// @brief Reset the terrain's splat state: release/clear the splat map, restore the base-texture
+///   material binding, drop the baked splat texture, and clear the splat-dirty flag.
 static void terrain_clear_invalid_splat_state(rt_terrain3d *t) {
     if (!t)
         return;
@@ -764,6 +786,8 @@ static int32_t terrain_channel_to_u8(double value) {
     return (int32_t)(value * 255.0 + 0.5);
 }
 
+/// @brief Pack the terrain material's diffuse RGB + alpha into a single 0xRRGGBBAA pixel
+///   (opaque white when there is no valid material) — the fallback color for splat baking.
 static uint32_t terrain_material_fallback_pixel(const rt_terrain3d *t) {
     if (!t || !t->material || !rt_g3d_has_class(t->material, RT_G3D_MATERIAL3D_CLASS_ID))
         return 0xFFFFFFFFu;
@@ -838,6 +862,9 @@ static double terrain_sample_to_world_height(const rt_terrain3d *t, float h) {
     return (double)terrain_sanitize_height_sample(h) * sy;
 }
 
+/// @brief Compute the terrain surface normal at grid cell (@p ix, @p iz) from neighboring height
+///   samples via central differences scaled by the world cell size, writing the unit normal to
+///   out_nx/out_ny/out_nz.
 static void terrain_grid_normal_at(const rt_terrain3d *t,
                                    int32_t ix,
                                    int32_t iz,

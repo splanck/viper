@@ -133,10 +133,12 @@ typedef struct {
 
 static void fbx_release_ref(void **slot);
 
+/// @brief Return @p value when finite, else @p fallback (scalar sanitizer).
 static double fbx_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp @p value into [lo, hi], substituting @p fallback when non-finite.
 static double fbx_clamp_double(double value, double lo, double hi, double fallback) {
     value = fbx_finite_or(value, fallback);
     if (value < lo)
@@ -146,6 +148,7 @@ static double fbx_clamp_double(double value, double lo, double hi, double fallba
     return value;
 }
 
+/// @brief Clamp @p value into [-limit, limit], substituting @p fallback when non-finite.
 static double fbx_clamp_abs_or(double value, double fallback, double limit) {
     value = fbx_finite_or(value, fallback);
     if (value > limit)
@@ -155,6 +158,7 @@ static double fbx_clamp_abs_or(double value, double fallback, double limit) {
     return value;
 }
 
+/// @brief Sanitize a scale factor to a finite, bounded value, replacing ~zero magnitudes with 1.0.
 static double fbx_scale_or_unit(double value) {
     value = fbx_clamp_abs_or(value, 1.0, FBX_NUMERIC_ABS_MAX);
     if (fabs(value) < 1e-12)
@@ -162,6 +166,8 @@ static double fbx_scale_or_unit(double value) {
     return value;
 }
 
+/// @brief Clamp a position triple into the FBX numeric bound; returns 0 (leaving the values
+///   untouched) when any lane is non-finite.
 static int fbx_sanitize_position3(double *x, double *y, double *z) {
     if (!x || !y || !z || !isfinite(*x) || !isfinite(*y) || !isfinite(*z))
         return 0;
@@ -171,6 +177,8 @@ static int fbx_sanitize_position3(double *x, double *y, double *z) {
     return 1;
 }
 
+/// @brief Normalize a normal triple in place, falling back to +Y when it is non-finite or
+///   of ~zero length.
 static void fbx_sanitize_normal3(double *x, double *y, double *z) {
     double len2;
     double inv_len;
@@ -196,10 +204,12 @@ static void fbx_sanitize_normal3(double *x, double *y, double *z) {
     *z *= inv_len;
 }
 
+/// @brief Clamp a rotation angle in degrees to ±FBX_ROTATION_DEG_ABS_MAX (non-finite → 0).
 static double fbx_sanitize_rotation_degrees(double value) {
     return fbx_clamp_abs_or(value, 0.0, FBX_ROTATION_DEG_ABS_MAX);
 }
 
+/// @brief Clamp a (count, capacity) pair to a safe element count (0 when invalid, else min).
 static int32_t fbx_asset_safe_count(void **items, int32_t count, int32_t capacity) {
     if (!items || count <= 0 || capacity <= 0)
         return 0;
@@ -208,6 +218,8 @@ static int32_t fbx_asset_safe_count(void **items, int32_t count, int32_t capacit
     return count;
 }
 
+/// @brief Ensure a growable reference array holds @p needed slots, doubling capacity and
+///   zero-filling the new slots; returns 0 on overflow or allocation failure.
 static int fbx_asset_reserve_ref_array(void ***items, int32_t *capacity, int32_t needed) {
     int32_t old_capacity;
     int32_t new_capacity;
@@ -239,6 +251,8 @@ static int fbx_asset_reserve_ref_array(void ***items, int32_t *capacity, int32_t
     return 1;
 }
 
+/// @brief Release every reference in a ref array (over its safe count) and free the backing
+///   storage, resetting the count/capacity to zero.
 static void fbx_asset_release_ref_array(void ***items, int32_t *count, int32_t *capacity) {
     void **array = items ? *items : NULL;
     int32_t safe_count =
@@ -3080,6 +3094,7 @@ static int fbx_anim_curve_view_valid(const fbx_anim_curve_view_t *curve) {
     return 1;
 }
 
+/// @brief Case-insensitive ASCII string equality (NULL operands compare unequal).
 static int fbx_ascii_streq_ignore_case(const char *a, const char *b) {
     if (!a || !b)
         return 0;
@@ -3365,6 +3380,8 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
     }
 }
 
+/// @brief True if the given FBX animation stack id owns at least one AnimationLayer child in
+///   the connection table.
 static int fbx_anim_stack_has_layer(fbx_node_t *objects,
                                     const fbx_conn_table_t *ct,
                                     int64_t stack_id) {

@@ -56,6 +56,8 @@
 #define NAVMESH3D_TILE_SIZE_MAX 1000000000.0
 #define NAVMESH3D_TILE_INDEX_ABS_MAX 1000000000LL
 #define NAVMESH3D_MAX_TILES_PER_REFLAG 65536LL
+#define NAVMESH3D_IMPORT_MAX_RECORDS (1 << 24)
+#define NAVMESH3D_IMPORT_MAX_STRING_BYTES (1u << 20)
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -69,6 +71,7 @@ extern double rt_vec3_z(void *v);
 extern void *rt_path3d_new(void);
 extern void rt_path3d_add_point(void *path, void *pos);
 extern void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color);
+extern rt_string rt_string_from_bytes(const char *bytes, size_t len);
 
 typedef struct {
     float position[3];
@@ -315,6 +318,167 @@ static float navmesh3d_sanitize_traversal_cost(double cost) {
     if (cost > 1000000.0)
         cost = 1000000.0;
     return (float)cost;
+}
+
+/// @brief Write @p bytes raw bytes to @p f; returns nonzero on success (or when nothing to write).
+static int navmesh3d_io_write(FILE *f, const void *data, size_t bytes) {
+    return f && (!bytes || fwrite(data, 1u, bytes, f) == bytes);
+}
+
+/// @brief Read @p bytes raw bytes from @p f; returns nonzero on success (or when nothing to read).
+static int navmesh3d_io_read(FILE *f, void *data, size_t bytes) {
+    return f && (!bytes || fread(data, 1u, bytes, f) == bytes);
+}
+
+/// @brief Write a single uint8 to @p f.
+static int navmesh3d_write_u8(FILE *f, uint8_t v) {
+    return navmesh3d_io_write(f, &v, 1u);
+}
+
+/// @brief Read a single uint8 from @p f into @p out.
+static int navmesh3d_read_u8(FILE *f, uint8_t *out) {
+    return out && navmesh3d_io_read(f, out, 1u);
+}
+
+/// @brief Write a uint32 to @p f in little-endian byte order.
+static int navmesh3d_write_u32(FILE *f, uint32_t v) {
+    uint8_t b[4] = {(uint8_t)(v & 0xffu),
+                    (uint8_t)((v >> 8) & 0xffu),
+                    (uint8_t)((v >> 16) & 0xffu),
+                    (uint8_t)((v >> 24) & 0xffu)};
+    return navmesh3d_io_write(f, b, sizeof(b));
+}
+
+/// @brief Read a little-endian uint32 from @p f into @p out.
+static int navmesh3d_read_u32(FILE *f, uint32_t *out) {
+    uint8_t b[4];
+    if (!out || !navmesh3d_io_read(f, b, sizeof(b)))
+        return 0;
+    *out = (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) |
+           ((uint32_t)b[3] << 24);
+    return 1;
+}
+
+/// @brief Write an int32 to @p f (little-endian two's-complement).
+static int navmesh3d_write_i32(FILE *f, int32_t v) {
+    return navmesh3d_write_u32(f, (uint32_t)v);
+}
+
+/// @brief Read a little-endian int32 from @p f into @p out.
+static int navmesh3d_read_i32(FILE *f, int32_t *out) {
+    uint32_t u;
+    if (!out || !navmesh3d_read_u32(f, &u))
+        return 0;
+    *out = (int32_t)u;
+    return 1;
+}
+
+/// @brief Write a uint64 to @p f in little-endian byte order.
+static int navmesh3d_write_u64(FILE *f, uint64_t v) {
+    uint8_t b[8] = {(uint8_t)(v & 0xffu),
+                    (uint8_t)((v >> 8) & 0xffu),
+                    (uint8_t)((v >> 16) & 0xffu),
+                    (uint8_t)((v >> 24) & 0xffu),
+                    (uint8_t)((v >> 32) & 0xffu),
+                    (uint8_t)((v >> 40) & 0xffu),
+                    (uint8_t)((v >> 48) & 0xffu),
+                    (uint8_t)((v >> 56) & 0xffu)};
+    return navmesh3d_io_write(f, b, sizeof(b));
+}
+
+/// @brief Read a little-endian uint64 from @p f into @p out.
+static int navmesh3d_read_u64(FILE *f, uint64_t *out) {
+    uint8_t b[8];
+    if (!out || !navmesh3d_io_read(f, b, sizeof(b)))
+        return 0;
+    *out = (uint64_t)b[0] | ((uint64_t)b[1] << 8) | ((uint64_t)b[2] << 16) |
+           ((uint64_t)b[3] << 24) | ((uint64_t)b[4] << 32) | ((uint64_t)b[5] << 40) |
+           ((uint64_t)b[6] << 48) | ((uint64_t)b[7] << 56);
+    return 1;
+}
+
+/// @brief Write an int64 to @p f (little-endian two's-complement).
+static int navmesh3d_write_i64(FILE *f, int64_t v) {
+    return navmesh3d_write_u64(f, (uint64_t)v);
+}
+
+/// @brief Read a little-endian int64 from @p f into @p out.
+static int navmesh3d_read_i64(FILE *f, int64_t *out) {
+    uint64_t u;
+    if (!out || !navmesh3d_read_u64(f, &u))
+        return 0;
+    *out = (int64_t)u;
+    return 1;
+}
+
+/// @brief Write a float to @p f as a little-endian uint32 bit pattern (non-finite stored as 0).
+static int navmesh3d_write_f32(FILE *f, float v) {
+    uint32_t u;
+    if (!isfinite(v))
+        v = 0.0f;
+    memcpy(&u, &v, sizeof(u));
+    return navmesh3d_write_u32(f, u);
+}
+
+/// @brief Read a little-endian float bit pattern from @p f, sanitizing non-finite/out-of-range to 0.
+static int navmesh3d_read_f32(FILE *f, float *out) {
+    uint32_t u;
+    if (!out || !navmesh3d_read_u32(f, &u))
+        return 0;
+    memcpy(out, &u, sizeof(*out));
+    *out = navmesh3d_coordf_or((double)*out, 0.0);
+    return 1;
+}
+
+/// @brief Write a double to @p f as a little-endian uint64 bit pattern (non-finite stored as 0).
+static int navmesh3d_write_f64(FILE *f, double v) {
+    uint64_t u;
+    if (!isfinite(v))
+        v = 0.0;
+    memcpy(&u, &v, sizeof(u));
+    return navmesh3d_write_u64(f, u);
+}
+
+/// @brief Read a little-endian double bit pattern from @p f into @p out.
+static int navmesh3d_read_f64(FILE *f, double *out) {
+    uint64_t u;
+    if (!out || !navmesh3d_read_u64(f, &u))
+        return 0;
+    memcpy(out, &u, sizeof(*out));
+    return 1;
+}
+
+/// @brief Write a string to @p f as a uint32 length prefix followed by its raw UTF-8 bytes.
+static int navmesh3d_write_string(FILE *f, rt_string s) {
+    const char *bytes = (s && rt_string_is_handle(s)) ? rt_string_cstr(s) : "";
+    size_t len = bytes ? strlen(bytes) : 0u;
+    if (len > UINT32_MAX)
+        return 0;
+    return navmesh3d_write_u32(f, (uint32_t)len) &&
+           (len == 0u || navmesh3d_io_write(f, bytes, len));
+}
+
+/// @brief Read a length-prefixed string from @p f (rejecting lengths above @p max_len) into @p out.
+static int navmesh3d_read_string(FILE *f, rt_string *out, uint32_t max_len) {
+    uint32_t len;
+    char *buf;
+    if (!out || !navmesh3d_read_u32(f, &len) || len > max_len)
+        return 0;
+    *out = NULL;
+    if (len == 0) {
+        *out = rt_string_from_bytes("", 0u);
+        return *out != NULL;
+    }
+    buf = (char *)malloc((size_t)len);
+    if (!buf)
+        return 0;
+    if (!navmesh3d_io_read(f, buf, (size_t)len)) {
+        free(buf);
+        return 0;
+    }
+    *out = rt_string_from_bytes(buf, (size_t)len);
+    free(buf);
+    return *out != NULL;
 }
 
 /// @brief Return true when point (x,z) lies inside an axis-aligned XZ rectangle.
@@ -1251,11 +1415,136 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
     return nm;
 }
 
-/// @brief Serialize a baked navmesh's geometry to a binary file ("VNAVMSH1").
-/// @details v1 records agent parameters, vertex positions, and the walkable triangle set (vertex
-///   indices, per-triangle traversal cost, and carved/blocked state). Area-name labels and
-///   off-mesh links are not serialized in v1; the A*-relevant traversal cost is. Returns 1 on
-///   success, 0 on an invalid handle/path or any write failure.
+/// @brief Recompute a navmesh triangle's cached geometry (centroid, edges, normal) from its
+///   vertex positions; returns 0 when any vertex index is out of range.
+static int navmesh3d_recompute_triangle_geometry(rt_navmesh3d *nm, nav_triangle_t *t) {
+    if (!nm || !t || !nm->vertices)
+        return 0;
+    for (int k = 0; k < 3; k++) {
+        if (t->v[k] < 0 || t->v[k] >= nm->vertex_count)
+            return 0;
+    }
+    const float *p0 = nm->vertices[t->v[0]].position;
+    const float *p1 = nm->vertices[t->v[1]].position;
+    const float *p2 = nm->vertices[t->v[2]].position;
+    if (!navmesh3d_float3_finite(p0) || !navmesh3d_float3_finite(p1) ||
+        !navmesh3d_float3_finite(p2))
+        return 0;
+    t->centroid[0] = (p0[0] + p1[0] + p2[0]) / 3.0f;
+    t->centroid[1] = (p0[1] + p1[1] + p2[1]) / 3.0f;
+    t->centroid[2] = (p0[2] + p1[2] + p2[2]) / 3.0f;
+    float ux = p1[0] - p0[0], uy = p1[1] - p0[1], uz = p1[2] - p0[2];
+    float wx = p2[0] - p0[0], wy = p2[1] - p0[1], wz = p2[2] - p0[2];
+    float nx = uy * wz - uz * wy;
+    float ny = uz * wx - ux * wz;
+    float nz = ux * wy - uy * wx;
+    float len = (float)sqrt((double)(nx * nx + ny * ny + nz * nz));
+    if (len > 1e-8f) {
+        t->normal[0] = nx / len;
+        t->normal[1] = ny / len;
+        t->normal[2] = nz / len;
+    } else {
+        t->normal[0] = 0.0f;
+        t->normal[1] = 1.0f;
+        t->normal[2] = 0.0f;
+    }
+    return 1;
+}
+
+/// @brief Serialize one navmesh triangle (vertex indices, blocked flag, area id, sanitized
+///   traversal cost) to @p f.
+static int navmesh3d_write_triangle_record(FILE *f, const nav_triangle_t *t) {
+    return t && navmesh3d_write_i32(f, t->v[0]) && navmesh3d_write_i32(f, t->v[1]) &&
+           navmesh3d_write_i32(f, t->v[2]) && navmesh3d_write_u8(f, t->blocked ? 1u : 0u) &&
+           navmesh3d_write_i32(f, t->area_id) &&
+           navmesh3d_write_f32(f, navmesh3d_sanitize_traversal_cost((double)t->traversal_cost));
+}
+
+/// @brief Deserialize one navmesh triangle from @p f, validating its vertex and area indices
+///   against the loaded vertex count and @p area_name_count.
+static int navmesh3d_read_triangle_record(FILE *f,
+                                          rt_navmesh3d *nm,
+                                          nav_triangle_t *t,
+                                          int32_t area_name_count) {
+    uint8_t blocked = 0;
+    if (!t || !navmesh3d_read_i32(f, &t->v[0]) || !navmesh3d_read_i32(f, &t->v[1]) ||
+        !navmesh3d_read_i32(f, &t->v[2]) || !navmesh3d_read_u8(f, &blocked) ||
+        !navmesh3d_read_i32(f, &t->area_id) || !navmesh3d_read_f32(f, &t->traversal_cost))
+        return 0;
+    if (t->area_id < 0 || t->area_id > area_name_count)
+        return 0;
+    t->neighbors[0] = t->neighbors[1] = t->neighbors[2] = -1;
+    t->blocked = blocked ? 1 : 0;
+    t->traversal_cost = navmesh3d_sanitize_traversal_cost((double)t->traversal_cost);
+    return navmesh3d_recompute_triangle_geometry(nm, t);
+}
+
+/// @brief Write a complete navmesh to @p f in the versioned VNAVMSH2 binary format (header
+///   params, vertices, source + baked triangles, off-mesh links, obstacles, and area names).
+static int navmesh3d_export_v2(rt_navmesh3d *nm, FILE *f) {
+    const char magic[8] = {'V', 'N', 'A', 'V', 'M', 'S', 'H', '2'};
+    int32_t vc = nm->vertex_count < 0 ? 0 : nm->vertex_count;
+    int32_t source_tc =
+        (nm->source_triangles && nm->source_triangle_count > 0) ? nm->source_triangle_count : 0;
+    int32_t tc = nm->triangle_count < 0 ? 0 : nm->triangle_count;
+    int32_t area_count = nm->area_name_count < 0 ? 0 : nm->area_name_count;
+    int32_t link_count = nm->offmesh_link_count < 0 ? 0 : nm->offmesh_link_count;
+    int32_t obstacle_count = nm->obstacle_count < 0 ? 0 : nm->obstacle_count;
+    if ((vc > 0 && !nm->vertices) || (source_tc > 0 && !nm->source_triangles) ||
+        (tc > 0 && !nm->triangles) || (area_count > 0 && !nm->area_names) ||
+        (link_count > 0 && !nm->offmesh_links) || (obstacle_count > 0 && !nm->obstacles))
+        return 0;
+    int ok = navmesh3d_io_write(f, magic, sizeof(magic)) &&
+             navmesh3d_write_f64(f, nm->agent_radius) &&
+             navmesh3d_write_f64(f, nm->agent_height) &&
+             navmesh3d_write_f64(f, nm->max_slope) && navmesh3d_write_f64(f, nm->tile_size) &&
+             navmesh3d_write_u8(f, nm->skip_portal_width_gate ? 1u : 0u) &&
+             navmesh3d_write_i32(f, vc);
+    for (int32_t i = 0; ok && i < vc; i++) {
+        ok = navmesh3d_write_f32(f, nm->vertices[i].position[0]) &&
+             navmesh3d_write_f32(f, nm->vertices[i].position[1]) &&
+             navmesh3d_write_f32(f, nm->vertices[i].position[2]);
+    }
+    ok = ok && navmesh3d_write_i32(f, area_count);
+    for (int32_t i = 0; ok && i < area_count; i++)
+        ok = navmesh3d_write_string(f, nm->area_names ? nm->area_names[i] : NULL);
+    ok = ok && navmesh3d_write_i32(f, source_tc);
+    for (int32_t i = 0; ok && i < source_tc; i++)
+        ok = navmesh3d_write_triangle_record(f, &nm->source_triangles[i]);
+    ok = ok && navmesh3d_write_i32(f, tc);
+    for (int32_t i = 0; ok && i < tc; i++)
+        ok = navmesh3d_write_triangle_record(f, &nm->triangles[i]);
+    ok = ok && navmesh3d_write_i32(f, link_count);
+    for (int32_t i = 0; ok && i < link_count; i++) {
+        const nav_offmesh_link_t *link = &nm->offmesh_links[i];
+        ok = navmesh3d_write_f32(f, link->from[0]) &&
+             navmesh3d_write_f32(f, link->from[1]) &&
+             navmesh3d_write_f32(f, link->from[2]) && navmesh3d_write_f32(f, link->to[0]) &&
+             navmesh3d_write_f32(f, link->to[1]) && navmesh3d_write_f32(f, link->to[2]) &&
+             navmesh3d_write_u8(f, link->bidirectional ? 1u : 0u) &&
+             navmesh3d_write_i64(f, link->state_flags) &&
+             navmesh3d_write_f32(f, navmesh3d_sanitize_traversal_cost(
+                                        (double)link->traversal_cost)) &&
+             navmesh3d_write_string(f, link->kind);
+    }
+    ok = ok && navmesh3d_write_i32(f, obstacle_count);
+    for (int32_t i = 0; ok && i < obstacle_count; i++) {
+        const nav_obstacle_t *obstacle = &nm->obstacles[i];
+        ok = navmesh3d_write_f32(f, obstacle->min[0]) &&
+             navmesh3d_write_f32(f, obstacle->min[1]) &&
+             navmesh3d_write_f32(f, obstacle->min[2]) &&
+             navmesh3d_write_f32(f, obstacle->max[0]) &&
+             navmesh3d_write_f32(f, obstacle->max[1]) &&
+             navmesh3d_write_f32(f, obstacle->max[2]);
+    }
+    return ok;
+}
+
+/// @brief Serialize a baked navmesh to a versioned binary file ("VNAVMSH2").
+/// @details v2 records explicit little-endian geometry, traversal costs, blocked state, area
+///   labels, off-mesh links, obstacles, source triangles for future area/obstacle edits, and agent
+///   params. Runtime-derived adjacency/query grids are rebuilt on import; retained voxel
+///   heightfield source data is not serialized.
 int8_t rt_navmesh3d_export(void *obj, rt_string path) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || !path || !rt_string_is_handle(path))
@@ -1266,60 +1555,23 @@ int8_t rt_navmesh3d_export(void *obj, rt_string path) {
     FILE *f = fopen(cpath, "wb");
     if (!f)
         return 0;
-    int ok = 1;
-    const char magic[8] = {'V', 'N', 'A', 'V', 'M', 'S', 'H', '1'};
-    double params[3] = {nm->agent_radius, nm->agent_height, nm->max_slope};
-    ok = ok && fwrite(magic, 1u, 8u, f) == 8u;
-    ok = ok && fwrite(params, sizeof(double), 3u, f) == 3u;
-    int32_t vc = nm->vertex_count < 0 ? 0 : nm->vertex_count;
-    ok = ok && fwrite(&vc, sizeof(int32_t), 1u, f) == 1u;
-    if (ok && vc > 0 && nm->vertices)
-        ok = fwrite(nm->vertices, sizeof(nav_vertex_t), (size_t)vc, f) == (size_t)vc;
-    int32_t tc = nm->triangle_count < 0 ? 0 : nm->triangle_count;
-    ok = ok && fwrite(&tc, sizeof(int32_t), 1u, f) == 1u;
-    for (int32_t i = 0; ok && i < tc; i++) {
-        const nav_triangle_t *t = &nm->triangles[i];
-        int32_t idx[3] = {t->v[0], t->v[1], t->v[2]};
-        float cost = t->traversal_cost;
-        int8_t blocked = t->blocked;
-        ok = ok && fwrite(idx, sizeof(int32_t), 3u, f) == 3u;
-        ok = ok && fwrite(&cost, sizeof(float), 1u, f) == 1u;
-        ok = ok && fwrite(&blocked, sizeof(int8_t), 1u, f) == 1u;
-    }
+    int ok = navmesh3d_export_v2(nm, f);
     fclose(f);
     return ok ? 1 : 0;
 }
 
-/// @brief Reconstruct a navmesh from a "VNAVMSH1" file written by `rt_navmesh3d_export`.
-/// @details Reads agent params, vertices, and the walkable triangle set, recomputes each
-///   triangle's centroid/normal, then rebuilds adjacency and the point-location query grid so the
-///   result is immediately path-queryable. A missing/short/corrupt file returns NULL (recoverable);
-///   only an allocation failure traps.
-void *rt_navmesh3d_import(rt_string path) {
-    if (!path || !rt_string_is_handle(path))
-        return NULL;
-    const char *cpath = rt_string_cstr(path);
-    if (!cpath || cpath[0] == '\0')
-        return NULL;
-    FILE *f = fopen(cpath, "rb");
-    if (!f)
-        return NULL;
-
-    const int32_t kImportMax = 1 << 24; /* bound corrupt-file allocations */
-    char magic[8];
+/// @brief Parse a legacy v1 navmesh body (after its magic has been consumed) into a fresh
+///   NavMesh3D, or NULL on malformed or oversized data.
+static rt_navmesh3d *navmesh3d_import_v1_after_magic(FILE *f) {
     double params[3];
     int32_t vc = 0;
-    if (fread(magic, 1u, 8u, f) != 8u || memcmp(magic, "VNAVMSH1", 8u) != 0 ||
-        fread(params, sizeof(double), 3u, f) != 3u || fread(&vc, sizeof(int32_t), 1u, f) != 1u ||
-        vc < 0 || vc > kImportMax) {
-        fclose(f);
+    if (fread(params, sizeof(double), 3u, f) != 3u || fread(&vc, sizeof(int32_t), 1u, f) != 1u ||
+        vc < 0 || vc > NAVMESH3D_IMPORT_MAX_RECORDS)
         return NULL;
-    }
 
     rt_navmesh3d *nm =
         (rt_navmesh3d *)rt_obj_new_i64(RT_G3D_NAVMESH3D_CLASS_ID, (int64_t)sizeof(rt_navmesh3d));
     if (!nm) {
-        fclose(f);
         rt_trap("NavMesh3D.Import: allocation failed");
         return NULL;
     }
@@ -1346,7 +1598,8 @@ void *rt_navmesh3d_import(rt_string path) {
     nm->vertex_count = vc;
 
     int32_t tc = 0;
-    if (fread(&tc, sizeof(int32_t), 1u, f) != 1u || tc < 0 || tc > kImportMax)
+    if (fread(&tc, sizeof(int32_t), 1u, f) != 1u || tc < 0 ||
+        tc > NAVMESH3D_IMPORT_MAX_RECORDS)
         goto fail;
     if (tc > 0) {
         nm->triangles = (nav_triangle_t *)calloc((size_t)tc, sizeof(nav_triangle_t));
@@ -1370,32 +1623,13 @@ void *rt_navmesh3d_import(rt_string path) {
             t->area_id = 0;
             t->traversal_cost = navmesh3d_sanitize_traversal_cost((double)cost);
             t->blocked = blocked ? 1 : 0;
-            const float *p0 = nm->vertices[t->v[0]].position;
-            const float *p1 = nm->vertices[t->v[1]].position;
-            const float *p2 = nm->vertices[t->v[2]].position;
-            t->centroid[0] = (p0[0] + p1[0] + p2[0]) / 3.0f;
-            t->centroid[1] = (p0[1] + p1[1] + p2[1]) / 3.0f;
-            t->centroid[2] = (p0[2] + p1[2] + p2[2]) / 3.0f;
-            float ux = p1[0] - p0[0], uy = p1[1] - p0[1], uz = p1[2] - p0[2];
-            float wx = p2[0] - p0[0], wy = p2[1] - p0[1], wz = p2[2] - p0[2];
-            float nx = uy * wz - uz * wy;
-            float ny = uz * wx - ux * wz;
-            float nz = ux * wy - uy * wx;
-            float len = (float)sqrt((double)(nx * nx + ny * ny + nz * nz));
-            if (len > 1e-8f) {
-                t->normal[0] = nx / len;
-                t->normal[1] = ny / len;
-                t->normal[2] = nz / len;
-            } else {
-                t->normal[0] = 0.0f;
-                t->normal[1] = 1.0f;
-                t->normal[2] = 0.0f;
-            }
+            if (!navmesh3d_recompute_triangle_geometry(nm, t))
+                goto fail;
             nm->triangle_count = i + 1;
         }
     }
-    fclose(f);
-    f = NULL;
+    if (fgetc(f) != EOF)
+        goto fail;
 
     if (!navmesh3d_build_adjacency(nm))
         goto fail;
@@ -1403,10 +1637,184 @@ void *rt_navmesh3d_import(rt_string path) {
     return nm;
 
 fail:
-    if (f)
-        fclose(f);
     navmesh3d_free_partial(nm);
     return NULL;
+}
+
+/// @brief Parse a VNAVMSH2 navmesh body (after its magic has been consumed) into a fresh
+///   NavMesh3D, or NULL on malformed or oversized data.
+static rt_navmesh3d *navmesh3d_import_v2_after_magic(FILE *f) {
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_obj_new_i64(RT_G3D_NAVMESH3D_CLASS_ID, (int64_t)sizeof(rt_navmesh3d));
+    double agent_radius, agent_height, max_slope, tile_size;
+    uint8_t skip_gate = 0;
+    int32_t vc = 0, area_count = 0, source_tc = 0, tc = 0, link_count = 0, obstacle_count = 0;
+    if (!nm) {
+        rt_trap("NavMesh3D.Import: allocation failed");
+        return NULL;
+    }
+    memset(nm, 0, sizeof(*nm));
+    rt_obj_set_finalizer(nm, navmesh3d_finalizer);
+    if (!navmesh3d_read_f64(f, &agent_radius) || !navmesh3d_read_f64(f, &agent_height) ||
+        !navmesh3d_read_f64(f, &max_slope) || !navmesh3d_read_f64(f, &tile_size) ||
+        !navmesh3d_read_u8(f, &skip_gate) || !navmesh3d_read_i32(f, &vc) || vc < 0 ||
+        vc > NAVMESH3D_IMPORT_MAX_RECORDS)
+        goto fail;
+    nm->agent_radius = navmesh3d_agent_dim_or(agent_radius, 0.4);
+    nm->agent_height = navmesh3d_agent_dim_or(agent_height, 1.8);
+    nm->max_slope = navmesh3d_sanitize_slope(max_slope);
+    nm->tile_size = (isfinite(tile_size) && tile_size > 0.0 && tile_size <= NAVMESH3D_TILE_SIZE_MAX)
+                        ? tile_size
+                        : 0.0;
+    nm->skip_portal_width_gate = skip_gate ? 1 : 0;
+    if (vc > 0) {
+        nm->vertices = (nav_vertex_t *)calloc((size_t)vc, sizeof(nav_vertex_t));
+        if (!nm->vertices)
+            goto fail;
+        for (int32_t i = 0; i < vc; i++) {
+            if (!navmesh3d_read_f32(f, &nm->vertices[i].position[0]) ||
+                !navmesh3d_read_f32(f, &nm->vertices[i].position[1]) ||
+                !navmesh3d_read_f32(f, &nm->vertices[i].position[2]))
+                goto fail;
+        }
+    }
+    nm->vertex_count = vc;
+    if (!navmesh3d_read_i32(f, &area_count) || area_count < 0 ||
+        area_count > NAVMESH3D_IMPORT_MAX_RECORDS)
+        goto fail;
+    if (area_count > 0) {
+        nm->area_names = (rt_string *)calloc((size_t)area_count, sizeof(rt_string));
+        if (!nm->area_names)
+            goto fail;
+        nm->area_name_capacity = area_count;
+        for (int32_t i = 0; i < area_count; i++) {
+            if (!navmesh3d_read_string(f, &nm->area_names[i], NAVMESH3D_IMPORT_MAX_STRING_BYTES))
+                goto fail;
+            nm->area_name_count = i + 1;
+        }
+    }
+    if (!navmesh3d_read_i32(f, &source_tc) || source_tc < 0 ||
+        source_tc > NAVMESH3D_IMPORT_MAX_RECORDS)
+        goto fail;
+    if (source_tc > 0) {
+        nm->source_triangles = (nav_triangle_t *)calloc((size_t)source_tc, sizeof(nav_triangle_t));
+        if (!nm->source_triangles)
+            goto fail;
+        for (int32_t i = 0; i < source_tc; i++) {
+            if (!navmesh3d_read_triangle_record(
+                    f, nm, &nm->source_triangles[i], nm->area_name_count))
+                goto fail;
+            nm->source_triangle_count = i + 1;
+        }
+    }
+    if (!navmesh3d_read_i32(f, &tc) || tc < 0 || tc > NAVMESH3D_IMPORT_MAX_RECORDS)
+        goto fail;
+    if (tc > 0) {
+        nm->triangles = (nav_triangle_t *)calloc((size_t)tc, sizeof(nav_triangle_t));
+        if (!nm->triangles)
+            goto fail;
+        for (int32_t i = 0; i < tc; i++) {
+            if (!navmesh3d_read_triangle_record(f, nm, &nm->triangles[i], nm->area_name_count))
+                goto fail;
+            nm->triangle_count = i + 1;
+        }
+    }
+    if (!nm->source_triangles && tc > 0) {
+        nm->source_triangles = (nav_triangle_t *)malloc((size_t)tc * sizeof(nav_triangle_t));
+        if (!nm->source_triangles)
+            goto fail;
+        memcpy(nm->source_triangles, nm->triangles, (size_t)tc * sizeof(nav_triangle_t));
+        nm->source_triangle_count = tc;
+    }
+    if (!navmesh3d_read_i32(f, &link_count) || link_count < 0 ||
+        link_count > NAVMESH3D_IMPORT_MAX_RECORDS)
+        goto fail;
+    if (link_count > 0) {
+        nm->offmesh_links =
+            (nav_offmesh_link_t *)calloc((size_t)link_count, sizeof(nav_offmesh_link_t));
+        if (!nm->offmesh_links)
+            goto fail;
+        nm->offmesh_link_capacity = link_count;
+        for (int32_t i = 0; i < link_count; i++) {
+            nav_offmesh_link_t *link = &nm->offmesh_links[i];
+            uint8_t bidirectional = 0;
+            rt_string kind = NULL;
+            if (!navmesh3d_read_f32(f, &link->from[0]) ||
+                !navmesh3d_read_f32(f, &link->from[1]) ||
+                !navmesh3d_read_f32(f, &link->from[2]) ||
+                !navmesh3d_read_f32(f, &link->to[0]) ||
+                !navmesh3d_read_f32(f, &link->to[1]) ||
+                !navmesh3d_read_f32(f, &link->to[2]) || !navmesh3d_read_u8(f, &bidirectional) ||
+                !navmesh3d_read_i64(f, &link->state_flags) ||
+                !navmesh3d_read_f32(f, &link->traversal_cost) ||
+                !navmesh3d_read_string(f, &kind, NAVMESH3D_IMPORT_MAX_STRING_BYTES))
+                goto fail;
+            link->bidirectional = bidirectional ? 1 : 0;
+            link->from_tri = -1;
+            link->to_tri = -1;
+            link->traversal_cost =
+                navmesh3d_sanitize_traversal_cost((double)link->traversal_cost);
+            if (kind && rt_string_cstr(kind) && rt_string_cstr(kind)[0] != '\0')
+                link->kind = kind;
+            else if (kind)
+                rt_string_unref(kind);
+            nm->offmesh_link_count = i + 1;
+        }
+    }
+    if (!navmesh3d_read_i32(f, &obstacle_count) || obstacle_count < 0 ||
+        obstacle_count > NAVMESH3D_IMPORT_MAX_RECORDS)
+        goto fail;
+    if (obstacle_count > 0) {
+        nm->obstacles = (nav_obstacle_t *)calloc((size_t)obstacle_count, sizeof(nav_obstacle_t));
+        if (!nm->obstacles)
+            goto fail;
+        nm->obstacle_capacity = obstacle_count;
+        for (int32_t i = 0; i < obstacle_count; i++) {
+            if (!navmesh3d_read_f32(f, &nm->obstacles[i].min[0]) ||
+                !navmesh3d_read_f32(f, &nm->obstacles[i].min[1]) ||
+                !navmesh3d_read_f32(f, &nm->obstacles[i].min[2]) ||
+                !navmesh3d_read_f32(f, &nm->obstacles[i].max[0]) ||
+                !navmesh3d_read_f32(f, &nm->obstacles[i].max[1]) ||
+                !navmesh3d_read_f32(f, &nm->obstacles[i].max[2]))
+                goto fail;
+            nm->obstacle_count = i + 1;
+        }
+    }
+    if (fgetc(f) != EOF)
+        goto fail;
+    if (!navmesh3d_build_adjacency(nm))
+        goto fail;
+    navmesh3d_refresh_offmesh_links(nm);
+    navmesh3d_build_query_grid(nm);
+    return nm;
+
+fail:
+    navmesh3d_free_partial(nm);
+    return NULL;
+}
+
+/// @brief Reconstruct a navmesh from "VNAVMSH2" or legacy "VNAVMSH1" files.
+/// @details A missing/short/corrupt/trailing-data file returns NULL recoverably; allocation
+///   failure traps. Imported meshes rebuild adjacency and point-location grids immediately.
+void *rt_navmesh3d_import(rt_string path) {
+    if (!path || !rt_string_is_handle(path))
+        return NULL;
+    const char *cpath = rt_string_cstr(path);
+    if (!cpath || cpath[0] == '\0')
+        return NULL;
+    FILE *f = fopen(cpath, "rb");
+    if (!f)
+        return NULL;
+    char magic[8];
+    rt_navmesh3d *result = NULL;
+    if (fread(magic, 1u, 8u, f) == 8u) {
+        if (memcmp(magic, "VNAVMSH2", 8u) == 0)
+            result = navmesh3d_import_v2_after_magic(f);
+        else if (memcmp(magic, "VNAVMSH1", 8u) == 0)
+            result = navmesh3d_import_v1_after_magic(f);
+    }
+    fclose(f);
+    return result;
 }
 
 /// @brief Bake a navmesh from all Mesh3D-bearing nodes in a Scene3D.

@@ -357,6 +357,14 @@ methods traps with a `Game3D.World3D.*: callback must be a native function
 pointer` diagnostic. Until a VM callback trampoline exists for this API, use
 manual frame methods or `runFramesOnly` from interpreted Zia.
 
+The missing piece is a VM-owned re-entrant callback ABI, not a Game3D event
+buffer. `BytecodeVM::exec` is a fresh top-level invocation that resets bytecode
+execution state, so Game3D cannot safely call it while a runtime call is already
+on the VM stack. A future trampoline needs to expose a VM-managed function or
+closure invocation entry point that preserves the active frame and handles
+captured closure environments. Until then, pollable collision/animation/event
+buffers and manual frame loops are the supported interpreted-Zia surface.
+
 This boundary is covered by `g3d_test_game3d_runframes_callback_reject`.
 
 ---
@@ -627,7 +635,9 @@ points at optional binary metadata resolved relative to the manifest. Cell
 layer/mask metadata is applied to the spawned root entity; terrain collision
 metadata is applied to generated heightfield bodies. The metadata is also
 available through typed `getCell*` and `getTerrainTile*` inspection methods, each
-taking the resident index and mirroring the manifest fields:
+taking the manifest index returned by `getCellCount()` / `getTerrainTileCount()`
+and mirroring the manifest fields. Resident-only payload access uses the
+explicit `getResidentTerrainTile(index)` method:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -645,8 +655,10 @@ bytes as opaque cell metadata, counts them in the cell's resident-byte budget, a
 frees them when the cell unloads. A missing, empty, or oversized sidecar is
 recoverable (zero bytes, no error).
 
-`getResidentTerrainTile(index)` returns the nth currently resident payload or
-`null`. The telemetry properties (`residentCellCount`,
+`getResidentTerrainTile(index)` returns the nth currently resident terrain
+payload or `null`; the `getCell*` and `getTerrainTile*` metadata methods remain
+manifest-indexed even when earlier entries are unloaded. The telemetry
+properties (`residentCellCount`,
 `residentTerrainTileCount`, `pendingRequestCount`, and `residentBytes`) reflect
 resident cell payloads plus manifest-backed terrain tile residency. Loaded VSCN
 cells are measured from their authored scene resources, including base meshes,

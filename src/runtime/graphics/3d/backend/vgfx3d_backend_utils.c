@@ -145,11 +145,13 @@ int vgfx3d_textureasset_get_native_resident_mip(void *asset,
            out_mip->format_id != RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
 }
 
-/// @brief Total native bytes still to upload from @p next_relative_mip to the last resident mip.
-/// @details Sums each remaining resident mip's payload size (saturating at UINT64_MAX). Returns 0
-///          when no upload is in progress, so callers can budget streaming work per frame.
+/// @brief Native bytes still to upload from the current mip/block-row cursor onward.
+/// @details Counts the current resident mip from @p next_block_row and later mips from the
+///          beginning, saturating at UINT64_MAX. Returns 0 when no upload is in progress, so
+///          callers can budget streaming work per frame.
 uint64_t vgfx3d_textureasset_pending_native_bytes(void *asset,
                                                   int64_t next_relative_mip,
+                                                  int32_t next_block_row,
                                                   int upload_in_progress) {
     int64_t count;
     uint64_t total = 0;
@@ -163,9 +165,19 @@ uint64_t vgfx3d_textureasset_pending_native_bytes(void *asset,
         vgfx3d_native_texture_mip_t mip;
         if (!vgfx3d_textureasset_get_native_resident_mip(asset, i, &mip))
             return total;
-        if (total > UINT64_MAX - mip.bytes)
+        uint64_t bytes =
+            (i == next_relative_mip)
+                ? vgfx3d_pending_block_upload_bytes(mip.width,
+                                                    mip.height,
+                                                    mip.block_width,
+                                                    mip.block_height,
+                                                    mip.block_bytes,
+                                                    next_block_row,
+                                                    upload_in_progress)
+                : mip.bytes;
+        if (total > UINT64_MAX - bytes)
             return UINT64_MAX;
-        total += mip.bytes;
+        total += bytes;
     }
     return total;
 }

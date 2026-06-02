@@ -4076,10 +4076,16 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
     rt_game3d_world_stream_update(stream, 1.0 / 60.0);
     EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_resident(stream, 0),
                   0,
-                  "near cell unloads after inspection-center move");
+                  "manifest-indexed near cell unloads after inspection-center move");
     EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_resident(stream, 1),
                   1,
-                  "far cell becomes resident after inspection-center move");
+                  "manifest-indexed far cell becomes resident after inspection-center move");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_cell_name(stream, 0)),
+                            "inspect_near") == 0,
+                "cell metadata remains manifest-indexed when entry 0 is nonresident");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_cell_name(stream, 1)),
+                            "inspect_far") == 0,
+                "cell metadata remains manifest-indexed when entry 1 is resident");
     EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_resident(stream, 0),
                   0,
                   "near terrain tile unloads after inspection-center move");

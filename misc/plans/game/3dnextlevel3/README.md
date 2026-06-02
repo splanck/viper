@@ -135,7 +135,10 @@ here so they do not disappear.
 - **W2-001 - VM managed-closure callback trampoline.** `run(update)`,
   `onCollision`, `onUpdate`, and streaming callback sugar remain delegated to VM
   work; manual `tick`, `stepSimulation`, `runFramesOnly`, pollable event buffers,
-  and handle polling remain authoritative.
+  and handle polling remain authoritative. The local audit confirmed this is a
+  VM re-entrancy issue: `BytecodeVM::exec` resets bytecode execution for a fresh
+  top-level call, so Game3D cannot use it as an in-stack managed callback
+  trampoline without a VM-owned closure invocation ABI.
 - **W2-002 - Cross-platform GPU interactive-framerate proof.** Needs Windows and
   Linux reference GPU hardware. Local macOS Metal smoke/perf evidence exists,
   and Windows x64 D3D11 smoke/perf evidence is now recorded in

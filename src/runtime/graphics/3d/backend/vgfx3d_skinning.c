@@ -26,12 +26,14 @@
 #define VGFX3D_SKIN_WEIGHT_MAX 1000000.0
 #define VGFX3D_SKIN_INDEX_RANGE 256
 
+/// @brief Clamp a bone count to the usable skinning range [0, VGFX3D_SKIN_INDEX_RANGE].
 static int32_t skin_effective_bone_count(int32_t bone_count) {
     if (bone_count <= 0)
         return 0;
     return bone_count < VGFX3D_SKIN_INDEX_RANGE ? bone_count : VGFX3D_SKIN_INDEX_RANGE;
 }
 
+/// @brief True only if all 16 elements of a 4×4 matrix are finite (NULL matrix returns false).
 static int skin_matrix4_is_finite(const float *m) {
     if (!m)
         return 0;
@@ -42,14 +44,18 @@ static int skin_matrix4_is_finite(const float *m) {
     return 1;
 }
 
+/// @brief True if a 3-vector is non-NULL and all three lanes are finite.
 static int skin_vec3_is_usable(const double v[3]) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }
 
+/// @brief Return @p value when finite, else @p fallback.
 static float skin_finite_float_or(float value, float fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Convert a bone weight to a clamped double, returning 0 for non-finite or negligible
+///   (≤1e-6) weights so the caller skips them.
 static double skin_weight_or_skip(float value) {
     double w;
     if (!isfinite(value) || value <= 1e-6f)
@@ -58,6 +64,8 @@ static double skin_weight_or_skip(float value) {
     return w > VGFX3D_SKIN_WEIGHT_MAX ? VGFX3D_SKIN_WEIGHT_MAX : w;
 }
 
+/// @brief Finite-guard a skinned vertex in place: scrub position/normal/tangent/UV lanes, clamp
+///   bone weights to [0, max], and normalize the tangent handedness sign to ±1.
 static void skin_sanitize_vertex(vgfx3d_vertex_t *v) {
     if (!v)
         return;
@@ -82,6 +90,8 @@ static void skin_sanitize_vertex(vgfx3d_vertex_t *v) {
         v->tangent[3] = v->tangent[3] < 0.0f ? -1.0f : 1.0f;
 }
 
+/// @brief Normalize a 3-vector and store it as floats in @p out; returns 0 (leaving @p out
+///   unset) when the input is unusable or of ~zero length.
 static int skin_store_normalized_vec3(double in[3], float out[3]) {
     double len2;
     double inv_len;

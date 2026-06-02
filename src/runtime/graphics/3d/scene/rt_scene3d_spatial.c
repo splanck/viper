@@ -378,6 +378,8 @@ static int scene3d_morph_delta_triplet_count(const rt_mesh3d *mesh, size_t *out_
     return 1;
 }
 
+/// @brief Euclidean length of a 3-component morph delta (as a double); returns 0 when any
+///   lane is non-finite.
 static double scene3d_morph_delta_length_or_zero(const float *delta) {
     double x;
     double y;

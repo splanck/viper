@@ -90,6 +90,8 @@ static void mat4f_identity(float *m) {
     m[0] = m[5] = m[10] = m[15] = 1.0f;
 }
 
+/// @brief Resolve one bone's global matrix (global = parent_global × local) by recursing into
+///   its parent first, using a tri-state visited array to memoize results and break parent cycles.
 static void skeleton3d_compute_global_bone_recursive(const rt_skeleton3d *skeleton,
                                                      const float *locals,
                                                      float *globals,
@@ -127,6 +129,8 @@ static void skeleton3d_compute_global_bone_recursive(const rt_skeleton3d *skelet
     state[bone] = 2;
 }
 
+/// @brief Compose global bone matrices from per-bone local matrices across the whole skeleton
+///   (bounded by the safe bone count), resolving each bone through its parent chain.
 void skeleton3d_compute_globals_from_locals(const rt_skeleton3d *skeleton,
                                             const float *locals,
                                             float *globals,

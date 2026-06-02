@@ -60,12 +60,13 @@ target) before `./scripts/run_cross_platform_smoke.sh`. The native-link smoke
 - **Sub-mip native upload slicing.** The slice-budget primitive
   `vgfx3d_upload_block_rows_for_budget` and `vgfx3d_pending_block_upload_bytes` exist in
   `vgfx3d_backend_utils.c` and are unit-proven (`test_vgfx3d_backend_utils`,
-  monotonic sub-mip drain). The remaining step is to **wire the block-row helper into the
-  native compressed-mip upload loops** of `vgfx3d_backend_metal.m`,
-  `vgfx3d_backend_d3d11.c`, and `vgfx3d_backend_opengl.c` (track a per-mip block-row
-  cursor; upload one budgeted block-row band per drain via the backend's partial-region
-  texture update). Verify on each GPU under a tight `Canvas3D.SetTextureUploadBudget` that
-  a large compressed mip uploads over multiple frames with bounded per-frame bytes.
+  monotonic sub-mip drain). The native compressed-mip upload loops of
+  `vgfx3d_backend_metal.m`, `vgfx3d_backend_d3d11.c`, and
+  `vgfx3d_backend_opengl.c` now track a per-mip block-row cursor and upload one
+  budgeted block-row band per drain via backend partial-region texture updates.
+  Remaining Tier-C proof is on-device: verify on each GPU under a tight
+  `Canvas3D.SetTextureUploadBudget` that a large compressed mip uploads over
+  multiple frames with bounded per-frame bytes and correct final sampling.
 
 ## Waivers (remain open until hardware lanes run)
 

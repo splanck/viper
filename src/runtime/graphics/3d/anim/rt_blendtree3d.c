@@ -100,6 +100,8 @@ static double blend_tree3d_finite_or_zero(double value) {
     return value;
 }
 
+/// @brief Number of blend-tree samples safe to use: clamped to RT_BLENDTREE3D_MAX_SAMPLES and
+///   truncated at the first sample whose blend_index falls outside the blender's state range.
 static int32_t blend_tree3d_safe_sample_count(const rt_blend_tree3d *tree) {
     int32_t limit;
     int32_t count = 0;
@@ -117,6 +119,7 @@ static int32_t blend_tree3d_safe_sample_count(const rt_blend_tree3d *tree) {
     return count;
 }
 
+/// @brief Clamp the blend tree's sample_count to its safe value (defensive).
 static void blend_tree3d_repair_sample_count(rt_blend_tree3d *tree) {
     if (tree)
         tree->sample_count = blend_tree3d_safe_sample_count(tree);

@@ -250,6 +250,8 @@ static int controller_grow_array(void **buffer, int32_t *capacity, int32_t need,
     return 1;
 }
 
+/// @brief Clamp a (count, capacity) pair to a safe element count: 0 when the array or sizes
+///   are invalid, otherwise min(count, capacity).
 static int32_t controller_clamped_array_count(const void *items,
                                               int32_t count,
                                               int32_t capacity) {
@@ -260,6 +262,7 @@ static int32_t controller_clamped_array_count(const void *items,
     return count;
 }
 
+/// @brief Number of animation states safe to read directly (live count clamped to capacity).
 static int32_t controller_safe_state_count(const rt_anim_controller3d *controller) {
     return controller ? controller_clamped_array_count(controller->states,
                                                       controller->state_count,
@@ -267,6 +270,7 @@ static int32_t controller_safe_state_count(const rt_anim_controller3d *controlle
                       : 0;
 }
 
+/// @brief Number of transitions safe to read directly (live count clamped to capacity).
 static int32_t controller_safe_transition_count(const rt_anim_controller3d *controller) {
     return controller ? controller_clamped_array_count(controller->transitions,
                                                       controller->transition_count,
@@ -274,6 +278,7 @@ static int32_t controller_safe_transition_count(const rt_anim_controller3d *cont
                       : 0;
 }
 
+/// @brief Number of events safe to read directly (live count clamped to capacity).
 static int32_t controller_safe_event_count(const rt_anim_controller3d *controller) {
     return controller ? controller_clamped_array_count(controller->events,
                                                       controller->event_count,
@@ -281,6 +286,8 @@ static int32_t controller_safe_event_count(const rt_anim_controller3d *controlle
                       : 0;
 }
 
+/// @brief Normalize the state-table count/capacity invariants: reset both when the array is
+///   absent, clamp a negative capacity, and re-clamp the count (marks the name index dirty).
 static void controller_repair_state_table(rt_anim_controller3d *controller) {
     if (!controller)
         return;
@@ -295,6 +302,7 @@ static void controller_repair_state_table(rt_anim_controller3d *controller) {
     controller->state_count = controller_safe_state_count(controller);
 }
 
+/// @brief Normalize the transition-table count/capacity invariants (defensive clamp).
 static void controller_repair_transition_table(rt_anim_controller3d *controller) {
     if (!controller)
         return;
@@ -308,6 +316,7 @@ static void controller_repair_transition_table(rt_anim_controller3d *controller)
     controller->transition_count = controller_safe_transition_count(controller);
 }
 
+/// @brief Normalize the event-table count/capacity invariants (defensive clamp).
 static void controller_repair_event_table(rt_anim_controller3d *controller) {
     if (!controller)
         return;
@@ -321,6 +330,8 @@ static void controller_repair_event_table(rt_anim_controller3d *controller) {
     controller->event_count = controller_safe_event_count(controller);
 }
 
+/// @brief Clamp every animation layer's current/previous state indices, transition timers,
+///   and blend weight into valid ranges (layer 0 is forced to full weight).
 static void controller_repair_layer_state_indices(rt_anim_controller3d *controller) {
     int32_t state_count;
     if (!controller)
@@ -358,14 +369,18 @@ static void controller_repair_layer_state_indices(rt_anim_controller3d *controll
     }
 }
 
+/// @brief True if @p value is a positive power of two.
 static int controller_is_power_of_two_i32(int32_t value) {
     return value > 0 && (value & (value - 1)) == 0;
 }
 
+/// @brief Number of skeleton bones safe to read (delegates to skeleton3d_safe_bone_count).
 static int32_t controller_safe_bone_count(const rt_skeleton3d *skeleton) {
     return skeleton3d_safe_bone_count(skeleton);
 }
 
+/// @brief Clamp the event ring-buffer's head/tail/size indices back into range after any
+///   potential corruption, keeping the queue traversable.
 static void controller_sanitize_event_queue(rt_anim_controller3d *controller) {
     if (!controller)
         return;
@@ -949,10 +964,13 @@ static const vgfx3d_anim_channel_t *controller_find_animation_channel(const rt_a
     return NULL;
 }
 
+/// @brief Return @p value when finite, else @p fallback (float scalar sanitizer).
 static float controller_finite_float_or(float value, float fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Normalize a float quaternion in place, falling back to @p fallback (then to identity)
+///   when its length is non-finite or ~zero.
 static void controller_normalize_quat_float_or(float *q, const float *fallback) {
     float len;
     if (!q)
@@ -973,6 +991,8 @@ static void controller_normalize_quat_float_or(float *q, const float *fallback) 
         q[i] /= len;
 }
 
+/// @brief Sanitize a TRS sample in place: finite-guard each position/scale lane (using the
+///   supplied fallbacks) and re-normalize the rotation quaternion.
 static void controller_sanitize_trs_sample(float *pos,
                                            float *rot,
                                            float *scl,
@@ -1498,10 +1518,13 @@ static void controller_quat_mul(const double *a, const double *b, double *out) {
     controller_quat_normalize(out);
 }
 
+/// @brief Return @p value when finite, else @p fallback (double scalar sanitizer).
 static double controller_finite_double_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Finite-guard each lane of the controller's accumulated root-motion delta, zeroing
+///   any non-finite component.
 static void controller_sanitize_root_motion_delta(rt_anim_controller3d *controller) {
     if (!controller)
         return;

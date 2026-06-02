@@ -44,11 +44,13 @@ void *rt_navmesh3d_bake_tiled(void *scene,
 /// @brief Find a path between Vec3 @p from and @p to. @return a path handle
 ///        (point list), or NULL if unreachable.
 void *rt_navmesh3d_find_path(void *navmesh, void *from, void *to);
-/// @brief Serialize a baked navmesh's geometry to a "VNAVMSH1" binary file (v1: vertices,
-///        walkable triangles, traversal costs, agent params). @return 1 on success, 0 on failure.
+/// @brief Serialize a baked navmesh to a "VNAVMSH2" binary file.
+/// @details Records vertices, source/current triangles, traversal costs, blocked flags, area
+///          labels, off-mesh links, obstacles, and agent params. Voxel heightfield source arrays
+///          are runtime-derived and are not serialized.
 int8_t rt_navmesh3d_export(void *navmesh, rt_string path);
-/// @brief Reconstruct a path-queryable navmesh from a "VNAVMSH1" file written by
-///        `rt_navmesh3d_export`, or NULL on a missing/corrupt file.
+/// @brief Reconstruct a path-queryable navmesh from "VNAVMSH2" or legacy "VNAVMSH1".
+/// @return Imported navmesh, or NULL on a missing/corrupt/trailing-data file.
 void *rt_navmesh3d_import(rt_string path);
 /// @brief Snap a Vec3 @p point onto the nearest walkable navmesh location.
 void *rt_navmesh3d_sample_position(void *navmesh, void *point);
