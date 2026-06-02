@@ -19,8 +19,10 @@ VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run test.zia
 VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run perf_probe.zia
 ../../../build/src/tools/viper/viper run streaming_hitch_probe.zia
 VIPER_3D_BACKEND=metal VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1 ../../../build/src/tools/viper/viper run streaming_hitch_probe.zia
+VIPER_3D_BACKEND=d3d11 VIPER_OPENWORLD_NATIVE_COMPRESSED_PROBE=1 ../../../build/src/tools/viper/viper run streaming_hitch_probe.zia
 VIPER_3D_BACKEND=software ../../../build/src/tools/viper/viper run visibility_dense_probe.zia
 VIPER_3D_BACKEND=metal ../../../build/src/tools/viper/viper run gpu_smoke.zia
+VIPER_3D_BACKEND=d3d11 ../../../build/src/tools/viper/viper run gpu_smoke.zia
 ../../../build/src/tools/viper/viper package . --target tarball --dry-run
 ```
 
@@ -46,7 +48,9 @@ committed binary glTF fixture; `assets/audio/jump.wav` is the committed audio
 asset fixture loaded through `Sound3D.loadAsset`;
 `assets/baselines/openworld_slice_software.png` is the software visual
 baseline used by `test.zia`; `baselines/perf_macos_apple_m4_max.md` records the
-current named local perf baseline for `perf_probe.zia`. The probe also builds a
+current named macOS perf baseline for `perf_probe.zia`, while
+`baselines/perf_windows_shakylaptop_ryzen7940hs.md` records the Windows
+x64/MSVC software and D3D11 baseline. The probe also builds a
 small three-bone foot chain, samples the resident terrain tile height, renders
 marker/leg entities near the streamed tile center, and asserts
 `IKSolver3D.TwoBone` plants the foot on that terrain target. Per-tile
@@ -57,7 +61,8 @@ the runtime unit tests assert `pendingRequestCount` while a terrain request is
 deferred. `long_traversal.zia` churns all four streamed quadrants repeatedly,
 emits `TRAVERSAL:` hitch/memory/seam telemetry, and replays the same route to
 verify deterministic residency churn. The latest named local traversal proof is
-recorded in `baselines/perf_macos_apple_m4_max.md`.
+recorded in `baselines/perf_macos_apple_m4_max.md` and the Windows D3D11 proof
+is recorded in `baselines/perf_windows_shakylaptop_ryzen7940hs.md`.
 `visibility_dense_probe.zia` builds a named dense city/forest visibility scene:
 front city blocks and a reachable portal alley remain visible, while dense
 forest/city zones behind an opaque blocker are culled by authored Scene3D PVS.
@@ -78,7 +83,8 @@ local macOS/Metal proof currently reports ASTC with
 `native_zero_pending_bytes=16`, `native_upload_bytes=16`,
 `native_raw_rgba_bytes=64`, `native_compressed_bytes=16`,
 `native_ram_reduction_pct=75`, `native_vram_reduction_pct=75`, and
-`native_tolerance_checked=1`.
+`native_tolerance_checked=1`. The Windows/D3D11 proof reports native BC7 upload
+with the same 16-byte pending/upload size and `native_tolerance_max_diff=0`.
 `gpu_smoke.zia` also runs under CTest with the platform GPU
 backend (`metal`, `d3d11`, or `opengl`) and skips cleanly if that backend is
 unavailable. The smoke includes a small degenerate-normal/tangent normal-map

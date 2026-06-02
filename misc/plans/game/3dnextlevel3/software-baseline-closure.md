@@ -27,11 +27,29 @@ ctest --test-dir cmake-build-debug -R '^(test_rt_canvas3d|test_rt_canvas3d_gpu_p
 
 Local result on macOS/Metal: 9/9 passed.
 
+Windows x64/MSVC closure on 2026-06-01:
+
+```powershell
+cmake --build build --config Debug -j $env:NUMBER_OF_PROCESSORS
+ctest --test-dir build -C Debug -L graphics3d --output-on-failure -j $env:NUMBER_OF_PROCESSORS
+cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS
+ctest --test-dir build -C Release -L graphics3d --output-on-failure -j $env:NUMBER_OF_PROCESSORS
+```
+
+Windows results: Debug 78/78 `graphics3d` passed; Release 78/78
+`graphics3d` passed. The named Windows Release software and D3D11 baselines are
+recorded in
+`examples/3d/openworld_slice/baselines/perf_windows_shakylaptop_ryzen7940hs.md`.
+
 Key emitted evidence:
 
 - `g3d_openworld_slice_streaming_hitch_native_compressed_probe`: `native_compressed_upload=1`, `native_backend=metal`, `native_format=astc`, `native_zero_pending_bytes=16`, `native_upload_bytes=16`, `native_raw_rgba_bytes=64`, `native_compressed_bytes=16`, `native_tolerance_checked=1`.
 - `g3d_openworld_slice_visibility_dense_probe`: `baseline_draws=169`, `optimized_draws=49`, `pvs_culled=120`, `no_missing_geometry=1`.
 - `g3d_openworld_slice_gpu_smoke`: `configured_lights=24`, `clustered_max_lights=64`, `cascades=3`, `draws=4`, `PASS: metal`.
+- Windows D3D11 direct Release run:
+  `native_compressed_upload=1`, `native_backend=d3d11`, `native_format=bc7`,
+  `native_tolerance_max_diff=0`, `configured_lights=24`,
+  `clustered_max_lights=64`, `cascades=3`, and `PASS: d3d11`.
 
 ## Runtime Fix Captured By The Gate
 

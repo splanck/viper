@@ -510,6 +510,10 @@ ObjFile generateWindowsX64Helpers(const std::unordered_set<std::string> &dynamic
         const uint32_t idx = addData("_is_c_termination_complete", {0, 0, 0, 0}, 4);
         addImportAlias("_is_c_termination_complete", idx);
     }
+    if (needsHelper("__isa_available")) {
+        const uint32_t idx = addData("__isa_available", {0, 0, 0, 0}, 4);
+        addImportAlias("__isa_available", idx);
+    }
     if (needsHelper("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9")) {
         const uint32_t idx = addData(
             "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9", {0, 0, 0, 0, 0, 0, 0, 0}, 8);
@@ -812,6 +816,10 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
     if (needsHelper("_is_c_termination_complete")) {
         const uint32_t idx = addData("_is_c_termination_complete", {0, 0, 0, 0}, 4);
         addImportAlias("_is_c_termination_complete", idx);
+    }
+    if (needsHelper("__isa_available")) {
+        const uint32_t idx = addData("__isa_available", {0, 0, 0, 0}, 4);
+        addImportAlias("__isa_available", idx);
     }
     if (needsHelper("?_OptionsStorage@?1??__local_stdio_printf_options@@9@9")) {
         const uint32_t idx = addData(

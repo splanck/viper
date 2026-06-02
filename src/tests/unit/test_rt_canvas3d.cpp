@@ -902,7 +902,9 @@ struct BackendEnvGuard {
 static void test_backend_select_software_override() {
     TEST("Backend selection - software override");
     BackendEnvGuard guard;
-    assert(setenv("VIPER_3D_BACKEND", "software", 1) == 0);
+    int env_status = setenv("VIPER_3D_BACKEND", "software", 1);
+    assert(env_status == 0);
+    (void)env_status;
     const vgfx3d_backend_t *b = vgfx3d_select_backend();
     if (!b || strcmp(b->name, "software") != 0) {
         printf("FAIL: expected backend software, got %s\n", (b && b->name) ? b->name : "(null)");
@@ -924,7 +926,9 @@ static void test_backend_select_platform_override() {
 
     TEST("Backend selection - platform override");
     BackendEnvGuard guard;
-    assert(setenv("VIPER_3D_BACKEND", expected, 1) == 0);
+    int env_status = setenv("VIPER_3D_BACKEND", expected, 1);
+    assert(env_status == 0);
+    (void)env_status;
     const vgfx3d_backend_t *b = vgfx3d_select_backend();
     if (!b || strcmp(b->name, expected) != 0) {
         printf(
@@ -3270,11 +3274,11 @@ static void test_canvas_platform_gpu_clustered_lighting_capability() {
     rt_canvas3d canvas;
     memset(&canvas, 0, sizeof(canvas));
 
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     canvas.backend = &vgfx3d_metal_backend;
-#elif defined(_WIN32)
+#elif RT_PLATFORM_WINDOWS
     canvas.backend = &vgfx3d_d3d11_backend;
-#elif defined(__linux__)
+#elif RT_PLATFORM_LINUX
     canvas.backend = &vgfx3d_opengl_backend;
 #else
     canvas.backend = &vgfx3d_software_backend;

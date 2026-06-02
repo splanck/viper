@@ -60,3 +60,33 @@ The passing `run_cross_platform_smoke.sh` lane ran:
 - `zia_smoke_3dscene`
 - `zia_smoke_3dbaseball`
 - `zia_smoke_xenoscape`
+
+## Windows Follow-Up
+
+Date: 2026-06-01
+
+Scope: Windows x64/MSVC build tree `build`, Debug and Release.
+
+The Windows Release runtime import audit exposed MSVC/UCRT symbols that were not
+yet covered by the shared native-link dynamic import policy:
+`__isa_available`, `_dclass`, `wcscpy`, and `wcsncmp`. The closure keeps the
+audit strict:
+
+- `__isa_available` is now a synthesized Windows linker helper data symbol,
+  paired with the existing `__isa_available_init` helper stub. The default value
+  is zero, which keeps MSVC CPU-dispatch paths on the conservative baseline.
+- `_dclass`, `wcscpy`, `wcscmp`, and `wcsncmp` are now classified as known UCRT
+  dynamic imports, matching the existing Windows import planner UCRT mapping.
+
+Verification:
+
+```powershell
+ctest --test-dir build -C Release -R "^(test_linker_runtime_import_audit|zia_smoke_vipersql)$" --output-on-failure -V
+ctest --test-dir build -C Release -L codegen --output-on-failure -j $env:NUMBER_OF_PROCESSORS
+ctest --test-dir build -C Release -L smoke --output-on-failure -j $env:NUMBER_OF_PROCESSORS
+ctest --test-dir build -C Debug -R "^(test_linker_native_linker|test_linker_platform_import_planners|test_linker_runtime_import_audit)$" --output-on-failure
+```
+
+Results: the exact reported tests passed (`zia_smoke_vipersql`,
+`test_linker_runtime_import_audit`), Release `codegen` passed 69/69, Release
+`smoke` passed 32/32, and the Debug linker sanity lane passed 3/3.

@@ -658,7 +658,9 @@ static void test_hostname_rejects_cn_when_san_has_no_dns(void) {
     assert(replaced == 3);
     assert(tls_cert_has_san_extension(cert, sizeof(cert)) == 1);
     char san[4][256];
-    assert(tls_extract_san_names(cert, sizeof(cert), san, 4) == 0);
+    int san_count = tls_extract_san_names(cert, sizeof(cert), san, 4);
+    assert(san_count == 0);
+    (void)san_count;
 
     rt_tls_session_t session;
     memset(&session, 0, sizeof(session));

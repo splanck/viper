@@ -137,10 +137,17 @@ here so they do not disappear.
   work; manual `tick`, `stepSimulation`, `runFramesOnly`, pollable event buffers,
   and handle polling remain authoritative.
 - **W2-002 - Cross-platform GPU interactive-framerate proof.** Needs Windows and
-  Linux reference GPU hardware. Local macOS Metal smoke and perf evidence exist.
+  Linux reference GPU hardware. Local macOS Metal smoke/perf evidence exists,
+  and Windows x64 D3D11 smoke/perf evidence is now recorded in
+  `examples/3d/openworld_slice/baselines/perf_windows_shakylaptop_ryzen7940hs.md`.
 - **W2-003 - Windows/Linux Release software FPS baselines and `-L graphics3d`
-  green.** Needs named reference hosts; local macOS `graphics3d` and Release
-  Apple M4 Max software/Metal baselines exist.
+  green.** Windows x64 MSVC Debug and Release `-L graphics3d` are green and the
+  Windows Release software baseline is recorded in
+  `examples/3d/openworld_slice/baselines/perf_windows_shakylaptop_ryzen7940hs.md`.
+  Windows Release `-L codegen` and `-L smoke` are also green after the MSVC
+  runtime import audit closure recorded in `policy-audit-closure.md`.
+  Linux remains external: the local WSL2 cache has graphics/audio disabled
+  because X11/ALSA development headers are unavailable.
 - **W2-004 - Basis supercompression, Draco, and meshopt decoders.** Optional
   Phase 11b/import-depth work, not a Phase 12 gate.
 - **Optional P2 - per-cell local-origin policy.** Implement only if active-world

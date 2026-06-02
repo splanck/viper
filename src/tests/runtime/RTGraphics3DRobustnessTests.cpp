@@ -1170,9 +1170,11 @@ static void test_raycast_math_and_backend_guards_are_strict() {
                         0.0f,
                         0.0f,
                         1.0f};
-    float inverse[16];
     matrix[0] = std::numeric_limits<float>::quiet_NaN();
-    assert(vgfx3d_invert_matrix4(matrix, inverse) == -1);
+    float inverse[16];
+    int invert_result = vgfx3d_invert_matrix4(matrix, inverse);
+    assert(invert_result == -1);
+    (void)invert_result;
 }
 
 static void test_physics_oriented_boxes_do_not_collide_as_aabbs() {

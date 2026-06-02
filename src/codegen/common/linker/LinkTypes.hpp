@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include "common/PlatformCapabilities.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -44,13 +46,11 @@ enum class LinkArch : uint8_t {
 
 /// Detect host link platform.
 constexpr LinkPlatform detectLinkPlatform() {
-#if defined(__APPLE__)
-    return LinkPlatform::macOS;
-#elif defined(_WIN32)
-    return LinkPlatform::Windows;
-#else
+    if constexpr (viper::platform::kHostMacOS)
+        return LinkPlatform::macOS;
+    if constexpr (viper::platform::kHostWindows)
+        return LinkPlatform::Windows;
     return LinkPlatform::Linux;
-#endif
 }
 
 /// Detect host link architecture.
@@ -191,7 +191,8 @@ inline bool isWindowsLinkerHelperSymbol(const std::string &name) {
            name == "__guard_dispatch_icall_fptr" || name == "_is_c_termination_complete" ||
            name == "__vcrt_initialize" || name == "__vcrt_thread_attach" ||
            name == "__vcrt_thread_detach" || name == "__vcrt_uninitialize" ||
-           name == "__vcrt_uninitialize_critical" || name == "__acrt_initialize" ||
+           name == "__vcrt_uninitialize_critical" || name == "__isa_available" ||
+           name == "__acrt_initialize" ||
            name == "__acrt_thread_attach" || name == "__acrt_thread_detach" ||
            name == "__acrt_uninitialize" || name == "__acrt_uninitialize_critical" ||
            name == "__isa_available_init" || name == "__scrt_exe_initialize_mta" ||
