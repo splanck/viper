@@ -50,6 +50,9 @@ extern void *rt_pixels_new(int64_t width, int64_t height);
 // Render target allocation
 //=============================================================================
 
+/// @brief Multiply two size_t values with overflow detection, writing the product to *@p out.
+/// @return 1 with *@p out set on success; 0 (with *@p out cleared) when @p out is NULL or @p a * @p b
+///   would exceed SIZE_MAX.
 static int rt_checked_mul_size(size_t a, size_t b, size_t *out) {
     if (out)
         *out = 0u;

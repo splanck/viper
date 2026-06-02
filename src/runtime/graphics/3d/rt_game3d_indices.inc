@@ -1,3 +1,5 @@
+/// @brief Murmur3 64-bit finalizer (fmix64) mixing pointer `body` into a hash; never returns 0 so
+///   the value can double as a non-empty-slot marker in the open-addressing body→entity index.
 static uintptr_t game3d_hash_body_ptr(const void *body) {
     uintptr_t x = (uintptr_t)body;
     x ^= x >> 33;
@@ -8,6 +10,10 @@ static uintptr_t game3d_hash_body_ptr(const void *body) {
     return x ? x : (uintptr_t)1u;
 }
 
+/// @brief Linear-probe the body→entity table for `body`, returning its slot — the existing entry
+///   or the first empty one — and setting *`found_out` when an existing mapping was matched.
+/// @details Assumes a power-of-two `capacity` (mask = capacity - 1).
+/// @return The slot index, or -1 when the table is full, empty, or the inputs are invalid.
 static int game3d_world_body_index_find_slot(const rt_game3d_body_index_entry *entries,
                                              int32_t capacity,
                                              void *body,
@@ -33,6 +39,9 @@ static int game3d_world_body_index_find_slot(const rt_game3d_body_index_entry *e
     return -1;
 }
 
+/// @brief Insert or overwrite the `body`→`entity` mapping in the existing table, assuming spare
+///   capacity (callers grow first via game3d_world_grow_body_index). Bumps count only for a new key.
+/// @return 1 on success, 0 when the table has no free slot.
 static int game3d_world_body_index_insert_no_grow(rt_game3d_world *world,
                                                   void *body,
                                                   rt_game3d_entity *entity) {

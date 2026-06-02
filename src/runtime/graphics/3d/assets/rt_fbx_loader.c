@@ -175,6 +175,8 @@ static void fbx_parent_dir(char *out, size_t out_size, const char *path) {
         return;
     }
     dir_len = (size_t)(last_sep - normalized);
+    if (dir_len == 0 && normalized[0] == '/')
+        dir_len = 1;
     if (dir_len >= out_size)
         dir_len = out_size - 1;
     memcpy(out, normalized, dir_len);
@@ -184,13 +186,21 @@ static void fbx_parent_dir(char *out, size_t out_size, const char *path) {
 /// @brief Join a directory and leaf filename using `/`.
 static void fbx_join_path(char *out, size_t out_size, const char *dir, const char *leaf) {
     size_t dir_len;
+    char clean_leaf[1024];
+    size_t leaf_len;
     if (!out || out_size == 0)
         return;
     out[0] = '\0';
     if (!leaf || !*leaf)
         return;
+    if (strlen(leaf) >= sizeof(clean_leaf))
+        return;
+    fbx_normalize_path(clean_leaf, sizeof(clean_leaf), leaf);
+    leaf_len = strlen(clean_leaf);
+    if (leaf_len == 0 || leaf_len >= out_size)
+        return;
     if (!dir || !*dir) {
-        fbx_normalize_path(out, out_size, leaf);
+        memcpy(out, clean_leaf, leaf_len + 1u);
         return;
     }
     fbx_normalize_path(out, out_size, dir);
@@ -199,9 +209,11 @@ static void fbx_join_path(char *out, size_t out_size, const char *dir, const cha
         out[dir_len++] = '/';
         out[dir_len] = '\0';
     }
-    if (dir_len + 1 < out_size) {
-        fbx_normalize_path(out + dir_len, out_size - dir_len, leaf);
+    if (dir_len + leaf_len >= out_size) {
+        out[0] = '\0';
+        return;
     }
+    memcpy(out + dir_len, clean_leaf, leaf_len + 1u);
 }
 
 /// @brief Sanitize a texture reference into a safe relative path in @p out (path-traversal
@@ -220,6 +232,11 @@ static int fbx_normalize_relative_texture_ref(const char *src, char *out, size_t
     fbx_normalize_path(normalized, sizeof(normalized), src);
     if (!*normalized || fbx_is_absolute_path(normalized) || strchr(normalized, ':'))
         return 0;
+    for (const char *q = normalized; *q; ++q) {
+        unsigned char ch = (unsigned char)*q;
+        if (ch < 0x20u || ch == 0x7fu)
+            return 0;
+    }
     p = normalized;
     out[0] = '\0';
     while (*p) {
@@ -1378,6 +1395,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
     int32_t polygon_vertex_idx = 0; /* running index for ByPolygonVertex mapping */
     uint32_t polygon_idx = 0;
     int32_t mesh_vertex_count = 0;
+    int polygon_invalid = 0;
 
     for (uint32_t i = 0; i < idx_count; i++) {
         int32_t raw_idx = indices[i];
@@ -1385,7 +1403,13 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
         int32_t vi = end_of_polygon ? ~raw_idx : raw_idx;
 
         if (vi < 0 || vi >= (int32_t)pos_count) {
+            polygon_invalid = 1;
             polygon_vertex_idx++;
+            if (end_of_polygon) {
+                poly_count = 0;
+                polygon_invalid = 0;
+                polygon_idx++;
+            }
             continue;
         }
 
@@ -1450,9 +1474,9 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
             uint32_t index_before = ((rt_mesh3d *)mesh)->index_count;
             int32_t material_slot = fbx_material_slot_for_polygon(
                 mat.slots, mat.slot_count, mat.by_polygon, mat.all_same, polygon_idx);
-            if (!fbx_emit_polygon_triangles(mesh, polygon, poly_count))
+            if (!polygon_invalid && !fbx_emit_polygon_triangles(mesh, polygon, poly_count))
                 return fbx_geom_fail(polygon, polygon_stack, mesh);
-            if (material_map) {
+            if (!polygon_invalid && material_map) {
                 uint32_t index_after = ((rt_mesh3d *)mesh)->index_count;
                 uint32_t added_triangles = (index_after - index_before) / 3u;
                 if (!fbx_mesh_material_map_append(material_map, material_slot, added_triangles)) {
@@ -1461,6 +1485,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node,
                 }
             }
             poly_count = 0;
+            polygon_invalid = 0;
             polygon_idx++;
         }
     }
@@ -3329,6 +3354,7 @@ static void *fbx_ascii_build_mesh(const double *positions,
     int32_t *polygon = polygon_stack;
     int32_t poly_count = 0;
     int32_t poly_capacity = (int32_t)(sizeof(polygon_stack) / sizeof(polygon_stack[0]));
+    int polygon_invalid = 0;
     void *mesh;
     if (!positions || !indices || position_count % 3u != 0)
         return NULL;
@@ -3341,8 +3367,14 @@ static void *fbx_ascii_build_mesh(const double *positions,
         int end = raw < 0;
         int32_t vi = end ? ~raw : raw;
         int32_t emitted;
-        if (vi < 0 || (size_t)vi >= position_count / 3u)
+        if (vi < 0 || (size_t)vi >= position_count / 3u) {
+            polygon_invalid = 1;
+            if (end) {
+                poly_count = 0;
+                polygon_invalid = 0;
+            }
             continue;
+        }
         if (poly_count >= poly_capacity) {
             int32_t new_capacity = poly_capacity * 2;
             int32_t *grown;
@@ -3371,9 +3403,10 @@ static void *fbx_ascii_build_mesh(const double *positions,
             goto fail;
         polygon[poly_count++] = emitted;
         if (end) {
-            if (!fbx_emit_polygon_triangles(mesh, polygon, poly_count))
+            if (!polygon_invalid && !fbx_emit_polygon_triangles(mesh, polygon, poly_count))
                 goto fail;
             poly_count = 0;
+            polygon_invalid = 0;
         }
     }
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);

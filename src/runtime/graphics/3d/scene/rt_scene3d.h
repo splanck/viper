@@ -73,7 +73,8 @@ void rt_scene3d_clear(void *scene);
 int64_t rt_scene3d_get_node_count(void *scene);
 /// @brief Serialize the scene to a .vscn file. Returns 1 on success, 0 on failure.
 int64_t rt_scene3d_save(void *scene, rt_string path);
-/// @brief Deserialize a scene from a .vscn / .gltf / .glb / .fbx file. NULL on failure.
+/// @brief Deserialize a scene from a `.vscn` (JSON) file. NULL on failure.
+///   (glTF/FBX scenes load through Viper.Graphics3D.GLTF.Load / FBX.Load.)
 void *rt_scene3d_load(rt_string path);
 /// @brief Push physics body, animator root-motion, and other bindings into node transforms.
 /// Call once per frame after physics step but before draw.

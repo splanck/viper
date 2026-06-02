@@ -732,8 +732,9 @@ static int64_t jint(void *obj, const char *key, int64_t def) {
 /// @brief Read `obj[key]` as a borrowed C string (NULL if absent or non-string).
 static const char *jstr(void *obj, const char *key) {
     void *v = jget(obj, key);
-    rt_string s = (rt_string)v;
-    return s ? rt_string_cstr(s) : NULL;
+    if (!rt_string_is_handle(v))
+        return NULL;
+    return rt_string_cstr((rt_string)v);
 }
 
 /// @brief Read `obj[key]` as an array (alias for `jget` — typed for readability).
@@ -867,7 +868,7 @@ static int gltf_validate_required_extensions(void *root) {
         return 1;
     for (int64_t i = 0; i < jarr_len(required); i++) {
         rt_string name = (rt_string)rt_seq_get(required, i);
-        const char *ext = name ? rt_string_cstr(name) : NULL;
+        const char *ext = rt_string_is_handle(name) ? rt_string_cstr(name) : NULL;
         if (!gltf_required_extension_supported(ext))
             return 0;
     }
@@ -2229,9 +2230,9 @@ static int gltf_data_uri_meta_has_base64(const char *meta, size_t len) {
 }
 
 /// @brief Percent-decode (%XX) a URI string into a freshly allocated byte buffer (caller frees).
-/// @details Decodes valid %XX escapes to bytes and copies all other characters verbatim; a
-///          malformed escape near the end is left literal. The buffer is sized to the input
-///          length (an upper bound, since decoding only shrinks).
+/// @details Decodes %XX escapes to bytes and copies all other characters verbatim. Malformed
+///          escapes reject the URI instead of leaving a literal `%` in the payload. The buffer is
+///          sized to the input length (an upper bound, since decoding only shrinks).
 /// @return 1 with @p out_data / @p out_len set, or 0 on bad args or allocation failure.
 static int gltf_percent_decode_bytes(const char *src,
                                      size_t len,
@@ -2249,14 +2250,22 @@ static int gltf_percent_decode_bytes(const char *src,
     if (!decoded)
         return 0;
     for (size_t read = 0; read < len; ++read) {
-        if (src[read] == '%' && read + 2 < len) {
-            int hi = gltf_data_uri_hex_digit(src[read + 1]);
-            int lo = gltf_data_uri_hex_digit(src[read + 2]);
-            if (hi >= 0 && lo >= 0) {
-                decoded[write++] = (uint8_t)((hi << 4) | lo);
-                read += 2;
-                continue;
+        if (src[read] == '%') {
+            int hi;
+            int lo;
+            if (read + 2 >= len) {
+                free(decoded);
+                return 0;
             }
+            hi = gltf_data_uri_hex_digit(src[read + 1]);
+            lo = gltf_data_uri_hex_digit(src[read + 2]);
+            if (hi < 0 || lo < 0) {
+                free(decoded);
+                return 0;
+            }
+            decoded[write++] = (uint8_t)((hi << 4) | lo);
+            read += 2;
+            continue;
         }
         decoded[write++] = (uint8_t)src[read];
     }
@@ -2280,6 +2289,8 @@ static uint8_t *gltf_base64_decode(const char *data, size_t len, size_t *out_len
     char *compact = NULL;
     const char *src;
     size_t compact_len = 0;
+    if (out_len)
+        *out_len = 0;
     if (!data)
         return NULL;
     for (size_t i = 0; i < len; ++i) {
@@ -2377,6 +2388,14 @@ static int gltf_parse_data_uri(
     size_t decoded_payload_len = 0;
     size_t mime_len = 0;
     int is_base64 = 0;
+    if (out_data)
+        *out_data = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (mime_buf && mime_buf_cap > 0)
+        mime_buf[0] = '\0';
+    if (!out_data || !out_len)
+        return 0;
     if (!uri || strncmp(uri, "data:", 5) != 0)
         return 0;
     comma = strchr(uri, ',');
@@ -2384,8 +2403,6 @@ static int gltf_parse_data_uri(
         return 0;
     payload = comma + 1;
 
-    if (mime_buf && mime_buf_cap > 0)
-        mime_buf[0] = '\0';
     {
         const char *meta = uri + 5;
         size_t meta_len = (size_t)(comma - meta);
@@ -4252,7 +4269,7 @@ static int gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
             int lo = gltf_hex_digit(uri[2]);
             if (hi >= 0 && lo >= 0) {
                 decoded = (unsigned char)((hi << 4) | lo);
-                if (decoded == 0)
+                if (decoded == 0 || decoded < 0x20u || decoded == 0x7Fu)
                     return 0;
                 out[oi++] = (char)decoded;
                 uri += 3;
@@ -4260,7 +4277,7 @@ static int gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
             }
             return 0;
         }
-        if (*uri == '\0')
+        if (*uri == '\0' || (unsigned char)*uri < 0x20u || (unsigned char)*uri == 0x7Fu)
             return 0;
         out[oi++] = *uri++;
     }
@@ -7045,6 +7062,14 @@ static void gltf_free_skins(gltf_skin_t *skins, int32_t skin_count) {
     free(skins);
 }
 
+/// @brief Release Skeleton3D handles stored in skin scratch entries and clear the slots.
+static void gltf_release_skin_skeletons(gltf_skin_t *skins, int32_t skin_count) {
+    if (!skins)
+        return;
+    for (int32_t i = 0; i < skin_count; i++)
+        gltf_release_ref(&skins[i].skeleton);
+}
+
 /// @brief Parse every skin in a glTF document into engine `Skeleton3D` objects.
 /// @details Walks the top-level "skins" array and, for each skin, builds a Skeleton3D
 ///          whose bones mirror the skin's joint hierarchy. The pipeline per skin is:
@@ -7169,8 +7194,33 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
             continue;
         }
         for (int32_t ji = 0; ji < joint_count; ji++) {
-            skins[si].joint_nodes[ji] =
+            int32_t joint_node =
                 gltf_i32_from_i64_or(jvalue_int(rt_seq_get(joints, ji), -1), -1);
+            if (joint_node < 0 || joint_node >= node_count) {
+                if (hard_error)
+                    *hard_error = 1;
+                gltf_release_skin_skeletons(skins, skin_count);
+                asset->skeleton_count = 0;
+                free(asset->skeletons);
+                asset->skeletons = NULL;
+                free(node_parents);
+                gltf_free_skins(skins, skin_count);
+                return;
+            }
+            for (int32_t prev = 0; prev < ji; prev++) {
+                if (skins[si].joint_nodes[prev] == joint_node) {
+                    if (hard_error)
+                        *hard_error = 1;
+                    gltf_release_skin_skeletons(skins, skin_count);
+                    asset->skeleton_count = 0;
+                    free(asset->skeletons);
+                    asset->skeletons = NULL;
+                    free(node_parents);
+                    gltf_free_skins(skins, skin_count);
+                    return;
+                }
+            }
+            skins[si].joint_nodes[ji] = joint_node;
             skins[si].joint_to_bone[ji] = -1;
         }
         for (int32_t ji = 0; ji < joint_count; ji++) {
@@ -9056,8 +9106,10 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                         if (mesh_index >= 0 && mesh_index < asset->mesh_count) {
                             node_mesh = gltf_make_node_mesh_variant(
                                 asset, mesh_index, skin_ref, weights_arr, skins, skin_count);
-                            if (!node_mesh)
+                            if (!node_mesh) {
                                 load_failed = 1;
+                                continue;
+                            }
                         }
                         rt_scene_node3d_set_mesh(node, node_mesh);
                         if (node_mesh && node_mesh != asset->meshes[mesh_index])

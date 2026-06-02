@@ -41,6 +41,7 @@
 #include "rt_scene3d_internal.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_skeleton3d_internal.h"
 #include "rt_trap.h"
 
 #include <math.h>
@@ -52,6 +53,7 @@
 
 #define VSCN_MAX_NODE_DEPTH 1024
 #define VSCN_ABS_MAX 1.0e12
+#define VSCN_MAX_FILE_BYTES (256u * 1024u * 1024u)
 
 /// @brief Count the total number of nodes in the subtree rooted at `node` (inclusive).
 /// @details Iterative so adversarially deep loaded hierarchies cannot overflow the C stack.
@@ -228,6 +230,8 @@ static uint8_t *vscn_base64_decode_ex(const char *data,
                                       size_t len,
                                       size_t *out_len,
                                       size_t *error_offset) {
+    if (out_len)
+        *out_len = 0;
     if (error_offset)
         *error_offset = SIZE_MAX;
     if (!data)
@@ -453,6 +457,48 @@ static int64_t vjson_value_i64(void *value, int64_t def) {
     }
 }
 
+/// @brief Read a JSON numeric value as an exact int64; rejects bools, non-finite doubles, and
+///   fractional double values so index/count fields cannot be silently truncated.
+static int vjson_value_i64_exact(void *value, int64_t *out) {
+    double number;
+    if (!value || !out)
+        return 0;
+    switch (rt_box_type(value)) {
+        case 0:
+            *out = rt_unbox_i64(value);
+            return 1;
+        case 1:
+            number = rt_unbox_f64(value);
+            if (!isfinite(number) || floor(number) != number)
+                return 0;
+            return vjson_double_to_i64_checked(number, out);
+        default:
+            return 0;
+    }
+}
+
+/// @brief Read an object integer property exactly, defaulting only when the key is absent.
+static int vjson_i64_exact(void *obj, const char *key, int64_t def, int64_t *out) {
+    void *value;
+    if (!out)
+        return 0;
+    *out = def;
+    value = vjson_get(obj, key);
+    if (!value)
+        return 1;
+    return vjson_value_i64_exact(value, out);
+}
+
+/// @brief Read an array integer element exactly, defaulting only when the index is absent.
+static int vjson_arr_i64_exact(void *arr, int64_t index, int64_t def, int64_t *out) {
+    if (!out)
+        return 0;
+    *out = def;
+    if (!arr || index < 0 || index >= vjson_len(arr))
+        return 1;
+    return vjson_value_i64_exact(rt_seq_get(arr, index), out);
+}
+
 /// @brief Coerce a boxed JSON value to double. `def` for non-numeric or null.
 static double vjson_value_f64(void *value, double def) {
     if (!value)
@@ -507,13 +553,6 @@ static double vjson_arr_f64(void *arr, int64_t index, double def) {
     if (!arr || index < 0 || index >= vjson_len(arr))
         return def;
     return vjson_value_f64(rt_seq_get(arr, index), def);
-}
-
-/// @brief Array-form `arr[index]` as int64 with default.
-static int64_t vjson_arr_i64(void *arr, int64_t index, int64_t def) {
-    if (!arr || index < 0 || index >= vjson_len(arr))
-        return def;
-    return vjson_value_i64(rt_seq_get(arr, index), def);
 }
 
 /// @brief Return @p value if finite, else @p fallback. Base sanitizer for loaded JSON numbers.
@@ -634,7 +673,8 @@ static int vscn_read_index_ref(void *obj, const char *key, int64_t *out_index) {
     value = vjson_get(obj, key);
     if (!value)
         return 1;
-    index = vjson_value_i64(value, INT64_MIN);
+    if (!vjson_value_i64_exact(value, &index))
+        return 0;
     if (index < -1)
         return 0;
     *out_index = index;
@@ -1340,10 +1380,11 @@ static rt_pixels_impl *vscn_parse_texture(void *texture_obj) {
 
     if (!vjson_is_map(texture_obj))
         return NULL;
-    width = vjson_i64(texture_obj, "width", 0);
-    height = vjson_i64(texture_obj, "height", 0);
+    if (!vjson_i64_exact(texture_obj, "width", 0, &width) ||
+        !vjson_i64_exact(texture_obj, "height", 0, &height))
+        return NULL;
     rgba_b64 = vjson_cstr(texture_obj, "rgbaBase64");
-    if (width < 0 || height < 0)
+    if (width <= 0 || height <= 0)
         return NULL;
     if ((uint64_t)width > SIZE_MAX || (uint64_t)height > SIZE_MAX)
         return NULL;
@@ -1394,7 +1435,9 @@ static rt_cubemap3d *vscn_parse_cubemap(void *cubemap_obj,
         return NULL;
 
     for (int i = 0; i < 6; i++) {
-        int64_t index = vjson_arr_i64(faces_arr, i, -1);
+        int64_t index;
+        if (!vjson_arr_i64_exact(faces_arr, i, -1, &index))
+            return NULL;
         if (index < 0 || index >= tex_count || !textures[index])
             return NULL;
         faces[i] = textures[index];
@@ -1497,11 +1540,17 @@ static rt_material3d *vscn_parse_material(void *material_obj,
 
     arr = vjson_get(material_obj, "textureSlots");
     if (arr) {
+        if (!vjson_is_seq(arr)) {
+            scene3d_release_ref((void **)&material);
+            return NULL;
+        }
         for (int i = 0; i < RT_MATERIAL3D_TEXTURE_SLOT_COUNT && i < vjson_len(arr); i++) {
             void *slot_obj = rt_seq_get(arr, i);
             void *uv_arr = slot_obj ? vjson_get(slot_obj, "uvTransform") : NULL;
-            if (!slot_obj)
-                continue;
+            if (!slot_obj || !vjson_is_map(slot_obj) || (uv_arr && !vjson_is_seq(uv_arr))) {
+                scene3d_release_ref((void **)&material);
+                return NULL;
+            }
             material->texture_slot_uv_set[i] =
                 vjson_i64(slot_obj, "uvSet", material->texture_slot_uv_set[i]) > 0 ? 1 : 0;
             material->texture_slot_wrap_s[i] =
@@ -1602,6 +1651,35 @@ static rt_material3d *vscn_parse_material(void *material_obj,
     return material;
 }
 
+/// @brief Validate raw vertex payloads loaded from VSCN before they reach bounds, skinning, or
+///   backend upload code.
+static int vscn_vertex_payload_is_valid(const vgfx3d_vertex_t *vertices, uint32_t vertex_count) {
+    if (!vertices && vertex_count > 0)
+        return 0;
+    for (uint32_t vi = 0; vi < vertex_count; vi++) {
+        const vgfx3d_vertex_t *v = &vertices[vi];
+        float weight_sum = 0.0f;
+        for (int i = 0; i < 3; i++) {
+            if (!isfinite((double)v->pos[i]) || !isfinite((double)v->normal[i]))
+                return 0;
+        }
+        for (int i = 0; i < 2; i++) {
+            if (!isfinite((double)v->uv[i]) || !isfinite((double)v->uv1[i]))
+                return 0;
+        }
+        for (int i = 0; i < 4; i++) {
+            if (!isfinite((double)v->color[i]) || !isfinite((double)v->tangent[i]) ||
+                !isfinite((double)v->bone_weights[i]) || v->bone_weights[i] < 0.0f ||
+                v->bone_weights[i] > 1.0f)
+                return 0;
+            weight_sum += v->bone_weights[i];
+        }
+        if (weight_sum > 1.0001f)
+            return 0;
+    }
+    return 1;
+}
+
 /// @brief Reverse of `vscn_serialize_mesh` — decode base64 buffers and rebuild the mesh.
 static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     rt_mesh3d *mesh;
@@ -1627,8 +1705,9 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
         strcmp(vertex_format, "vgfx3d_vertex_le_v2") != 0)
         return NULL;
 
-    vertex_count_i64 = vjson_i64(mesh_obj, "vertexCount", 0);
-    index_count_i64 = vjson_i64(mesh_obj, "indexCount", 0);
+    if (!vjson_i64_exact(mesh_obj, "vertexCount", 0, &vertex_count_i64) ||
+        !vjson_i64_exact(mesh_obj, "indexCount", 0, &index_count_i64))
+        return NULL;
     if (vertex_count_i64 < 0 || index_count_i64 < 0 || vertex_count_i64 > UINT32_MAX ||
         index_count_i64 > UINT32_MAX)
         return NULL;
@@ -1713,6 +1792,13 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
                        sizeof(vertices[vi].bone_weights));
             }
         }
+        if (!vscn_vertex_payload_is_valid(vertices, vertex_count)) {
+            free(vertices);
+            free(vertices_raw);
+            free(indices_raw);
+            scene3d_release_ref((void **)&mesh);
+            return NULL;
+        }
         free(mesh->vertices);
         free(mesh->positions64);
         mesh->vertices = vertices;
@@ -1750,8 +1836,13 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     }
 
     {
-        int64_t bone_count = vjson_i64(mesh_obj, "boneCount", 0);
-        mesh->bone_count = (bone_count > 0 && bone_count <= INT32_MAX) ? (int32_t)bone_count : 0;
+        int64_t bone_count = 0;
+        if (!vjson_i64_exact(mesh_obj, "boneCount", 0, &bone_count) ||
+            bone_count > VGFX3D_MAX_BONES) {
+            scene3d_release_ref((void **)&mesh);
+            return NULL;
+        }
+        mesh->bone_count = bone_count > 0 ? (int32_t)bone_count : 0;
     }
     mesh->bone_palette = NULL;
     mesh->prev_bone_palette = NULL;
@@ -1865,6 +1956,12 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
         rt_scene_node3d_set_name(node, name);
 
     arr = vjson_get(node_obj, "position");
+    if (arr && !vjson_is_seq(arr)) {
+        if (io_error)
+            *io_error = 1;
+        scene3d_release_ref((void **)&node);
+        return NULL;
+    }
     if (arr && vjson_len(arr) >= 3) {
         node->position[0] = vscn_clamp_abs_or(vjson_arr_f64(arr, 0, node->position[0]), 0.0);
         node->position[1] = vscn_clamp_abs_or(vjson_arr_f64(arr, 1, node->position[1]), 0.0);
@@ -1872,6 +1969,12 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
     }
 
     arr = vjson_get(node_obj, "rotation");
+    if (arr && !vjson_is_seq(arr)) {
+        if (io_error)
+            *io_error = 1;
+        scene3d_release_ref((void **)&node);
+        return NULL;
+    }
     if (arr && vjson_len(arr) >= 4) {
         node->rotation[0] = vjson_arr_f64(arr, 0, node->rotation[0]);
         node->rotation[1] = vjson_arr_f64(arr, 1, node->rotation[1]);
@@ -1881,6 +1984,12 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
     }
 
     arr = vjson_get(node_obj, "scale");
+    if (arr && !vjson_is_seq(arr)) {
+        if (io_error)
+            *io_error = 1;
+        scene3d_release_ref((void **)&node);
+        return NULL;
+    }
     if (arr && vjson_len(arr) >= 3) {
         node->scale_xyz[0] = vscn_clamp_abs_or(vjson_arr_f64(arr, 0, node->scale_xyz[0]), 1.0);
         node->scale_xyz[1] = vscn_clamp_abs_or(vjson_arr_f64(arr, 1, node->scale_xyz[1]), 1.0);
@@ -1935,6 +2044,12 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
 
     arr = vjson_get(node_obj, "lod");
     if (arr) {
+        if (!vjson_is_seq(arr)) {
+            if (io_error)
+                *io_error = 1;
+            scene3d_release_ref((void **)&node);
+            return NULL;
+        }
         for (int64_t i = 0; i < vjson_len(arr); i++) {
             void *lod_obj = rt_seq_get(arr, i);
             int64_t mesh_index;
@@ -1966,6 +2081,12 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
 
     arr = vjson_get(node_obj, "children");
     if (arr) {
+        if (!vjson_is_seq(arr)) {
+            if (io_error)
+                *io_error = 1;
+            scene3d_release_ref((void **)&node);
+            return NULL;
+        }
         for (int64_t i = 0; i < vjson_len(arr); i++) {
             rt_scene_node3d *child = vscn_parse_node(rt_seq_get(arr, i),
                                                      meshes,
@@ -2147,16 +2268,9 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     return 1;
 }
 
-/// @brief Public API: load a Scene3D from a `.vscn` file at `path`.
-///
-/// Inverts `rt_scene3d_save`: parses the JSON, rebuilds the
-/// shared-asset arrays in dependency order (textures first, then
-/// cubemaps, then materials, then meshes), and finally walks the
-/// node tree wiring index references back to the freshly-loaded
-/// objects. On any failure all partially-loaded refs are released
-/// and NULL is returned.
 /// @brief Read an entire file into a newly-malloc'd, NUL-terminated buffer.
-/// @return The buffer (caller frees) with its byte length in @p out_size, or NULL on I/O error.
+/// @return The buffer (caller frees) with its byte length in @p out_size, or NULL on I/O error or
+///   when the file exceeds VSCN_MAX_FILE_BYTES (256 MiB).
 static char *vscn_read_file(const char *filepath, long *out_size) {
     FILE *f = fopen(filepath, "rb");
     long file_size;
@@ -2172,7 +2286,7 @@ static char *vscn_read_file(const char *filepath, long *out_size) {
         fclose(f);
         return NULL;
     }
-    if ((uint64_t)file_size > SIZE_MAX - 1) {
+    if ((uint64_t)file_size > VSCN_MAX_FILE_BYTES || (uint64_t)file_size > SIZE_MAX - 1) {
         fclose(f);
         return NULL;
     }
@@ -2222,7 +2336,11 @@ static int vscn_load_nodes(rt_scene3d *scene,
     return 1;
 }
 
-/// @brief Deserialize a scene from a .vscn / .gltf / .glb / .fbx file; NULL on failure.
+/// @brief Deserialize a Scene3D from a `.vscn` (JSON) file; returns NULL on failure.
+/// @details Inverts `rt_scene3d_save`: parses the JSON, rebuilds the shared-asset arrays in
+///   dependency order (textures, then cubemaps, then materials, then meshes), and finally walks the
+///   node tree wiring index references back to the freshly-loaded objects. All partially-loaded
+///   refs are released on any failure. glTF/FBX scenes load through rt_gltf_load / rt_fbx_load.
 void *rt_scene3d_load(rt_string path) {
     const char *filepath;
     char *json = NULL;
@@ -2288,7 +2406,9 @@ void *rt_scene3d_load(rt_string path) {
     {
         const char *format = vjson_cstr(root, "format");
         void *version_value = vjson_get(root, "version");
-        int64_t version = version_value ? vjson_value_i64(version_value, -1) : 1;
+        int64_t version = 1;
+        if (version_value && !vjson_value_i64_exact(version_value, &version))
+            goto fail;
         if ((format && strcmp(format, "vscn") != 0) || version < 1 || version > 2)
             goto fail;
         if ((textures_arr && !vjson_is_seq(textures_arr)) ||

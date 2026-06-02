@@ -2622,6 +2622,47 @@ static char *obj_copy_directive_value(const char *p) {
     return copy;
 }
 
+/// @brief Copy one OBJ directive token, honoring single or double quotes for names with spaces.
+static char *obj_copy_directive_token(const char *p) {
+    const char *start;
+    const char *end;
+    if (!p)
+        p = "";
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if (*p == '"' || *p == '\'') {
+        char quote = *p++;
+        size_t len;
+        char *copy;
+        start = p;
+        while (*p && *p != quote && *p != '\n' && *p != '\r')
+            p++;
+        end = p;
+        len = (size_t)(end - start);
+        copy = (char *)malloc(len + 1u);
+        if (!copy)
+            return NULL;
+        memcpy(copy, start, len);
+        copy[len] = '\0';
+        return copy;
+    }
+    start = p;
+    while (*p && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r' && *p != '#')
+        p++;
+    end = p;
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
+        end--;
+    {
+        size_t len = (size_t)(end - start);
+        char *copy = (char *)malloc(len + 1u);
+        if (!copy)
+            return NULL;
+        memcpy(copy, start, len);
+        copy[len] = '\0';
+        return copy;
+    }
+}
+
 /// @brief Find the OBJ group builder for @p material_name, or create one (with a fresh mesh
 ///   and vertex cache) and append it, growing the array as needed.
 /// @return 1 with @p out_group set, 0 on allocation failure.
@@ -2931,7 +2972,7 @@ int rt_mesh3d_from_obj_groups(rt_string path,
                 break;
             }
         } else if (strncmp(p, "usemtl ", 7) == 0) {
-            char *next = obj_copy_directive_value(p + 7);
+            char *next = obj_copy_directive_token(p + 7);
             if (!next) {
                 parse_failed = 1;
                 break;
@@ -3582,7 +3623,7 @@ void *rt_mesh3d_from_stl(rt_string path) {
         size_t expected_binary = 0;
         if ((size_t)tri_count <= (SIZE_MAX - 84u) / 50u)
             expected_binary = 84u + (size_t)tri_count * 50u;
-        if (expected_binary != 0 && (size_t)file_len >= expected_binary && tri_count > 0) {
+        if (expected_binary != 0 && (size_t)file_len == expected_binary && tri_count > 0) {
             mesh = stl_load_binary_stream(f, tri_count);
             fclose(f);
             return mesh;
@@ -3636,7 +3677,7 @@ void *rt_mesh3d_from_stl(rt_string path) {
         size_t expected_binary = 0;
         if ((size_t)tri_count <= (SIZE_MAX - 84u) / 50u)
             expected_binary = 84u + (size_t)tri_count * 50u;
-        if (expected_binary != 0 && (size_t)file_len >= expected_binary && tri_count > 0) {
+        if (expected_binary != 0 && (size_t)file_len == expected_binary && tri_count > 0) {
             mesh = stl_load_binary(data, (size_t)file_len);
         }
     }

@@ -443,23 +443,25 @@ static void model_set_root_name(rt_scene_node3d *root, const char *path_cstr) {
 /// blend-shape weights can diverge per instance. Children are cloned recursively and
 /// parented to the clone via `rt_scene_node3d_try_add_child`, then the caller's local reference
 /// is released so the parent owns the only retain.
-static void *model_clone_mutable_mesh(void *mesh) {
+static int model_clone_mutable_mesh(void *mesh, void **out_mesh) {
     rt_mesh3d *src = (rt_mesh3d *)mesh;
     void *mesh_clone;
-    void *morph_clone;
+    if (out_mesh)
+        *out_mesh = NULL;
     if (!src || !src->morph_targets_ref)
-        return NULL;
+        return 1;
     mesh_clone = rt_mesh3d_clone(mesh);
     if (!mesh_clone)
-        return NULL;
-    morph_clone = rt_morphtarget3d_clone(src->morph_targets_ref);
-    if (!morph_clone) {
+        return 0;
+    if (!((rt_mesh3d *)mesh_clone)->morph_targets_ref) {
         model_release_local(mesh_clone);
-        return NULL;
+        return 0;
     }
-    rt_mesh3d_set_morph_targets(mesh_clone, morph_clone);
-    model_release_local(morph_clone);
-    return mesh_clone;
+    if (out_mesh)
+        *out_mesh = mesh_clone;
+    else
+        model_release_local(mesh_clone);
+    return 1;
 }
 
 /// @brief Clone one node without its children. Returns NULL and releases partial state on OOM.
@@ -494,7 +496,11 @@ static rt_scene_node3d *model_clone_node_shallow(const rt_scene_node3d *src,
     dst->bsphere_radius = src->bsphere_radius;
 
     if (src->mesh) {
-        void *mesh_clone = clone_mutable_meshes ? model_clone_mutable_mesh(src->mesh) : NULL;
+        void *mesh_clone = NULL;
+        if (clone_mutable_meshes && !model_clone_mutable_mesh(src->mesh, &mesh_clone)) {
+            model_release_local(dst);
+            return NULL;
+        }
         if (mesh_clone) {
             dst->mesh = mesh_clone;
         } else {
@@ -525,8 +531,12 @@ static rt_scene_node3d *model_clone_node_shallow(const rt_scene_node3d *src,
         dst->lod_capacity = src->lod_count;
         dst->lod_count = src->lod_count;
         for (int32_t i = 0; i < src->lod_count; i++) {
-            void *lod_mesh_clone =
-                clone_mutable_meshes ? model_clone_mutable_mesh(src->lod_levels[i].mesh) : NULL;
+            void *lod_mesh_clone = NULL;
+            if (clone_mutable_meshes &&
+                !model_clone_mutable_mesh(src->lod_levels[i].mesh, &lod_mesh_clone)) {
+                model_release_local(dst);
+                return NULL;
+            }
             dst->lod_levels[i].distance = src->lod_levels[i].distance;
             if (lod_mesh_clone) {
                 dst->lod_levels[i].mesh = lod_mesh_clone;
@@ -692,7 +702,8 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
     }
     if (added_any)
         rt_anim_controller3d_play(controller, rt_const_cstr(first_state));
-    rt_scene_node3d_bind_animator(root, controller);
+    if (added_any)
+        rt_scene_node3d_bind_animator(root, controller);
     model_release_local(controller);
 }
 
@@ -954,6 +965,8 @@ static void model_parent_dir(char *out, size_t out_size, const char *path) {
     if (!last)
         return;
     len = (size_t)(last - path);
+    if (len == 0 && (path[0] == '/' || path[0] == '\\'))
+        len = 1;
     if (len >= out_size)
         len = out_size - 1u;
     memcpy(out, path, len);
@@ -983,7 +996,10 @@ static int model_normalize_relative_asset_ref(const char *src, char *out, size_t
         return 0;
     while (*src && ni + 1u < sizeof(normalized)) {
         char ch = *src++;
+        unsigned char uch = (unsigned char)ch;
         if (ch == ':')
+            return 0;
+        if (uch < 0x20u || uch == 0x7fu)
             return 0;
         normalized[ni++] = ch == '\\' ? '/' : ch;
     }
@@ -1038,6 +1054,14 @@ static int model_join_path(char *out, size_t out_size, const char *dir, const ch
         return 1;
     }
     dir_len = strlen(dir);
+    if (dir_len > 0 && (dir[dir_len - 1u] == '/' || dir[dir_len - 1u] == '\\')) {
+        if (dir_len + leaf_len >= out_size)
+            return 0;
+        memcpy(out, dir, dir_len);
+        memcpy(out + dir_len, leaf, leaf_len);
+        out[dir_len + leaf_len] = '\0';
+        return 1;
+    }
     if (dir_len + 1u + leaf_len >= out_size)
         return 0;
     memcpy(out, dir, dir_len);
@@ -1047,17 +1071,26 @@ static int model_join_path(char *out, size_t out_size, const char *dir, const ch
     return 1;
 }
 
+/// @brief Advance past leading spaces and tabs in @p p (NULL-safe).
+/// @return The first non-blank character, or @p p unchanged when it is NULL.
 static const char *model_obj_skip_ws(const char *p) {
     while (p && (*p == ' ' || *p == '\t'))
         p++;
     return p;
 }
 
+/// @brief Test whether the remainder of @p p (after leading blanks) carries no further tokens —
+///   only trailing whitespace, a newline, or an OBJ/MTL "#" comment follows.
+/// @return Non-zero when the rest of the line is empty.
 static int model_obj_line_tail_done(const char *p) {
     p = model_obj_skip_ws(p);
     return !p || *p == '\0' || *p == '\n' || *p == '\r' || *p == '#';
 }
 
+/// @brief Parse one whitespace-delimited numeric token from *@p cursor into @p out, advancing
+///   @p cursor past it. Rejects tokens that fill the 128-byte scratch buffer or parse to a
+///   non-finite value.
+/// @return Non-zero on success; 0 at end-of-line, on a "#" comment, or on a malformed/oversized token.
 static int model_obj_parse_double_token(const char **cursor, double *out) {
     char token[128];
     const char *start;
@@ -1079,17 +1112,26 @@ static int model_obj_parse_double_token(const char **cursor, double *out) {
     return rt_parse_double(token, out) == 0 && isfinite(*out);
 }
 
+/// @brief Parse a line carrying exactly one double (e.g. an MTL scalar such as "Ns"/"d"): one
+///   token followed only by blanks or a comment.
+/// @return Non-zero when @p a was read and nothing but trailing whitespace remains.
 static int model_obj_parse_double1(const char *p, double *a) {
     const char *cursor = p;
     return model_obj_parse_double_token(&cursor, a) && model_obj_line_tail_done(cursor);
 }
 
+/// @brief Parse a line carrying exactly three doubles (e.g. an OBJ "v"/"vn" position/normal or an
+///   MTL "Kd"/"Ka"/"Ks" color triple).
+/// @return Non-zero when @p a, @p b and @p c were all read and nothing but trailing whitespace remains.
 static int model_obj_parse_double3(const char *p, double *a, double *b, double *c) {
     const char *cursor = p;
     return model_obj_parse_double_token(&cursor, a) && model_obj_parse_double_token(&cursor, b) &&
            model_obj_parse_double_token(&cursor, c) && model_obj_line_tail_done(cursor);
 }
 
+/// @brief Clamp @p value into the [0, 1] range, mapping non-finite inputs to 0 (used for MTL
+///   color/factor components that must stay normalized).
+/// @return The clamped value; 0.0 for NaN or infinity.
 static double model_obj_clamp01(double value) {
     if (!isfinite(value))
         return 0.0;
@@ -1115,10 +1157,67 @@ static char *model_obj_extract_map_path(const char *value) {
     end = start + strlen(start);
     while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' || end[-1] == '\r'))
         end--;
+    if (end > start && (*start == '"' || *start == '\'')) {
+        char quote = *start++;
+        const char *quoted_end = start;
+        while (quoted_end < end && *quoted_end != quote)
+            quoted_end++;
+        if (quoted_end < end)
+            return model_strdup_range(start, quoted_end);
+    }
+    last = end;
+    while (last > start) {
+        const char *token_start = last;
+        while (token_start > start && token_start[-1] != ' ' && token_start[-1] != '\t')
+            token_start--;
+        if (token_start < end && (*token_start == '"' || *token_start == '\'')) {
+            char quote = *token_start;
+            const char *quoted_end = token_start + 1;
+            while (quoted_end < end && *quoted_end != quote)
+                quoted_end++;
+            if (quoted_end < end)
+                return model_strdup_range(token_start + 1, quoted_end);
+        }
+        if (token_start == start)
+            break;
+        last = token_start - 1;
+        while (last > start && (last[-1] == ' ' || last[-1] == '\t'))
+            last--;
+    }
     last = end;
     while (last > start && last[-1] != ' ' && last[-1] != '\t')
         last--;
     return model_strdup_range(last, end);
+}
+
+/// @brief Extract the next token from *@p cursor — honoring single/double quotes so paths or
+///   material names containing spaces survive — and advance @p cursor past it (and any closing quote).
+/// @return A malloc'd copy of the token, or NULL at end-of-line / on a comment.
+static char *model_obj_next_path_token(const char **cursor) {
+    const char *start;
+    const char *end;
+    char quote = '\0';
+    if (!cursor || !*cursor)
+        return NULL;
+    while (**cursor == ' ' || **cursor == '\t')
+        (*cursor)++;
+    if (**cursor == '\0' || **cursor == '\n' || **cursor == '\r' || **cursor == '#')
+        return NULL;
+    start = *cursor;
+    if (*start == '"' || *start == '\'') {
+        quote = *start;
+        start++;
+        end = start;
+        while (*end && *end != quote && *end != '\n' && *end != '\r')
+            end++;
+        *cursor = (*end == quote) ? end + 1 : end;
+        return model_strdup_range(start, end);
+    }
+    end = start;
+    while (*end && *end != ' ' && *end != '\t' && *end != '\n' && *end != '\r' && *end != '#')
+        end++;
+    *cursor = end;
+    return model_strdup_range(start, end);
 }
 
 /// @brief Load the texture named by an MTL map directive (sanitized via the path-traversal
@@ -1190,12 +1289,13 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
         if (*p == '#' || *p == '\0' || *p == '\n' || *p == '\r')
             continue;
         if (strncmp(p, "newmtl ", 7) == 0) {
+            const char *cursor = p + 7;
             if (current_name && current_material &&
                 !model_obj_material_table_append(table, current_name, current_material)) {
                 free(current_name);
                 model_release_local(current_material);
             }
-            current_name = model_strdup_range(p + 7, NULL);
+            current_name = model_obj_next_path_token(&cursor);
             current_material = rt_material3d_new();
             if (!current_name || !current_material) {
                 free(current_name);
@@ -1278,18 +1378,10 @@ static void model_obj_load_material_libraries(const char *obj_path,
             p++;
         if (strncmp(p, "mtllib ", 7) == 0) {
             const char *cursor = p + 7;
-            while (*cursor && *cursor != '\n' && *cursor != '\r') {
-                const char *start;
-                char *name;
-                while (*cursor == ' ' || *cursor == '\t')
-                    cursor++;
-                start = cursor;
-                while (*cursor && *cursor != ' ' && *cursor != '\t' && *cursor != '\n' &&
-                       *cursor != '\r')
-                    cursor++;
-                if (cursor == start)
+            for (;;) {
+                char *name = model_obj_next_path_token(&cursor);
+                if (!name)
                     break;
-                name = model_strdup_range(start, cursor);
                 if (name) {
                     model_obj_parse_mtl_file(table, obj_dir, name);
                     free(name);
@@ -1793,7 +1885,10 @@ int64_t rt_model3d_get_node_count(void *obj) {
     rt_model3d *model = model3d_checked(obj);
     if (!model || !model->template_root)
         return 0;
-    return model_count_subtree(model->template_root) - 1;
+    {
+        int32_t count = model_count_subtree(model->template_root);
+        return count > 0 ? (int64_t)(count - 1) : 0;
+    }
 }
 
 /// @brief Number of immutable scenes addressable by this Model3D.

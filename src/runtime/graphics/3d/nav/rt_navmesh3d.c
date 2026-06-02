@@ -2361,6 +2361,7 @@ int64_t rt_navmesh3d_get_triangle_count(void *obj) {
     return walkable;
 }
 
+/// @brief Total accumulated cost of the most recent successful path query, or 0 if none has run.
 double rt_navmesh3d_get_last_path_cost(void *obj) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     return nm ? nm->last_path_cost : 0.0;
@@ -2449,6 +2450,8 @@ rt_string rt_navmesh3d_get_offmesh_link_kind(void *obj, int64_t index) {
     return link->kind ? rt_string_ref(link->kind) : rt_const_cstr("");
 }
 
+/// @brief Read the sanitized pathfinding traversal cost of an authored off-mesh link by index
+///   (0 for an out-of-range index).
 double rt_navmesh3d_get_offmesh_link_traversal_cost(void *obj, int64_t index) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm || index < 0 || index >= nm->offmesh_link_count)
@@ -2653,6 +2656,9 @@ rt_string rt_navmesh3d_get_area(void *obj, void *point) {
     return navmesh3d_area_name(nm, nm->triangles[tri].area_id);
 }
 
+/// @brief Sample the navmesh traversal cost at world @p point — resolving the triangle directly
+///   at/below it (via vertical proximity, so stacked surfaces disambiguate) and returning that
+///   triangle's area-weighted cost. Returns 0 when @p point is off-mesh, non-finite, or invalid.
 double rt_navmesh3d_get_traversal_cost(void *obj, void *point) {
     if (!obj || !rt_g3d_is_vec3(point))
         return 0.0;

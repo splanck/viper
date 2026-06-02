@@ -1949,6 +1949,19 @@ static rt_string game3d_asset_handle_load_error(rt_game3d_asset_handle *handle) 
     return rt_const_cstr("failed to load model");
 }
 
+/// @brief Mark an async asset handle terminal with an error if it has not already completed.
+static void game3d_asset_handle_fail_terminal(rt_game3d_asset_handle *handle,
+                                              const char *message) {
+    if (!handle || handle->ready || handle->cancelled)
+        return;
+    handle->deferred = 0;
+    handle->async_started = 0;
+    handle->ready = 1;
+    handle->progress = 1.0;
+    game3d_assign_ref((void **)&handle->error,
+                      rt_const_cstr(message && *message ? message : "failed to load model"));
+}
+
 /// @brief Lazily initialize the shared async-asset runtime (worker thread + commit queue).
 /// @return 1 if the runtime is ready, 0 on initialization failure.
 static int game3d_asset_async_ensure_runtime(void) {
@@ -1981,6 +1994,8 @@ static rt_game3d_model_template *game3d_model_cache_try_retain_ready(rt_string c
                                                                      int8_t asset_path) {
     rt_game3d_model_template *model_template = NULL;
     int32_t index;
+    if (!cache_path)
+        return NULL;
     game3d_model_cache_lock();
     index = game3d_model_cache_find_index(cache_path, asset_path);
     if (index >= 0) {
@@ -1999,7 +2014,7 @@ static rt_game3d_model_template *game3d_model_cache_try_retain_ready(rt_string c
 static rt_game3d_model_template *game3d_model_cache_store_loaded_template(rt_string cache_path,
                                                                           int8_t asset_path,
                                                                           void *loaded_model) {
-    if (!loaded_model)
+    if (!cache_path || !loaded_model)
         return NULL;
     rt_game3d_model_template *model_template =
         game3d_model_template_new(cache_path, asset_path, loaded_model);
@@ -2148,6 +2163,7 @@ static void game3d_asset_async_prepare_upload_slice(void *user_data) {
     }
 
     if (handle->ready || handle->cancelled) {
+        handle->async_started = 0;
         game3d_asset_async_job_free(job);
         return;
     }
@@ -2182,8 +2198,10 @@ static void game3d_asset_async_prepare_upload_slice(void *user_data) {
         }
     }
 
-    if (!game3d_asset_async_enqueue_next_commit(job))
+    if (!game3d_asset_async_enqueue_next_commit(job)) {
+        game3d_asset_handle_fail_terminal(handle, "failed to schedule asset commit");
         game3d_asset_async_job_free(job);
+    }
 }
 
 /// @brief Commit-queue callback: finalize an async job on the main thread (build model, store,
@@ -2205,7 +2223,10 @@ static void game3d_asset_async_commit(void *user_data) {
                 rt_string cache_path =
                     game3d_model_cache_key_path(handle->path, handle->asset_path);
                 rt_game3d_model_template *model_template = NULL;
-                if (game3d_model_cache_generation_matches(job->cache_generation)) {
+                if (!cache_path) {
+                    game3d_assign_ref((void **)&handle->error,
+                                      rt_const_cstr("failed to schedule asset load"));
+                } else if (game3d_model_cache_generation_matches(job->cache_generation)) {
                     model_template = game3d_model_cache_store_loaded_template(
                         cache_path, handle->asset_path, loaded_model);
                 } else {
@@ -2215,7 +2236,7 @@ static void game3d_asset_async_commit(void *user_data) {
                 if (model_template) {
                     game3d_assign_ref(&handle->model_template, model_template);
                     game3d_release_ref((void **)&model_template);
-                } else {
+                } else if (!game3d_string_has_bytes(handle->error)) {
                     game3d_assign_ref((void **)&handle->error,
                                       game3d_asset_handle_load_error(handle));
                 }
@@ -2246,8 +2267,11 @@ static void game3d_asset_async_commit(void *user_data) {
             }
         }
         handle->deferred = 0;
+        handle->async_started = 0;
         handle->ready = 1;
         handle->progress = 1.0;
+    } else if (handle->ready || handle->cancelled) {
+        handle->async_started = 0;
     }
 
     game3d_release_ref(&loaded_model);
@@ -2262,8 +2286,10 @@ static void game3d_asset_async_worker(void *user_data) {
     const char *path = handle && handle->path ? rt_string_cstr(handle->path) : NULL;
     uint8_t *root_data = NULL;
     size_t root_len = 0;
-    if (!job || !handle)
+    if (!job || !handle) {
+        game3d_asset_async_job_free(job);
         return;
+    }
 
     if (game3d_path_has_gltf_extension(path)) {
         root_data = game3d_asset_load_root_bytes(handle->path, handle->asset_path, &root_len);
@@ -2293,8 +2319,10 @@ static void game3d_asset_async_worker(void *user_data) {
         }
     }
 
-    if (!game3d_asset_async_enqueue_next_commit(job))
+    if (!game3d_asset_async_enqueue_next_commit(job)) {
+        game3d_asset_handle_fail_terminal(handle, "failed to schedule asset commit");
         game3d_asset_async_job_free(job);
+    }
 }
 
 /// @brief Kick off asynchronous loading for an asset handle (preflight, then dispatch a worker
@@ -2314,6 +2342,14 @@ static void game3d_asset_handle_start_async(rt_game3d_asset_handle *handle) {
 
     if (handle->template_request) {
         rt_string cache_path = game3d_model_cache_key_path(handle->path, handle->asset_path);
+        if (!cache_path) {
+            handle->deferred = 0;
+            handle->ready = 1;
+            handle->progress = 1.0;
+            game3d_assign_ref((void **)&handle->error,
+                              rt_const_cstr("failed to schedule asset load"));
+            return;
+        }
         rt_game3d_model_template *cached =
             game3d_model_cache_try_retain_ready(cache_path, handle->asset_path);
         if (cached) {
@@ -2404,6 +2440,11 @@ static rt_game3d_model_template *game3d_assets_load_template_cached_impl(rt_stri
     rt_game3d_model_template *model_template;
     rt_string cache_path = game3d_model_cache_key_path(path, asset_path);
     int32_t pending_index = -1;
+    if (!cache_path) {
+        if (trap_on_fail)
+            rt_trap("Game3D.Assets3D: model cache key allocation failed");
+        return NULL;
+    }
     for (;;) {
         int32_t index;
         game3d_model_cache_lock();
@@ -5344,6 +5385,7 @@ rt_string rt_game3d_world_stream_get_terrain_tile_nav_area(void *obj, int64_t in
     return rt_string_ref(tile && tile->nav_area ? tile->nav_area : rt_const_cstr(""));
 }
 
+/// @brief Get the parsed terrain-tile pathfinding traversal cost, or 0 for an invalid/missing tile.
 double rt_game3d_world_stream_get_terrain_tile_traversal_cost(void *obj, int64_t index) {
     rt_game3d_world_stream *stream = game3d_world_stream_checked(
         obj, "Game3D.WorldStream3D.getTerrainTileTraversalCost: invalid stream");

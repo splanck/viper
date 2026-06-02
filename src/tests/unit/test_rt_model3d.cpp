@@ -1394,6 +1394,47 @@ static void test_model3d_imports_obj_mtl_texture_maps() {
                 "OBJ MTL map_Bump imports a normal texture");
 }
 
+static void test_model3d_imports_quoted_obj_mtl_references() {
+    const char *obj_path = "/tmp/viper_model3d quoted refs.obj";
+    const char *mtl_path = "/tmp/viper model3d quoted refs.mtl";
+    const char *png_path = "/tmp/viper model3d quoted texture.png";
+    void *pixels = rt_pixels_new(1, 1);
+    rt_pixels_set(pixels, 0, 0, 0x7799BBFFll);
+    EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                "Quoted OBJ texture PNG fixture can be written");
+
+    std::string mtl =
+        "newmtl \"Quoted Red\"\n"
+        "Kd 0.7 0.1 0.2\n"
+        "map_Kd -o 0 0 \"viper model3d quoted texture.png\"\n";
+    std::string obj =
+        "mtllib \"viper model3d quoted refs.mtl\"\n"
+        "v 0 0 0\n"
+        "v 1 0 0\n"
+        "v 0 1 0\n"
+        "vt 0 0\n"
+        "vt 1 0\n"
+        "vt 0 1\n"
+        "usemtl \"Quoted Red\"\n"
+        "f 1/1 2/2 3/3\n";
+    EXPECT_TRUE(write_text_file(mtl_path, mtl), "Quoted OBJ MTL file can be written");
+    EXPECT_TRUE(write_text_file(obj_path, obj), "Quoted OBJ file can be written");
+
+    void *model = rt_model3d_load(rt_const_cstr(obj_path));
+    EXPECT_TRUE(model != nullptr, "Model3D.Load accepts quoted OBJ/MTL references");
+    if (!model)
+        return;
+    EXPECT_TRUE(rt_model3d_get_mesh_count(model) == 1,
+                "Quoted OBJ material group produces one mesh");
+    EXPECT_TRUE(rt_model3d_get_material_count(model) == 1,
+                "Quoted OBJ material name resolves against quoted newmtl");
+    void *node = rt_model3d_find_node(model, rt_const_cstr("Quoted Red"));
+    EXPECT_TRUE(node != nullptr, "Quoted usemtl name is preserved on the template node");
+    auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model, 0));
+    EXPECT_TRUE(mat != nullptr && rt_material3d_get_has_texture(mat) == 1,
+                "Quoted MTL texture path with map options imports the texture");
+}
+
 static void test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps() {
     const char *obj_path = "/tmp/viper_model3d_mtl_sanitize.obj";
     const char *mtl_path = "/tmp/viper_model3d_mtl_sanitize.mtl";
@@ -1869,6 +1910,7 @@ int main() {
     test_model3d_loads_obj_as_template_asset();
     test_model3d_preserves_obj_mtl_material_groups();
     test_model3d_imports_obj_mtl_texture_maps();
+    test_model3d_imports_quoted_obj_mtl_references();
     test_model3d_sanitizes_obj_mtl_values_and_rejects_uri_maps();
     test_model3d_preserves_empty_gltf_scene_without_synth_nodes();
     test_model3d_loads_stl_as_template_asset();

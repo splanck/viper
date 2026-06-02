@@ -2308,6 +2308,91 @@ static void test_scene_load_rejects_out_of_range_numeric_indices() {
                 "Scene3D.Load rejects out-of-range numeric indices without unsafe casts");
 }
 
+static void test_scene_load_rejects_fractional_counts_and_indices() {
+    const char *texture_path = "/tmp/viper_scene_fractional_texture_size.vscn";
+    const char *texture_json = "{\n"
+                               "  \"format\": \"vscn\",\n"
+                               "  \"version\": 2,\n"
+                               "  \"textures\": ["
+                               "{\"width\": 1.5, \"height\": 1, \"rgbaBase64\": \"AAAAAA==\"}],\n"
+                               "  \"cubemaps\": [],\n"
+                               "  \"materials\": [],\n"
+                               "  \"meshes\": [],\n"
+                               "  \"nodes\": []\n"
+                               "}\n";
+    const char *mesh_path = "/tmp/viper_scene_fractional_mesh_count.vscn";
+    const char *mesh_json = "{\n"
+                            "  \"format\": \"vscn\",\n"
+                            "  \"version\": 2,\n"
+                            "  \"textures\": [],\n"
+                            "  \"cubemaps\": [],\n"
+                            "  \"materials\": [],\n"
+                            "  \"meshes\": ["
+                            "{\"vertexCount\": 0.5, \"indexCount\": 0, "
+                            "\"verticesBase64\": \"\", \"indicesBase64\": \"\"}],\n"
+                            "  \"nodes\": []\n"
+                            "}\n";
+    const char *node_path = "/tmp/viper_scene_fractional_node_ref.vscn";
+    const char *node_json = "{\n"
+                            "  \"format\": \"vscn\",\n"
+                            "  \"version\": 2,\n"
+                            "  \"textures\": [],\n"
+                            "  \"cubemaps\": [],\n"
+                            "  \"materials\": [],\n"
+                            "  \"meshes\": [],\n"
+                            "  \"nodes\": ["
+                            "{\"name\": \"bad\", \"mesh\": 0.5, \"material\": -1}]\n"
+                            "}\n";
+
+    EXPECT_TRUE(write_text_file(texture_path, texture_json),
+                "Fractional texture-size VSCN fixture can be written");
+    EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(texture_path)) == nullptr,
+                "Scene3D.Load rejects fractional texture dimensions");
+    EXPECT_TRUE(write_text_file(mesh_path, mesh_json),
+                "Fractional mesh-count VSCN fixture can be written");
+    EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(mesh_path)) == nullptr,
+                "Scene3D.Load rejects fractional mesh counts");
+    EXPECT_TRUE(write_text_file(node_path, node_json),
+                "Fractional node-reference VSCN fixture can be written");
+    EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(node_path)) == nullptr,
+                "Scene3D.Load rejects fractional node references");
+}
+
+static void test_scene_load_rejects_wrong_typed_vscn_fields() {
+    const char *bool_ref_path = "/tmp/viper_scene_bool_node_ref.vscn";
+    const char *bool_ref_json = "{\n"
+                                "  \"format\": \"vscn\",\n"
+                                "  \"version\": 2,\n"
+                                "  \"textures\": [],\n"
+                                "  \"cubemaps\": [],\n"
+                                "  \"materials\": [],\n"
+                                "  \"meshes\": [],\n"
+                                "  \"nodes\": ["
+                                "{\"name\": \"bad\", \"mesh\": true, \"material\": -1}]\n"
+                                "}\n";
+    const char *children_path = "/tmp/viper_scene_children_wrong_type.vscn";
+    const char *children_json = "{\n"
+                                "  \"format\": \"vscn\",\n"
+                                "  \"version\": 2,\n"
+                                "  \"textures\": [],\n"
+                                "  \"cubemaps\": [],\n"
+                                "  \"materials\": [],\n"
+                                "  \"meshes\": [],\n"
+                                "  \"nodes\": ["
+                                "{\"name\": \"bad\", \"mesh\": -1, \"material\": -1, "
+                                "\"children\": {}}]\n"
+                                "}\n";
+
+    EXPECT_TRUE(write_text_file(bool_ref_path, bool_ref_json),
+                "Boolean-reference VSCN fixture can be written");
+    EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(bool_ref_path)) == nullptr,
+                "Scene3D.Load rejects boolean mesh references");
+    EXPECT_TRUE(write_text_file(children_path, children_json),
+                "Wrong-typed children VSCN fixture can be written");
+    EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(children_path)) == nullptr,
+                "Scene3D.Load rejects non-array children fields");
+}
+
 static void test_scene_load_sanitizes_degenerate_rotation() {
     const char *path = "/tmp/viper_scene_degenerate_rotation.vscn";
     const char *json = "{\n"
@@ -2419,6 +2504,8 @@ int main() {
     test_scene_load_rejects_malformed_json();
     test_scene_load_rejects_invalid_node_references();
     test_scene_load_rejects_out_of_range_numeric_indices();
+    test_scene_load_rejects_fractional_counts_and_indices();
+    test_scene_load_rejects_wrong_typed_vscn_fields();
     test_scene_load_sanitizes_degenerate_rotation();
     test_scene_roundtrip_preserves_high_precision_transform();
 

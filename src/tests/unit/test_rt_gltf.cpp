@@ -1687,6 +1687,32 @@ static void test_gltf_rejects_invalid_skin_reference() {
     EXPECT_TRUE(asset == nullptr, "GLTF.Load rejects nodes that reference missing skins");
 }
 
+static void test_gltf_rejects_invalid_skin_joint_tables() {
+    const char *bad_index_path = "/tmp/viper_gltf_invalid_skin_joint_index.gltf";
+    std::string bad_index_json = "{"
+                                 "\"asset\":{\"version\":\"2.0\"},"
+                                 "\"nodes\":[{\"name\":\"Joint\"}],"
+                                 "\"skins\":[{\"joints\":[1]}],"
+                                 "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+                                 "}";
+    EXPECT_TRUE(write_text_file(bad_index_path, bad_index_json),
+                "Invalid skin-joint index glTF fixture can be written");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(bad_index_path)) == nullptr,
+                "GLTF.Load rejects skin joints outside the node table");
+
+    const char *duplicate_path = "/tmp/viper_gltf_duplicate_skin_joints.gltf";
+    std::string duplicate_json = "{"
+                                 "\"asset\":{\"version\":\"2.0\"},"
+                                 "\"nodes\":[{\"name\":\"Joint\"}],"
+                                 "\"skins\":[{\"joints\":[0,0]}],"
+                                 "\"scenes\":[{\"nodes\":[0]}],\"scene\":0"
+                                 "}";
+    EXPECT_TRUE(write_text_file(duplicate_path, duplicate_json),
+                "Duplicate skin-joint glTF fixture can be written");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(duplicate_path)) == nullptr,
+                "GLTF.Load rejects duplicate skin joint entries");
+}
+
 static void test_gltf_builds_scene_hierarchy_for_active_scene() {
     const char *gltf_path = "/tmp/viper_gltf_scene_graph.gltf";
     std::vector<uint8_t> gltf_buffer;
@@ -2968,6 +2994,34 @@ static void test_gltf_rejects_percent_decoded_nul_external_paths() {
                 "GLTF.Load rejects URI paths containing percent-decoded NUL bytes");
 }
 
+static void test_gltf_rejects_control_chars_in_external_paths() {
+    const char *raw_path = "/tmp/viper_gltf_raw_control_uri.gltf";
+    std::string raw_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"textures/line\\nbreak.bin\",\"byteLength\":4}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}]"
+        "}";
+    EXPECT_TRUE(write_text_file(raw_path, raw_json),
+                "Raw-control URI glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(raw_path)) == nullptr,
+                "GLTF.Load rejects raw control characters in external paths");
+
+    const char *encoded_path = "/tmp/viper_gltf_encoded_control_uri.gltf";
+    std::string encoded_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"textures/%0A.bin\",\"byteLength\":4}],"
+        "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":4}],"
+        "\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":1,\"type\":\"SCALAR\"}]"
+        "}";
+    EXPECT_TRUE(write_text_file(encoded_path, encoded_json),
+                "Encoded-control URI glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(encoded_path)) == nullptr,
+                "GLTF.Load rejects percent-decoded control characters in external paths");
+}
+
 static void test_gltf_rejects_external_uri_schemes_and_malformed_escapes() {
     const char *scheme_path = "/tmp/viper_gltf_scheme_uri.gltf";
     std::string scheme_json =
@@ -2994,6 +3048,19 @@ static void test_gltf_rejects_external_uri_schemes_and_malformed_escapes() {
                 "Bad-escape glTF fixture can be created");
     EXPECT_TRUE(rt_gltf_load(rt_const_cstr(escape_path)) == nullptr,
                 "GLTF.Load rejects malformed percent escapes in external paths");
+}
+
+static void test_gltf_rejects_malformed_data_uri_percent_escapes() {
+    const char *gltf_path = "/tmp/viper_gltf_bad_data_uri_escape.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream,%GG\",\"byteLength\":1}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Bad data-URI escape glTF fixture can be created");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(gltf_path)) == nullptr,
+                "GLTF.Load rejects malformed percent escapes in data URI payloads");
 }
 
 static void test_gltf_rejects_invalid_node_resource_references() {
@@ -3058,6 +3125,29 @@ static void test_gltf_material_without_pbr_uses_pbr_defaults() {
     EXPECT_TRUE(mat->workflow == 1, "No-PBR glTF materials use Material3D's PBR workflow");
     EXPECT_NEAR(mat->metallic, 1.0, 0.001, "No-PBR glTF material default metallic is 1");
     EXPECT_NEAR(mat->roughness, 1.0, 0.001, "No-PBR glTF material default roughness is 1");
+}
+
+static void test_gltf_ignores_wrong_typed_optional_string_fields() {
+    const char *gltf_path = "/tmp/viper_gltf_wrong_typed_optional_strings.gltf";
+    std::string gltf_json =
+        "{\"asset\":{\"version\":\"2.0\"},"
+        "\"images\":[{\"uri\":17,\"mimeType\":18}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"alphaMode\":19,"
+        "\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Wrong-typed optional string glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr,
+                "GLTF.Load ignores wrong-typed optional string fields without trapping");
+    if (!asset)
+        return;
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mat != nullptr, "Wrong-typed optional string fixture exposes a material");
+    if (!mat)
+        return;
+    EXPECT_TRUE(mat->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE,
+                "Wrong-typed alphaMode falls back to opaque");
 }
 
 static void test_gltf_assigns_default_material_to_materialless_primitives() {
@@ -3335,6 +3425,16 @@ static void test_gltf_rejects_unsupported_required_extensions() {
         "GLTF.Load rejects unsupported required extensions instead of rendering fallback data");
 }
 
+static void test_gltf_rejects_non_string_required_extensions() {
+    const char *gltf_path = "/tmp/viper_gltf_required_extension_non_string.gltf";
+    std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},\"extensionsRequired\":[17]}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Non-string required-extension glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset == nullptr,
+                "GLTF.Load rejects non-string required extension names without trapping");
+}
+
 static void test_gltf_accepts_supported_required_extensions_with_parser_coverage() {
     const char *gltf_path = "/tmp/viper_gltf_supported_required_extensions.gltf";
     std::string gltf_json = "{\n"
@@ -3550,6 +3650,7 @@ int main() {
     test_gltf_drops_invalid_optional_attributes();
     test_gltf_rejects_unsorted_sparse_indices();
     test_gltf_rejects_invalid_skin_reference();
+    test_gltf_rejects_invalid_skin_joint_tables();
     test_gltf_builds_scene_hierarchy_for_active_scene();
     test_gltf_imports_extended_vertex_attributes_and_triangle_strips();
     test_gltf_reduces_secondary_joint_sets_to_top_four_influences();
@@ -3563,10 +3664,13 @@ int main() {
     test_gltf_rejects_unsafe_external_buffer_paths();
     test_gltf_accepts_dot_relative_external_buffer_paths();
     test_gltf_rejects_percent_decoded_nul_external_paths();
+    test_gltf_rejects_control_chars_in_external_paths();
     test_gltf_rejects_external_uri_schemes_and_malformed_escapes();
+    test_gltf_rejects_malformed_data_uri_percent_escapes();
     test_gltf_rejects_invalid_node_resource_references();
     test_gltf_rejects_invalid_declared_scene_roots();
     test_gltf_material_without_pbr_uses_pbr_defaults();
+    test_gltf_ignores_wrong_typed_optional_string_fields();
     test_gltf_assigns_default_material_to_materialless_primitives();
     test_gltf_uses_texture_texcoord_and_transform();
     test_gltf_imports_material_extensions_supported_by_material3d();
@@ -3575,6 +3679,7 @@ int main() {
     test_gltf_matrix_shear_does_not_leak_into_rotation();
     test_gltf_rejects_skins_over_runtime_bone_limit();
     test_gltf_rejects_unsupported_required_extensions();
+    test_gltf_rejects_non_string_required_extensions();
     test_gltf_accepts_supported_required_extensions_with_parser_coverage();
     test_gltf_imports_required_punctual_lights();
     test_gltf_preserves_primary_texture_sampler_state();

@@ -1056,6 +1056,8 @@ typedef struct {
 // Helpers
 //=============================================================================
 
+/// @brief Transpose a row-major 4x4 float matrix: dst[c][r] = src[r][c] (@p src and @p dst must not
+///   alias). Used to convert engine row-major matrices to the column-major layout Metal expects.
 static void transpose4x4(const float *src, float *dst) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
@@ -2023,6 +2025,9 @@ static int metal_copy_gpu_postfx_chain(VGFXMetalContext *ctx, const vgfx3d_postf
 // Vertex descriptor (92-byte vgfx3d_vertex_t)
 //=============================================================================
 
+/// @brief Build the MTLVertexDescriptor describing the interleaved 92-byte vgfx3d_vertex_t layout
+///   (a single per-vertex buffer at index 0) that every render pipeline consumes.
+/// @return A newly-allocated descriptor owned by the caller.
 static MTLVertexDescriptor *create_vertex_descriptor(void) {
     MTLVertexDescriptor *d = [[MTLVertexDescriptor alloc] init];
     d.attributes[0].format = MTLVertexFormatFloat3;
@@ -2213,6 +2218,11 @@ static id<MTLSamplerState> metal_get_material_sampler(VGFXMetalContext *ctx,
 // Backend vtable
 //=============================================================================
 
+/// @brief Backend vtable entry: create the Metal rendering context for window @p win sized @p w×@p h —
+///   acquires the system default MTLDevice, attaches a CAMetalLayer to the native NSView, and
+///   initializes the per-context resource caches (texture/cubemap/geometry/morph/render-target/sampler).
+/// @return An opaque VGFXMetalContext* handle (cast to void*), or NULL if no Metal device or native
+///   view is available.
 static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     @autoreleasepool {
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -4106,6 +4116,12 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
 // MTL-12: Shadow mapping
 //=============================================================================
 
+/// @brief Backend vtable entry: begin the shadow-map depth pass for shadow-casting light @p slot,
+///   rendering depth from the light's @p light_vp view-projection into a @p w×@p h Depth32Float
+///   texture (created or resized as needed).
+/// @details The CPU @p depth_buf is ignored — the GPU path stores depth in an MTLTexture. No-op for
+///   an out-of-range @p slot, or when the device/shadow pipeline/@p light_vp is unavailable or the
+///   dimensions are non-positive.
 static void metal_shadow_begin(
     void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     @autoreleasepool {
@@ -4271,6 +4287,11 @@ static void metal_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
 // MTL-13: Instanced rendering
 //=============================================================================
 
+/// @brief Backend vtable entry: draw @p instance_count copies of the mesh in @p cmd in one instanced
+///   call, each positioned by a 4x4 transform from @p instance_matrices and lit by @p lights /
+///   @p ambient. Honors @p wireframe and @p backface_cull.
+/// @details No-op outside an active frame, on empty geometry, or with no instances. NULL @p ambient
+///   defaults to black and a negative @p light_count is treated as 0.
 static void metal_submit_draw_instanced(void *ctx_ptr,
                                         vgfx_window_t win,
                                         const vgfx3d_draw_cmd_t *cmd,
