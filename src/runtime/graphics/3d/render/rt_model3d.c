@@ -328,6 +328,8 @@ static int model_append_scene_camera(model3d_scene_entry *scene, void *camera) {
 /// of the entry.
 static int model_append_ref(
     void ***arr, int32_t *count, int32_t *cap, void *obj, const char *trap_msg) {
+    if (!obj)
+        return 1;
     if (!model_grow_array(arr, cap, *count + 1)) {
         rt_trap(trap_msg);
         return 0;
@@ -683,14 +685,27 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
         rt_string anim_name = rt_animation3d_get_name(model->animations[i]);
         const char *name = anim_name ? rt_string_cstr(anim_name) : NULL;
         char fallback[64];
+        char unique_fallback[64];
         rt_string state_name;
         int64_t state_index;
+        int64_t before_count;
         if (!name || name[0] == '\0') {
             snprintf(fallback, sizeof(fallback), "animation_%d", (int)i);
             name = fallback;
         }
         state_name = rt_const_cstr(name);
+        before_count = rt_anim_controller3d_get_state_count(controller);
         state_index = rt_anim_controller3d_add_state(controller, state_name, model->animations[i]);
+        if (state_index >= 0 && rt_anim_controller3d_get_state_count(controller) == before_count &&
+            state_index < before_count) {
+            snprintf(unique_fallback, sizeof(unique_fallback), "animation_%d", (int)i);
+            if (strcmp(unique_fallback, name) != 0) {
+                state_name = rt_const_cstr(unique_fallback);
+                state_index =
+                    rt_anim_controller3d_add_state(controller, state_name, model->animations[i]);
+                name = unique_fallback;
+            }
+        }
         if (state_index >= 0 && !added_any) {
             size_t len = strlen(name);
             if (len >= sizeof(first_state))

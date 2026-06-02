@@ -140,10 +140,15 @@ static int node_animation_validate_channel_data(int64_t path,
         min_width = 3;
     else if (path == RT_NODE_ANIM_PATH_ROTATION)
         min_width = 4;
+    if ((path == RT_NODE_ANIM_PATH_TRANSLATION || path == RT_NODE_ANIM_PATH_SCALE) &&
+        value_width != 3)
+        return 0;
+    if (path == RT_NODE_ANIM_PATH_ROTATION && value_width != 4)
+        return 0;
     if (value_width < min_width)
         return 0;
     for (int64_t i = 0; i < key_count; i++) {
-        if (!isfinite(times[i]))
+        if (!isfinite(times[i]) || times[i] < 0.0)
             return 0;
         if (i > 0 && times[i] <= times[i - 1])
             return 0;
@@ -190,7 +195,11 @@ static int64_t node_animation_add_channel_impl(void *obj,
     rt_node_anim_channel3d *channel;
     size_t time_bytes;
     size_t value_count;
+    const char *target_cstr;
     if (!anim || !target_name || key_count <= 0 || value_width <= 0 || !times || !values)
+        return -1;
+    target_cstr = rt_string_cstr(target_name);
+    if (!target_cstr || target_cstr[0] == '\0')
         return -1;
     if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE && (!in_tangents || !out_tangents))
         return -1;
@@ -368,6 +377,8 @@ void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count) {
     rt_node_animator3d *animator;
     if (!clips || clip_count <= 0 || clip_count > INT32_MAX)
         return NULL;
+    if ((size_t)clip_count > SIZE_MAX / sizeof(void *))
+        return NULL;
     for (int32_t i = 0; i < (int32_t)clip_count; i++) {
         if (!rt_g3d_has_class(clips[i], RT_G3D_NODEANIMATION3D_CLASS_ID))
             return NULL;
@@ -514,6 +525,8 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
     double alpha;
     if (!channel || !out_values || channel->key_count <= 0 || channel->value_width <= 0)
         return;
+    if (!isfinite(time))
+        time = 0.0;
     if (time <= channel->times[0]) {
         memcpy(out_values, channel->values, (size_t)channel->value_width * sizeof(float));
         return;
@@ -795,6 +808,8 @@ void node_animator_update(rt_node_animator3d *animator, double dt) {
         return;
     if (isfinite(dt) && dt > 0.0)
         animator->time += dt * (isfinite(animator->speed) ? animator->speed : 1.0);
+    if (!isfinite(animator->time))
+        animator->time = 0.0;
     if (clip->duration > 0.0) {
         if (clip->looping) {
             animator->time = fmod(animator->time, clip->duration);
@@ -802,6 +817,9 @@ void node_animator_update(rt_node_animator3d *animator, double dt) {
                 animator->time += clip->duration;
         } else if (animator->time > clip->duration) {
             animator->time = clip->duration;
+            animator->playing = 0;
+        } else if (animator->time < 0.0) {
+            animator->time = 0.0;
             animator->playing = 0;
         }
     }

@@ -916,7 +916,7 @@ static void test_mesh_bone_weights_are_validated_and_dirty_geometry() {
     assert(mesh->vertices[0].bone_weights[1] == 0.0f);
     assert(mesh->vertices[0].bone_weights[2] == 0.0f);
     assert(mesh->vertices[0].bone_weights[3] == 0.0f);
-    assert(mesh->bone_count == 5);
+    assert(mesh->bone_count == 2);
     assert(mesh->geometry_revision != before);
 
     void *skel = rt_skeleton3d_new();

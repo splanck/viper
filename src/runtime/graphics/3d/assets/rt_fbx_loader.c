@@ -54,6 +54,7 @@
 #include "rt_vec3.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -2523,7 +2524,7 @@ static int64_t fbx_find_skin_geometry(fbx_node_t *objects,
 /// @param weight Non-negative weight; values <= 0 are silently dropped.
 static void fbx_skin_add_influence(fbx_skin_influence_t *dst, int32_t bone_index, double weight) {
     int32_t weakest = 0;
-    if (!dst || bone_index < 0 || weight <= 0.0)
+    if (!dst || bone_index < 0 || !isfinite(weight) || weight <= 0.0)
         return;
     for (int i = 0; i < 4; i++) {
         if (dst->weights[i] > 0.0 && dst->bone_indices[i] == bone_index) {
@@ -2562,12 +2563,24 @@ static void fbx_apply_control_skin_to_vertex(rt_mesh3d *mesh,
     if (!mesh || !influence || vertex_index < 0 || vertex_index >= (int32_t)mesh->vertex_count)
         return;
     for (int i = 0; i < 4; i++) {
-        bones[i] = influence->weights[i] > 0.0 ? influence->bone_indices[i] : 0;
-        weights[i] = influence->weights[i] > 0.0 ? influence->weights[i] : 0.0;
+        bones[i] = influence->weights[i] > 0.0 && influence->bone_indices[i] >= 0
+                       ? influence->bone_indices[i]
+                       : 0;
+        weights[i] = isfinite(influence->weights[i]) && influence->weights[i] > 0.0 &&
+                             influence->bone_indices[i] >= 0
+                         ? influence->weights[i]
+                         : 0.0;
         sum += weights[i];
     }
-    if (sum <= 0.0)
+    if (sum <= 0.0) {
+        memset(mesh->vertices[vertex_index].bone_indices,
+               0,
+               sizeof(mesh->vertices[vertex_index].bone_indices));
+        memset(mesh->vertices[vertex_index].bone_weights,
+               0,
+               sizeof(mesh->vertices[vertex_index].bone_weights));
         return;
+    }
     for (int i = 0; i < 4; i++) {
         weights[i] /= sum;
         if (weights[i] > 0.0 && bones[i] + 1 > mesh->bone_count)
@@ -2754,17 +2767,32 @@ static void fbx_extract_model_lcl_components(fbx_node_t *model_node,
             continue;
         pn = fbx_prop_str(p, 0);
         if (translation && strcmp(pn, "Lcl Translation") == 0) {
-            translation[0] = fbx_prop_f64(p, 4);
-            translation[1] = fbx_prop_f64(p, 5);
-            translation[2] = fbx_prop_f64(p, 6);
+            double x = fbx_prop_f64(p, 4);
+            double y = fbx_prop_f64(p, 5);
+            double z = fbx_prop_f64(p, 6);
+            if (isfinite(x) && isfinite(y) && isfinite(z)) {
+                translation[0] = x;
+                translation[1] = y;
+                translation[2] = z;
+            }
         } else if (rotation && strcmp(pn, "Lcl Rotation") == 0) {
-            rotation[0] = fbx_prop_f64(p, 4);
-            rotation[1] = fbx_prop_f64(p, 5);
-            rotation[2] = fbx_prop_f64(p, 6);
+            double x = fbx_prop_f64(p, 4);
+            double y = fbx_prop_f64(p, 5);
+            double z = fbx_prop_f64(p, 6);
+            if (isfinite(x) && isfinite(y) && isfinite(z)) {
+                rotation[0] = x;
+                rotation[1] = y;
+                rotation[2] = z;
+            }
         } else if (scale && strcmp(pn, "Lcl Scaling") == 0) {
-            scale[0] = fbx_prop_f64(p, 4);
-            scale[1] = fbx_prop_f64(p, 5);
-            scale[2] = fbx_prop_f64(p, 6);
+            double x = fbx_prop_f64(p, 4);
+            double y = fbx_prop_f64(p, 5);
+            double z = fbx_prop_f64(p, 6);
+            if (isfinite(x) && isfinite(y) && isfinite(z)) {
+                scale[0] = x;
+                scale[1] = y;
+                scale[2] = z;
+            }
         }
     }
 }
@@ -2772,6 +2800,20 @@ static void fbx_extract_model_lcl_components(fbx_node_t *model_node,
 /// @brief Return non-zero if @p curve contains at least one keyframe with usable value data.
 static int fbx_anim_curve_has_data(const fbx_anim_curve_view_t *curve) {
     return curve && curve->times && (curve->values64 || curve->values32) && curve->count > 0;
+}
+
+/// @brief Validate an FBX animation curve before the sampler assumes sorted finite data.
+static int fbx_anim_curve_view_valid(const fbx_anim_curve_view_t *curve) {
+    if (!fbx_anim_curve_has_data(curve))
+        return 0;
+    for (uint32_t i = 0; i < curve->count; i++) {
+        double value = curve->values64 ? curve->values64[i] : (double)curve->values32[i];
+        if (!isfinite(value) || curve->times[i] < 0)
+            return 0;
+        if (i > 0 && curve->times[i] <= curve->times[i - 1])
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Sample the animation curve at the given FBX tick time using linear interpolation.
@@ -2783,7 +2825,7 @@ static int fbx_anim_curve_has_data(const fbx_anim_curve_view_t *curve) {
 static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
                                    int64_t fbx_time,
                                    double fallback) {
-    if (!fbx_anim_curve_has_data(curve))
+    if (!fbx_anim_curve_view_valid(curve))
         return fallback;
     if (fbx_time <= curve->times[0])
         return curve->values64 ? curve->values64[0] : (double)curve->values32[0];
@@ -2817,7 +2859,7 @@ static int fbx_i64_compare(const void *a, const void *b) {
 /// @brief Append @p value to an unsorted key-time array; sorting/dedup happens once after collect.
 static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capacity, int64_t value) {
     if (!times || !count || !capacity || *count < 0 || *capacity < 0 || *count > *capacity ||
-        (*count > 0 && !*times))
+        (*count > 0 && !*times) || value < 0)
         return 0;
     if (*count >= *capacity) {
         int32_t new_capacity;
@@ -2922,6 +2964,8 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
                     if (pnode && strcmp(pnode->name, "Model") == 0) {
                         model_id = pid;
                         const char *cprop = ct->entries[ci2].prop;
+                        if (!cprop)
+                            continue;
                         if (strcmp(cprop, "Lcl Translation") == 0)
                             trs_type = 0;
                         else if (strcmp(cprop, "Lcl Rotation") == 0)
@@ -2959,6 +3003,8 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
                     continue;
 
                 int comp = -1;
+                if (!curve_props[ki])
+                    continue;
                 if (strcmp(curve_props[ki], "d|X") == 0)
                     comp = 0;
                 else if (strcmp(curve_props[ki], "d|Y") == 0)
@@ -2987,6 +3033,8 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
                     view->values64 = dvals;
                     view->values32 = fvals;
                     view->count = tc < vc ? tc : vc;
+                    if (!fbx_anim_curve_view_valid(view))
+                        memset(view, 0, sizeof(*view));
                 }
             }
         }
@@ -3003,11 +3051,11 @@ static double fbx_anim_compute_max_time(const fbx_anim_bone_builder_t *builders,
         for (int trs = 0; trs < 3; trs++) {
             for (int comp = 0; comp < 3; comp++) {
                 const fbx_anim_curve_view_t *curve = &builders[bone_idx].curves[trs][comp];
-                if (!fbx_anim_curve_has_data(curve))
+                if (!fbx_anim_curve_view_valid(curve))
                     continue;
                 for (uint32_t k = 0; k < curve->count; k++) {
                     double t = (double)curve->times[k] / (double)FBX_TIME_SECOND;
-                    if (t > max_time)
+                    if (isfinite(t) && t > max_time)
                         max_time = t;
                 }
             }
@@ -3026,16 +3074,29 @@ static int fbx_anim_build_bone_keyframes(void *anim,
     int32_t time_count = 0;
     int32_t time_capacity = 0;
     int emitted_any = 0;
+    int time_failed = 0;
     if (!builders[bone_idx].initialized)
         return 0;
     for (int trs = 0; trs < 3; trs++) {
         for (int comp = 0; comp < 3; comp++) {
             const fbx_anim_curve_view_t *curve = &builders[bone_idx].curves[trs][comp];
-            if (!fbx_anim_curve_has_data(curve))
+            if (!fbx_anim_curve_view_valid(curve))
                 continue;
-            for (uint32_t k = 0; k < curve->count; k++)
-                fbx_anim_append_time(&times, &time_count, &time_capacity, curve->times[k]);
+            for (uint32_t k = 0; k < curve->count; k++) {
+                if (!fbx_anim_append_time(&times, &time_count, &time_capacity, curve->times[k])) {
+                    time_failed = 1;
+                    break;
+                }
+            }
+            if (time_failed)
+                break;
         }
+        if (time_failed)
+            break;
+    }
+    if (time_failed) {
+        free(times);
+        return 0;
     }
     fbx_anim_sort_unique_times(times, &time_count);
     for (int32_t ti = 0; ti < time_count; ti++) {
@@ -3044,6 +3105,8 @@ static int fbx_anim_build_bone_keyframes(void *anim,
         double tv[3];
         double rv[3];
         double sv[3];
+        if (!isfinite(t) || t < 0.0)
+            continue;
         memcpy(tv, builders[bone_idx].base_translation, sizeof(tv));
         memcpy(rv, builders[bone_idx].base_rotation, sizeof(rv));
         memcpy(sv, builders[bone_idx].base_scale, sizeof(sv));
@@ -3057,6 +3120,10 @@ static int fbx_anim_build_bone_keyframes(void *anim,
         }
         if (z_up)
             fbx_correct_zup(&tv[0], &tv[1], &tv[2]);
+        if (!isfinite(tv[0]) || !isfinite(tv[1]) || !isfinite(tv[2]) || !isfinite(rv[0]) ||
+            !isfinite(rv[1]) || !isfinite(rv[2]) || !isfinite(sv[0]) || !isfinite(sv[1]) ||
+            !isfinite(sv[2]))
+            continue;
 
         double rx = rv[0] * 3.14159265358979323846 / 180.0;
         double ry = rv[1] * 3.14159265358979323846 / 180.0;
@@ -3068,14 +3135,18 @@ static int fbx_anim_build_bone_keyframes(void *anim,
         double qx = sx * cy * cz - cx * sy * sz;
         double qy = cx * sy * cz + sx * cy * sz;
         double qz = cx * cy * sz - sx * sy * cz;
+        if (!isfinite(qx) || !isfinite(qy) || !isfinite(qz) || !isfinite(qw))
+            continue;
         void *pos = rt_vec3_new(tv[0], tv[1], tv[2]);
         void *rot = rt_quat_new(qx, qy, qz, qw);
         void *scl = rt_vec3_new(sv[0], sv[1], sv[2]);
-        rt_animation3d_add_keyframe(anim, bone_idx, t, pos, rot, scl);
+        if (pos && rot && scl) {
+            rt_animation3d_add_keyframe(anim, bone_idx, t, pos, rot, scl);
+            emitted_any = 1;
+        }
         fbx_release_ref(&pos);
         fbx_release_ref(&rot);
         fbx_release_ref(&scl);
-        emitted_any = 1;
     }
     free(times);
     return emitted_any;
@@ -3101,6 +3172,8 @@ static void fbx_extract_animations(fbx_node_t *root,
 
     int64_t bone_count = skeleton ? rt_skeleton3d_get_bone_count(skeleton) : 0;
     if (bone_count <= 0)
+        return;
+    if (bone_count > INT32_MAX || (size_t)bone_count > SIZE_MAX / sizeof(fbx_anim_bone_builder_t))
         return;
 
     /* Find AnimationStack nodes */

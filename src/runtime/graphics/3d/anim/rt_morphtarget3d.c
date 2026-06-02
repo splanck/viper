@@ -219,6 +219,8 @@ static int morphtarget_reserve_shapes(rt_morphtarget3d *mt, int32_t min_capacity
 
     if (!mt)
         return 0;
+    if (min_capacity < 0)
+        return 0;
     if (min_capacity <= mt->shape_capacity)
         return 1;
 
@@ -429,6 +431,8 @@ int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     if (!mt)
         return -1;
+    if (mt->shape_count == INT32_MAX)
+        return -1;
     if (!morphtarget_reserve_shapes(mt, mt->shape_count + 1)) {
         rt_trap("MorphTarget3D.AddShape: memory allocation failed");
         return -1;
@@ -582,7 +586,7 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
     if (!mt || !name)
         return;
     const char *target = rt_string_cstr(name);
-    if (!target)
+    if (!target || target[0] == '\0')
         return;
     for (int32_t i = 0; i < mt->shape_count; i++) {
         if (strcmp(mt->shapes[i].name, target) == 0) {
@@ -705,6 +709,7 @@ void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
         if (m->morph_targets_ref && rt_obj_release_check0(m->morph_targets_ref))
             rt_obj_free(m->morph_targets_ref);
         m->morph_targets_ref = NULL;
+        rt_mesh3d_touch_geometry(m);
         return;
     }
     rt_morphtarget3d *mt = morphtarget_checked(morph_targets);
@@ -718,6 +723,7 @@ void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets) {
     if (m->morph_targets_ref && rt_obj_release_check0(m->morph_targets_ref))
         rt_obj_free(m->morph_targets_ref);
     m->morph_targets_ref = morph_targets;
+    rt_mesh3d_touch_geometry(m);
 }
 
 /*==========================================================================
@@ -771,8 +777,6 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         rt_mesh3d tmp;
         if (mt->shape_count > 0 && !packed_deltas)
             return;
-        if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh))
-            return;
         if (!rt_canvas3d_add_temp_object(canvas, mt))
             return;
         /* The stack mesh copy below aliases the original mesh's vertex/index
@@ -795,6 +799,8 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     }
 
     /* Allocate morphed vertex buffer */
+    if ((size_t)m->vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t))
+        return;
     vgfx3d_vertex_t *morphed =
         (vgfx3d_vertex_t *)malloc((size_t)m->vertex_count * sizeof(vgfx3d_vertex_t));
     if (!morphed)

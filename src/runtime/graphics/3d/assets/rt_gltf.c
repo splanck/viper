@@ -2969,7 +2969,7 @@ static void gltf_accessor_read_u32(const gltf_accessor_view_t *view,
 ///            3. All slots full and the incoming weight is larger than the smallest
 ///               slot → evict the weakest. Otherwise the incoming weight is dropped.
 ///          Inputs whose joint index exceeds VGFX3D_MAX_BONES or whose weight is
-///          negligible (<= 1e-8 in magnitude) are silently dropped so garbage in the
+///          negligible/non-finite (<= 1e-8) are silently dropped so garbage in the
 ///          source accessors can't corrupt the influence record.
 /// @param joint Source joint index from a glTF JOINTS_* accessor.
 /// @param weight Source weight from the matching WEIGHTS_* accessor.
@@ -2980,14 +2980,15 @@ static void gltf_add_top_joint_influence(uint32_t joint,
                                          uint32_t *out_joints,
                                          float *out_weights) {
     int replace = -1;
-    if (!out_joints || !out_weights || joint >= VGFX3D_MAX_BONES || fabsf(weight) <= 1e-8f)
+    if (!out_joints || !out_weights || joint >= VGFX3D_MAX_BONES || !isfinite(weight) ||
+        weight <= 1e-8f)
         return;
     for (int i = 0; i < 4; i++) {
         if (out_weights[i] > 1e-8f && out_joints[i] == joint) {
             out_weights[i] += weight;
             return;
         }
-        if (replace < 0 && fabsf(out_weights[i]) <= 1e-8f)
+        if (replace < 0 && out_weights[i] <= 1e-8f)
             replace = i;
     }
     if (replace < 0) {
@@ -4248,9 +4249,9 @@ static int gltf_hex_digit(char ch) {
 
 /// @brief Decode a percent-encoded URI path component into a plain filesystem path string.
 /// @details Converts `%XX` escape sequences to their byte values, stops at `#` (fragment)
-///          or `?` (query), and NUL-terminates @p out. Rejects malformed escapes and decoded
-///          NUL bytes. Does not handle scheme prefixes (file://, http://) — caller rejects those
-///          after decode.
+///          or `?` (query), and NUL-terminates @p out. Rejects malformed escapes and any control
+///          character (< 0x20, including NUL) or DEL (0x7F), whether literal or percent-decoded.
+///          Does not handle scheme prefixes (file://, http://) — caller rejects those after decode.
 static int gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
     size_t oi = 0;
     if (!out || out_cap == 0)
@@ -5500,11 +5501,11 @@ static uint32_t gltf_preload_write_vertex_bone_weights(vgfx3d_vertex_t *vertex,
         if (isfinite(weights[i]) && weights[i] > 0.0f) {
             vertex->bone_weights[i] = weights[i];
             sum += (double)weights[i];
+            if ((int32_t)joints[i] > max_bone_index)
+                max_bone_index = (int32_t)joints[i];
         } else {
             vertex->bone_weights[i] = 0.0f;
         }
-        if ((int32_t)joints[i] > max_bone_index)
-            max_bone_index = (int32_t)joints[i];
     }
     if (sum > 1e-12) {
         for (int i = 0; i < 4; i++)
@@ -7070,6 +7071,9 @@ static void gltf_release_skin_skeletons(gltf_skin_t *skins, int32_t skin_count) 
         gltf_release_ref(&skins[i].skeleton);
 }
 
+static int gltf_inverse_bind_accessor_valid(const gltf_accessor_view_t *view,
+                                            int32_t joint_count);
+
 /// @brief Parse every skin in a glTF document into engine `Skeleton3D` objects.
 /// @details Walks the top-level "skins" array and, for each skin, builds a Skeleton3D
 ///          whose bones mirror the skin's joint hierarchy. The pipeline per skin is:
@@ -7085,9 +7089,10 @@ static void gltf_release_skin_skeletons(gltf_skin_t *skins, int32_t skin_count) 
 ///               "inverseBindMatrices" the values are read and transposed from
 ///               glTF column-major into the engine's row-major layout.
 ///
-///          On allocation failure the partial state is rolled back (node_parents freed,
-///          skins freed, asset->skeletons cleared) so the asset is never left in a
-///          half-built state.
+///          On allocation failure — or a malformed skin (out-of-range or duplicate joint
+///          index), which also sets *hard_error — the partial state is rolled back
+///          (node_parents freed, skins freed, asset->skeletons cleared) so the asset is never
+///          left in a half-built state.
 ///
 ///          Output `out_skins` is optional; when NULL the caller indicates they only
 ///          want the skeletons populated on `asset` and the helper table is freed.
@@ -7239,10 +7244,10 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
         {
             int64_t ibm_acc = jint(skin_json, "inverseBindMatrices", -1);
             gltf_accessor_view_t ibm_view;
-            if (gltf_get_accessor_view(root, ibm_acc, buffers, buf_count, &ibm_view)) {
+            if (gltf_get_accessor_view(root, ibm_acc, buffers, buf_count, &ibm_view) &&
+                gltf_inverse_bind_accessor_valid(&ibm_view, joint_count)) {
                 rt_skeleton3d *skel = (rt_skeleton3d *)skins[si].skeleton;
-                int32_t limit = joint_count < ibm_view.count ? joint_count : ibm_view.count;
-                for (int32_t ji = 0; ji < limit; ji++) {
+                for (int32_t ji = 0; ji < joint_count; ji++) {
                     int32_t bone = skins[si].joint_to_bone[ji];
                     float col_major[16];
                     if (bone < 0 || bone >= skel->bone_count)
@@ -7284,7 +7289,7 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
 /// @param skin Skin whose `joint_to_bone` table drives the remap.
 static void gltf_apply_skin_to_mesh(void *mesh_obj, const gltf_skin_t *skin) {
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
-    int32_t max_bone = 0;
+    int32_t max_bone = -1;
     if (!mesh || !skin || !skin->joint_to_bone)
         return;
     for (uint32_t vi = 0; vi < mesh->vertex_count; vi++) {
@@ -7301,8 +7306,11 @@ static void gltf_apply_skin_to_mesh(void *mesh_obj, const gltf_skin_t *skin) {
                 sum += weights[i];
             }
         }
-        if (sum <= 0.0)
+        if (sum <= 0.0) {
+            memset(v->bone_indices, 0, sizeof(v->bone_indices));
+            memset(v->bone_weights, 0, sizeof(v->bone_weights));
             continue;
+        }
         for (int i = 0; i < 4; i++) {
             weights[i] /= sum;
             if (weights[i] > 0.0 && bones[i] + 1 > max_bone)
@@ -7319,7 +7327,7 @@ static void gltf_apply_skin_to_mesh(void *mesh_obj, const gltf_skin_t *skin) {
                                    bones[3],
                                    weights[3]);
     }
-    mesh->bone_count = max_bone;
+    mesh->bone_count = max_bone + 1;
     rt_mesh3d_set_skeleton(mesh, skin->skeleton);
 }
 
@@ -7402,7 +7410,7 @@ static double gltf_curve_time(const gltf_accessor_view_t *view, int32_t index) {
 static int gltf_anim_insert_time(double **times, int32_t *count, int32_t *capacity, double value) {
     int32_t pos = 0;
     if (!times || !count || !capacity || *count < 0 || *capacity < 0 || *count > *capacity ||
-        (*count > 0 && !*times) || !isfinite(value))
+        (*count > 0 && !*times) || !isfinite(value) || value < 0.0)
         return 0;
     while (pos < *count && (*times)[pos] < value - 1e-6)
         pos++;
@@ -7475,12 +7483,72 @@ static float gltf_accessor_read_flat_f32(const gltf_accessor_view_t *view, int32
     if (!view || flat_index < 0 || view->comp_count <= 0)
         return 0.0f;
     comp_count = view->comp_count;
+    if (comp_count > (int32_t)(sizeof(tmp) / sizeof(tmp[0])))
+        return 0.0f;
     element = flat_index / comp_count;
     component = flat_index % comp_count;
-    if (component < 0 || component >= (int32_t)(sizeof(tmp) / sizeof(tmp[0])))
+    if (component < 0)
         return 0.0f;
     gltf_accessor_read_f32(view, element, tmp, comp_count);
     return tmp[component];
+}
+
+/// @brief Return non-zero when a float accessor region contains only finite values.
+static int gltf_accessor_f32_values_are_finite(const gltf_accessor_view_t *view,
+                                               int32_t element_count,
+                                               int32_t components) {
+    float tmp[16];
+    if (!view || element_count < 0 || components <= 0 ||
+        components > (int32_t)(sizeof(tmp) / sizeof(tmp[0])) || element_count > view->count)
+        return 0;
+    for (int32_t i = 0; i < element_count; i++) {
+        gltf_accessor_read_f32(view, i, tmp, components);
+        for (int32_t c = 0; c < components; c++) {
+            if (!isfinite(tmp[c]))
+                return 0;
+        }
+    }
+    return 1;
+}
+
+/// @brief Validate glTF animation sampler input times (SCALAR FLOAT, finite, increasing).
+static int gltf_animation_input_accessor_valid(const gltf_accessor_view_t *input) {
+    double previous = -1.0;
+    if (!input || input->comp_type != 5126 || input->comp_count != 1 || input->count <= 0)
+        return 0;
+    for (int32_t i = 0; i < input->count; i++) {
+        double t = gltf_curve_time(input, i);
+        if (!isfinite(t) || t < 0.0)
+            return 0;
+        if (i > 0 && t <= previous + 1e-6)
+            return 0;
+        previous = t;
+    }
+    return 1;
+}
+
+/// @brief Validate translation/rotation/scale animation sampler outputs.
+static int gltf_animation_trs_output_accessor_valid(const gltf_accessor_view_t *input,
+                                                    const gltf_accessor_view_t *output,
+                                                    int32_t components,
+                                                    int cubic) {
+    int64_t required_count;
+    if (!input || !output || components <= 0 || output->comp_type != 5126 ||
+        output->comp_count != components)
+        return 0;
+    required_count = (int64_t)input->count * (int64_t)(cubic ? 3 : 1);
+    if (required_count <= 0 || required_count > INT32_MAX || output->count < required_count)
+        return 0;
+    return gltf_accessor_f32_values_are_finite(output, (int32_t)required_count, components);
+}
+
+/// @brief Validate inverseBindMatrices accessors before overriding computed bind data.
+static int gltf_inverse_bind_accessor_valid(const gltf_accessor_view_t *view,
+                                            int32_t joint_count) {
+    if (!view || joint_count <= 0 || view->comp_type != 5126 || view->comp_count != 16 ||
+        view->count < joint_count)
+        return 0;
+    return gltf_accessor_f32_values_are_finite(view, joint_count, 16);
 }
 
 /// @brief Normalize @p out in-place when @p components == 4 (quaternion interpolation result).
@@ -7575,7 +7643,8 @@ static void gltf_sample_curve(const gltf_anim_curve_t *curve,
                               float *out,
                               int32_t components) {
     int32_t key_count;
-    if (!curve || !curve->valid || !out || components <= 0 || curve->input.count <= 0)
+    if (!curve || !curve->valid || !out || components <= 0 || curve->input.count <= 0 ||
+        !isfinite(time))
         return;
     key_count = curve->input.count;
     if (curve->interpolation && strcmp(curve->interpolation, "CUBICSPLINE") == 0 &&
@@ -7683,8 +7752,16 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                                   int32_t skin_count) {
     void *anims_arr = jarr(root, "animations");
     void *nodes_arr = jarr(root, "nodes");
-    int32_t anim_count = (int32_t)jarr_len(anims_arr);
-    if (!asset || !anims_arr || anim_count <= 0 || !skins || skin_count <= 0)
+    int64_t anim_count64 = jarr_len(anims_arr);
+    int32_t anim_count;
+    if (!asset || !anims_arr || anim_count64 <= 0 || !skins || skin_count <= 0)
+        return;
+    if (anim_count64 <= 0 || anim_count64 > INT32_MAX)
+        return;
+    anim_count = (int32_t)anim_count64;
+    if ((int64_t)anim_count * (int64_t)skin_count > INT32_MAX ||
+        (size_t)anim_count > SIZE_MAX / (size_t)skin_count ||
+        (size_t)anim_count * (size_t)skin_count > SIZE_MAX / sizeof(void *))
         return;
     asset->animations = (void **)calloc((size_t)anim_count * (size_t)skin_count, sizeof(void *));
     if (!asset->animations)
@@ -7703,13 +7780,20 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
             name = generated_name;
         }
         for (int32_t si = 0; si < skin_count; si++) {
-            gltf_anim_curve_t *curves =
-                (gltf_anim_curve_t *)calloc((size_t)channel_count, sizeof(*curves));
+            rt_skeleton3d *skin_skel = (rt_skeleton3d *)skins[si].skeleton;
+            int32_t bone_limit;
+            gltf_anim_curve_t *curves;
             double duration = 0.0;
             int emitted_any = 0;
             void *anim;
             char skin_name[128];
             const char *clip_name = name;
+            if (!skin_skel || !skins[si].joint_to_bone || skin_skel->bone_count <= 0)
+                continue;
+            bone_limit = skin_skel->bone_count;
+            if (bone_limit > VGFX3D_MAX_BONES)
+                bone_limit = VGFX3D_MAX_BONES;
+            curves = (gltf_anim_curve_t *)calloc((size_t)channel_count, sizeof(*curves));
             if (!curves)
                 continue;
             for (int32_t ci = 0; ci < channel_count; ci++) {
@@ -7720,13 +7804,16 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                 int64_t node_idx = jint(target, "node", -1);
                 void *sampler;
                 int32_t bone_idx;
-                if (sampler_idx < 0 || sampler_idx >= jarr_len(samplers) || node_idx < 0)
+                if (sampler_idx < 0 || sampler_idx >= jarr_len(samplers) || node_idx < 0 ||
+                    node_idx > INT32_MAX || node_idx >= jarr_len(nodes_arr))
                     continue;
                 bone_idx = gltf_skin_bone_for_node(&skins[si], (int32_t)node_idx);
                 if (bone_idx < 0)
                     continue;
                 sampler = rt_seq_get(samplers, sampler_idx);
-                if (!path || strcmp(path, "translation") == 0)
+                if (!path)
+                    continue;
+                if (strcmp(path, "translation") == 0)
                     curves[ci].path = 0;
                 else if (strcmp(path, "rotation") == 0)
                     curves[ci].path = 1;
@@ -7734,15 +7821,22 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                     curves[ci].path = 2;
                 else
                     continue;
+                curves[ci].interpolation = jstr(sampler, "interpolation");
                 if (!gltf_get_accessor_view(
                         root, jint(sampler, "input", -1), buffers, buf_count, &curves[ci].input) ||
                     !gltf_get_accessor_view(
-                        root, jint(sampler, "output", -1), buffers, buf_count, &curves[ci].output))
+                        root, jint(sampler, "output", -1), buffers, buf_count, &curves[ci].output) ||
+                    !gltf_animation_input_accessor_valid(&curves[ci].input) ||
+                    !gltf_animation_trs_output_accessor_valid(
+                        &curves[ci].input,
+                        &curves[ci].output,
+                        curves[ci].path == 1 ? 4 : 3,
+                        curves[ci].interpolation &&
+                            strcmp(curves[ci].interpolation, "CUBICSPLINE") == 0))
                     continue;
                 curves[ci].valid = 1;
                 curves[ci].node_idx = (int32_t)node_idx;
                 curves[ci].bone_idx = bone_idx;
-                curves[ci].interpolation = jstr(sampler, "interpolation");
                 for (int32_t ti = 0; ti < curves[ci].input.count; ti++) {
                     double t = gltf_curve_time(&curves[ci].input, ti);
                     if (t > duration)
@@ -7758,7 +7852,7 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                 free(curves);
                 continue;
             }
-            for (int32_t bone = 0; bone < VGFX3D_MAX_BONES; bone++) {
+            for (int32_t bone = 0; bone < bone_limit; bone++) {
                 double *times = NULL;
                 int32_t time_count = 0;
                 int32_t time_capacity = 0;
@@ -7770,6 +7864,7 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                 double pos_d[3];
                 double rot_d[4];
                 double scl_d[3];
+                int time_failed = 0;
                 for (int32_t ci = 0; ci < channel_count; ci++) {
                     if (!curves[ci].valid || curves[ci].bone_idx != bone)
                         continue;
@@ -7780,13 +7875,19 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                         curve_r = &curves[ci];
                     else if (curves[ci].path == 2)
                         curve_s = &curves[ci];
-                    for (int32_t ti = 0; ti < curves[ci].input.count; ti++)
-                        gltf_anim_insert_time(&times,
-                                              &time_count,
-                                              &time_capacity,
-                                              gltf_curve_time(&curves[ci].input, ti));
+                    for (int32_t ti = 0; ti < curves[ci].input.count; ti++) {
+                        if (!gltf_anim_insert_time(&times,
+                                                   &time_count,
+                                                   &time_capacity,
+                                                   gltf_curve_time(&curves[ci].input, ti))) {
+                            time_failed = 1;
+                            break;
+                        }
+                    }
+                    if (time_failed)
+                        break;
                 }
-                if (time_count <= 0 || node_idx < 0) {
+                if (time_failed || time_count <= 0 || node_idx < 0) {
                     free(times);
                     continue;
                 }
@@ -7809,11 +7910,14 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                     pos_obj = rt_vec3_new(pos[0], pos[1], pos[2]);
                     rot_obj = rt_quat_new(rot[0], rot[1], rot[2], rot[3]);
                     scl_obj = rt_vec3_new(scl[0], scl[1], scl[2]);
-                    rt_animation3d_add_keyframe(anim, bone, times[ti], pos_obj, rot_obj, scl_obj);
+                    if (pos_obj && rot_obj && scl_obj) {
+                        rt_animation3d_add_keyframe(
+                            anim, bone, times[ti], pos_obj, rot_obj, scl_obj);
+                        emitted_any = 1;
+                    }
                     gltf_release_ref(&pos_obj);
                     gltf_release_ref(&rot_obj);
                     gltf_release_ref(&scl_obj);
-                    emitted_any = 1;
                 }
                 free(times);
             }
@@ -7844,7 +7948,9 @@ static int gltf_node_is_skin_joint(const gltf_skin_t *skins, int32_t skin_count,
 /// @brief Map a glTF animation channel path string to the engine's RT_NODE_ANIM_PATH_* constant.
 /// @return RT_NODE_ANIM_PATH_TRANSLATION / ROTATION / SCALE / WEIGHTS, or -1 for unknown paths.
 static int32_t gltf_node_anim_path(const char *path) {
-    if (!path || strcmp(path, "translation") == 0)
+    if (!path)
+        return -1;
+    if (strcmp(path, "translation") == 0)
         return RT_NODE_ANIM_PATH_TRANSLATION;
     if (strcmp(path, "rotation") == 0)
         return RT_NODE_ANIM_PATH_ROTATION;
@@ -7865,17 +7971,22 @@ static int32_t gltf_node_anim_width_for_path(int32_t path,
                                              int cubic) {
     int64_t total_components;
     int64_t divisor;
-    if (!input || !output || input->count <= 0 || output->count <= 0)
+    if (!gltf_animation_input_accessor_valid(input) || !output || output->count <= 0 ||
+        output->comp_type != 5126)
         return 0;
-    if (path == RT_NODE_ANIM_PATH_TRANSLATION || path == RT_NODE_ANIM_PATH_SCALE)
-        return (int64_t)output->count >= (int64_t)input->count * (cubic ? 3 : 1) ? 3 : 0;
-    if (path == RT_NODE_ANIM_PATH_ROTATION)
-        return (int64_t)output->count >= (int64_t)input->count * (cubic ? 3 : 1) ? 4 : 0;
+    if (path == RT_NODE_ANIM_PATH_TRANSLATION || path == RT_NODE_ANIM_PATH_SCALE) {
+        return gltf_animation_trs_output_accessor_valid(input, output, 3, cubic) ? 3 : 0;
+    }
+    if (path == RT_NODE_ANIM_PATH_ROTATION) {
+        return gltf_animation_trs_output_accessor_valid(input, output, 4, cubic) ? 4 : 0;
+    }
     total_components = (int64_t)output->count * (int64_t)output->comp_count;
     divisor = (int64_t)input->count * (cubic ? 3 : 1);
     if (divisor <= 0 || total_components <= 0 || total_components % divisor != 0)
         return 0;
     if (total_components / divisor > INT32_MAX)
+        return 0;
+    if (!gltf_accessor_f32_values_are_finite(output, output->count, output->comp_count))
         return 0;
     return (int32_t)(total_components / divisor);
 }
@@ -7895,9 +8006,11 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
                                        int32_t skin_count) {
     void *anims_arr = jarr(root, "animations");
     void *nodes_arr = jarr(root, "nodes");
-    int32_t anim_count = (int32_t)jarr_len(anims_arr);
-    if (!asset || !anims_arr || anim_count <= 0)
+    int64_t anim_count64 = jarr_len(anims_arr);
+    int32_t anim_count;
+    if (!asset || !anims_arr || anim_count64 <= 0 || anim_count64 > INT32_MAX)
         return;
+    anim_count = (int32_t)anim_count64;
     asset->node_animations = (void **)calloc((size_t)anim_count, sizeof(void *));
     if (!asset->node_animations)
         return;
@@ -7940,7 +8053,8 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
             char fallback_name[64];
             const char *target_name;
             int64_t value_count;
-            if (path < 0 || sampler_idx < 0 || sampler_idx >= jarr_len(samplers) || node_idx < 0)
+            if (path < 0 || sampler_idx < 0 || sampler_idx >= jarr_len(samplers) ||
+                node_idx < 0 || node_idx > INT32_MAX || node_idx >= jarr_len(nodes_arr))
                 continue;
             if (path != RT_NODE_ANIM_PATH_WEIGHTS &&
                 gltf_node_is_skin_joint(skins, skin_count, (int32_t)node_idx))
@@ -7959,6 +8073,9 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
                 continue;
             value_count = (int64_t)input.count * (int64_t)width;
             if (value_count <= 0 || value_count > INT32_MAX)
+                continue;
+            if ((size_t)input.count > SIZE_MAX / sizeof(double) ||
+                (size_t)value_count > SIZE_MAX / sizeof(float))
                 continue;
             times = (double *)malloc((size_t)input.count * sizeof(double));
             values = (float *)malloc((size_t)value_count * sizeof(float));

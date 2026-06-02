@@ -715,8 +715,11 @@ void *rt_animation3d_new(rt_string name, double duration) {
 void rt_animation3d_add_keyframe(
     void *obj, int64_t bone_index, double time, void *position, void *rotation, void *scale) {
     rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
-    if (!a || bone_index < 0 || bone_index > INT32_MAX || !isfinite(time) || fabs(time) > FLT_MAX)
+    if (!a || bone_index < 0 || bone_index >= VGFX3D_MAX_BONES || !isfinite(time) ||
+        fabs(time) > FLT_MAX)
         return;
+    if (time < 0.0)
+        time = 0.0;
     if ((position && !rt_g3d_is_vec3(position)) || (rotation && !rt_g3d_is_quat(rotation)) ||
         (scale && !rt_g3d_is_vec3(scale)))
         return;
@@ -848,7 +851,7 @@ void rt_animation3d_add_keyframe(
 void rt_animation3d_set_looping(void *obj, int8_t loop) {
     rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
     if (a)
-        a->looping = loop;
+        a->looping = loop ? 1 : 0;
 }
 
 /// @brief Read the looping flag (0 = one-shot, 1 = loops).
@@ -1544,8 +1547,14 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
             else if (p->crossfade_from_time < 0.0f)
                 p->crossfade_from_time = 0.0f;
         }
-        if (p->crossfade_time >= p->crossfade_duration)
+        if (p->crossfade_time >= p->crossfade_duration) {
             animation3d_assign_ref((void **)&p->crossfade_from, NULL);
+            p->crossfade_time = 0.0f;
+            p->crossfade_duration = 0.0f;
+            p->crossfade_from_time = 0.0f;
+            p->crossfade_from_speed = 1.0f;
+            p->crossfade_from_looping = 0;
+        }
     }
 
     compute_bone_palette(p);
@@ -1657,6 +1666,21 @@ void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index) {
  * Mesh3D extensions
  *=========================================================================*/
 
+/// @brief Recompute the highest positively weighted bone referenced by a mesh.
+static int32_t mesh3d_recompute_weight_bone_count(const rt_mesh3d *m) {
+    int32_t max_bone = -1;
+    if (!m || !m->vertices)
+        return 0;
+    for (uint32_t vi = 0; vi < m->vertex_count; vi++) {
+        const vgfx3d_vertex_t *v = &m->vertices[vi];
+        for (int i = 0; i < 4; i++) {
+            if (v->bone_weights[i] > 0.0f && v->bone_indices[i] > max_bone)
+                max_bone = v->bone_indices[i];
+        }
+    }
+    return max_bone >= 0 ? max_bone + 1 : 0;
+}
+
 /// @brief Bind a skeleton to a mesh so its per-vertex `bone_indices/weights` can drive skinning.
 void rt_mesh3d_set_skeleton(void *mesh, void *skeleton) {
     rt_mesh3d *m = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
@@ -1707,6 +1731,11 @@ void rt_mesh3d_set_bone_weights(void *obj,
     vgfx3d_vertex_t *v = &m->vertices[vertex_index];
     double sum = 0.0;
     int64_t max_bone_index = -1;
+    int64_t old_max_bone_index = -1;
+    for (int i = 0; i < 4; i++) {
+        if (v->bone_weights[i] > 0.0f && v->bone_indices[i] > old_max_bone_index)
+            old_max_bone_index = v->bone_indices[i];
+    }
     for (int i = 0; i < 4; i++) {
         if (idx[i] < 0 || idx[i] >= VGFX3D_MAX_BONES) {
             v->bone_indices[i] = 0;
@@ -1716,11 +1745,11 @@ void rt_mesh3d_set_bone_weights(void *obj,
             if (isfinite(wt[i]) && wt[i] > 0.0) {
                 v->bone_weights[i] = (float)wt[i];
                 sum += wt[i];
+                if (idx[i] > max_bone_index)
+                    max_bone_index = idx[i];
             } else {
                 v->bone_weights[i] = 0.0f;
             }
-            if (idx[i] > max_bone_index)
-                max_bone_index = idx[i];
         }
     }
     if (sum > 1e-12) {
@@ -1732,6 +1761,10 @@ void rt_mesh3d_set_bone_weights(void *obj,
     }
     if (max_bone_index >= 0 && max_bone_index + 1 > m->bone_count)
         m->bone_count = (int32_t)(max_bone_index + 1);
+    else if (!m->skeleton_ref && old_max_bone_index >= 0 &&
+             old_max_bone_index + 1 >= m->bone_count &&
+             (max_bone_index < 0 || max_bone_index + 1 < m->bone_count))
+        m->bone_count = mesh3d_recompute_weight_bone_count(m);
     rt_mesh3d_touch_geometry(m);
 }
 
@@ -1765,7 +1798,13 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
 
     if (!canvas || !mesh_obj || !model_matrix || !material || !bone_palette || bone_count <= 0)
         return;
-    mesh = (rt_mesh3d *)mesh_obj;
+    mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+#if defined(RT_G3D_ALLOW_STACK_FIXTURES) && RT_G3D_ALLOW_STACK_FIXTURES
+    if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
+        mesh = (rt_mesh3d *)mesh_obj;
+#endif
+    if (!mesh)
+        return;
     if (mesh->vertex_count == 0)
         return;
 
@@ -1784,6 +1823,8 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
         return;
     }
 
+    if ((size_t)mesh->vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t))
+        return;
     vgfx3d_vertex_t *skinned =
         (vgfx3d_vertex_t *)malloc((size_t)mesh->vertex_count * sizeof(vgfx3d_vertex_t));
     if (!skinned)
@@ -2034,7 +2075,7 @@ void rt_anim_blend3d_update(void *obj, double dt) {
     /* Advance all state timers */
     for (int32_t s = 0; s < b->state_count; s++) {
         anim_blend_state_t *st = &b->states[s];
-        if (!st->animation || st->weight < 1e-6f)
+        if (!st->animation)
             continue;
         if (!isfinite(st->speed))
             st->speed = 1.0f;

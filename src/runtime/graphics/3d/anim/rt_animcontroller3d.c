@@ -45,6 +45,7 @@
 #include "rt_vec3.h"
 
 #include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -410,12 +411,6 @@ static void controller_process_events(rt_anim_controller3d *controller,
     if (!controller || state_index < 0 || state_index >= controller->state_count)
         return;
     if (duration <= 0.0) {
-        for (int32_t i = 0; i < controller->event_count; i++) {
-            if (controller->events[i].state_index == state_index &&
-                controller->events[i].time_seconds <= curr_time) {
-                controller_enqueue_event(controller, controller->events[i].name);
-            }
-        }
         return;
     }
     for (int32_t i = 0; i < controller->event_count; i++) {
@@ -1844,7 +1839,10 @@ void rt_anim_controller3d_add_event(void *obj,
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
     anim_controller3d_event_t *event;
     int32_t state_index;
+    const char *event_cstr = event_name ? rt_string_cstr(event_name) : NULL;
     if (!controller)
+        return;
+    if (!event_cstr || event_cstr[0] == '\0')
         return;
     state_index = controller_find_state(controller, state_name);
     if (state_index < 0)
@@ -1975,6 +1973,7 @@ void rt_anim_controller3d_set_layer_weight(void *obj, int64_t layer_index, doubl
     if (weight > 1.0)
         weight = 1.0;
     controller->layers[layer_index].weight = (float)weight;
+    controller_compute_final_palette(controller);
 }
 
 /// @brief Set which bones an overlay layer affects. The layer composites only on `root_bone`
@@ -1992,6 +1991,8 @@ void rt_anim_controller3d_set_layer_mask(void *obj, int64_t layer_index, int64_t
         layer->mask_root_bone = -1;
         return;
     }
+    if (root_bone < -1 || root_bone > INT32_MAX)
+        root_bone = -1;
     if (controller->layers[layer_index].mask_root_bone == (int32_t)root_bone &&
         controller->layers[layer_index].mask_bone_count_seen == controller->skeleton->bone_count)
         return;
