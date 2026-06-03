@@ -7,8 +7,10 @@
 //
 // File: support/diag_capture.hpp
 // Purpose: Provide a capture-only diagnostic sink to bridge legacy bool plus ostream APIs.
-// Key invariants: Diagnostics recorded in the capture are printed verbatim and converted into error
-// Ownership/Lifetime: To be documented.
+// Key invariants: Text accumulated in the capture is printed verbatim and, on
+//                 failure, converted into a single error Diag with no location.
+// Ownership/Lifetime: DiagCapture is a value type that owns its buffered text; it
+//                     borrows the caller's output stream only for the call.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//

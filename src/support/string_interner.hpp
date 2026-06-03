@@ -80,6 +80,11 @@ class StringInterner {
     StringInterner &operator=(StringInterner &&) noexcept = default;
 
   private:
+    /// @brief Heterogeneous hash enabling map lookups keyed by string_view.
+    /// @details The @c is_transparent tag lets the unordered_map hash both
+    ///          std::string and std::string_view identically, so intern() can
+    ///          probe the map with a borrowed view instead of allocating a
+    ///          temporary std::string for every query.
     struct TransparentHash {
         using is_transparent = void;
 
@@ -92,6 +97,11 @@ class StringInterner {
         }
     };
 
+    /// @brief Heterogeneous equality matching the TransparentHash key family.
+    /// @details Provides every string/string_view comparison pairing so the map
+    ///          can compare a borrowed lookup key against a stored key without an
+    ///          intermediate allocation. Must agree with TransparentHash on which
+    ///          keys are equal.
     struct TransparentEqual {
         using is_transparent = void;
 

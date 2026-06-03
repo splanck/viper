@@ -7,7 +7,8 @@
 //
 // File: support/diagnostics.hpp
 // Purpose: Declares diagnostic engine for errors and warnings.
-// Key invariants: None.
+// Key invariants: errorCount()/warningCount() always equal the number of stored
+//                 diagnostics at each severity; printAll preserves report order.
 // Ownership/Lifetime: Engine owns collected diagnostics.
 // Links: docs/codemap.md
 //

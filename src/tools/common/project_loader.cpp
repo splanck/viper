@@ -99,10 +99,12 @@ std::string lowerAscii(std::string value) {
 /// @param dir Root directory to scan.
 /// @param ext Extension including dot (e.g. ".zia").
 /// @param excludes Directories to skip (relative to dir or absolute).
-/// @return Sorted list of absolute file paths.
+/// @param err Optional destination for traversal or canonicalization errors.
+/// @return Sorted list of absolute file paths, or an empty list when @p err is set.
 std::vector<std::string> collectFiles(const fs::path &dir,
                                       const std::string &ext,
-                                      const std::vector<std::string> &excludes) {
+                                      const std::vector<std::string> &excludes,
+                                      std::string *err = nullptr) {
     std::vector<std::string> result;
     std::error_code ec;
     if (!fs::is_directory(dir, ec))
@@ -120,7 +122,12 @@ std::vector<std::string> collectFiles(const fs::path &dir,
                               "vendor",
                               ".viper-cache"});
 
-    auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
+    auto it = fs::recursive_directory_iterator(dir, ec);
+    if (ec) {
+        if (err)
+            *err = "cannot traverse source directory " + dir.string() + ": " + ec.message();
+        return {};
+    }
     const auto end = fs::recursive_directory_iterator();
     while (!ec && it != end) {
         // Check excludes against the relative path from dir
@@ -144,10 +151,20 @@ std::vector<std::string> collectFiles(const fs::path &dir,
         if (it->is_regular_file(entryEc) && !entryEc &&
             lowerAscii(it->path().extension().string()) == ext) {
             auto canonical = fs::canonical(it->path(), entryEc);
-            if (!entryEc)
-                result.push_back(canonical.string());
+            if (entryEc) {
+                if (err)
+                    *err = "cannot resolve source file " + it->path().string() + ": " +
+                           entryEc.message();
+                return {};
+            }
+            result.push_back(canonical.string());
         }
         it.increment(ec);
+    }
+    if (ec) {
+        if (err)
+            *err = "cannot traverse source directory " + dir.string() + ": " + ec.message();
+        return {};
     }
 
     std::sort(result.begin(), result.end());
@@ -361,8 +378,13 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
 /// @brief Discover project configuration by convention (no manifest).
 il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
                                                         const std::vector<std::string> &excludes) {
-    auto ziaFiles = collectFiles(dir, ".zia", excludes);
-    auto basFiles = collectFiles(dir, ".bas", excludes);
+    std::string collectErr;
+    auto ziaFiles = collectFiles(dir, ".zia", excludes, &collectErr);
+    if (!collectErr.empty())
+        return makeErr(collectErr);
+    auto basFiles = collectFiles(dir, ".bas", excludes, &collectErr);
+    if (!collectErr.empty())
+        return makeErr(collectErr);
 
     // Language detection
     if (ziaFiles.empty() && basFiles.empty())
@@ -554,7 +576,9 @@ il::support::Expected<fs::path> resolveManifestRelativePath(const fs::path &mani
         fs::path candidate = (manifestDir / fs::path(clean)).lexically_normal();
         fs::path resolved = fs::weakly_canonical(candidate, ec);
         if (ec)
-            resolved = candidate;
+            return makeManifestErr(manifestPath,
+                                   line,
+                                   "cannot resolve " + directive + " path: '" + raw + "'");
         if (!viper::pkg::isPathWithin(manifestDir, resolved)) {
             return makeManifestErr(
                 manifestPath, line, directive + " path escapes the project root: '" + raw + "'");
@@ -1214,8 +1238,13 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             fs::path srcDir = sd;
             if (srcDir.is_relative())
                 srcDir = manifestDir / srcDir;
-            auto zia = collectFiles(srcDir, ".zia", excludes);
-            auto bas = collectFiles(srcDir, ".bas", excludes);
+            std::string collectErr;
+            auto zia = collectFiles(srcDir, ".zia", excludes, &collectErr);
+            if (!collectErr.empty())
+                return makeErr(collectErr);
+            auto bas = collectFiles(srcDir, ".bas", excludes, &collectErr);
+            if (!collectErr.empty())
+                return makeErr(collectErr);
             allZia.insert(allZia.end(), zia.begin(), zia.end());
             allBas.insert(allBas.end(), bas.begin(), bas.end());
         }
@@ -1245,8 +1274,13 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (!fs::is_directory(srcDir, srcEc))
                 return makeErr("sources directory not found: " + srcDir.string());
 
-            auto zia = collectFiles(srcDir, ".zia", excludes);
-            auto bas = collectFiles(srcDir, ".bas", excludes);
+            std::string collectErr;
+            auto zia = collectFiles(srcDir, ".zia", excludes, &collectErr);
+            if (!collectErr.empty())
+                return makeErr(collectErr);
+            auto bas = collectFiles(srcDir, ".bas", excludes, &collectErr);
+            if (!collectErr.empty())
+                return makeErr(collectErr);
             config.ziaFiles.insert(config.ziaFiles.end(), zia.begin(), zia.end());
             config.basicFiles.insert(config.basicFiles.end(), bas.begin(), bas.end());
             config.sourceFiles.insert(config.sourceFiles.end(), zia.begin(), zia.end());
@@ -1260,7 +1294,10 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             std::error_code srcEc;
             if (!fs::is_directory(srcDir, srcEc))
                 return makeErr("sources directory not found: " + srcDir.string());
-            auto files = collectFiles(srcDir, ext, excludes);
+            std::string collectErr;
+            auto files = collectFiles(srcDir, ext, excludes, &collectErr);
+            if (!collectErr.empty())
+                return makeErr(collectErr);
             config.sourceFiles.insert(config.sourceFiles.end(), files.begin(), files.end());
         }
     }

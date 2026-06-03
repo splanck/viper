@@ -381,6 +381,10 @@ case "$prefix" in
     /*) ;;
     *) echo "PREFIX must be an absolute path" >&2; exit 2 ;;
 esac
+case "$destdir" in
+    ""|/*) ;;
+    *) echo "DESTDIR must be empty or an absolute path" >&2; exit 2 ;;
+esac
 
 root=$(CDPATH= cd "$(dirname "$0")" && pwd)
 install_root=${destdir%/}$prefix
@@ -894,7 +898,10 @@ void buildDebPackage(const LinuxBuildParams &params) {
     for (const auto &df : dataFiles) {
         if (df.directory)
             continue;
-        dataTar.addFile("./" + df.installPath, df.data.data(), df.data.size(), df.mode);
+        if (df.symlink)
+            dataTar.addSymlink("./" + df.installPath, df.symlinkTarget);
+        else
+            dataTar.addFile("./" + df.installPath, df.data.data(), df.data.size(), df.mode);
     }
 
     auto dataTarBytes = dataTar.finish();

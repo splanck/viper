@@ -157,9 +157,8 @@ void VpaWriter::addEntry(const std::string &name, const uint8_t *data, size_t si
             } else {
                 entry.storedData.assign(data, data + size);
             }
-        } catch (const viper::pkg::DeflateError &) {
-            // Compression failed — store uncompressed.
-            entry.storedData.assign(data, data + size);
+        } catch (const viper::pkg::DeflateError &ex) {
+            throw std::runtime_error("VPA compression failed for '" + name + "': " + ex.what());
         }
     } else {
         entry.storedData.assign(data, data + size);
@@ -216,8 +215,12 @@ std::vector<uint8_t> VpaWriter::writeToMemory() const {
 
     // Reserve rough estimate: header + data + TOC
     size_t estimate = kHeaderSize;
-    for (const auto &e : entries_)
+    for (const auto &e : entries_) {
+        const size_t add = e.storedData.size() + e.name.size() + 64u;
+        if (estimate > std::numeric_limits<size_t>::max() - add)
+            throw std::length_error("VPA archive is too large");
         estimate += e.storedData.size() + e.name.size() + 64;
+    }
     out.reserve(estimate);
 
     // ── Write header (32 bytes) ──

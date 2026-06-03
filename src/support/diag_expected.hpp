@@ -7,9 +7,11 @@
 //
 // File: support/diag_expected.hpp
 // Purpose: Provides diagnostic helpers and a lightweight Expected container for CLI tools.
-// Key invariants: Diagnostics encapsulate a single severity, message, and location; Expected holds
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Key invariants: A Diagnostic carries exactly one severity, message, and optional location; an
+//                 Expected<T> holds either a value or an error Diag, never both and never neither.
+// Ownership/Lifetime: Expected owns its stored value or diagnostic by value; the optional
+//                     SourceManager passed to the print helpers is borrowed for the call only.
+// Links: docs/architecture.md, src/support/diagnostics.hpp
 //
 //===----------------------------------------------------------------------===//
 

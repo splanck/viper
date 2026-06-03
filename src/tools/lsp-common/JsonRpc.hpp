@@ -9,7 +9,8 @@
 // Purpose: JSON-RPC 2.0 request/response types and helpers.
 // Key invariants:
 //   - Conforms to JSON-RPC 2.0 specification
-//   - Request IDs can be string, int, or null (notification)
+//   - Request IDs can be string, int, or explicit null
+//   - Notifications are identified by an absent id field, not by a null id value
 //   - Standard error codes from -32700 to -32603
 // Ownership/Lifetime:
 //   - All types are value types (owned data)
@@ -36,11 +37,12 @@ constexpr int kInternalError = -32603;
 struct JsonRpcRequest {
     std::string method; ///< Method name (e.g., "initialize", "tools/call")
     JsonValue params;   ///< Parameters (may be null, object, or array)
-    JsonValue id;       ///< Request ID (string, int, or null for notifications)
+    JsonValue id;       ///< Request ID (string, int, or null when hasId is true).
+    bool hasId{false};  ///< True when the incoming message contained an id field.
 
     /// @brief True if this is a notification (no id, no response expected).
     [[nodiscard]] bool isNotification() const {
-        return id.isNull();
+        return !hasId;
     }
 };
 

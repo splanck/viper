@@ -281,6 +281,8 @@ void ZipWriter::addFile(const std::string &name,
                         uint32_t unixMode) {
     ensureOpen();
     const std::string entryName = normalizeEntryName(name);
+    if (!entryName.empty() && entryName.back() == '/')
+        throw std::runtime_error("ZipWriter: regular file entry must not end with '/': " + name);
     if (!seenNames_.insert(entryName).second)
         throw std::runtime_error("ZipWriter: duplicate entry name: " + entryName);
     validateArchiveLimit(len, 0xFFFFFFFFu, "files larger than 4 GiB");

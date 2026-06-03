@@ -706,6 +706,8 @@ PEVersionInfo windowsVersionInfoForLayout(const WindowsPackageLayout &layout,
 /// of a full PackageConfig; used for toolchain installer builds.
 std::string toolchainProgIdFor(const std::string &identifier, const FileAssoc &assoc) {
     validateWindowsProgIdBase(identifier, "Windows file association ProgID base");
+    if (identifier.empty())
+        throw std::runtime_error("Windows file association ProgID base must not be empty");
     validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
     std::string ext = assoc.extension;
     if (!ext.empty() && ext.front() == '.')
@@ -1198,20 +1200,31 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     const auto provisionalBytes = buildPE(provisionalPe);
     layout.overlayFileOffset = static_cast<uint64_t>(provisionalBytes.size() - zipPayload.size());
 
-    auto instStub = buildInstallerStub(layout, params.archStr);
-    PEBuildParams pe;
-    pe.arch = instStub.peArch;
-    pe.textSection = instStub.textSection;
-    pe.rdataSection = instStub.stubData;
-    pe.imports = instStub.imports;
-    pe.manifest = windowsManifestForLayout(layout, pkg.minOsWindows);
-    pe.iconData = icoData;
-    pe.overlay = zipPayload;
-    pe.versionInfo = windowsVersionInfoForLayout(
-        layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
-    configureInstallerStack(pe);
+    std::vector<uint8_t> peBytes;
+    for (unsigned attempt = 0; attempt < 4; ++attempt) {
+        auto instStub = buildInstallerStub(layout, params.archStr);
+        PEBuildParams pe;
+        pe.arch = instStub.peArch;
+        pe.textSection = instStub.textSection;
+        pe.rdataSection = instStub.stubData;
+        pe.imports = instStub.imports;
+        pe.manifest = windowsManifestForLayout(layout, pkg.minOsWindows);
+        pe.iconData = icoData;
+        pe.overlay = zipPayload;
+        pe.versionInfo = windowsVersionInfoForLayout(
+            layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
+        configureInstallerStack(pe);
 
-    const auto peBytes = buildPE(pe);
+        peBytes = buildPE(pe);
+        const uint64_t finalOverlayOffset =
+            static_cast<uint64_t>(peBytes.size() - zipPayload.size());
+        if (finalOverlayOffset == layout.overlayFileOffset)
+            break;
+        if (attempt == 3) {
+            throw std::runtime_error("Windows installer overlay offset did not converge");
+        }
+        layout.overlayFileOffset = finalOverlayOffset;
+    }
     writePEToFile(peBytes, params.outputPath);
 }
 
@@ -1254,6 +1267,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.fileAssociationExecutableRelativePath = "bin\\viper.exe";
     layout.perUserInstall = params.installScope == "user";
     if (params.registerFileAssociations) {
+        if (params.identifier.empty())
+            throw std::runtime_error("Windows file associations require a non-empty package identifier");
         for (const auto &assoc : params.manifest.fileAssociations) {
             layout.fileAssociations.push_back({assoc.extension,
                                                assoc.description,
@@ -1481,18 +1496,29 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     const auto provisionalBytes = buildPE(provisionalPe);
     layout.overlayFileOffset = static_cast<uint64_t>(provisionalBytes.size() - zipPayload.size());
 
-    auto instStub = buildInstallerStub(layout, params.archStr);
-    PEBuildParams pe;
-    pe.arch = instStub.peArch;
-    pe.textSection = instStub.textSection;
-    pe.rdataSection = instStub.stubData;
-    pe.imports = instStub.imports;
-    pe.manifest = windowsManifestForLayout(layout, {});
-    pe.overlay = zipPayload;
-    pe.versionInfo = windowsVersionInfoForLayout(
-        layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
-    configureInstallerStack(pe);
-    const auto peBytes = buildPE(pe);
+    std::vector<uint8_t> peBytes;
+    for (unsigned attempt = 0; attempt < 4; ++attempt) {
+        auto instStub = buildInstallerStub(layout, params.archStr);
+        PEBuildParams pe;
+        pe.arch = instStub.peArch;
+        pe.textSection = instStub.textSection;
+        pe.rdataSection = instStub.stubData;
+        pe.imports = instStub.imports;
+        pe.manifest = windowsManifestForLayout(layout, {});
+        pe.overlay = zipPayload;
+        pe.versionInfo = windowsVersionInfoForLayout(
+            layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
+        configureInstallerStack(pe);
+        peBytes = buildPE(pe);
+        const uint64_t finalOverlayOffset =
+            static_cast<uint64_t>(peBytes.size() - zipPayload.size());
+        if (finalOverlayOffset == layout.overlayFileOffset)
+            break;
+        if (attempt == 3) {
+            throw std::runtime_error("Windows installer overlay offset did not converge");
+        }
+        layout.overlayFileOffset = finalOverlayOffset;
+    }
     writePEToFile(peBytes, params.outputPath);
 }
 

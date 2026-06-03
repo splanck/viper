@@ -126,9 +126,9 @@ class GrowingArena {
   private:
     /// @brief A memory chunk with bump-pointer allocation.
     struct Chunk {
-        std::unique_ptr<std::byte[]> data;
-        size_t size = 0;
-        size_t offset = 0;
+        std::unique_ptr<std::byte[]> data; ///< Owned backing storage for this chunk.
+        size_t size = 0;                   ///< Total capacity of the chunk in bytes.
+        size_t offset = 0;                 ///< Bytes already handed out from the chunk.
 
         Chunk() = default;
 
@@ -150,8 +150,8 @@ class GrowingArena {
 
     /// @brief Destructor record for non-trivially-destructible objects.
     struct DestructorRecord {
-        void *object;
-        void (*destroy)(void *);
+        void *object;            ///< Object whose destructor must run on reset/destroy.
+        void (*destroy)(void *); ///< Type-erased destructor thunk for @c object.
     };
 
     /// @brief Allocate a new chunk of at least the given size.
@@ -160,8 +160,8 @@ class GrowingArena {
     /// @brief Destroy all tracked objects in reverse order.
     void destroyObjects();
 
-    std::vector<Chunk> chunks_;
-    std::vector<DestructorRecord> destructors_;
-    size_t growthChunkSize_;
+    std::vector<Chunk> chunks_;                 ///< Allocated chunks in creation order.
+    std::vector<DestructorRecord> destructors_; ///< Pending destructors, run LIFO on reset.
+    size_t growthChunkSize_;                    ///< Size of each chunk allocated after the first.
 };
 } // namespace il::support

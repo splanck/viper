@@ -7,6 +7,11 @@
 //
 // File: support/small_vector.hpp
 // Purpose: Stack-optimized vector that avoids heap allocation for small sizes.
+// Key invariants: heap_ is non-null exactly when storage has spilled to the heap;
+//                 size_ <= capacity() always; capacity() reports N while inline.
+// Ownership/Lifetime: The container owns its heap buffer (freed on destruction or
+//                     reassignment); inline storage shares the object's lifetime.
+// Links: docs/codemap.md#support-library
 //
 // SmallVector stores up to N elements inline (on the stack) and only allocates
 // from the heap when the size exceeds N. This is particularly useful for

@@ -42,6 +42,15 @@ class Transport {
     /// @brief Write a message to the transport.
     /// @param json The JSON string to send.
     virtual void writeMessage(const std::string &json) = 0;
+
+    /// @brief True when the last failed read ended because of malformed protocol data.
+    /// @details A false return from readMessage can mean either clean EOF or a
+    ///          framing/protocol error. Transports that can distinguish those
+    ///          states override this so server loops can avoid reporting success
+    ///          for malformed input.
+    [[nodiscard]] virtual bool lastReadFailedDueToError() const {
+        return false;
+    }
 };
 
 /// @brief MCP transport: newline-delimited JSON over stdin/stdout.
@@ -70,10 +79,12 @@ class LspTransport : public Transport {
     LspTransport(FILE *in, FILE *out);
     bool readMessage(RawMessage &out) override;
     void writeMessage(const std::string &json) override;
+    [[nodiscard]] bool lastReadFailedDueToError() const override;
 
   private:
     FILE *in_;
     FILE *out_;
+    bool lastReadHadError_{false};
 
     /// @brief Read a single line terminated by \r\n from the input.
     /// @return The line without the trailing \r\n, or empty string on EOF.

@@ -39,11 +39,13 @@ bool parseRequest(const JsonValue &msg, JsonRpcRequest &out) {
     const auto *params = msg.get("params");
     out.params = params ? *params : JsonValue();
 
-    // ID is optional (null = notification)
+    // ID is optional. JSON-RPC notifications omit the field entirely; an
+    // explicit null id is still a request id and must be echoed in a response.
     const auto *id = msg.get("id");
     if (id && !(id->isNull() || id->type() == JsonType::String || id->type() == JsonType::Int))
         return false;
     out.id = id ? *id : JsonValue();
+    out.hasId = id != nullptr;
 
     return true;
 }

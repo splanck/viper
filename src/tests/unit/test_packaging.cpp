@@ -1184,8 +1184,7 @@ TEST(Ar, DebianBinaryOrdering) {
 
 TEST(Ar, RejectsTooLongMemberName) {
     ArWriter ar;
-    ar.addMemberString("this-name-is-far-too-long", "data");
-    EXPECT_THROWS(ar.finish(), std::runtime_error);
+    EXPECT_THROWS(ar.addMemberString("this-name-is-far-too-long", "data"), std::runtime_error);
 }
 
 TEST(Ar, SupportsZeroByteNullDataMember) {

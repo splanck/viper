@@ -28,6 +28,8 @@ bool isIdentChar(char c) {
 
 HoverContext extractIdentifierAtCursor(const std::string &source, int line, int col) {
     HoverContext ctx;
+    if (line <= 0 || col <= 0)
+        return ctx;
 
     // Find the start of the requested line (1-based).
     size_t lineStart = 0;
@@ -38,6 +40,8 @@ HoverContext extractIdentifierAtCursor(const std::string &source, int line, int 
             lineStart = i + 1;
         }
     }
+    if (curLine != line)
+        return ctx;
 
     // Find line end.
     size_t lineEnd = lineStart;

@@ -30,10 +30,12 @@
 #include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/Token.hpp"
 #include "il/io/Serializer.hpp"
+#include "il/transform/PassManager.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
 #include <cctype>
+#include <cstdio>
 
 namespace viper::server {
 
@@ -46,6 +48,41 @@ static std::string toUpperStr(const std::string &s) {
     for (char c : s)
         upper += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     return upper;
+}
+
+/// @brief Append token lexeme text with printable escapes for line-oriented dumps.
+/// @details BASIC token dumps are consumed by humans and MCP clients as plain
+///          text. Escaping control characters prevents one token's lexeme from
+///          spanning multiple output lines or being confused with dump separators.
+/// @param out Destination string receiving escaped token text.
+/// @param text Raw lexer spelling to append.
+static void appendEscapedTokenText(std::string &out, const std::string &text) {
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    for (unsigned char c : text) {
+        switch (c) {
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                if (c < 0x20u || c == 0x7Fu) {
+                    out += "\\x";
+                    out.push_back(kHex[c >> 4u]);
+                    out.push_back(kHex[c & 0x0Fu]);
+                } else {
+                    out.push_back(static_cast<char>(c));
+                }
+                break;
+        }
+    }
 }
 
 // --- Constructor / Destructor ---
@@ -62,6 +99,8 @@ std::vector<DiagnosticInfo> BasicCompilerBridge::check(const std::string &source
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
+    if (!result)
+        return {{2, "internal error: BASIC analysis did not produce a result", path, 0, 0, "V-LSP-ANALYSIS"}};
     return extractDiagnostics(result->diagnostics);
 }
 
@@ -107,7 +146,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
-    if (!result->sema)
+    if (!result || !result->sema)
         return "";
 
     const auto &sema = *result->sema;
@@ -234,7 +273,7 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
-    if (!result->sema)
+    if (!result || !result->sema)
         return {};
 
     const auto &sema = *result->sema;
@@ -282,7 +321,7 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
 
     // Procedures
     for (const auto &[name, sig] : sema.procs()) {
-        std::string kind = sig.kind == ProcSignature::Kind::Function ? "function" : "function";
+        std::string kind = sig.kind == ProcSignature::Kind::Function ? "function" : "method";
         out.push_back({name, kind, "", false, false});
     }
 
@@ -302,8 +341,6 @@ std::string BasicCompilerBridge::dumpIL(const std::string &source,
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     BasicCompilerOptions opts{};
-    // BASIC doesn't have an O1 optimization level in opts, but compileBasic
-    // returns a module we can serialize regardless.
 
     auto result = compileBasic(input, opts, sm);
     if (!result.succeeded()) {
@@ -313,9 +350,11 @@ std::string BasicCompilerBridge::dumpIL(const std::string &source,
         return err;
     }
 
-    // Optimization would need the transform pipeline applied separately.
-    // For now, return unoptimized IL.
-    (void)optimized;
+    if (optimized) {
+        il::transform::PassManager pm;
+        if (!pm.runPipeline(result.module, "O1"))
+            return "Optimization failed: IL O1 pipeline failed verification\n";
+    }
     return il::io::Serializer::toString(result.module);
 }
 
@@ -323,7 +362,7 @@ std::string BasicCompilerBridge::dumpAst(const std::string &source, const std::s
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
-    if (!result->ast)
+    if (!result || !result->ast)
         return "(no AST produced)";
 
     AstPrinter printer;
@@ -348,7 +387,7 @@ std::string BasicCompilerBridge::dumpTokens(const std::string &source, const std
         out += tokenKindToString(tok.kind);
         if (!tok.lexeme.empty()) {
             out += '\t';
-            out += tok.lexeme;
+            appendEscapedTokenText(out, tok.lexeme);
         }
         out += '\n';
     }

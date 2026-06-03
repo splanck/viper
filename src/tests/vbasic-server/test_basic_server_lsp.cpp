@@ -53,13 +53,15 @@ class MockTransport : public Transport {
 static JsonRpcRequest makeReq(const std::string &method,
                               JsonValue params = JsonValue::object({}),
                               JsonValue id = JsonValue(1)) {
-    return {method, std::move(params), std::move(id)};
+    JsonRpcRequest req{method, std::move(params), std::move(id)};
+    req.hasId = true;
+    return req;
 }
 
 /// Helper: build a notification (null id).
 static JsonRpcRequest makeNotif(const std::string &method,
                                 JsonValue params = JsonValue::object({})) {
-    return {method, std::move(params), JsonValue()};
+    return {method, std::move(params), JsonValue(), false};
 }
 
 /// Helper: parse response.

@@ -71,8 +71,9 @@ static void appendFileFingerprint(const fs::path &path, std::string &key) {
 /// @brief Append a source directive's fingerprint (file or directory) to a key.
 /// @details Resolves @p sourcePath against @p rootDir, prefixes the compression
 ///          mode ("C:"/"U:"), and fingerprints either the single file or, for a
-///          directory, every regular file under it in sorted order so the key is
-///          deterministic regardless of enumeration order.
+///          directory, every regular file under it using the same safe traversal
+///          helper as archive writing so the key and output observe identical
+///          symlink/escape decisions.
 /// @param rootDir Absolute project root used to resolve @p sourcePath.
 /// @param sourcePath Project-relative source path from an embed/pack directive.
 /// @param compressed Whether the entry is to be DEFLATE-compressed.
@@ -91,13 +92,14 @@ static void appendSourceFingerprint(const fs::path &rootDir,
     std::error_code ec;
     if (fs::is_directory(absPath, ec)) {
         std::vector<fs::path> files;
-        for (auto it = fs::recursive_directory_iterator(absPath, ec);
-             it != fs::recursive_directory_iterator();
-             it.increment(ec)) {
-            if (!ec && it->is_regular_file())
-                files.push_back(it->path());
-        }
-        std::sort(files.begin(), files.end());
+        viper::pkg::safeDirectoryIterateResolved(
+            absPath, rootDir, [&](const viper::pkg::SafeDirectoryEntry &entry) {
+                if (entry.regularFile)
+                    files.push_back(entry.resolvedPath);
+            });
+        std::sort(files.begin(), files.end(), [](const fs::path &a, const fs::path &b) {
+            return a.generic_string() < b.generic_string();
+        });
         for (const auto &file : files)
             appendFileFingerprint(file, key);
         return;
@@ -329,14 +331,28 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
 
     static std::mutex cacheMutex;
     static std::unordered_map<std::string, AssetBundle> cache;
-    const std::string cacheKey = assetCacheKey(config, outputDir);
+    std::string cacheKey;
+    try {
+        cacheKey = assetCacheKey(config, outputDir);
+    } catch (const std::exception &ex) {
+        err = ex.what();
+        return std::nullopt;
+    }
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
         if (auto it = cache.find(cacheKey); it != cache.end()) {
             bool packsExist = true;
-            for (const auto &pack : it->second.packFilePaths) {
+            if (it->second.packFileSizes.size() != it->second.packFilePaths.size())
+                packsExist = false;
+            for (size_t i = 0; packsExist && i < it->second.packFilePaths.size(); ++i) {
+                const auto &pack = it->second.packFilePaths[i];
                 std::error_code ec;
-                if (!fs::exists(pack, ec)) {
+                if (!fs::exists(pack, ec) || ec) {
+                    packsExist = false;
+                    break;
+                }
+                const auto size = fs::file_size(pack, ec);
+                if (ec || size != it->second.packFileSizes[i]) {
                     packsExist = false;
                     break;
                 }
@@ -397,6 +413,13 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
             return std::nullopt;
 
         bundle.packFilePaths.push_back(vpaPath.string());
+        std::error_code sizeEc;
+        const auto vpaSize = fs::file_size(vpaPath, sizeEc);
+        if (sizeEc) {
+            err = "cannot stat generated asset pack: " + vpaPath.string();
+            return std::nullopt;
+        }
+        bundle.packFileSizes.push_back(vpaSize);
         std::cerr << "  packed " << packWriter.entryCount() << " asset(s) into " << vpaName << "\n";
     }
 

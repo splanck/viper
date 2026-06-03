@@ -61,6 +61,8 @@ std::vector<RuntimeMemberInfo> ICompilerBridge::runtimeMembers(const std::string
 
 std::vector<RuntimeMemberInfo> ICompilerBridge::runtimeSearch(const std::string &keyword) {
     std::string lowerKw = toLowerStr(keyword);
+    if (lowerKw.empty())
+        return {};
     const auto &catalog = il::runtime::runtimeClassCatalog();
     std::vector<RuntimeMemberInfo> result;
 

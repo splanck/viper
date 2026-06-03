@@ -33,6 +33,18 @@ namespace viper::pkg {
 /// with the name, mtime, and mode; the member is appended to the output on finish().
 void ArWriter::addMember(
     const std::string &name, const uint8_t *data, size_t size, uint32_t mtime, uint32_t mode) {
+    if (name.empty())
+        throw std::runtime_error("ArWriter: member name must not be empty");
+    if (name.size() > 15)
+        throw std::runtime_error("ArWriter: member name is too long: " + name);
+    for (unsigned char c : name) {
+        if (c <= 0x20u || c == 0x7Fu || c == '/')
+            throw std::runtime_error("ArWriter: invalid member name: " + name);
+    }
+    for (const auto &existing : members_) {
+        if (existing.name == name)
+            throw std::runtime_error("ArWriter: duplicate member name: " + name);
+    }
     Member m;
     m.name = name;
     if (size != 0) {

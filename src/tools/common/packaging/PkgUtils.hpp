@@ -1154,13 +1154,18 @@ inline std::filesystem::path resolvePackageSourcePath(const std::filesystem::pat
 
     fs::path candidate = (canonicalRoot / fs::path(clean)).lexically_normal();
     const fs::path weakCandidate = fs::weakly_canonical(candidate, ec);
+    if (ec)
+        throw std::runtime_error(std::string("cannot resolve ") + fieldName + ": " + raw);
     if (!ec && !isPathWithin(canonicalRoot, weakCandidate)) {
         throw std::runtime_error(std::string(fieldName) + " escapes the project root: '" + raw +
                                  "'");
     }
     ec.clear();
-    if (!fs::exists(candidate, ec))
-        return ec ? candidate : weakCandidate;
+    const bool candidateExists = fs::exists(candidate, ec);
+    if (ec)
+        throw std::runtime_error(std::string("cannot stat ") + fieldName + ": " + raw);
+    if (!candidateExists)
+        return weakCandidate;
 
     const fs::path resolved = fs::canonical(candidate, ec);
     if (ec)
@@ -1278,12 +1283,13 @@ inline void safeDirectoryIterateResolved(
     std::error_code ec;
     fs::path canonicalRoot = fs::canonical(projectRoot, ec);
     if (ec)
-        canonicalRoot = projectRoot; // Fallback if canonical fails
+        throw std::runtime_error("cannot resolve project root for directory traversal: " +
+                                 projectRoot.string());
     ec.clear();
 
     fs::path canonicalIterRoot = fs::canonical(root, ec);
     if (ec)
-        canonicalIterRoot = root;
+        throw std::runtime_error("cannot resolve directory for traversal: " + root.string());
     ec.clear();
     std::set<fs::path> visitedDirectories;
     visitedDirectories.insert(canonicalIterRoot);

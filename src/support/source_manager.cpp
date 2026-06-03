@@ -108,6 +108,19 @@ std::string_view SourceManager::getPath(uint32_t file_id) const {
     return files_[file_id - 1];
 }
 
+/// @brief Retrieve a single source line, loading and caching the file on demand.
+///
+/// @details The first request for a given @p file_id reads the entire file from
+///          disk and splits it into a per-line cache; subsequent requests are
+///          served from that cache.  When the file cannot be opened an empty
+///          line vector is cached so repeated lookups do not retry the failing
+///          I/O.  Identifier zero, line zero, and out-of-range line numbers all
+///          yield an empty view rather than throwing.  The returned view is
+///          backed by the cache and stays valid for the manager's lifetime.
+///
+/// @param file_id 1-based identifier previously returned by addFile().
+/// @param line 1-based line number to retrieve.
+/// @return The line text without its terminator, or empty view if unavailable.
 std::string_view SourceManager::getLine(uint32_t file_id, uint32_t line) const {
     if (file_id == 0 || line == 0)
         return {};
@@ -148,6 +161,18 @@ std::string_view SourceManager::getLine(uint32_t file_id, uint32_t line) const {
     return lines[line - 1];
 }
 
+/// @brief Seed the line cache for a file id directly from in-memory text.
+///
+/// @details Lets callers associate source text with a @p file_id without the
+///          file existing on disk — useful for REPL buffers, generated code, and
+///          tests.  The text is split on `'\n'`, with a trailing `'\r'` stripped
+///          from each line so Windows CRLF input caches identically to LF input.
+///          A final unterminated segment (or an entirely empty @p source) is
+///          recorded as a trailing line.  Any previously cached lines for the id
+///          are replaced.  Identifier zero is ignored.
+///
+/// @param file_id Identifier previously returned by addFile().
+/// @param source Full source text to split into cached lines.
 void SourceManager::setSource(uint32_t file_id, std::string source) {
     if (file_id == 0)
         return;

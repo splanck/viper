@@ -101,6 +101,13 @@ void printDiagHeader(const Diag &diag, std::ostream &os, const SourceManager *sm
     os << ": " << diag.message << '\n';
 }
 
+/// @brief Emit a string as a JSON-escaped, double-quoted literal.
+/// @details Escapes the characters mandated by the JSON grammar (quote,
+///          backslash, and the `\b`/`\f`/`\n`/`\r`/`\t` shorthands) and renders
+///          any remaining control byte below 0x20 as a `\u00XX` sequence so the
+///          output is always valid UTF-8 JSON.
+/// @param os Output stream receiving the quoted literal.
+/// @param text Raw text to escape and quote.
 void printJsonEscaped(std::ostream &os, std::string_view text) {
     os << '"';
     for (unsigned char ch : text) {
@@ -139,6 +146,13 @@ void printJsonEscaped(std::ostream &os, std::string_view text) {
     os << '"';
 }
 
+/// @brief Emit a source location as a JSON `"location"` object.
+/// @details Writes the raw `file_id`/`line`/`column` triple alongside a resolved
+///          `file` path; the path is `null` when no SourceManager is available or
+///          the location carries no file identifier.
+/// @param os Output stream receiving the object.
+/// @param loc Source location to serialize.
+/// @param sm Optional source manager used to resolve the file identifier.
 void printJsonLoc(std::ostream &os, SourceLoc loc, const SourceManager *sm) {
     os << "\"location\":{";
     os << "\"file_id\":" << loc.file_id << ',';
@@ -153,6 +167,12 @@ void printJsonLoc(std::ostream &os, SourceLoc loc, const SourceManager *sm) {
     os << '}';
 }
 
+/// @brief Emit a string value, or JSON `null` when it is empty.
+/// @details Distinguishes "absent" from "present but empty" for optional textual
+///          fields (stage, help, fix-it message) by mapping an empty view to the
+///          literal `null` and otherwise delegating to @ref printJsonEscaped.
+/// @param os Output stream receiving the value.
+/// @param text Candidate text; empty means the field is absent.
 void printJsonOptionalString(std::ostream &os, std::string_view text) {
     if (text.empty())
         os << "null";
@@ -160,6 +180,14 @@ void printJsonOptionalString(std::ostream &os, std::string_view text) {
         printJsonEscaped(os, text);
 }
 
+/// @brief Emit the source text of a location's line as a JSON `"source"` field.
+/// @details Resolves the line through the SourceManager and escapes it; produces
+///          `null` when there is no manager, the location lacks a file or line,
+///          or the resolved line is empty. Lets JSON consumers render an inline
+///          code excerpt without re-reading the file.
+/// @param os Output stream receiving the field.
+/// @param loc Source location whose line should be quoted.
+/// @param sm Optional source manager used to fetch the line text.
 void printJsonSourceLine(std::ostream &os, SourceLoc loc, const SourceManager *sm) {
     os << "\"source\":";
     if (!sm || loc.file_id == 0 || loc.line == 0) {
@@ -174,6 +202,13 @@ void printJsonSourceLine(std::ostream &os, SourceLoc loc, const SourceManager *s
     printJsonEscaped(os, line);
 }
 
+/// @brief Emit a source range as a JSON `"range"` object with begin/end points.
+/// @details Serializes both endpoints as `file_id`/`line`/`column`/`file`
+///          records, mirroring @ref printJsonLoc for each end; the whole field is
+///          `null` when the range is invalid.
+/// @param os Output stream receiving the object.
+/// @param range Source range to serialize.
+/// @param sm Optional source manager used to resolve endpoint file identifiers.
 void printJsonRange(std::ostream &os, const SourceRange &range, const SourceManager *sm) {
     os << "\"range\":";
     if (!range.isValid()) {
@@ -204,6 +239,16 @@ void printJsonRange(std::ostream &os, const SourceRange &range, const SourceMana
     os << "}}";
 }
 
+/// @brief Emit a complete diagnostic as a single JSON object.
+/// @details Assembles every diagnostic field — severity, code, stage, message,
+///          location, range, source line, help text, notes, and fix-its — into
+///          one object using the helpers above. Notes and fix-its are emitted as
+///          nested arrays so machine consumers receive the full diagnostic in a
+///          single record. This is the per-element building block used by
+///          @ref printDiagnosticsJson.
+/// @param diag Diagnostic to serialize.
+/// @param os Output stream receiving the object.
+/// @param sm Optional source manager used to resolve file identifiers.
 void printJsonDiagObject(const Diag &diag, std::ostream &os, const SourceManager *sm) {
     os << '{';
     os << "\"severity\":";

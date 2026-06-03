@@ -24,7 +24,7 @@ namespace il::support {
 /// @invariant 0 denotes an invalid symbol.
 /// @ownership Value type, no ownership semantics.
 struct Symbol {
-    uint32_t id = 0;
+    uint32_t id = 0; ///< 1-based index into the interner's storage; 0 is invalid.
 
     /// @brief Check whether the symbol is valid (non-zero id).
     /// @return true if the symbol holds a valid interned string identifier.

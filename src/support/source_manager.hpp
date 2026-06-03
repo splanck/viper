@@ -29,9 +29,11 @@
 /// @ownership Owns stored file path strings.
 namespace il::support {
 
+/// @brief Diagnostic text reported when addFile() exhausts the 32-bit id space.
 inline constexpr std::string_view kSourceManagerFileIdOverflowMessage =
     "source manager exhausted file identifier space";
 
+/// @brief Friend hook exposing SourceManager internals to white-box tests.
 struct SourceManagerTestAccess;
 
 /// Maintains the mapping between numeric file identifiers and their

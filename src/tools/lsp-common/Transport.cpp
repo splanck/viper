@@ -103,6 +103,10 @@ void McpTransport::writeMessage(const std::string &json) {
 
 LspTransport::LspTransport(FILE *in, FILE *out) : in_(in), out_(out) {}
 
+bool LspTransport::lastReadFailedDueToError() const {
+    return lastReadHadError_;
+}
+
 bool LspTransport::readLine(std::string &line) {
     line.clear();
     int c;
@@ -114,13 +118,17 @@ bool LspTransport::readLine(std::string &line) {
             return true;
         }
         line += static_cast<char>(c);
-        if (line.size() > kMaxProtocolLineBytes)
+        if (line.size() > kMaxProtocolLineBytes) {
+            lastReadHadError_ = true;
             return false;
+        }
     }
     return !line.empty();
 }
 
 bool LspTransport::readMessage(RawMessage &out) {
+    lastReadHadError_ = false;
+
     // Read headers until empty line
     size_t contentLength = 0;
     bool haveContentLength = false;
@@ -130,8 +138,10 @@ bool LspTransport::readMessage(RawMessage &out) {
     while (readLine(line)) {
         if (line.empty())
             break; // End of headers
-        if (++headerCount > kMaxProtocolHeaders)
+        if (++headerCount > kMaxProtocolHeaders) {
+            lastReadHadError_ = true;
             return false;
+        }
 
         // Parse Content-Length header (case-insensitive prefix match)
         const char *prefix = "Content-Length:";
@@ -158,6 +168,7 @@ bool LspTransport::readMessage(RawMessage &out) {
                 auto [ptr, ec] = std::from_chars(begin, end, parsed);
                 if (ec != std::errc{} || ptr != end || parsed == 0 ||
                     parsed > kMaxProtocolMessageBytes) {
+                    lastReadHadError_ = true;
                     return false;
                 }
                 contentLength = parsed;
@@ -166,14 +177,19 @@ bool LspTransport::readMessage(RawMessage &out) {
         }
     }
 
-    if (!haveContentLength)
+    if (!haveContentLength) {
+        if (headerCount != 0 || !line.empty())
+            lastReadHadError_ = true;
         return false;
+    }
 
     // Read exactly contentLength bytes
     out.content.resize(contentLength);
     size_t bytesRead = std::fread(&out.content[0], 1, contentLength, in_);
-    if (bytesRead != contentLength)
+    if (bytesRead != contentLength) {
+        lastReadHadError_ = true;
         return false;
+    }
 
     return true;
 }

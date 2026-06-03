@@ -22,6 +22,11 @@
 
 #include "tools/lsp-common/Transport.hpp"
 
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <string_view>
+
 namespace viper::server {
 namespace {
 
@@ -49,6 +54,25 @@ const JsonValue *intMember(const JsonValue &obj, const char *name) {
     return value && value->type() == JsonType::Int ? value : nullptr;
 }
 
+/// @brief Convert a JSON integer into an int while enforcing caller-provided bounds.
+/// @details JSON-RPC integers are represented as int64_t internally, while the
+///          compiler bridges accept int values. This helper prevents oversized
+///          protocol values from wrapping during a narrowing cast.
+/// @param value JSON value that must be an Int.
+/// @param minValue Inclusive lower bound.
+/// @param maxValue Inclusive upper bound.
+/// @param out Receives the narrowed integer on success.
+/// @return True when @p value is an integer inside the requested range.
+bool checkedJsonIntToInt(const JsonValue *value, int minValue, int maxValue, int &out) {
+    if (!value || value->type() != JsonType::Int)
+        return false;
+    const int64_t raw = value->asInt();
+    if (raw < static_cast<int64_t>(minValue) || raw > static_cast<int64_t>(maxValue))
+        return false;
+    out = static_cast<int>(raw);
+    return true;
+}
+
 /// @brief Extract `params.textDocument.uri` into @p uri.
 /// @return true when a non-empty URI string is present.
 bool extractTextDocumentUri(const JsonValue &params, std::string &uri) {
@@ -67,10 +91,8 @@ bool extractTextDocumentUri(const JsonValue &params, std::string &uri) {
 bool extractTextDocumentVersion(const JsonValue &params, int &version) {
     const JsonValue *textDocument = objectMember(params, "textDocument");
     const JsonValue *versionValue = textDocument ? intMember(*textDocument, "version") : nullptr;
-    if (!versionValue)
-        return false;
-    version = static_cast<int>(versionValue->asInt());
-    return true;
+    return checkedJsonIntToInt(
+        versionValue, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), version);
 }
 
 /// @brief Extract `params.position` into 1-based @p line / @p col.
@@ -81,11 +103,15 @@ bool extractPosition(const JsonValue &params, int &line, int &col) {
     const JsonValue *position = objectMember(params, "position");
     const JsonValue *lineValue = position ? intMember(*position, "line") : nullptr;
     const JsonValue *colValue = position ? intMember(*position, "character") : nullptr;
-    if (!lineValue || !colValue)
+    int zeroBasedLine = 0;
+    int zeroBasedCol = 0;
+    if (!checkedJsonIntToInt(lineValue, 0, std::numeric_limits<int>::max() - 1, zeroBasedLine) ||
+        !checkedJsonIntToInt(colValue, 0, std::numeric_limits<int>::max() - 1, zeroBasedCol)) {
         return false;
-    line = static_cast<int>(lineValue->asInt()) + 1;
-    col = static_cast<int>(colValue->asInt()) + 1;
-    return line > 0 && col > 0;
+    }
+    line = zeroBasedLine + 1;
+    col = zeroBasedCol + 1;
+    return true;
 }
 
 /// @brief Build an LSP `Range` JSON object from 0-based start/end line/character.
@@ -98,27 +124,178 @@ JsonValue makeRange(int startLine, int startCharacter, int endLine, int endChara
     });
 }
 
+/// @brief Decode the UTF-8 scalar at the front of @p bytes for LSP unit counting.
+/// @details Invalid sequences are treated as one replacement character so ranges
+///          remain monotonic even when a source buffer contains malformed UTF-8.
+/// @param bytes Byte span beginning at the candidate UTF-8 lead byte.
+/// @param consumed Receives the number of bytes consumed from @p bytes.
+/// @return Number of UTF-16 code units represented by the decoded scalar.
+int utf16UnitsForUtf8Lead(std::string_view bytes, size_t &consumed) {
+    consumed = 1;
+    if (bytes.empty())
+        return 0;
+
+    const auto b0 = static_cast<unsigned char>(bytes[0]);
+    if (b0 < 0x80)
+        return 1;
+
+    auto isContinuation = [](unsigned char c) {
+        return (c & 0xC0u) == 0x80u;
+    };
+
+    uint32_t codePoint = 0;
+    size_t expected = 0;
+    if ((b0 & 0xE0u) == 0xC0u) {
+        codePoint = b0 & 0x1Fu;
+        expected = 2;
+    } else if ((b0 & 0xF0u) == 0xE0u) {
+        codePoint = b0 & 0x0Fu;
+        expected = 3;
+    } else if ((b0 & 0xF8u) == 0xF0u) {
+        codePoint = b0 & 0x07u;
+        expected = 4;
+    } else {
+        return 1;
+    }
+
+    if (bytes.size() < expected)
+        return 1;
+    for (size_t i = 1; i < expected; ++i) {
+        const auto b = static_cast<unsigned char>(bytes[i]);
+        if (!isContinuation(b))
+            return 1;
+        codePoint = (codePoint << 6u) | (b & 0x3Fu);
+    }
+
+    const bool overlong = (expected == 2 && codePoint < 0x80u) ||
+                          (expected == 3 && codePoint < 0x800u) ||
+                          (expected == 4 && codePoint < 0x10000u);
+    const bool surrogate = codePoint >= 0xD800u && codePoint <= 0xDFFFu;
+    if (overlong || surrogate || codePoint > 0x10FFFFu)
+        return 1;
+
+    consumed = expected;
+    return codePoint > 0xFFFFu ? 2 : 1;
+}
+
+/// @brief Count LSP UTF-16 code units in the first @p byteCount bytes of @p text.
+/// @details LSP character positions use UTF-16 code units, but compiler source
+///          locations and string searches are byte based. The count is clamped
+///          to the range of int for direct use in JSON range construction.
+/// @param text UTF-8 source line or prefix.
+/// @param byteCount Number of bytes from @p text to measure.
+/// @return UTF-16 code unit count for the requested prefix.
+int utf16CodeUnitsBeforeByte(std::string_view text, size_t byteCount) {
+    const size_t limit = std::min(byteCount, text.size());
+    int units = 0;
+    for (size_t i = 0; i < limit;) {
+        size_t consumed = 1;
+        const int next = utf16UnitsForUtf8Lead(text.substr(i, limit - i), consumed);
+        if (units > std::numeric_limits<int>::max() - next)
+            return std::numeric_limits<int>::max();
+        units += next;
+        i += consumed;
+    }
+    return units;
+}
+
+/// @brief Convert a source byte offset to a zero-based LSP line/character pair.
+/// @param content Full UTF-8 source buffer.
+/// @param byteOffset Byte offset into @p content; values past EOF are clamped.
+/// @param line Receives the zero-based line number.
+/// @param character Receives the zero-based UTF-16 character offset.
+void byteOffsetToLspPosition(const std::string &content, size_t byteOffset, int &line, int &character) {
+    const size_t limit = std::min(byteOffset, content.size());
+    size_t lineStart = 0;
+    line = 0;
+    for (size_t i = 0; i < limit; ++i) {
+        if (content[i] == '\n') {
+            if (line < std::numeric_limits<int>::max())
+                ++line;
+            lineStart = i + 1;
+        }
+    }
+
+    character = utf16CodeUnitsBeforeByte(std::string_view(content).substr(lineStart, limit - lineStart),
+                                         limit - lineStart);
+}
+
 /// @brief Build an LSP `Range` covering the first occurrence of @p name in @p content.
-/// @details Scans @p content for @p name, translating the byte offset into a
-///          0-based line/character position; falls back to the start of the
-///          document (0,0)-(0,1) when @p name is empty or not found. Used to give
-///          document symbols a best-effort location without full position info.
+/// @details Scans @p content for @p name, translating byte offsets into
+///          zero-based LSP UTF-16 line/character positions. Falls back to
+///          (0,0)-(0,1) when the name is empty or not found.
 JsonValue rangeForFirstName(const std::string &content, const std::string &name) {
     const size_t pos = name.empty() ? std::string::npos : content.find(name);
     if (pos == std::string::npos)
         return makeRange(0, 0, 0, 1);
 
+    int startLine = 0;
+    int startCharacter = 0;
+    int endLine = 0;
+    int endCharacter = 0;
+    byteOffsetToLspPosition(content, pos, startLine, startCharacter);
+    byteOffsetToLspPosition(content, pos + name.size(), endLine, endCharacter);
+    return makeRange(startLine, startCharacter, endLine, endCharacter);
+}
+
+/// @brief Find the byte span for an existing zero-based source line.
+/// @param content Full source buffer.
+/// @param zeroBasedLine Requested source line.
+/// @param lineStart Receives the byte offset of the first byte in the line.
+/// @param lineEnd Receives the byte offset one past the last byte before '\n'.
+/// @return True when @p zeroBasedLine exists in @p content.
+bool sourceLineByteSpan(const std::string &content, int zeroBasedLine, size_t &lineStart, size_t &lineEnd) {
+    if (zeroBasedLine < 0)
+        return false;
+    lineStart = 0;
     int line = 0;
-    int character = 0;
-    for (size_t i = 0; i < pos; ++i) {
+    for (size_t i = 0; i < content.size() && line < zeroBasedLine; ++i) {
         if (content[i] == '\n') {
             ++line;
-            character = 0;
-        } else {
-            ++character;
+            lineStart = i + 1;
         }
     }
-    return makeRange(line, character, line, character + static_cast<int>(name.size()));
+    if (line != zeroBasedLine)
+        return false;
+    lineEnd = lineStart;
+    while (lineEnd < content.size() && content[lineEnd] != '\n')
+        ++lineEnd;
+    return true;
+}
+
+/// @brief Convert a one-based compiler diagnostic location into an LSP range.
+/// @details Diagnostic columns are interpreted as byte columns. The generated
+///          range is converted to UTF-16 units and clamped to the target line.
+/// @param content Full document text.
+/// @param oneBasedLine Compiler diagnostic line number.
+/// @param oneBasedColumn Compiler diagnostic column number.
+/// @return One-character LSP range for the diagnostic position.
+JsonValue diagnosticRangeForLocation(const std::string &content, uint32_t oneBasedLine, uint32_t oneBasedColumn) {
+    const int line = oneBasedLine > 0 && oneBasedLine <= static_cast<uint32_t>(std::numeric_limits<int>::max())
+                         ? static_cast<int>(oneBasedLine) - 1
+                         : 0;
+    size_t lineStart = 0;
+    size_t lineEnd = 0;
+    if (!sourceLineByteSpan(content, line, lineStart, lineEnd))
+        return makeRange(0, 0, 0, 1);
+
+    const size_t byteColumn = oneBasedColumn > 0 ? static_cast<size_t>(oneBasedColumn - 1u) : 0u;
+    const size_t byteOffset = std::min(lineStart + byteColumn, lineEnd);
+    int lspLine = 0;
+    int lspCol = 0;
+    byteOffsetToLspPosition(content, byteOffset, lspLine, lspCol);
+    const int endCol = lspCol == std::numeric_limits<int>::max() ? lspCol : lspCol + 1;
+    return makeRange(lspLine, lspCol, lspLine, endCol);
+}
+
+/// @brief Return true for methods that are request/response-shaped in LSP.
+/// @details Notifications must not receive responses. Dispatch uses this helper
+///          to suppress accidental responses for missing-id calls to request
+///          methods such as initialize, shutdown, completion, hover, and symbols.
+bool isRequestMethod(const std::string &method) {
+    return method == "initialize" || method == "shutdown" ||
+           method == "textDocument/completion" || method == "textDocument/hover" ||
+           method == "textDocument/documentSymbol";
 }
 
 } // namespace
@@ -129,6 +306,18 @@ LspHandler::LspHandler(ICompilerBridge &bridge, Transport &transport, const Serv
 // --- Request dispatch ---
 
 std::string LspHandler::handleRequest(const JsonRpcRequest &req) {
+    if (req.method == "exit")
+        return {}; // Main loop handles process exit.
+
+    if (shutdownRequested_) {
+        if (req.isNotification())
+            return {};
+        return buildError(req.id, kInvalidRequest, "Server is shutting down");
+    }
+
+    if (req.isNotification() && isRequestMethod(req.method))
+        return {};
+
     if (req.method == "initialize")
         return handleInitialize(req);
 
@@ -137,9 +326,6 @@ std::string LspHandler::handleRequest(const JsonRpcRequest &req) {
 
     if (req.method == "shutdown")
         return handleShutdown(req);
-
-    if (req.method == "exit")
-        return {}; // Notification — main loop should exit
 
     // Document sync notifications
     if (req.method == "textDocument/didOpen") {
@@ -209,7 +395,11 @@ void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
     if (!uriValue || !versionValue || !textValue)
         return;
     std::string uri = uriValue->asString();
-    int version = static_cast<int>(versionValue->asInt());
+    int version = 0;
+    if (!checkedJsonIntToInt(
+            versionValue, std::numeric_limits<int>::min(), std::numeric_limits<int>::max(), version)) {
+        return;
+    }
     std::string text = textValue->asString();
 
     store_.open(uri, version, std::move(text));
@@ -222,16 +412,20 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req) {
     if (!extractTextDocumentUri(req.params, uri) || !extractTextDocumentVersion(req.params, version))
         return;
 
-    // Full sync: take the last content change
+    // Full sync: every accepted content change must be a complete document body.
     const auto &changes = req.params["contentChanges"];
-    if (changes.type() == JsonType::Array && changes.size() > 0) {
-        const auto &lastChange = changes.at(changes.size() - 1);
-        const auto *textValue = stringMember(lastChange, "text");
-        if (!textValue)
-            return;
-        std::string text = textValue->asString();
-        store_.update(uri, version, std::move(text));
+    if (changes.type() != JsonType::Array || changes.size() == 0)
+        return;
+    const auto &lastChange = changes.at(changes.size() - 1);
+    if (lastChange.type() != JsonType::Object || lastChange.has("range") ||
+        lastChange.has("rangeLength")) {
+        return;
     }
+    const auto *textValue = stringMember(lastChange, "text");
+    if (!textValue)
+        return;
+    std::string text = textValue->asString();
+    store_.update(uri, version, std::move(text));
 
     publishDiagnostics(uri);
 }
@@ -263,7 +457,10 @@ std::string LspHandler::handleCompletion(const JsonRpcRequest &req) {
     if (!content)
         return buildResponse(req.id, JsonValue::array({}));
 
-    std::string path = DocumentStore::uriToPath(uri);
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryUriToPath(uri, path, &pathErr))
+        return buildError(req.id, kInvalidParams, pathErr);
     auto items = bridge_.completions(*content, line, col, path);
 
     JsonValue::ArrayType arr;
@@ -294,7 +491,10 @@ std::string LspHandler::handleHover(const JsonRpcRequest &req) {
     if (!content)
         return buildResponse(req.id, JsonValue());
 
-    std::string path = DocumentStore::uriToPath(uri);
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryUriToPath(uri, path, &pathErr))
+        return buildError(req.id, kInvalidParams, pathErr);
     auto result = bridge_.hover(*content, line, col, path);
 
     if (result.empty())
@@ -321,7 +521,10 @@ std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req) {
     if (!content)
         return buildResponse(req.id, JsonValue::array({}));
 
-    std::string path = DocumentStore::uriToPath(uri);
+    std::string path;
+    std::string pathErr;
+    if (!DocumentStore::tryUriToPath(uri, path, &pathErr))
+        return buildError(req.id, kInvalidParams, pathErr);
     auto syms = bridge_.symbols(*content, path);
 
     JsonValue::ArrayType arr;
@@ -348,7 +551,9 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
     if (!content)
         return;
 
-    std::string path = DocumentStore::uriToPath(uri);
+    std::string path;
+    if (!DocumentStore::tryUriToPath(uri, path))
+        return;
     auto diags = bridge_.check(*content, path);
 
     JsonValue::ArrayType diagArr;
@@ -370,10 +575,7 @@ void LspHandler::publishDiagnostics(const std::string &uri) {
                 break;
         }
 
-        int line = d.line > 0 ? static_cast<int>(d.line) - 1 : 0;
-        int col = d.column > 0 ? static_cast<int>(d.column) - 1 : 0;
-
-        auto range = makeRange(line, col, line, col + 1);
+        auto range = diagnosticRangeForLocation(*content, d.line, d.column);
 
         auto diag = JsonValue::object({
             {"range", std::move(range)},

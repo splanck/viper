@@ -126,6 +126,8 @@ void ZipReader::parseCentralDirectory() {
         throw ZipReadError("ZIP: EOCD comment length does not match file size");
     if (static_cast<uint64_t>(cdOffset) + cdSize > eocdOff)
         throw ZipReadError("ZIP: central directory extends past EOCD");
+    if (static_cast<uint64_t>(cdOffset) + cdSize < eocdOff)
+        throw ZipReadError("ZIP: unexpected data between central directory and EOCD");
     if (cdOffset >= len_ && totalEntries != 0)
         throw ZipReadError("ZIP: central directory offset out of bounds");
 

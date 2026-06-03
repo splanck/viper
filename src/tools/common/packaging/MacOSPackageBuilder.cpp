@@ -263,16 +263,15 @@ std::vector<fs::path> sortedTreeEntries(const fs::path &root) {
     std::vector<fs::path> entries;
     entries.push_back(root);
     std::error_code ec;
-    for (fs::recursive_directory_iterator it(
-             root, fs::directory_options::skip_permission_denied, ec);
+    for (fs::recursive_directory_iterator it(root, ec);
          it != fs::recursive_directory_iterator();
          it.increment(ec)) {
-        if (ec) {
-            ec.clear();
-            continue;
-        }
+        if (ec)
+            throw std::runtime_error("cannot traverse macOS package payload: " + ec.message());
         entries.push_back(it->path());
     }
+    if (ec)
+        throw std::runtime_error("cannot traverse macOS package payload: " + ec.message());
     std::sort(entries.begin(), entries.end(), [](const fs::path &a, const fs::path &b) {
         return a.generic_string() < b.generic_string();
     });
@@ -654,7 +653,8 @@ std::string generateMacOSPreinstallScript(const std::vector<std::string> &toolNa
     sh << "if [ -f \"$OLD\" ] && [ -f \"$NEW\" ]; then\n";
     sh << "  while IFS= read -r rel; do\n";
     sh << "    [ -n \"$rel\" ] || continue\n";
-    sh << "    case \"$rel\" in /*|*..*) continue ;; esac\n";
+    sh << "    case \"$rel\" in /*|..|../*|*/../*|*/..) echo \"Unsafe old manifest path: $rel\" "
+          ">&2; exit 2 ;; esac\n";
     sh << "    if ! grep -F -x -- \"$rel\" \"$NEW\" >/dev/null 2>&1; then\n";
     sh << "      case \"$rel\" in\n";
     sh << "        bin/*)\n";

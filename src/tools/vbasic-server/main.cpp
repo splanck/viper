@@ -24,6 +24,7 @@
 #include "tools/lsp-common/Transport.hpp"
 #include "tools/vbasic-server/BasicCompilerBridge.hpp"
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -66,6 +67,35 @@ enum class Mode {
     AutoDetect, ///< Choose MCP or LSP from the first byte of input.
 };
 
+/// @brief Read the first meaningful protocol byte from stdin for auto-detection.
+/// @details Consumes leading ASCII whitespace and a UTF-8 BOM if present, then
+///          pushes the first protocol byte back so the selected transport reads
+///          a normal message. Consumed whitespace is intentionally discarded
+///          because neither supported stdio protocol requires it.
+/// @return First non-whitespace protocol byte, or EOF when no input is available.
+static int peekProtocolByte() {
+    int c = std::fgetc(stdin);
+    while (c != EOF && std::isspace(static_cast<unsigned char>(c)))
+        c = std::fgetc(stdin);
+    if (c == 0xEF) {
+        const int b1 = std::fgetc(stdin);
+        const int b2 = std::fgetc(stdin);
+        if (b1 == 0xBB && b2 == 0xBF) {
+            c = std::fgetc(stdin);
+            while (c != EOF && std::isspace(static_cast<unsigned char>(c)))
+                c = std::fgetc(stdin);
+        } else {
+            if (b2 != EOF)
+                std::ungetc(b2, stdin);
+            if (b1 != EOF)
+                std::ungetc(b1, stdin);
+        }
+    }
+    if (c != EOF)
+        std::ungetc(c, stdin);
+    return c;
+}
+
 /// @brief Main event loop for MCP protocol.
 static int runMcpServer(Transport &transport, BasicCompilerBridge &bridge) {
     McpHandler handler(bridge, kBasicConfig);
@@ -90,7 +120,8 @@ static int runMcpServer(Transport &transport, BasicCompilerBridge &bridge) {
         try {
             response = handler.handleRequest(req);
         } catch (const std::exception &e) {
-            response = buildError(req.id, kInternalError, e.what());
+            if (!req.isNotification())
+                response = buildError(req.id, kInternalError, e.what());
         }
         if (!response.empty())
             transport.writeMessage(response);
@@ -156,7 +187,8 @@ static int runLspServer(Transport &transport, BasicCompilerBridge &bridge) {
                 std::fprintf(stderr, "[vbasic-server] handler error: %s\n", e.what());
                 std::fflush(stderr);
             }
-            response = buildError(req.id, kInternalError, e.what());
+            if (!req.isNotification())
+                response = buildError(req.id, kInternalError, e.what());
         }
         if (!response.empty()) {
             if (verbose) {
@@ -174,7 +206,7 @@ static int runLspServer(Transport &transport, BasicCompilerBridge &bridge) {
         std::fprintf(stderr, "[vbasic-server] LSP server exiting\n");
         std::fflush(stderr);
     }
-    return 0;
+    return transport.lastReadFailedDueToError() ? 1 : 0;
 }
 
 /// @brief Entry point for the Viper BASIC language server.
@@ -209,10 +241,9 @@ int main(int argc, char **argv) {
 
     // Auto-detect: peek at first byte
     if (mode == Mode::AutoDetect) {
-        int c = std::fgetc(stdin);
+        int c = peekProtocolByte();
         if (c == EOF)
             return 0;
-        std::ungetc(c, stdin);
 
         if (c == 'C' || c == 'c')
             mode = Mode::Lsp;

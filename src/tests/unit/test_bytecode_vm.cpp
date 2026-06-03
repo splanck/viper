@@ -1073,6 +1073,7 @@ static void test_native_calls() {
     func.numParams = 1;
     func.numLocals = 2; // 1 param + 1 result
     func.maxStack = 2;
+    func.hasReturn = true;
 
     // LOAD_LOCAL 0       ; push %n
     func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
@@ -1132,6 +1133,7 @@ static void test_runtime_bridge_string_aliasing() {
     func.numParams = 0;
     func.numLocals = 3;
     func.maxStack = 2;
+    func.hasReturn = true;
     func.localIsString = {1, 1, 1};
 
     // local0 = "Whiskers"
@@ -1386,6 +1388,7 @@ static void test_native_multi_args() {
     func.numParams = 3;
     func.numLocals = 4; // 3 params + 1 result
     func.maxStack = 4;
+    func.hasReturn = true;
 
     // Push args in order
     func.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0)); // push %a
@@ -1496,6 +1499,7 @@ static void test_exception_handling() {
     func.numParams = 0;
     func.numLocals = 2; // Need 2 locals for handler params
     func.maxStack = 4;
+    func.hasReturn = true;
 
     // eh_push with raw offset to handler in next word
     // Layout: EH_PUSH at pc=0, offset at pc=1, TRAP at pc=2, LOAD_I8 at pc=3, RETURN at pc=4
@@ -1688,6 +1692,7 @@ static void test_runtime_bridge_trap_dispatch() {
     func.numParams = 0;
     func.numLocals = 2;
     func.maxStack = 4;
+    func.hasReturn = true;
     func.code.push_back(encodeOp(BCOpcode::EH_PUSH));
     func.code.push_back(static_cast<uint32_t>(6)); // handler at pc 7, offset word at pc 1
     func.code.push_back(encodeOp16(BCOpcode::LOAD_STR, 0));
@@ -1733,6 +1738,7 @@ static void test_resume_next_and_trap_metadata() {
     resumeFunc.numParams = 0;
     resumeFunc.numLocals = 2;
     resumeFunc.maxStack = 4;
+    resumeFunc.hasReturn = true;
     resumeFunc.code.push_back(encodeOp(BCOpcode::EH_PUSH));
     resumeFunc.code.push_back(static_cast<uint32_t>(6)); // handler at pc 7
     resumeFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 10));
@@ -1753,6 +1759,7 @@ static void test_resume_next_and_trap_metadata() {
     metaFunc.numParams = 0;
     metaFunc.numLocals = 2;
     metaFunc.maxStack = 4;
+    metaFunc.hasReturn = true;
     metaFunc.code.push_back(encodeOp(BCOpcode::EH_PUSH));
     metaFunc.code.push_back(static_cast<uint32_t>(6)); // handler at pc 7
     metaFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 10));
@@ -1810,6 +1817,7 @@ static void test_resume_label_consumes_token() {
     fn.numParams = 0;
     fn.numLocals = 3;
     fn.maxStack = 2;
+    fn.hasReturn = true;
     fn.code.push_back(encodeOp(BCOpcode::LOAD_ZERO));
     fn.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
     fn.code.push_back(encodeOp(BCOpcode::EH_PUSH));
@@ -2157,6 +2165,7 @@ static void test_thread_start_safe_reports_bytecode_trap() {
     mainFunc.numParams = 0;
     mainFunc.numLocals = 1;
     mainFunc.maxStack = 2;
+    mainFunc.hasReturn = true;
 
     constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
     bcModule.i64Pool.push_back(static_cast<int64_t>(kFuncPtrTag | 0ULL));

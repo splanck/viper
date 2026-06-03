@@ -52,8 +52,19 @@ class DocumentStore {
     bool isOpen(const std::string &uri) const;
 
     /// @brief Extract a file path from a URI.
-    /// @details Strips "file://" prefix and URL-decodes %XX sequences.
+    /// @details Strips "file://" prefix and URL-decodes valid %XX sequences.
+    /// @throws std::runtime_error when the URI is malformed or contains an encoded path separator.
     static std::string uriToPath(const std::string &uri);
+
+    /// @brief Try to extract a filesystem path from a document URI without throwing.
+    /// @details Accepts plain paths and file URIs, decodes valid percent escapes,
+    ///          rejects malformed escapes, and rejects percent-encoded '/' or '\'
+    ///          so decoding cannot create new path separators after validation.
+    /// @param uri Client-provided URI or plain path.
+    /// @param outPath Receives the decoded filesystem path on success.
+    /// @param err Receives a human-readable failure reason when non-null.
+    /// @return True when @p uri was accepted and @p outPath was populated.
+    static bool tryUriToPath(const std::string &uri, std::string &outPath, std::string *err = nullptr);
 
   private:
     /// @brief Stored state for one open document.

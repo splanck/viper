@@ -19,6 +19,7 @@
 #include "tools/lsp-common/DocumentStore.hpp"
 
 #include <cctype>
+#include <stdexcept>
 #include <string_view>
 
 namespace viper::server {
@@ -46,7 +47,8 @@ bool DocumentStore::isOpen(const std::string &uri) const {
     return docs_.find(uri) != docs_.end();
 }
 
-std::string DocumentStore::uriToPath(const std::string &uri) {
+bool DocumentStore::tryUriToPath(const std::string &uri, std::string &outPath, std::string *err) {
+    outPath.clear();
     std::string path;
     std::string_view sv = uri;
 
@@ -69,10 +71,16 @@ std::string DocumentStore::uriToPath(const std::string &uri) {
         }
     }
 
-    // URL-decode %XX sequences
+    // URL-decode %XX sequences. Encoded separators are rejected so percent
+    // decoding cannot create extra path components after URI parsing.
     path.reserve(path.size() + sv.size());
     for (size_t i = 0; i < sv.size(); ++i) {
-        if (sv[i] == '%' && i + 2 < sv.size()) {
+        if (sv[i] == '%') {
+            if (i + 2 >= sv.size()) {
+                if (err)
+                    *err = "malformed percent escape in URI: " + uri;
+                return false;
+            }
             char hi = sv[i + 1];
             char lo = sv[i + 2];
             auto hexVal = [](char c) -> int {
@@ -86,15 +94,33 @@ std::string DocumentStore::uriToPath(const std::string &uri) {
             };
             int h = hexVal(hi);
             int l = hexVal(lo);
-            if (h >= 0 && l >= 0) {
-                path += static_cast<char>((h << 4) | l);
-                i += 2;
-                continue;
+            if (h < 0 || l < 0) {
+                if (err)
+                    *err = "malformed percent escape in URI: " + uri;
+                return false;
             }
+            const char decoded = static_cast<char>((h << 4) | l);
+            if (decoded == '/' || decoded == '\\') {
+                if (err)
+                    *err = "URI must not percent-encode path separators: " + uri;
+                return false;
+            }
+            path += decoded;
+            i += 2;
+            continue;
         }
         path += sv[i];
     }
 
+    outPath = std::move(path);
+    return true;
+}
+
+std::string DocumentStore::uriToPath(const std::string &uri) {
+    std::string path;
+    std::string err;
+    if (!tryUriToPath(uri, path, &err))
+        throw std::runtime_error(err);
     return path;
 }
 

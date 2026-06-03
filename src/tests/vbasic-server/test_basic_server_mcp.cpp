@@ -35,7 +35,9 @@ static const ServerConfig kBasicConfig{
 static JsonRpcRequest makeReq(const std::string &method,
                               JsonValue params = JsonValue::object({}),
                               JsonValue id = JsonValue(1)) {
-    return {method, std::move(params), std::move(id)};
+    JsonRpcRequest req{method, std::move(params), std::move(id)};
+    req.hasId = true;
+    return req;
 }
 
 /// Helper: parse a JSON-RPC response string and return the parsed JSON.

@@ -245,7 +245,7 @@ void JsonValue::emitTo(std::string &out) const {
                 std::snprintf(buf, sizeof(buf), "%.17g", d);
                 out += buf;
                 // Ensure it looks like a float (has . or e)
-                if (out.find_last_of(".eE") == std::string::npos)
+                if (std::string_view(buf).find_first_of(".eE") == std::string_view::npos)
                     out += ".0";
             }
             break;
@@ -616,6 +616,11 @@ class JsonParser {
             skipWhitespace();
             expect(':');
             auto val = parseValue(depth);
+            for (const auto &[existingKey, existingValue] : obj) {
+                (void)existingValue;
+                if (existingKey == key)
+                    error("duplicate object key");
+            }
             obj.emplace_back(std::move(key), std::move(val));
             skipWhitespace();
             if (peek() == '}') {

@@ -44,6 +44,11 @@ struct AssetBundle {
 
     /// Paths to generated .vpa pack files on disk.
     std::vector<std::string> packFilePaths;
+
+    /// Expected byte sizes for @ref packFilePaths entries.
+    /// @details Cache validation uses these sizes to detect truncated or
+    ///          externally modified pack files before reusing a cached bundle.
+    std::vector<std::uintmax_t> packFileSizes;
 };
 
 /// @brief Compile assets declared in a project configuration.

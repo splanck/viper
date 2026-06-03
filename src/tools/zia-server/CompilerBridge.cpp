@@ -33,6 +33,7 @@
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 
+#include <cstdio>
 #include <sstream>
 
 namespace viper::server {
@@ -62,6 +63,41 @@ static std::string symbolKindStr(Symbol::Kind k) {
     return "unknown";
 }
 
+/// @brief Append token text with C-style escapes for control characters.
+/// @details Token dumps are line-oriented text. Escaping tabs, newlines, carriage
+///          returns, backslashes, and other control bytes keeps one token per line
+///          and makes the output unambiguous for MCP clients and logs.
+/// @param out Destination string receiving escaped text.
+/// @param text Raw token spelling from the lexer.
+static void appendEscapedTokenText(std::string &out, const std::string &text) {
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    for (unsigned char c : text) {
+        switch (c) {
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                if (c < 0x20u || c == 0x7Fu) {
+                    out += "\\x";
+                    out.push_back(kHex[c >> 4u]);
+                    out.push_back(kHex[c & 0x0Fu]);
+                } else {
+                    out.push_back(static_cast<char>(c));
+                }
+                break;
+        }
+    }
+}
+
 // --- Constructor / Destructor ---
 
 CompilerBridge::CompilerBridge() : completionEngine_(std::make_unique<CompletionEngine>()) {}
@@ -77,6 +113,8 @@ std::vector<DiagnosticInfo> CompilerBridge::check(const std::string &source,
     CompilerOptions opts{};
 
     auto result = parseAndAnalyze(input, opts, sm);
+    if (!result)
+        return {{2, "internal error: Zia analysis did not produce a result", path, 0, 0, "V-LSP-ANALYSIS"}};
     return extractDiagnostics(result->diagnostics);
 }
 
@@ -447,7 +485,7 @@ std::string CompilerBridge::hover(const std::string &source,
     CompilerOptions opts{};
 
     auto result = parseAndAnalyze(input, opts, sm);
-    if (!result->sema)
+    if (!result || !result->sema)
         return "";
 
     auto hoverResult = resolveHoverTarget(*result, *result->sema, ctx, line, col);
@@ -463,14 +501,12 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source,
     CompilerInput input{.source = source, .path = path};
     CompilerOptions opts{};
 
-    uint32_t mainFileId = sm.addFile(std::string(path));
-    input.fileId = mainFileId;
-
     auto result = parseAndAnalyze(input, opts, sm);
-    if (!result->sema)
+    if (!result || !result->sema)
         return {};
 
     std::vector<SymbolInfo> out;
+    const uint32_t mainFileId = result->fileId;
 
     auto globals = result->sema->getGlobalSymbols();
     for (const auto &sym : globals) {
@@ -519,7 +555,7 @@ std::string CompilerBridge::dumpAst(const std::string &source, const std::string
     CompilerOptions opts{};
 
     auto result = parseAndAnalyze(input, opts, sm);
-    if (!result->ast)
+    if (!result || !result->ast)
         return "(no AST produced)";
 
     ZiaAstPrinter printer;
@@ -542,7 +578,7 @@ std::string CompilerBridge::dumpTokens(const std::string &source, const std::str
         std::snprintf(buf, sizeof(buf), "%u:%u", tok.loc.line, tok.loc.column);
         out += buf;
         out += '\t';
-        out += tok.text;
+        appendEscapedTokenText(out, tok.text);
         out += '\n';
     }
     return out;

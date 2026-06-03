@@ -20,6 +20,7 @@
 
 #include "tools/lsp-common/McpHandler.hpp"
 
+#include <limits>
 #include <optional>
 
 namespace viper::server {
@@ -43,11 +44,39 @@ std::optional<std::string> requireString(const JsonValue &obj, const char *field
     return std::nullopt;
 }
 
-/// @brief Require @p obj to contain an Int member named @p fieldName.
-std::optional<std::string> requireInt(const JsonValue &obj, const char *fieldName) {
+/// @brief Require @p obj to contain an Int member named @p fieldName within bounds.
+/// @details MCP callers can provide arbitrary JSON integers. This helper keeps
+///          line/column arguments inside the int range consumed by compiler
+///          bridges and rejects non-positive cursor positions up front.
+/// @param obj Arguments object to inspect.
+/// @param fieldName Required integer member name.
+/// @param minValue Inclusive lower bound.
+/// @param maxValue Inclusive upper bound.
+/// @return Empty optional on success, otherwise a validation error string.
+std::optional<std::string> requireIntInRange(const JsonValue &obj,
+                                             const char *fieldName,
+                                             int64_t minValue,
+                                             int64_t maxValue) {
     const auto *value = obj.get(fieldName);
     if (!value || value->type() != JsonType::Int)
         return std::string("Missing or invalid '") + fieldName + "'";
+    const int64_t raw = value->asInt();
+    if (raw < minValue || raw > maxValue)
+        return std::string("'") + fieldName + "' is out of range";
+    return std::nullopt;
+}
+
+/// @brief Require @p obj to contain a non-empty String member named @p fieldName.
+/// @details Used for search-like tools where an empty string is technically a
+///          string but would expand to the whole catalog and produce noisy output.
+/// @param obj Arguments object to inspect.
+/// @param fieldName Required member name.
+/// @return Empty optional on success, otherwise a validation error string.
+std::optional<std::string> requireNonEmptyString(const JsonValue &obj, const char *fieldName) {
+    if (auto err = requireString(obj, fieldName))
+        return err;
+    if (obj[fieldName].asString().empty())
+        return std::string("'") + fieldName + "' must not be empty";
     return std::nullopt;
 }
 
@@ -82,9 +111,9 @@ std::optional<std::string> validateCommonSourceArgs(const JsonValue &args) {
 std::optional<std::string> validatePositionArgs(const JsonValue &args) {
     if (auto err = validateCommonSourceArgs(args))
         return err;
-    if (auto err = requireInt(args, "line"))
+    if (auto err = requireIntInRange(args, "line", 1, std::numeric_limits<int>::max()))
         return err;
-    return requireInt(args, "col");
+    return requireIntInRange(args, "col", 1, std::numeric_limits<int>::max());
 }
 
 } // namespace
@@ -373,7 +402,7 @@ std::string McpHandler::handleToolsCall(const JsonRpcRequest &req) {
             return buildError(req.id, kInvalidParams, *argError);
         content = callRuntimeMembers(args);
     } else if (name == p + "/runtime-search") {
-        argError = requireString(args, "keyword");
+        argError = requireNonEmptyString(args, "keyword");
         if (argError)
             return buildError(req.id, kInvalidParams, *argError);
         content = callRuntimeSearch(args);
