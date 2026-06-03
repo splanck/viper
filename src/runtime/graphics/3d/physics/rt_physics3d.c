@@ -2449,9 +2449,8 @@ int64_t rt_world3d_get_last_ccd_requested_substeps(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || w->last_ccd_requested_substeps <= 0)
         return 0;
-    return w->last_ccd_requested_substeps > PH3D_MAX_CCD_SUBSTEPS
-               ? PH3D_MAX_CCD_SUBSTEPS
-               : w->last_ccd_requested_substeps;
+    return w->last_ccd_requested_substeps == INT32_MAX ? PH3D_MAX_CCD_SUBSTEPS
+                                                       : w->last_ccd_requested_substeps;
 }
 
 /// @brief `World3D.LastCCDSubsteps` — actual CCD substeps used by the last Step.
@@ -3416,7 +3415,11 @@ double rt_body3d_get_restitution(void *o) {
     rt_body3d *b = body3d_checked(o);
     if (!b)
         return 0;
-    double value = ph3d_clamp_nonnegative_finite(b->restitution, 0.0);
+    double value = b->restitution;
+    if (isnan(value))
+        return 0.0;
+    if (value < 0.0)
+        return 0.0;
     return value > 1.0 ? 1.0 : value;
 }
 

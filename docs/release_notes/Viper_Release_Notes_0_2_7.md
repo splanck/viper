@@ -25,11 +25,11 @@ A focused continuation of the v0.2.6 hardening cycle, concentrated on the Graphi
 |---|---|---|---|
 | Commits | — | 5 | +5 |
 | Source files | 3,096 | 3,097 | +1 |
-| Production SLOC | 669K | 678K | +9K |
-| Test SLOC | 278K | 287K | +8K |
+| Production SLOC | 669K | 680K | +11K |
+| Test SLOC | 278K | 289K | +11K |
 | Demo SLOC | 192K | 192K | +0 |
 
-Counts via `scripts/count_sloc.sh` (production 677,501 / test 286,714 / demo 192,140 / source files 3,097); commits since the `v0.2.6-dev` tag.
+Counts via `scripts/count_sloc.sh` (production 679,757 / test 288,961 / demo 192,151 / source files 3,097); commits since the `v0.2.6-dev` tag.
 
 ---
 
