@@ -77,8 +77,7 @@ typedef struct {
 
 /// @brief Number of skeleton bones safe to read, or 0 when the handle is not a live Skeleton3D.
 static int32_t ik3d_safe_bone_count(const rt_skeleton3d *skeleton) {
-    if (!skeleton ||
-        !rt_g3d_has_class((void *)(uintptr_t)skeleton, RT_G3D_SKELETON3D_CLASS_ID))
+    if (!skeleton || !rt_g3d_has_class((void *)(uintptr_t)skeleton, RT_G3D_SKELETON3D_CLASS_ID))
         return 0;
     return skeleton3d_safe_bone_count(skeleton);
 }
@@ -163,8 +162,7 @@ static float ik3d_dot3(const float *a, const float *b) {
     double dot;
     if (!a || !b)
         return 0.0f;
-    dot = (double)a[0] * (double)b[0] + (double)a[1] * (double)b[1] +
-          (double)a[2] * (double)b[2];
+    dot = (double)a[0] * (double)b[0] + (double)a[1] * (double)b[1] + (double)a[2] * (double)b[2];
     return ik3d_finite_float(dot, 0.0f);
 }
 
@@ -197,6 +195,8 @@ static int ik3d_normalize3(float *v) {
 
 /// @brief Distance between two 3-space points.
 static float ik3d_distance3(const float *a, const float *b) {
+    if (!a || !b)
+        return 0.0f;
     float d[3] = {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
     return ik3d_len3(d);
 }
@@ -283,6 +283,8 @@ static void ik3d_quat_identity(float *out) {
 
 /// @brief Normalize a quaternion in place, falling back to identity if degenerate.
 static void ik3d_quat_normalize(float *q) {
+    if (!q)
+        return;
     float len = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
     if (!isfinite(len) || len <= 1e-8f) {
         ik3d_quat_identity(q);
@@ -313,24 +315,40 @@ static void ik3d_quat_from_matrix_rows(float r00,
     }
     if (tr > 0.0f) {
         float s = sqrtf(tr + 1.0f) * 2.0f;
+        if (!isfinite(s) || s <= 1e-8f) {
+            ik3d_quat_identity(out);
+            return;
+        }
         out[3] = 0.25f * s;
         out[0] = (r21 - r12) / s;
         out[1] = (r02 - r20) / s;
         out[2] = (r10 - r01) / s;
     } else if (r00 > r11 && r00 > r22) {
         float s = sqrtf(1.0f + r00 - r11 - r22) * 2.0f;
+        if (!isfinite(s) || s <= 1e-8f) {
+            ik3d_quat_identity(out);
+            return;
+        }
         out[3] = (r21 - r12) / s;
         out[0] = 0.25f * s;
         out[1] = (r01 + r10) / s;
         out[2] = (r02 + r20) / s;
     } else if (r11 > r22) {
         float s = sqrtf(1.0f + r11 - r00 - r22) * 2.0f;
+        if (!isfinite(s) || s <= 1e-8f) {
+            ik3d_quat_identity(out);
+            return;
+        }
         out[3] = (r02 - r20) / s;
         out[0] = (r01 + r10) / s;
         out[1] = 0.25f * s;
         out[2] = (r12 + r21) / s;
     } else {
         float s = sqrtf(1.0f + r22 - r00 - r11) * 2.0f;
+        if (!isfinite(s) || s <= 1e-8f) {
+            ik3d_quat_identity(out);
+            return;
+        }
         out[3] = (r10 - r01) / s;
         out[0] = (r02 + r20) / s;
         out[1] = (r12 + r21) / s;
@@ -371,10 +389,20 @@ static void ik3d_quat_slerp(const float *a, const float *b, float t, float *out)
     } else {
         float theta = acosf(dot);
         float sin_theta = sinf(theta);
-        float wa = sinf((1.0f - t) * theta) / sin_theta;
-        float wb = sinf(t * theta) / sin_theta;
-        for (int i = 0; i < 4; i++)
-            out[i] = wa * a[i] + wb * nb[i];
+        if (!isfinite(theta) || !isfinite(sin_theta) || fabsf(sin_theta) <= 1e-6f) {
+            for (int i = 0; i < 4; i++)
+                out[i] = a[i] + t * (nb[i] - a[i]);
+        } else {
+            float wa = sinf((1.0f - t) * theta) / sin_theta;
+            float wb = sinf(t * theta) / sin_theta;
+            if (!isfinite(wa) || !isfinite(wb)) {
+                for (int i = 0; i < 4; i++)
+                    out[i] = a[i] + t * (nb[i] - a[i]);
+            } else {
+                for (int i = 0; i < 4; i++)
+                    out[i] = wa * a[i] + wb * nb[i];
+            }
+        }
     }
     ik3d_quat_normalize(out);
 }
@@ -405,12 +433,12 @@ static void ik3d_quat_mul(const float *a, const float *b, float *out) {
 ///          extracting the rotation so shear-free TRS matrices round-trip. Non-finite or
 ///          near-zero scales default to 1 to keep the rotation extraction well-defined.
 static void ik3d_decompose_trs(const float *m, float *out_pos, float *out_rot, float *out_scl) {
-    double sx_sq = (double)m[0] * (double)m[0] + (double)m[4] * (double)m[4] +
-                   (double)m[8] * (double)m[8];
-    double sy_sq = (double)m[1] * (double)m[1] + (double)m[5] * (double)m[5] +
-                   (double)m[9] * (double)m[9];
-    double sz_sq = (double)m[2] * (double)m[2] + (double)m[6] * (double)m[6] +
-                   (double)m[10] * (double)m[10];
+    double sx_sq =
+        (double)m[0] * (double)m[0] + (double)m[4] * (double)m[4] + (double)m[8] * (double)m[8];
+    double sy_sq =
+        (double)m[1] * (double)m[1] + (double)m[5] * (double)m[5] + (double)m[9] * (double)m[9];
+    double sz_sq =
+        (double)m[2] * (double)m[2] + (double)m[6] * (double)m[6] + (double)m[10] * (double)m[10];
     double sx = sqrt(sx_sq);
     double sy = sqrt(sy_sq);
     double sz = sqrt(sz_sq);

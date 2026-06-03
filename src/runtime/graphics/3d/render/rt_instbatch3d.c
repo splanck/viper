@@ -173,10 +173,55 @@ static void instbatch_copy_matrix_slot(float *dst,
     instbatch_sanitize_matrix_slot(&dst[(size_t)dst_idx * 16u]);
 }
 
+/// @brief Drop a retained reference from a slot and clear it.
+/// @details Paired helper for the batch's mesh / material slots — the
+///   instance-batch owns refs to these, so finalize must release them. Idempotent on
+///   already-null slots so a partially-initialized batch can be torn down safely.
+static void instbatch_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+/// @brief Release a retained Mesh3D slot only when it still points at Mesh3D.
+static void instbatch_release_mesh_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MESH3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    instbatch_release_ref(slot);
+}
+
+/// @brief Release a retained Material3D slot only when it still points at Material3D.
+static void instbatch_release_material_slot(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_MATERIAL3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    instbatch_release_ref(slot);
+}
+
+/// @brief Clear corrupted private resource slots without releasing unrelated objects.
+static void instbatch_repair_resource_handles(rt_instbatch3d *b) {
+    if (!b)
+        return;
+    if (b->mesh && !rt_g3d_has_class(b->mesh, RT_G3D_MESH3D_CLASS_ID))
+        instbatch_release_mesh_slot(&b->mesh);
+    if (b->material && !rt_g3d_has_class(b->material, RT_G3D_MATERIAL3D_CLASS_ID))
+        instbatch_release_material_slot(&b->material);
+}
+
 /// @brief Repair count/buffer invariants before mutating or drawing a batch.
 static int instbatch_repair_state(rt_instbatch3d *b) {
     if (!b)
         return 0;
+    instbatch_repair_resource_handles(b);
     if (b->instance_capacity <= 0 || !b->transforms || !b->current_snapshot ||
         !b->prev_transforms) {
         free(b->transforms);
@@ -215,18 +260,6 @@ static int instbatch_repair_state(rt_instbatch3d *b) {
         b->prev_count = b->instance_count;
     b->has_prev_snapshot = (b->has_prev_snapshot && b->prev_count > 0) ? 1 : 0;
     return 1;
-}
-
-/// @brief Drop a retained reference from a slot and clear it.
-/// @details Paired helper for the batch's mesh / material / user-data slots — the
-///   instance-batch owns refs to these, so finalize must release them. Idempotent on
-///   already-null slots so a partially-initialized batch can be torn down safely.
-static void instbatch_release_ref(void **slot) {
-    if (!slot || !*slot)
-        return;
-    if (rt_obj_release_check0(*slot))
-        rt_obj_free(*slot);
-    *slot = NULL;
 }
 
 /// @brief Per-instance frustum cull test for an instanced batch.
@@ -278,8 +311,8 @@ static void instbatch_finalizer(void *obj) {
     b->motion_snapshot_count = b->prev_count = 0;
     b->last_motion_frame = 0;
     b->has_prev_snapshot = 0;
-    instbatch_release_ref(&b->mesh);
-    instbatch_release_ref(&b->material);
+    instbatch_release_mesh_slot(&b->mesh);
+    instbatch_release_material_slot(&b->material);
 }
 
 /// @brief Create an instance batch for drawing N copies of one mesh efficiently.
@@ -356,6 +389,7 @@ void rt_instbatch3d_add(void *obj, void *transform) {
             free(new_transforms);
             free(new_snapshot);
             free(new_prev);
+            rt_trap("InstanceBatch3D.Add: allocation failed");
             return;
         }
         if (old_bytes > 0) {

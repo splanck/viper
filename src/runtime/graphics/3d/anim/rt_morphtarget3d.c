@@ -107,8 +107,8 @@ static rt_morphtarget3d *morphtarget_checked(void *obj) {
 static int32_t morphtarget_safe_shape_count(const rt_morphtarget3d *mt) {
     int32_t limit;
     int32_t count = 0;
-    if (!mt || mt->shape_count <= 0 || mt->shape_capacity <= 0 || !mt->shapes ||
-        !mt->weights || !mt->prev_weights || !mt->motion_weight_snapshot)
+    if (!mt || mt->shape_count <= 0 || mt->shape_capacity <= 0 || !mt->shapes || !mt->weights ||
+        !mt->prev_weights || !mt->motion_weight_snapshot)
         return 0;
     limit = mt->shape_count < mt->shape_capacity ? mt->shape_count : mt->shape_capacity;
     while (count < limit && mt->shapes[count].pos_deltas)
@@ -195,6 +195,28 @@ static double morphtarget_delta_length_or_zero(const float *delta) {
     return isfinite(len) ? len : 0.0;
 }
 
+/// @brief Normalize a 3-float direction, or restore the base direction when it degenerates.
+static void morphtarget_normalize3_or_copy(float *direction, const float *fallback) {
+    double x;
+    double y;
+    double z;
+    double len;
+    if (!direction)
+        return;
+    x = isfinite(direction[0]) ? (double)direction[0] : 0.0;
+    y = isfinite(direction[1]) ? (double)direction[1] : 0.0;
+    z = isfinite(direction[2]) ? (double)direction[2] : 0.0;
+    len = hypot(hypot(x, y), z);
+    if (isfinite(len) && len > 1e-8) {
+        direction[0] = (float)(x / len);
+        direction[1] = (float)(y / len);
+        direction[2] = (float)(z / len);
+        return;
+    }
+    if (fallback)
+        memcpy(direction, fallback, sizeof(float) * 3);
+}
+
 /// @brief Sanitize all weight history arrays before they are exposed to draw backends.
 static void morphtarget_sanitize_weights(rt_morphtarget3d *mt) {
     if (!mt)
@@ -268,6 +290,17 @@ static int morphtarget_rebuild_packed_payload(rt_morphtarget3d *mt) {
     mt->packed_nrm_deltas = packed_nrm;
     mt->packed_dirty = 0;
     return 1;
+}
+
+/// @brief Number of shape slots the finalizer can walk even if parallel arrays are corrupt.
+static int32_t morphtarget_finalize_shape_count(const rt_morphtarget3d *mt) {
+    int32_t count;
+    if (!mt || !mt->shapes || mt->shape_capacity <= 0)
+        return 0;
+    count = mt->shape_capacity;
+    if (mt->shape_count >= 0 && mt->shape_count < count)
+        count = mt->shape_count;
+    return count;
 }
 
 /// @brief Grow the parallel shape / weight / prev-weight / motion arrays.
@@ -389,7 +422,9 @@ static int vgfx3d_backend_prefers_gpu_morph(const char *backend_name, int32_t sh
 ///   because finalize is idempotent against null slots.
 static void rt_morphtarget3d_finalize(void *obj) {
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
-    for (int32_t i = 0, count = morphtarget_safe_shape_count(mt); i < count; i++) {
+    if (!mt)
+        return;
+    for (int32_t i = 0, count = morphtarget_finalize_shape_count(mt); i < count; i++) {
         free(mt->shapes[i].pos_deltas);
         free(mt->shapes[i].nrm_deltas);
         free(mt->shapes[i].tan_deltas);
@@ -408,6 +443,9 @@ static void rt_morphtarget3d_finalize(void *obj) {
     mt->packed_nrm_deltas = NULL;
     mt->shape_count = 0;
     mt->shape_capacity = 0;
+    mt->vertex_count = 0;
+    mt->has_prev_weights = 0;
+    mt->packed_dirty = 0;
 }
 
 /// @brief Create a morph target container for blendshape animation.
@@ -477,6 +515,7 @@ void *rt_morphtarget3d_clone(void *obj) {
         if (src->shapes[i].nrm_deltas) {
             dst->shapes[shape].nrm_deltas = (float *)calloc(1, delta_size);
             if (!dst->shapes[shape].nrm_deltas) {
+                rt_trap("MorphTarget3D.Clone: normal-delta allocation failed");
                 if (rt_obj_release_check0(dst))
                     rt_obj_free(dst);
                 return NULL;
@@ -486,6 +525,7 @@ void *rt_morphtarget3d_clone(void *obj) {
         if (src->shapes[i].tan_deltas) {
             dst->shapes[shape].tan_deltas = (float *)calloc(1, delta_size);
             if (!dst->shapes[shape].tan_deltas) {
+                rt_trap("MorphTarget3D.Clone: tangent-delta allocation failed");
                 if (rt_obj_release_check0(dst))
                     rt_obj_free(dst);
                 return NULL;
@@ -496,8 +536,9 @@ void *rt_morphtarget3d_clone(void *obj) {
         dst->prev_weights[shape] =
             src->prev_weights ? morphtarget_sanitize_weight(src->prev_weights[i]) : 0.0f;
         dst->motion_weight_snapshot[shape] =
-            src->motion_weight_snapshot ? morphtarget_sanitize_weight(src->motion_weight_snapshot[i])
-                                        : dst->weights[shape];
+            src->motion_weight_snapshot
+                ? morphtarget_sanitize_weight(src->motion_weight_snapshot[i])
+                : dst->weights[shape];
     }
     dst->has_prev_weights = src->has_prev_weights;
     dst->last_motion_frame = src->last_motion_frame;
@@ -555,8 +596,10 @@ int64_t rt_morphtarget3d_add_shape(void *obj, rt_string name) {
     if (!morphtarget_vertex_delta_bytes(mt->vertex_count, &delta_size))
         return -1;
     shape->pos_deltas = (float *)calloc(1, delta_size);
-    if (!shape->pos_deltas)
+    if (!shape->pos_deltas) {
+        rt_trap("MorphTarget3D.AddShape: delta allocation failed");
         return -1;
+    }
     /* Normal deltas allocated on first use (SetNormalDelta) */
 
     morphtarget_touch_payload(mt);
@@ -604,8 +647,10 @@ void rt_morphtarget3d_set_normal_delta(
         if (!morphtarget_vertex_delta_bytes(mt->vertex_count, &sz))
             return;
         mt->shapes[shape].nrm_deltas = (float *)calloc(1, sz);
-        if (!mt->shapes[shape].nrm_deltas)
+        if (!mt->shapes[shape].nrm_deltas) {
+            rt_trap("MorphTarget3D.SetNormalDelta: delta allocation failed");
             return;
+        }
     }
 
     float *nd = mt->shapes[shape].nrm_deltas;
@@ -633,8 +678,10 @@ void rt_morphtarget3d_set_tangent_delta(
         if (!morphtarget_vertex_delta_bytes(mt->vertex_count, &sz))
             return;
         mt->shapes[shape].tan_deltas = (float *)calloc(1, sz);
-        if (!mt->shapes[shape].tan_deltas)
+        if (!mt->shapes[shape].tan_deltas) {
+            rt_trap("MorphTarget3D.SetTangentDelta: delta allocation failed");
             return;
+        }
     }
 
     float *td = mt->shapes[shape].tan_deltas;
@@ -925,16 +972,21 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
         const float *packed_deltas = rt_morphtarget3d_get_packed_deltas(mt);
         const float *packed_normal_deltas = rt_morphtarget3d_get_packed_normal_deltas(mt);
         rt_mesh3d tmp;
+        int mt_tracked = 0;
         if (shape_count > 0 && !packed_deltas)
             return;
         if (!rt_canvas3d_add_temp_object(canvas, mt))
             return;
+        mt_tracked = 1;
         /* The stack mesh copy below aliases the original mesh's vertex/index
          * buffers, so the original mesh object must outlive the deferred draw.
          * Passing the copy to the keyed draw skips that path's payload
          * retention, so retain the original mesh explicitly here. */
-        if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh))
+        if (rt_heap_is_payload(mesh) && !rt_canvas3d_add_temp_object(canvas, mesh)) {
+            if (mt_tracked)
+                canvas3d_release_tracked_temp_object(c, mt);
             return;
+        }
 
         tmp = *m;
         tmp.morph_targets_ref = morph_targets;
@@ -1000,34 +1052,14 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     if (has_normal_deltas) {
         for (uint32_t v = 0; v < m->vertex_count; v++) {
             float *n = morphed[v].normal;
-            double len_sq =
-                (double)n[0] * (double)n[0] + (double)n[1] * (double)n[1] +
-                (double)n[2] * (double)n[2];
-            double len = sqrt(len_sq);
-            if (isfinite(len) && len > 1e-8 && len <= (double)FLT_MAX) {
-                n[0] = (float)((double)n[0] / len);
-                n[1] = (float)((double)n[1] / len);
-                n[2] = (float)((double)n[2] / len);
-            } else {
-                memcpy(n, m->vertices[v].normal, sizeof(float) * 3);
-            }
+            morphtarget_normalize3_or_copy(n, m->vertices[v].normal);
         }
     }
 
     if (has_tangent_deltas) {
         for (uint32_t v = 0; v < m->vertex_count; v++) {
             float *t = morphed[v].tangent;
-            double len_sq =
-                (double)t[0] * (double)t[0] + (double)t[1] * (double)t[1] +
-                (double)t[2] * (double)t[2];
-            double len = sqrt(len_sq);
-            if (isfinite(len) && len > 1e-8 && len <= (double)FLT_MAX) {
-                t[0] = (float)((double)t[0] / len);
-                t[1] = (float)((double)t[1] / len);
-                t[2] = (float)((double)t[2] / len);
-            } else {
-                memcpy(t, m->vertices[v].tangent, sizeof(float) * 3);
-            }
+            morphtarget_normalize3_or_copy(t, m->vertices[v].tangent);
         }
     }
 

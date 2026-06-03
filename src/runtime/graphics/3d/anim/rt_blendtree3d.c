@@ -71,6 +71,11 @@ static rt_blend_tree3d *blend_tree3d_checked(void *obj) {
     return (rt_blend_tree3d *)rt_g3d_checked_or_null(obj, RT_G3D_BLENDTREE3D_CLASS_ID);
 }
 
+/// @brief Return true when the owned backend still points at a live AnimBlend3D.
+static int blend_tree3d_blend_valid(const rt_blend_tree3d *tree) {
+    return tree && rt_g3d_has_class(tree->blend, RT_G3D_ANIMBLEND3D_CLASS_ID);
+}
+
 /// @brief Release a GC-managed reference when this drop is the last one.
 static void blend_tree3d_release_local(void *obj) {
     if (obj && rt_obj_release_check0(obj))
@@ -108,6 +113,8 @@ static int32_t blend_tree3d_safe_sample_count(const rt_blend_tree3d *tree) {
     int64_t blend_state_count;
     if (!tree || tree->sample_count <= 0)
         return 0;
+    if (!blend_tree3d_blend_valid(tree))
+        return 0;
     blend_state_count = rt_anim_blend3d_state_count(tree->blend);
     if (blend_state_count <= 0)
         return 0;
@@ -121,14 +128,17 @@ static int32_t blend_tree3d_safe_sample_count(const rt_blend_tree3d *tree) {
 
 /// @brief Clamp the blend tree's sample_count to its safe value (defensive).
 static void blend_tree3d_repair_sample_count(rt_blend_tree3d *tree) {
-    if (tree)
-        tree->sample_count = blend_tree3d_safe_sample_count(tree);
+    if (!tree)
+        return;
+    if (!blend_tree3d_blend_valid(tree))
+        blend_tree3d_release_blend_ref(&tree->blend);
+    tree->sample_count = blend_tree3d_safe_sample_count(tree);
 }
 
 /// @brief Zero every sample's blend weight so a fresh weighting can be written.
 static void blend_tree3d_clear_weights(rt_blend_tree3d *tree) {
     int32_t sample_count;
-    if (!tree || !tree->blend)
+    if (!tree || !blend_tree3d_blend_valid(tree))
         return;
     sample_count = blend_tree3d_safe_sample_count(tree);
     for (int32_t i = 0; i < sample_count; i++)
@@ -148,7 +158,7 @@ static void blend_tree3d_apply_1d(rt_blend_tree3d *tree) {
     int32_t sample_count;
     double x;
     sample_count = blend_tree3d_safe_sample_count(tree);
-    if (!tree || !tree->blend || sample_count <= 0)
+    if (!tree || !blend_tree3d_blend_valid(tree) || sample_count <= 0)
         return;
     x = blend_tree3d_finite_or_zero(tree->param_x);
     blend_tree3d_clear_weights(tree);
@@ -213,7 +223,7 @@ static void blend_tree3d_apply_2d(rt_blend_tree3d *tree) {
     int32_t nearest = 0;
     double nearest_d2 = DBL_MAX;
     int32_t sample_count = blend_tree3d_safe_sample_count(tree);
-    if (!tree || !tree->blend || sample_count <= 0)
+    if (!tree || !blend_tree3d_blend_valid(tree) || sample_count <= 0)
         return;
     blend_tree3d_clear_weights(tree);
     if (sample_count == 1) {
@@ -313,7 +323,8 @@ void *rt_blend_tree3d_new_2d(void *skeleton) {
 int64_t rt_blend_tree3d_add_sample(void *obj, void *animation, double x, double y) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
     int64_t blend_index;
-    if (!tree || !tree->blend || !rt_g3d_has_class(animation, RT_G3D_ANIMATION3D_CLASS_ID))
+    if (!tree || !blend_tree3d_blend_valid(tree) ||
+        !rt_g3d_has_class(animation, RT_G3D_ANIMATION3D_CLASS_ID))
         return -1;
     blend_tree3d_repair_sample_count(tree);
     if (tree->sample_count >= RT_BLENDTREE3D_MAX_SAMPLES)
@@ -343,7 +354,7 @@ void rt_blend_tree3d_set_param(void *obj, double x, double y) {
 /// @brief Recompute sample weights and advance the underlying AnimBlend3D by @p dt seconds.
 void rt_blend_tree3d_update(void *obj, double dt) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
-    if (!tree || !tree->blend)
+    if (!tree || !blend_tree3d_blend_valid(tree))
         return;
     blend_tree3d_repair_sample_count(tree);
     if (!isfinite(dt) || dt < 0.0)
@@ -361,7 +372,7 @@ int64_t rt_blend_tree3d_get_sample_count(void *obj) {
 /// @brief Borrow the underlying AnimBlend3D handle (not retained; NULL if invalid).
 void *rt_blend_tree3d_get_blend(void *obj) {
     rt_blend_tree3d *tree = blend_tree3d_checked(obj);
-    return tree ? tree->blend : NULL;
+    return blend_tree3d_blend_valid(tree) ? tree->blend : NULL;
 }
 
 #else

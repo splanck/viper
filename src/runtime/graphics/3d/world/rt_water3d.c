@@ -167,18 +167,29 @@ static void water3d_release_env_map_slot(void **slot) {
 
 /// @brief Retain-then-release assignment for Pixels slots, clearing corrupt old slots safely.
 static void water3d_assign_pixels_ref(void **slot, void *value) {
-    if (!slot || *slot == value)
+    if (!slot)
         return;
-    rt_obj_retain_maybe(value);
+    if (value && !water3d_is_pixels_handle(value))
+        value = NULL;
+    if (*slot == value)
+        return;
+    if (value)
+        rt_obj_retain_maybe(value);
     water3d_release_pixels_slot(slot);
     *slot = value;
 }
 
 /// @brief Retain-then-release assignment for Cubemap3D slots, clearing corrupt old slots safely.
 static void water3d_assign_env_map_ref(void **slot, void *value) {
-    if (!slot || *slot == value)
+    if (!slot)
         return;
-    rt_obj_retain_maybe(value);
+    if (value &&
+        (!rt_g3d_has_class(value, RT_G3D_CUBEMAP3D_CLASS_ID) || !rt_cubemap3d_is_complete(value)))
+        value = NULL;
+    if (*slot == value)
+        return;
+    if (value)
+        rt_obj_retain_maybe(value);
     water3d_release_env_map_slot(slot);
     *slot = value;
 }
@@ -246,7 +257,9 @@ static void water3d_repair_resource_handles(rt_water3d *w) {
 /// @brief Ensure the retained water mesh has enough storage for a direct vertex/index rewrite.
 /// @details Water3D is included in isolated contract tests without the full Mesh3D implementation,
 ///   so this keeps the allocation path local while preserving the same internal buffer layout.
-static int water3d_mesh_reserve(rt_mesh3d *mesh, uint32_t vertex_capacity, uint32_t index_capacity) {
+static int water3d_mesh_reserve(rt_mesh3d *mesh,
+                                uint32_t vertex_capacity,
+                                uint32_t index_capacity) {
     if (!mesh)
         return 0;
     if (vertex_capacity > mesh->vertex_capacity) {
@@ -374,7 +387,7 @@ void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, doubl
         return;
     w->wave_speed = water3d_clamp_abs_or(speed, 0.0, WATER3D_PARAM_MAX);
     w->wave_amplitude = water3d_clamp_nonnegative(amplitude, WATER3D_PARAM_MAX);
-    w->wave_frequency = water3d_clamp_abs_or(frequency, 0.0, WATER3D_PARAM_MAX);
+    w->wave_frequency = water3d_clamp_nonnegative(frequency, WATER3D_PARAM_MAX);
     w->mesh_dirty = 1;
 }
 
@@ -541,7 +554,7 @@ void rt_water3d_update(void *obj, double dt) {
     w->height = water3d_clamp_abs_or(w->height, 0.0, WATER3D_HEIGHT_ABS_MAX);
     w->wave_speed = water3d_clamp_abs_or(w->wave_speed, 0.0, WATER3D_PARAM_MAX);
     w->wave_amplitude = water3d_clamp_nonnegative(w->wave_amplitude, WATER3D_PARAM_MAX);
-    w->wave_frequency = water3d_clamp_abs_or(w->wave_frequency, 0.0, WATER3D_PARAM_MAX);
+    w->wave_frequency = water3d_clamp_nonnegative(w->wave_frequency, WATER3D_PARAM_MAX);
     w->reflectivity = water3d_clamp01(w->reflectivity);
     w->alpha = water3d_clamp01(w->alpha);
     for (int32_t c = 0; c < 3; c++)
@@ -574,18 +587,20 @@ void rt_water3d_update(void *obj, double dt) {
     uint32_t required_vertices = (uint32_t)(row * row);
     uint32_t required_indices = (uint32_t)(grid * grid * 6);
     rt_mesh3d *mesh = (rt_mesh3d *)w->mesh;
-    int topology_dirty = w->mesh_dirty || !mesh->vertices || !mesh->indices ||
-                         mesh->vertex_capacity < required_vertices ||
-                         mesh->index_capacity < required_indices ||
-                         mesh->vertex_count != required_vertices ||
-                         mesh->index_count != required_indices;
+    int topology_dirty =
+        w->mesh_dirty || !mesh->vertices || !mesh->indices ||
+        mesh->vertex_capacity < required_vertices || mesh->index_capacity < required_indices ||
+        mesh->vertex_count != required_vertices || mesh->index_count != required_indices;
     double inv_grid = 1.0 / (double)grid; /* resolution clamped to [8, 256] above */
     double hx = w->width * 0.5, hz = w->depth * 0.5;
     double step_x = w->width * inv_grid;
     double step_z = w->depth * inv_grid;
     if (topology_dirty) {
         rt_mesh3d_clear(w->mesh);
-        water3d_mesh_reserve(mesh, required_vertices, required_indices);
+        if (!water3d_mesh_reserve(mesh, required_vertices, required_indices)) {
+            w->mesh_dirty = 1;
+            return;
+        }
         if (!mesh->vertices || !mesh->indices || mesh->vertex_capacity < required_vertices ||
             mesh->index_capacity < required_indices) {
             w->mesh_dirty = 1;

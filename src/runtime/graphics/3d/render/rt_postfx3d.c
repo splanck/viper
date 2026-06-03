@@ -150,13 +150,16 @@ static void postfx3d_repair_effect_storage(rt_postfx3d *fx) {
         fx->effect_capacity = 0;
         return;
     }
-    if (fx->effect_capacity < 0)
+    if (fx->effect_capacity <= 0) {
+        free(fx->effects);
+        fx->effects = NULL;
+        fx->effect_count = 0;
         fx->effect_capacity = 0;
+        return;
+    }
     if (fx->effect_count < 0)
         fx->effect_count = 0;
-    if (fx->effect_capacity == 0)
-        fx->effect_count = 0;
-    else if (fx->effect_count > fx->effect_capacity)
+    if (fx->effect_count > fx->effect_capacity)
         fx->effect_count = fx->effect_capacity;
 }
 
@@ -168,6 +171,11 @@ static void postfx3d_repair_effect_storage(rt_postfx3d *fx) {
 /// pipeline to keep intermediate float values inside the displayable range before
 /// converting back to 8-bit pixels at the end.
 static float clampf(float v, float lo, float hi) {
+    if (lo > hi) {
+        float tmp = lo;
+        lo = hi;
+        hi = tmp;
+    }
     if (!isfinite(v))
         return lo;
     return v < lo ? lo : (v > hi ? hi : v);
@@ -176,6 +184,11 @@ static float clampf(float v, float lo, float hi) {
 /// @brief Clamp a double into a finite float parameter range, using fallback for NaN/Inf.
 static float sanitize_range_f32(double value, float fallback, float lo, float hi) {
     float narrowed;
+    if (lo > hi) {
+        float tmp = lo;
+        lo = hi;
+        hi = tmp;
+    }
     if (!isfinite(value))
         return clampf(fallback, lo, hi);
     if (value <= (double)lo)
@@ -202,6 +215,11 @@ static float sanitize_hdr_channel(float value) {
 /// @details Used where IL-side integer knobs (kernel radii, sample counts) need to match
 ///   backend-side `int32_t` slots without trapping on out-of-range input.
 static int32_t clamp_i64_to_i32(int64_t value, int32_t lo, int32_t hi) {
+    if (lo > hi) {
+        int32_t tmp = lo;
+        lo = hi;
+        hi = tmp;
+    }
     if (value < lo)
         return lo;
     if (value > hi)
@@ -217,11 +235,8 @@ static float luminance(float r, float g, float b) {
 }
 
 /// @brief Validate an RGB float buffer shape and compute its pixel/byte counts.
-static int postfx_rgb_float_layout(int32_t w,
-                                   int32_t h,
-                                   size_t *out_pixels,
-                                   size_t *out_floats,
-                                   size_t *out_bytes) {
+static int postfx_rgb_float_layout(
+    int32_t w, int32_t h, size_t *out_pixels, size_t *out_floats, size_t *out_bytes) {
     size_t width;
     size_t height;
     size_t pixels;
@@ -297,14 +312,18 @@ static postfx_entry_t *postfx_append_entry(rt_postfx3d *fx) {
 static int vgfx3d_postfx_chain_reserve(vgfx3d_postfx_chain_t *chain, int32_t needed) {
     vgfx3d_postfx_effect_desc_t *effects;
     int32_t new_capacity;
+    int32_t old_capacity;
 
     if (!chain || chain->effect_capacity < 0)
         return 0;
+    if (!chain->effects)
+        chain->effect_capacity = 0;
     if (needed <= 0)
         return 1;
     if (chain->effect_capacity >= needed && chain->effects)
         return 1;
 
+    old_capacity = chain->effect_capacity;
     new_capacity = chain->effect_capacity > 0 ? chain->effect_capacity : 8;
     while (new_capacity < needed) {
         if (new_capacity > INT32_MAX / 2) {
@@ -319,10 +338,8 @@ static int vgfx3d_postfx_chain_reserve(vgfx3d_postfx_chain_t *chain, int32_t nee
                                                      (size_t)new_capacity * sizeof(*effects));
     if (!effects)
         return 0;
-    if (new_capacity > chain->effect_capacity) {
-        memset(effects + chain->effect_capacity,
-               0,
-               (size_t)(new_capacity - chain->effect_capacity) * sizeof(*effects));
+    if (new_capacity > old_capacity) {
+        memset(effects + old_capacity, 0, (size_t)(new_capacity - old_capacity) * sizeof(*effects));
     }
     chain->effects = effects;
     chain->effect_capacity = new_capacity;
@@ -457,7 +474,7 @@ static void apply_bloom(
                 bloom[di + 1] = g * scale;
                 bloom[di + 2] = b * scale;
             }
-    }
+        }
 
     /* Separable Gaussian blur (simplified 5-tap kernel) */
     float *tmp = (float *)calloc(1, scratch_bytes);
@@ -1287,6 +1304,8 @@ void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
 void vgfx3d_postfx_chain_reset(vgfx3d_postfx_chain_t *chain) {
     if (!chain)
         return;
+    if (!chain->effects)
+        chain->effect_capacity = 0;
     if (chain->effect_capacity < 0) {
         free(chain->effects);
         chain->effects = NULL;

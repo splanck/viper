@@ -163,9 +163,14 @@ static void vegetation3d_release_material_slot(void **slot) {
 
 /// @brief Retain-then-release swap into a Pixels slot. Safe on self-assign.
 static void vegetation3d_assign_pixels_ref(void **slot, void *value) {
-    if (!slot || *slot == value)
+    if (!slot)
         return;
-    rt_obj_retain_maybe(value);
+    if (value && !vegetation3d_is_pixels_handle(value))
+        value = NULL;
+    if (*slot == value)
+        return;
+    if (value)
+        rt_obj_retain_maybe(value);
     vegetation3d_release_pixels_slot(slot);
     *slot = value;
 }
@@ -202,6 +207,22 @@ static void vegetation3d_repair_resource_handles(rt_vegetation3d *v) {
         vegetation3d_release_material_slot(&v->blade_material);
 }
 
+/// @brief Free all population buffers and reset the population/visible counters.
+static void vegetation3d_clear_population_buffers(rt_vegetation3d *v) {
+    if (!v)
+        return;
+    free(v->base_transforms);
+    free(v->positions);
+    free(v->visible_transforms);
+    v->base_transforms = NULL;
+    v->positions = NULL;
+    v->visible_transforms = NULL;
+    v->total_count = 0;
+    v->capacity = 0;
+    v->visible_count = 0;
+    v->visible_capacity = 0;
+}
+
 /// @brief GC finalizer — release owned blade resources and instance arrays.
 /// @details The vegetation system stores per-instance data in three
 ///   independent flat buffers: `base_transforms` (original 4x4 matrices),
@@ -213,12 +234,7 @@ static void vegetation3d_finalizer(void *obj) {
     rt_vegetation3d *v = (rt_vegetation3d *)obj;
     if (!v)
         return;
-    free(v->base_transforms);
-    free(v->positions);
-    free(v->visible_transforms);
-    v->base_transforms = NULL;
-    v->positions = NULL;
-    v->visible_transforms = NULL;
+    vegetation3d_clear_population_buffers(v);
     vegetation3d_release_pixels_slot(&v->density_map);
     vegetation3d_release_mesh_slot(&v->blade_mesh);
     vegetation3d_release_material_slot(&v->blade_material);
@@ -268,6 +284,10 @@ static int vegetation3d_repair_state(rt_vegetation3d *v) {
     if (v->capacity < 0)
         v->capacity = 0;
     if (!v->base_transforms || !v->positions || v->capacity == 0) {
+        free(v->base_transforms);
+        free(v->positions);
+        v->base_transforms = NULL;
+        v->positions = NULL;
         v->total_count = 0;
         v->capacity = 0;
     } else {
@@ -279,8 +299,10 @@ static int vegetation3d_repair_state(rt_vegetation3d *v) {
     if (v->visible_capacity < 0)
         v->visible_capacity = 0;
     if (!v->visible_transforms || v->visible_capacity == 0) {
+        free(v->visible_transforms);
+        v->visible_transforms = NULL;
         v->visible_count = 0;
-        v->visible_capacity = v->visible_transforms ? v->visible_capacity : 0;
+        v->visible_capacity = 0;
     } else {
         if (v->visible_count < 0)
             v->visible_count = 0;
@@ -325,6 +347,10 @@ static void vegetation3d_compact_visible(rt_vegetation3d *v) {
 /// Defaults: 0.4×1.2 blades with 30% size variation, wind speed 2.0 / strength 0.15 / turbulence
 /// 0.5, LOD near=40 / far=100 world units. Traps on allocation failure.
 void *rt_vegetation3d_new(void *blade_texture) {
+    if (blade_texture && !vegetation3d_is_pixels_handle(blade_texture)) {
+        rt_trap("Vegetation3D.New: blade_texture must be Pixels");
+        return NULL;
+    }
     rt_vegetation3d *v = (rt_vegetation3d *)rt_obj_new_i64(RT_G3D_VEGETATION3D_CLASS_ID,
                                                            (int64_t)sizeof(rt_vegetation3d));
     if (!v) {
@@ -517,8 +543,7 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
         return;
     vegetation3d_repair_resource_handles(v);
     if (count <= 0) {
-        v->total_count = 0;
-        v->visible_count = 0;
+        vegetation3d_clear_population_buffers(v);
         return;
     }
     if (count > VEGETATION3D_MAX_BLADES) {

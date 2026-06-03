@@ -29,8 +29,8 @@
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels_internal.h"
 
-#include <math.h>
 #include <limits.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,8 +134,7 @@ static void sprite3d_repair_refs(rt_sprite3d *s) {
         s->cached_texture = NULL;
     if (s->cached_mesh && !rt_g3d_has_class(s->cached_mesh, RT_G3D_MESH3D_CLASS_ID))
         sprite3d_release_mesh_slot(&s->cached_mesh);
-    if (s->cached_material &&
-        !rt_g3d_has_class(s->cached_material, RT_G3D_MATERIAL3D_CLASS_ID)) {
+    if (s->cached_material && !rt_g3d_has_class(s->cached_material, RT_G3D_MATERIAL3D_CLASS_ID)) {
         sprite3d_release_material_slot(&s->cached_material);
         s->cached_texture = NULL;
     }
@@ -169,27 +168,30 @@ static double sprite3d_positive_scale_or(double value, double fallback) {
 }
 
 /// @brief Normalize a vector, replacing invalid/zero vectors with a fallback axis.
-static int sprite3d_normalize3(double *x,
-                               double *y,
-                               double *z,
-                               double fallback_x,
-                               double fallback_y,
-                               double fallback_z) {
+static int sprite3d_normalize3(
+    double *x, double *y, double *z, double fallback_x, double fallback_y, double fallback_z) {
     double len;
+    double max_component;
     if (!x || !y || !z)
         return 0;
     *x = sprite3d_finite_or(*x, fallback_x);
     *y = sprite3d_finite_or(*y, fallback_y);
     *z = sprite3d_finite_or(*z, fallback_z);
-    len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
-    if (!isfinite(len) || len <= 1e-12) {
+    max_component = fmax(fabs(*x), fmax(fabs(*y), fabs(*z)));
+    if (!isfinite(max_component) || max_component <= 1e-12) {
         *x = fallback_x;
         *y = fallback_y;
         *z = fallback_z;
-        len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
-        if (!isfinite(len) || len <= 1e-12)
+        max_component = fmax(fabs(*x), fmax(fabs(*y), fabs(*z)));
+        if (!isfinite(max_component) || max_component <= 1e-12)
             return 0;
     }
+    *x /= max_component;
+    *y /= max_component;
+    *z /= max_component;
+    len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    if (!isfinite(len) || len <= 1e-12)
+        return 0;
     *x /= len;
     *y /= len;
     *z /= len;
@@ -197,12 +199,8 @@ static int sprite3d_normalize3(double *x,
 }
 
 /// @brief Choose an axis that is not parallel to the supplied normalized vector.
-static void sprite3d_perpendicular_seed(double x,
-                                        double y,
-                                        double z,
-                                        double *out_x,
-                                        double *out_y,
-                                        double *out_z) {
+static void sprite3d_perpendicular_seed(
+    double x, double y, double z, double *out_x, double *out_y, double *out_z) {
     if (fabs(y) < 0.9) {
         *out_x = 0.0;
         *out_y = 1.0;
@@ -294,6 +292,15 @@ static void sprite3d_finalizer(void *obj) {
 ///        lazy billboard material creation stays valid across frames.
 /// @return Opaque sprite handle, or NULL on failure.
 void *rt_sprite3d_new(void *texture) {
+    rt_pixels_impl *pixels = NULL;
+    if (texture) {
+        pixels = rt_pixels_checked_impl_or_null(texture);
+        if (!pixels || pixels->width <= 0 || pixels->height <= 0 || pixels->width > INT32_MAX ||
+            pixels->height > INT32_MAX) {
+            rt_trap("Sprite3D.New: texture must be non-empty Pixels");
+            return NULL;
+        }
+    }
     rt_sprite3d *s =
         (rt_sprite3d *)rt_obj_new_i64(RT_G3D_SPRITE3D_CLASS_ID, (int64_t)sizeof(rt_sprite3d));
     if (!s) {
@@ -319,17 +326,7 @@ void *rt_sprite3d_new(void *texture) {
     s->cached_texture = NULL;
 
     /* Try to get texture dimensions */
-    if (texture) {
-        rt_pixels_impl *pixels =
-            rt_pixels_checked_impl(texture, "Sprite3D.New: expected Pixels texture");
-        if (!pixels || pixels->width <= 0 || pixels->height <= 0 || pixels->width > INT32_MAX ||
-            pixels->height > INT32_MAX) {
-            sprite3d_release_texture_slot(&s->texture);
-            if (rt_obj_release_check0(s))
-                rt_obj_free(s);
-            rt_trap("Sprite3D.New: texture must be non-empty Pixels");
-            return NULL;
-        }
+    if (pixels) {
         s->tex_w = (int32_t)pixels->width;
         s->tex_h = (int32_t)pixels->height;
         s->frame_w = s->tex_w;
@@ -435,30 +432,23 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     double sx;
     double sy;
     double dot;
-    double up_len;
     sprite3d_normalize3(&rx, &ry, &rz, 1.0, 0.0, 0.0);
     sprite3d_normalize3(&ux, &uy, &uz, 0.0, 1.0, 0.0);
     dot = rx * ux + ry * uy + rz * uz;
     ux -= rx * dot;
     uy -= ry * dot;
     uz -= rz * dot;
-    up_len = sqrt(ux * ux + uy * uy + uz * uz);
-    if (!isfinite(up_len) || up_len <= 1e-12) {
+    if (!sprite3d_normalize3(&ux, &uy, &uz, 0.0, 0.0, 0.0)) {
         sprite3d_perpendicular_seed(rx, ry, rz, &ux, &uy, &uz);
         dot = rx * ux + ry * uy + rz * uz;
         ux -= rx * dot;
         uy -= ry * dot;
         uz -= rz * dot;
-        up_len = sqrt(ux * ux + uy * uy + uz * uz);
-    }
-    if (isfinite(up_len) && up_len > 1e-12) {
-        ux /= up_len;
-        uy /= up_len;
-        uz /= up_len;
-    } else {
-        ux = 0.0;
-        uy = 1.0;
-        uz = 0.0;
+        if (!sprite3d_normalize3(&ux, &uy, &uz, 0.0, 1.0, 0.0)) {
+            ux = 0.0;
+            uy = 1.0;
+            uz = 0.0;
+        }
     }
 
     sx = sprite3d_positive_scale_or(s->scale_wh[0], 1.0);
@@ -568,8 +558,10 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     rt_mesh3d_add_triangle(mesh, 0, 2, 3);
 
     /* Keep cached runtime objects alive until the deferred frame submission completes. */
-    rt_canvas3d_add_temp_object(canvas, mesh);
-    rt_canvas3d_add_temp_object(canvas, s->cached_material);
+    if (!rt_canvas3d_add_temp_object(canvas, mesh))
+        return;
+    if (!rt_canvas3d_add_temp_object(canvas, s->cached_material))
+        return;
 
     double model[16];
     sprite3d_origin_model_matrix(origin, model);
