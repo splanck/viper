@@ -110,6 +110,8 @@ static double g_navagent3d_max_reach = 0.0;
 
 static void navagent_grid_refresh(rt_navagent3d *agent);
 static void navagent_grid_remove(rt_navagent3d *agent);
+static double navagent_clamp_abs_or(double value, double fallback, double max_abs);
+static double navagent_coord_or(double value, double fallback);
 
 /// @brief Validate @p obj as a NavAgent3D handle and return its typed pointer (NULL on mismatch).
 static rt_navagent3d *navagent3d_checked(void *obj) {
@@ -143,13 +145,37 @@ static void navagent_unregister(rt_navagent3d *agent) {
 
 /// @brief Squared length of a 3-vector; avoids a sqrt when only ordering/thresholding matters.
 static double navagent_len_sq(const double v[3]) {
-    double len_sq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
-    return isfinite(len_sq) && len_sq >= 0.0 ? len_sq : 0.0;
+    double x = v ? navagent_coord_or(v[0], 0.0) : 0.0;
+    double y = v ? navagent_coord_or(v[1], 0.0) : 0.0;
+    double z = v ? navagent_coord_or(v[2], 0.0) : 0.0;
+    double max_abs = fmax(fabs(x), fmax(fabs(y), fabs(z)));
+    double len_sq;
+    if (!isfinite(max_abs))
+        return DBL_MAX;
+    if (max_abs == 0.0)
+        return 0.0;
+    x /= max_abs;
+    y /= max_abs;
+    z /= max_abs;
+    if (max_abs > sqrt(DBL_MAX / (x * x + y * y + z * z)))
+        return DBL_MAX;
+    len_sq = max_abs * max_abs * (x * x + y * y + z * z);
+    return isfinite(len_sq) && len_sq >= 0.0 ? len_sq : DBL_MAX;
 }
 
 /// @brief Euclidean length of a 3-vector (`sqrt` of the squared length).
 static double navagent_len(const double v[3]) {
-    double len = sqrt(navagent_len_sq(v));
+    double x = v ? navagent_coord_or(v[0], 0.0) : 0.0;
+    double y = v ? navagent_coord_or(v[1], 0.0) : 0.0;
+    double z = v ? navagent_coord_or(v[2], 0.0) : 0.0;
+    double max_abs = fmax(fabs(x), fmax(fabs(y), fabs(z)));
+    double len = 0.0;
+    if (isfinite(max_abs) && max_abs > 0.0) {
+        x /= max_abs;
+        y /= max_abs;
+        z /= max_abs;
+        len = max_abs * sqrt(x * x + y * y + z * z);
+    }
     return isfinite(len) ? len : 0.0;
 }
 
@@ -183,19 +209,13 @@ static double navagent_nonnegative_capped_or(double value, double fallback, doub
     return value;
 }
 
-/// @brief Squared Euclidean distance between two points — cheaper when only compared to another
-///   squared value (corner-tolerance checks use this to skip the sqrt).
-static double navagent_dist_sq(const double a[3], const double b[3]) {
-    double dx = a[0] - b[0];
-    double dy = a[1] - b[1];
-    double dz = a[2] - b[2];
-    double dist_sq = dx * dx + dy * dy + dz * dz;
-    return isfinite(dist_sq) && dist_sq >= 0.0 ? dist_sq : DBL_MAX;
-}
-
 /// @brief Euclidean distance between two points.
 static double navagent_dist(const double a[3], const double b[3]) {
-    double dist = sqrt(navagent_dist_sq(a, b));
+    double dx = navagent_coord_or(a ? a[0] : 0.0, 0.0) - navagent_coord_or(b ? b[0] : 0.0, 0.0);
+    double dy = navagent_coord_or(a ? a[1] : 0.0, 0.0) - navagent_coord_or(b ? b[1] : 0.0, 0.0);
+    double dz = navagent_coord_or(a ? a[2] : 0.0, 0.0) - navagent_coord_or(b ? b[2] : 0.0, 0.0);
+    double delta[3] = {dx, dy, dz};
+    double dist = navagent_len(delta);
     return isfinite(dist) ? dist : DBL_MAX;
 }
 
@@ -225,6 +245,17 @@ static void navagent_release_ref(void **slot) {
     if (rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
+}
+
+/// @brief Release a retained Graphics3D binding only if it still has the expected class.
+static void navagent_release_class_ref(void **slot, int64_t class_id) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, class_id)) {
+        *slot = NULL;
+        return;
+    }
+    navagent_release_ref(slot);
 }
 
 /// @brief Release a locally-held GC reference, freeing the object if the refcount reaches zero.
@@ -284,12 +315,10 @@ static double navagent_effective_avoidance_radius(const rt_navagent3d *agent) {
 ///   query.
 static double navagent_reach(const rt_navagent3d *agent) {
     double r = navagent_effective_avoidance_radius(agent);
-    double s = navagent_nonnegative_capped_or(agent ? agent->desired_speed : 0.0,
-                                              0.0,
-                                              NAVAGENT_SPEED_MAX);
-    return navagent_nonnegative_capped_or(r + s * NAVAGENT_RVO_MAX_TIME_HORIZON,
-                                          0.0,
-                                          NAVAGENT_DISTANCE_MAX);
+    double s =
+        navagent_nonnegative_capped_or(agent ? agent->desired_speed : 0.0, 0.0, NAVAGENT_SPEED_MAX);
+    return navagent_nonnegative_capped_or(
+        r + s * NAVAGENT_RVO_MAX_TIME_HORIZON, 0.0, NAVAGENT_DISTANCE_MAX);
 }
 
 /// @brief Quantize a world coordinate to its spatial-grid cell index (clamped to ±1e9; 0 if
@@ -752,7 +781,8 @@ static void navagent_sample_point(rt_navagent3d *agent, const double src[3], dou
     }
     double clean[3];
     navagent_vec_copy(clean, src);
-    if (!agent->navmesh) {
+    if (!agent->navmesh || !rt_g3d_has_class(agent->navmesh, RT_G3D_NAVMESH3D_CLASS_ID)) {
+        agent->navmesh = NULL;
         navagent_vec_copy(dst, clean);
         return;
     }
@@ -773,7 +803,8 @@ static void navagent_get_node_world_position(void *node, double out_pos[3]) {
         navagent_vec_set(out_pos, 0.0, 0.0, 0.0);
         return;
     }
-    if (!rt_scene_node3d_get_world_position_components(node, &out_pos[0], &out_pos[1], &out_pos[2])) {
+    if (!rt_scene_node3d_get_world_position_components(
+            node, &out_pos[0], &out_pos[1], &out_pos[2])) {
         void *local = rt_scene_node3d_get_position(node);
         navagent_vec_set(out_pos,
                          local ? rt_vec3_x(local) : 0.0,
@@ -830,6 +861,11 @@ static void navagent_set_node_world_position(void *node, const double world_pos[
 static void navagent_sync_position_from_bindings(rt_navagent3d *agent) {
     if (!agent)
         return;
+    if (agent->bound_character &&
+        !rt_g3d_has_class(agent->bound_character, RT_G3D_CHARACTER3D_CLASS_ID))
+        agent->bound_character = NULL;
+    if (agent->bound_node && !rt_g3d_has_class(agent->bound_node, RT_G3D_SCENENODE3D_CLASS_ID))
+        agent->bound_node = NULL;
     if (agent->bound_character) {
         void *pos = rt_character3d_get_position(agent->bound_character);
         navagent_vec_set(agent->position,
@@ -852,6 +888,11 @@ static void navagent_sync_position_from_bindings(rt_navagent3d *agent) {
 static void navagent_push_position_to_bindings(rt_navagent3d *agent) {
     if (!agent)
         return;
+    if (agent->bound_character &&
+        !rt_g3d_has_class(agent->bound_character, RT_G3D_CHARACTER3D_CLASS_ID))
+        agent->bound_character = NULL;
+    if (agent->bound_node && !rt_g3d_has_class(agent->bound_node, RT_G3D_SCENENODE3D_CLASS_ID))
+        agent->bound_node = NULL;
     if (agent->bound_character) {
         rt_character3d_set_position(
             agent->bound_character, agent->position[0], agent->position[1], agent->position[2]);
@@ -919,6 +960,8 @@ static void navagent_rebuild_path(rt_navagent3d *agent) {
         return;
     navagent_clear_path(agent);
     agent->repath_accum = 0.0;
+    if (agent->navmesh && !rt_g3d_has_class(agent->navmesh, RT_G3D_NAVMESH3D_CLASS_ID))
+        agent->navmesh = NULL;
     if (!agent->navmesh || !agent->has_target) {
         navagent_zero_motion(agent);
         return;
@@ -969,9 +1012,9 @@ static void navagent_finalize(void *obj) {
     navagent_unregister(agent);
     free(agent->path_points_xyz);
     agent->path_points_xyz = NULL;
-    navagent_release_ref(&agent->navmesh);
-    navagent_release_ref(&agent->bound_character);
-    navagent_release_ref(&agent->bound_node);
+    navagent_release_class_ref(&agent->navmesh, RT_G3D_NAVMESH3D_CLASS_ID);
+    navagent_release_class_ref(&agent->bound_character, RT_G3D_CHARACTER3D_CLASS_ID);
+    navagent_release_class_ref(&agent->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
 }
 
 /// @brief Create a navigation agent that pathfinds across `navmesh`. `radius` and `height`
@@ -1087,7 +1130,8 @@ void rt_navagent3d_update(void *obj, double dt) {
                            next_point[1] - agent->position[1],
                            next_point[2] - agent->position[2]};
         double dist = navagent_len(delta);
-        double speed = navagent_nonnegative_capped_or(agent->desired_speed, 0.0, NAVAGENT_SPEED_MAX);
+        double speed =
+            navagent_nonnegative_capped_or(agent->desired_speed, 0.0, NAVAGENT_SPEED_MAX);
         if (dist <= 1e-9) {
             navagent_refresh_path_index(agent);
             navagent_zero_motion(agent);
@@ -1136,8 +1180,7 @@ void rt_navagent3d_update(void *obj, double dt) {
         navagent_clamp_abs_or((agent->position[2] - prev_pos[2]) / dt, 0.0, NAVAGENT_SPEED_MAX);
     navagent_refresh_path_index(agent);
     agent->remaining_distance = navagent_compute_remaining_distance(agent);
-    if (agent->has_target &&
-        navagent_dist(agent->position, agent->target) <= stopping_distance) {
+    if (agent->has_target && navagent_dist(agent->position, agent->target) <= stopping_distance) {
         agent->has_path = 0;
         agent->remaining_distance = 0.0;
         navagent_zero_motion(agent);
@@ -1302,7 +1345,7 @@ void rt_navagent3d_bind_character(void *obj, void *controller) {
         return;
     if (controller)
         rt_obj_retain_maybe(controller);
-    navagent_release_ref(&agent->bound_character);
+    navagent_release_class_ref(&agent->bound_character, RT_G3D_CHARACTER3D_CLASS_ID);
     agent->bound_character = controller;
     navagent_sync_position_from_bindings(agent);
     if (agent->bound_character && agent->bound_node)
@@ -1321,7 +1364,7 @@ void rt_navagent3d_bind_node(void *obj, void *node) {
         return;
     if (node)
         rt_obj_retain_maybe(node);
-    navagent_release_ref(&agent->bound_node);
+    navagent_release_class_ref(&agent->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
     agent->bound_node = node;
     if (agent->bound_character) {
         navagent_sync_position_from_bindings(agent);

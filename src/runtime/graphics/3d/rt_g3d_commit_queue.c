@@ -87,8 +87,10 @@ int8_t rt_g3d_commit_queue_enqueue_cost(void *obj,
     if (rt_concqueue_get_is_closed(queue->items))
         return 0;
     rt_g3d_commit_item *item = (rt_g3d_commit_item *)malloc(sizeof(rt_g3d_commit_item));
-    if (!item)
+    if (!item) {
         rt_trap("Graphics3D commit queue: memory allocation failed");
+        return 0;
+    }
     item->fn = fn;
     item->user_data = user_data;
     item->cost = cost;
@@ -144,9 +146,11 @@ int64_t rt_g3d_commit_queue_drain_budget(void *obj, int64_t max_items, uint64_t 
         void *user_data = item->user_data;
         item_cost = item->cost;
         free(item);
-        fn(user_data);
-        count++;
-        cost = rt_g3d_commit_queue_cost_add(cost, item_cost);
+        if (fn) {
+            fn(user_data);
+            count++;
+            cost = rt_g3d_commit_queue_cost_add(cost, item_cost);
+        }
     }
     if (count > 0)
         __atomic_fetch_add(&queue->drained, count, __ATOMIC_RELAXED);
@@ -163,7 +167,8 @@ int64_t rt_g3d_commit_queue_pending(void *obj) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue || !queue->items)
         return 0;
-    return rt_concqueue_len(queue->items);
+    int64_t pending = rt_concqueue_len(queue->items);
+    return pending > 0 ? pending : 0;
 }
 
 /// @brief Total commits ever accepted by the queue (monotonic counter).
@@ -171,7 +176,8 @@ int64_t rt_g3d_commit_queue_submitted(void *obj) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue)
         return 0;
-    return __atomic_load_n(&queue->submitted, __ATOMIC_RELAXED);
+    int64_t submitted = __atomic_load_n(&queue->submitted, __ATOMIC_RELAXED);
+    return submitted > 0 ? submitted : 0;
 }
 
 /// @brief Total commits ever run by a drain call (monotonic counter).
@@ -179,5 +185,6 @@ int64_t rt_g3d_commit_queue_drained(void *obj) {
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue)
         return 0;
-    return __atomic_load_n(&queue->drained, __ATOMIC_RELAXED);
+    int64_t drained = __atomic_load_n(&queue->drained, __ATOMIC_RELAXED);
+    return drained > 0 ? drained : 0;
 }

@@ -70,6 +70,8 @@ static void texatlas3d_release_ref(void **slot) {
 ///   as a separate Pixels object rebuilt from the backing buffer.
 static void texatlas3d_finalizer(void *obj) {
     rt_texatlas3d *a = (rt_texatlas3d *)obj;
+    if (!a)
+        return;
     free(a->data);
     a->data = NULL;
     texatlas3d_release_ref(&a->cached_pixels);
@@ -91,6 +93,61 @@ static int texatlas3d_pixel_count(int32_t width, int32_t height, size_t *out_cou
         return 0;
     *out_count = count;
     return 1;
+}
+
+/// @brief Number of region slots safe to read after clamping corrupt private counts.
+static int32_t texatlas3d_safe_region_count(const rt_texatlas3d *a) {
+    if (!a || a->region_count <= 0)
+        return 0;
+    return a->region_count < ATLAS_MAX_REGIONS ? a->region_count : ATLAS_MAX_REGIONS;
+}
+
+/// @brief Validate and compact atlas metadata before reads or packing mutations.
+static void texatlas3d_repair(rt_texatlas3d *a) {
+    if (!a)
+        return;
+    size_t pixel_count = 0u;
+    if (!a->data || a->width < 16 || a->height < 16 || a->width > 8192 || a->height > 8192 ||
+        !texatlas3d_pixel_count(a->width, a->height, &pixel_count)) {
+        a->region_count = 0;
+        a->shelf_x = 0;
+        a->shelf_y = 0;
+        a->shelf_h = 0;
+        a->dirty = 1;
+        texatlas3d_release_ref(&a->cached_pixels);
+        return;
+    }
+    (void)pixel_count;
+    int32_t count = texatlas3d_safe_region_count(a);
+    int32_t write = 0;
+    for (int32_t read = 0; read < count; ++read) {
+        atlas_region_t r = a->regions[read];
+        if (r.w <= 0 || r.h <= 0 || r.x < 0 || r.y < 0 || r.x > a->width || r.y > a->height ||
+            r.w > a->width - r.x || r.h > a->height - r.y)
+            continue;
+        a->regions[write++] = r;
+    }
+    for (int32_t i = write; i < count; ++i)
+        memset(&a->regions[i], 0, sizeof(a->regions[i]));
+    a->region_count = write;
+    if (a->shelf_x < 0 || a->shelf_x > a->width)
+        a->shelf_x = 0;
+    if (a->shelf_y < 0 || a->shelf_y > a->height)
+        a->shelf_y = 0;
+    if (a->shelf_h < 0 || a->shelf_h > a->height - a->shelf_y)
+        a->shelf_h = 0;
+    a->dirty = a->dirty ? 1 : 0;
+}
+
+static void texatlas3d_full_uv(double *u0, double *v0, double *u1, double *v1) {
+    if (u0)
+        *u0 = 0.0;
+    if (v0)
+        *v0 = 0.0;
+    if (u1)
+        *u1 = 1.0;
+    if (v1)
+        *v1 = 1.0;
 }
 
 /// @brief Construct a 3D texture atlas with `width × height` blank pixels (zero-initialized).
@@ -142,6 +199,7 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     rt_texatlas3d *a = (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
     if (!a)
         return -1;
+    texatlas3d_repair(a);
     if (a->region_count >= ATLAS_MAX_REGIONS)
         return -1;
 
@@ -154,6 +212,8 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     int32_t ph = (int32_t)pv->height;
     int32_t tw = pw + 2; /* +2 for 1px border padding */
     int32_t th = ph + 2;
+    if (tw > a->width || th > a->height)
+        return -1;
 
     /* Try to fit on current shelf */
     if (tw > a->width - a->shelf_x) {
@@ -220,6 +280,9 @@ void *rt_texatlas3d_get_texture(void *obj) {
     rt_texatlas3d *a = (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
     if (!a)
         return NULL;
+    texatlas3d_repair(a);
+    if (!a->data)
+        return NULL;
 
     if (a->dirty || !a->cached_pixels) {
         size_t pixel_count;
@@ -252,16 +315,18 @@ void *rt_texatlas3d_get_texture(void *obj) {
 /// return the full atlas rect (0..1) so missing textures degrade visibly rather than silently.
 void rt_texatlas3d_get_uv_rect(
     void *obj, int64_t id, double *u0, double *v0, double *u1, double *v1) {
-    if (!obj || !u0 || !v0 || !u1 || !v1)
+    if (!u0 || !v0 || !u1 || !v1)
+        return;
+    texatlas3d_full_uv(u0, v0, u1, v1);
+    if (!obj)
         return;
     rt_texatlas3d *a = (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
     if (!a)
         return;
-    if (id < 0 || id >= a->region_count) {
-        *u0 = *v0 = 0.0;
-        *u1 = *v1 = 1.0;
+    texatlas3d_repair(a);
+    int32_t region_count = texatlas3d_safe_region_count(a);
+    if (id < 0 || id >= region_count)
         return;
-    }
     atlas_region_t *r = &a->regions[id];
     *u0 = (double)r->x / a->width;
     *v0 = (double)r->y / a->height;

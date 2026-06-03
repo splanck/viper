@@ -128,6 +128,17 @@ static void sound3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Release a retained Graphics3D slot only when it still has the expected class.
+static void sound3d_release_class_ref(void **slot, int64_t class_id) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, class_id)) {
+        *slot = NULL;
+        return;
+    }
+    sound3d_release_ref(slot);
+}
+
 /// @brief Drop one reference and free if zero. Safe on NULL.
 static void sound3d_release_local(void *obj) {
     if (obj && rt_obj_release_check0(obj))
@@ -419,8 +430,18 @@ static void sound3d_get_node_world_direction(void *node,
     out_direction[0] = direction_xyz[0] - origin_xyz[0];
     out_direction[1] = direction_xyz[1] - origin_xyz[1];
     out_direction[2] = direction_xyz[2] - origin_xyz[2];
-    len = sqrt(out_direction[0] * out_direction[0] + out_direction[1] * out_direction[1] +
-               out_direction[2] * out_direction[2]);
+    {
+        double max_abs =
+            fmax(fabs(out_direction[0]), fmax(fabs(out_direction[1]), fabs(out_direction[2])));
+        if (isfinite(max_abs) && max_abs > 0.0) {
+            double x = out_direction[0] / max_abs;
+            double y = out_direction[1] / max_abs;
+            double z = out_direction[2] / max_abs;
+            len = max_abs * sqrt(x * x + y * y + z * z);
+        } else {
+            len = 0.0;
+        }
+    }
     if (!isfinite(len) || len <= 1e-8) {
         sound3d_copy3(out_direction, fallback);
         return;
@@ -475,28 +496,42 @@ static void sound3d_listener_sync_binding(rt_soundlistener3d *listener, double d
         return;
 
     if (listener->bound_camera) {
-        void *camera_position = rt_camera3d_get_position(listener->bound_camera);
-        void *camera_forward = rt_camera3d_get_forward(listener->bound_camera);
-        sound3d_vec_from_obj(camera_position, position);
-        sound3d_vec_from_obj(camera_forward, forward);
-        sound3d_copy3(up, listener->state.up);
-        sound3d_release_local(camera_position);
-        sound3d_release_local(camera_forward);
-        sound3d_update_velocity(listener->state.velocity,
-                                listener->last_sync_position,
-                                &listener->has_last_sync_position,
-                                position,
-                                dt);
-        rt_sound3d_listener_state_set_pose(
-            &listener->state, position, forward, up, listener->state.velocity);
-        sound3d_listener_push_active_state(listener);
-        return;
+        void *camera = rt_g3d_has_class(listener->bound_camera, RT_G3D_CAMERA3D_CLASS_ID)
+                           ? listener->bound_camera
+                           : NULL;
+        if (!camera) {
+            listener->bound_camera = NULL;
+        } else {
+            void *camera_position = rt_camera3d_get_position(camera);
+            void *camera_forward = rt_camera3d_get_forward(camera);
+            sound3d_vec_from_obj(camera_position, position);
+            sound3d_vec_from_obj(camera_forward, forward);
+            sound3d_copy3(up, listener->state.up);
+            sound3d_release_local(camera_position);
+            sound3d_release_local(camera_forward);
+            sound3d_update_velocity(listener->state.velocity,
+                                    listener->last_sync_position,
+                                    &listener->has_last_sync_position,
+                                    position,
+                                    dt);
+            rt_sound3d_listener_state_set_pose(
+                &listener->state, position, forward, up, listener->state.velocity);
+            sound3d_listener_push_active_state(listener);
+            return;
+        }
     }
 
     if (listener->bound_node) {
-        sound3d_get_node_world_position(listener->bound_node, position);
-        sound3d_get_node_world_forward(listener->bound_node, forward);
-        sound3d_get_node_world_up(listener->bound_node, up);
+        void *node = rt_g3d_has_class(listener->bound_node, RT_G3D_SCENENODE3D_CLASS_ID)
+                         ? listener->bound_node
+                         : NULL;
+        if (!node) {
+            listener->bound_node = NULL;
+            return;
+        }
+        sound3d_get_node_world_position(node, position);
+        sound3d_get_node_world_forward(node, forward);
+        sound3d_get_node_world_up(node, up);
         sound3d_update_velocity(listener->state.velocity,
                                 listener->last_sync_position,
                                 &listener->has_last_sync_position,
@@ -600,6 +635,10 @@ static void sound3d_source_sync_binding(rt_soundsource3d *source, double dt) {
     double position[3];
     if (!source || !source->bound_node)
         return;
+    if (!rt_g3d_has_class(source->bound_node, RT_G3D_SCENENODE3D_CLASS_ID)) {
+        source->bound_node = NULL;
+        return;
+    }
     sound3d_get_node_world_position(source->bound_node, position);
     sound3d_update_velocity(source->velocity,
                             source->last_sync_position,
@@ -627,8 +666,8 @@ static void sound3d_listener_finalize(void *obj) {
         rt_sound3d_clear_active_listener_state();
     }
     sound3d_listener_list_remove(listener);
-    sound3d_release_ref(&listener->bound_node);
-    sound3d_release_ref(&listener->bound_camera);
+    sound3d_release_class_ref(&listener->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
+    sound3d_release_class_ref(&listener->bound_camera, RT_G3D_CAMERA3D_CLASS_ID);
 }
 
 /// @brief GC finalizer for a 3D audio source.
@@ -648,7 +687,7 @@ static void sound3d_source_finalize(void *obj) {
     source->voice_id = 0;
     sound3d_source_list_remove(source);
     sound3d_release_ref(&source->sound);
-    sound3d_release_ref(&source->bound_node);
+    sound3d_release_class_ref(&source->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
 }
 
 /// @brief Per-frame tick: walk every live SoundListener3D and SoundSource3D, and re-resolve
@@ -846,9 +885,9 @@ void rt_soundlistener3d_bind_node(void *obj, void *node) {
         return;
     if (node)
         rt_obj_retain_maybe(node);
-    sound3d_release_ref(&listener->bound_node);
+    sound3d_release_class_ref(&listener->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
     listener->bound_node = node;
-    sound3d_release_ref(&listener->bound_camera);
+    sound3d_release_class_ref(&listener->bound_camera, RT_G3D_CAMERA3D_CLASS_ID);
     listener->has_last_sync_position = 0;
     sound3d_listener_sync_binding(listener, 0.0);
 }
@@ -859,7 +898,7 @@ void rt_soundlistener3d_clear_node_binding(void *obj) {
     rt_soundlistener3d *listener = sound3d_listener_checked(obj);
     if (!listener)
         return;
-    sound3d_release_ref(&listener->bound_node);
+    sound3d_release_class_ref(&listener->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
 }
 
 /// @brief Bind the listener to a Camera3D — preferred over node binding for FPS-style audio
@@ -872,9 +911,9 @@ void rt_soundlistener3d_bind_camera(void *obj, void *camera) {
         return;
     if (camera)
         rt_obj_retain_maybe(camera);
-    sound3d_release_ref(&listener->bound_camera);
+    sound3d_release_class_ref(&listener->bound_camera, RT_G3D_CAMERA3D_CLASS_ID);
     listener->bound_camera = camera;
-    sound3d_release_ref(&listener->bound_node);
+    sound3d_release_class_ref(&listener->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
     listener->has_last_sync_position = 0;
     sound3d_listener_sync_binding(listener, 0.0);
 }
@@ -884,7 +923,7 @@ void rt_soundlistener3d_clear_camera_binding(void *obj) {
     rt_soundlistener3d *listener = sound3d_listener_checked(obj);
     if (!listener)
         return;
-    sound3d_release_ref(&listener->bound_camera);
+    sound3d_release_class_ref(&listener->bound_camera, RT_G3D_CAMERA3D_CLASS_ID);
 }
 
 /// @brief Create a 3D-positioned audio source playing `sound`. Defaults: full-volume radius
@@ -1123,7 +1162,7 @@ void rt_soundsource3d_bind_node(void *obj, void *node) {
         return;
     if (node)
         rt_obj_retain_maybe(node);
-    sound3d_release_ref(&source->bound_node);
+    sound3d_release_class_ref(&source->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
     source->bound_node = node;
     source->has_last_sync_position = 0;
     sound3d_source_sync_binding(source, 0.0);
@@ -1134,7 +1173,7 @@ void rt_soundsource3d_clear_node_binding(void *obj) {
     rt_soundsource3d *source = sound3d_source_checked(obj);
     if (!source)
         return;
-    sound3d_release_ref(&source->bound_node);
+    sound3d_release_class_ref(&source->bound_node, RT_G3D_SCENENODE3D_CLASS_ID);
 }
 
 #else

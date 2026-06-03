@@ -67,6 +67,41 @@ static void node_anim_release_string_slot(rt_string *slot) {
     scene3d_release_ref((void **)slot);
 }
 
+/// @brief Release a retained NodeAnimation3D slot only if the handle still has that class.
+static void node_anim_release_clip_slot(rt_node_animation3d **slot) {
+    if (!slot || !*slot)
+        return;
+    if (!rt_g3d_has_class(*slot, RT_G3D_NODEANIMATION3D_CLASS_ID)) {
+        *slot = NULL;
+        return;
+    }
+    scene3d_release_ref((void **)slot);
+}
+
+/// @brief Compact an animator's clip table after private-state corruption.
+static void node_animator_repair_clips(rt_node_animator3d *animator) {
+    int32_t count;
+    int32_t write = 0;
+    if (!animator)
+        return;
+    count = scene3d_node_animator_clip_count(animator);
+    for (int32_t read = 0; read < count; ++read) {
+        rt_node_animation3d *clip = animator->animations[read];
+        if (rt_g3d_has_class(clip, RT_G3D_NODEANIMATION3D_CLASS_ID)) {
+            animator->animations[write++] = clip;
+        } else {
+            animator->animations[read] = NULL;
+        }
+    }
+    int32_t kept = write;
+    while (write < count)
+        animator->animations[write++] = NULL;
+    animator->animation_count = kept;
+    if (animator->current_animation < 0 || animator->current_animation >= animator->animation_count)
+        animator->current_animation = 0;
+    animator->playing = animator->playing ? 1 : 0;
+}
+
 /// @brief Return a C string only for live rt_string handles.
 static const char *node_anim_cstr_or_null(rt_string value) {
     return (value && rt_string_is_handle(value)) ? rt_string_cstr(value) : NULL;
@@ -135,12 +170,8 @@ void *rt_node_animation3d_new(rt_string name, double duration) {
 static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t needed) {
     if (!anim || needed < 0)
         return 0;
-    return scene3d_grow_array_i32((void **)&anim->channels,
-                                  &anim->channel_capacity,
-                                  needed,
-                                  4,
-                                  sizeof(*anim->channels),
-                                  1);
+    return scene3d_grow_array_i32(
+        (void **)&anim->channels, &anim->channel_capacity, needed, 4, sizeof(*anim->channels), 1);
 }
 
 /// @brief Validate raw channel sample data before it is copied into a clip.
@@ -173,8 +204,10 @@ static int node_animation_validate_channel_data(int64_t path,
         return 0;
     if (path == RT_NODE_ANIM_PATH_ROTATION && value_width != 4)
         return 0;
-    if (key_count > NODE_ANIM_KEY_COUNT_MAX || value_width < min_width ||
-        value_width > NODE_ANIM_VALUE_WIDTH_MAX)
+    if (key_count <= 0 || key_count > NODE_ANIM_KEY_COUNT_MAX || value_width < min_width ||
+        value_width > NODE_ANIM_VALUE_WIDTH_MAX || !times || !values)
+        return 0;
+    if (cubic && (!in_tangents || !out_tangents))
         return 0;
     if ((uint64_t)key_count > SIZE_MAX / (uint64_t)value_width)
         return 0;
@@ -220,9 +253,15 @@ static int node_anim_channel_runtime_valid(const rt_node_anim_channel3d *channel
     if (channel->interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE &&
         (!channel->in_tangents || !channel->out_tangents))
         return 0;
+    if ((uint64_t)channel->key_count > SIZE_MAX / (uint64_t)channel->value_width)
+        return 0;
     value_count = (int64_t)channel->key_count * (int64_t)channel->value_width;
-    if (value_count <= 0 || (uint64_t)channel->key_count > SIZE_MAX / sizeof(double) ||
+    if (value_count <= 0 || value_count > NODE_ANIM_VALUE_COUNT_MAX ||
+        (uint64_t)channel->key_count > SIZE_MAX / sizeof(double) ||
         (uint64_t)value_count > SIZE_MAX / sizeof(float))
+        return 0;
+    if (!isfinite(channel->times[0]) || !isfinite(channel->times[channel->key_count - 1]) ||
+        channel->times[0] < 0.0 || channel->times[channel->key_count - 1] > NODE_ANIM_TIME_MAX)
         return 0;
     return 1;
 }
@@ -429,9 +468,10 @@ static void rt_node_animator3d_finalize(void *obj) {
     int32_t clip_count;
     if (!animator)
         return;
+    node_animator_repair_clips(animator);
     clip_count = scene3d_node_animator_clip_count(animator);
     for (int32_t i = 0; i < clip_count; i++)
-        scene3d_release_ref((void **)&animator->animations[i]);
+        node_anim_release_clip_slot(&animator->animations[i]);
     free(animator->animations);
     animator->animations = NULL;
     animator->animation_count = 0;
@@ -494,6 +534,7 @@ void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count) {
 ///   quaternion from a non-degenerate rotation.
 /// @param q float[4] quaternion in (x, y, z, w) order; modified in-place.
 static void node_anim_normalize_quat(float *q) {
+    float max_abs;
     float len;
     if (!q)
         return;
@@ -504,6 +545,18 @@ static void node_anim_normalize_quat(float *q) {
         q[3] = 1.0f;
         return;
     }
+    max_abs = fmaxf(fmaxf(fabsf(q[0]), fabsf(q[1])), fmaxf(fabsf(q[2]), fabsf(q[3])));
+    if (!isfinite(max_abs) || max_abs <= 1e-20f) {
+        q[0] = 0.0f;
+        q[1] = 0.0f;
+        q[2] = 0.0f;
+        q[3] = 1.0f;
+        return;
+    }
+    q[0] /= max_abs;
+    q[1] /= max_abs;
+    q[2] /= max_abs;
+    q[3] /= max_abs;
     len = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
     if (len > 1e-8f) {
         q[0] /= len;
@@ -829,8 +882,7 @@ static rt_scene_node3d *node_anim_resolve_target(rt_scene_node3d *root,
             channel->cached_target->import_index == channel->target_node_index &&
             scene_node_is_descendant_of(root, channel->cached_target))
             return channel->cached_target;
-        channel->cached_target =
-            node_anim_find_by_import_index(root, channel->target_node_index);
+        channel->cached_target = node_anim_find_by_import_index(root, channel->target_node_index);
         channel->cached_root = channel->cached_target ? root : NULL;
         if (channel->cached_target)
             return channel->cached_target;
@@ -967,6 +1019,11 @@ void node_animator_update(rt_node_animator3d *animator, double dt) {
     int32_t channel_count;
     if (!animator || !animator->playing || !animator->root)
         return;
+    if (!rt_g3d_has_class(animator->root, RT_G3D_SCENENODE3D_CLASS_ID)) {
+        animator->root = NULL;
+        return;
+    }
+    node_animator_repair_clips(animator);
     clip_count = scene3d_node_animator_clip_count(animator);
     if (clip_count <= 0)
         return;

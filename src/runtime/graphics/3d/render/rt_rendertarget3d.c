@@ -51,7 +51,8 @@ extern void *rt_pixels_new(int64_t width, int64_t height);
 //=============================================================================
 
 /// @brief Multiply two size_t values with overflow detection, writing the product to *@p out.
-/// @return 1 with *@p out set on success; 0 (with *@p out cleared) when @p out is NULL or @p a * @p b
+/// @return 1 with *@p out set on success; 0 (with *@p out cleared) when @p out is NULL or @p a * @p
+/// b
 ///   would exceed SIZE_MAX.
 static int rt_checked_mul_size(size_t a, size_t b, size_t *out) {
     if (out)
@@ -103,7 +104,8 @@ static vgfx3d_rendertarget_t *rt_alloc(int32_t w,
     vgfx3d_rendertarget_t *rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
     if (!rt)
         return NULL;
-    if (w > INT32_MAX / 4 || !rt_rendertarget_estimate_bytes(w, h, color_format, &estimated_bytes)) {
+    if (w > INT32_MAX / 4 ||
+        !rt_rendertarget_estimate_bytes(w, h, color_format, &estimated_bytes)) {
         free(rt);
         return NULL;
     }
@@ -137,6 +139,8 @@ static void rt_free(vgfx3d_rendertarget_t *rt) {
 /// finalizer only owns `target` itself, not the canvas pointer.
 static void rt_rendertarget3d_finalize(void *obj) {
     rt_rendertarget3d *rtd = (rt_rendertarget3d *)obj;
+    if (!rtd)
+        return;
     if (rtd->target) {
         rt_free(rtd->target);
         rtd->target = NULL;
@@ -216,13 +220,21 @@ void *rt_rendertarget3d_new_hdr(int64_t width, int64_t height) {
 /// @brief Get the width of the render target in pixels.
 int64_t rt_rendertarget3d_get_width(void *obj) {
     rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
-    return (rtd && rtd->width > 0) ? rtd->width : 0;
+    if (!rtd || !rtd->target || rtd->width <= 0 || rtd->width > VGFX3D_RENDERTARGET_DIM_MAX ||
+        rtd->target->width <= 0 || rtd->target->width > VGFX3D_RENDERTARGET_DIM_MAX ||
+        rtd->target->width != rtd->width)
+        return 0;
+    return rtd->target->width;
 }
 
 /// @brief Get the height of the render target in pixels.
 int64_t rt_rendertarget3d_get_height(void *obj) {
     rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
-    return (rtd && rtd->height > 0) ? rtd->height : 0;
+    if (!rtd || !rtd->target || rtd->height <= 0 || rtd->height > VGFX3D_RENDERTARGET_DIM_MAX ||
+        rtd->target->height <= 0 || rtd->target->height > VGFX3D_RENDERTARGET_DIM_MAX ||
+        rtd->target->height != rtd->height)
+        return 0;
+    return rtd->target->height;
 }
 
 /// @brief Return whether the target stores HDR color on the GPU path.
@@ -244,6 +256,9 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
     if (!rtd)
         return NULL;
     if (!rtd->target)
+        return NULL;
+    size_t color_bytes = 0u;
+    if (!vgfx3d_rendertarget_valid_color_layout(rtd->target, &color_bytes) || color_bytes == 0u)
         return NULL;
     if (!vgfx3d_rendertarget_ensure_color(rtd->target))
         return NULL;

@@ -359,7 +359,14 @@ void *rt_path3d_get_direction_at(void *obj, double t) {
     double dx = p1x - p0x;
     double dy = p1y - p0y;
     double dz = p1z - p0z;
-    double len = sqrt(dx * dx + dy * dy + dz * dz);
+    double max_abs = fmax(fabs(dx), fmax(fabs(dy), fabs(dz)));
+    double len = 0.0;
+    if (isfinite(max_abs) && max_abs > 0.0) {
+        double sx = dx / max_abs;
+        double sy = dy / max_abs;
+        double sz = dz / max_abs;
+        len = max_abs * sqrt(sx * sx + sy * sy + sz * sz);
+    }
     if (isfinite(len) && len > 1e-8) {
         dx /= len;
         dy /= len;
@@ -396,7 +403,14 @@ double rt_path3d_get_length(void *obj) {
         path3d_eval_position(p, t, &x, &y, &z);
         if (i > 0) {
             double dx = x - prev_x, dy = y - prev_y, dz = z - prev_z;
-            double segment = sqrt(dx * dx + dy * dy + dz * dz);
+            double max_abs = fmax(fabs(dx), fmax(fabs(dy), fabs(dz)));
+            double segment = 0.0;
+            if (isfinite(max_abs) && max_abs > 0.0) {
+                double sx = dx / max_abs;
+                double sy = dy / max_abs;
+                double sz = dz / max_abs;
+                segment = max_abs * sqrt(sx * sx + sy * sy + sz * sz);
+            }
             if (isfinite(segment))
                 total += segment;
             if (total > PATH3D_LENGTH_MAX) {

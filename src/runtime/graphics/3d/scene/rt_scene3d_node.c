@@ -82,6 +82,8 @@ static void scene_node_release_string_slot(rt_string *slot) {
 static void scene_node_assign_class_ref(void **slot, void *value, int64_t class_id) {
     if (!slot || *slot == value)
         return;
+    if (value && !rt_g3d_has_class(value, class_id))
+        return;
     rt_obj_retain_maybe(value);
     scene_node_release_class_slot(slot, class_id);
     *slot = value;
@@ -107,6 +109,17 @@ static rt_scene_node3d *scene_node_ref(void *ref) {
 /// @brief Class-checked cast of an opaque handle to a NodeAnimator3D, or NULL on mismatch.
 static rt_node_animator3d *scene_node_animator_ref(void *ref) {
     return (rt_node_animator3d *)rt_g3d_checked_or_null(ref, RT_G3D_NODEANIMATOR3D_CLASS_ID);
+}
+
+/// @brief Length of a 3D basis vector without overflowing on large finite matrix terms.
+static double scene_node_basis_length(double x, double y, double z) {
+    double max_abs = fmax(fabs(x), fmax(fabs(y), fabs(z)));
+    if (!isfinite(max_abs) || max_abs <= 0.0)
+        return max_abs == 0.0 ? 0.0 : 1.0;
+    x /= max_abs;
+    y /= max_abs;
+    z /= max_abs;
+    return max_abs * sqrt(x * x + y * y + z * z);
 }
 
 /*==========================================================================
@@ -294,8 +307,7 @@ void rt_scene_node3d_set_scale(void *obj, double x, double y, double z) {
     next[0] = scene3d_scale_or_unit(x);
     next[1] = scene3d_scale_or_unit(y);
     next[2] = scene3d_scale_or_unit(z);
-    if (n->scale_xyz[0] == next[0] && n->scale_xyz[1] == next[1] &&
-        n->scale_xyz[2] == next[2])
+    if (n->scale_xyz[0] == next[0] && n->scale_xyz[1] == next[1] && n->scale_xyz[2] == next[2])
         return;
     n->scale_xyz[0] = next[0];
     n->scale_xyz[1] = next[1];
@@ -382,9 +394,9 @@ void *rt_scene_node3d_get_world_scale(void *obj) {
         return rt_vec3_new(1.0, 1.0, 1.0);
     recompute_world_matrix(n);
     m = n->world_matrix;
-    sx = sqrt(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]);
-    sy = sqrt(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]);
-    sz = sqrt(m[2] * m[2] + m[6] * m[6] + m[10] * m[10]);
+    sx = scene_node_basis_length(m[0], m[4], m[8]);
+    sy = scene_node_basis_length(m[1], m[5], m[9]);
+    sz = scene_node_basis_length(m[2], m[6], m[10]);
     if (!isfinite(sx))
         sx = 1.0;
     if (!isfinite(sy))
@@ -416,7 +428,11 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
     /* Reject cycle formation by walking the proposed parent's ancestor chain.
      * The hierarchy is a tree, so this is equivalent to subtree search and avoids
      * scanning every descendant of large child subtrees on reparent. */
-    for (rt_scene_node3d *ancestor = parent; ancestor; ancestor = ancestor->parent) {
+    int32_t ancestor_guard = 0;
+    for (rt_scene_node3d *ancestor = parent; ancestor;
+         ancestor = scene_node_ref(ancestor->parent)) {
+        if (++ancestor_guard > 100000)
+            return 0;
         if (ancestor == child)
             return 0;
     }
@@ -450,8 +466,10 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
     rt_obj_retain_maybe(child);
     /* Detach from previous parent if any. The temporary retain above becomes
        the new parent's ownership after the old parent releases its reference. */
-    if (child->parent)
+    if (scene_node_ref(child->parent))
         rt_scene_node3d_remove_child(child->parent, child);
+    else if (child->parent)
+        child->parent = NULL;
     else if (child->owner_scene)
         scene_node_clear_owner_recursive(child, child->owner_scene);
 
@@ -482,7 +500,7 @@ void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
 
     parent->child_count = scene3d_node_child_count(parent);
     for (int32_t i = 0; i < parent->child_count; i++) {
-        if (parent->children[i] == child) {
+        if (scene_node_ref(parent->children[i]) == child) {
             /* Shift remaining children down */
             for (int32_t j = i; j < parent->child_count - 1; j++)
                 parent->children[j] = parent->children[j + 1];
@@ -804,16 +822,18 @@ void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
     rt_obj_retain_maybe(animator);
     node_animator = scene_node_animator_ref(animator);
     if (node_animator && node_animator->root && node_animator->root != node) {
-        rt_scene_node3d *old_root = node_animator->root;
-        if (old_root->bound_node_animator == animator)
+        rt_scene_node3d *old_root = scene_node_ref(node_animator->root);
+        if (!old_root) {
+            node_animator->root = NULL;
+        } else if (old_root->bound_node_animator == animator) {
             scene_node_release_class_slot(&old_root->bound_node_animator,
                                           RT_G3D_NODEANIMATOR3D_CLASS_ID);
-        else
+        } else {
             node_animator->root = NULL;
+        }
     }
     {
-        rt_node_animator3d *old_node_animator =
-            scene_node_animator_ref(node->bound_node_animator);
+        rt_node_animator3d *old_node_animator = scene_node_animator_ref(node->bound_node_animator);
         if (old_node_animator)
             old_node_animator->root = NULL;
     }

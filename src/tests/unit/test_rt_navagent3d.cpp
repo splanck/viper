@@ -531,6 +531,29 @@ static void test_navagent_rejects_wrong_handle_types() {
     EXPECT_NEAR(rt_vec3_z(pos), 0.0, 0.001, "NavAgent3D.Warp rejects non-Vec3 Z");
 }
 
+static void test_navagent_repairs_wrong_class_private_bindings() {
+    void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
+    void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
+    void *agent_obj = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    void *wrong_mesh = rt_mesh3d_new_plane(1.0, 1.0);
+    auto *agent = (NavAgent3DTestLayout *)agent_obj;
+    EXPECT_TRUE(agent != nullptr, "NavAgent3D.New creates an agent for binding repair test");
+
+    agent->navmesh = wrong_mesh;
+    agent->bound_character = wrong_mesh;
+    agent->bound_node = wrong_mesh;
+    rt_navagent3d_set_target(agent_obj,
+                             rt_vec3_new(std::numeric_limits<double>::infinity(), 0.0, -1.0e300));
+    rt_navagent3d_update(agent_obj, 0.1);
+
+    EXPECT_TRUE(agent->navmesh == nullptr, "NavAgent3D drops wrong-class private navmesh slots");
+    EXPECT_TRUE(agent->bound_character == nullptr,
+                "NavAgent3D drops wrong-class private character slots");
+    EXPECT_TRUE(agent->bound_node == nullptr, "NavAgent3D drops wrong-class private node slots");
+    EXPECT_TRUE(std::isfinite(agent->target[0]) && std::isfinite(agent->target[2]),
+                "NavAgent3D clamps extreme private target coordinates through SetTarget");
+}
+
 static void test_navagent_getters_sanitize_corrupt_private_state() {
     void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
     void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
@@ -569,6 +592,7 @@ int main() {
     test_navagent_avoidance_grid_matches_full_scan();
     test_navagent_agent_count_perf_target();
     test_navagent_rejects_wrong_handle_types();
+    test_navagent_repairs_wrong_class_private_bindings();
     test_navagent_getters_sanitize_corrupt_private_state();
 
     std::printf("NavAgent3D tests: %d/%d passed\n", tests_passed, tests_run);

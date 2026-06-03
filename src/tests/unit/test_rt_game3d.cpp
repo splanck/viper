@@ -28,13 +28,13 @@
 #include "rt_mat4.h"
 #include "rt_model3d.h"
 #include "rt_navmesh3d.h"
+#include "rt_object.h"
 #include "rt_particles3d.h"
 #include "rt_physics3d.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
-#include "rt_object.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include "rt_sound3d.h"
@@ -1067,14 +1067,15 @@ static bool test_world_entity_registry_and_collision_clear() {
     rt_pixels_set(sky_px, 0, 0, 0xFFFFFFFF);
     void *bad_skybox = rt_cubemap3d_new(sky_px, sky_px, sky_px, sky_px, sky_px, sky_px);
     ((rt_cubemap3d *)bad_skybox)->face_size = 2;
-    EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_world_set_skybox(world, bad_skybox); },
-                                     "CubeMap3D"),
-                "World3D.setSkybox rejects incomplete CubeMap3D handles");
+    EXPECT_TRUE(
+        expect_trap_contains([&] { rt_game3d_world_set_skybox(world, bad_skybox); }, "CubeMap3D"),
+        "World3D.setSkybox rejects incomplete CubeMap3D handles");
     EXPECT_TRUE(((rt_canvas3d *)rt_game3d_world_get_canvas(world))->skybox == nullptr,
                 "World3D.setSkybox leaves canvas skybox clear after rejecting incomplete cubemaps");
     void *good_skybox = rt_cubemap3d_new(sky_px, sky_px, sky_px, sky_px, sky_px, sky_px);
     auto *canvas_state = (rt_canvas3d *)rt_game3d_world_get_canvas(world);
-    EXPECT_TRUE(good_skybox != nullptr && canvas_state != nullptr, "World3D skybox repair fixture exists");
+    EXPECT_TRUE(good_skybox != nullptr && canvas_state != nullptr,
+                "World3D skybox repair fixture exists");
     if (good_skybox && canvas_state) {
         rt_game3d_world_set_skybox(world, good_skybox);
         EXPECT_TRUE(canvas_state->skybox == (rt_cubemap3d *)good_skybox,
@@ -1084,9 +1085,9 @@ static bool test_world_entity_registry_and_collision_clear() {
         canvas_state->skybox_cpu_cache_h = 1;
         canvas_state->skybox_cpu_cache_generation = 7;
         ((rt_cubemap3d *)good_skybox)->face_size = 2;
-        EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_world_set_skybox(world, parent); },
-                                         "CubeMap3D"),
-                    "World3D.setSkybox still rejects non-CubeMap3D replacements");
+        EXPECT_TRUE(
+            expect_trap_contains([&] { rt_game3d_world_set_skybox(world, parent); }, "CubeMap3D"),
+            "World3D.setSkybox still rejects non-CubeMap3D replacements");
         EXPECT_TRUE(canvas_state->skybox == nullptr,
                     "World3D.setSkybox repairs a stale bound canvas skybox before rejecting");
         EXPECT_TRUE(canvas_state->skybox_cpu_cache == nullptr &&
@@ -1333,9 +1334,8 @@ static bool test_entity_private_slots_reject_wrong_class_refs() {
     auto *view = static_cast<Game3DEntityTestLayout *>(entity);
 
     view->id = -42;
-    EXPECT_EQ_INT(rt_game3d_entity_get_id(entity),
-                  0,
-                  "negative corrupt entity ids read back as unassigned");
+    EXPECT_EQ_INT(
+        rt_game3d_entity_get_id(entity), 0, "negative corrupt entity ids read back as unassigned");
     view->id = 0;
     view->layer = 0;
     EXPECT_EQ_INT(rt_game3d_entity_get_layer(entity),
@@ -1508,8 +1508,7 @@ static bool test_entity_child_graph_reparents_and_rejects_cycles() {
 static bool test_entity_child_count_repair_bounds_tree_walks() {
     TEST("Entity3D repairs corrupt child counts before hierarchy traversal");
     void *ungrouped = rt_game3d_entity_new();
-    Game3DEntityTestLayout *ungrouped_layout =
-        static_cast<Game3DEntityTestLayout *>(ungrouped);
+    Game3DEntityTestLayout *ungrouped_layout = static_cast<Game3DEntityTestLayout *>(ungrouped);
     ungrouped_layout->children = nullptr;
     ungrouped_layout->child_count = INT32_MAX;
     ungrouped_layout->child_capacity = 0;
@@ -1597,9 +1596,8 @@ static bool test_frame_loop_manual_frame_and_final_capture() {
                 "runFrames propagates callback traps");
     EXPECT_EQ_INT(canvas_state->input_source, 2, "runFrames restores input source after trap");
     EXPECT_EQ_INT(canvas_state->clock_source, 0, "runFrames restores clock source after trap");
-    EXPECT_EQ_INT(canvas_state->synthetic_dt_us,
-                  123000,
-                  "runFrames restores synthetic delta after trap");
+    EXPECT_EQ_INT(
+        canvas_state->synthetic_dt_us, 123000, "runFrames restores synthetic delta after trap");
 
     g_overlay_calls = 0;
     rt_game3d_world_begin_frame(world);
@@ -1947,10 +1945,8 @@ static bool test_world_getters_sanitize_corrupt_private_state() {
     void *origin = rt_game3d_world_get_world_origin(world);
     EXPECT_NEAR(rt_vec3_x(origin), 0.0, 0.000001, "World3D.worldOrigin sanitizes NaN X");
     EXPECT_NEAR(rt_vec3_y(origin), 0.0, 0.000001, "World3D.worldOrigin sanitizes Inf Y");
-    EXPECT_NEAR(rt_vec3_z(origin),
-                -1000000000000.0,
-                0.001,
-                "World3D.worldOrigin clamps oversized Z");
+    EXPECT_NEAR(
+        rt_vec3_z(origin), -1000000000000.0, 0.001, "World3D.worldOrigin clamps oversized Z");
 
     rt_game3d_world_destroy(world);
     PASS();
@@ -2778,7 +2774,8 @@ static bool test_phase4_assets3d_model_templates() {
     EXPECT_TRUE(rt_game3d_model_template_get_camera(camera_tpl, 0, 0) != nullptr,
                 "ModelTemplate.GetCamera returns imported Camera3D handles");
     void *camera_scene_inst = rt_game3d_model_template_instantiate_scene_at(camera_tpl, 0);
-    EXPECT_TRUE(camera_scene_inst != nullptr, "ModelTemplate.instantiateSceneAt returns an Entity3D");
+    EXPECT_TRUE(camera_scene_inst != nullptr,
+                "ModelTemplate.instantiateSceneAt returns an Entity3D");
     EXPECT_EQ_INT(rt_scene_node3d_child_count(rt_game3d_entity_get_node(camera_scene_inst)),
                   1,
                   "ModelTemplate.instantiateSceneAt clones selected scene roots");
@@ -2793,9 +2790,10 @@ static bool test_phase4_assets3d_model_templates() {
         EXPECT_EQ_INT(rt_game3d_model_template_get_scene_count(camera_tpl),
                       0,
                       "ModelTemplate sceneCount ignores wrong-class private model refs");
-        EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_model_template_get_scene_name(camera_tpl, 0)),
-                                "") == 0,
-                    "ModelTemplate sceneName falls back without a valid private model");
+        EXPECT_TRUE(
+            std::strcmp(rt_string_cstr(rt_game3d_model_template_get_scene_name(camera_tpl, 0)),
+                        "") == 0,
+            "ModelTemplate sceneName falls back without a valid private model");
         EXPECT_EQ_INT(rt_game3d_model_template_get_camera_count(camera_tpl, 0),
                       0,
                       "ModelTemplate cameraCount ignores wrong-class private model refs");
@@ -2967,16 +2965,15 @@ static bool test_phase4_assets3d_model_templates() {
     const char *sync_only_path = "/tmp/viper_game3d_async_sync_only_model.obj";
     EXPECT_TRUE(write_text_file(sync_only_path, "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"),
                 "test can write sync-only OBJ model fixture");
-    rt_string sync_only_path_s =
-        rt_string_from_bytes(sync_only_path, std::strlen(sync_only_path));
+    rt_string sync_only_path_s = rt_string_from_bytes(sync_only_path, std::strlen(sync_only_path));
     void *sync_only_handle = rt_game3d_assets_load_model_template_async(sync_only_path_s);
     EXPECT_TRUE(sync_only_handle != nullptr,
                 "LoadModelTemplateAsync returns a handle for an OBJ model format");
     EXPECT_TRUE(wait_asset_ready(sync_only_handle),
                 "OBJ AssetHandle3D completes through the async model path");
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(sync_only_handle)),
-                            "") == 0,
-                "OBJ AssetHandle3D has no async format policy error");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(sync_only_handle)), "") == 0,
+        "OBJ AssetHandle3D has no async format policy error");
     void *sync_only_template = rt_game3d_asset_handle_get_template(sync_only_handle);
     EXPECT_TRUE(sync_only_template != nullptr,
                 "OBJ AssetHandle3D exposes the loaded template result");
@@ -3884,8 +3881,8 @@ static bool test_phase5_world_stream3d_budget_prefers_nearest_entries() {
     EXPECT_TRUE(rt_game3d_world_find_node(cell_world,
                                           rt_const_cstr("nearest_budget_near_marker")) != nullptr,
                 "nearest budget loads the near cell scene");
-    EXPECT_TRUE(rt_game3d_world_find_node(cell_world,
-                                          rt_const_cstr("nearest_budget_far_marker")) == nullptr,
+    EXPECT_TRUE(rt_game3d_world_find_node(cell_world, rt_const_cstr("nearest_budget_far_marker")) ==
+                    nullptr,
                 "nearest budget leaves the farther first cell unloaded");
     rt_game3d_world_destroy(cell_world);
 
@@ -3908,7 +3905,8 @@ static bool test_phase5_world_stream3d_budget_prefers_nearest_entries() {
     rt_game3d_world_stream_set_center(terrain_stream, rt_vec3_new(0.0, 0.0, 0.0));
     rt_game3d_world_stream_set_radii(terrain_stream, 256.0, 256.0);
     rt_game3d_world_stream_set_residency_budget(terrain_stream, 7000);
-    rt_game3d_world_stream_mount_tiled_terrain(terrain_stream, rt_const_cstr(terrain_manifest_path));
+    rt_game3d_world_stream_mount_tiled_terrain(terrain_stream,
+                                               rt_const_cstr(terrain_manifest_path));
     EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_terrain_tile_count(terrain_stream),
                   1,
                   "terrain budget admits only one resident tile");
@@ -4715,10 +4713,8 @@ static bool test_phase4_body_def_attach_body() {
                 "BodyDef static setter enables static mode");
     EXPECT_TRUE(rt_game3d_body_def_get_kinematic(toggle_def) == 0,
                 "BodyDef static setter clears kinematic mode");
-    EXPECT_NEAR(rt_game3d_body_def_get_mass(toggle_def),
-                0.0,
-                0.0001,
-                "BodyDef static setter zeroes mass");
+    EXPECT_NEAR(
+        rt_game3d_body_def_get_mass(toggle_def), 0.0, 0.0001, "BodyDef static setter zeroes mass");
     rt_game3d_body_def_set_static(toggle_def, 0);
     EXPECT_TRUE(rt_game3d_body_def_get_static(toggle_def) == 0,
                 "BodyDef static setter can restore dynamic mode");
@@ -5260,6 +5256,36 @@ static bool test_phase5_animator3d_events_and_root_motion() {
     PASS();
 }
 
+static bool test_audio_repairs_wrong_class_source_slots() {
+    TEST("Sound3D source registry repairs wrong-class private source slots");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Audio Repair Unit"), 32, 24);
+    void *audio = rt_game3d_world_get_audio(world);
+    auto *layout = static_cast<Game3DAudioTestLayout *>(audio);
+    void *wrong = rt_material3d_new_color(0.25, 0.5, 0.75);
+    size_t wrong_ref = rt_heap_hdr(wrong)->refcnt;
+
+    layout->sources = static_cast<void **>(std::calloc(2, sizeof(void *)));
+    layout->source_capacity = 2;
+    layout->source_count = 1;
+    layout->sources[0] = wrong;
+
+    EXPECT_EQ_INT(rt_game3d_audio_get_source_count(audio),
+                  0,
+                  "Sound3D source count compacts wrong-class source slots");
+    EXPECT_TRUE(layout->sources[0] == nullptr,
+                "Sound3D repair nulls wrong-class private source slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_ref,
+                "Sound3D repair does not release unrelated wrong-class handles");
+    rt_game3d_audio_clear_sources(audio);
+
+    std::free(layout->sources);
+    layout->sources = nullptr;
+    layout->source_capacity = 0;
+    layout->source_count = 0;
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 static bool test_phase6_sound3d_and_effects3d_helpers() {
     TEST("Sound3D helpers and Effects3D presets integrate with World3D");
 
@@ -5511,6 +5537,7 @@ int main() {
     ok = test_entity_transform_sanitizes_and_respects_sync_mode() && ok;
     ok = test_phase4_collision_events_wrapped_with_entities() && ok;
     ok = test_phase5_animator3d_events_and_root_motion() && ok;
+    ok = test_audio_repairs_wrong_class_source_slots() && ok;
     ok = test_phase6_sound3d_and_effects3d_helpers() && ok;
 
     std::printf("\nGame3D runtime tests: %d/%d passed\n", g_tests_passed, g_tests_total);

@@ -30,13 +30,14 @@
 #include "rt_morphtarget3d.h"
 #include "rt_particles3d.h"
 #include "rt_pixels.h"
+#include "rt_pixels_internal.h"
 #include "rt_platform.h"
 #include "rt_postfx3d.h"
 #include "rt_sprite3d.h"
 #include "rt_string.h"
 #include "rt_terrain3d.h"
+#include "rt_texatlas3d.h"
 #include "rt_textureasset3d.h"
-#include "rt_pixels_internal.h"
 #include "tests/common/PosixCompat.h"
 #include <cassert>
 #include <cfloat>
@@ -378,8 +379,8 @@ static bool finite_vec3(void *v) {
 }
 
 static bool bounded_vec3(void *v, double limit) {
-    return finite_vec3(v) && std::fabs(rt_vec3_x(v)) <= limit &&
-           std::fabs(rt_vec3_y(v)) <= limit && std::fabs(rt_vec3_z(v)) <= limit;
+    return finite_vec3(v) && std::fabs(rt_vec3_x(v)) <= limit && std::fabs(rt_vec3_y(v)) <= limit &&
+           std::fabs(rt_vec3_z(v)) <= limit;
 }
 
 static void free_canvas3d_test_draw_state(rt_canvas3d *canvas) {
@@ -1961,17 +1962,16 @@ static void test_textureasset3d_rejects_unsupported_ktx2_headers() {
     uint8_t short_payload[8] = {0};
     rt_string path_s;
 
-    EXPECT_TRUE(write_test_ktx2_custom_header(
-                    super_path, 37u, 1u, 1u, 1u, 1u, payload, sizeof(payload)),
-                "supercompressed KTX2 fixture written");
+    EXPECT_TRUE(
+        write_test_ktx2_custom_header(super_path, 37u, 1u, 1u, 1u, 1u, payload, sizeof(payload)),
+        "supercompressed KTX2 fixture written");
     path_s = rt_string_from_bytes(super_path, std::strlen(super_path));
     EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(path_s); },
                                      "unsupported KTX2 supercompression"),
                 "supercompressed KTX2 traps");
     rt_string_unref(path_s);
 
-    EXPECT_TRUE(write_test_ktx2_custom_header(
-                    implicit_path, 37u, 1u, 1u, 0u, 0u, nullptr, 0u),
+    EXPECT_TRUE(write_test_ktx2_custom_header(implicit_path, 37u, 1u, 1u, 0u, 0u, nullptr, 0u),
                 "implicit-mip KTX2 fixture written");
     path_s = rt_string_from_bytes(implicit_path, std::strlen(implicit_path));
     EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(path_s); },
@@ -2095,14 +2095,9 @@ static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
         const uint8_t *empty_levels[] = {nullptr};
         const uint64_t empty_level_bytes[] = {0};
         rt_string empty_path_s;
-        EXPECT_TRUE(write_test_ktx2_mips(empty_path,
-                                         157u,
-                                         4u,
-                                         4u,
-                                         empty_levels,
-                                         empty_level_bytes,
-                                         1u),
-                    "zero-length native KTX2 fixture written");
+        EXPECT_TRUE(
+            write_test_ktx2_mips(empty_path, 157u, 4u, 4u, empty_levels, empty_level_bytes, 1u),
+            "zero-length native KTX2 fixture written");
         empty_path_s = rt_string_from_bytes(empty_path, std::strlen(empty_path));
         EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(empty_path_s); },
                                          "invalid mip payload length"),
@@ -2701,7 +2696,8 @@ static void test_camera_clamps_extreme_finite_inputs() {
     const double world_limit = 1000000000000.0;
     rt_camera3d *cam = (rt_camera3d *)rt_camera3d_new(huge, huge, huge, huge);
     assert(cam != NULL);
-    EXPECT_TRUE(finite_camera_state(cam), "Perspective camera starts finite after huge construction");
+    EXPECT_TRUE(finite_camera_state(cam),
+                "Perspective camera starts finite after huge construction");
     EXPECT_NEAR(cam->fov, 179.0, 0.001);
     EXPECT_NEAR(cam->aspect, 1000000.0, 0.001);
 
@@ -2864,8 +2860,7 @@ static void test_material_clone_repairs_invalid_env_map() {
 
     auto *clone = (rt_material3d *)rt_material3d_clone(src);
 
-    EXPECT_TRUE(clone != nullptr,
-                "Material3D.Clone returns a clone after texture/env-map repair");
+    EXPECT_TRUE(clone != nullptr, "Material3D.Clone returns a clone after texture/env-map repair");
     EXPECT_TRUE(src->texture == nullptr && src->normal_map == nullptr &&
                     src->specular_map == nullptr && src->emissive_map == nullptr &&
                     src->metallic_roughness_map == nullptr && src->ao_map == nullptr &&
@@ -3188,7 +3183,8 @@ static void test_canvas_set_skybox_repairs_stale_existing_slot() {
 
     rt_canvas3d_set_skybox(&canvas, wrong);
 
-    EXPECT_TRUE(canvas.skybox == nullptr, "Stale skybox slot is cleared even when replacement is invalid");
+    EXPECT_TRUE(canvas.skybox == nullptr,
+                "Stale skybox slot is cleared even when replacement is invalid");
     EXPECT_TRUE(canvas.skybox_cpu_cache == nullptr && canvas.skybox_cpu_cache_generation == 0,
                 "Clearing a stale skybox invalidates the CPU skybox cache");
     PASS();
@@ -4223,8 +4219,7 @@ static void test_rendertarget_rejects_malformed_buffer_layouts() {
                 "New color buffers reject undersized strides");
 
     bad.stride = 8;
-    EXPECT_TRUE(vgfx3d_rendertarget_ensure_color(&bad) != 0,
-                "Valid color layouts still allocate");
+    EXPECT_TRUE(vgfx3d_rendertarget_ensure_color(&bad) != 0, "Valid color layouts still allocate");
     free(bad.color_buf);
     bad.color_buf = nullptr;
 
@@ -4747,10 +4742,9 @@ static void test_particles3d_spread_uses_radians() {
     EXPECT_EQ(g_canvas_submit_draw_calls, 1);
     EXPECT_EQ(g_last_draw_vertex_count, 16);
     for (uint32_t i = 0; i < g_last_draw_vertex_count; i++) {
-        double horizontal = std::sqrt((double)g_last_draw_vertices[i].pos[0] *
-                                          (double)g_last_draw_vertices[i].pos[0] +
-                                      (double)g_last_draw_vertices[i].pos[2] *
-                                          (double)g_last_draw_vertices[i].pos[2]);
+        double horizontal = std::sqrt(
+            (double)g_last_draw_vertices[i].pos[0] * (double)g_last_draw_vertices[i].pos[0] +
+            (double)g_last_draw_vertices[i].pos[2] * (double)g_last_draw_vertices[i].pos[2]);
         if (horizontal > max_horizontal)
             max_horizontal = horizontal;
     }
@@ -4807,7 +4801,8 @@ static void test_particles3d_extreme_finite_inputs_remain_bounded() {
     EXPECT_TRUE(std::fabs(pos[0]) <= kWorldLimit && std::fabs(pos[1]) <= kWorldLimit &&
                     std::fabs(pos[2]) <= kWorldLimit,
                 "Emitter position is clamped to the particle world range");
-    EXPECT_TRUE(rt_particles3d_get_count(particles) >= 0 && rt_particles3d_get_count(particles) <= 4,
+    EXPECT_TRUE(rt_particles3d_get_count(particles) >= 0 &&
+                    rt_particles3d_get_count(particles) <= 4,
                 "Particle count remains inside the allocated pool");
 
     g_canvas_submit_draw_calls = 0;
@@ -5819,8 +5814,8 @@ static void test_terrain_setters_repair_stale_slots_before_rejecting_invalid_han
                 "Terrain3D.SetMaterial clears stale material slot before rejecting replacement");
 
     view->splat_map = wrong_material;
-    EXPECT_TRUE(expect_trap_contains(
-                    [&] { rt_terrain3d_set_splat_map(terrain, wrong_material); }, "Pixels"),
+    EXPECT_TRUE(expect_trap_contains([&] { rt_terrain3d_set_splat_map(terrain, wrong_material); },
+                                     "Pixels"),
                 "Terrain3D.SetSplatMap still rejects non-Pixels replacements");
     EXPECT_TRUE(view->splat_map == nullptr,
                 "Terrain3D.SetSplatMap clears stale splat slot before trapping");
@@ -5929,8 +5924,9 @@ static void test_terrain_splat_bake_uses_base_texture_for_missing_layers() {
     if (baked && baked->data)
         EXPECT_TRUE(baked->data[0] == 0x22446688,
                     "Missing weighted splat layers preserve the base texture color and alpha");
-    EXPECT_TRUE(g_last_draw_cmd.has_splat == 0,
-                "Incomplete terrain splat layers use the baked material texture, not GPU splat state");
+    EXPECT_TRUE(
+        g_last_draw_cmd.has_splat == 0,
+        "Incomplete terrain splat layers use the baked material texture, not GPU splat state");
     PASS();
 }
 
@@ -6243,8 +6239,8 @@ static void test_terrain_rejects_native_only_textureasset_splat_layer() {
         return;
     EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
                 "ASTC TextureAsset3D layer fixture has no Pixels fallback");
-    EXPECT_TRUE(expect_trap_contains(
-                    [&] { rt_terrain3d_set_layer_texture(terrain, 0, asset); }, "RGBA8 Pixels"),
+    EXPECT_TRUE(expect_trap_contains([&] { rt_terrain3d_set_layer_texture(terrain, 0, asset); },
+                                     "RGBA8 Pixels"),
                 "Terrain splat layers reject TextureAsset3D values without drawable Pixels");
 
     std::remove(path);
@@ -7053,6 +7049,30 @@ static void test_metal_skinned_mesh_bone_fields() {
     PASS();
 }
 
+static void test_texatlas_rejects_oversized_images_and_defaults_missing_uvs() {
+    TEST("TextureAtlas3D rejects oversized padded uploads and defaults missing UVs");
+    void *atlas = rt_texatlas3d_new(16, 16);
+    void *too_big = rt_pixels_new(16, 16);
+    void *small = rt_pixels_new(2, 2);
+    double u0 = -1.0;
+    double v0 = -1.0;
+    double u1 = -1.0;
+    double v1 = -1.0;
+    assert(atlas != NULL && too_big != NULL && small != NULL);
+    EXPECT_EQ(rt_texatlas3d_add(atlas, too_big), -1);
+    rt_texatlas3d_get_uv_rect(atlas, 123, &u0, &v0, &u1, &v1);
+    EXPECT_NEAR(u0, 0.0, 0.000001);
+    EXPECT_NEAR(v0, 0.0, 0.000001);
+    EXPECT_NEAR(u1, 1.0, 0.000001);
+    EXPECT_NEAR(v1, 1.0, 0.000001);
+    int64_t id = rt_texatlas3d_add(atlas, small);
+    EXPECT_EQ(id, 0);
+    rt_texatlas3d_get_uv_rect(atlas, id, &u0, &v0, &u1, &v1);
+    EXPECT_TRUE(u0 > 0.0 && v0 > 0.0 && u1 > u0 && v1 > v0,
+                "packed texture returns an interior UV rect after border padding");
+    PASS();
+}
+
 // Backend selection tests
 //=============================================================================
 
@@ -7331,6 +7351,7 @@ int main() {
     test_metal_postfx_grows_past_legacy_cap();
     test_metal_postfx_null_safety();
     test_metal_skinned_mesh_bone_fields();
+    test_texatlas_rejects_oversized_images_and_defaults_missing_uvs();
 
     /* Backend */
     test_backend_select();
