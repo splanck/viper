@@ -708,7 +708,9 @@ void rt_particles3d_clear(void *o) {
 /// @brief Number of particles currently alive.
 int64_t rt_particles3d_get_count(void *o) {
     rt_particles3d *p = particles3d_checked(o);
-    return p ? p->count : 0;
+    if (!p || !p->particles || p->max_particles <= 0 || p->count <= 0)
+        return 0;
+    return p->count > p->max_particles ? p->max_particles : p->count;
 }
 
 /// @brief Copy the emitter world position into @p out. Used by floating-origin rebase tests to
@@ -725,7 +727,7 @@ void rt_particles3d_get_position(void *o, double out[3]) {
 /// @brief Returns 1 if continuous emission is enabled (`_start` called, no subsequent `_stop`).
 int8_t rt_particles3d_get_emitting(void *o) {
     rt_particles3d *p = particles3d_checked(o);
-    return p ? p->emitting : 0;
+    return p && p->emitting ? 1 : 0;
 }
 
 /*==========================================================================

@@ -36,6 +36,8 @@ int64_t rt_fbx_mesh_count(void *fbx);
 void *rt_fbx_get_mesh(void *fbx, int64_t index);
 /// @brief Get the FBX's skeleton (NULL if it has none).
 void *rt_fbx_get_skeleton(void *fbx);
+/// @brief Get the root node of the imported FBX scene graph (NULL if it has none).
+void *rt_fbx_get_scene_root(void *fbx);
 /// @brief Number of animation clips in the FBX.
 int64_t rt_fbx_animation_count(void *fbx);
 /// @brief Get the animation clip at @p index (NULL if out of range).

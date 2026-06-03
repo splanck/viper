@@ -159,7 +159,7 @@ void *rt_game3d_entity_from_node(void *root) {
 int64_t rt_game3d_entity_get_id(void *obj) {
     rt_game3d_entity *entity =
         game3d_entity_checked_allow_destroyed(obj, "Game3D.Entity3D.get_Id: invalid entity");
-    return entity ? entity->id : 0;
+    return entity && entity->id > 0 ? entity->id : 0;
 }
 
 /// @brief Get the entity's scene node (NULL if invalid).
@@ -211,7 +211,8 @@ void *rt_game3d_entity_get_anim(void *obj) {
 int64_t rt_game3d_entity_get_layer(void *obj) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.get_Layer: invalid entity");
-    return entity ? entity->layer : 0;
+    return entity ? (game3d_valid_layer(entity->layer) ? entity->layer : RT_GAME3D_LAYER_DYNAMIC)
+                  : 0;
 }
 
 /// @brief Property setter for the collision layer (delegates to setLayer).
@@ -235,7 +236,7 @@ void rt_game3d_entity_set_collision_mask_prop(void *obj, void *mask) {
 rt_string rt_game3d_entity_get_name(void *obj) {
     rt_game3d_entity *entity =
         game3d_entity_checked(obj, "Game3D.Entity3D.get_Name: invalid entity");
-    if (!entity || !entity->name)
+    if (!entity || !entity->name || !rt_string_is_handle(entity->name))
         return rt_const_cstr("");
     return entity->name;
 }

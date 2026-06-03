@@ -1302,13 +1302,18 @@ static void test_incomplete_cubemaps_are_not_forwarded(void) {
     init_fake_canvas(&canvas, &kOpenGLBackend);
     void *mesh = make_test_mesh();
     void *material = rt_material3d_new();
-    rt_material3d_set_env_map(material, cubemap);
+    EXPECT_TRUE(expect_trap_contains(
+                    [&]() {
+                        rt_material3d_set_env_map(material, cubemap);
+                    },
+                    "complete CubeMap3D"),
+                "Material3D.SetEnvMap rejects incomplete cubemap payloads");
     rt_material3d_set_reflectivity(material, 0.75);
     rt_canvas3d_draw_mesh(&canvas, mesh, rt_mat4_identity(), material);
     test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
     EXPECT_TRUE(canvas.draw_count == 1, "Incomplete env-map draw still enqueues the mesh");
     EXPECT_TRUE(draws[0].cmd.env_map == nullptr,
-                "Material3D.SetEnvMap rejects incomplete cubemap payloads");
+                "Material3D incomplete env maps are not submitted");
     EXPECT_TRUE(draws[0].cmd.reflectivity == 0.0f,
                 "Material3D incomplete env maps clear reflectivity in draw payloads");
 

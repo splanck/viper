@@ -32,6 +32,14 @@ static int snapshot_float_fields_are_finite(const vgfx3d_postfx_snapshot_t *snap
            isfinite(snapshot->dof_max_blur) && isfinite(snapshot->motion_blur_intensity);
 }
 
+typedef struct {
+    void *vptr;
+    void *effects;
+    int32_t effect_count;
+    int32_t effect_capacity;
+    int8_t enabled;
+} PostFX3DTestLayout;
+
 static void test_snapshot_includes_advanced_effects(void) {
     void *fx = rt_postfx3d_new();
     vgfx3d_postfx_snapshot_t snapshot;
@@ -323,6 +331,37 @@ static void test_chain_copy_rejects_inconsistent_metadata(void) {
                 "Rejected chain copy resets the destination to disabled");
 }
 
+static void test_private_effect_count_corruption_is_bounded(void) {
+    void *fx = rt_postfx3d_new();
+    PostFX3DTestLayout *layout = (PostFX3DTestLayout *)fx;
+    vgfx3d_postfx_chain_t chain = {0};
+    vgfx3d_postfx_snapshot_t snapshot;
+
+    rt_postfx3d_add_bloom(fx, 0.8, 1.0, 2);
+    EXPECT_TRUE(layout->effect_capacity > 0, "PostFX3D corruption fixture allocated effects");
+
+    layout->effect_count = layout->effect_capacity + 100;
+    EXPECT_TRUE(rt_postfx3d_get_effect_count(fx) == layout->effect_capacity,
+                "PostFX3D effect count getter clamps private counts to capacity");
+    EXPECT_TRUE(vgfx3d_postfx_get_chain(fx, &chain) == 1,
+                "PostFX3D chain export ignores over-capacity private counts");
+    EXPECT_TRUE(chain.effect_count == 1 && chain.effects[0].type == VGFX3D_POSTFX_EFFECT_BLOOM,
+                "PostFX3D chain export keeps only valid enabled effects");
+    EXPECT_TRUE(vgfx3d_postfx_get_snapshot(fx, &snapshot) == 1 && snapshot.bloom_enabled == 1,
+                "PostFX3D snapshot export ignores over-capacity private counts");
+    vgfx3d_postfx_chain_free(&chain);
+
+    layout->effect_count = -5;
+    rt_postfx3d_add_fxaa(fx);
+    EXPECT_TRUE(rt_postfx3d_get_effect_count(fx) == 1,
+                "PostFX3D append repairs negative private counts before indexing");
+    EXPECT_TRUE(vgfx3d_postfx_get_chain(fx, &chain) == 1,
+                "PostFX3D chain export still succeeds after count repair");
+    EXPECT_TRUE(chain.effect_count == 1 && chain.effects[0].type == VGFX3D_POSTFX_EFFECT_FXAA,
+                "PostFX3D append writes inside the repaired effect array");
+    vgfx3d_postfx_chain_free(&chain);
+}
+
 static void test_set_enabled_normalizes_boolean_state(void) {
     void *fx = rt_postfx3d_new();
 
@@ -341,6 +380,7 @@ int main(void) {
     test_effect_parameters_are_sanitized_for_backend_chain();
     test_extreme_finite_effect_parameters_are_capped();
     test_chain_copy_rejects_inconsistent_metadata();
+    test_private_effect_count_corruption_is_bounded();
     test_set_enabled_normalizes_boolean_state();
 
     printf("rt_postfx3d snapshot tests: %d/%d passed\n", tests_passed, tests_run);

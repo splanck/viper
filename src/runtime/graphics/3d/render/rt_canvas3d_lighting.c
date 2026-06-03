@@ -26,6 +26,11 @@
 
 #include <string.h>
 
+/// @brief Clamp a Light3D type id to a backend-supported value.
+static int32_t canvas3d_sanitize_light_type(int32_t type) {
+    return (type >= 0 && type <= 3) ? type : 0;
+}
+
 /// @brief Compact one canvas light into a backend param struct (camera-relative rebased,
 ///        value-sanitized). NULL inputs are ignored.
 static void canvas3d_copy_light_params(const rt_canvas3d *c,
@@ -42,7 +47,7 @@ static void canvas3d_copy_light_params(const rt_canvas3d *c,
         origin_z = c->camera_relative_origin[2];
     }
     memset(out, 0, sizeof(*out));
-    out->type = l->type;
+    out->type = canvas3d_sanitize_light_type(l->type);
     out->shadow_index = -1;
     out->shadow_cascade_count = 1;
     out->casts_shadows = l->casts_shadows ? 1 : 0;

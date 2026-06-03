@@ -150,6 +150,37 @@ typedef struct {
     int32_t *voxel_corner_vertices;
 } rt_navmesh3d;
 
+static int32_t navmesh3d_clamped_array_count(const void *array,
+                                             int32_t count,
+                                             int32_t capacity) {
+    if (!array || count <= 0 || capacity <= 0)
+        return 0;
+    return count < capacity ? count : capacity;
+}
+
+static int32_t navmesh3d_read_triangle_count(const rt_navmesh3d *nm) {
+    if (!nm || !nm->triangles || nm->triangle_count <= 0)
+        return 0;
+    if (nm->source_triangles && nm->source_triangle_count > 0 &&
+        nm->triangle_count > nm->source_triangle_count)
+        return nm->source_triangle_count;
+    return nm->triangle_count;
+}
+
+static int32_t navmesh3d_read_offmesh_link_count(const rt_navmesh3d *nm) {
+    return nm ? navmesh3d_clamped_array_count(nm->offmesh_links,
+                                              nm->offmesh_link_count,
+                                              nm->offmesh_link_capacity)
+              : 0;
+}
+
+static int32_t navmesh3d_read_obstacle_count(const rt_navmesh3d *nm) {
+    return nm ? navmesh3d_clamped_array_count(nm->obstacles,
+                                              nm->obstacle_count,
+                                              nm->obstacle_capacity)
+              : 0;
+}
+
 static void navmesh3d_refresh_offmesh_links(rt_navmesh3d *nm);
 static int point_in_tri_xz(float px, float pz, const float *v0, const float *v1, const float *v2);
 static void navmesh3d_voxel_emit_tri(
@@ -3075,7 +3106,8 @@ int64_t rt_navmesh3d_get_triangle_count(void *obj) {
     /* Public count is the walkable (non-carved) set; blocked triangles linger in the array only
      * so per-tile rebuilds can flip them back without recompacting. */
     int64_t walkable = 0;
-    for (int32_t i = 0; i < nm->triangle_count; i++)
+    int32_t triangle_count = navmesh3d_read_triangle_count(nm);
+    for (int32_t i = 0; i < triangle_count; i++)
         if (!nm->triangles[i].blocked)
             walkable++;
     return walkable;
@@ -3144,7 +3176,8 @@ int8_t rt_navmesh3d_add_offmesh_link(void *obj, void *from, void *to, int8_t bid
 int8_t rt_navmesh3d_set_offmesh_link_metadata(
     void *obj, int64_t index, rt_string kind, double traversal_cost, int64_t state_flags) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
-    if (!nm || index < 0 || index >= nm->offmesh_link_count || !kind || !rt_string_is_handle(kind))
+    int32_t link_count = navmesh3d_read_offmesh_link_count(nm);
+    if (!nm || index < 0 || index >= link_count || !kind || !rt_string_is_handle(kind))
         return 0;
     nav_offmesh_link_t *link = &nm->offmesh_links[(int32_t)index];
     if (link->kind) {
@@ -3162,17 +3195,20 @@ int8_t rt_navmesh3d_set_offmesh_link_metadata(
 /// @brief Read the kind-string metadata of an authored off-mesh link by index.
 rt_string rt_navmesh3d_get_offmesh_link_kind(void *obj, int64_t index) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
-    if (!nm || index < 0 || index >= nm->offmesh_link_count)
+    int32_t link_count = navmesh3d_read_offmesh_link_count(nm);
+    if (!nm || index < 0 || index >= link_count)
         return rt_const_cstr("");
     nav_offmesh_link_t *link = &nm->offmesh_links[(int32_t)index];
-    return link->kind ? rt_string_ref(link->kind) : rt_const_cstr("");
+    return (link->kind && rt_string_is_handle(link->kind)) ? rt_string_ref(link->kind)
+                                                           : rt_const_cstr("");
 }
 
 /// @brief Read the sanitized pathfinding traversal cost of an authored off-mesh link by index
 ///   (0 for an out-of-range index).
 double rt_navmesh3d_get_offmesh_link_traversal_cost(void *obj, int64_t index) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
-    if (!nm || index < 0 || index >= nm->offmesh_link_count)
+    int32_t link_count = navmesh3d_read_offmesh_link_count(nm);
+    if (!nm || index < 0 || index >= link_count)
         return 0.0;
     return (double)navmesh3d_sanitize_traversal_cost(
         (double)nm->offmesh_links[(int32_t)index].traversal_cost);
@@ -3181,7 +3217,8 @@ double rt_navmesh3d_get_offmesh_link_traversal_cost(void *obj, int64_t index) {
 /// @brief Read the state-flag metadata of an authored off-mesh link by index.
 int64_t rt_navmesh3d_get_offmesh_link_state(void *obj, int64_t index) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
-    if (!nm || index < 0 || index >= nm->offmesh_link_count)
+    int32_t link_count = navmesh3d_read_offmesh_link_count(nm);
+    if (!nm || index < 0 || index >= link_count)
         return 0;
     return nm->offmesh_links[(int32_t)index].state_flags;
 }
@@ -3315,7 +3352,7 @@ int8_t rt_navmesh3d_update_obstacle(void *obj, int64_t index, void *min_v, void 
 /// @brief Number of authored coarse AABB obstacles.
 int64_t rt_navmesh3d_get_obstacle_count(void *obj) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
-    return nm ? nm->obstacle_count : 0;
+    return navmesh3d_read_obstacle_count(nm);
 }
 
 /// @brief Assign nav-area and traversal-cost metadata to polygons overlapping an AABB volume.
@@ -3386,7 +3423,7 @@ double rt_navmesh3d_get_traversal_cost(void *obj, void *point) {
 /// @brief Number of authored off-mesh traversal links.
 int64_t rt_navmesh3d_get_offmesh_link_count(void *obj) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
-    return nm ? nm->offmesh_link_count : 0;
+    return navmesh3d_read_offmesh_link_count(nm);
 }
 
 /// @brief Rebuild one tile after dynamic changes.

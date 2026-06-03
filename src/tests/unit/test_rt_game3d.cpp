@@ -54,10 +54,31 @@ extern "C" {
 }
 
 typedef struct {
+    double look_sensitivity;
+    int8_t has_snapshot;
+    uint8_t key_down[VIPER_KEY_MAX];
+    uint8_t key_pressed[VIPER_KEY_MAX];
+    uint8_t key_released[VIPER_KEY_MAX];
+    uint8_t mouse_down[VIPER_MOUSE_BUTTON_MAX];
+    uint8_t mouse_pressed[VIPER_MOUSE_BUTTON_MAX];
+    uint8_t mouse_released[VIPER_MOUSE_BUTTON_MAX];
+    int64_t mouse_dx;
+    int64_t mouse_dy;
+    double wheel_y;
+} Game3DInputTestLayout;
+
+typedef struct {
     void *controller;
     rt_string events[64];
     int32_t event_count;
 } Game3DAnimatorTestLayout;
+
+typedef struct {
+    int64_t phase;
+    void *a;
+    void *b;
+    void *raw;
+} Game3DCollisionEventTestLayout;
 
 typedef struct {
     void *canvas;
@@ -80,6 +101,17 @@ typedef struct {
     int32_t name_index_count;
     int32_t name_index_capacity;
     int8_t name_index_valid;
+    int64_t next_entity_id;
+    double dt;
+    double elapsed;
+    int64_t frame;
+    int64_t dropped_fixed_steps;
+    int64_t worker_count;
+    void *job_pool;
+    int8_t jobs_enabled;
+    int8_t floating_origin;
+    double origin_rebase_threshold;
+    double world_origin[3];
 } Game3DWorldTestLayout;
 
 typedef struct {
@@ -109,6 +141,89 @@ typedef struct {
 } Game3DModelTemplateTestLayout;
 
 typedef struct {
+    int64_t shape;
+    double half_extents[3];
+    double radius;
+    double height;
+    double mass;
+    double friction;
+    double restitution;
+    int64_t layer;
+    int64_t mask_bits;
+    int64_t sync_mode;
+    int8_t has_layer;
+    int8_t has_mask;
+    int8_t is_static;
+    int8_t is_kinematic;
+    int8_t is_trigger;
+    int8_t use_ccd;
+} Game3DBodyDefTestLayout;
+
+typedef struct {
+    void *listener;
+    void *camera;
+    void **sources;
+    int32_t source_count;
+    int32_t source_capacity;
+    double ref_distance;
+    double max_distance;
+    int64_t volume;
+    int8_t listener_follow_camera;
+} Game3DAudioTestLayout;
+
+typedef struct {
+    void *postfx;
+    void *items;
+    int32_t count;
+    int32_t capacity;
+} Game3DEffectsTestLayout;
+
+typedef struct {
+    void *world;
+    void *entity;
+    void *character;
+    double speed;
+    double jump_speed;
+    double gravity;
+    double vertical_velocity;
+    double eye_height;
+} Game3DCharacterControllerTestLayout;
+
+typedef struct {
+    void *world;
+    void *character_controller;
+    double speed;
+    double look_sensitivity;
+    int8_t capture_mouse;
+} Game3DFirstPersonControllerTestLayout;
+
+typedef struct {
+    void *world;
+    double speed;
+    double look_sensitivity;
+    int8_t capture_mouse;
+} Game3DFreeFlyControllerTestLayout;
+
+typedef struct {
+    void *world;
+    void *target;
+    double distance;
+    double min_distance;
+    double max_distance;
+    double yaw;
+    double pitch;
+    double orbit_sensitivity;
+    double zoom_sensitivity;
+} Game3DOrbitControllerTestLayout;
+
+typedef struct {
+    void *world;
+    void *target_entity;
+    void *offset;
+    double damping;
+} Game3DFollowControllerTestLayout;
+
+typedef struct {
     int8_t ready;
     int8_t cancelled;
     int8_t deferred;
@@ -121,6 +236,29 @@ typedef struct {
     void *entity;
     void *model_template;
 } Game3DAssetHandleTestLayout;
+
+typedef struct {
+    rt_string name;
+    rt_string path;
+    double center[3];
+    double radius;
+    int64_t resident_bytes;
+    int64_t measured_resident_bytes;
+    rt_string material;
+    rt_string nav_area;
+    rt_string sidecar_path;
+    int64_t layer;
+    int64_t collision_mask;
+    double traversal_cost;
+    int8_t has_layer;
+    int8_t has_collision_mask;
+    int8_t collision_enabled;
+    void *scene;
+    void *entity;
+    int8_t resident;
+    void *sidecar_data;
+    int64_t sidecar_bytes;
+} Game3DStreamCellTestLayout;
 
 typedef struct {
     rt_string name;
@@ -159,7 +297,7 @@ typedef struct {
     int64_t resident_bytes;
     rt_string terrain_manifest;
     rt_string cells_manifest;
-    void *cells;
+    Game3DStreamCellTestLayout *cells;
     Game3DStreamTerrainTileTestLayout *terrain_tiles;
     int32_t cell_count;
     int32_t cell_capacity;
@@ -785,6 +923,12 @@ static bool test_input_axes() {
                 0.01,
                 0.0001,
                 "negative look sensitivity falls back to default");
+    auto *input_view = static_cast<Game3DInputTestLayout *>(input);
+    input_view->look_sensitivity = INFINITY;
+    EXPECT_NEAR(rt_game3d_input_get_look_sensitivity(input),
+                0.01,
+                0.0001,
+                "look sensitivity getter sanitizes corrupt private state");
 
     rt_keyboard_begin_frame();
     rt_mouse_begin_frame();
@@ -1187,6 +1331,22 @@ static bool test_entity_private_slots_reject_wrong_class_refs() {
     void *material_b = rt_material3d_new_color(0.2, 0.5, 0.9);
     void *entity = rt_game3d_entity_of(mesh_a, material_a);
     auto *view = static_cast<Game3DEntityTestLayout *>(entity);
+
+    view->id = -42;
+    EXPECT_EQ_INT(rt_game3d_entity_get_id(entity),
+                  0,
+                  "negative corrupt entity ids read back as unassigned");
+    view->id = 0;
+    view->layer = 0;
+    EXPECT_EQ_INT(rt_game3d_entity_get_layer(entity),
+                  rt_game3d_layers_dynamic(),
+                  "corrupt entity layers read back as Dynamic");
+    view->layer = rt_game3d_layers_dynamic();
+    rt_string saved_name = view->name;
+    view->name = reinterpret_cast<rt_string>(material_b);
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_entity_get_name(entity)), "") == 0,
+                "Entity3D.GetName rejects wrong-class private string slots");
+    view->name = saved_name;
 
     size_t material_b_ref = rt_heap_hdr(material_b)->refcnt;
     view->node = material_b;
@@ -1688,6 +1848,114 @@ static bool test_world_animation_clamps_corrupt_entity_count() {
     PASS();
 }
 
+static bool test_world_getters_sanitize_corrupt_private_state() {
+    TEST("World3D getters validate component handles and sanitize scalar telemetry");
+    void *world = rt_game3d_world_new(rt_const_cstr("Game3D Corrupt World Getters"), 64, 48);
+    auto *layout = static_cast<Game3DWorldTestLayout *>(world);
+    void *wrong = rt_material3d_new_color(0.1, 0.2, 0.3);
+    size_t wrong_ref = rt_heap_hdr(wrong)->refcnt;
+
+    void *saved_canvas = layout->canvas;
+    layout->canvas = wrong;
+    EXPECT_TRUE(rt_game3d_world_get_canvas(world) == nullptr,
+                "World3D.GetCanvas hides wrong-class private canvas slots");
+    EXPECT_EQ_INT(rt_game3d_world_get_draw_count(world),
+                  0,
+                  "World3D.drawCount ignores wrong-class private canvas slots");
+    layout->canvas = saved_canvas;
+
+    void *saved_camera = layout->camera;
+    layout->camera = wrong;
+    EXPECT_TRUE(rt_game3d_world_get_camera(world) == nullptr,
+                "World3D.GetCamera hides wrong-class private camera slots");
+    layout->camera = saved_camera;
+
+    void *saved_scene = layout->scene;
+    layout->scene = wrong;
+    EXPECT_TRUE(rt_game3d_world_get_scene(world) == nullptr,
+                "World3D.GetScene hides wrong-class private scene slots");
+    EXPECT_EQ_INT(rt_game3d_world_get_visible_node_count(world),
+                  0,
+                  "World3D.visibleNodeCount ignores wrong-class private scene slots");
+    layout->scene = saved_scene;
+
+    void *saved_physics = layout->physics;
+    layout->physics = wrong;
+    EXPECT_TRUE(rt_game3d_world_get_physics(world) == nullptr,
+                "World3D.GetPhysics hides wrong-class private physics slots");
+    EXPECT_EQ_INT(rt_game3d_world_get_body_count(world),
+                  0,
+                  "World3D.bodyCount ignores wrong-class private physics slots");
+    layout->physics = saved_physics;
+
+    void *saved_input = layout->input;
+    layout->input = wrong;
+    EXPECT_TRUE(rt_game3d_world_get_input(world) == nullptr,
+                "World3D.GetInput hides wrong-class private input slots");
+    layout->input = saved_input;
+
+    void *saved_audio = layout->audio;
+    layout->audio = wrong;
+    EXPECT_TRUE(rt_game3d_world_get_audio(world) == nullptr,
+                "World3D.GetAudio hides wrong-class private audio slots");
+    layout->audio = saved_audio;
+
+    void *saved_effects = layout->effects;
+    layout->effects = wrong;
+    EXPECT_TRUE(rt_game3d_world_get_effects(world) == nullptr,
+                "World3D.GetEffects hides wrong-class private effects slots");
+    layout->effects = saved_effects;
+
+    auto *effects_view = static_cast<Game3DEffectsTestLayout *>(saved_effects);
+    void *saved_postfx = effects_view->postfx;
+    effects_view->postfx = wrong;
+    EXPECT_TRUE(rt_game3d_effects_get_postfx(saved_effects) == nullptr,
+                "EffectRegistry3D.GetPostFX hides wrong-class private post-FX slots");
+    effects_view->postfx = saved_postfx;
+
+    layout->stream = wrong;
+    void *stream = rt_game3d_world_get_stream(world);
+    EXPECT_TRUE(stream != nullptr && stream != wrong,
+                "World3D.GetStream replaces wrong-class private stream slots");
+    EXPECT_TRUE(rt_heap_hdr(wrong)->refcnt == wrong_ref,
+                "World3D component getters do not release wrong-class private handles");
+
+    layout->dt = NAN;
+    layout->elapsed = -10.0;
+    layout->frame = -11;
+    layout->dropped_fixed_steps = -12;
+    layout->worker_count = -13;
+    layout->jobs_enabled = -14;
+    layout->floating_origin = -15;
+    layout->world_origin[0] = NAN;
+    layout->world_origin[1] = INFINITY;
+    layout->world_origin[2] = -10000000000000.0;
+    EXPECT_NEAR(rt_game3d_world_get_dt(world), 0.0, 0.000001, "World3D.Dt sanitizes NaN");
+    EXPECT_NEAR(
+        rt_game3d_world_get_elapsed(world), 0.0, 0.000001, "World3D.Elapsed clamps negative");
+    EXPECT_EQ_INT(rt_game3d_world_get_frame(world), 0, "World3D.Frame clamps negative values");
+    EXPECT_EQ_INT(rt_game3d_world_get_dropped_fixed_steps(world),
+                  0,
+                  "World3D.DroppedFixedSteps clamps negative values");
+    EXPECT_EQ_INT(rt_game3d_world_get_worker_count(world),
+                  1,
+                  "World3D.WorkerCount repairs invalid private counts");
+    EXPECT_TRUE(rt_game3d_world_get_jobs_enabled(world) == 1,
+                "World3D.jobsEnabled getter normalizes corrupt private flags");
+    EXPECT_TRUE(rt_game3d_world_get_floating_origin(world) == 1,
+                "World3D.floatingOrigin getter normalizes corrupt private flags");
+    void *origin = rt_game3d_world_get_world_origin(world);
+    EXPECT_NEAR(rt_vec3_x(origin), 0.0, 0.000001, "World3D.worldOrigin sanitizes NaN X");
+    EXPECT_NEAR(rt_vec3_y(origin), 0.0, 0.000001, "World3D.worldOrigin sanitizes Inf Y");
+    EXPECT_NEAR(rt_vec3_z(origin),
+                -1000000000000.0,
+                0.001,
+                "World3D.worldOrigin clamps oversized Z");
+
+    rt_game3d_world_destroy(world);
+    PASS();
+}
+
 static bool test_world_floating_origin_controls_and_rebase() {
     TEST("World3D floatingOrigin rebases camera, entities, and bodies");
     void *world = rt_game3d_world_new(rt_const_cstr("Game3D Floating Origin"), 64, 48);
@@ -1951,6 +2219,19 @@ static bool test_free_fly_controller_synthetic_input() {
     EXPECT_TRUE(controller != nullptr, "FreeFlyController.New returns an object");
     rt_game3d_free_fly_controller_set_speed(controller, 10.0);
     rt_game3d_free_fly_controller_set_look_sensitivity(controller, 0.10);
+    auto *fly_view = static_cast<Game3DFreeFlyControllerTestLayout *>(controller);
+    fly_view->speed = -INFINITY;
+    fly_view->look_sensitivity = INFINITY;
+    EXPECT_NEAR(rt_game3d_free_fly_controller_get_speed(controller),
+                6.0,
+                0.0001,
+                "free-fly speed getter sanitizes corrupt private state");
+    EXPECT_NEAR(rt_game3d_free_fly_controller_get_look_sensitivity(controller),
+                0.01,
+                0.0001,
+                "free-fly look sensitivity getter sanitizes corrupt private state");
+    fly_view->speed = 10.0;
+    fly_view->look_sensitivity = 0.10;
     rt_game3d_world_set_camera_controller(world, controller);
 
     void *before = rt_camera3d_get_position(camera);
@@ -2000,8 +2281,18 @@ static bool test_camera_controller_moves_between_worlds() {
     void *camera_b = rt_game3d_world_get_camera(world_b);
     void *controller = rt_game3d_free_fly_controller_new(world_a);
     rt_game3d_free_fly_controller_set_speed(controller, 10.0);
+    auto *controller_view = static_cast<Game3DFreeFlyControllerTestLayout *>(controller);
+    void *saved_controller_world = controller_view->world;
+    void *wrong_world_ref = rt_material3d_new_color(0.2, 0.1, 0.4);
+    controller_view->world = wrong_world_ref;
+    if (saved_controller_world && rt_obj_release_check0(saved_controller_world))
+        rt_obj_free(saved_controller_world);
 
     rt_game3d_world_set_camera_controller(world_a, controller);
+    EXPECT_TRUE(controller_view->world == world_a,
+                "World3D.setCameraController clears wrong-class controller world refs");
+    if (wrong_world_ref && rt_obj_release_check0(wrong_world_ref))
+        rt_obj_free(wrong_world_ref);
     rt_game3d_world_set_camera_controller(world_b, controller);
 
     void *before_a = rt_camera3d_get_position(camera_a);
@@ -2039,6 +2330,41 @@ static bool test_character_controller_syncs_world_position_under_parent() {
     rt_game3d_world_spawn(world, parent);
 
     void *controller = rt_game3d_character_controller_new(world, child, 0.3, 1.8, 70.0);
+    auto *controller_view = static_cast<Game3DCharacterControllerTestLayout *>(controller);
+    void *saved_character = controller_view->character;
+    void *saved_entity = controller_view->entity;
+    void *wrong_ref = rt_material3d_new_color(0.25, 0.25, 0.25);
+    controller_view->speed = -INFINITY;
+    controller_view->jump_speed = INFINITY;
+    controller_view->gravity = NAN;
+    EXPECT_NEAR(rt_game3d_character_controller_get_speed(controller),
+                6.0,
+                0.0001,
+                "character speed getter sanitizes corrupt private state");
+    EXPECT_NEAR(rt_game3d_character_controller_get_jump_speed(controller),
+                5.5,
+                0.0001,
+                "character jump getter sanitizes corrupt private state");
+    EXPECT_NEAR(rt_game3d_character_controller_get_gravity(controller),
+                -20.0,
+                0.0001,
+                "character gravity getter sanitizes corrupt private state");
+    controller_view->character = wrong_ref;
+    controller_view->entity = wrong_ref;
+    EXPECT_TRUE(rt_game3d_character_controller_get_character(controller) == nullptr,
+                "wrong-class CharacterController3D character getter returns null");
+    EXPECT_TRUE(rt_game3d_character_controller_get_entity(controller) == nullptr,
+                "wrong-class CharacterController3D entity getter returns null");
+    EXPECT_EQ_INT(rt_game3d_character_controller_grounded(controller),
+                  0,
+                  "wrong-class CharacterController3D character reports not grounded");
+    rt_game3d_character_controller_teleport(controller, 12.0, 0.0, 0.0);
+    controller_view->character = saved_character;
+    controller_view->entity = saved_entity;
+    controller_view->speed = 6.0;
+    controller_view->jump_speed = 5.5;
+    controller_view->gravity = -20.0;
+
     rt_game3d_character_controller_teleport(controller, 14.0, 0.0, 0.0);
     void *world_pos = rt_scene_node3d_get_world_position(rt_game3d_entity_get_node(child));
     void *local_pos = rt_game3d_entity_position(child);
@@ -2056,6 +2382,37 @@ static bool test_orbit_and_follow_controllers() {
 
     void *target = rt_vec3_new(0.0, 1.0, 0.0);
     void *orbit = rt_game3d_orbit_controller_new(world, target);
+    auto *orbit_view = static_cast<Game3DOrbitControllerTestLayout *>(orbit);
+    void *saved_orbit_target = orbit_view->target;
+    void *wrong_ref = rt_material3d_new_color(0.4, 0.4, 0.4);
+    orbit_view->target = wrong_ref;
+    orbit_view->distance = NAN;
+    orbit_view->min_distance = 4.0;
+    orbit_view->max_distance = 2.0;
+    orbit_view->yaw = INFINITY;
+    orbit_view->pitch = 999.0;
+    EXPECT_TRUE(rt_game3d_orbit_controller_get_target(orbit) == nullptr,
+                "wrong-class OrbitController target getter returns null");
+    EXPECT_NEAR(rt_game3d_orbit_controller_get_distance(orbit),
+                4.0,
+                0.0001,
+                "orbit distance getter sanitizes corrupt private range");
+    EXPECT_NEAR(rt_game3d_orbit_controller_get_yaw(orbit),
+                0.0,
+                0.0001,
+                "orbit yaw getter sanitizes corrupt private state");
+    EXPECT_NEAR(rt_game3d_orbit_controller_get_pitch(orbit),
+                85.0,
+                0.0001,
+                "orbit pitch getter clamps corrupt private state");
+    rt_game3d_orbit_controller_late_update(orbit, world, 0.0);
+    orbit_view->target = saved_orbit_target;
+    orbit_view->distance = 6.0;
+    orbit_view->min_distance = 1.0;
+    orbit_view->max_distance = 100.0;
+    orbit_view->yaw = 0.0;
+    orbit_view->pitch = 20.0;
+
     rt_game3d_world_set_camera_controller(world, orbit);
     rt_canvas3d_push_synthetic_mouse(canvas, 20.0, -8.0, 1, 1.0);
     rt_game3d_world_run_frames_only(world, 1, 0.1);
@@ -2074,6 +2431,25 @@ static bool test_orbit_and_follow_controllers() {
     void *offset = rt_vec3_new(0.0, 2.0, 5.0);
     void *follow = rt_game3d_follow_controller_new(world, entity, offset);
     rt_game3d_follow_controller_set_damping(follow, 0.0);
+    auto *follow_view = static_cast<Game3DFollowControllerTestLayout *>(follow);
+    void *saved_follow_target = follow_view->target_entity;
+    void *saved_follow_offset = follow_view->offset;
+    follow_view->target_entity = wrong_ref;
+    follow_view->offset = wrong_ref;
+    follow_view->damping = INFINITY;
+    EXPECT_TRUE(rt_game3d_follow_controller_get_target(follow) == nullptr,
+                "wrong-class FollowController target getter returns null");
+    EXPECT_TRUE(rt_game3d_follow_controller_get_offset(follow) == nullptr,
+                "wrong-class FollowController offset getter returns null");
+    EXPECT_NEAR(rt_game3d_follow_controller_get_damping(follow),
+                12.0,
+                0.0001,
+                "follow damping getter sanitizes corrupt private state");
+    rt_game3d_follow_controller_late_update(follow, world, 0.1);
+    follow_view->target_entity = saved_follow_target;
+    follow_view->offset = saved_follow_offset;
+    follow_view->damping = 0.0;
+
     rt_game3d_world_set_camera_controller(world, follow);
     rt_game3d_world_run_frames_only(world, 1, 0.1);
     void *pos = rt_camera3d_get_position(rt_game3d_world_get_camera(world));
@@ -2110,6 +2486,25 @@ static bool test_first_person_character_controller_same_frame_motion() {
     void *fps = rt_game3d_first_person_controller_new(world);
     rt_game3d_first_person_controller_set_character(fps, character);
     rt_game3d_first_person_controller_set_speed(fps, 5.0);
+    auto *fps_view = static_cast<Game3DFirstPersonControllerTestLayout *>(fps);
+    void *saved_fps_character = fps_view->character_controller;
+    void *wrong_ref = rt_material3d_new_color(0.5, 0.5, 0.1);
+    fps_view->character_controller = wrong_ref;
+    fps_view->speed = -INFINITY;
+    fps_view->look_sensitivity = INFINITY;
+    EXPECT_TRUE(rt_game3d_first_person_controller_get_character(fps) == nullptr,
+                "wrong-class FirstPersonController character getter returns null");
+    EXPECT_NEAR(rt_game3d_first_person_controller_get_speed(fps),
+                6.0,
+                0.0001,
+                "first-person speed getter sanitizes corrupt private state");
+    EXPECT_NEAR(rt_game3d_first_person_controller_get_look_sensitivity(fps),
+                0.01,
+                0.0001,
+                "first-person look sensitivity getter sanitizes corrupt private state");
+    fps_view->character_controller = saved_fps_character;
+    fps_view->speed = 5.0;
+    fps_view->look_sensitivity = 0.01;
     rt_game3d_world_set_camera_controller(world, fps);
 
     void *before = rt_game3d_entity_position(player);
@@ -2475,11 +2870,13 @@ static bool test_phase4_assets3d_model_templates() {
     void *missing_entity_handle = rt_game3d_assets_load_model_async(missing_path_s);
     EXPECT_TRUE(missing_entity_handle != nullptr,
                 "LoadModelAsync returns a handle for a missing filesystem path");
-    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(missing_entity_handle) != 0,
-                "missing-path AssetHandle3D fails preflight on first observation");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(missing_entity_handle) == 0,
+                "missing-path AssetHandle3D schedules worker validation");
+    EXPECT_TRUE(wait_asset_ready(missing_entity_handle),
+                "missing-path AssetHandle3D becomes terminal after worker validation");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(missing_entity_handle)),
-                            "cannot read file") == 0,
-                "missing-path AssetHandle3D exposes a load error");
+                            "failed to load model") == 0,
+                "missing-path AssetHandle3D exposes the worker load error");
     EXPECT_TRUE(std::fabs(rt_game3d_asset_handle_get_progress(missing_entity_handle) - 1.0) <
                     0.000001,
                 "missing-path AssetHandle3D reports terminal progress");
@@ -2491,11 +2888,13 @@ static bool test_phase4_assets3d_model_templates() {
     void *missing_asset_handle = rt_game3d_assets_load_model_template_asset_async(missing_asset_s);
     EXPECT_TRUE(missing_asset_handle != nullptr,
                 "LoadModelTemplateAssetAsync returns a handle for a missing asset path");
-    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(missing_asset_handle) != 0,
-                "missing-asset AssetHandle3D becomes terminal on observation");
+    EXPECT_TRUE(rt_game3d_asset_handle_get_ready(missing_asset_handle) == 0,
+                "missing-asset AssetHandle3D schedules worker validation");
+    EXPECT_TRUE(wait_asset_ready(missing_asset_handle),
+                "missing-asset AssetHandle3D becomes terminal after worker validation");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(missing_asset_handle)),
-                            "asset not found") == 0,
-                "missing-asset AssetHandle3D exposes a load error");
+                            "failed to load model asset") == 0,
+                "missing-asset AssetHandle3D exposes the worker load error");
     EXPECT_TRUE(rt_game3d_asset_handle_get_template(missing_asset_handle) == nullptr,
                 "missing-asset AssetHandle3D has no template result");
     rt_string_unref(missing_asset_s);
@@ -4116,6 +4515,98 @@ static bool test_phase12_world_stream3d_inspection_hooks() {
                   0,
                   "invalid terrain byte query returns zero");
 
+    auto *stream_view = static_cast<Game3DWorldStreamTestLayout *>(stream);
+    EXPECT_TRUE(stream_view && stream_view->cells && stream_view->terrain_tiles,
+                "stream inspection corruption test has parsed backing arrays");
+    int32_t saved_cell_count = stream_view->cell_count;
+    int32_t saved_cell_capacity = stream_view->cell_capacity;
+    int32_t saved_tile_count = stream_view->terrain_tile_count;
+    int32_t saved_tile_capacity = stream_view->terrain_tile_capacity;
+    int64_t saved_resident_cells = stream_view->resident_cell_count;
+    int64_t saved_resident_tiles = stream_view->resident_terrain_tile_count;
+    int64_t saved_pending = stream_view->pending_request_count;
+    int64_t saved_resident_bytes = stream_view->resident_bytes;
+    int64_t saved_cell_sidecar_bytes = stream_view->cells[0].sidecar_bytes;
+    int64_t saved_cell_layer = stream_view->cells[0].layer;
+    double saved_cell_cost = stream_view->cells[0].traversal_cost;
+    int8_t saved_cell_collision = stream_view->cells[0].collision_enabled;
+    double saved_tile_cost = stream_view->terrain_tiles[0].traversal_cost;
+    int8_t saved_tile_collision = stream_view->terrain_tiles[0].collision_enabled;
+
+    stream_view->cell_count = 99;
+    stream_view->cell_capacity = 1;
+    stream_view->terrain_tile_count = 99;
+    stream_view->terrain_tile_capacity = 1;
+    stream_view->resident_cell_count = 99;
+    stream_view->resident_terrain_tile_count = 99;
+    stream_view->pending_request_count = -5;
+    stream_view->resident_bytes = -77;
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_count(stream),
+                  1,
+                  "stream cell count clamps corrupt count to capacity");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_count(stream),
+                  1,
+                  "stream terrain tile count clamps corrupt count to capacity");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_cell_count(stream),
+                  1,
+                  "stream resident cell count clamps corrupt manifest-backed count");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_terrain_tile_count(stream),
+                  1,
+                  "stream resident terrain count clamps corrupt manifest-backed count");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_world_stream_get_cell_name(stream, 1)), "") ==
+                    0,
+                "stream cell accessors reject indexes past repaired count");
+    EXPECT_TRUE(rt_game3d_world_stream_get_resident_terrain_tile(stream, 1) == nullptr,
+                "stream resident terrain accessor rejects indexes past repaired count");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_pending_request_count(stream),
+                  0,
+                  "stream pending request getter rejects negative telemetry");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_resident_bytes(stream),
+                  0,
+                  "stream resident byte getter rejects negative telemetry");
+
+    stream_view->cells[0].sidecar_bytes = -9;
+    stream_view->cells[0].layer = -123;
+    stream_view->cells[0].traversal_cost = -2.0;
+    stream_view->cells[0].collision_enabled = 7;
+    stream_view->terrain_tiles[0].traversal_cost = -4.0;
+    stream_view->terrain_tiles[0].collision_enabled = 3;
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_sidecar_bytes(stream, 0),
+                  0,
+                  "stream cell sidecar byte getter rejects negative values");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_layer(stream, 0),
+                  0,
+                  "stream cell layer getter rejects invalid layer bits");
+    EXPECT_NEAR(rt_game3d_world_stream_get_cell_traversal_cost(stream, 0),
+                0.0,
+                0.0001,
+                "stream cell traversal getter rejects non-positive costs");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_cell_collision_enabled(stream, 0),
+                  1,
+                  "stream cell collision-enabled getter normalizes booleans");
+    EXPECT_NEAR(rt_game3d_world_stream_get_terrain_tile_traversal_cost(stream, 0),
+                0.0,
+                0.0001,
+                "stream terrain traversal getter rejects non-positive costs");
+    EXPECT_EQ_INT(rt_game3d_world_stream_get_terrain_tile_collision_enabled(stream, 0),
+                  1,
+                  "stream terrain collision-enabled getter normalizes booleans");
+
+    stream_view->cell_count = saved_cell_count;
+    stream_view->cell_capacity = saved_cell_capacity;
+    stream_view->terrain_tile_count = saved_tile_count;
+    stream_view->terrain_tile_capacity = saved_tile_capacity;
+    stream_view->resident_cell_count = saved_resident_cells;
+    stream_view->resident_terrain_tile_count = saved_resident_tiles;
+    stream_view->pending_request_count = saved_pending;
+    stream_view->resident_bytes = saved_resident_bytes;
+    stream_view->cells[0].sidecar_bytes = saved_cell_sidecar_bytes;
+    stream_view->cells[0].layer = saved_cell_layer;
+    stream_view->cells[0].traversal_cost = saved_cell_cost;
+    stream_view->cells[0].collision_enabled = saved_cell_collision;
+    stream_view->terrain_tiles[0].traversal_cost = saved_tile_cost;
+    stream_view->terrain_tiles[0].collision_enabled = saved_tile_collision;
+
     rt_game3d_world_destroy(world);
     std::remove(near_path);
     std::remove(far_path);
@@ -4235,6 +4726,44 @@ static bool test_phase4_body_def_attach_body() {
                 1.0,
                 0.0001,
                 "BodyDef dynamic restore keeps a positive default mass");
+
+    auto *corrupt_def = static_cast<Game3DBodyDefTestLayout *>(toggle_def);
+    corrupt_def->shape = 99;
+    corrupt_def->mass = -INFINITY;
+    corrupt_def->friction = INFINITY;
+    corrupt_def->restitution = NAN;
+    corrupt_def->layer = 0;
+    corrupt_def->sync_mode = 99;
+    corrupt_def->is_static = -9;
+    corrupt_def->is_kinematic = -8;
+    corrupt_def->is_trigger = -7;
+    corrupt_def->use_ccd = -6;
+    EXPECT_EQ_INT(rt_game3d_body_def_get_shape(toggle_def),
+                  rt_game3d_body_shape_box(),
+                  "BodyDef shape getter defaults corrupt private shape to box");
+    EXPECT_NEAR(rt_game3d_body_def_get_mass(toggle_def),
+                0.0,
+                0.0001,
+                "BodyDef mass getter clamps corrupt private mass");
+    EXPECT_NEAR(rt_game3d_body_def_get_friction(toggle_def),
+                0.0,
+                0.0001,
+                "BodyDef friction getter clamps corrupt private friction");
+    EXPECT_NEAR(rt_game3d_body_def_get_restitution(toggle_def),
+                0.0,
+                0.0001,
+                "BodyDef restitution getter clamps corrupt private restitution");
+    EXPECT_EQ_INT(rt_game3d_body_def_get_layer(toggle_def),
+                  rt_game3d_layers_dynamic(),
+                  "BodyDef layer getter defaults corrupt private layer");
+    EXPECT_EQ_INT(rt_game3d_body_def_get_sync_mode(toggle_def),
+                  rt_game3d_sync_mode_node_from_body(),
+                  "BodyDef sync getter defaults corrupt private sync mode");
+    EXPECT_TRUE(rt_game3d_body_def_get_static(toggle_def) == 1 &&
+                    rt_game3d_body_def_get_kinematic(toggle_def) == 1 &&
+                    rt_game3d_body_def_get_trigger(toggle_def) == 1 &&
+                    rt_game3d_body_def_get_use_ccd(toggle_def) == 1,
+                "BodyDef boolean getters normalize corrupt private flags");
 
     void *trigger = rt_game3d_entity_new();
     void *trigger_def = rt_game3d_body_def_static_box(1.0, 1.0, 1.0);
@@ -4452,6 +4981,59 @@ static bool test_phase4_collision_events_wrapped_with_entities() {
     EXPECT_TRUE(rt_game3d_world_collision_event_count(world, rt_game3d_collision_any()) >=
                     rt_game3d_world_collision_event_count(world, rt_game3d_collision_enter()),
                 "Any phase includes transition buffers");
+
+    auto *enter_view = static_cast<Game3DCollisionEventTestLayout *>(enter);
+    int64_t saved_enter_phase = enter_view->phase;
+    void *saved_enter_a = enter_view->a;
+    void *saved_enter_b = enter_view->b;
+    void *saved_enter_raw = enter_view->raw;
+    void *wrong_event_ref = rt_material3d_new_color(0.7, 0.2, 0.2);
+    enter_view->phase = INT64_MAX;
+    enter_view->a = wrong_event_ref;
+    enter_view->b = wrong_event_ref;
+    enter_view->raw = wrong_event_ref;
+    EXPECT_EQ_INT(rt_game3d_collision_event_get_phase(enter),
+                  rt_game3d_collision_any(),
+                  "Collision3DEvent clamps corrupted phases to Any");
+    EXPECT_TRUE(rt_game3d_collision_event_get_a(enter) == nullptr,
+                "Collision3DEvent ignores wrong-class entity A refs");
+    EXPECT_TRUE(rt_game3d_collision_event_get_b(enter) == nullptr,
+                "Collision3DEvent ignores wrong-class entity B refs");
+    EXPECT_TRUE(rt_game3d_collision_event_get_raw(enter) == nullptr,
+                "Collision3DEvent ignores wrong-class raw refs");
+    EXPECT_TRUE(rt_game3d_collision_event_get_is_trigger(enter) == 0,
+                "Collision3DEvent trigger flag falls back for wrong-class raw refs");
+    EXPECT_NEAR(rt_game3d_collision_event_get_relative_speed(enter),
+                0.0,
+                0.0001,
+                "Collision3DEvent relative speed falls back for wrong-class raw refs");
+    EXPECT_NEAR(rt_game3d_collision_event_get_normal_impulse(enter),
+                0.0,
+                0.0001,
+                "Collision3DEvent normal impulse falls back for wrong-class raw refs");
+    EXPECT_EQ_INT(rt_game3d_collision_event_get_contact_count(enter),
+                  0,
+                  "Collision3DEvent contact count falls back for wrong-class raw refs");
+    void *corrupt_point = rt_game3d_collision_event_contact_point(enter, 0);
+    void *corrupt_normal = rt_game3d_collision_event_contact_normal(enter, 0);
+    EXPECT_NEAR(rt_vec3_x(corrupt_point), 0.0, 0.0001, "corrupt contact point X fallback");
+    EXPECT_NEAR(rt_vec3_y(corrupt_point), 0.0, 0.0001, "corrupt contact point Y fallback");
+    EXPECT_NEAR(rt_vec3_z(corrupt_point), 0.0, 0.0001, "corrupt contact point Z fallback");
+    EXPECT_NEAR(rt_vec3_x(corrupt_normal), 0.0, 0.0001, "corrupt contact normal X fallback");
+    EXPECT_NEAR(rt_vec3_y(corrupt_normal), 1.0, 0.0001, "corrupt contact normal Y fallback");
+    EXPECT_NEAR(rt_vec3_z(corrupt_normal), 0.0, 0.0001, "corrupt contact normal Z fallback");
+    EXPECT_NEAR(rt_game3d_collision_event_contact_separation(enter, 0),
+                0.0,
+                0.0001,
+                "corrupt contact separation fallback");
+    EXPECT_TRUE(rt_game3d_collision_event_other(enter, ground) == nullptr,
+                "Collision3DEvent.other ignores wrong-class entity refs");
+    enter_view->phase = saved_enter_phase;
+    enter_view->a = saved_enter_a;
+    enter_view->b = saved_enter_b;
+    enter_view->raw = saved_enter_raw;
+    if (wrong_event_ref && rt_obj_release_check0(wrong_event_ref))
+        rt_obj_free(wrong_event_ref);
 
     rt_game3d_world_step_simulation(world, 1.0 / 60.0);
     EXPECT_TRUE(rt_game3d_world_collision_event_count(world, rt_game3d_collision_stay()) > 0,
@@ -4722,6 +5304,37 @@ static bool test_phase6_sound3d_and_effects3d_helpers() {
         rt_game3d_audio_get_max_distance(audio), 12.0, 0.0001, "Sound3D stores max distance");
     EXPECT_EQ_INT(rt_game3d_audio_get_volume(audio), 70, "Sound3D clamps/stores volume");
 
+    auto *audio_view = static_cast<Game3DAudioTestLayout *>(audio);
+    void *saved_listener = audio_view->listener;
+    void *wrong_listener = rt_vec3_new(1.0, 2.0, 3.0);
+    audio_view->listener = wrong_listener;
+    audio_view->listener_follow_camera = -5;
+    audio_view->ref_distance = NAN;
+    audio_view->max_distance = 0.5;
+    audio_view->volume = 999;
+    EXPECT_TRUE(rt_game3d_audio_get_listener(audio) == nullptr,
+                "Sound3D listener getter hides wrong-class private listener slots");
+    EXPECT_TRUE(rt_game3d_audio_get_listener_follows_camera(audio) == 1,
+                "Sound3D camera-follow getter normalizes corrupt private flags");
+    EXPECT_NEAR(rt_game3d_audio_get_ref_distance(audio),
+                1.0,
+                0.0001,
+                "Sound3D ref-distance getter defaults corrupt private state");
+    EXPECT_NEAR(rt_game3d_audio_get_max_distance(audio),
+                1.0,
+                0.0001,
+                "Sound3D max-distance getter stays at least ref distance");
+    EXPECT_EQ_INT(rt_game3d_audio_get_volume(audio),
+                  100,
+                  "Sound3D volume getter clamps corrupt private state");
+    audio_view->listener = saved_listener;
+    audio_view->listener_follow_camera = 0;
+    audio_view->ref_distance = 2.0;
+    audio_view->max_distance = 12.0;
+    audio_view->volume = 70;
+    if (wrong_listener && rt_obj_release_check0(wrong_listener))
+        rt_obj_free(wrong_listener);
+
     rt_sound3d_listener_state state;
     double pos[3] = {0.0, 0.0, 0.0};
     double fwd[3] = {0.0, 0.0, -1.0};
@@ -4736,6 +5349,28 @@ static bool test_phase6_sound3d_and_effects3d_helpers() {
     if (rt_audio_is_available() && rt_audio_init()) {
         void *clip = rt_synth_tone(440, 80, RT_WAVE_SINE);
         if (clip) {
+            audio_view->ref_distance = NAN;
+            audio_view->max_distance = 0.5;
+            audio_view->volume = 999;
+            void *corrupt_one_shot =
+                rt_game3d_audio_play_at(audio, clip, rt_vec3_new(2.0, 0.0, 0.0));
+            EXPECT_TRUE(corrupt_one_shot != nullptr,
+                        "playAt returns a SoundSource3D with corrupt Sound3D state");
+            EXPECT_NEAR(rt_soundsource3d_get_ref_distance(corrupt_one_shot),
+                        1.0,
+                        0.001,
+                        "playAt sanitizes corrupt Sound3D ref distance");
+            EXPECT_NEAR(rt_soundsource3d_get_max_distance(corrupt_one_shot),
+                        1.0,
+                        0.001,
+                        "playAt sanitizes corrupt Sound3D max distance");
+            EXPECT_EQ_INT(rt_soundsource3d_get_volume(corrupt_one_shot),
+                          100,
+                          "playAt sanitizes corrupt Sound3D volume");
+            audio_view->ref_distance = 2.0;
+            audio_view->max_distance = 12.0;
+            audio_view->volume = 70;
+
             void *entity = rt_game3d_entity_new();
             rt_game3d_entity_set_position(entity, 1.0, 0.0, 0.0);
             rt_game3d_world_spawn(world, entity);
@@ -4842,6 +5477,7 @@ int main() {
     ok = test_worker_count_runframes_replay_parity() && ok;
     ok = test_worker_count_parallel_animation_parity() && ok;
     ok = test_world_animation_clamps_corrupt_entity_count() && ok;
+    ok = test_world_getters_sanitize_corrupt_private_state() && ok;
     ok = test_world_floating_origin_controls_and_rebase() && ok;
     ok = test_world_floating_origin_rendered_parity_and_flag_off_bytes() && ok;
     ok = test_step_simulation_clamps_invalid_dt() && ok;

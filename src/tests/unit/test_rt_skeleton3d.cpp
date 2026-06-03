@@ -303,6 +303,27 @@ static void test_player_create() {
     EXPECT_TRUE(rt_anim_player3d_is_playing(player) == 0, "Not playing initially");
 }
 
+static void test_animation_getters_normalize_corrupt_private_flags() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+    void *anim = rt_animation3d_new(rt_const_cstr("flags"), 1.0);
+    void *player = rt_anim_player3d_new(skel);
+
+    static_cast<rt_animation3d *>(anim)->looping = -8;
+    static_cast<rt_anim_player3d *>(player)->playing = -7;
+
+    EXPECT_TRUE(rt_animation3d_get_looping(anim) == 1,
+                "Animation3D looping getter normalizes corrupt private flags");
+    EXPECT_TRUE(rt_anim_player3d_is_playing(player) == 1,
+                "AnimPlayer3D playing getter normalizes corrupt private flags");
+
+    rt_anim_player3d_play(player, anim);
+    rt_anim_player3d_crossfade(player, anim, 0.25);
+    EXPECT_TRUE(static_cast<rt_anim_player3d *>(player)->crossfade_from_looping == 1,
+                "AnimPlayer3D crossfade loop snapshots normalize corrupt clip flags");
+}
+
 static void test_skeleton_freezes_after_player_creation() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
@@ -986,6 +1007,7 @@ int main() {
     test_animation_safe_counts_have_domain_ceilings();
     test_anim_player_retains_inputs();
     test_player_create();
+    test_animation_getters_normalize_corrupt_private_flags();
     test_skeleton_freezes_after_player_creation();
     test_player_playback();
     test_player_loop();

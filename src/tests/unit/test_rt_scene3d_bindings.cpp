@@ -497,6 +497,23 @@ static void test_node_animator_rebind_clears_previous_node_owner() {
                 "Second node retains the rebound NodeAnimator");
 }
 
+static void test_clear_animator_binding_clears_node_animator() {
+    void *node = rt_scene_node3d_new();
+    void *clip = rt_node_animation3d_new(rt_const_cstr("Idle"), 1.0);
+    void *clips[1] = {clip};
+    auto *animator = static_cast<rt_node_animator3d *>(rt_node_animator3d_new_from_clips(clips, 1));
+
+    rt_scene_node3d_bind_node_animator(node, animator);
+    EXPECT_TRUE(animator->root == node, "NodeAnimator roots to the node before clear");
+    EXPECT_TRUE(static_cast<rt_scene_node3d *>(node)->bound_node_animator == animator,
+                "Node retains NodeAnimator before clear");
+
+    rt_scene_node3d_clear_animator_binding(node);
+    EXPECT_TRUE(animator->root == nullptr, "ClearAnimatorBinding clears NodeAnimator root");
+    EXPECT_TRUE(static_cast<rt_scene_node3d *>(node)->bound_node_animator == nullptr,
+                "ClearAnimatorBinding releases the node animator slot");
+}
+
 int main() {
     test_node_from_body_resolves_child_local_space();
     test_body_from_node_uses_world_space();
@@ -508,6 +525,7 @@ int main() {
     test_scene_draw_cpu_skins_bound_animators_for_software_backend();
     test_scene_draw_preserves_large_bound_animator_palettes_on_gpu_backends();
     test_node_animator_rebind_clears_previous_node_owner();
+    test_clear_animator_binding_clears_node_animator();
 
     std::printf("Scene3D binding tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

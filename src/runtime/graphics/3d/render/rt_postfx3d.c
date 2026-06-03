@@ -134,6 +134,32 @@ static rt_postfx3d *postfx3d_checked(void *obj) {
     return (rt_postfx3d *)rt_g3d_checked_or_null(obj, RT_G3D_POSTFX3D_CLASS_ID);
 }
 
+/// @brief Return a bounded effect count that is safe to iterate.
+static int32_t postfx3d_safe_effect_count(const rt_postfx3d *fx) {
+    if (!fx || !fx->effects || fx->effect_count <= 0 || fx->effect_capacity <= 0)
+        return 0;
+    return fx->effect_count < fx->effect_capacity ? fx->effect_count : fx->effect_capacity;
+}
+
+/// @brief Repair corrupted count/capacity metadata before appending to the effect array.
+static void postfx3d_repair_effect_storage(rt_postfx3d *fx) {
+    if (!fx)
+        return;
+    if (!fx->effects) {
+        fx->effect_count = 0;
+        fx->effect_capacity = 0;
+        return;
+    }
+    if (fx->effect_capacity < 0)
+        fx->effect_capacity = 0;
+    if (fx->effect_count < 0)
+        fx->effect_count = 0;
+    if (fx->effect_capacity == 0)
+        fx->effect_count = 0;
+    else if (fx->effect_count > fx->effect_capacity)
+        fx->effect_count = fx->effect_capacity;
+}
+
 /*==========================================================================
  * Helpers
  *=========================================================================*/
@@ -232,6 +258,7 @@ static postfx_entry_t *postfx_append_entry(rt_postfx3d *fx) {
 
     if (!fx)
         return NULL;
+    postfx3d_repair_effect_storage(fx);
     if (fx->effect_count < fx->effect_capacity) {
         postfx_entry_t *entry = &fx->effects[fx->effect_count++];
         memset(entry, 0, sizeof(*entry));
@@ -380,9 +407,10 @@ static int vgfx3d_postfx_fill_effect_snapshot(const postfx_entry_t *e,
 /// @return 1 if the chain requires auxiliary GPU scene buffers, 0 if color-only.
 int vgfx3d_postfx_requires_gpu_scene_buffers(void *postfx) {
     rt_postfx3d *fx = postfx3d_checked(postfx);
-    if (!fx || !fx->enabled || fx->effect_count <= 0 || !fx->effects)
+    int32_t effect_count = postfx3d_safe_effect_count(fx);
+    if (!fx || !fx->enabled || effect_count <= 0)
         return 0;
-    for (int32_t i = 0; i < fx->effect_count; i++) {
+    for (int32_t i = 0; i < effect_count; i++) {
         const postfx_entry_t *e = &fx->effects[i];
         if (!e->enabled)
             continue;
@@ -691,9 +719,10 @@ static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float
 ///          bloom + tonemap + color-grade in HDR produces different output than the
 ///          same chain applied post-quantization.
 static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
-    if (!fx || !fx->enabled || !fx->effects)
+    int32_t effect_count = postfx3d_safe_effect_count(fx);
+    if (!fx || !fx->enabled || effect_count <= 0)
         return 0;
-    for (int32_t i = 0; i < fx->effect_count; i++) {
+    for (int32_t i = 0; i < effect_count; i++) {
         const postfx_entry_t *e = &fx->effects[i];
         if (e->enabled && e->type == POSTFX_TONEMAP && e->p.tonemap.mode != 0)
             return 1;
@@ -710,10 +739,11 @@ static int postfx_chain_has_tonemap(const rt_postfx3d *fx) {
 ///          is the whole point of running this before `postfx_apply` touches the
 ///          integer framebuffer.
 static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, int32_t h) {
-    if (!fx || !fx->enabled || fx->effect_count == 0 || !fx->effects || !fbuf)
+    int32_t effect_count = postfx3d_safe_effect_count(fx);
+    if (!fx || !fx->enabled || effect_count == 0 || !fbuf)
         return;
 
-    for (int32_t i = 0; i < fx->effect_count; i++) {
+    for (int32_t i = 0; i < effect_count; i++) {
         postfx_entry_t *e = &fx->effects[i];
         if (!e->enabled)
             continue;
@@ -756,7 +786,8 @@ static void postfx_apply_float_effects(rt_postfx3d *fx, float *fbuf, int32_t w, 
 static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h, int32_t stride) {
     size_t pixel_count;
     size_t fbuf_bytes;
-    if (!fx || !fx->enabled || fx->effect_count == 0 || !pixels)
+    int32_t effect_count = postfx3d_safe_effect_count(fx);
+    if (!fx || !fx->enabled || effect_count == 0 || !pixels)
         return;
     if (stride < 0 || (size_t)stride < (size_t)w * 4u ||
         !postfx_rgb_float_layout(w, h, &pixel_count, NULL, &fbuf_bytes))
@@ -990,7 +1021,7 @@ void rt_postfx3d_clear(void *obj) {
 /// @brief Number of effects currently in the chain.
 int64_t rt_postfx3d_get_effect_count(void *obj) {
     rt_postfx3d *fx = postfx3d_checked(obj);
-    return fx ? fx->effect_count : 0;
+    return postfx3d_safe_effect_count(fx);
 }
 
 /*==========================================================================
@@ -1119,13 +1150,13 @@ void rt_canvas3d_set_quality(void *canvas, int64_t quality) {
 /// @brief Get the last quality level requested via SetQuality. See header.
 int64_t rt_canvas3d_get_quality_requested(void *canvas) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
-    return c ? c->quality_requested : RT_GRAPHICS3D_QUALITY_PERFORMANCE;
+    return c ? postfx3d_quality_level(c->quality_requested) : RT_GRAPHICS3D_QUALITY_PERFORMANCE;
 }
 
 /// @brief Get the quality level actually active after capability fallback. See header.
 int64_t rt_canvas3d_get_quality_active(void *canvas) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
-    return c ? c->quality_active : RT_GRAPHICS3D_QUALITY_PERFORMANCE;
+    return c ? postfx3d_quality_level(c->quality_active) : RT_GRAPHICS3D_QUALITY_PERFORMANCE;
 }
 
 /// @brief True if the last quality application was degraded for backend safety. See header.
@@ -1154,7 +1185,7 @@ void rt_postfx3d_apply_to_canvas(void *canvas) {
     if (!c)
         return;
     rt_postfx3d *fx = postfx3d_checked(c->postfx);
-    if (!fx || !fx->enabled || fx->effect_count == 0)
+    if (!fx || !fx->enabled || postfx3d_safe_effect_count(fx) == 0)
         return;
     if (vgfx3d_postfx_requires_gpu_scene_buffers(fx)) {
         rt_trap("PostFX3D: SSAO, DOF, and motion blur require GPU window postfx; "
@@ -1319,6 +1350,7 @@ int vgfx3d_postfx_chain_copy(vgfx3d_postfx_chain_t *dst, const vgfx3d_postfx_cha
 int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out) {
     rt_postfx3d *fx;
     int32_t enabled_count = 0;
+    int32_t effect_count = 0;
 
     if (!out)
         return 0;
@@ -1327,12 +1359,13 @@ int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out) {
         vgfx3d_postfx_chain_reset(out);
         return 0;
     }
-    if (!fx->enabled || fx->effect_count == 0) {
+    effect_count = postfx3d_safe_effect_count(fx);
+    if (!fx->enabled || effect_count == 0) {
         vgfx3d_postfx_chain_reset(out);
         return 0;
     }
 
-    for (int32_t i = 0; i < fx->effect_count; i++) {
+    for (int32_t i = 0; i < effect_count; i++) {
         if (fx->effects[i].enabled)
             enabled_count++;
     }
@@ -1347,7 +1380,7 @@ int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out) {
 
     out->enabled = 1;
     out->effect_count = 0;
-    for (int32_t i = 0; i < fx->effect_count; i++) {
+    for (int32_t i = 0; i < effect_count; i++) {
         if (!vgfx3d_postfx_fill_effect_snapshot(&fx->effects[i], &out->effects[out->effect_count]))
             continue;
         out->effect_count++;
@@ -1373,6 +1406,7 @@ int vgfx3d_postfx_get_chain(void *postfx, vgfx3d_postfx_chain_t *out) {
 int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
     rt_postfx3d *fx;
     int32_t valid_count = 0;
+    int32_t effect_count = 0;
 
     if (!out)
         return 0;
@@ -1380,10 +1414,11 @@ int vgfx3d_postfx_get_snapshot(void *postfx, vgfx3d_postfx_snapshot_t *out) {
     fx = postfx3d_checked(postfx);
     if (!fx)
         return 0;
-    if (!fx->enabled || fx->effect_count == 0 || !fx->effects)
+    effect_count = postfx3d_safe_effect_count(fx);
+    if (!fx->enabled || effect_count == 0)
         return 0;
 
-    for (int32_t i = 0; i < fx->effect_count; i++) {
+    for (int32_t i = 0; i < effect_count; i++) {
         vgfx3d_postfx_effect_desc_t effect;
         if (!vgfx3d_postfx_fill_effect_snapshot(&fx->effects[i], &effect))
             continue;

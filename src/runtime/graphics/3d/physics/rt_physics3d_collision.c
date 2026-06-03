@@ -64,6 +64,8 @@ static void make_temp_sphere(rt_body3d *out, const double *center, double radius
     out->position[0] = center[0];
     out->position[1] = center[1];
     out->position[2] = center[2];
+    quat_identity(out->orientation);
+    vec3_set(out->scale, 1.0, 1.0, 1.0);
     out->radius = radius;
 }
 
@@ -1179,6 +1181,44 @@ static void compute_contact_point_from_leafs(void *a_leaf,
     point_out[0] = (point_a[0] + point_b[0]) * 0.5;
     point_out[1] = (point_a[1] + point_b[1]) * 0.5;
     point_out[2] = (point_a[2] + point_b[2]) * 0.5;
+}
+
+static void compute_contact_point_from_body_aabbs(const rt_body3d *a,
+                                                  const rt_body3d *b,
+                                                  const double *normal,
+                                                  double *point_out) {
+    double amn[3], amx[3], bmn[3], bmx[3];
+    double abs_n[3];
+    int axis = 0;
+    if (!point_out)
+        return;
+    vec3_set(point_out, 0.0, 0.0, 0.0);
+    if (!a || !b || !normal)
+        return;
+    body_aabb(a, amn, amx);
+    body_aabb(b, bmn, bmx);
+    abs_n[0] = fabs(normal[0]);
+    abs_n[1] = fabs(normal[1]);
+    abs_n[2] = fabs(normal[2]);
+    if (abs_n[1] > abs_n[axis])
+        axis = 1;
+    if (abs_n[2] > abs_n[axis])
+        axis = 2;
+    for (int i = 0; i < 3; ++i) {
+        double lo = fmax(amn[i], bmn[i]);
+        double hi = fmin(amx[i], bmx[i]);
+        if (i == axis && abs_n[i] > 1e-8) {
+            double a_face = normal[i] >= 0.0 ? amx[i] : amn[i];
+            double b_face = normal[i] >= 0.0 ? bmn[i] : bmx[i];
+            point_out[i] = (a_face + b_face) * 0.5;
+        } else if (lo <= hi) {
+            point_out[i] = (lo + hi) * 0.5;
+        } else {
+            double ac = (amn[i] + amx[i]) * 0.5;
+            double bc = (bmn[i] + bmx[i]) * 0.5;
+            point_out[i] = (ac + bc) * 0.5;
+        }
+    }
 }
 
 /// @brief Bidirectional layer/mask filter for body-vs-body collision.
@@ -3615,8 +3655,25 @@ int test_collision(const rt_body3d *a,
     rt_collider_pose leaf_b_pose;
     void *leaf_a = NULL;
     void *leaf_b = NULL;
-    if (!a || !b || !a->collider || !b->collider)
+    if (!a || !b)
         return 0;
+    if (!a->collider || !b->collider) {
+        if (!body3d_has_collision_geometry(a) || !body3d_has_collision_geometry(b))
+            return 0;
+        if (!test_simple_collision(a, b, normal, depth))
+            return 0;
+        if (leaf_a_out)
+            *leaf_a_out = NULL;
+        if (leaf_b_out)
+            *leaf_b_out = NULL;
+        if (leaf_a_pose_out)
+            collider_pose_identity(leaf_a_pose_out);
+        if (leaf_b_pose_out)
+            collider_pose_identity(leaf_b_pose_out);
+        if (point)
+            compute_contact_point_from_body_aabbs(a, b, normal, point);
+        return 1;
+    }
     collider_pose_from_body(a, &a_pose);
     collider_pose_from_body(b, &b_pose);
     if (!test_collider_pair(a,

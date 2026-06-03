@@ -84,6 +84,8 @@ int8_t rt_g3d_commit_queue_enqueue_cost(void *obj,
     rt_g3d_commit_queue *queue = (rt_g3d_commit_queue *)obj;
     if (!queue || !queue->items || !fn)
         return 0;
+    if (rt_concqueue_get_is_closed(queue->items))
+        return 0;
     rt_g3d_commit_item *item = (rt_g3d_commit_item *)malloc(sizeof(rt_g3d_commit_item));
     if (!item)
         rt_trap("Graphics3D commit queue: memory allocation failed");

@@ -20,7 +20,9 @@
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
 #include <cassert>
+#include <climits>
 #include <cmath>
+#include <cstdint>
 #include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
@@ -92,6 +94,41 @@ template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *nee
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
+
+typedef struct {
+    float from[3];
+    float to[3];
+    int32_t from_tri;
+    int32_t to_tri;
+    int8_t bidirectional;
+    int64_t state_flags;
+    float traversal_cost;
+    rt_string kind;
+} NavMeshOffmeshLinkTestLayout;
+
+typedef struct {
+    float min[3];
+    float max[3];
+} NavMeshObstacleTestLayout;
+
+typedef struct {
+    void *vptr;
+    void *vertices;
+    int32_t vertex_count;
+    void *source_triangles;
+    int32_t source_triangle_count;
+    void *triangles;
+    int32_t triangle_count;
+    NavMeshOffmeshLinkTestLayout *offmesh_links;
+    int32_t offmesh_link_count;
+    int32_t offmesh_link_capacity;
+    rt_string *area_names;
+    int32_t area_name_count;
+    int32_t area_name_capacity;
+    NavMeshObstacleTestLayout *obstacles;
+    int32_t obstacle_count;
+    int32_t obstacle_capacity;
+} NavMesh3DTestLayout;
 
 /*==========================================================================
  * NavMesh3D tests
@@ -961,6 +998,63 @@ static void test_navmesh_export_import_roundtrip() {
                 "importing a missing file returns null");
 }
 
+static void test_navmesh_getters_clamp_corrupt_private_counts() {
+    void *plane = rt_mesh3d_new_plane(20.0, 20.0);
+    void *nm = rt_navmesh3d_build(plane, 0.4, 1.8);
+    EXPECT_TRUE(nm != nullptr, "NavMesh corrupt getters: source navmesh builds");
+    void *link_from = rt_vec3_new(-8.0, 0.0, -8.0);
+    void *link_to = rt_vec3_new(8.0, 0.0, 8.0);
+    EXPECT_TRUE(rt_navmesh3d_add_offmesh_link(nm, link_from, link_to, 1) == 1,
+                "NavMesh corrupt getters: source stores an off-mesh link");
+    EXPECT_TRUE(rt_navmesh3d_set_offmesh_link_metadata(
+                    nm, 0, rt_const_cstr("jump"), 3.5, 77) == 1,
+                "NavMesh corrupt getters: source stores off-mesh metadata");
+    EXPECT_TRUE(rt_navmesh3d_add_obstacle(nm,
+                                          rt_vec3_new(40.0, -1.0, 40.0),
+                                          rt_vec3_new(41.0, 1.0, 41.0)) == 1,
+                "NavMesh corrupt getters: source stores an obstacle");
+
+    auto *view = static_cast<NavMesh3DTestLayout *>(nm);
+    int32_t saved_triangle_count = view->triangle_count;
+    int32_t saved_link_count = view->offmesh_link_count;
+    int32_t saved_link_capacity = view->offmesh_link_capacity;
+    int32_t saved_obstacle_count = view->obstacle_count;
+    int32_t saved_obstacle_capacity = view->obstacle_capacity;
+    rt_string saved_kind = view->offmesh_links[0].kind;
+
+    view->triangle_count = INT32_MAX;
+    int64_t clamped_triangles = rt_navmesh3d_get_triangle_count(nm);
+    EXPECT_TRUE(clamped_triangles > 0 && clamped_triangles <= view->source_triangle_count,
+                "NavMesh corrupt getters: triangle count caps at retained source count");
+    view->triangle_count = saved_triangle_count;
+
+    view->offmesh_link_count = INT32_MAX;
+    view->offmesh_link_capacity = 1;
+    EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_count(nm) == 1,
+                "NavMesh corrupt getters: off-mesh count caps to capacity");
+    EXPECT_TRUE(rt_navmesh3d_get_offmesh_link_state(nm, 1) == 0,
+                "NavMesh corrupt getters: off-mesh state rejects capped-out index");
+    EXPECT_TRUE(rt_navmesh3d_set_offmesh_link_metadata(nm, 1, rt_const_cstr("bad"), 1.0, 1) == 0,
+                "NavMesh corrupt getters: off-mesh setter rejects capped-out index");
+    view->offmesh_link_count = saved_link_count;
+    view->offmesh_link_capacity = saved_link_capacity;
+
+    view->offmesh_links[0].kind = reinterpret_cast<rt_string>(plane);
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_navmesh3d_get_offmesh_link_kind(nm, 0)), "") == 0,
+                "NavMesh corrupt getters: wrong-class off-mesh kind returns empty string");
+    view->offmesh_links[0].kind = saved_kind;
+
+    view->obstacle_count = INT32_MAX;
+    view->obstacle_capacity = 1;
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(nm) == 1,
+                "NavMesh corrupt getters: obstacle count caps to capacity");
+    view->obstacle_count = -5;
+    EXPECT_TRUE(rt_navmesh3d_get_obstacle_count(nm) == 0,
+                "NavMesh corrupt getters: negative obstacle count reads as zero");
+    view->obstacle_count = saved_obstacle_count;
+    view->obstacle_capacity = saved_obstacle_capacity;
+}
+
 int main() {
     /* NavMesh3D */
     test_navmesh_build_plane();
@@ -987,6 +1081,7 @@ int main() {
     test_navmesh_bake_agent_radius_erodes_narrow_corridor();
     test_navmesh_query_grid_matches_linear_scan();
     test_navmesh_export_import_roundtrip();
+    test_navmesh_getters_clamp_corrupt_private_counts();
 
     /* AnimBlend3D */
     test_blend_create();

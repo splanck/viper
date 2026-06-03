@@ -29,6 +29,32 @@ extern double rt_vec3_z(void *v);
 extern void *rt_mesh3d_new_plane(double sx, double sz);
 }
 
+struct NavAgent3DTestLayout {
+    void *vptr;
+    void *navmesh;
+    void *bound_character;
+    void *bound_node;
+    double radius;
+    double height;
+    double avoidance_radius;
+    double position[3];
+    double velocity[3];
+    double desired_velocity[3];
+    double target[3];
+    double stopping_distance;
+    double desired_speed;
+    double remaining_distance;
+    double repath_interval;
+    double repath_accum;
+    double *path_points_xyz;
+    int32_t path_point_count;
+    int32_t path_index;
+    int8_t has_target;
+    int8_t has_path;
+    int8_t auto_repath;
+    int8_t avoidance_enabled;
+};
+
 static int tests_passed = 0;
 static int tests_run = 0;
 
@@ -505,6 +531,32 @@ static void test_navagent_rejects_wrong_handle_types() {
     EXPECT_NEAR(rt_vec3_z(pos), 0.0, 0.001, "NavAgent3D.Warp rejects non-Vec3 Z");
 }
 
+static void test_navagent_getters_sanitize_corrupt_private_state() {
+    void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
+    void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
+    void *agent_obj = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    auto *agent = (NavAgent3DTestLayout *)agent_obj;
+    EXPECT_TRUE(agent != nullptr, "NavAgent3D.New creates an agent for corrupt getter test");
+
+    agent->position[0] = std::numeric_limits<double>::infinity();
+    agent->position[1] = -std::numeric_limits<double>::infinity();
+    agent->position[2] = std::numeric_limits<double>::quiet_NaN();
+    agent->has_path = -7;
+    agent->auto_repath = -3;
+    agent->avoidance_enabled = 42;
+
+    void *pos = rt_navagent3d_get_position(agent_obj);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(pos)) && std::isfinite(rt_vec3_y(pos)) &&
+                    std::isfinite(rt_vec3_z(pos)),
+                "NavAgent3D.GetPosition returns finite coordinates for corrupt private state");
+    EXPECT_TRUE(rt_navagent3d_get_has_path(agent_obj) == 1,
+                "NavAgent3D.HasPath getter normalizes corrupt nonzero flags");
+    EXPECT_TRUE(rt_navagent3d_get_auto_repath(agent_obj) == 1,
+                "NavAgent3D.AutoRepath getter normalizes corrupt nonzero flags");
+    EXPECT_TRUE(rt_navagent3d_get_avoidance_enabled(agent_obj) == 1,
+                "NavAgent3D.AvoidanceEnabled getter normalizes corrupt nonzero flags");
+}
+
 int main() {
     test_navagent_bound_node_reaches_target_in_world_space();
     test_navagent_bound_character_moves_controller();
@@ -517,6 +569,7 @@ int main() {
     test_navagent_avoidance_grid_matches_full_scan();
     test_navagent_agent_count_perf_target();
     test_navagent_rejects_wrong_handle_types();
+    test_navagent_getters_sanitize_corrupt_private_state();
 
     std::printf("NavAgent3D tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

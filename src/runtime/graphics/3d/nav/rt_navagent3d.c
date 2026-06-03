@@ -1168,10 +1168,12 @@ void rt_navagent3d_warp(void *obj, void *position) {
 /// @brief Read the agent's current world position. Re-syncs from any bound character/node first.
 void *rt_navagent3d_get_position(void *obj) {
     rt_navagent3d *agent = navagent3d_checked(obj);
+    double position[3];
     if (!agent)
         return rt_vec3_new(0.0, 0.0, 0.0);
     navagent_sync_position_from_bindings(agent);
-    return rt_vec3_new(agent->position[0], agent->position[1], agent->position[2]);
+    navagent_vec_copy(position, agent->position);
+    return rt_vec3_new(position[0], position[1], position[2]);
 }
 
 /// @brief Read the agent's actual velocity (position-delta over the last `_update`'s dt).
@@ -1198,7 +1200,7 @@ void *rt_navagent3d_get_desired_velocity(void *obj) {
 /// @brief Returns 1 if the agent currently has an active path being followed.
 int8_t rt_navagent3d_get_has_path(void *obj) {
     rt_navagent3d *agent = navagent3d_checked(obj);
-    return agent ? agent->has_path : 0;
+    return agent && agent->has_path ? 1 : 0;
 }
 
 /// @brief World-space distance from the agent's current position along the path to the goal.
@@ -1246,7 +1248,7 @@ void rt_navagent3d_set_desired_speed(void *obj, double speed) {
 /// disabled, the path is built once per `_set_target` and never refreshed.
 int8_t rt_navagent3d_get_auto_repath(void *obj) {
     rt_navagent3d *agent = navagent3d_checked(obj);
-    return agent ? agent->auto_repath : 0;
+    return agent && agent->auto_repath ? 1 : 0;
 }
 
 /// @brief Toggle automatic re-pathing every 0.25 s. Disable to manually control path freshness
@@ -1261,7 +1263,7 @@ void rt_navagent3d_set_auto_repath(void *obj, int8_t enabled) {
 /// @brief Returns 1 when same-NavMesh local separation steering is enabled.
 int8_t rt_navagent3d_get_avoidance_enabled(void *obj) {
     rt_navagent3d *agent = navagent3d_checked(obj);
-    return agent ? agent->avoidance_enabled : 0;
+    return agent && agent->avoidance_enabled ? 1 : 0;
 }
 
 /// @brief Toggle opt-in same-NavMesh local separation steering.

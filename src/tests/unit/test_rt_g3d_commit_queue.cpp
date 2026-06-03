@@ -15,6 +15,7 @@
 #endif
 
 #include "rt_g3d_commit_queue.h"
+#include "rt_concqueue.h"
 #include "rt_platform.h"
 #include "rt_threadpool.h"
 
@@ -52,6 +53,12 @@ struct WorkerArg {
 
 struct WorkerDrainArg {
     void *queue;
+};
+
+struct CommitQueueLayout {
+    void *items;
+    volatile int64_t submitted;
+    volatile int64_t drained;
 };
 
 static void expect_true(bool cond, const char *message) {
@@ -244,6 +251,25 @@ static void test_cost_budget_drain() {
 
     rt_g3d_commit_queue_free(queue);
 }
+
+static void test_closed_backing_queue_rejects_enqueue_without_trap() {
+    void *queue = rt_g3d_commit_queue_new();
+    expect_true(queue != nullptr, "queue should be created for closed enqueue test");
+
+    CommitQueueLayout *layout = (CommitQueueLayout *)queue;
+    rt_concqueue_close(layout->items);
+
+    CommitContext ctx = {};
+    CommitRecord record = {&ctx, 7};
+    expect_true(rt_g3d_commit_queue_enqueue(queue, record_commit, &record) == 0,
+                "enqueue on a closed backing queue should fail gracefully");
+    expect_true(rt_g3d_commit_queue_pending(queue) == 0,
+                "closed backing queue should not retain a pending item");
+    expect_true(rt_g3d_commit_queue_submitted(queue) == 0,
+                "closed backing queue should not advance submit telemetry");
+
+    rt_g3d_commit_queue_free(queue);
+}
 } // namespace
 
 int main() {
@@ -252,6 +278,7 @@ int main() {
     test_worker_enqueue_main_thread_drain();
     test_worker_drain_is_rejected();
     test_cost_budget_drain();
+    test_closed_backing_queue_rejects_enqueue_without_trap();
     std::printf("Graphics3D commit queue tests: all passed\n");
     return 0;
 }

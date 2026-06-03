@@ -248,7 +248,7 @@ static int32_t world3d_build_query_broadphase(rt_world3d *w) {
         return -1;
     for (int32_t i = 0; i < w->body_count; ++i) {
         rt_body3d *body = w->bodies[i];
-        if (!body || !body->collider)
+        if (!body3d_has_collision_geometry(body))
             continue;
         ph3d_broadphase_entry *entry = &w->broadphase_entries[entry_count++];
         entry->body = body;
@@ -300,7 +300,7 @@ static int overlap_query_body_against_body(rt_body3d *query_body,
                                            rt_query_hit3d *out_hit) {
     double normal[3], depth, point[3];
     void *leaf_other = NULL;
-    if (!query_body || !other || !other->collider)
+    if (!query_body || !body3d_has_collision_geometry(other))
         return 0;
     if (!test_collision(query_body, other, normal, &depth, point, NULL, &leaf_other, NULL, NULL))
         return 0;
@@ -362,7 +362,8 @@ static int sweep_sphere_against_simple_body(const double *start_center,
     double t = 0.0;
     double normal[3] = {0.0, 1.0, 0.0};
     int started = 0;
-    if (!start_center || !delta || !other || !other->collider || max_distance <= 1e-12)
+    if (!start_center || !delta || !body3d_has_collision_geometry(other) ||
+        max_distance <= 1e-12)
         return 0;
     vec3_copy(dir, delta);
     if (!query_normalize_direction(dir))
@@ -426,7 +427,7 @@ static int sweep_sphere_against_body(void *sphere_collider,
     double delta_len;
     double step_dist;
     int steps;
-    if (!sphere_collider || !start_center || !delta || !other || !other->collider)
+    if (!sphere_collider || !start_center || !delta || !body3d_has_collision_geometry(other))
         return 0;
 
     init_temp_query_body(&query_body, sphere_collider, start_center);
@@ -542,7 +543,7 @@ static int sweep_capsule_against_body(const double *a,
     int hit = 0;
     rt_query_hit3d best = {0};
     void *sphere_collider;
-    if (!a || !b || !delta || !other || !other->collider)
+    if (!a || !b || !delta || !body3d_has_collision_geometry(other))
         return 0;
     sphere_collider = rt_collider3d_new_sphere(radius);
     if (!sphere_collider)
@@ -612,7 +613,7 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
             if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], query_min, query_max))
                 continue;
         }
-        if (!body || !body->collider || !query_mask_matches_body(body, mask))
+        if (!body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
             continue;
         if (overlap_query_body_against_body(&query_body, body, &hit)) {
             total_count++;
@@ -668,7 +669,7 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
             if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], query_min, query_max))
                 continue;
         }
-        if (!body || !body->collider || !query_mask_matches_body(body, mask))
+        if (!body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
             continue;
         if (overlap_query_body_against_body(&query_body, body, &hit)) {
             total_count++;
@@ -721,7 +722,7 @@ void *rt_world3d_sweep_sphere(
             if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], swept_min, swept_max))
                 continue;
         }
-        if (!body || !body->collider || !query_mask_matches_body(body, mask))
+        if (!body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
             continue;
         if (!sweep_sphere_against_body(
                 sphere_collider, center, radius, delta, body, max_distance, &hit))
@@ -773,7 +774,7 @@ void *rt_world3d_sweep_capsule(
             if (!query_entry_overlaps_bounds(&w->broadphase_entries[i], swept_min, swept_max))
                 continue;
         }
-        if (!body || !body->collider || !query_mask_matches_body(body, mask))
+        if (!body3d_has_collision_geometry(body) || !query_mask_matches_body(body, mask))
             continue;
         if (!sweep_capsule_against_body(a, b, radius, delta, body, max_distance, &hit))
             continue;

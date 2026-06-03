@@ -194,6 +194,17 @@ static void controller_release_class_ref(void **slot, int64_t class_id) {
     controller_release_ref(slot);
 }
 
+/// @brief Borrow the controller skeleton only if the private slot still has the right class.
+static rt_skeleton3d *controller_skeleton_ref(rt_anim_controller3d *controller) {
+    if (!controller || !controller->skeleton)
+        return NULL;
+    if (!rt_g3d_has_class(controller->skeleton, RT_G3D_SKELETON3D_CLASS_ID)) {
+        controller->skeleton = NULL;
+        return NULL;
+    }
+    return controller->skeleton;
+}
+
 /// @brief Return a C string only for a valid runtime string handle.
 static const char *controller_string_cstr_or_null(rt_string name) {
     if (!name || !rt_string_is_handle(name))
@@ -1997,7 +2008,7 @@ rt_string rt_anim_controller3d_get_previous_state(void *obj) {
 /// @brief Returns 1 if the base layer is mid-blend between two states.
 int8_t rt_anim_controller3d_get_is_transitioning(void *obj) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
-    return controller ? controller->layers[0].transitioning : 0;
+    return controller && controller->layers[0].transitioning ? 1 : 0;
 }
 
 /// @brief Number of states currently registered with the controller.
@@ -2442,10 +2453,11 @@ void rt_anim_controller3d_stop_layer(void *obj, int64_t layer_index) {
 ///          layers as of the most recent `_update`.
 void *rt_anim_controller3d_get_bone_matrix(void *obj, int64_t bone_index) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    rt_skeleton3d *skeleton = controller_skeleton_ref(controller);
     const float *m;
-    if (!controller || !controller->skeleton || !controller->final_globals)
+    if (!controller || !skeleton || !controller->final_globals)
         return NULL;
-    if (bone_index < 0 || bone_index >= controller_safe_bone_count(controller->skeleton))
+    if (bone_index < 0 || bone_index >= controller_safe_bone_count(skeleton))
         return NULL;
     m = &controller->final_globals[bone_index * 16];
     return rt_mat4_new(m[0],
@@ -2466,10 +2478,10 @@ void *rt_anim_controller3d_get_bone_matrix(void *obj, int64_t bone_index) {
                        m[15]);
 }
 
-/// @brief Direct pointer to the final-palette float buffer (no copy).
+/// @brief Borrow the Skeleton3D handle backing this controller.
 void *rt_anim_controller3d_get_skeleton(void *obj) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
-    return controller ? controller->skeleton : NULL;
+    return controller_skeleton_ref(controller);
 }
 
 /// @brief Direct pointer to the final-palette float buffer (no copy).
@@ -2481,12 +2493,13 @@ void *rt_anim_controller3d_get_skeleton(void *obj) {
 /// @return Pointer to `bone_count * 16` floats, or NULL on missing data.
 const float *rt_anim_controller3d_get_final_palette_data(void *obj, int32_t *bone_count) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    rt_skeleton3d *skeleton = controller_skeleton_ref(controller);
     if (bone_count)
         *bone_count = 0;
-    if (!controller || !controller->skeleton || !controller->final_palette)
+    if (!controller || !skeleton || !controller->final_palette)
         return NULL;
     if (bone_count)
-        *bone_count = controller_safe_bone_count(controller->skeleton);
+        *bone_count = controller_safe_bone_count(skeleton);
     return controller->final_palette;
 }
 
@@ -2498,13 +2511,14 @@ const float *rt_anim_controller3d_get_final_palette_data(void *obj, int32_t *bon
 ///          before the per-layer player update).
 const float *rt_anim_controller3d_get_previous_palette_data(void *obj, int32_t *bone_count) {
     rt_anim_controller3d *controller = anim_controller3d_checked(obj);
+    rt_skeleton3d *skeleton = controller_skeleton_ref(controller);
     if (bone_count)
         *bone_count = 0;
-    if (!controller || !controller->skeleton || !controller->prev_final_palette ||
+    if (!controller || !skeleton || !controller->prev_final_palette ||
         !controller->has_prev_final_palette)
         return NULL;
     if (bone_count)
-        *bone_count = controller_safe_bone_count(controller->skeleton);
+        *bone_count = controller_safe_bone_count(skeleton);
     return controller->prev_final_palette;
 }
 

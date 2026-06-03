@@ -74,6 +74,15 @@ rt_scene_node3d *scene_node3d_checked(void *obj) {
     return (rt_scene_node3d *)rt_g3d_checked_or_null(obj, RT_G3D_SCENENODE3D_CLASS_ID);
 }
 
+static const rt_scene_node3d *scene_node3d_checked_const(const rt_scene_node3d *obj) {
+#if defined(RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE) && RT_G3D_INTERNAL_ASSUME_STRUCT_HANDLE
+    return obj;
+#else
+    void *raw = (void *)(uintptr_t)obj;
+    return rt_g3d_has_class(raw, RT_G3D_SCENENODE3D_CLASS_ID) ? obj : NULL;
+#endif
+}
+
 /// @brief Drop the GC reference in `*slot` and null the pointer (refcount-aware free).
 void scene3d_release_ref(void **slot) {
     if (!slot || !*slot)
@@ -747,13 +756,17 @@ int scene_node_stack_push(rt_scene_node3d ***stack,
                           size_t *count,
                           size_t *capacity,
                           rt_scene_node3d *node) {
+    rt_scene_node3d *checked;
     if (!stack || !count || !capacity || !node)
+        return 1;
+    checked = scene_node3d_checked(node);
+    if (!checked)
         return 1;
     if (*count >= *capacity) {
         if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
             return 0;
     }
-    (*stack)[(*count)++] = node;
+    (*stack)[(*count)++] = checked;
     return 1;
 }
 
@@ -884,9 +897,10 @@ static int32_t count_subtree(const rt_scene_node3d *node) {
     size_t count = 0;
     size_t capacity = 0;
     int32_t total = 0;
-    if (!node)
+    const rt_scene_node3d *root = scene_node3d_checked_const(node);
+    if (!root)
         return 0;
-    if (!scene_node_const_stack_push(&stack, &count, &capacity, node))
+    if (!scene_node_const_stack_push(&stack, &count, &capacity, root))
         return INT32_MAX;
     while (count > 0) {
         const rt_scene_node3d *current = stack[--count];
@@ -897,7 +911,8 @@ static int32_t count_subtree(const rt_scene_node3d *node) {
         total++;
         for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count;
              i++) {
-            if (!scene_node_const_stack_push(&stack, &count, &capacity, current->children[i])) {
+            const rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
+            if (!scene_node_const_stack_push(&stack, &count, &capacity, child)) {
                 free(stack);
                 return INT32_MAX;
             }
@@ -999,6 +1014,9 @@ static void scene_node_rebase_root_child(rt_scene_node3d *node, const double del
     double world_pos[3];
     double world_rot[4];
     if (!node || !delta)
+        return;
+    node = scene_node3d_checked(node);
+    if (!node)
         return;
     scene_node_get_world_position(node, &world_pos[0], &world_pos[1], &world_pos[2]);
     scene_node_get_world_rotation(node, world_rot);
@@ -1139,7 +1157,9 @@ int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target) {
     const rt_scene_node3d **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
-    if (!root)
+    root = scene_node3d_checked_const(root);
+    target = scene_node3d_checked_const(target);
+    if (!root || !target)
         return 0;
     if (!scene_node_const_stack_push(&stack, &count, &capacity, root))
         return root == target;
@@ -1151,7 +1171,8 @@ int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target) {
         }
         for (int32_t i = 0, child_count = scene3d_node_child_count(current); i < child_count;
              i++) {
-            if (!scene_node_const_stack_push(&stack, &count, &capacity, current->children[i])) {
+            const rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
+            if (!scene_node_const_stack_push(&stack, &count, &capacity, child)) {
                 rt_trap("SceneNode3D: traversal stack allocation failed");
                 free(stack);
                 return 0;
@@ -1494,13 +1515,17 @@ static int scene_bounds_stack_push(scene_bounds_stack_item_t **stack,
                                    size_t *capacity,
                                    rt_scene_node3d *node,
                                    const double *node_to_root) {
+    rt_scene_node3d *checked;
     if (!stack || !count || !capacity || !node || !node_to_root)
+        return 1;
+    checked = scene_node3d_checked(node);
+    if (!checked)
         return 1;
     if (*count >= *capacity) {
         if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
             return 0;
     }
-    (*stack)[*count].node = node;
+    (*stack)[*count].node = checked;
     memcpy((*stack)[*count].node_to_root, node_to_root, sizeof(double) * 16);
     (*count)++;
     return 1;
@@ -1531,15 +1556,16 @@ int scene_node_collect_subtree_bounds(rt_scene_node3d *node,
     }
     while (count > 0) {
         scene_bounds_stack_item_t item = stack[--count];
-        if (item.node->mesh) {
+        void *mesh = rt_g3d_checked_or_null(item.node->mesh, RT_G3D_MESH3D_CLASS_ID);
+        if (mesh) {
             float mesh_min[3];
             float mesh_max[3];
-            scene_mesh_bounds((rt_mesh3d *)item.node->mesh, mesh_min, mesh_max, NULL);
+            scene_mesh_bounds((rt_mesh3d *)mesh, mesh_min, mesh_max, NULL);
             scene_bounds_include_aabb(out_min, out_max, mesh_min, mesh_max, item.node_to_root);
             has_bounds = 1;
         }
         for (int32_t i = scene3d_node_child_count(item.node) - 1; i >= 0; i--) {
-            rt_scene_node3d *child = item.node->children[i];
+            rt_scene_node3d *child = scene_node3d_checked(item.node->children[i]);
             if (!child)
                 continue;
             double child_local[16];
@@ -1745,13 +1771,17 @@ int scene_index_build_stack_push(scene_index_build_stack_item_t **stack,
                                  size_t *capacity,
                                  rt_scene_node3d *node,
                                  void *inherited_animator) {
+    rt_scene_node3d *checked;
     if (!stack || !count || !capacity || !node)
+        return 1;
+    checked = scene_node3d_checked(node);
+    if (!checked)
         return 1;
     if (*count >= *capacity) {
         if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
             return 0;
     }
-    (*stack)[*count].node = node;
+    (*stack)[*count].node = checked;
     (*stack)[*count].inherited_animator = inherited_animator;
     (*count)++;
     return 1;
@@ -1813,6 +1843,28 @@ static int scene3d_visibility_portal_ensure_capacity(rt_scene3d *scene, int32_t 
     return 1;
 }
 
+static int32_t scene3d_visibility_array_count_or_zero(const void *array,
+                                                      int32_t count,
+                                                      int32_t capacity) {
+    if (!array || count <= 0 || capacity <= 0)
+        return 0;
+    return count < capacity ? count : capacity;
+}
+
+static int32_t scene3d_visibility_zone_count_safe(const rt_scene3d *scene) {
+    return scene ? scene3d_visibility_array_count_or_zero(scene->visibility_zones,
+                                                          scene->visibility_zone_count,
+                                                          scene->visibility_zone_capacity)
+                 : 0;
+}
+
+static int32_t scene3d_visibility_portal_count_safe(const rt_scene3d *scene) {
+    return scene ? scene3d_visibility_array_count_or_zero(scene->visibility_portals,
+                                                          scene->visibility_portal_count,
+                                                          scene->visibility_portal_capacity)
+                 : 0;
+}
+
 /// @brief Test whether @p point lies inside the zone's world-space AABB (inclusive bounds).
 static int scene3d_visibility_zone_contains_point(const rt_scene3d_visibility_zone *zone,
                                                   const double point[3]) {
@@ -1826,14 +1878,16 @@ static int scene3d_visibility_zone_contains_point(const rt_scene3d_visibility_zo
 /// zone.
 static int scene3d_visibility_find_camera_zone(const rt_scene3d *scene, const rt_camera3d *cam) {
     double eye[3];
+    int32_t zone_count;
     if (!scene || !cam)
         return -1;
+    zone_count = scene3d_visibility_zone_count_safe(scene);
     eye[0] = cam->eye[0] + cam->shake_offset[0];
     eye[1] = cam->eye[1] + cam->shake_offset[1];
     eye[2] = cam->eye[2] + cam->shake_offset[2];
     if (!isfinite(eye[0]) || !isfinite(eye[1]) || !isfinite(eye[2]))
         return -1;
-    for (int32_t i = 0; i < scene->visibility_zone_count; ++i) {
+    for (int32_t i = 0; i < zone_count; ++i) {
         if (scene3d_visibility_zone_contains_point(&scene->visibility_zones[i], eye))
             return i;
     }
@@ -1849,33 +1903,39 @@ static int scene3d_visibility_find_camera_zone(const rt_scene3d *scene, const rt
 static int scene3d_build_pvs_context(rt_scene3d *scene,
                                      rt_camera3d *cam,
                                      scene3d_pvs_context_t *out) {
+    int32_t zone_count;
+    int32_t portal_count;
     int32_t camera_zone;
     int32_t *queue = NULL;
     int32_t head = 0;
     int32_t tail = 0;
-    if (!scene || !cam || !out || scene->visibility_zone_count <= 0)
+    if (!scene || !cam || !out)
+        return 0;
+    zone_count = scene3d_visibility_zone_count_safe(scene);
+    portal_count = scene3d_visibility_portal_count_safe(scene);
+    if (zone_count <= 0)
         return 0;
     camera_zone = scene3d_visibility_find_camera_zone(scene, cam);
     if (camera_zone < 0)
         return 0;
-    out->visible_zones = (uint8_t *)calloc((size_t)scene->visibility_zone_count, 1);
-    queue = (int32_t *)malloc((size_t)scene->visibility_zone_count * sizeof(queue[0]));
+    out->visible_zones = (uint8_t *)calloc((size_t)zone_count, 1);
+    queue = (int32_t *)malloc((size_t)zone_count * sizeof(queue[0]));
     if (!out->visible_zones || !queue) {
         free(out->visible_zones);
         free(queue);
         memset(out, 0, sizeof(*out));
         return 0;
     }
-    out->zone_count = scene->visibility_zone_count;
+    out->zone_count = zone_count;
     out->active = 1;
     out->visible_zones[camera_zone] = 1;
     queue[tail++] = camera_zone;
     while (head < tail) {
         int32_t zone = queue[head++];
-        for (int32_t i = 0; i < scene->visibility_portal_count; ++i) {
+        for (int32_t i = 0; i < portal_count; ++i) {
             const rt_scene3d_visibility_portal *portal = &scene->visibility_portals[i];
             if (portal->from_zone != zone || portal->to_zone < 0 ||
-                portal->to_zone >= scene->visibility_zone_count)
+                portal->to_zone >= zone_count)
                 continue;
             if (!out->visible_zones[portal->to_zone]) {
                 out->visible_zones[portal->to_zone] = 1;
@@ -1905,9 +1965,13 @@ static int scene3d_pvs_allows_aabb(const rt_scene3d *scene,
                                    const double world_min[3],
                                    const double world_max[3]) {
     int matched_zone = 0;
+    int32_t zone_count;
+    int32_t visible_zone_count;
     if (!scene || !pvs || !pvs->active || !pvs->visible_zones || !world_min || !world_max)
         return 1;
-    for (int32_t i = 0; i < scene->visibility_zone_count && i < pvs->zone_count; ++i) {
+    zone_count = scene3d_visibility_zone_count_safe(scene);
+    visible_zone_count = pvs->zone_count < zone_count ? pvs->zone_count : zone_count;
+    for (int32_t i = 0; i < visible_zone_count; ++i) {
         const rt_scene3d_visibility_zone *zone = &scene->visibility_zones[i];
         if (!scene3d_aabb_intersects_aabb(world_min, world_max, zone->world_min, zone->world_max))
             continue;
@@ -2024,13 +2088,17 @@ static int scene_draw_stack_push(scene_draw_stack_item_t **stack,
                                  size_t *capacity,
                                  rt_scene_node3d *node,
                                  void *inherited_animator) {
+    rt_scene_node3d *checked;
     if (!stack || !count || !capacity || !node)
+        return 1;
+    checked = scene_node3d_checked(node);
+    if (!checked)
         return 1;
     if (*count >= *capacity) {
         if (!scene3d_grow_stack_storage((void **)stack, capacity, sizeof(**stack)))
             return 0;
     }
-    (*stack)[*count].node = node;
+    (*stack)[*count].node = checked;
     (*stack)[*count].inherited_animator = inherited_animator;
     (*count)++;
     return 1;
@@ -2459,11 +2527,14 @@ static int draw_node_spatial(rt_scene3d *scene,
 /// @brief GC finalizer for a Scene3D — releases the root node and any post-processing context.
 static void rt_scene3d_finalize(void *obj) {
     rt_scene3d *scene = (rt_scene3d *)obj;
+    rt_scene_node3d *root;
+    int32_t visibility_zone_count;
     if (!scene)
         return;
-    if (scene->root) {
-        scene_node_clear_owner_recursive(scene->root, scene);
-        scene->root->parent = NULL;
+    root = scene_node3d_checked(scene->root);
+    if (root) {
+        scene_node_clear_owner_recursive(root, scene);
+        root->parent = NULL;
     }
     scene3d_release_ref((void **)&scene->root);
     free(scene->spatial_index.entries);
@@ -2478,7 +2549,8 @@ static void rt_scene3d_finalize(void *obj) {
     scene->spatial_index.node_count = 0;
     scene->spatial_index.node_capacity = 0;
     scene->spatial_index.root_node = -1;
-    for (int32_t i = 0; i < scene->visibility_zone_count; ++i)
+    visibility_zone_count = scene3d_visibility_zone_count_safe(scene);
+    for (int32_t i = 0; i < visibility_zone_count; ++i)
         scene3d_release_ref((void **)&scene->visibility_zones[i].name);
     free(scene->visibility_zones);
     free(scene->visibility_portals);
@@ -2526,19 +2598,20 @@ void *rt_scene3d_new(void) {
 /// @brief Return the implicit root node — every other node lives somewhere in its subtree.
 void *rt_scene3d_get_root(void *obj) {
     rt_scene3d *s = scene3d_checked(obj);
-    return s ? s->root : NULL;
+    return s ? scene_node3d_checked(s->root) : NULL;
 }
 
 /// @brief Convenience: add `node` as a direct child of the scene's root node.
 int8_t rt_scene3d_try_add(void *obj, void *node) {
     rt_scene3d *s = scene3d_checked(obj);
     rt_scene_node3d *n = scene_node3d_checked(node);
-    if (!s || !n)
+    rt_scene_node3d *root = s ? scene_node3d_checked(s->root) : NULL;
+    if (!s || !root || !n)
         return 0;
-    if (!rt_scene_node3d_try_add_child(s->root, n))
+    if (!rt_scene_node3d_try_add_child(root, n))
         return 0;
-    s->node_count = count_subtree(s->root);
-    return n->parent == s->root ? 1 : 0;
+    s->node_count = count_subtree(root);
+    return n->parent == root ? 1 : 0;
 }
 
 /// @brief Add a top-level node to the scene (under its root), taking ownership and dirtying the
@@ -2550,25 +2623,27 @@ void rt_scene3d_add(void *obj, void *node) {
 /// @brief `Scene3D.RebaseOrigin(dx, dy, dz)` — shift scene content by -delta.
 void rt_scene3d_rebase_origin(void *obj, double dx, double dy, double dz) {
     rt_scene3d *s = scene3d_checked(obj);
+    rt_scene_node3d *root = s ? scene_node3d_checked(s->root) : NULL;
     double delta[3] = {
         scene3d_finite_or(dx, 0.0), scene3d_finite_or(dy, 0.0), scene3d_finite_or(dz, 0.0)};
-    if (!s || !s->root)
+    if (!s || !root)
         return;
     if (delta[0] == 0.0 && delta[1] == 0.0 && delta[2] == 0.0)
         return;
-    for (int32_t i = 0, child_count = scene3d_node_child_count(s->root); i < child_count; ++i)
-        scene_node_rebase_root_child(s->root->children[i], delta);
+    for (int32_t i = 0, child_count = scene3d_node_child_count(root); i < child_count; ++i)
+        scene_node_rebase_root_child(root->children[i], delta);
 }
 
 /// @brief Convenience: remove `node` from the scene root's children.
 void rt_scene3d_remove(void *obj, void *node) {
     rt_scene3d *s = scene3d_checked(obj);
     rt_scene_node3d *n = scene_node3d_checked(node);
-    if (!s || !n)
+    rt_scene_node3d *root = s ? scene_node3d_checked(s->root) : NULL;
+    if (!s || !root || !n)
         return;
-    if (node_contains(s->root, n) && n->parent)
+    if (node_contains(root, n) && n->parent)
         rt_scene_node3d_remove_child(n->parent, n);
-    s->node_count = count_subtree(s->root);
+    s->node_count = count_subtree(root);
 }
 
 /// @brief Locate a node by name via depth-first traversal from the scene root.
@@ -2576,19 +2651,23 @@ void rt_scene3d_remove(void *obj, void *node) {
 ///   transferred — callers must not release the returned pointer directly.
 void *rt_scene3d_find(void *obj, rt_string name) {
     rt_scene3d *s = scene3d_checked(obj);
+    rt_scene_node3d *root = s ? scene_node3d_checked(s->root) : NULL;
     if (!s || !name)
+        return NULL;
+    if (!root)
         return NULL;
     if (!rt_string_is_handle(name))
         return NULL;
     const char *str = rt_string_cstr(name);
     if (!str)
         return NULL;
-    return find_by_name(s->root, str);
+    return find_by_name(root, str);
 }
 
 /// @brief Add an authored PVS visibility zone AABB; returns its zero-based index, or -1.
 int64_t rt_scene3d_add_visibility_zone(void *obj, rt_string name, void *min_obj, void *max_obj) {
     rt_scene3d *s = scene3d_checked(obj);
+    int32_t zone_count;
     double a[3];
     double b[3];
     rt_scene3d_visibility_zone *zone;
@@ -2597,12 +2676,14 @@ int64_t rt_scene3d_add_visibility_zone(void *obj, rt_string name, void *min_obj,
     if (!scene3d_read_vec3d(min_obj, a, "Scene3D.AddVisibilityZone: min must be Vec3") ||
         !scene3d_read_vec3d(max_obj, b, "Scene3D.AddVisibilityZone: max must be Vec3"))
         return -1;
-    if (s->visibility_zone_count == INT32_MAX ||
-        !scene3d_visibility_zone_ensure_capacity(s, s->visibility_zone_count + 1)) {
+    zone_count = scene3d_visibility_zone_count_safe(s);
+    s->visibility_zone_count = zone_count;
+    if (zone_count == INT32_MAX ||
+        !scene3d_visibility_zone_ensure_capacity(s, zone_count + 1)) {
         rt_trap("Scene3D.AddVisibilityZone: allocation failed");
         return -1;
     }
-    zone = &s->visibility_zones[s->visibility_zone_count];
+    zone = &s->visibility_zones[zone_count];
     memset(zone, 0, sizeof(*zone));
     for (int i = 0; i < 3; ++i) {
         zone->world_min[i] = fmin(a[i], b[i]);
@@ -2612,7 +2693,8 @@ int64_t rt_scene3d_add_visibility_zone(void *obj, rt_string name, void *min_obj,
         name = rt_const_cstr("");
     rt_obj_retain_maybe(name);
     zone->name = name;
-    return s->visibility_zone_count++;
+    s->visibility_zone_count = zone_count + 1;
+    return zone_count;
 }
 
 /// @brief Append one directed visibility portal (@p from_zone -> @p to_zone) to the scene.
@@ -2622,16 +2704,24 @@ int64_t rt_scene3d_add_visibility_zone(void *obj, rt_string name, void *min_obj,
 static int scene3d_add_visibility_portal_directed(rt_scene3d *s,
                                                   int32_t from_zone,
                                                   int32_t to_zone) {
+    int32_t zone_count;
+    int32_t portal_count;
     rt_scene3d_visibility_portal *portal;
-    if (!s || from_zone < 0 || to_zone < 0 || from_zone >= s->visibility_zone_count ||
-        to_zone >= s->visibility_zone_count)
+    if (!s)
         return 0;
-    if (s->visibility_portal_count == INT32_MAX ||
-        !scene3d_visibility_portal_ensure_capacity(s, s->visibility_portal_count + 1))
+    zone_count = scene3d_visibility_zone_count_safe(s);
+    portal_count = scene3d_visibility_portal_count_safe(s);
+    s->visibility_zone_count = zone_count;
+    s->visibility_portal_count = portal_count;
+    if (from_zone < 0 || to_zone < 0 || from_zone >= zone_count || to_zone >= zone_count)
         return 0;
-    portal = &s->visibility_portals[s->visibility_portal_count++];
+    if (portal_count == INT32_MAX ||
+        !scene3d_visibility_portal_ensure_capacity(s, portal_count + 1))
+        return 0;
+    portal = &s->visibility_portals[portal_count];
     portal->from_zone = from_zone;
     portal->to_zone = to_zone;
+    s->visibility_portal_count = portal_count + 1;
     return 1;
 }
 
@@ -2643,14 +2733,20 @@ int64_t rt_scene3d_add_visibility_portal(void *obj,
     rt_scene3d *s = scene3d_checked(obj);
     int32_t from_i;
     int32_t to_i;
+    int32_t zone_count;
+    int32_t portal_count;
     int32_t first_index;
     if (!s || from_zone < 0 || to_zone < 0 || from_zone > INT32_MAX || to_zone > INT32_MAX)
         return -1;
+    zone_count = scene3d_visibility_zone_count_safe(s);
+    portal_count = scene3d_visibility_portal_count_safe(s);
+    s->visibility_zone_count = zone_count;
+    s->visibility_portal_count = portal_count;
     from_i = (int32_t)from_zone;
     to_i = (int32_t)to_zone;
-    if (from_i >= s->visibility_zone_count || to_i >= s->visibility_zone_count)
+    if (from_i >= zone_count || to_i >= zone_count)
         return -1;
-    first_index = s->visibility_portal_count;
+    first_index = portal_count;
     if (!scene3d_add_visibility_portal_directed(s, from_i, to_i)) {
         rt_trap("Scene3D.AddVisibilityPortal: allocation failed");
         return -1;
@@ -2882,15 +2978,27 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
 ///   refs outside the scene graph survive and remain usable.
 void rt_scene3d_clear(void *obj) {
     rt_scene3d *s = scene3d_checked(obj);
+    rt_scene_node3d *root;
     if (!s)
         return;
-    /* Detach all children from root */
-    for (int32_t i = 0, child_count = scene3d_node_child_count(s->root); i < child_count; i++) {
-        s->root->children[i]->parent = NULL;
-        scene_node_clear_owner_recursive(s->root->children[i], s);
-        scene3d_release_ref((void **)&s->root->children[i]);
+    root = scene_node3d_checked(s->root);
+    if (!root) {
+        s->node_count = 0;
+        scene3d_mark_spatial_dirty(s);
+        return;
     }
-    s->root->child_count = 0;
+    /* Detach all children from root */
+    for (int32_t i = 0, child_count = scene3d_node_child_count(root); i < child_count; i++) {
+        rt_scene_node3d *child = scene_node3d_checked(root->children[i]);
+        if (!child) {
+            root->children[i] = NULL;
+            continue;
+        }
+        child->parent = NULL;
+        scene_node_clear_owner_recursive(child, s);
+        scene3d_release_ref((void **)&root->children[i]);
+    }
+    root->child_count = 0;
     s->node_count = 1; /* just root */
     scene3d_mark_spatial_dirty(s);
 }
@@ -2903,9 +3011,10 @@ void rt_scene3d_clear(void *obj) {
 ///   per simulation step, before submitting the scene for drawing.
 void rt_scene3d_sync_bindings(void *obj, double dt) {
     rt_scene3d *scene = scene3d_checked(obj);
-    if (!scene || !scene->root)
+    rt_scene_node3d *root = scene ? scene_node3d_checked(scene->root) : NULL;
+    if (!scene || !root)
         return;
-    scene_node_sync_recursive(scene->root, dt);
+    scene_node_sync_recursive(root, dt);
     rt_sound3d_sync_bindings(dt);
 }
 
@@ -2921,36 +3030,40 @@ int64_t rt_scene3d_get_node_count(void *obj) {
     return scene->node_count;
 }
 
+static int64_t scene3d_counter_or_zero(int32_t value) {
+    return value > 0 ? (int64_t)value : 0;
+}
+
 /// @brief Number of nodes culled by the most recent `rt_scene3d_draw` call.
 /// @details Zero until the first draw. Useful as a coarse telemetry signal to
 ///   verify that culling is actually rejecting off-screen geometry.
 int64_t rt_scene3d_get_culled_count(void *obj) {
     rt_scene3d *scene = scene3d_checked(obj);
-    return scene ? scene->last_culled_count : 0;
+    return scene ? scene3d_counter_or_zero(scene->last_culled_count) : 0;
 }
 
 /// @brief Number of drawable mesh nodes submitted by the most recent draw.
 int64_t rt_scene3d_get_visible_node_count(void *obj) {
     rt_scene3d *scene = scene3d_checked(obj);
-    return scene ? scene->last_visible_node_count : 0;
+    return scene ? scene3d_counter_or_zero(scene->last_visible_node_count) : 0;
 }
 
 /// @brief Number of drawable mesh nodes skipped by portal/PVS visibility in the most recent draw.
 int64_t rt_scene3d_get_pvs_culled_count(void *obj) {
     rt_scene3d *scene = scene3d_checked(obj);
-    return scene ? scene->last_pvs_culled_count : 0;
+    return scene ? scene3d_counter_or_zero(scene->last_pvs_culled_count) : 0;
 }
 
 /// @brief Number of authored visibility zones in the scene.
 int64_t rt_scene3d_get_visibility_zone_count(void *obj) {
     rt_scene3d *scene = scene3d_checked(obj);
-    return scene ? scene->visibility_zone_count : 0;
+    return scene ? (int64_t)scene3d_visibility_zone_count_safe(scene) : 0;
 }
 
 /// @brief Number of directed visibility portal links in the scene.
 int64_t rt_scene3d_get_visibility_portal_count(void *obj) {
     rt_scene3d *scene = scene3d_checked(obj);
-    return scene ? scene->visibility_portal_count : 0;
+    return scene ? (int64_t)scene3d_visibility_portal_count_safe(scene) : 0;
 }
 
 /*==========================================================================

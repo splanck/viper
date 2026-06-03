@@ -909,9 +909,10 @@ static int32_t sw_cmd_slot_filter(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
 ///   degenerate near-zero-W fragments.
 ///
 ///   After interpolation, the UV is optionally transformed by the per-slot 2×3 affine
-///   matrix stored in `cmd->texture_slot_uv_transform[slot]` (column-major, elements
-///   [0..3] are the 2×2 rotation/scale, [4..5] are translation). This allows per-slot
-///   UV scroll, scale, and rotation without modifying geometry.
+///   matrix stored in `cmd->texture_slot_uv_transform[slot]` as `[a,b,c,d,tx,ty]`,
+///   where `[0..3]` are the 2x2 linear row-major affine part and `[4..5]` are
+///   translation. This allows per-slot UV scroll, scale, and rotation without
+///   modifying geometry.
 ///
 ///   UV-set selection: when `cmd->texture_slot_uv_set[slot] > 0` the secondary UV channel
 ///   (`u1_over_w` / `v1_over_w`) is used instead of the primary, matching the glTF

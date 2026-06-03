@@ -15,7 +15,23 @@
 #include "rt_pixels.h"
 
 #include <cmath>
+#include <csetjmp>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+namespace {
+static std::jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_expect_trap = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
+    std::abort();
+}
 
 static int tests_passed = 0;
 static int tests_run = 0;
@@ -37,6 +53,18 @@ static int tests_run = 0;
         else                                                                                       \
             tests_passed++;                                                                        \
     } while (0)
+
+template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *needle) {
+    g_last_trap = nullptr;
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        fn();
+        g_expect_trap = false;
+        return false;
+    }
+    g_expect_trap = false;
+    return g_last_trap && (!needle || std::strstr(g_last_trap, needle) != nullptr);
+}
 
 static void test_new_pbr_defaults() {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new_pbr(0.8, 0.6, 0.4);
@@ -204,7 +232,8 @@ static void test_env_map_setter_repairs_stale_slot_before_rejecting_new_value() 
     rt_material3d_set_env_map(mat, cubemap);
     EXPECT_TRUE(mat->env_map == cubemap, "Material3D.SetEnvMap binds a valid cubemap");
     ((rt_cubemap3d *)cubemap)->face_size = 2;
-    rt_material3d_set_env_map(mat, wrong);
+    EXPECT_TRUE(expect_trap_contains([&] { rt_material3d_set_env_map(mat, wrong); }, "CubeMap3D"),
+                "Material3D.SetEnvMap traps on invalid replacements");
     EXPECT_TRUE(mat->env_map == nullptr,
                 "Material3D.SetEnvMap repairs a stale env-map before rejecting a bad replacement");
     EXPECT_TRUE(rt_material3d_get_has_env_map(mat) == 0,

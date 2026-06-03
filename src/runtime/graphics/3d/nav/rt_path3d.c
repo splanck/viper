@@ -72,14 +72,6 @@ static void path3d_finalizer(void *obj) {
     p->point_count = p->point_capacity = 0;
 }
 
-/// @brief Drop one local refcount on @p obj and free if it hits zero.
-/// @details Used by callers that take a transient Vec3 from a path-evaluation
-///   helper and need to release it before returning their own result.
-static void path3d_release_local(void *obj) {
-    if (obj && rt_obj_release_check0(obj))
-        rt_obj_free(obj);
-}
-
 /// @brief Sanitize one coordinate lane, capping finite extremes so interpolation stays finite.
 static double path3d_coord_or(double value, double fallback) {
     if (!isfinite(fallback))
@@ -262,27 +254,27 @@ static int32_t path_idx(const rt_path3d *p, int32_t i) {
     return i;
 }
 
-/// @brief Evaluate the path position at parameter t in [0, 1].
-/// @details Uses Catmull-Rom interpolation between control points. The curve
-///          passes through every control point. If looping is enabled, t wraps
-///          around; otherwise it is clamped to [0, 1]. Requires at least 2 points.
-/// @param obj Path handle.
-/// @param t   Parameter along the path (0 = start, 1 = end).
-/// @return New Vec3 at the interpolated position.
-void *rt_path3d_get_position_at(void *obj, double t) {
-    rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
-    if (!p)
-        return rt_vec3_new(0, 0, 0);
+static void path3d_eval_position(rt_path3d *p, double t, double *ox, double *oy, double *oz) {
+    if (!ox || !oy || !oz)
+        return;
+    if (!p) {
+        *ox = *oy = *oz = 0.0;
+        return;
+    }
     path3d_repair(p);
     if (!isfinite(t))
         t = 0.0;
     if (p->point_count < 2) {
-        if (p->point_count == 1)
-            return rt_vec3_new(p->xs[0], p->ys[0], p->zs[0]);
-        return rt_vec3_new(0, 0, 0);
+        if (p->point_count == 1) {
+            *ox = p->xs[0];
+            *oy = p->ys[0];
+            *oz = p->zs[0];
+        } else {
+            *ox = *oy = *oz = 0.0;
+        }
+        return;
     }
 
-    /* Clamp or wrap t */
     if (p->looping) {
         t = fmod(t, 1.0);
         if (t < 0)
@@ -314,7 +306,6 @@ void *rt_path3d_get_position_at(void *obj, double t) {
     int32_t i2 = path_idx(p, seg + 1);
     int32_t i3 = path_idx(p, seg + 2);
 
-    double ox, oy, oz;
     catmull_rom_3d(p->xs[i0],
                    p->ys[i0],
                    p->zs[i0],
@@ -328,29 +319,46 @@ void *rt_path3d_get_position_at(void *obj, double t) {
                    p->ys[i3],
                    p->zs[i3],
                    local_t,
-                   &ox,
-                   &oy,
-                   &oz);
-    return rt_vec3_new(path3d_coord_or(ox, 0.0),
-                       path3d_coord_or(oy, 0.0),
-                       path3d_coord_or(oz, 0.0));
+                   ox,
+                   oy,
+                   oz);
+    *ox = path3d_coord_or(*ox, 0.0);
+    *oy = path3d_coord_or(*oy, 0.0);
+    *oz = path3d_coord_or(*oz, 0.0);
+}
+
+/// @brief Evaluate the path position at parameter t in [0, 1].
+/// @details Uses Catmull-Rom interpolation between control points. The curve
+///          passes through every control point. If looping is enabled, t wraps
+///          around; otherwise it is clamped to [0, 1]. Requires at least 2 points.
+/// @param obj Path handle.
+/// @param t   Parameter along the path (0 = start, 1 = end).
+/// @return New Vec3 at the interpolated position.
+void *rt_path3d_get_position_at(void *obj, double t) {
+    rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
+    if (!p)
+        return rt_vec3_new(0, 0, 0);
+    double ox, oy, oz;
+    path3d_eval_position(p, t, &ox, &oy, &oz);
+    return rt_vec3_new(ox, oy, oz);
 }
 
 /// @brief Get the normalized tangent direction at parameter t.
 /// @details Computes the tangent via finite differences (forward - backward at
 ///          a small epsilon). Returns (0,0,0) if the path has < 2 points.
 void *rt_path3d_get_direction_at(void *obj, double t) {
+    rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
     double eps = 0.001;
-    void *p0 = rt_path3d_get_position_at(obj, t - eps);
-    void *p1 = rt_path3d_get_position_at(obj, t + eps);
-    if (!p0 || !p1) {
-        path3d_release_local(p0);
-        path3d_release_local(p1);
+    double p0x, p0y, p0z;
+    double p1x, p1y, p1z;
+    if (!p) {
         return rt_vec3_new(0, 0, 0);
     }
-    double dx = rt_vec3_x(p1) - rt_vec3_x(p0);
-    double dy = rt_vec3_y(p1) - rt_vec3_y(p0);
-    double dz = rt_vec3_z(p1) - rt_vec3_z(p0);
+    path3d_eval_position(p, t - eps, &p0x, &p0y, &p0z);
+    path3d_eval_position(p, t + eps, &p1x, &p1y, &p1z);
+    double dx = p1x - p0x;
+    double dy = p1y - p0y;
+    double dz = p1z - p0z;
     double len = sqrt(dx * dx + dy * dy + dz * dz);
     if (isfinite(len) && len > 1e-8) {
         dx /= len;
@@ -361,8 +369,6 @@ void *rt_path3d_get_direction_at(void *obj, double t) {
         dy = 0.0;
         dz = 0.0;
     }
-    path3d_release_local(p0);
-    path3d_release_local(p1);
     return rt_vec3_new(dx, dy, dz);
 }
 
@@ -386,10 +392,8 @@ double rt_path3d_get_length(void *obj) {
     double total = 0.0, prev_x = 0, prev_y = 0, prev_z = 0;
     for (int64_t i = 0; i <= steps; i++) {
         double t = (double)i / (double)steps;
-        void *pt = rt_path3d_get_position_at(obj, t);
-        if (!pt)
-            continue;
-        double x = rt_vec3_x(pt), y = rt_vec3_y(pt), z = rt_vec3_z(pt);
+        double x, y, z;
+        path3d_eval_position(p, t, &x, &y, &z);
         if (i > 0) {
             double dx = x - prev_x, dy = y - prev_y, dz = z - prev_z;
             double segment = sqrt(dx * dx + dy * dy + dz * dz);
@@ -397,14 +401,12 @@ double rt_path3d_get_length(void *obj) {
                 total += segment;
             if (total > PATH3D_LENGTH_MAX) {
                 total = PATH3D_LENGTH_MAX;
-                path3d_release_local(pt);
                 break;
             }
         }
         prev_x = x;
         prev_y = y;
         prev_z = z;
-        path3d_release_local(pt);
     }
     p->cached_length = total;
     p->length_dirty = 0;

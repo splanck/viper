@@ -3,6 +3,7 @@ module test_game3d_assets_probe;
 bind Viper.Game3D as Game3D;
 bind Viper.Graphics3D as G3D;
 bind Viper.Terminal as Terminal;
+bind Viper.Threads.Thread as Thread;
 
 func fail(message: String) {
     Terminal.Say("FAIL: " + message);
@@ -71,9 +72,19 @@ func start() {
     }
 
     var missing = Game3D.Assets3D.LoadModelTemplateAssetAsync("viper/missing/co3_missing.gltf");
-    if (missing == null ||
-        Game3D.AssetHandle3D.get_ready(missing) == false ||
-        Game3D.AssetHandle3D.get_error(missing) != "asset not found" ||
+    if (missing == null) {
+        fail("missing package asset did not return a diagnostic handle");
+        return;
+    }
+    var missingReady = Game3D.AssetHandle3D.get_ready(missing);
+    var wait = 0;
+    while (missingReady == false && wait < 40) {
+        Thread.Sleep(5);
+        missingReady = Game3D.AssetHandle3D.get_ready(missing);
+        wait = wait + 1;
+    }
+    if (missingReady == false ||
+        Game3D.AssetHandle3D.get_error(missing) != "failed to load model asset" ||
         Game3D.AssetHandle3D.getTemplate(missing) != null) {
         fail("missing package asset did not produce a terminal diagnostic handle");
         return;

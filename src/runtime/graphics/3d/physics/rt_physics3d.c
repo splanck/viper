@@ -109,6 +109,11 @@ static rt_body3d *body3d_checked(void *obj) {
     return (rt_body3d *)rt_g3d_checked_or_null(obj, RT_G3D_BODY3D_CLASS_ID);
 }
 
+/// @brief Return the body's Collider3D slot only when it still has the expected class.
+static void *body3d_collider_ref(const rt_body3d *body) {
+    return body ? rt_g3d_checked_or_null(body->collider, RT_G3D_COLLIDER3D_CLASS_ID) : NULL;
+}
+
 /// @brief Bump a body's broadphase revision (wrapping past UINT64_MAX to 1) so cached broadphase
 ///        structures know to re-evaluate it.
 void body3d_touch_broadphase(rt_body3d *body) {
@@ -450,6 +455,71 @@ static rt_contact_point3d_obj *contact_point3d_checked(void *obj) {
     return (rt_contact_point3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_CONTACTPOINT3D_CLASS_ID);
 }
 
+static int32_t ph3d_clamped_array_count(const void *array, int32_t count, int32_t capacity) {
+    if (!array || count <= 0 || capacity <= 0)
+        return 0;
+    return count < capacity ? count : capacity;
+}
+
+static int32_t world3d_body_count_safe(const rt_world3d *w) {
+    int32_t limit = w ? ph3d_clamped_array_count(w->bodies, w->body_count, w->body_capacity) : 0;
+    int32_t count = 0;
+    for (int32_t i = 0; i < limit; ++i) {
+        if (!body3d_checked(w->bodies[i]))
+            break;
+        count++;
+    }
+    return count;
+}
+
+static int32_t world3d_joint_count_safe(const rt_world3d *w) {
+    if (!w || !w->joint_types)
+        return 0;
+    int32_t limit = ph3d_clamped_array_count(w->joints, w->joint_count, w->joint_capacity);
+    int32_t count = 0;
+    for (int32_t i = 0; i < limit; ++i) {
+        if (!joint3d_matches_type(w->joints[i], w->joint_types[i]))
+            break;
+        count++;
+    }
+    return count;
+}
+
+static int32_t world3d_contact_count_safe(const rt_contact3d *contacts,
+                                          int32_t count,
+                                          int32_t capacity) {
+    int32_t limit = ph3d_clamped_array_count(contacts, count, capacity);
+    int32_t valid = 0;
+    for (int32_t i = 0; i < limit; ++i) {
+        if (!body3d_checked(contacts[i].body_a) || !body3d_checked(contacts[i].body_b))
+            break;
+        valid++;
+    }
+    return valid;
+}
+
+static int32_t collision_event3d_contact_count_safe(const rt_collision_event3d_obj *event) {
+    if (!event || event->contact_count <= 0)
+        return 0;
+    return event->contact_count < PH3D_MAX_MANIFOLD_POINTS ? event->contact_count
+                                                           : PH3D_MAX_MANIFOLD_POINTS;
+}
+
+static int64_t physics_hit_list3d_count_safe(const rt_physics_hit_list3d_obj *list) {
+    if (!list || !list->items || list->count <= 0 || list->capacity <= 0)
+        return 0;
+    int64_t cap = list->capacity < PH3D_MAX_QUERY_HITS ? list->capacity : PH3D_MAX_QUERY_HITS;
+    return list->count < cap ? list->count : cap;
+}
+
+static rt_body3d *ph3d_body_ref_or_null(void *body) {
+    return body3d_checked(body);
+}
+
+static void *ph3d_collider_ref_or_null(void *collider) {
+    return rt_g3d_checked_or_null(collider, RT_G3D_COLLIDER3D_CLASS_ID);
+}
+
 // Forward declarations for functions defined later in this translation unit.
 // They are referenced from helpers above that must be inlined by the compiler
 // before the full definitions appear.
@@ -501,6 +571,28 @@ static void ph3d_sanitize_aabb(double *mn, double *mx) {
     }
 }
 
+/// @brief True when a body has collider data or a non-empty cached primitive shape.
+///
+/// Bare Body3D.New objects intentionally return false: callers must assign a
+/// collider before they participate in collision. The cached-shape fallback
+/// keeps legacy/internal primitive bodies usable if their collider pointer is
+/// absent but their primitive dimensions are still populated.
+int body3d_has_collision_geometry(const rt_body3d *body) {
+    if (!body)
+        return 0;
+    if (body3d_collider_ref(body))
+        return 1;
+    if (body->shape == PH3D_SHAPE_SPHERE)
+        return isfinite(body->radius) && body->radius > 0.0;
+    if (body->shape == PH3D_SHAPE_CAPSULE)
+        return isfinite(body->radius) && body->radius > 0.0 && isfinite(body->height) &&
+               body->height > 0.0;
+    return isfinite(body->half_extents[0]) && isfinite(body->half_extents[1]) &&
+           isfinite(body->half_extents[2]) &&
+           (body->half_extents[0] > 0.0 || body->half_extents[1] > 0.0 ||
+            body->half_extents[2] > 0.0);
+}
+
 /*==========================================================================
  * Collision detection helpers
  *=========================================================================*/
@@ -519,11 +611,12 @@ void body_aabb(const rt_body3d *b, double *mn, double *mx) {
         mx[0] = mx[1] = mx[2] = 0.0;
         return;
     }
-    if (b->collider) {
+    void *collider = body3d_collider_ref(b);
+    if (collider) {
         rt_collider_pose pose;
         collider_pose_from_body(b, &pose);
         rt_collider3d_compute_world_aabb_raw(
-            b->collider, pose.position, pose.rotation, pose.scale, mn, mx);
+            collider, pose.position, pose.rotation, pose.scale, mn, mx);
         ph3d_sanitize_aabb(mn, mx);
         return;
     }
@@ -1053,6 +1146,7 @@ static double body3d_inverse_inertia_from(double inertia) {
 void body3d_update_shape_cache_from_collider(rt_body3d *body) {
     double local_min[3];
     double local_max[3];
+    void *collider;
     double sx;
     double sy;
     double sz;
@@ -1064,32 +1158,33 @@ void body3d_update_shape_cache_from_collider(rt_body3d *body) {
     vec3_set(body->half_extents, 0.0, 0.0, 0.0);
     body->radius = 0.0;
     body->height = 0.0;
-    if (!body->collider)
+    collider = body3d_collider_ref(body);
+    if (!collider)
         return;
     sx = fabs(ph3d_sanitize_scale_value(body->scale[0]));
     sy = fabs(ph3d_sanitize_scale_value(body->scale[1]));
     sz = fabs(ph3d_sanitize_scale_value(body->scale[2]));
 
-    type = rt_collider3d_get_type(body->collider);
+    type = rt_collider3d_get_type(collider);
     switch (type) {
         case RT_COLLIDER3D_TYPE_BOX:
             body->shape = PH3D_SHAPE_AABB;
-            rt_collider3d_get_box_half_extents_raw(body->collider, body->half_extents);
+            rt_collider3d_get_box_half_extents_raw(collider, body->half_extents);
             body->half_extents[0] *= sx;
             body->half_extents[1] *= sy;
             body->half_extents[2] *= sz;
             break;
         case RT_COLLIDER3D_TYPE_SPHERE:
             body->shape = PH3D_SHAPE_SPHERE;
-            body->radius = rt_collider3d_get_radius_raw(body->collider);
+            body->radius = rt_collider3d_get_radius_raw(collider);
             body->radius *= fmax(sx, fmax(sy, sz));
             vec3_set(body->half_extents, body->radius, body->radius, body->radius);
             break;
         case RT_COLLIDER3D_TYPE_CAPSULE:
             body->shape = PH3D_SHAPE_CAPSULE;
             {
-                double raw_radius = rt_collider3d_get_radius_raw(body->collider);
-                double raw_height = rt_collider3d_get_height_raw(body->collider);
+                double raw_radius = rt_collider3d_get_radius_raw(collider);
+                double raw_height = rt_collider3d_get_height_raw(collider);
                 body->radius = raw_radius * fmax(sx, sz);
                 body->height = fmax(raw_height - 2.0 * raw_radius, 0.0) * sy + 2.0 * body->radius;
             }
@@ -1099,7 +1194,7 @@ void body3d_update_shape_cache_from_collider(rt_body3d *body) {
                      body->radius);
             break;
         default:
-            rt_collider3d_get_local_bounds_raw(body->collider, local_min, local_max);
+            rt_collider3d_get_local_bounds_raw(collider, local_min, local_max);
             body->shape = PH3D_SHAPE_AABB;
             body->half_extents[0] = fabs(local_max[0] - local_min[0]) * 0.5 * sx;
             body->half_extents[1] = fabs(local_max[1] - local_min[1]) * 0.5 * sy;
@@ -1205,6 +1300,7 @@ static int body3d_motion_mode_allowed(const rt_body3d *body,
     (void)body;
     if (desired_mode == PH3D_MODE_STATIC)
         return 1;
+    collider = rt_g3d_checked_or_null(collider, RT_G3D_COLLIDER3D_CLASS_ID);
     if (collider && rt_collider3d_is_static_only_raw(collider)) {
         rt_trap(api_name);
         return 0;
@@ -1360,7 +1456,8 @@ static void physics_hit_list3d_finalizer(void *obj) {
     if (!list)
         return;
     if (list->items) {
-        for (int64_t i = 0; i < list->count; ++i) {
+        int64_t count = physics_hit_list3d_count_safe(list);
+        for (int64_t i = 0; i < count; ++i) {
             if (list->items[i] && rt_obj_release_check0(list->items[i]))
                 rt_obj_free(list->items[i]);
         }
@@ -1368,6 +1465,7 @@ static void physics_hit_list3d_finalizer(void *obj) {
         list->items = NULL;
     }
     list->count = 0;
+    list->capacity = 0;
 }
 
 /// @brief GC finalizer for `CollisionEvent3D` — release both bodies and both colliders.
@@ -1413,10 +1511,10 @@ static void collision_event3d_assign_from_contact(rt_collision_event3d_obj *even
     if (!event || !contact)
         return;
     collision_event3d_release_refs(event);
-    event->body_a = contact->body_a;
-    event->body_b = contact->body_b;
-    event->collider_a = contact->collider_a;
-    event->collider_b = contact->collider_b;
+    event->body_a = ph3d_body_ref_or_null(contact->body_a);
+    event->body_b = ph3d_body_ref_or_null(contact->body_b);
+    event->collider_a = ph3d_collider_ref_or_null(contact->collider_a);
+    event->collider_b = ph3d_collider_ref_or_null(contact->collider_b);
     ph3d_vec3_copy_state(event->point, contact->point);
     ph3d_vec3_copy_normal_or_up(event->normal, contact->normal);
     event->separation = ph3d_sanitize_contact_scalar(contact->separation);
@@ -1456,8 +1554,8 @@ void *physics_hit3d_new(const rt_query_hit3d *src) {
     }
     memset(hit, 0, sizeof(*hit));
     if (src) {
-        hit->body = src->body;
-        hit->collider = src->collider;
+        hit->body = ph3d_body_ref_or_null(src->body);
+        hit->collider = ph3d_collider_ref_or_null(src->collider);
         ph3d_vec3_copy_state(hit->point, src->point);
         ph3d_vec3_copy_normal_or_up(hit->normal, src->normal);
         hit->distance = ph3d_clamp_nonnegative_finite(src->distance, 0.0);
@@ -1504,6 +1602,7 @@ void *physics_hit_list3d_new_ex(const rt_query_hit3d *hits,
         return NULL;
     }
     list->count = count;
+    list->capacity = count;
     for (int32_t i = 0; i < count; ++i) {
         list->items[i] = physics_hit3d_new(&hits[i]);
         if (!list->items[i]) {
@@ -1771,12 +1870,14 @@ static void world3d_finalizer(void *obj) {
     rt_world3d *w = (rt_world3d *)obj;
     if (!w)
         return;
-    for (int32_t i = 0; i < w->body_count; i++) {
+    int32_t body_count = world3d_body_count_safe(w);
+    int32_t joint_count = world3d_joint_count_safe(w);
+    for (int32_t i = 0; i < body_count; i++) {
         if (w->bodies[i] && rt_obj_release_check0(w->bodies[i]))
             rt_obj_free(w->bodies[i]);
         w->bodies[i] = NULL;
     }
-    for (int32_t i = 0; i < w->joint_count; i++) {
+    for (int32_t i = 0; i < joint_count; i++) {
         if (w->joints[i] && rt_obj_release_check0(w->joints[i]))
             rt_obj_free(w->joints[i]);
         w->joints[i] = NULL;
@@ -2014,6 +2115,19 @@ void rt_world3d_step(void *obj, double dt) {
     dt = ph3d_sanitize_step_dt(dt);
     if (dt <= 0.0)
         return;
+    w->body_count = world3d_body_count_safe(w);
+    w->joint_count = world3d_joint_count_safe(w);
+    w->contact_count = world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
+    w->frame_contact_count = world3d_contact_count_safe(
+        w->frame_contacts, w->frame_contact_count, w->frame_contact_capacity);
+    w->previous_contact_count = world3d_contact_count_safe(
+        w->previous_contacts, w->previous_contact_count, w->previous_contact_capacity);
+    w->enter_event_count =
+        world3d_contact_count_safe(w->enter_events, w->enter_event_count, w->enter_event_capacity);
+    w->stay_event_count =
+        world3d_contact_count_safe(w->stay_events, w->stay_event_count, w->stay_event_capacity);
+    w->exit_event_count =
+        world3d_contact_count_safe(w->exit_events, w->exit_event_count, w->exit_event_capacity);
     int substeps = world3d_compute_substeps(w, dt);
     double sub_dt = dt / (double)substeps;
     world3d_invalidate_query_broadphase(w);
@@ -2134,7 +2248,9 @@ void rt_world3d_add_joint(void *obj, void *joint, int64_t joint_type) {
         rt_trap("Physics3D.World.AddJoint: joint object does not match joint type");
         return;
     }
-    for (int32_t i = 0; i < w->joint_count; i++) {
+    int32_t joint_count = world3d_joint_count_safe(w);
+    w->joint_count = joint_count;
+    for (int32_t i = 0; i < joint_count; i++) {
         if (w->joints[i] == joint)
             return;
     }
@@ -2156,7 +2272,9 @@ void rt_world3d_remove_joint(void *obj, void *joint) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || !joint)
         return;
-    for (int32_t i = 0; i < w->joint_count; i++) {
+    int32_t joint_count = world3d_joint_count_safe(w);
+    w->joint_count = joint_count;
+    for (int32_t i = 0; i < joint_count; i++) {
         if (w->joints[i] == joint) {
             void *removed = w->joints[i];
             w->joints[i] = w->joints[--w->joint_count];
@@ -2172,7 +2290,7 @@ void rt_world3d_remove_joint(void *obj, void *joint) {
 /// @brief `World3D.JointCount` — number of registered joints (0 for NULL).
 int64_t rt_world3d_joint_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->joint_count : 0;
+    return world3d_joint_count_safe(w);
 }
 
 /// @brief `World3D.SolverIterations` — iterative constraint-solver pass count.
@@ -2191,19 +2309,27 @@ void rt_world3d_set_solver_iterations(void *obj, int64_t iterations) {
 /// @brief `World3D.LastSolverIslandCount` — max active contact islands in the last Step.
 int64_t rt_world3d_get_last_solver_island_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->last_solver_island_count : 0;
+    return (w && w->last_solver_island_count > 0) ? w->last_solver_island_count : 0;
 }
 
 /// @brief `World3D.LastSolverActiveBodyCount` — max awake bodies scheduled in contact islands.
 int64_t rt_world3d_get_last_solver_active_body_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->last_solver_active_body_count : 0;
+    if (!w || w->last_solver_active_body_count <= 0)
+        return 0;
+    int32_t body_count = world3d_body_count_safe(w);
+    return w->last_solver_active_body_count < body_count ? w->last_solver_active_body_count
+                                                         : body_count;
 }
 
 /// @brief `World3D.LastSolverContactCount` — max contacts scheduled through islands.
 int64_t rt_world3d_get_last_solver_contact_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->last_solver_contact_count : 0;
+    if (!w || w->last_solver_contact_count <= 0)
+        return 0;
+    int32_t contact_count = world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
+    return w->last_solver_contact_count < contact_count ? w->last_solver_contact_count
+                                                        : contact_count;
 }
 
 /// @brief `World3D.Add(body)` — register a body.
@@ -2214,7 +2340,9 @@ int8_t rt_world3d_try_add(void *obj, void *body) {
     rt_body3d *b = body3d_checked(body);
     if (!w || !b)
         return 0;
-    for (int32_t i = 0; i < w->body_count; i++) {
+    int32_t body_count = world3d_body_count_safe(w);
+    w->body_count = body_count;
+    for (int32_t i = 0; i < body_count; i++) {
         if (w->bodies[i] == b)
             return 1;
     }
@@ -2280,7 +2408,9 @@ void rt_world3d_remove(void *obj, void *body) {
     rt_body3d *b = body3d_checked(body);
     if (!w || !b)
         return;
-    for (int32_t i = 0; i < w->body_count; i++) {
+    int32_t body_count = world3d_body_count_safe(w);
+    w->body_count = body_count;
+    for (int32_t i = 0; i < body_count; i++) {
         if (w->bodies[i] == b) {
             void *removed = w->bodies[i];
             world3d_purge_body_contacts(w, b);
@@ -2297,7 +2427,7 @@ void rt_world3d_remove(void *obj, void *body) {
 /// @brief `World3D.BodyCount` — number of registered bodies (0 for NULL).
 int64_t rt_world3d_body_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->body_count : 0;
+    return world3d_body_count_safe(w);
 }
 
 /// @brief Whether @p body is currently registered in the world.
@@ -2306,7 +2436,8 @@ int8_t rt_world3d_contains_body(void *obj, void *body) {
     rt_body3d *b = body3d_checked(body);
     if (!w || !b)
         return 0;
-    for (int32_t i = 0; i < w->body_count; i++) {
+    int32_t body_count = world3d_body_count_safe(w);
+    for (int32_t i = 0; i < body_count; i++) {
         if (w->bodies[i] == b)
             return 1;
     }
@@ -2316,19 +2447,26 @@ int8_t rt_world3d_contains_body(void *obj, void *body) {
 /// @brief `World3D.LastCCDRequestedSubsteps` — unclamped substep demand from the last Step.
 int64_t rt_world3d_get_last_ccd_requested_substeps(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->last_ccd_requested_substeps : 0;
+    if (!w || w->last_ccd_requested_substeps <= 0)
+        return 0;
+    return w->last_ccd_requested_substeps > PH3D_MAX_CCD_SUBSTEPS
+               ? PH3D_MAX_CCD_SUBSTEPS
+               : w->last_ccd_requested_substeps;
 }
 
 /// @brief `World3D.LastCCDSubsteps` — actual CCD substeps used by the last Step.
 int64_t rt_world3d_get_last_ccd_substeps(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->last_ccd_substeps : 0;
+    if (!w || w->last_ccd_substeps <= 0)
+        return 0;
+    return w->last_ccd_substeps > PH3D_MAX_CCD_SUBSTEPS ? PH3D_MAX_CCD_SUBSTEPS
+                                                        : w->last_ccd_substeps;
 }
 
 /// @brief `World3D.CCDSubstepClampedCount` — number of frames that hit the substep cap.
 int64_t rt_world3d_get_ccd_substep_clamped_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->ccd_substep_clamped_count : 0;
+    return (w && w->ccd_substep_clamped_count > 0) ? w->ccd_substep_clamped_count : 0;
 }
 
 /// @brief `World3D.SetGravity(gx, gy, gz)` — change the world gravity vector.
@@ -2419,7 +2557,7 @@ void rt_world3d_rebase_origin(void *obj, double dx, double dy, double dz) {
 /// @brief `World3D.CollisionCount` — number of contacts this frame.
 int64_t rt_world3d_get_collision_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->contact_count : 0;
+    return w ? world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity) : 0;
 }
 
 /// @brief `World3D.CollisionBodyA(i)` — borrowed reference to body A in contact `i`.
@@ -2427,9 +2565,11 @@ void *rt_world3d_get_collision_body_a(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w)
         return NULL;
-    if (index < 0 || index >= w->contact_count)
+    int32_t contact_count =
+        world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
+    if (index < 0 || index >= contact_count)
         return NULL;
-    return w->contacts[index].body_a;
+    return ph3d_body_ref_or_null(w->contacts[index].body_a);
 }
 
 /// @brief `World3D.CollisionBodyB(i)` — borrowed reference to body B in contact `i`.
@@ -2437,9 +2577,11 @@ void *rt_world3d_get_collision_body_b(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w)
         return NULL;
-    if (index < 0 || index >= w->contact_count)
+    int32_t contact_count =
+        world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
+    if (index < 0 || index >= contact_count)
         return NULL;
-    return w->contacts[index].body_b;
+    return ph3d_body_ref_or_null(w->contacts[index].body_b);
 }
 
 /// @brief `World3D.CollisionNormal(i)` — fresh `Vec3` of the contact normal.
@@ -2448,7 +2590,9 @@ void *rt_world3d_get_collision_normal(void *obj, int64_t index) {
     double normal[3];
     if (!w)
         return rt_vec3_new(0, 0, 0);
-    if (index < 0 || index >= w->contact_count)
+    int32_t contact_count =
+        world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
+    if (index < 0 || index >= contact_count)
         return rt_vec3_new(0, 0, 0);
     ph3d_vec3_copy_normal_or_up(normal, w->contacts[index].normal);
     return rt_vec3_new(normal[0], normal[1], normal[2]);
@@ -2462,7 +2606,9 @@ double rt_world3d_get_collision_depth(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
     if (!w)
         return 0;
-    if (index < 0 || index >= w->contact_count)
+    int32_t contact_count =
+        world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
+    if (index < 0 || index >= contact_count)
         return 0;
     return ph3d_clamp_nonnegative_finite(-w->contacts[index].separation, 0.0);
 }
@@ -2474,7 +2620,7 @@ double rt_world3d_get_collision_depth(void *obj, int64_t index) {
 /// from "events emitted this step".
 int64_t rt_world3d_get_collision_event_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->contact_count : 0;
+    return w ? world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity) : 0;
 }
 
 /// @brief `World3D.CollisionEvent(i)` — boxed `CollisionEvent3D` for contact `i`.
@@ -2483,7 +2629,11 @@ int64_t rt_world3d_get_collision_event_count(void *obj) {
 /// caller (unlike the borrowed-reference body accessors).
 void *rt_world3d_get_collision_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
-    if (!w || index < 0 || index >= w->contact_count)
+    if (!w)
+        return NULL;
+    int32_t contact_count =
+        world3d_contact_count_safe(w->contacts, w->contact_count, w->contact_capacity);
+    if (index < 0 || index >= contact_count)
         return NULL;
     return world3d_cached_event_from_contact(&w->collision_event_objects,
                                              &w->collision_event_object_capacity,
@@ -2499,13 +2649,20 @@ void *rt_world3d_get_collision_event(void *obj, int64_t index) {
 /// @brief `World3D.EnterEventCount` — contacts that began this frame.
 int64_t rt_world3d_get_enter_event_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->enter_event_count : 0;
+    return w ? world3d_contact_count_safe(w->enter_events,
+                                          w->enter_event_count,
+                                          w->enter_event_capacity)
+             : 0;
 }
 
 /// @brief `World3D.EnterEvent(i)` — boxed event for the i-th new contact.
 void *rt_world3d_get_enter_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
-    if (!w || index < 0 || index >= w->enter_event_count)
+    if (!w)
+        return NULL;
+    int32_t event_count =
+        world3d_contact_count_safe(w->enter_events, w->enter_event_count, w->enter_event_capacity);
+    if (index < 0 || index >= event_count)
         return NULL;
     return world3d_cached_event_from_contact(
         &w->enter_event_objects, &w->enter_event_object_capacity, index, &w->enter_events[index]);
@@ -2514,13 +2671,20 @@ void *rt_world3d_get_enter_event(void *obj, int64_t index) {
 /// @brief `World3D.StayEventCount` — contacts that persisted from the previous frame.
 int64_t rt_world3d_get_stay_event_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->stay_event_count : 0;
+    return w ? world3d_contact_count_safe(w->stay_events,
+                                          w->stay_event_count,
+                                          w->stay_event_capacity)
+             : 0;
 }
 
 /// @brief `World3D.StayEvent(i)` — boxed event for the i-th continuing contact.
 void *rt_world3d_get_stay_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
-    if (!w || index < 0 || index >= w->stay_event_count)
+    if (!w)
+        return NULL;
+    int32_t event_count =
+        world3d_contact_count_safe(w->stay_events, w->stay_event_count, w->stay_event_capacity);
+    if (index < 0 || index >= event_count)
         return NULL;
     return world3d_cached_event_from_contact(
         &w->stay_event_objects, &w->stay_event_object_capacity, index, &w->stay_events[index]);
@@ -2529,13 +2693,20 @@ void *rt_world3d_get_stay_event(void *obj, int64_t index) {
 /// @brief `World3D.ExitEventCount` — contacts that ended this frame.
 int64_t rt_world3d_get_exit_event_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
-    return w ? w->exit_event_count : 0;
+    return w ? world3d_contact_count_safe(w->exit_events,
+                                          w->exit_event_count,
+                                          w->exit_event_capacity)
+             : 0;
 }
 
 /// @brief `World3D.ExitEvent(i)` — boxed event for the i-th newly-ended contact.
 void *rt_world3d_get_exit_event(void *obj, int64_t index) {
     rt_world3d *w = world3d_checked(obj);
-    if (!w || index < 0 || index >= w->exit_event_count)
+    if (!w)
+        return NULL;
+    int32_t event_count =
+        world3d_contact_count_safe(w->exit_events, w->exit_event_count, w->exit_event_capacity);
+    if (index < 0 || index >= event_count)
         return NULL;
     return world3d_cached_event_from_contact(
         &w->exit_event_objects, &w->exit_event_object_capacity, index, &w->exit_events[index]);
@@ -2565,37 +2736,37 @@ void rt_world3d_clear_collision_events(void *obj) {
 /// @brief `CollisionEvent3D.BodyA` — first body in the collision pair.
 void *rt_collision_event3d_get_body_a(void *obj) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    return event ? event->body_a : NULL;
+    return event ? ph3d_body_ref_or_null(event->body_a) : NULL;
 }
 
 /// @brief `CollisionEvent3D.BodyB` — second body in the collision pair.
 void *rt_collision_event3d_get_body_b(void *obj) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    return event ? event->body_b : NULL;
+    return event ? ph3d_body_ref_or_null(event->body_b) : NULL;
 }
 
 /// @brief `CollisionEvent3D.ColliderA` — leaf collider on body A (for compounds).
 void *rt_collision_event3d_get_collider_a(void *obj) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    return event ? event->collider_a : NULL;
+    return event ? ph3d_collider_ref_or_null(event->collider_a) : NULL;
 }
 
 /// @brief `CollisionEvent3D.ColliderB` — leaf collider on body B (for compounds).
 void *rt_collision_event3d_get_collider_b(void *obj) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    return event ? event->collider_b : NULL;
+    return event ? ph3d_collider_ref_or_null(event->collider_b) : NULL;
 }
 
 /// @brief `CollisionEvent3D.IsTrigger` — whether either party is a trigger.
 int8_t rt_collision_event3d_get_is_trigger(void *obj) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    return event ? event->is_trigger : 0;
+    return (event && event->is_trigger) ? 1 : 0;
 }
 
 /// @brief `CollisionEvent3D.ContactCount` — number of points in this contact manifold.
 int64_t rt_collision_event3d_get_contact_count(void *obj) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    return event ? event->contact_count : 0;
+    return collision_event3d_contact_count_safe(event);
 }
 
 /// @brief `CollisionEvent3D.RelativeSpeed` — closing speed along the contact normal.
@@ -2620,7 +2791,8 @@ double rt_collision_event3d_get_normal_impulse(void *obj) {
 void *rt_collision_event3d_get_contact(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     rt_contact3d contact;
-    if (!event || index < 0 || index >= event->contact_count)
+    int32_t contact_count = collision_event3d_contact_count_safe(event);
+    if (!event || index < 0 || index >= contact_count)
         return NULL;
     memset(&contact, 0, sizeof(contact));
     contact.body_a = event->body_a;
@@ -2638,7 +2810,8 @@ void *rt_collision_event3d_get_contact(void *obj, int64_t index) {
 void *rt_collision_event3d_get_contact_point(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     double point[3];
-    if (!event || index < 0 || index >= event->contact_count)
+    int32_t contact_count = collision_event3d_contact_count_safe(event);
+    if (!event || index < 0 || index >= contact_count)
         return rt_vec3_new(0.0, 0.0, 0.0);
     ph3d_vec3_copy_state(point, event->points[index]);
     return rt_vec3_new(point[0], point[1], point[2]);
@@ -2648,7 +2821,8 @@ void *rt_collision_event3d_get_contact_point(void *obj, int64_t index) {
 void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     double normal[3];
-    if (!event || index < 0 || index >= event->contact_count)
+    int32_t contact_count = collision_event3d_contact_count_safe(event);
+    if (!event || index < 0 || index >= contact_count)
         return rt_vec3_new(0.0, 1.0, 0.0);
     ph3d_vec3_copy_normal_or_up(normal, event->normals[index]);
     return rt_vec3_new(normal[0], normal[1], normal[2]);
@@ -2659,7 +2833,8 @@ void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
 /// Negative means penetration; zero or positive means touching/just-separated.
 double rt_collision_event3d_get_contact_separation(void *obj, int64_t index) {
     rt_collision_event3d_obj *event = collision_event3d_checked(obj);
-    if (!event || index < 0 || index >= event->contact_count)
+    int32_t contact_count = collision_event3d_contact_count_safe(event);
+    if (!event || index < 0 || index >= contact_count)
         return 0.0;
     return ph3d_sanitize_contact_scalar(event->separations[index]);
 }
@@ -2702,13 +2877,13 @@ double rt_physics_hit3d_get_distance(void *obj) {
 /// @brief `PhysicsHit3D.Body` — the body that was hit.
 void *rt_physics_hit3d_get_body(void *obj) {
     rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
-    return hit ? hit->body : NULL;
+    return hit ? ph3d_body_ref_or_null(hit->body) : NULL;
 }
 
 /// @brief `PhysicsHit3D.Collider` — the leaf collider that was hit.
 void *rt_physics_hit3d_get_collider(void *obj) {
     rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
-    return hit ? hit->collider : NULL;
+    return hit ? ph3d_collider_ref_or_null(hit->collider) : NULL;
 }
 
 /// @brief `PhysicsHit3D.Point` — world-space hit location.
@@ -2740,39 +2915,45 @@ double rt_physics_hit3d_get_fraction(void *obj) {
 /// @brief `PhysicsHit3D.StartedPenetrating` — true if the query started inside the collider.
 int8_t rt_physics_hit3d_get_started_penetrating(void *obj) {
     rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
-    return hit ? hit->started_penetrating : 0;
+    return (hit && hit->started_penetrating) ? 1 : 0;
 }
 
 /// @brief `PhysicsHit3D.IsTrigger` — true if the hit collider belongs to a trigger body.
 int8_t rt_physics_hit3d_get_is_trigger(void *obj) {
     rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
-    return hit ? hit->is_trigger : 0;
+    return (hit && hit->is_trigger) ? 1 : 0;
 }
 
 /// @brief `PhysicsHitList3D.Count` — number of hits in the list.
 int64_t rt_physics_hit_list3d_get_count(void *obj) {
     rt_physics_hit_list3d_obj *list = physics_hit_list3d_checked(obj);
-    return list ? list->count : 0;
+    return physics_hit_list3d_count_safe(list);
 }
 
 /// @brief `PhysicsHitList3D.TotalCount` — full number of hits found before list truncation.
 int64_t rt_physics_hit_list3d_get_total_count(void *obj) {
     rt_physics_hit_list3d_obj *list = physics_hit_list3d_checked(obj);
-    return list ? list->total_count : 0;
+    if (!list)
+        return 0;
+    int64_t count = physics_hit_list3d_count_safe(list);
+    if (list->total_count < count)
+        return count;
+    return list->total_count > 0 ? list->total_count : 0;
 }
 
 /// @brief `PhysicsHitList3D.Truncated` — true when more hits matched than the list stores.
 int8_t rt_physics_hit_list3d_get_truncated(void *obj) {
     rt_physics_hit_list3d_obj *list = physics_hit_list3d_checked(obj);
-    return list ? list->truncated : 0;
+    return (list && list->truncated) ? 1 : 0;
 }
 
 /// @brief `PhysicsHitList3D[i]` — borrowed `PhysicsHit3D` reference.
 void *rt_physics_hit_list3d_get(void *obj, int64_t index) {
     rt_physics_hit_list3d_obj *list = physics_hit_list3d_checked(obj);
-    if (!list || index < 0 || index >= list->count)
+    int64_t count = physics_hit_list3d_count_safe(list);
+    if (!list || index < 0 || index >= count)
         return NULL;
-    return list->items[index];
+    return rt_g3d_checked_or_null(list->items[index], RT_G3D_PHYSICSHIT3D_CLASS_ID);
 }
 
 /*==========================================================================
@@ -2932,7 +3113,7 @@ void rt_body3d_set_collider(void *o, void *collider) {
 /// @brief `Body3D.GetCollider` — borrowed reference to the body's collider.
 void *rt_body3d_get_collider(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->collider : NULL;
+    return body3d_collider_ref(b);
 }
 
 /// @brief `Body3D.SetPosition(x, y, z)` — teleport (also wakes if dynamic).
@@ -3233,7 +3414,10 @@ void rt_body3d_set_restitution(void *o, double r) {
 /// @brief `Body3D.GetRestitution` — read bounciness.
 double rt_body3d_get_restitution(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->restitution : 0;
+    if (!b)
+        return 0;
+    double value = ph3d_clamp_nonnegative_finite(b->restitution, 0.0);
+    return value > 1.0 ? 1.0 : value;
 }
 
 /// @brief `Body3D.SetFriction(f)` — set friction coefficient.
@@ -3249,7 +3433,7 @@ void rt_body3d_set_friction(void *o, double f) {
 /// @brief `Body3D.GetFriction` — read friction coefficient.
 double rt_body3d_get_friction(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->friction : 0;
+    return b ? ph3d_clamp_nonnegative_finite(b->friction, 0.0) : 0;
 }
 
 /// @brief `Body3D.SetLinearDamping(d)` — per-second linear velocity decay.
@@ -3265,7 +3449,7 @@ void rt_body3d_set_linear_damping(void *o, double d) {
 /// @brief `Body3D.GetLinearDamping` — read linear damping coefficient.
 double rt_body3d_get_linear_damping(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->linear_damping : 0.0;
+    return b ? ph3d_clamp_nonnegative_finite(b->linear_damping, 0.0) : 0.0;
 }
 
 /// @brief `Body3D.SetAngularDamping(d)` — per-second angular velocity decay.
@@ -3278,7 +3462,7 @@ void rt_body3d_set_angular_damping(void *o, double d) {
 /// @brief `Body3D.GetAngularDamping` — read angular damping coefficient.
 double rt_body3d_get_angular_damping(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->angular_damping : 0.0;
+    return b ? ph3d_clamp_nonnegative_finite(b->angular_damping, 0.0) : 0.0;
 }
 
 /// @brief `Body3D.SetCollisionLayer(l)` — bitmask labeling this body's category.
@@ -3297,7 +3481,7 @@ void rt_body3d_set_collision_layer(void *o, int64_t l) {
 /// @brief `Body3D.GetCollisionLayer` — read this body's layer bitmask.
 int64_t rt_body3d_get_collision_layer(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->collision_layer : 0;
+    return b ? (b->collision_layer > 0 ? b->collision_layer : 1) : 0;
 }
 
 /// @brief `Body3D.SetCollisionMask(m)` — bitmask of layers this body collides with.
@@ -3339,7 +3523,7 @@ void rt_body3d_set_static(void *o, int8_t s) {
 /// @brief `Body3D.IsStatic` — true if the body is in static motion mode.
 int8_t rt_body3d_is_static(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->is_static : 0;
+    return b && b->motion_mode == PH3D_MODE_STATIC ? 1 : 0;
 }
 
 /// @brief `Body3D.SetKinematic(k)` — toggle kinematic motion mode.
@@ -3366,7 +3550,7 @@ void rt_body3d_set_kinematic(void *o, int8_t k) {
 /// @brief `Body3D.IsKinematic` — true if the body is in kinematic motion mode.
 int8_t rt_body3d_is_kinematic(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->is_kinematic : 0;
+    return b && b->motion_mode == PH3D_MODE_KINEMATIC ? 1 : 0;
 }
 
 /// @brief `Body3D.SetTrigger(t)` — toggle "report contacts but don't physically respond".
@@ -3382,7 +3566,7 @@ void rt_body3d_set_trigger(void *o, int8_t t) {
 /// @brief `Body3D.IsTrigger` — true if the body is in trigger-only mode.
 int8_t rt_body3d_is_trigger(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->is_trigger : 0;
+    return b && b->is_trigger ? 1 : 0;
 }
 
 /// @brief `Body3D.SetCanSleep(canSleep)` — toggle automatic sleep eligibility.
@@ -3404,13 +3588,13 @@ void rt_body3d_set_can_sleep(void *o, int8_t can_sleep) {
 /// @brief `Body3D.CanSleep` — read sleep eligibility flag.
 int8_t rt_body3d_can_sleep(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->can_sleep : 0;
+    return b && b->can_sleep ? 1 : 0;
 }
 
 /// @brief `Body3D.IsSleeping` — true when the body is currently quiescent.
 int8_t rt_body3d_is_sleeping(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->is_sleeping : 0;
+    return b && b->is_sleeping ? 1 : 0;
 }
 
 /// @brief `Body3D.Wake` — force the body awake (no-op for non-dynamic).
@@ -3453,7 +3637,7 @@ void rt_body3d_set_use_ccd(void *o, int8_t use_ccd) {
 /// @brief `Body3D.GetUseCcd` — read CCD opt-in flag.
 int8_t rt_body3d_get_use_ccd(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->use_ccd : 0;
+    return b && b->use_ccd ? 1 : 0;
 }
 
 /// @brief `Body3D.IsGrounded` — true when the body has an upward contact this frame.
@@ -3462,7 +3646,7 @@ int8_t rt_body3d_get_use_ccd(void *o) {
 /// `World3D.Step`; queryable from frame to frame.
 int8_t rt_body3d_is_grounded(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->is_grounded : 0;
+    return b && b->is_grounded ? 1 : 0;
 }
 
 /// @brief `Body3D.GroundNormal` — fresh `Vec3` of the latest ground normal.
@@ -3482,7 +3666,7 @@ void *rt_body3d_get_ground_normal(void *o) {
 /// @brief `Body3D.Mass` — read the body's mass (zero for static).
 double rt_body3d_get_mass(void *o) {
     rt_body3d *b = body3d_checked(o);
-    return b ? b->mass : 0;
+    return b ? ph3d_clamp_nonnegative_finite(b->mass, 0.0) : 0;
 }
 
 

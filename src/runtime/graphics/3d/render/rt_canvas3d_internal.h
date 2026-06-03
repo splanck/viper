@@ -151,6 +151,7 @@ static inline void rt_mesh3d_mark_bounds_dirty(rt_mesh3d *mesh) {
 static inline void rt_mesh3d_touch_geometry_now(rt_mesh3d *mesh) {
     if (!mesh)
         return;
+    mesh->resident = 1;
     mesh->bounds_dirty = 1;
     if (mesh->geometry_revision == UINT32_MAX)
         mesh->geometry_revision = 1;

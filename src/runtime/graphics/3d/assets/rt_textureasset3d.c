@@ -252,6 +252,11 @@ static textureasset3d_format_info textureasset3d_format_from_vk(uint32_t vk_form
             {8, 8},  {8, 8},   {10, 5},  {10, 5},  {10, 6},  {10, 6},  {10, 8},
             {10, 8}, {10, 10}, {10, 10}, {12, 10}, {12, 10}, {12, 12}, {12, 12},
         };
+        /* Keep the dimension table locked to the handled ASTC VkFormat span so a
+         * future format addition can't silently index past the array. */
+        _Static_assert(sizeof(astc_dims) / sizeof(astc_dims[0]) ==
+                           (VK_FORMAT_ASTC_12X12_SRGB_BLOCK - VK_FORMAT_ASTC_4X4_UNORM_BLOCK + 1),
+                       "ASTC dimension table must cover every handled ASTC VkFormat");
         uint32_t index = vk_format - VK_FORMAT_ASTC_4X4_UNORM_BLOCK;
         if (index < (uint32_t)(sizeof(astc_dims) / sizeof(astc_dims[0]))) {
             return (textureasset3d_format_info){
@@ -261,10 +266,57 @@ static textureasset3d_format_info textureasset3d_format_from_vk(uint32_t vk_form
     return (textureasset3d_format_info){"unknown", 1, 0, 0, 0};
 }
 
+static int textureasset3d_expected_mip_bytes(const textureasset3d_format_info *format,
+                                             uint32_t width,
+                                             uint32_t height,
+                                             uint64_t *out_bytes) {
+    uint64_t blocks_x;
+    uint64_t blocks_y;
+    if (!format || !out_bytes || width == 0 || height == 0 || format->block_width <= 0 ||
+        format->block_height <= 0 || format->block_bytes <= 0)
+        return 0;
+    blocks_x = ((uint64_t)width + (uint64_t)format->block_width - 1u) /
+               (uint64_t)format->block_width;
+    blocks_y = ((uint64_t)height + (uint64_t)format->block_height - 1u) /
+               (uint64_t)format->block_height;
+    if (blocks_x != 0 && blocks_y > UINT64_MAX / blocks_x)
+        return 0;
+    if (blocks_x * blocks_y > UINT64_MAX / (uint64_t)format->block_bytes)
+        return 0;
+    *out_bytes = blocks_x * blocks_y * (uint64_t)format->block_bytes;
+    return 1;
+}
+
 /// @brief Compute a mip level's dimension as base >> level, clamped to a minimum of 1.
 static uint32_t textureasset3d_mip_dimension(uint32_t base, uint32_t level) {
     uint32_t value = base >> level;
     return value > 0 ? value : 1;
+}
+
+static void textureasset3d_add_saturating_u64(uint64_t *total, uint64_t value) {
+    if (!total)
+        return;
+    if (UINT64_MAX - *total < value)
+        *total = UINT64_MAX;
+    else
+        *total += value;
+}
+
+static uint64_t textureasset3d_pixels_allocation_bytes(void *pixels) {
+    rt_pixels_impl *p = rt_pixels_checked_impl_or_null(pixels);
+    uint64_t pixel_count;
+    uint64_t data_bytes;
+    uint64_t total;
+    if (!p || p->width <= 0 || p->height <= 0)
+        return 0;
+    if ((uint64_t)p->width > UINT64_MAX / (uint64_t)p->height)
+        return UINT64_MAX;
+    pixel_count = (uint64_t)p->width * (uint64_t)p->height;
+    if (pixel_count > UINT64_MAX / sizeof(uint32_t))
+        return UINT64_MAX;
+    data_bytes = pixel_count * (uint64_t)sizeof(uint32_t);
+    total = data_bytes;
+    return total;
 }
 
 /// @brief Set the resident mip window and recompute resident byte total / active Pixels.
@@ -304,12 +356,14 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
         mip_count = safe_mip_count - first_mip;
 
     for (int64_t i = 0; i < mip_count; i++) {
-        const textureasset3d_mip *mip = &asset->mips[first_mip + i];
-        if (UINT64_MAX - total < mip->length) {
-            total = UINT64_MAX;
-            break;
+        int64_t absolute_mip = first_mip + i;
+        const textureasset3d_mip *mip = &asset->mips[absolute_mip];
+        if (asset->mip_payloads && asset->mip_payloads[absolute_mip] && mip->length > 0) {
+            textureasset3d_add_saturating_u64(&total, mip->length);
+        } else if (asset->mip_pixels && asset->mip_pixels[absolute_mip]) {
+            textureasset3d_add_saturating_u64(
+                &total, textureasset3d_pixels_allocation_bytes(asset->mip_pixels[absolute_mip]));
         }
-        total += mip->length;
     }
 
     asset->resident_mip_start = first_mip;
@@ -1585,7 +1639,15 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         rt_trap("TextureAsset3D.LoadKTX2: unsupported KTX2 dimensionality");
         return NULL;
     }
-    mip_count = level_count > 0 ? (int64_t)level_count : 1;
+    if (supercompression_scheme != 0) {
+        rt_trap("TextureAsset3D.LoadKTX2: unsupported KTX2 supercompression");
+        return NULL;
+    }
+    if (level_count == 0) {
+        rt_trap("TextureAsset3D.LoadKTX2: implicit mip generation is unsupported");
+        return NULL;
+    }
+    mip_count = (int64_t)level_count;
     if (mip_count <= 0 || mip_count > (int64_t)TEXTUREASSET3D_MAX_MIP_COUNT) {
         rt_trap("TextureAsset3D.LoadKTX2: unsupported mip count");
         return NULL;
@@ -1604,6 +1666,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         }
     }
 
+    format = textureasset3d_format_from_vk(vk_format);
     mips = (textureasset3d_mip *)calloc((size_t)mip_count, sizeof(textureasset3d_mip));
     if (!mips) {
         rt_trap("TextureAsset3D.LoadKTX2: mip table allocation failed");
@@ -1624,20 +1687,29 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
                 rt_trap("TextureAsset3D.LoadKTX2: truncated mip payload");
                 return NULL;
             }
+            {
+                uint64_t expected_bytes = 0;
+                if (!textureasset3d_expected_mip_bytes(
+                        &format, mips[i].width, mips[i].height, &expected_bytes) ||
+                    mips[i].length != expected_bytes) {
+                    free(mips);
+                    rt_trap("TextureAsset3D.LoadKTX2: invalid mip payload length");
+                    return NULL;
+                }
+            }
         }
     }
 
-    format = textureasset3d_format_from_vk(vk_format);
-    if (strcmp(format.name, "rgba8") == 0 && supercompression_scheme == 0 && level_count > 0)
+    if (strcmp(format.name, "rgba8") == 0)
         mip_pixels = textureasset3d_decode_rgba8_mips(data, size, mips, mip_count);
     /* BC3 software reference decode: also produce an RGBA8 Pixels fallback so BC3 textures render
      * on backends that cannot upload BC3 natively (native blocks are still retained below). */
-    if (strcmp(format.name, "bc3") == 0 && supercompression_scheme == 0 && level_count > 0)
+    if (strcmp(format.name, "bc3") == 0)
         mip_pixels = textureasset3d_decode_bc3_mips(data, size, mips, mip_count);
     /* BC7 software reference decode -> RGBA8 Pixels fallback; native blocks are still retained. */
-    if (strcmp(format.name, "bc7") == 0 && supercompression_scheme == 0 && level_count > 0)
+    if (strcmp(format.name, "bc7") == 0)
         mip_pixels = textureasset3d_decode_bc7_mips(data, size, mips, mip_count);
-    if (strcmp(format.name, "etc2") == 0 && supercompression_scheme == 0 && level_count > 0)
+    if (strcmp(format.name, "etc2") == 0)
         mip_pixels = textureasset3d_decode_compressed_mips(
             data,
             size,
@@ -1648,7 +1720,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             format.block_bytes,
             textureasset3d_decode_etc2_block_adapter,
             "TextureAsset3D.LoadKTX2: ETC2 Pixels fallback allocation failed");
-    if (strcmp(format.name, "astc") == 0 && supercompression_scheme == 0 && level_count > 0)
+    if (strcmp(format.name, "astc") == 0)
         mip_pixels = textureasset3d_decode_compressed_mips(
             data,
             size,
@@ -1659,7 +1731,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             format.block_bytes,
             textureasset3d_decode_astc_block_adapter,
             "TextureAsset3D.LoadKTX2: ASTC Pixels fallback allocation failed");
-    if (format.compressed && supercompression_scheme == 0 && level_count > 0) {
+    if (format.compressed) {
         mip_payloads = textureasset3d_copy_native_mip_payloads(data, size, mips, mip_count);
         if (!mip_payloads) {
             textureasset3d_release_mip_pixels(mip_pixels, mip_count);
@@ -1688,7 +1760,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     asset->mip_count = mip_count;
     asset->mip_capacity = mip_count;
     asset->format = format.name;
-    asset->compressed = (format.compressed || supercompression_scheme != 0) ? 1 : 0;
+    asset->compressed = format.compressed ? 1 : 0;
     asset->block_width = format.block_width;
     asset->block_height = format.block_height;
     asset->block_bytes = format.block_bytes;
@@ -1774,7 +1846,7 @@ rt_string rt_textureasset3d_get_format(void *obj) {
     return rt_const_cstr((asset && asset->format) ? asset->format : "");
 }
 
-/// @brief Whether the texture is block-compressed (or supercompressed).
+/// @brief Whether the texture stores native block-compressed mip payloads.
 int8_t rt_textureasset3d_get_compressed(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return (asset && asset->compressed) ? 1 : 0;

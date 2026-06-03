@@ -665,7 +665,7 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
 ///          perspective cameras built via `rt_camera3d_new`.
 int8_t rt_camera3d_is_ortho(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    return cam ? cam->is_ortho : 0;
+    return cam && cam->is_ortho ? 1 : 0;
 }
 
 /// @brief Core look-at: position the camera at @p eye_in aiming at @p target_in with up @p up_in.
@@ -810,7 +810,9 @@ void rt_camera3d_orbit_components(void *obj,
 /// @brief Get the vertical field of view in degrees.
 double rt_camera3d_get_fov(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    return cam ? cam->fov : 0.0;
+    if (!cam)
+        return 0.0;
+    return cam->is_ortho ? 0.0 : sanitize_fov(cam->fov);
 }
 
 /// @brief Change the field of view and rebuild the projection matrix.
@@ -827,7 +829,12 @@ void rt_camera3d_set_fov(void *obj, double fov) {
 /// @brief Read the near clip-plane distance.
 double rt_camera3d_get_near_plane(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    return cam ? cam->near_plane : 0.0;
+    if (!cam)
+        return 0.0;
+    double near_plane = cam->near_plane;
+    double far_plane = cam->far_plane;
+    sanitize_clip_planes(&near_plane, &far_plane);
+    return near_plane;
 }
 
 /// @brief Set the near clip-plane distance; planes are re-sanitized on rebuild.
@@ -842,7 +849,12 @@ void rt_camera3d_set_near_plane(void *obj, double near_plane) {
 /// @brief Read the far clip-plane distance.
 double rt_camera3d_get_far_plane(void *obj) {
     rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
-    return cam ? cam->far_plane : 0.0;
+    if (!cam)
+        return 0.0;
+    double near_plane = cam->near_plane;
+    double far_plane = cam->far_plane;
+    sanitize_clip_planes(&near_plane, &far_plane);
+    return far_plane;
 }
 
 /// @brief Set the far clip-plane distance (e.g. to extend draw distance for a

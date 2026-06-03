@@ -488,6 +488,40 @@ static void test_gltf_preload_bundle_rejects_missing_required_buffers() {
                 "Missing required buffer reports a preload-stage error");
 }
 
+static void test_gltf_preload_bundle_rejects_short_glb_bin() {
+    std::string json = "{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"byteLength\":4}]}";
+    while ((json.size() & 3u) != 0)
+        json.push_back(' ');
+
+    std::vector<uint8_t> glb;
+    glb.insert(glb.end(), {'g', 'l', 'T', 'F'});
+    append_u32_le(glb, 2);
+    append_u32_le(glb, (uint32_t)(12 + 8 + json.size() + 8));
+    append_u32_le(glb, (uint32_t)json.size());
+    append_u32_le(glb, 0x4E4F534Au);
+    glb.insert(glb.end(), json.begin(), json.end());
+    append_u32_le(glb, 0);
+    append_u32_le(glb, 0x004E4942u);
+
+    uint8_t *owned_root = static_cast<uint8_t *>(std::malloc(glb.size()));
+    EXPECT_TRUE(owned_root != nullptr, "Short-GLB preload root copy can be allocated");
+    if (!owned_root)
+        return;
+    std::memcpy(owned_root, glb.data(), glb.size());
+
+    char error[128] = {0};
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create(
+        rt_const_cstr("/tmp/viper_gltf_preload_short_bin.glb"),
+        owned_root,
+        glb.size(),
+        0,
+        error,
+        sizeof(error));
+    EXPECT_TRUE(bundle == nullptr, "Preload rejects GLB BIN chunks shorter than buffer byteLength");
+    EXPECT_TRUE(std::strstr(error, "failed to stage glTF dependency") != nullptr,
+                "Short GLB BIN preload reports a staging error");
+}
+
 static void test_gltf_preload_bundle_validates_accessor_ranges() {
     const char *gltf_path = "/tmp/viper_gltf_preload_invalid_accessor_range.gltf";
     std::vector<uint8_t> gltf_buffer;
@@ -2044,6 +2078,74 @@ static void test_gltf_imports_extended_vertex_attributes_and_triangle_strips() {
                 "GLTF.Load preserves triangle-strip winding during triangulation");
 }
 
+static void test_gltf_clips_and_renormalizes_primary_joint_influences() {
+    const char *gltf_path = "/tmp/viper_gltf_primary_joint_clip.gltf";
+    std::vector<uint8_t> gltf_buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const uint16_t joints[12] = {256, 1, 2, 3, 1, 2, 3, 4, 1, 2, 3, 4};
+    const float weights[12] = {0.5f, 0.25f, 0.25f, 0.0f, 1.0f, 0.0f,
+                               0.0f, 0.0f, 1.0f, 0.0f,  0.0f, 0.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+
+    for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : joints)
+        append_bytes(gltf_buffer, v);
+    for (float v : weights)
+        append_bytes(gltf_buffer, v);
+    for (uint16_t v : indices)
+        append_bytes(gltf_buffer, v);
+
+    std::string buffer_b64 = base64_encode(gltf_buffer.data(), gltf_buffer.size());
+    std::string gltf_json =
+        "{\n"
+        "  \"asset\": {\"version\": \"2.0\"},\n"
+        "  \"buffers\": [{\"uri\": \"data:application/octet-stream;base64," +
+        buffer_b64 + "\", \"byteLength\": " + std::to_string(gltf_buffer.size()) +
+        "}],\n"
+        "  \"bufferViews\": [\n"
+        "    {\"buffer\": 0, \"byteOffset\": 0, \"byteLength\": 36},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 36, \"byteLength\": 24},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 60, \"byteLength\": 48},\n"
+        "    {\"buffer\": 0, \"byteOffset\": 108, \"byteLength\": 6}\n"
+        "  ],\n"
+        "  \"accessors\": [\n"
+        "    {\"bufferView\": 0, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC3\"},\n"
+        "    {\"bufferView\": 1, \"componentType\": 5123, \"count\": 3, \"type\": \"VEC4\"},\n"
+        "    {\"bufferView\": 2, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC4\"},\n"
+        "    {\"bufferView\": 3, \"componentType\": 5123, \"count\": 3, \"type\": \"SCALAR\"}\n"
+        "  ],\n"
+        "  \"meshes\": [{\"primitives\": [{\"attributes\": {\"POSITION\": 0, "
+        "\"JOINTS_0\": 1, \"WEIGHTS_0\": 2}, \"indices\": 3}]}]\n"
+        "}\n";
+
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Primary-joint clipping glTF fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts primary skin attributes");
+    if (!asset)
+        return;
+
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_gltf_get_mesh(asset, 0);
+    EXPECT_TRUE(mesh != nullptr, "Primary-joint clipping fixture imports a mesh");
+    if (!mesh)
+        return;
+    EXPECT_TRUE(mesh->vertices[0].bone_indices[0] == 0,
+                "GLTF.Load clears clipped invalid primary joint indices");
+    EXPECT_NEAR(mesh->vertices[0].bone_weights[0],
+                0.0,
+                0.001,
+                "GLTF.Load clears clipped invalid primary joint weights");
+    EXPECT_NEAR(mesh->vertices[0].bone_weights[1],
+                0.5,
+                0.001,
+                "GLTF.Load renormalizes remaining primary joint weight A");
+    EXPECT_NEAR(mesh->vertices[0].bone_weights[2],
+                0.5,
+                0.001,
+                "GLTF.Load renormalizes remaining primary joint weight B");
+}
+
 static void test_gltf_reduces_secondary_joint_sets_to_top_four_influences() {
     const char *gltf_path = "/tmp/viper_gltf_joints1.gltf";
     std::vector<uint8_t> gltf_buffer;
@@ -3497,6 +3599,26 @@ static void test_gltf_rejects_corrupt_required_image_payload() {
                 "GLTF.Load rejects corrupt texture image payloads instead of dropping the map");
 }
 
+static void test_gltf_rejects_corrupt_extension_texture_payloads() {
+    const char *gltf_path = "/tmp/viper_gltf_corrupt_extension_texture.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"extensionsUsed\":[\"KHR_materials_clearcoat\",\"KHR_materials_transmission\"],"
+        "\"images\":[{\"uri\":\"data:image/png;base64,AAAA\"}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"extensions\":{"
+        "\"KHR_materials_clearcoat\":{\"clearcoatFactor\":0.5,"
+        "\"clearcoatTexture\":{\"index\":0}},"
+        "\"KHR_materials_transmission\":{\"transmissionFactor\":0.4,"
+        "\"transmissionTexture\":{\"index\":0}}}}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Corrupt extension-texture glTF fixture can be written");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(gltf_path)) == nullptr,
+                "GLTF.Load rejects corrupt clearcoat/transmission texture payloads");
+}
+
 static void test_gltf_rejects_unsafe_external_buffer_paths() {
     const char *gltf_path = "/tmp/viper_gltf_unsafe_uri.gltf";
     std::string gltf_json =
@@ -3809,6 +3931,29 @@ static void test_gltf_uses_texture_texcoord_and_transform() {
                 "GLTF.Load records texture transform offset.y");
 }
 
+static void test_gltf_unsupported_texture_texcoord_falls_back_to_primary() {
+    const char *gltf_path = "/tmp/viper_gltf_unsupported_texture_texcoord.gltf";
+    std::string gltf_json =
+        "{"
+        "\"asset\":{\"version\":\"2.0\"},"
+        "\"textures\":[{}],"
+        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,"
+        "\"texCoord\":2}}}]"
+        "}";
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                "Unsupported texture texCoord fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses unsupported texture texCoord fixture");
+    if (!asset)
+        return;
+    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
+    EXPECT_TRUE(mat != nullptr, "Unsupported texture texCoord fixture exposes a material");
+    if (!mat)
+        return;
+    EXPECT_TRUE(mat->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] == 0,
+                "GLTF.Load maps unsupported texture texCoord values to TEXCOORD_0");
+}
+
 static void test_gltf_imports_material_extensions_supported_by_material3d() {
     const char *gltf_path = "/tmp/viper_gltf_material_extensions.gltf";
     std::string gltf_json =
@@ -3874,7 +4019,6 @@ static void test_gltf_imports_ktx2_basisu_textures() {
     std::string gltf_json =
         "{"
         "\"asset\":{\"version\":\"2.0\"},"
-        "\"extensionsRequired\":[\"KHR_texture_basisu\"],"
         "\"extensionsUsed\":[\"KHR_texture_basisu\"],"
         "\"images\":[{\"uri\":\"viper_gltf_basisu_albedo.ktx2\",\"mimeType\":\"image/ktx2\"}],"
         "\"textures\":[{\"extensions\":{\"KHR_texture_basisu\":{\"source\":0}}}],"
@@ -3882,7 +4026,7 @@ static void test_gltf_imports_ktx2_basisu_textures() {
         "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "KTX2 glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
-    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts required KHR_texture_basisu textures");
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts optional KHR_texture_basisu textures");
     if (!asset)
         return;
     auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
@@ -3977,6 +4121,25 @@ static void test_gltf_rejects_unsupported_required_extensions() {
     EXPECT_TRUE(
         asset == nullptr,
         "GLTF.Load rejects unsupported required extensions instead of rendering fallback data");
+}
+
+static void test_gltf_rejects_required_extensions_with_partial_runtime_support() {
+    const char *gltf_path = "/tmp/viper_gltf_partial_required_extensions.gltf";
+    const char *extensions[] = {
+        "KHR_texture_basisu",
+        "KHR_materials_clearcoat",
+        "KHR_materials_transmission",
+    };
+    for (const char *extension : extensions) {
+        std::string gltf_json = std::string("{\"asset\":{\"version\":\"2.0\"},") +
+                                "\"extensionsRequired\":[\"" + extension + "\"]," +
+                                "\"extensionsUsed\":[\"" + extension + "\"]}";
+        EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
+                    "Partially-supported required-extension glTF fixture can be created");
+        void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
+        EXPECT_TRUE(asset == nullptr,
+                    "GLTF.Load rejects required extensions that only have degraded support");
+    }
 }
 
 static void test_gltf_rejects_non_string_required_extensions() {
@@ -4187,6 +4350,7 @@ int main() {
     test_gltf_resolves_percent_encoded_external_buffers();
     test_gltf_preload_bundle_supplies_external_buffers();
     test_gltf_preload_bundle_rejects_missing_required_buffers();
+    test_gltf_preload_bundle_rejects_short_glb_bin();
     test_gltf_preload_bundle_validates_accessor_ranges();
     test_gltf_preload_bundle_rejects_corrupt_required_image_payload();
     test_gltf_preload_bundle_stages_data_uri_buffers_and_images();
@@ -4207,6 +4371,7 @@ int main() {
     test_gltf_rejects_invalid_skin_joint_tables();
     test_gltf_builds_scene_hierarchy_for_active_scene();
     test_gltf_imports_extended_vertex_attributes_and_triangle_strips();
+    test_gltf_clips_and_renormalizes_primary_joint_influences();
     test_gltf_reduces_secondary_joint_sets_to_top_four_influences();
     test_gltf_applies_matrix_nodes_in_column_major_order();
     test_gltf_imports_skins_and_animation_clips();
@@ -4223,6 +4388,7 @@ int main() {
     test_gltf_imports_morph_targets();
     test_gltf_rejects_malformed_glb_headers();
     test_gltf_rejects_corrupt_required_image_payload();
+    test_gltf_rejects_corrupt_extension_texture_payloads();
     test_gltf_rejects_unsafe_external_buffer_paths();
     test_gltf_accepts_dot_relative_external_buffer_paths();
     test_gltf_rejects_percent_decoded_nul_external_paths();
@@ -4235,12 +4401,14 @@ int main() {
     test_gltf_ignores_wrong_typed_optional_string_fields();
     test_gltf_assigns_default_material_to_materialless_primitives();
     test_gltf_uses_texture_texcoord_and_transform();
+    test_gltf_unsupported_texture_texcoord_falls_back_to_primary();
     test_gltf_imports_material_extensions_supported_by_material3d();
     test_gltf_imports_ktx2_basisu_textures();
     test_gltf_preserves_negative_matrix_scale_sign();
     test_gltf_matrix_shear_does_not_leak_into_rotation();
     test_gltf_rejects_skins_over_runtime_bone_limit();
     test_gltf_rejects_unsupported_required_extensions();
+    test_gltf_rejects_required_extensions_with_partial_runtime_support();
     test_gltf_rejects_non_string_required_extensions();
     test_gltf_accepts_supported_required_extensions_with_parser_coverage();
     test_gltf_imports_required_punctual_lights();

@@ -93,6 +93,26 @@ static rt_collider3d *collider3d_checked(void *obj) {
     return (rt_collider3d *)rt_g3d_checked_or_null(obj, RT_G3D_COLLIDER3D_CLASS_ID);
 }
 
+static int collider3d_type_is_valid(int32_t type) {
+    return type >= RT_COLLIDER3D_TYPE_BOX && type <= RT_COLLIDER3D_TYPE_HEIGHTFIELD;
+}
+
+static int32_t collider3d_safe_child_count(const rt_collider3d *collider, int require_transforms) {
+    if (!collider || collider->type != RT_COLLIDER3D_TYPE_COMPOUND || !collider->children ||
+        collider->child_count <= 0 || collider->child_capacity <= 0)
+        return 0;
+    if (require_transforms && !collider->child_transforms)
+        return 0;
+    return collider->child_count < collider->child_capacity ? collider->child_count
+                                                            : collider->child_capacity;
+}
+
+static rt_mesh3d *collider3d_mesh_or_null(const rt_collider3d *collider) {
+    if (!collider || !collider->mesh)
+        return NULL;
+    return (rt_mesh3d *)rt_g3d_checked_or_null(collider->mesh, RT_G3D_MESH3D_CLASS_ID);
+}
+
 typedef struct {
     void *vptr;
     double position[3];
@@ -331,7 +351,8 @@ static void collider3d_finalizer(void *obj) {
     if (collider->mesh && rt_obj_release_check0(collider->mesh))
         rt_obj_free(collider->mesh);
     collider->mesh = NULL;
-    for (int32_t i = 0; i < collider->child_count; ++i) {
+    int32_t child_count = collider3d_safe_child_count(collider, 0);
+    for (int32_t i = 0; i < child_count; ++i) {
         if (collider->children[i] && rt_obj_release_check0(collider->children[i]))
             rt_obj_free(collider->children[i]);
         collider->children[i] = NULL;
@@ -406,8 +427,9 @@ static void collider3d_set_from_transform(rt_collider3d_child *dst, void *transf
 static int collider3d_contains_child(rt_collider3d *root, rt_collider3d *needle) {
     if (!root || !needle || root->type != RT_COLLIDER3D_TYPE_COMPOUND)
         return 0;
-    for (int32_t i = 0; i < root->child_count; ++i) {
-        rt_collider3d *child = (rt_collider3d *)root->children[i];
+    int32_t child_count = collider3d_safe_child_count(root, 0);
+    for (int32_t i = 0; i < child_count; ++i) {
+        rt_collider3d *child = collider3d_checked(root->children[i]);
         if (!child)
             continue;
         if (child == needle)
@@ -434,11 +456,11 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
     if (!collider)
         return;
 
+    rt_mesh3d *mesh = collider3d_mesh_or_null(collider);
     if ((collider->type == RT_COLLIDER3D_TYPE_CONVEX_HULL ||
          collider->type == RT_COLLIDER3D_TYPE_MESH) &&
-        collider->mesh && collider->bounds_revision != 0 &&
-        collider->mesh_bounds_revision == collider->mesh->geometry_revision &&
-        !collider->mesh->bounds_dirty) {
+        mesh && collider->bounds_revision != 0 &&
+        collider->mesh_bounds_revision == mesh->geometry_revision && !mesh->bounds_dirty) {
         return;
     }
 
@@ -475,17 +497,17 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
             break;
         case RT_COLLIDER3D_TYPE_CONVEX_HULL:
         case RT_COLLIDER3D_TYPE_MESH:
-            if (collider->mesh) {
-                rt_mesh3d_refresh_bounds(collider->mesh);
-                collider->mesh_bounds_revision = collider->mesh->geometry_revision;
+            if (mesh) {
+                rt_mesh3d_refresh_bounds(mesh);
+                collider->mesh_bounds_revision = mesh->geometry_revision;
                 vec3_set(collider->bounds_min,
-                         collider->mesh->aabb_min[0],
-                         collider->mesh->aabb_min[1],
-                         collider->mesh->aabb_min[2]);
+                         mesh->aabb_min[0],
+                         mesh->aabb_min[1],
+                         mesh->aabb_min[2]);
                 vec3_set(collider->bounds_max,
-                         collider->mesh->aabb_max[0],
-                         collider->mesh->aabb_max[1],
-                         collider->mesh->aabb_max[2]);
+                         mesh->aabb_max[0],
+                         mesh->aabb_max[1],
+                         mesh->aabb_max[2]);
             } else {
                 collider->mesh_bounds_revision = 0;
                 vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
@@ -523,18 +545,19 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
             collider->bounds_max[2] = half_depth;
             break;
         }
-        case RT_COLLIDER3D_TYPE_COMPOUND:
-            if (collider->child_count == 0) {
+        case RT_COLLIDER3D_TYPE_COMPOUND: {
+            int32_t child_count = collider3d_safe_child_count(collider, 1);
+            if (child_count == 0) {
                 vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
                 vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
                 break;
             }
             collider->bounds_min[0] = collider->bounds_min[1] = collider->bounds_min[2] = DBL_MAX;
             collider->bounds_max[0] = collider->bounds_max[1] = collider->bounds_max[2] = -DBL_MAX;
-            for (int32_t i = 0; i < collider->child_count; ++i) {
+            for (int32_t i = 0; i < child_count; ++i) {
                 double child_min[3];
                 double child_max[3];
-                if (!collider->children[i])
+                if (!collider3d_checked(collider->children[i]))
                     continue;
                 rt_collider3d_get_local_bounds_raw(collider->children[i], child_min, child_max);
                 transform_bounds_raw(child_min,
@@ -556,6 +579,7 @@ static void collider3d_recompute_bounds(rt_collider3d *collider) {
                 vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
             }
             break;
+        }
         default:
             vec3_set(collider->bounds_min, 0.0, 0.0, 0.0);
             vec3_set(collider->bounds_max, 0.0, 0.0, 0.0);
@@ -811,7 +835,7 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
 /// @brief Return the collider's discriminator (RT_COLLIDER3D_TYPE_BOX, _SPHERE, ...). -1 if NULL.
 int64_t rt_collider3d_get_type(void *collider) {
     rt_collider3d *shape = collider3d_checked(collider);
-    return shape ? shape->type : -1;
+    return (shape && collider3d_type_is_valid(shape->type)) ? shape->type : -1;
 }
 
 /// @brief Return the AABB minimum corner in *local* space as a fresh Vec3. Returns origin
@@ -902,7 +926,7 @@ void rt_collider3d_compute_world_aabb_raw(void *collider,
 /// @brief Internal: 1 if the collider can only be used on static bodies (mesh, heightfield).
 int8_t rt_collider3d_is_static_only_raw(void *collider) {
     rt_collider3d *shape = collider3d_checked(collider);
-    return shape ? shape->static_only : 0;
+    return (shape && shape->static_only) ? 1 : 0;
 }
 
 /// @brief Internal: fill `half_extents_out[3]` with the box's half-extents. Zeros for non-box.
@@ -949,7 +973,7 @@ void *rt_collider3d_get_mesh_raw(void *collider) {
         return NULL;
     if (shape->type != RT_COLLIDER3D_TYPE_CONVEX_HULL && shape->type != RT_COLLIDER3D_TYPE_MESH)
         return NULL;
-    return shape->mesh;
+    return collider3d_mesh_or_null(shape);
 }
 
 /// @brief Internal: number of child colliders in a compound. 0 for non-compound shapes.
@@ -957,17 +981,19 @@ int64_t rt_collider3d_get_child_count_raw(void *collider) {
     rt_collider3d *shape = collider3d_checked(collider);
     if (!shape || shape->type != RT_COLLIDER3D_TYPE_COMPOUND)
         return 0;
-    return shape->child_count;
+    return collider3d_safe_child_count(shape, 0);
 }
 
 /// @brief Internal: borrow the i-th child collider from a compound. NULL if out of range.
 void *rt_collider3d_get_child_raw(void *collider, int64_t index) {
     rt_collider3d *shape = collider3d_checked(collider);
+    int32_t child_count;
     if (!shape || shape->type != RT_COLLIDER3D_TYPE_COMPOUND)
         return NULL;
-    if (index < 0 || index >= shape->child_count)
+    child_count = collider3d_safe_child_count(shape, 0);
+    if (index < 0 || index >= child_count)
         return NULL;
-    return shape->children[index];
+    return collider3d_checked(shape->children[index]);
 }
 
 /// @brief Internal: copy the i-th compound child's local TRS into the output buffers
@@ -983,14 +1009,23 @@ void rt_collider3d_get_child_transform_raw(
         vec3_set(scale_out, 1.0, 1.0, 1.0);
     if (!shape || shape->type != RT_COLLIDER3D_TYPE_COMPOUND)
         return;
-    if (index < 0 || index >= shape->child_count)
+    int32_t child_count = collider3d_safe_child_count(shape, 1);
+    if (index < 0 || index >= child_count)
         return;
     if (position_out)
         vec3_copy(position_out, shape->child_transforms[index].position);
-    if (rotation_out)
+    if (rotation_out) {
         memcpy(rotation_out, shape->child_transforms[index].rotation, sizeof(double) * 4);
-    if (scale_out)
-        vec3_copy(scale_out, shape->child_transforms[index].scale);
+        quat_normalize_local(rotation_out);
+    }
+    if (scale_out) {
+        scale_out[0] =
+            collider3d_transform_component_or(shape->child_transforms[index].scale[0], 1.0);
+        scale_out[1] =
+            collider3d_transform_component_or(shape->child_transforms[index].scale[1], 1.0);
+        scale_out[2] =
+            collider3d_transform_component_or(shape->child_transforms[index].scale[2], 1.0);
+    }
 }
 
 /// @brief Clamped heightfield cell fetch for nearest-neighbor sampling.
@@ -1129,6 +1164,8 @@ int8_t rt_collider3d_get_heightfield_info_raw(void *collider,
                                               double *scale_out) {
     rt_collider3d *shape = collider3d_checked(collider);
     if (!shape || shape->type != RT_COLLIDER3D_TYPE_HEIGHTFIELD || !shape->heightfield_heights)
+        return 0;
+    if (shape->heightfield_width < 2 || shape->heightfield_depth < 2)
         return 0;
     if (width_out)
         *width_out = shape->heightfield_width;

@@ -1000,6 +1000,9 @@ static void test_animation_objects_repair_corrupt_private_counts() {
                 "AnimController3D still exposes palette data after count repair");
     EXPECT_TRUE(palette_bones == 1, "AnimController3D palette bone count is repaired");
     auto *controller_layout = reinterpret_cast<AnimController3DTestLayout *>(controller);
+    controller_layout->layers[0].transitioning = -9;
+    EXPECT_TRUE(rt_anim_controller3d_get_is_transitioning(controller) == 1,
+                "AnimController3D transition getter normalizes corrupt private flags");
     rt_anim_controller3d_set_animation_lod(controller, 10.0, 10.0);
     controller_layout->animation_lod_accum = NAN;
     rt_anim_controller3d_update(controller, 0.1);
@@ -1113,6 +1116,30 @@ static void test_anim_controller_private_refs_clear_wrong_class_without_release(
     EXPECT_TRUE(layout->ik_solver == nullptr, "AnimController3D nulls the corrupted IK solver");
     expect_retained_probe_untouched(
         wrong_ik, "AnimController3D does not release wrong-class IK solver slots");
+
+    void *controller_bad_skeleton = rt_anim_controller3d_new(skel);
+    auto *bad_skeleton_layout =
+        reinterpret_cast<AnimController3DTestLayout *>(controller_bad_skeleton);
+    void *wrong_controller_skeleton = rt_obj_new_i64(0, 8);
+    rt_obj_retain_maybe(wrong_controller_skeleton);
+    if (bad_skeleton_layout->skeleton && rt_obj_release_check0(bad_skeleton_layout->skeleton))
+        rt_obj_free(bad_skeleton_layout->skeleton);
+    bad_skeleton_layout->skeleton = wrong_controller_skeleton;
+    int32_t bad_palette_bones = -1;
+    EXPECT_TRUE(rt_anim_controller3d_get_final_palette_data(controller_bad_skeleton,
+                                                            &bad_palette_bones) == nullptr,
+                "AnimController3D palette getter hides wrong-class skeleton slots");
+    EXPECT_TRUE(bad_palette_bones == 0,
+                "AnimController3D palette getter clears bone count for invalid skeleton slots");
+    EXPECT_TRUE(rt_anim_controller3d_get_skeleton(controller_bad_skeleton) == nullptr,
+                "AnimController3D skeleton getter hides wrong-class skeleton slots");
+    EXPECT_TRUE(bad_skeleton_layout->skeleton == nullptr,
+                "AnimController3D clears wrong-class skeleton slots on public read");
+    if (rt_obj_release_check0(controller_bad_skeleton))
+        rt_obj_free(controller_bad_skeleton);
+    expect_retained_probe_untouched(
+        wrong_controller_skeleton,
+        "AnimController3D public skeleton getters do not release wrong-class skeleton slots");
 
     void *controller_finalizer = rt_anim_controller3d_new(skel);
     rt_anim_controller3d_add_state(controller_finalizer, rt_const_cstr("move"), move);

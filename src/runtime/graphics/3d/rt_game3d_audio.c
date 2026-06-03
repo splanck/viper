@@ -109,7 +109,7 @@ void *game3d_audio_new(void *camera) {
 void *rt_game3d_audio_get_listener(void *obj) {
     rt_game3d_audio *audio =
         game3d_audio_checked(obj, "Game3D.Sound3D.get_Listener: invalid audio");
-    return audio ? audio->listener : NULL;
+    return audio ? rt_g3d_checked_or_null(audio->listener, RT_G3D_SOUNDLISTENER3D_CLASS_ID) : NULL;
 }
 
 /// @brief True if the listener auto-follows the camera.
@@ -123,20 +123,31 @@ int8_t rt_game3d_audio_get_listener_follows_camera(void *obj) {
 double rt_game3d_audio_get_ref_distance(void *obj) {
     rt_game3d_audio *audio =
         game3d_audio_checked(obj, "Game3D.Sound3D.get_refDistance: invalid audio");
-    return audio ? audio->ref_distance : 0.0;
+    return audio ? game3d_positive_clamped_or(audio->ref_distance,
+                                              RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE,
+                                              RT_GAME3D_AUDIO_DISTANCE_MAX)
+                 : 0.0;
 }
 
 /// @brief Get the attenuation maximum (silence) distance.
 double rt_game3d_audio_get_max_distance(void *obj) {
     rt_game3d_audio *audio =
         game3d_audio_checked(obj, "Game3D.Sound3D.get_maxDistance: invalid audio");
-    return audio ? audio->max_distance : 0.0;
+    if (!audio)
+        return 0.0;
+    double ref_distance = game3d_positive_clamped_or(audio->ref_distance,
+                                                     RT_GAME3D_DEFAULT_AUDIO_REF_DISTANCE,
+                                                     RT_GAME3D_AUDIO_DISTANCE_MAX);
+    double max_distance = game3d_positive_clamped_or(audio->max_distance,
+                                                     RT_GAME3D_DEFAULT_AUDIO_MAX_DISTANCE,
+                                                     RT_GAME3D_AUDIO_DISTANCE_MAX);
+    return max_distance < ref_distance ? ref_distance : max_distance;
 }
 
 /// @brief Get the master output volume (0–100).
 int64_t rt_game3d_audio_get_volume(void *obj) {
     rt_game3d_audio *audio = game3d_audio_checked(obj, "Game3D.Sound3D.get_volume: invalid audio");
-    return audio ? audio->volume : 0;
+    return audio ? game3d_clamp_i64(audio->volume, 0, 100) : 0;
 }
 
 /// @brief Count currently active 3D sound sources.
@@ -241,9 +252,9 @@ void *rt_game3d_audio_play_at(void *obj, void *clip, void *position) {
     if (!source)
         return NULL;
     rt_soundsource3d_set_position(source, position);
-    rt_soundsource3d_set_ref_distance(source, audio->ref_distance);
-    rt_soundsource3d_set_max_distance(source, audio->max_distance);
-    rt_soundsource3d_set_volume(source, audio->volume);
+    rt_soundsource3d_set_ref_distance(source, rt_game3d_audio_get_ref_distance(audio));
+    rt_soundsource3d_set_max_distance(source, rt_game3d_audio_get_max_distance(audio));
+    rt_soundsource3d_set_volume(source, rt_game3d_audio_get_volume(audio));
     (void)rt_soundsource3d_play(source);
     game3d_audio_track_source(audio, source);
     return source;
@@ -265,9 +276,9 @@ void *rt_game3d_audio_play_attached(void *obj, void *clip, void *entity_obj) {
     void *source = rt_soundsource3d_new(clip);
     if (!source)
         return NULL;
-    rt_soundsource3d_set_ref_distance(source, audio->ref_distance);
-    rt_soundsource3d_set_max_distance(source, audio->max_distance);
-    rt_soundsource3d_set_volume(source, audio->volume);
+    rt_soundsource3d_set_ref_distance(source, rt_game3d_audio_get_ref_distance(audio));
+    rt_soundsource3d_set_max_distance(source, rt_game3d_audio_get_max_distance(audio));
+    rt_soundsource3d_set_volume(source, rt_game3d_audio_get_volume(audio));
     void *node = game3d_entity_node_ref(entity);
     if (node)
         rt_soundsource3d_bind_node(source, node);
@@ -291,7 +302,7 @@ int64_t rt_game3d_audio_play2d(void *obj, void *clip) {
         rt_trap("Game3D.Sound3D.play2D: expected Sound clip");
         return 0;
     }
-    int64_t voice = rt_sound_play_ex(clip, audio->volume, 0);
+    int64_t voice = rt_sound_play_ex(clip, rt_game3d_audio_get_volume(audio), 0);
     return voice > 0 ? voice : 0;
 }
 

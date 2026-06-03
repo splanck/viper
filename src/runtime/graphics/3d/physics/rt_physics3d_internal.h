@@ -34,6 +34,10 @@
 //===----------------------------------------------------------------------===//
 // Shared runtime helpers provided by the object/vector/quaternion runtime.
 //===----------------------------------------------------------------------===//
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
@@ -48,6 +52,10 @@ extern double rt_quat_x(void *q);
 extern double rt_quat_y(void *q);
 extern double rt_quat_z(void *q);
 extern double rt_quat_w(void *q);
+
+#ifdef __cplusplus
+}
+#endif
 
 //===----------------------------------------------------------------------===//
 // Shared constants.
@@ -238,6 +246,7 @@ typedef struct {
     void *vptr;
     void **items;
     int64_t count;
+    int64_t capacity;
     int64_t total_count;
     int8_t truncated;
 } rt_physics_hit_list3d_obj;
@@ -351,6 +360,7 @@ double pose_abs_scale_or_zero(double value);
 int capsule_axis_sample_count(double axis_len, double radius);
 void capsule_axis_endpoints(const rt_body3d *b, double *a, double *c);
 void body_aabb(const rt_body3d *b, double *mn, double *mx);
+int body3d_has_collision_geometry(const rt_body3d *body);
 int ph3d_vec3_all_finite(const double v[3]);
 double ph3d_clamp_nonnegative_finite(double value, double fallback);
 double ph3d_finite_or(double value, double fallback);

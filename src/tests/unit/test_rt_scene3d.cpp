@@ -231,6 +231,21 @@ static void test_scene_remove_ignores_nodes_from_other_scenes() {
     EXPECT_TRUE(rt_scene3d_get_node_count(scene_b) == 2, "Scene B keeps its node");
 }
 
+static void test_scene_rejects_reparenting_implicit_root() {
+    rt_scene3d *scene_a = (rt_scene3d *)rt_scene3d_new();
+    void *scene_b = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    rt_scene_node3d *root_a = scene_a->root;
+
+    rt_scene3d_add(scene_b, parent);
+    EXPECT_TRUE(rt_scene_node3d_try_add_child(parent, root_a) == 0,
+                "SceneNode3D.TryAddChild rejects another scene's implicit root");
+    EXPECT_TRUE(root_a->parent == nullptr, "Rejected implicit root keeps no parent");
+    EXPECT_TRUE(root_a->owner_scene == scene_a, "Rejected implicit root keeps its owner scene");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene_a) == 1, "Source scene root count is unchanged");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene_b) == 2, "Destination scene count is unchanged");
+}
+
 static void test_translation_propagation() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
@@ -564,6 +579,10 @@ static void test_visibility() {
 
     rt_scene_node3d_set_visible(node, 0);
     EXPECT_TRUE(rt_scene_node3d_get_visible(node) == 0, "After set visible=false");
+
+    static_cast<rt_scene_node3d *>(node)->visible = -5;
+    EXPECT_TRUE(rt_scene_node3d_get_visible(node) == 1,
+                "SceneNode visibility getter normalizes corrupt private flags");
 }
 
 static void test_subtree_aabb_includes_child_meshes() {
@@ -604,6 +623,23 @@ static void test_clear() {
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 1, "After clear: 1 node (root)");
     EXPECT_TRUE(rt_scene_node3d_child_count(rt_scene3d_get_root(scene)) == 0,
                 "Root has 0 children");
+
+    void *corrupt_scene = rt_scene3d_new();
+    void *child = rt_scene_node3d_new();
+    void *wrong_child_slot = rt_material3d_new_color(0.2, 0.3, 0.4);
+    rt_scene3d_add(corrupt_scene, child);
+    auto *root_view = static_cast<rt_scene_node3d *>(rt_scene3d_get_root(corrupt_scene));
+    EXPECT_TRUE(root_view->child_count == 1 && root_view->children != nullptr,
+                "clear corruption fixture has a root child slot");
+    if (root_view->children)
+        root_view->children[0] = reinterpret_cast<rt_scene_node3d *>(wrong_child_slot);
+    rt_scene3d_clear(corrupt_scene);
+    EXPECT_TRUE(rt_scene3d_get_node_count(corrupt_scene) == 1,
+                "Scene3D.Clear repairs wrong-class root child slots");
+    EXPECT_TRUE(rt_scene_node3d_child_count(rt_scene3d_get_root(corrupt_scene)) == 0,
+                "Scene3D.Clear leaves the root empty after child-slot repair");
+    if (wrong_child_slot && rt_obj_release_check0(wrong_child_slot))
+        rt_obj_free(wrong_child_slot);
 }
 
 static void test_get_child() {
@@ -705,16 +741,105 @@ static void test_scene_repairs_corrupt_private_counts() {
                 "SceneNode childCount clamps corrupt count to capacity");
     EXPECT_TRUE(rt_scene_node3d_get_child(parent, 1) == nullptr,
                 "SceneNode GetChild rejects indexes beyond clamped child capacity");
+    rt_scene_node3d *saved_child_slot = parent_view->children[0];
+    parent_view->children[0] = reinterpret_cast<rt_scene_node3d *>(material);
+    EXPECT_TRUE(rt_scene_node3d_get_child(parent, 0) == nullptr,
+                "SceneNode GetChild rejects wrong-class private child slots");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 2,
+                "Scene3D node counting skips wrong-class private child slots");
+    {
+        const char *corrupt_save_path = "/tmp/viper_scene_corrupt_child_slot_save.vscn";
+        EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(corrupt_save_path)) == 1,
+                    "Scene3D.Save skips wrong-class private child slots");
+        std::remove(corrupt_save_path);
+    }
+    parent_view->children[0] = saved_child_slot;
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 3,
                 "Scene3D node counting walks clamped child arrays");
     EXPECT_TRUE(rt_scene3d_find(scene, rt_const_cstr("corrupt_anim_target")) == parent,
                 "Scene3D find walks clamped child arrays");
+    rt_scene_node3d *saved_parent_slot = parent_view->parent;
+    parent_view->parent = reinterpret_cast<rt_scene_node3d *>(material);
+    EXPECT_TRUE(rt_scene_node3d_get_parent(parent) == nullptr,
+                "SceneNode GetParent rejects wrong-class private parent slots");
+    parent_view->parent = saved_parent_slot;
+    EXPECT_TRUE(rt_scene_node3d_get_parent(parent) == rt_scene3d_get_root(scene),
+                "SceneNode GetParent returns valid parent slots");
+    parent_view->sync_mode = INT32_MAX;
+    EXPECT_TRUE(rt_scene_node3d_get_sync_mode(parent) ==
+                    RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY,
+                "SceneNode GetSyncMode defaults corrupt private sync modes");
+    parent_view->sync_mode = RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE;
+    EXPECT_TRUE(rt_scene_node3d_get_sync_mode(parent) ==
+                    RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE,
+                "SceneNode GetSyncMode preserves valid private sync modes");
+
+    auto *scene_view = static_cast<rt_scene3d *>(scene);
+    rt_scene_node3d *saved_scene_root = scene_view->root;
+    scene_view->root = reinterpret_cast<rt_scene_node3d *>(material);
+    EXPECT_TRUE(rt_scene3d_get_root(scene) == nullptr,
+                "Scene3D.GetRoot rejects wrong-class private root slots");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 0,
+                "Scene3D node counting rejects wrong-class private root slots");
+    EXPECT_TRUE(rt_scene3d_find(scene, rt_const_cstr("corrupt_anim_target")) == nullptr,
+                "Scene3D.Find rejects wrong-class private root slots");
+    rt_scene3d_clear(scene);
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 0,
+                "Scene3D.Clear ignores wrong-class private root slots");
+    scene_view->root = saved_scene_root;
+    EXPECT_TRUE(rt_scene3d_get_root(scene) == saved_scene_root,
+                "Scene3D.GetRoot returns restored valid root slots");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 3,
+                "Scene3D node counting recovers after restoring the root slot");
+
+    scene_view->last_culled_count = -5;
+    scene_view->last_visible_node_count = -6;
+    scene_view->last_pvs_culled_count = -7;
+    scene_view->visibility_zone_count = -8;
+    scene_view->visibility_portal_count = -9;
+    EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0,
+                "Scene3D culled telemetry clamps corrupt negative counters");
+    EXPECT_TRUE(rt_scene3d_get_visible_node_count(scene) == 0,
+                "Scene3D visible telemetry clamps corrupt negative counters");
+    EXPECT_TRUE(rt_scene3d_get_pvs_culled_count(scene) == 0,
+                "Scene3D PVS telemetry clamps corrupt negative counters");
+    EXPECT_TRUE(rt_scene3d_get_visibility_zone_count(scene) == 0,
+                "Scene3D visibility zone count clamps corrupt negative counters");
+    EXPECT_TRUE(rt_scene3d_get_visibility_portal_count(scene) == 0,
+                "Scene3D visibility portal count clamps corrupt negative counters");
+
+    void *zone_min = rt_vec3_new(-1.0, -1.0, -1.0);
+    void *zone_max = rt_vec3_new(1.0, 1.0, 1.0);
+    EXPECT_TRUE(rt_scene3d_add_visibility_zone(scene, rt_const_cstr("zone_a"), zone_min, zone_max) == 0,
+                "Scene3D visibility test fixture creates zone A");
+    EXPECT_TRUE(rt_scene3d_add_visibility_zone(scene, rt_const_cstr("zone_b"), zone_min, zone_max) == 1,
+                "Scene3D visibility test fixture creates zone B");
+    EXPECT_TRUE(rt_scene3d_add_visibility_portal(scene, 0, 1, 1) == 0,
+                "Scene3D visibility test fixture creates directed portals");
+    int32_t saved_zone_count = scene_view->visibility_zone_count;
+    int32_t saved_zone_capacity = scene_view->visibility_zone_capacity;
+    int32_t saved_portal_count = scene_view->visibility_portal_count;
+    int32_t saved_portal_capacity = scene_view->visibility_portal_capacity;
+    scene_view->visibility_zone_count = INT32_MAX;
+    scene_view->visibility_portal_count = INT32_MAX;
+    EXPECT_TRUE(rt_scene3d_get_visibility_zone_count(scene) == saved_zone_capacity,
+                "Scene3D visibility zone count clamps corrupt counters to capacity");
+    EXPECT_TRUE(rt_scene3d_get_visibility_portal_count(scene) == saved_portal_capacity,
+                "Scene3D visibility portal count clamps corrupt counters to capacity");
+    scene_view->visibility_zone_count = saved_zone_count;
+    scene_view->visibility_zone_capacity = saved_zone_capacity;
+    scene_view->visibility_portal_count = saved_portal_count;
+    scene_view->visibility_portal_capacity = saved_portal_capacity;
 
     rt_scene_node3d_set_mesh(parent, mesh);
     rt_scene_node3d_set_material(parent, material);
     parent_view->mesh = material;
     EXPECT_TRUE(rt_scene_node3d_get_mesh(parent) == nullptr,
                 "SceneNode3D.GetMesh rejects wrong-class private mesh slots");
+    EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_aabb_min(parent)),
+                0.0,
+                0.001,
+                "SceneNode3D AABB queries skip wrong-class private mesh slots");
     parent_view->mesh = mesh;
     parent_view->material = mesh;
     EXPECT_TRUE(rt_scene_node3d_get_material(parent) == nullptr,
@@ -1461,6 +1586,7 @@ static void test_scene_save_serializes_visibility_and_lod_metadata() {
     rt_scene_node3d_set_mesh(node, rt_mesh3d_new_box(1.0, 1.0, 1.0));
     rt_scene_node3d_set_material(node, rt_material3d_new_color(1.0, 0.0, 0.0));
     rt_scene_node3d_add_lod(node, 10.0, rt_mesh3d_new_box(0.5, 0.5, 0.5));
+    rt_scene_node3d_set_lod_resident(node, 0, 0);
     rt_scene_node3d_set_auto_lod(node, 1, 12.5);
     rt_scene3d_add(scene, node);
 
@@ -1482,6 +1608,8 @@ static void test_scene_save_serializes_visibility_and_lod_metadata() {
                 "Scene3D.Save serializes LOD metadata");
     EXPECT_TRUE(text.find("\"distance\": 10") != std::string::npos,
                 "Scene3D.Save serializes LOD distances");
+    EXPECT_TRUE(text.find("\"resident\": false") != std::string::npos,
+                "Scene3D.Save serializes nonresident mesh state");
     EXPECT_TRUE(text.find("\"autoLOD\": {") != std::string::npos,
                 "Scene3D.Save serializes auto-LOD metadata");
     EXPECT_TRUE(text.find("\"screenErrorPx\": 12.5") != std::string::npos,
@@ -1590,6 +1718,7 @@ static void test_scene_roundtrip_loads_shared_assets() {
     rt_scene_node3d_set_mesh(parent, mesh);
     rt_scene_node3d_set_material(parent, material);
     rt_scene_node3d_add_lod(parent, 10.0, lod_mesh);
+    rt_scene_node3d_set_lod_resident(parent, 0, 0);
     rt_scene_node3d_set_auto_lod(parent, 1, 18.0);
     rt_scene_node3d_set_mesh(child, mesh);
     rt_scene_node3d_set_material(child, material);
@@ -1637,6 +1766,10 @@ static void test_scene_roundtrip_loads_shared_assets() {
     EXPECT_TRUE(rt_scene_node3d_get_lod_mesh(loaded_parent, 0) !=
                     rt_scene_node3d_get_mesh(loaded_parent),
                 "Scene3D.Load restores LOD mesh references");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_resident(loaded_parent, 0) == 0,
+                "Scene3D.Load restores nonresident LOD mesh state");
+    EXPECT_TRUE(rt_scene_node3d_get_lod_resident_bytes(loaded_parent, 0) == 0,
+                "Scene3D.Load preserves zero resident bytes for nonresident LODs");
     EXPECT_TRUE(((rt_scene_node3d *)loaded_parent)->auto_lod_enabled == 1,
                 "Scene3D.Load restores auto-LOD enable state");
     EXPECT_NEAR(((rt_scene_node3d *)loaded_parent)->auto_lod_screen_error_px,
@@ -3289,6 +3422,7 @@ int main() {
     test_add_remove_child();
     test_try_add_reports_parenting_success();
     test_scene_remove_ignores_nodes_from_other_scenes();
+    test_scene_rejects_reparenting_implicit_root();
     test_translation_propagation();
     test_world_position_and_scale_getters();
     test_scene_rebase_origin_shifts_root_subtrees();

@@ -1416,6 +1416,15 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
     EXPECT_TRUE(rt_gltf_mesh_count(asset) == 1, "glTF asset starts with one mesh");
     EXPECT_TRUE(rt_gltf_material_count(asset) == 1, "glTF asset starts with one material");
     EXPECT_TRUE(rt_gltf_scene_count(asset) == 1, "glTF asset starts with one scene");
+    EXPECT_TRUE(rt_gltf_node_count(asset) == 1, "glTF asset starts with one scene node");
+    EXPECT_TRUE(rt_gltf_get_scene_root(asset) != nullptr, "glTF asset starts with a scene root");
+
+    void *wrong_material = rt_material3d_new_color(0.2, 0.3, 0.4);
+    void *wrong_mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *valid_camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    EXPECT_TRUE(wrong_material != nullptr, "Wrong-class material fixture object is created");
+    EXPECT_TRUE(wrong_mesh != nullptr, "Wrong-class mesh fixture object is created");
+    EXPECT_TRUE(valid_camera != nullptr, "Valid camera fixture object is created");
 
     void **saved_meshes = view->meshes;
     view->meshes = nullptr;
@@ -1428,6 +1437,11 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
     EXPECT_TRUE(rt_gltf_mesh_count(asset) == 1, "glTF mesh count clamps corrupt count");
     EXPECT_TRUE(rt_gltf_get_mesh(asset, 1) == nullptr,
                 "glTF mesh accessor rejects indexes past repaired count");
+    void *saved_mesh = view->meshes[0];
+    view->meshes[0] = wrong_material;
+    EXPECT_TRUE(rt_gltf_get_mesh(asset, 0) == nullptr,
+                "glTF mesh accessor rejects wrong-class mesh slots");
+    view->meshes[0] = saved_mesh;
 
     void **saved_materials = view->materials;
     view->materials = nullptr;
@@ -1440,6 +1454,11 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
     EXPECT_TRUE(rt_gltf_material_count(asset) == 1, "glTF material count clamps corrupt count");
     EXPECT_TRUE(rt_gltf_get_material(asset, 1) == nullptr,
                 "glTF material accessor rejects indexes past repaired count");
+    void *saved_material = view->materials[0];
+    view->materials[0] = wrong_mesh;
+    EXPECT_TRUE(rt_gltf_get_material(asset, 0) == nullptr,
+                "glTF material accessor rejects wrong-class material slots");
+    view->materials[0] = saved_material;
 
     view->skeletons = static_cast<void **>(std::calloc(1, sizeof(void *)));
     if (view->skeletons) {
@@ -1450,6 +1469,11 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
                     "glTF skeleton count clamps corrupt count");
         EXPECT_TRUE(rt_gltf_get_skeleton(asset, 1) == nullptr,
                     "glTF skeleton accessor rejects indexes past repaired count");
+        void *saved_skeleton = view->skeletons[0];
+        view->skeletons[0] = wrong_material;
+        EXPECT_TRUE(rt_gltf_get_skeleton(asset, 0) == nullptr,
+                    "glTF skeleton accessor rejects wrong-class skeleton slots");
+        view->skeletons[0] = saved_skeleton;
     }
 
     view->animations = static_cast<void **>(std::calloc(1, sizeof(void *)));
@@ -1461,6 +1485,11 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
                     "glTF animation count clamps corrupt count");
         EXPECT_TRUE(rt_gltf_get_animation(asset, 1) == nullptr,
                     "glTF animation accessor rejects indexes past repaired count");
+        void *saved_animation = view->animations[0];
+        view->animations[0] = wrong_material;
+        EXPECT_TRUE(rt_gltf_get_animation(asset, 0) == nullptr,
+                    "glTF animation accessor rejects wrong-class animation slots");
+        view->animations[0] = saved_animation;
     }
 
     view->node_animations = static_cast<void **>(std::calloc(1, sizeof(void *)));
@@ -1472,7 +1501,31 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
                     "glTF node-animation count clamps corrupt count");
         EXPECT_TRUE(rt_gltf_get_node_animation(asset, 1) == nullptr,
                     "glTF node-animation accessor rejects indexes past repaired count");
+        void *saved_node_animation = view->node_animations[0];
+        view->node_animations[0] = wrong_material;
+        EXPECT_TRUE(rt_gltf_get_node_animation(asset, 0) == nullptr,
+                    "glTF node-animation accessor rejects wrong-class node-animation slots");
+        view->node_animations[0] = saved_node_animation;
     }
+
+    void **saved_cameras = view->cameras;
+    int32_t saved_camera_count = view->camera_count;
+    int32_t saved_camera_capacity = view->camera_capacity;
+    void *camera_slots[1] = {valid_camera};
+    view->cameras = camera_slots;
+    view->camera_count = 99;
+    view->camera_capacity = 1;
+    EXPECT_TRUE(rt_gltf_camera_count(asset) == 1, "glTF camera count clamps corrupt count");
+    EXPECT_TRUE(rt_gltf_get_camera(asset, 0) == valid_camera,
+                "glTF camera accessor preserves valid camera slots");
+    EXPECT_TRUE(rt_gltf_get_camera(asset, 1) == nullptr,
+                "glTF camera accessor rejects indexes past repaired count");
+    camera_slots[0] = wrong_material;
+    EXPECT_TRUE(rt_gltf_get_camera(asset, 0) == nullptr,
+                "glTF camera accessor rejects wrong-class camera slots");
+    view->cameras = saved_cameras;
+    view->camera_count = saved_camera_count;
+    view->camera_capacity = saved_camera_capacity;
 
     view->scene_count = 99;
     view->scene_capacity = 1;
@@ -1483,9 +1536,52 @@ static void test_gltf_asset_accessors_clamp_corrupt_counts() {
                 "glTF scene-root accessor rejects indexes past repaired count");
     EXPECT_TRUE(rt_gltf_scene_camera_count(asset, 1) == 0,
                 "glTF scene-camera count rejects invalid scene index");
+    void *saved_scene_root_at = view->scenes[0].root;
+    view->scenes[0].root = wrong_mesh;
+    EXPECT_TRUE(rt_gltf_get_scene_root_at(asset, 0) == nullptr,
+                "glTF scene-root accessor rejects wrong-class scene roots");
+    view->scenes[0].root = saved_scene_root_at;
+
+    void **saved_scene_cameras = view->scenes[0].cameras;
+    int32_t saved_scene_camera_count = view->scenes[0].camera_count;
+    int32_t saved_scene_camera_capacity = view->scenes[0].camera_capacity;
+    void *scene_camera_slots[1] = {valid_camera};
+    view->scenes[0].cameras = scene_camera_slots;
+    view->scenes[0].camera_count = 99;
+    view->scenes[0].camera_capacity = 1;
+    EXPECT_TRUE(rt_gltf_scene_camera_count(asset, 0) == 1,
+                "glTF scene-camera count clamps corrupt count");
+    EXPECT_TRUE(rt_gltf_get_scene_camera(asset, 0, 0) == valid_camera,
+                "glTF scene-camera accessor preserves valid camera slots");
+    EXPECT_TRUE(rt_gltf_get_scene_camera(asset, 0, 1) == nullptr,
+                "glTF scene-camera accessor rejects indexes past repaired count");
+    scene_camera_slots[0] = wrong_material;
+    EXPECT_TRUE(rt_gltf_get_scene_camera(asset, 0, 0) == nullptr,
+                "glTF scene-camera accessor rejects wrong-class camera slots");
+    view->scenes[0].cameras = saved_scene_cameras;
+    view->scenes[0].camera_count = saved_scene_camera_count;
+    view->scenes[0].camera_capacity = saved_scene_camera_capacity;
+
+    int32_t saved_node_count = view->node_count;
+    void *saved_scene_root = view->scene_root;
+    view->node_count = -7;
+    EXPECT_TRUE(rt_gltf_node_count(asset) == 0, "glTF node count rejects negative counts");
+    view->node_count = saved_node_count;
+    view->scene_root = wrong_mesh;
+    EXPECT_TRUE(rt_gltf_node_count(asset) == 0,
+                "glTF node count rejects wrong-class active scene roots");
+    EXPECT_TRUE(rt_gltf_get_scene_root(asset) == nullptr,
+                "glTF active scene-root accessor rejects wrong-class roots");
+    view->scene_root = saved_scene_root;
 
     if (rt_obj_release_check0(asset))
         rt_obj_free(asset);
+    if (valid_camera && rt_obj_release_check0(valid_camera))
+        rt_obj_free(valid_camera);
+    if (wrong_mesh && rt_obj_release_check0(wrong_mesh))
+        rt_obj_free(wrong_mesh);
+    if (wrong_material && rt_obj_release_check0(wrong_material))
+        rt_obj_free(wrong_material);
     std::remove(path);
 }
 
@@ -2402,6 +2498,17 @@ static void test_fbx_asset_accessors_clamp_corrupt_counts() {
         EXPECT_TRUE(rt_fbx_mesh_count(skinned_asset) == 1, "FBX asset starts with one mesh");
         EXPECT_TRUE(rt_fbx_animation_count(skinned_asset) == 1,
                     "FBX asset starts with one animation");
+        EXPECT_TRUE(rt_fbx_get_skeleton(skinned_asset) != nullptr,
+                    "FBX asset starts with a skeleton");
+        EXPECT_TRUE(rt_fbx_get_scene_root(skinned_asset) != nullptr,
+                    "FBX asset starts with a scene root");
+
+        void *wrong_material = rt_material3d_new_color(1.0, 0.0, 0.0);
+        void *wrong_mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+        void *valid_morph = rt_morphtarget3d_new(3);
+        EXPECT_TRUE(wrong_material != nullptr, "Wrong-class material fixture object is created");
+        EXPECT_TRUE(wrong_mesh != nullptr, "Wrong-class mesh fixture object is created");
+        EXPECT_TRUE(valid_morph != nullptr, "Valid morph target fixture object is created");
 
         void **saved_meshes = view->meshes;
         view->meshes = nullptr;
@@ -2418,6 +2525,11 @@ static void test_fbx_asset_accessors_clamp_corrupt_counts() {
                     "FBX mesh count clamps corrupt count to capacity");
         EXPECT_TRUE(rt_fbx_get_mesh(skinned_asset, 1) == nullptr,
                     "FBX mesh accessor rejects indexes past repaired count");
+        void *saved_mesh = view->meshes[0];
+        view->meshes[0] = wrong_material;
+        EXPECT_TRUE(rt_fbx_get_mesh(skinned_asset, 0) == nullptr,
+                    "FBX mesh accessor rejects wrong-class mesh slots");
+        view->meshes[0] = saved_mesh;
 
         void **saved_animations = view->animations;
         view->animations = nullptr;
@@ -2435,14 +2547,55 @@ static void test_fbx_asset_accessors_clamp_corrupt_counts() {
         EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_fbx_get_animation_name(skinned_asset, 1)), "") ==
                         0,
                     "FBX animation names use empty fallback for repaired-invalid indexes");
+        void *saved_animation = view->animations[0];
+        view->animations[0] = wrong_mesh;
+        EXPECT_TRUE(rt_fbx_get_animation(skinned_asset, 0) == nullptr,
+                    "FBX animation accessor rejects wrong-class animation slots");
+        EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_fbx_get_animation_name(skinned_asset, 0)), "") ==
+                        0,
+                    "FBX animation names use empty fallback for wrong-class animation slots");
+        view->animations[0] = saved_animation;
+
+        void *saved_skeleton = view->skeleton;
+        view->skeleton = wrong_mesh;
+        EXPECT_TRUE(rt_fbx_get_skeleton(skinned_asset) == nullptr,
+                    "FBX skeleton accessor rejects wrong-class skeleton slots");
+        view->skeleton = saved_skeleton;
+
+        void *saved_scene_root = view->scene_root;
+        view->scene_root = wrong_mesh;
+        EXPECT_TRUE(rt_fbx_get_scene_root(skinned_asset) == nullptr,
+                    "FBX scene root accessor rejects wrong-class root slots");
+        view->scene_root = saved_scene_root;
 
         view->morph_count = 99;
         view->morph_capacity = 1;
         EXPECT_TRUE(rt_fbx_get_morph_target(skinned_asset, 1) == nullptr,
                     "FBX morph accessor rejects indexes past repaired count");
+        void **saved_morph_targets = view->morph_targets;
+        int32_t saved_morph_count = view->morph_count;
+        int32_t saved_morph_capacity = view->morph_capacity;
+        void *morph_slots[1] = {valid_morph};
+        view->morph_targets = morph_slots;
+        view->morph_count = 1;
+        view->morph_capacity = 1;
+        EXPECT_TRUE(rt_fbx_get_morph_target(skinned_asset, 0) == valid_morph,
+                    "FBX morph accessor preserves valid morph slots");
+        morph_slots[0] = wrong_material;
+        EXPECT_TRUE(rt_fbx_get_morph_target(skinned_asset, 0) == nullptr,
+                    "FBX morph accessor rejects wrong-class morph slots");
+        view->morph_targets = saved_morph_targets;
+        view->morph_count = saved_morph_count;
+        view->morph_capacity = saved_morph_capacity;
 
         if (rt_obj_release_check0(skinned_asset))
             rt_obj_free(skinned_asset);
+        if (valid_morph && rt_obj_release_check0(valid_morph))
+            rt_obj_free(valid_morph);
+        if (wrong_mesh && rt_obj_release_check0(wrong_mesh))
+            rt_obj_free(wrong_mesh);
+        if (wrong_material && rt_obj_release_check0(wrong_material))
+            rt_obj_free(wrong_material);
     }
 
     const char *material_path = "/tmp/viper_fbx_asset_corrupt_counts_material.fbx";
@@ -2467,9 +2620,18 @@ static void test_fbx_asset_accessors_clamp_corrupt_counts() {
                     "FBX material count clamps corrupt count to capacity");
         EXPECT_TRUE(rt_fbx_get_material(material_asset, 1) == nullptr,
                     "FBX material accessor rejects indexes past repaired count");
+        void *wrong_mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+        EXPECT_TRUE(wrong_mesh != nullptr, "Wrong-class mesh fixture object is created");
+        void *saved_material = view->materials[0];
+        view->materials[0] = wrong_mesh;
+        EXPECT_TRUE(rt_fbx_get_material(material_asset, 0) == nullptr,
+                    "FBX material accessor rejects wrong-class material slots");
+        view->materials[0] = saved_material;
 
         if (rt_obj_release_check0(material_asset))
             rt_obj_free(material_asset);
+        if (wrong_mesh && rt_obj_release_check0(wrong_mesh))
+            rt_obj_free(wrong_mesh);
     }
     std::remove(skinned_path);
     std::remove(material_path);

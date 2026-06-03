@@ -25,11 +25,13 @@
 #include "rt_joints3d.h"
 #include "rt_mat4.h"
 #include "rt_physics3d.h"
+#include "rt_physics3d_internal.h"
 #include "rt_pixels.h"
 #include "rt_quat.h"
 #include "rt_transform3d.h"
 #include <cassert>
 #include <chrono>
+#include <climits>
 #include <cmath>
 #include <csetjmp>
 #include <cstdint>
@@ -114,6 +116,32 @@ static double quat_rotation_component(void *q, int axis) {
     angle = 2.0 * atan2(v_len, w);
     return v[axis] * angle / v_len;
 }
+
+typedef struct {
+    double position[3];
+    double rotation[4];
+    double scale[3];
+} ColliderChildTestLayout;
+
+typedef struct {
+    void *vptr;
+    int32_t type;
+    int8_t static_only;
+    double half_extents[3];
+    double radius;
+    double height;
+    void *mesh;
+    float *heightfield_heights;
+    int32_t heightfield_width;
+    int32_t heightfield_depth;
+    double heightfield_scale[3];
+    double heightfield_min;
+    double heightfield_max;
+    void **children;
+    ColliderChildTestLayout *child_transforms;
+    int32_t child_count;
+    int32_t child_capacity;
+} Collider3DTestLayout;
 
 static int64_t encode_height16(uint16_t value) {
     return ((int64_t)((value >> 8) & 0xFF) << 24) | ((int64_t)(value & 0xFF) << 16) | 0xFF;
@@ -255,6 +283,82 @@ static void test_collider_constructors_sanitize_nonfinite_dimensions() {
     EXPECT_NEAR(mx[2], 1.0, 0.001, "Heightfield negative Z scale uses absolute value");
 }
 
+static void test_collider_getters_sanitize_corrupt_private_state() {
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mesh_collider = rt_collider3d_new_mesh(mesh);
+    auto *mesh_view = static_cast<Collider3DTestLayout *>(mesh_collider);
+    void *saved_mesh = mesh_view->mesh;
+    int32_t saved_type = mesh_view->type;
+
+    mesh_view->type = 99;
+    EXPECT_TRUE(rt_collider3d_get_type(mesh_collider) == -1,
+                "Collider3D type getter rejects corrupt private type tags");
+    mesh_view->type = saved_type;
+    mesh_view->static_only = -5;
+    EXPECT_TRUE(rt_collider3d_is_static_only_raw(mesh_collider) == 1,
+                "Collider3D static-only getter normalizes corrupt private flags");
+
+    mesh_view->mesh = rt_vec3_new(0.0, 0.0, 0.0);
+    EXPECT_TRUE(rt_collider3d_get_mesh_raw(mesh_collider) == nullptr,
+                "Collider3D mesh getter rejects wrong-class private mesh refs");
+    mesh_view->mesh = saved_mesh;
+
+    void *compound = rt_collider3d_new_compound();
+    void *child = rt_collider3d_new_box(0.5, 0.5, 0.5);
+    void *xf = rt_transform3d_new();
+    rt_transform3d_set_position(xf, 2.0, 0.0, 0.0);
+    rt_collider3d_add_child(compound, child, xf);
+    auto *compound_view = static_cast<Collider3DTestLayout *>(compound);
+    int32_t saved_child_count = compound_view->child_count;
+    int32_t saved_child_capacity = compound_view->child_capacity;
+    void *saved_child = compound_view->children[0];
+    ColliderChildTestLayout saved_transform = compound_view->child_transforms[0];
+
+    compound_view->child_count = INT32_MAX;
+    compound_view->child_capacity = 1;
+    EXPECT_TRUE(rt_collider3d_get_child_count_raw(compound) == 1,
+                "Collider3D child count caps corrupt private counts to capacity");
+    EXPECT_TRUE(rt_collider3d_get_child_raw(compound, 1) == nullptr,
+                "Collider3D child getter rejects capped-out private indices");
+    compound_view->children[0] = rt_vec3_new(0.0, 0.0, 0.0);
+    EXPECT_TRUE(rt_collider3d_get_child_raw(compound, 0) == nullptr,
+                "Collider3D child getter rejects wrong-class child refs");
+    compound_view->children[0] = saved_child;
+
+    compound_view->child_transforms[0].rotation[0] = NAN;
+    compound_view->child_transforms[0].scale[0] = NAN;
+    double pos[3], rot[4], scale[3];
+    rt_collider3d_get_child_transform_raw(compound, 0, pos, rot, scale);
+    EXPECT_NEAR(rot[0], 0.0, 0.001, "Collider3D child transform repairs corrupt rotation x");
+    EXPECT_NEAR(rot[3], 1.0, 0.001, "Collider3D child transform repairs corrupt rotation w");
+    EXPECT_NEAR(scale[0], 1.0, 0.001, "Collider3D child transform repairs corrupt scale");
+    compound_view->child_transforms[0] = saved_transform;
+
+    compound_view->child_count = -4;
+    EXPECT_TRUE(rt_collider3d_get_child_count_raw(compound) == 0,
+                "Collider3D child count treats negative private counts as zero");
+    compound_view->child_count = saved_child_count;
+    compound_view->child_capacity = saved_child_capacity;
+
+    void *pixels = rt_pixels_new(2, 2);
+    rt_pixels_set(pixels, 0, 0, encode_height16(0));
+    rt_pixels_set(pixels, 1, 0, encode_height16(65535));
+    rt_pixels_set(pixels, 0, 1, encode_height16(0));
+    rt_pixels_set(pixels, 1, 1, encode_height16(65535));
+    void *heightfield = rt_collider3d_new_heightfield(pixels, 1.0, 1.0, 1.0);
+    auto *heightfield_view = static_cast<Collider3DTestLayout *>(heightfield);
+    int32_t saved_width = heightfield_view->heightfield_width;
+    int32_t saved_depth = heightfield_view->heightfield_depth;
+    heightfield_view->heightfield_width = -1;
+    int32_t width = 0, depth = 0;
+    double heightfield_scale[3] = {};
+    EXPECT_TRUE(rt_collider3d_get_heightfield_info_raw(
+                    heightfield, &width, &depth, heightfield_scale) == 0,
+                "Collider3D heightfield info rejects corrupt private dimensions");
+    heightfield_view->heightfield_width = saved_width;
+    heightfield_view->heightfield_depth = saved_depth;
+}
+
 static void test_mesh_collider_attaches_to_static_body() {
     void *mesh = rt_mesh3d_new_box(4.0, 1.0, 4.0);
     void *mesh_collider = rt_collider3d_new_mesh(mesh);
@@ -349,6 +453,75 @@ static void test_body_material_coefficients_are_sanitized() {
     EXPECT_NEAR(rt_body3d_get_friction(b), 0.0, 0.001, "NaN friction clamps to zero");
     rt_body3d_set_friction(b, 2.5);
     EXPECT_NEAR(rt_body3d_get_friction(b), 2.5, 0.001, "Finite friction is preserved");
+}
+
+static void test_body_getters_sanitize_corrupt_private_state() {
+    void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    rt_body3d *view = static_cast<rt_body3d *>(b);
+    void *saved_collider = view->collider;
+    void *wrong_ref = rt_vec3_new(0.0, 0.0, 0.0);
+
+    view->collider = wrong_ref;
+    EXPECT_TRUE(rt_body3d_get_collider(b) == nullptr,
+                "Body3D collider getter rejects wrong-class private refs");
+    rt_body3d_set_kinematic(b, 1);
+    EXPECT_TRUE(rt_body3d_is_kinematic(b) != 0,
+                "Body3D kinematic setter ignores wrong-class private collider slots");
+    view->collider = saved_collider;
+    rt_body3d_set_kinematic(b, 0);
+
+    view->restitution = INFINITY;
+    view->friction = NAN;
+    view->linear_damping = -8.0;
+    view->angular_damping = INFINITY;
+    view->mass = NAN;
+    view->collision_layer = -4;
+    EXPECT_NEAR(rt_body3d_get_restitution(b),
+                1.0,
+                0.001,
+                "Body3D restitution getter clamps corrupt private state");
+    EXPECT_NEAR(rt_body3d_get_friction(b),
+                0.0,
+                0.001,
+                "Body3D friction getter sanitizes corrupt private state");
+    EXPECT_NEAR(rt_body3d_get_linear_damping(b),
+                0.0,
+                0.001,
+                "Body3D linear damping getter sanitizes corrupt private state");
+    EXPECT_NEAR(rt_body3d_get_angular_damping(b),
+                0.0,
+                0.001,
+                "Body3D angular damping getter sanitizes corrupt private state");
+    EXPECT_NEAR(rt_body3d_get_mass(b),
+                0.0,
+                0.001,
+                "Body3D mass getter sanitizes corrupt private state");
+    EXPECT_TRUE(rt_body3d_get_collision_layer(b) == 1,
+                "Body3D collision layer getter repairs corrupt private state");
+
+    view->motion_mode = PH3D_MODE_DYNAMIC;
+    view->is_static = 42;
+    view->is_kinematic = -7;
+    EXPECT_TRUE(rt_body3d_is_static(b) == 0,
+                "Body3D static getter follows sanitized motion mode");
+    EXPECT_TRUE(rt_body3d_is_kinematic(b) == 0,
+                "Body3D kinematic getter follows sanitized motion mode");
+    view->motion_mode = PH3D_MODE_STATIC;
+    view->is_static = 0;
+    EXPECT_TRUE(rt_body3d_is_static(b) != 0,
+                "Body3D static getter does not trust stale private flags");
+    view->motion_mode = PH3D_MODE_DYNAMIC;
+
+    view->is_trigger = -1;
+    view->can_sleep = 99;
+    view->is_sleeping = -2;
+    view->use_ccd = 7;
+    view->is_grounded = -8;
+    EXPECT_TRUE(rt_body3d_is_trigger(b) == 1, "Body3D trigger getter normalizes to 0/1");
+    EXPECT_TRUE(rt_body3d_can_sleep(b) == 1, "Body3D canSleep getter normalizes to 0/1");
+    EXPECT_TRUE(rt_body3d_is_sleeping(b) == 1, "Body3D sleeping getter normalizes to 0/1");
+    EXPECT_TRUE(rt_body3d_get_use_ccd(b) == 1, "Body3D CCD getter normalizes to 0/1");
+    EXPECT_TRUE(rt_body3d_is_grounded(b) == 1, "Body3D grounded getter normalizes to 0/1");
 }
 
 static void test_body_sanitizes_nonfinite_motion_state() {
@@ -718,6 +891,32 @@ static void test_world_broadphase_rejects_separated_bodies() {
     rt_world3d_step(w, 1.0 / 60.0);
     EXPECT_TRUE(rt_world3d_get_collision_count(w) == 0,
                 "Sweep-and-prune broadphase keeps separated bodies out of narrowphase");
+}
+
+static void test_world_broadphase_keeps_legacy_cached_primitives() {
+    void *w = rt_world3d_new(0, 0, 0);
+    rt_body3d *a = (rt_body3d *)rt_body3d_new(1.0);
+    rt_body3d *b = (rt_body3d *)rt_body3d_new(1.0);
+    void *center = rt_vec3_new(0.0, 0.0, 0.0);
+    void *hits;
+
+    a->shape = PH3D_SHAPE_AABB;
+    b->shape = PH3D_SHAPE_AABB;
+    a->half_extents[0] = a->half_extents[1] = a->half_extents[2] = 1.0;
+    b->half_extents[0] = b->half_extents[1] = b->half_extents[2] = 1.0;
+    rt_body3d_set_position(b, 1.5, 0.0, 0.0);
+    body3d_touch_broadphase(a);
+    body3d_touch_broadphase(b);
+
+    rt_world3d_add(w, a);
+    rt_world3d_add(w, b);
+    rt_world3d_step(w, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_count(w) == 1,
+                "Legacy cached primitive bodies participate in SAP collision detection");
+
+    hits = rt_world3d_overlap_sphere(w, center, 2.0, -1);
+    EXPECT_TRUE(rt_physics_hit_list3d_get_total_count(hits) >= 1,
+                "Legacy cached primitive bodies participate in cached overlap queries");
 }
 
 static void test_gravity_integration() {
@@ -1697,6 +1896,141 @@ static void test_collision_event_bodies() {
     void *event1 = rt_world3d_get_collision_event(world, 0);
     EXPECT_TRUE(event0 != nullptr && event0 == event1,
                 "collision event objects are cached per frame");
+}
+
+static void test_physics_world_event_hit_getters_sanitize_corrupt_private_state() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *a = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
+    rt_body3d_set_position(a, 0, 0, 0);
+    rt_body3d_set_position(b, 0.5, 0, 0);
+    rt_world3d_add(world, a);
+    rt_world3d_add(world, b);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    auto *world_view = static_cast<rt_world3d *>(world);
+    int32_t saved_body_count = world_view->body_count;
+    int32_t saved_contact_count = world_view->contact_count;
+    int32_t saved_joint_count = world_view->joint_count;
+    rt_body3d *saved_contact_body_a = world_view->contacts[0].body_a;
+
+    world_view->body_count = INT32_MAX;
+    EXPECT_TRUE(rt_world3d_body_count(world) == 2,
+                "World3D body count ignores corrupt private tail count");
+    EXPECT_TRUE(rt_world3d_contains_body(world, b) != 0,
+                "World3D contains uses bounded private body count");
+    world_view->body_count = saved_body_count;
+
+    world_view->joint_count = INT32_MAX;
+    EXPECT_TRUE(rt_world3d_joint_count(world) == 0,
+                "World3D joint count ignores corrupt private tail count");
+    world_view->joint_count = saved_joint_count;
+
+    world_view->contact_count = INT32_MAX;
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "World3D collision count ignores corrupt private tail count");
+    EXPECT_TRUE(rt_world3d_get_collision_body_a(world, 1) == nullptr,
+                "World3D collision body getter rejects capped-out indices");
+    world_view->contacts[0].body_a = static_cast<rt_body3d *>(rt_vec3_new(0.0, 0.0, 0.0));
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 0,
+                "World3D collision count rejects wrong-class contact bodies");
+    world_view->contacts[0].body_a = saved_contact_body_a;
+    world_view->contact_count = saved_contact_count;
+
+    world_view->last_solver_island_count = -4;
+    world_view->last_solver_active_body_count = INT32_MAX;
+    world_view->last_solver_contact_count = INT32_MAX;
+    world_view->last_ccd_requested_substeps = INT32_MAX;
+    world_view->last_ccd_substeps = INT32_MAX;
+    world_view->ccd_substep_clamped_count = -9;
+    EXPECT_TRUE(rt_world3d_get_last_solver_island_count(world) == 0,
+                "World3D solver island telemetry treats negative private state as zero");
+    EXPECT_TRUE(rt_world3d_get_last_solver_active_body_count(world) == 2,
+                "World3D active-body telemetry caps at live body count");
+    EXPECT_TRUE(rt_world3d_get_last_solver_contact_count(world) == 1,
+                "World3D contact telemetry caps at live contact count");
+    EXPECT_TRUE(rt_world3d_get_last_ccd_requested_substeps(world) == PH3D_MAX_CCD_SUBSTEPS,
+                "World3D requested CCD substeps cap at runtime maximum");
+    EXPECT_TRUE(rt_world3d_get_last_ccd_substeps(world) == PH3D_MAX_CCD_SUBSTEPS,
+                "World3D CCD substeps cap at runtime maximum");
+    EXPECT_TRUE(rt_world3d_get_ccd_substep_clamped_count(world) == 0,
+                "World3D CCD clamp telemetry treats negative private state as zero");
+
+    void *event = rt_world3d_get_collision_event(world, 0);
+    EXPECT_TRUE(event != nullptr, "World3D corrupt getter test gets a collision event");
+    auto *event_view = static_cast<rt_collision_event3d_obj *>(event);
+    rt_body3d *saved_event_body_a = event_view->body_a;
+    void *saved_event_collider_a = event_view->collider_a;
+    int32_t saved_event_contact_count = event_view->contact_count;
+    int8_t saved_event_trigger = event_view->is_trigger;
+    event_view->body_a = static_cast<rt_body3d *>(rt_vec3_new(0.0, 0.0, 0.0));
+    event_view->collider_a = rt_vec3_new(0.0, 0.0, 0.0);
+    event_view->contact_count = INT32_MAX;
+    event_view->is_trigger = -2;
+    EXPECT_TRUE(rt_collision_event3d_get_body_a(event) == nullptr,
+                "CollisionEvent3D body getter rejects wrong-class private refs");
+    EXPECT_TRUE(rt_collision_event3d_get_collider_a(event) == nullptr,
+                "CollisionEvent3D collider getter rejects wrong-class private refs");
+    EXPECT_TRUE(rt_collision_event3d_get_contact_count(event) == PH3D_MAX_MANIFOLD_POINTS,
+                "CollisionEvent3D contact count caps at manifold capacity");
+    EXPECT_TRUE(rt_collision_event3d_get_contact(event, PH3D_MAX_MANIFOLD_POINTS) == nullptr,
+                "CollisionEvent3D contact getter rejects capped-out indices");
+    EXPECT_TRUE(rt_collision_event3d_get_is_trigger(event) == 1,
+                "CollisionEvent3D trigger getter normalizes corrupt private flags");
+    event_view->body_a = saved_event_body_a;
+    event_view->collider_a = saved_event_collider_a;
+    event_view->contact_count = saved_event_contact_count;
+    event_view->is_trigger = saved_event_trigger;
+
+    void *hits = rt_world3d_overlap_sphere(world, rt_vec3_new(0.0, 0.0, 0.0), 2.0, -1);
+    EXPECT_TRUE(hits != nullptr && rt_physics_hit_list3d_get_count(hits) > 0,
+                "World3D corrupt getter test gets overlap hits");
+    auto *list_view = static_cast<rt_physics_hit_list3d_obj *>(hits);
+    int64_t saved_hit_count = list_view->count;
+    int64_t saved_hit_capacity = list_view->capacity;
+    int64_t saved_hit_total = list_view->total_count;
+    int8_t saved_hit_truncated = list_view->truncated;
+    void *saved_hit_item0 = list_view->items[0];
+    list_view->count = INT64_MAX;
+    list_view->total_count = -5;
+    list_view->truncated = -1;
+    EXPECT_TRUE(rt_physics_hit_list3d_get_count(hits) == saved_hit_capacity,
+                "PhysicsHitList3D count caps at private capacity");
+    EXPECT_TRUE(rt_physics_hit_list3d_get_total_count(hits) == saved_hit_capacity,
+                "PhysicsHitList3D total count is never below stored count");
+    EXPECT_TRUE(rt_physics_hit_list3d_get_truncated(hits) == 1,
+                "PhysicsHitList3D truncated getter normalizes corrupt private flags");
+    list_view->items[0] = rt_vec3_new(0.0, 0.0, 0.0);
+    EXPECT_TRUE(rt_physics_hit_list3d_get(hits, 0) == nullptr,
+                "PhysicsHitList3D item getter rejects wrong-class private refs");
+    list_view->items[0] = saved_hit_item0;
+    list_view->count = saved_hit_count;
+    list_view->capacity = saved_hit_capacity;
+    list_view->total_count = saved_hit_total;
+    list_view->truncated = saved_hit_truncated;
+
+    void *hit = rt_physics_hit_list3d_get(hits, 0);
+    auto *hit_view = static_cast<rt_physics_hit3d_obj *>(hit);
+    rt_body3d *saved_hit_body = hit_view->body;
+    void *saved_hit_collider = hit_view->collider;
+    int8_t saved_started = hit_view->started_penetrating;
+    int8_t saved_is_trigger = hit_view->is_trigger;
+    hit_view->body = static_cast<rt_body3d *>(rt_vec3_new(0.0, 0.0, 0.0));
+    hit_view->collider = rt_vec3_new(0.0, 0.0, 0.0);
+    hit_view->started_penetrating = -3;
+    hit_view->is_trigger = -4;
+    EXPECT_TRUE(rt_physics_hit3d_get_body(hit) == nullptr,
+                "PhysicsHit3D body getter rejects wrong-class private refs");
+    EXPECT_TRUE(rt_physics_hit3d_get_collider(hit) == nullptr,
+                "PhysicsHit3D collider getter rejects wrong-class private refs");
+    EXPECT_TRUE(rt_physics_hit3d_get_started_penetrating(hit) == 1,
+                "PhysicsHit3D started-penetrating getter normalizes corrupt private flags");
+    EXPECT_TRUE(rt_physics_hit3d_get_is_trigger(hit) == 1,
+                "PhysicsHit3D trigger getter normalizes corrupt private flags");
+    hit_view->body = saved_hit_body;
+    hit_view->collider = saved_hit_collider;
+    hit_view->started_penetrating = saved_started;
+    hit_view->is_trigger = saved_is_trigger;
 }
 
 static void test_world_raycast_returns_nearest_hit() {
@@ -2781,6 +3115,7 @@ int main() {
     test_body_new_and_set_collider();
     test_wrapper_constructors_assign_colliders();
     test_collider_constructors_sanitize_nonfinite_dimensions();
+    test_collider_getters_sanitize_corrupt_private_state();
     test_mesh_collider_attaches_to_static_body();
 
     /* Property accessors */
@@ -2791,6 +3126,7 @@ int main() {
     test_body_far_origin_integrates_sub_float_delta();
     test_body_collision_layer_mask();
     test_body_material_coefficients_are_sanitized();
+    test_body_getters_sanitize_corrupt_private_state();
     test_body_sanitizes_nonfinite_motion_state();
     test_body_extreme_motion_state_saturates();
     test_body_extreme_scale_and_offcenter_inputs_remain_finite();
@@ -2812,6 +3148,7 @@ int main() {
     test_world_sparse_body_count_step_stress();
     test_world_contact_storage_grows_past_initial_capacity();
     test_world_broadphase_rejects_separated_bodies();
+    test_world_broadphase_keeps_legacy_cached_primitives();
     test_gravity_integration();
     test_force_application();
     test_impulse_application();
@@ -2871,6 +3208,7 @@ int main() {
     /* Collision event queue */
     test_collision_event_count();
     test_collision_event_bodies();
+    test_physics_world_event_hit_getters_sanitize_corrupt_private_state();
     test_world_raycast_returns_nearest_hit();
     test_world_raycast_all_sorted();
     test_world_overlap_hit_list_reports_truncation();

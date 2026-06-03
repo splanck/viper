@@ -79,7 +79,10 @@ void *rt_game3d_input_new(void) {
 double rt_game3d_input_get_look_sensitivity(void *obj) {
     rt_game3d_input *input =
         game3d_input_checked(obj, "Game3D.Input3D.get_LookSensitivity: invalid input");
-    return input ? input->look_sensitivity : 0.0;
+    return input ? game3d_nonnegative_clamped_or(input->look_sensitivity,
+                                                 RT_GAME3D_DEFAULT_LOOK_SENSITIVITY,
+                                                 RT_GAME3D_LOOK_SENSITIVITY_MAX)
+                 : 0.0;
 }
 
 /// @brief Set the look sensitivity (negative/non-finite values reset to the default).

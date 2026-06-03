@@ -163,12 +163,14 @@ trapping before mutation. The open-world GPU smoke records a 3-cascade Metal
 fixture (`CSM_SHADOWS`) after the clustered-lighting probe.
 `BackendSupports("bc7")`, `BackendSupports("astc")`, and
 `BackendSupports("etc2")` report native compressed texture upload support for
-the active backend/device. KTX2 RGBA8, BC3, BC7 modes 0-7, representative ETC2
-RGBA8/EAC, and ASTC LDR void-extent mips decode into CPU `Pixels` fallbacks;
-all precompressed mip block payloads are still retained internally for
-capability-gated backend upload. Unsupported ETC2 color modes and non-void ASTC
-blocks remain native-only. `TextureAsset3D.SetResidentMipRange` switches the
-active fallback to the first resident mip while updating byte telemetry.
+the active backend/device. KTX2 supercompression is rejected; native mip payload
+lengths are validated against the declared format/block dimensions. RGBA8, BC3,
+BC7 modes 0-7, representative ETC2 RGBA8/EAC, and ASTC LDR void-extent mips
+decode into CPU `Pixels` fallbacks; all native block-compressed mip payloads are
+still retained internally for capability-gated backend upload. Unsupported ETC2
+color modes and non-void ASTC blocks remain native-only.
+`TextureAsset3D.SetResidentMipRange` switches the active fallback to the first
+resident mip while updating byte telemetry.
 Materials retain the texture asset and resolve that active fallback at draw
 time, so already-bound materials follow later residency changes; when no
 fallback exists, capable GPU backends receive the resident compressed blocks
@@ -244,6 +246,9 @@ Scene3D interior PVS is authored on the scene:
 
 Nodes that intersect no visibility zone remain visible, which keeps outdoor or
 mixed scenes from disappearing when a PVS graph is only authored for interiors.
+The count properties and PVS traversal clamp zone/portal counters to the live
+allocation bounds, and appending zones or portals repairs malformed counters
+before writing the next entry.
 
 ### Viper.Graphics3D.Scene3D
 
@@ -296,6 +301,9 @@ snapshots; run spatial queries again after the between-frame rebase boundary.
 `Mesh3D.Resident` and read-only `ResidentBytes` expose mesh-payload residency
 for streaming systems. Nonresident meshes keep their handles and authored data
 but report zero resident bytes and are skipped by Canvas3D/Scene3D draw paths.
+Scene3D `.vscn` save/load persists each mesh's resident flag, so authored
+streaming state survives scene round trips while older files default to
+resident meshes.
 
 ### Viper.Graphics3D.SceneNode3D LOD
 
@@ -1276,6 +1284,9 @@ Animated water plane with wave simulation, reflections, and normal mapping.
 | `AddWave(originX, originZ, amplitude, frequency, speed)` | `Void(Double, Double, Double, Double, Double)` | Add a Gerstner wave component |
 | `ClearWaves()` | `Void()` | Remove all wave components |
 
+`Water3D.Update` rewrites the retained mesh vertex buffer in place and rebuilds
+index topology only when resolution or capacity changes.
+
 ---
 
 ### Viper.Graphics3D.Vegetation3D
@@ -1295,6 +1306,9 @@ GPU-instanced foliage (grass, bushes) with density map, wind animation, and LOD.
 | `SetBladeSize(width, height, variance)` | `Void(Double, Double, Double)` | Set blade/frond dimensions |
 | `Populate(terrain, count)` | `Void(Object, Integer)` | Scatter `count` instances over a `Terrain3D` using the density map |
 | `Update(deltaSeconds, camX, camY, camZ)` | `Void(Double, Double, Double, Double)` | Advance wind simulation relative to camera position |
+
+Vegetation draws use a double-sided blade material instead of mutating the
+canvas-wide backface-cull flag.
 
 ---
 

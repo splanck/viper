@@ -963,7 +963,9 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     int has_normal_deltas = 0;
     int has_tangent_deltas = 0;
     for (int32_t s = 0; s < shape_count; s++) {
-        float w = morphtarget_sanitize_weight(mt->weights[s]);
+        /* Weights were already sanitized in place by morphtarget_sanitize_weights()
+         * above, so read the stored value directly instead of re-clamping it. */
+        float w = mt->weights[s];
         if (!isfinite(w) || fabsf(w) < 1e-6f)
             continue;
 

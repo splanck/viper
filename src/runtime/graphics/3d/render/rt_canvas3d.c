@@ -815,15 +815,19 @@ static void canvas3d_active_output_size(const rt_canvas3d *c, int32_t *out_w, in
         return;
     if (c->render_target) {
         if (out_w)
-            *out_w = c->render_target->width;
+            *out_w = vgfx3d_rendertarget_valid_pixels(c->render_target, NULL)
+                         ? c->render_target->width
+                         : 0;
         if (out_h)
-            *out_h = c->render_target->height;
+            *out_h = vgfx3d_rendertarget_valid_pixels(c->render_target, NULL)
+                         ? c->render_target->height
+                         : 0;
         return;
     }
     if (out_w)
-        *out_w = c->width;
+        *out_w = c->width > 0 ? c->width : 0;
     if (out_h)
-        *out_h = c->height;
+        *out_h = c->height > 0 ? c->height : 0;
 }
 
 /// @brief Window-system resize callback — `userdata` is the canvas pointer.
@@ -2432,129 +2436,130 @@ static int canvas3d_build_shadow_world_bounds(const deferred_draw_t *cmds,
     return has_bounds ? 1 : 0;
 }
 
-/// @brief Build the light's view-projection matrix that tightly bounds a world AABB for shadow
-/// mapping.
-/// @details Fits an orthographic light frustum around the scene bounds so the shadow map covers the
-///          visible geometry at maximum resolution.
-static int canvas3d_build_shadow_light_vp(const float *world_min,
-                                          const float *world_max,
-                                          const vgfx3d_light_params_t *dir_light,
-                                          float *out_light_vp) {
-    float center[3];
-    float ldir[3];
-    float eye[3];
-    float fwd[3];
-    float up[3] = {0.0f, 1.0f, 0.0f};
-    float view[16];
-    float proj[16];
-    float corners[8][3];
-    float ls_min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
-    float ls_max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-
-    if (!world_min || !world_max || !dir_light || !out_light_vp)
+static int canvas3d_shadow_bounds_are_valid(const float *world_min, const float *world_max) {
+    if (!world_min || !world_max)
         return 0;
     for (int i = 0; i < 3; ++i) {
         if (!isfinite(world_min[i]) || !isfinite(world_max[i]) || world_min[i] > world_max[i])
             return 0;
     }
+    return 1;
+}
 
+static void canvas3d_shadow_bounds_center(const float *world_min,
+                                          const float *world_max,
+                                          float *center) {
     center[0] = 0.5f * (world_min[0] + world_max[0]);
     center[1] = 0.5f * (world_min[1] + world_max[1]);
     center[2] = 0.5f * (world_min[2] + world_max[2]);
+}
 
+static void canvas3d_shadow_normalize_light_dir(const vgfx3d_light_params_t *dir_light,
+                                                float *ldir) {
+    float ll;
     ldir[0] = dir_light->direction[0];
     ldir[1] = dir_light->direction[1];
     ldir[2] = dir_light->direction[2];
-    {
-        float ll = sqrtf(ldir[0] * ldir[0] + ldir[1] * ldir[1] + ldir[2] * ldir[2]);
-        if (isfinite(ll) && ll > 1e-7f) {
-            ldir[0] /= ll;
-            ldir[1] /= ll;
-            ldir[2] /= ll;
-        } else {
-            ldir[0] = 0.0f;
-            ldir[1] = -1.0f;
-            ldir[2] = 0.0f;
-        }
+    ll = sqrtf(ldir[0] * ldir[0] + ldir[1] * ldir[1] + ldir[2] * ldir[2]);
+    if (isfinite(ll) && ll > 1e-7f) {
+        ldir[0] /= ll;
+        ldir[1] /= ll;
+        ldir[2] /= ll;
+    } else {
+        ldir[0] = 0.0f;
+        ldir[1] = -1.0f;
+        ldir[2] = 0.0f;
     }
+}
 
-    {
-        float dx = world_max[0] - world_min[0];
-        float dy = world_max[1] - world_min[1];
-        float dz = world_max[2] - world_min[2];
-        float radius = 0.5f * sqrtf(dx * dx + dy * dy + dz * dz);
-        if (!isfinite(radius))
-            return 0;
-        if (radius < 1.0f)
-            radius = 1.0f;
-        eye[0] = center[0] - ldir[0] * (radius * 2.0f + 4.0f);
-        eye[1] = center[1] - ldir[1] * (radius * 2.0f + 4.0f);
-        eye[2] = center[2] - ldir[2] * (radius * 2.0f + 4.0f);
-    }
+static int canvas3d_shadow_place_eye(const float *world_min,
+                                     const float *world_max,
+                                     const float *center,
+                                     const float *ldir,
+                                     float *eye) {
+    float dx = world_max[0] - world_min[0];
+    float dy = world_max[1] - world_min[1];
+    float dz = world_max[2] - world_min[2];
+    float radius = 0.5f * sqrtf(dx * dx + dy * dy + dz * dz);
+    if (!isfinite(radius))
+        return 0;
+    if (radius < 1.0f)
+        radius = 1.0f;
+    eye[0] = center[0] - ldir[0] * (radius * 2.0f + 4.0f);
+    eye[1] = center[1] - ldir[1] * (radius * 2.0f + 4.0f);
+    eye[2] = center[2] - ldir[2] * (radius * 2.0f + 4.0f);
+    return 1;
+}
+
+static void canvas3d_shadow_build_light_view(const float *center, const float *eye, float *view) {
+    float fwd[3];
+    float up[3] = {0.0f, 1.0f, 0.0f};
+    float fl;
+    float rx;
+    float ry;
+    float rz;
+    float rl;
+    float ux;
+    float uy;
+    float uz;
 
     fwd[0] = center[0] - eye[0];
     fwd[1] = center[1] - eye[1];
     fwd[2] = center[2] - eye[2];
-    {
-        float fl = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1] + fwd[2] * fwd[2]);
-        float rx;
-        float ry;
-        float rz;
-        float rl;
-        float ux;
-        float uy;
-        float uz;
-
-        if (isfinite(fl) && fl > 1e-7f) {
-            fwd[0] /= fl;
-            fwd[1] /= fl;
-            fwd[2] /= fl;
-        } else {
-            fwd[0] = 0.0f;
-            fwd[1] = 0.0f;
-            fwd[2] = -1.0f;
-        }
-        if (fabsf(fwd[0] * up[0] + fwd[1] * up[1] + fwd[2] * up[2]) > 0.99f) {
-            up[0] = 0.0f;
-            up[1] = 0.0f;
-            up[2] = 1.0f;
-        }
-
-        rx = fwd[1] * up[2] - fwd[2] * up[1];
-        ry = fwd[2] * up[0] - fwd[0] * up[2];
-        rz = fwd[0] * up[1] - fwd[1] * up[0];
-        rl = sqrtf(rx * rx + ry * ry + rz * rz);
-        if (isfinite(rl) && rl > 1e-7f) {
-            rx /= rl;
-            ry /= rl;
-            rz /= rl;
-        } else {
-            rx = 1.0f;
-            ry = rz = 0.0f;
-        }
-
-        ux = ry * fwd[2] - rz * fwd[1];
-        uy = rz * fwd[0] - rx * fwd[2];
-        uz = rx * fwd[1] - ry * fwd[0];
-
-        view[0] = rx;
-        view[1] = ry;
-        view[2] = rz;
-        view[3] = -(rx * eye[0] + ry * eye[1] + rz * eye[2]);
-        view[4] = ux;
-        view[5] = uy;
-        view[6] = uz;
-        view[7] = -(ux * eye[0] + uy * eye[1] + uz * eye[2]);
-        view[8] = fwd[0];
-        view[9] = fwd[1];
-        view[10] = fwd[2];
-        view[11] = -(fwd[0] * eye[0] + fwd[1] * eye[1] + fwd[2] * eye[2]);
-        view[12] = 0.0f;
-        view[13] = 0.0f;
-        view[14] = 0.0f;
-        view[15] = 1.0f;
+    fl = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1] + fwd[2] * fwd[2]);
+    if (isfinite(fl) && fl > 1e-7f) {
+        fwd[0] /= fl;
+        fwd[1] /= fl;
+        fwd[2] /= fl;
+    } else {
+        fwd[0] = 0.0f;
+        fwd[1] = 0.0f;
+        fwd[2] = -1.0f;
+    }
+    if (fabsf(fwd[0] * up[0] + fwd[1] * up[1] + fwd[2] * up[2]) > 0.99f) {
+        up[0] = 0.0f;
+        up[1] = 0.0f;
+        up[2] = 1.0f;
     }
 
+    rx = fwd[1] * up[2] - fwd[2] * up[1];
+    ry = fwd[2] * up[0] - fwd[0] * up[2];
+    rz = fwd[0] * up[1] - fwd[1] * up[0];
+    rl = sqrtf(rx * rx + ry * ry + rz * rz);
+    if (isfinite(rl) && rl > 1e-7f) {
+        rx /= rl;
+        ry /= rl;
+        rz /= rl;
+    } else {
+        rx = 1.0f;
+        ry = rz = 0.0f;
+    }
+
+    ux = ry * fwd[2] - rz * fwd[1];
+    uy = rz * fwd[0] - rx * fwd[2];
+    uz = rx * fwd[1] - ry * fwd[0];
+
+    view[0] = rx;
+    view[1] = ry;
+    view[2] = rz;
+    view[3] = -(rx * eye[0] + ry * eye[1] + rz * eye[2]);
+    view[4] = ux;
+    view[5] = uy;
+    view[6] = uz;
+    view[7] = -(ux * eye[0] + uy * eye[1] + uz * eye[2]);
+    view[8] = fwd[0];
+    view[9] = fwd[1];
+    view[10] = fwd[2];
+    view[11] = -(fwd[0] * eye[0] + fwd[1] * eye[1] + fwd[2] * eye[2]);
+    view[12] = 0.0f;
+    view[13] = 0.0f;
+    view[14] = 0.0f;
+    view[15] = 1.0f;
+}
+
+static void canvas3d_shadow_build_world_corners(const float *world_min,
+                                                const float *world_max,
+                                                float corners[8][3]) {
     corners[0][0] = world_min[0];
     corners[0][1] = world_min[1];
     corners[0][2] = world_min[2];
@@ -2579,7 +2584,14 @@ static int canvas3d_build_shadow_light_vp(const float *world_min,
     corners[7][0] = world_max[0];
     corners[7][1] = world_max[1];
     corners[7][2] = world_max[2];
+}
 
+static void canvas3d_shadow_accumulate_light_bounds(const float *view,
+                                                    const float corners[8][3],
+                                                    float *ls_min,
+                                                    float *ls_max) {
+    ls_min[0] = ls_min[1] = ls_min[2] = FLT_MAX;
+    ls_max[0] = ls_max[1] = ls_max[2] = -FLT_MAX;
     for (int i = 0; i < 8; i++) {
         float x = corners[i][0];
         float y = corners[i][1];
@@ -2600,30 +2612,65 @@ static int canvas3d_build_shadow_light_vp(const float *world_min,
         if (lz > ls_max[2])
             ls_max[2] = lz;
     }
+}
 
-    {
-        float pad_x = (ls_max[0] - ls_min[0]) * 0.05f + 1.0f;
-        float pad_y = (ls_max[1] - ls_min[1]) * 0.05f + 1.0f;
-        float pad_z = (ls_max[2] - ls_min[2]) * 0.10f + 2.0f;
-        float left = ls_min[0] - pad_x;
-        float right = ls_max[0] + pad_x;
-        float bottom = ls_min[1] - pad_y;
-        float top = ls_max[1] + pad_y;
-        float near_z = ls_min[2] - pad_z;
-        float far_z = ls_max[2] + pad_z;
+static int canvas3d_shadow_build_ortho_projection(const float *ls_min,
+                                                  const float *ls_max,
+                                                  float *proj) {
+    float pad_x = (ls_max[0] - ls_min[0]) * 0.05f + 1.0f;
+    float pad_y = (ls_max[1] - ls_min[1]) * 0.05f + 1.0f;
+    float pad_z = (ls_max[2] - ls_min[2]) * 0.10f + 2.0f;
+    float left = ls_min[0] - pad_x;
+    float right = ls_max[0] + pad_x;
+    float bottom = ls_min[1] - pad_y;
+    float top = ls_max[1] + pad_y;
+    float near_z = ls_min[2] - pad_z;
+    float far_z = ls_max[2] + pad_z;
 
-        if (right - left < 1e-4f || top - bottom < 1e-4f || far_z - near_z < 1e-4f)
-            return 0;
+    if (right - left < 1e-4f || top - bottom < 1e-4f || far_z - near_z < 1e-4f)
+        return 0;
 
-        memset(proj, 0, sizeof(proj));
-        proj[0] = 2.0f / (right - left);
-        proj[3] = -(right + left) / (right - left);
-        proj[5] = 2.0f / (top - bottom);
-        proj[7] = -(top + bottom) / (top - bottom);
-        proj[10] = 2.0f / (far_z - near_z);
-        proj[11] = -(far_z + near_z) / (far_z - near_z);
-        proj[15] = 1.0f;
-    }
+    memset(proj, 0, sizeof(float) * 16);
+    proj[0] = 2.0f / (right - left);
+    proj[3] = -(right + left) / (right - left);
+    proj[5] = 2.0f / (top - bottom);
+    proj[7] = -(top + bottom) / (top - bottom);
+    proj[10] = 2.0f / (far_z - near_z);
+    proj[11] = -(far_z + near_z) / (far_z - near_z);
+    proj[15] = 1.0f;
+    return 1;
+}
+
+/// @brief Build the light's view-projection matrix that tightly bounds a world AABB for shadow
+/// mapping.
+/// @details Fits an orthographic light frustum around the scene bounds so the shadow map covers the
+///          visible geometry at maximum resolution.
+static int canvas3d_build_shadow_light_vp(const float *world_min,
+                                          const float *world_max,
+                                          const vgfx3d_light_params_t *dir_light,
+                                          float *out_light_vp) {
+    float center[3];
+    float ldir[3];
+    float eye[3];
+    float view[16];
+    float proj[16];
+    float corners[8][3];
+    float ls_min[3];
+    float ls_max[3];
+
+    if (!world_min || !world_max || !dir_light || !out_light_vp)
+        return 0;
+    if (!canvas3d_shadow_bounds_are_valid(world_min, world_max))
+        return 0;
+    canvas3d_shadow_bounds_center(world_min, world_max, center);
+    canvas3d_shadow_normalize_light_dir(dir_light, ldir);
+    if (!canvas3d_shadow_place_eye(world_min, world_max, center, ldir, eye))
+        return 0;
+    canvas3d_shadow_build_light_view(center, eye, view);
+    canvas3d_shadow_build_world_corners(world_min, world_max, corners);
+    canvas3d_shadow_accumulate_light_bounds(view, corners, ls_min, ls_max);
+    if (!canvas3d_shadow_build_ortho_projection(ls_min, ls_max, proj))
+        return 0;
 
     canvas3d_mul_mat4(proj, view, out_light_vp);
     return 1;
@@ -2677,6 +2724,8 @@ static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
     }
     if ((size_t)resolution > SIZE_MAX / (size_t)resolution)
         return 0;
+    if (resolution > INT32_MAX / 4)
+        return 0;
     depth_bytes = (size_t)resolution * (size_t)resolution;
     if (depth_bytes > SIZE_MAX / sizeof(float))
         return 0;
@@ -2703,6 +2752,8 @@ static int canvas3d_ensure_shadow_targets(rt_canvas3d *c, int32_t resolution) {
                     canvas3d_release_shadow_targets(c);
                     return 0;
                 }
+                vgfx3d_rendertarget_fill_depth_max(new_rt->depth_buf,
+                                                   (size_t)resolution * (size_t)resolution);
                 c->shadow_rts[alloc_slot] = new_rt;
             }
             return 1;
@@ -3616,7 +3667,7 @@ void rt_canvas3d_begin(void *obj, void *camera) {
 /// their cached serial is older than the canvas's current value.
 int64_t rt_canvas3d_get_frame_serial(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
-    return c ? c->frame_serial : 0;
+    return (c && c->frame_serial > 0) ? c->frame_serial : 0;
 }
 
 /// @brief Internal opt-in used by Game3D floating origin to keep backend floats near the camera.
@@ -4039,6 +4090,9 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
             needs_motion_vectors ? &queued_prev_instance_matrices[(size_t)i * 16u] : ignored_prev;
         const float *current = &queued_instance_matrices[(size_t)i * 16u];
         if (needs_motion_vectors && has_prev_instance_matrices && prev_instance_matrices) {
+            memcpy(dst_prev, &prev_instance_matrices[(size_t)i * 16u], 16u * sizeof(float));
+            /* Keep the internal motion history current for the next frame even when the caller
+             * supplies an explicit previous-instance snapshot for this draw. */
             canvas3d_resolve_previous_model(
                 c,
                 canvas3d_instance_motion_key(
@@ -4916,13 +4970,13 @@ int64_t rt_canvas3d_get_height(void *obj) {
 /// @brief Get the backing window's logical width, ignoring any bound render target.
 int64_t rt_canvas3d_get_window_width(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
-    return c ? c->width : 0;
+    return (c && c->width > 0) ? c->width : 0;
 }
 
 /// @brief Get the backing window's logical height, ignoring any bound render target.
 int64_t rt_canvas3d_get_window_height(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
-    return c ? c->height : 0;
+    return (c && c->height > 0) ? c->height : 0;
 }
 
 /// @brief Explicit alias for Width: the active output width, including render targets.
@@ -4953,9 +5007,9 @@ int64_t rt_canvas3d_get_delta_time(void *obj) {
     if (!c)
         return 0;
     int64_t dt = c->delta_time_ms;
+    if (dt <= 0)
+        return 0;
     if (c->dt_max_ms > 0) {
-        if (dt <= 0)
-            return 0;
         if (dt > c->dt_max_ms)
             dt = c->dt_max_ms;
     }
@@ -5103,7 +5157,9 @@ int64_t rt_canvas3d_get_light_count(void *obj) {
     if (!c)
         return 0;
     for (int32_t i = 0; i < VGFX3D_MAX_LIGHTS; i++) {
-        if (c->lights[i] && c->lights[i]->enabled)
+        rt_light3d *light =
+            (rt_light3d *)rt_g3d_checked_or_null(c->lights[i], RT_G3D_LIGHT3D_CLASS_ID);
+        if (light && light->enabled)
             count++;
     }
     return count;

@@ -1095,7 +1095,7 @@ void rt_animation3d_set_looping(void *obj, int8_t loop) {
 /// @brief Read the looping flag (0 = one-shot, 1 = loops).
 int8_t rt_animation3d_get_looping(void *obj) {
     rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
-    return a ? a->looping : 0;
+    return a && a->looping ? 1 : 0;
 }
 
 /// @brief Total length of the clip in seconds (0.0 for NULL).
@@ -1779,7 +1779,7 @@ static int8_t anim_player_current_looping(rt_anim_player3d *p) {
         return 0;
     if (p->loop_override_enabled)
         return p->loop_override_value ? 1 : 0;
-    return current->looping;
+    return current->looping ? 1 : 0;
 }
 
 /// @brief Advance playback by `delta_time` seconds and refresh the bone palette.
@@ -1871,7 +1871,7 @@ double rt_anim_player3d_get_speed(void *obj) {
 /// @brief True if the player is currently advancing time on `update` calls.
 int8_t rt_anim_player3d_is_playing(void *obj) {
     rt_anim_player3d *p = anim_player3d_checked(obj);
-    return p ? p->playing : 0;
+    return p && p->playing ? 1 : 0;
 }
 
 /// @brief Current playback time within the active clip (seconds).

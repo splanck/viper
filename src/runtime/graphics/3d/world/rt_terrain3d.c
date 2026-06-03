@@ -568,7 +568,7 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
             /* 16-bit height from R (high byte) + G (low byte) for smooth terrain */
             uint32_t hi = (pixel >> 24) & 0xFF;
             uint32_t lo = (pixel >> 16) & 0xFF;
-            t->heights[z * t->width + x] = (float)((hi << 8) | lo) / 65535.0f;
+            t->heights[(int64_t)z * t->width + x] = (float)((hi << 8) | lo) / 65535.0f;
         }
     }
 
@@ -937,6 +937,22 @@ static float terrain_world_height_to_sample(const rt_terrain3d *t, double h) {
     return (float)sample;
 }
 
+/// @brief Treat sub-ULP seam deltas as unchanged so stitching does not invalidate terrain
+///   chunks forever on float round-off noise.
+static int terrain_height_samples_equal_enough(float a, float b) {
+    double da;
+    double db;
+    double scale;
+    if (a == b)
+        return 1;
+    if (!isfinite(a) || !isfinite(b))
+        return 0;
+    da = (double)a;
+    db = (double)b;
+    scale = fmax(fmax(fabs(da), fabs(db)), 1.0);
+    return fabs(da - db) <= (double)FLT_EPSILON * 4.0 * scale;
+}
+
 /// @brief Average two border edges in world-height space and invalidate affected LOD meshes.
 /// @details Used by WorldStream3D after adjacent terrain tiles become resident. The helper maps
 ///   differing edge sample counts by normalized edge distance so a coarse tile can stitch to a
@@ -975,7 +991,8 @@ int64_t rt_terrain3d_stitch_edge(void *terrain_obj,
                          0.5;
         float stitched_terrain = terrain_world_height_to_sample(terrain, world_h);
         float stitched_neighbor = terrain_world_height_to_sample(neighbor, world_h);
-        if (*terrain_h != stitched_terrain || *neighbor_h != stitched_neighbor) {
+        if (!terrain_height_samples_equal_enough(*terrain_h, stitched_terrain) ||
+            !terrain_height_samples_equal_enough(*neighbor_h, stitched_neighbor)) {
             *terrain_h = stitched_terrain;
             *neighbor_h = stitched_neighbor;
             changed++;
@@ -1236,6 +1253,161 @@ static void terrain_vertex(rt_terrain3d *t,
 /// @brief Build mesh for one terrain chunk at a given LOD step.
 /// @param step 1=full res (LOD 0), 2=half (LOD 1), 4=quarter (LOD 2).
 /// @param aabb_out If non-NULL, receives the chunk's AABB (6 floats: min[3], max[3]).
+/// @brief Emit the LOD-stepped surface grid (vertices + CCW triangles) for one terrain chunk,
+///        expanding the running world-space AABB to cover the generated vertices.
+static void terrain_build_chunk_surface(void *mesh,
+                                        rt_terrain3d *t,
+                                        int32_t x0,
+                                        int32_t z0,
+                                        int32_t cols,
+                                        int32_t rows,
+                                        int32_t step,
+                                        int32_t vert_cols,
+                                        int32_t vert_rows,
+                                        float *aabb_min,
+                                        float *aabb_max) {
+    for (int32_t rz = 0; rz < vert_rows; rz++) {
+        int32_t dz = rz * step;
+        if (dz > rows || rz == vert_rows - 1)
+            dz = rows;
+        for (int32_t rx = 0; rx < vert_cols; rx++) {
+            int32_t dx = rx * step;
+            if (dx > cols || rx == vert_cols - 1)
+                dx = cols;
+            int32_t ix = x0 + dx, iz = z0 + dz;
+            if (ix >= t->width)
+                ix = t->width - 1;
+            if (iz >= t->depth)
+                iz = t->depth - 1;
+            double wx, wy, wz, nx, ny, nz_n, u, v;
+            terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
+            rt_mesh3d_add_vertex(mesh, wx, wy, wz, nx, ny, nz_n, u, v);
+            if ((float)wx < aabb_min[0])
+                aabb_min[0] = (float)wx;
+            if ((float)wy < aabb_min[1])
+                aabb_min[1] = (float)wy;
+            if ((float)wz < aabb_min[2])
+                aabb_min[2] = (float)wz;
+            if ((float)wx > aabb_max[0])
+                aabb_max[0] = (float)wx;
+            if ((float)wy > aabb_max[1])
+                aabb_max[1] = (float)wy;
+            if ((float)wz > aabb_max[2])
+                aabb_max[2] = (float)wz;
+        }
+    }
+    for (int32_t rz = 0; rz < vert_rows - 1; rz++) {
+        for (int32_t rx = 0; rx < vert_cols - 1; rx++) {
+            int64_t base = (int64_t)(rz * vert_cols + rx);
+            rt_mesh3d_add_triangle(mesh, base, base + vert_cols, base + 1);
+            rt_mesh3d_add_triangle(mesh, base + 1, base + vert_cols, base + vert_cols + 1);
+        }
+    }
+}
+
+/// @brief Emit downward "skirt" geometry around a chunk's four edges to hide cracks between LOD
+///        levels. Only meaningful for stepped (LOD) chunks with a positive skirt depth @p sd.
+static void terrain_build_chunk_skirts(void *mesh,
+                                       rt_terrain3d *t,
+                                       int32_t x0,
+                                       int32_t z0,
+                                       int32_t cols,
+                                       int32_t rows,
+                                       int32_t step,
+                                       int32_t vert_cols,
+                                       int32_t vert_rows,
+                                       double sd) {
+    /* For each of the 4 edges, add skirt triangles */
+    /* Top edge (dz=0), bottom edge (dz=rows), left (dx=0), right (dx=cols) */
+    int64_t skirt_base = (int64_t)(vert_rows * vert_cols);
+
+    /* Top edge (z = z0) */
+    for (int32_t rx = 0; rx < vert_cols; rx++) {
+        int32_t sample_dx = rx * step;
+        if (sample_dx > cols || rx == vert_cols - 1)
+            sample_dx = cols;
+        int32_t ix = x0 + sample_dx;
+        if (ix >= t->width)
+            ix = t->width - 1;
+        double wx, wy, wz, nx, ny, nz_n, u, v;
+        terrain_vertex(t, ix, z0, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
+        rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, 0, -1, 0, u, v);
+    }
+    for (int32_t rx = 0; rx < vert_cols - 1; rx++) {
+        int64_t top = (int64_t)rx;              /* top edge vertex */
+        int64_t bot = skirt_base + (int64_t)rx; /* skirt vertex */
+        rt_mesh3d_add_triangle(mesh, top, bot, top + 1);
+        rt_mesh3d_add_triangle(mesh, top + 1, bot, bot + 1);
+    }
+    skirt_base += vert_cols;
+
+    /* Bottom edge (z = z0 + rows) */
+    int64_t bottom_row_start = (int64_t)((vert_rows - 1) * vert_cols);
+    for (int32_t rx = 0; rx < vert_cols; rx++) {
+        int32_t sample_dx = rx * step;
+        if (sample_dx > cols || rx == vert_cols - 1)
+            sample_dx = cols;
+        int32_t ix = x0 + sample_dx;
+        int32_t iz = z0 + rows;
+        if (ix >= t->width)
+            ix = t->width - 1;
+        if (iz >= t->depth)
+            iz = t->depth - 1;
+        double wx, wy, wz, nx, ny, nz_n, u, v;
+        terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
+        rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, 0, -1, 0, u, v);
+    }
+    for (int32_t rx = 0; rx < vert_cols - 1; rx++) {
+        int64_t top = bottom_row_start + (int64_t)rx;
+        int64_t bot = skirt_base + (int64_t)rx;
+        rt_mesh3d_add_triangle(mesh, top, top + 1, bot);
+        rt_mesh3d_add_triangle(mesh, top + 1, bot + 1, bot);
+    }
+    skirt_base += vert_cols;
+
+    /* Left edge (x = x0) */
+    for (int32_t rz = 0; rz < vert_rows; rz++) {
+        int32_t sample_dz = rz * step;
+        if (sample_dz > rows || rz == vert_rows - 1)
+            sample_dz = rows;
+        int32_t iz = z0 + sample_dz;
+        if (iz >= t->depth)
+            iz = t->depth - 1;
+        double wx, wy, wz, nx, ny, nz_n, u, v;
+        terrain_vertex(t, x0, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
+        rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, -1, 0, 0, u, v);
+    }
+    for (int32_t rz = 0; rz < vert_rows - 1; rz++) {
+        int64_t top = (int64_t)(rz * vert_cols); /* left column vertex */
+        int64_t bot = skirt_base + (int64_t)rz;
+        rt_mesh3d_add_triangle(mesh, top, bot, (int64_t)((rz + 1) * vert_cols));
+        rt_mesh3d_add_triangle(mesh, (int64_t)((rz + 1) * vert_cols), bot, bot + 1);
+    }
+    skirt_base += vert_rows;
+
+    /* Right edge (x = x0 + cols) */
+    for (int32_t rz = 0; rz < vert_rows; rz++) {
+        int32_t ix = x0 + cols;
+        int32_t sample_dz = rz * step;
+        if (sample_dz > rows || rz == vert_rows - 1)
+            sample_dz = rows;
+        int32_t iz = z0 + sample_dz;
+        if (ix >= t->width)
+            ix = t->width - 1;
+        if (iz >= t->depth)
+            iz = t->depth - 1;
+        double wx, wy, wz, nx, ny, nz_n, u, v;
+        terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
+        rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, 1, 0, 0, u, v);
+    }
+    for (int32_t rz = 0; rz < vert_rows - 1; rz++) {
+        int64_t top = (int64_t)(rz * vert_cols + vert_cols - 1);
+        int64_t bot = skirt_base + (int64_t)rz;
+        rt_mesh3d_add_triangle(mesh, top, (int64_t)((rz + 1) * vert_cols + vert_cols - 1), bot);
+        rt_mesh3d_add_triangle(mesh, (int64_t)((rz + 1) * vert_cols + vert_cols - 1), bot + 1, bot);
+    }
+}
+
 static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, float *aabb_out) {
     int32_t x0 = cx * TERRAIN_CHUNK_SIZE;
     int32_t z0 = cz * TERRAIN_CHUNK_SIZE;
@@ -1280,147 +1452,16 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
         vert_cols++;
     if (rows % step != 0)
         vert_rows++;
-    for (int32_t rz = 0; rz < vert_rows; rz++) {
-        int32_t dz = rz * step;
-        if (dz > rows || rz == vert_rows - 1)
-            dz = rows;
-        for (int32_t rx = 0; rx < vert_cols; rx++) {
-            int32_t dx = rx * step;
-            if (dx > cols || rx == vert_cols - 1)
-                dx = cols;
-            int32_t ix = x0 + dx, iz = z0 + dz;
-            /* Clamp to terrain bounds */
-            if (ix >= t->width)
-                ix = t->width - 1;
-            if (iz >= t->depth)
-                iz = t->depth - 1;
-
-            double wx, wy, wz, nx, ny, nz_n, u, v;
-            terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
-            rt_mesh3d_add_vertex(mesh, wx, wy, wz, nx, ny, nz_n, u, v);
-
-            /* Update AABB */
-            if ((float)wx < aabb_min[0])
-                aabb_min[0] = (float)wx;
-            if ((float)wy < aabb_min[1])
-                aabb_min[1] = (float)wy;
-            if ((float)wz < aabb_min[2])
-                aabb_min[2] = (float)wz;
-            if ((float)wx > aabb_max[0])
-                aabb_max[0] = (float)wx;
-            if ((float)wy > aabb_max[1])
-                aabb_max[1] = (float)wy;
-            if ((float)wz > aabb_max[2])
-                aabb_max[2] = (float)wz;
-        }
-    }
-
-    /* Triangles (CCW winding) */
-    for (int32_t rz = 0; rz < vert_rows - 1; rz++) {
-        for (int32_t rx = 0; rx < vert_cols - 1; rx++) {
-            int64_t base = (int64_t)(rz * vert_cols + rx);
-            rt_mesh3d_add_triangle(mesh, base, base + vert_cols, base + 1);
-            rt_mesh3d_add_triangle(mesh, base + 1, base + vert_cols, base + vert_cols + 1);
-        }
-    }
+    terrain_build_chunk_surface(
+        mesh, t, x0, z0, cols, rows, step, vert_cols, vert_rows, aabb_min, aabb_max);
 
     /* Skirt geometry: extend edges downward to hide cracks between LOD levels */
     float skirt_depth = terrain_skirt_depth_or(t);
     if (skirt_depth > 0.0f)
         aabb_min[1] -= skirt_depth;
-    if (skirt_depth > 0.0f && step > 1) {
-        double sd = (double)skirt_depth;
-        /* For each of the 4 edges, add skirt triangles */
-        /* Top edge (dz=0), bottom edge (dz=rows), left (dx=0), right (dx=cols) */
-        int64_t skirt_base = (int64_t)(vert_rows * vert_cols);
-
-        /* Top edge (z = z0) */
-        for (int32_t rx = 0; rx < vert_cols; rx++) {
-            int32_t sample_dx = rx * step;
-            if (sample_dx > cols || rx == vert_cols - 1)
-                sample_dx = cols;
-            int32_t ix = x0 + sample_dx;
-            if (ix >= t->width)
-                ix = t->width - 1;
-            double wx, wy, wz, nx, ny, nz_n, u, v;
-            terrain_vertex(t, ix, z0, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
-            rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, 0, -1, 0, u, v);
-        }
-        for (int32_t rx = 0; rx < vert_cols - 1; rx++) {
-            int64_t top = (int64_t)rx;              /* top edge vertex */
-            int64_t bot = skirt_base + (int64_t)rx; /* skirt vertex */
-            rt_mesh3d_add_triangle(mesh, top, bot, top + 1);
-            rt_mesh3d_add_triangle(mesh, top + 1, bot, bot + 1);
-        }
-        skirt_base += vert_cols;
-
-        /* Bottom edge (z = z0 + rows) */
-        int64_t bottom_row_start = (int64_t)((vert_rows - 1) * vert_cols);
-        for (int32_t rx = 0; rx < vert_cols; rx++) {
-            int32_t sample_dx = rx * step;
-            if (sample_dx > cols || rx == vert_cols - 1)
-                sample_dx = cols;
-            int32_t ix = x0 + sample_dx;
-            int32_t iz = z0 + rows;
-            if (ix >= t->width)
-                ix = t->width - 1;
-            if (iz >= t->depth)
-                iz = t->depth - 1;
-            double wx, wy, wz, nx, ny, nz_n, u, v;
-            terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
-            rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, 0, -1, 0, u, v);
-        }
-        for (int32_t rx = 0; rx < vert_cols - 1; rx++) {
-            int64_t top = bottom_row_start + (int64_t)rx;
-            int64_t bot = skirt_base + (int64_t)rx;
-            rt_mesh3d_add_triangle(mesh, top, top + 1, bot);
-            rt_mesh3d_add_triangle(mesh, top + 1, bot + 1, bot);
-        }
-        skirt_base += vert_cols;
-
-        /* Left edge (x = x0) */
-        for (int32_t rz = 0; rz < vert_rows; rz++) {
-            int32_t sample_dz = rz * step;
-            if (sample_dz > rows || rz == vert_rows - 1)
-                sample_dz = rows;
-            int32_t iz = z0 + sample_dz;
-            if (iz >= t->depth)
-                iz = t->depth - 1;
-            double wx, wy, wz, nx, ny, nz_n, u, v;
-            terrain_vertex(t, x0, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
-            rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, -1, 0, 0, u, v);
-        }
-        for (int32_t rz = 0; rz < vert_rows - 1; rz++) {
-            int64_t top = (int64_t)(rz * vert_cols); /* left column vertex */
-            int64_t bot = skirt_base + (int64_t)rz;
-            rt_mesh3d_add_triangle(mesh, top, bot, (int64_t)((rz + 1) * vert_cols));
-            rt_mesh3d_add_triangle(mesh, (int64_t)((rz + 1) * vert_cols), bot, bot + 1);
-        }
-        skirt_base += vert_rows;
-
-        /* Right edge (x = x0 + cols) */
-        for (int32_t rz = 0; rz < vert_rows; rz++) {
-            int32_t ix = x0 + cols;
-            int32_t sample_dz = rz * step;
-            if (sample_dz > rows || rz == vert_rows - 1)
-                sample_dz = rows;
-            int32_t iz = z0 + sample_dz;
-            if (ix >= t->width)
-                ix = t->width - 1;
-            if (iz >= t->depth)
-                iz = t->depth - 1;
-            double wx, wy, wz, nx, ny, nz_n, u, v;
-            terrain_vertex(t, ix, iz, &wx, &wy, &wz, &nx, &ny, &nz_n, &u, &v);
-            rt_mesh3d_add_vertex(mesh, wx, wy - sd, wz, 1, 0, 0, u, v);
-        }
-        for (int32_t rz = 0; rz < vert_rows - 1; rz++) {
-            int64_t top = (int64_t)(rz * vert_cols + vert_cols - 1);
-            int64_t bot = skirt_base + (int64_t)rz;
-            rt_mesh3d_add_triangle(mesh, top, (int64_t)((rz + 1) * vert_cols + vert_cols - 1), bot);
-            rt_mesh3d_add_triangle(
-                mesh, (int64_t)((rz + 1) * vert_cols + vert_cols - 1), bot + 1, bot);
-        }
-    }
+    if (skirt_depth > 0.0f && step > 1)
+        terrain_build_chunk_skirts(
+            mesh, t, x0, z0, cols, rows, step, vert_cols, vert_rows, (double)skirt_depth);
 
     if (((rt_mesh3d *)mesh)->build_failed) {
         if (rt_obj_release_check0(mesh))

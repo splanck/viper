@@ -195,7 +195,16 @@ void *rt_game3d_body_def_static_plane(double size) {
 int64_t rt_game3d_body_def_get_shape(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_shape: invalid BodyDef");
-    return def ? def->shape : RT_GAME3D_BODY_SHAPE_BOX;
+    if (!def)
+        return RT_GAME3D_BODY_SHAPE_BOX;
+    switch (def->shape) {
+        case RT_GAME3D_BODY_SHAPE_BOX:
+        case RT_GAME3D_BODY_SHAPE_SPHERE:
+        case RT_GAME3D_BODY_SHAPE_CAPSULE:
+            return def->shape;
+        default:
+            return RT_GAME3D_BODY_SHAPE_BOX;
+    }
 }
 
 /// @brief Set the body shape kind; traps on an unknown BodyShape value.
@@ -220,7 +229,7 @@ void rt_game3d_body_def_set_shape(void *obj, int64_t shape) {
 double rt_game3d_body_def_get_mass(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_mass: invalid BodyDef");
-    return def ? def->mass : 0.0;
+    return def ? game3d_nonnegative_clamped_or(def->mass, 0.0, RT_GAME3D_BODYDEF_MASS_MAX) : 0.0;
 }
 
 /// @brief Set the body mass; zero mass means static, positive mass means simulated.
@@ -242,7 +251,8 @@ void rt_game3d_body_def_set_mass(void *obj, double mass) {
 double rt_game3d_body_def_get_friction(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_friction: invalid BodyDef");
-    return def ? def->friction : 0.0;
+    return def ? game3d_nonnegative_clamped_or(def->friction, 0.0, RT_GAME3D_BODYDEF_FRICTION_MAX)
+               : 0.0;
 }
 
 /// @brief Set the friction coefficient (negatives keep the prior value).
@@ -258,7 +268,7 @@ void rt_game3d_body_def_set_friction(void *obj, double friction) {
 double rt_game3d_body_def_get_restitution(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_restitution: invalid BodyDef");
-    return def ? def->restitution : 0.0;
+    return def ? game3d_clamp(def->restitution, 0.0, 1.0) : 0.0;
 }
 
 /// @brief Set the restitution coefficient, clamped to [0, 1].
@@ -273,7 +283,7 @@ void rt_game3d_body_def_set_restitution(void *obj, double restitution) {
 int8_t rt_game3d_body_def_get_static(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_isStatic: invalid BodyDef");
-    return def ? def->is_static : 0;
+    return def && def->is_static ? 1 : 0;
 }
 
 /// @brief Mark the body static/dynamic; static bodies have zero mass, and returning to
@@ -296,7 +306,7 @@ void rt_game3d_body_def_set_static(void *obj, int8_t is_static) {
 int8_t rt_game3d_body_def_get_kinematic(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_isKinematic: invalid BodyDef");
-    return def ? def->is_kinematic : 0;
+    return def && def->is_kinematic ? 1 : 0;
 }
 
 /// @brief Mark the body kinematic/simulated; going kinematic clears static and ensures mass.
@@ -317,7 +327,7 @@ void rt_game3d_body_def_set_kinematic(void *obj, int8_t is_kinematic) {
 int8_t rt_game3d_body_def_get_trigger(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_isTrigger: invalid BodyDef");
-    return def ? def->is_trigger : 0;
+    return def && def->is_trigger ? 1 : 0;
 }
 
 /// @brief Mark the body as a trigger volume or a solid collider.
@@ -332,7 +342,7 @@ void rt_game3d_body_def_set_trigger(void *obj, int8_t is_trigger) {
 int8_t rt_game3d_body_def_get_use_ccd(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_useCCD: invalid BodyDef");
-    return def ? def->use_ccd : 0;
+    return def && def->use_ccd ? 1 : 0;
 }
 
 /// @brief Enable or disable continuous collision detection.
@@ -347,7 +357,7 @@ void rt_game3d_body_def_set_use_ccd(void *obj, int8_t use_ccd) {
 int64_t rt_game3d_body_def_get_layer(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_layer: invalid BodyDef");
-    return def ? def->layer : RT_GAME3D_LAYER_DYNAMIC;
+    return def && game3d_valid_layer(def->layer) ? def->layer : RT_GAME3D_LAYER_DYNAMIC;
 }
 
 /// @brief Property setter for the collision layer (delegates to withLayer).
@@ -371,7 +381,7 @@ void rt_game3d_body_def_set_mask_prop(void *obj, void *mask) {
 int64_t rt_game3d_body_def_get_sync_mode(void *obj) {
     rt_game3d_body_def *def =
         game3d_body_def_checked(obj, "Game3D.BodyDef.get_syncMode: invalid BodyDef");
-    return def ? def->sync_mode : RT_GAME3D_SYNC_NODE_FROM_BODY;
+    return def ? game3d_valid_sync_or_default(def->sync_mode) : RT_GAME3D_SYNC_NODE_FROM_BODY;
 }
 
 /// @brief Property setter for the sync mode (delegates to withSync).

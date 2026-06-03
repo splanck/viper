@@ -691,14 +691,15 @@ KTX2 texture asset metadata and material binding bridge.
 | `Height` | Integer | Pixel height |
 | `MipCount` | Integer | Declared mip level count |
 | `Format` | String | `rgba8`, `bc3`, `bc7`, `astc`, `etc2`, or `unknown` |
-| `Compressed` | Bool | True for precompressed or supercompressed payloads |
+| `Compressed` | Bool | True for native block-compressed mip payloads |
 | `ResidentMipStart` | Integer | First resident/requested mip level |
 | `ResidentMipCount` | Integer | Number of resident/requested mip levels |
 | `ResidentBytes` | Integer | Declared byte size of resident/requested mip levels |
 
-The current runtime parses KTX2 headers, records declared mip payload byte
-ranges, and decodes RGBA8, BC3, BC7 modes 0-7, representative ETC2
-RGBA8/EAC, and ASTC LDR void-extent mips into `Pixels` fallbacks.
+The current runtime parses KTX2 headers, rejects unsupported supercompression,
+validates each mip payload length against the declared format/block dimensions,
+records declared mip byte ranges, and decodes RGBA8, BC3, BC7 modes 0-7,
+representative ETC2 RGBA8/EAC, and ASTC LDR void-extent mips into `Pixels` fallbacks.
 `SetResidentMipRange` updates mip residency telemetry and selects the first
 resident RGBA8 mip as the active fallback resolved by materials at draw time;
 negative arguments trap, `mipCount` clamps to the available range, and a zero
@@ -1082,7 +1083,7 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest resident threshold that does not exceed camera distance, falling back to the base mesh when the selected LOD has been demoted. `Scene3D.Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use the internal Scene3D BVH spatial index, with an exact flat-walk fallback kept for parity. Transform-only changes refit the BVH; hierarchy, visibility, mesh, LOD, and impostor changes rebuild it lazily. `Scene3D.AddVisibilityZone(name, min, max)` and `AddVisibilityPortal(from, to, bidirectional)` author an interior portal/PVS graph; during `Draw`, nodes inside zones unreachable from the camera zone are skipped, while unzoned nodes stay visible. `PvsCulledCount`, `VisibilityZoneCount`, and `VisibilityPortalCount` expose that state. The normal runtime tests include a generated 10k drawable-node grid to guard BVH shape, isolated-query reduction, frame-cull candidate reduction, indexed CPU-occlusion candidate reduction, portal/PVS room culling, and parity with the flat path. The open-world slice's `visibility_dense_probe.zia` adds a named dense city/forest PVS fixture and records 169 authored drawables reduced to 49 submitted draws with matching final-frame pixels on the local software Release lane. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest resident threshold that does not exceed camera distance, falling back to the base mesh when the selected LOD has been demoted. `Scene3D.Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use the internal Scene3D BVH spatial index, with an exact flat-walk fallback kept for parity. Transform-only changes refit the BVH; hierarchy, visibility, mesh, LOD, and impostor changes rebuild it lazily. `Scene3D.AddVisibilityZone(name, min, max)` and `AddVisibilityPortal(from, to, bidirectional)` author an interior portal/PVS graph; during `Draw`, nodes inside zones unreachable from the camera zone are skipped, while unzoned nodes stay visible. `PvsCulledCount`, `VisibilityZoneCount`, and `VisibilityPortalCount` expose that state and clamp malformed counters to the live zone/portal allocations before traversal or append. The normal runtime tests include a generated 10k drawable-node grid to guard BVH shape, isolated-query reduction, frame-cull candidate reduction, indexed CPU-occlusion candidate reduction, portal/PVS room culling, and parity with the flat path. The open-world slice's `visibility_dense_probe.zia` adds a named dense city/forest PVS fixture and records 169 authored drawables reduced to 49 submitted draws with matching final-frame pixels on the local software Release lane. Finite zero scale is preserved on `Transform3D` and `SceneNode3D`; only non-finite scale components are replaced. `Scene3D.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `Scene3D.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
 
 ### Binding Sync
 
@@ -1197,7 +1198,7 @@ Format note:
 - VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, node-attached lights, and high-precision node transforms, while still loading older `vgfx3d_vertex_le_v1` scenes. The loader rejects malformed JSON/base64, invalid mesh index buffers, broken node references, and partial child subtrees; finite transform/material/light values are sanitized during load.
 - `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are URI-decoded and resolved relative to the asset path; `./` relative paths are accepted, while absolute paths, URI schemes, `..` traversal, and NUL-containing references are rejected before opening files. In `LoadAsset`, those external dependencies are loaded through `Viper.IO.Assets` first and missing-dependency diagnostics name both the parent model and dependency path.
 - glTF matrix-authored node transforms are decomposed to runtime TRS. Reflections preserve negative scale sign, while unsupported shear is reduced to an orthonormal rotation basis instead of leaking into unstable quaternions.
-- glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_texture_basisu`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_materials_specular`, `KHR_materials_clearcoat`, `KHR_materials_transmission`, and `KHR_lights_punctual` are accepted and mapped onto `TextureAsset3D`, `Material3D`, or scene lights where the runtime surface can represent them; unsupported required extensions such as Draco, Meshopt, WebP, and DDS fail load rather than rendering incomplete fallback data.
+- glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_materials_specular`, and `KHR_lights_punctual` are accepted when the corresponding parser path is present. Optional `KHR_texture_basisu`, `KHR_materials_clearcoat`, and `KHR_materials_transmission` can be interpreted as best-effort material/texture data, but assets that list them in `extensionsRequired` are rejected because the current renderer cannot guarantee full required-extension fidelity. Unsupported required extensions such as Draco, Meshopt, WebP, and DDS also fail load rather than rendering incomplete fallback data.
 
 ## Skeleton3D
 
@@ -1552,8 +1553,8 @@ func start() {
 
 Supported glTF material fidelity:
 - Core metallic-roughness PBR, base-color / normal / metallic-roughness / occlusion / emissive texture slots, alpha modes, `doubleSided`, and `KHR_materials_emissive_strength`. PBR base-color and emissive textures are decoded from sRGB to linear before lighting on software, Metal, D3D11, and OpenGL.
-- `KHR_materials_unlit`, `KHR_materials_specular`, `KHR_materials_clearcoat`, and `KHR_materials_transmission` are accepted as required extensions and mapped onto the current `Material3D` surface where possible. Values that cannot be represented exactly by the current renderer are treated as best-effort material parameters rather than causing a partial import.
-- `KHR_texture_basisu` KTX2 images are imported as `TextureAsset3D` handles, preserving compressed texture metadata for backends that can upload native payloads while still exposing the material texture slot through `Material3D`.
+- `KHR_materials_unlit` and `KHR_materials_specular` are accepted in `extensionsRequired`; `KHR_materials_clearcoat` and `KHR_materials_transmission` are accepted only when optional (`extensionsUsed`) and mapped onto the current `Material3D` surface as best-effort material parameters.
+- Optional `KHR_texture_basisu` KTX2 images are imported as `TextureAsset3D` handles, preserving compressed texture metadata for backends that can upload native payloads while still exposing the material texture slot through `Material3D`; required BasisU textures are rejected until the renderer can guarantee full required-extension fidelity.
 - `KHR_texture_transform`, `textureInfo.texCoord`, wrap mode, and nearest/linear filter state are preserved independently for base-color, normal, specular, emissive, metallic-roughness, and occlusion texture slots across software, Metal, D3D11, and OpenGL.
 - `KHR_lights_punctual` directional, point, and spot lights attach to their authored scene nodes. `Scene3D.Draw` transforms them by node world pose and includes them in the per-draw light snapshot; imported directional lights participate in shadow selection from that snapshot, and glTF `range` maps to the runtime quadratic attenuation coefficient.
 
@@ -2610,7 +2611,7 @@ func start() {
 
 **Gerstner waves:** When waves are added via `AddWave`, the water uses a sum of directional Gerstner waves instead of the legacy single sine wave. Each wave has a direction, speed, amplitude, and wavelength. Up to 8 waves can be combined for realistic ocean effects. Normals are computed from wave derivatives for correct lighting.
 
-`Water3D` clamps extreme sizes, heights, wave speeds, amplitudes, frequencies, and wavelengths before mesh generation so renderer-facing vertices and normals stay finite. If a generated mesh fails validation, the water surface clears the partial mesh and remains dirty so the next valid update can rebuild it.
+`Water3D` clamps extreme sizes, heights, wave speeds, amplitudes, frequencies, and wavelengths before mesh generation so renderer-facing vertices and normals stay finite. The retained water mesh is rewritten in place across frames; only topology changes such as resolution/capacity changes rebuild the index buffer. If a generated mesh fails validation, the water surface clears the partial mesh and remains dirty so the next valid update can rebuild it.
 
 `Update(0.0)` is valid: it rebuilds the mesh when resolution or wave settings are dirty without advancing animation time. `DrawWater` also performs that zero-delta rebuild if a surface has not been built yet or was invalidated by `SetResolution`.
 
@@ -3357,7 +3358,7 @@ Procedural grass/foliage rendering with wind animation and LOD.
 | `Populate(camera, maxBlades)` | `void(obj, i64)` | Generate blade instances around camera |
 | `Update(dt, camX, camY, camZ)` | `void(f64, f64, f64, f64)` | Update wind animation and camera-relative LOD |
 
-Draw via `Canvas3D.DrawVegetation(vegetation)`. `Update(0.0, camX, camY, camZ)` refreshes camera-relative visibility and LOD without advancing wind time, which is useful for paused scenes. `DrawVegetation` must run inside the 3D `Canvas3D.Begin`/`End` section.
+Draw via `Canvas3D.DrawVegetation(vegetation)`. `Update(0.0, camX, camY, camZ)` refreshes camera-relative visibility and LOD without advancing wind time, which is useful for paused scenes. `DrawVegetation` marks the blade material double-sided instead of mutating `Canvas3D`'s global backface-cull flag, and it must run inside the 3D `Canvas3D.Begin`/`End` section.
 
 ### Zia Example
 

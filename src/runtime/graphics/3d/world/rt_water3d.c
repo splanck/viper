@@ -243,6 +243,55 @@ static void water3d_repair_resource_handles(rt_water3d *w) {
         water3d_release_env_map_slot(&w->env_map);
 }
 
+/// @brief Ensure the retained water mesh has enough storage for a direct vertex/index rewrite.
+/// @details Water3D is included in isolated contract tests without the full Mesh3D implementation,
+///   so this keeps the allocation path local while preserving the same internal buffer layout.
+static int water3d_mesh_reserve(rt_mesh3d *mesh, uint32_t vertex_capacity, uint32_t index_capacity) {
+    if (!mesh)
+        return 0;
+    if (vertex_capacity > mesh->vertex_capacity) {
+        vgfx3d_vertex_t *vertices;
+        double *positions64 = mesh->positions64;
+        if ((size_t)vertex_capacity > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
+            (positions64 && (size_t)vertex_capacity > SIZE_MAX / (3u * sizeof(double)))) {
+            rt_trap("Water3D.Update: mesh vertex allocation overflow");
+            return 0;
+        }
+        if (positions64) {
+            positions64 =
+                (double *)realloc(positions64, (size_t)vertex_capacity * 3u * sizeof(double));
+            if (!positions64) {
+                rt_trap("Water3D.Update: mesh position sidecar allocation failed");
+                return 0;
+            }
+            mesh->positions64 = positions64;
+        }
+        vertices =
+            (vgfx3d_vertex_t *)realloc(mesh->vertices, (size_t)vertex_capacity * sizeof(*vertices));
+        if (!vertices) {
+            rt_trap("Water3D.Update: mesh vertex allocation failed");
+            return 0;
+        }
+        mesh->vertices = vertices;
+        mesh->vertex_capacity = vertex_capacity;
+    }
+    if (index_capacity > mesh->index_capacity) {
+        uint32_t *indices;
+        if ((size_t)index_capacity > SIZE_MAX / sizeof(uint32_t)) {
+            rt_trap("Water3D.Update: mesh index allocation overflow");
+            return 0;
+        }
+        indices = (uint32_t *)realloc(mesh->indices, (size_t)index_capacity * sizeof(*indices));
+        if (!indices) {
+            rt_trap("Water3D.Update: mesh index allocation failed");
+            return 0;
+        }
+        mesh->indices = indices;
+        mesh->index_capacity = index_capacity;
+    }
+    return 1;
+}
+
 /// @brief Clamp one stored wave and return whether it can contribute to mesh deformation.
 static int water3d_sanitize_wave(water_wave_t *wv) {
     if (!wv)
@@ -503,24 +552,55 @@ void rt_water3d_update(void *obj, double dt) {
         w->wave_count = 0;
     if (w->wave_count > WATER_MAX_WAVES)
         w->wave_count = WATER_MAX_WAVES;
-    for (int32_t wi = 0; wi < w->wave_count; wi++)
-        (void)water3d_sanitize_wave(&w->waves[wi]);
+    /* Sanitize each wave once up front (idempotent) and cache its validity plus
+     * a range-reduced time phase. Doing this here — rather than per vertex —
+     * removes O(grid^2 * wave_count) redundant work each rebuild, and the
+     * fmod keeps per-vertex phase precision intact after long runtimes. */
+    int8_t wave_valid[WATER_MAX_WAVES];
+    double wave_time_phase[WATER_MAX_WAVES];
+    for (int32_t wi = 0; wi < w->wave_count; wi++) {
+        wave_valid[wi] = water3d_sanitize_wave(&w->waves[wi]) ? 1 : 0;
+        double tp = fmod(w->time * w->waves[wi].speed, WATER3D_TWO_PI);
+        wave_time_phase[wi] = isfinite(tp) ? tp : 0.0;
+    }
 
-    /* Regenerate mesh with new wave positions (reuse allocation to avoid GC pressure) */
+    /* Regenerate mesh with new wave positions (reuse allocation to avoid GC pressure). */
     if (!w->mesh)
         w->mesh = rt_mesh3d_new();
-    else
-        rt_mesh3d_clear(w->mesh);
     if (!w->mesh)
         return;
     int32_t grid = w->resolution;
+    int32_t row = grid + 1;
+    uint32_t required_vertices = (uint32_t)(row * row);
+    uint32_t required_indices = (uint32_t)(grid * grid * 6);
+    rt_mesh3d *mesh = (rt_mesh3d *)w->mesh;
+    int topology_dirty = w->mesh_dirty || !mesh->vertices || !mesh->indices ||
+                         mesh->vertex_capacity < required_vertices ||
+                         mesh->index_capacity < required_indices ||
+                         mesh->vertex_count != required_vertices ||
+                         mesh->index_count != required_indices;
+    double inv_grid = 1.0 / (double)grid; /* resolution clamped to [8, 256] above */
     double hx = w->width * 0.5, hz = w->depth * 0.5;
-    double step_x = w->width / grid;
-    double step_z = w->depth / grid;
+    double step_x = w->width * inv_grid;
+    double step_z = w->depth * inv_grid;
+    if (topology_dirty) {
+        rt_mesh3d_clear(w->mesh);
+        water3d_mesh_reserve(mesh, required_vertices, required_indices);
+        if (!mesh->vertices || !mesh->indices || mesh->vertex_capacity < required_vertices ||
+            mesh->index_capacity < required_indices) {
+            w->mesh_dirty = 1;
+            return;
+        }
+    }
+    mesh->vertex_count = required_vertices;
+    mesh->index_count = required_indices;
+    mesh->build_failed = 0;
 
     /* Vertices */
     for (int gz = 0; gz <= grid; gz++) {
         for (int gx = 0; gx <= grid; gx++) {
+            uint32_t vertex_index = (uint32_t)(gz * row + gx);
+            vgfx3d_vertex_t *vt = &mesh->vertices[vertex_index];
             double x = -hx + gx * step_x;
             double z = -hz + gz * step_z;
             double y = w->height;
@@ -534,10 +614,10 @@ void rt_water3d_update(void *obj, double dt) {
                  * direction. */
                 for (int32_t wi = 0; wi < w->wave_count; wi++) {
                     water_wave_t *wv = &w->waves[wi];
-                    if (!water3d_sanitize_wave(wv))
+                    if (!wave_valid[wi])
                         continue;
                     double dot = wv->dir[0] * x + wv->dir[1] * z;
-                    double phase = wv->frequency * dot - w->time * wv->speed;
+                    double phase = wv->frequency * dot - wave_time_phase[wi];
                     if (!isfinite(phase))
                         continue;
                     phase = fmod(phase, WATER3D_TWO_PI);
@@ -582,21 +662,47 @@ void rt_water3d_update(void *obj, double dt) {
                 nz = 0.0;
             }
 
-            double u = (double)gx / grid;
-            double v = (double)gz / grid;
-            rt_mesh3d_add_vertex(w->mesh, x, y, z, nx, ny, nz, u, v);
+            double u = (double)gx * inv_grid;
+            double v = (double)gz * inv_grid;
+            memset(vt, 0, sizeof(*vt));
+            vt->pos[0] = (float)x;
+            vt->pos[1] = (float)y;
+            vt->pos[2] = (float)z;
+            vt->normal[0] = (float)nx;
+            vt->normal[1] = (float)ny;
+            vt->normal[2] = (float)nz;
+            vt->uv[0] = (float)u;
+            vt->uv[1] = (float)v;
+            vt->uv1[0] = (float)u;
+            vt->uv1[1] = (float)v;
+            vt->color[0] = 1.0f;
+            vt->color[1] = 1.0f;
+            vt->color[2] = 1.0f;
+            vt->color[3] = 1.0f;
+            vt->tangent[3] = 1.0f;
+            if (mesh->positions64) {
+                mesh->positions64[(size_t)vertex_index * 3u + 0] = x;
+                mesh->positions64[(size_t)vertex_index * 3u + 1] = y;
+                mesh->positions64[(size_t)vertex_index * 3u + 2] = z;
+            }
         }
     }
 
-    /* Triangles */
-    int row = grid + 1;
-    for (int gz = 0; gz < grid; gz++) {
-        for (int gx = 0; gx < grid; gx++) {
-            int base = gz * row + gx;
-            rt_mesh3d_add_triangle(w->mesh, base, base + row, base + 1);
-            rt_mesh3d_add_triangle(w->mesh, base + 1, base + row, base + row + 1);
+    if (topology_dirty) {
+        uint32_t out_index = 0;
+        for (int gz = 0; gz < grid; gz++) {
+            for (int gx = 0; gx < grid; gx++) {
+                uint32_t base = (uint32_t)(gz * row + gx);
+                mesh->indices[out_index++] = base;
+                mesh->indices[out_index++] = base + (uint32_t)row;
+                mesh->indices[out_index++] = base + 1u;
+                mesh->indices[out_index++] = base + 1u;
+                mesh->indices[out_index++] = base + (uint32_t)row;
+                mesh->indices[out_index++] = base + (uint32_t)row + 1u;
+            }
         }
     }
+    rt_mesh3d_touch_geometry(mesh);
     if (((rt_mesh3d *)w->mesh)->build_failed) {
         rt_mesh3d_clear(w->mesh);
         w->mesh_dirty = 1;

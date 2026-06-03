@@ -4654,13 +4654,13 @@ void *rt_fbx_get_mesh(void *obj, int64_t index) {
     int32_t mesh_count = fbx_asset_safe_count(a->meshes, a->mesh_count, a->mesh_capacity);
     if (index < 0 || index >= mesh_count)
         return NULL;
-    return a->meshes[index];
+    return rt_g3d_checked_or_null(a->meshes[index], RT_G3D_MESH3D_CLASS_ID);
 }
 
 /// @brief Get the skeleton extracted from the FBX file (NULL if no skeleton).
 void *rt_fbx_get_skeleton(void *obj) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
-    return a ? a->skeleton : NULL;
+    return a ? rt_g3d_checked_or_null(a->skeleton, RT_G3D_SKELETON3D_CLASS_ID) : NULL;
 }
 
 /// @brief Get the `SceneNode3D` root of the imported scene graph — the tree of models
@@ -4670,7 +4670,7 @@ void *rt_fbx_get_skeleton(void *obj) {
 /// uses, regardless of whether it's actually attached to a node.
 void *rt_fbx_get_scene_root(void *obj) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
-    return a ? a->scene_root : NULL;
+    return a ? rt_g3d_checked_or_null(a->scene_root, RT_G3D_SCENENODE3D_CLASS_ID) : NULL;
 }
 
 /// @brief Get the number of animation clips in the FBX file.
@@ -4688,7 +4688,7 @@ void *rt_fbx_get_animation(void *obj, int64_t index) {
         fbx_asset_safe_count(a->animations, a->animation_count, a->animation_capacity);
     if (index < 0 || index >= animation_count)
         return NULL;
-    return a->animations[index];
+    return rt_g3d_checked_or_null(a->animations[index], RT_G3D_ANIMATION3D_CLASS_ID);
 }
 
 /// @brief Get the name of an animation clip by index.
@@ -4714,7 +4714,7 @@ void *rt_fbx_get_material(void *obj, int64_t index) {
         fbx_asset_safe_count(a->materials, a->material_count, a->material_capacity);
     if (index < 0 || index >= material_count)
         return NULL;
-    return a->materials[index];
+    return rt_g3d_checked_or_null(a->materials[index], RT_G3D_MATERIAL3D_CLASS_ID);
 }
 
 /// @brief Get the morph target data for a mesh by its index in the FBX asset.
@@ -4726,7 +4726,7 @@ void *rt_fbx_get_morph_target(void *obj, int64_t mesh_index) {
         fbx_asset_safe_count(a->morph_targets, a->morph_count, a->morph_capacity);
     if (mesh_index < 0 || mesh_index >= morph_count)
         return NULL;
-    return a->morph_targets[mesh_index];
+    return rt_g3d_checked_or_null(a->morph_targets[mesh_index], RT_G3D_MORPHTARGET3D_CLASS_ID);
 }
 
 #else

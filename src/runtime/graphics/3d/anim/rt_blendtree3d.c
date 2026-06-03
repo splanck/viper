@@ -210,6 +210,8 @@ static void blend_tree3d_apply_2d(rt_blend_tree3d *tree) {
     double raw[RT_BLENDTREE3D_MAX_SAMPLES];
     double total = 0.0;
     int32_t exact = -1;
+    int32_t nearest = 0;
+    double nearest_d2 = DBL_MAX;
     int32_t sample_count = blend_tree3d_safe_sample_count(tree);
     if (!tree || !tree->blend || sample_count <= 0)
         return;
@@ -225,6 +227,10 @@ static void blend_tree3d_apply_2d(rt_blend_tree3d *tree) {
         raw[i] = 0.0;
         if (!isfinite(d2))
             continue;
+        if (d2 < nearest_d2) {
+            nearest_d2 = d2;
+            nearest = i;
+        }
         if (d2 <= 1e-12) {
             exact = i;
             break;
@@ -237,7 +243,10 @@ static void blend_tree3d_apply_2d(rt_blend_tree3d *tree) {
         return;
     }
     if (total <= DBL_MIN || !isfinite(total)) {
-        rt_anim_blend3d_set_weight(tree->blend, tree->samples[0].blend_index, 1.0);
+        /* Degenerate inverse-distance weighting (every sample astronomically far
+         * or non-finite): snap to the geometrically nearest sample rather than
+         * blindly defaulting to sample 0, which could be the farthest one. */
+        rt_anim_blend3d_set_weight(tree->blend, tree->samples[nearest].blend_index, 1.0);
         return;
     }
     for (int32_t i = 0; i < sample_count; i++)

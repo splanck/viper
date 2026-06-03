@@ -155,49 +155,43 @@ static int canvas3d_render_skybox_cpu(
 
     float inv_w = 1.0f / (float)dst_w;
     float inv_h = 1.0f / (float)dst_h;
+    /* Every skybox pixel uses clip = (ndc_x, ndc_y, 1, 1), so the z and w
+     * columns of inv_vp are loop-invariant and the y column is constant across
+     * a row. Fold them out so the per-pixel transform is one multiply-add per
+     * component instead of a full 4x4 multiply. */
+    float colc[4];
+    for (int32_t k = 0; k < 4; k++)
+        colc[k] = inv_vp[k * 4 + 2] + inv_vp[k * 4 + 3];
     for (int32_t y = 0; y < dst_h; y++) {
         float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) * inv_h;
         uint8_t *row = &dst_pixels[(size_t)y * (size_t)dst_stride];
+        float rowc[4];
+        for (int32_t k = 0; k < 4; k++)
+            rowc[k] = inv_vp[k * 4 + 1] * ndc_y + colc[k];
         for (int32_t x = 0; x < dst_w; x++) {
             float ndc_x = 2.0f * ((float)x + 0.5f) * inv_w - 1.0f;
-            float clip[4] = {ndc_x, ndc_y, 1.0f, 1.0f};
             float world[4];
-            float dx;
-            float dy;
-            float dz;
-            float dl;
             float dir[3];
             float r;
             float g;
             float b;
             uint8_t *dst;
 
-            world[0] = inv_vp[0] * clip[0] + inv_vp[1] * clip[1] + inv_vp[2] * clip[2] +
-                       inv_vp[3] * clip[3];
-            world[1] = inv_vp[4] * clip[0] + inv_vp[5] * clip[1] + inv_vp[6] * clip[2] +
-                       inv_vp[7] * clip[3];
-            world[2] = inv_vp[8] * clip[0] + inv_vp[9] * clip[1] + inv_vp[10] * clip[2] +
-                       inv_vp[11] * clip[3];
-            world[3] = inv_vp[12] * clip[0] + inv_vp[13] * clip[1] + inv_vp[14] * clip[2] +
-                       inv_vp[15] * clip[3];
+            world[0] = inv_vp[0] * ndc_x + rowc[0];
+            world[1] = inv_vp[4] * ndc_x + rowc[1];
+            world[2] = inv_vp[8] * ndc_x + rowc[2];
+            world[3] = inv_vp[12] * ndc_x + rowc[3];
             if (isfinite(world[3]) && fabsf(world[3]) > 1e-7f) {
                 world[0] /= world[3];
                 world[1] /= world[3];
                 world[2] /= world[3];
             }
-            dx = world[0] - c->cached_cam_pos[0];
-            dy = world[1] - c->cached_cam_pos[1];
-            dz = world[2] - c->cached_cam_pos[2];
-            dl = sqrtf(dx * dx + dy * dy + dz * dz);
-            if (isfinite(dl) && dl > 1e-7f) {
-                dir[0] = dx / dl;
-                dir[1] = dy / dl;
-                dir[2] = dz / dl;
-            } else {
-                dir[0] = dx;
-                dir[1] = dy;
-                dir[2] = dz;
-            }
+            /* canvas3d_sanitize_skybox_dir normalizes the direction (and
+             * rt_cubemap_sample normalizes again), so feed it the raw ray
+             * instead of spending an extra per-pixel sqrtf to pre-normalize. */
+            dir[0] = world[0] - c->cached_cam_pos[0];
+            dir[1] = world[1] - c->cached_cam_pos[1];
+            dir[2] = world[2] - c->cached_cam_pos[2];
             canvas3d_sanitize_skybox_dir(dir, c->cached_cam_forward, dir);
             rt_cubemap_sample(c->skybox, dir[0], dir[1], dir[2], &r, &g, &b);
             dst = &row[(size_t)x * 4u];

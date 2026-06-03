@@ -20,6 +20,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
@@ -28,6 +29,36 @@ extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_synth_tone(int64_t hz, int64_t duration_ms, int64_t waveform);
 }
+
+struct SoundListener3DTestLayout {
+    void *vptr;
+    rt_sound3d_listener_state state;
+    void *bound_node;
+    void *bound_camera;
+    double last_sync_position[3];
+    int8_t has_last_sync_position;
+    int8_t is_active;
+    void *prev;
+    void *next;
+};
+
+struct SoundSource3DTestLayout {
+    void *vptr;
+    void *sound;
+    void *bound_node;
+    double position[3];
+    double velocity[3];
+    double doppler_factor;
+    double last_sync_position[3];
+    int8_t has_last_sync_position;
+    double ref_distance;
+    double max_distance;
+    int64_t volume;
+    int64_t voice_id;
+    int8_t looping;
+    void *prev;
+    void *next;
+};
 
 static int tests_passed = 0;
 static int tests_run = 0;
@@ -231,6 +262,81 @@ static void test_listener_up_vector_round_trips_to_active_state() {
     EXPECT_NEAR(state.right[1], -1.0, 0.001, "active listener state derives right from Up");
 }
 
+static void test_object_getters_sanitize_corrupt_private_state() {
+    auto *listener =
+        (SoundListener3DTestLayout *)rt_soundlistener3d_new();
+    auto *source = (SoundSource3DTestLayout *)rt_soundsource3d_new(nullptr);
+    EXPECT_TRUE(listener != nullptr && source != nullptr,
+                "Sound3D object corrupt getter test creates objects");
+
+    listener->bound_node = nullptr;
+    listener->bound_camera = nullptr;
+    listener->state.position[0] = std::numeric_limits<double>::infinity();
+    listener->state.position[1] = -std::numeric_limits<double>::infinity();
+    listener->state.position[2] = std::numeric_limits<double>::quiet_NaN();
+    listener->state.forward[0] = std::numeric_limits<double>::quiet_NaN();
+    listener->state.forward[1] = 0.0;
+    listener->state.forward[2] = 0.0;
+    listener->state.up[0] = std::numeric_limits<double>::infinity();
+    listener->state.up[1] = std::numeric_limits<double>::quiet_NaN();
+    listener->state.up[2] = 0.0;
+    listener->state.velocity[0] = 1.0e300;
+    listener->state.velocity[1] = -1.0e300;
+    listener->state.velocity[2] = std::numeric_limits<double>::quiet_NaN();
+    listener->is_active = -7;
+
+    void *listener_pos = rt_soundlistener3d_get_position(listener);
+    void *listener_forward = rt_soundlistener3d_get_forward(listener);
+    void *listener_up = rt_soundlistener3d_get_up(listener);
+    void *listener_velocity = rt_soundlistener3d_get_velocity(listener);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(listener_pos)) &&
+                    std::isfinite(rt_vec3_y(listener_pos)) &&
+                    std::isfinite(rt_vec3_z(listener_pos)),
+                "SoundListener3D.GetPosition sanitizes corrupt coordinates");
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(listener_forward)) &&
+                    std::isfinite(rt_vec3_y(listener_forward)) &&
+                    std::isfinite(rt_vec3_z(listener_forward)),
+                "SoundListener3D.GetForward sanitizes corrupt basis");
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(listener_up)) &&
+                    std::isfinite(rt_vec3_y(listener_up)) &&
+                    std::isfinite(rt_vec3_z(listener_up)),
+                "SoundListener3D.GetUp sanitizes corrupt basis");
+    EXPECT_TRUE(std::fabs(rt_vec3_x(listener_velocity)) <= 1000000.0 &&
+                    std::fabs(rt_vec3_y(listener_velocity)) <= 1000000.0 &&
+                    std::isfinite(rt_vec3_z(listener_velocity)),
+                "SoundListener3D.GetVelocity keeps corrupt velocity within Doppler bounds");
+    EXPECT_TRUE(rt_soundlistener3d_get_is_active(listener) == 1,
+                "SoundListener3D.IsActive normalizes corrupt nonzero flags");
+
+    source->bound_node = nullptr;
+    source->position[0] = std::numeric_limits<double>::infinity();
+    source->position[1] = -std::numeric_limits<double>::infinity();
+    source->position[2] = std::numeric_limits<double>::quiet_NaN();
+    source->velocity[0] = 1.0e300;
+    source->velocity[1] = -1.0e300;
+    source->velocity[2] = std::numeric_limits<double>::quiet_NaN();
+    source->volume = 500;
+    source->looping = -9;
+    source->voice_id = -42;
+    void *source_pos = rt_soundsource3d_get_position(source);
+    void *source_velocity = rt_soundsource3d_get_velocity(source);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(source_pos)) && std::isfinite(rt_vec3_y(source_pos)) &&
+                    std::isfinite(rt_vec3_z(source_pos)),
+                "SoundSource3D.GetPosition sanitizes corrupt coordinates");
+    EXPECT_TRUE(std::fabs(rt_vec3_x(source_velocity)) <= 1000000.0 &&
+                    std::fabs(rt_vec3_y(source_velocity)) <= 1000000.0 &&
+                    std::isfinite(rt_vec3_z(source_velocity)),
+                "SoundSource3D.GetVelocity keeps corrupt velocity within Doppler bounds");
+    EXPECT_TRUE(rt_soundsource3d_get_volume(source) == 100,
+                "SoundSource3D.Volume getter clamps corrupt private volume");
+    EXPECT_TRUE(rt_soundsource3d_get_looping(source) == 1,
+                "SoundSource3D.Looping getter normalizes corrupt nonzero flags");
+    EXPECT_TRUE(rt_soundsource3d_get_is_playing(source) == 0,
+                "SoundSource3D.IsPlaying rejects corrupt negative voice ids");
+    EXPECT_TRUE(rt_soundsource3d_get_voice_id(source) == 0,
+                "SoundSource3D.VoiceId clears corrupt negative voice ids");
+}
+
 static void test_source_play_stop_when_audio_is_available() {
     if (!rt_audio_is_available()) {
         EXPECT_TRUE(true, "SoundSource3D playback skipped when audio backend is unavailable");
@@ -272,6 +378,7 @@ int main() {
     test_invalid_audio_handles_are_ignored();
     test_reference_distance_and_doppler_math();
     test_listener_up_vector_round_trips_to_active_state();
+    test_object_getters_sanitize_corrupt_private_state();
     test_source_play_stop_when_audio_is_available();
 
     std::printf("Sound3D object tests: %d/%d passed\n", tests_passed, tests_run);

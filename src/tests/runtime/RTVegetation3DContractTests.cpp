@@ -365,7 +365,7 @@ static void test_update_far_camera_culls_all() {
     g_terrain = nullptr;
 }
 
-static void test_draw_submits_one_instanced_batch_and_restores_cull() {
+static void test_draw_submits_one_instanced_batch_without_mutating_cull() {
     void *veg = rt_vegetation3d_new(nullptr);
     VegetationView *v = static_cast<VegetationView *>(veg);
     FakeTerrain terrain = make_terrain(64, 64);
@@ -382,8 +382,8 @@ static void test_draw_submits_one_instanced_batch_and_restores_cull() {
 
     assert(g_instanced_batch_calls == 1);
     assert(g_last_instance_count == v->visible_count);
-    assert(g_cull_during_batch == 0);  // backface cull disabled while drawing grass
-    assert(canvas.backface_cull == 1); // previous state restored on exit
+    assert(g_cull_during_batch == 1);  // grass uses a double-sided material, not canvas mutation
+    assert(canvas.backface_cull == 1); // previous state remains untouched
     g_terrain = nullptr;
 }
 
@@ -444,7 +444,7 @@ int main() {
     test_density_map_gates_population();
     test_update_advances_time_and_keeps_near_visible();
     test_update_far_camera_culls_all();
-    test_draw_submits_one_instanced_batch_and_restores_cull();
+    test_draw_submits_one_instanced_batch_without_mutating_cull();
     test_draw_is_noop_outside_frame();
     test_set_blade_size_rebuilds_mesh();
     test_setters_sanitize_nonfinite_inputs();

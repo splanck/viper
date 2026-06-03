@@ -865,9 +865,7 @@ static int gltf_required_extension_supported(const char *name) {
            strcmp(name, "KHR_materials_emissive_strength") == 0 ||
            strcmp(name, "KHR_materials_unlit") == 0 ||
            strcmp(name, "KHR_materials_specular") == 0 ||
-           strcmp(name, "KHR_materials_clearcoat") == 0 ||
-           strcmp(name, "KHR_materials_transmission") == 0 ||
-           strcmp(name, "KHR_texture_basisu") == 0 || strcmp(name, "KHR_lights_punctual") == 0;
+           strcmp(name, "KHR_lights_punctual") == 0;
 }
 
 /// @brief Enforce the glTF `extensionsRequired` contract.
@@ -2488,6 +2486,7 @@ static void gltf_data_uri_copy_mime(const char *uri, char *mime_buf, size_t mime
 /// bufferView, so this helper centralises the indirection.
 static const uint8_t *gltf_get_buffer_view_data(
     void *root, int64_t view_idx, gltf_buffer_t *buffers, int buf_count, size_t *out_len) {
+    static const uint8_t empty_buffer_view_byte = 0;
     void *views = jarr(root, "bufferViews");
     size_t byte_offset;
     size_t byte_length;
@@ -2509,6 +2508,10 @@ static const uint8_t *gltf_get_buffer_view_data(
         return NULL;
     if (out_len)
         *out_len = byte_length;
+    if (byte_length == 0)
+        return buffers[buf_idx].data ? buffers[buf_idx].data + byte_offset : &empty_buffer_view_byte;
+    if (!buffers[buf_idx].data)
+        return NULL;
     return buffers[buf_idx].data + byte_offset;
 }
 
@@ -2559,34 +2562,21 @@ static int gltf_component_count(const char *acc_type) {
 
 static int gltf_validate_sparse_indices(const gltf_accessor_view_t *view);
 
-/// @brief Resolve a glTF accessor into a typed byte view.
-static int gltf_get_accessor_view(void *root,
-                                  int64_t accessor_idx,
-                                  gltf_buffer_t *buffers,
-                                  int buf_count,
-                                  gltf_accessor_view_t *out) {
-    void *accessors = jarr(root, "accessors");
+static int gltf_accessor_init_view(void *acc,
+                                   gltf_accessor_view_t *out,
+                                   int64_t *out_bv_idx,
+                                   size_t *out_byte_offset_acc,
+                                   int *out_comp_size) {
+    int comp_type;
     int comp_size;
     int comp_count;
     const char *acc_type;
-    void *acc;
-    int64_t bv_idx;
-    size_t byte_offset_acc;
-    int comp_type;
     int64_t count_raw;
-    if (!out || !accessors || accessor_idx < 0 || accessor_idx >= jarr_len(accessors))
-        return 0;
-    acc = rt_seq_get(accessors, accessor_idx);
-    if (!acc)
-        return 0;
-
     memset(out, 0, sizeof(*out));
     count_raw = jint(acc, "count", 0);
     if (count_raw <= 0 || count_raw > INT32_MAX)
         return 0;
-    out->count = (int32_t)count_raw;
-    bv_idx = jint(acc, "bufferView", -1);
-    if (!gltf_nonnegative_size(acc, "byteOffset", 0, &byte_offset_acc))
+    if (!gltf_nonnegative_size(acc, "byteOffset", 0, out_byte_offset_acc))
         return 0;
     comp_type = (int)jint(acc, "componentType", 5126);
     comp_size = gltf_component_size(comp_type);
@@ -2594,125 +2584,168 @@ static int gltf_get_accessor_view(void *root,
     comp_count = gltf_component_count(acc_type);
     if (comp_size <= 0 || comp_count <= 0)
         return 0;
-
+    out->count = (int32_t)count_raw;
     out->stride = comp_size * comp_count;
     out->comp_type = comp_type;
     out->comp_count = comp_count;
     out->normalized = jint(acc, "normalized", 0) ? 1 : 0;
-
-    if (bv_idx >= 0) {
-        void *views = jarr(root, "bufferViews");
-        void *bv;
-        int buf_idx;
-        size_t byte_offset_bv;
-        size_t byte_length_bv;
-        size_t byte_stride;
-        size_t elem_size;
-        size_t offset;
-        size_t view_end;
-        size_t last_offset;
-        size_t last_span;
-        size_t required_view_len;
-        size_t required_len;
-        if (!views || bv_idx >= jarr_len(views))
-            return 0;
-        bv = rt_seq_get(views, (int64_t)bv_idx);
-        if (!bv)
-            return 0;
-        buf_idx = (int)jint(bv, "buffer", 0);
-        if (!gltf_nonnegative_size(bv, "byteOffset", 0, &byte_offset_bv) ||
-            !gltf_nonnegative_size(bv, "byteLength", 0, &byte_length_bv) ||
-            !gltf_nonnegative_size(bv, "byteStride", 0, &byte_stride))
-            return 0;
-        if (!buffers || buf_count <= 0 || buf_idx < 0 || buf_idx >= buf_count)
-            return 0;
-        if (!gltf_checked_add_size(byte_offset_bv, byte_length_bv, &view_end) ||
-            view_end > buffers[buf_idx].len)
-            return 0;
-
-        elem_size = (size_t)comp_size * (size_t)comp_count;
-        if (byte_stride > 0) {
-            if (byte_stride < elem_size || byte_stride > INT32_MAX)
-                return 0;
-            out->stride = (int32_t)byte_stride;
-        } else {
-            if (elem_size > INT32_MAX)
-                return 0;
-            out->stride = (int32_t)elem_size;
-        }
-        if (!gltf_checked_add_size(byte_offset_bv, byte_offset_acc, &offset))
-            return 0;
-        if (byte_offset_acc > byte_length_bv || offset > buffers[buf_idx].len)
-            return 0;
-        if (!gltf_checked_mul_size((size_t)(out->count - 1), (size_t)out->stride, &last_offset) ||
-            !gltf_checked_add_size(byte_offset_acc, last_offset, &last_span) ||
-            !gltf_checked_add_size(last_span, elem_size, &required_view_len))
-            return 0;
-        if (required_view_len > byte_length_bv)
-            return 0;
-        if (!gltf_checked_add_size(byte_offset_bv, required_view_len, &required_len) ||
-            required_len > buffers[buf_idx].len)
-            return 0;
-        out->data = buffers[buf_idx].data + offset;
-    }
-
-    {
-        void *sparse = jget(acc, "sparse");
-        int64_t sparse_count_raw = sparse ? jint(sparse, "count", 0) : 0;
-        int32_t sparse_count =
-            (sparse_count_raw > 0 && sparse_count_raw <= INT32_MAX) ? (int32_t)sparse_count_raw : 0;
-        if (sparse && (sparse_count_raw <= 0 || sparse_count_raw > INT32_MAX ||
-                       sparse_count_raw > out->count))
-            return 0;
-        if (sparse && sparse_count > 0) {
-            void *indices = jget(sparse, "indices");
-            void *values = jget(sparse, "values");
-            int64_t indices_view = jint(indices, "bufferView", -1);
-            int64_t values_view = jint(values, "bufferView", -1);
-            size_t indices_offset;
-            size_t values_offset;
-            int index_comp_type = (int)jint(indices, "componentType", 0);
-            int index_comp_size = gltf_component_size(index_comp_type);
-            size_t index_len = 0;
-            size_t value_len = 0;
-            size_t index_bytes = 0;
-            size_t value_bytes = 0;
-            size_t index_end = 0;
-            size_t value_end = 0;
-            const uint8_t *index_data =
-                gltf_get_buffer_view_data(root, indices_view, buffers, buf_count, &index_len);
-            const uint8_t *value_data =
-                gltf_get_buffer_view_data(root, values_view, buffers, buf_count, &value_len);
-            if (!index_data || !value_data || index_comp_size <= 0)
-                return 0;
-            if (index_comp_type != 5121 && index_comp_type != 5123 && index_comp_type != 5125)
-                return 0;
-            if (!gltf_nonnegative_size(indices, "byteOffset", 0, &indices_offset) ||
-                !gltf_nonnegative_size(values, "byteOffset", 0, &values_offset))
-                return 0;
-            if (indices_offset > index_len || values_offset > value_len)
-                return 0;
-            if (!gltf_checked_mul_size(
-                    (size_t)sparse_count, (size_t)index_comp_size, &index_bytes) ||
-                !gltf_checked_add_size(indices_offset, index_bytes, &index_end) ||
-                index_end > index_len)
-                return 0;
-            if (!gltf_checked_mul_size(
-                    (size_t)sparse_count, (size_t)comp_size * (size_t)comp_count, &value_bytes) ||
-                !gltf_checked_add_size(values_offset, value_bytes, &value_end) ||
-                value_end > value_len)
-                return 0;
-            out->sparse_indices = index_data + indices_offset;
-            out->sparse_values = value_data + values_offset;
-            out->sparse_count = sparse_count;
-            out->sparse_index_comp_type = index_comp_type;
-            out->sparse_index_stride = index_comp_size;
-            out->sparse_value_stride = comp_size * comp_count;
-            if (!gltf_validate_sparse_indices(out))
-                return 0;
-        }
-    }
+    *out_bv_idx = jint(acc, "bufferView", -1);
+    *out_comp_size = comp_size;
     return 1;
+}
+
+static int gltf_accessor_bind_buffer_view(void *root,
+                                          int64_t bv_idx,
+                                          size_t byte_offset_acc,
+                                          gltf_buffer_t *buffers,
+                                          int buf_count,
+                                          int comp_size,
+                                          int comp_count,
+                                          gltf_accessor_view_t *out) {
+    void *views = jarr(root, "bufferViews");
+    void *bv;
+    int buf_idx;
+    size_t byte_offset_bv;
+    size_t byte_length_bv;
+    size_t byte_stride;
+    size_t elem_size;
+    size_t offset;
+    size_t view_end;
+    size_t last_offset;
+    size_t last_span;
+    size_t required_view_len;
+    size_t required_len;
+    if (bv_idx < 0)
+        return 1;
+    if (!views || bv_idx >= jarr_len(views))
+        return 0;
+    bv = rt_seq_get(views, (int64_t)bv_idx);
+    if (!bv)
+        return 0;
+    buf_idx = (int)jint(bv, "buffer", 0);
+    if (!gltf_nonnegative_size(bv, "byteOffset", 0, &byte_offset_bv) ||
+        !gltf_nonnegative_size(bv, "byteLength", 0, &byte_length_bv) ||
+        !gltf_nonnegative_size(bv, "byteStride", 0, &byte_stride))
+        return 0;
+    if (!buffers || buf_count <= 0 || buf_idx < 0 || buf_idx >= buf_count)
+        return 0;
+    if (!gltf_checked_add_size(byte_offset_bv, byte_length_bv, &view_end) ||
+        view_end > buffers[buf_idx].len)
+        return 0;
+
+    elem_size = (size_t)comp_size * (size_t)comp_count;
+    if (byte_stride > 0) {
+        if (byte_stride < elem_size || byte_stride > INT32_MAX)
+            return 0;
+        out->stride = (int32_t)byte_stride;
+    } else {
+        if (elem_size > INT32_MAX)
+            return 0;
+        out->stride = (int32_t)elem_size;
+    }
+    if (!gltf_checked_add_size(byte_offset_bv, byte_offset_acc, &offset))
+        return 0;
+    if (byte_offset_acc > byte_length_bv || offset > buffers[buf_idx].len)
+        return 0;
+    if (!gltf_checked_mul_size((size_t)(out->count - 1), (size_t)out->stride, &last_offset) ||
+        !gltf_checked_add_size(byte_offset_acc, last_offset, &last_span) ||
+        !gltf_checked_add_size(last_span, elem_size, &required_view_len))
+        return 0;
+    if (required_view_len > byte_length_bv)
+        return 0;
+    if (!gltf_checked_add_size(byte_offset_bv, required_view_len, &required_len) ||
+        required_len > buffers[buf_idx].len)
+        return 0;
+    out->data = buffers[buf_idx].data + offset;
+    return 1;
+}
+
+static int gltf_accessor_bind_sparse(void *root,
+                                     void *acc,
+                                     gltf_buffer_t *buffers,
+                                     int buf_count,
+                                     int comp_size,
+                                     int comp_count,
+                                     gltf_accessor_view_t *out) {
+    void *sparse = jget(acc, "sparse");
+    int64_t sparse_count_raw = sparse ? jint(sparse, "count", 0) : 0;
+    int32_t sparse_count =
+        (sparse_count_raw > 0 && sparse_count_raw <= INT32_MAX) ? (int32_t)sparse_count_raw : 0;
+    if (!sparse)
+        return 1;
+    if (sparse_count_raw <= 0 || sparse_count_raw > INT32_MAX || sparse_count_raw > out->count)
+        return 0;
+    if (sparse_count <= 0)
+        return 1;
+    {
+        void *indices = jget(sparse, "indices");
+        void *values = jget(sparse, "values");
+        int64_t indices_view = jint(indices, "bufferView", -1);
+        int64_t values_view = jint(values, "bufferView", -1);
+        size_t indices_offset;
+        size_t values_offset;
+        int index_comp_type = (int)jint(indices, "componentType", 0);
+        int index_comp_size = gltf_component_size(index_comp_type);
+        size_t index_len = 0;
+        size_t value_len = 0;
+        size_t index_bytes = 0;
+        size_t value_bytes = 0;
+        size_t index_end = 0;
+        size_t value_end = 0;
+        const uint8_t *index_data =
+            gltf_get_buffer_view_data(root, indices_view, buffers, buf_count, &index_len);
+        const uint8_t *value_data =
+            gltf_get_buffer_view_data(root, values_view, buffers, buf_count, &value_len);
+        if (!index_data || !value_data || index_comp_size <= 0)
+            return 0;
+        if (index_comp_type != 5121 && index_comp_type != 5123 && index_comp_type != 5125)
+            return 0;
+        if (!gltf_nonnegative_size(indices, "byteOffset", 0, &indices_offset) ||
+            !gltf_nonnegative_size(values, "byteOffset", 0, &values_offset))
+            return 0;
+        if (indices_offset > index_len || values_offset > value_len)
+            return 0;
+        if (!gltf_checked_mul_size((size_t)sparse_count, (size_t)index_comp_size, &index_bytes) ||
+            !gltf_checked_add_size(indices_offset, index_bytes, &index_end) ||
+            index_end > index_len)
+            return 0;
+        if (!gltf_checked_mul_size(
+                (size_t)sparse_count, (size_t)comp_size * (size_t)comp_count, &value_bytes) ||
+            !gltf_checked_add_size(values_offset, value_bytes, &value_end) ||
+            value_end > value_len)
+            return 0;
+        out->sparse_indices = index_data + indices_offset;
+        out->sparse_values = value_data + values_offset;
+        out->sparse_count = sparse_count;
+        out->sparse_index_comp_type = index_comp_type;
+        out->sparse_index_stride = index_comp_size;
+        out->sparse_value_stride = comp_size * comp_count;
+        return gltf_validate_sparse_indices(out);
+    }
+}
+
+/// @brief Resolve a glTF accessor into a typed byte view.
+static int gltf_get_accessor_view(void *root,
+                                  int64_t accessor_idx,
+                                  gltf_buffer_t *buffers,
+                                  int buf_count,
+                                  gltf_accessor_view_t *out) {
+    void *accessors = jarr(root, "accessors");
+    void *acc;
+    int64_t bv_idx;
+    size_t byte_offset_acc;
+    int comp_size;
+    if (!out || !accessors || accessor_idx < 0 || accessor_idx >= jarr_len(accessors))
+        return 0;
+    acc = rt_seq_get(accessors, accessor_idx);
+    if (!acc)
+        return 0;
+    if (!gltf_accessor_init_view(acc, out, &bv_idx, &byte_offset_acc, &comp_size))
+        return 0;
+    if (!gltf_accessor_bind_buffer_view(
+            root, bv_idx, byte_offset_acc, buffers, buf_count, comp_size, out->comp_count, out))
+        return 0;
+    return gltf_accessor_bind_sparse(root, acc, buffers, buf_count, comp_size, out->comp_count, out);
 }
 
 /// @brief Validate sparse accessor metadata globally before importers decide to skip primitives.
@@ -4872,6 +4905,87 @@ static int gltf_preload_grow_buffer_refs(gltf_preload_buffer_ref_t **refs,
     return 1;
 }
 
+static void gltf_preload_set_buffer_ref(gltf_preload_buffer_ref_t *refs,
+                                        int index,
+                                        const uint8_t *data,
+                                        size_t len) {
+    refs[index].data = data;
+    refs[index].len = len;
+}
+
+static int gltf_preload_stage_inline_buffer(rt_gltf_preload_bundle *bundle,
+                                            int index,
+                                            const char *uri,
+                                            size_t required_len,
+                                            gltf_preload_buffer_ref_t *refs) {
+    char key[64];
+    char mime_type[64];
+    uint8_t *data = NULL;
+    size_t data_len = 0;
+    if (!gltf_parse_data_uri(uri, mime_type, sizeof(mime_type), &data, &data_len) ||
+        data_len < required_len) {
+        free(data);
+        return required_len == 0u;
+    }
+    gltf_preload_buffer_key(index, key, sizeof(key));
+    if (!gltf_preload_bundle_add_dependency(bundle, key, GLTF_PRELOAD_DEP_BUFFER, data, data_len)) {
+        free(data);
+        return 0;
+    }
+    gltf_preload_set_buffer_ref(refs, index, data, data_len);
+    return 1;
+}
+
+static int gltf_preload_stage_external_buffer(rt_gltf_preload_bundle *bundle,
+                                              const char *model_path,
+                                              int index,
+                                              const char *uri,
+                                              int load_assets,
+                                              size_t required_len,
+                                              gltf_preload_buffer_ref_t *refs) {
+    char resource_path[1024];
+    uint8_t *data = NULL;
+    size_t data_len = 0;
+    gltf_resolve_relative_path(model_path, uri, resource_path, sizeof(resource_path));
+    if (resource_path[0] != '\0') {
+        data = gltf_load_dependency_bytes(resource_path, load_assets, required_len, NULL, &data_len);
+        if (data) {
+            if (!gltf_preload_bundle_add_dependency(
+                    bundle, resource_path, GLTF_PRELOAD_DEP_BUFFER, data, data_len)) {
+                free(data);
+                return 0;
+            }
+            gltf_preload_set_buffer_ref(refs, index, data, data_len);
+        }
+    }
+    return data || required_len == 0u;
+}
+
+static int gltf_preload_stage_buffer_uri(rt_gltf_preload_bundle *bundle,
+                                         const char *model_path,
+                                         int index,
+                                         const char *uri,
+                                         int load_assets,
+                                         size_t required_len,
+                                         gltf_preload_buffer_ref_t *refs) {
+    if (strncmp(uri, "data:", 5) == 0)
+        return gltf_preload_stage_inline_buffer(bundle, index, uri, required_len, refs);
+    return gltf_preload_stage_external_buffer(
+        bundle, model_path, index, uri, load_assets, required_len, refs);
+}
+
+static int gltf_preload_bind_glb_buffer(int index,
+                                        const uint8_t *glb_bin,
+                                        size_t glb_bin_len,
+                                        size_t required_len,
+                                        gltf_preload_buffer_ref_t *refs) {
+    if (index != 0 || !glb_bin || required_len > glb_bin_len || required_len > SIZE_MAX - 3u ||
+        glb_bin_len > required_len + 3u)
+        return 0;
+    gltf_preload_set_buffer_ref(refs, index, glb_bin, required_len);
+    return 1;
+}
+
 /// @brief Stage every glTF buffer and build the buffer-ref table the views/accessors resolve
 /// against.
 /// @details Walks the top-level "buffers" array: a data: URI is decoded inline, an external URI is
@@ -4922,60 +5036,20 @@ static int gltf_preload_stage_buffers(rt_gltf_preload_bundle *bundle,
             required_len =
                 gltf_json_object_get_size(json, json_len, pos, object_end, "byteLength", 0u);
             if (uri) {
-                int ok = 1;
-                if (strncmp(uri, "data:", 5) == 0) {
-                    char key[64];
-                    char mime_type[64];
-                    uint8_t *data = NULL;
-                    size_t data_len = 0;
-                    if (!gltf_parse_data_uri(uri, mime_type, sizeof(mime_type), &data, &data_len) ||
-                        data_len < required_len) {
-                        free(data);
-                        ok = required_len == 0u;
-                    } else {
-                        gltf_preload_buffer_key(index, key, sizeof(key));
-                        ok = gltf_preload_bundle_add_dependency(
-                            bundle, key, GLTF_PRELOAD_DEP_BUFFER, data, data_len);
-                        if (ok) {
-                            refs[index].data = data;
-                            refs[index].len = data_len;
-                        } else {
-                            free(data);
-                        }
-                    }
-                } else {
-                    char resource_path[1024];
-                    uint8_t *data = NULL;
-                    size_t data_len = 0;
-                    gltf_resolve_relative_path(
-                        model_path, uri, resource_path, sizeof(resource_path));
-                    if (resource_path[0] != '\0') {
-                        data = gltf_load_dependency_bytes(
-                            resource_path, load_assets, required_len, NULL, &data_len);
-                        if (data) {
-                            ok = gltf_preload_bundle_add_dependency(
-                                bundle, resource_path, GLTF_PRELOAD_DEP_BUFFER, data, data_len);
-                            if (ok) {
-                                refs[index].data = data;
-                                refs[index].len = data_len;
-                            } else {
-                                free(data);
-                            }
-                        }
-                    }
-                    if (!data && required_len > 0u)
-                        ok = 0;
-                }
+                int ok = gltf_preload_stage_buffer_uri(
+                    bundle, model_path, index, uri, load_assets, required_len, refs);
                 free(uri);
                 if (!ok) {
                     free(refs);
                     gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
                     return 0;
                 }
-            } else if (index == 0 && glb_bin && required_len <= glb_bin_len &&
-                       required_len <= SIZE_MAX - 3u && glb_bin_len <= required_len + 3u) {
-                refs[index].data = glb_bin;
-                refs[index].len = required_len;
+            } else {
+                if (!gltf_preload_bind_glb_buffer(index, glb_bin, glb_bin_len, required_len, refs)) {
+                    free(refs);
+                    gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                    return 0;
+                }
             }
             index++;
             pos = object_end;
@@ -6712,21 +6786,12 @@ static void gltf_preload_mark_required_images(const char *json,
     }
 }
 
-/// @brief Verify that every texture-referenced data-URI image decodes to a supported format.
-/// @details Marks required images (via gltf_preload_mark_required_images), then checks each
-///          referenced inline data-URI image is a decodable format, rejecting the model otherwise.
-/// @return 1 if all required inline images are valid, 0 if any is unsupported/corrupt.
-static int gltf_validate_required_data_uri_images(const char *json, size_t json_len) {
-    size_t array_start;
-    size_t array_end;
-    size_t pos;
-    int image_count = 0;
-    int index = 0;
-    uint8_t *required = NULL;
-    if (!gltf_json_find_top_level_array(json, json_len, "images", &array_start, &array_end))
-        return 1;
-
-    pos = array_start + 1u;
+static int gltf_json_count_objects_in_array(const char *json,
+                                            size_t json_len,
+                                            size_t array_start,
+                                            size_t array_end) {
+    size_t pos = array_start + 1u;
+    int count = 0;
     while (pos < array_end) {
         pos = gltf_json_skip_ws(json, json_len, pos);
         if (pos >= array_end || json[pos] == ']')
@@ -6735,7 +6800,7 @@ static int gltf_validate_required_data_uri_images(const char *json, size_t json_
             size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
             if (object_end == SIZE_MAX || object_end > array_end)
                 break;
-            image_count++;
+            count++;
             pos = object_end;
         } else {
             pos = gltf_json_skip_value(json, json_len, pos);
@@ -6746,6 +6811,53 @@ static int gltf_validate_required_data_uri_images(const char *json, size_t json_
         if (pos < array_end && json[pos] == ',')
             pos++;
     }
+    return count;
+}
+
+static int gltf_preload_prepare_required_images(const char *json,
+                                                size_t json_len,
+                                                size_t array_start,
+                                                size_t array_end,
+                                                int *out_image_count,
+                                                uint8_t **out_required,
+                                                char *error,
+                                                size_t error_cap) {
+    int image_count = gltf_json_count_objects_in_array(json, json_len, array_start, array_end);
+    uint8_t *required = NULL;
+    if (out_image_count)
+        *out_image_count = image_count;
+    if (out_required)
+        *out_required = NULL;
+    if (image_count <= 0)
+        return 1;
+    required = (uint8_t *)calloc((size_t)image_count, sizeof(uint8_t));
+    if (!required) {
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF preload");
+        return 0;
+    }
+    gltf_preload_mark_required_images(json, json_len, required, image_count);
+    if (out_required)
+        *out_required = required;
+    else
+        free(required);
+    return 1;
+}
+
+/// @brief Verify that every texture-referenced data-URI image decodes to a supported format.
+/// @details Marks required images (via gltf_preload_mark_required_images), then checks each
+///          referenced inline data-URI image is a decodable format, rejecting the model otherwise.
+/// @return 1 if all required inline images are valid, 0 if any is unsupported/corrupt.
+static int gltf_validate_required_data_uri_images(const char *json, size_t json_len) {
+    size_t array_start;
+    size_t array_end;
+    size_t pos;
+    int image_count;
+    int index = 0;
+    uint8_t *required = NULL;
+    if (!gltf_json_find_top_level_array(json, json_len, "images", &array_start, &array_end))
+        return 1;
+
+    image_count = gltf_json_count_objects_in_array(json, json_len, array_start, array_end);
     if (image_count <= 0)
         return 1;
 
@@ -6821,6 +6933,154 @@ static int gltf_validate_required_data_uri_images(const char *json, size_t json_
     return 1;
 }
 
+static int gltf_preload_stage_data_uri_image(rt_gltf_preload_bundle *bundle,
+                                             int image_index,
+                                             const char *mime_type,
+                                             const char *uri,
+                                             int required_image,
+                                             char *error,
+                                             size_t error_cap) {
+    char parsed_mime[64];
+    uint8_t *data = NULL;
+    size_t data_len = 0;
+    parsed_mime[0] = '\0';
+    if (gltf_parse_data_uri(uri, parsed_mime, sizeof(parsed_mime), &data, &data_len))
+        return gltf_preload_stage_image_bytes(bundle,
+                                              image_index,
+                                              mime_type ? mime_type : parsed_mime,
+                                              data,
+                                              data_len,
+                                              required_image,
+                                              error,
+                                              error_cap);
+    if (required_image && gltf_preload_image_is_supported_format(mime_type)) {
+        gltf_preload_set_error(error, error_cap, "invalid glTF image payload");
+        return 0;
+    }
+    return 1;
+}
+
+static int gltf_preload_stage_image_uri(rt_gltf_preload_bundle *bundle,
+                                        const char *model_path,
+                                        int image_index,
+                                        const char *mime_type,
+                                        const char *uri,
+                                        int load_assets,
+                                        int required_image,
+                                        char *error,
+                                        size_t error_cap) {
+    if (strncmp(uri, "data:", 5) == 0)
+        return gltf_preload_stage_data_uri_image(
+            bundle, image_index, mime_type, uri, required_image, error, error_cap);
+    return gltf_preload_stage_external_image(
+        bundle, model_path, uri, load_assets, required_image, error, error_cap);
+}
+
+static int gltf_preload_stage_buffer_view_image(rt_gltf_preload_bundle *bundle,
+                                                const char *json,
+                                                size_t json_len,
+                                                int image_index,
+                                                size_t object_start,
+                                                size_t object_end,
+                                                const char *mime_type,
+                                                int required_image,
+                                                const gltf_preload_buffer_ref_t *buffers,
+                                                int buffer_count,
+                                                const gltf_preload_buffer_view_ref_t *views,
+                                                int view_count,
+                                                char *error,
+                                                size_t error_cap) {
+    int view_index =
+        gltf_json_object_get_int(json, json_len, object_start, object_end, "bufferView", -1);
+    int staged = 0;
+    if (view_index >= 0 && view_index < view_count && views && views[view_index].valid) {
+        const gltf_preload_buffer_view_ref_t *view = &views[view_index];
+        if (view->buffer >= 0 && view->buffer < buffer_count && buffers &&
+            buffers[view->buffer].data) {
+            size_t end;
+            if (view->byte_length == 0 && required_image) {
+                gltf_preload_set_error(error, error_cap, "invalid glTF image payload");
+                return 0;
+            }
+            if (view->byte_length > 0 &&
+                gltf_checked_add_size(view->byte_offset, view->byte_length, &end) &&
+                end <= buffers[view->buffer].len) {
+                uint8_t *copy = (uint8_t *)malloc(view->byte_length);
+                if (!copy) {
+                    gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+                    return 0;
+                }
+                memcpy(copy, buffers[view->buffer].data + view->byte_offset, view->byte_length);
+                staged = 1;
+                if (!gltf_preload_stage_image_bytes(bundle,
+                                                    image_index,
+                                                    mime_type,
+                                                    copy,
+                                                    view->byte_length,
+                                                    required_image,
+                                                    error,
+                                                    error_cap))
+                    return 0;
+            }
+        }
+    }
+    if (!staged && required_image) {
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+        return 0;
+    }
+    return 1;
+}
+
+static int gltf_preload_stage_image_object(rt_gltf_preload_bundle *bundle,
+                                           const char *model_path,
+                                           const char *json,
+                                           size_t json_len,
+                                           int image_index,
+                                           size_t object_start,
+                                           size_t object_end,
+                                           int load_assets,
+                                           int required_image,
+                                           const gltf_preload_buffer_ref_t *buffers,
+                                           int buffer_count,
+                                           const gltf_preload_buffer_view_ref_t *views,
+                                           int view_count,
+                                           char *error,
+                                           size_t error_cap) {
+    char *uri = gltf_json_object_get_string(json, json_len, object_start, object_end, "uri");
+    char *mime_type =
+        gltf_json_object_get_string(json, json_len, object_start, object_end, "mimeType");
+    int ok;
+    if (uri) {
+        ok = gltf_preload_stage_image_uri(bundle,
+                                          model_path,
+                                          image_index,
+                                          mime_type,
+                                          uri,
+                                          load_assets,
+                                          required_image,
+                                          error,
+                                          error_cap);
+    } else {
+        ok = gltf_preload_stage_buffer_view_image(bundle,
+                                                  json,
+                                                  json_len,
+                                                  image_index,
+                                                  object_start,
+                                                  object_end,
+                                                  mime_type,
+                                                  required_image,
+                                                  buffers,
+                                                  buffer_count,
+                                                  views,
+                                                  view_count,
+                                                  error,
+                                                  error_cap);
+    }
+    free(uri);
+    free(mime_type);
+    return ok;
+}
+
 /// @brief Stage every glTF image (inline data-URI, bufferView-embedded, or external file).
 /// @details Walks the "images" array, marking texture-referenced images required, and stages each
 ///          image's bytes (decoding to RGBA when possible) under its image key. A required image
@@ -6839,40 +7099,15 @@ static int gltf_preload_stage_images(rt_gltf_preload_bundle *bundle,
     size_t array_start;
     size_t array_end;
     size_t pos;
-    int image_count = 0;
+    int image_count;
     int index = 0;
     uint8_t *required = NULL;
     if (!gltf_json_find_top_level_array(json, json_len, "images", &array_start, &array_end))
         return 1;
 
-    pos = array_start + 1u;
-    while (pos < array_end) {
-        pos = gltf_json_skip_ws(json, json_len, pos);
-        if (pos >= array_end || json[pos] == ']')
-            break;
-        if (json[pos] == '{') {
-            size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
-            if (object_end == SIZE_MAX || object_end > array_end)
-                break;
-            image_count++;
-            pos = object_end;
-        } else {
-            pos = gltf_json_skip_value(json, json_len, pos);
-            if (pos == SIZE_MAX)
-                break;
-        }
-        pos = gltf_json_skip_ws(json, json_len, pos);
-        if (pos < array_end && json[pos] == ',')
-            pos++;
-    }
-    if (image_count > 0) {
-        required = (uint8_t *)calloc((size_t)image_count, sizeof(uint8_t));
-        if (!required) {
-            gltf_preload_set_error(error, error_cap, "failed to stage glTF preload");
-            return 0;
-        }
-        gltf_preload_mark_required_images(json, json_len, required, image_count);
-    }
+    if (!gltf_preload_prepare_required_images(
+            json, json_len, array_start, array_end, &image_count, &required, error, error_cap))
+        return 0;
 
     pos = array_start + 1u;
     while (pos < array_end) {
@@ -6881,8 +7116,6 @@ static int gltf_preload_stage_images(rt_gltf_preload_bundle *bundle,
             break;
         if (json[pos] == '{') {
             size_t object_end = gltf_json_find_matching(json, json_len, pos, '{', '}');
-            char *uri;
-            char *mime_type;
             int required_image;
             if (object_end == SIZE_MAX || object_end > array_end)
                 break;
@@ -6892,93 +7125,23 @@ static int gltf_preload_stage_images(rt_gltf_preload_bundle *bundle,
                 return 0;
             }
             required_image = required ? required[index] != 0 : 0;
-            uri = gltf_json_object_get_string(json, json_len, pos, object_end, "uri");
-            mime_type = gltf_json_object_get_string(json, json_len, pos, object_end, "mimeType");
-            if (uri) {
-                int ok = 1;
-                if (strncmp(uri, "data:", 5) == 0) {
-                    char parsed_mime[64];
-                    uint8_t *data = NULL;
-                    size_t data_len = 0;
-                    parsed_mime[0] = '\0';
-                    if (gltf_parse_data_uri(
-                            uri, parsed_mime, sizeof(parsed_mime), &data, &data_len)) {
-                        ok = gltf_preload_stage_image_bytes(bundle,
-                                                            index,
-                                                            mime_type ? mime_type : parsed_mime,
-                                                            data,
-                                                            data_len,
-                                                            required_image,
-                                                            error,
-                                                            error_cap);
-                    } else if (required_image &&
-                               gltf_preload_image_is_supported_format(mime_type)) {
-                        gltf_preload_set_error(error, error_cap, "invalid glTF image payload");
-                        ok = 0;
-                    }
-                } else {
-                    ok = gltf_preload_stage_external_image(
-                        bundle, model_path, uri, load_assets, required_image, error, error_cap);
-                }
-                free(uri);
-                free(mime_type);
-                if (!ok) {
-                    free(required);
-                    return 0;
-                }
-            } else {
-                int view_index =
-                    gltf_json_object_get_int(json, json_len, pos, object_end, "bufferView", -1);
-                int staged = 0;
-                if (view_index >= 0 && view_index < view_count && views &&
-                    views[view_index].valid) {
-                    const gltf_preload_buffer_view_ref_t *view = &views[view_index];
-                    if (view->buffer >= 0 && view->buffer < buffer_count && buffers &&
-                        buffers[view->buffer].data) {
-                        size_t end;
-                        if (view->byte_length == 0 && required_image) {
-                            free(mime_type);
-                            free(required);
-                            gltf_preload_set_error(error, error_cap, "invalid glTF image payload");
-                            return 0;
-                        }
-                        if (view->byte_length > 0 &&
-                            gltf_checked_add_size(view->byte_offset, view->byte_length, &end) &&
-                            end <= buffers[view->buffer].len) {
-                            uint8_t *copy = (uint8_t *)malloc(view->byte_length);
-                            if (!copy) {
-                                free(mime_type);
-                                free(required);
-                                gltf_preload_set_error(
-                                    error, error_cap, "failed to stage glTF dependency");
-                                return 0;
-                            }
-                            memcpy(copy,
-                                   buffers[view->buffer].data + view->byte_offset,
-                                   view->byte_length);
-                            staged = 1;
-                            if (!gltf_preload_stage_image_bytes(bundle,
-                                                                index,
-                                                                mime_type,
-                                                                copy,
-                                                                view->byte_length,
-                                                                required_image,
-                                                                error,
-                                                                error_cap)) {
-                                free(mime_type);
-                                free(required);
-                                return 0;
-                            }
-                        }
-                    }
-                }
-                if (!staged && required_image) {
-                    free(mime_type);
-                    free(required);
-                    gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
-                    return 0;
-                }
-                free(mime_type);
+            if (!gltf_preload_stage_image_object(bundle,
+                                                 model_path,
+                                                 json,
+                                                 json_len,
+                                                 index,
+                                                 pos,
+                                                 object_end,
+                                                 load_assets,
+                                                 required_image,
+                                                 buffers,
+                                                 buffer_count,
+                                                 views,
+                                                 view_count,
+                                                 error,
+                                                 error_cap)) {
+                free(required);
+                return 0;
             }
             index++;
             pos = object_end;
@@ -6993,6 +7156,83 @@ static int gltf_preload_stage_images(rt_gltf_preload_bundle *bundle,
     }
     free(required);
     return 1;
+}
+
+static rt_gltf_preload_bundle *gltf_preload_bundle_alloc_with_root(uint8_t *root_data,
+                                                                   size_t root_size,
+                                                                   char *error,
+                                                                   size_t error_cap) {
+    rt_gltf_preload_bundle *bundle = (rt_gltf_preload_bundle *)calloc(1, sizeof(*bundle));
+    if (!bundle) {
+        gltf_preload_set_error(error, error_cap, "failed to stage glTF preload");
+        return NULL;
+    }
+    bundle->root_data = root_data;
+    bundle->root_size = root_size;
+    return bundle;
+}
+
+static int gltf_preload_stage_bundle_json(rt_gltf_preload_bundle *bundle,
+                                          const char *model_path,
+                                          char *json,
+                                          size_t json_len,
+                                          int load_assets,
+                                          char *error,
+                                          size_t error_cap) {
+    gltf_preload_buffer_ref_t *buffer_refs = NULL;
+    int buffer_ref_count = 0;
+    gltf_preload_buffer_view_ref_t *view_refs = NULL;
+    int view_ref_count = 0;
+    int ok = gltf_preload_stage_buffers(bundle,
+                                        model_path,
+                                        json,
+                                        json_len,
+                                        load_assets,
+                                        &buffer_refs,
+                                        &buffer_ref_count,
+                                        error,
+                                        error_cap);
+    if (ok) {
+        ok = gltf_preload_parse_buffer_views(
+            json, json_len, &view_refs, &view_ref_count, error, error_cap);
+    }
+    if (ok) {
+        ok = gltf_preload_validate_accessors(json,
+                                             json_len,
+                                             buffer_refs,
+                                             buffer_ref_count,
+                                             view_refs,
+                                             view_ref_count,
+                                             error,
+                                             error_cap);
+    }
+    if (ok) {
+        ok = gltf_preload_stage_meshes(bundle,
+                                       json,
+                                       json_len,
+                                       buffer_refs,
+                                       buffer_ref_count,
+                                       view_refs,
+                                       view_ref_count,
+                                       error,
+                                       error_cap);
+    }
+    if (ok) {
+        ok = gltf_preload_stage_images(bundle,
+                                       model_path,
+                                       json,
+                                       json_len,
+                                       load_assets,
+                                       buffer_refs,
+                                       buffer_ref_count,
+                                       view_refs,
+                                       view_ref_count,
+                                       error,
+                                       error_cap);
+    }
+    free(buffer_refs);
+    free(view_refs);
+    return ok;
 }
 
 /// @brief Build an off-main-thread preload bundle by staging a glTF model's buffers, views,
@@ -7012,10 +7252,6 @@ rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
     rt_gltf_preload_bundle *bundle;
     char *json = NULL;
     size_t json_len = 0;
-    gltf_preload_buffer_ref_t *buffer_refs = NULL;
-    int buffer_ref_count = 0;
-    gltf_preload_buffer_view_ref_t *view_refs = NULL;
-    int view_ref_count = 0;
     if (error && error_cap > 0)
         error[0] = '\0';
     if (!root_data || root_size == 0 || !model_path) {
@@ -7023,65 +7259,15 @@ rt_gltf_preload_bundle *rt_gltf_preload_bundle_create(rt_string path,
         gltf_preload_set_error(error, error_cap, "failed to load model");
         return NULL;
     }
-    bundle = (rt_gltf_preload_bundle *)calloc(1, sizeof(*bundle));
+    bundle = gltf_preload_bundle_alloc_with_root(root_data, root_size, error, error_cap);
     if (!bundle) {
         free(root_data);
-        gltf_preload_set_error(error, error_cap, "failed to stage glTF preload");
         return NULL;
     }
-    bundle->root_data = root_data;
-    bundle->root_size = root_size;
     json = gltf_json_copy_from_root_bytes(root_data, root_size, &json_len);
     if (json) {
-        int ok = gltf_preload_stage_buffers(bundle,
-                                            model_path,
-                                            json,
-                                            json_len,
-                                            load_assets,
-                                            &buffer_refs,
-                                            &buffer_ref_count,
-                                            error,
-                                            error_cap);
-        if (ok) {
-            ok = gltf_preload_parse_buffer_views(
-                json, json_len, &view_refs, &view_ref_count, error, error_cap);
-        }
-        if (ok) {
-            ok = gltf_preload_validate_accessors(json,
-                                                 json_len,
-                                                 buffer_refs,
-                                                 buffer_ref_count,
-                                                 view_refs,
-                                                 view_ref_count,
-                                                 error,
-                                                 error_cap);
-        }
-        if (ok) {
-            ok = gltf_preload_stage_meshes(bundle,
-                                           json,
-                                           json_len,
-                                           buffer_refs,
-                                           buffer_ref_count,
-                                           view_refs,
-                                           view_ref_count,
-                                           error,
-                                           error_cap);
-        }
-        if (ok) {
-            ok = gltf_preload_stage_images(bundle,
-                                           model_path,
-                                           json,
-                                           json_len,
-                                           load_assets,
-                                           buffer_refs,
-                                           buffer_ref_count,
-                                           view_refs,
-                                           view_ref_count,
-                                           error,
-                                           error_cap);
-        }
-        free(buffer_refs);
-        free(view_refs);
+        int ok = gltf_preload_stage_bundle_json(
+            bundle, model_path, json, json_len, load_assets, error, error_cap);
         free(json);
         if (!ok) {
             rt_gltf_preload_bundle_free(bundle);
@@ -7236,6 +7422,186 @@ static void gltf_release_skin_skeletons(gltf_skin_t *skins, int32_t skin_count) 
 static int gltf_inverse_bind_accessor_valid(const gltf_accessor_view_t *view,
                                             int32_t joint_count);
 
+static void gltf_parse_skins_clear_asset(rt_gltf_asset *asset) {
+    if (!asset)
+        return;
+    asset->skeleton_count = 0;
+    free(asset->skeletons);
+    asset->skeletons = NULL;
+    asset->skeleton_capacity = 0;
+}
+
+static void gltf_parse_skins_fail(rt_gltf_asset *asset,
+                                  gltf_skin_t *skins,
+                                  int32_t skin_count,
+                                  int32_t *node_parents,
+                                  int *hard_error) {
+    if (hard_error)
+        *hard_error = 1;
+    gltf_release_skin_skeletons(skins, skin_count);
+    gltf_parse_skins_clear_asset(asset);
+    free(node_parents);
+    gltf_free_skins(skins, skin_count);
+}
+
+static int32_t *gltf_build_node_parent_table(void *nodes_arr, int32_t node_count) {
+    int32_t *node_parents = (int32_t *)malloc((size_t)node_count * sizeof(*node_parents));
+    if (!node_parents)
+        return NULL;
+    for (int32_t i = 0; i < node_count; i++)
+        node_parents[i] = -1;
+    for (int32_t ni = 0; ni < node_count; ni++) {
+        void *node_json = rt_seq_get(nodes_arr, ni);
+        void *children = jarr(node_json, "children");
+        for (int64_t ci = 0; ci < jarr_len(children); ci++) {
+            int32_t child = gltf_i32_from_i64_or(jvalue_int(rt_seq_get(children, ci), -1), -1);
+            if (child >= 0 && child < node_count)
+                node_parents[child] = ni;
+        }
+    }
+    return node_parents;
+}
+
+static int gltf_parse_skins_alloc_state(rt_gltf_asset *asset,
+                                        void *nodes_arr,
+                                        int32_t skin_count,
+                                        int32_t node_count,
+                                        int32_t **out_node_parents,
+                                        gltf_skin_t **out_skins) {
+    int32_t *node_parents = gltf_build_node_parent_table(nodes_arr, node_count);
+    gltf_skin_t *skins = NULL;
+    *out_node_parents = NULL;
+    *out_skins = NULL;
+    if (!node_parents)
+        return 0;
+    skins = (gltf_skin_t *)calloc((size_t)skin_count, sizeof(*skins));
+    asset->skeletons = (void **)calloc((size_t)skin_count, sizeof(void *));
+    asset->skeleton_count = 0;
+    asset->skeleton_capacity = asset->skeletons ? skin_count : 0;
+    if (!skins || !asset->skeletons) {
+        free(node_parents);
+        gltf_free_skins(skins, skin_count);
+        free(asset->skeletons);
+        asset->skeletons = NULL;
+        asset->skeleton_count = 0;
+        asset->skeleton_capacity = 0;
+        return 0;
+    }
+    *out_node_parents = node_parents;
+    *out_skins = skins;
+    return 1;
+}
+
+static int gltf_skin_init_entry(gltf_skin_t *skin, int32_t joint_count) {
+    skin->joint_nodes = (int32_t *)calloc((size_t)joint_count, sizeof(int32_t));
+    skin->joint_to_bone = (int32_t *)malloc((size_t)joint_count * sizeof(int32_t));
+    skin->joint_count = joint_count;
+    skin->skeleton = rt_skeleton3d_new();
+    if (!skin->joint_nodes || !skin->joint_to_bone || !skin->skeleton) {
+        if (skin->skeleton)
+            gltf_release_ref(&skin->skeleton);
+        free(skin->joint_nodes);
+        free(skin->joint_to_bone);
+        skin->joint_nodes = NULL;
+        skin->joint_to_bone = NULL;
+        skin->joint_count = 0;
+        return 0;
+    }
+    return 1;
+}
+
+static int gltf_skin_read_joint_nodes(gltf_skin_t *skin,
+                                      void *joints,
+                                      int32_t joint_count,
+                                      int32_t node_count) {
+    for (int32_t ji = 0; ji < joint_count; ji++) {
+        int32_t joint_node = gltf_i32_from_i64_or(jvalue_int(rt_seq_get(joints, ji), -1), -1);
+        if (joint_node < 0 || joint_node >= node_count)
+            return 0;
+        for (int32_t prev = 0; prev < ji; prev++) {
+            if (skin->joint_nodes[prev] == joint_node)
+                return 0;
+        }
+        skin->joint_nodes[ji] = joint_node;
+        skin->joint_to_bone[ji] = -1;
+    }
+    return 1;
+}
+
+static void gltf_skin_register_joints(gltf_skin_t *skin,
+                                      void *nodes_arr,
+                                      const int32_t *node_parents,
+                                      int32_t node_count) {
+    int32_t joint_count = gltf_skin_safe_joint_count(skin);
+    for (int32_t ji = 0; ji < joint_count; ji++) {
+        int32_t parent_node =
+            skin->joint_nodes[ji] >= 0 && skin->joint_nodes[ji] < node_count
+                ? node_parents[skin->joint_nodes[ji]]
+                : -1;
+        if (gltf_skin_find_joint(skin, parent_node) < 0)
+            gltf_add_skin_joint_recursive(skin, nodes_arr, ji, -1);
+    }
+    for (int32_t ji = 0; ji < joint_count; ji++) {
+        if (skin->joint_to_bone[ji] < 0)
+            gltf_add_skin_joint_recursive(skin, nodes_arr, ji, -1);
+    }
+}
+
+static void gltf_skin_apply_inverse_bind(void *root,
+                                         void *skin_json,
+                                         gltf_buffer_t *buffers,
+                                         int buf_count,
+                                         gltf_skin_t *skin) {
+    int32_t joint_count = gltf_skin_safe_joint_count(skin);
+    int64_t ibm_acc = jint(skin_json, "inverseBindMatrices", -1);
+    gltf_accessor_view_t ibm_view;
+    if (!gltf_get_accessor_view(root, ibm_acc, buffers, buf_count, &ibm_view) ||
+        !gltf_inverse_bind_accessor_valid(&ibm_view, joint_count))
+        return;
+    {
+        rt_skeleton3d *skel = (rt_skeleton3d *)skin->skeleton;
+        int32_t bone_count = skeleton3d_safe_bone_count(skel);
+        for (int32_t ji = 0; ji < joint_count; ji++) {
+            int32_t bone = skin->joint_to_bone[ji];
+            float col_major[16];
+            if (bone < 0 || bone >= bone_count)
+                continue;
+            gltf_accessor_read_f32(&ibm_view, ji, col_major, 16);
+            for (int row = 0; row < 4; row++)
+                for (int col = 0; col < 4; col++)
+                    skel->bones[bone].inverse_bind[row * 4 + col] = col_major[col * 4 + row];
+        }
+    }
+}
+
+static int gltf_parse_skin_entry(rt_gltf_asset *asset,
+                                 void *root,
+                                 void *nodes_arr,
+                                 void *skin_json,
+                                 gltf_buffer_t *buffers,
+                                 int buf_count,
+                                 const int32_t *node_parents,
+                                 int32_t node_count,
+                                 gltf_skin_t *skin) {
+    void *joints = jarr(skin_json, "joints");
+    int64_t joint_count64 = jarr_len(joints);
+    int32_t joint_count;
+    if (joint_count64 <= 0)
+        return 0;
+    if (joint_count64 > INT32_MAX || joint_count64 > VGFX3D_MAX_BONES)
+        return -1;
+    joint_count = (int32_t)joint_count64;
+    if (!gltf_skin_init_entry(skin, joint_count))
+        return 0;
+    if (!gltf_skin_read_joint_nodes(skin, joints, joint_count, node_count))
+        return -1;
+    gltf_skin_register_joints(skin, nodes_arr, node_parents, node_count);
+    rt_skeleton3d_compute_inverse_bind(skin->skeleton);
+    gltf_skin_apply_inverse_bind(root, skin_json, buffers, buf_count, skin);
+    asset->skeletons[asset->skeleton_count++] = skin->skeleton;
+    return 1;
+}
+
 /// @brief Parse every skin in a glTF document into engine `Skeleton3D` objects.
 /// @details Walks the top-level "skins" array and, for each skin, builds a Skeleton3D
 ///          whose bones mirror the skin's joint hierarchy. The pipeline per skin is:
@@ -7292,144 +7658,25 @@ static void gltf_parse_skins(rt_gltf_asset *asset,
     skin_count = (int32_t)skin_count64;
     node_count = (int32_t)node_count64;
 
-    node_parents = (int32_t *)malloc((size_t)node_count * sizeof(*node_parents));
-    skins = (gltf_skin_t *)calloc((size_t)skin_count, sizeof(*skins));
-    asset->skeletons = (void **)calloc((size_t)skin_count, sizeof(void *));
-    asset->skeleton_capacity = asset->skeletons ? skin_count : 0;
-    if (!node_parents || !skins || !asset->skeletons) {
-        free(node_parents);
-        gltf_free_skins(skins, skin_count);
-        free(asset->skeletons);
-        asset->skeletons = NULL;
-        asset->skeleton_capacity = 0;
+    if (!gltf_parse_skins_alloc_state(
+            asset, nodes_arr, skin_count, node_count, &node_parents, &skins))
         return;
-    }
-    for (int32_t i = 0; i < node_count; i++)
-        node_parents[i] = -1;
-    for (int32_t ni = 0; ni < node_count; ni++) {
-        void *node_json = rt_seq_get(nodes_arr, ni);
-        void *children = jarr(node_json, "children");
-        for (int64_t ci = 0; ci < jarr_len(children); ci++) {
-            int32_t child = gltf_i32_from_i64_or(jvalue_int(rt_seq_get(children, ci), -1), -1);
-            if (child >= 0 && child < node_count)
-                node_parents[child] = ni;
-        }
-    }
 
     for (int32_t si = 0; si < skin_count; si++) {
         void *skin_json = rt_seq_get(skins_arr, si);
-        void *joints = jarr(skin_json, "joints");
-        int64_t joint_count64 = jarr_len(joints);
-        int32_t joint_count;
-        if (joint_count64 <= 0)
-            continue;
-        if (joint_count64 > INT32_MAX) {
-            if (hard_error)
-                *hard_error = 1;
-            for (int32_t i = 0; i < asset->skeleton_count; i++)
-                gltf_release_ref(&asset->skeletons[i]);
-            asset->skeleton_count = 0;
-            free(asset->skeletons);
-            asset->skeletons = NULL;
-            asset->skeleton_capacity = 0;
-            free(node_parents);
-            gltf_free_skins(skins, skin_count);
+        int skin_result = gltf_parse_skin_entry(asset,
+                                                root,
+                                                nodes_arr,
+                                                skin_json,
+                                                buffers,
+                                                buf_count,
+                                                node_parents,
+                                                node_count,
+                                                &skins[si]);
+        if (skin_result < 0) {
+            gltf_parse_skins_fail(asset, skins, skin_count, node_parents, hard_error);
             return;
         }
-        joint_count = (int32_t)joint_count64;
-        if (joint_count > VGFX3D_MAX_BONES) {
-            if (hard_error)
-                *hard_error = 1;
-            for (int32_t i = 0; i < asset->skeleton_count; i++)
-                gltf_release_ref(&asset->skeletons[i]);
-            asset->skeleton_count = 0;
-            free(asset->skeletons);
-            asset->skeletons = NULL;
-            asset->skeleton_capacity = 0;
-            free(node_parents);
-            gltf_free_skins(skins, skin_count);
-            return;
-        }
-        skins[si].joint_nodes = (int32_t *)calloc((size_t)joint_count, sizeof(int32_t));
-        skins[si].joint_to_bone = (int32_t *)malloc((size_t)joint_count * sizeof(int32_t));
-        skins[si].joint_count = joint_count;
-        skins[si].skeleton = rt_skeleton3d_new();
-        if (!skins[si].joint_nodes || !skins[si].joint_to_bone || !skins[si].skeleton) {
-            if (skins[si].skeleton)
-                gltf_release_ref(&skins[si].skeleton);
-            free(skins[si].joint_nodes);
-            free(skins[si].joint_to_bone);
-            skins[si].joint_nodes = NULL;
-            skins[si].joint_to_bone = NULL;
-            skins[si].joint_count = 0;
-            continue;
-        }
-        for (int32_t ji = 0; ji < joint_count; ji++) {
-            int32_t joint_node =
-                gltf_i32_from_i64_or(jvalue_int(rt_seq_get(joints, ji), -1), -1);
-            if (joint_node < 0 || joint_node >= node_count) {
-                if (hard_error)
-                    *hard_error = 1;
-                gltf_release_skin_skeletons(skins, skin_count);
-                asset->skeleton_count = 0;
-                free(asset->skeletons);
-                asset->skeletons = NULL;
-                asset->skeleton_capacity = 0;
-                free(node_parents);
-                gltf_free_skins(skins, skin_count);
-                return;
-            }
-            for (int32_t prev = 0; prev < ji; prev++) {
-                if (skins[si].joint_nodes[prev] == joint_node) {
-                    if (hard_error)
-                        *hard_error = 1;
-                    gltf_release_skin_skeletons(skins, skin_count);
-                    asset->skeleton_count = 0;
-                    free(asset->skeletons);
-                    asset->skeletons = NULL;
-                    asset->skeleton_capacity = 0;
-                    free(node_parents);
-                    gltf_free_skins(skins, skin_count);
-                    return;
-                }
-            }
-            skins[si].joint_nodes[ji] = joint_node;
-            skins[si].joint_to_bone[ji] = -1;
-        }
-        for (int32_t ji = 0; ji < joint_count; ji++) {
-            int32_t parent_node =
-                skins[si].joint_nodes[ji] >= 0 && skins[si].joint_nodes[ji] < node_count
-                    ? node_parents[skins[si].joint_nodes[ji]]
-                    : -1;
-            if (gltf_skin_find_joint(&skins[si], parent_node) < 0)
-                gltf_add_skin_joint_recursive(&skins[si], nodes_arr, ji, -1);
-        }
-        for (int32_t ji = 0; ji < joint_count; ji++) {
-            if (skins[si].joint_to_bone[ji] < 0)
-                gltf_add_skin_joint_recursive(&skins[si], nodes_arr, ji, -1);
-        }
-        rt_skeleton3d_compute_inverse_bind(skins[si].skeleton);
-        {
-            int64_t ibm_acc = jint(skin_json, "inverseBindMatrices", -1);
-            gltf_accessor_view_t ibm_view;
-            if (gltf_get_accessor_view(root, ibm_acc, buffers, buf_count, &ibm_view) &&
-                gltf_inverse_bind_accessor_valid(&ibm_view, joint_count)) {
-                rt_skeleton3d *skel = (rt_skeleton3d *)skins[si].skeleton;
-                int32_t bone_count = skeleton3d_safe_bone_count(skel);
-                for (int32_t ji = 0; ji < joint_count; ji++) {
-                    int32_t bone = skins[si].joint_to_bone[ji];
-                    float col_major[16];
-                    if (bone < 0 || bone >= bone_count)
-                        continue;
-                    gltf_accessor_read_f32(&ibm_view, ji, col_major, 16);
-                    for (int row = 0; row < 4; row++)
-                        for (int col = 0; col < 4; col++)
-                            skel->bones[bone].inverse_bind[row * 4 + col] =
-                                col_major[col * 4 + row];
-                }
-            }
-        }
-        asset->skeletons[asset->skeleton_count++] = skins[si].skeleton;
     }
     free(node_parents);
     if (out_skins)
@@ -8058,6 +8305,235 @@ static void gltf_sample_curve(const gltf_anim_curve_t *curve,
     }
 }
 
+static int32_t gltf_skin_anim_path_index(const char *path) {
+    if (!path)
+        return -1;
+    if (strcmp(path, "translation") == 0)
+        return 0;
+    if (strcmp(path, "rotation") == 0)
+        return 1;
+    if (strcmp(path, "scale") == 0)
+        return 2;
+    return -1;
+}
+
+static void gltf_skin_anim_resolve_curve(void *root,
+                                         void *nodes_arr,
+                                         void *samplers,
+                                         void *channels,
+                                         int32_t channel_index,
+                                         gltf_buffer_t *buffers,
+                                         int buf_count,
+                                         const gltf_skin_t *skin,
+                                         gltf_anim_curve_t *curves,
+                                         double *duration_io) {
+    void *channel = rt_seq_get(channels, channel_index);
+    void *target = jget(channel, "target");
+    const char *path = jstr(target, "path");
+    int64_t sampler_idx = jint(channel, "sampler", -1);
+    int64_t node_idx = jint(target, "node", -1);
+    void *sampler;
+    int32_t interpolation_mode;
+    int32_t bone_idx;
+    if (sampler_idx < 0 || sampler_idx >= jarr_len(samplers) || node_idx < 0 ||
+        node_idx > INT32_MAX || node_idx >= jarr_len(nodes_arr))
+        return;
+    bone_idx = gltf_skin_bone_for_node(skin, (int32_t)node_idx);
+    if (bone_idx < 0)
+        return;
+    sampler = rt_seq_get(samplers, sampler_idx);
+    curves[channel_index].path = gltf_skin_anim_path_index(path);
+    if (curves[channel_index].path < 0)
+        return;
+    if (gltf_anim_curve_already_targets(
+            curves, channel_index, bone_idx, curves[channel_index].path))
+        return;
+    curves[channel_index].interpolation = jstr(sampler, "interpolation");
+    interpolation_mode = gltf_animation_interpolation_mode(curves[channel_index].interpolation);
+    if (interpolation_mode == GLTF_ANIM_INTERP_INVALID)
+        return;
+    if (!gltf_get_accessor_view(root,
+                                jint(sampler, "input", -1),
+                                buffers,
+                                buf_count,
+                                &curves[channel_index].input) ||
+        !gltf_get_accessor_view(root,
+                                jint(sampler, "output", -1),
+                                buffers,
+                                buf_count,
+                                &curves[channel_index].output))
+        return;
+    if (curves[channel_index].input.count > GLTF_SKIN_ANIM_KEY_COUNT_MAX ||
+        !gltf_animation_input_accessor_valid(&curves[channel_index].input, interpolation_mode))
+        return;
+    if (!gltf_animation_trs_output_accessor_valid(
+            &curves[channel_index].input,
+            &curves[channel_index].output,
+            curves[channel_index].path == 1 ? 4 : 3,
+            interpolation_mode == GLTF_ANIM_INTERP_CUBICSPLINE))
+        return;
+    curves[channel_index].valid = 1;
+    curves[channel_index].node_idx = (int32_t)node_idx;
+    curves[channel_index].bone_idx = bone_idx;
+    for (int32_t ti = 0; ti < curves[channel_index].input.count; ti++) {
+        double t = gltf_curve_time(&curves[channel_index].input, ti);
+        if (t > *duration_io)
+            *duration_io = t;
+    }
+}
+
+static gltf_anim_curve_t *gltf_skin_anim_build_curves(void *root,
+                                                     void *nodes_arr,
+                                                     void *samplers,
+                                                     void *channels,
+                                                     int32_t channel_count,
+                                                     gltf_buffer_t *buffers,
+                                                     int buf_count,
+                                                     const gltf_skin_t *skin,
+                                                     double *duration_io) {
+    gltf_anim_curve_t *curves = (gltf_anim_curve_t *)calloc((size_t)channel_count, sizeof(*curves));
+    if (!curves)
+        return NULL;
+    for (int32_t ci = 0; ci < channel_count; ci++)
+        gltf_skin_anim_resolve_curve(root,
+                                     nodes_arr,
+                                     samplers,
+                                     channels,
+                                     ci,
+                                     buffers,
+                                     buf_count,
+                                     skin,
+                                     curves,
+                                     duration_io);
+    return curves;
+}
+
+static int gltf_skin_anim_collect_bone_curves(const gltf_anim_curve_t *curves,
+                                              int32_t channel_count,
+                                              int32_t bone,
+                                              double **out_times,
+                                              int32_t *out_time_count,
+                                              int32_t *out_node_idx,
+                                              const gltf_anim_curve_t **out_curve_t,
+                                              const gltf_anim_curve_t **out_curve_r,
+                                              const gltf_anim_curve_t **out_curve_s) {
+    double *times = NULL;
+    int32_t time_count = 0;
+    int32_t time_capacity = 0;
+    int32_t node_idx = -1;
+    const gltf_anim_curve_t *curve_t = NULL;
+    const gltf_anim_curve_t *curve_r = NULL;
+    const gltf_anim_curve_t *curve_s = NULL;
+    for (int32_t ci = 0; ci < channel_count; ci++) {
+        if (!curves[ci].valid || curves[ci].bone_idx != bone)
+            continue;
+        node_idx = curves[ci].node_idx;
+        if (curves[ci].path == 0)
+            curve_t = &curves[ci];
+        else if (curves[ci].path == 1)
+            curve_r = &curves[ci];
+        else if (curves[ci].path == 2)
+            curve_s = &curves[ci];
+        if (!gltf_anim_insert_curve_times(&times, &time_count, &time_capacity, &curves[ci])) {
+            free(times);
+            return 0;
+        }
+    }
+    if (time_count <= 0 || node_idx < 0) {
+        free(times);
+        return 0;
+    }
+    *out_times = times;
+    *out_time_count = time_count;
+    *out_node_idx = node_idx;
+    *out_curve_t = curve_t;
+    *out_curve_r = curve_r;
+    *out_curve_s = curve_s;
+    return 1;
+}
+
+static int gltf_skin_anim_emit_bone_samples(void *anim,
+                                            void *nodes_arr,
+                                            int32_t bone,
+                                            int32_t node_idx,
+                                            const gltf_anim_curve_t *curve_t,
+                                            const gltf_anim_curve_t *curve_r,
+                                            const gltf_anim_curve_t *curve_s,
+                                            const double *times,
+                                            int32_t time_count) {
+    double local[16];
+    double pos_d[3];
+    double rot_d[4];
+    double scl_d[3];
+    int emitted = 0;
+    if (!gltf_node_local_matrix(nodes_arr, node_idx, local))
+        return 0;
+    gltf_matrix_to_trs(local, pos_d, rot_d, scl_d);
+    for (int32_t ti = 0; ti < time_count; ti++) {
+        float pos[3] = {(float)pos_d[0], (float)pos_d[1], (float)pos_d[2]};
+        float rot[4] = {(float)rot_d[0], (float)rot_d[1], (float)rot_d[2], (float)rot_d[3]};
+        float scl[3] = {(float)scl_d[0], (float)scl_d[1], (float)scl_d[2]};
+        void *pos_obj;
+        void *rot_obj;
+        void *scl_obj;
+        gltf_sample_curve(curve_t, times[ti], pos, 3);
+        gltf_sample_curve(curve_r, times[ti], rot, 4);
+        gltf_sample_curve(curve_s, times[ti], scl, 3);
+        pos_obj = rt_vec3_new(pos[0], pos[1], pos[2]);
+        rot_obj = rt_quat_new(rot[0], rot[1], rot[2], rot[3]);
+        scl_obj = rt_vec3_new(scl[0], scl[1], scl[2]);
+        if (pos_obj && rot_obj && scl_obj) {
+            rt_animation3d_add_keyframe(anim, bone, times[ti], pos_obj, rot_obj, scl_obj);
+            emitted = 1;
+        }
+        gltf_release_ref(&pos_obj);
+        gltf_release_ref(&rot_obj);
+        gltf_release_ref(&scl_obj);
+    }
+    return emitted;
+}
+
+static int gltf_skin_anim_emit_bone_track(void *anim,
+                                          void *nodes_arr,
+                                          const gltf_anim_curve_t *curves,
+                                          int32_t channel_count,
+                                          int32_t bone) {
+    double *times = NULL;
+    int32_t time_count = 0;
+    int32_t node_idx = -1;
+    const gltf_anim_curve_t *curve_t = NULL;
+    const gltf_anim_curve_t *curve_r = NULL;
+    const gltf_anim_curve_t *curve_s = NULL;
+    int emitted;
+    if (!gltf_skin_anim_collect_bone_curves(curves,
+                                            channel_count,
+                                            bone,
+                                            &times,
+                                            &time_count,
+                                            &node_idx,
+                                            &curve_t,
+                                            &curve_r,
+                                            &curve_s))
+        return 0;
+    emitted = gltf_skin_anim_emit_bone_samples(
+        anim, nodes_arr, bone, node_idx, curve_t, curve_r, curve_s, times, time_count);
+    free(times);
+    return emitted;
+}
+
+static int gltf_skin_anim_emit_clip_bones(void *anim,
+                                          void *nodes_arr,
+                                          const gltf_anim_curve_t *curves,
+                                          int32_t channel_count,
+                                          int32_t bone_limit) {
+    int emitted_any = 0;
+    for (int32_t bone = 0; bone < bone_limit; bone++) {
+        if (gltf_skin_anim_emit_bone_track(anim, nodes_arr, curves, channel_count, bone))
+            emitted_any = 1;
+    }
+    return emitted_any;
+}
+
 /// @brief Parse the glTF "animations" array into engine `Animation3D` objects.
 /// @details glTF animation data is channel-oriented: each channel pairs a sampler
 ///          (keyframe data) with a target (node + property path: translation /
@@ -8145,64 +8621,17 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                 skeleton3d_safe_bone_count(skin_skel) <= 0)
                 continue;
             bone_limit = skeleton3d_safe_bone_count(skin_skel);
-            curves = (gltf_anim_curve_t *)calloc((size_t)channel_count, sizeof(*curves));
+            curves = gltf_skin_anim_build_curves(root,
+                                                 nodes_arr,
+                                                 samplers,
+                                                 channels,
+                                                 channel_count,
+                                                 buffers,
+                                                 buf_count,
+                                                 &skins[si],
+                                                 &duration);
             if (!curves)
                 continue;
-            for (int32_t ci = 0; ci < channel_count; ci++) {
-                void *channel = rt_seq_get(channels, ci);
-                void *target = jget(channel, "target");
-                const char *path = jstr(target, "path");
-                int64_t sampler_idx = jint(channel, "sampler", -1);
-                int64_t node_idx = jint(target, "node", -1);
-                void *sampler;
-                int32_t interpolation_mode;
-                int32_t bone_idx;
-                if (sampler_idx < 0 || sampler_idx >= jarr_len(samplers) || node_idx < 0 ||
-                    node_idx > INT32_MAX || node_idx >= jarr_len(nodes_arr))
-                    continue;
-                bone_idx = gltf_skin_bone_for_node(&skins[si], (int32_t)node_idx);
-                if (bone_idx < 0)
-                    continue;
-                sampler = rt_seq_get(samplers, sampler_idx);
-                if (!path)
-                    continue;
-                if (strcmp(path, "translation") == 0)
-                    curves[ci].path = 0;
-                else if (strcmp(path, "rotation") == 0)
-                    curves[ci].path = 1;
-                else if (strcmp(path, "scale") == 0)
-                    curves[ci].path = 2;
-                else
-                    continue;
-                if (gltf_anim_curve_already_targets(curves, ci, bone_idx, curves[ci].path))
-                    continue;
-                curves[ci].interpolation = jstr(sampler, "interpolation");
-                interpolation_mode = gltf_animation_interpolation_mode(curves[ci].interpolation);
-                if (interpolation_mode == GLTF_ANIM_INTERP_INVALID)
-                    continue;
-                if (!gltf_get_accessor_view(
-                        root, jint(sampler, "input", -1), buffers, buf_count, &curves[ci].input) ||
-                    !gltf_get_accessor_view(
-                        root, jint(sampler, "output", -1), buffers, buf_count, &curves[ci].output))
-                    continue;
-                if (curves[ci].input.count > GLTF_SKIN_ANIM_KEY_COUNT_MAX ||
-                    !gltf_animation_input_accessor_valid(&curves[ci].input, interpolation_mode))
-                    continue;
-                if (!gltf_animation_trs_output_accessor_valid(
-                        &curves[ci].input,
-                        &curves[ci].output,
-                        curves[ci].path == 1 ? 4 : 3,
-                        interpolation_mode == GLTF_ANIM_INTERP_CUBICSPLINE))
-                    continue;
-                curves[ci].valid = 1;
-                curves[ci].node_idx = (int32_t)node_idx;
-                curves[ci].bone_idx = bone_idx;
-                for (int32_t ti = 0; ti < curves[ci].input.count; ti++) {
-                    double t = gltf_curve_time(&curves[ci].input, ti);
-                    if (t > duration)
-                        duration = t;
-                }
-            }
             if (skin_count > 1) {
                 snprintf(skin_name, sizeof(skin_name), "%s_skin_%d", name, (int)si);
                 clip_name = skin_name;
@@ -8212,69 +8641,8 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
                 free(curves);
                 continue;
             }
-            for (int32_t bone = 0; bone < bone_limit; bone++) {
-                double *times = NULL;
-                int32_t time_count = 0;
-                int32_t time_capacity = 0;
-                int32_t node_idx = -1;
-                const gltf_anim_curve_t *curve_t = NULL;
-                const gltf_anim_curve_t *curve_r = NULL;
-                const gltf_anim_curve_t *curve_s = NULL;
-                double local[16];
-                double pos_d[3];
-                double rot_d[4];
-                double scl_d[3];
-                int time_failed = 0;
-                for (int32_t ci = 0; ci < channel_count; ci++) {
-                    if (!curves[ci].valid || curves[ci].bone_idx != bone)
-                        continue;
-                    node_idx = curves[ci].node_idx;
-                    if (curves[ci].path == 0)
-                        curve_t = &curves[ci];
-                    else if (curves[ci].path == 1)
-                        curve_r = &curves[ci];
-                    else if (curves[ci].path == 2)
-                        curve_s = &curves[ci];
-                    if (!gltf_anim_insert_curve_times(
-                            &times, &time_count, &time_capacity, &curves[ci])) {
-                        time_failed = 1;
-                        break;
-                    }
-                }
-                if (time_failed || time_count <= 0 || node_idx < 0) {
-                    free(times);
-                    continue;
-                }
-                if (!gltf_node_local_matrix(nodes_arr, node_idx, local)) {
-                    free(times);
-                    continue;
-                }
-                gltf_matrix_to_trs(local, pos_d, rot_d, scl_d);
-                for (int32_t ti = 0; ti < time_count; ti++) {
-                    float pos[3] = {(float)pos_d[0], (float)pos_d[1], (float)pos_d[2]};
-                    float rot[4] = {
-                        (float)rot_d[0], (float)rot_d[1], (float)rot_d[2], (float)rot_d[3]};
-                    float scl[3] = {(float)scl_d[0], (float)scl_d[1], (float)scl_d[2]};
-                    void *pos_obj;
-                    void *rot_obj;
-                    void *scl_obj;
-                    gltf_sample_curve(curve_t, times[ti], pos, 3);
-                    gltf_sample_curve(curve_r, times[ti], rot, 4);
-                    gltf_sample_curve(curve_s, times[ti], scl, 3);
-                    pos_obj = rt_vec3_new(pos[0], pos[1], pos[2]);
-                    rot_obj = rt_quat_new(rot[0], rot[1], rot[2], rot[3]);
-                    scl_obj = rt_vec3_new(scl[0], scl[1], scl[2]);
-                    if (pos_obj && rot_obj && scl_obj) {
-                        rt_animation3d_add_keyframe(
-                            anim, bone, times[ti], pos_obj, rot_obj, scl_obj);
-                        emitted_any = 1;
-                    }
-                    gltf_release_ref(&pos_obj);
-                    gltf_release_ref(&rot_obj);
-                    gltf_release_ref(&scl_obj);
-                }
-                free(times);
-            }
+            emitted_any = gltf_skin_anim_emit_clip_bones(
+                anim, nodes_arr, curves, channel_count, bone_limit);
             free(curves);
             if (!emitted_any) {
                 gltf_release_ref(&anim);
@@ -8402,6 +8770,314 @@ static int32_t gltf_node_anim_width_for_path(int32_t path,
     return (int32_t)(total_components / divisor);
 }
 
+typedef struct {
+    int32_t path;
+    int32_t node_idx;
+    const char *interpolation;
+    int32_t interpolation_mode;
+    int cubic;
+    gltf_accessor_view_t input;
+    gltf_accessor_view_t output;
+    int32_t width;
+    int64_t value_count;
+} gltf_node_anim_channel_t;
+
+static int gltf_node_anim_resolve_channel(void *root,
+                                          void *nodes_arr,
+                                          void *samplers,
+                                          void *channel,
+                                          gltf_buffer_t *buffers,
+                                          int buf_count,
+                                          const gltf_skin_t *skins,
+                                          int32_t skin_count,
+                                          const int32_t *seen_nodes,
+                                          const int32_t *seen_paths,
+                                          int32_t seen_count,
+                                          gltf_node_anim_channel_t *out) {
+    void *target = jget(channel, "target");
+    const char *path_str = jstr(target, "path");
+    int32_t path = gltf_node_anim_path(path_str);
+    int64_t sampler_idx = jint(channel, "sampler", -1);
+    int64_t node_idx = jint(target, "node", -1);
+    void *sampler;
+    int32_t interpolation_mode;
+    int cubic;
+    gltf_accessor_view_t input;
+    gltf_accessor_view_t output;
+    int32_t width;
+    int32_t expected_weight_width = 0;
+    int64_t value_count;
+
+    memset(out, 0, sizeof(*out));
+    if (path < 0 || sampler_idx < 0 || sampler_idx >= jarr_len(samplers) || node_idx < 0 ||
+        node_idx > INT32_MAX || node_idx >= jarr_len(nodes_arr))
+        return 0;
+    if (path != RT_NODE_ANIM_PATH_WEIGHTS &&
+        gltf_node_is_skin_joint(skins, skin_count, (int32_t)node_idx))
+        return 0;
+    if (path == RT_NODE_ANIM_PATH_WEIGHTS) {
+        expected_weight_width = gltf_node_weights_target_count(root, (int32_t)node_idx);
+        if (expected_weight_width <= 0)
+            return 0;
+    }
+    if (gltf_node_anim_channel_seen(
+            seen_nodes, seen_paths, seen_count, (int32_t)node_idx, path))
+        return 0;
+    sampler = rt_seq_get(samplers, sampler_idx);
+    out->interpolation = jstr(sampler, "interpolation");
+    interpolation_mode = gltf_animation_interpolation_mode(out->interpolation);
+    if (interpolation_mode == GLTF_ANIM_INTERP_INVALID)
+        return 0;
+    cubic = interpolation_mode == GLTF_ANIM_INTERP_CUBICSPLINE;
+    if (!gltf_get_accessor_view(root, jint(sampler, "input", -1), buffers, buf_count, &input) ||
+        !gltf_get_accessor_view(root, jint(sampler, "output", -1), buffers, buf_count, &output))
+        return 0;
+    if (input.count <= 0 || input.count > GLTF_NODE_ANIM_KEY_COUNT_MAX ||
+        !gltf_animation_input_accessor_valid(&input, interpolation_mode))
+        return 0;
+    width = gltf_node_anim_width_for_path(path, &input, &output, interpolation_mode, cubic);
+    if (width <= 0)
+        return 0;
+    if (path == RT_NODE_ANIM_PATH_WEIGHTS && width != expected_weight_width)
+        return 0;
+    if (width > GLTF_NODE_ANIM_VALUE_WIDTH_MAX)
+        return 0;
+    value_count = (int64_t)input.count * (int64_t)width;
+    if (value_count <= 0 || value_count > INT32_MAX ||
+        value_count > GLTF_NODE_ANIM_VALUE_COUNT_MAX)
+        return 0;
+    if (cubic && value_count > INT32_MAX / 3)
+        return 0;
+    if ((size_t)input.count > SIZE_MAX / sizeof(double) ||
+        (size_t)value_count > SIZE_MAX / sizeof(float))
+        return 0;
+    out->path = path;
+    out->node_idx = (int32_t)node_idx;
+    out->interpolation_mode = interpolation_mode;
+    out->cubic = cubic;
+    out->input = input;
+    out->output = output;
+    out->width = width;
+    out->value_count = value_count;
+    return 1;
+}
+
+static void gltf_node_anim_free_samples(double *times,
+                                        float *values,
+                                        float *in_tangents,
+                                        float *out_tangents) {
+    free(times);
+    free(values);
+    free(in_tangents);
+    free(out_tangents);
+}
+
+static int gltf_node_anim_alloc_samples(const gltf_node_anim_channel_t *channel,
+                                        double **out_times,
+                                        float **out_values,
+                                        float **out_in_tangents,
+                                        float **out_out_tangents) {
+    double *times = NULL;
+    float *values = NULL;
+    float *in_tangents = NULL;
+    float *out_tangents = NULL;
+    *out_times = NULL;
+    *out_values = NULL;
+    *out_in_tangents = NULL;
+    *out_out_tangents = NULL;
+    times = (double *)malloc((size_t)channel->input.count * sizeof(double));
+    values = (float *)malloc((size_t)channel->value_count * sizeof(float));
+    if (channel->cubic) {
+        in_tangents = (float *)malloc((size_t)channel->value_count * sizeof(float));
+        out_tangents = (float *)malloc((size_t)channel->value_count * sizeof(float));
+    }
+    if (!times || !values || (channel->cubic && (!in_tangents || !out_tangents))) {
+        gltf_node_anim_free_samples(times, values, in_tangents, out_tangents);
+        return 0;
+    }
+    *out_times = times;
+    *out_values = values;
+    *out_in_tangents = in_tangents;
+    *out_out_tangents = out_tangents;
+    return 1;
+}
+
+static void gltf_node_anim_fill_weight_key(const gltf_node_anim_channel_t *channel,
+                                           int32_t key_index,
+                                           float *values,
+                                           float *in_tangents,
+                                           float *out_tangents) {
+    int32_t width = channel->width;
+    int32_t in_base = channel->cubic ? (key_index * 3) * width : key_index * width;
+    int32_t base = channel->cubic ? (key_index * 3 + 1) * width : key_index * width;
+    int32_t out_base = channel->cubic ? (key_index * 3 + 2) * width : key_index * width;
+    for (int32_t wi = 0; wi < width; wi++)
+        values[(size_t)key_index * (size_t)width + (size_t)wi] =
+            gltf_accessor_read_flat_f32(&channel->output, base + wi);
+    if (channel->cubic) {
+        for (int32_t wi = 0; wi < width; wi++) {
+            in_tangents[(size_t)key_index * (size_t)width + (size_t)wi] =
+                gltf_accessor_read_flat_f32(&channel->output, in_base + wi);
+            out_tangents[(size_t)key_index * (size_t)width + (size_t)wi] =
+                gltf_accessor_read_flat_f32(&channel->output, out_base + wi);
+        }
+    }
+}
+
+static void gltf_node_anim_fill_trs_key(const gltf_node_anim_channel_t *channel,
+                                        int32_t key_index,
+                                        int32_t source_key,
+                                        float *values,
+                                        float *in_tangents,
+                                        float *out_tangents) {
+    float tmp[4] = {
+        0.0f, 0.0f, 0.0f, channel->path == RT_NODE_ANIM_PATH_ROTATION ? 1.0f : 0.0f};
+    gltf_accessor_read_f32(&channel->output, source_key, tmp, channel->width);
+    if (channel->path == RT_NODE_ANIM_PATH_ROTATION)
+        gltf_normalize_sample_if_quat(tmp, 4);
+    memcpy(&values[(size_t)key_index * (size_t)channel->width],
+           tmp,
+           (size_t)channel->width * sizeof(float));
+    if (channel->cubic) {
+        float in_tmp[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        float out_tmp[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        gltf_accessor_read_f32(&channel->output, key_index * 3, in_tmp, channel->width);
+        gltf_accessor_read_f32(&channel->output, key_index * 3 + 2, out_tmp, channel->width);
+        memcpy(&in_tangents[(size_t)key_index * (size_t)channel->width],
+               in_tmp,
+               (size_t)channel->width * sizeof(float));
+        memcpy(&out_tangents[(size_t)key_index * (size_t)channel->width],
+               out_tmp,
+               (size_t)channel->width * sizeof(float));
+    }
+}
+
+static void gltf_node_anim_fill_samples(const gltf_node_anim_channel_t *channel,
+                                        double *times,
+                                        float *values,
+                                        float *in_tangents,
+                                        float *out_tangents,
+                                        double *duration_io) {
+    for (int32_t ki = 0; ki < channel->input.count; ki++) {
+        int32_t source_key = channel->cubic ? (ki <= (INT32_MAX - 1) / 3 ? ki * 3 + 1 : -1) : ki;
+        /* Initialize the time sample before any early-continue so a skipped
+         * cubic key never leaves an uninitialized slot, and coerce a non-finite
+         * curve time to 0 so it can't poison the clip duration or interpolation. */
+        double tval = gltf_curve_time(&channel->input, ki);
+        times[ki] = isfinite(tval) ? tval : 0.0;
+        if (source_key < 0)
+            continue;
+        if (times[ki] > *duration_io)
+            *duration_io = times[ki];
+        if (channel->path == RT_NODE_ANIM_PATH_WEIGHTS)
+            gltf_node_anim_fill_weight_key(channel, ki, values, in_tangents, out_tangents);
+        else
+            gltf_node_anim_fill_trs_key(
+                channel, ki, source_key, values, in_tangents, out_tangents);
+    }
+}
+
+static int gltf_node_anim_emit_channel(void *node_anim,
+                                       void *nodes_arr,
+                                       const gltf_node_anim_channel_t *channel,
+                                       double *times,
+                                       float *values,
+                                       float *in_tangents,
+                                       float *out_tangents,
+                                       int32_t *seen_nodes,
+                                       int32_t *seen_paths,
+                                       int32_t *seen_count,
+                                       int32_t channel_count) {
+    char fallback_name[64];
+    const char *target_name =
+        gltf_effective_node_name(nodes_arr, channel->node_idx, fallback_name, sizeof(fallback_name));
+    int64_t channel_index;
+    if (!target_name)
+        return 0;
+    if (channel->cubic) {
+        channel_index = rt_node_animation3d_add_cubic_channel(node_anim,
+                                                              rt_const_cstr(target_name),
+                                                              channel->path,
+                                                              channel->input.count,
+                                                              channel->width,
+                                                              times,
+                                                              values,
+                                                              in_tangents,
+                                                              out_tangents);
+    } else {
+        channel_index = rt_node_animation3d_add_channel(
+            node_anim,
+            rt_const_cstr(target_name),
+            channel->path,
+            channel->interpolation_mode == GLTF_ANIM_INTERP_STEP ? RT_NODE_ANIM_INTERP_STEP
+                                                                 : RT_NODE_ANIM_INTERP_LINEAR,
+            channel->input.count,
+            channel->width,
+            times,
+            values);
+    }
+    if (channel_index < 0)
+        return 0;
+    rt_node_animation3d_set_channel_target_node_index(node_anim, channel_index, channel->node_idx);
+    if (*seen_count < channel_count) {
+        seen_nodes[*seen_count] = channel->node_idx;
+        seen_paths[*seen_count] = channel->path;
+        (*seen_count)++;
+    }
+    return 1;
+}
+
+static int gltf_node_anim_process_channel(void *node_anim,
+                                          void *root,
+                                          void *nodes_arr,
+                                          void *samplers,
+                                          void *channel_json,
+                                          gltf_buffer_t *buffers,
+                                          int buf_count,
+                                          const gltf_skin_t *skins,
+                                          int32_t skin_count,
+                                          int32_t *seen_nodes,
+                                          int32_t *seen_paths,
+                                          int32_t *seen_count,
+                                          int32_t channel_count,
+                                          double *duration_io) {
+    gltf_node_anim_channel_t channel;
+    double *times = NULL;
+    float *values = NULL;
+    float *in_tangents = NULL;
+    float *out_tangents = NULL;
+    int emitted;
+    if (!gltf_node_anim_resolve_channel(root,
+                                        nodes_arr,
+                                        samplers,
+                                        channel_json,
+                                        buffers,
+                                        buf_count,
+                                        skins,
+                                        skin_count,
+                                        seen_nodes,
+                                        seen_paths,
+                                        *seen_count,
+                                        &channel))
+        return 0;
+    if (!gltf_node_anim_alloc_samples(&channel, &times, &values, &in_tangents, &out_tangents))
+        return 0;
+    gltf_node_anim_fill_samples(&channel, times, values, in_tangents, out_tangents, duration_io);
+    emitted = gltf_node_anim_emit_channel(node_anim,
+                                          nodes_arr,
+                                          &channel,
+                                          times,
+                                          values,
+                                          in_tangents,
+                                          out_tangents,
+                                          seen_nodes,
+                                          seen_paths,
+                                          seen_count,
+                                          channel_count);
+    gltf_node_anim_free_samples(times, values, in_tangents, out_tangents);
+    return emitted;
+}
+
 /// @brief Parse all glTF node animations and attach them to the asset.
 /// @details Iterates the `animations` array, builds one `rt_node_animation3d` per animation,
 ///          then for each channel resolves the sampler, maps the target node to a bone (skin
@@ -8466,169 +9142,21 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
             continue;
         }
         for (int32_t ci = 0; ci < channel_count; ci++) {
-            void *channel = rt_seq_get(channels, ci);
-            void *target = jget(channel, "target");
-            const char *path_str = jstr(target, "path");
-            int32_t path = gltf_node_anim_path(path_str);
-            int64_t sampler_idx = jint(channel, "sampler", -1);
-            int64_t node_idx = jint(target, "node", -1);
-            void *sampler;
-            const char *interpolation;
-            int32_t interpolation_mode;
-            int cubic;
-            gltf_accessor_view_t input;
-            gltf_accessor_view_t output;
-            int32_t width;
-            int32_t expected_weight_width = 0;
-            double *times = NULL;
-            float *values = NULL;
-            float *in_tangents = NULL;
-            float *out_tangents = NULL;
-            char fallback_name[64];
-            const char *target_name;
-            int64_t value_count;
-            if (path < 0 || sampler_idx < 0 || sampler_idx >= jarr_len(samplers) ||
-                node_idx < 0 || node_idx > INT32_MAX || node_idx >= jarr_len(nodes_arr))
-                continue;
-            if (path != RT_NODE_ANIM_PATH_WEIGHTS &&
-                gltf_node_is_skin_joint(skins, skin_count, (int32_t)node_idx))
-                continue;
-            if (path == RT_NODE_ANIM_PATH_WEIGHTS) {
-                expected_weight_width = gltf_node_weights_target_count(root, (int32_t)node_idx);
-                if (expected_weight_width <= 0)
-                    continue;
-            }
-            if (gltf_node_anim_channel_seen(
-                    seen_nodes, seen_paths, seen_count, (int32_t)node_idx, path))
-                continue;
-            sampler = rt_seq_get(samplers, sampler_idx);
-            interpolation = jstr(sampler, "interpolation");
-            interpolation_mode = gltf_animation_interpolation_mode(interpolation);
-            if (interpolation_mode == GLTF_ANIM_INTERP_INVALID)
-                continue;
-            cubic = interpolation_mode == GLTF_ANIM_INTERP_CUBICSPLINE;
-            if (!gltf_get_accessor_view(
-                    root, jint(sampler, "input", -1), buffers, buf_count, &input) ||
-                !gltf_get_accessor_view(
-                    root, jint(sampler, "output", -1), buffers, buf_count, &output))
-                continue;
-            if (input.count <= 0 || input.count > GLTF_NODE_ANIM_KEY_COUNT_MAX ||
-                !gltf_animation_input_accessor_valid(&input, interpolation_mode))
-                continue;
-            width = gltf_node_anim_width_for_path(path, &input, &output, interpolation_mode, cubic);
-            if (width <= 0)
-                continue;
-            if (path == RT_NODE_ANIM_PATH_WEIGHTS && width != expected_weight_width)
-                continue;
-            if (width > GLTF_NODE_ANIM_VALUE_WIDTH_MAX)
-                continue;
-            value_count = (int64_t)input.count * (int64_t)width;
-            if (value_count <= 0 || value_count > INT32_MAX ||
-                value_count > GLTF_NODE_ANIM_VALUE_COUNT_MAX)
-                continue;
-            if (cubic && value_count > INT32_MAX / 3)
-                continue;
-            if ((size_t)input.count > SIZE_MAX / sizeof(double) ||
-                (size_t)value_count > SIZE_MAX / sizeof(float))
-                continue;
-            times = (double *)malloc((size_t)input.count * sizeof(double));
-            values = (float *)malloc((size_t)value_count * sizeof(float));
-            if (cubic) {
-                in_tangents = (float *)malloc((size_t)value_count * sizeof(float));
-                out_tangents = (float *)malloc((size_t)value_count * sizeof(float));
-            }
-            if (!times || !values || (cubic && (!in_tangents || !out_tangents))) {
-                free(times);
-                free(values);
-                free(in_tangents);
-                free(out_tangents);
-                continue;
-            }
-            for (int32_t ki = 0; ki < input.count; ki++) {
-                int32_t source_key = cubic ? (ki <= (INT32_MAX - 1) / 3 ? ki * 3 + 1 : -1) : ki;
-                if (source_key < 0)
-                    continue;
-                times[ki] = gltf_curve_time(&input, ki);
-                if (times[ki] > duration)
-                    duration = times[ki];
-                if (path == RT_NODE_ANIM_PATH_WEIGHTS) {
-                    int32_t in_base = cubic ? (ki * 3) * width : ki * width;
-                    int32_t base = (cubic ? (ki * 3 + 1) * width : ki * width);
-                    int32_t out_base = cubic ? (ki * 3 + 2) * width : ki * width;
-                    for (int32_t wi = 0; wi < width; wi++)
-                        values[(size_t)ki * (size_t)width + (size_t)wi] =
-                            gltf_accessor_read_flat_f32(&output, base + wi);
-                    if (cubic) {
-                        for (int32_t wi = 0; wi < width; wi++) {
-                            in_tangents[(size_t)ki * (size_t)width + (size_t)wi] =
-                                gltf_accessor_read_flat_f32(&output, in_base + wi);
-                            out_tangents[(size_t)ki * (size_t)width + (size_t)wi] =
-                                gltf_accessor_read_flat_f32(&output, out_base + wi);
-                        }
-                    }
-                } else {
-                    float tmp[4] = {
-                        0.0f, 0.0f, 0.0f, path == RT_NODE_ANIM_PATH_ROTATION ? 1.0f : 0.0f};
-                    gltf_accessor_read_f32(&output, source_key, tmp, width);
-                    if (path == RT_NODE_ANIM_PATH_ROTATION)
-                        gltf_normalize_sample_if_quat(tmp, 4);
-                    memcpy(&values[(size_t)ki * (size_t)width], tmp, (size_t)width * sizeof(float));
-                    if (cubic) {
-                        float in_tmp[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-                        float out_tmp[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-                        gltf_accessor_read_f32(&output, ki * 3, in_tmp, width);
-                        gltf_accessor_read_f32(&output, ki * 3 + 2, out_tmp, width);
-                        memcpy(&in_tangents[(size_t)ki * (size_t)width],
-                               in_tmp,
-                               (size_t)width * sizeof(float));
-                        memcpy(&out_tangents[(size_t)ki * (size_t)width],
-                               out_tmp,
-                               (size_t)width * sizeof(float));
-                    }
-                }
-            }
-            target_name = gltf_effective_node_name(
-                nodes_arr, (int32_t)node_idx, fallback_name, sizeof(fallback_name));
-            if (target_name) {
-                int64_t channel_index;
-                if (cubic) {
-                    channel_index =
-                        rt_node_animation3d_add_cubic_channel(node_anim,
-                                                              rt_const_cstr(target_name),
-                                                              path,
-                                                              input.count,
-                                                              width,
-                                                              times,
-                                                              values,
-                                                              in_tangents,
-                                                              out_tangents);
-                } else {
-                    channel_index = rt_node_animation3d_add_channel(
-                        node_anim,
-                        rt_const_cstr(target_name),
-                        path,
-                        interpolation_mode == GLTF_ANIM_INTERP_STEP ? RT_NODE_ANIM_INTERP_STEP
-                                                                    : RT_NODE_ANIM_INTERP_LINEAR,
-                        input.count,
-                        width,
-                        times,
-                        values);
-                }
-                if (channel_index >= 0) {
-                    rt_node_animation3d_set_channel_target_node_index(
-                        node_anim, channel_index, node_idx);
-                    if (seen_count < channel_count) {
-                        seen_nodes[seen_count] = (int32_t)node_idx;
-                        seen_paths[seen_count] = path;
-                        seen_count++;
-                    }
-                    emitted_any = 1;
-                }
-            }
-            free(times);
-            free(values);
-            free(in_tangents);
-            free(out_tangents);
+            if (gltf_node_anim_process_channel(node_anim,
+                                               root,
+                                               nodes_arr,
+                                               samplers,
+                                               rt_seq_get(channels, ci),
+                                               buffers,
+                                               buf_count,
+                                               skins,
+                                               skin_count,
+                                               seen_nodes,
+                                               seen_paths,
+                                               &seen_count,
+                                               channel_count,
+                                               &duration))
+                emitted_any = 1;
         }
         free(seen_nodes);
         free(seen_paths);
@@ -8649,6 +9177,282 @@ static void gltf_parse_node_animations(rt_gltf_asset *asset,
 //===----------------------------------------------------------------------===//
 // Loader phase helpers (extracted from rt_gltf_load_impl)
 //===----------------------------------------------------------------------===//
+
+typedef struct {
+    const char *mime_type;
+    uint8_t *owned_data;
+    const uint8_t *image_data;
+    size_t image_len;
+    char parsed_mime[64];
+} gltf_image_load_state_t;
+
+static void gltf_mark_required_image_sources(void *textures_arr,
+                                             int texture_count,
+                                             int image_count,
+                                             uint8_t *image_required) {
+    if (!textures_arr || texture_count <= 0 || image_count <= 0 || !image_required)
+        return;
+    for (int i = 0; i < texture_count; i++) {
+        void *texture_json = rt_seq_get(textures_arr, (int64_t)i);
+        int64_t source_idx = gltf_texture_source_index(texture_json);
+        if (source_idx >= 0 && source_idx < image_count)
+            image_required[source_idx] = 1u;
+    }
+}
+
+static int gltf_prepare_image_arrays(void *images_arr,
+                                     void *textures_arr,
+                                     int *out_image_count,
+                                     int *out_texture_count,
+                                     void ***out_images,
+                                     uint8_t **out_image_required) {
+    int image_count = 0;
+    int texture_count = 0;
+    void **images = NULL;
+    uint8_t *image_required = NULL;
+    *out_image_count = 0;
+    *out_texture_count = 0;
+    *out_images = NULL;
+    *out_image_required = NULL;
+    if (!gltf_jarr_len_i32(images_arr, &image_count) ||
+        !gltf_jarr_len_i32(textures_arr, &texture_count))
+        return 0;
+    if (image_count > 0) {
+        images = (void **)calloc((size_t)image_count, sizeof(void *));
+        if (!images)
+            return 0;
+    }
+    if (image_count > 0 && texture_count > 0) {
+        image_required = (uint8_t *)calloc((size_t)image_count, sizeof(uint8_t));
+        if (!image_required) {
+            free(images);
+            return 0;
+        }
+        gltf_mark_required_image_sources(textures_arr, texture_count, image_count, image_required);
+    }
+    *out_image_count = image_count;
+    *out_texture_count = texture_count;
+    *out_images = images;
+    *out_image_required = image_required;
+    return 1;
+}
+
+static int gltf_load_inline_image_data(void **image_slot,
+                                       rt_gltf_preload_bundle *preload_bundle,
+                                       int image_index,
+                                       const char *uri,
+                                       int required_image,
+                                       gltf_image_load_state_t *state) {
+    char preload_key[96];
+    gltf_data_uri_copy_mime(uri, state->parsed_mime, sizeof(state->parsed_mime));
+    gltf_preload_image_key(image_index,
+                           state->mime_type ? state->mime_type : state->parsed_mime,
+                           preload_key,
+                           sizeof(preload_key));
+    *image_slot = gltf_preload_take_decoded_image(preload_bundle, preload_key);
+    if (*image_slot)
+        return 1;
+    state->owned_data = gltf_preload_bundle_take_dependency(
+        preload_bundle, preload_key, GLTF_PRELOAD_DEP_IMAGE, &state->image_len);
+    if (state->owned_data) {
+        state->image_data = state->owned_data;
+        if (!state->mime_type && state->parsed_mime[0] != '\0')
+            state->mime_type = state->parsed_mime;
+        return 1;
+    }
+    if (gltf_parse_data_uri(
+            uri, state->parsed_mime, sizeof(state->parsed_mime), &state->owned_data, &state->image_len)) {
+        state->image_data = state->owned_data;
+        if (!state->mime_type && state->parsed_mime[0] != '\0')
+            state->mime_type = state->parsed_mime;
+        return 1;
+    }
+    return !required_image ||
+           !gltf_preload_image_is_supported_format(
+               state->mime_type ? state->mime_type : state->parsed_mime);
+}
+
+static int gltf_load_external_image_ref(void **image_slot,
+                                        const char *filepath,
+                                        int load_assets,
+                                        rt_gltf_preload_bundle *preload_bundle,
+                                        const char *uri,
+                                        int required_image) {
+    char image_path[1024];
+    gltf_resolve_relative_path(filepath, uri, image_path, sizeof(image_path));
+    if (image_path[0] != '\0')
+        *image_slot = gltf_load_dependency_image(image_path, load_assets, preload_bundle);
+    if (!*image_slot && required_image &&
+        gltf_preload_image_is_supported_format(image_path[0] != '\0' ? image_path : uri)) {
+        if (load_assets)
+            gltf_trap_asset_dependency(filepath, image_path, "image");
+        return 0;
+    }
+    return 1;
+}
+
+static int gltf_load_buffer_view_image_data(void **image_slot,
+                                            void *root,
+                                            rt_gltf_preload_bundle *preload_bundle,
+                                            gltf_buffer_t *buffers,
+                                            int buf_count,
+                                            int image_index,
+                                            void *image_json,
+                                            int required_image,
+                                            gltf_image_load_state_t *state) {
+    int64_t view_idx = jint(image_json, "bufferView", -1);
+    char preload_key[96];
+    gltf_preload_image_key(image_index, state->mime_type, preload_key, sizeof(preload_key));
+    *image_slot = gltf_preload_take_decoded_image(preload_bundle, preload_key);
+    if (!*image_slot) {
+        state->owned_data = gltf_preload_bundle_take_dependency(
+            preload_bundle, preload_key, GLTF_PRELOAD_DEP_IMAGE, &state->image_len);
+        if (state->owned_data)
+            state->image_data = state->owned_data;
+        else
+            state->image_data =
+                gltf_get_buffer_view_data(root, view_idx, buffers, buf_count, &state->image_len);
+    }
+    return *image_slot || (state->image_data && state->image_len > 0) || !required_image ||
+           !gltf_preload_image_is_supported_format(state->mime_type);
+}
+
+static int gltf_decode_loaded_image(void **image_slot,
+                                    const gltf_image_load_state_t *state,
+                                    int required_image) {
+    char image_name[64];
+    const char *image_type;
+    if (*image_slot || !state->image_data || state->image_len == 0)
+        return 1;
+    gltf_build_embedded_name(state->mime_type, ".bin", image_name, sizeof(image_name));
+    image_type = state->mime_type ? state->mime_type : image_name;
+    if (gltf_image_is_ktx2(image_type)) {
+        *image_slot = gltf_decode_ktx2_payload(state->image_data, state->image_len);
+        return *image_slot || !required_image;
+    }
+    if (gltf_preload_image_is_supported_format(image_type)) {
+        uint8_t *rgba_blob = NULL;
+        size_t rgba_len = 0;
+        if (gltf_decode_image_payload_to_rgba_blob(
+                image_type, state->image_data, state->image_len, &rgba_blob, &rgba_len)) {
+            *image_slot = gltf_pixels_from_rgba_blob(rgba_blob, rgba_len);
+            free(rgba_blob);
+            return *image_slot || !required_image;
+        }
+        return !required_image;
+    }
+    *image_slot = rt_asset_decode_typed(image_name, state->image_data, state->image_len);
+    return 1;
+}
+
+static int gltf_load_image_at_index(void *root,
+                                    const char *filepath,
+                                    int load_assets,
+                                    rt_gltf_preload_bundle *preload_bundle,
+                                    gltf_buffer_t *buffers,
+                                    int buf_count,
+                                    void **images,
+                                    void *images_arr,
+                                    const uint8_t *image_required,
+                                    int image_index) {
+    void *image_json = rt_seq_get(images_arr, (int64_t)image_index);
+    const char *uri = jstr(image_json, "uri");
+    gltf_image_load_state_t state;
+    int required_image = image_required ? image_required[image_index] != 0 : 0;
+    int ok;
+    memset(&state, 0, sizeof(state));
+    state.mime_type = jstr(image_json, "mimeType");
+    if (uri && strncmp(uri, "data:", 5) == 0) {
+        ok = gltf_load_inline_image_data(
+            &images[image_index], preload_bundle, image_index, uri, required_image, &state);
+    } else if (uri) {
+        ok = gltf_load_external_image_ref(
+            &images[image_index], filepath, load_assets, preload_bundle, uri, required_image);
+    } else {
+        ok = gltf_load_buffer_view_image_data(&images[image_index],
+                                              root,
+                                              preload_bundle,
+                                              buffers,
+                                              buf_count,
+                                              image_index,
+                                              image_json,
+                                              required_image,
+                                              &state);
+    }
+    if (ok)
+        ok = gltf_decode_loaded_image(&images[image_index], &state, required_image);
+    free(state.owned_data);
+    return ok;
+}
+
+static int gltf_alloc_texture_tables(int texture_count,
+                                     void ***out_texture_images,
+                                     uint8_t **out_texture_supported,
+                                     gltf_sampler_info_t **out_texture_samplers) {
+    void **texture_images = NULL;
+    uint8_t *texture_supported = NULL;
+    gltf_sampler_info_t *texture_samplers = NULL;
+    *out_texture_images = NULL;
+    *out_texture_supported = NULL;
+    *out_texture_samplers = NULL;
+    if (texture_count <= 0)
+        return 1;
+    texture_images = (void **)calloc((size_t)texture_count, sizeof(void *));
+    texture_supported = (uint8_t *)calloc((size_t)texture_count, sizeof(uint8_t));
+    texture_samplers =
+        (gltf_sampler_info_t *)calloc((size_t)texture_count, sizeof(*texture_samplers));
+    if (!texture_images || !texture_supported || !texture_samplers) {
+        free(texture_images);
+        free(texture_supported);
+        free(texture_samplers);
+        return 0;
+    }
+    *out_texture_images = texture_images;
+    *out_texture_supported = texture_supported;
+    *out_texture_samplers = texture_samplers;
+    return 1;
+}
+
+static int gltf_image_json_supported_for_texture(void *image_json) {
+    const char *image_uri = jstr(image_json, "uri");
+    const char *image_mime = jstr(image_json, "mimeType");
+    char parsed_mime[64];
+    const char *image_type;
+    parsed_mime[0] = '\0';
+    if (image_uri && strncmp(image_uri, "data:", 5) == 0)
+        gltf_data_uri_copy_mime(image_uri, parsed_mime, sizeof(parsed_mime));
+    image_type = image_mime ? image_mime : (parsed_mime[0] != '\0' ? parsed_mime : image_uri);
+    return gltf_preload_image_is_supported_format(image_type) || gltf_image_is_ktx2(image_type);
+}
+
+static void gltf_populate_texture_tables(void *root,
+                                         void *images_arr,
+                                         int image_count,
+                                         void **images,
+                                         void *textures_arr,
+                                         int texture_count,
+                                         void **texture_images,
+                                         uint8_t *texture_supported,
+                                         gltf_sampler_info_t *texture_samplers) {
+    void *samplers_arr = jarr(root, "samplers");
+    for (int i = 0; i < texture_count && texture_images; i++) {
+        void *texture_json = rt_seq_get(textures_arr, (int64_t)i);
+        int64_t source_idx = gltf_texture_source_index(texture_json);
+        int64_t sampler_idx = jint(texture_json, "sampler", -1);
+        if (texture_samplers) {
+            void *sampler_json = sampler_idx >= 0 && sampler_idx < jarr_len(samplers_arr)
+                                     ? rt_seq_get(samplers_arr, sampler_idx)
+                                     : NULL;
+            gltf_read_sampler_info(sampler_json, &texture_samplers[i]);
+        }
+        if (source_idx >= 0 && source_idx < image_count) {
+            void *image_json = rt_seq_get(images_arr, source_idx);
+            if (texture_supported && gltf_image_json_supported_for_texture(image_json))
+                texture_supported[i] = 1u;
+            texture_images[i] = images[source_idx];
+        }
+    }
+}
 
 /// @brief Decode glTF images and resolve textures (sampler info + image binding)
 ///        into the parallel texture tables consumed by material resolution.
@@ -8680,177 +9484,48 @@ static void gltf_load_images_and_textures(void *root,
     void *textures_arr = jarr(root, "textures");
     int texture_count = 0;
     uint8_t *image_required = NULL;
-    if (!gltf_jarr_len_i32(images_arr, &image_count) ||
-        !gltf_jarr_len_i32(textures_arr, &texture_count)) {
+    if (!gltf_prepare_image_arrays(images_arr,
+                                   textures_arr,
+                                   &image_count,
+                                   &texture_count,
+                                   &images,
+                                   &image_required)) {
         load_failed = 1;
         goto finish;
     }
-    if (image_count > 0) {
-        images = (void **)calloc((size_t)image_count, sizeof(void *));
-        if (!images) {
-            load_failed = 1;
-            goto finish;
-        }
-    }
-    if (image_count > 0 && texture_count > 0) {
-        image_required = (uint8_t *)calloc((size_t)image_count, sizeof(uint8_t));
-        if (!image_required) {
-            load_failed = 1;
-            goto finish;
-        }
-        for (int i = 0; i < texture_count; i++) {
-            void *texture_json = rt_seq_get(textures_arr, (int64_t)i);
-            int64_t source_idx = gltf_texture_source_index(texture_json);
-            if (source_idx >= 0 && source_idx < image_count)
-                image_required[source_idx] = 1u;
-        }
-    }
 
     for (int i = 0; i < image_count && images; i++) {
-        void *image_json = rt_seq_get(images_arr, (int64_t)i);
-        const char *uri = jstr(image_json, "uri");
-        const char *mime_type = jstr(image_json, "mimeType");
-        uint8_t *owned_data = NULL;
-        const uint8_t *image_data = NULL;
-        size_t image_len = 0;
-        char image_name[64];
-        char parsed_mime[64];
-        int required_image = image_required ? image_required[i] != 0 : 0;
-        parsed_mime[0] = '\0';
-
-        if (uri && strncmp(uri, "data:", 5) == 0) {
-            char preload_key[96];
-            gltf_data_uri_copy_mime(uri, parsed_mime, sizeof(parsed_mime));
-            gltf_preload_image_key(
-                i, mime_type ? mime_type : parsed_mime, preload_key, sizeof(preload_key));
-            images[i] = gltf_preload_take_decoded_image(preload_bundle, preload_key);
-            if (!images[i]) {
-                owned_data = gltf_preload_bundle_take_dependency(
-                    preload_bundle, preload_key, GLTF_PRELOAD_DEP_IMAGE, &image_len);
-                if (owned_data) {
-                    image_data = owned_data;
-                    if (!mime_type && parsed_mime[0] != '\0')
-                        mime_type = parsed_mime;
-                } else if (gltf_parse_data_uri(
-                               uri, parsed_mime, sizeof(parsed_mime), &owned_data, &image_len)) {
-                    image_data = owned_data;
-                    if (!mime_type && parsed_mime[0] != '\0')
-                        mime_type = parsed_mime;
-                } else if (required_image && gltf_preload_image_is_supported_format(
-                                                 mime_type ? mime_type : parsed_mime)) {
-                    load_failed = 1;
-                    break;
-                }
-            }
-        } else if (uri) {
-            char image_path[1024];
-            gltf_resolve_relative_path(filepath, uri, image_path, sizeof(image_path));
-            if (image_path[0] != '\0')
-                images[i] = gltf_load_dependency_image(image_path, load_assets, preload_bundle);
-            if (!images[i] && required_image &&
-                gltf_preload_image_is_supported_format(image_path[0] != '\0' ? image_path : uri)) {
-                if (load_assets)
-                    gltf_trap_asset_dependency(filepath, image_path, "image");
-                load_failed = 1;
-                break;
-            }
-        } else {
-            int64_t view_idx = jint(image_json, "bufferView", -1);
-            char preload_key[96];
-            gltf_preload_image_key(i, mime_type, preload_key, sizeof(preload_key));
-            images[i] = gltf_preload_take_decoded_image(preload_bundle, preload_key);
-            if (!images[i]) {
-                owned_data = gltf_preload_bundle_take_dependency(
-                    preload_bundle, preload_key, GLTF_PRELOAD_DEP_IMAGE, &image_len);
-                if (owned_data)
-                    image_data = owned_data;
-                else
-                    image_data =
-                        gltf_get_buffer_view_data(root, view_idx, buffers, buf_count, &image_len);
-            }
-            if (!images[i] && (!image_data || image_len == 0) && required_image &&
-                gltf_preload_image_is_supported_format(mime_type)) {
-                load_failed = 1;
-                break;
-            }
+        if (!gltf_load_image_at_index(root,
+                                      filepath,
+                                      load_assets,
+                                      preload_bundle,
+                                      buffers,
+                                      buf_count,
+                                      images,
+                                      images_arr,
+                                      image_required,
+                                      i)) {
+            load_failed = 1;
+            break;
         }
-
-        if (!images[i] && image_data && image_len > 0) {
-            const char *image_type;
-            gltf_build_embedded_name(mime_type, ".bin", image_name, sizeof(image_name));
-            image_type = mime_type ? mime_type : image_name;
-            if (gltf_image_is_ktx2(image_type)) {
-                images[i] = gltf_decode_ktx2_payload(image_data, image_len);
-                if (!images[i] && required_image) {
-                    free(owned_data);
-                    load_failed = 1;
-                    break;
-                }
-            } else if (gltf_preload_image_is_supported_format(image_type)) {
-                uint8_t *rgba_blob = NULL;
-                size_t rgba_len = 0;
-                if (gltf_decode_image_payload_to_rgba_blob(
-                        image_type, image_data, image_len, &rgba_blob, &rgba_len)) {
-                    images[i] = gltf_pixels_from_rgba_blob(rgba_blob, rgba_len);
-                    free(rgba_blob);
-                    if (!images[i] && required_image) {
-                        free(owned_data);
-                        load_failed = 1;
-                        break;
-                    }
-                } else if (required_image) {
-                    free(owned_data);
-                    load_failed = 1;
-                    break;
-                }
-            } else {
-                images[i] = rt_asset_decode_typed(image_name, image_data, image_len);
-            }
-        }
-        free(owned_data);
     }
     if (load_failed)
         goto finish;
 
-    if (texture_count > 0) {
-        texture_images = (void **)calloc((size_t)texture_count, sizeof(void *));
-        texture_supported = (uint8_t *)calloc((size_t)texture_count, sizeof(uint8_t));
-        texture_samplers =
-            (gltf_sampler_info_t *)calloc((size_t)texture_count, sizeof(*texture_samplers));
-        if (!texture_images || !texture_supported || !texture_samplers) {
-            load_failed = 1;
-            goto finish;
-        }
+    if (!gltf_alloc_texture_tables(
+            texture_count, &texture_images, &texture_supported, &texture_samplers)) {
+        load_failed = 1;
+        goto finish;
     }
-    for (int i = 0; i < texture_count && texture_images; i++) {
-        void *texture_json = rt_seq_get(textures_arr, (int64_t)i);
-        int64_t source_idx = gltf_texture_source_index(texture_json);
-        int64_t sampler_idx = jint(texture_json, "sampler", -1);
-        if (texture_samplers) {
-            void *samplers_arr = jarr(root, "samplers");
-            void *sampler_json = sampler_idx >= 0 && sampler_idx < jarr_len(samplers_arr)
-                                     ? rt_seq_get(samplers_arr, sampler_idx)
-                                     : NULL;
-            gltf_read_sampler_info(sampler_json, &texture_samplers[i]);
-        }
-        if (source_idx >= 0 && source_idx < image_count) {
-            void *image_json = rt_seq_get(images_arr, source_idx);
-            const char *image_uri = jstr(image_json, "uri");
-            const char *image_mime = jstr(image_json, "mimeType");
-            char parsed_mime[64];
-            parsed_mime[0] = '\0';
-            if (image_uri && strncmp(image_uri, "data:", 5) == 0)
-                gltf_data_uri_copy_mime(image_uri, parsed_mime, sizeof(parsed_mime));
-            if (texture_supported &&
-                (gltf_preload_image_is_supported_format(
-                     image_mime ? image_mime
-                                : (parsed_mime[0] != '\0' ? parsed_mime : image_uri)) ||
-                 gltf_image_is_ktx2(
-                     image_mime ? image_mime : (parsed_mime[0] != '\0' ? parsed_mime : image_uri))))
-                texture_supported[i] = 1u;
-            texture_images[i] = images[source_idx];
-        }
-    }
+    gltf_populate_texture_tables(root,
+                                 images_arr,
+                                 image_count,
+                                 images,
+                                 textures_arr,
+                                 texture_count,
+                                 texture_images,
+                                 texture_supported,
+                                 texture_samplers);
 finish:
     *out_images = images;
     *out_image_count = image_count;
@@ -8860,6 +9535,378 @@ finish:
     *out_texture_samplers = texture_samplers;
     *out_texture_count = texture_count;
     *load_failed_io = load_failed;
+}
+
+typedef void (*gltf_material_texture_setter_fn)(void *material, void *texture);
+
+static gltf_texture_info_t *gltf_material_slot_info(gltf_material_info_t *material_infos,
+                                                    int32_t material_index,
+                                                    int32_t slot) {
+    if (!material_infos || material_index < 0 || slot < 0 ||
+        slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
+        return NULL;
+    return &material_infos[material_index].slots[slot];
+}
+
+static int gltf_material_bind_texture(void *texture_json,
+                                      void *material,
+                                      int32_t slot,
+                                      void **texture_images,
+                                      const uint8_t *texture_supported,
+                                      const gltf_sampler_info_t *texture_samplers,
+                                      int32_t texture_count,
+                                      gltf_texture_info_t *slot_info,
+                                      gltf_material_texture_setter_fn setter) {
+    int64_t tex_idx = jint(texture_json, "index", -1);
+    if (texture_json && slot_info)
+        gltf_read_texture_info(texture_json, slot_info);
+    if (tex_idx >= 0 && tex_idx < texture_count && texture_images && texture_images[tex_idx]) {
+        if (setter)
+            setter(material, texture_images[tex_idx]);
+    } else if (gltf_texture_index_missing_supported_payload(
+                   tex_idx, texture_count, texture_images, texture_supported)) {
+        return 1;
+    }
+    gltf_apply_texture_slot(texture_samplers, texture_count, tex_idx, material, slot, slot_info);
+    return 0;
+}
+
+static void gltf_material_read_pbr_base_color(void *pbr, double rgba[4]) {
+    void *bcf = jarr(pbr, "baseColorFactor");
+    rgba[0] = 1.0;
+    rgba[1] = 1.0;
+    rgba[2] = 1.0;
+    rgba[3] = 1.0;
+    if (bcf && jarr_len(bcf) >= 3) {
+        rgba[0] = gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 0), rgba[0]), 0.0, 1.0, rgba[0]);
+        rgba[1] = gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 1), rgba[1]), 0.0, 1.0, rgba[1]);
+        rgba[2] = gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 2), rgba[2]), 0.0, 1.0, rgba[2]);
+        if (jarr_len(bcf) >= 4)
+            rgba[3] =
+                gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 3), rgba[3]), 0.0, 1.0, rgba[3]);
+    }
+}
+
+static void *gltf_material_create_pbr_from_json(void *pbr) {
+    double rgba[4];
+    double metallic;
+    double roughness;
+    void *mat;
+    if (!pbr)
+        return NULL;
+    gltf_material_read_pbr_base_color(pbr, rgba);
+    metallic = gltf_clamp_double(jnum(pbr, "metallicFactor", 1.0), 0.0, 1.0, 1.0);
+    roughness = gltf_clamp_double(jnum(pbr, "roughnessFactor", 1.0), 0.0, 1.0, 1.0);
+    mat = rt_material3d_new_pbr(rgba[0], rgba[1], rgba[2]);
+    if (mat) {
+        rt_material3d_set_metallic(mat, metallic);
+        rt_material3d_set_roughness(mat, roughness);
+        if (rgba[3] < 1.0)
+            rt_material3d_set_alpha(mat, rgba[3]);
+    }
+    return mat;
+}
+
+static void *gltf_material_create_default_pbr(void) {
+    void *mat = rt_material3d_new_pbr(1.0, 1.0, 1.0);
+    if (mat) {
+        rt_material3d_set_metallic(mat, 1.0);
+        rt_material3d_set_roughness(mat, 1.0);
+    }
+    return mat;
+}
+
+static int gltf_material_apply_pbr_textures(void *pbr,
+                                            void *material,
+                                            int32_t material_index,
+                                            void **texture_images,
+                                            const uint8_t *texture_supported,
+                                            const gltf_sampler_info_t *texture_samplers,
+                                            int32_t texture_count,
+                                            gltf_material_info_t *material_infos) {
+    int load_failed = 0;
+    void *base_tex = jget(pbr, "baseColorTexture");
+    void *mr_tex = jget(pbr, "metallicRoughnessTexture");
+    load_failed |= gltf_material_bind_texture(
+        base_tex,
+        material,
+        RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
+        texture_images,
+        texture_supported,
+        texture_samplers,
+        texture_count,
+        gltf_material_slot_info(material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR),
+        rt_material3d_set_texture);
+    load_failed |= gltf_material_bind_texture(
+        mr_tex,
+        material,
+        RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+        texture_images,
+        texture_supported,
+        texture_samplers,
+        texture_count,
+        gltf_material_slot_info(
+            material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS),
+        rt_material3d_set_metallic_roughness_map);
+    return load_failed;
+}
+
+static void gltf_material_apply_emissive_factor(void *mat_json, void *material) {
+    void *ef = jarr(mat_json, "emissiveFactor");
+    if (ef && jarr_len(ef) >= 3) {
+        double er = gltf_clamp_double(jvalue_num(rt_seq_get(ef, 0), 0.0), 0.0, 1.0, 0.0);
+        double eg = gltf_clamp_double(jvalue_num(rt_seq_get(ef, 1), 0.0), 0.0, 1.0, 0.0);
+        double eb = gltf_clamp_double(jvalue_num(rt_seq_get(ef, 2), 0.0), 0.0, 1.0, 0.0);
+        rt_material3d_set_emissive_color(material, er, eg, eb);
+    }
+}
+
+static int gltf_material_apply_specular_extension(void *specular,
+                                                  void *material,
+                                                  int32_t material_index,
+                                                  void **texture_images,
+                                                  const uint8_t *texture_supported,
+                                                  const gltf_sampler_info_t *texture_samplers,
+                                                  int32_t texture_count,
+                                                  gltf_material_info_t *material_infos) {
+    void *spec_color;
+    void *spec_tex;
+    void *spec_color_tex;
+    void *chosen_spec_tex;
+    if (!specular || !material)
+        return 0;
+    spec_color = jarr(specular, "specularColorFactor");
+    spec_tex = jget(specular, "specularTexture");
+    spec_color_tex = jget(specular, "specularColorTexture");
+    chosen_spec_tex = spec_color_tex ? spec_color_tex : spec_tex;
+    ((rt_material3d *)material)->specular[0] =
+        gltf_clamp_double(jnum(specular, "specularFactor", ((rt_material3d *)material)->specular[0]),
+                          0.0,
+                          1.0,
+                          ((rt_material3d *)material)->specular[0]);
+    ((rt_material3d *)material)->specular[1] = ((rt_material3d *)material)->specular[0];
+    ((rt_material3d *)material)->specular[2] = ((rt_material3d *)material)->specular[0];
+    if (spec_color && jarr_len(spec_color) >= 3) {
+        ((rt_material3d *)material)->specular[0] = gltf_clamp_double(
+            jvalue_num(rt_seq_get(spec_color, 0), ((rt_material3d *)material)->specular[0]),
+            0.0,
+            1.0,
+            ((rt_material3d *)material)->specular[0]);
+        ((rt_material3d *)material)->specular[1] = gltf_clamp_double(
+            jvalue_num(rt_seq_get(spec_color, 1), ((rt_material3d *)material)->specular[1]),
+            0.0,
+            1.0,
+            ((rt_material3d *)material)->specular[1]);
+        ((rt_material3d *)material)->specular[2] = gltf_clamp_double(
+            jvalue_num(rt_seq_get(spec_color, 2), ((rt_material3d *)material)->specular[2]),
+            0.0,
+            1.0,
+            ((rt_material3d *)material)->specular[2]);
+    }
+    return gltf_material_bind_texture(
+        chosen_spec_tex,
+        material,
+        RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
+        texture_images,
+        texture_supported,
+        texture_samplers,
+        texture_count,
+        gltf_material_slot_info(material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR),
+        rt_material3d_set_specular_map);
+}
+
+static int gltf_material_validate_extension_texture(void *texture_json,
+                                                    void *material,
+                                                    void **texture_images,
+                                                    const uint8_t *texture_supported,
+                                                    const gltf_sampler_info_t *texture_samplers,
+                                                    int32_t texture_count) {
+    return gltf_material_bind_texture(texture_json,
+                                      material,
+                                      -1,
+                                      texture_images,
+                                      texture_supported,
+                                      texture_samplers,
+                                      texture_count,
+                                      NULL,
+                                      NULL);
+}
+
+static int gltf_material_apply_clearcoat_extension(void *clearcoat,
+                                                   void *material,
+                                                   void **texture_images,
+                                                   const uint8_t *texture_supported,
+                                                   const gltf_sampler_info_t *texture_samplers,
+                                                   int32_t texture_count) {
+    double clearcoat_factor;
+    double clearcoat_roughness;
+    int load_failed = 0;
+    if (!clearcoat || !material)
+        return 0;
+    clearcoat_factor =
+        gltf_clamp_double(jnum(clearcoat, "clearcoatFactor", 0.0), 0.0, 1.0, 0.0);
+    clearcoat_roughness = gltf_clamp_double(
+        jnum(clearcoat, "clearcoatRoughnessFactor", 0.0), 0.0, 1.0, 0.0);
+    if (clearcoat_factor > ((rt_material3d *)material)->reflectivity)
+        rt_material3d_set_reflectivity(material, clearcoat_factor);
+    rt_material3d_set_custom_param(material, 1, clearcoat_factor);
+    rt_material3d_set_custom_param(material, 2, clearcoat_roughness);
+    load_failed |= gltf_material_validate_extension_texture(jget(clearcoat, "clearcoatTexture"),
+                                                            material,
+                                                            texture_images,
+                                                            texture_supported,
+                                                            texture_samplers,
+                                                            texture_count);
+    load_failed |= gltf_material_validate_extension_texture(
+        jget(clearcoat, "clearcoatRoughnessTexture"),
+        material,
+        texture_images,
+        texture_supported,
+        texture_samplers,
+        texture_count);
+    load_failed |= gltf_material_validate_extension_texture(jget(clearcoat, "clearcoatNormalTexture"),
+                                                            material,
+                                                            texture_images,
+                                                            texture_supported,
+                                                            texture_samplers,
+                                                            texture_count);
+    return load_failed;
+}
+
+static int gltf_material_apply_transmission_extension(void *transmission,
+                                                      void *material,
+                                                      void **texture_images,
+                                                      const uint8_t *texture_supported,
+                                                      const gltf_sampler_info_t *texture_samplers,
+                                                      int32_t texture_count) {
+    double transmission_factor;
+    if (!transmission || !material)
+        return 0;
+    transmission_factor =
+        gltf_clamp_double(jnum(transmission, "transmissionFactor", 0.0), 0.0, 1.0, 0.0);
+    if (transmission_factor > 0.0) {
+        if (transmission_factor > ((rt_material3d *)material)->reflectivity)
+            rt_material3d_set_reflectivity(material, transmission_factor);
+        rt_material3d_set_custom_param(material, 3, transmission_factor);
+    }
+    return gltf_material_validate_extension_texture(jget(transmission, "transmissionTexture"),
+                                                    material,
+                                                    texture_images,
+                                                    texture_supported,
+                                                    texture_samplers,
+                                                    texture_count);
+}
+
+static int gltf_material_apply_extensions(void *mat_json,
+                                          void *material,
+                                          int32_t material_index,
+                                          void **texture_images,
+                                          const uint8_t *texture_supported,
+                                          const gltf_sampler_info_t *texture_samplers,
+                                          int32_t texture_count,
+                                          gltf_material_info_t *material_infos) {
+    void *extensions = jget(mat_json, "extensions");
+    void *emissive_strength = extensions ? jget(extensions, "KHR_materials_emissive_strength") : NULL;
+    void *unlit = extensions ? jget(extensions, "KHR_materials_unlit") : NULL;
+    void *specular = extensions ? jget(extensions, "KHR_materials_specular") : NULL;
+    void *clearcoat = extensions ? jget(extensions, "KHR_materials_clearcoat") : NULL;
+    void *transmission = extensions ? jget(extensions, "KHR_materials_transmission") : NULL;
+    int load_failed = 0;
+    if (emissive_strength)
+        rt_material3d_set_emissive_intensity(
+            material,
+            gltf_clamp_double(jnum(emissive_strength, "emissiveStrength", 1.0), 0.0, DBL_MAX, 1.0));
+    if (unlit) {
+        rt_material3d_set_unlit(material, 1);
+        rt_material3d_set_shading_model(material, 3);
+    }
+    load_failed |= gltf_material_apply_specular_extension(specular,
+                                                          material,
+                                                          material_index,
+                                                          texture_images,
+                                                          texture_supported,
+                                                          texture_samplers,
+                                                          texture_count,
+                                                          material_infos);
+    load_failed |= gltf_material_apply_clearcoat_extension(clearcoat,
+                                                           material,
+                                                           texture_images,
+                                                           texture_supported,
+                                                           texture_samplers,
+                                                           texture_count);
+    load_failed |= gltf_material_apply_transmission_extension(transmission,
+                                                              material,
+                                                              texture_images,
+                                                              texture_supported,
+                                                              texture_samplers,
+                                                              texture_count);
+    return load_failed;
+}
+
+static int gltf_material_apply_standard_textures(void *mat_json,
+                                                 void *material,
+                                                 int32_t material_index,
+                                                 void **texture_images,
+                                                 const uint8_t *texture_supported,
+                                                 const gltf_sampler_info_t *texture_samplers,
+                                                 int32_t texture_count,
+                                                 gltf_material_info_t *material_infos) {
+    int load_failed = 0;
+    void *normal_tex = jget(mat_json, "normalTexture");
+    void *occlusion_tex = jget(mat_json, "occlusionTexture");
+    void *emissive_tex = jget(mat_json, "emissiveTexture");
+    load_failed |= gltf_material_bind_texture(
+        normal_tex,
+        material,
+        RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
+        texture_images,
+        texture_supported,
+        texture_samplers,
+        texture_count,
+        gltf_material_slot_info(material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL),
+        rt_material3d_set_normal_map);
+    if (normal_tex)
+        rt_material3d_set_normal_scale(material, gltf_finite_or(jnum(normal_tex, "scale", 1.0), 1.0));
+
+    load_failed |= gltf_material_bind_texture(
+        occlusion_tex,
+        material,
+        RT_MATERIAL3D_TEXTURE_SLOT_AO,
+        texture_images,
+        texture_supported,
+        texture_samplers,
+        texture_count,
+        gltf_material_slot_info(material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_AO),
+        rt_material3d_set_ao_map);
+    if (occlusion_tex)
+        rt_material3d_set_ao(
+            material, gltf_clamp_double(jnum(occlusion_tex, "strength", 1.0), 0.0, 1.0, 1.0));
+
+    load_failed |= gltf_material_bind_texture(
+        emissive_tex,
+        material,
+        RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
+        texture_images,
+        texture_supported,
+        texture_samplers,
+        texture_count,
+        gltf_material_slot_info(material_infos, material_index, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE),
+        rt_material3d_set_emissive_map);
+    return load_failed;
+}
+
+static void gltf_material_apply_alpha_and_sided(void *mat_json, void *material) {
+    const char *alpha_mode = jstr(mat_json, "alphaMode");
+    if (alpha_mode && strcmp(alpha_mode, "MASK") == 0) {
+        rt_material3d_set_alpha_mode(material, RT_MATERIAL3D_ALPHA_MODE_MASK);
+        ((rt_material3d *)material)->alpha_cutoff =
+            gltf_clamp_double(jnum(mat_json, "alphaCutoff", 0.5), 0.0, 1.0, 0.5);
+    } else if (alpha_mode && strcmp(alpha_mode, "BLEND") == 0) {
+        rt_material3d_set_alpha_mode(material, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    } else {
+        rt_material3d_set_alpha_mode(material, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+    }
+    rt_material3d_set_double_sided(material, jint(mat_json, "doubleSided", 0) ? 1 : 0);
 }
 
 /// @brief Resolve glTF materials (PBR factors, KHR material extensions, and the
@@ -8906,285 +9953,42 @@ static void gltf_load_materials(rt_gltf_asset *asset,
         for (int i = 0; i < mat_count && asset->materials; i++) {
             void *mat_json = rt_seq_get(mats_arr, (int64_t)i);
             void *mat = NULL;
-
-            // PBR metallic-roughness
             void *pbr = jget(mat_json, "pbrMetallicRoughness");
+
             if (pbr) {
-                double base_r = 1.0;
-                double base_g = 1.0;
-                double base_b = 1.0;
-                double base_a = 1.0;
-                double metallic = gltf_clamp_double(jnum(pbr, "metallicFactor", 1.0), 0.0, 1.0, 1.0);
-                double roughness = gltf_clamp_double(jnum(pbr, "roughnessFactor", 1.0), 0.0, 1.0, 1.0);
-                void *bcf = jarr(pbr, "baseColorFactor");
-                if (bcf && jarr_len(bcf) >= 3) {
-                    base_r = gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 0), base_r), 0.0, 1.0, base_r);
-                    base_g = gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 1), base_g), 0.0, 1.0, base_g);
-                    base_b = gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 2), base_b), 0.0, 1.0, base_b);
-                    if (jarr_len(bcf) >= 4) {
-                        base_a =
-                            gltf_clamp_double(jvalue_num(rt_seq_get(bcf, 3), base_a), 0.0, 1.0, base_a);
-                    }
-                }
-                {
-                    void *pbr_mat = rt_material3d_new_pbr(base_r, base_g, base_b);
-                    if (pbr_mat) {
-                        mat = pbr_mat;
-                        rt_material3d_set_metallic(mat, metallic);
-                        rt_material3d_set_roughness(mat, roughness);
-                        if (base_a < 1.0)
-                            rt_material3d_set_alpha(mat, base_a);
-                    }
-                }
-                {
-                    void *base_tex = jget(pbr, "baseColorTexture");
-                    int64_t tex_idx = jint(base_tex, "index", -1);
-                    if (base_tex && material_infos) {
-                        gltf_read_texture_info(
-                            base_tex,
-                            &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
-                    }
-                    if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
-                        texture_images[tex_idx])
-                        rt_material3d_set_texture(mat, texture_images[tex_idx]);
-                    else if (gltf_texture_index_missing_supported_payload(
-                                 tex_idx, texture_count, texture_images, texture_supported))
-                        load_failed = 1;
-                    gltf_apply_texture_slot(
-                        texture_samplers,
-                        texture_count,
-                        tex_idx,
-                        mat,
-                        RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
-                        material_infos
-                            ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]
-                            : NULL);
-                }
-                {
-                    void *mr_tex = jget(pbr, "metallicRoughnessTexture");
-                    int64_t tex_idx = jint(mr_tex, "index", -1);
-                    if (mr_tex && material_infos) {
-                        gltf_read_texture_info(
-                            mr_tex,
-                            &material_infos[i]
-                                 .slots[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]);
-                    }
-                    if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
-                        texture_images[tex_idx])
-                        rt_material3d_set_metallic_roughness_map(mat, texture_images[tex_idx]);
-                    else if (gltf_texture_index_missing_supported_payload(
-                                 tex_idx, texture_count, texture_images, texture_supported))
-                        load_failed = 1;
-                    gltf_apply_texture_slot(
-                        texture_samplers,
-                        texture_count,
-                        tex_idx,
-                        mat,
-                        RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
-                        material_infos ? &material_infos[i]
-                                              .slots[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS]
-                                       : NULL);
-                }
+                mat = gltf_material_create_pbr_from_json(pbr);
+                load_failed |= gltf_material_apply_pbr_textures(pbr,
+                                                                mat,
+                                                                i,
+                                                                texture_images,
+                                                                texture_supported,
+                                                                texture_samplers,
+                                                                texture_count,
+                                                                material_infos);
             }
-            if (!mat) {
-                mat = rt_material3d_new_pbr(1.0, 1.0, 1.0);
-                if (mat) {
-                    rt_material3d_set_metallic(mat, 1.0);
-                    rt_material3d_set_roughness(mat, 1.0);
-                }
-            }
+            if (!mat)
+                mat = gltf_material_create_default_pbr();
             if (!mat)
                 continue;
 
-            // Emissive
-            void *ef = jarr(mat_json, "emissiveFactor");
-            if (ef && jarr_len(ef) >= 3) {
-                double er = gltf_clamp_double(jvalue_num(rt_seq_get(ef, 0), 0.0), 0.0, 1.0, 0.0);
-                double eg = gltf_clamp_double(jvalue_num(rt_seq_get(ef, 1), 0.0), 0.0, 1.0, 0.0);
-                double eb = gltf_clamp_double(jvalue_num(rt_seq_get(ef, 2), 0.0), 0.0, 1.0, 0.0);
-                rt_material3d_set_emissive_color(mat, er, eg, eb);
-            }
-            {
-                void *extensions = jget(mat_json, "extensions");
-                void *emissive_strength =
-                    extensions ? jget(extensions, "KHR_materials_emissive_strength") : NULL;
-                void *unlit = extensions ? jget(extensions, "KHR_materials_unlit") : NULL;
-                void *specular = extensions ? jget(extensions, "KHR_materials_specular") : NULL;
-                void *clearcoat = extensions ? jget(extensions, "KHR_materials_clearcoat") : NULL;
-                void *transmission =
-                    extensions ? jget(extensions, "KHR_materials_transmission") : NULL;
-                if (emissive_strength)
-                    rt_material3d_set_emissive_intensity(
-                        mat,
-                        gltf_clamp_double(
-                            jnum(emissive_strength, "emissiveStrength", 1.0), 0.0, DBL_MAX, 1.0));
-                if (unlit) {
-                    rt_material3d_set_unlit(mat, 1);
-                    rt_material3d_set_shading_model(mat, 3);
-                }
-                if (specular) {
-                    void *spec_color = jarr(specular, "specularColorFactor");
-                    void *spec_tex = jget(specular, "specularTexture");
-                    void *spec_color_tex = jget(specular, "specularColorTexture");
-                    void *chosen_spec_tex = spec_color_tex ? spec_color_tex : spec_tex;
-                    int64_t tex_idx = jint(chosen_spec_tex, "index", -1);
-                    ((rt_material3d *)mat)->specular[0] =
-                        gltf_clamp_double(jnum(specular,
-                                               "specularFactor",
-                                               ((rt_material3d *)mat)->specular[0]),
-                                          0.0,
-                                          1.0,
-                                          ((rt_material3d *)mat)->specular[0]);
-                    ((rt_material3d *)mat)->specular[1] = ((rt_material3d *)mat)->specular[0];
-                    ((rt_material3d *)mat)->specular[2] = ((rt_material3d *)mat)->specular[0];
-                    if (spec_color && jarr_len(spec_color) >= 3) {
-                        ((rt_material3d *)mat)->specular[0] =
-                            gltf_clamp_double(jvalue_num(rt_seq_get(spec_color, 0),
-                                                         ((rt_material3d *)mat)->specular[0]),
-                                              0.0,
-                                              1.0,
-                                              ((rt_material3d *)mat)->specular[0]);
-                        ((rt_material3d *)mat)->specular[1] =
-                            gltf_clamp_double(jvalue_num(rt_seq_get(spec_color, 1),
-                                                         ((rt_material3d *)mat)->specular[1]),
-                                              0.0,
-                                              1.0,
-                                              ((rt_material3d *)mat)->specular[1]);
-                        ((rt_material3d *)mat)->specular[2] =
-                            gltf_clamp_double(jvalue_num(rt_seq_get(spec_color, 2),
-                                                         ((rt_material3d *)mat)->specular[2]),
-                                              0.0,
-                                              1.0,
-                                              ((rt_material3d *)mat)->specular[2]);
-                    }
-                    if (chosen_spec_tex && material_infos) {
-                        gltf_read_texture_info(
-                            chosen_spec_tex,
-                            &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]);
-                    }
-                    if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
-                        texture_images[tex_idx])
-                        rt_material3d_set_specular_map(mat, texture_images[tex_idx]);
-                    else if (gltf_texture_index_missing_supported_payload(
-                                 tex_idx, texture_count, texture_images, texture_supported))
-                        load_failed = 1;
-                    gltf_apply_texture_slot(
-                        texture_samplers,
-                        texture_count,
-                        tex_idx,
-                        mat,
-                        RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR,
-                        material_infos
-                            ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR]
-                            : NULL);
-                }
-                if (clearcoat) {
-                    double clearcoat_factor =
-                        gltf_clamp_double(jnum(clearcoat, "clearcoatFactor", 0.0), 0.0, 1.0, 0.0);
-                    double clearcoat_roughness = gltf_clamp_double(
-                        jnum(clearcoat, "clearcoatRoughnessFactor", 0.0), 0.0, 1.0, 0.0);
-                    if (clearcoat_factor > ((rt_material3d *)mat)->reflectivity)
-                        rt_material3d_set_reflectivity(mat, clearcoat_factor);
-                    rt_material3d_set_custom_param(mat, 1, clearcoat_factor);
-                    rt_material3d_set_custom_param(mat, 2, clearcoat_roughness);
-                }
-                if (transmission) {
-                    double transmission_factor = gltf_clamp_double(
-                        jnum(transmission, "transmissionFactor", 0.0), 0.0, 1.0, 0.0);
-                    if (transmission_factor > 0.0) {
-                        if (transmission_factor > ((rt_material3d *)mat)->reflectivity)
-                            rt_material3d_set_reflectivity(mat, transmission_factor);
-                        rt_material3d_set_custom_param(mat, 3, transmission_factor);
-                    }
-                }
-            }
-
-            {
-                void *normal_tex = jget(mat_json, "normalTexture");
-                int64_t tex_idx = jint(normal_tex, "index", -1);
-                if (normal_tex && material_infos) {
-                    gltf_read_texture_info(
-                        normal_tex, &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]);
-                }
-                if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
-                    texture_images[tex_idx])
-                    rt_material3d_set_normal_map(mat, texture_images[tex_idx]);
-                else if (gltf_texture_index_missing_supported_payload(
-                             tex_idx, texture_count, texture_images, texture_supported))
-                    load_failed = 1;
-                gltf_apply_texture_slot(
-                    texture_samplers,
-                    texture_count,
-                    tex_idx,
-                    mat,
-                    RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
-                    material_infos ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL]
-                                   : NULL);
-                if (normal_tex)
-                    rt_material3d_set_normal_scale(
-                        mat, gltf_finite_or(jnum(normal_tex, "scale", 1.0), 1.0));
-            }
-            {
-                void *occlusion_tex = jget(mat_json, "occlusionTexture");
-                int64_t tex_idx = jint(occlusion_tex, "index", -1);
-                if (occlusion_tex && material_infos) {
-                    gltf_read_texture_info(occlusion_tex,
-                                           &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_AO]);
-                }
-                if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
-                    texture_images[tex_idx])
-                    rt_material3d_set_ao_map(mat, texture_images[tex_idx]);
-                else if (gltf_texture_index_missing_supported_payload(
-                             tex_idx, texture_count, texture_images, texture_supported))
-                    load_failed = 1;
-                gltf_apply_texture_slot(
-                    texture_samplers,
-                    texture_count,
-                    tex_idx,
-                    mat,
-                    RT_MATERIAL3D_TEXTURE_SLOT_AO,
-                    material_infos ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_AO]
-                                   : NULL);
-                if (occlusion_tex)
-                    rt_material3d_set_ao(
-                        mat, gltf_clamp_double(jnum(occlusion_tex, "strength", 1.0), 0.0, 1.0, 1.0));
-            }
-            {
-                void *emissive_tex = jget(mat_json, "emissiveTexture");
-                int64_t tex_idx = jint(emissive_tex, "index", -1);
-                if (emissive_tex && material_infos) {
-                    gltf_read_texture_info(
-                        emissive_tex,
-                        &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE]);
-                }
-                if (tex_idx >= 0 && tex_idx < texture_count && texture_images &&
-                    texture_images[tex_idx])
-                    rt_material3d_set_emissive_map(mat, texture_images[tex_idx]);
-                else if (gltf_texture_index_missing_supported_payload(
-                             tex_idx, texture_count, texture_images, texture_supported))
-                    load_failed = 1;
-                gltf_apply_texture_slot(
-                    texture_samplers,
-                    texture_count,
-                    tex_idx,
-                    mat,
-                    RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE,
-                    material_infos ? &material_infos[i].slots[RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE]
-                                   : NULL);
-            }
-            {
-                const char *alpha_mode = jstr(mat_json, "alphaMode");
-                if (alpha_mode && strcmp(alpha_mode, "MASK") == 0) {
-                    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_MASK);
-                    ((rt_material3d *)mat)->alpha_cutoff =
-                        gltf_clamp_double(jnum(mat_json, "alphaCutoff", 0.5), 0.0, 1.0, 0.5);
-                } else if (alpha_mode && strcmp(alpha_mode, "BLEND") == 0) {
-                    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
-                } else {
-                    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
-                }
-            }
-            rt_material3d_set_double_sided(mat, jint(mat_json, "doubleSided", 0) ? 1 : 0);
+            gltf_material_apply_emissive_factor(mat_json, mat);
+            load_failed |= gltf_material_apply_extensions(mat_json,
+                                                          mat,
+                                                          i,
+                                                          texture_images,
+                                                          texture_supported,
+                                                          texture_samplers,
+                                                          texture_count,
+                                                          material_infos);
+            load_failed |= gltf_material_apply_standard_textures(mat_json,
+                                                                 mat,
+                                                                 i,
+                                                                 texture_images,
+                                                                 texture_supported,
+                                                                 texture_samplers,
+                                                                 texture_count,
+                                                                 material_infos);
+            gltf_material_apply_alpha_and_sided(mat_json, mat);
 
             if (load_failed) {
                 gltf_release_local(mat);
@@ -9231,6 +10035,562 @@ static int gltf_mesh_append_import_vertex(rt_mesh3d *mesh,
     return 1;
 }
 
+typedef struct {
+    gltf_accessor_view_t pos;
+    gltf_accessor_view_t norm;
+    gltf_accessor_view_t uv0;
+    gltf_accessor_view_t uv1;
+    gltf_accessor_view_t color;
+    gltf_accessor_view_t tangent;
+    gltf_accessor_view_t joints;
+    gltf_accessor_view_t weights;
+    gltf_accessor_view_t joints1;
+    gltf_accessor_view_t weights1;
+    gltf_accessor_view_t idx;
+    int has_normals;
+    int has_uv0;
+    int has_uv1;
+    int has_colors;
+    int has_tangents;
+    int has_joints;
+    int has_weights;
+    int has_joints1;
+    int has_weights1;
+    int has_indices;
+    int has_skin0;
+    int has_skin1;
+    int32_t triangle_estimate;
+} gltf_mesh_primitive_views_t;
+
+static void *gltf_mesh_resolve_primitive_material(rt_gltf_asset *asset,
+                                                  int64_t material_idx,
+                                                  int32_t material_capacity,
+                                                  void **default_material_io) {
+    void *prim_material = NULL;
+    if (!asset)
+        return NULL;
+    if (material_idx >= 0 && material_idx < asset->material_count)
+        prim_material = asset->materials[material_idx];
+    if (!prim_material && asset->materials) {
+        if (default_material_io && !*default_material_io &&
+            asset->material_count < material_capacity) {
+            *default_material_io = gltf_material_create_default_pbr();
+            if (*default_material_io)
+                asset->materials[asset->material_count++] = *default_material_io;
+        }
+        prim_material = default_material_io ? *default_material_io : NULL;
+    }
+    return prim_material;
+}
+
+static int gltf_mesh_take_preloaded_primitive(rt_gltf_asset *asset,
+                                              rt_gltf_preload_bundle *preload_bundle,
+                                              int32_t mesh_json_index,
+                                              int32_t primitive_index,
+                                              void *primitive_material,
+                                              void **primitive_materials,
+                                              int32_t *mesh_idx_io) {
+    uint32_t decoded_mesh_flags = 0u;
+    void *decoded_mesh =
+        gltf_preload_take_decoded_mesh(preload_bundle, mesh_json_index, primitive_index, &decoded_mesh_flags);
+    if (!decoded_mesh)
+        return 0;
+    if ((decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_NORMALS) == 0)
+        rt_mesh3d_recalc_normals(decoded_mesh);
+    if ((decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_TANGENTS) == 0 &&
+        (decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_UV0) != 0) {
+        rt_material3d *tangent_material = (rt_material3d *)primitive_material;
+        if (tangent_material && tangent_material->normal_map)
+            rt_mesh3d_calc_tangents(decoded_mesh);
+    }
+    asset->meshes[*mesh_idx_io] = decoded_mesh;
+    (*mesh_idx_io)++;
+    asset->mesh_count = *mesh_idx_io;
+    if (primitive_materials)
+        primitive_materials[*mesh_idx_io - 1] = primitive_material;
+    return 1;
+}
+
+static int gltf_mesh_validate_skin_views(gltf_mesh_primitive_views_t *views,
+                                         int32_t vertex_count) {
+    if (!views)
+        return 0;
+    if ((views->has_joints != views->has_weights) || (views->has_joints1 != views->has_weights1))
+        return 0;
+    if (views->has_joints &&
+        (!gltf_accessor_has_payload(&views->joints) || !gltf_accessor_has_payload(&views->weights) ||
+         !gltf_accessor_is_joints(&views->joints) || !gltf_accessor_is_weights(&views->weights) ||
+         views->joints.count < vertex_count || views->weights.count < vertex_count))
+        return 0;
+    if (views->has_joints1 &&
+        (!gltf_accessor_has_payload(&views->joints1) ||
+         !gltf_accessor_has_payload(&views->weights1) ||
+         !gltf_accessor_is_joints(&views->joints1) ||
+         !gltf_accessor_is_weights(&views->weights1) || views->joints1.count < vertex_count ||
+         views->weights1.count < vertex_count))
+        return 0;
+    return 1;
+}
+
+static int gltf_mesh_read_primitive_views(void *root,
+                                          gltf_buffer_t *buffers,
+                                          int32_t buf_count,
+                                          void *attrs,
+                                          void *prim,
+                                          int64_t mode,
+                                          gltf_mesh_primitive_views_t *views,
+                                          int *load_failed_io) {
+    int64_t pos_acc = jint(attrs, "POSITION", -1);
+    int64_t norm_acc = jint(attrs, "NORMAL", -1);
+    int64_t uv0_acc = jint(attrs, "TEXCOORD_0", -1);
+    int64_t uv1_acc = jint(attrs, "TEXCOORD_1", -1);
+    int64_t color_acc = jint(attrs, "COLOR_0", -1);
+    int64_t tangent_acc = jint(attrs, "TANGENT", -1);
+    int64_t joints_acc = jint(attrs, "JOINTS_0", -1);
+    int64_t weights_acc = jint(attrs, "WEIGHTS_0", -1);
+    int64_t joints1_acc = jint(attrs, "JOINTS_1", -1);
+    int64_t weights1_acc = jint(attrs, "WEIGHTS_1", -1);
+    int64_t idx_acc = jint(prim, "indices", -1);
+    int32_t draw_count;
+    if (!views)
+        return 0;
+    memset(views, 0, sizeof(*views));
+    if (pos_acc < 0)
+        return 0;
+
+    views->has_normals = gltf_get_accessor_view(root, norm_acc, buffers, buf_count, &views->norm);
+    views->has_uv0 = gltf_get_accessor_view(root, uv0_acc, buffers, buf_count, &views->uv0);
+    views->has_uv1 = gltf_get_accessor_view(root, uv1_acc, buffers, buf_count, &views->uv1);
+    views->has_colors = gltf_get_accessor_view(root, color_acc, buffers, buf_count, &views->color);
+    views->has_tangents =
+        gltf_get_accessor_view(root, tangent_acc, buffers, buf_count, &views->tangent);
+    views->has_joints = gltf_get_accessor_view(root, joints_acc, buffers, buf_count, &views->joints);
+    views->has_weights =
+        gltf_get_accessor_view(root, weights_acc, buffers, buf_count, &views->weights);
+    views->has_joints1 =
+        gltf_get_accessor_view(root, joints1_acc, buffers, buf_count, &views->joints1);
+    views->has_weights1 =
+        gltf_get_accessor_view(root, weights1_acc, buffers, buf_count, &views->weights1);
+    views->has_indices = gltf_get_accessor_view(root, idx_acc, buffers, buf_count, &views->idx);
+
+    if (!gltf_get_accessor_view(root, pos_acc, buffers, buf_count, &views->pos) ||
+        views->pos.count == 0 || !gltf_accessor_has_payload(&views->pos) ||
+        !gltf_accessor_is_f32_components(&views->pos, 3, 3)) {
+        if (load_failed_io)
+            *load_failed_io = 1;
+        return 0;
+    }
+    if (views->has_normals &&
+        (!gltf_accessor_has_payload(&views->norm) ||
+         !gltf_accessor_is_f32_components(&views->norm, 3, 3) ||
+         views->norm.count < views->pos.count))
+        views->has_normals = 0;
+    if (views->has_uv0 &&
+        (!gltf_accessor_has_payload(&views->uv0) || !gltf_accessor_is_texcoord(&views->uv0) ||
+         views->uv0.count < views->pos.count))
+        views->has_uv0 = 0;
+    if (views->has_uv1 &&
+        (!gltf_accessor_has_payload(&views->uv1) || !gltf_accessor_is_texcoord(&views->uv1) ||
+         views->uv1.count < views->pos.count))
+        views->has_uv1 = 0;
+    if (views->has_colors &&
+        (!gltf_accessor_has_payload(&views->color) || !gltf_accessor_is_color(&views->color) ||
+         views->color.count < views->pos.count))
+        views->has_colors = 0;
+    if (views->has_tangents &&
+        (!gltf_accessor_has_payload(&views->tangent) ||
+         !gltf_accessor_is_f32_components(&views->tangent, 4, 4) ||
+         views->tangent.count < views->pos.count))
+        views->has_tangents = 0;
+    if (views->has_indices &&
+        (!gltf_accessor_has_payload(&views->idx) || !gltf_accessor_is_indices(&views->idx))) {
+        if (load_failed_io)
+            *load_failed_io = 1;
+        return 0;
+    }
+    if (!gltf_mesh_validate_skin_views(views, views->pos.count)) {
+        if (load_failed_io)
+            *load_failed_io = 1;
+        return 0;
+    }
+
+    draw_count = views->has_indices ? views->idx.count : views->pos.count;
+    views->triangle_estimate = gltf_primitive_triangle_count(mode, draw_count);
+    if (views->triangle_estimate <= 0)
+        return 0;
+    views->has_skin0 = views->has_joints && views->has_weights;
+    views->has_skin1 = views->has_joints1 && views->has_weights1;
+    return 1;
+}
+
+typedef struct {
+    float pos[3];
+    float nrm[3];
+    float uv[2];
+    float uv1[2];
+    float color[4];
+    float tangent[4];
+    float weights[4];
+    uint32_t joints[4];
+    float weights1[4];
+    uint32_t joints1[4];
+} gltf_mesh_import_vertex_t;
+
+static void gltf_mesh_import_vertex_init(gltf_mesh_import_vertex_t *vertex) {
+    memset(vertex, 0, sizeof(*vertex));
+    vertex->color[0] = 1.0f;
+    vertex->color[1] = 1.0f;
+    vertex->color[2] = 1.0f;
+    vertex->color[3] = 1.0f;
+    vertex->tangent[3] = 1.0f;
+}
+
+static int gltf_mesh_import_vertex_is_finite(const gltf_mesh_primitive_views_t *views,
+                                             const gltf_mesh_import_vertex_t *vertex) {
+    return gltf_f32_array_is_finite(vertex->pos, 3) &&
+           gltf_f32_array_is_finite(vertex->nrm, 3) &&
+           gltf_f32_array_is_finite(vertex->uv, 2) &&
+           gltf_f32_array_is_finite(vertex->uv1, 2) &&
+           gltf_f32_array_is_finite(vertex->color, 4) &&
+           gltf_f32_array_is_finite(vertex->tangent, 4) &&
+           (!views->has_skin0 || gltf_f32_array_is_finite(vertex->weights, 4)) &&
+           (!views->has_skin1 || gltf_f32_array_is_finite(vertex->weights1, 4));
+}
+
+static void gltf_mesh_merge_extra_joint_influences(gltf_mesh_import_vertex_t *vertex,
+                                                   int has_primary_skin) {
+    uint32_t merged_joints[4] = {0u, 0u, 0u, 0u};
+    float merged_weights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (has_primary_skin) {
+        for (int j = 0; j < 4; j++)
+            gltf_add_top_joint_influence(
+                vertex->joints[j], vertex->weights[j], merged_joints, merged_weights);
+    }
+    for (int j = 0; j < 4; j++)
+        gltf_add_top_joint_influence(
+            vertex->joints1[j], vertex->weights1[j], merged_joints, merged_weights);
+    gltf_normalize_joint_influences(merged_weights);
+    memcpy(vertex->joints, merged_joints, sizeof(vertex->joints));
+    memcpy(vertex->weights, merged_weights, sizeof(vertex->weights));
+}
+
+static void gltf_mesh_clip_joint_influences(gltf_mesh_import_vertex_t *vertex) {
+    for (int j = 0; j < 4; j++) {
+        if (vertex->joints[j] >= VGFX3D_MAX_BONES) {
+            vertex->joints[j] = 0u;
+            vertex->weights[j] = 0.0f;
+        }
+    }
+}
+
+static int gltf_mesh_read_import_vertex(const gltf_mesh_primitive_views_t *views,
+                                        int32_t vertex_index,
+                                        gltf_mesh_import_vertex_t *vertex,
+                                        int *invalid_authored_normals_io,
+                                        int *invalid_authored_tangents_io) {
+    gltf_mesh_import_vertex_init(vertex);
+    gltf_accessor_read_f32(&views->pos, vertex_index, vertex->pos, 3);
+    if (views->has_normals)
+        gltf_accessor_read_f32(&views->norm, vertex_index, vertex->nrm, 3);
+    if (views->has_uv0)
+        gltf_accessor_read_f32(&views->uv0, vertex_index, vertex->uv, 2);
+    if (views->has_uv1)
+        gltf_accessor_read_f32(&views->uv1, vertex_index, vertex->uv1, 2);
+    else {
+        vertex->uv1[0] = vertex->uv[0];
+        vertex->uv1[1] = vertex->uv[1];
+    }
+    if (views->has_colors) {
+        gltf_accessor_read_f32(&views->color, vertex_index, vertex->color, 4);
+        if (views->color.comp_count < 4)
+            vertex->color[3] = 1.0f;
+    }
+    if (views->has_tangents) {
+        gltf_accessor_read_f32(&views->tangent, vertex_index, vertex->tangent, 4);
+        if (views->tangent.comp_count < 4)
+            vertex->tangent[3] = 1.0f;
+    }
+    if (views->has_joints)
+        gltf_accessor_read_u32(&views->joints, vertex_index, vertex->joints, 4);
+    if (views->has_weights)
+        gltf_accessor_read_f32(&views->weights, vertex_index, vertex->weights, 4);
+    if (views->has_joints1)
+        gltf_accessor_read_u32(&views->joints1, vertex_index, vertex->joints1, 4);
+    if (views->has_weights1)
+        gltf_accessor_read_f32(&views->weights1, vertex_index, vertex->weights1, 4);
+    if (!gltf_mesh_import_vertex_is_finite(views, vertex))
+        return 0;
+    if (views->has_normals && !gltf_normalize_vec3f_in_place(vertex->nrm)) {
+        if (invalid_authored_normals_io)
+            *invalid_authored_normals_io = 1;
+        vertex->nrm[0] = 0.0f;
+        vertex->nrm[1] = 0.0f;
+        vertex->nrm[2] = 0.0f;
+    }
+    if (views->has_tangents && !gltf_sanitize_tangent4(vertex->tangent)) {
+        if (invalid_authored_tangents_io)
+            *invalid_authored_tangents_io = 1;
+        vertex->tangent[0] = 1.0f;
+        vertex->tangent[1] = 0.0f;
+        vertex->tangent[2] = 0.0f;
+        vertex->tangent[3] = 1.0f;
+    }
+    if (views->has_skin1)
+        gltf_mesh_merge_extra_joint_influences(vertex, views->has_skin0);
+    else if (views->has_skin0) {
+        gltf_mesh_clip_joint_influences(vertex);
+        gltf_normalize_joint_influences(vertex->weights);
+    }
+    return 1;
+}
+
+static void gltf_mesh_apply_vertex_skin(rt_mesh3d *mesh,
+                                        int32_t vertex_index,
+                                        const gltf_mesh_import_vertex_t *vertex) {
+    rt_mesh3d_set_bone_weights(mesh,
+                               vertex_index,
+                               (int64_t)vertex->joints[0],
+                               vertex->weights[0],
+                               (int64_t)vertex->joints[1],
+                               vertex->weights[1],
+                               (int64_t)vertex->joints[2],
+                               vertex->weights[2],
+                               (int64_t)vertex->joints[3],
+                               vertex->weights[3]);
+    for (int j = 0; j < 4; j++) {
+        if (vertex->weights[j] > 0.0001f && vertex->joints[j] < VGFX3D_MAX_BONES &&
+            (int32_t)(vertex->joints[j] + 1u) > mesh->bone_count) {
+            mesh->bone_count = (int32_t)(vertex->joints[j] + 1u);
+        }
+    }
+}
+
+static int gltf_mesh_import_vertices(rt_mesh3d *mesh,
+                                     const gltf_mesh_primitive_views_t *views,
+                                     int *invalid_authored_normals_io,
+                                     int *invalid_authored_tangents_io) {
+    for (int32_t vi = 0; vi < views->pos.count; vi++) {
+        gltf_mesh_import_vertex_t vertex;
+        if (!gltf_mesh_read_import_vertex(
+                views, vi, &vertex, invalid_authored_normals_io, invalid_authored_tangents_io))
+            return 0;
+        if (!gltf_mesh_append_import_vertex(
+                mesh, vertex.pos, vertex.nrm, vertex.uv, vertex.uv1, vertex.color, vertex.tangent))
+            return 0;
+        if (views->has_skin0 || views->has_skin1)
+            gltf_mesh_apply_vertex_skin(mesh, vi, &vertex);
+    }
+    return 1;
+}
+
+static int gltf_mesh_finalize_imported_primitive(rt_gltf_asset *asset,
+                                                 void *root,
+                                                 gltf_buffer_t *buffers,
+                                                 int32_t buf_count,
+                                                 void *mesh_json,
+                                                 void *prim,
+                                                 void *mesh,
+                                                 int64_t mode,
+                                                 const gltf_mesh_primitive_views_t *views,
+                                                 int64_t material_idx,
+                                                 void *primitive_material,
+                                                 int invalid_authored_normals,
+                                                 int invalid_authored_tangents,
+                                                 int *load_failed_io) {
+    if (!gltf_append_primitive_indices(
+            mesh, mode, views->has_indices ? &views->idx : NULL, views->pos.count)) {
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
+        if (load_failed_io)
+            *load_failed_io = 1;
+        return 0;
+    }
+    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
+    if ((!views->has_normals || invalid_authored_normals) &&
+        ((rt_mesh3d *)mesh)->vertex_count > 0)
+        rt_mesh3d_recalc_normals(mesh);
+    if ((!views->has_tangents || invalid_authored_tangents) && views->has_uv0 &&
+        material_idx >= 0 && material_idx < asset->material_count) {
+        rt_material3d *tangent_material = (rt_material3d *)primitive_material;
+        if (tangent_material && tangent_material->normal_map)
+            rt_mesh3d_calc_tangents(mesh);
+    }
+    gltf_import_primitive_morph_targets(
+        root, buffers, buf_count, mesh_json, prim, mesh, views->pos.count);
+    return 1;
+}
+
+typedef struct {
+    rt_gltf_asset *asset;
+    void *root;
+    gltf_buffer_t *buffers;
+    int buf_count;
+    rt_gltf_preload_bundle *preload_bundle;
+    int material_capacity;
+    void **primitive_materials;
+    void **default_material_io;
+    int *load_failed_io;
+} gltf_mesh_load_context_t;
+
+static int gltf_mesh_count_total_primitives(void *meshes_arr,
+                                            int mesh_json_count,
+                                            int *out_total_prims,
+                                            int *load_failed_io) {
+    int total_prims = 0;
+    for (int i = 0; i < mesh_json_count; i++) {
+        void *mesh_json = rt_seq_get(meshes_arr, (int64_t)i);
+        void *prims = jarr(mesh_json, "primitives");
+        int64_t prim_len = jarr_len(prims);
+        if (prim_len > INT32_MAX || total_prims > INT32_MAX - prim_len) {
+            if (load_failed_io)
+                *load_failed_io = 1;
+            return 0;
+        }
+        total_prims += (int)prim_len;
+    }
+    *out_total_prims = total_prims;
+    return 1;
+}
+
+static int gltf_mesh_alloc_output_tables(rt_gltf_asset *asset,
+                                         int mesh_json_count,
+                                         int total_prims,
+                                         int **out_mesh_prim_start,
+                                         int **out_mesh_prim_count,
+                                         void ***out_primitive_materials,
+                                         int *load_failed_io) {
+    int *mesh_prim_start = (int *)calloc((size_t)mesh_json_count, sizeof(int));
+    int *mesh_prim_count = (int *)calloc((size_t)mesh_json_count, sizeof(int));
+    void **primitive_materials = (void **)calloc((size_t)total_prims, sizeof(void *));
+    asset->meshes = (void **)calloc((size_t)total_prims, sizeof(void *));
+    asset->mesh_capacity = asset->meshes ? total_prims : 0;
+    if (!mesh_prim_start || !mesh_prim_count || !primitive_materials || !asset->meshes) {
+        free(mesh_prim_start);
+        free(mesh_prim_count);
+        free(primitive_materials);
+        free(asset->meshes);
+        asset->meshes = NULL;
+        asset->mesh_capacity = 0;
+        if (load_failed_io)
+            *load_failed_io = 1;
+        return 0;
+    }
+    *out_mesh_prim_start = mesh_prim_start;
+    *out_mesh_prim_count = mesh_prim_count;
+    *out_primitive_materials = primitive_materials;
+    return 1;
+}
+
+static void gltf_mesh_import_primitive(gltf_mesh_load_context_t *ctx,
+                                       void *mesh_json,
+                                       void *prim,
+                                       int mesh_json_index,
+                                       int primitive_index,
+                                       int *mesh_idx_io) {
+    void *attrs = jget(prim, "attributes");
+    int64_t material_idx = jint(prim, "material", -1);
+    int64_t mode = jint(prim, "mode", 4);
+    void *prim_material = NULL;
+    gltf_mesh_primitive_views_t views;
+    void *mesh;
+    int primitive_failed = 0;
+    int invalid_authored_normals = 0;
+    int invalid_authored_tangents = 0;
+    if (!attrs)
+        return;
+    prim_material = gltf_mesh_resolve_primitive_material(
+        ctx->asset, material_idx, ctx->material_capacity, ctx->default_material_io);
+    if (gltf_mesh_take_preloaded_primitive(ctx->asset,
+                                           ctx->preload_bundle,
+                                           mesh_json_index,
+                                           primitive_index,
+                                           prim_material,
+                                           ctx->primitive_materials,
+                                           mesh_idx_io))
+        return;
+    if (!gltf_mesh_read_primitive_views(ctx->root,
+                                        ctx->buffers,
+                                        ctx->buf_count,
+                                        attrs,
+                                        prim,
+                                        mode,
+                                        &views,
+                                        ctx->load_failed_io))
+        return;
+
+    mesh = rt_mesh3d_new();
+    if (!mesh)
+        return;
+    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
+    rt_mesh3d_reserve(mesh, views.pos.count, views.triangle_estimate);
+    if (((rt_mesh3d *)mesh)->build_failed) {
+        gltf_release_local(mesh);
+        if (ctx->load_failed_io)
+            *ctx->load_failed_io = 1;
+        return;
+    }
+
+    primitive_failed = !gltf_mesh_import_vertices((rt_mesh3d *)mesh,
+                                                  &views,
+                                                  &invalid_authored_normals,
+                                                  &invalid_authored_tangents);
+    if (primitive_failed) {
+        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
+        gltf_release_local(mesh);
+        if (ctx->load_failed_io)
+            *ctx->load_failed_io = 1;
+        return;
+    }
+
+    if (!gltf_mesh_finalize_imported_primitive(ctx->asset,
+                                               ctx->root,
+                                               ctx->buffers,
+                                               ctx->buf_count,
+                                               mesh_json,
+                                               prim,
+                                               mesh,
+                                               mode,
+                                               &views,
+                                               material_idx,
+                                               prim_material,
+                                               invalid_authored_normals,
+                                               invalid_authored_tangents,
+                                               ctx->load_failed_io)) {
+        gltf_release_local(mesh);
+        return;
+    }
+
+    ctx->asset->meshes[*mesh_idx_io] = mesh;
+    (*mesh_idx_io)++;
+    ctx->asset->mesh_count = *mesh_idx_io;
+    if (ctx->primitive_materials)
+        ctx->primitive_materials[*mesh_idx_io - 1] = prim_material;
+}
+
+static void gltf_mesh_import_mesh_primitives(gltf_mesh_load_context_t *ctx,
+                                             void *meshes_arr,
+                                             int mesh_json_index,
+                                             int *mesh_prim_start,
+                                             int *mesh_prim_count,
+                                             int *mesh_idx_io) {
+    void *mesh_json = rt_seq_get(meshes_arr, (int64_t)mesh_json_index);
+    void *prims = jarr(mesh_json, "primitives");
+    int prim_count = (int)jarr_len(prims);
+    int mesh_start = *mesh_idx_io;
+    if (mesh_prim_start)
+        mesh_prim_start[mesh_json_index] = mesh_start;
+    if (mesh_prim_count)
+        mesh_prim_count[mesh_json_index] = 0;
+    for (int pi = 0; pi < prim_count; pi++)
+        gltf_mesh_import_primitive(ctx,
+                                   mesh_json,
+                                   rt_seq_get(prims, (int64_t)pi),
+                                   mesh_json_index,
+                                   pi,
+                                   mesh_idx_io);
+    if (mesh_prim_count)
+        mesh_prim_count[mesh_json_index] = *mesh_idx_io - mesh_start;
+}
+
 /// @brief Decode glTF meshes/primitives into Mesh3D objects on the asset.
 ///        Extracted post-asset phase of rt_gltf_load_impl. Malformed primitives set
 ///        load_failed_io so corrupt assets do not render as partial/empty scenes.
@@ -9265,359 +10625,34 @@ static void gltf_load_meshes(rt_gltf_asset *asset,
     }
     material_capacity = gltf_material_count > 0 ? gltf_material_count + 1 : 1;
     if (mesh_json_count > 0) {
-        // Count total primitives (each primitive becomes a mesh)
         int total_prims = 0;
-        for (int i = 0; i < mesh_json_count; i++) {
-            void *mesh_json = rt_seq_get(meshes_arr, (int64_t)i);
-            void *prims = jarr(mesh_json, "primitives");
-            int64_t prim_len = jarr_len(prims);
-            if (prim_len > INT32_MAX || total_prims > INT32_MAX - prim_len) {
-                if (load_failed_io)
-                    *load_failed_io = 1;
-                goto finish;
-            }
-            total_prims += (int)prim_len;
-        }
+        if (!gltf_mesh_count_total_primitives(
+                meshes_arr, mesh_json_count, &total_prims, load_failed_io))
+            goto finish;
 
         if (total_prims > 0) {
-            mesh_prim_start = (int *)calloc((size_t)mesh_json_count, sizeof(int));
-            mesh_prim_count = (int *)calloc((size_t)mesh_json_count, sizeof(int));
-            primitive_materials = (void **)calloc((size_t)total_prims, sizeof(void *));
-            asset->meshes = (void **)calloc((size_t)total_prims, sizeof(void *));
-            asset->mesh_capacity = asset->meshes ? total_prims : 0;
-            if (!mesh_prim_start || !mesh_prim_count || !primitive_materials || !asset->meshes) {
-                asset->mesh_capacity = 0;
-                if (load_failed_io)
-                    *load_failed_io = 1;
+            gltf_mesh_load_context_t ctx;
+            if (!gltf_mesh_alloc_output_tables(asset,
+                                               mesh_json_count,
+                                               total_prims,
+                                               &mesh_prim_start,
+                                               &mesh_prim_count,
+                                               &primitive_materials,
+                                               load_failed_io))
                 goto finish;
-            }
+            ctx.asset = asset;
+            ctx.root = root;
+            ctx.buffers = buffers;
+            ctx.buf_count = buf_count;
+            ctx.preload_bundle = preload_bundle;
+            ctx.material_capacity = material_capacity;
+            ctx.primitive_materials = primitive_materials;
+            ctx.default_material_io = &default_material;
+            ctx.load_failed_io = load_failed_io;
             int mesh_idx = 0;
-
             for (int mi = 0; mi < mesh_json_count && asset->meshes; mi++) {
-                void *mesh_json = rt_seq_get(meshes_arr, (int64_t)mi);
-                void *prims = jarr(mesh_json, "primitives");
-                int prim_count = (int)jarr_len(prims);
-                int mesh_start = mesh_idx;
-                if (mesh_prim_start)
-                    mesh_prim_start[mi] = mesh_start;
-                if (mesh_prim_count)
-                    mesh_prim_count[mi] = 0;
-
-                for (int pi = 0; pi < prim_count; pi++) {
-                    void *prim = rt_seq_get(prims, (int64_t)pi);
-                    void *attrs = jget(prim, "attributes");
-                    int64_t material_idx = jint(prim, "material", -1);
-                    if (!attrs)
-                        continue;
-
-                    // Get accessor indices
-                    int64_t pos_acc = jint(attrs, "POSITION", -1);
-                    int64_t norm_acc = jint(attrs, "NORMAL", -1);
-                    int64_t uv0_acc = jint(attrs, "TEXCOORD_0", -1);
-                    int64_t uv1_acc = jint(attrs, "TEXCOORD_1", -1);
-                    int64_t color_acc = jint(attrs, "COLOR_0", -1);
-                    int64_t tangent_acc = jint(attrs, "TANGENT", -1);
-                    int64_t joints_acc = jint(attrs, "JOINTS_0", -1);
-                    int64_t weights_acc = jint(attrs, "WEIGHTS_0", -1);
-                    int64_t joints1_acc = jint(attrs, "JOINTS_1", -1);
-                    int64_t weights1_acc = jint(attrs, "WEIGHTS_1", -1);
-                    int64_t idx_acc = jint(prim, "indices", -1);
-                    int64_t mode = jint(prim, "mode", 4);
-                    void *prim_material = NULL;
-
-                    if (pos_acc < 0)
-                        continue;
-                    if (material_idx >= 0 && material_idx < asset->material_count)
-                        prim_material = asset->materials[material_idx];
-                    if (!prim_material && asset->materials) {
-                        if (!default_material && asset->material_count < material_capacity) {
-                            default_material = rt_material3d_new_pbr(1.0, 1.0, 1.0);
-                            if (default_material) {
-                                rt_material3d_set_metallic(default_material, 1.0);
-                                rt_material3d_set_roughness(default_material, 1.0);
-                                asset->materials[asset->material_count++] = default_material;
-                            }
-                        }
-                        prim_material = default_material;
-                    }
-
-                    {
-                        uint32_t decoded_mesh_flags = 0u;
-                        void *decoded_mesh = gltf_preload_take_decoded_mesh(
-                            preload_bundle, mi, pi, &decoded_mesh_flags);
-                        if (decoded_mesh) {
-                            if ((decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_NORMALS) == 0)
-                                rt_mesh3d_recalc_normals(decoded_mesh);
-                            if ((decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_TANGENTS) == 0 &&
-                                (decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_UV0) != 0) {
-                                rt_material3d *tangent_material = (rt_material3d *)prim_material;
-                                if (tangent_material && tangent_material->normal_map)
-                                    rt_mesh3d_calc_tangents(decoded_mesh);
-                            }
-                            asset->meshes[mesh_idx++] = decoded_mesh;
-                            asset->mesh_count = mesh_idx;
-                            if (primitive_materials)
-                                primitive_materials[mesh_idx - 1] = prim_material;
-                            continue;
-                        }
-                    }
-
-                    gltf_accessor_view_t pos_view;
-                    gltf_accessor_view_t norm_view;
-                    gltf_accessor_view_t uv0_view;
-                    gltf_accessor_view_t uv1_view;
-                    gltf_accessor_view_t color_view;
-                    gltf_accessor_view_t tangent_view;
-                    gltf_accessor_view_t joints_view;
-                    gltf_accessor_view_t weights_view;
-                    gltf_accessor_view_t joints1_view;
-                    gltf_accessor_view_t weights1_view;
-                    gltf_accessor_view_t idx_view;
-                    int has_normals =
-                        gltf_get_accessor_view(root, norm_acc, buffers, buf_count, &norm_view);
-                    int has_uv0 =
-                        gltf_get_accessor_view(root, uv0_acc, buffers, buf_count, &uv0_view);
-                    int has_uv1 =
-                        gltf_get_accessor_view(root, uv1_acc, buffers, buf_count, &uv1_view);
-                    int has_colors =
-                        gltf_get_accessor_view(root, color_acc, buffers, buf_count, &color_view);
-                    int has_tangents = gltf_get_accessor_view(
-                        root, tangent_acc, buffers, buf_count, &tangent_view);
-                    int has_joints =
-                        gltf_get_accessor_view(root, joints_acc, buffers, buf_count, &joints_view);
-                    int has_weights = gltf_get_accessor_view(
-                        root, weights_acc, buffers, buf_count, &weights_view);
-                    int has_joints1 = gltf_get_accessor_view(
-                        root, joints1_acc, buffers, buf_count, &joints1_view);
-                    int has_weights1 = gltf_get_accessor_view(
-                        root, weights1_acc, buffers, buf_count, &weights1_view);
-                    int has_indices =
-                        gltf_get_accessor_view(root, idx_acc, buffers, buf_count, &idx_view);
-                    int32_t draw_count;
-                    int32_t triangle_estimate;
-                    int has_skin0;
-                    int has_skin1;
-
-                    if (!gltf_get_accessor_view(root, pos_acc, buffers, buf_count, &pos_view) ||
-                        pos_view.count == 0 || !gltf_accessor_has_payload(&pos_view) ||
-                        !gltf_accessor_is_f32_components(&pos_view, 3, 3)) {
-                        if (load_failed_io)
-                            *load_failed_io = 1;
-                        continue;
-                    }
-                    if (has_normals && (!gltf_accessor_has_payload(&norm_view) ||
-                                        !gltf_accessor_is_f32_components(&norm_view, 3, 3) ||
-                                        norm_view.count < pos_view.count))
-                        has_normals = 0;
-                    if (has_uv0 &&
-                        (!gltf_accessor_has_payload(&uv0_view) ||
-                         !gltf_accessor_is_texcoord(&uv0_view) || uv0_view.count < pos_view.count))
-                        has_uv0 = 0;
-                    if (has_uv1 &&
-                        (!gltf_accessor_has_payload(&uv1_view) ||
-                         !gltf_accessor_is_texcoord(&uv1_view) || uv1_view.count < pos_view.count))
-                        has_uv1 = 0;
-                    if (has_colors &&
-                        (!gltf_accessor_has_payload(&color_view) ||
-                         !gltf_accessor_is_color(&color_view) || color_view.count < pos_view.count))
-                        has_colors = 0;
-                    if (has_tangents && (!gltf_accessor_has_payload(&tangent_view) ||
-                                         !gltf_accessor_is_f32_components(&tangent_view, 4, 4) ||
-                                         tangent_view.count < pos_view.count))
-                        has_tangents = 0;
-                    if (has_indices && (!gltf_accessor_has_payload(&idx_view) ||
-                                        !gltf_accessor_is_indices(&idx_view))) {
-                        if (load_failed_io)
-                            *load_failed_io = 1;
-                        continue;
-                    }
-                    if ((has_joints != has_weights) || (has_joints1 != has_weights1) ||
-                        (has_joints && (!gltf_accessor_has_payload(&joints_view) ||
-                                        !gltf_accessor_has_payload(&weights_view) ||
-                                        !gltf_accessor_is_joints(&joints_view) ||
-                                        !gltf_accessor_is_weights(&weights_view) ||
-                                        joints_view.count < pos_view.count ||
-                                        weights_view.count < pos_view.count)) ||
-                        (has_joints1 && (!gltf_accessor_has_payload(&joints1_view) ||
-                                         !gltf_accessor_has_payload(&weights1_view) ||
-                                         !gltf_accessor_is_joints(&joints1_view) ||
-                                         !gltf_accessor_is_weights(&weights1_view) ||
-                                         joints1_view.count < pos_view.count ||
-                                         weights1_view.count < pos_view.count))) {
-                        if (load_failed_io)
-                            *load_failed_io = 1;
-                        continue;
-                    }
-                    draw_count = has_indices ? idx_view.count : pos_view.count;
-                    triangle_estimate = gltf_primitive_triangle_count(mode, draw_count);
-                    if (triangle_estimate <= 0) {
-                        continue;
-                    }
-                    has_skin0 = has_joints && has_weights;
-                    has_skin1 = has_joints1 && has_weights1;
-
-                    // Create mesh and populate vertices
-                    void *mesh = rt_mesh3d_new();
-                    int primitive_failed = 0;
-                    int invalid_authored_normals = 0;
-                    int invalid_authored_tangents = 0;
-                    if (!mesh)
-                        continue;
-                    rt_mesh3d_begin_geometry_batch((rt_mesh3d *)mesh);
-                    rt_mesh3d_reserve(mesh, pos_view.count, triangle_estimate);
-                    if (((rt_mesh3d *)mesh)->build_failed) {
-                        gltf_release_local(mesh);
-                        if (load_failed_io)
-                            *load_failed_io = 1;
-                        continue;
-                    }
-
-                    for (int32_t vi = 0; vi < pos_view.count; vi++) {
-                        float pos[3] = {0.0f, 0.0f, 0.0f};
-                        float nrm[3] = {0.0f, 0.0f, 0.0f};
-                        float uv[2] = {0.0f, 0.0f};
-                        float uv1[2] = {0.0f, 0.0f};
-                        float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-                        float tangent[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-                        float weights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-                        uint32_t joints[4] = {0u, 0u, 0u, 0u};
-                        float weights1[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-                        uint32_t joints1[4] = {0u, 0u, 0u, 0u};
-                        gltf_accessor_read_f32(&pos_view, vi, pos, 3);
-                        if (has_normals)
-                            gltf_accessor_read_f32(&norm_view, vi, nrm, 3);
-                        if (has_uv0)
-                            gltf_accessor_read_f32(&uv0_view, vi, uv, 2);
-                        if (has_uv1)
-                            gltf_accessor_read_f32(&uv1_view, vi, uv1, 2);
-                        else {
-                            uv1[0] = uv[0];
-                            uv1[1] = uv[1];
-                        }
-                        if (has_colors) {
-                            gltf_accessor_read_f32(&color_view, vi, color, 4);
-                            if (color_view.comp_count < 4)
-                                color[3] = 1.0f;
-                        }
-                        if (has_tangents) {
-                            gltf_accessor_read_f32(&tangent_view, vi, tangent, 4);
-                            if (tangent_view.comp_count < 4)
-                                tangent[3] = 1.0f;
-                        }
-                        if (has_joints)
-                            gltf_accessor_read_u32(&joints_view, vi, joints, 4);
-                        if (has_weights)
-                            gltf_accessor_read_f32(&weights_view, vi, weights, 4);
-                        if (has_joints1)
-                            gltf_accessor_read_u32(&joints1_view, vi, joints1, 4);
-                        if (has_weights1)
-                            gltf_accessor_read_f32(&weights1_view, vi, weights1, 4);
-                        if (!gltf_f32_array_is_finite(pos, 3) ||
-                            !gltf_f32_array_is_finite(nrm, 3) || !gltf_f32_array_is_finite(uv, 2) ||
-                            !gltf_f32_array_is_finite(uv1, 2) ||
-                            !gltf_f32_array_is_finite(color, 4) ||
-                            !gltf_f32_array_is_finite(tangent, 4) ||
-                            (has_skin0 && !gltf_f32_array_is_finite(weights, 4)) ||
-                            (has_skin1 && !gltf_f32_array_is_finite(weights1, 4))) {
-                            primitive_failed = 1;
-                            break;
-                        }
-                        if (has_normals && !gltf_normalize_vec3f_in_place(nrm)) {
-                            invalid_authored_normals = 1;
-                            nrm[0] = 0.0f;
-                            nrm[1] = 0.0f;
-                            nrm[2] = 0.0f;
-                        }
-                        if (has_tangents && !gltf_sanitize_tangent4(tangent)) {
-                            invalid_authored_tangents = 1;
-                            tangent[0] = 1.0f;
-                            tangent[1] = 0.0f;
-                            tangent[2] = 0.0f;
-                            tangent[3] = 1.0f;
-                        }
-                        if (has_skin1) {
-                            uint32_t merged_joints[4] = {0u, 0u, 0u, 0u};
-                            float merged_weights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-                            if (has_skin0) {
-                                for (int j = 0; j < 4; j++)
-                                    gltf_add_top_joint_influence(
-                                        joints[j], weights[j], merged_joints, merged_weights);
-                            }
-                            for (int j = 0; j < 4; j++)
-                                gltf_add_top_joint_influence(
-                                    joints1[j], weights1[j], merged_joints, merged_weights);
-                            gltf_normalize_joint_influences(merged_weights);
-                            memcpy(joints, merged_joints, sizeof(joints));
-                            memcpy(weights, merged_weights, sizeof(weights));
-                        } else {
-                            for (int j = 0; j < 4; j++) {
-                                if (joints[j] >= VGFX3D_MAX_BONES)
-                                    weights[j] = 0.0f;
-                            }
-                        }
-
-                        if (!gltf_mesh_append_import_vertex(
-                                (rt_mesh3d *)mesh, pos, nrm, uv, uv1, color, tangent)) {
-                            primitive_failed = 1;
-                            break;
-                        }
-                        if (has_skin0 || has_skin1) {
-                            rt_mesh3d_set_bone_weights(mesh,
-                                                       vi,
-                                                       (int64_t)joints[0],
-                                                       weights[0],
-                                                       (int64_t)joints[1],
-                                                       weights[1],
-                                                       (int64_t)joints[2],
-                                                       weights[2],
-                                                       (int64_t)joints[3],
-                                                       weights[3]);
-                            for (int j = 0; j < 4; j++) {
-                                if (weights[j] > 0.0001f && joints[j] < VGFX3D_MAX_BONES &&
-                                    (int32_t)(joints[j] + 1u) > ((rt_mesh3d *)mesh)->bone_count) {
-                                    ((rt_mesh3d *)mesh)->bone_count = (int32_t)(joints[j] + 1u);
-                                }
-                            }
-                        }
-                    }
-                    if (primitive_failed) {
-                        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
-                        gltf_release_local(mesh);
-                        if (load_failed_io)
-                            *load_failed_io = 1;
-                        continue;
-                    }
-
-                    if (!gltf_append_primitive_indices(
-                            mesh, mode, has_indices ? &idx_view : NULL, pos_view.count)) {
-                        rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
-                        gltf_release_local(mesh);
-                        if (load_failed_io)
-                            *load_failed_io = 1;
-                        continue;
-                    }
-                    rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
-
-                    // Recalc normals if none provided
-                    if ((!has_normals || invalid_authored_normals) &&
-                        ((rt_mesh3d *)mesh)->vertex_count > 0)
-                        rt_mesh3d_recalc_normals(mesh);
-                    if ((!has_tangents || invalid_authored_tangents) && has_uv0 &&
-                        material_idx >= 0 && material_idx < asset->material_count) {
-                        rt_material3d *tangent_material = (rt_material3d *)prim_material;
-                        if (tangent_material && tangent_material->normal_map)
-                            rt_mesh3d_calc_tangents(mesh);
-                    }
-                    gltf_import_primitive_morph_targets(
-                        root, buffers, buf_count, mesh_json, prim, mesh, pos_view.count);
-
-                    asset->meshes[mesh_idx++] = mesh;
-                    asset->mesh_count = mesh_idx;
-                    if (primitive_materials)
-                        primitive_materials[mesh_idx - 1] = prim_material;
-                }
-                if (mesh_prim_count)
-                    mesh_prim_count[mi] = mesh_idx - mesh_start;
+                gltf_mesh_import_mesh_primitives(
+                    &ctx, meshes_arr, mi, mesh_prim_start, mesh_prim_count, &mesh_idx);
             }
         }
     }
@@ -9625,6 +10660,379 @@ finish:
     *out_mesh_prim_start = mesh_prim_start;
     *out_mesh_prim_count = mesh_prim_count;
     *out_primitive_materials = primitive_materials;
+}
+
+static void gltf_node_read_transform(void *node_json, rt_scene_node3d *node) {
+    void *matrix_arr = jarr(node_json, "matrix");
+    if (matrix_arr && jarr_len(matrix_arr) >= 16) {
+        double m[16];
+        double row_major[16];
+        for (int i = 0; i < 16; i++)
+            m[i] = jvalue_num(rt_seq_get(matrix_arr, (int64_t)i), i % 5 == 0 ? 1.0 : 0.0);
+        gltf_matrix_column_major_to_row_major(m, row_major);
+        gltf_matrix_to_trs(row_major, node->position, node->rotation, node->scale_xyz);
+    } else {
+        void *translation = jarr(node_json, "translation");
+        void *rotation = jarr(node_json, "rotation");
+        void *scale_arr = jarr(node_json, "scale");
+        node->position[0] = gltf_arr_num(translation, 0, 0.0);
+        node->position[1] = gltf_arr_num(translation, 1, 0.0);
+        node->position[2] = gltf_arr_num(translation, 2, 0.0);
+        node->rotation[0] = gltf_arr_num(rotation, 0, 0.0);
+        node->rotation[1] = gltf_arr_num(rotation, 1, 0.0);
+        node->rotation[2] = gltf_arr_num(rotation, 2, 0.0);
+        node->rotation[3] = gltf_arr_num(rotation, 3, 1.0);
+        node->scale_xyz[0] = gltf_arr_num(scale_arr, 0, 1.0);
+        node->scale_xyz[1] = gltf_arr_num(scale_arr, 1, 1.0);
+        node->scale_xyz[2] = gltf_arr_num(scale_arr, 2, 1.0);
+    }
+    gltf_sanitize_trs(node->position, node->rotation, node->scale_xyz);
+    node->world_dirty = 1;
+}
+
+static int gltf_node_bind_light(rt_scene_node3d *node,
+                                int64_t light_ref,
+                                void **imported_lights,
+                                int32_t imported_light_count) {
+    if (light_ref < 0)
+        return 1;
+    if (light_ref < imported_light_count && imported_lights && imported_lights[light_ref]) {
+        rt_scene_node3d_set_light(node, imported_lights[light_ref]);
+        return 1;
+    }
+    return 0;
+}
+
+static void gltf_node_set_primitive_material(rt_scene_node3d *node,
+                                             void **primitive_materials,
+                                             int32_t primitive_index) {
+    if (primitive_materials && primitive_index >= 0 && primitive_materials[primitive_index])
+        rt_scene_node3d_set_material(node, primitive_materials[primitive_index]);
+}
+
+static int gltf_node_attach_primitive_mesh(rt_gltf_asset *asset,
+                                           rt_scene_node3d *node,
+                                           int32_t mesh_index,
+                                           int64_t skin_ref,
+                                           void *weights_arr,
+                                           const gltf_skin_t *skins,
+                                           int32_t skin_count) {
+    void *node_mesh;
+    if (!asset || !node || mesh_index < 0 || mesh_index >= asset->mesh_count)
+        return 0;
+    node_mesh =
+        gltf_make_node_mesh_variant(asset, mesh_index, skin_ref, weights_arr, skins, skin_count);
+    if (!node_mesh)
+        return 0;
+    rt_scene_node3d_set_mesh(node, node_mesh);
+    if (node_mesh != asset->meshes[mesh_index])
+        gltf_release_local(node_mesh);
+    return 1;
+}
+
+static int gltf_node_attach_extra_primitive(rt_gltf_asset *asset,
+                                            rt_scene_node3d *node,
+                                            int32_t mesh_index,
+                                            int64_t skin_ref,
+                                            void *weights_arr,
+                                            void **primitive_materials,
+                                            const gltf_skin_t *skins,
+                                            int32_t skin_count) {
+    rt_scene_node3d *prim_node = (rt_scene_node3d *)rt_scene_node3d_new();
+    if (!prim_node)
+        return 0;
+    if (!gltf_node_attach_primitive_mesh(
+            asset, prim_node, mesh_index, skin_ref, weights_arr, skins, skin_count)) {
+        gltf_release_local(prim_node);
+        return 0;
+    }
+    gltf_node_set_primitive_material(prim_node, primitive_materials, mesh_index);
+    if (!rt_scene_node3d_try_add_child(node, prim_node)) {
+        gltf_release_local(prim_node);
+        return 0;
+    }
+    gltf_release_local(prim_node);
+    return 1;
+}
+
+static int gltf_node_attach_mesh_primitives(rt_gltf_asset *asset,
+                                            rt_scene_node3d *node,
+                                            int64_t mesh_ref,
+                                            int64_t skin_ref,
+                                            void *weights_arr,
+                                            int32_t mesh_json_count,
+                                            int *mesh_prim_start,
+                                            int *mesh_prim_count,
+                                            void **primitive_materials,
+                                            const gltf_skin_t *skins,
+                                            int32_t skin_count) {
+    int32_t prim_start;
+    int32_t prim_count;
+    if (mesh_ref < 0)
+        return 1;
+    /* Reject an out-of-range mesh reference unconditionally — including when the
+     * whole document declares zero primitives, in which case the prim tables are
+     * NULL. This bounds check is what makes GLTF.Load reject a node pointing at a
+     * non-existent mesh; gating it behind the prim-table NULL check (below) let
+     * such nodes load silently. */
+    if (mesh_ref >= mesh_json_count)
+        return 0;
+    if (!mesh_prim_count || !mesh_prim_start)
+        return 1;
+    prim_start = mesh_prim_start[mesh_ref];
+    prim_count = mesh_prim_count[mesh_ref];
+    if (prim_count <= 0)
+        return 1;
+    if (prim_start < 0 || prim_start > asset->mesh_count ||
+        prim_count > asset->mesh_count - prim_start)
+        return 0;
+    if (!gltf_node_attach_primitive_mesh(asset,
+                                         node,
+                                         prim_start,
+                                         skin_ref,
+                                         weights_arr,
+                                         skins,
+                                         skin_count))
+        return 0;
+    gltf_node_set_primitive_material(node, primitive_materials, prim_start);
+    for (int32_t pi = 1; pi < prim_count; pi++) {
+        if (!gltf_node_attach_extra_primitive(asset,
+                                             node,
+                                             prim_start + pi,
+                                             skin_ref,
+                                             weights_arr,
+                                             primitive_materials,
+                                             skins,
+                                             skin_count))
+            return 0;
+    }
+    return 1;
+}
+
+static int gltf_build_template_node(rt_gltf_asset *asset,
+                                    void *nodes_arr,
+                                    int32_t node_index,
+                                    int32_t mesh_json_count,
+                                    int *mesh_prim_start,
+                                    int *mesh_prim_count,
+                                    void **primitive_materials,
+                                    gltf_skin_t *skins,
+                                    int32_t skin_count,
+                                    void **imported_lights,
+                                    int32_t imported_light_count,
+                                    rt_scene_node3d **out_node) {
+    void *node_json = rt_seq_get(nodes_arr, (int64_t)node_index);
+    rt_scene_node3d *node = (rt_scene_node3d *)rt_scene_node3d_new();
+    const char *name = jstr(node_json, "name");
+    char fallback_name[64];
+    void *weights_arr = jarr(node_json, "weights");
+    void *node_extensions = jget(node_json, "extensions");
+    void *node_punctual_light =
+        node_extensions ? jget(node_extensions, "KHR_lights_punctual") : NULL;
+    int64_t mesh_ref = jint(node_json, "mesh", -1);
+    int64_t skin_ref = jint(node_json, "skin", -1);
+    int64_t light_ref = jint(node_punctual_light, "light", -1);
+
+    *out_node = node;
+    if (!node)
+        return 0;
+    node->import_index = node_index;
+    if (!name || name[0] == '\0')
+        name =
+            gltf_effective_node_name(nodes_arr, node_index, fallback_name, sizeof(fallback_name));
+    gltf_set_node_name(node, name);
+    if (mesh_ref < -1 || skin_ref < -1 || light_ref < -1)
+        return 0;
+    if (!gltf_node_bind_light(node, light_ref, imported_lights, imported_light_count))
+        return 0;
+    gltf_node_read_transform(node_json, node);
+    if (skin_ref >= 0 && skin_ref >= skin_count)
+        return 0;
+    return gltf_node_attach_mesh_primitives(asset,
+                                           node,
+                                           mesh_ref,
+                                           skin_ref,
+                                           weights_arr,
+                                           mesh_json_count,
+                                           mesh_prim_start,
+                                           mesh_prim_count,
+                                           primitive_materials,
+                                           skins,
+                                           skin_count);
+}
+
+static int gltf_link_template_node_children(void *nodes_arr,
+                                            int32_t node_json_count,
+                                            rt_scene_node3d **nodes) {
+    for (int32_t ni = 0; ni < node_json_count && nodes; ni++) {
+        void *node_json = rt_seq_get(nodes_arr, (int64_t)ni);
+        void *children = jarr(node_json, "children");
+        for (int64_t ci = 0; ci < jarr_len(children); ci++) {
+            int64_t child_idx = jvalue_int(rt_seq_get(children, ci), -1);
+            if (child_idx >= 0 && child_idx < node_json_count && nodes[ni] && nodes[child_idx]) {
+                if (!rt_scene_node3d_try_add_child(nodes[ni], nodes[child_idx]))
+                    return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+static int64_t gltf_scene_order_index(int64_t order, int64_t active_scene, int active_valid) {
+    if (!active_valid)
+        return order;
+    return order == 0 ? active_scene : (order <= active_scene ? order - 1 : order);
+}
+
+static int gltf_scene_roots_are_valid(void *scene_nodes,
+                                      int32_t node_json_count,
+                                      const int *node_parent,
+                                      int *scene_seen) {
+    for (int64_t i = 0; i < jarr_len(scene_nodes); i++) {
+        int64_t node_idx = jvalue_int(rt_seq_get(scene_nodes, i), -1);
+        if (node_idx < 0 || node_idx >= node_json_count || scene_seen[node_idx] ||
+            (node_parent && node_parent[node_idx] >= 0))
+            return 0;
+        scene_seen[node_idx] = 1;
+    }
+    return 1;
+}
+
+static int gltf_clone_scene_root_into(rt_scene_node3d *scene_root,
+                                      void *nodes_arr,
+                                      int32_t node_json_count,
+                                      rt_scene_node3d **nodes,
+                                      int32_t node_idx,
+                                      uint8_t *scene_active) {
+    rt_scene_node3d *clone;
+    if (node_idx < 0 || node_idx >= node_json_count || !nodes[node_idx])
+        return 1;
+    clone = gltf_clone_scene_node(nodes[node_idx]);
+    if (!clone)
+        return 0;
+    if (!rt_scene_node3d_try_add_child(scene_root, clone)) {
+        gltf_release_local(clone);
+        return 0;
+    }
+    gltf_release_local(clone);
+    return gltf_mark_active_node_subtree(nodes_arr, node_json_count, node_idx, scene_active);
+}
+
+static int gltf_import_scene_from_json(rt_gltf_asset *asset,
+                                       void *root,
+                                       void *nodes_arr,
+                                       rt_scene_node3d **nodes,
+                                       int32_t node_json_count,
+                                       const int *node_parent,
+                                       void *scene_json,
+                                       int64_t scene_index,
+                                       int64_t order,
+                                       int *built_any_io) {
+    void *scene_nodes = jarr(scene_json, "nodes");
+    int *scene_seen = (int *)calloc((size_t)node_json_count, sizeof(int));
+    uint8_t *scene_active = (uint8_t *)calloc((size_t)node_json_count, sizeof(*scene_active));
+    rt_scene_node3d *scene_root = NULL;
+    int ok = scene_seen != NULL && scene_active != NULL;
+    char fallback_scene_name[64];
+    const char *scene_name = jstr(scene_json, "name");
+    if (ok)
+        ok = gltf_scene_roots_are_valid(scene_nodes, node_json_count, node_parent, scene_seen);
+    if (ok) {
+        scene_root = (rt_scene_node3d *)rt_scene_node3d_new();
+        ok = scene_root != NULL;
+    }
+    for (int64_t i = 0; ok && i < jarr_len(scene_nodes); i++) {
+        int64_t node_idx = jvalue_int(rt_seq_get(scene_nodes, i), -1);
+        ok = gltf_clone_scene_root_into(
+            scene_root, nodes_arr, node_json_count, nodes, (int32_t)node_idx, scene_active);
+    }
+    if (ok && scene_root) {
+        snprintf(fallback_scene_name,
+                 sizeof(fallback_scene_name),
+                 order == 0 ? "default" : "scene_%d",
+                 (int)scene_index);
+        ok = gltf_append_scene(asset,
+                               scene_root,
+                               (scene_name && scene_name[0] != '\0') ? scene_name
+                                                                      : fallback_scene_name);
+        if (ok) {
+            gltf_scene_info_t *scene = &asset->scenes[asset->scene_count - 1];
+            ok =
+                gltf_import_scene_cameras(scene, root, nodes_arr, nodes, node_json_count, scene_active);
+            scene_root = NULL;
+            *built_any_io = 1;
+        }
+    }
+    if (scene_root)
+        gltf_release_local(scene_root);
+    free(scene_active);
+    free(scene_seen);
+    return ok;
+}
+
+static int gltf_import_fallback_scene(rt_gltf_asset *asset,
+                                      void *root,
+                                      void *nodes_arr,
+                                      rt_scene_node3d **nodes,
+                                      int32_t node_json_count,
+                                      const int *node_parent) {
+    rt_scene_node3d *scene_root = (rt_scene_node3d *)rt_scene_node3d_new();
+    uint8_t *scene_active = (uint8_t *)calloc((size_t)node_json_count, sizeof(*scene_active));
+    int attached_any = 0;
+    int ok = scene_root != NULL && scene_active != NULL;
+    for (int32_t i = 0; ok && i < node_json_count; i++) {
+        if (node_parent && node_parent[i] < 0 && nodes[i]) {
+            ok = gltf_clone_scene_root_into(
+                scene_root, nodes_arr, node_json_count, nodes, i, scene_active);
+            if (ok)
+                attached_any = 1;
+        }
+    }
+    if (ok && attached_any && gltf_append_scene(asset, scene_root, "default")) {
+        gltf_scene_info_t *scene = &asset->scenes[asset->scene_count - 1];
+        ok = gltf_import_scene_cameras(scene, root, nodes_arr, nodes, node_json_count, scene_active);
+        scene_root = NULL;
+    } else if (ok) {
+        ok = 0;
+    }
+    if (scene_root)
+        gltf_release_local(scene_root);
+    free(scene_active);
+    return ok;
+}
+
+static int gltf_import_node_scenes(rt_gltf_asset *asset,
+                                   void *root,
+                                   void *nodes_arr,
+                                   rt_scene_node3d **nodes,
+                                   int32_t node_json_count,
+                                   const int *node_parent) {
+    void *scenes_arr = jarr(root, "scenes");
+    int64_t active_scene = jint(root, "scene", 0);
+    int64_t scene_count = jarr_len(scenes_arr);
+    int built_any = 0;
+    int active_valid =
+        scenes_arr && scene_count > 0 && active_scene >= 0 && active_scene < scene_count;
+    if (scenes_arr && scene_count > 0) {
+        for (int64_t order = 0; order < scene_count; order++) {
+            int64_t scene_index = gltf_scene_order_index(order, active_scene, active_valid);
+            if (!gltf_import_scene_from_json(asset,
+                                             root,
+                                             nodes_arr,
+                                             nodes,
+                                             node_json_count,
+                                             node_parent,
+                                             rt_seq_get(scenes_arr, scene_index),
+                                             scene_index,
+                                             order,
+                                             &built_any))
+                return 0;
+        }
+    }
+    if (!built_any &&
+        !gltf_import_fallback_scene(asset, root, nodes_arr, nodes, node_json_count, node_parent))
+        return 0;
+    return gltf_install_active_scene_compat(asset);
 }
 
 /// @brief Build the reusable template node hierarchy and per-scene roots for a
@@ -9654,333 +11062,28 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
             if (!graph_valid || !nodes)
                 load_failed = 1;
             for (int ni = 0; ni < node_json_count && nodes; ni++) {
-                void *node_json = rt_seq_get(nodes_arr, (int64_t)ni);
-                rt_scene_node3d *node = (rt_scene_node3d *)rt_scene_node3d_new();
-                const char *name = jstr(node_json, "name");
-                char fallback_name[64];
-                void *translation = jarr(node_json, "translation");
-                void *rotation = jarr(node_json, "rotation");
-                void *scale_arr = jarr(node_json, "scale");
-                void *matrix_arr = jarr(node_json, "matrix");
-                void *weights_arr = jarr(node_json, "weights");
-                void *node_extensions = jget(node_json, "extensions");
-                void *node_punctual_light =
-                    node_extensions ? jget(node_extensions, "KHR_lights_punctual") : NULL;
-                int64_t mesh_ref = jint(node_json, "mesh", -1);
-                int64_t skin_ref = jint(node_json, "skin", -1);
-                int64_t light_ref = jint(node_punctual_light, "light", -1);
-                nodes[ni] = node;
-                if (!node) {
+                if (!gltf_build_template_node(asset,
+                                              nodes_arr,
+                                              ni,
+                                              mesh_json_count,
+                                              mesh_prim_start,
+                                              mesh_prim_count,
+                                              primitive_materials,
+                                              skins,
+                                              skin_count,
+                                              imported_lights,
+                                              imported_light_count,
+                                              &nodes[ni])) {
                     load_failed = 1;
                     continue;
-                }
-                node->import_index = ni;
-
-                if (!name || name[0] == '\0')
-                    name = gltf_effective_node_name(
-                        nodes_arr, ni, fallback_name, sizeof(fallback_name));
-                gltf_set_node_name(node, name);
-                if (mesh_ref < -1 || skin_ref < -1 || light_ref < -1) {
-                    load_failed = 1;
-                    continue;
-                }
-                if (light_ref >= 0) {
-                    if (light_ref < imported_light_count && imported_lights &&
-                        imported_lights[light_ref]) {
-                        rt_scene_node3d_set_light(node, imported_lights[light_ref]);
-                    } else {
-                        load_failed = 1;
-                        continue;
-                    }
-                }
-
-                if (matrix_arr && jarr_len(matrix_arr) >= 16) {
-                    double m[16];
-                    for (int i = 0; i < 16; i++)
-                        m[i] =
-                            jvalue_num(rt_seq_get(matrix_arr, (int64_t)i), i % 5 == 0 ? 1.0 : 0.0);
-                    double row_major[16];
-                    gltf_matrix_column_major_to_row_major(m, row_major);
-                    gltf_matrix_to_trs(row_major, node->position, node->rotation, node->scale_xyz);
-                } else {
-                    node->position[0] = translation && jarr_len(translation) > 0
-                                            ? jvalue_num(rt_seq_get(translation, 0), 0.0)
-                                            : 0.0;
-                    node->position[1] = translation && jarr_len(translation) > 1
-                                            ? jvalue_num(rt_seq_get(translation, 1), 0.0)
-                                            : 0.0;
-                    node->position[2] = translation && jarr_len(translation) > 2
-                                            ? jvalue_num(rt_seq_get(translation, 2), 0.0)
-                                            : 0.0;
-
-                    node->rotation[0] = rotation && jarr_len(rotation) > 0
-                                            ? jvalue_num(rt_seq_get(rotation, 0), 0.0)
-                                            : 0.0;
-                    node->rotation[1] = rotation && jarr_len(rotation) > 1
-                                            ? jvalue_num(rt_seq_get(rotation, 1), 0.0)
-                                            : 0.0;
-                    node->rotation[2] = rotation && jarr_len(rotation) > 2
-                                            ? jvalue_num(rt_seq_get(rotation, 2), 0.0)
-                                            : 0.0;
-                    node->rotation[3] = rotation && jarr_len(rotation) > 3
-                                            ? jvalue_num(rt_seq_get(rotation, 3), 1.0)
-                                            : 1.0;
-
-                    node->scale_xyz[0] = scale_arr && jarr_len(scale_arr) > 0
-                                             ? jvalue_num(rt_seq_get(scale_arr, 0), 1.0)
-                                             : 1.0;
-                    node->scale_xyz[1] = scale_arr && jarr_len(scale_arr) > 1
-                                             ? jvalue_num(rt_seq_get(scale_arr, 1), 1.0)
-                                             : 1.0;
-                    node->scale_xyz[2] = scale_arr && jarr_len(scale_arr) > 2
-                                             ? jvalue_num(rt_seq_get(scale_arr, 2), 1.0)
-                                             : 1.0;
-                }
-
-                gltf_sanitize_trs(node->position, node->rotation, node->scale_xyz);
-                node->world_dirty = 1;
-
-                if (skin_ref >= 0 && skin_ref >= skin_count) {
-                    load_failed = 1;
-                    continue;
-                }
-                if (mesh_ref >= mesh_json_count) {
-                    load_failed = 1;
-                    continue;
-                }
-
-                if (mesh_ref >= 0 && mesh_ref < mesh_json_count && mesh_prim_count &&
-                    mesh_prim_start) {
-                    int prim_start = mesh_prim_start[mesh_ref];
-                    int prim_count = mesh_prim_count[mesh_ref];
-                    if (prim_count > 0) {
-                        int mesh_index = prim_start;
-                        void *node_mesh = NULL;
-                        if (prim_start < 0 || prim_start > asset->mesh_count ||
-                            prim_count > asset->mesh_count - prim_start) {
-                            load_failed = 1;
-                            continue;
-                        }
-                        if (mesh_index >= 0 && mesh_index < asset->mesh_count) {
-                            node_mesh = gltf_make_node_mesh_variant(
-                                asset, mesh_index, skin_ref, weights_arr, skins, skin_count);
-                            if (!node_mesh) {
-                                load_failed = 1;
-                                continue;
-                            }
-                        }
-                        rt_scene_node3d_set_mesh(node, node_mesh);
-                        if (node_mesh && node_mesh != asset->meshes[mesh_index])
-                            gltf_release_local(node_mesh);
-                        if (primitive_materials && primitive_materials[prim_start])
-                            rt_scene_node3d_set_material(node, primitive_materials[prim_start]);
-                        for (int pi = 1; pi < prim_count; pi++) {
-                            void *prim_mesh = NULL;
-                            int child_mesh_index = prim_start + pi;
-                            rt_scene_node3d *prim_node = (rt_scene_node3d *)rt_scene_node3d_new();
-                            if (!prim_node) {
-                                load_failed = 1;
-                                break;
-                            }
-                            if (child_mesh_index >= 0 && child_mesh_index < asset->mesh_count) {
-                                prim_mesh = gltf_make_node_mesh_variant(asset,
-                                                                        child_mesh_index,
-                                                                        skin_ref,
-                                                                        weights_arr,
-                                                                        skins,
-                                                                        skin_count);
-                                if (!prim_mesh) {
-                                    load_failed = 1;
-                                    gltf_release_local(prim_node);
-                                    break;
-                                }
-                            }
-                            rt_scene_node3d_set_mesh(prim_node, prim_mesh);
-                            if (prim_mesh && prim_mesh != asset->meshes[child_mesh_index])
-                                gltf_release_local(prim_mesh);
-                            if (primitive_materials && primitive_materials[prim_start + pi])
-                                rt_scene_node3d_set_material(prim_node,
-                                                             primitive_materials[prim_start + pi]);
-                            if (!rt_scene_node3d_try_add_child(node, prim_node)) {
-                                gltf_release_local(prim_node);
-                                load_failed = 1;
-                                break;
-                            }
-                            gltf_release_local(prim_node);
-                        }
-                    }
                 }
             }
 
-            for (int ni = 0; ni < node_json_count && nodes; ni++) {
-                void *node_json = rt_seq_get(nodes_arr, (int64_t)ni);
-                void *children = jarr(node_json, "children");
-                for (int ci = 0; ci < jarr_len(children); ci++) {
-                    int64_t child_idx = jvalue_int(rt_seq_get(children, (int64_t)ci), -1);
-                    if (child_idx >= 0 && child_idx < node_json_count && nodes[ni] &&
-                        nodes[child_idx]) {
-                        if (!rt_scene_node3d_try_add_child(nodes[ni], nodes[child_idx])) {
-                            load_failed = 1;
-                            break;
-                        }
-                    }
-                }
-                if (load_failed)
-                    break;
-            }
-
-            if (graph_valid && nodes) {
-                void *scenes_arr = jarr(root, "scenes");
-                int64_t active_scene = jint(root, "scene", 0);
-                int64_t scene_count = jarr_len(scenes_arr);
-                int built_any = 0;
-                int active_valid = scenes_arr && scene_count > 0 && active_scene >= 0 &&
-                                   active_scene < scene_count;
-                if (scenes_arr && scene_count > 0) {
-                    for (int64_t order = 0; order < scene_count && !load_failed; order++) {
-                        int64_t scene_index =
-                            active_valid
-                                ? (order == 0 ? active_scene
-                                              : (order <= active_scene ? order - 1 : order))
-                                : order;
-                        void *scene_json = rt_seq_get(scenes_arr, scene_index);
-                        void *scene_nodes = jarr(scene_json, "nodes");
-                        int *scene_seen = (int *)calloc((size_t)node_json_count, sizeof(int));
-                        uint8_t *scene_active =
-                            (uint8_t *)calloc((size_t)node_json_count, sizeof(*scene_active));
-                        rt_scene_node3d *scene_root = NULL;
-                        int scene_roots_valid = scene_seen != NULL && scene_active != NULL;
-                        char fallback_scene_name[64];
-                        const char *scene_name = jstr(scene_json, "name");
-                        if (!scene_seen || !scene_active)
-                            load_failed = 1;
-                        for (int i = 0; scene_roots_valid && i < jarr_len(scene_nodes); i++) {
-                            int64_t node_idx = jvalue_int(rt_seq_get(scene_nodes, (int64_t)i), -1);
-                            if (node_idx < 0 || node_idx >= node_json_count ||
-                                scene_seen[node_idx] ||
-                                (node_parent && node_parent[node_idx] >= 0)) {
-                                scene_roots_valid = 0;
-                                break;
-                            }
-                            scene_seen[node_idx] = 1;
-                        }
-                        if (!load_failed && !scene_roots_valid)
-                            load_failed = 1;
-                        if (scene_roots_valid) {
-                            scene_root = (rt_scene_node3d *)rt_scene_node3d_new();
-                            if (!scene_root) {
-                                load_failed = 1;
-                            } else {
-                                for (int i = 0; i < jarr_len(scene_nodes); i++) {
-                                    int64_t node_idx =
-                                        jvalue_int(rt_seq_get(scene_nodes, (int64_t)i), -1);
-                                    if (node_idx >= 0 && node_idx < node_json_count &&
-                                        nodes[node_idx]) {
-                                        rt_scene_node3d *clone =
-                                            gltf_clone_scene_node(nodes[node_idx]);
-                                        if (!clone) {
-                                            load_failed = 1;
-                                            break;
-                                        }
-                                        if (!rt_scene_node3d_try_add_child(scene_root, clone)) {
-                                            gltf_release_local(clone);
-                                            load_failed = 1;
-                                            break;
-                                        }
-                                        gltf_release_local(clone);
-                                        if (!gltf_mark_active_node_subtree(nodes_arr,
-                                                                           node_json_count,
-                                                                           (int32_t)node_idx,
-                                                                           scene_active)) {
-                                            load_failed = 1;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if (!load_failed && scene_root) {
-                            snprintf(fallback_scene_name,
-                                     sizeof(fallback_scene_name),
-                                     order == 0 ? "default" : "scene_%d",
-                                     (int)scene_index);
-                            if (!gltf_append_scene(asset,
-                                                   scene_root,
-                                                   (scene_name && scene_name[0] != '\0')
-                                                       ? scene_name
-                                                       : fallback_scene_name)) {
-                                load_failed = 1;
-                            } else {
-                                gltf_scene_info_t *scene = &asset->scenes[asset->scene_count - 1];
-                                if (!gltf_import_scene_cameras(scene,
-                                                               root,
-                                                               nodes_arr,
-                                                               nodes,
-                                                               node_json_count,
-                                                               scene_active))
-                                    load_failed = 1;
-                                scene_root = NULL;
-                                built_any = 1;
-                            }
-                        } else if (!load_failed && !scene_root) {
-                            load_failed = 1;
-                        }
-                        if (scene_root)
-                            gltf_release_local(scene_root);
-                        free(scene_active);
-                        free(scene_seen);
-                    }
-                }
-                if (!built_any && !load_failed) {
-                    rt_scene_node3d *scene_root = (rt_scene_node3d *)rt_scene_node3d_new();
-                    uint8_t *scene_active =
-                        (uint8_t *)calloc((size_t)node_json_count, sizeof(*scene_active));
-                    int attached_any = 0;
-                    if (!scene_root || !scene_active) {
-                        if (scene_root)
-                            gltf_release_local(scene_root);
-                        free(scene_active);
-                        load_failed = 1;
-                    } else {
-                        for (int i = 0; i < node_json_count; i++) {
-                            if (node_parent && node_parent[i] < 0 && nodes[i]) {
-                                rt_scene_node3d *clone = gltf_clone_scene_node(nodes[i]);
-                                if (!clone) {
-                                    load_failed = 1;
-                                    break;
-                                }
-                                if (!rt_scene_node3d_try_add_child(scene_root, clone)) {
-                                    gltf_release_local(clone);
-                                    load_failed = 1;
-                                    break;
-                                }
-                                gltf_release_local(clone);
-                                if (!gltf_mark_active_node_subtree(
-                                        nodes_arr, node_json_count, i, scene_active)) {
-                                    load_failed = 1;
-                                    break;
-                                }
-                                attached_any = 1;
-                            }
-                        }
-                        if (!load_failed && attached_any &&
-                            gltf_append_scene(asset, scene_root, "default")) {
-                            gltf_scene_info_t *scene = &asset->scenes[asset->scene_count - 1];
-                            if (!gltf_import_scene_cameras(
-                                    scene, root, nodes_arr, nodes, node_json_count, scene_active))
-                                load_failed = 1;
-                            scene_root = NULL;
-                        } else if (!load_failed) {
-                            load_failed = 1;
-                        }
-                        if (scene_root)
-                            gltf_release_local(scene_root);
-                        free(scene_active);
-                    }
-                }
-                if (!load_failed && !gltf_install_active_scene_compat(asset))
-                    load_failed = 1;
-            }
+            if (!load_failed && !gltf_link_template_node_children(nodes_arr, node_json_count, nodes))
+                load_failed = 1;
+            if (!load_failed && graph_valid && nodes &&
+                !gltf_import_node_scenes(asset, root, nodes_arr, nodes, node_json_count, node_parent))
+                load_failed = 1;
 
             for (int i = 0; i < node_json_count && nodes; i++)
                 gltf_release_ref((void **)&nodes[i]);
@@ -9994,6 +11097,351 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
 //===----------------------------------------------------------------------===//
 // Main loader
 //===----------------------------------------------------------------------===//
+
+static void gltf_free_buffers(gltf_buffer_t *buffers, int buf_count, const uint8_t *bin_chunk) {
+    if (!buffers)
+        return;
+    for (int i = 0; i < buf_count; i++) {
+        if (buffers[i].data != bin_chunk)
+            free(buffers[i].data);
+    }
+    free(buffers);
+}
+
+static int gltf_load_buffer_uri(const char *filepath,
+                                int load_assets,
+                                rt_gltf_preload_bundle *preload_bundle,
+                                int buffer_index,
+                                const char *uri,
+                                size_t byte_length,
+                                gltf_buffer_t *buffer) {
+    if (strncmp(uri, "data:", 5) == 0) {
+        char mime_type[64];
+        uint8_t *decoded = NULL;
+        size_t decoded_len = 0;
+        char preload_key[64];
+        gltf_preload_buffer_key(buffer_index, preload_key, sizeof(preload_key));
+        decoded = gltf_preload_bundle_take_dependency(
+            preload_bundle, preload_key, GLTF_PRELOAD_DEP_BUFFER, &decoded_len);
+        if (decoded ||
+            gltf_parse_data_uri(uri, mime_type, sizeof(mime_type), &decoded, &decoded_len)) {
+            if (decoded_len < byte_length) {
+                free(decoded);
+                return 0;
+            }
+            buffer->data = decoded;
+            buffer->len = byte_length;
+            return 1;
+        }
+        return byte_length == 0;
+    }
+
+    char buf_path[1024];
+    gltf_resolve_relative_path(filepath, uri, buf_path, sizeof(buf_path));
+    if (buf_path[0] == '\0')
+        return 0;
+    buffer->data = gltf_load_dependency_bytes(buf_path, load_assets, byte_length, preload_bundle, NULL);
+    if (buffer->data)
+        buffer->len = byte_length;
+    if (byte_length > 0 && (!buffer->data || buffer->len < byte_length)) {
+        if (load_assets)
+            gltf_trap_asset_dependency(filepath, buf_path, "buffer");
+        return 0;
+    }
+    return 1;
+}
+
+static int gltf_load_buffers(void *root,
+                             const char *filepath,
+                             int load_assets,
+                             rt_gltf_preload_bundle *preload_bundle,
+                             uint8_t *bin_chunk,
+                             size_t bin_chunk_len,
+                             gltf_buffer_t **out_buffers,
+                             int *out_buf_count) {
+    void *buffers_arr = jarr(root, "buffers");
+    int buf_count = (int)jarr_len(buffers_arr);
+    gltf_buffer_t *buffers =
+        (gltf_buffer_t *)calloc((size_t)(buf_count + 1), sizeof(gltf_buffer_t));
+    if (!buffers)
+        return 0;
+    for (int i = 0; i < buf_count; i++) {
+        void *buf_obj = rt_seq_get(buffers_arr, (int64_t)i);
+        int64_t byte_length_raw = jint(buf_obj, "byteLength", -1);
+        const char *uri = jstr(buf_obj, "uri");
+        size_t byte_length;
+        if (byte_length_raw < 0) {
+            gltf_free_buffers(buffers, buf_count, bin_chunk);
+            return 0;
+        }
+        byte_length = (size_t)byte_length_raw;
+        if (i == 0 && bin_chunk && !uri) {
+            if (byte_length > bin_chunk_len || byte_length > SIZE_MAX - 3u ||
+                bin_chunk_len > byte_length + 3u) {
+                gltf_free_buffers(buffers, buf_count, bin_chunk);
+                return 0;
+            }
+            buffers[i].data = bin_chunk;
+            buffers[i].len = byte_length;
+        } else if (uri) {
+            if (!gltf_load_buffer_uri(
+                    filepath, load_assets, preload_bundle, i, uri, byte_length, &buffers[i])) {
+                gltf_free_buffers(buffers, buf_count, bin_chunk);
+                return 0;
+            }
+        } else if (byte_length > 0) {
+            gltf_free_buffers(buffers, buf_count, bin_chunk);
+            return 0;
+        }
+    }
+    *out_buffers = buffers;
+    *out_buf_count = buf_count;
+    return 1;
+}
+
+static rt_gltf_asset *gltf_asset_new_empty(void) {
+    rt_gltf_asset *asset =
+        (rt_gltf_asset *)rt_obj_new_i64(RT_G3D_GLTF_ASSET_CLASS_ID, (int64_t)sizeof(rt_gltf_asset));
+    if (!asset)
+        return NULL;
+    asset->vptr = NULL;
+    asset->meshes = NULL;
+    asset->mesh_count = 0;
+    asset->mesh_capacity = 0;
+    asset->materials = NULL;
+    asset->material_count = 0;
+    asset->material_capacity = 0;
+    asset->skeletons = NULL;
+    asset->skeleton_count = 0;
+    asset->skeleton_capacity = 0;
+    asset->animations = NULL;
+    asset->animation_count = 0;
+    asset->animation_capacity = 0;
+    asset->node_animations = NULL;
+    asset->node_animation_count = 0;
+    asset->node_animation_capacity = 0;
+    asset->cameras = NULL;
+    asset->camera_count = 0;
+    asset->camera_capacity = 0;
+    asset->scenes = NULL;
+    asset->scene_count = 0;
+    asset->scene_capacity = 0;
+    asset->scene_root = NULL;
+    asset->node_count = 0;
+    rt_obj_set_finalizer(asset, gltf_asset_finalize);
+    return asset;
+}
+
+static int gltf_extract_json_document(uint8_t *file_data,
+                                      size_t file_size,
+                                      char **out_json_str,
+                                      uint8_t **out_bin_chunk,
+                                      size_t *out_bin_chunk_len) {
+    char *json_str = NULL;
+    uint8_t *bin_chunk = NULL;
+    size_t bin_chunk_len = 0;
+    int parse_error = 0;
+    *out_json_str = NULL;
+    *out_bin_chunk = NULL;
+    *out_bin_chunk_len = 0;
+
+    if (file_size >= 12 && file_data[0] == 0x67 && file_data[1] == 0x6C &&
+        file_data[2] == 0x54 && file_data[3] == 0x46) {
+        uint32_t version = gltf_read_u32_le(file_data + 4);
+        uint32_t declared_len = gltf_read_u32_le(file_data + 8);
+        size_t pos = 12;
+        int chunk_index = 0;
+        if (file_size > (size_t)UINT32_MAX || version != 2 || declared_len != (uint32_t)file_size)
+            parse_error = 1;
+        while (!parse_error && pos + 8 <= file_size) {
+            uint32_t chunk_len = gltf_read_u32_le(file_data + pos);
+            uint32_t chunk_type = gltf_read_u32_le(file_data + pos + 4);
+            pos += 8;
+            if ((chunk_len & 3u) != 0 || chunk_len > file_size - pos) {
+                parse_error = 1;
+                break;
+            }
+            if (chunk_index == 0 && chunk_type != 0x4E4F534A) {
+                parse_error = 1;
+                break;
+            }
+            if (chunk_type == 0x4E4F534A) {
+                if (json_str || chunk_len == 0) {
+                    parse_error = 1;
+                    break;
+                }
+                json_str = (char *)malloc((size_t)chunk_len + 1u);
+                if (!json_str) {
+                    parse_error = 1;
+                    break;
+                }
+                memcpy(json_str, file_data + pos, chunk_len);
+                json_str[chunk_len] = '\0';
+            } else if (chunk_type == 0x004E4942) {
+                if (bin_chunk) {
+                    parse_error = 1;
+                    break;
+                }
+                bin_chunk = file_data + pos;
+                bin_chunk_len = chunk_len;
+            }
+            pos += chunk_len;
+            chunk_index++;
+        }
+        if (!parse_error && pos != file_size)
+            parse_error = 1;
+    } else {
+        json_str = (char *)malloc(file_size + 1u);
+        if (!json_str)
+            return 0;
+        memcpy(json_str, file_data, file_size);
+        json_str[file_size] = '\0';
+    }
+
+    if (parse_error || !json_str) {
+        free(json_str);
+        return 0;
+    }
+    *out_json_str = json_str;
+    *out_bin_chunk = bin_chunk;
+    *out_bin_chunk_len = bin_chunk_len;
+    return 1;
+}
+
+static void *gltf_parse_validated_root_json(char *json_str) {
+    rt_string json_rts;
+    void *root = NULL;
+    jmp_buf json_recovery;
+    if (!json_str)
+        return NULL;
+    if (!gltf_validate_required_data_uri_images(json_str, strlen(json_str))) {
+        free(json_str);
+        return NULL;
+    }
+    json_rts = rt_const_cstr(json_str);
+    rt_trap_set_recovery(&json_recovery);
+    if (setjmp(json_recovery) == 0)
+        root = rt_json_parse_object(json_rts);
+    rt_trap_clear_recovery();
+    free(json_str);
+    if (!root)
+        return NULL;
+    {
+        void *asset_json = jget(root, "asset");
+        const char *version = jstr(asset_json, "version");
+        if (!version || strncmp(version, "2.", 2) != 0) {
+            gltf_release_local(root);
+            return NULL;
+        }
+    }
+    if (!gltf_validate_required_extensions(root)) {
+        gltf_release_local(root);
+        return NULL;
+    }
+    return root;
+}
+
+typedef struct {
+    void **images;
+    int image_count;
+    uint8_t *image_required;
+    void **texture_images;
+    uint8_t *texture_supported;
+    gltf_sampler_info_t *texture_samplers;
+    int texture_count;
+    int *mesh_prim_start;
+    int *mesh_prim_count;
+    void **primitive_materials;
+    gltf_material_info_t *material_infos;
+    gltf_skin_t *skins;
+    int32_t skin_count;
+    void **imported_lights;
+    int32_t imported_light_count;
+} gltf_load_scratch_t;
+
+static void gltf_load_scratch_cleanup(gltf_load_scratch_t *scratch) {
+    if (!scratch)
+        return;
+    if (scratch->images) {
+        for (int i = 0; i < scratch->image_count; i++)
+            gltf_release_ref(&scratch->images[i]);
+    }
+    free(scratch->images);
+    free(scratch->image_required);
+    free(scratch->texture_images);
+    free(scratch->texture_supported);
+    free(scratch->texture_samplers);
+    free(scratch->mesh_prim_start);
+    free(scratch->mesh_prim_count);
+    free(scratch->primitive_materials);
+    free(scratch->material_infos);
+    if (scratch->imported_lights) {
+        for (int32_t i = 0; i < scratch->imported_light_count; i++)
+            gltf_release_ref(&scratch->imported_lights[i]);
+    }
+    free(scratch->imported_lights);
+    gltf_free_skins(scratch->skins, scratch->skin_count);
+}
+
+static int gltf_load_asset_payload(rt_gltf_asset *asset,
+                                   void *root,
+                                   const char *filepath,
+                                   int load_assets,
+                                   rt_gltf_preload_bundle *preload_bundle,
+                                   gltf_buffer_t *buffers,
+                                   int buf_count,
+                                   gltf_load_scratch_t *scratch) {
+    int load_failed = 0;
+    gltf_load_images_and_textures(root,
+                                  filepath,
+                                  load_assets,
+                                  preload_bundle,
+                                  buffers,
+                                  buf_count,
+                                  &scratch->images,
+                                  &scratch->image_count,
+                                  &scratch->image_required,
+                                  &scratch->texture_images,
+                                  &scratch->texture_supported,
+                                  &scratch->texture_samplers,
+                                  &scratch->texture_count,
+                                  &load_failed);
+    gltf_load_materials(asset,
+                        root,
+                        scratch->texture_images,
+                        scratch->texture_supported,
+                        scratch->texture_samplers,
+                        scratch->texture_count,
+                        &scratch->material_infos,
+                        &load_failed);
+    gltf_parse_punctual_lights(root, &scratch->imported_lights, &scratch->imported_light_count);
+    gltf_load_meshes(asset,
+                     root,
+                     buffers,
+                     buf_count,
+                     preload_bundle,
+                     &scratch->mesh_prim_start,
+                     &scratch->mesh_prim_count,
+                     &scratch->primitive_materials,
+                     &load_failed);
+    gltf_parse_skins(
+        asset, root, buffers, buf_count, &scratch->skins, &scratch->skin_count, &load_failed);
+    if (!load_failed) {
+        gltf_parse_animations(asset, root, buffers, buf_count, scratch->skins, scratch->skin_count);
+        gltf_parse_node_animations(
+            asset, root, buffers, buf_count, scratch->skins, scratch->skin_count);
+        load_failed = gltf_build_node_hierarchy(asset,
+                                                root,
+                                                scratch->mesh_prim_start,
+                                                scratch->mesh_prim_count,
+                                                scratch->primitive_materials,
+                                                scratch->skins,
+                                                scratch->skin_count,
+                                                scratch->imported_lights,
+                                                scratch->imported_light_count);
+    }
+    return load_failed;
+}
 
 /// @brief Load a glTF 2.0 asset from disk and build the engine representation.
 /// @details Top-level entry point that orchestrates the entire load pipeline. The
@@ -10057,354 +11505,59 @@ static void *rt_gltf_load_impl(rt_string path,
             free(file_data);
         return NULL;
     }
-    long fsize = (long)file_size;
 
-    // Detect .glb vs .gltf
     char *json_str = NULL;
     uint8_t *bin_chunk = NULL;
     size_t bin_chunk_len = 0;
-    int parse_error = 0;
-
-    if ((size_t)fsize >= 12 && file_data[0] == 0x67 && file_data[1] == 0x6C &&
-        file_data[2] == 0x54 && file_data[3] == 0x46) {
-        // GLB binary container
-        uint32_t version = gltf_read_u32_le(file_data + 4);
-        uint32_t declared_len = gltf_read_u32_le(file_data + 8);
-        int chunk_index = 0;
-        if (file_size > (size_t)UINT32_MAX)
-            parse_error = 1;
-        if (version != 2 || declared_len != (uint32_t)fsize)
-            parse_error = 1;
-
-        // Parse chunks
-        size_t pos = 12;
-        while (!parse_error && pos + 8 <= (size_t)fsize) {
-            uint32_t chunk_len = gltf_read_u32_le(file_data + pos);
-            uint32_t chunk_type = gltf_read_u32_le(file_data + pos + 4);
-            pos += 8;
-            if ((chunk_len & 3u) != 0 || chunk_len > (size_t)fsize - pos) {
-                parse_error = 1;
-                break;
-            }
-            if (chunk_index == 0 && chunk_type != 0x4E4F534A) {
-                parse_error = 1;
-                break;
-            }
-
-            if (chunk_type == 0x4E4F534A) {
-                // JSON chunk
-                if (json_str || chunk_len == 0) {
-                    parse_error = 1;
-                    break;
-                }
-                json_str = (char *)malloc(chunk_len + 1);
-                if (json_str) {
-                    memcpy(json_str, file_data + pos, chunk_len);
-                    json_str[chunk_len] = '\0';
-                } else {
-                    parse_error = 1;
-                    break;
-                }
-            } else if (chunk_type == 0x004E4942) {
-                // BIN chunk
-                if (bin_chunk) {
-                    parse_error = 1;
-                    break;
-                }
-                bin_chunk = file_data + pos;
-                bin_chunk_len = chunk_len;
-            }
-            pos += chunk_len;
-            chunk_index++;
-        }
-        if (!parse_error && pos != (size_t)fsize)
-            parse_error = 1;
-    } else {
-        // Text .gltf
-        json_str = (char *)malloc((size_t)fsize + 1);
-        if (json_str) {
-            memcpy(json_str, file_data, (size_t)fsize);
-            json_str[fsize] = '\0';
-        }
-    }
-
-    if (parse_error) {
-        free(json_str);
+    if (!gltf_extract_json_document(file_data, file_size, &json_str, &bin_chunk, &bin_chunk_len)) {
         free(file_data);
         return NULL;
     }
 
-    if (!json_str) {
-        free(file_data);
-        return NULL;
-    }
-    if (!gltf_validate_required_data_uri_images(json_str, strlen(json_str))) {
-        free(json_str);
-        free(file_data);
-        return NULL;
-    }
-
-    // Parse JSON
-    rt_string json_rts = rt_const_cstr(json_str);
-    void *root = NULL;
-    jmp_buf json_recovery;
-    rt_trap_set_recovery(&json_recovery);
-    if (setjmp(json_recovery) == 0)
-        root = rt_json_parse_object(json_rts);
-    rt_trap_clear_recovery();
-    free(json_str);
+    void *root = gltf_parse_validated_root_json(json_str);
     if (!root) {
         free(file_data);
         return NULL;
     }
-    {
-        void *asset_json = jget(root, "asset");
-        const char *version = jstr(asset_json, "version");
-        if (!version || strncmp(version, "2.", 2) != 0) {
-            gltf_release_local(root);
-            free(file_data);
-            return NULL;
-        }
-    }
-    if (!gltf_validate_required_extensions(root)) {
-        gltf_release_local(root);
-        free(file_data);
-        return NULL;
-    }
 
-    // Load buffers
-    void *buffers_arr = jarr(root, "buffers");
-    int buf_count = (int)jarr_len(buffers_arr);
-    gltf_buffer_t *buffers =
-        (gltf_buffer_t *)calloc((size_t)(buf_count + 1), sizeof(gltf_buffer_t));
-    int *mesh_prim_start = NULL;
-    int *mesh_prim_count = NULL;
-    void **primitive_materials = NULL;
-    gltf_material_info_t *material_infos = NULL;
-    gltf_skin_t *skins = NULL;
-    int32_t skin_count = 0;
-    void **imported_lights = NULL;
-    int32_t imported_light_count = 0;
+    int buf_count = 0;
+    gltf_buffer_t *buffers = NULL;
+    gltf_load_scratch_t scratch;
     int load_failed = 0;
-    if (!buffers) {
+    memset(&scratch, 0, sizeof(scratch));
+    if (!gltf_load_buffers(root,
+                           filepath,
+                           load_assets,
+                           preload_bundle,
+                           bin_chunk,
+                           bin_chunk_len,
+                           &buffers,
+                           &buf_count)) {
         gltf_release_local(root);
         free(file_data);
         return NULL;
     }
 
-    for (int i = 0; i < buf_count; i++) {
-        void *buf_obj = rt_seq_get(buffers_arr, (int64_t)i);
-        int64_t byte_length_raw = jint(buf_obj, "byteLength", -1);
-        size_t byte_length = 0;
-        const char *uri = jstr(buf_obj, "uri");
-        if (byte_length_raw < 0) {
-            load_failed = 1;
-            break;
-        }
-        byte_length = (size_t)byte_length_raw;
-
-        if (i == 0 && bin_chunk && !uri) {
-            // GLB: buffer 0 is the BIN chunk
-            if (byte_length > bin_chunk_len || byte_length > SIZE_MAX - 3u ||
-                bin_chunk_len > byte_length + 3u) {
-                load_failed = 1;
-                break;
-            }
-            buffers[i].data = bin_chunk;
-            buffers[i].len = byte_length;
-        } else if (uri) {
-            if (strncmp(uri, "data:", 5) == 0) {
-                char mime_type[64];
-                uint8_t *decoded = NULL;
-                size_t decoded_len = 0;
-                char preload_key[64];
-                gltf_preload_buffer_key(i, preload_key, sizeof(preload_key));
-                decoded = gltf_preload_bundle_take_dependency(
-                    preload_bundle, preload_key, GLTF_PRELOAD_DEP_BUFFER, &decoded_len);
-                if (decoded || gltf_parse_data_uri(
-                                   uri, mime_type, sizeof(mime_type), &decoded, &decoded_len)) {
-                    if (decoded_len < byte_length) {
-                        free(decoded);
-                        load_failed = 1;
-                        break;
-                    }
-                    buffers[i].data = decoded;
-                    buffers[i].len = byte_length;
-                } else if (byte_length > 0) {
-                    load_failed = 1;
-                    break;
-                }
-            } else {
-                // External file — resolve relative to .gltf directory
-                char buf_path[1024];
-                gltf_resolve_relative_path(filepath, uri, buf_path, sizeof(buf_path));
-                if (buf_path[0] == '\0') {
-                    load_failed = 1;
-                    break;
-                }
-                buffers[i].data = gltf_load_dependency_bytes(
-                    buf_path, load_assets, byte_length, preload_bundle, NULL);
-                if (buffers[i].data)
-                    buffers[i].len = byte_length;
-                if (byte_length > 0 && (!buffers[i].data || buffers[i].len < byte_length)) {
-                    if (load_assets)
-                        gltf_trap_asset_dependency(filepath, buf_path, "buffer");
-                    load_failed = 1;
-                    break;
-                }
-            }
-        } else if (byte_length > 0) {
-            load_failed = 1;
-            break;
-        }
-    }
-    if (load_failed) {
-        for (int i = 0; i < buf_count; i++) {
-            if (buffers[i].data != bin_chunk)
-                free(buffers[i].data);
-        }
-        free(buffers);
-        gltf_release_local(root);
-        free(file_data);
-        return NULL;
-    }
     if (!gltf_validate_sparse_accessors(root, buffers, buf_count)) {
-        for (int i = 0; i < buf_count; i++) {
-            if (buffers[i].data != bin_chunk)
-                free(buffers[i].data);
-        }
-        free(buffers);
+        gltf_free_buffers(buffers, buf_count, bin_chunk);
         gltf_release_local(root);
         free(file_data);
         return NULL;
     }
 
-    // Create asset
-    rt_gltf_asset *asset =
-        (rt_gltf_asset *)rt_obj_new_i64(RT_G3D_GLTF_ASSET_CLASS_ID, (int64_t)sizeof(rt_gltf_asset));
+    rt_gltf_asset *asset = gltf_asset_new_empty();
     if (!asset) {
-        for (int i = 0; i < buf_count; i++) {
-            if (buffers[i].data != bin_chunk)
-                free(buffers[i].data);
-        }
-        free(mesh_prim_start);
-        free(mesh_prim_count);
-        free(primitive_materials);
-        free(buffers);
+        gltf_free_buffers(buffers, buf_count, bin_chunk);
         gltf_release_local(root);
         free(file_data);
         return NULL;
     }
-    asset->vptr = NULL;
-    asset->meshes = NULL;
-    asset->mesh_count = 0;
-    asset->mesh_capacity = 0;
-    asset->materials = NULL;
-    asset->material_count = 0;
-    asset->material_capacity = 0;
-    asset->skeletons = NULL;
-    asset->skeleton_count = 0;
-    asset->skeleton_capacity = 0;
-    asset->animations = NULL;
-    asset->animation_count = 0;
-    asset->animation_capacity = 0;
-    asset->node_animations = NULL;
-    asset->node_animation_count = 0;
-    asset->node_animation_capacity = 0;
-    asset->cameras = NULL;
-    asset->camera_count = 0;
-    asset->camera_capacity = 0;
-    asset->scenes = NULL;
-    asset->scene_count = 0;
-    asset->scene_capacity = 0;
-    asset->scene_root = NULL;
-    asset->node_count = 0;
-    rt_obj_set_finalizer(asset, gltf_asset_finalize);
 
-    void **images = NULL;
-    int image_count = 0;
-    uint8_t *image_required = NULL;
-    void **texture_images = NULL;
-    uint8_t *texture_supported = NULL;
-    gltf_sampler_info_t *texture_samplers = NULL;
-    int texture_count = 0;
-    gltf_load_images_and_textures(root,
-                                  filepath,
-                                  load_assets,
-                                  preload_bundle,
-                                  buffers,
-                                  buf_count,
-                                  &images,
-                                  &image_count,
-                                  &image_required,
-                                  &texture_images,
-                                  &texture_supported,
-                                  &texture_samplers,
-                                  &texture_count,
-                                  &load_failed);
+    load_failed = gltf_load_asset_payload(
+        asset, root, filepath, load_assets, preload_bundle, buffers, buf_count, &scratch);
+    gltf_load_scratch_cleanup(&scratch);
 
-    gltf_load_materials(asset,
-                        root,
-                        texture_images,
-                        texture_supported,
-                        texture_samplers,
-                        texture_count,
-                        &material_infos,
-                        &load_failed);
-
-    gltf_parse_punctual_lights(root, &imported_lights, &imported_light_count);
-
-    gltf_load_meshes(asset,
-                     root,
-                     buffers,
-                     buf_count,
-                     preload_bundle,
-                     &mesh_prim_start,
-                     &mesh_prim_count,
-                     &primitive_materials,
-                     &load_failed);
-
-    gltf_parse_skins(asset, root, buffers, buf_count, &skins, &skin_count, &load_failed);
-    if (!load_failed) {
-        gltf_parse_animations(asset, root, buffers, buf_count, skins, skin_count);
-        gltf_parse_node_animations(asset, root, buffers, buf_count, skins, skin_count);
-        load_failed = gltf_build_node_hierarchy(asset,
-                                                root,
-                                                mesh_prim_start,
-                                                mesh_prim_count,
-                                                primitive_materials,
-                                                skins,
-                                                skin_count,
-                                                imported_lights,
-                                                imported_light_count);
-    }
-
-    if (images) {
-        for (int i = 0; i < image_count; i++)
-            gltf_release_ref(&images[i]);
-    }
-    free(images);
-    free(image_required);
-    free(texture_images);
-    free(texture_supported);
-    free(texture_samplers);
-    free(mesh_prim_start);
-    free(mesh_prim_count);
-    free(primitive_materials);
-    free(material_infos);
-    if (imported_lights) {
-        for (int32_t i = 0; i < imported_light_count; i++)
-            gltf_release_ref(&imported_lights[i]);
-    }
-    free(imported_lights);
-    gltf_free_skins(skins, skin_count);
-
-    // Cleanup buffers (except BIN chunk which is part of file_data)
-    for (int i = 0; i < buf_count; i++) {
-        if (buffers[i].data != bin_chunk)
-            free(buffers[i].data);
-    }
-    free(buffers);
+    gltf_free_buffers(buffers, buf_count, bin_chunk);
     gltf_release_local(root);
     free(file_data);
 
@@ -10469,7 +11622,7 @@ void *rt_gltf_get_mesh(void *obj, int64_t index) {
     int32_t mesh_count = gltf_asset_safe_count(a->meshes, a->mesh_count, a->mesh_capacity);
     if (index < 0 || index >= mesh_count)
         return NULL;
-    return a->meshes[index];
+    return rt_g3d_checked_or_null(a->meshes[index], RT_G3D_MESH3D_CLASS_ID);
 }
 
 /// @brief Get the number of materials extracted from the GLTF file.
@@ -10487,7 +11640,7 @@ void *rt_gltf_get_material(void *obj, int64_t index) {
         gltf_asset_safe_count(a->materials, a->material_count, a->material_capacity);
     if (index < 0 || index >= material_count)
         return NULL;
-    return a->materials[index];
+    return rt_g3d_checked_or_null(a->materials[index], RT_G3D_MATERIAL3D_CLASS_ID);
 }
 
 /// @brief Number of skeletons extracted from the loaded glTF asset.
@@ -10505,7 +11658,7 @@ void *rt_gltf_get_skeleton(void *obj, int64_t index) {
         gltf_asset_safe_count(a->skeletons, a->skeleton_count, a->skeleton_capacity);
     if (index < 0 || index >= skeleton_count)
         return NULL;
-    return a->skeletons[index];
+    return rt_g3d_checked_or_null(a->skeletons[index], RT_G3D_SKELETON3D_CLASS_ID);
 }
 
 /// @brief Number of animation clips extracted from the loaded glTF asset.
@@ -10523,7 +11676,7 @@ void *rt_gltf_get_animation(void *obj, int64_t index) {
         gltf_asset_safe_count(a->animations, a->animation_count, a->animation_capacity);
     if (index < 0 || index >= animation_count)
         return NULL;
-    return a->animations[index];
+    return rt_g3d_checked_or_null(a->animations[index], RT_G3D_ANIMATION3D_CLASS_ID);
 }
 
 /// @brief Return the number of node animations (AnimationClip-style tracks) in the glTF asset.
@@ -10544,7 +11697,8 @@ void *rt_gltf_get_node_animation(void *obj, int64_t index) {
             a->node_animations, a->node_animation_count, a->node_animation_capacity);
     if (index < 0 || index >= node_animation_count)
         return NULL;
-    return a->node_animations[index];
+    return rt_g3d_checked_or_null(a->node_animations[index],
+                                  RT_G3D_NODEANIMATION3D_CLASS_ID);
 }
 
 /// @brief Return the number of cameras imported from the active scene.
@@ -10561,7 +11715,7 @@ void *rt_gltf_get_camera(void *obj, int64_t index) {
     int32_t camera_count = gltf_asset_safe_count(a->cameras, a->camera_count, a->camera_capacity);
     if (index < 0 || index >= camera_count)
         return NULL;
-    return a->cameras[index];
+    return rt_g3d_checked_or_null(a->cameras[index], RT_G3D_CAMERA3D_CLASS_ID);
 }
 
 /// @brief Number of immutable scenes in the glTF asset.
@@ -10585,7 +11739,7 @@ void *rt_gltf_get_scene_root_at(void *obj, int64_t index) {
     int32_t scene_count = gltf_asset_safe_scene_count(a);
     if (!a || index < 0 || index >= scene_count)
         return NULL;
-    return a->scenes[index].root;
+    return rt_g3d_checked_or_null(a->scenes[index].root, RT_G3D_SCENENODE3D_CLASS_ID);
 }
 
 /// @brief Number of cameras reachable from immutable scene @p scene_index.
@@ -10611,19 +11765,22 @@ void *rt_gltf_get_scene_camera(void *obj, int64_t scene_index, int64_t index) {
         gltf_asset_safe_count(scene->cameras, scene->camera_count, scene->camera_capacity);
     if (index < 0 || index >= camera_count)
         return NULL;
-    return scene->cameras[index];
+    return rt_g3d_checked_or_null(scene->cameras[index], RT_G3D_CAMERA3D_CLASS_ID);
 }
 
 /// @brief Number of nodes in the loaded glTF scene tree (0 for NULL).
 int64_t rt_gltf_node_count(void *obj) {
     rt_gltf_asset *a = gltf_asset_checked(obj);
-    return a ? a->node_count : 0;
+    if (!a || a->node_count <= 0 ||
+        !rt_g3d_has_class(a->scene_root, RT_G3D_SCENENODE3D_CLASS_ID))
+        return 0;
+    return a->node_count;
 }
 
 /// @brief Return the scene-root SceneNode of the loaded asset (NULL if not loaded / NULL).
 void *rt_gltf_get_scene_root(void *obj) {
     rt_gltf_asset *a = gltf_asset_checked(obj);
-    return a ? a->scene_root : NULL;
+    return a ? rt_g3d_checked_or_null(a->scene_root, RT_G3D_SCENENODE3D_CLASS_ID) : NULL;
 }
 
 #else

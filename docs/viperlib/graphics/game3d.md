@@ -553,7 +553,10 @@ Non-glTF formats still enqueue a main-thread load request.
 `ClearCache()` advances the template-cache generation. Any `Preload` /
 `PreloadAsset` job that was already in flight may still finish, but it publishes
 only to its internal handle and does not reinsert a stale template into the
-fresh cache generation.
+fresh cache generation. If another thread is actively publishing cache entries,
+`ClearCache()` waits briefly for loading entries to settle; on timeout it leaves
+the current cache intact rather than clearing entries while publishers still own
+them.
 
 `SetResidencyBudget(bytes)` applies to the shared `ModelTemplate` cache. The
 budget uses a conservative CPU/GPU-resource estimate that includes mesh buffers,
@@ -670,7 +673,8 @@ estimate for planning and editor inspection. `update(dt)` advances a
 deterministic per-frame load budget; when
 the stream center jumps across multiple desired cell/tile payloads, stale
 payloads unload immediately, one or more new payloads are admitted by the frame
-budget, and
+budget, any payload whose measured post-load size exceeds the active residency
+budget is evicted before telemetry is published, and
 `pendingRequestCount` reports deferred desired payloads until later updates
 drain them. A budget of `0` unloads cells and reports no resident cells or
 tiles; a negative budget is unlimited. Worker-backed decode/upload remains a
@@ -916,6 +920,10 @@ events can expose multiple contact points for AABB and face-contact OBB box pair
 other shapes currently carry one representative point. The indexed wrapper methods mirror the raw
 `Graphics3D.CollisionEvent3D` surface so broader manifolds can extend behavior
 without another Game3D API rename.
+If a wrapped raw event or entity reference is invalid, the wrapper fails closed:
+`phase` defaults to `Any`, entity and raw handles return `Nothing`, scalar
+metrics and contact counts return zero, contact points return the origin, and
+contact normals use the documented `+Y` fallback.
 `CollisionPhase.Any` iterates enter, stay, and exit records. Optional
 world/entity collision callback sugar remains deferred until the VM callback
 trampoline policy is implemented; polling the event buffers is the supported
@@ -955,7 +963,9 @@ The current runtime accepts the built-in Game3D controller objects listed here;
 it does not yet invoke interpreted Zia interface objects as native C callbacks.
 A controller can be installed on only one world at a time. Installing the same
 controller on a second world detaches it from the previous world's controller
-slot before binding it to the new world.
+slot before binding it to the new world. Built-in controllers validate their
+stored world refs during rebinding, so stale or wrong-class private slots do not
+detach unrelated worlds.
 
 ```zia
 var world = Game3D.World3D.New("Controller Demo", 960, 540);

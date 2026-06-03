@@ -69,6 +69,7 @@ static rt_mesh3d *mesh3d_checked(void *obj) {
 static void mesh3d_bump_vertex_revision(rt_mesh3d *m, int invalidate_tangents) {
     if (!m)
         return;
+    m->resident = 1;
     if (m->geometry_revision == UINT32_MAX)
         m->geometry_revision = 1;
     else
@@ -86,8 +87,9 @@ static int64_t mesh3d_estimate_payload_bytes(const rt_mesh3d *m) {
     uint64_t total;
     if (!m)
         return 0;
-    vertex_bytes = (uint64_t)m->vertex_count * (uint64_t)sizeof(vgfx3d_vertex_t);
-    index_bytes = (uint64_t)m->index_count * (uint64_t)sizeof(uint32_t);
+    vertex_bytes =
+        (uint64_t)rt_mesh3d_safe_vertex_count(m) * (uint64_t)sizeof(vgfx3d_vertex_t);
+    index_bytes = (uint64_t)rt_mesh3d_safe_index_count(m) * (uint64_t)sizeof(uint32_t);
     total = vertex_bytes + index_bytes;
     if (total < vertex_bytes)
         return INT64_MAX;
@@ -403,6 +405,7 @@ static int mesh3d_reserve_storage(rt_mesh3d *m,
                 rt_trap(msg);
                 return 0;
             }
+            m->positions64 = np;
         }
         nv = (vgfx3d_vertex_t *)realloc(m->vertices,
                                         (size_t)vertex_capacity * sizeof(vgfx3d_vertex_t));
@@ -411,8 +414,6 @@ static int mesh3d_reserve_storage(rt_mesh3d *m,
             rt_trap(msg);
             return 0;
         }
-        if (np)
-            m->positions64 = np;
         m->vertices = nv;
         m->vertex_capacity = vertex_capacity;
     }
@@ -800,13 +801,13 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
 /// @brief Get the number of vertices in the mesh.
 int64_t rt_mesh3d_get_vertex_count(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
-    return m ? (int64_t)m->vertex_count : 0;
+    return m ? (int64_t)rt_mesh3d_safe_vertex_count(m) : 0;
 }
 
 /// @brief Get the number of triangles in the mesh (index_count / 3).
 int64_t rt_mesh3d_get_triangle_count(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
-    return m ? (int64_t)(m->index_count / 3) : 0;
+    return m ? (int64_t)(rt_mesh3d_safe_index_count(m) / 3u) : 0;
 }
 
 /// @brief Return whether this mesh's vertex/index payload is resident.
@@ -834,10 +835,15 @@ int64_t rt_mesh3d_get_resident_bytes(void *obj) {
 /// @brief Recalculate smooth vertex normals by averaging face normals per-vertex.
 void rt_mesh3d_recalc_normals(void *obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
+    uint32_t vertex_count;
+    uint32_t index_count;
     if (!m)
         return;
-    if (m->index_count < 3u) {
-        for (uint32_t i = 0; i < m->vertex_count; i++) {
+    rt_mesh3d_repair_geometry_counts(m);
+    vertex_count = rt_mesh3d_safe_vertex_count(m);
+    index_count = rt_mesh3d_safe_index_count(m);
+    if (index_count < 3u) {
+        for (uint32_t i = 0; i < vertex_count; i++) {
             m->vertices[i].normal[0] = 0.0f;
             m->vertices[i].normal[1] = 1.0f;
             m->vertices[i].normal[2] = 0.0f;
@@ -845,27 +851,27 @@ void rt_mesh3d_recalc_normals(void *obj) {
         mesh3d_bump_vertex_revision(m, 1);
         return;
     }
-    if ((size_t)m->vertex_count > SIZE_MAX / (3u * sizeof(double))) {
+    if ((size_t)vertex_count > SIZE_MAX / (3u * sizeof(double))) {
         rt_trap("Mesh3D.RecalcNormals: normal accumulator allocation overflow");
         return;
     }
-    double *accum = (double *)calloc((size_t)m->vertex_count * 3u, sizeof(double));
-    if (m->vertex_count > 0 && !accum) {
+    double *accum = (double *)calloc((size_t)vertex_count * 3u, sizeof(double));
+    if (vertex_count > 0 && !accum) {
         rt_trap("Mesh3D.RecalcNormals: memory allocation failed");
         return;
     }
 
     /* Zero all normals */
-    for (uint32_t i = 0; i < m->vertex_count; i++) {
+    for (uint32_t i = 0; i < vertex_count; i++) {
         m->vertices[i].normal[0] = 0.0f;
         m->vertices[i].normal[1] = 0.0f;
         m->vertices[i].normal[2] = 0.0f;
     }
 
     /* Accumulate face normals */
-    for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
+    for (uint32_t i = 0; i + 2 < index_count; i += 3) {
         uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
-        if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
+        if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
             continue;
 
         float *p0 = m->vertices[i0].pos;
@@ -897,7 +903,7 @@ void rt_mesh3d_recalc_normals(void *obj) {
     }
 
     /* Normalize */
-    for (uint32_t i = 0; i < m->vertex_count; i++) {
+    for (uint32_t i = 0; i < vertex_count; i++) {
         float *n = m->vertices[i].normal;
         double nx = accum[(size_t)i * 3u + 0];
         double ny = accum[(size_t)i * 3u + 1];
@@ -989,12 +995,17 @@ static void mesh3d_fill_missing_normals(rt_mesh3d *m) {
 /// @brief Create a deep copy of a mesh (independent vertex/index arrays).
 void *rt_mesh3d_clone(void *obj) {
     rt_mesh3d *src = mesh3d_checked(obj);
+    uint32_t vertex_count;
+    uint32_t index_count;
     if (!src)
         return NULL;
     if (src->build_failed) {
         rt_trap("Mesh3D.Clone: cannot clone a failed mesh build");
         return NULL;
     }
+    rt_mesh3d_repair_geometry_counts(src);
+    vertex_count = rt_mesh3d_safe_vertex_count(src);
+    index_count = rt_mesh3d_safe_index_count(src);
     rt_mesh3d *dst = (rt_mesh3d *)rt_mesh3d_new();
     if (!dst)
         return NULL;
@@ -1006,44 +1017,45 @@ void *rt_mesh3d_clone(void *obj) {
     dst->positions64 = NULL;
     dst->indices = NULL;
 
-    if ((size_t)src->vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
-        (size_t)src->index_count > SIZE_MAX / sizeof(uint32_t) ||
-        (src->positions64 && (size_t)src->vertex_count > SIZE_MAX / (3u * sizeof(double)))) {
+    if ((size_t)vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
+        (size_t)index_count > SIZE_MAX / sizeof(uint32_t) ||
+        (src->positions64 && (size_t)vertex_count > SIZE_MAX / (3u * sizeof(double)))) {
         if (rt_obj_release_check0(dst))
             rt_obj_free(dst);
         rt_trap("Mesh3D.Clone: allocation overflow");
         return NULL;
     }
 
-    dst->vertex_capacity = src->vertex_count;
+    dst->vertex_capacity = vertex_count;
     dst->vertices =
         dst->vertex_capacity > 0
             ? (vgfx3d_vertex_t *)malloc((size_t)dst->vertex_capacity * sizeof(vgfx3d_vertex_t))
             : NULL;
-    if (src->positions64)
+    if (src->positions64 && vertex_count > 0)
         dst->positions64 = (double *)malloc((size_t)dst->vertex_capacity * 3u * sizeof(double));
-    dst->index_capacity = src->index_count;
+    dst->index_capacity = index_count;
     dst->indices = dst->index_capacity > 0
                        ? (uint32_t *)malloc((size_t)dst->index_capacity * sizeof(uint32_t))
                        : NULL;
 
     if ((dst->vertex_capacity > 0 && !dst->vertices) ||
-        (dst->index_capacity > 0 && !dst->indices) || (src->positions64 && !dst->positions64)) {
+        (dst->index_capacity > 0 && !dst->indices) ||
+        (src->positions64 && vertex_count > 0 && !dst->positions64)) {
         if (rt_obj_release_check0(dst))
             rt_obj_free(dst);
         rt_trap("Mesh3D.Clone: memory allocation failed");
         return NULL;
     }
 
-    dst->vertex_count = src->vertex_count;
-    if (src->vertex_count > 0) {
-        memcpy(dst->vertices, src->vertices, src->vertex_count * sizeof(vgfx3d_vertex_t));
-        for (uint32_t i = 0; i < src->vertex_count; ++i)
+    dst->vertex_count = vertex_count;
+    if (vertex_count > 0) {
+        memcpy(dst->vertices, src->vertices, (size_t)vertex_count * sizeof(vgfx3d_vertex_t));
+        for (uint32_t i = 0; i < vertex_count; ++i)
             mesh3d_sanitize_vertex_copy(&dst->vertices[i]);
     }
-    if (src->positions64 && src->vertex_count > 0) {
-        memcpy(dst->positions64, src->positions64, (size_t)src->vertex_count * 3u * sizeof(double));
-        for (uint32_t i = 0; i < src->vertex_count; ++i) {
+    if (src->positions64 && vertex_count > 0) {
+        memcpy(dst->positions64, src->positions64, (size_t)vertex_count * 3u * sizeof(double));
+        for (uint32_t i = 0; i < vertex_count; ++i) {
             for (int lane = 0; lane < 3; ++lane) {
                 size_t index = (size_t)i * 3u + (size_t)lane;
                 if (!isfinite(dst->positions64[index]))
@@ -1052,9 +1064,9 @@ void *rt_mesh3d_clone(void *obj) {
         }
     }
 
-    dst->index_count = src->index_count;
-    if (src->index_count > 0)
-        memcpy(dst->indices, src->indices, src->index_count * sizeof(uint32_t));
+    dst->index_count = index_count;
+    if (index_count > 0)
+        memcpy(dst->indices, src->indices, (size_t)index_count * sizeof(uint32_t));
     dst->bone_palette = NULL;
     dst->prev_bone_palette = NULL;
     mesh_repair_animation_refs(src);
@@ -1117,12 +1129,14 @@ void *rt_mesh3d_clone(void *obj) {
 void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     rt_mesh3d *m = mesh3d_checked(obj);
     mat4_impl *xform = mesh3d_mat4_checked(mat4_obj);
+    uint32_t vertex_count;
+    uint32_t index_count;
     if (!m || !xform)
         return;
     float model_matrix[16];
     float normal_matrix[16];
     float handedness_sign = 1.0f;
-    float det;
+    double det;
 
     for (int i = 0; i < 16; i++) {
         if (!mesh_value_fits_float(xform->m[i])) {
@@ -1131,11 +1145,13 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         }
         model_matrix[i] = (float)xform->m[i];
     }
-    det =
-        model_matrix[0] * (model_matrix[5] * model_matrix[10] - model_matrix[6] * model_matrix[9]) -
-        model_matrix[1] * (model_matrix[4] * model_matrix[10] - model_matrix[6] * model_matrix[8]) +
-        model_matrix[2] * (model_matrix[4] * model_matrix[9] - model_matrix[5] * model_matrix[8]);
-    if (!isfinite(det) || fabsf(det) <= 1e-12f) {
+    /* Evaluate the upper-3x3 determinant from the original double matrix: a
+     * matrix that is singular in double precision can still show |det| ~1e-7
+     * once narrowed to float, which would slip past the invertibility gate. */
+    det = xform->m[0] * (xform->m[5] * xform->m[10] - xform->m[6] * xform->m[9]) -
+          xform->m[1] * (xform->m[4] * xform->m[10] - xform->m[6] * xform->m[8]) +
+          xform->m[2] * (xform->m[4] * xform->m[9] - xform->m[5] * xform->m[8]);
+    if (!isfinite(det) || fabs(det) <= 1e-12) {
         rt_trap("Mesh3D.Transform: matrix upper 3x3 must be invertible for normal transform");
         return;
     }
@@ -1144,10 +1160,14 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         rt_trap("Mesh3D.Transform: normal matrix must be finite");
         return;
     }
-    if (det < 0.0f)
+    if (det < 0.0)
         handedness_sign = -1.0f;
 
-    for (uint32_t i = 0; i < m->vertex_count; i++) {
+    rt_mesh3d_repair_geometry_counts(m);
+    vertex_count = rt_mesh3d_safe_vertex_count(m);
+    index_count = rt_mesh3d_safe_index_count(m);
+
+    for (uint32_t i = 0; i < vertex_count; i++) {
         double x =
             m->positions64 ? m->positions64[(size_t)i * 3u + 0] : (double)m->vertices[i].pos[0];
         double y =
@@ -1188,7 +1208,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         }
     }
 
-    for (uint32_t i = 0; i < m->vertex_count; i++) {
+    for (uint32_t i = 0; i < vertex_count; i++) {
         float *p = m->vertices[i].pos;
         double x = m->positions64 ? m->positions64[(size_t)i * 3u + 0] : (double)p[0];
         double y = m->positions64 ? m->positions64[(size_t)i * 3u + 1] : (double)p[1];
@@ -1205,15 +1225,14 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         p[1] = (float)py;
         p[2] = (float)pz;
 
-        /* Transform normals with the inverse-transpose upper 3x3. */
+        /* Transform normals with the inverse-transpose upper 3x3. Keep the
+         * source components in float (matching the tangent path below) instead
+         * of bouncing through double and back. */
         float *n = m->vertices[i].normal;
-        double nx = n[0], ny = n[1], nz = n[2];
-        n[0] = normal_matrix[0] * (float)nx + normal_matrix[1] * (float)ny +
-               normal_matrix[2] * (float)nz;
-        n[1] = normal_matrix[4] * (float)nx + normal_matrix[5] * (float)ny +
-               normal_matrix[6] * (float)nz;
-        n[2] = normal_matrix[8] * (float)nx + normal_matrix[9] * (float)ny +
-               normal_matrix[10] * (float)nz;
+        float nx = n[0], ny = n[1], nz = n[2];
+        n[0] = normal_matrix[0] * nx + normal_matrix[1] * ny + normal_matrix[2] * nz;
+        n[1] = normal_matrix[4] * nx + normal_matrix[5] * ny + normal_matrix[6] * nz;
+        n[2] = normal_matrix[8] * nx + normal_matrix[9] * ny + normal_matrix[10] * nz;
         float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
         if (isfinite(len) && len > 1e-8f) {
             n[0] /= len;
@@ -1245,7 +1264,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
         t[3] = handedness * handedness_sign;
     }
     if (handedness_sign < 0.0f) {
-        for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
+        for (uint32_t i = 0; i + 2 < index_count; i += 3) {
             uint32_t tmp = m->indices[i + 1];
             m->indices[i + 1] = m->indices[i + 2];
             m->indices[i + 2] = tmp;

@@ -180,6 +180,16 @@ static rt_material3d *vegetation3d_material_ref(void *ref) {
     return rt_g3d_has_class(ref, RT_G3D_MATERIAL3D_CLASS_ID) ? (rt_material3d *)ref : NULL;
 }
 
+static void vegetation3d_enable_double_sided_material(rt_material3d *mat) {
+    if (!mat)
+        return;
+#if defined(RT_G3D_ALLOW_STACK_FIXTURES)
+    (void)mat;
+#else
+    mat->double_sided = 1;
+#endif
+}
+
 /// @brief Clear corrupted retained resource slots without releasing unrelated objects.
 static void vegetation3d_repair_resource_handles(rt_vegetation3d *v) {
     if (!v)
@@ -705,11 +715,17 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
         /* Distance to camera (XZ plane) */
         double dx = (double)bx - camX;
         double dz = (double)bz - camZ;
-        float dist = (float)sqrt(dx * dx + dz * dz);
+        double dist2 = dx * dx + dz * dz;
+        if (!isfinite(dist2))
+            continue;
+        /* Hard cull beyond far distance using squared distance first, so blades
+         * outside the LOD range never pay for the sqrt. The post-sqrt check
+         * below still authoritatively handles a negative/degenerate lod_far. */
+        if (lod_far >= 0.0f && dist2 > (double)lod_far * (double)lod_far)
+            continue;
+        float dist = (float)sqrt(dist2);
         if (!isfinite(dist))
             continue;
-
-        /* Hard cull beyond far distance */
         if (dist > lod_far)
             continue;
 
@@ -748,8 +764,11 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
             wind_x = 0.0f;
         if (!isfinite(wind_z))
             wind_z = 0.0f;
-        dst[1] += wind_x; /* shear X column by wind */
-        dst[9] += wind_z; /* shear Z column by wind */
+        /* Bend the blade's up (Y) axis toward the wind. In this row-major 4x4,
+         * indices 1 and 9 are the X and Z components of the second (Y) column,
+         * so adding to them leans the blade top along world X and Z. */
+        dst[1] += wind_x;
+        dst[9] += wind_z;
         if (!vegetation3d_matrix_is_drawable(dst))
             continue;
 
@@ -757,9 +776,10 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
     }
 }
 
-/// @brief Submit the visible blade batch to the Canvas3D as one instanced draw. Temporarily
-/// disables backface culling (grass renders both sides) and restores the previous state on exit.
-/// No-op when called outside a frame, when the backend is missing, or when nothing is visible.
+/// @brief Submit the visible blade batch to the Canvas3D as one instanced draw.
+/// @details Marks the blade material double-sided so grass renders from both sides without
+///          mutating canvas-level culling state. No-op when called outside a frame, when the
+///          backend is missing, or when nothing is visible.
 void rt_canvas3d_draw_vegetation(void *canvas_obj, void *veg_obj) {
     if (!canvas_obj || !veg_obj)
         return;
@@ -784,14 +804,9 @@ void rt_canvas3d_draw_vegetation(void *canvas_obj, void *veg_obj) {
         v->visible_count <= 0 || v->visible_count > v->visible_capacity)
         return;
 
-    /* Disable backface culling for grass (visible from both sides) */
-    int8_t prev_cull = c->backface_cull;
-    c->backface_cull = 0;
-
+    vegetation3d_enable_double_sided_material(mat);
     rt_canvas3d_queue_instanced_batch(
         c, mesh, mat, v->visible_transforms, v->visible_count, NULL, 0);
-
-    c->backface_cull = prev_cull;
 }
 
 #else

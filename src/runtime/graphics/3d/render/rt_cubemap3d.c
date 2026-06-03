@@ -757,15 +757,17 @@ void rt_material3d_set_reflectivity(void *obj, double r) {
 /// @brief Get the current environment reflection strength of a material.
 double rt_material3d_get_reflectivity(void *obj) {
     rt_material3d *mat = (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    double value;
     if (!mat)
         return 0.0;
-    if (!isfinite(mat->reflectivity))
-        mat->reflectivity = 0.0;
-    if (mat->reflectivity < 0.0)
-        mat->reflectivity = 0.0;
-    if (mat->reflectivity > 1.0)
-        mat->reflectivity = 1.0;
-    return mat->reflectivity;
+    value = mat->reflectivity;
+    if (!isfinite(value))
+        return 0.0;
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
 }
 
 #else

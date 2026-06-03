@@ -216,13 +216,13 @@ void *rt_rendertarget3d_new_hdr(int64_t width, int64_t height) {
 /// @brief Get the width of the render target in pixels.
 int64_t rt_rendertarget3d_get_width(void *obj) {
     rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
-    return rtd ? rtd->width : 0;
+    return (rtd && rtd->width > 0) ? rtd->width : 0;
 }
 
 /// @brief Get the height of the render target in pixels.
 int64_t rt_rendertarget3d_get_height(void *obj) {
     rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
-    return rtd ? rtd->height : 0;
+    return (rtd && rtd->height > 0) ? rtd->height : 0;
 }
 
 /// @brief Return whether the target stores HDR color on the GPU path.

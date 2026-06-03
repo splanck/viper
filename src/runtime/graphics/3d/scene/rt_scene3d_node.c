@@ -407,6 +407,9 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
     rt_scene_node3d *child = scene_node3d_checked(child_obj);
     if (!parent || !child || parent == child)
         return 0;
+    if (child->owner_scene && child->owner_scene->root == child &&
+        (!parent->owner_scene || parent->owner_scene->root != parent))
+        return 0;
     if (child->parent == parent)
         return 1;
 
@@ -449,6 +452,8 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
        the new parent's ownership after the old parent releases its reference. */
     if (child->parent)
         rt_scene_node3d_remove_child(child->parent, child);
+    else if (child->owner_scene)
+        scene_node_clear_owner_recursive(child, child->owner_scene);
 
     parent->children[parent->child_count++] = child;
     child->parent = parent;
@@ -515,13 +520,13 @@ void *rt_scene_node3d_get_child(void *obj, int64_t index) {
     n->child_count = child_count;
     if (index < 0 || index >= child_count)
         return NULL;
-    return n->children[index];
+    return scene_node_ref(n->children[(int32_t)index]);
 }
 
 /// @brief Parent node handle (NULL for root or detached nodes).
 void *rt_scene_node3d_get_parent(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? node->parent : NULL;
+    return node ? scene_node_ref(node->parent) : NULL;
 }
 
 /// @brief Recursive depth-first search of the subtree for a node with the given name.
@@ -628,7 +633,7 @@ void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
 /// @brief Read the visibility flag (0 or 1; 0 if `obj` is NULL).
 int8_t rt_scene_node3d_get_visible(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? node->visible : 0;
+    return node && node->visible ? 1 : 0;
 }
 
 /// @brief Set the node's identifier name (used by `rt_scene_node3d_find`).
@@ -749,7 +754,17 @@ void rt_scene_node3d_set_sync_mode(void *obj, int64_t sync_mode) {
 /// @brief Current node/body sync mode (`NODE_FROM_BODY` if `obj` is NULL).
 int64_t rt_scene_node3d_get_sync_mode(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
-    return node ? node->sync_mode : RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
+    if (!node)
+        return RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
+    switch (node->sync_mode) {
+        case RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY:
+        case RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE:
+        case RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION:
+        case RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC:
+            return node->sync_mode;
+        default:
+            return RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
+    }
 }
 
 /// @brief Bind an animation controller to drive this node's transform / skeleton.
@@ -772,8 +787,8 @@ void rt_scene_node3d_bind_animator(void *obj, void *controller) {
 ///   animator's `root` pointer is cleared to NULL before release so it cannot hold
 ///   a dangling reference to this node after the swap. The new animator's `root` is
 ///   set to this node immediately so `node_animator_update` can navigate the subtree
-///   on the very next update tick. Passing NULL detaches the current animator and is
-///   equivalent to calling `rt_scene_node3d_clear_node_animator_binding`.
+///   on the very next update tick. Passing NULL detaches the current animator, matching
+///   the node-animation half of `rt_scene_node3d_clear_animator_binding`.
 /// @param obj      Scene node to drive; no-op if NULL.
 /// @param animator NodeAnimator3D handle, or NULL to detach.
 void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
@@ -808,12 +823,18 @@ void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
         node_animator->root = node;
 }
 
-/// @brief Detach any bound animator. Subsequent frames stop applying its motion.
+/// @brief Detach any bound skeletal or node animator. Subsequent frames stop applying motion.
 void rt_scene_node3d_clear_animator_binding(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
+    rt_node_animator3d *node_animator;
     if (!node)
         return;
     scene_node_release_class_slot(&node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
+    scene_node_repair_class_slot(&node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
+    node_animator = scene_node_animator_ref(node->bound_node_animator);
+    if (node_animator)
+        node_animator->root = NULL;
+    scene_node_release_class_slot(&node->bound_node_animator, RT_G3D_NODEANIMATOR3D_CLASS_ID);
 }
 
 /// @brief Currently bound animation controller handle (NULL if none).

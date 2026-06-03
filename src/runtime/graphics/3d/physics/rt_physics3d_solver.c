@@ -191,7 +191,8 @@ int ph3d_i32_stack_push(int32_t **items, int32_t *count, int32_t *capacity, int3
         new_capacity = *capacity < 128 ? 128 : *capacity;
         if (new_capacity > INT32_MAX / 2)
             return 0;
-        new_capacity *= 2;
+        if (*capacity >= 128)
+            new_capacity *= 2;
         if ((size_t)new_capacity > SIZE_MAX / sizeof(**items))
             return 0;
         grown = (int32_t *)realloc(*items, (size_t)new_capacity * sizeof(**items));
@@ -833,7 +834,7 @@ int world3d_detect_contacts(rt_world3d *w) {
     int32_t entry_count = 0;
     for (int32_t i = 0; i < w->body_count; i++) {
         rt_body3d *body = w->bodies[i];
-        if (!body || !body->collider)
+        if (!body3d_has_collision_geometry(body))
             continue;
         entries[entry_count].body = body;
         body_aabb(body, entries[entry_count].min, entries[entry_count].max);

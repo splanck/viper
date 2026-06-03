@@ -729,6 +729,11 @@ static int ik3d_apply_chain(rt_ik_solver3d *solver,
     count = ik3d_safe_chain_count(solver);
     if (!solver || !locals || !globals || count < 2)
         return 0;
+    /* Zero (or negative) weight means the chain contributes nothing — the
+     * final blend would reproduce the original pose exactly — so skip the
+     * whole FABRIK solve and pole/foot passes rather than burning them. */
+    if (!(solver->weight > 0.0f))
+        return 1;
     if (!ik3d_chain_is_parented(solver->skeleton, solver->chain, count))
         return 0;
     for (int32_t i = 0; i < count; i++) {

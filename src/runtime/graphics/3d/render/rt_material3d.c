@@ -215,20 +215,21 @@ static void material_repair_env_map(rt_material3d *mat) {
     material_release_ref(&mat->env_map);
 }
 
-/// @brief Validate a texture reference, trapping with a descriptive message when it is unusable.
-/// @details NULL is accepted (clears the slot). A TextureAsset3D lacking both RGBA fallback and
-///          native blocks, or a non-texture handle, traps via @p method. Returns 1 if usable.
+/// @brief Validate a texture reference, trapping with a descriptive message when unsupported.
+/// @details NULL is accepted (clears the slot). TextureAsset3D handles are accepted even when
+///          their current residency window is empty; draw submission resolves them lazily so
+///          streaming can make the same material drawable again without rebinding. Non-texture
+///          handles trap via @p method. Returns 1 if supported.
 static int material_texture_ref_valid_or_trap(void *texture, const char *method) {
     if (!texture)
+        return 1;
+    if (rt_g3d_has_class(texture, RT_G3D_TEXTUREASSET3D_CLASS_ID))
         return 1;
     if (rt_material3d_resolve_texture_pixels(texture))
         return 1;
     if (rt_material3d_resolve_texture_native_asset(texture))
         return 1;
-    if (rt_g3d_has_class(texture, RT_G3D_TEXTUREASSET3D_CLASS_ID))
-        rt_trap("Material3D: TextureAsset3D must expose RGBA8 fallback or native mip blocks");
-    else
-        rt_trap(method ? method : "Material3D: texture must be Pixels or TextureAsset3D");
+    rt_trap(method ? method : "Material3D: texture must be Pixels or TextureAsset3D");
     return 0;
 }
 
@@ -252,8 +253,10 @@ void rt_material3d_assign_env_map_checked(void *obj, void *cubemap) {
     if (!mat)
         return;
     material_repair_env_map(mat);
-    if (cubemap && !material_cubemap_handle_valid(cubemap))
+    if (cubemap && !material_cubemap_handle_valid(cubemap)) {
+        rt_trap("Material3D.SetEnvMap: env map must be a complete CubeMap3D");
         return;
+    }
     material_assign_ref(&mat->env_map, cubemap);
 }
 
@@ -323,6 +326,9 @@ static void material_init_texture_slots(rt_material3d *mat) {
         mat->texture_slot_wrap_t[slot] = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
         mat->texture_slot_filter[slot] = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
         mat->texture_slot_uv_set[slot] = 0;
+        /* texture_slot_uv_transform is a 6-element affine: indices [0..3] are the
+         * 2x2 linear part (scale/rotation/shear) and [4..5] the UV translation.
+         * Identity is [1,0,0,1,0,0]. */
         mat->texture_slot_uv_transform[slot][0] = 1.0;
         mat->texture_slot_uv_transform[slot][1] = 0.0;
         mat->texture_slot_uv_transform[slot][2] = 0.0;
@@ -425,7 +431,7 @@ static void material_sanitize_state(rt_material3d *mat) {
             mat->texture_slot_filter[slot] == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                 ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                 : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
-        mat->texture_slot_uv_set[slot] = mat->texture_slot_uv_set[slot] > 0 ? 1 : 0;
+        mat->texture_slot_uv_set[slot] = mat->texture_slot_uv_set[slot] == 1 ? 1 : 0;
         mat->texture_slot_uv_transform[slot][0] =
             material_clamp_uv_transform(mat->texture_slot_uv_transform[slot][0], 1.0);
         mat->texture_slot_uv_transform[slot][1] =
@@ -617,10 +623,9 @@ void *rt_material3d_get_color(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return rt_vec3_new(1.0, 1.0, 1.0);
-    mat->diffuse[0] = sanitize_color(mat->diffuse[0]);
-    mat->diffuse[1] = sanitize_color(mat->diffuse[1]);
-    mat->diffuse[2] = sanitize_color(mat->diffuse[2]);
-    return rt_vec3_new(mat->diffuse[0], mat->diffuse[1], mat->diffuse[2]);
+    return rt_vec3_new(sanitize_color(mat->diffuse[0]),
+                       sanitize_color(mat->diffuse[1]),
+                       sanitize_color(mat->diffuse[2]));
 }
 
 /// @brief Set or replace the diffuse texture map.
@@ -713,7 +718,7 @@ void rt_material3d_set_import_texture_slot(void *obj,
     mat->texture_slot_wrap_s[slot_index] = material_sanitize_wrap(wrap_s);
     mat->texture_slot_wrap_t[slot_index] = material_sanitize_wrap(wrap_t);
     mat->texture_slot_filter[slot_index] = material_sanitize_filter(filter);
-    mat->texture_slot_uv_set[slot_index] = uv_set > 0 ? 1 : 0;
+    mat->texture_slot_uv_set[slot_index] = uv_set == 1 ? 1 : 0;
     mat->texture_slot_uv_transform[slot_index][0] = material_clamp_uv_transform(scale_u * c, 1.0);
     mat->texture_slot_uv_transform[slot_index][1] = material_clamp_uv_transform(-scale_v * s, 0.0);
     mat->texture_slot_uv_transform[slot_index][2] = material_clamp_uv_transform(scale_u * s, 0.0);
@@ -753,7 +758,6 @@ int8_t rt_material3d_get_unlit(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 0;
-    mat->unlit = mat->unlit ? 1 : 0;
     return mat->unlit ? 1 : 0;
 }
 
@@ -777,7 +781,7 @@ int64_t rt_material3d_get_shading_model(void *obj) {
     if (!mat)
         return 0;
     if (mat->shading_model < 0 || mat->shading_model > 5)
-        mat->shading_model = 0;
+        return 0;
     return mat->shading_model;
 }
 
@@ -814,8 +818,7 @@ double rt_material3d_get_alpha(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 1.0;
-    mat->alpha = clamp01(mat->alpha);
-    return mat->alpha;
+    return clamp01(mat->alpha);
 }
 
 /// @brief Set PBR metallic factor [0, 1]. 0 = dielectric (plastic, wood), 1 = pure metal. Auto-
@@ -833,8 +836,7 @@ double rt_material3d_get_metallic(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 0.0;
-    mat->metallic = clamp01(mat->metallic);
-    return mat->metallic;
+    return clamp01(mat->metallic);
 }
 
 /// @brief Set PBR roughness [0, 1]. 0 = mirror smooth, 1 = fully diffuse. Auto-promotes to PBR.
@@ -851,8 +853,7 @@ double rt_material3d_get_roughness(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 0.5;
-    mat->roughness = clamp01(mat->roughness);
-    return mat->roughness;
+    return clamp01(mat->roughness);
 }
 
 /// @brief Set ambient-occlusion factor [0, 1]. 1 = no occlusion, 0 = fully shadowed in cavities.
@@ -870,8 +871,7 @@ double rt_material3d_get_ao(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 1.0;
-    mat->ao = clamp01(mat->ao);
-    return mat->ao;
+    return clamp01(mat->ao);
 }
 
 /// @brief Multiply the emissive output by `value` (≥ 0). Useful for HDR/bloom: values > 1 push
@@ -888,9 +888,7 @@ double rt_material3d_get_emissive_intensity(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 1.0;
-    mat->emissive_intensity =
-        clamp_range(mat->emissive_intensity, 0.0, MATERIAL3D_EMISSIVE_INTENSITY_MAX);
-    return mat->emissive_intensity;
+    return clamp_range(mat->emissive_intensity, 0.0, MATERIAL3D_EMISSIVE_INTENSITY_MAX);
 }
 
 /// @brief Assign a normal map texture for per-pixel bump/detail lighting.
@@ -1016,8 +1014,7 @@ double rt_material3d_get_normal_scale(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 1.0;
-    mat->normal_scale = clamp_range(mat->normal_scale, 0.0, MATERIAL3D_NORMAL_SCALE_MAX);
-    return mat->normal_scale;
+    return clamp_range(mat->normal_scale, 0.0, MATERIAL3D_NORMAL_SCALE_MAX);
 }
 
 /// @brief Set the alpha-handling mode (RT_MATERIAL3D_ALPHA_MODE_OPAQUE / MASK / BLEND).
@@ -1039,10 +1036,8 @@ int64_t rt_material3d_get_alpha_mode(void *obj) {
     if (!mat)
         return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
     if (mat->alpha_mode < RT_MATERIAL3D_ALPHA_MODE_OPAQUE ||
-        mat->alpha_mode > RT_MATERIAL3D_ALPHA_MODE_BLEND) {
-        mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
-        mat->alpha_mode_auto = 0;
-    }
+        mat->alpha_mode > RT_MATERIAL3D_ALPHA_MODE_BLEND)
+        return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
     return mat->alpha_mode;
 }
 
@@ -1060,7 +1055,6 @@ int8_t rt_material3d_get_double_sided(void *obj) {
     rt_material3d *mat = material_checked(obj);
     if (!mat)
         return 0;
-    mat->double_sided = mat->double_sided ? 1 : 0;
     return mat->double_sided ? 1 : 0;
 }
 

@@ -31,6 +31,7 @@
 #include "rt_particles3d.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
+#include "rt_postfx3d.h"
 #include "rt_sprite3d.h"
 #include "rt_string.h"
 #include "rt_terrain3d.h"
@@ -267,6 +268,67 @@ static bool write_test_ktx2(const char *path,
     return write_test_ktx2_mips(path, vk_format, width, height, levels, level_bytes, 1);
 }
 
+static bool write_test_ktx2_custom_header(const char *path,
+                                          uint32_t vk_format,
+                                          uint32_t width,
+                                          uint32_t height,
+                                          uint32_t level_count,
+                                          uint32_t supercompression_scheme,
+                                          const uint8_t *payload,
+                                          uint64_t payload_bytes) {
+    static const uint8_t identifier[12] = {
+        0xAB,
+        0x4B,
+        0x54,
+        0x58,
+        0x20,
+        0x32,
+        0x30,
+        0xBB,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
+    };
+    const size_t level_table_offset = 80u;
+    const size_t level_entry_size = 24u;
+    const size_t header_size = level_table_offset + (size_t)level_count * level_entry_size;
+    std::vector<uint8_t> header(header_size);
+    FILE *file;
+
+    std::memcpy(header.data(), identifier, sizeof(identifier));
+    write_u32le(header.data() + 12, vk_format);
+    write_u32le(header.data() + 16, 1);
+    write_u32le(header.data() + 20, width);
+    write_u32le(header.data() + 24, height);
+    write_u32le(header.data() + 28, 0);
+    write_u32le(header.data() + 32, 0);
+    write_u32le(header.data() + 36, 1);
+    write_u32le(header.data() + 40, level_count);
+    write_u32le(header.data() + 44, supercompression_scheme);
+    if (level_count > 0) {
+        uint8_t *entry = header.data() + level_table_offset;
+        write_u64le(entry, header_size);
+        write_u64le(entry + 8, payload_bytes);
+        write_u64le(entry + 16, payload_bytes);
+    }
+
+    file = std::fopen(path, "wb");
+    if (!file)
+        return false;
+    if (std::fwrite(header.data(), 1, header.size(), file) != header.size()) {
+        std::fclose(file);
+        return false;
+    }
+    if (payload && payload_bytes > 0 &&
+        std::fwrite(payload, 1, (size_t)payload_bytes, file) != (size_t)payload_bytes) {
+        std::fclose(file);
+        return false;
+    }
+    std::fclose(file);
+    return true;
+}
+
 extern "C" double rt_vec3_x(void *v);
 extern "C" double rt_vec3_y(void *v);
 extern "C" double rt_vec3_z(void *v);
@@ -306,6 +368,9 @@ extern "C" void rt_postfx3d_add_vignette(void *obj, double radius, double softne
 extern "C" void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure);
 extern "C" void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples);
 extern "C" void rt_postfx3d_apply_to_canvas(void *canvas);
+extern "C" int64_t rt_canvas3d_get_quality_requested(void *canvas);
+extern "C" int64_t rt_canvas3d_get_quality_active(void *canvas);
+extern "C" int8_t rt_canvas3d_get_quality_fallback(void *canvas);
 
 static bool finite_vec3(void *v) {
     return v && std::isfinite(rt_vec3_x(v)) && std::isfinite(rt_vec3_y(v)) &&
@@ -419,6 +484,35 @@ static void test_mesh_reserve_presizes_without_dirtying_geometry() {
     EXPECT_TRUE(expect_trap_contains([&] { rt_mesh3d_reserve(m, -1, 0); },
                                      "capacities must be non-negative"),
                 "negative reserve traps");
+    PASS();
+}
+
+static void test_mesh_mutations_restore_residency_and_counts_are_clamped() {
+    TEST("Mesh3D mutations restore residency and public counts clamp to capacity");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    assert(m);
+    rt_mesh3d_reserve(m, 4, 1);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
+    rt_mesh3d_add_vertex(m, 1, 0, 0, 0, 1, 0, 1, 0);
+    rt_mesh3d_add_vertex(m, 0, 1, 0, 0, 1, 0, 0, 1);
+    rt_mesh3d_add_triangle(m, 0, 1, 2);
+
+    rt_mesh3d_set_resident(m, 0);
+    EXPECT_EQ(rt_mesh3d_get_resident(m), 0);
+    rt_mesh3d_add_vertex(m, 0, 0, 1, 0, 1, 0, 1, 1);
+    EXPECT_EQ(rt_mesh3d_get_resident(m), 1);
+
+    rt_mesh3d_set_resident(m, 0);
+    rt_mesh3d_recalc_normals(m);
+    EXPECT_EQ(rt_mesh3d_get_resident(m), 1);
+
+    m->vertex_count = std::numeric_limits<uint32_t>::max();
+    m->index_count = std::numeric_limits<uint32_t>::max();
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), m->vertex_capacity);
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), m->index_capacity / 3u);
+    EXPECT_EQ(rt_mesh3d_get_resident_bytes(m),
+              (int64_t)m->vertex_capacity * (int64_t)sizeof(vgfx3d_vertex_t) +
+                  (int64_t)m->index_capacity * (int64_t)sizeof(uint32_t));
     PASS();
 }
 
@@ -615,6 +709,22 @@ static void test_mesh_clone() {
     EXPECT_EQ(rt_mesh3d_get_vertex_count(c), 24);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(c), 12);
     EXPECT_EQ(((rt_mesh3d *)c)->bone_count, 0);
+    PASS();
+}
+
+static void test_mesh_clone_repairs_corrupt_private_counts() {
+    TEST("Mesh3D.Clone repairs corrupt private geometry counts");
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    assert(mesh != NULL);
+    mesh->vertex_count = mesh->vertex_capacity + 17u;
+    mesh->index_count = mesh->index_capacity + 11u;
+
+    rt_mesh3d *clone = (rt_mesh3d *)rt_mesh3d_clone(mesh);
+    assert(clone != NULL);
+    EXPECT_EQ(mesh->vertex_count, mesh->vertex_capacity);
+    EXPECT_EQ(mesh->index_count, mesh->index_capacity);
+    EXPECT_EQ(clone->vertex_count, mesh->vertex_capacity);
+    EXPECT_EQ(clone->index_count, mesh->index_capacity);
     PASS();
 }
 
@@ -1776,6 +1886,10 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_TRUE(rt_material3d_resolve_texture_pixels(material_impl->texture) == nullptr,
                 "Material3D resolves empty TextureAsset3D residency to no drawable texture");
     EXPECT_EQ(rt_material3d_get_has_texture(material), 0);
+    rt_material3d_set_texture(material, nullptr);
+    rt_material3d_set_texture(material, asset);
+    EXPECT_TRUE(material_impl->texture == asset,
+                "Material3D accepts TextureAsset3D assignment while residency is empty");
 
     rt_textureasset3d_set_resident_mip_range(asset, 99, 1);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 3);
@@ -1838,6 +1952,47 @@ static void test_textureasset3d_mip_residency() {
     PASS();
 }
 
+static void test_textureasset3d_rejects_unsupported_ktx2_headers() {
+    TEST("TextureAsset3D.LoadKTX2 rejects unsupported KTX2 headers");
+    const char *super_path = "/tmp/viper_textureasset3d_supercompressed_test.ktx2";
+    const char *implicit_path = "/tmp/viper_textureasset3d_implicit_mips_test.ktx2";
+    const char *short_mip_path = "/tmp/viper_textureasset3d_short_mip_payload_test.ktx2";
+    uint8_t payload[16] = {0};
+    uint8_t short_payload[8] = {0};
+    rt_string path_s;
+
+    EXPECT_TRUE(write_test_ktx2_custom_header(
+                    super_path, 37u, 1u, 1u, 1u, 1u, payload, sizeof(payload)),
+                "supercompressed KTX2 fixture written");
+    path_s = rt_string_from_bytes(super_path, std::strlen(super_path));
+    EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(path_s); },
+                                     "unsupported KTX2 supercompression"),
+                "supercompressed KTX2 traps");
+    rt_string_unref(path_s);
+
+    EXPECT_TRUE(write_test_ktx2_custom_header(
+                    implicit_path, 37u, 1u, 1u, 0u, 0u, nullptr, 0u),
+                "implicit-mip KTX2 fixture written");
+    path_s = rt_string_from_bytes(implicit_path, std::strlen(implicit_path));
+    EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(path_s); },
+                                     "implicit mip generation is unsupported"),
+                "implicit-mip KTX2 traps");
+    rt_string_unref(path_s);
+
+    EXPECT_TRUE(write_test_ktx2(short_mip_path, 145u, 4u, 4u, short_payload, sizeof(short_payload)),
+                "short native-mip KTX2 fixture written");
+    path_s = rt_string_from_bytes(short_mip_path, std::strlen(short_mip_path));
+    EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(path_s); },
+                                     "invalid mip payload length"),
+                "short native mip payload traps");
+    rt_string_unref(path_s);
+
+    std::remove(super_path);
+    std::remove(implicit_path);
+    std::remove(short_mip_path);
+    PASS();
+}
+
 static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
     TEST("TextureAsset3D native resident mips feed backend upload helpers");
     const char *path = "/tmp/viper_textureasset3d_native_resident_mips_test.ktx2";
@@ -1867,6 +2022,8 @@ static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
     assert(asset != nullptr);
 
     EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 96);
+    EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) != nullptr,
+                "compressed TextureAsset3D keeps a decoded fallback for software sampling");
     EXPECT_TRUE(vgfx3d_textureasset_native_supported(asset, RT_CANVAS3D_BACKEND_CAP_BC7),
                 "BC7 asset is native-upload capable when backend advertises BC7");
     EXPECT_TRUE(!vgfx3d_textureasset_native_supported(asset, RT_CANVAS3D_BACKEND_CAP_ASTC),
@@ -1907,8 +2064,7 @@ static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
     EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 1, 0, 1), 16);
     EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 2, 0, 1), 0);
     EXPECT_EQ(vgfx3d_textureasset_pending_native_bytes(asset, 0, 0, 0), 0);
-    EXPECT_TRUE(rt_textureasset3d_get_resident_bytes(asset) < (4 * 4 * 4 + 2 * 2 * 4),
-                "resident compressed bytes are smaller than equivalent raw RGBA bytes");
+    EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 32);
 
     auto *layout = static_cast<TextureAsset3DTestLayout *>(asset);
     EXPECT_TRUE(layout != nullptr && layout->mip_capacity == 3,
@@ -1939,7 +2095,6 @@ static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
         const uint8_t *empty_levels[] = {nullptr};
         const uint64_t empty_level_bytes[] = {0};
         rt_string empty_path_s;
-        void *empty_asset;
         EXPECT_TRUE(write_test_ktx2_mips(empty_path,
                                          157u,
                                          4u,
@@ -1949,15 +2104,10 @@ static void test_textureasset3d_native_resident_mips_feed_backend_utils() {
                                          1u),
                     "zero-length native KTX2 fixture written");
         empty_path_s = rt_string_from_bytes(empty_path, std::strlen(empty_path));
-        empty_asset = rt_textureasset3d_load_ktx2(empty_path_s);
+        EXPECT_TRUE(expect_trap_contains([&] { rt_textureasset3d_load_ktx2(empty_path_s); },
+                                         "invalid mip payload length"),
+                    "zero-length native payloads are rejected");
         rt_string_unref(empty_path_s);
-        assert(empty_asset != nullptr);
-        EXPECT_EQ(rt_textureasset3d_get_resident_bytes(empty_asset), 0);
-        EXPECT_EQ(rt_textureasset3d_get_native_cache_key(empty_asset), 0);
-        EXPECT_TRUE(!vgfx3d_textureasset_native_supported(empty_asset, RT_CANVAS3D_BACKEND_CAP_ASTC),
-                    "zero-length native payloads are not advertised as upload-capable");
-        EXPECT_TRUE(!vgfx3d_textureasset_get_native_resident_mip(empty_asset, 0, &mip),
-                    "zero-length native payloads do not expose resident mip data");
         std::remove(empty_path);
     }
 
@@ -2526,6 +2676,25 @@ static void test_camera_sanitizes_nonfinite_inputs() {
     PASS();
 }
 
+static void test_camera_getters_sanitize_corrupt_private_state() {
+    TEST("Camera3D getters sanitize corrupt private state");
+    rt_camera3d *cam = (rt_camera3d *)rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    assert(cam != NULL);
+
+    cam->fov = NAN;
+    cam->near_plane = NAN;
+    cam->far_plane = -INFINITY;
+    cam->is_ortho = -3;
+    EXPECT_NEAR(rt_camera3d_get_fov(cam), 0.0, 0.001);
+    EXPECT_NEAR(rt_camera3d_get_near_plane(cam), 0.1, 0.001);
+    EXPECT_NEAR(rt_camera3d_get_far_plane(cam), 1000.1, 0.001);
+    EXPECT_EQ(rt_camera3d_is_ortho(cam), 1);
+
+    cam->is_ortho = 0;
+    EXPECT_NEAR(rt_camera3d_get_fov(cam), 60.0, 0.001);
+    PASS();
+}
+
 static void test_camera_clamps_extreme_finite_inputs() {
     TEST("Camera3D clamps extreme finite public inputs");
     const double huge = 1.0e300;
@@ -2621,8 +2790,8 @@ static void test_material_sanitizes_numeric_inputs() {
     PASS();
 }
 
-static void test_material_getters_repair_corrupt_state() {
-    TEST("Material3D getters repair corrupt stored state");
+static void test_material_getters_sanitize_without_mutating_corrupt_state() {
+    TEST("Material3D getters sanitize corrupt stored state without mutating");
     rt_material3d *m = (rt_material3d *)rt_material3d_new();
     assert(m);
 
@@ -2633,8 +2802,8 @@ static void test_material_getters_repair_corrupt_state() {
     EXPECT_NEAR(rt_vec3_x(color), 0.0, 0.001);
     EXPECT_NEAR(rt_vec3_y(color), 0.0, 0.001);
     EXPECT_NEAR(rt_vec3_z(color), 1.0, 0.001);
-    EXPECT_NEAR(m->diffuse[0], 0.0, 0.001);
-    EXPECT_NEAR(m->diffuse[2], 1.0, 0.001);
+    EXPECT_TRUE(std::isnan(m->diffuse[0]), "GetColor does not rewrite corrupt color state");
+    EXPECT_NEAR(m->diffuse[2], 4.0, 0.001);
 
     m->alpha = NAN;
     m->metallic = INFINITY;
@@ -2657,11 +2826,11 @@ static void test_material_getters_repair_corrupt_state() {
     EXPECT_NEAR(rt_material3d_get_reflectivity(m), 0.0, 0.001);
     EXPECT_EQ(rt_material3d_get_shading_model(m), 0);
     EXPECT_EQ(rt_material3d_get_alpha_mode(m), RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
-    EXPECT_EQ(m->alpha_mode_auto, 0);
+    EXPECT_EQ(m->alpha_mode_auto, 1);
     EXPECT_EQ(rt_material3d_get_unlit(m), 1);
     EXPECT_EQ(rt_material3d_get_double_sided(m), 1);
-    EXPECT_EQ(m->unlit, 1);
-    EXPECT_EQ(m->double_sided, 1);
+    EXPECT_EQ(m->unlit, 7);
+    EXPECT_EQ(m->double_sided, -3);
 
     m->texture = rt_material3d_new();
     m->normal_map = rt_material3d_new();
@@ -3370,9 +3539,13 @@ static void test_rendertarget_new_hdr() {
 
 static void test_rendertarget_dimensions() {
     TEST("RenderTarget3D — width/height match constructor");
-    void *rt = rt_rendertarget3d_new(128, 64);
+    auto *rt = (rt_rendertarget3d *)rt_rendertarget3d_new(128, 64);
     EXPECT_EQ(rt_rendertarget3d_get_width(rt), 128);
     EXPECT_EQ(rt_rendertarget3d_get_height(rt), 64);
+    rt->width = -128;
+    rt->height = -64;
+    EXPECT_EQ(rt_rendertarget3d_get_width(rt), 0);
+    EXPECT_EQ(rt_rendertarget3d_get_height(rt), 0);
     PASS();
 }
 
@@ -3734,6 +3907,42 @@ static void test_canvas_light_rejects_invalid_inputs() {
     PASS();
 }
 
+static void test_canvas_light_params_sanitize_corrupt_type() {
+    TEST("Canvas3D sanitizes corrupt light types before backend submission");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_plane(1.0, 1.0);
+    void *mat = rt_material3d_new();
+    void *xf = rt_mat4_identity();
+    auto *light = (rt_light3d *)rt_light3d_new_ambient(0.4, 0.5, 0.6);
+    assert(cam != NULL && mesh != NULL && mat != NULL && xf != NULL && light != NULL);
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 64;
+    canvas.height = 64;
+
+    light->type = 99;
+    rt_canvas3d_set_light(&canvas, 0, light);
+    g_last_draw_light_count = 0;
+    memset(g_last_draw_lights, 0, sizeof(g_last_draw_lights));
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_mesh(&canvas, mesh, xf, mat);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_last_draw_light_count, 1);
+    EXPECT_EQ(g_last_draw_lights[0].type, 0);
+    rt_canvas3d_set_light(&canvas, 0, NULL);
+    PASS();
+}
+
 static void test_canvas_default_lighting_and_clear_lights() {
     TEST("Canvas3D.SetDefaultLighting and ClearLights");
     rt_canvas3d canvas;
@@ -3753,6 +3962,13 @@ static void test_canvas_default_lighting_and_clear_lights() {
 
     rt_light3d_set_enabled(canvas.lights[1], 0);
     EXPECT_EQ(rt_canvas3d_get_light_count(&canvas), 1);
+    rt_light3d *saved_disabled_light = canvas.lights[1];
+    void *wrong_light = rt_vec3_new(0.0, 0.0, 0.0);
+    canvas.lights[1] = (rt_light3d *)wrong_light;
+    EXPECT_EQ(rt_canvas3d_get_light_count(&canvas), 1);
+    canvas.lights[1] = saved_disabled_light;
+    if (rt_obj_release_check0(wrong_light))
+        rt_obj_free(wrong_light);
 
     rt_canvas3d_clear_lights(&canvas);
     EXPECT_EQ(rt_canvas3d_get_light_count(&canvas), 0);
@@ -4132,6 +4348,21 @@ static void test_canvas_dimensions_follow_active_render_target() {
     rt_canvas3d_reset_render_target(&canvas);
     EXPECT_EQ(rt_canvas3d_get_width(&canvas), 800);
     EXPECT_EQ(rt_canvas3d_get_height(&canvas), 600);
+
+    canvas.width = -8;
+    canvas.height = -9;
+    EXPECT_EQ(rt_canvas3d_get_window_width(&canvas), 0);
+    EXPECT_EQ(rt_canvas3d_get_window_height(&canvas), 0);
+    EXPECT_EQ(rt_canvas3d_get_active_output_width(&canvas), 0);
+    EXPECT_EQ(rt_canvas3d_get_active_output_height(&canvas), 0);
+
+    vgfx3d_rendertarget_t wrong_rt = {};
+    canvas.width = 800;
+    canvas.height = 600;
+    canvas.render_target = &wrong_rt;
+    EXPECT_EQ(rt_canvas3d_get_width(&canvas), 0);
+    EXPECT_EQ(rt_canvas3d_get_height(&canvas), 0);
+    canvas.render_target = nullptr;
     PASS();
 }
 
@@ -4151,6 +4382,8 @@ static void test_canvas_begin2d_uses_render_target_dimensions() {
     canvas.gfx_win = (vgfx_window_t)1;
     canvas.width = 800;
     canvas.height = 600;
+    canvas.frame_serial = -7;
+    EXPECT_EQ(rt_canvas3d_get_frame_serial(&canvas), 0);
     canvas.frame_serial = 41;
     rt_canvas3d_set_render_target(&canvas, rt);
 
@@ -4599,6 +4832,49 @@ static void test_particles3d_extreme_finite_inputs_remain_bounded() {
     PASS();
 }
 
+struct Particles3DTestLayout {
+    void *vptr;
+    void *particles;
+    int32_t count;
+    int32_t max_particles;
+    double position[3];
+    double emit_dir[3];
+    double emit_spread;
+    double speed_min;
+    double speed_max;
+    double life_min;
+    double life_max;
+    double size_start;
+    double size_end;
+    double gravity[3];
+    float color_start[3];
+    float color_end[3];
+    double alpha_start;
+    double alpha_end;
+    double rate;
+    double accumulator;
+    int8_t emitting;
+};
+
+static void test_particles3d_getters_sanitize_corrupt_private_state() {
+    TEST("Particles3D getters sanitize corrupt private state");
+    void *particles_obj = rt_particles3d_new(4);
+    auto *particles = static_cast<Particles3DTestLayout *>(particles_obj);
+
+    particles->count = -9;
+    particles->emitting = -3;
+    EXPECT_EQ(rt_particles3d_get_count(particles_obj), 0);
+    EXPECT_EQ(rt_particles3d_get_emitting(particles_obj), 1);
+
+    particles->count = 99;
+    EXPECT_EQ(rt_particles3d_get_count(particles_obj), 4);
+
+    particles->max_particles = -1;
+    EXPECT_EQ(rt_particles3d_get_count(particles_obj), 0);
+
+    PASS();
+}
+
 static void test_canvas_resize_updates_backend_and_projection_aspect() {
     TEST("Canvas3D.Resize updates backend size and next projection aspect");
     vgfx3d_backend_t backend = {};
@@ -4916,6 +5192,8 @@ static void test_canvas_delta_time_cap_and_disable() {
 
     rt_canvas3d_set_dt_max(&canvas, -1);
     EXPECT_EQ(rt_canvas3d_get_delta_time(&canvas), 250);
+    canvas.delta_time_ms = -5;
+    EXPECT_EQ(rt_canvas3d_get_delta_time(&canvas), 0);
     PASS();
 }
 
@@ -4927,6 +5205,19 @@ static void test_canvas_delta_time_sec_clamps_huge_dtmax_without_overflow() {
     canvas.delta_time_us = 500000;
     EXPECT_NEAR(rt_canvas3d_get_delta_time_sec(&canvas), 0.5, 0.0001);
     EXPECT_TRUE(canvas.dt_max_ms <= INT64_MAX / 1000, "SetDTMax clamps to checked multiply range");
+    PASS();
+}
+
+static void test_canvas_quality_getters_sanitize_corrupt_private_state() {
+    TEST("Canvas3D quality getters sanitize corrupt private state");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.quality_requested = -10;
+    canvas.quality_active = 99;
+    canvas.quality_fallback = -3;
+    EXPECT_EQ(rt_canvas3d_get_quality_requested(&canvas), RT_GRAPHICS3D_QUALITY_PERFORMANCE);
+    EXPECT_EQ(rt_canvas3d_get_quality_active(&canvas), RT_GRAPHICS3D_QUALITY_CINEMATIC);
+    EXPECT_EQ(rt_canvas3d_get_quality_fallback(&canvas), 1);
     PASS();
 }
 
@@ -5484,6 +5775,30 @@ static void test_terrain_null_safety() {
     PASS();
 }
 
+static void test_terrain_stitch_edge_ignores_float_roundoff() {
+    TEST("Terrain3D.StitchEdge ignores sub-ULP seam roundoff");
+    void *west = rt_terrain3d_new(2, 2);
+    void *east = rt_terrain3d_new(2, 2);
+    auto *west_view = (Terrain3DTestLayout *)west;
+    auto *east_view = (Terrain3DTestLayout *)east;
+    EXPECT_TRUE(west_view && east_view && west_view->heights && east_view->heights,
+                "Terrain stitch fixtures exist");
+    float east_edge = std::nextafter(std::nextafter(1.0f, 2.0f), 2.0f);
+    west_view->heights[1] = 1.0f;
+    west_view->heights[3] = 1.0f;
+    east_view->heights[0] = east_edge;
+    east_view->heights[2] = east_edge;
+
+    int64_t changed =
+        rt_terrain3d_stitch_edge(west, RT_TERRAIN3D_EDGE_EAST, east, RT_TERRAIN3D_EDGE_WEST);
+    EXPECT_EQ(changed, 0);
+    EXPECT_TRUE(west_view->heights[1] == 1.0f && west_view->heights[3] == 1.0f,
+                "Tiny terrain seam differences are left untouched");
+    EXPECT_TRUE(east_view->heights[0] == east_edge && east_view->heights[2] == east_edge,
+                "Tiny neighbor seam differences are left untouched");
+    PASS();
+}
+
 static void test_terrain_setters_repair_stale_slots_before_rejecting_invalid_handles() {
     TEST("Terrain3D setters repair stale slots before rejecting invalid handles");
     void *terrain = rt_terrain3d_new(16, 16);
@@ -5950,14 +6265,37 @@ static void test_vertex_color_default_white() {
 }
 
 static void test_shadow_enable_disable() {
-    TEST("Shadow enable/disable API null safety");
+    TEST("Shadow enable/disable initializes and releases depth targets");
     extern void rt_canvas3d_enable_shadows(void *canvas, int64_t resolution);
     extern void rt_canvas3d_disable_shadows(void *canvas);
     extern void rt_canvas3d_set_shadow_bias(void *canvas, double bias);
+    rt_canvas3d canvas;
+
     /* Call with NULL — should not crash (null-guard) */
     rt_canvas3d_enable_shadows(NULL, 1024);
     rt_canvas3d_disable_shadows(NULL);
     rt_canvas3d_set_shadow_bias(NULL, 0.005);
+
+    memset(&canvas, 0, sizeof(canvas));
+    rt_canvas3d_enable_shadows(&canvas, 128);
+    EXPECT_EQ(canvas.shadows_enabled, 1);
+    EXPECT_EQ(canvas.shadow_resolution, 128);
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++) {
+        vgfx3d_rendertarget_t *rt = canvas.shadow_rts[slot];
+        EXPECT_TRUE(rt != nullptr, "EnableShadows allocates every shadow slot");
+        EXPECT_EQ(rt->width, 128);
+        EXPECT_EQ(rt->height, 128);
+        EXPECT_EQ(rt->stride, 128 * 4);
+        EXPECT_TRUE(rt->depth_buf != nullptr, "EnableShadows allocates shadow depth");
+        EXPECT_NEAR(rt->depth_buf[0], FLT_MAX, 0.0);
+        EXPECT_NEAR(rt->depth_buf[(128 * 128) - 1], FLT_MAX, 0.0);
+    }
+
+    rt_canvas3d_disable_shadows(&canvas);
+    EXPECT_EQ(canvas.shadows_enabled, 0);
+    EXPECT_EQ(canvas.shadow_count, 0);
+    for (int32_t slot = 0; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
+        EXPECT_TRUE(canvas.shadow_rts[slot] == nullptr, "DisableShadows releases shadow slots");
     PASS();
 }
 
@@ -6466,6 +6804,45 @@ static void test_canvas_instanced_gpu_synthesizes_previous_matrices() {
     PASS();
 }
 
+static void test_canvas_instanced_gpu_uses_explicit_previous_matrices() {
+    TEST("Canvas3D uses explicit previous matrices for GPU instancing");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    float instances[16] = {0.0f};
+    float prev_instances[16] = {0.0f};
+
+    backend.name = "opengl";
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.submit_draw_instanced = tracked_submit_draw_instanced;
+    backend.end_frame = tracked_end_frame;
+
+    instances[0] = instances[5] = instances[10] = instances[15] = 1.0f;
+    instances[3] = 5.0f;
+    prev_instances[0] = prev_instances[5] = prev_instances[10] = prev_instances[15] = 1.0f;
+    prev_instances[3] = -7.0f;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    rt_material3d_set_alpha(mat, 1.0);
+    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+
+    g_last_instanced_has_prev = 0;
+    g_last_instanced_prev_x = 0.0f;
+    rt_canvas3d_begin(&canvas, cam);
+    enable_latched_motion_blur(&canvas);
+    rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances, 1, prev_instances, 1);
+    rt_canvas3d_end(&canvas);
+
+    EXPECT_EQ(g_last_instanced_has_prev, 1);
+    EXPECT_NEAR(g_last_instanced_prev_x, -7.0, 0.0001);
+    vgfx3d_postfx_chain_free(&canvas.frame_postfx_chain);
+    PASS();
+}
+
 static void test_canvas_instanced_motion_history_separates_batches() {
     TEST("Canvas3D separates motion history for same mesh instanced batches");
     vgfx3d_backend_t backend = {};
@@ -6697,6 +7074,7 @@ int main() {
     test_mesh_empty();
     test_mesh_add_vertex_triangle();
     test_mesh_reserve_presizes_without_dirtying_geometry();
+    test_mesh_mutations_restore_residency_and_counts_are_clamped();
     test_mesh_generators_batch_geometry_revision_updates();
     test_mesh_reject_invalid_triangle_indices();
     test_mesh_calc_tangents_tracks_mirrored_uv_handedness();
@@ -6706,6 +7084,7 @@ int main() {
     test_mesh_cylinder();
     test_mesh_generators_reject_invalid_dimensions();
     test_mesh_clone();
+    test_mesh_clone_repairs_corrupt_private_counts();
     test_mesh_clone_deep_copies_morph_targets();
     test_mesh_transform_uses_inverse_transpose_normals();
     test_mesh_transform_updates_tangent_basis();
@@ -6759,6 +7138,7 @@ int main() {
     test_camera_screen_to_ray_tracks_shaken_view();
     test_camera_shake_does_not_drift_eye_in_smooth_follow();
     test_camera_sanitizes_nonfinite_inputs();
+    test_camera_getters_sanitize_corrupt_private_state();
     test_camera_clamps_extreme_finite_inputs();
 
     /* Material3D */
@@ -6772,12 +7152,13 @@ int main() {
     test_textureasset3d_bc7_software_decode();
     test_textureasset3d_etc2_astc_software_decode();
     test_textureasset3d_mip_residency();
+    test_textureasset3d_rejects_unsupported_ktx2_headers();
     test_textureasset3d_native_resident_mips_feed_backend_utils();
     test_material_inspection_getters();
     test_material_texture_presence_getters();
     test_material_set_color();
     test_material_sanitizes_numeric_inputs();
-    test_material_getters_repair_corrupt_state();
+    test_material_getters_sanitize_without_mutating_corrupt_state();
     test_material_clone_repairs_invalid_env_map();
     test_material_set_shininess();
     test_material_set_unlit();
@@ -6852,6 +7233,7 @@ int main() {
     test_canvas_camera_relative_upload_rebases_raw_and_generated_vertices();
     test_particles3d_spread_uses_radians();
     test_particles3d_extreme_finite_inputs_remain_bounded();
+    test_particles3d_getters_sanitize_corrupt_private_state();
     test_canvas_resize_updates_backend_and_projection_aspect();
     test_canvas_fog_and_shadow_state_sanitize_inputs();
     test_canvas_begin_applies_camera_shake_without_follow();
@@ -6865,6 +7247,7 @@ int main() {
     test_canvas_light_retains_owned_reference();
     test_canvas_light_supports_last_slot();
     test_canvas_light_rejects_invalid_inputs();
+    test_canvas_light_params_sanitize_corrupt_type();
     test_canvas_default_lighting_and_clear_lights();
     test_canvas_clustered_lighting_capability_gate();
     test_canvas_platform_gpu_clustered_lighting_capability();
@@ -6877,6 +7260,7 @@ int main() {
     test_canvas_poll_event_queue_drains_in_order();
     test_canvas_delta_time_cap_and_disable();
     test_canvas_delta_time_sec_clamps_huge_dtmax_without_overflow();
+    test_canvas_quality_getters_sanitize_corrupt_private_state();
     test_canvas_synthetic_mouse_accumulation_clamps();
     test_canvas_fps_uses_microsecond_delta();
     test_canvas_boolean_setters_normalize();
@@ -6896,6 +7280,7 @@ int main() {
     test_terrain_set_layer_texture();
     test_terrain_set_layer_scale();
     test_terrain_null_safety();
+    test_terrain_stitch_edge_ignores_float_roundoff();
     test_terrain_setters_repair_stale_slots_before_rejecting_invalid_handles();
     test_terrain_single_pixel_splat_map_draws();
     test_terrain_splat_bake_uses_base_texture_for_missing_layers();
@@ -6936,6 +7321,7 @@ int main() {
     test_canvas_opaque_alpha_mode_keeps_instanced_path();
     test_canvas_instanced_repairs_corrupt_mesh_counts_before_tangents();
     test_canvas_instanced_gpu_synthesizes_previous_matrices();
+    test_canvas_instanced_gpu_uses_explicit_previous_matrices();
     test_canvas_instanced_motion_history_separates_batches();
     test_canvas_legacy_translucent_batch_falls_back_from_instancing();
     test_canvas_instanced_fallback_caps_instance_count();
